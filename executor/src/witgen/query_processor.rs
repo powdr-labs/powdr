@@ -111,7 +111,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
     fn lookup<'b>(
         &mut self,
         name: &'a str,
-        type_args: Option<Vec<Type>>,
+        type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         match self.fixed_data.analyzed.intermediate_columns.get(name) {
             // Intermediate polynomials (which includes challenges) are not inlined in hints,

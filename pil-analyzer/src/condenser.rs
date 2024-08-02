@@ -171,14 +171,14 @@ pub fn condense<T: FieldElement>(
     }
 }
 
-type SymbolCacheKey = (String, Option<Vec<Type>>);
+type SymbolCache<'a, T> = HashMap<String, BTreeMap<Option<Vec<Type>>, Arc<Value<'a, T>>>>;
 
 pub struct Condenser<'a, T> {
     degree: Option<DegreeType>,
     /// All the definitions from the PIL file.
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     /// Evaluation cache.
-    symbol_values: BTreeMap<SymbolCacheKey, Arc<Value<'a, T>>>,
+    symbol_values: SymbolCache<'a, T>,
     /// Current namespace (for names of generated columns).
     namespace: AbsoluteSymbolPath,
     /// ID dispensers.
@@ -313,18 +313,23 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
     fn lookup(
         &mut self,
         name: &'a str,
-        type_args: Option<Vec<Type>>,
+        type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         // Cache already computed values.
         // Note that the cache is essential because otherwise
         // we re-evaluate simple values, which users would not expect.
-        let cache_key = (name.to_string(), type_args.clone());
-        if let Some(v) = self.symbol_values.get(&cache_key) {
+        if let Some(v) = self
+            .symbol_values
+            .get(name)
+            .and_then(|map| map.get(type_args))
+        {
             return Ok(v.clone());
         }
         let value = Definitions::lookup_with_symbols(self.symbols, name, type_args, self)?;
         self.symbol_values
-            .entry(cache_key)
+            .entry(name.to_string())
+            .or_default()
+            .entry(type_args.clone())
             .or_insert_with(|| value.clone());
         Ok(value)
     }
