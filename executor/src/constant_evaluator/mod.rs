@@ -94,15 +94,14 @@ fn generate_values<T: FieldElement>(
             } else {
                 e
             };
+            let fun = evaluator::evaluate(e, &mut symbols.clone()).unwrap();
             (0..degree)
                 .into_par_iter()
                 .map(|i| {
-                    let mut symbols = symbols.clone();
-                    let fun = evaluator::evaluate(e, &mut symbols).unwrap();
                     evaluator::evaluate_function_call(
-                        fun,
+                        fun.clone(),
                         vec![Arc::new(Value::Integer(BigInt::from(i)))],
-                        &mut symbols,
+                        &mut symbols.clone(),
                     )
                     .and_then(|v| v.try_to_field_element())
                 })
