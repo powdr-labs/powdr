@@ -64,7 +64,7 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     // Get an intermediate column that indicates that we're in an
     // actual block, not a default block. Its value is constant
     // within the block.
-    let used: inter = array::sum(sel);
+    let used = array::sum(sel);
     array::map(sel, |s| unchanged_until(s, LAST));
     std::utils::force_bool(used);
 
