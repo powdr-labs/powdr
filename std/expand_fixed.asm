@@ -76,18 +76,19 @@ let expand: ArrayTerm[], (-> int) -> Result<(int -> int), string> = |terms, degr
             // get the total size of the repeated term
             match compute_length_of_repeated_part(terms, degree) {
                 Result::Ok(size_of_repeated) => {
+
+                    let terms_preprocessed = std::array::map(terms, |term| match term {
+                        ArrayTerm::Repeat([]) => ([], 0),
+                        ArrayTerm::Repeat(a) => (a, size_of_repeated),
+                        ArrayTerm::Once(a) => (a, std::array::len(a))
+                    });
+
                     Result::Ok(|i| {
-                        let (_, res) = std::array::fold(terms, (0, Option::None), |(offset, res), term| {
+                        let (_, res) = std::array::fold(terms_preprocessed, (0, Option::None), |(offset, res), (a, len)| {
                             match res {
                                 // found the result, just keep returning it
                                 Option::Some(r) => (offset, Option::Some(r)),
                                 Option::None => {
-                                    let (a, len) = match term {
-                                        ArrayTerm::Repeat([]) => ([], 0),
-                                        ArrayTerm::Repeat(a) => (a, size_of_repeated),
-                                        ArrayTerm::Once(a) => (a, std::array::len(a))
-                                    };
-
                                     let index = i - offset;
 
                                     (
