@@ -39,6 +39,11 @@ let compute_length_of_repeated_part: ArrayTerm[], (-> int) -> Result<int, string
     }
 };
 
+enum OffsetSearch {
+    Offset(int),
+    Value(int),
+}
+
 // returns a function representing the array expression
 let expand: ArrayTerm[], (-> int) -> Result<(int -> int), string> = |terms, degree| {
     // return early if all terms are constant with the same value
@@ -84,28 +89,23 @@ let expand: ArrayTerm[], (-> int) -> Result<(int -> int), string> = |terms, degr
                     });
 
                     Result::Ok(|i| {
-                        let (_, res) = std::array::fold(terms_preprocessed, (0, Option::None), |(offset, res), (a, len)| {
-                            match res {
+                        let res = std::array::fold(terms_preprocessed, OffsetSearch::Offset(i), |val, (a, len)| {
+                            match val {
+                                OffsetSearch::Offset(index) => {
+                                    if index < len {
+                                        OffsetSearch::Value(a[index % std::array::len(a)])
+                                    } else {
+                                        OffsetSearch::Offset(index - len)
+                                    }
+                                },
                                 // found the result, just keep returning it
-                                Option::Some(r) => (offset, Option::Some(r)),
-                                Option::None => {
-                                    let index = i - offset;
-
-                                    (
-                                        offset + len,
-                                        if 0 <= index && index < len {
-                                            Option::Some(a[index % std::array::len(a)])
-                                        } else {
-                                            Option::None
-                                        }
-                                    )
-                                }
+                                _ => val,
                             }
                         });
                         // unwrap
                         match res {
-                            Option::Some(r) => r,
-                            None => panic("unreachable")
+                            OffsetSearch::Value(r) => r,
+                            _ => panic("unreachable")
                         }
                     })
                 },
