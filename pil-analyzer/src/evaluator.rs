@@ -63,7 +63,7 @@ pub fn evaluate_function_call<'a, T: FieldElement>(
 /// from type name to type.
 pub fn type_arg_mapping(
     type_scheme: &Option<TypeScheme>,
-    args: Option<Vec<Type>>,
+    args: &Option<Vec<Type>>,
 ) -> HashMap<String, Type> {
     let Some(type_scheme) = type_scheme else {
         return Default::default();
@@ -408,7 +408,7 @@ impl<'a> Definitions<'a> {
     pub fn lookup_with_symbols<T: FieldElement>(
         definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
         name: &str,
-        type_args: Option<Vec<Type>>,
+        type_args: &Option<Vec<Type>>,
         symbols: &mut impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         let name = name.to_string();
@@ -467,7 +467,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a> {
     fn lookup(
         &mut self,
         name: &str,
-        type_args: Option<Vec<Type>>,
+        type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Self::lookup_with_symbols(self.0, name, type_args, self)
     }
@@ -487,7 +487,7 @@ pub trait SymbolLookup<'a, T: FieldElement> {
     fn lookup(
         &mut self,
         name: &'a str,
-        type_args: Option<Vec<Type>>,
+        type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError>;
 
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
@@ -813,7 +813,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                         }
                         ta
                     });
-                    self.symbols.lookup(&poly.name, type_args)?
+                    self.symbols.lookup(&poly.name, &type_args)?
                 }
             }
         })
@@ -1282,7 +1282,7 @@ mod test {
     pub fn evaluate_function<T: FieldElement>(input: &str, function: &str) -> T {
         let analyzed = analyze_string::<GoldilocksField>(input);
         let mut symbols = evaluator::Definitions(&analyzed.definitions);
-        let function = symbols.lookup(function, None).unwrap();
+        let function = symbols.lookup(function, &None).unwrap();
         let result = evaluator::evaluate_function_call(function, vec![], &mut symbols)
             .unwrap()
             .as_ref()
