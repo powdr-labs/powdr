@@ -188,15 +188,13 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         self
     }
 
-    /// Conversion to plonky3 expression
+    /// Conversion to plonky3 expression.
     fn to_plonky3_expr<AB: AirBuilder<F = Val> + AirBuilderWithPublicValues>(
         &self,
         e: &AlgebraicExpression<T>,
         main: &AB::M,
         fixed: &AB::M,
         publics: &BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>,
-        multi_stage: Vec<&AB::M>, // returns a reference to the stage _ matrix
-        challenges: Vec<&BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>>,
     ) -> AB::Expr {
         let res = match e {
             AlgebraicExpression::Reference(r) => {
@@ -205,22 +203,10 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                 match poly_id.ptype {
                     PolynomialType::Committed => {
                         assert!(
-                            r.poly_id.id < self.analyzed.commitment_count() as u64,
+                            r.poly_id.id < self.width() as u64,
                             "Plonky3 expects `poly_id` to be contiguous"
                         );
-                        let col_id = r.poly_id.id;
-                        let row = match col_id {
-                            col_id if col_id < self.width() => {
-                                main.row_slice(r.next as usize)
-                            }
-                            col_id if col_id < self.width() + self.multi_stage_width(1) => {
-                                multi_stage[0].row_slice(r.next as usize)
-                            }
-                            col_id if col_id < self.width() + self.multi_stage_width(1) + self.multi_stage_width(2) => {
-                                multi_stage[1].row_slice(r.next as usize)
-                            }
-                            _ => panic!("Stage too high for Plonky3 backend.")
-                        }
+
                         let row = main.row_slice(r.next as usize);
                         row[r.poly_id.id as usize].into()
                     }
@@ -243,22 +229,8 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
             .into(),
             AlgebraicExpression::Number(n) => AB::Expr::from(cast_to_goldilocks(*n)),
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-                let left = self.to_plonky3_expr::<AB>(
-                    left,
-                    main,
-                    fixed,
-                    publics,
-                    multi_stage_trace,
-                    challenges,
-                );
-                let right = self.to_plonky3_expr::<AB>(
-                    right,
-                    main,
-                    fixed,
-                    publics,
-                    multi_stage_trace,
-                    challenges,
-                );
+                let left = self.to_plonky3_expr::<AB>(left, main, fixed, publics);
+                let right = self.to_plonky3_expr::<AB>(right, main, fixed, publics);
 
                 match op {
                     AlgebraicBinaryOperator::Add => left + right,
@@ -270,7 +242,113 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                 }
             }
             AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
-                let expr: <AB as AirBuilder>::Expr = self.to_plonky3_expr::<AB>(
+                let expr: <AB as AirBuilder>::Expr =
+                    self.to_plonky3_expr::<AB>(expr, main, fixed, publics);
+
+                match op {
+                    AlgebraicUnaryOperator::Minus => -expr,
+                }
+            }
+            AlgebraicExpression::Challenge(challenge) => {
+                unreachable!("Challenges cannot be accessed in stage-0 proving!")
+            }
+        };
+        res
+    }
+
+    /// Challenges, given as extension field elements, are represented by D columns in the pil.
+    /// Thus, a stage-1 or stage-2 constraint is translated into two constraints to be evaluated
+    fn to_plonky3_expr_multistage<AB: AirBuilder<F = Val> + AirBuilderWithPublicValues>(
+        &self,
+        e: &AlgebraicExpression<T>,
+        main: &AB::M,
+        fixed: &AB::M,
+        publics: &BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>,
+        multi_stage: Vec<&AB::M>, // returns a reference to the stage _ matrix
+        challenges: Vec<
+            &BTreeMap<
+                &String,
+                (
+                    <AB as AirBuilderWithPublicValues>::PublicVar,
+                    <AB as AirBuilderWithPublicValues>::PublicVar,
+                ),
+            >,
+        >,
+    ) -> (AB::Expr, AB::Expr) {
+        let res = match e {
+            AlgebraicExpression::Reference(r) => {
+                let poly_id = r.poly_id;
+
+                match poly_id.ptype {
+                    PolynomialType::Committed => {
+                        assert!(
+                            r.poly_id.id < self.analyzed.commitment_count() as u64,
+                            "Plonky3 expects `poly_id` to be contiguous"
+                        );
+                        let col_idx = r.poly_id.id;
+                        if col_idx < self.width() {
+                            (
+                                self.to_plonky3_expr::<AB>(e, main, fixed, publics),
+                                self.to_plonky3_expr::<AB>(e, main, fixed, publics),
+                            )
+                        } else {
+                            let (row, idx) = match col_idx {
+                                col_idx if col_idx < self.width() + self.multi_stage_width(1) => (
+                                    multi_stage[0].row_slice(r.next as usize),
+                                    2 * (col_idx - self.width()),
+                                ),
+                                col_idx
+                                    if col_idx
+                                        < self.width()
+                                            + self.multi_stage_width(1)
+                                            + self.multi_stage_width(2) =>
+                                {
+                                    (
+                                        multi_stage[1].row_slice(r.next as usize),
+                                        self.width,
+                                        2 * (col_idx - self.width() - self.multi_stage_width(1)),
+                                    )
+                                }
+                                _ => panic!("Witness stage too high for Plonky3 backend."),
+                            };
+                            (row[idx as usize].into(), row[idx + 1 as usize].into())
+                        }
+                    }
+                    _ => (
+                        self.to_plonky3_expr::<AB>(e, main, fixed, publics),
+                        self.to_plonky3_expr::<AB>(e, main, fixed, publics),
+                    ),
+                }
+            }
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+                let left = self.to_plonky3_expr_multistage::<AB>(
+                    left,
+                    main,
+                    fixed,
+                    publics,
+                    multi_stage_trace,
+                    challenges,
+                );
+                let right = self.to_plonky3_expr_multistage::<AB>(
+                    right,
+                    main,
+                    fixed,
+                    publics,
+                    multi_stage_trace,
+                    challenges,
+                );
+
+                match op {
+                    AlgebraicBinaryOperator::Add => (left.0 + right.0, left.1 + right.1),
+                    AlgebraicBinaryOperator::Sub => (left.0 - right.0, left.1 - right.1),
+                    AlgebraicBinaryOperator::Mul => (left.0 * right.0, left.1 * right.1),
+                    AlgebraicBinaryOperator::Pow => {
+                        unreachable!("exponentiations should have been evaluated")
+                    }
+                }
+            }
+            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
+                let expr: <AB as AirBuilder>::Expr = self.to_plonky3_expr_multistage::<AB>(
                     expr,
                     main,
                     fixed,
@@ -280,13 +358,17 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                 );
 
                 match op {
-                    AlgebraicUnaryOperator::Minus => -expr,
+                    AlgebraicUnaryOperator::Minus => (-expr.0, -expr.1),
                 }
             }
             AlgebraicExpression::Challenge(challenge) => (*challenges[challenge.stage]
                 .get(challenge.id)
                 .expect("Referenced public value does not exist"))
             .into(),
+            _ => (
+                self.to_plonky3_expr::<AB>(e, main, fixed, publics),
+                self.to_plonky3_expr::<AB>(e, main, fixed, publics),
+            ),
         };
         res
     }
@@ -309,8 +391,8 @@ impl<'a, T: FieldElement> PowdrAir for PowdrCircuit<'a, T> {
             let symbol = identity.0;
             if Some(stage) == symbol[stage] {
                 width += 1;
-            }; // -> see if id is 
-        };
+            }; // -> see if id is
+        }
         width as usize
     }
 }
@@ -334,10 +416,10 @@ impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
     }
 }
 
-/// TODO: fix pls
 pub trait PowdrAirBuilder:
     AirBuilder + AirBuilderWithPublicValues<F = Val> + PairBuilder + ExtensionBuilder
 {
+    /// Traces from each stage.
     fn multi_stage(&self, stage: u32) -> Self::M;
 
     /// Challenges from each stage, as public elements.
@@ -356,6 +438,12 @@ impl<'a, T: FieldElement, AB: PowdrAirBuilder> Air<AB> for PowdrCircuit<'a, T> {
         let publics = self.analyzed.get_publics();
         assert_eq!(publics.len(), pi.len());
 
+        let public_vals_by_id = publics
+            .iter()
+            .zip(pi.to_vec())
+            .map(|((id, _, _), val)| (id, val))
+            .collect::<BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>>();
+
         // challenges
         let multi_stage = (1..3)
             .map(|stage| builder.multi_stage(stage))
@@ -363,13 +451,33 @@ impl<'a, T: FieldElement, AB: PowdrAirBuilder> Air<AB> for PowdrCircuit<'a, T> {
 
         let challenge_ids = self.get_challenges();
 
+        // challenge values are represented as
         let challenge_vals_by_id = (0..2)
             .map(|stage| {
                 challenge_ids[stage]
-                    .zip(builder.challenges(stage))
-                    .collect::<BTreeMap<u64, <AB as AirBuilderWithPublicValues>::PublicVar>>()
+                    .zip(
+                        builder
+                            .challenges(stage)
+                            .chunks_exact(2)
+                            .map(|chunk| (chunk[0], chunk[1])),
+                    )
+                    .collect::<BTreeMap<
+                        u64,
+                        (
+                            <AB as AirBuilderWithPublicValues>::PublicVar,
+                            <AB as AirBuilderWithPublicValues>::PublicVar,
+                        ),
+                    >>()
             })
-            .collect::<Vec<BTreeMap<u64, <AB as AirBuilderWithPublicValues>::PublicVar>>>();
+            .collect::<Vec<
+                BTreeMap<
+                    u64,
+                    (
+                        <AB as AirBuilderWithPublicValues>::PublicVar,
+                        <AB as AirBuilderWithPublicValues>::PublicVar,
+                    ),
+                >,
+            >>();
 
         let local = main.row_slice(0);
         let fixed_local = fixed.row_slice(0);
@@ -379,11 +487,13 @@ impl<'a, T: FieldElement, AB: PowdrAirBuilder> Air<AB> for PowdrCircuit<'a, T> {
             .analyzed
             .identities_with_inlined_intermediate_polynomials()
         {
-            // get maximum stage of
-            let mut stage: u32 = 0;
+            // determine whether or not the current identity involves challenges.
+            let mut stage_zero = True;
             identity.pre_visit_expressions(&mut |expr| {
-                if let AlgebraicExpression::Challenge(challenge) = expr {
-                    stage = stage.max(challenge.stage + 1)
+                if let AlgebraicExpression::AlgebraicReference(r) = expr {
+                    if r.poly_id.ptype == Committed && r.poly_id.id >= self.width() {
+                        stage_zero = False
+                    }
                 }
             });
 
@@ -393,21 +503,26 @@ impl<'a, T: FieldElement, AB: PowdrAirBuilder> Air<AB> for PowdrCircuit<'a, T> {
                     assert_eq!(identity.right.expressions.len(), 0);
                     assert!(identity.right.selector.is_none());
 
-                    let left = self.to_plonky3_expr::<AB>(
-                        identity.left.selector.as_ref().unwrap(),
-                        &main,
-                        &fixed,
-                        &public_vals_by_id,
-                        &multi_stage,
-                        &challenge_vals_by_id,
-                    );
-
-                    match stage {
-                        0 => builder.assert_zero(left),
-                        _ => { // let D be the degree of challenges
-                        }
+                    if stage_zero {
+                        let left = self.to_plonky3_expr::<AB>(
+                            identity.left.selector.as_ref().unwrap(),
+                            &main,
+                            &fixed,
+                            &public_vals_by_id,
+                        );
+                        builder.assert_zero(left);
+                    } else {
+                        let (left1, left2) = self.to_plonky3_expr_multistage::<AB>(
+                            identity.left.selector.as_ref().unwrap(),
+                            &main,
+                            &fixed,
+                            &public_vals_by_id,
+                            &multi_stage,
+                            &challenge_vals_by_id,
+                        );
+                        builder.assert_zero(left1);
+                        builder.assert_zero(left2);
                     }
-                    builder.assert_zero(left); //
                 }
                 // TODO: support for challenges
                 IdentityKind::Plookup => unimplemented!("Plonky3 does not support plookup"),
@@ -419,11 +534,6 @@ impl<'a, T: FieldElement, AB: PowdrAirBuilder> Air<AB> for PowdrCircuit<'a, T> {
         }
 
         // public variable onstraints
-        let public_vals_by_id = publics
-            .iter()
-            .zip(pi.to_vec())
-            .map(|((id, _, _), val)| (id, val))
-            .collect::<BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>>();
 
         let public_offset = self.analyzed.constant_count();
         publics
