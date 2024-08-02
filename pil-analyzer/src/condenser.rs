@@ -440,7 +440,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             absolute_name: name.clone(),
             stage: None,
             kind,
-            length: None,
+            length,
             degree: self.degree,
         };
 
