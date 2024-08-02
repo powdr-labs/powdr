@@ -334,13 +334,12 @@ pub fn std_analyzed<T: FieldElement>() -> Analyzed<T> {
 pub fn evaluate_function<'a, T: FieldElement>(
     analyzed: &'a Analyzed<T>,
     function: &'a str,
-    arguments: Vec<Arc<evaluator::Value<'a, T>>>,
+    arguments: Vec<evaluator::Value<'a, T>>,
 ) -> evaluator::Value<'a, T> {
     let mut symbols = evaluator::Definitions(&analyzed.definitions);
     let function = symbols.lookup(function, None).unwrap();
     evaluator::evaluate_function_call(function, arguments, &mut symbols)
         .unwrap()
-        .as_ref()
         .clone()
 }
 
@@ -352,7 +351,7 @@ pub fn evaluate_integer_function<T: FieldElement>(
 ) -> BigInt {
     let arguments = arguments
         .into_iter()
-        .map(|x| Arc::new(evaluator::Value::Integer(x)))
+        .map(|x| evaluator::Value::Integer(x))
         .collect();
     if let evaluator::Value::Integer(x) = evaluate_function(analyzed, function, arguments) {
         x

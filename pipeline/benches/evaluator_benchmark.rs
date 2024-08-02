@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use ::powdr_pipeline::Pipeline;
 use powdr_ast::analyzed::Analyzed;
 use powdr_number::{BigInt, GoldilocksField};
@@ -98,12 +96,7 @@ fn evaluator_benchmark(c: &mut Criterion) {
     };
 
     for l in [33, 100, 300, 900, 2700] {
-        let input = Arc::new(Value::Array(
-            (0..l)
-                .rev()
-                .map(|x| Arc::new(Value::Integer(x.into())))
-                .collect(),
-        ));
+        let input = Value::Array((0..l).rev().map(|x| Value::Integer(x.into())).collect());
         group.bench_with_input(format!("sort_{l}"), &input, |b, x| {
             b.iter(|| {
                 evaluate_function(&sort_analyzed, "sort_int", vec![x.clone()]);

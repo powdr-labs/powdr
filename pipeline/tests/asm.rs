@@ -472,7 +472,7 @@ fn keccak() {
     use powdr_number::BigInt;
     use powdr_pil_analyzer::evaluator::Value;
     use powdr_pipeline::test_util::evaluate_function;
-    use std::{fs, sync::Arc};
+    use std::fs;
 
     // Set up the file to test
     let code_path = format!("{}/../test_data/asm/keccak.asm", env!("CARGO_MANIFEST_DIR"),);
@@ -485,7 +485,7 @@ fn keccak() {
         Value::Array(
             values
                 .iter()
-                .map(|x| Arc::new(Value::Integer(BigInt::from(*x))))
+                .map(|x| Value::Integer(BigInt::from(*x)))
                 .collect(),
         )
     }
@@ -495,7 +495,7 @@ fn keccak() {
             assert_eq!(this.len(), other.len());
             for (this_elem, other_elem) in this.iter().zip(other.iter()) {
                 if let (Value::Integer(ref this_int), Value::Integer(ref other_int)) =
-                    (this_elem.as_ref(), other_elem.as_ref())
+                    (this_elem, other_elem)
                 {
                     assert_eq!(this_int, other_int);
                 } else {
@@ -542,7 +542,7 @@ fn keccak() {
     let keccakf_inner_result = evaluate_function(
         &analyzed,
         "keccakf_inner",
-        vec![Arc::new(array_argument(padded_endianness_swapped_input))],
+        vec![array_argument(padded_endianness_swapped_input)],
     );
 
     let keccakf_inner_expected: Vec<u64> = vec![
@@ -579,11 +579,8 @@ fn keccak() {
     );
 
     // Test keccakf
-    let keccakf_result = evaluate_function(
-        &analyzed,
-        "keccakf",
-        vec![Arc::new(array_argument(padded_input))],
-    );
+    let keccakf_result =
+        evaluate_function(&analyzed, "keccakf", vec![array_argument(padded_input)]);
 
     let keccakf_expected = keccakf_inner_expected
         .iter()
@@ -598,14 +595,14 @@ fn keccak() {
             analyzed,
             "main",
             vec![
-                Arc::new(Value::Integer(BigInt::from(32))), // W = 32 (output bytes)
-                Arc::new(Value::Array(
+                Value::Integer(BigInt::from(32)), // W = 32 (output bytes)
+                Value::Array(
                     input
                         .iter()
-                        .map(|x| Arc::new(Value::Integer(BigInt::from(*x))))
+                        .map(|x| Value::Integer(BigInt::from(*x)))
                         .collect(),
-                )),
-                Arc::new(Value::Integer(BigInt::from(0x01))), // delim = 0x01
+                ),
+                Value::Integer(BigInt::from(0x01)), // delim = 0x01
             ],
         );
 

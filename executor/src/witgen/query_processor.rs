@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use powdr_ast::analyzed::Challenge;
 use powdr_ast::analyzed::{AlgebraicReference, Expression, PolyID, PolynomialType};
 use powdr_ast::parsed::types::Type;
@@ -87,9 +85,9 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
         query: &'a Expression,
         rows: &RowPair<T>,
     ) -> Result<String, EvalError> {
-        let arguments = vec![Arc::new(Value::Integer(BigInt::from(u64::from(
+        let arguments = vec![Value::Integer(BigInt::from(u64::from(
             rows.current_row_index,
-        ))))];
+        )))];
         let mut symbols = Symbols {
             fixed_data: self.fixed_data,
             rows,
@@ -112,7 +110,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
         &mut self,
         name: &'a str,
         type_args: Option<Vec<Type>>,
-    ) -> Result<Arc<Value<'a, T>>, EvalError> {
+    ) -> Result<Value<'a, T>, EvalError> {
         match self.fixed_data.analyzed.intermediate_columns.get(name) {
             // Intermediate polynomials (which includes challenges) are not inlined in hints,
             // so we need to look them up here.
@@ -121,18 +119,11 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
                     assert!(type_args.is_empty());
                 }
                 Ok(if symbol.is_array() {
-                    Value::Array(
-                        expressions
-                            .clone()
-                            .into_iter()
-                            .map(|e| Value::from(e).into())
-                            .collect(),
-                    )
+                    Value::Array(expressions.clone().into_iter().map(Value::from).collect())
                 } else {
                     assert!(expressions.len() == 1);
                     Value::from(expressions[0].clone())
-                }
-                .into())
+                })
             }
             None => Definitions::lookup_with_symbols(
                 &self.fixed_data.analyzed.definitions,
@@ -142,10 +133,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
             ),
         }
     }
-    fn eval_reference(
-        &self,
-        poly_ref: &AlgebraicReference,
-    ) -> Result<Arc<Value<'a, T>>, EvalError> {
+    fn eval_reference(&self, poly_ref: &AlgebraicReference) -> Result<Value<'a, T>, EvalError> {
         Ok(Value::FieldElement(match poly_ref.poly_id.ptype {
             PolynomialType::Committed | PolynomialType::Intermediate => self
                 .rows
@@ -156,11 +144,10 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
                 let row = self.rows.current_row_index + if poly_ref.next { 1 } else { 0 };
                 values[usize::from(row)]
             }
-        })
-        .into())
+        }))
     }
 
-    fn eval_challenge(&self, challenge: &Challenge) -> Result<Arc<Value<'a, T>>, EvalError> {
+    fn eval_challenge(&self, challenge: &Challenge) -> Result<Value<'a, T>, EvalError> {
         let challenge = *self
             .fixed_data
             .challenges
@@ -172,6 +159,6 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
                     self.fixed_data.challenges.keys()
                 )
             });
-        Ok(Value::FieldElement(challenge).into())
+        Ok(Value::FieldElement(challenge))
     }
 }

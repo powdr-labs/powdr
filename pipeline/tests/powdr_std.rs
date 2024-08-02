@@ -1,5 +1,3 @@
-use std::sync::Arc;
-
 use powdr_number::{BigInt, Bn254Field, GoldilocksField};
 
 use powdr_pil_analyzer::evaluator::Value;
@@ -341,19 +339,19 @@ fn sort() {
         let result = evaluate_function(
             &analyzed,
             "test_sort",
-            vec![Arc::new(Value::Array(
+            vec![Value::Array(
                 input
                     .into_iter()
-                    .map(|x| Arc::new(Value::Integer(x.into())))
+                    .map(|x| Value::Integer(x.into()))
                     .collect(),
-            ))],
+            )],
         );
         let Value::Array(result) = result else {
             panic!("Expected array")
         };
         let result: Vec<i32> = result
             .into_iter()
-            .map(|x| match x.as_ref() {
+            .map(|x| match x {
                 Value::Integer(x) => x.try_into().unwrap(),
                 _ => panic!("Expected integer"),
             })

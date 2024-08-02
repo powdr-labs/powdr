@@ -101,7 +101,7 @@ fn generate_values<T: FieldElement>(
                     let fun = evaluator::evaluate(e, &mut symbols).unwrap();
                     evaluator::evaluate_function_call(
                         fun,
-                        vec![Arc::new(Value::Integer(BigInt::from(i)))],
+                        vec![Value::Integer(BigInt::from(i))],
                         &mut symbols,
                     )
                     .and_then(|v| v.try_to_field_element())
@@ -150,7 +150,7 @@ fn generate_values<T: FieldElement>(
     }
 }
 
-type SymbolCache<'a, T> = BTreeMap<(String, Option<Vec<Type>>), Arc<Value<'a, T>>>;
+type SymbolCache<'a, T> = BTreeMap<(String, Option<Vec<Type>>), Value<'a, T>>;
 
 #[derive(Clone)]
 pub struct CachedSymbols<'a, T> {
@@ -164,7 +164,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
         &mut self,
         name: &'a str,
         type_args: Option<Vec<Type>>,
-    ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
+    ) -> Result<Value<'a, T>, evaluator::EvalError> {
         let cache_key = (name.to_string(), type_args.clone());
         if let Some(v) = self.cache.read().unwrap().get(&cache_key) {
             return Ok(v.clone());
@@ -178,8 +178,8 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
         Ok(result)
     }
 
-    fn degree(&self) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
-        Ok(Value::Integer(self.degree.into()).into())
+    fn degree(&self) -> Result<Value<'a, T>, evaluator::EvalError> {
+        Ok(Value::Integer(self.degree.into()))
     }
 }
 

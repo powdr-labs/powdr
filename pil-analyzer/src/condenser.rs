@@ -6,7 +6,6 @@ use std::{
     fmt::Display,
     iter::once,
     str::FromStr,
-    sync::Arc,
 };
 
 use powdr_ast::{
@@ -178,7 +177,7 @@ pub struct Condenser<'a, T> {
     /// All the definitions from the PIL file.
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     /// Evaluation cache.
-    symbol_values: BTreeMap<SymbolCacheKey, Arc<Value<'a, T>>>,
+    symbol_values: BTreeMap<SymbolCacheKey, Value<'a, T>>,
     /// Current namespace (for names of generated columns).
     namespace: AbsoluteSymbolPath,
     /// ID dispensers.
@@ -213,7 +212,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             let expr = identity.expression_for_poly_id();
             evaluator::evaluate(expr, self)
                 .and_then(|expr| {
-                    if let Value::Tuple(items) = expr.as_ref() {
+                    if let Value::Tuple(items) = expr {
                         assert!(items.is_empty());
                         Ok(())
                     } else {
@@ -282,7 +281,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         let result = evaluator::evaluate(e, self).unwrap_or_else(|err| {
             panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
         });
-        match result.as_ref() {
+        match result {
             Value::Expression(expr) => expr.clone(),
             _ => panic!("Expected expression but got {result}"),
         }
@@ -296,10 +295,10 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         let result = evaluator::evaluate(e, self).unwrap_or_else(|err| {
             panic!("Error reducing expression to constraint:\nExpression: {e}\nError: {err:?}")
         });
-        match result.as_ref() {
+        match result {
             Value::Array(items) => items
                 .iter()
-                .map(|item| match item.as_ref() {
+                .map(|item| match item {
                     Value::Expression(expr) => expr.clone(),
                     _ => panic!("Expected expression but got {item}"),
                 })
@@ -314,7 +313,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         &mut self,
         name: &'a str,
         type_args: Option<Vec<Type>>,
-    ) -> Result<Arc<Value<'a, T>>, EvalError> {
+    ) -> Result<Value<'a, T>, EvalError> {
         // Cache already computed values.
         // Note that the cache is essential because otherwise
         // we re-evaluate simple values, which users would not expect.
@@ -329,21 +328,21 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         Ok(value)
     }
 
-    fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
+    fn lookup_public_reference(&self, name: &str) -> Result<Value<'a, T>, EvalError> {
         Definitions(self.symbols).lookup_public_reference(name)
     }
 
-    fn degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
+    fn degree(&self) -> Result<Value<'a, T>, EvalError> {
         let degree = self.degree.ok_or(EvalError::DataNotAvailable)?;
-        Ok(Value::Integer(degree.into()).into())
+        Ok(Value::Integer(degree.into()))
     }
 
     fn new_column(
         &mut self,
         name: &str,
-        value: Option<Arc<Value<'a, T>>>,
+        value: Option<Value<'a, T>>,
         source: SourceRef,
-    ) -> Result<Arc<Value<'a, T>>, EvalError> {
+    ) -> Result<Value<'a, T>, EvalError> {
         let name = self.find_unused_name(name);
         let kind = SymbolKind::Poly(if value.is_some() {
             PolynomialType::Constant
@@ -352,7 +351,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         });
         let value = value
             .map(|v| {
-                closure_to_function(&source, v.as_ref(), FunctionKind::Pure).map_err(|e| match e {
+                closure_to_function(&source, &v, FunctionKind::Pure).map_err(|e| match e {
                     EvalError::TypeError(e) => {
                         EvalError::TypeError(format!("Error creating fixed column {name}: {e}"))
                     }
@@ -376,24 +375,19 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         if let Some(value) = value {
             self.new_column_values.insert(name.clone(), value);
         }
-        Ok(
-            Value::Expression(AlgebraicExpression::Reference(AlgebraicReference {
+        Ok(Value::Expression(AlgebraicExpression::Reference(
+            AlgebraicReference {
                 name,
                 poly_id: PolyID::from(&symbol),
                 next: false,
-            }))
-            .into(),
-        )
+            },
+        )))
     }
 
-    fn set_hint(
-        &mut self,
-        col: Arc<Value<'a, T>>,
-        expr: Arc<Value<'a, T>>,
-    ) -> Result<(), EvalError> {
-        let name = match col.as_ref() {
+    fn set_hint(&mut self, col: Value<'a, T>, expr: Value<'a, T>) -> Result<(), EvalError> {
+        let name = match col {
             Value::Expression(AlgebraicExpression::Reference(AlgebraicReference {
-                name,
+                ref name,
                 poly_id,
                 next: false,
             })) => {
@@ -418,7 +412,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             }
         };
 
-        let value = closure_to_function(&SourceRef::unknown(), expr.as_ref(), FunctionKind::Query)
+        let value = closure_to_function(&SourceRef::unknown(), &expr, FunctionKind::Query)
             .map_err(|e| match e {
                 EvalError::TypeError(e) => {
                     EvalError::TypeError(format!("Error setting hint for column {col}: {e}"))
@@ -438,14 +432,14 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
 
     fn add_constraints(
         &mut self,
-        constraints: Arc<Value<'a, T>>,
+        constraints: Value<'a, T>,
         source: SourceRef,
     ) -> Result<(), EvalError> {
-        match constraints.as_ref() {
+        match constraints {
             Value::Array(items) => {
                 for item in items {
                     self.new_constraints.push(to_constraint(
-                        item,
+                        &item,
                         source.clone(),
                         &mut self.counters,
                     ))
@@ -492,19 +486,19 @@ fn to_constraint<T: FieldElement>(
                 IdentityKind::Permutation
             };
 
-            let (sel_from, sel_to) = if let Value::Tuple(t) = fields[0].as_ref() {
+            let (sel_from, sel_to) = if let Value::Tuple(t) = &fields[0] {
                 assert_eq!(t.len(), 2);
                 (&t[0], &t[1])
             } else {
                 unreachable!()
             };
 
-            let (from, to): (Vec<_>, Vec<_>) = if let Value::Array(a) = fields[1].as_ref() {
+            let (from, to): (Vec<_>, Vec<_>) = if let Value::Array(a) = &fields[1] {
                 a.iter()
                     .map(|pair| {
-                        if let Value::Tuple(pair) = pair.as_ref() {
+                        if let Value::Tuple(pair) = pair {
                             assert_eq!(pair.len(), 2);
-                            (pair[0].as_ref(), pair[1].as_ref())
+                            (&pair[0], &pair[1])
                         } else {
                             unreachable!()
                         }
@@ -525,12 +519,12 @@ fn to_constraint<T: FieldElement>(
         Value::Enum("Connection", Some(fields)) => {
             assert_eq!(fields.len(), 1);
 
-            let (from, to): (Vec<_>, Vec<_>) = if let Value::Array(a) = fields[0].as_ref() {
+            let (from, to): (Vec<_>, Vec<_>) = if let Value::Array(a) = &fields[0] {
                 a.iter()
                     .map(|pair| {
-                        if let Value::Tuple(pair) = pair.as_ref() {
+                        if let Value::Tuple(pair) = pair {
                             assert_eq!(pair.len(), 2);
-                            (pair[0].as_ref(), pair[1].as_ref())
+                            (&pair[0], &pair[1])
                         } else {
                             unreachable!()
                         }
