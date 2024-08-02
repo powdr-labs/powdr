@@ -122,7 +122,7 @@ fn generate_values<T: FieldElement>(
     }
 }
 
-type SymbolCache<'a, T> = BTreeMap<(String, Option<Vec<Type>>), Arc<Value<'a, T>>>;
+type SymbolCache<'a, T> = BTreeMap<String, BTreeMap<Option<Vec<Type>>, Arc<Value<'a, T>>>>;
 
 #[derive(Clone)]
 pub struct CachedSymbols<'a, T> {
@@ -137,15 +137,22 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
         name: &'a str,
         type_args: Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
-        let cache_key = (name.to_string(), type_args.clone());
-        if let Some(v) = self.cache.read().unwrap().get(&cache_key) {
+        if let Some(v) = self
+            .cache
+            .read()
+            .unwrap()
+            .get(name)
+            .and_then(|map| map.get(&type_args))
+        {
             return Ok(v.clone());
         }
-        let result = Definitions::lookup_with_symbols(self.symbols, name, type_args, self)?;
+        let result = Definitions::lookup_with_symbols(self.symbols, name, &type_args, self)?;
         self.cache
             .write()
             .unwrap()
-            .entry(cache_key)
+            .entry(name.to_string())
+            .or_default()
+            .entry(type_args)
             .or_insert_with(|| result.clone());
         Ok(result)
     }

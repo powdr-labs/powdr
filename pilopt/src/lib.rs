@@ -297,7 +297,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
         if let Some(v) = self.cache.read().unwrap().get(&cache_key) {
             return Ok(v.clone());
         }
-        let result = Definitions::lookup_with_symbols(self.symbols, name, type_args, self)?;
+        let result = Definitions::lookup_with_symbols(self.symbols, name, &type_args, self)?;
         self.cache
             .write()
             .unwrap()
