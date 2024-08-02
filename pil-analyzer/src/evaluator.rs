@@ -411,10 +411,8 @@ impl<'a> Definitions<'a> {
         type_args: &Option<Vec<Type>>,
         symbols: &mut impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        let name = name.to_string();
-
         let (symbol, value) = definitions
-            .get(&name)
+            .get(name)
             .ok_or_else(|| EvalError::SymbolNotFound(format!("Symbol {name} not found.")))?;
 
         Ok(if matches!(symbol.kind, SymbolKind::Poly(_)) {
@@ -433,7 +431,7 @@ impl<'a> Definitions<'a> {
                 Value::Array(items).into()
             } else {
                 Value::from(AlgebraicExpression::Reference(AlgebraicReference {
-                    name,
+                    name: name.to_string(),
                     poly_id: symbol.into(),
                     next: false,
                 }))
