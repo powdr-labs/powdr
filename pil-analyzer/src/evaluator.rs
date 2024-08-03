@@ -15,7 +15,7 @@ use powdr_ast::{
     },
     parsed::{
         display::quote,
-        types::{Type, TypeScheme},
+        types::{ArrayType, Type, TypeScheme},
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
         IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number,
         Pattern, StatementInsideBlock, UnaryOperation, UnaryOperator,
@@ -546,6 +546,7 @@ pub trait SymbolLookup<'a, T: FieldElement> {
     fn new_column(
         &mut self,
         name: &str,
+        _type: Option<&Type>,
         _value: Option<Arc<Value<'a, T>>>,
         _source: SourceRef,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
@@ -648,27 +649,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     self.local_vars = new_locals;
                     self.type_args = new_type_args;
                 }
-                Operation::LetStatement(s) => {
-                    let value = match (&s.ty, &s.value.as_ref()) {
-                        (Some(Type::Col), value) | (None, value @ None) => {
-                            let Pattern::Variable(_, name) = &s.pattern else {
-                                unreachable!()
-                            };
-                            self.symbols.new_column(
-                                name,
-                                value.map(|_| self.value_stack.pop().unwrap()),
-                                SourceRef::unknown(),
-                            )?
-                        }
-                        (_, Some(_)) => self.value_stack.pop().unwrap(),
-                        _ => unreachable!(),
-                    };
-                    self.local_vars.extend(
-                        Value::try_match_pattern(&value, &s.pattern).unwrap_or_else(|| {
-                            panic!("Irrefutable pattern did not match: {} = {value}", s.pattern)
-                        }),
-                    );
-                }
+                Operation::LetStatement(s) => self.evaluate_let_statement(s)?,
                 Operation::AddConstraint => {
                     let result = self.value_stack.pop().unwrap();
                     match result.as_ref() {
@@ -794,6 +775,33 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 "Cannot evaluate free input.".to_string(),
             ))?,
         };
+        Ok(())
+    }
+
+    fn evaluate_let_statement(
+        &mut self,
+        s: &'a LetStatementInsideBlock<Expression>,
+    ) -> Result<(), EvalError> {
+        let value = if s.value.is_none()
+            || matches!(&s.ty, Some(Type::Col) | Some(Type::Inter))
+            || matches!(&s.ty, Some(Type::Array(ArrayType { base, .. })) if matches!(base.as_ref(), Type::Col | Type::Inter))
+        {
+            // Dynamic column creation
+            let Pattern::Variable(_, name) = &s.pattern else {
+                unreachable!()
+            };
+            let value = s.value.as_ref().map(|_| self.value_stack.pop().unwrap());
+            self.symbols
+                .new_column(name, s.ty.as_ref(), value, SourceRef::unknown())?
+        } else {
+            // Regular local variable declaration.
+            self.value_stack.pop().unwrap()
+        };
+        self.local_vars.extend(
+            Value::try_match_pattern(&value, &s.pattern).unwrap_or_else(|| {
+                panic!("Irrefutable pattern did not match: {} = {value}", s.pattern)
+            }),
+        );
         Ok(())
     }
 

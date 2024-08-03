@@ -68,7 +68,7 @@ pub enum PilStatement {
         Option<TypeScheme<Expression>>,
         Option<Expression>,
     ),
-    PolynomialDefinition(SourceRef, String, Expression),
+    PolynomialDefinition(SourceRef, PolynomialName, Expression),
     PublicDeclaration(
         SourceRef,
         /// The name of the public value.
@@ -128,7 +128,7 @@ impl PilStatement {
         &self,
     ) -> Box<dyn Iterator<Item = (&String, Option<&String>, SymbolCategory)> + '_> {
         match self {
-            PilStatement::PolynomialDefinition(_, name, _)
+            PilStatement::PolynomialDefinition(_, PolynomialName { name, .. }, _)
             | PilStatement::PolynomialConstantDefinition(_, name, _)
             | PilStatement::PublicDeclaration(_, name, _, _, _)
             | PilStatement::LetStatement(_, name, _, _) => {
@@ -182,9 +182,12 @@ impl Children<Expression> for PilStatement {
             PilStatement::ConnectIdentity(_start, left, right) => {
                 Box::new(left.iter().chain(right.iter()))
             }
-            PilStatement::Expression(_, e)
-            | PilStatement::Namespace(_, _, Some(e))
-            | PilStatement::PolynomialDefinition(_, _, e) => Box::new(once(e)),
+            PilStatement::Expression(_, e) | PilStatement::Namespace(_, _, Some(e)) => {
+                Box::new(once(e))
+            }
+            PilStatement::PolynomialDefinition(_, PolynomialName { array_size, .. }, e) => {
+                Box::new(array_size.iter().chain(once(e)))
+            }
 
             PilStatement::EnumDeclaration(_, enum_decl) => enum_decl.children(),
             PilStatement::TraitImplementation(_, trait_impl) => trait_impl.children(),
@@ -218,9 +221,13 @@ impl Children<Expression> for PilStatement {
             PilStatement::ConnectIdentity(_start, left, right) => {
                 Box::new(left.iter_mut().chain(right.iter_mut()))
             }
-            PilStatement::Expression(_, e)
-            | PilStatement::Namespace(_, _, Some(e))
-            | PilStatement::PolynomialDefinition(_, _, e) => Box::new(once(e)),
+            PilStatement::Expression(_, e) | PilStatement::Namespace(_, _, Some(e)) => {
+                Box::new(once(e))
+            }
+
+            PilStatement::PolynomialDefinition(_, PolynomialName { array_size, .. }, e) => {
+                Box::new(array_size.iter_mut().chain(once(e)))
+            }
 
             PilStatement::EnumDeclaration(_, enum_decl) => enum_decl.children_mut(),
             PilStatement::TraitImplementation(_, trait_impl) => trait_impl.children_mut(),
@@ -791,6 +798,15 @@ impl<R> Expression<R> {
 pub struct PolynomialName {
     pub name: String,
     pub array_size: Option<Expression>,
+}
+
+impl From<String> for PolynomialName {
+    fn from(name: String) -> Self {
+        Self {
+            name,
+            array_size: None,
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Default, Clone, PartialOrd, Ord)]

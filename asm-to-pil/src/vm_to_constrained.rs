@@ -1169,7 +1169,7 @@ impl<T: FieldElement> VMConverter<T> {
                     );
                     self.pil.push(PilStatement::PolynomialDefinition(
                         SourceRef::unknown(),
-                        intermediate_name.to_string(),
+                        intermediate_name.clone().into(),
                         left * right,
                     ));
                     (counter + 1, direct_reference(intermediate_name))

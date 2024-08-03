@@ -84,6 +84,28 @@ fn intermediate() {
 }
 
 #[test]
+fn intermediate_array() {
+    let input = r#"namespace N(65536);
+    col witness x;
+    col intermediate[3] = [x, x + 2, x * x];
+    intermediate[0] = intermediate[0];
+    intermediate[1] = intermediate[1];
+    intermediate[2] = intermediate[2];
+"#;
+    let expected = r#"namespace N(65536);
+    col witness x;
+    col intermediate[3] = [N.x, N.x + 2, N.x * N.x];
+    N.intermediate[0] = N.intermediate[0];
+    N.intermediate[1] = N.intermediate[1];
+    N.intermediate[2] = N.intermediate[2];
+"#;
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    assert_eq!(analyzed.intermediate_count(), 3);
+    let formatted = analyzed.to_string();
+    assert_eq!(formatted, expected);
+}
+
+#[test]
 fn intermediate_nested() {
     let input = r#"namespace N(65536);
     col witness x;
@@ -456,14 +478,16 @@ fn challenges() {
         x' = (x + 1) * (1 - first);
         y' = (x + a) * (1 - first);
     ";
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    assert_eq!(analyzed.intermediate_count(), 0);
+    let formatted = analyzed.to_string();
     let expected = r#"namespace Main(8);
     col fixed first = [1] + [0]*;
     col witness x;
     col witness stage(2) y;
-    col a = std::prelude::challenge(2, 1);
+    let a: expr = std::prelude::challenge(2, 1);
     Main.x' = (Main.x + 1) * (1 - Main.first);
-    Main.y' = (Main.x + Main.a) * (1 - Main.first);
+    Main.y' = (Main.x + std::prelude::challenge(2, 1)) * (1 - Main.first);
 "#;
     assert_eq!(formatted, expected);
 }
@@ -830,7 +854,7 @@ namespace Main(16);
 fn reparse_array_typed_intermediate_col() {
     let input = r#"namespace Main(16);
     col witness w;
-    let clocks: expr[4] = [Main.w, Main.w, Main.w, Main.w];
+    col clocks[4] = [Main.w, Main.w, Main.w, Main.w];
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, input);
@@ -848,4 +872,25 @@ fn reparse_type_args_generic_enum() {
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, input);
+}
+
+#[test]
+fn intermediate_syntax() {
+    let input = r#"namespace X(16);
+    let w;
+    let a: inter = w;
+    let b: inter[1] = [w];
+    col c = w;
+    col d[1] = [w];
+"#;
+    let expected = r#"namespace X(16);
+    col witness w;
+    col a = X.w;
+    col b[1] = [X.w];
+    col c = X.w;
+    col d[1] = [X.w];
+"#;
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    assert_eq!(analyzed.intermediate_count(), 4);
+    assert_eq!(analyzed.to_string(), expected);
 }

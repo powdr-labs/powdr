@@ -13,7 +13,8 @@ The powdr-pil language has the following types:
 - `!` ("bottom" or "unreachable" type)
 - enum types
 
-> The `col` type is special in that it is only used for declaring columns, but cannot appear as the type of an expression.
+> In addition, there are the `col` and `inter` types, but they are special in that
+> they are only used for declaring columns, but cannot appear as the type of an expression.
 > See [Declaring and Referencing Columns](#declaring-and-referencing-columns) for details.
 
 Powdr-pil performs Hindley-Milner type inference. This means that, similar to Rust, the type of
@@ -41,14 +42,28 @@ let<T: FromLiteral + Add> add_one: T -> T = |i| i + 1;
 
 ## Declaring and Referencing Columns
 
-A symbol declared to have type `col` (or `col[k]`) is a bit special:
+A symbol declared to have type `col` or `inter` (or `col[k]` / `inter[k]`) is a bit special:
 
-If you assign it a value, that value is expected to have type `int -> fe` or `int -> int` (or an array thereof).
-This allows the simple declaration of a column `let byte: col = |i| i & 0xff;` without complicated conversions.
+These symbols represent columns in the arithmetization and the types of values that can be assigned to
+such symbols and the references to the symbols are different from their declared type.
+
+If you assign a value to a `col` symbol, that value is expected to have type `int -> fe` or `int -> int` (or an array thereof).
+This allows the simple declaration of a fixed column `let byte: col = |i| i & 0xff;` without complicated conversions.
 The integer value is converted to a field element during evaluation, but it has to be non-negative and less than
 the field modulus.
 
-If you reference such a symbol, the type of the reference is `expr`.
+Symbols of declared type `col` are fixed (those with value) or witness columns (those without value).
+
+A symbol of declared type `inter` is an intermediate column. You can assign it a value of type `expr`.
+The idea of an intermediate column is that it is an algebraic expression of other columns that you do
+not want to compute multiple times.
+
+> Note that if you use `let x: expr = a * b;`, the symbol `x` is just a name in the PIL environment,
+> this will not create an intermediate column. The difference between `inter` and `expr` in this case
+> is that if you use `let x: inter = ...`, the expression might not be inlined into constraints (depending on the backend),
+> while if you use `let x: expr = ...`, it will always be inlined.
+
+If you reference a symbol of declared type `inter` or `col`, the type of the reference is `expr` (or `expr[]`).
 A byte constraint is as easy as `[ X ] in [ byte ]`, since the expected types in plookup columns is `expr`.
 The downside is that you cannot evaluate columns as functions. If you want to do that, you either have to assign
 a copy to an `int -> int` symbol: `let byte_f: int -> int = |i| i & 0xff; let byte: col = byte_f;`.

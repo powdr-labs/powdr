@@ -326,7 +326,7 @@ fn set_hint_no_col() {
         enum Query { Hint(fe), None, }
     namespace N(16);
         let x;
-        let y: expr = x;
+        let y: inter = x;
         std::prover::set_hint(y, query |_| std::prover::Query::Hint(1));
     "#;
     analyze_string::<GoldilocksField>(input);
@@ -405,4 +405,73 @@ namespace N(16);
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, expected);
+}
+
+#[test]
+fn intermediate_syntax() {
+    let input = r#"namespace N(65536);
+    col witness x[5];
+    let inter: inter = x[2];
+    let inter_arr: inter[5] = x;
+"#;
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    assert_eq!(analyzed.intermediate_count(), 6);
+    let expected = r#"namespace N(65536);
+    col witness x[5];
+    col inter = N.x[2];
+    col inter_arr[5] = [N.x[0], N.x[1], N.x[2], N.x[3], N.x[4]];
+"#;
+    assert_eq!(analyzed.to_string(), expected);
+}
+
+#[test]
+fn intermediate_dynamic() {
+    let input = r#"namespace N(65536);
+    col witness x[5];
+    {
+        let inte: inter = x[2];
+        let inter_arr: inter[5] = x;
+        inte = 8;
+        inter_arr[3] = 9;
+    };
+"#;
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    assert_eq!(analyzed.intermediate_count(), 6);
+    let expected = r#"namespace N(65536);
+    col witness x[5];
+    col inte = N.x[2];
+    col inter_arr[5] = [N.x[0], N.x[1], N.x[2], N.x[3], N.x[4]];
+    N.inte = 8;
+    N.inter_arr[3] = 9;
+"#;
+    assert_eq!(analyzed.to_string(), expected);
+}
+
+#[test]
+fn intermediate_arr_no_length() {
+    let input = r#"namespace N(65536);
+    col witness x[5];
+    {
+        let inte: inter[] = x;
+    };
+"#;
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    assert_eq!(analyzed.intermediate_count(), 5);
+    let expected = r#"namespace N(65536);
+    col witness x[5];
+    col inte[5] = [N.x[0], N.x[1], N.x[2], N.x[3], N.x[4]];
+"#;
+    assert_eq!(analyzed.to_string(), expected);
+}
+
+#[test]
+#[should_panic = "Error creating intermediate column array N.inte: Expected array of length 6 as value but it has 2 elements."]
+fn intermediate_arr_wrong_length() {
+    let input = r#"namespace N(65536);
+    col witness x[2];
+    {
+        let inte: inter[6] = x;
+    };
+"#;
+    analyze_string::<GoldilocksField>(input);
 }
