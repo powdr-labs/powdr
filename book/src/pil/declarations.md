@@ -11,8 +11,8 @@ Symbols with a generic type can be defined using ``let<TV1, TV1, ..> <name>: <ty
 where the `TV` are newly created type variables that can be used in the type.
 
 This syntax can be used for constants, fixed columns, witness columns and even (higher-order)
-functions that can transform expressions. The kind of symbol is deduced by its type and if
-it is has a value or not:
+functions that can transform expressions. The kind of symbol is deduced by its type and whether
+it is has a value:
 
 - Symbols without a value are witness columns or arrays of witness columns. Their type can be omitted. If it is given, it must be ``col`` or ``col[k]``.
 - Symbols defined with a value and type ``col`` (or ``col[k]``) are fixed columns (or arrays of fixed columns).
