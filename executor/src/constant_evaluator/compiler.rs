@@ -2,8 +2,9 @@ use libc::{c_void, dlclose, dlopen, dlsym, RTLD_NOW};
 use std::{
     collections::{HashMap, HashSet},
     ffi::CString,
-    fs::{self, File},
+    fs::{self, create_dir, File},
     io::Write,
+    path,
     process::Command,
     sync::Arc,
 };
@@ -32,8 +33,8 @@ use ark_ff::{BigInt, BigInteger, Fp64, MontBackend, MontConfig, PrimeField};
 #[derive(MontConfig)]
 #[modulus = "18446744069414584321"]
 #[generator = "7"]
-pub struct GoldilocksBaseFieldConfig;
-pub type FieldElement = Fp64<MontBackend<GoldilocksBaseFieldConfig, 1>>;
+struct GoldilocksBaseFieldConfig;
+type FieldElement = Fp64<MontBackend<GoldilocksBaseFieldConfig, 1>>;
 "#;
 
 // TODO this is the old impl of goldilocks
@@ -59,23 +60,45 @@ pub fn generate_fixed_cols<T: FieldElement>(
     analyzed: &Analyzed<T>,
 ) -> HashMap<String, (PolyID, VariablySizedColumn<T>)> {
     let mut compiler = Compiler::new(analyzed);
+    let mut glue = String::new();
     for (sym, _) in &analyzed.constant_polys_in_source_order() {
         // ignore err
         if let Err(e) = compiler.request_symbol(&sym.absolute_name) {
             println!("Failed to compile {}: {e}", &sym.absolute_name);
         }
     }
-    let code = format!("{PREAMBLE}\n{}\n", compiler.compiled_symbols());
+    for (sym, _) in &analyzed.constant_polys_in_source_order() {
+        // TODO escape?
+        if compiler.is_compiled(&sym.absolute_name) {
+            // TODO it is a rust function, can we use a more complex type as well?
+            // TODO only works for goldilocks
+            glue.push_str(&format!(
+                r#"
+                #[no_mangle]
+                pub extern fn extern_{}(i: u64) -> u64 {{
+                    {}(num_bigint::BigInt::from(i)).into_bigint().0[0]
+                }}
+                "#,
+                escape(&sym.absolute_name),
+                escape(&sym.absolute_name),
+            ));
+        }
+    }
+
+    let code = format!("{PREAMBLE}\n{}\n{glue}\n", compiler.compiled_symbols());
     println!("Compiled code:\n{code}");
 
-    let dir = mktemp::Temp::new_dir().unwrap();
-    fs::write(dir.as_path().join("Cargo.toml"), CARGO_TOML).unwrap();
-    fs::create_dir(dir.as_path().join("src")).unwrap();
-    fs::write(dir.as_path().join("src").join("lib.rs"), code).unwrap();
+    //let dir = mktemp::Temp::new_dir().unwrap();
+    let _ = fs::remove_dir_all("/tmp/powdr_constants");
+    fs::create_dir("/tmp/powdr_constants").unwrap();
+    let dir = path::Path::new("/tmp/powdr_constants");
+    fs::write(dir.join("Cargo.toml"), CARGO_TOML).unwrap();
+    fs::create_dir(dir.join("src")).unwrap();
+    fs::write(dir.join("src").join("lib.rs"), code).unwrap();
     let out = Command::new("cargo")
         .arg("build")
         .arg("--release")
-        .current_dir(dir.as_path())
+        .current_dir(dir)
         .output()
         .unwrap();
     out.stderr.iter().for_each(|b| print!("{}", *b as char));
@@ -85,8 +108,7 @@ pub fn generate_fixed_cols<T: FieldElement>(
 
     unsafe {
         let lib_path = CString::new(
-            dir.as_path()
-                .join("target")
+            dir.join("target")
                 .join("release")
                 .join("libpowdr_constants.so")
                 .to_str()
@@ -98,7 +120,7 @@ pub fn generate_fixed_cols<T: FieldElement>(
             panic!("Failed to load library: {:?}", lib_path);
         }
         for (sym, poly_id) in analyzed.constant_polys_in_source_order() {
-            let sym = escape(&sym.absolute_name);
+            let sym = format!("extern_{}", escape(&sym.absolute_name));
             let sym = CString::new(sym).unwrap();
             let sym = dlsym(lib, sym.as_ptr());
             if sym.is_null() {
@@ -151,6 +173,10 @@ impl<'a, T> Compiler<'a, T> {
                 Err(err)
             }
         }
+    }
+
+    pub fn is_compiled(&self, name: &str) -> bool {
+        self.symbols.contains_key(name)
     }
 
     pub fn compiled_symbols(self) -> String {
