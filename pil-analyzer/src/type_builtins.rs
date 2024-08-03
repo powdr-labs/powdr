@@ -18,7 +18,7 @@ pub fn type_for_reference(declared: &Type) -> Type {
         // References to columns are exprs
         Type::Col => Type::Expr,
         Type::Inter => Type::Expr,
-        // Similar for arrays of columns, we ignore the length.
+        // Similarly to arrays of columns, we ignore the length.
         Type::Array(ArrayType { base, length: _ })
             if matches!(base.as_ref(), &Type::Col | &Type::Inter) =>
         {
