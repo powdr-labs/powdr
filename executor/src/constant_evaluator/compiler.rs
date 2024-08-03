@@ -1,4 +1,5 @@
 use libc::{c_void, dlclose, dlopen, dlsym, RTLD_NOW};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::{
     collections::{HashMap, HashSet},
     ffi::CString,
@@ -7,6 +8,7 @@ use std::{
     path,
     process::Command,
     sync::Arc,
+    time::Instant,
 };
 
 use itertools::Itertools;
@@ -23,6 +25,8 @@ use powdr_ast::{
     },
 };
 use powdr_number::FieldElement;
+
+use crate::constant_evaluator::{MAX_DEGREE_LOG, MIN_DEGREE_LOG};
 
 use super::VariablySizedColumn;
 
@@ -106,6 +110,7 @@ pub fn generate_fixed_cols<T: FieldElement>(
         panic!("Failed to compile.");
     }
 
+    let mut columns = HashMap::new();
     unsafe {
         let lib_path = CString::new(
             dir.join("target")
@@ -119,8 +124,9 @@ pub fn generate_fixed_cols<T: FieldElement>(
         if lib.is_null() {
             panic!("Failed to load library: {:?}", lib_path);
         }
-        for (sym, poly_id) in analyzed.constant_polys_in_source_order() {
-            let sym = format!("extern_{}", escape(&sym.absolute_name));
+        let start = Instant::now();
+        for (poly, value) in analyzed.constant_polys_in_source_order() {
+            let sym = format!("extern_{}", escape(&poly.absolute_name));
             let sym = CString::new(sym).unwrap();
             let sym = dlsym(lib, sym.as_ptr());
             if sym.is_null() {
@@ -128,12 +134,33 @@ pub fn generate_fixed_cols<T: FieldElement>(
                 continue;
             }
             println!("Loaded symbol: {:?}", sym);
-            // let sym = sym as *const VariablySizedColumn<T>;
-            // cols.insert(sym.absolute_name.clone(), (poly_id, (*sym).clone()));
+            let fun = std::mem::transmute::<*mut c_void, fn(u64) -> u64>(sym);
+            let degrees = if let Some(degree) = poly.degree {
+                vec![degree]
+            } else {
+                (MIN_DEGREE_LOG..=MAX_DEGREE_LOG)
+                    .map(|degree_log| 1 << degree_log)
+                    .collect::<Vec<_>>()
+            };
+
+            let col_values = degrees
+                .into_iter()
+                .map(|degree| {
+                    (0..degree)
+                        .into_par_iter()
+                        .map(|i| T::from(fun(i as u64)))
+                        .collect::<Vec<T>>()
+                })
+                .collect::<Vec<_>>()
+                .into();
+            columns.insert(poly.absolute_name.clone(), (poly.into(), col_values));
         }
+        log::info!(
+            "Fixed column generation (without compilation and loading time) took {}s",
+            start.elapsed().as_secs_f32()
+        );
     }
-    panic!();
-    Default::default()
+    columns
 }
 
 struct Compiler<'a, T> {
