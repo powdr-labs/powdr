@@ -110,6 +110,7 @@ pub fn generate_fixed_cols<T: FieldElement>(
             // cols.insert(sym.absolute_name.clone(), (poly_id, (*sym).clone()));
         }
     }
+    panic!();
     Default::default()
 }
 
