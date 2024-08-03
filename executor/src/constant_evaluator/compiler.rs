@@ -2,7 +2,7 @@ use libc::{c_void, dlclose, dlopen, dlsym, RTLD_NOW};
 use std::{
     collections::{HashMap, HashSet},
     ffi::CString,
-    fs::File,
+    fs::{self, File},
     io::Write,
     process::Command,
     sync::Arc,
@@ -17,8 +17,8 @@ use powdr_ast::{
     parsed::{
         display::{format_type_args, quote},
         types::{ArrayType, FunctionType, Type, TypeScheme},
-        ArrayLiteral, BinaryOperation, BinaryOperator, FunctionCall, IfExpression, IndexAccess,
-        LambdaExpression, Number, UnaryOperation,
+        ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
+        IndexAccess, LambdaExpression, Number, StatementInsideBlock, UnaryOperation,
     },
 };
 use powdr_number::FieldElement;
@@ -44,8 +44,13 @@ name = "powdr_constants"
 version = "0.1.0"
 edition = "2021"
 
+[lib]
+crate-type = ["dylib"]
+
 [dependencies]
 ark-ff = "0.4.2"
+num-bigint = { version = "0.4.3", features = ["serde"] }
+num-traits = "0.2.15"
 "#;
 
 // TODO crate type dylib?
@@ -55,19 +60,28 @@ pub fn generate_fixed_cols<T: FieldElement>(
 ) -> HashMap<String, (PolyID, VariablySizedColumn<T>)> {
     let mut compiler = Compiler::new(analyzed);
     for (sym, _) in &analyzed.constant_polys_in_source_order() {
-        compiler.request_symbol(&sym.absolute_name);
+        // ignore err
+        if let Err(e) = compiler.request_symbol(&sym.absolute_name) {
+            println!("Failed to compile {}: {e}", &sym.absolute_name);
+        }
     }
     let code = format!("{PREAMBLE}\n{}\n", compiler.compiled_symbols());
+    println!("Compiled code:\n{code}");
 
     let dir = mktemp::Temp::new_dir().unwrap();
-    std::fs::create_dir(dir.as_path().join("src")).unwrap();
-    std::fs::write(dir.as_path().join("src").join("lib.rs"), code).unwrap();
-    Command::new("cargo")
+    fs::write(dir.as_path().join("Cargo.toml"), CARGO_TOML).unwrap();
+    fs::create_dir(dir.as_path().join("src")).unwrap();
+    fs::write(dir.as_path().join("src").join("lib.rs"), code).unwrap();
+    let out = Command::new("cargo")
         .arg("build")
         .arg("--release")
         .current_dir(dir.as_path())
         .output()
         .unwrap();
+    out.stderr.iter().for_each(|b| print!("{}", *b as char));
+    if !out.status.success() {
+        panic!("Failed to compile.");
+    }
 
     unsafe {
         let lib_path = CString::new(
@@ -96,12 +110,11 @@ pub fn generate_fixed_cols<T: FieldElement>(
             // cols.insert(sym.absolute_name.clone(), (poly_id, (*sym).clone()));
         }
     }
-    todo!()
+    Default::default()
 }
 
 struct Compiler<'a, T> {
     analyzed: &'a Analyzed<T>,
-    queue: Vec<String>,
     requested: HashSet<String>,
     failed: HashMap<String, String>,
     symbols: HashMap<String, String>,
@@ -111,7 +124,6 @@ impl<'a, T> Compiler<'a, T> {
     pub fn new(analyzed: &'a Analyzed<T>) -> Self {
         Self {
             analyzed,
-            queue: Default::default(),
             requested: Default::default(),
             failed: Default::default(),
             symbols: Default::default(),
@@ -129,6 +141,7 @@ impl<'a, T> Compiler<'a, T> {
         match self.generate_code(name) {
             Ok(code) => {
                 self.symbols.insert(name.to_string(), code);
+                println!("Generated code for {name}");
                 Ok(())
             }
             Err(err) => {
@@ -168,7 +181,18 @@ impl<'a, T> Compiler<'a, T> {
             ));
         };
         println!("Processing {symbol} = {}", value.e);
-        Ok(match &value.type_scheme.as_ref().unwrap() {
+        let type_scheme = if sym.kind == SymbolKind::Poly(PolynomialType::Constant) {
+            TypeScheme {
+                vars: Default::default(),
+                ty: Type::Function(FunctionType {
+                    params: vec![Type::Int],
+                    value: Box::new(Type::Fe),
+                }),
+            }
+        } else {
+            value.type_scheme.clone().unwrap()
+        };
+        Ok(match type_scheme {
             TypeScheme {
                 vars,
                 ty:
@@ -192,9 +216,9 @@ impl<'a, T> Compiler<'a, T> {
                     params
                         .iter()
                         .zip(param_types)
-                        .map(|(p, t)| format!("{}: {}", p, map_type(t)))
+                        .map(|(p, t)| format!("{}: {}", p, map_type(&t)))
                         .format(", "),
-                    map_type(return_type),
+                    map_type(return_type.as_ref()),
                     self.format_expr(body)?
                 )
             }
@@ -330,8 +354,26 @@ impl<'a, T> Compiler<'a, T> {
                     .collect::<Result<Vec<_>, _>>()?
                     .join(", ")
             ),
+            Expression::BlockExpression(_, BlockExpression { statements, expr }) => {
+                format!(
+                    "{{\n{}\n{}\n}}",
+                    statements
+                        .iter()
+                        .map(|s| self.format_statement(s))
+                        .collect::<Result<Vec<_>, _>>()?
+                        .join("\n"),
+                    expr.as_ref()
+                        .map(|e| self.format_expr(e.as_ref()))
+                        .transpose()?
+                        .unwrap_or_default()
+                )
+            }
             _ => return Err(format!("Implement {e}")),
         })
+    }
+
+    fn format_statement(&mut self, s: &StatementInsideBlock<Expression>) -> Result<String, String> {
+        Err(format!("Implement {s}"))
     }
 }
 
