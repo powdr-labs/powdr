@@ -9,7 +9,7 @@ use powdr_ast::{
         visitor::ExpressionVisitable,
         ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall, FunctionKind, IndexAccess,
         LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number, Pattern,
-        SourceReference, StatementInsideBlock, TraitImplementation, UnaryOperation,
+        SourceReference, StatementInsideBlock, UnaryOperation,
     },
 };
 use powdr_parser_util::{Error, SourceRef};
@@ -441,11 +441,6 @@ impl TypeChecker {
                     }
                 }
             }
-            Expression::FunctionCall(_, call) => {
-                if let Some(resolved_impl) = &mut call.resolved_impl {
-                    self.update_local_type(&mut resolved_impl.type_scheme.ty, type_var_mapping);
-                }
-            }
             _ => {}
         }
         Ok(())
@@ -615,7 +610,6 @@ impl TypeChecker {
                 // TODO at some point, also store the generic args for operators
                 let fun_type = self.instantiate_scheme(binary_operator_scheme(*op)).0;
                 self.infer_type_of_function_call(
-                    e,
                     fun_type,
                     [left, right].into_iter().map(AsMut::as_mut),
                     || format!("applying operator {op}"),
@@ -626,7 +620,6 @@ impl TypeChecker {
                 // TODO at some point, also store the generic args for operators
                 let fun_type = self.instantiate_scheme(unary_operator_scheme(*op)).0;
                 self.infer_type_of_function_call(
-                    e,
                     fun_type,
                     [inner].into_iter().map(AsMut::as_mut),
                     || format!("applying unary {op}"),
@@ -651,12 +644,10 @@ impl TypeChecker {
                 FunctionCall {
                     function,
                     arguments,
-                    resolved_impl,
                 },
             ) => {
                 let ft = self.infer_type_of_expression(function)?;
                 self.infer_type_of_function_call(
-                    e,
                     ft,
                     arguments.iter_mut(),
                     || format!("calling function {function}"),
@@ -740,7 +731,6 @@ impl TypeChecker {
     /// (it might be an operator).
     fn infer_type_of_function_call<'b>(
         &mut self,
-        expr: &mut Expression,
         function_type: Type,
         arguments: impl ExactSizeIterator<Item = &'b mut Expression>,
         error_message: impl FnOnce() -> String,
@@ -771,25 +761,7 @@ impl TypeChecker {
             self.expect_type(&param, arg)?;
         }
 
-        let resolved_impl = self.resolve_impl(function_type.clone(), &params)?;
-        if let Expression::FunctionCall(_, call) = expr {
-            call.resolved_impl = Some(resolved_impl);
-        }
-
         Ok(result_type)
-    }
-
-    fn resolve_impl(
-        &self,
-        function_type: Type,
-        param_types: &[Type],
-    ) -> Result<TraitImplementation<Expression>, Error> {
-        match function_type {
-            Type::Function(FunctionType { params, value }) => {
-                todo!("bring the impls first!")
-            }
-            _ => todo!("error!"),
-        }
     }
 
     /// Process the expression and unify it with the given type.
