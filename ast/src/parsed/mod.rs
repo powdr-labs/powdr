@@ -326,7 +326,7 @@ impl<R> Children<Expression<R>> for EnumVariant<Expression<R>> {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct TraitImplementation<Expr> {
-    pub name: SymbolPath,
+    pub name: String,
     pub source_ref: SourceRef,
     pub type_scheme: TypeScheme,
     pub functions: Vec<NamedExpression<Expr>>,
