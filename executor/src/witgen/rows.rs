@@ -11,7 +11,7 @@ use powdr_number::{DegreeType, FieldElement};
 use crate::witgen::Constraint;
 
 use super::{
-    affine_expression::{AffineExpression, AffineResult},
+    affine_expression::{AffineExpression, AffineResult, AlgebraicVariable},
     data_structures::{column_map::WitnessColumnMap, finalizable_data::FinalizedRow},
     expression_evaluator::ExpressionEvaluator,
     global_constraints::RangeConstraintSet,
@@ -460,19 +460,24 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
         }
     }
 
-    pub fn get_value(&self, poly: &AlgebraicReference) -> Option<T> {
-        let row = self.get_row(poly.next);
-        if self.unknown_strategy == UnknownStrategy::Zero {
-            Some(row.value_or_zero(&poly.poly_id))
-        } else {
-            row.value(&poly.poly_id)
+    pub fn get_value(&self, poly: AlgebraicVariable) -> Option<T> {
+        match poly {
+            AlgebraicVariable::Reference(poly) => {
+                let row = self.get_row(poly.next);
+                if self.unknown_strategy == UnknownStrategy::Zero {
+                    Some(row.value_or_zero(&poly.poly_id))
+                } else {
+                    row.value(&poly.poly_id)
+                }
+            }
+            _ => todo!(),
         }
     }
 
     /// Tries to evaluate the expression to an expression affine in the witness polynomials,
     /// taking current values of polynomials into account.
     /// @returns an expression affine in the witness polynomials
-    pub fn evaluate<'b>(&self, expr: &'b Expression<T>) -> AffineResult<&'b AlgebraicReference, T> {
+    pub fn evaluate<'b>(&self, expr: &'b Expression<T>) -> AffineResult<AlgebraicVariable<'b>, T> {
         ExpressionEvaluator::new(SymbolicWitnessEvaluator::new(
             self.fixed_data,
             self.current_row_index.into(),
@@ -484,7 +489,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
 }
 
 impl<T: FieldElement> WitnessColumnEvaluator<T> for RowPair<'_, '_, T> {
-    fn value<'b>(&self, poly: &'b AlgebraicReference) -> AffineResult<&'b AlgebraicReference, T> {
+    fn value<'b>(&self, poly: AlgebraicVariable<'b>) -> AffineResult<AlgebraicVariable<'b>, T> {
         Ok(match self.get_value(poly) {
             Some(v) => v.into(),
             None => AffineExpression::from_variable_id(poly),
@@ -492,8 +497,13 @@ impl<T: FieldElement> WitnessColumnEvaluator<T> for RowPair<'_, '_, T> {
     }
 }
 
-impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for RowPair<'_, '_, T> {
-    fn range_constraint(&self, poly: &AlgebraicReference) -> Option<RangeConstraint<T>> {
-        self.get_row(poly.next).range_constraint(&poly.poly_id)
+impl<'a, T: FieldElement> RangeConstraintSet<AlgebraicVariable<'a>, T> for RowPair<'_, '_, T> {
+    fn range_constraint(&self, poly: AlgebraicVariable<'a>) -> Option<RangeConstraint<T>> {
+        match poly {
+            AlgebraicVariable::Reference(poly) => {
+                self.get_row(poly.next).range_constraint(&poly.poly_id)
+            }
+            _ => todo!(),
+        }
     }
 }

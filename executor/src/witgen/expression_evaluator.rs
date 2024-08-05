@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Challenge,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Challenge,
 };
 
 use powdr_number::FieldElement;
@@ -14,7 +14,7 @@ use super::{
 
 pub trait SymbolicVariables<T> {
     /// Value of a polynomial (fixed or witness).
-    fn value<'a>(&self, poly: &'a AlgebraicReference) -> AffineResult<AlgebraicVariable<'a>, T>;
+    fn value<'a>(&self, poly: AlgebraicVariable<'a>) -> AffineResult<AlgebraicVariable<'a>, T>;
 
     /// Value of a challenge.
     fn challenge<'a>(&self, _challenge: &'a Challenge) -> AffineResult<AlgebraicVariable<'a>, T> {
@@ -46,7 +46,7 @@ where
         // @TODO if we iterate on processing the constraints in the same row,
         // we could store the simplified values.
         match expr {
-            Expression::Reference(poly) => self.variables.value(poly),
+            Expression::Reference(poly) => self.variables.value(AlgebraicVariable::Reference(poly)),
             Expression::Number(n) => Ok((*n).into()),
             Expression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
                 self.evaluate_binary_operation(left, op, right)
