@@ -346,7 +346,7 @@ let initial_memory: (fe, fe)[] = [
     )
 }
 
-fn preamble<T: FieldElement>(runtime: &Runtime, degree: u64, with_bootloader: bool) -> String {
+fn preamble<T: FieldElement>(runtime: &Runtime, _degree: u64, with_bootloader: bool) -> String {
     let bootloader_preamble_if_included = if with_bootloader {
         bootloader_preamble()
     } else {
@@ -391,8 +391,7 @@ fn preamble<T: FieldElement>(runtime: &Runtime, degree: u64, with_bootloader: bo
         + &memory(with_bootloader)
         + r#"
     // =============== Register memory =======================
-"# + format!("std::machines::memory::Memory_{} regs(byte2);", degree + 2)
-        .as_str()
+"# + "std::machines::memory::Memory regs(byte2);"
         + r#"
     // Get the value in register Y.
     instr get_reg Y -> X link ~> X = regs.mload(Y, STEP);

@@ -277,10 +277,8 @@ impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val> + PairBuilder>
 
                     builder.assert_zero(left);
                 }
-                IdentityKind::Plookup => unimplemented!("Plonky3 does not support plookup"),
-                IdentityKind::Permutation => {
-                    unimplemented!("Plonky3 does not support permutations")
-                }
+                IdentityKind::Plookup => {}
+                IdentityKind::Permutation => {}
                 IdentityKind::Connect => unimplemented!("Plonky3 does not support connections"),
             }
         }
