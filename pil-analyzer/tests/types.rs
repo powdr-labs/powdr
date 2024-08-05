@@ -663,7 +663,7 @@ fn impl_combined_test() {
 }
 
 #[test]
-#[should_panic = "Impl Add has a type var Q that is not defined in the type tuple"]
+#[should_panic = "Impl Add introduces a type variable Q that is not used"]
 fn unused_type_var_error() {
     let input = "
     trait Add<T> {

@@ -70,7 +70,9 @@ fn validate_impl_definitions(
         let type_vars_in_tuple: Vec<_> =
             types.iter().flat_map(|t| t.contained_type_vars()).collect();
 
-        let type_vars_in_scheme: Vec<_> = trait_impl.type_scheme.ty.contained_type_vars().collect();
+        let type_vars_in_scheme: Vec<_> = trait_impl.type_scheme.vars.vars().collect();
+        println!("type_vars_in_tuple: {type_vars_in_tuple:?}");
+        println!("type_vars_in_scheme: {type_vars_in_scheme:?}");
 
         for var in type_vars_in_scheme {
             if !type_vars_in_tuple.contains(&var) {
