@@ -94,17 +94,16 @@ fn generate_values<T: FieldElement>(
             } else {
                 e
             };
+            let fun = evaluator::evaluate(e, &mut symbols.clone()).unwrap();
             (0..degree)
                 .into_par_iter()
                 .map(|i| {
-                    let mut symbols = symbols.clone();
-                    let fun = evaluator::evaluate(e, &mut symbols).unwrap();
                     evaluator::evaluate_function_call(
-                        fun,
+                        fun.clone(),
                         vec![Arc::new(Value::Integer(BigInt::from(i)))],
-                        &mut symbols,
-                    )
-                    .and_then(|v| v.try_to_field_element())
+                        &mut symbols.clone(),
+                    )?
+                    .try_to_field_element()
                 })
                 .collect::<Result<Vec<_>, _>>()
         }
@@ -150,7 +149,7 @@ fn generate_values<T: FieldElement>(
     }
 }
 
-type SymbolCache<'a, T> = BTreeMap<(String, Option<Vec<Type>>), Arc<Value<'a, T>>>;
+type SymbolCache<'a, T> = HashMap<String, BTreeMap<Option<Vec<Type>>, Arc<Value<'a, T>>>>;
 
 #[derive(Clone)]
 pub struct CachedSymbols<'a, T> {
@@ -163,17 +162,24 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
     fn lookup(
         &mut self,
         name: &'a str,
-        type_args: Option<Vec<Type>>,
+        type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
-        let cache_key = (name.to_string(), type_args.clone());
-        if let Some(v) = self.cache.read().unwrap().get(&cache_key) {
+        if let Some(v) = self
+            .cache
+            .read()
+            .unwrap()
+            .get(name)
+            .and_then(|map| map.get(type_args))
+        {
             return Ok(v.clone());
         }
         let result = Definitions::lookup_with_symbols(self.symbols, name, type_args, self)?;
         self.cache
             .write()
             .unwrap()
-            .entry(cache_key)
+            .entry(name.to_string())
+            .or_default()
+            .entry(type_args.clone())
             .or_insert_with(|| result.clone());
         Ok(result)
     }

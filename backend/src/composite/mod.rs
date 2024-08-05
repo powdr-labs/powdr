@@ -76,7 +76,7 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
             unimplemented!();
         }
 
-        let pils = split::split_pil((*pil).clone());
+        let pils = split::split_pil(&pil);
 
         // Read the setup once (if any) to pass to all backends.
         let setup_bytes = setup.map(|setup| {
@@ -162,8 +162,8 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
 }
 
 fn log_machine_stats<T: FieldElement>(machine_name: &str, pil: &Analyzed<T>) {
-    let num_witness_columns = pil.committed_polys_in_source_order().len();
-    let num_fixed_columns = pil.constant_polys_in_source_order().len();
+    let num_witness_columns = pil.commitment_count();
+    let num_fixed_columns = pil.constant_count();
     let max_identity_degree = pil
         .identities_with_inlined_intermediate_polynomials()
         .iter()

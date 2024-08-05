@@ -322,6 +322,30 @@ impl<T> Analyzed<T> {
             .filter_map(|(_poly, definition)| definition.as_mut())
             .for_each(|definition| definition.post_visit_expressions_mut(f))
     }
+
+    /// Retrieves (col_name, col_idx, offset) of each public witness in the trace.
+    pub fn get_publics(&self) -> Vec<(String, usize, usize)> {
+        let mut publics = self
+            .public_declarations
+            .values()
+            .map(|public_declaration| {
+                let column_name = public_declaration.referenced_poly_name();
+                let column_idx = {
+                    let base = public_declaration.polynomial.poly_id.unwrap().id as usize;
+                    match public_declaration.array_index {
+                        Some(array_idx) => base + array_idx,
+                        None => base,
+                    }
+                };
+                let row_offset = public_declaration.index as usize;
+                (column_name, column_idx, row_offset)
+            })
+            .collect::<Vec<_>>();
+
+        // Sort, so that the order is deterministic
+        publics.sort();
+        publics
+    }
 }
 
 impl<T: FieldElement> Analyzed<T> {

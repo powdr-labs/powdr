@@ -172,7 +172,7 @@ machine Arith with
     col witness y1_14(i) query hint_if_eq0(quotient_hint, 14);
     col witness y1_15(i) query hint_if_eq0(quotient_hint, 15);
 
-    let y1: expr[16] = [y1_0, y1_1, y1_2, y1_3, y1_4, y1_5, y1_6, y1_7, y1_8, y1_9, y1_10, y1_11, y1_12, y1_13, y1_14, y1_15];
+    let y1: expr[] = [y1_0, y1_1, y1_2, y1_3, y1_4, y1_5, y1_6, y1_7, y1_8, y1_9, y1_10, y1_11, y1_12, y1_13, y1_14, y1_15];
 
     col witness x2_0(i) query hint_if_eq0(remainder_hint, 0);
     col witness x2_1(i) query hint_if_eq0(remainder_hint, 1);
@@ -191,7 +191,7 @@ machine Arith with
     col witness x2_14(i) query hint_if_eq0(remainder_hint, 14);
     col witness x2_15(i) query hint_if_eq0(remainder_hint, 15);
 
-    let x2: expr[16] = [x2_0, x2_1, x2_2, x2_3, x2_4, x2_5, x2_6, x2_7, x2_8, x2_9, x2_10, x2_11, x2_12, x2_13, x2_14, x2_15];
+    let x2: expr[] = [x2_0, x2_1, x2_2, x2_3, x2_4, x2_5, x2_6, x2_7, x2_8, x2_9, x2_10, x2_11, x2_12, x2_13, x2_14, x2_15];
 
     col witness s_0(i) query Query::Hint(fe(select_limb(s_hint(), 0)));
     col witness s_1(i) query Query::Hint(fe(select_limb(s_hint(), 1)));
@@ -210,7 +210,7 @@ machine Arith with
     col witness s_14(i) query Query::Hint(fe(select_limb(s_hint(), 14)));
     col witness s_15(i) query Query::Hint(fe(select_limb(s_hint(), 15)));
 
-    let s: expr[16] = [s_0, s_1, s_2, s_3, s_4, s_5, s_6, s_7, s_8, s_9, s_10, s_11, s_12, s_13, s_14, s_15];
+    let s: expr[] = [s_0, s_1, s_2, s_3, s_4, s_5, s_6, s_7, s_8, s_9, s_10, s_11, s_12, s_13, s_14, s_15];
 
     col witness q0_0(i) query Query::Hint(fe(select_limb(q0_hint(), 0)));
     col witness q0_1(i) query Query::Hint(fe(select_limb(q0_hint(), 1)));
@@ -229,7 +229,7 @@ machine Arith with
     col witness q0_14(i) query Query::Hint(fe(select_limb(q0_hint(), 14)));
     col witness q0_15(i) query Query::Hint(fe(select_limb(q0_hint(), 15)));
 
-    let q0: expr[16] = [q0_0, q0_1, q0_2, q0_3, q0_4, q0_5, q0_6, q0_7, q0_8, q0_9, q0_10, q0_11, q0_12, q0_13, q0_14, q0_15];
+    let q0: expr[] = [q0_0, q0_1, q0_2, q0_3, q0_4, q0_5, q0_6, q0_7, q0_8, q0_9, q0_10, q0_11, q0_12, q0_13, q0_14, q0_15];
 
     col witness q1_0(i) query Query::Hint(fe(select_limb(q1_hint(), 0)));
     col witness q1_1(i) query Query::Hint(fe(select_limb(q1_hint(), 1)));
@@ -248,7 +248,7 @@ machine Arith with
     col witness q1_14(i) query Query::Hint(fe(select_limb(q1_hint(), 14)));
     col witness q1_15(i) query Query::Hint(fe(select_limb(q1_hint(), 15)));
 
-    let q1: expr[16] = [q1_0, q1_1, q1_2, q1_3, q1_4, q1_5, q1_6, q1_7, q1_8, q1_9, q1_10, q1_11, q1_12, q1_13, q1_14, q1_15];
+    let q1: expr[] = [q1_0, q1_1, q1_2, q1_3, q1_4, q1_5, q1_6, q1_7, q1_8, q1_9, q1_10, q1_11, q1_12, q1_13, q1_14, q1_15];
 
     col witness q2_0(i) query Query::Hint(fe(select_limb(q2_hint(), 0)));
     col witness q2_1(i) query Query::Hint(fe(select_limb(q2_hint(), 1)));
@@ -267,16 +267,16 @@ machine Arith with
     col witness q2_14(i) query Query::Hint(fe(select_limb(q2_hint(), 14)));
     col witness q2_15(i) query Query::Hint(fe(select_limb(q2_hint(), 15)));
 
-    let q2: expr[16] = [q2_0, q2_1, q2_2, q2_3, q2_4, q2_5, q2_6, q2_7, q2_8, q2_9, q2_10, q2_11, q2_12, q2_13, q2_14, q2_15];
+    let q2: expr[] = [q2_0, q2_1, q2_2, q2_3, q2_4, q2_5, q2_6, q2_7, q2_8, q2_9, q2_10, q2_11, q2_12, q2_13, q2_14, q2_15];
 
     let combine: expr[] -> expr[] = |x| array::new(array::len(x) / 2, |i| x[2 * i + 1] * 2**16 + x[2 * i]);
     // Intermediate polynomials, arrays of 8 columns, 32 bit per column.
-    let x1c: expr[8] = combine(x1);
-    let y1c: expr[8] = combine(y1);
-    let x2c: expr[8] = combine(x2);
-    let y2c: expr[8] = combine(y2);
-    let x3c: expr[8] = combine(x3);
-    let y3c: expr[8] = combine(y3);
+    col x1c[8] = combine(x1);
+    col y1c[8] = combine(y1);
+    col x2c[8] = combine(x2);
+    col y2c[8] = combine(y2);
+    col x3c[8] = combine(x3);
+    col y3c[8] = combine(y3);
 
     let CLK32: col[32] = array::new(32, |i| |row| if row % 32 == i { 1 } else { 0 });
     let CLK32_31: expr = CLK32[31];
@@ -449,7 +449,7 @@ machine Arith with
     link => byte2.check(carry_high[2]);
 
     // Carries can be any integer in the range [-2**31, 2**31 - 1)
-    let carry: expr[3] = array::new(3, |i| carry_high[i] * 2**16 + carry_low[i] - 2 ** 31);
+    let carry = array::new(3, |i| carry_high[i] * 2**16 + carry_low[i] - 2 ** 31);
     
     array::map(carry, |c| c * CLK32[0] = 0);
 

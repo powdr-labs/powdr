@@ -721,18 +721,17 @@ namespace N(65536);
     fn remove_unreferenced_parts_of_arrays() {
         let input = r#"namespace N(65536);
         col witness x[5];
-        let inter: expr[5] = x;
-        x[2] = inter[4];
+        let inte: inter[5] = x;
+        x[2] = inte[4];
     "#;
-        // If we change the handling of intermediate columns,
-        // make sure that "inter" is still an array of intermediate columns.
         let expectation = r#"namespace N(65536);
     col witness x[5];
-    let inter: expr[5] = [N.x[0], N.x[1], N.x[2], N.x[3], N.x[4]];
-    N.x[2] = N.inter[4];
+    col inte[5] = [N.x[0], N.x[1], N.x[2], N.x[3], N.x[4]];
+    N.x[2] = N.inte[4];
 "#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
-        assert_eq!(optimized, expectation);
+        let optimized = optimize(analyze_string::<GoldilocksField>(input));
+        assert_eq!(optimized.intermediate_count(), 5);
+        assert_eq!(optimized.to_string(), expectation);
     }
 
     #[test]

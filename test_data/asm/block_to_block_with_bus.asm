@@ -19,12 +19,50 @@ let ARITH_INTERACTION_ID = 1234;
 machine Arith with
     degree: 8,
     latch: latch,
-    operation_id: operation_id
+    operation_id: operation_id,
+    call_selectors: sel,
 {
     operation add<0> x, y -> z;
 
-    // TODO: Receive the tuple (operation_id, x, y, z)
-    // Currently witgen is not working, see #1604
+    let used = std::array::sum(sel);
+
+    // ==== Begin bus: Receive tuple (0, x, y, z) with ARITH_INTERACTION_ID ====
+
+    // Non-extension case, can be useful for debugging
+    /*
+    let alpha = from_base(challenge(0, 1));
+    let beta = from_base(challenge(0, 2));
+
+    let is_first: col = std::well_known::is_first;
+    col witness stage(1) acc;
+
+    bus_receive(is_first, ARITH_INTERACTION_ID, [0, x, y, z], latch * used, [acc], alpha, beta);
+    */
+
+    let alpha1: expr = challenge(0, 1);
+    let alpha2: expr = challenge(0, 2);
+    let beta1: expr = challenge(0, 3);
+    let beta2: expr = challenge(0, 4);
+    let alpha = Fp2::Fp2(alpha1, alpha2);
+    let beta = Fp2::Fp2(beta1, beta2);
+
+    let is_first: col = std::well_known::is_first;
+    col witness stage(1) acc1;
+    col witness stage(1) acc2;
+    let acc = Fp2::Fp2(acc1, acc2);
+
+    bus_receive(is_first, ARITH_INTERACTION_ID, [0, x, y, z], latch * used, [acc1, acc2], alpha, beta);
+
+    let hint = query |i| Query::Hint(compute_next_z_receive(is_first, ARITH_INTERACTION_ID, [0, x, y, z], latch * used, acc, alpha, beta)[i]);
+    col witness stage(1) acc1_next(i) query hint(0);
+    col witness stage(1) acc2_next(i) query hint(1);
+
+    acc1' = acc1_next;
+    acc2' = acc2_next;
+
+    // TODO: Expose final value of acc as public.
+
+    // ==== End bus ====
 
     col fixed operation_id = [0]*;
     col fixed latch = [1]*;
@@ -44,7 +82,7 @@ machine Main with
     // return `3*x + 3*y`, adding twice locally and twice externally
     operation main<0>;
 
-    link if instr_add => z = arith.add(x, y);
+    link if instr_add ~> z = arith.add(x, y);
 
     // Can't have a challenge without a witness column, so add one here
     col witness dummy;
@@ -61,7 +99,7 @@ machine Main with
     let is_first: col = std::well_known::is_first;
     col witness stage(1) acc;
 
-    bus_receive(is_first, ARITH_INTERACTION_ID, [0, x, y, z], latch, [acc], alpha, beta);
+    bus_send(is_first, ARITH_INTERACTION_ID, [0, x, y, z], instr_add, [acc], alpha, beta);
     */
 
     let alpha1: expr = challenge(0, 1);
@@ -76,9 +114,9 @@ machine Main with
     col witness stage(1) acc2;
     let acc = Fp2::Fp2(acc1, acc2);
 
-    bus_send(is_first, ARITH_INTERACTION_ID, [0, x, y, z], latch, [acc1, acc2], alpha, beta);
+    bus_send(is_first, ARITH_INTERACTION_ID, [0, x, y, z], instr_add, [acc1, acc2], alpha, beta);
 
-    let hint = query |i| Query::Hint(compute_next_z_send(is_first, ARITH_INTERACTION_ID, [0, x, y, z], latch, acc, alpha, beta)[i]);
+    let hint = query |i| Query::Hint(compute_next_z_send(is_first, ARITH_INTERACTION_ID, [0, x, y, z], instr_add, acc, alpha, beta)[i]);
     col witness stage(1) acc1_next(i) query hint(0);
     col witness stage(1) acc2_next(i) query hint(1);
 

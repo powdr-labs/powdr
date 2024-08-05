@@ -17,21 +17,16 @@ pub fn type_for_reference(declared: &Type) -> Type {
     match declared {
         // References to columns are exprs
         Type::Col => Type::Expr,
-        // Similar for arrays of columns
-        Type::Array(ArrayType { base, length: _ }) if base.as_ref() == &Type::Col => {
+        Type::Inter => Type::Expr,
+        // Similarly to arrays of columns, we ignore the length.
+        Type::Array(ArrayType { base, length: _ })
+            if matches!(base.as_ref(), &Type::Col | &Type::Inter) =>
+        {
             Type::Array(ArrayType {
                 base: Type::Expr.into(),
                 length: None,
             })
         }
-        // Arrays of intermediate columns lose their length.
-        Type::Array(ArrayType {
-            base,
-            length: Some(_),
-        }) if base.as_ref() == &Type::Expr => Type::Array(ArrayType {
-            base: base.clone(),
-            length: None,
-        }),
         t => t.clone(),
     }
 }
@@ -48,6 +43,10 @@ lazy_static! {
         ("std::field::modulus", ("", "-> int")),
         ("std::prelude::challenge", ("", "int, int -> expr")),
         ("std::prover::degree", ("", "-> int")),
+        (
+            "std::prover::set_hint",
+            ("", "expr, (int -> std::prover::Query) -> ()")
+        ),
         ("std::prover::eval", ("", "expr -> fe")),
     ]
     .into_iter()
@@ -152,7 +151,7 @@ pub fn elementary_type_bounds(ty: &Type) -> &'static [&'static str] {
             "Neg",
             "Eq",
         ],
-        Type::Col => &[],
+        Type::Col | Type::Inter => &[],
         Type::Array(_) => &["Add"],
         Type::Tuple(_) => &[],
         Type::Function(_) => &[],
