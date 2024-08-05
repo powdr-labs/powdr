@@ -138,10 +138,24 @@ fn block_to_block() {
 }
 
 #[test]
-fn block_to_block_with_bus() {
+fn block_to_block_with_bus_monolithic() {
     let f = "asm/block_to_block_with_bus.asm";
     let pipeline = make_simple_prepared_pipeline(f);
-    test_halo2(pipeline);
+    test_halo2_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic);
+}
+
+#[test]
+#[should_panic = "called `Result::unwrap()` on an `Err` value: [\"Circuit was not satisfied\"]"]
+fn block_to_block_with_bus_composite() {
+    // This currently fails because of #1608 ("Emulate shared challenges in CompositeBackend"):
+    // - `CompositeBackend::prove` correctly gets the challenges of each machine and accumulates them.
+    //   The shared challenges are used during witness generation.
+    // - `CompositeBackend::verify` simply verifies each machine proof independently, using the local
+    //   challenges. As a result, the challenges during verification differ and the constraints are
+    //   not satisfied.
+    let f = "asm/block_to_block_with_bus.asm";
+    let pipeline = make_simple_prepared_pipeline(f);
+    test_halo2_with_backend_variant(pipeline.clone(), BackendVariant::Composite);
 }
 
 #[test]
