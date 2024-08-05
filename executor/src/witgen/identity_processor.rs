@@ -14,10 +14,8 @@ use crate::{
 };
 
 use super::{
-    machines::{FixedLookup, KnownMachine},
-    processor::OuterQuery,
-    rows::RowPair,
-    EvalResult, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
+    machines::KnownMachine, processor::OuterQuery, rows::RowPair, EvalResult, EvalValue,
+    IncompleteCause, MutableState, QueryCallback,
 };
 
 /// A list of mutable references to machines.
@@ -62,17 +60,15 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
         &mut self,
         identity_id: u64,
         caller_rows: &RowPair<'_, 'a, T>,
-        fixed_lookup: &mut FixedLookup<T>,
         query_callback: &mut Q,
     ) -> EvalResult<'a, T> {
         let machine_index = *self
             .identity_to_machine_index
             .get(&identity_id)
-            .expect("No executor machine matched identity `{identity}`");
+            .unwrap_or_else(|| panic!("No executor machine matched identity ID: {identity_id}"));
 
         let (current, others) = self.split(machine_index);
         let mut mutable_state = MutableState {
-            fixed_lookup,
             machines: others,
             query_callback,
         };
@@ -106,19 +102,12 @@ where
 /// - `'b`: The duration of this machine's call (e.g. the mutable references of the other machines)
 /// - `'c`: The duration of this IdentityProcessor's lifetime (e.g. the reference to the mutable state)
 pub struct IdentityProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
-    fixed_data: &'a FixedData<'a, T>,
     mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
 }
 
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b, 'c, T, Q> {
-    pub fn new(
-        fixed_data: &'a FixedData<'a, T>,
-        mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
-    ) -> Self {
-        Self {
-            fixed_data,
-            mutable_state,
-        }
+    pub fn new(mutable_state: &'c mut MutableState<'a, 'b, T, Q>) -> Self {
+        Self { mutable_state }
     }
 
     /// Given an identity and a row pair, tries to figure out additional values / range constraints
@@ -172,7 +161,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         let left = identity.left.expressions.iter().map(|e| rows.evaluate(e));
 
         // Fail if the LHS has an error.
-        let (left, errors): (Vec<_>, Vec<_>) = left.partition_map(|x| match x {
+        let (_left, errors): (Vec<_>, Vec<_>) = left.partition_map(|x| match x {
             Ok(x) => Either::Left(x),
             Err(x) => Either::Right(x),
         });
@@ -182,28 +171,9 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
             ));
         }
 
-        // Now query the machines.
-        // Note that we should always query all machines that match, because they might
-        // update their internal data, even if all values are already known.
-        // TODO could it be that multiple machines match?
-
-        // query the fixed lookup "machine"
-        if let Some(result) = self.mutable_state.fixed_lookup.process_plookup_timed(
-            self.fixed_data,
-            rows,
-            identity.kind,
-            &left,
-            &identity.right,
-        ) {
-            return result;
-        }
-
-        self.mutable_state.machines.call(
-            identity.id,
-            rows,
-            self.mutable_state.fixed_lookup,
-            self.mutable_state.query_callback,
-        )
+        self.mutable_state
+            .machines
+            .call(identity.id, rows, self.mutable_state.query_callback)
     }
 
     /// Handles the lookup that connects the current machine to the calling machine.

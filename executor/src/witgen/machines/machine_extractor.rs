@@ -17,7 +17,6 @@ use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_number::FieldElement;
 
 pub struct ExtractionOutput<'a, T: FieldElement> {
-    pub fixed_lookup: FixedLookup<T>,
     pub machines: Vec<KnownMachine<'a, T>>,
     pub base_identities: Vec<&'a Identity<T>>,
     pub base_witnesses: HashSet<PolyID>,
@@ -30,9 +29,13 @@ pub fn split_out_machines<'a, T: FieldElement>(
     fixed: &'a FixedData<'a, T>,
     identities: Vec<&'a Identity<T>>,
 ) -> ExtractionOutput<'a, T> {
-    let fixed_lookup = FixedLookup::new(fixed.global_range_constraints().clone());
+    let fixed_lookup = FixedLookup::new(
+        fixed.global_range_constraints().clone(),
+        identities.clone(),
+        fixed,
+    );
 
-    let mut machines: Vec<KnownMachine<T>> = vec![];
+    let mut machines: Vec<KnownMachine<T>> = vec![KnownMachine::FixedLookup(fixed_lookup)];
 
     let all_witnesses = fixed.witness_cols.keys().collect::<HashSet<_>>();
     let mut remaining_witnesses = all_witnesses.clone();
@@ -179,7 +182,6 @@ pub fn split_out_machines<'a, T: FieldElement>(
         }
     }
     ExtractionOutput {
-        fixed_lookup,
         machines,
         base_identities,
         base_witnesses: remaining_witnesses,

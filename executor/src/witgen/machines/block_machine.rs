@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::iter::{self, once};
 
-use super::{EvalResult, FixedData, FixedLookup};
+use super::{EvalResult, FixedData};
 
 use crate::constant_evaluator::MIN_DEGREE_LOG;
 use crate::witgen::block_processor::BlockProcessor;
@@ -306,10 +306,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         &self.name
     }
 
-    fn take_witness_col_values<'b, Q: QueryCallback<T>>(
+    fn take_witness_col_values<Q: QueryCallback<T>>(
         &mut self,
-        fixed_lookup: &'b mut FixedLookup<T>,
-        query_callback: &'b mut Q,
+        query_callback: &mut Q,
     ) -> HashMap<String, Vec<T>> {
         if self.data.len() < 2 * self.block_size {
             log::warn!(
@@ -347,7 +346,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             // Instantiate a processor
             let row_offset = RowIndex::from_i64(-1, self.degree);
             let mut mutable_state = MutableState {
-                fixed_lookup,
                 machines: vec![].into_iter().into(),
                 query_callback,
             };

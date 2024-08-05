@@ -3,8 +3,8 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use itertools::Itertools;
 
 use super::super::affine_expression::AffineExpression;
+use super::Machine;
 use super::{EvalResult, FixedData};
-use super::{FixedLookup, Machine};
 use crate::witgen::rows::RowPair;
 use crate::witgen::{
     expression_evaluator::ExpressionEvaluator, fixed_evaluator::FixedEvaluator,
@@ -188,10 +188,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
         self.process_plookup_internal(identity_id, caller_rows)
     }
 
-    fn take_witness_col_values<'b, Q: QueryCallback<T>>(
+    fn take_witness_col_values<Q: QueryCallback<T>>(
         &mut self,
-        _fixed_lookup: &'b mut FixedLookup<T>,
-        _query_callback: &'b mut Q,
+        _query_callback: &mut Q,
     ) -> HashMap<String, Vec<T>> {
         let mut result = HashMap::new();
 

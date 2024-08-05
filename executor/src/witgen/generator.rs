@@ -9,7 +9,7 @@ use crate::witgen::EvalValue;
 use crate::Identity;
 
 use super::block_processor::BlockProcessor;
-use super::machines::{FixedLookup, Machine};
+use super::machines::Machine;
 use super::rows::{Row, RowIndex, RowPair};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use super::vm_processor::VmProcessor;
@@ -83,16 +83,14 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
         Ok(eval_value)
     }
 
-    fn take_witness_col_values<'b, Q: QueryCallback<T>>(
+    fn take_witness_col_values<Q: QueryCallback<T>>(
         &mut self,
-        fixed_lookup: &'b mut FixedLookup<T>,
-        query_callback: &'b mut Q,
+        query_callback: &mut Q,
     ) -> HashMap<String, Vec<T>> {
         log::debug!("Finalizing VM: {}", self.name());
 
         // In this stage, we don't have access to other machines, as they might already be finalized.
         let mut mutable_state_no_machines = MutableState {
-            fixed_lookup,
             machines: [].into_iter().into(),
             query_callback,
         };

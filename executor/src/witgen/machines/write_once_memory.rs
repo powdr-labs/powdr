@@ -13,7 +13,7 @@ use crate::{
     Identity,
 };
 
-use super::{FixedLookup, Machine};
+use super::Machine;
 
 /// A memory machine with a fixed address space, and each address can only have one
 /// value during the lifetime of the program.
@@ -246,10 +246,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
         self.process_plookup_internal(identity_id, caller_rows)
     }
 
-    fn take_witness_col_values<'b, Q: QueryCallback<T>>(
+    fn take_witness_col_values<Q: QueryCallback<T>>(
         &mut self,
-        _fixed_lookup: &'b mut FixedLookup<T>,
-        _query_callback: &'b mut Q,
+        _query_callback: &mut Q,
     ) -> HashMap<String, Vec<T>> {
         self.value_polys
             .iter()

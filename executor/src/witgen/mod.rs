@@ -22,7 +22,7 @@ use self::global_constraints::GlobalConstraints;
 use self::identity_processor::Machines;
 use self::machines::machine_extractor::ExtractionOutput;
 use self::machines::profiling::{record_end, record_start, reset_and_print_profile_summary};
-use self::machines::{FixedLookup, Machine};
+use self::machines::Machine;
 
 mod affine_expression;
 mod block_processor;
@@ -125,7 +125,6 @@ pub fn unused_query_callback<T>() -> impl QueryCallback<T> {
 
 /// Everything [Generator] needs to mutate in order to compute a new row.
 pub struct MutableState<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
-    pub fixed_lookup: &'b mut FixedLookup<T>,
     pub machines: Machines<'a, 'b, T>,
     pub query_callback: &'b mut Q,
 }
@@ -211,7 +210,6 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         let (fixed, retained_identities) =
             global_constraints::set_global_constraints(fixed, &identities);
         let ExtractionOutput {
-            mut fixed_lookup,
             mut machines,
             base_identities,
             base_witnesses,
@@ -228,8 +226,6 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                 .filter(|identity| identity.kind == IdentityKind::Polynomial)
                 .collect::<Vec<_>>();
             ExtractionOutput {
-                // This FixedLookup instance will never be called, because we removed lookups and permutations.
-                fixed_lookup: FixedLookup::new(fixed.global_range_constraints().clone()),
                 machines: Vec::new(),
                 base_identities: polynomial_identities,
                 base_witnesses: fixed.witness_cols.keys().collect::<HashSet<_>>(),
@@ -237,7 +233,6 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         };
         let mut query_callback = self.query_callback;
         let mut mutable_state = MutableState {
-            fixed_lookup: &mut fixed_lookup,
             machines: Machines::from(machines.iter_mut()),
             query_callback: &mut query_callback,
         };
@@ -257,10 +252,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                 );
 
                 generator.run(&mut mutable_state);
-                generator.take_witness_col_values(
-                    mutable_state.fixed_lookup,
-                    mutable_state.query_callback,
-                )
+                generator.take_witness_col_values(mutable_state.query_callback)
             })
             .unwrap_or_default();
 
@@ -269,7 +261,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             .machines
             .iter_mut()
             .flat_map(|m| {
-                m.take_witness_col_values(mutable_state.fixed_lookup, mutable_state.query_callback)
+                m.take_witness_col_values(mutable_state.query_callback)
                     .into_iter()
             })
             .chain(main_columns)
