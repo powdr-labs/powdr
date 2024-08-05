@@ -484,6 +484,11 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
                         "Started comparing from row {start} in the chunk to row {proven_trace} in the full trace; the difference is at offset {i}."
                     );
                     log::error!(
+                        "{} rows left in the chunk trace; {} rows left in the full trace.",
+                        chunk_trace["main.pc"].len() - chunk_i,
+                        full_trace["main.pc"].len() - full_i
+                    );
+                    log::error!(
                         "The PCs are {} and {}.",
                         chunk_trace["main.pc"][chunk_i],
                         full_trace["main.pc"][full_i]

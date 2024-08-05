@@ -18,11 +18,14 @@ pub fn main() {
     // -> Does not access memory but also does not get optimized out...
     let mut a = 1;
     let mut b = 1;
+    let mut c = 0;
     for _ in 0..150000 {
         let tmp = a + b;
         a = b;
         b = tmp;
+        c += a * b;
     }
     // Don't optimize me away :/
     assert!(a > 0);
+    assert!(c > 5);
 }
