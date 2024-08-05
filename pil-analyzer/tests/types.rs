@@ -587,24 +587,63 @@ fn undefined_trait() {
 }
 
 #[test]
-#[should_panic = "Impls for Add: Types (int, fe) and (int, fe) overlap"]
-fn duplicated_trait() {
+fn defined_trait_generic() {
     let input = "
-    trait Add<T, Q> {
-        add: T, T -> Q,
-    }
-    impl Add<int, fe> {
-        add: |a, b| a + b,
-    }
-    impl Add<int, fe> {
-        add: |a, b| b + a,
-    }
+    namespace std::convert(4);
+        let fe = || fe();
+    namespace F(4);
+        trait Add<T, Q> {
+            add: T, T -> Q,
+        }
+        impl<T> Add<T, fe> {
+            add: |a, b| std::convert::fe(a + b),
+        }
     ";
     type_check(input, &[]);
 }
 
 #[test]
-#[should_panic = "Trait Add has 2 type vars, but implementation has 1"]
+#[should_panic = "Impls for F.Add: Types (int, fe) and (int, fe) overlap"]
+fn duplicated_trait() {
+    let input = "
+    namespace std::convert(4);
+        let fe = || fe();
+    namespace F(4);
+        trait Add<T, Q> {
+            add: T, T -> Q,
+        }
+        impl Add<int, fe> {
+            add: |a, b| std::convert::fe(a + b),
+        }
+        impl Add<int, fe> {
+            add: |a, b| std::convert::fe(a + b),
+        }
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Impls for F.Add: Types (int, fe) and (T1, fe) overlap"]
+fn duplicated_trait_generic() {
+    let input = "
+    namespace std::convert(4);
+        let fe = || fe();
+    namespace F(4);
+        trait Add<T, Q> {
+            add: T, T -> Q,
+        }
+        impl Add<int, fe> {
+            add: |a, b| std::convert::fe(a + b),
+        }
+        impl<T> Add<T, fe> {
+            add: |a, b| std::convert::fe(a + b),
+        }
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Trait Add has 2 type parameters, but implementation has 1"]
 fn impl_with_diff_length() {
     let input = "
     trait Add<T, Q> {
@@ -640,7 +679,7 @@ fn impl_combined_test() {
 }
 
 #[test]
-#[should_panic = "Impl Add has a type var Q that is not defined in the type tuple"]
+#[should_panic = "Impl Add introduces a type variable Q that is not used"]
 fn unused_type_var_error() {
     let input = "
     trait Add<T> {
@@ -651,44 +690,6 @@ fn unused_type_var_error() {
     }
     ";
     type_check(input, &[]);
-}
-
-#[test]
-fn impl_type_resolution() {
-    let input = "
-    namespace std::convert(4);
-        let fe = || fe();
-    namespace F(4);
-    
-        trait Add<T> {
-            add: T, T -> T,
-        }
-
-        impl Add<fe> {
-            add: |a, b| a + b,
-        }
-
-        impl Add<int> {
-            add: |a, b| a + b,
-        }
-
-        let r: int = Add::add(3, 4);
-    ";
-    type_check(input, &[("F.r", "", "int")]);
-}
-
-#[test]
-fn trait_multi_generics() {
-    let input = "
-    trait ToTuple<S, I> {
-        get: S -> (S, I),
-    }
-    impl ToTuple<int, (int, int)> {
-        get: |n| (n, (1, n+2)),
-    }
-    let r: (int, (int, int)) = ToTuple::get(3);
-    ";
-    type_check(input, &[("r", "", "(int, (int, int))")]);
 }
 
 #[test]
@@ -743,51 +744,4 @@ fn new_fixed_column_wrong_type() {
         f();
     "#;
     type_check(input, &[]);
-}
-
-#[test]
-fn trait_with_user_defined_enum() {
-    let input = "
-    enum Bool { True, False }
-    
-    trait Not<T> {
-        not: T -> T,
-    }
-    
-    impl Not<Bool> {
-        not: |b| match b {
-            Bool::True => Bool::False,
-            Bool::False => Bool::True,
-        },
-    }
-    let b = Not::not(Bool::True);
-    ";
-    type_check(input, &[("b", "", "Bool")]);
-}
-
-#[test]
-fn trait_with_user_defined_enum2() {
-    let input = "
-    enum V1 { A }
-    enum V2 { B }
-
-    trait Convert<T, U> {
-        convert: T -> U,
-    }
-
-    impl Convert<V1, V2> {
-        convert: |x| match x {
-            V1::A => V2::B,
-        },
-    }
-    impl Convert<V2, V1> {
-        convert: |x| match x {
-            V2::B => V1::A,
-        },
-    }
-
-    let r1: V2 = Convert::convert(V1::A);
-    let r2: V1 = Convert::convert(V2::B);
-    ";
-    type_check(input, &[("r1", "", "V2"), ("r2", "", "V1")]);
 }

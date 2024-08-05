@@ -52,11 +52,7 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(files);
     analyzer.side_effect_check();
-    check_traits_overlap(
-        &analyzer.implementations,
-        &analyzer.definitions,
-        analyzer.driver(),
-    );
+    check_traits_overlap(&mut analyzer.implementations, &analyzer.definitions);
     analyzer.type_check();
     analyzer.condense()
 }
@@ -152,21 +148,8 @@ impl PILAnalyzer {
 
         for PILFile(file) in files {
             self.current_namespace = Default::default();
-            for ref statement in file {
-                if let PilStatement::TraitImplementation(_, trait_impl) = statement {
-                    let mut counters = Counters::default();
-                    let ti = StatementProcessor::new(
-                        self.driver(),
-                        &mut counters,
-                        self.polynomial_degree,
-                    )
-                    .process_trait_implementation(trait_impl.clone());
-                    self.implementations
-                        .entry(ti.name.name().clone())
-                        .or_default()
-                        .push(ti)
-                }
-                self.handle_statement(statement.clone());
+            for statement in file {
+                self.handle_statement(statement);
             }
         }
     }
@@ -425,6 +408,11 @@ impl PILAnalyzer {
                             self.source_order.push(StatementIdentifier::Identity(index));
                             self.identities.push(identity)
                         }
+                        PILItem::TraitImplementation(trait_impl) => self
+                            .implementations
+                            .entry(trait_impl.name.clone())
+                            .or_default()
+                            .push(trait_impl),
                     }
                 }
             }

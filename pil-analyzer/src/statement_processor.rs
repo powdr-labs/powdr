@@ -30,6 +30,7 @@ pub enum PILItem {
     Definition(Symbol, Option<FunctionValueDefinition>),
     PublicDeclaration(PublicDeclaration),
     Identity(Identity<SelectedExpressions<Expression>>),
+    TraitImplementation(TraitImplementation<Expression>),
 }
 
 pub struct Counters {
@@ -203,7 +204,10 @@ where
                 None,
                 Some(FunctionDefinition::TraitDeclaration(trait_decl.clone())),
             ),
-            PilStatement::TraitImplementation(_, _) => vec![],
+            PilStatement::TraitImplementation(_, trait_impl) => {
+                let trait_impl = self.process_trait_implementation(trait_impl);
+                vec![PILItem::TraitImplementation(trait_impl)]
+            }
             _ => self.handle_identity_statement(statement),
         }
     }
@@ -668,7 +672,7 @@ where
             .collect();
 
         TraitImplementation {
-            name: trait_impl.name,
+            name: self.driver.resolve_decl(&trait_impl.name),
             source_ref: trait_impl.source_ref,
             type_scheme: trait_impl.type_scheme,
             functions,

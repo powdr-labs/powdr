@@ -726,8 +726,8 @@ NamedExpression: NamedExpression<Expression> = {
     <name:Identifier> ":" <body:BoxedExpression> => NamedExpression { name, body }
 }
 
-GenericTraitName: (SymbolPath, TypeScheme) = {
-    <vars:("<" <TypeVarBounds> ">")?> <name:SymbolPath> <items:("<" <TypeTermList<ArrayLengthNumber>> ">")> =>
+GenericTraitName: (String, TypeScheme) = {
+    <vars:("<" <TypeVarBounds> ">")?> <name:Identifier> <items:("<" <TypeTermList<ArrayLengthNumber>> ">")> =>
         (name, TypeScheme{ vars: vars.unwrap_or_default(), ty: Type::Tuple(TupleType{items}) })
 }
 
