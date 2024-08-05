@@ -20,6 +20,8 @@ use serde::{Deserialize, Serialize};
 
 use powdr_parser_util::SourceRef;
 
+use crate::analyzed::Reference;
+
 use self::{
     asm::{Part, SymbolPath},
     types::{FunctionType, Type, TypeBounds, TypeScheme},
@@ -1194,11 +1196,11 @@ impl Children<Expression> for FunctionDefinition {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub enum ArrayExpression {
-    Value(Vec<Expression>),
-    RepeatedValue(Vec<Expression>),
-    Concat(Box<ArrayExpression>, Box<ArrayExpression>),
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub enum ArrayExpression<Ref = NamespacedPolynomialReference> {
+    Value(Vec<Expression<Ref>>),
+    RepeatedValue(Vec<Expression<Ref>>),
+    Concat(Box<ArrayExpression<Ref>>, Box<ArrayExpression<Ref>>),
 }
 
 impl ArrayExpression {
@@ -1236,7 +1238,7 @@ impl ArrayExpression {
     }
 }
 
-impl ArrayExpression {
+impl<Ref> ArrayExpression<Ref> {
     /// solve for `*`
     pub fn solve(&self, degree: DegreeType) -> DegreeType {
         assert!(
@@ -1275,8 +1277,56 @@ impl ArrayExpression {
     }
 }
 
-impl Children<Expression> for ArrayExpression {
-    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+/// An array of elements that might be repeated.
+pub struct RepeatedArray<'a> {
+    /// The pattern to be repeated
+    pattern: &'a [Expression<Reference>],
+    /// The number of values to be filled by repeating the pattern, possibly truncating it at the end
+    size: DegreeType,
+}
+
+impl<'a> RepeatedArray<'a> {
+    pub fn new(pattern: &'a [Expression<Reference>], size: DegreeType) -> Self {
+        if pattern.is_empty() {
+            assert!(
+                size == 0,
+                "impossible to fill {size} values with an empty pattern"
+            )
+        }
+        Self { pattern, size }
+    }
+
+    /// Returns the number of elements in this array (including repetitions).
+    pub fn size(&self) -> DegreeType {
+        self.size
+    }
+
+    /// Returns the pattern to be repeated
+    pub fn pattern(&self) -> &'a [Expression<Reference>] {
+        self.pattern
+    }
+}
+
+impl ArrayExpression<Reference> {
+    pub fn to_repeated_arrays<'a>(
+        &'a self,
+        size_of_repeated_part: DegreeType,
+    ) -> Box<dyn Iterator<Item = RepeatedArray<'a>> + 'a> {
+        match self {
+            ArrayExpression::Value(pattern) => Box::new(once(RepeatedArray::new(pattern, 1))),
+            ArrayExpression::RepeatedValue(pattern) => {
+                Box::new(once(RepeatedArray::new(pattern, size_of_repeated_part)))
+            }
+            ArrayExpression::Concat(left, right) => Box::new(
+                left.to_repeated_arrays(size_of_repeated_part)
+                    .chain(right.to_repeated_arrays(size_of_repeated_part)),
+            ),
+        }
+    }
+}
+
+impl<Ref> Children<Expression<Ref>> for ArrayExpression<Ref> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<Ref>> + '_> {
         match self {
             ArrayExpression::Value(v) | ArrayExpression::RepeatedValue(v) => Box::new(v.iter()),
             ArrayExpression::Concat(left, right) => {
@@ -1285,7 +1335,7 @@ impl Children<Expression> for ArrayExpression {
         }
     }
 
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<Ref>> + '_> {
         match self {
             ArrayExpression::Value(v) | ArrayExpression::RepeatedValue(v) => Box::new(v.iter_mut()),
             ArrayExpression::Concat(left, right) => {

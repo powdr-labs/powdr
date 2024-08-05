@@ -207,8 +207,8 @@ fn format_public_declaration(name: &str, decl: &PublicDeclaration) -> String {
 impl Display for FunctionValueDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            FunctionValueDefinition::Array(items) => {
-                write!(f, " = {}", items.iter().format(" + "))
+            FunctionValueDefinition::Array(e) => {
+                write!(f, " = {e}")
             }
             FunctionValueDefinition::Expression(TypedExpression {
                 e,
@@ -281,19 +281,6 @@ fn format_outer_function(e: &Expression, f: &mut Formatter<'_>) -> Result {
             )
         }
         _ => write!(f, " = {e}"),
-    }
-}
-
-impl Display for RepeatedArray {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        if self.is_empty() {
-            return Ok(());
-        }
-        write!(f, "[{}]", self.pattern.iter().format(", "))?;
-        if self.is_repeated() {
-            write!(f, "*")?;
-        }
-        Ok(())
     }
 }
 

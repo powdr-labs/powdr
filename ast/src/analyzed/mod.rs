@@ -20,7 +20,8 @@ use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
-    self, ArrayLiteral, EnumDeclaration, EnumVariant, TraitDeclaration, TraitFunction,
+    self, ArrayExpression, ArrayLiteral, EnumDeclaration, EnumVariant, TraitDeclaration,
+    TraitFunction,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -578,7 +579,7 @@ pub enum SymbolKind {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum FunctionValueDefinition {
-    Array(Vec<RepeatedArray>),
+    Array(ArrayExpression<Reference>),
     Expression(TypedExpression),
     TypeDeclaration(EnumDeclaration),
     TypeConstructor(Arc<EnumDeclaration>, EnumVariant),
@@ -592,9 +593,7 @@ impl Children<Expression> for FunctionValueDefinition {
             FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ }) => {
                 Box::new(iter::once(e))
             }
-            FunctionValueDefinition::Array(array) => {
-                Box::new(array.iter().flat_map(|i| i.children()))
-            }
+            FunctionValueDefinition::Array(e) => Box::new(e.children()),
             FunctionValueDefinition::TypeDeclaration(enum_declaration) => {
                 enum_declaration.children()
             }
@@ -609,9 +608,7 @@ impl Children<Expression> for FunctionValueDefinition {
             FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ }) => {
                 Box::new(iter::once(e))
             }
-            FunctionValueDefinition::Array(array) => {
-                Box::new(array.iter_mut().flat_map(|i| i.children_mut()))
-            }
+            FunctionValueDefinition::Array(e) => Box::new(e.children_mut()),
             FunctionValueDefinition::TypeDeclaration(enum_declaration) => {
                 enum_declaration.children_mut()
             }
@@ -637,62 +634,6 @@ impl Children<Expression> for TraitFunction {
     }
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
         Box::new(empty())
-    }
-}
-
-/// An array of elements that might be repeated.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct RepeatedArray {
-    /// The pattern to be repeated
-    pattern: Vec<Expression>,
-    /// The number of values to be filled by repeating the pattern, possibly truncating it at the end
-    size: DegreeType,
-}
-
-impl RepeatedArray {
-    pub fn new(pattern: Vec<Expression>, size: DegreeType) -> Self {
-        if pattern.is_empty() {
-            assert!(
-                size == 0,
-                "impossible to fill {size} values with an empty pattern"
-            )
-        }
-        Self { pattern, size }
-    }
-
-    /// Returns the number of elements in this array (including repetitions).
-    pub fn size(&self) -> DegreeType {
-        self.size
-    }
-
-    /// Returns the pattern to be repeated
-    pub fn pattern(&self) -> &[Expression] {
-        &self.pattern
-    }
-
-    /// Returns the pattern to be repeated
-    pub fn pattern_mut(&mut self) -> &mut [Expression] {
-        &mut self.pattern
-    }
-
-    /// Returns true iff this array is empty.
-    pub fn is_empty(&self) -> bool {
-        self.size == 0
-    }
-
-    /// Returns whether pattern needs to be repeated (or truncated) in order to match the size.
-    pub fn is_repeated(&self) -> bool {
-        self.size != self.pattern.len() as DegreeType
-    }
-}
-
-impl Children<Expression> for RepeatedArray {
-    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
-        Box::new(self.pattern.iter())
-    }
-
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
-        Box::new(self.pattern.iter_mut())
     }
 }
 

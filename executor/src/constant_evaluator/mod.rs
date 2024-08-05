@@ -109,8 +109,9 @@ fn generate_values<T: FieldElement>(
         }
         FunctionValueDefinition::Array(values) => {
             assert!(index.is_none());
+            let size_of_repeated_term = values.solve(degree);
             values
-                .iter()
+                .to_repeated_arrays(size_of_repeated_term)
                 .map(|elements| {
                     let items = elements
                         .pattern()
