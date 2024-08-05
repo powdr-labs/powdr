@@ -126,11 +126,12 @@ fn ensure_unique_impls(implementations: &mut [TraitImplementation<Expression>]) 
 }
 
 fn unify_traits_types(ty1: TypeScheme, ty2: TypeScheme) -> Result<(), String> {
-    let mut type_var_manager = TypeVarManager::new();
+    let mut unifier = Unifier::default();
+    let mut type_var_manager = TypeVarManager::new(unifier.clone());
     let instantiated_ty1 = type_var_manager.instantiate_scheme(ty1).0;
     let instantiated_ty2 = type_var_manager.instantiate_scheme(ty2).0;
 
-    match Unifier::default().unify_types(instantiated_ty1.clone(), instantiated_ty2.clone()) {
+    match unifier.unify_types(instantiated_ty1.clone(), instantiated_ty2.clone()) {
         Ok(_) => Err(format!(
             "Types {instantiated_ty1} and {instantiated_ty2} overlap"
         )),
@@ -140,11 +141,15 @@ fn unify_traits_types(ty1: TypeScheme, ty2: TypeScheme) -> Result<(), String> {
 
 pub struct TypeVarManager {
     last_type_var: usize,
+    unifier: Unifier,
 }
 
 impl TypeVarManager {
-    pub fn new() -> Self {
-        Self { last_type_var: 0 }
+    pub fn new(unifier: Unifier) -> Self {
+        Self {
+            last_type_var: 0,
+            unifier,
+        }
     }
 
     fn instantiate_scheme(&mut self, scheme: TypeScheme) -> (Type, Vec<Type>) {
@@ -152,11 +157,11 @@ impl TypeVarManager {
         let vars = scheme
             .vars
             .bounds()
-            .map(|(_, _bounds)| {
+            .map(|(_, bounds)| {
                 let new_var = self.new_type_var();
-                //for b in bounds {
-                //    self.unifier.ensure_bound(&new_var, b.clone()).unwrap();
-                //}
+                for b in bounds {
+                    self.unifier.ensure_bound(&new_var, b.clone()).unwrap();
+                }
                 new_var
             })
             .collect::<Vec<_>>();
