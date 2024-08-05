@@ -185,6 +185,14 @@ fn password() {
 
 #[test]
 #[ignore = "Too slow"]
+fn std_hello_world() {
+    let case = "std_hello_world";
+    // We only test via ELF because std is not supported via assembly.
+    verify_riscv_crate_impl::<()>(case, vec![], &Runtime::base(), true, false, None);
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn function_pointer() {
     let case = "function_pointer";
     verify_riscv_crate(
@@ -411,7 +419,7 @@ fn many_chunks_memory() {
 }
 
 fn verify_riscv_crate(case: &str, inputs: Vec<GoldilocksField>, runtime: &Runtime) {
-    verify_riscv_crate_from_both_paths::<()>(case, inputs, runtime, None)
+    verify_riscv_crate_impl::<()>(case, inputs, runtime, true, true, None)
 }
 
 fn verify_riscv_crate_with_data<S: serde::Serialize + Send + Sync + 'static>(
@@ -420,13 +428,15 @@ fn verify_riscv_crate_with_data<S: serde::Serialize + Send + Sync + 'static>(
     runtime: &Runtime,
     data: Vec<(u32, S)>,
 ) {
-    verify_riscv_crate_from_both_paths(case, inputs, runtime, Some(data))
+    verify_riscv_crate_impl(case, inputs, runtime, true, true, Some(data))
 }
 
-fn verify_riscv_crate_from_both_paths<S: serde::Serialize + Send + Sync + 'static>(
+fn verify_riscv_crate_impl<S: serde::Serialize + Send + Sync + 'static>(
     case: &str,
     inputs: Vec<GoldilocksField>,
     runtime: &Runtime,
+    via_elf: bool,
+    via_asm: bool,
     data: Option<Vec<(u32, S)>>,
 ) {
     let temp_dir = Temp::new_dir().unwrap();
@@ -435,26 +445,30 @@ fn verify_riscv_crate_from_both_paths<S: serde::Serialize + Send + Sync + 'stati
         &temp_dir,
     );
 
-    log::info!("Verifying {case} converted from ELF file");
-    let from_elf = powdr_riscv::elf::translate::<GoldilocksField>(
-        compiled.executable.as_ref().unwrap(),
-        runtime,
-        false,
-    );
-    verify_riscv_asm_string(
-        &format!("{case}_from_elf.asm"),
-        &from_elf,
-        &inputs,
-        data.as_deref(),
-    );
+    if via_elf {
+        log::info!("Verifying {case} converted from ELF file");
+        let from_elf = powdr_riscv::elf::translate::<GoldilocksField>(
+            compiled.executable.as_ref().unwrap(),
+            runtime,
+            false,
+        );
+        verify_riscv_asm_string(
+            &format!("{case}_from_elf.asm"),
+            &from_elf,
+            &inputs,
+            data.as_deref(),
+        );
+    }
 
-    log::info!("Verifying {case} converted from assembly files");
-    let from_asm =
-        powdr_riscv::asm::compile::<GoldilocksField>(compiled.load_asm_files(), runtime, false);
-    verify_riscv_asm_string(
-        &format!("{case}_from_asm.asm"),
-        &from_asm,
-        &inputs,
-        data.as_deref(),
-    );
+    if via_asm {
+        log::info!("Verifying {case} converted from assembly files");
+        let from_asm =
+            powdr_riscv::asm::compile::<GoldilocksField>(compiled.load_asm_files(), runtime, false);
+        verify_riscv_asm_string(
+            &format!("{case}_from_asm.asm"),
+            &from_asm,
+            &inputs,
+            data.as_deref(),
+        );
+    }
 }

@@ -22,6 +22,9 @@ pub mod continuations;
 pub mod elf;
 pub mod runtime;
 
+static TARGET_STD: &str = "riscv32im-risc0-zkvm-elf";
+static TARGET_NO_STD: &str = "riscv32imac-unknown-none-elf";
+
 /// Compiles a rust file to Powdr asm.
 #[allow(clippy::print_stderr)]
 pub fn compile_rust<T: FieldElement>(
@@ -167,6 +170,8 @@ pub fn compile_riscv_elf<T: FieldElement>(
     )
 }
 
+/// Creates an array of references to a given type by calling as_ref on each
+/// element.
 macro_rules! as_ref [
     ($t:ty; $($x:expr),* $(,)?) => {
         [$(AsRef::<$t>::as_ref(&$x)),+]
@@ -194,11 +199,13 @@ pub fn compile_rust_crate_to_riscv(input_dir: &str, output_dir: &Path) -> Compil
     const CARGO_TARGET_DIR: &str = "cargo_target";
     let target_dir = output_dir.join(CARGO_TARGET_DIR);
 
+    let use_std = is_std_enabled_in_runtime(input_dir);
+
     // We call cargo twice, once to perform the actual building, and once to get
     // the build plan json, so we know exactly which object files to use.
 
     // Real build run.
-    let build_status = build_cargo_command(input_dir, &target_dir, false)
+    let build_status = build_cargo_command(input_dir, &target_dir, use_std, false)
         .status()
         .unwrap();
     assert!(build_status.success());
@@ -207,7 +214,7 @@ pub fn compile_rust_crate_to_riscv(input_dir: &str, output_dir: &Path) -> Compil
     // otherwise cargo will screw up the build done previously.
     let (build_plan, plan_dir): (JsonValue, PathBuf) = {
         let plan_dir = Temp::new_dir().unwrap();
-        let build_plan_run = build_cargo_command(input_dir, &plan_dir, true)
+        let build_plan_run = build_cargo_command(input_dir, &plan_dir, use_std, true)
             .output()
             .unwrap();
         assert!(build_plan_run.status.success());
@@ -227,6 +234,7 @@ pub fn compile_rust_crate_to_riscv(input_dir: &str, output_dir: &Path) -> Compil
     let mut executable = None;
 
     log::debug!("RISC-V assembly files of this build:");
+    let target = Path::new(if use_std { TARGET_STD } else { TARGET_NO_STD });
     for i in invocations {
         let JsonValue::Array(outputs) = &i["outputs"] else {
             panic!("no outputs in cargo build plan");
@@ -236,7 +244,7 @@ pub fn compile_rust_crate_to_riscv(input_dir: &str, output_dir: &Path) -> Compil
             // Replace the plan_dir with the target_dir, because the later is
             // where the files actually are.
             let parent = target_dir.join(output.parent().unwrap().strip_prefix(&plan_dir).unwrap());
-            if parent.ends_with("riscv32imac-unknown-none-elf/release/deps") {
+            if parent.ends_with(target.join("release/deps")) {
                 let extension = output.extension();
                 let name_stem = if Some(OsStr::new("rmeta")) == extension {
                     // Have to convert to string to remove the "lib" prefix:
@@ -287,39 +295,140 @@ pub fn compile_rust_crate_to_riscv_bin(input_dir: &str, output_dir: &Path) -> Pa
         .unwrap()
 }
 
-fn build_cargo_command(input_dir: &str, target_dir: &Path, produce_build_plan: bool) -> Command {
+fn is_std_enabled_in_runtime(input_dir: &str) -> bool {
+    // Calls `cargo metadata --format-version 1 --no-deps --manifest-path <input_dir>` to determine
+    // if the `std` feature is enabled in the dependency crate `powdr-riscv-runtime`.
+    let metadata = Command::new("cargo")
+        .args(as_ref![
+            OsStr;
+            "metadata",
+            "--format-version",
+            "1",
+            "--no-deps",
+            "--manifest-path",
+            input_dir,
+        ])
+        .output()
+        .unwrap();
+
+    let metadata: serde_json::Value = serde_json::from_slice(&metadata.stdout).unwrap();
+    let packages = metadata["packages"].as_array().unwrap();
+    packages.iter().any(|package| {
+        package["dependencies"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|dependency| {
+                dependency["name"] == "powdr-riscv-runtime"
+                    && dependency["features"]
+                        .as_array()
+                        .unwrap()
+                        .contains(&"std".into())
+            })
+    })
+}
+
+fn build_cargo_command(
+    input_dir: &str,
+    target_dir: &Path,
+    use_std: bool,
+    produce_build_plan: bool,
+) -> Command {
+    /*
+        The explanation for the more exotic options we are using to build the user code:
+
+        `--emit=asm`: tells rustc to emit the assembly code of the program. This is the
+        actual input for the Powdr assembly translator. This is not needed in ELF path.
+
+        `-C link-arg=-Tpowdr.x`: tells the linker to use the `powdr.x` linker script,
+        provided by `powdr-riscv-runtime` crate. It configures things like memory layout
+        of the program and the entry point function. This is not needed in ASM path.
+
+        `-C link-arg=--emit-relocs`: this is a requirement from Powdr ELF translator, it
+        tells the linker to leave in the final executable the linkage relocation tables.
+        The ELF translator uses this information to lift references to text address into
+        labels in the Powdr assembly. This is not needed in ASM path.
+
+        `-C passes=loweratomic`: risc0 target does not support atomic instructions. When
+        they are needed, LLVM makes calls to software emulation functions it expects to
+        exist, such as `__atomic_fetch_add_4`, etc. This option adds an LLVM pass that
+        converts atomic instructions into non-atomic variants, so that the atomic
+        functions are not need anymore. It works because we have a single-threaded
+        non-interrupting implementation. This is only needed for std support, that uses
+        risc0 target, but it is probably beneficial to leave this on for no_std as well.
+
+        `-Zbuild-std=std,panic_abort`: there are no pre-packaged builds of standard
+        libraries for risc0 target, so we have to instruct cargo to build the ones we
+        will be using.
+
+        `-Zbuild-std-features=default,compiler-builtins-mem`: rust's `std` has features
+        that can be enabled or disabled, like any normal rust crate. We are telling that
+        we need the default features, but also we need to build and use the memory
+        related functions from `compiler_builtins` crate, which provides `memcpy`,
+        `memcmp`, etc, for systems that doesn't already have them, like ours, as LLVM
+        assumes these functions to be available. We also use `compiler_builtins` for
+        `#[no_std]` programs, but in there it is enabled by default.
+
+        `-Zbuild-std=core,alloc`: while there are pre-packaged builds of `core` and
+        `alloc` for riscv32imac target, we still need their assembly files generated
+        during compilation to translate via ASM path, so we explicitly build them.
+
+        `-Zunstable-options --build-plan`: the build plan is a cargo unstable feature
+        that outputs a JSON with all the information about the build, which include the
+        paths of the object files generated. We use this build plan to find the assembly
+        files generated by the build, needed in the ASM path, and to find the executable
+        ELF file, needed in the ELF path.
+    */
+
     let mut cmd = Command::new("cargo");
     cmd.env(
         "RUSTFLAGS",
-        "--emit=asm -g -C link-args=-Tpowdr.x -C link-args=--emit-relocs",
+        "--emit=asm -g -C link-arg=-Tpowdr.x -C link-arg=--emit-relocs -C passes=lower-atomic -C panic=abort",
     );
 
-    let args = as_ref![
+    let mut args: Vec<&OsStr> = as_ref![
         OsStr;
         "+nightly-2024-08-01",
         "build",
         "--release",
-        "-Z",
-        "build-std=core,alloc",
-        "--target",
-        "riscv32imac-unknown-none-elf",
         "--target-dir",
         target_dir,
         "--manifest-path",
         input_dir,
-    ];
+        "--target"
+        // target is defined in the following if-else block
+    ]
+    .into();
 
-    if produce_build_plan {
-        let extra_args = as_ref![
+    if use_std {
+        args.extend(as_ref![
             OsStr;
-            "-Z",
-            "unstable-options",
-            "--build-plan"
-        ];
-        cmd.args(itertools::chain(args.iter(), extra_args.iter()));
+            TARGET_STD,
+            "-Zbuild-std=std,panic_abort",
+            "-Zbuild-std-features=default,compiler-builtins-mem",
+        ]);
     } else {
-        cmd.args(args.iter());
+        args.extend(as_ref![
+            OsStr;
+            TARGET_NO_STD,
+            // TODO: the following switch can be removed once we drop support to
+            // asm path, but the following command will have to be added to CI:
+            //
+            // rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
+            "-Zbuild-std=core,alloc"
+        ]);
+    };
+
+    // TODO: if asm path is removed, there are better ways to find the
+    // executable name than relying on the unstable build plan.
+    if produce_build_plan {
+        args.extend(as_ref![
+            OsStr;
+            "-Zunstable-options",
+            "--build-plan"
+        ]);
     }
 
+    cmd.args(args);
     cmd
 }

@@ -43,7 +43,7 @@ unsafe impl<const SIZE: usize> GlobalAlloc for FixedMemoryAllocator<SIZE> {
         // Where this allocated space ends:
         let end_of_allocation_ptr = aligned_ptr + layout.size();
 
-        // Calculates where the next allocation with start:
+        // Calculates where the next allocation will start:
         let new_next_available = end_of_allocation_ptr - array_start;
 
         if new_next_available <= SIZE {
@@ -61,12 +61,3 @@ unsafe impl<const SIZE: usize> GlobalAlloc for FixedMemoryAllocator<SIZE> {
 
 #[global_allocator]
 static mut GLOBAL: FixedMemoryAllocator<{ 1024 * 1024 * 1024 }> = FixedMemoryAllocator::new();
-
-#[alloc_error_handler]
-fn alloc_error(layout: Layout) -> ! {
-    panic!(
-        "memory allocation of {} bytes with alignment {} failed",
-        layout.size(),
-        layout.align()
-    );
-}
