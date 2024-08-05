@@ -80,6 +80,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         let processor = Processor::new(
             row_offset,
             data,
+            Default::default(),
             mutable_state,
             fixed_data,
             witnesses,

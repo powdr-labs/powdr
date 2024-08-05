@@ -1,5 +1,5 @@
 use std::{
-    collections::HashSet,
+    collections::{BTreeMap, HashSet},
     fmt::Display,
     ops::{Add, Sub},
 };
@@ -396,6 +396,7 @@ pub struct RowPair<'row, 'a, T: FieldElement> {
     pub current: &'row Row<T>,
     pub next: Option<&'row Row<T>>,
     pub current_row_index: RowIndex,
+    publics: &'row BTreeMap<&'a str, T>,
     fixed_data: &'a FixedData<'a, T>,
     unknown_strategy: UnknownStrategy,
     size: DegreeType,
@@ -406,6 +407,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
         current: &'row Row<T>,
         next: &'row Row<T>,
         current_row_index: RowIndex,
+        publics: &'row BTreeMap<&'a str, T>,
         fixed_data: &'a FixedData<'a, T>,
         unknown_strategy: UnknownStrategy,
         size: DegreeType,
@@ -414,6 +416,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
             current,
             next: Some(next),
             current_row_index,
+            publics,
             fixed_data,
             unknown_strategy,
             size,
@@ -424,6 +427,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     pub fn from_single_row(
         current: &'row Row<T>,
         current_row_index: RowIndex,
+        publics: &'row BTreeMap<&'a str, T>,
         fixed_data: &'a FixedData<'a, T>,
         unknown_strategy: UnknownStrategy,
         size: DegreeType,
@@ -432,6 +436,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
             current,
             next: None,
             current_row_index,
+            publics,
             fixed_data,
             unknown_strategy,
             size,

@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
 use powdr_ast::analyzed::PolyID;
 use powdr_number::{DegreeType, FieldElement};
@@ -30,6 +30,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
     pub fn new(
         row_offset: RowIndex,
         data: FinalizableData<T>,
+        publics: BTreeMap<&'a str, T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
         identities: &'c [&'a Identity<T>],
         fixed_data: &'a FixedData<'a, T>,
@@ -39,6 +40,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         let processor = Processor::new(
             row_offset,
             data,
+            publics,
             mutable_state,
             fixed_data,
             witness_cols,
@@ -193,6 +195,7 @@ mod tests {
         let processor = BlockProcessor::new(
             row_offset,
             data,
+            Default::default(),
             &mut mutable_state,
             &identities,
             &fixed_data,

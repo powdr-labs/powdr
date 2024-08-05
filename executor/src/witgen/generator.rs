@@ -27,6 +27,7 @@ pub struct Generator<'a, T: FieldElement> {
     identities: Vec<&'a Identity<T>>,
     witnesses: HashSet<PolyID>,
     data: FinalizableData<T>,
+    publics: BTreeMap<&'a str, T>,
     latch: Option<Expression<T>>,
     name: String,
     degree: DegreeType,
@@ -127,6 +128,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             identities,
             witnesses,
             data,
+            publics: Default::default(),
             latch,
         }
     }
@@ -194,6 +196,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         let mut processor = BlockProcessor::new(
             RowIndex::from_i64(-1, self.degree()),
             data,
+            // Shouldn't need any publics at this point
+            Default::default(),
             mutable_state,
             &identities_with_next_reference,
             self.fixed_data,

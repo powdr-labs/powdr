@@ -15,10 +15,10 @@ impl<T: FieldElement> SymbolicVariables<T> for SymbolicEvaluator {
             AlgebraicVariable::Reference(poly) => {
                 assert!(poly.is_fixed() || poly.is_witness());
                 // TODO arrays
-                Ok(AffineExpression::from_variable_id(var))
             }
-            _ => todo!(),
+            _ => {}
         }
+        Ok(AffineExpression::from_variable_id(var))
     }
 
     fn challenge<'a>(
