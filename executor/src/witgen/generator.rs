@@ -1,6 +1,6 @@
 use powdr_ast::analyzed::AlgebraicExpression as Expression;
 use powdr_number::{DegreeType, FieldElement};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::machines::profiling::{record_end, record_start};
@@ -24,6 +24,7 @@ pub struct Generator<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     parts: MachineParts<'a, T>,
     data: FinalizableData<T>,
+    publics: BTreeMap<&'a str, T>,
     latch: Option<Expression<T>>,
     name: String,
     degree: DegreeType,
@@ -108,6 +109,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             fixed_data,
             parts,
             data,
+            publics: Default::default(),
             latch,
         }
     }
@@ -171,6 +173,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         let mut processor = BlockProcessor::new(
             RowIndex::from_i64(-1, self.degree),
             data,
+            // Shouldn't need any publics at this point
+            Default::default(),
             mutable_state,
             self.fixed_data,
             &next_parts,

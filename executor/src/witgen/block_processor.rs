@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::Identity;
@@ -28,12 +30,21 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
     pub fn new(
         row_offset: RowIndex,
         data: FinalizableData<T>,
+        publics: BTreeMap<&'a str, T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
         fixed_data: &'a FixedData<'a, T>,
         parts: &'c MachineParts<'a, T>,
         size: DegreeType,
     ) -> Self {
-        let processor = Processor::new(row_offset, data, mutable_state, fixed_data, parts, size);
+        let processor = Processor::new(
+            row_offset,
+            data,
+            publics,
+            mutable_state,
+            fixed_data,
+            parts,
+            size,
+        );
         Self {
             processor,
             identities: &parts.identities,
@@ -193,6 +204,7 @@ mod tests {
         let processor = BlockProcessor::new(
             row_offset,
             data,
+            Default::default(),
             &mut mutable_state,
             &fixed_data,
             &machine_parts,

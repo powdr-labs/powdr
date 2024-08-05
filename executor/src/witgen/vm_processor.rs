@@ -87,7 +87,15 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             .identities
             .iter()
             .partition(|identity| identity.contains_next_ref());
-        let processor = Processor::new(row_offset, data, mutable_state, fixed_data, parts, degree);
+        let processor = Processor::new(
+            row_offset,
+            data,
+            Default::default(),
+            mutable_state,
+            fixed_data,
+            parts,
+            degree,
+        );
 
         let progress_bar = ProgressBar::new(degree);
         progress_bar.set_style(

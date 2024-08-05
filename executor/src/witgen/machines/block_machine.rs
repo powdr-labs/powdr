@@ -106,6 +106,7 @@ pub struct BlockMachine<'a, T: FieldElement> {
     connection_type: ConnectionType,
     /// The data of the machine.
     data: FinalizableData<T>,
+    publics: BTreeMap<&'a str, T>,
     /// The index of the first row that has not been finalized yet.
     /// At all times, all rows in the range [block_size..first_in_progress_row) are finalized.
     first_in_progress_row: usize,
@@ -163,6 +164,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             parts: parts.clone(),
             connection_type: is_permutation,
             data,
+            publics: Default::default(),
             first_in_progress_row: block_size,
             processing_sequence_cache: ProcessingSequenceCache::new(
                 block_size,
@@ -340,6 +342,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             let mut processor = Processor::new(
                 row_offset,
                 dummy_block,
+                self.publics.clone(),
                 mutable_state,
                 self.fixed_data,
                 &self.parts,
@@ -557,6 +560,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let mut processor = BlockProcessor::new(
             row_offset,
             block,
+            self.publics.clone(),
             mutable_state,
             self.fixed_data,
             &self.parts,
