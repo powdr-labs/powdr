@@ -59,7 +59,7 @@ fn validate_impl_definitions(
             panic!(
                 "{}",
                 trait_impl.source_ref.with_error(format!(
-                    "Trait {} has {} type vars, but implementation has {}",
+                    "Trait {} has {} type parameters, but implementation has {}",
                     trait_name,
                     trait_decl.type_vars.len(),
                     types.len(),
@@ -77,8 +77,8 @@ fn validate_impl_definitions(
                 panic!(
                     "{}",
                     trait_impl.source_ref.with_error(format!(
-                "Impl {trait_name} has a type var {var} that is not defined in the type tuple",
-            ))
+                        "Impl {trait_name} introduces a type variable {var} that is not used",
+                    ))
                 );
             }
         }
