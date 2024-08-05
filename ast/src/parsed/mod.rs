@@ -1313,7 +1313,9 @@ impl ArrayExpression<Reference> {
         size_of_repeated_part: DegreeType,
     ) -> Box<dyn Iterator<Item = RepeatedArray<'a>> + 'a> {
         match self {
-            ArrayExpression::Value(pattern) => Box::new(once(RepeatedArray::new(pattern, 1))),
+            ArrayExpression::Value(pattern) => {
+                Box::new(once(RepeatedArray::new(pattern, pattern.len() as u64)))
+            }
             ArrayExpression::RepeatedValue(pattern) => {
                 Box::new(once(RepeatedArray::new(pattern, size_of_repeated_part)))
             }
