@@ -52,7 +52,7 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(files);
     analyzer.side_effect_check();
-    check_traits_overlap(&analyzer.implementations, &analyzer.definitions);
+    check_traits_overlap(&mut analyzer.implementations, &analyzer.definitions);
     analyzer.type_check();
     analyzer.condense()
 }

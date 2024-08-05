@@ -587,6 +587,22 @@ fn undefined_trait() {
 }
 
 #[test]
+fn defined_trait_generic() {
+    let input = "
+    namespace std::convert(4);
+        let fe = || fe();
+    namespace F(4);
+        trait Add<T, Q> {
+            add: T, T -> Q,
+        }
+        impl<T> Add<T, fe> {
+            add: |a, b| std::convert::fe(a + b),
+        }
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
 #[should_panic = "Impls for F.Add: Types (int, fe) and (int, fe) overlap"]
 fn duplicated_trait() {
     let input = "
@@ -607,7 +623,7 @@ fn duplicated_trait() {
 }
 
 #[test]
-#[should_panic = "Impls for F.Add: Types (int, fe) and (T, fe) overlap"]
+#[should_panic = "Impls for F.Add: Types (int, fe) and (T1, fe) overlap"]
 fn duplicated_trait_generic() {
     let input = "
     namespace std::convert(4);

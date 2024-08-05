@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use powdr_ast::{
     analyzed::{Expression, FunctionValueDefinition, Symbol},
@@ -19,10 +19,10 @@ use crate::type_unifier::Unifier;
 /// It also checks that the number of type variables in the implementation matches
 /// the number of type variables in the corresponding trait declaration.
 pub fn check_traits_overlap(
-    implementations: &HashMap<String, Vec<TraitImplementation<Expression>>>,
+    implementations: &mut HashMap<String, Vec<TraitImplementation<Expression>>>,
     definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
 ) {
-    for trait_impls in implementations.values() {
+    for trait_impls in implementations.values_mut() {
         // All the impls in trait_impls are of the same trait declaration.
         let trait_name = trait_impls[0].name.clone();
         let trait_decl = definitions
@@ -50,7 +50,7 @@ fn validate_impl_definitions(
     trait_decl: &TraitDeclaration,
 ) {
     for trait_impl in implementations {
-        let Type::Tuple(TupleType { items: types }) = &trait_impl.type_scheme.ty else {
+        let Type::Tuple(TupleType { items: mut types }) = trait_impl.type_scheme.ty.clone() else {
             panic!("Type from trait scheme is not a tuple.")
         };
         let trait_name = trait_impl.name.clone();
@@ -67,12 +67,17 @@ fn validate_impl_definitions(
             );
         }
 
-        let type_vars_in_tuple: Vec<_> =
-            types.iter().flat_map(|t| t.contained_type_vars()).collect();
+        let type_vars: HashSet<_> = trait_impl.type_scheme.vars.vars().collect();
+
+        let type_vars_in_tuple: Vec<_> = types
+            .iter_mut()
+            .flat_map(|t| {
+                t.map_to_type_vars(&type_vars);
+                t.contained_type_vars()
+            })
+            .collect();
 
         let type_vars_in_scheme: Vec<_> = trait_impl.type_scheme.vars.vars().collect();
-        println!("type_vars_in_tuple: {type_vars_in_tuple:?}");
-        println!("type_vars_in_scheme: {type_vars_in_scheme:?}");
 
         for var in type_vars_in_scheme {
             if !type_vars_in_tuple.contains(&var) {
@@ -91,16 +96,31 @@ fn validate_impl_definitions(
 ///
 /// This function iterates through all the trait implementations comparing them with each other and checks that
 /// there are no traits with overlapping type variables.
-fn ensure_unique_impls(implementations: &[TraitImplementation<Expression>]) {
-    for (i, impl1) in implementations.iter().enumerate() {
-        for impl2 in implementations.iter().skip(i + 1) {
-            unify_traits_types(impl1.type_scheme.clone(), impl2.type_scheme.clone())
-                .map_err(|err| {
-                    impl1
-                        .source_ref
-                        .with_error(format!("Impls for {}: {err}", impl1.name))
-                })
-                .unwrap()
+fn ensure_unique_impls(implementations: &mut [TraitImplementation<Expression>]) {
+    for i in 0..implementations.len() {
+        let type_vars: HashSet<_> = implementations[i].type_scheme.vars.vars().collect();
+        implementations[i]
+            .type_scheme
+            .ty
+            .map_to_type_vars(&type_vars);
+
+        for j in (i + 1)..implementations.len() {
+            let type_vars: HashSet<_> = implementations[j].type_scheme.vars.vars().collect();
+            implementations[j]
+                .type_scheme
+                .ty
+                .map_to_type_vars(&type_vars);
+
+            unify_traits_types(
+                implementations[i].type_scheme.clone(),
+                implementations[j].type_scheme.clone(),
+            )
+            .map_err(|err| {
+                implementations[i]
+                    .source_ref
+                    .with_error(format!("Impls for {}: {err}", implementations[i].name))
+            })
+            .unwrap()
         }
     }
 }
@@ -119,12 +139,12 @@ fn unify_traits_types(ty1: TypeScheme, ty2: TypeScheme) -> Result<(), String> {
 }
 
 pub struct TypeVarManager {
-    counter: usize,
+    last_type_var: usize,
 }
 
 impl TypeVarManager {
     pub fn new() -> Self {
-        Self { counter: 0 }
+        Self { last_type_var: 0 }
     }
 
     pub fn instantiate_scheme(&mut self, scheme: TypeScheme) -> Type {
@@ -136,7 +156,7 @@ impl TypeVarManager {
     }
 
     pub fn fresh_type_var(&mut self) -> Type {
-        self.counter += 1;
-        Type::TypeVar(format!("T{}", self.counter))
+        self.last_type_var += 1;
+        Type::TypeVar(format!("T{}", self.last_type_var))
     }
 }
