@@ -54,6 +54,7 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
     analyzer.side_effect_check();
     check_traits_overlap(&mut analyzer.implementations, &analyzer.definitions);
     analyzer.type_check();
+    //resolve_trait_implementations();
     analyzer.condense()
 }
 
