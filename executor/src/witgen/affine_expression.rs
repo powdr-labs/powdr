@@ -19,6 +19,11 @@ pub enum AffineExpression<K, T> {
     ManyVars(Vec<(K, T)>, T),
 }
 
+pub enum AlgebraicVariable<'a> {
+    Reference(&'a AlgebraicReference),
+    Public(&'a str),
+}
+
 pub type AffineResult<K, T> = Result<AffineExpression<K, T>, IncompleteCause<K>>;
 
 impl<K, T> From<T> for AffineExpression<K, T> {
