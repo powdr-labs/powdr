@@ -277,6 +277,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         ),
     };
 
+    let mut prev_register_snapshot = HashMap::new();
+
     loop {
         log::info!("\nRunning chunk {}...", chunk_index);
 
@@ -393,7 +395,9 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             .map(|reg| {
                 let reg = reg.strip_prefix("main.").unwrap();
                 let id = Register::from(reg).addr();
-                *register_memory_snapshot.get(&(id as u32)).unwrap()
+                *register_memory_snapshot
+                    .get(&(id as u32))
+                    .unwrap_or(&Elem::Binary(0))
             })
             .collect::<Vec<_>>();
 
@@ -432,6 +436,37 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             .enumerate()
             .find(|(_, &pc)| pc == bootloader_inputs[PC_INDEX])
             .unwrap();
+
+        log::info!("Simulating again for {start} rows...");
+
+        let (_, _, register_memory_snapshot2) = {
+            let (trace, memory_snapshot_update, register_memory_snapshot) =
+                powdr_riscv_executor::execute_ast::<F>(
+                    &program,
+                    MemoryState::new(),
+                    pipeline.data_callback().unwrap(),
+                    &bootloader_inputs,
+                    start,
+                    powdr_riscv_executor::ExecMode::Trace,
+                    // profiling was done when full trace was generated
+                    None,
+                );
+            (
+                transposed_trace(&trace),
+                memory_snapshot_update,
+                register_memory_snapshot,
+            )
+        };
+        if !prev_register_snapshot.is_empty() {
+            for reg in 1..37 {
+                assert_eq!(
+                    prev_register_snapshot[&reg], register_memory_snapshot2[&reg],
+                    "Register {reg} differs between the two simulations!",
+                );
+            }
+        }
+        prev_register_snapshot = register_memory_snapshot;
+
         log::info!("Bootloader used {} rows.", start);
         log::info!(
             "  => {} / {} ({}%) of rows are used for the actual computation!",
