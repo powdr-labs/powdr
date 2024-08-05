@@ -23,6 +23,9 @@ use powdr_ast::{
 };
 use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
 use powdr_parser_util::SourceRef;
+use smallvec::{smallvec, SmallVec};
+
+const SMALL_VEC_LEN: usize = 1;
 
 /// Evaluates an expression given a hash map of definitions.
 pub fn evaluate_expression<'a, T: FieldElement>(
@@ -223,19 +226,19 @@ impl<'a, T: FieldElement> Value<'a, T> {
     pub fn try_match_pattern<'b>(
         v: &Arc<Value<'b, T>>,
         pattern: &Pattern,
-    ) -> Option<Vec<Arc<Value<'b, T>>>> {
+    ) -> Option<SmallVec<[Arc<Value<'b, T>>; SMALL_VEC_LEN]>> {
         match pattern {
             Pattern::Ellipsis(_) => unreachable!("Should be handled higher up"),
-            Pattern::CatchAll(_) => Some(vec![]),
+            Pattern::CatchAll(_) => Some(smallvec![]),
             Pattern::Number(_, n) => match v.as_ref() {
-                Value::Integer(x) if x == n => Some(vec![]),
+                Value::Integer(x) if x == n => Some(smallvec![]),
                 Value::FieldElement(x) if BigInt::from(x.to_arbitrary_integer()) == *n => {
-                    Some(vec![])
+                    Some(smallvec![])
                 }
                 _ => None,
             },
             Pattern::String(_, s) => match v.as_ref() {
-                Value::String(x) if x == s => Some(vec![]),
+                Value::String(x) if x == s => Some(smallvec![]),
                 _ => None,
             },
             Pattern::Tuple(_, items) => match v.as_ref() {
@@ -267,14 +270,14 @@ impl<'a, T: FieldElement> Value<'a, T> {
                 );
                 left.chain(right)
                     .zip(items.iter().filter(|&i| !matches!(i, Pattern::Ellipsis(_))))
-                    .try_fold(vec![], |mut vars, (e, p)| {
+                    .try_fold(smallvec![], |mut vars, (e, p)| {
                         Value::try_match_pattern(e, p).map(|v| {
                             vars.extend(v);
                             vars
                         })
                     })
             }
-            Pattern::Variable(_, _) => Some(vec![v.clone()]),
+            Pattern::Variable(_, _) => Some(smallvec![v.clone()]),
             Pattern::Enum(_, name, fields_pattern) => {
                 let Value::Enum(n, data) = v.as_ref() else {
                     panic!()
@@ -285,7 +288,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
                 if let Some(fields) = fields_pattern {
                     Value::try_match_pattern_list(data.as_ref().unwrap(), fields)
                 } else {
-                    Some(vec![])
+                    Some(smallvec![])
                 }
             }
         }
@@ -294,12 +297,12 @@ impl<'a, T: FieldElement> Value<'a, T> {
     fn try_match_pattern_list<'b>(
         values: &[Arc<Value<'b, T>>],
         patterns: &[Pattern],
-    ) -> Option<Vec<Arc<Value<'b, T>>>> {
+    ) -> Option<SmallVec<[Arc<Value<'b, T>>; SMALL_VEC_LEN]>> {
         assert_eq!(values.len(), patterns.len());
         patterns
             .iter()
             .zip(values.iter())
-            .try_fold(vec![], |mut vars, (p, e)| {
+            .try_fold(smallvec![], |mut vars, (p, e)| {
                 Value::try_match_pattern(e, p).map(|v| {
                     vars.extend(v);
                     vars
