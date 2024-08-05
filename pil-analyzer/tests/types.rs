@@ -643,7 +643,7 @@ fn duplicated_trait_generic() {
 }
 
 #[test]
-#[should_panic = "Trait Add has 2 type vars, but implementation has 1"]
+#[should_panic = "Trait Add has 2 type parameters, but implementation has 1"]
 fn impl_with_diff_length() {
     let input = "
     trait Add<T, Q> {

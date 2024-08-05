@@ -94,7 +94,7 @@ fn validate_impl_definitions(
 
 /// Ensures that there are no overlapping trait implementations in the given `implementations` map.
 ///
-/// This function iterates through all the trait implementations comparing them with each other and checks that
+/// This function iterates through all the trait implementations comparing them with each other and ensure that
 /// there are no traits with overlapping type variables.
 fn ensure_unique_impls(implementations: &mut [TraitImplementation<Expression>]) {
     for i in 0..implementations.len() {
@@ -127,8 +127,8 @@ fn ensure_unique_impls(implementations: &mut [TraitImplementation<Expression>]) 
 
 fn unify_traits_types(ty1: TypeScheme, ty2: TypeScheme) -> Result<(), String> {
     let mut type_var_manager = TypeVarManager::new();
-    let instantiated_ty1 = type_var_manager.instantiate_scheme(ty1);
-    let instantiated_ty2 = type_var_manager.instantiate_scheme(ty2);
+    let instantiated_ty1 = type_var_manager.instantiate_scheme(ty1).0;
+    let instantiated_ty2 = type_var_manager.instantiate_scheme(ty2).0;
 
     match Unifier::default().unify_types(instantiated_ty1.clone(), instantiated_ty2.clone()) {
         Ok(_) => Err(format!(
@@ -147,16 +147,30 @@ impl TypeVarManager {
         Self { last_type_var: 0 }
     }
 
-    pub fn instantiate_scheme(&mut self, scheme: TypeScheme) -> Type {
-        let mut substitutions = HashMap::new();
-        for var in scheme.vars.vars() {
-            substitutions.insert(var.clone(), self.fresh_type_var());
-        }
-        scheme.ty.substitute_type_vars_to(&substitutions)
+    fn instantiate_scheme(&mut self, scheme: TypeScheme) -> (Type, Vec<Type>) {
+        let mut ty = scheme.ty;
+        let vars = scheme
+            .vars
+            .bounds()
+            .map(|(_, _bounds)| {
+                let new_var = self.new_type_var();
+                //for b in bounds {
+                //    self.unifier.ensure_bound(&new_var, b.clone()).unwrap();
+                //}
+                new_var
+            })
+            .collect::<Vec<_>>();
+        let substitutions = scheme.vars.vars().cloned().zip(vars.clone()).collect();
+        ty.substitute_type_vars(&substitutions);
+        (ty, vars)
     }
 
-    pub fn fresh_type_var(&mut self) -> Type {
+    fn new_type_var_name(&mut self) -> String {
         self.last_type_var += 1;
-        Type::TypeVar(format!("T{}", self.last_type_var))
+        format!("T{}", self.last_type_var)
+    }
+
+    fn new_type_var(&mut self) -> Type {
+        Type::TypeVar(self.new_type_var_name())
     }
 }
