@@ -157,6 +157,18 @@ fn bus_permutation_via_challenges_ext_bn() {
 }
 
 #[test]
+fn bus_lookup_via_challenges_bn() {
+    let f = "std/bus_lookup_via_challenges.asm";
+    test_halo2(make_simple_prepared_pipeline(f));
+}
+
+#[test]
+fn bus_lookup_via_challenges_ext_bn() {
+    let f = "std/bus_lookup_via_challenges_ext.asm";
+    test_halo2(make_simple_prepared_pipeline(f));
+}
+
+#[test]
 fn write_once_memory_test() {
     let f = "std/write_once_memory_test.asm";
     regular_test(f, &[]);
@@ -376,12 +388,13 @@ mod reparse {
     /// but these tests panic if the field is too small. This is *probably*
     /// fine, because all of these tests have a similar variant that does
     /// run on Goldilocks.
-    const BLACKLIST: [&str; 5] = [
+    const BLACKLIST: [&str; 6] = [
         "std/bus_permutation_via_challenges.asm",
         "std/permutation_via_challenges.asm",
         "std/lookup_via_challenges.asm",
         "std/poseidon_bn254_test.asm",
         "std/split_bn254_test.asm",
+        "std/bus_lookup_via_challenges.asm",
     ];
 
     fn run_reparse_test(file: &str) {
