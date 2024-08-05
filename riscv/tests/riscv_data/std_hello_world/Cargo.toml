@@ -7,10 +7,4 @@ edition = "2021"
 powdr-riscv-syscalls = { path = "../../../../riscv-syscalls" }
 powdr-riscv-runtime = { path = "../../../../riscv-runtime", features = ["std"]}
 
-[profile.release]
-panic = 'abort'
-
-[profile.dev]
-panic = 'abort'
-
 [workspace]

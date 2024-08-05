@@ -15,13 +15,14 @@ use crate::io::write_slice;
 
 #[no_mangle]
 extern "C" fn sys_rand(buf: *mut u32, words: usize) {
+    // This is only used by std to key the hash function of HashMap. Until we
+    // figure a way to make random values available to user programs, let's just
+    // have deterministic HashMaps.
+    const VALUE: u32 = 4;
+
     let slice = unsafe { slice::from_raw_parts_mut(buf, words) };
-
-    // I promise I rolled a fair die and this is the result.
-    const RANDOM: u32 = 4;
-
     for v in slice.iter_mut() {
-        *v = RANDOM;
+        *v = VALUE;
     }
 }
 
