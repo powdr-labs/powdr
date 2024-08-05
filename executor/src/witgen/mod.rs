@@ -221,7 +221,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             // We expect later-stage witness columns to be accumulators for lookup and permutation arguments.
             // These don't behave like normal witness columns (e.g. in a block machine), and they might depend
             // on witness columns of more than one machine.
-            // Therefore, we treat everything as one big machines. Also, we remove lookups and permutations,
+            // Therefore, we treat everything as one big machine. Also, we remove lookups and permutations,
             // as they are assumed to be handled in stage 0.
             let polynomial_identities = identities
                 .iter()
