@@ -1,12 +1,17 @@
 use std::collections::HashSet;
 
-use powdr_ast::analyzed::{AlgebraicReference, PolyID};
+use powdr_ast::analyzed::PolyID;
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::Identity;
 
 use super::{
-    affine_expression::AlgebraicVariable, data_structures::finalizable_data::FinalizableData, processor::{OuterQuery, Processor}, rows::{RowIndex, UnknownStrategy}, sequence_iterator::{Action, ProcessingSequenceIterator, SequenceStep}, EvalError, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback
+    affine_expression::AlgebraicVariable,
+    data_structures::finalizable_data::FinalizableData,
+    processor::{OuterQuery, Processor},
+    rows::{RowIndex, UnknownStrategy},
+    sequence_iterator::{Action, ProcessingSequenceIterator, SequenceStep},
+    EvalError, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
 };
 
 /// A basic processor that knows how to determine a unique satisfying witness

@@ -29,8 +29,8 @@ pub enum AlgebraicVariable<'a> {
 impl Display for AlgebraicVariable<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AlgebraicVariable::Reference(r) => write!(f, "{}", r),
-            AlgebraicVariable::Public(p) => write!(f, "{}", p),
+            AlgebraicVariable::Reference(r) => write!(f, "{r}"),
+            AlgebraicVariable::Public(p) => write!(f, "{p}"),
         }
     }
 }
@@ -428,7 +428,7 @@ where
 
 impl<K, T> std::ops::Add for AffineExpression<K, T>
 where
-    K: Ord,
+    K: Copy + Ord,
     T: FieldElement,
 {
     type Output = Self;
@@ -551,7 +551,7 @@ where
 
 impl<K, T> std::ops::Sub for AffineExpression<K, T>
 where
-    K: Ord,
+    K: Copy + Ord,
     T: FieldElement,
 {
     type Output = Self;
@@ -633,7 +633,7 @@ mod test {
 
     fn convert<U, T>(input: Vec<U>) -> Vec<(usize, T)>
     where
-        U: Into<T>,
+        U: Copy + Into<T>,
         T: FieldElement,
     {
         input.iter().map(|x| (*x).into()).enumerate().collect()

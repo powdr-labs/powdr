@@ -6,6 +6,7 @@ use powdr_ast::parsed::types::Type;
 use powdr_number::{BigInt, DegreeType, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Definitions, EvalError, SymbolLookup, Value};
 
+use super::affine_expression::AlgebraicVariable;
 use super::{rows::RowPair, Constraint, EvalResult, EvalValue, FixedData, IncompleteCause};
 
 /// Computes value updates that result from a query.
@@ -72,7 +73,10 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
             if let Some(value) =
                 (self.query_callback)(&query_str).map_err(super::EvalError::ProverQueryError)?
             {
-                EvalValue::complete(vec![(poly, Constraint::Assignment(value))])
+                EvalValue::complete(vec![(
+                    AlgebraicVariable::Reference(poly),
+                    Constraint::Assignment(value),
+                )])
             } else {
                 EvalValue::incomplete(IncompleteCause::NoQueryAnswer(
                     query_str,
@@ -149,7 +153,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
         Ok(Value::FieldElement(match poly_ref.poly_id.ptype {
             PolynomialType::Committed | PolynomialType::Intermediate => self
                 .rows
-                .get_value(poly_ref)
+                .get_value(AlgebraicVariable::Reference(poly_ref))
                 .ok_or(EvalError::DataNotAvailable)?,
             PolynomialType::Constant => {
                 let values = self.fixed_data.fixed_cols[&poly_ref.poly_id].values(self.size);

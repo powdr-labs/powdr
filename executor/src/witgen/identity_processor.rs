@@ -5,7 +5,7 @@ use std::{
 
 use itertools::{Either, Itertools};
 use lazy_static::lazy_static;
-use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, IdentityKind};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, IdentityKind};
 use powdr_number::FieldElement;
 
 use crate::{

@@ -1,4 +1,4 @@
-use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, PolyID};
 use powdr_number::{DegreeType, FieldElement};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -8,6 +8,7 @@ use crate::witgen::processor::OuterQuery;
 use crate::witgen::EvalValue;
 use crate::Identity;
 
+use super::affine_expression::AlgebraicVariable;
 use super::block_processor::BlockProcessor;
 use super::machines::{FixedLookup, Machine};
 use super::rows::{Row, RowIndex, RowPair};
@@ -16,7 +17,7 @@ use super::vm_processor::VmProcessor;
 use super::{EvalResult, FixedData, MutableState, QueryCallback};
 
 struct ProcessResult<'a, T: FieldElement> {
-    eval_value: EvalValue<&'a AlgebraicReference, T>,
+    eval_value: EvalValue<AlgebraicVariable<'a>, T>,
     block: FinalizableData<T>,
 }
 

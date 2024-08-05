@@ -1,6 +1,6 @@
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicReference, IdentityKind, PolyID};
+use powdr_ast::analyzed::{IdentityKind, PolyID};
 use powdr_ast::indent;
 use powdr_number::{DegreeType, FieldElement};
 use std::cmp::max;
@@ -11,6 +11,7 @@ use crate::witgen::identity_processor::{self};
 use crate::witgen::IncompleteCause;
 use crate::Identity;
 
+use super::affine_expression::AlgebraicVariable;
 use super::data_structures::finalizable_data::FinalizableData;
 use super::processor::{OuterQuery, Processor};
 
@@ -118,7 +119,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
 
     /// Starting out with a single row (at a given offset), iteratively append rows
     /// until we have exhausted the rows or the latch expression (if available) evaluates to 1.
-    pub fn run(&mut self, is_main_run: bool) -> EvalValue<&'a AlgebraicReference, T> {
+    pub fn run(&mut self, is_main_run: bool) -> EvalValue<AlgebraicVariable<'a>, T> {
         assert!(self.processor.len() == 1);
 
         if is_main_run {
@@ -249,7 +250,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         }
     }
 
-    fn compute_row(&mut self, row_index: DegreeType) -> Constraints<&'a AlgebraicReference, T> {
+    fn compute_row(&mut self, row_index: DegreeType) -> Constraints<AlgebraicVariable<'a>, T> {
         log::trace!(
             "===== Starting to process row: {}",
             row_index + self.row_offset
@@ -319,7 +320,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         &mut self,
         row_index: DegreeType,
         identities: &mut CompletableIdentities<'a, T>,
-    ) -> Result<Constraints<&'a AlgebraicReference, T>, Vec<EvalError<T>>> {
+    ) -> Result<Constraints<AlgebraicVariable<'a>, T>, Vec<EvalError<T>>> {
         let mut outer_assignments = vec![];
 
         // The PC lookup fills most of the columns and enables hints thus it should be run first.
