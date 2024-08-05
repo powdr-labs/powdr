@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use powdr_ast::{
     analyzed::{Expression, FunctionValueDefinition, Symbol},
     parsed::{
-        types::{TupleType, Type},
+        types::{TupleType, Type, TypeScheme},
         TraitDeclaration, TraitImplementation,
     },
 };
@@ -94,7 +94,7 @@ fn validate_impl_definitions(
 fn ensure_unique_impls(implementations: &[TraitImplementation<Expression>]) {
     for (i, impl1) in implementations.iter().enumerate() {
         for impl2 in implementations.iter().skip(i + 1) {
-            unify_traits_types(impl1.type_scheme.ty.clone(), impl2.type_scheme.ty.clone())
+            unify_traits_types(impl1.type_scheme.clone(), impl2.type_scheme.clone())
                 .map_err(|err| {
                     impl1
                         .source_ref
@@ -105,9 +105,38 @@ fn ensure_unique_impls(implementations: &[TraitImplementation<Expression>]) {
     }
 }
 
-fn unify_traits_types(ty1: Type, ty2: Type) -> Result<(), String> {
-    match Unifier::default().unify_types(ty1.clone(), ty2.clone()) {
-        Ok(_) => Err(format!("Types {ty1} and {ty2} overlap")),
+fn unify_traits_types(ty1: TypeScheme, ty2: TypeScheme) -> Result<(), String> {
+    let mut type_var_manager = TypeVarManager::new();
+    let instantiated_ty1 = type_var_manager.instantiate_scheme(ty1);
+    let instantiated_ty2 = type_var_manager.instantiate_scheme(ty2);
+
+    match Unifier::default().unify_types(instantiated_ty1.clone(), instantiated_ty2.clone()) {
+        Ok(_) => Err(format!(
+            "Types {instantiated_ty1} and {instantiated_ty2} overlap"
+        )),
         Err(_) => Ok(()),
+    }
+}
+
+pub struct TypeVarManager {
+    counter: usize,
+}
+
+impl TypeVarManager {
+    pub fn new() -> Self {
+        Self { counter: 0 }
+    }
+
+    pub fn instantiate_scheme(&mut self, scheme: TypeScheme) -> Type {
+        let mut substitutions = HashMap::new();
+        for var in scheme.vars.vars() {
+            substitutions.insert(var.clone(), self.fresh_type_var());
+        }
+        scheme.ty.substitute_type_vars_to(&substitutions)
+    }
+
+    pub fn fresh_type_var(&mut self) -> Type {
+        self.counter += 1;
+        Type::TypeVar(format!("T{}", self.counter))
     }
 }
