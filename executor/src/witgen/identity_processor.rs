@@ -3,7 +3,6 @@ use std::{
     sync::Mutex,
 };
 
-use itertools::{Either, Itertools};
 use lazy_static::lazy_static;
 use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, IdentityKind};
 use powdr_number::FieldElement;
@@ -87,7 +86,9 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
                     machines: others,
                     query_callback,
                 };
-                current.take_witness_col_values(&mut mutable_state).into_iter()
+                current
+                    .take_witness_col_values(&mut mutable_state)
+                    .into_iter()
             })
             .collect()
     }
@@ -172,19 +173,6 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
             if let Some(status) = self.handle_left_selector(left_selector, rows) {
                 return Ok(status);
             }
-        }
-
-        let left = identity.left.expressions.iter().map(|e| rows.evaluate(e));
-
-        // Fail if the LHS has an error.
-        let (_left, errors): (Vec<_>, Vec<_>) = left.partition_map(|x| match x {
-            Ok(x) => Either::Left(x),
-            Err(x) => Either::Right(x),
-        });
-        if !errors.is_empty() {
-            return Ok(EvalValue::incomplete(
-                errors.into_iter().reduce(|x, y| x.combine(y)).unwrap(),
-            ));
         }
 
         self.mutable_state
