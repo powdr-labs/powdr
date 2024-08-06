@@ -923,7 +923,7 @@ impl TypeChecker {
     }
 
     fn substitute(&self, ty: &mut Type) {
-        ty.substitute_type_vars(self.unifier.substitutions());
+        self.unifier.substitute(ty);
     }
 
     /// Instantiates a type scheme by creating new type variables for the quantified
