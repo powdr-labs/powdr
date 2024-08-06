@@ -593,7 +593,7 @@ impl Children<Expression> for FunctionValueDefinition {
             FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ }) => {
                 Box::new(iter::once(e))
             }
-            FunctionValueDefinition::Array(e) => Box::new(e.children()),
+            FunctionValueDefinition::Array(e) => e.children(),
             FunctionValueDefinition::TypeDeclaration(enum_declaration) => {
                 enum_declaration.children()
             }
@@ -608,7 +608,7 @@ impl Children<Expression> for FunctionValueDefinition {
             FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ }) => {
                 Box::new(iter::once(e))
             }
-            FunctionValueDefinition::Array(e) => Box::new(e.children_mut()),
+            FunctionValueDefinition::Array(e) => e.children_mut(),
             FunctionValueDefinition::TypeDeclaration(enum_declaration) => {
                 enum_declaration.children_mut()
             }

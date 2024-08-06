@@ -1240,7 +1240,7 @@ impl ArrayExpression {
 
 impl<Ref> ArrayExpression<Ref> {
     /// solve for `*`
-    pub fn solve(&self, degree: DegreeType) -> DegreeType {
+    fn solve(&self, degree: DegreeType) -> DegreeType {
         assert!(
             self.number_of_repetitions() <= 1,
             "`*` can be used only once in rhs of array definition"
@@ -1310,6 +1310,14 @@ impl<'a> RepeatedArray<'a> {
 impl ArrayExpression<Reference> {
     pub fn to_repeated_arrays<'a>(
         &'a self,
+        degree: DegreeType,
+    ) -> Box<dyn Iterator<Item = RepeatedArray<'a>> + 'a> {
+        let size_of_repeated_part = self.solve(degree);
+        self.to_repeated_arrays_rec(size_of_repeated_part)
+    }
+
+    fn to_repeated_arrays_rec<'a>(
+        &'a self,
         size_of_repeated_part: DegreeType,
     ) -> Box<dyn Iterator<Item = RepeatedArray<'a>> + 'a> {
         match self {
@@ -1320,8 +1328,8 @@ impl ArrayExpression<Reference> {
                 Box::new(once(RepeatedArray::new(pattern, size_of_repeated_part)))
             }
             ArrayExpression::Concat(left, right) => Box::new(
-                left.to_repeated_arrays(size_of_repeated_part)
-                    .chain(right.to_repeated_arrays(size_of_repeated_part)),
+                left.to_repeated_arrays_rec(size_of_repeated_part)
+                    .chain(right.to_repeated_arrays_rec(size_of_repeated_part)),
             ),
         }
     }
