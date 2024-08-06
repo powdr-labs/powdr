@@ -149,11 +149,6 @@ impl<E: Clone> Type<E> {
                 .for_each(|t| t.substitute_type_vars(substitutions)),
         }
     }
-
-    pub fn substitute_type_vars_to(mut self, substitutions: &HashMap<String, Type<E>>) -> Self {
-        self.substitute_type_vars(substitutions);
-        self
-    }
 }
 
 impl<E> Type<E> {
