@@ -179,7 +179,6 @@ impl<F: FieldElement> Display for Elem<F> {
 }
 
 pub type MemoryState = HashMap<u32, u32>;
-pub type RegisterMemoryState<F> = HashMap<u32, Elem<F>>;
 
 #[derive(Debug)]
 pub enum MemOperationKind {
@@ -269,6 +268,12 @@ impl<'a, F: FieldElement> TraceReplay<'a, F> {
     }
 }
 
+#[derive(Default)]
+pub struct RegisterMemory<F: FieldElement> {
+    pub last: HashMap<u32, Elem<F>>,
+    pub second_last: HashMap<u32, Elem<F>>,
+}
+
 mod builder {
     use std::{cmp, collections::HashMap};
 
@@ -277,7 +282,7 @@ mod builder {
 
     use crate::{
         Elem, ExecMode, ExecutionTrace, MemOperation, MemOperationKind, MemoryState, RegWrite,
-        RegisterMemoryState, PC_INITIAL_VAL,
+        RegisterMemory, PC_INITIAL_VAL,
     };
 
     fn register_names(main: &Machine) -> Vec<&str> {
@@ -319,8 +324,8 @@ mod builder {
         /// Current memory.
         mem: HashMap<u32, u32>,
 
-        /// Separate register memory.
-        reg_mem: HashMap<u32, Elem<F>>,
+        /// Separate register memory, last and second last.
+        reg_mem: RegisterMemory<F>,
 
         /// The execution mode we running.
         /// Fast: do not save the register's trace and memory accesses.
@@ -341,7 +346,7 @@ mod builder {
             batch_to_line_map: &'b [u32],
             max_rows_len: usize,
             mode: ExecMode,
-        ) -> Result<Self, Box<(ExecutionTrace<F>, MemoryState, RegisterMemoryState<F>)>> {
+        ) -> Result<Self, Box<(ExecutionTrace<F>, MemoryState, RegisterMemory<F>)>> {
             let reg_map = register_names(main)
                 .into_iter()
                 .enumerate()
@@ -491,7 +496,7 @@ mod builder {
 
         pub(crate) fn set_reg_mem(&mut self, addr: u32, val: Elem<F>) {
             if addr != 0 {
-                self.reg_mem.insert(addr, val);
+                self.reg_mem.last.insert(addr, val);
             }
         }
 
@@ -500,11 +505,15 @@ mod builder {
             if addr == 0 {
                 zero
             } else {
-                *self.reg_mem.get(&addr).unwrap_or(&zero)
+                *self.reg_mem.last.get(&addr).unwrap_or(&zero)
             }
         }
 
-        pub fn finish(self) -> (ExecutionTrace<F>, MemoryState, RegisterMemoryState<F>) {
+        pub(crate) fn backup_reg_mem(&mut self) {
+            self.reg_mem.second_last = self.reg_mem.last.clone();
+        }
+
+        pub fn finish(self) -> (ExecutionTrace<F>, MemoryState, RegisterMemory<F>) {
             (self.trace, self.mem, self.reg_mem)
         }
 
@@ -656,6 +665,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             .iter()
             .map(|expr| self.eval_expression(expr)[0])
             .collect::<Vec<_>>();
+
+        self.proc.backup_reg_mem();
 
         match name {
             "set_reg" => {
@@ -854,6 +865,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let val2 = self.proc.get_reg_mem(args[1].u());
                 let offset = args[2];
                 let write_reg = args[3].u();
+
                 let val = val1.add(&val2).add(&offset);
                 // don't use .u() here: we are deliberately discarding the
                 // higher bits
@@ -1300,7 +1312,7 @@ pub fn execute_ast<T: FieldElement>(
     max_steps_to_execute: usize,
     mode: ExecMode,
     profiling: Option<ProfilerOptions>,
-) -> (ExecutionTrace<T>, MemoryState, RegisterMemoryState<T>) {
+) -> (ExecutionTrace<T>, MemoryState, RegisterMemory<T>) {
     let main_machine = get_main_machine(program);
     let PreprocessedMain {
         statements,
@@ -1452,7 +1464,7 @@ pub fn execute<F: FieldElement>(
     bootloader_inputs: &[Elem<F>],
     mode: ExecMode,
     profiling: Option<ProfilerOptions>,
-) -> (ExecutionTrace<F>, MemoryState, RegisterMemoryState<F>) {
+) -> (ExecutionTrace<F>, MemoryState, RegisterMemory<F>) {
     log::info!("Parsing...");
     let parsed = powdr_parser::parse_asm(None, asm_source).unwrap();
     log::info!("Resolving imports...");

@@ -345,7 +345,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             (
                 transposed_trace(&trace),
                 memory_snapshot_update,
-                register_memory_snapshot,
+                register_memory_snapshot.second_last,
             )
         };
         let mut memory_updates_by_page =
