@@ -247,7 +247,7 @@ impl Display for SymbolPath {
 /// An absolute symbol path is a resolved SymbolPath,
 /// which means it has to start with `::` and it cannot contain
 /// the word `super`.
-#[derive(Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
+#[derive(Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Hash)]
 pub struct AbsoluteSymbolPath {
     /// Contains the parts after the initial `::`.
     parts: Vec<String>,
