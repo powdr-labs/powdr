@@ -31,8 +31,11 @@ use crate::{
 pub fn infer_types(
     definitions: HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
     expressions: &mut [(&mut Expression, ExpectedType)],
+    unifier: Unifier,
 ) -> Result<Vec<(String, Type)>, Vec<Error>> {
-    TypeChecker::new().infer_types(definitions, expressions)
+    TypeChecker::new()
+        .with_unifier(unifier)
+        .infer_types(definitions, expressions)
 }
 
 /// A type to expect and a flag that says if arrays of that type are also fine.
@@ -65,8 +68,6 @@ struct TypeChecker {
     /// Current mapping of declared type vars to type. Reset before checking each definition.
     declared_type_vars: HashMap<String, Type>,
     unifier: Unifier,
-    /// Last used type variable index.
-    last_type_var: usize,
     /// Keeps track of the kind of lambda we are currently type-checking.
     lambda_kind: FunctionKind,
 }
@@ -78,9 +79,13 @@ impl TypeChecker {
             declared_types: Default::default(),
             declared_type_vars: Default::default(),
             unifier: Default::default(),
-            last_type_var: Default::default(),
             lambda_kind: FunctionKind::Constr,
         }
+    }
+
+    pub fn with_unifier(mut self, unifier: Unifier) -> Self {
+        self.unifier = unifier;
+        self
     }
 
     /// Infers and checks types for all provided definitions and expressions and
@@ -931,21 +936,7 @@ impl TypeChecker {
     /// Returns the new type and a vector of the type variables used for those
     /// declared in the scheme.
     fn instantiate_scheme(&mut self, scheme: TypeScheme) -> (Type, Vec<Type>) {
-        let mut ty = scheme.ty;
-        let vars = scheme
-            .vars
-            .bounds()
-            .map(|(_, bounds)| {
-                let new_var = self.new_type_var();
-                for b in bounds {
-                    self.unifier.ensure_bound(&new_var, b.clone()).unwrap();
-                }
-                new_var
-            })
-            .collect::<Vec<_>>();
-        let substitutions = scheme.vars.vars().cloned().zip(vars.clone()).collect();
-        ty.substitute_type_vars(&substitutions);
-        (ty, vars)
+        self.unifier.instantiate_scheme(scheme)
     }
 
     fn format_type_with_bounds(&self, ty: Type) -> String {
@@ -961,12 +952,11 @@ impl TypeChecker {
     }
 
     fn new_type_var_name(&mut self) -> String {
-        self.last_type_var += 1;
-        format!("T{}", self.last_type_var)
+        self.unifier.new_type_var_name()
     }
 
     fn new_type_var(&mut self) -> Type {
-        Type::TypeVar(self.new_type_var_name())
+        Type::TypeVar(self.unifier.new_type_var_name())
     }
 
     /// Creates a type scheme out of a type by making all unsubstituted
