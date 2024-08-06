@@ -124,7 +124,6 @@ impl Unifier {
 
     fn add_substitution(&mut self, type_var: String, mut ty: Type) -> Result<(), String> {
         self.substitute(&mut ty);
-        //        println!("Adding substitution: {type_var} -> {ty}");
         if ty.contains_type_var(&type_var) {
             return Err(format!(
                 "Cannot unify types {ty} and {type_var}: They depend on each other"
