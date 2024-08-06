@@ -64,9 +64,14 @@ impl<T: Display> Display for Analyzed<T> {
                         }
                         let (name, _) = update_namespace(name, symbol.degree, f)?;
                         match symbol.kind {
-                            SymbolKind::Poly(_) => {
-                                writeln_indented(f, format_poly(&name, symbol, definition))?;
+                            SymbolKind::Poly(PolynomialType::Constant) => {
+                                writeln_indented(f, format_fixed_column(&name, symbol, definition))?
                             }
+                            SymbolKind::Poly(PolynomialType::Committed) => writeln_indented(
+                                f,
+                                format_witness_column(&name, symbol, definition),
+                            )?,
+                            SymbolKind::Poly(PolynomialType::Intermediate) => unreachable!(),
                             SymbolKind::Other() => {
                                 assert!(symbol.stage.is_none());
                                 match definition {
@@ -139,58 +144,68 @@ impl<T: Display> Display for Analyzed<T> {
     }
 }
 
-fn format_poly(
+fn format_fixed_column(
     name: &str,
     symbol: &Symbol,
     definition: &Option<FunctionValueDefinition>,
 ) -> String {
-    let SymbolKind::Poly(poly_type) = symbol.kind else {
-        panic!()
-    };
-    let kind = match &poly_type {
-        PolynomialType::Committed => "witness ",
-        PolynomialType::Constant => "fixed ",
-        PolynomialType::Intermediate => panic!(),
-    };
+    assert_eq!(symbol.kind, SymbolKind::Poly(PolynomialType::Constant));
+    let stage = symbol
+        .stage
+        .map(|s| format!("stage({s}) "))
+        .unwrap_or_default();
+    if symbol.length.is_some() {
+        // Do not print an array size, because we will do it as part of the type.
+        assert!(matches!(
+            definition,
+            None | Some(FunctionValueDefinition::Expression(TypedExpression {
+                e: _,
+                type_scheme: Some(_)
+            }))
+        ));
+    }
+    if let Some(TypedExpression { type_scheme, e }) = try_to_simple_expression(definition) {
+        assert!(symbol.stage.is_none());
+        format!(
+            "let{} = {e};",
+            format_type_scheme_around_name(&name, type_scheme)
+        )
+    } else {
+        // TODO I think this is the only use for Display for FunctionValueDefinition now, we could simplify it?
+        let value = definition
+            .as_ref()
+            .map(ToString::to_string)
+            .unwrap_or_default();
+        // TODO if this is a witness column and value is not a direct lambda, use set_hint.
+        format!("col fixed {stage}{name}{value};",)
+    }
+}
+
+fn format_witness_column(
+    name: &str,
+    symbol: &Symbol,
+    definition: &Option<FunctionValueDefinition>,
+) -> String {
+    assert_eq!(symbol.kind, SymbolKind::Poly(PolynomialType::Committed));
     let stage = symbol
         .stage
         .map(|s| format!("stage({s}) "))
         .unwrap_or_default();
     let length = symbol
         .length
-        .and_then(|length| {
-            if let PolynomialType::Committed = poly_type {
-                assert!(definition.is_none());
-                Some(format!("[{length}]"))
-            } else {
-                // Do not print an array size, because we will do it as part of the type.
-                assert!(matches!(
-                    definition,
-                    None | Some(FunctionValueDefinition::Expression(TypedExpression {
-                        e: _,
-                        type_scheme: Some(_)
-                    }))
-                ));
-                None
-            }
+        .map(|length| format!("[{length}]"))
+        .unwrap_or_default();
+    let hint = definition
+        .as_ref()
+        .map(|value| {
+            assert!(symbol.length.is_none());
+            let FunctionValueDefinition::Expression(TypedExpression { e, .. }) = value else {
+                panic!()
+            };
+            format!("\nstd::prover::set_hint({name}, {e});")
         })
         .unwrap_or_default();
-    if let Some(TypedExpression { type_scheme, e }) =
-        try_to_simple_expression(poly_type, definition)
-    {
-        assert!(symbol.stage.is_none());
-        assert!(length.is_empty());
-        format!(
-            "let{} = {e};",
-            format_type_scheme_around_name(&name, type_scheme)
-        )
-    } else {
-        let value = definition
-            .as_ref()
-            .map(ToString::to_string)
-            .unwrap_or_default();
-        format!("col {kind}{stage}{name}{length}{value};",)
-    }
+    format!("col witness {stage}{name}{length};{hint}")
 }
 
 fn format_public_declaration(name: &str, decl: &PublicDeclaration) -> String {
@@ -236,12 +251,8 @@ impl Display for FunctionValueDefinition {
 }
 
 fn try_to_simple_expression(
-    poly_type: PolynomialType,
     definition: &Option<FunctionValueDefinition>,
 ) -> Option<&TypedExpression<Reference, u64>> {
-    if !matches!(poly_type, PolynomialType::Constant) {
-        return None;
-    }
     match definition.as_ref()? {
         FunctionValueDefinition::Array(_) => None,
         FunctionValueDefinition::Expression(TypedExpression {
