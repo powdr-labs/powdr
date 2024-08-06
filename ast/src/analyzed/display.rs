@@ -147,7 +147,7 @@ fn format_poly(
     let SymbolKind::Poly(poly_type) = symbol.kind else {
         panic!()
     };
-    let kind = match &poly_type {
+    let col_kind = match &poly_type {
         PolynomialType::Committed => "witness ",
         PolynomialType::Constant => "fixed ",
         PolynomialType::Intermediate => panic!(),
@@ -184,12 +184,45 @@ fn format_poly(
             "let{} = {e};",
             format_type_scheme_around_name(&name, type_scheme)
         )
+    } else if poly_type == PolynomialType::Committed {
+        if let Some(value) = definition {
+            assert!(symbol.length.is_none());
+            let FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ }) = value
+            else {
+                panic!()
+            };
+            match e {
+                Expression::LambdaExpression(_, LambdaExpression { kind, params, body })
+                    if params.len() == 1 && *kind == FunctionKind::Query =>
+                {
+                    let body = if matches!(body.as_ref(), Expression::BlockExpression(_, _)) {
+                        format!("{body}")
+                    } else {
+                        format!("{{ {body} }}")
+                    };
+
+                    format!(
+                        "col {col_kind}{stage}{name}({}) query {body};",
+                        params.iter().format(", ")
+                    )
+                }
+                _ => {
+                    format!(
+                    "col {col_kind}{stage}{name}{length}{value};\nstd::prover::set_hint({name}, {e});",
+                )
+                }
+            }
+        } else {
+            format!("col {col_kind}{stage}{name}{length};",)
+        }
     } else {
+        // TODO I think this is the only use for Display for FunctionValueDefinition now, we could simplify it?
         let value = definition
             .as_ref()
             .map(ToString::to_string)
             .unwrap_or_default();
-        format!("col {kind}{stage}{name}{length}{value};",)
+        // TODO if this is a witness column and value is not a direct lambda, use set_hint.
+        format!("col {col_kind}{stage}{name}{length}{value};",)
     }
 }
 
