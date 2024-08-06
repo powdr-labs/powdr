@@ -1,17 +1,11 @@
 use std::collections::{HashMap, HashSet};
 
-use powdr_ast::parsed::{types::Type, visitor::Children};
+use powdr_ast::parsed::{
+    types::{Type, TypeScheme},
+    visitor::Children,
+};
 
 use crate::type_builtins::elementary_type_bounds;
-
-// TODO Optimization ideas:
-// the substitutions are applied a lot.
-// 1) One idea would be to extract a separate substitution map
-// that contains only the newly added substitutions during a unification run. Then we only have to use
-// that smaller map during the recursive substitutions.
-// 2) We could have a wrapper around type that stores which type variables are contained in it.
-// This way we can exit early if we know that all contained type vars are substituted.
-// This might be especially useful inside add_substitution.
 
 #[derive(Default, Clone)]
 pub struct Unifier {
@@ -19,11 +13,17 @@ pub struct Unifier {
     type_var_bounds: HashMap<String, HashSet<String>>,
     /// Substitutions for type variables
     substitutions: HashMap<String, Type>,
+    /// Last used type variable index.
+    last_type_var: usize,
 }
 
 impl Unifier {
-    pub fn substitutions(&self) -> &HashMap<String, Type> {
-        &self.substitutions
+    pub fn new() -> Self {
+        Self {
+            type_var_bounds: HashMap::new(),
+            substitutions: HashMap::new(),
+            last_type_var: 0,
+        }
     }
 
     pub fn type_var_bounds(&self, type_var: &String) -> HashSet<String> {
@@ -34,20 +34,16 @@ impl Unifier {
     }
 
     pub fn ensure_bound(&mut self, ty: &Type, bound: String) -> Result<(), String> {
-        let ty = (if let Type::TypeVar(n) = ty {
-            self.substitutions.get(n)
-        } else {
-            None
-        })
-        .unwrap_or(ty);
+        let mut ty = ty.clone();
+        self.substitute(&mut ty);
 
         match ty {
             Type::TypeVar(n) => {
-                self.add_type_var_bound(n.clone(), bound);
+                self.add_type_var_bound(n, bound);
             }
             Type::Array(_) | Type::Tuple(_) if bound == "ToString" => {
                 // TODO Change this to a proper trait impl later.
-                for c in ty.clone().children().collect::<Vec<_>>() {
+                for c in ty.children().collect::<Vec<_>>() {
                     self.ensure_bound(c, "ToString".to_string())?;
                 }
             }
@@ -56,7 +52,7 @@ impl Unifier {
                 return Err(format!("Type {n} does not satisfy trait {bound}."));
             }
             _ => {
-                let bounds = elementary_type_bounds(ty);
+                let bounds = elementary_type_bounds(&ty);
                 if !bounds.contains(&bound.as_str()) {
                     return Err(format!("Type {ty} does not satisfy trait {bound}."));
                 }
@@ -66,8 +62,8 @@ impl Unifier {
     }
 
     pub fn unify_types(&mut self, mut inner: Type, mut expected: Type) -> Result<(), String> {
-        inner.substitute_type_vars(&self.substitutions);
-        expected.substitute_type_vars(&self.substitutions);
+        self.substitute(&mut inner);
+        self.substitute(&mut expected);
 
         if inner == expected {
             return Ok(());
@@ -120,6 +116,18 @@ impl Unifier {
         }
     }
 
+    /// Recursively applies the current substitutions to the type.
+    pub fn substitute(&self, ty: &mut Type) {
+        if let Type::TypeVar(n) = ty {
+            if let Some(sub) = self.substitutions.get(n) {
+                *ty = sub.clone();
+                self.substitute(ty);
+                return;
+            }
+        }
+        ty.children_mut().for_each(|t| self.substitute(t));
+    }
+
     fn add_type_var_bound(&mut self, type_var: String, bound: String) {
         self.type_var_bounds
             .entry(type_var)
@@ -127,22 +135,46 @@ impl Unifier {
             .insert(bound);
     }
 
-    fn add_substitution(&mut self, type_var: String, ty: Type) -> Result<(), String> {
+    fn add_substitution(&mut self, type_var: String, mut ty: Type) -> Result<(), String> {
+        self.substitute(&mut ty);
         if ty.contains_type_var(&type_var) {
             return Err(format!(
                 "Cannot unify types {ty} and {type_var}: They depend on each other"
             ));
         }
-        let subs = [(type_var.clone(), ty.clone())].into();
 
         for bound in self.type_var_bounds(&type_var) {
             self.ensure_bound(&ty, bound)?;
         }
 
-        self.substitutions
-            .values_mut()
-            .for_each(|t| t.substitute_type_vars(&subs));
         self.substitutions.insert(type_var, ty);
         Ok(())
+    }
+
+    pub fn instantiate_scheme(&mut self, scheme: TypeScheme) -> (Type, Vec<Type>) {
+        let mut ty = scheme.ty;
+        let vars = scheme
+            .vars
+            .bounds()
+            .map(|(_, bounds)| {
+                let new_var = self.new_type_var();
+                for b in bounds {
+                    self.ensure_bound(&new_var, b.clone()).unwrap();
+                }
+                new_var
+            })
+            .collect::<Vec<_>>();
+        let substitutions = scheme.vars.vars().cloned().zip(vars.clone()).collect();
+        ty.substitute_type_vars(&substitutions);
+        (ty, vars)
+    }
+
+    pub fn new_type_var_name(&mut self) -> String {
+        self.last_type_var += 1;
+        format!("T{}", self.last_type_var)
+    }
+
+    fn new_type_var(&mut self) -> Type {
+        Type::TypeVar(self.new_type_var_name())
     }
 }
