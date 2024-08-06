@@ -620,8 +620,7 @@ fn load_data_section(mut addr: u32, data: &[u8], data_map: &mut BTreeMap<u32, Da
 
 enum UnimpOrInstruction {
     Unimp16,
-    /// I left an Unimp32 here just in case we need it in the future.
-    _Unimp32,
+    Unimp32,
     Instruction(Ins),
 }
 
@@ -629,7 +628,7 @@ impl UnimpOrInstruction {
     fn len(&self) -> u32 {
         match self {
             UnimpOrInstruction::Unimp16 => 2,
-            UnimpOrInstruction::_Unimp32 => 4,
+            UnimpOrInstruction::Unimp32 => 4,
             UnimpOrInstruction::Instruction(ins) => match ins.extension {
                 Extensions::C => 2,
                 _ => 4,
@@ -670,11 +669,13 @@ impl Default for HighLevelArgs {
     }
 }
 
+#[derive(Debug)]
 struct Location {
     address: u32,
     size: u32,
 }
 
+#[derive(Debug)]
 struct HighLevelInsn {
     loc: Location,
     op: &'static str,
@@ -1082,9 +1083,20 @@ impl Iterator for RiscVInstructionIterator<'_> {
                 )
             });
 
+            // When C extension is disabled, both LLVM and GNU binutils uses the
+            // privileged instruction CSRRW to represent the `unimp` mnemonic.
+            // https://groups.google.com/a/groups.riscv.org/g/sw-dev/c/Xu6UmcIAKIk/m/piJEHdBlAAAJ
+            //
+            // We must handle this case here.
+            let insn = if matches!(insn.opc, Op::CSRRW) {
+                UnimpOrInstruction::Unimp32
+            } else {
+                UnimpOrInstruction::Instruction(insn)
+            };
+
             maybe_insn = MaybeInstruction {
                 address: self.curr_address,
-                insn: UnimpOrInstruction::Instruction(insn),
+                insn,
             };
         } else {
             // 16 bits

@@ -276,14 +276,15 @@ impl TypeChecker {
                 });
                 self.expect_type_allow_fe_or_int(&arr, value, &return_type)
             }
-            Type::Array(ArrayType {
-                base,
-                length: Some(_),
-            }) if base.as_ref() == &Type::Expr => {
+            Type::Inter => {
+                // Values of intermediate columns have type `expr`
+                self.expect_type(&Type::Expr, value)
+            }
+            Type::Array(ArrayType { base, length: _ }) if base.as_ref() == &Type::Inter => {
                 // An array of intermediate columns with fixed length. We ignore the length.
                 // The condenser will have to check the actual length.
                 let arr = Type::Array(ArrayType {
-                    base: base.clone(),
+                    base: Type::Expr.into(),
                     length: None,
                 });
                 self.expect_type(&arr, value)
@@ -927,7 +928,7 @@ impl TypeChecker {
     }
 
     fn substitute(&self, ty: &mut Type) {
-        ty.substitute_type_vars(self.unifier.substitutions());
+        self.unifier.substitute(ty);
     }
 
     /// Instantiates a type scheme by creating new type variables for the quantified

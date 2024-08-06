@@ -925,6 +925,7 @@ impl<E: Display> Display for Type<E> {
             Type::Fe => write!(f, "fe"),
             Type::String => write!(f, "string"),
             Type::Col => write!(f, "col"),
+            Type::Inter => write!(f, "inter"),
             Type::Expr => write!(f, "expr"),
             Type::Array(array) => write!(f, "{array}"),
             Type::Tuple(tuple) => write!(f, "{tuple}"),

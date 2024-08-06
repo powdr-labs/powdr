@@ -118,7 +118,7 @@ fn fe_slice_to_string<F: FieldElement>(fe: &[F]) -> Vec<String> {
 
 impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<T> {
     fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
-        let proof: Halo2Proof = serde_json::from_slice(proof).unwrap();
+        let proof: Halo2Proof = bincode::deserialize(proof).unwrap();
         // TODO should do a verification refactoring making it a 1d vec
         assert!(instances.len() == 1);
         if proof.publics != fe_slice_to_string(&instances[0]) {
@@ -146,7 +146,7 @@ impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<T> {
             ProofType::SnarkSingle => self.prove_snark_single(witness, witgen_callback),
             ProofType::SnarkAggr => match prev_proof {
                 Some(proof) => {
-                    let proof: Halo2Proof = serde_json::from_slice(&proof).unwrap();
+                    let proof: Halo2Proof = bincode::deserialize(&proof).unwrap();
                     self.prove_snark_aggr(witness, witgen_callback, proof.proof)
                 }
                 None => Err("Aggregated proof requires a previous proof".to_string()),
@@ -155,7 +155,7 @@ impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<T> {
         let (proof, publics) = proof_and_publics?;
         let publics = fe_slice_to_string(&publics);
         let proof = Halo2Proof { proof, publics };
-        let proof = serde_json::to_vec(&proof).unwrap();
+        let proof = bincode::serialize(&proof).unwrap();
         Ok(proof)
     }
 

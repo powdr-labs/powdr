@@ -263,6 +263,8 @@ impl Runtime {
             ]
         );
 
+        r.add_syscall(Syscall::Halt, ["return;"]);
+
         r
     }
 
