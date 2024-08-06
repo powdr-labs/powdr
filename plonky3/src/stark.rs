@@ -12,7 +12,8 @@ use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
 
 use p3_uni_stark::{
-    prove_with_key, verify_with_key, Proof, StarkGenericConfig, StarkProvingKey, StarkVerifyingKey,
+    main_trace_commit, prove_with_key, verify_with_key, Proof, StarkGenericConfig, StarkProvingKey,
+    StarkVerifyingKey,
 };
 use powdr_number::{FieldElement, KnownField};
 
@@ -181,7 +182,7 @@ impl<T: FieldElement> Plonky3Prover<T> {
 
         let publics = circuit.get_public_values();
 
-        let trace = circuit.generate_trace_rows();
+        let trace = circuit.generate_trace_rows(0);
 
         let challenges = circuit.get_challenges();
 
@@ -191,14 +192,38 @@ impl<T: FieldElement> Plonky3Prover<T> {
 
         let proving_key = self.proving_key.as_ref();
 
+        let mut trace_stage = 0;
+
+        let main_trace_commit = main_trace_commit(); //committing to the main trace
+
+        trace_stage += 1;
+        // stage 1 traces-- the challenger has been pre-loaded with the committments to the main trace
+
+        let challenge_values = challenges[trace_stage - 1]
+            .map(|id| {
+                let challenge: Val<SC> = challenger.sample();
+                // TODO: mutate challenge to work with format
+                (*id, challenge)
+            })
+            .collect::<BTreeMap<u64, Val<SC>>>();
+
+        circuit.next_stage_witness(trace_stage, challenge_values); // next-stage trace filled in
+
+        let evaluations = vec![(domain, circuit.multi_stage_traces[trace_stage - 1])];
+
+        // need to commit to next stage
+        let (stage_1_trace_commit, stage_1_trace) =
+            <_ as p3_commit::Pcs<_, Challenger>>::commit(pcs, evaluations);
+
         let proof = prove_with_key(
             &config,
             proving_key,
             &circuit,
             &mut challenger,
             trace,
+            multi_stage_trace,
             &publics,
-        );
+        ); // generates a committment to the main data, and then
 
         let mut challenger = get_challenger();
 

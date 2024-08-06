@@ -39,7 +39,7 @@ pub(crate) struct PowdrCircuit<'a, T> {
     /// Value of challenges at every stage
     challenge_values: Vec<Option<BTreeMap<u64, FieldElement>>>,
     /// Vector containing traces of higher-stage witnesses.
-    multi_stage_traces: Vec<Option<RowMajorMatrix<Goldilocks>>>,
+    pub(crate) multi_stage_traces: Vec<Option<RowMajorMatrix<Goldilocks>>>,
     /// The matrix of preprocessed values, used in debug mode to check the constraints before provingg
     #[cfg(debug_assertions)]
     preprocessed: Option<RowMajorMatrix<Goldilocks>>,
@@ -48,32 +48,28 @@ pub(crate) struct PowdrCircuit<'a, T> {
 // implementations for challenges
 impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     /// Generate next stage trace, assuming that
-    fn next_stage_trace(&self, stage: u32, challenge_values: BTreeMap<u64, FieldElement>) {
+    pub(crate) fn next_stage_witness(
+        &self,
+        stage: u32,
+        challenge_values: BTreeMap<u64, FieldElement>,
+    ) {
         self.challenge_values.append(challenge_values);
-        let new_trace = self.generate_multi_stage_trace_rows(stage);
-        // we need to somehow feed these matrices back into the folder
+        self.witness = Option(
+            self.witgen_callback
+                .unwrap_or_else(panic!("Need witness callback for multi-stage challenges!"))
+                .next_stage_witness(
+                    self.witness(),
+                    self.challenge_values[stage].unwrap_or_default(),
+                    stage,
+                ),
+        );
     }
 }
 
 impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
-    pub fn generate_trace_rows(&self) -> RowMajorMatrix<Goldilocks> {
-        self.generate_multi_stage_trace_rows(0)
-    }
-
-    /// Generate the witness trace for a given stage.
-    pub(crate) fn generate_multi_stage_trace_rows(&self, stage: u32) -> RowMajorMatrix<Goldilocks> {
+    // Generates the trace for a
+    pub fn generate_trace_rows(&self, stage: u32) -> RowMajorMatrix<Goldilocks> {
         let current_witness = self.witness().iter();
-        let witness = match stage {
-            0 => current_witness,
-            _ => self
-                .witgen_callback
-                .unwrap_or_else(panic!("Need witness callback for multi-stage challenges!"))
-                .next_stage_witness(
-                    current_witness,
-                    self.challenge_values[stage].unwrap_or_default(),
-                    stage,
-                ),
-        };
 
         let degrees = self.analyzed.degrees();
 
@@ -364,6 +360,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
             AlgebraicExpression::Challenge(challenge) => (*challenges[challenge.stage]
                 .get(challenge.id)
                 .expect("Referenced public value does not exist"))
+            .map(|(ch1, ch2)| (ch1.into(), ch2.into()))
             .into(),
             _ => (
                 self.to_plonky3_expr::<AB>(e, main, fixed, publics),
