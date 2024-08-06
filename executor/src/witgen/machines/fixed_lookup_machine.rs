@@ -175,7 +175,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
     }
 
     fn degree(&self) -> powdr_number::DegreeType {
-        todo!()
+        // TODO: This function is never actually called by the outside (some machines
+        // are using it in their own implementation though). Also, the FixedLookup machine
+        // is weird, because it is actually responsible for lookups into many different fixed
+        // columns which might have different lengths. That should probably also change in the future.
+        panic!("The FixedLookup machine might not have a consistent degree!")
     }
 
     fn process_plookup<'b, Q: crate::witgen::QueryCallback<T>>(

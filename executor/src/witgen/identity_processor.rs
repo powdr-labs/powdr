@@ -1,5 +1,6 @@
 use std::{
     collections::{BTreeMap, HashMap},
+    iter,
     sync::Mutex,
 };
 
@@ -23,14 +24,20 @@ pub struct Machines<'a, 'b, T: FieldElement> {
     machines: Vec<&'b mut KnownMachine<'a, T>>,
 }
 
+enum SplitOption {
+    WithPrevious,
+    WithoutPrevious,
+}
+
 impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
     /// Splits out the machine at `index` and returns it together with a list of all other machines.
     /// As a result, they can be mutated independently.
     /// With #515 implemented (making calling machines immutable), this could be removed as there
     /// would not be a need to split the list of machines.
-    pub fn split<'c>(
+    fn split<'c>(
         &'c mut self,
         index: usize,
+        split_option: SplitOption,
     ) -> (&'c mut KnownMachine<'a, T>, Machines<'a, 'c, T>) {
         let (before, after) = self.machines.split_at_mut(index);
         let (current, after) = after.split_at_mut(1);
@@ -38,8 +45,12 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
 
         // Re-borrow machines to convert from `&'c mut &'b mut KnownMachine<'a, T>` to
         // `&'c mut KnownMachine<'a, T>`.
-        let others: Vec<&'c mut KnownMachine<'a, T>> = before
-            .iter_mut()
+        let before_or_none: Box<dyn Iterator<Item = &mut &mut KnownMachine<'a, T>>> =
+            match split_option {
+                SplitOption::WithPrevious => Box::new(before.iter_mut()),
+                SplitOption::WithoutPrevious => Box::new(iter::empty()),
+            };
+        let others: Vec<&'c mut KnownMachine<'a, T>> = before_or_none
             .chain(after.iter_mut())
             .map(|m| &mut **m)
             .collect();
@@ -66,7 +77,7 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
             .get(&identity_id)
             .unwrap_or_else(|| panic!("No executor machine matched identity ID: {identity_id}"));
 
-        let (current, others) = self.split(machine_index);
+        let (current, others) = self.split(machine_index, SplitOption::WithPrevious);
         let mut mutable_state = MutableState {
             machines: others,
             query_callback,
@@ -81,7 +92,8 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
     ) -> HashMap<String, Vec<T>> {
         (0..self.len())
             .flat_map(|machine_index| {
-                let (current, others) = self.split(machine_index);
+                // Don't include the previous machines, as they are already finalized.
+                let (current, others) = self.split(machine_index, SplitOption::WithoutPrevious);
                 let mut mutable_state = MutableState {
                     machines: others,
                     query_callback,

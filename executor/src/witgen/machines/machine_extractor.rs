@@ -29,13 +29,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
     fixed: &'a FixedData<'a, T>,
     identities: Vec<&'a Identity<T>>,
 ) -> ExtractionOutput<'a, T> {
-    let fixed_lookup = FixedLookup::new(
-        fixed.global_range_constraints().clone(),
-        identities.clone(),
-        fixed,
-    );
-
-    let mut machines: Vec<KnownMachine<T>> = vec![KnownMachine::FixedLookup(fixed_lookup)];
+    let mut machines: Vec<KnownMachine<T>> = vec![];
 
     let all_witnesses = fixed.witness_cols.keys().collect::<HashSet<_>>();
     let mut remaining_witnesses = all_witnesses.clone();
@@ -181,6 +175,18 @@ pub fn split_out_machines<'a, T: FieldElement>(
             )));
         }
     }
+
+    // Always add a fixed lookup machine.
+    // Note that this machine comes last, because some machines do a fixed lookup
+    // in their take_witness_col_values() implementation.
+    // TODO: We should also split this up and have several instances instead.
+    let fixed_lookup = FixedLookup::new(
+        fixed.global_range_constraints().clone(),
+        identities.clone(),
+        fixed,
+    );
+    machines.push(KnownMachine::FixedLookup(fixed_lookup));
+
     ExtractionOutput {
         machines,
         base_identities,
