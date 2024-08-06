@@ -649,6 +649,7 @@ impl TypeChecker {
                 FunctionCall {
                     function,
                     arguments,
+                    ..
                 },
             ) => {
                 let ft = self.infer_type_of_expression(function)?;

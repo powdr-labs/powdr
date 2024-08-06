@@ -1,10 +1,14 @@
+use core::panic;
 use std::collections::{HashMap, HashSet};
 
 use powdr_ast::{
-    analyzed::{Expression, FunctionValueDefinition, Symbol},
+    analyzed::{
+        Expression, FunctionValueDefinition, PolynomialReference, Reference, Symbol,
+        TypedExpression,
+    },
     parsed::{
         types::{TupleType, Type, TypeScheme},
-        TraitDeclaration, TraitImplementation,
+        FunctionCall, NamedExpression, TraitDeclaration, TraitFunction, TraitImplementation,
     },
 };
 
@@ -144,4 +148,82 @@ fn unify_traits_types(
         )),
         Err(_) => Ok(()),
     }
+}
+
+pub fn traits_resolution(
+    definitions: &mut HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    implementations: &mut HashMap<String, Vec<TraitImplementation<Expression>>>,
+) {
+    for (name, def) in definitions.iter_mut() {
+        if let Some(FunctionValueDefinition::Expression(TypedExpression { e, type_scheme })) =
+            &mut def.1
+        {
+            if let Expression::FunctionCall(
+                _,
+                FunctionCall {
+                    function,
+                    arguments,
+                    ref mut resolved_impl,
+                },
+            ) = e
+            {
+                if let Expression::Reference(
+                    _,
+                    Reference::Poly(PolynomialReference {
+                        name: fname,
+                        type_args,
+                        ..
+                    }),
+                ) = function.as_ref()
+                {
+                    let mut parts: Vec<&str> = fname.split('.').collect();
+                    let fname = parts.pop().unwrap_or("");
+                    let trait_name = parts.join(".");
+                    let impls = implementations.get(&trait_name).unwrap();
+                    let trait_decl = definitions.get(&trait_name).unwrap().1.as_ref().unwrap();
+
+                    *resolved_impl = unify_impls(fname, impls, trait_decl, type_scheme);
+                }
+            };
+        }
+    }
+}
+
+fn unify_impls(
+    fname: &str,
+    impls: &[TraitImplementation<Expression>],
+    trait_decl: &FunctionValueDefinition,
+    ftype_scheme: &Option<TypeScheme>,
+) -> Option<TraitImplementation<Expression>> {
+    let FunctionValueDefinition::TraitDeclaration(TraitDeclaration {
+        name,
+        type_vars,
+        functions: trait_functions,
+    }) = &trait_decl
+    else {
+        panic!("Expected trait declaration");
+    };
+
+    for i in impls {
+        let TraitImplementation {
+            name: _,
+            source_ref: _,
+            type_scheme,
+            functions: impl_functions,
+        } = i;
+
+        let function_impl = impl_functions.iter().find(|f| f.name == fname);
+        let function_decl = trait_functions.iter().find(|f| f.name == fname);
+
+        match (function_impl, function_decl) {
+            (Some(function_impl), Some(function_decl)) => {
+                let NamedExpression { name, body } = function_impl;
+                let TraitFunction { name: _, ty } = function_decl;
+                println!("Unifying {name} with {ty}");
+            }
+            _ => panic!("Function {fname} not found"),
+        }
+    }
+
+    None
 }

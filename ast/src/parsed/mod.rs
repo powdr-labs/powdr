@@ -1060,6 +1060,7 @@ impl<E> Children<E> for IndexAccess<E> {
 pub struct FunctionCall<E = Expression<NamespacedPolynomialReference>> {
     pub function: Box<E>,
     pub arguments: Vec<E>,
+    pub resolved_impl: Option<TraitImplementation<E>>,
 }
 
 impl<Ref> From<FunctionCall<Expression<Ref>>> for Expression<Ref> {

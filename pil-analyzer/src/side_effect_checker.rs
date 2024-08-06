@@ -87,6 +87,7 @@ impl<'a> SideEffectChecker<'a> {
                 FunctionCall {
                     function,
                     arguments,
+                    ..
                 },
             ) if matches!(function.as_ref(), Expression::Reference(_, Reference::Poly(r)) if r.name == "std::prover::set_hint") =>
             {

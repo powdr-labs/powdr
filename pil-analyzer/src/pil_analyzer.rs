@@ -22,7 +22,7 @@ use powdr_ast::analyzed::{
 };
 use powdr_parser::{parse, parse_module, parse_type};
 
-use crate::traits_processor::check_traits_overlap;
+use crate::traits_processor::{check_traits_overlap, traits_resolution};
 use crate::type_builtins::constr_function_statement_type;
 use crate::type_inference::infer_types;
 use crate::type_unifier::Unifier;
@@ -61,6 +61,7 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
         &mut unifier,
     );
     analyzer.type_check(unifier);
+    traits_resolution(&mut analyzer.definitions, &mut analyzer.implementations);
     analyzer.condense()
 }
 

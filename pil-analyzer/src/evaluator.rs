@@ -724,6 +724,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 FunctionCall {
                     function,
                     arguments,
+                    .. // TODO GZ eval
                 },
             ) => {
                 self.op_stack.push(Operation::Combine(expr));
