@@ -59,9 +59,9 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     ) -> EvalResult<'a, T>;
 
     /// Returns the final values of the witness columns.
-    fn take_witness_col_values<Q: QueryCallback<T>>(
+    fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        query_callback: &mut Q,
+        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>>;
 
     /// Returns the identity IDs that this machine is responsible for.
@@ -129,17 +129,17 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         }
     }
 
-    fn take_witness_col_values<Q: QueryCallback<T>>(
+    fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        query_callback: &mut Q,
+        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         match self {
-            KnownMachine::SortedWitnesses(m) => m.take_witness_col_values(query_callback),
-            KnownMachine::DoubleSortedWitnesses(m) => m.take_witness_col_values(query_callback),
-            KnownMachine::WriteOnceMemory(m) => m.take_witness_col_values(query_callback),
-            KnownMachine::BlockMachine(m) => m.take_witness_col_values(query_callback),
-            KnownMachine::Vm(m) => m.take_witness_col_values(query_callback),
-            KnownMachine::FixedLookup(m) => m.take_witness_col_values(query_callback),
+            KnownMachine::SortedWitnesses(m) => m.take_witness_col_values(mutable_state),
+            KnownMachine::DoubleSortedWitnesses(m) => m.take_witness_col_values(mutable_state),
+            KnownMachine::WriteOnceMemory(m) => m.take_witness_col_values(mutable_state),
+            KnownMachine::BlockMachine(m) => m.take_witness_col_values(mutable_state),
+            KnownMachine::Vm(m) => m.take_witness_col_values(mutable_state),
+            KnownMachine::FixedLookup(m) => m.take_witness_col_values(mutable_state),
         }
     }
 

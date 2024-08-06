@@ -237,35 +237,30 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             query_callback: &mut query_callback,
         };
 
-        let main_columns = (!base_witnesses.is_empty())
-            .then(|| {
-                let mut generator = Generator::new(
-                    "Main Machine".to_string(),
-                    &fixed,
-                    &BTreeMap::new(), // No connecting identities
-                    base_identities,
-                    base_witnesses,
-                    // We could set the latch of the main VM here, but then we would have to detect it.
-                    // Instead, the main VM will be computed in one block, directly continuing into the
-                    // infinite loop after the first return.
-                    None,
-                );
+        let generator = (!base_witnesses.is_empty()).then(|| {
+            let mut generator = Generator::new(
+                "Main Machine".to_string(),
+                &fixed,
+                &BTreeMap::new(), // No connecting identities
+                base_identities,
+                base_witnesses,
+                // We could set the latch of the main VM here, but then we would have to detect it.
+                // Instead, the main VM will be computed in one block, directly continuing into the
+                // infinite loop after the first return.
+                None,
+            );
 
-                generator.run(&mut mutable_state);
-                generator.take_witness_col_values(mutable_state.query_callback)
-            })
-            .unwrap_or_default();
+            generator.run(&mut mutable_state);
+            generator
+        });
 
         // Get columns from machines
         let mut columns = mutable_state
             .machines
-            .iter_mut()
-            .flat_map(|m| {
-                m.take_witness_col_values(mutable_state.query_callback)
-                    .into_iter()
-            })
-            .chain(main_columns)
-            .collect::<BTreeMap<_, _>>();
+            .take_witness_col_values(mutable_state.query_callback);
+        if let Some(mut generator) = generator {
+            columns.extend(generator.take_witness_col_values(&mut mutable_state));
+        }
 
         record_end(OUTER_CODE_NAME);
         reset_and_print_profile_summary();

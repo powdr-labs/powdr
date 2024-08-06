@@ -306,9 +306,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         &self.name
     }
 
-    fn take_witness_col_values<Q: QueryCallback<T>>(
+    fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        query_callback: &mut Q,
+        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         if self.data.len() < 2 * self.block_size {
             log::warn!(
@@ -345,14 +345,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
 
             // Instantiate a processor
             let row_offset = RowIndex::from_i64(-1, self.degree);
-            let mut mutable_state = MutableState {
-                machines: vec![].into_iter().into(),
-                query_callback,
-            };
             let mut processor = Processor::new(
                 row_offset,
                 dummy_block,
-                &mut mutable_state,
+                mutable_state,
                 self.fixed_data,
                 &self.witness_cols,
                 self.degree,

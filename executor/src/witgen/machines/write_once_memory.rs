@@ -246,9 +246,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
         self.process_plookup_internal(identity_id, caller_rows)
     }
 
-    fn take_witness_col_values<Q: QueryCallback<T>>(
+    fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        _query_callback: &mut Q,
+        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         self.value_polys
             .iter()

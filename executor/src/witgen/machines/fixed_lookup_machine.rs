@@ -13,7 +13,7 @@ use crate::witgen::processor::OuterQuery;
 use crate::witgen::range_constraints::RangeConstraint;
 use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly_ref;
-use crate::witgen::{EvalError, EvalValue, IncompleteCause};
+use crate::witgen::{EvalError, EvalValue, IncompleteCause, MutableState, QueryCallback};
 use crate::witgen::{EvalResult, FixedData};
 use crate::Identity;
 
@@ -202,9 +202,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         self.process_plookup_internal(caller_rows, &outer_query.left, right)
     }
 
-    fn take_witness_col_values<Q: crate::witgen::QueryCallback<T>>(
+    fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        _query_callback: &mut Q,
+        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         Default::default()
     }

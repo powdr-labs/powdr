@@ -75,6 +75,22 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
 
         current.process_plookup_timed(&mut mutable_state, identity_id, caller_rows)
     }
+
+    pub fn take_witness_col_values<Q: QueryCallback<T>>(
+        &mut self,
+        query_callback: &mut Q,
+    ) -> HashMap<String, Vec<T>> {
+        (0..self.len())
+            .flat_map(|machine_index| {
+                let (current, others) = self.split(machine_index);
+                let mut mutable_state = MutableState {
+                    machines: others,
+                    query_callback,
+                };
+                current.take_witness_col_values(&mut mutable_state).into_iter()
+            })
+            .collect()
+    }
 }
 
 impl<'a, 'b, T, I> From<I> for Machines<'a, 'b, T>

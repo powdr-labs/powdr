@@ -83,19 +83,13 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
         Ok(eval_value)
     }
 
-    fn take_witness_col_values<Q: QueryCallback<T>>(
+    fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        query_callback: &mut Q,
+        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         log::debug!("Finalizing VM: {}", self.name());
 
-        // In this stage, we don't have access to other machines, as they might already be finalized.
-        let mut mutable_state_no_machines = MutableState {
-            machines: [].into_iter().into(),
-            query_callback,
-        };
-
-        self.fill_remaining_rows(&mut mutable_state_no_machines);
+        self.fill_remaining_rows(mutable_state);
         self.fix_first_row();
 
         self.data
