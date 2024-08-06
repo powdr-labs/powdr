@@ -188,7 +188,11 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             .filter_map(|i| {
                 (i.kind == IdentityKind::Plookup
                     && i.right.selector.is_none()
-                    && !i.right.expressions.iter().any(|e| e.contains_witness_ref())
+                    && i.right.expressions.iter().all(|e| {
+                        try_to_simple_poly_ref(e)
+                            .map(|poly| poly.poly_id.ptype == PolynomialType::Constant)
+                            .unwrap_or(false)
+                    })
                     && !i.right.expressions.is_empty())
                 .then_some((i.id, i))
             })
@@ -338,7 +342,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         let right = right
             .expressions
             .iter()
-            .filter_map(try_to_simple_poly_ref)
+            .map(|e| try_to_simple_poly_ref(e).unwrap())
             .peekable();
 
         let outer_query = OuterQuery::new(caller_rows, identity);
