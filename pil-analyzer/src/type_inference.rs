@@ -156,7 +156,7 @@ impl TypeChecker {
                 self.declared_type_vars = declared_type
                     .vars
                     .vars()
-                    .map(|v| (v.clone(), self.new_type_var()))
+                    .map(|v| (v.clone(), self.unifier.new_type_var()))
                     .collect();
                 self.infer_type_of_expression(value).map(|ty| {
                     inferred_types.insert(name.to_string(), ty);
@@ -229,7 +229,7 @@ impl TypeChecker {
                     (None, Some(type_scheme)) => type_scheme.clone(),
                     // Store a new (unquantified) type variable for symbols without declared type.
                     // This forces a single concrete type for them.
-                    (None, None) => self.new_type_var().into(),
+                    (None, None) => self.unifier.new_type_var().into(),
                 };
                 (name.clone(), (source_ref, ty))
             })
@@ -255,7 +255,7 @@ impl TypeChecker {
             Type::Col => {
                 // This is a column. It means we prefer `int -> fe`, but `int -> int`
                 // is also OK if it can be derived directly.
-                let return_type = self.new_type_var_name();
+                let return_type = self.unifier.new_type_var_name();
                 let fun_type = Type::Function(FunctionType {
                     params: vec![Type::Int],
                     value: Box::new(Type::TypeVar(return_type.clone())),
@@ -265,7 +265,7 @@ impl TypeChecker {
             Type::Array(ArrayType { base, length: _ }) if base.as_ref() == &Type::Col => {
                 // An array of columns. We prefer `(int -> fe)[]`, but we also allow `(int -> int)[]`.
                 // Also we ignore the length.
-                let return_type = self.new_type_var_name();
+                let return_type = self.unifier.new_type_var_name();
                 let fun_type = Type::Function(FunctionType {
                     params: vec![Type::Int],
                     value: Box::new(Type::TypeVar(return_type.clone())),
@@ -555,7 +555,7 @@ impl TypeChecker {
                     Some(Type::TypeVar(tv)) => Type::TypeVar(tv.clone()),
                     Some(t) => panic!("Type name annotation for number is not supported: {t}"),
                     None => {
-                        let tv = self.new_type_var_name();
+                        let tv = self.unifier.new_type_var_name();
                         *annotated_type = Some(Type::TypeVar(tv.clone()));
                         Type::TypeVar(tv)
                     }
@@ -601,7 +601,7 @@ impl TypeChecker {
                 })
             }
             Expression::ArrayLiteral(_, ArrayLiteral { items }) => {
-                let item_type = self.new_type_var();
+                let item_type = self.unifier.new_type_var();
                 for e in items {
                     self.expect_type(&item_type, e)?;
                 }
@@ -632,7 +632,7 @@ impl TypeChecker {
                 )?
             }
             Expression::IndexAccess(_, IndexAccess { array, index }) => {
-                let result = self.new_type_var();
+                let result = self.unifier.new_type_var();
                 self.expect_type(
                     &Type::Array(ArrayType {
                         base: Box::new(result.clone()),
@@ -662,7 +662,7 @@ impl TypeChecker {
             Expression::FreeInput(_, _) => todo!(),
             Expression::MatchExpression(_, MatchExpression { scrutinee, arms }) => {
                 let scrutinee_type = self.infer_type_of_expression(scrutinee)?;
-                let result = self.new_type_var();
+                let result = self.unifier.new_type_var();
                 for MatchArm { pattern, value } in arms {
                     let local_var_count = self.local_var_types.len();
                     self.expect_type_of_pattern(&scrutinee_type, pattern)?;
@@ -743,9 +743,9 @@ impl TypeChecker {
     ) -> Result<Type, Error> {
         let arguments = arguments.collect::<Vec<_>>();
         let params = (0..arguments.len())
-            .map(|_| self.new_type_var())
+            .map(|_| self.unifier.new_type_var())
             .collect::<Vec<_>>();
-        let result_type = self.new_type_var();
+        let result_type = self.unifier.new_type_var();
         let expected_function_type = Type::Function(FunctionType {
             params: params.clone(),
             value: Box::new(result_type.clone()),
@@ -808,9 +808,9 @@ impl TypeChecker {
     fn infer_type_of_pattern(&mut self, pattern: &Pattern) -> Result<Type, Error> {
         Ok(match pattern {
             Pattern::Ellipsis(_) => unreachable!("Should be handled higher up."),
-            Pattern::CatchAll(_) => self.new_type_var(),
+            Pattern::CatchAll(_) => self.unifier.new_type_var(),
             Pattern::Number(source_ref, _) => {
-                let ty = self.new_type_var();
+                let ty = self.unifier.new_type_var();
                 self.unifier
                     .ensure_bound(&ty, "FromLiteral".to_string())
                     .map_err(|e| source_ref.with_error(e))?;
@@ -824,7 +824,7 @@ impl TypeChecker {
                     .collect::<Result<_, _>>()?,
             }),
             Pattern::Array(_, items) => {
-                let item_type = self.new_type_var();
+                let item_type = self.unifier.new_type_var();
                 for item in items {
                     if !matches!(item, Pattern::Ellipsis(_)) {
                         self.expect_type_of_pattern(&item_type, item)?;
@@ -836,7 +836,7 @@ impl TypeChecker {
                 })
             }
             Pattern::Variable(_, _) => {
-                let ty = self.new_type_var();
+                let ty = self.unifier.new_type_var();
                 self.local_var_types.push(ty.clone());
                 ty
             }
@@ -950,14 +950,6 @@ impl TypeChecker {
         } else {
             format!("{} with {bounds}", scheme.ty,)
         }
-    }
-
-    fn new_type_var_name(&mut self) -> String {
-        self.unifier.new_type_var_name()
-    }
-
-    fn new_type_var(&mut self) -> Type {
-        Type::TypeVar(self.unifier.new_type_var_name())
     }
 
     /// Creates a type scheme out of a type by making all unsubstituted
