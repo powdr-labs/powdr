@@ -151,16 +151,23 @@ fn unify_traits_types(
 }
 
 pub fn traits_resolution(
+    implementations: &HashMap<String, Vec<TraitImplementation<Expression>>>,
     definitions: &mut HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    implementations: &mut HashMap<String, Vec<TraitImplementation<Expression>>>,
 ) {
     let mut updates = Vec::new();
 
     for (name, def) in definitions.iter() {
-        if let Some(FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ })) =
-            &def.1
-        {
-            if let Expression::FunctionCall(_, FunctionCall { function, .. }) = e {
+        if let Some(FunctionValueDefinition::Expression(TypedExpression { e, .. })) = &def.1 {
+            if let Expression::FunctionCall(
+                _,
+                FunctionCall {
+                    function,
+                    arguments,
+                    ..
+                },
+            ) = e
+            {
+                println!("ACA: {arguments:?}");
                 if let Expression::Reference(
                     _,
                     Reference::Poly(PolynomialReference { name: fname, .. }),
@@ -207,7 +214,7 @@ fn unify_impls(
         name: _,
         type_vars,
         functions: trait_functions,
-    }) = &trait_decl
+    }) = trait_decl
     else {
         panic!("Expected trait declaration");
     };
@@ -236,13 +243,28 @@ fn unify_impls(
             panic!("Expected type scheme");
         };
 
-        let type_args: HashMap<_, _> = type_vars.iter().zip(items.iter()).collect();
+        let type_args: HashMap<_, _> = type_vars
+            .iter()
+            .cloned()
+            .zip(items.iter().cloned())
+            .collect();
 
-        let NamedExpression { name, body } = function_impl;
-        let TraitFunction { name: _, ty } = function_decl;
-        println!("Unifying {name} with {ty}");
+        let NamedExpression { name: _, body } = function_impl;
+        let TraitFunction {
+            name: _,
+            ty: mut decl_ty,
+        } = function_decl.clone();
+        decl_ty.substitute_type_vars(&type_args);
 
-        return Some(body.clone());
+        // infer type from body?
+        match Unifier::new().unify_types(decl_ty.clone(), type_scheme.ty.clone()) {
+            Ok(_) => {
+                return Some(body.clone());
+            }
+            Err(err) => {
+                panic!("Error: {err}");
+            }
+        };
     }
 
     None

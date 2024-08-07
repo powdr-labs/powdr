@@ -4,9 +4,8 @@ use powdr_ast::{
     parsed::{
         self, asm::SymbolPath, types::Type, ArrayExpression, ArrayLiteral, BinaryOperation,
         BlockExpression, IfExpression, LambdaExpression, LetStatementInsideBlock, MatchArm,
-        MatchExpression, NamedExpression, NamespacedPolynomialReference, Number, Pattern,
-        SelectedExpressions, StatementInsideBlock, SymbolCategory, TraitImplementation,
-        UnaryOperation,
+        MatchExpression, NamespacedPolynomialReference, Number, Pattern, SelectedExpressions,
+        StatementInsideBlock, SymbolCategory, UnaryOperation,
     },
 };
 use powdr_number::DegreeType;
@@ -294,29 +293,6 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                     .collect()
             }),
         )
-    }
-
-    fn process_trait_impl(
-        &mut self,
-        trait_impl: Option<TraitImplementation<parsed::Expression>>,
-    ) -> Option<TraitImplementation<Expression>> {
-        if let Some(trait_impl) = trait_impl {
-            Some(TraitImplementation {
-                name: trait_impl.name,
-                source_ref: trait_impl.source_ref,
-                type_scheme: trait_impl.type_scheme,
-                functions: trait_impl
-                    .functions
-                    .into_iter()
-                    .map(|f| NamedExpression {
-                        name: f.name,
-                        body: Box::new(self.process_expression(*f.body)),
-                    })
-                    .collect(),
-            })
-        } else {
-            None
-        }
     }
 
     fn process_reference(&mut self, reference: NamespacedPolynomialReference) -> Reference {

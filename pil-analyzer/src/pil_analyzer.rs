@@ -61,7 +61,7 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
         &mut unifier,
     );
     analyzer.type_check(unifier);
-    traits_resolution(&mut analyzer.definitions, &mut analyzer.implementations);
+    traits_resolution(&analyzer.implementations, &mut analyzer.definitions);
     analyzer.condense()
 }
 
