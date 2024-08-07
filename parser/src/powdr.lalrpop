@@ -608,7 +608,7 @@ IndexAccess: IndexAccess = {
 }
 
 FunctionCall: FunctionCall = {
-    <function:Term> "(" <arguments:ExpressionList> ")" => FunctionCall {function, arguments, resolved_impl: None},
+    <function:Term> "(" <arguments:ExpressionList> ")" => FunctionCall {<>},
 }
 
 NamespacedPolynomialReference: NamespacedPolynomialReference = {

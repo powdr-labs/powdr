@@ -179,15 +179,15 @@ pub fn traits_resolution(
         }
     }
 
-    for (name, new_resolved_impl) in updates {
-        if let Some(FunctionValueDefinition::Expression(TypedExpression {
-            e: Expression::FunctionCall(_, FunctionCall { resolved_impl, .. }),
-            ..
-        })) = &mut definitions.get_mut(&name).unwrap().1
-        {
-            *resolved_impl = new_resolved_impl;
-        }
-    }
+    // for (name, new_resolved_impl) in updates {
+    //     if let Some(FunctionValueDefinition::Expression(TypedExpression {
+    //         e: Expression::FunctionCall(_, FunctionCall { resolved_impl, .. }),
+    //         ..
+    //     })) = &mut definitions.get_mut(&name).unwrap().1
+    //     {
+    //         *resolved_impl = new_resolved_impl;
+    //     }
+    // }
 }
 
 fn split_trait_and_function(full_name: &str) -> (String, String) {

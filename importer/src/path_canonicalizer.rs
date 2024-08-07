@@ -203,7 +203,6 @@ fn free_inputs_in_expression<'a>(
             FunctionCall {
                 function,
                 arguments,
-                ..
             },
         ) => Box::new(
             free_inputs_in_expression(function)
@@ -241,7 +240,6 @@ fn free_inputs_in_expression_mut<'a>(
             FunctionCall {
                 function,
                 arguments,
-                ..
             },
         ) => Box::new(
             free_inputs_in_expression_mut(function).chain(
@@ -780,7 +778,6 @@ fn check_expression(
             FunctionCall {
                 function,
                 arguments,
-                ..
             },
         ) => {
             check_expression(location, function, state, type_vars, local_variables)?;
