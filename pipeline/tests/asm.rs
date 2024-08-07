@@ -550,13 +550,16 @@ fn keccak() {
         0x0,
     ];
 
-    let padded_endianness_swapped_input = padded_input.iter().map(|x| x.swap_bytes()).collect();
+    let padded_endianness_swapped_input: Vec<_> =
+        padded_input.iter().map(|x| x.swap_bytes()).collect();
 
     // Test keccakf_inner
     let keccakf_inner_result = evaluate_function(
         &analyzed,
         "keccakf_inner",
-        vec![Arc::new(array_argument(padded_endianness_swapped_input))],
+        vec![Arc::new(array_argument(
+            padded_endianness_swapped_input.clone(),
+        ))],
     );
 
     let keccakf_inner_expected: Vec<u64> = vec![
@@ -735,4 +738,11 @@ fn types_in_expressions() {
 fn set_hint() {
     let f = "asm/set_hint.asm";
     regular_test(f, Default::default());
+}
+
+#[test]
+fn keccak_circuit() {
+    let f = "asm/keccak_circuit.asm";
+    let i = [];
+    verify_asm(f, slice_to_vec(&i));
 }
