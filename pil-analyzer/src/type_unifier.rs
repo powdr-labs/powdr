@@ -156,7 +156,7 @@ impl Unifier {
         format!("T{}", self.last_type_var)
     }
 
-    fn new_type_var(&mut self) -> Type {
+    pub fn new_type_var(&mut self) -> Type {
         Type::TypeVar(self.new_type_var_name())
     }
 
