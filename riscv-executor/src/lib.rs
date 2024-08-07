@@ -1224,6 +1224,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 FunctionCall {
                     function,
                     arguments,
+                    ..
                 },
             ) => match function.as_ref() {
                 Expression::Reference(_, f) if f.to_string() == "std::prover::eval" => {
@@ -1249,6 +1250,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     FunctionCall {
                         function,
                         arguments,
+                        ..
                     },
                 ) = expr.as_ref()
                 else {
