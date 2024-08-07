@@ -166,7 +166,6 @@ fn format_fixed_column(
     }
     if let Some(TypedExpression { type_scheme, e }) = try_to_simple_expression(definition) {
         assert!(symbol.stage.is_none());
-        assert!(symbol.length.is_none());
         format!(
             "let{} = {e};",
             format_type_scheme_around_name(&name, type_scheme)
@@ -178,7 +177,7 @@ fn format_fixed_column(
             .map(ToString::to_string)
             .unwrap_or_default();
         // TODO if this is a witness column and value is not a direct lambda, use set_hint.
-        format!("col fixed{stage}{name}{value};",)
+        format!("col fixed {stage}{name}{value};",)
     }
 }
 
@@ -193,7 +192,8 @@ fn format_witness_column(
         .map(|s| format!("stage({s}) "))
         .unwrap_or_default();
     let length = symbol
-        .length.map(|length| format!("[{length}]"))
+        .length
+        .map(|length| format!("[{length}]"))
         .unwrap_or_default();
     let hint = definition
         .as_ref()
@@ -205,7 +205,7 @@ fn format_witness_column(
             format!("\nstd::prover::set_hint({name}, {e});")
         })
         .unwrap_or_default();
-    format!("col witness{stage}{name}{length};{hint}")
+    format!("col witness {stage}{name}{length};{hint}")
 }
 
 fn format_public_declaration(name: &str, decl: &PublicDeclaration) -> String {
