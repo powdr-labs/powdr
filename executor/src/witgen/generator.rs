@@ -18,6 +18,7 @@ use super::{EvalResult, FixedData, MutableState, QueryCallback};
 struct ProcessResult<'a, T: FieldElement> {
     eval_value: EvalValue<&'a AlgebraicReference, T>,
     block: FinalizableData<T>,
+    degree: DegreeType,
 }
 
 pub struct Generator<'a, T: FieldElement> {
@@ -65,8 +66,12 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
             .cloned()
             .unwrap_or_else(|| self.compute_partial_first_row(mutable_state));
 
-        let ProcessResult { eval_value, block } =
-            self.process(first_row, 0, mutable_state, Some(outer_query), false);
+        let ProcessResult {
+            eval_value,
+            block,
+            degree,
+        } = self.process(first_row, 0, mutable_state, Some(outer_query), false);
+        self.degree = degree;
 
         let eval_value = if eval_value.is_complete() {
             log::trace!("End processing VM '{}' (successfully)", self.name());
@@ -135,7 +140,9 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         record_start(self.name());
         assert!(self.data.is_empty());
         let first_row = self.compute_partial_first_row(mutable_state);
-        self.data = self.process(first_row, 0, mutable_state, None, true).block;
+        let res = self.process(first_row, 0, mutable_state, None, true);
+        self.data = res.block;
+        self.degree = res.degree;
         record_end(self.name());
     }
 
@@ -147,13 +154,18 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             assert!(self.latch.is_some());
 
             let first_row = self.data.pop().unwrap();
-            let ProcessResult { block, eval_value } = self.process(
+            let ProcessResult {
+                block,
+                eval_value,
+                degree,
+            } = self.process(
                 first_row,
                 self.data.len() as DegreeType,
                 mutable_state,
                 None,
                 false,
             );
+            self.degree = degree;
             assert!(eval_value.is_complete());
 
             self.data.extend(block);
@@ -227,6 +239,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         let degree = self.degree();
 
         let mut processor = VmProcessor::new(
+            self.name().to_string(),
             RowIndex::from_degree(row_offset, degree),
             self.fixed_data,
             &self.identities,
@@ -238,8 +251,13 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             processor = processor.with_outer_query(outer_query);
         }
         let eval_value = processor.run(is_main_run);
+        let degree = processor.degree;
         let block = processor.finish();
-        ProcessResult { eval_value, block }
+        ProcessResult {
+            eval_value,
+            block,
+            degree,
+        }
     }
 
     /// At the end of the solving algorithm, we'll have computed the first row twice
@@ -248,6 +266,19 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         assert_eq!(self.data.len() as DegreeType, self.degree() + 1);
 
         let last_row = self.data.pop().unwrap();
-        self.data[0].merge_with(&last_row).unwrap();
+        if let Err(_) = self.data[0].merge_with(&last_row) {
+            log::error!(
+                "{}",
+                self.data[0].render("First row", false, &self.witnesses, self.fixed_data)
+            );
+            log::error!(
+                "{}",
+                last_row.render("Last row", false, &self.witnesses, self.fixed_data)
+            );
+            panic!(
+                "Failed to merge the first and last row of the VM '{}'",
+                self.name()
+            );
+        }
     }
 }

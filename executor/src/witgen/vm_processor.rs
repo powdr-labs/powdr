@@ -7,6 +7,7 @@ use std::cmp::max;
 use std::collections::HashSet;
 use std::time::Instant;
 
+use crate::constant_evaluator::MIN_DEGREE_LOG;
 use crate::witgen::identity_processor::{self};
 use crate::witgen::IncompleteCause;
 use crate::Identity;
@@ -43,8 +44,9 @@ impl<'a, T: FieldElement> CompletableIdentities<'a, T> {
 }
 
 pub struct VmProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
+    machine_name: String,
     /// The common degree of all referenced columns
-    degree: DegreeType,
+    pub degree: DegreeType,
     /// The global index of the first row of [VmProcessor::data].
     row_offset: DegreeType,
     /// The witness columns belonging to this machine
@@ -64,6 +66,7 @@ pub struct VmProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
 
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T, Q> {
     pub fn new(
+        machine_name: String,
         row_offset: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
         identities: &[&'a Identity<T>],
@@ -94,6 +97,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         );
 
         VmProcessor {
+            machine_name,
             degree,
             row_offset: row_offset.into(),
             witnesses: witnesses.clone(),
@@ -137,9 +141,11 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         } else {
             log::Level::Debug
         };
-        let rows_left = self.degree - self.row_offset + 1;
         let mut finalize_start = 1;
-        for row_index in 0..rows_left {
+
+        let mut rows_left = self.degree - self.row_offset + 1;
+        let mut row_index = 0;
+        while row_index < rows_left {
             if is_main_run {
                 self.maybe_log_performance(row_index);
             }
@@ -166,6 +172,21 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                         loop_detection_log_level,
                         "Found loop with period {p} starting at row {row_index}"
                     );
+
+                    if self.fixed_data.is_variable_size(&self.witnesses) {
+                        let new_degree = self.processor.len().next_power_of_two() as DegreeType;
+                        let new_degree = new_degree.max(1 << MIN_DEGREE_LOG);
+                        log::info!(
+                            "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
+                            self.machine_name,
+                            self.degree,
+                            new_degree,
+                            self.processor.len()
+                        );
+                        self.degree = new_degree;
+                        self.processor.size = new_degree;
+                        rows_left = self.degree - self.row_offset + 1;
+                    }
                 }
             }
             if let Some(period) = looping_period {
@@ -208,6 +229,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                     return EvalValue::incomplete(IncompleteCause::UnknownLatch);
                 }
             };
+            row_index += 1;
         }
 
         assert_eq!(
