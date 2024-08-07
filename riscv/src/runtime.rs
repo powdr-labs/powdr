@@ -276,7 +276,7 @@ impl Runtime {
         self.syscalls.contains_key(&s)
     }
 
-    pub fn with_poseidon(mut self, continuations: bool) -> Self {
+    fn with_poseidon(mut self, continuations: bool) -> Self {
         let init_call = if continuations {
             vec![
                 "mstore_bootloader 0, 0, 0, 0;",
