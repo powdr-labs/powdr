@@ -21,6 +21,7 @@ pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
     self, ArrayLiteral, EnumDeclaration, EnumVariant, TraitDeclaration, TraitFunction,
+    TraitImplementation,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -1325,6 +1326,8 @@ pub struct PolynomialReference {
     /// The type arguments if the symbol is generic.
     /// Guaranteed to be Some(_) after type checking is completed.
     pub type_args: Option<Vec<Type>>,
+    /// 
+    pub resolved_impl: Option<TraitImplementation<Expression>>,
 }
 
 #[derive(

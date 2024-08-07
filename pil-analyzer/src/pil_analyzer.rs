@@ -22,7 +22,7 @@ use powdr_ast::analyzed::{
 };
 use powdr_parser::{parse, parse_module, parse_type};
 
-use crate::traits_processor::{check_traits_overlap, traits_resolution};
+use crate::traits_processor::traits_resolution;
 use crate::type_builtins::constr_function_statement_type;
 use crate::type_inference::infer_types;
 use crate::{side_effect_checker, AnalysisDriver};
@@ -50,10 +50,8 @@ pub fn analyze_string<T: FieldElement>(contents: &str) -> Analyzed<T> {
 
 fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
-
     analyzer.process(files);
     analyzer.side_effect_check();
-    check_traits_overlap(&mut analyzer.implementations, &analyzer.definitions);
     analyzer.type_check();
     traits_resolution(&analyzer.implementations, &mut analyzer.definitions);
     analyzer.condense()

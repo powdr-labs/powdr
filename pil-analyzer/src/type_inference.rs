@@ -403,6 +403,7 @@ impl TypeChecker {
                     name,
                     poly_id: _,
                     type_args,
+                    resolved_impl: _,
                 }),
             ) => {
                 for ty in type_args.as_mut().unwrap() {
@@ -510,6 +511,7 @@ impl TypeChecker {
                     name,
                     poly_id: _,
                     type_args,
+                    resolved_impl: _,
                 }),
             ) => {
                 let (ty, args) = self.instantiate_scheme(self.declared_types[name].1.clone());
