@@ -340,12 +340,10 @@ fn dispatch_table_static_relocation() {
 
 #[test]
 #[ignore = "Too slow"]
-#[should_panic(
-    expected = "called `Result::unwrap()` on an `Err` value: \"Error accessing prover inputs: Index 0 out of bounds 0\""
-)]
+#[should_panic(expected = "reached a fail instruction")]
 fn print() {
     let case = "print";
-    verify_riscv_crate(case, Default::default(), &Runtime::base());
+    verify_riscv_crate(case, vec![0.into()], &Runtime::base());
 }
 
 #[test]
