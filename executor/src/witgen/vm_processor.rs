@@ -3,8 +3,8 @@ use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
 };
+use powdr_ast::indent;
 use powdr_number::{DegreeType, FieldElement};
-use powdr_parser_util::lines::indent;
 use std::cmp::max;
 use std::collections::HashSet;
 use std::time::Instant;
@@ -96,7 +96,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         }
     }
 
-    pub fn with_outer_query(self, outer_query: OuterQuery<'a, T>) -> Self {
+    pub fn with_outer_query(self, outer_query: OuterQuery<'a, 'b, T>) -> Self {
         let processor = self.processor.with_outer_query(outer_query);
         Self { processor, ..self }
     }
@@ -370,7 +370,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                 // The fact that we got to the point where we assume 0 for unknown cells, but this identity
                 // is still not complete, means that either the inputs or the machine is under-constrained.
                 errors.push(format!("{identity}:\n{}",
-                    indent("This machine call could not be completed. Either some inputs are missing or the machine is under-constrained.", "    ")).into());
+                    indent("This machine call could not be completed. Either some inputs are missing or the machine is under-constrained.", 1)).into());
                 continue;
             }
 
@@ -426,10 +426,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         log::debug!("Set RUST_LOG=trace to understand why these values were chosen.");
         log::error!(
             "Errors:\n{}\n",
-            failures
-                .iter()
-                .map(|r| indent(&r.to_string(), "    "))
-                .join("\n")
+            failures.iter().map(|r| indent(r.to_string(), 1)).join("\n")
         );
         panic!("Witness generation failed.");
     }
@@ -465,10 +462,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         log::debug!("\nSet RUST_LOG=trace to understand why these values were (not) chosen.");
         log::debug!(
             "Assuming zero for unknown values, the following identities fail:\n{}\n",
-            failures
-                .iter()
-                .map(|r| indent(&r.to_string(), "    "))
-                .join("\n")
+            failures.iter().map(|r| indent(r.to_string(), 1)).join("\n")
         );
         panic!("Witness generation failed.");
     }

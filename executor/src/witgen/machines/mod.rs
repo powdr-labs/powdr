@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use powdr_ast::analyzed::AlgebraicReference;
 use powdr_number::FieldElement;
 
 use self::block_machine::BlockMachine;
@@ -11,8 +10,8 @@ use self::profiling::record_start;
 use self::sorted_witness_machine::SortedWitnesses;
 use self::write_once_memory::WriteOnceMemory;
 
-use super::affine_expression::AffineExpression;
 use super::generator::Generator;
+use super::rows::RowPair;
 use super::EvalResult;
 use super::FixedData;
 use super::MutableState;
@@ -34,10 +33,10 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         &mut self,
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         identity_id: u64,
-        args: &[AffineExpression<&'a AlgebraicReference, T>],
+        caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
         record_start(self.name());
-        let result = self.process_plookup(mutable_state, identity_id, args);
+        let result = self.process_plookup(mutable_state, identity_id, caller_rows);
         record_end(self.name());
         result
     }
@@ -45,16 +44,14 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     /// Returns a unique name for this machine.
     fn name(&self) -> &str;
 
-    /// Process a plookup. Not all values on the LHS need to be available.
-    /// Can update internal data.
-    /// Only return an error if this machine is able to handle the query and
-    /// it results in a constraint failure.
-    /// If this is not the right machine for the query, return `None`.
+    /// Processes a connecting identity of a given ID (which must be known to the callee).
+    /// Returns an error if the query leads to a constraint failure.
+    /// Otherwise, it computes any updates to the caller row pair and returns them.
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         identity_id: u64,
-        args: &[AffineExpression<&'a AlgebraicReference, T>],
+        caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T>;
 
     /// Returns the final values of the witness columns.
@@ -84,16 +81,22 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         &mut self,
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         identity_id: u64,
-        args: &[AffineExpression<&'a AlgebraicReference, T>],
+        caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
         match self {
-            KnownMachine::SortedWitnesses(m) => m.process_plookup(mutable_state, identity_id, args),
-            KnownMachine::DoubleSortedWitnesses(m) => {
-                m.process_plookup(mutable_state, identity_id, args)
+            KnownMachine::SortedWitnesses(m) => {
+                m.process_plookup(mutable_state, identity_id, caller_rows)
             }
-            KnownMachine::WriteOnceMemory(m) => m.process_plookup(mutable_state, identity_id, args),
-            KnownMachine::BlockMachine(m) => m.process_plookup(mutable_state, identity_id, args),
-            KnownMachine::Vm(m) => m.process_plookup(mutable_state, identity_id, args),
+            KnownMachine::DoubleSortedWitnesses(m) => {
+                m.process_plookup(mutable_state, identity_id, caller_rows)
+            }
+            KnownMachine::WriteOnceMemory(m) => {
+                m.process_plookup(mutable_state, identity_id, caller_rows)
+            }
+            KnownMachine::BlockMachine(m) => {
+                m.process_plookup(mutable_state, identity_id, caller_rows)
+            }
+            KnownMachine::Vm(m) => m.process_plookup(mutable_state, identity_id, caller_rows),
         }
     }
 

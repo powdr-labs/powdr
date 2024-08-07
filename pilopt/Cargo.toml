@@ -8,14 +8,14 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [dependencies]
-powdr-ast = { path = "../ast" }
-powdr-number = { path = "../number" }
+powdr-ast.workspace = true
+powdr-number.workspace = true
 
 log = "0.4.17"
 pretty_assertions = "1.4.0"
 
 [dev-dependencies]
-powdr-pil-analyzer = { path = "../pil-analyzer" }
+powdr-pil-analyzer.workspace = true
 
 [lints.clippy]
 uninlined_format_args = "deny"

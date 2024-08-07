@@ -61,6 +61,14 @@ fn memory_test() {
 }
 
 #[test]
+fn memory_test_parallel_accesses() {
+    let f = "std/memory_test_parallel_accesses.asm";
+    verify_test_file(f, Default::default(), vec![]).unwrap();
+    gen_estark_proof(f, Default::default());
+    test_halo2(f, Default::default());
+}
+
+#[test]
 fn permutation_via_challenges() {
     let f = "std/permutation_via_challenges.asm";
     test_halo2(f, Default::default());

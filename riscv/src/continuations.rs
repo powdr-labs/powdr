@@ -9,7 +9,7 @@ use powdr_ast::{
 };
 use powdr_number::FieldElement;
 use powdr_pipeline::Pipeline;
-use powdr_riscv_executor::{get_main_machine, Elem, ExecutionTrace, MemoryState};
+use powdr_riscv_executor::{get_main_machine, Elem, ExecutionTrace, MemoryState, ProfilerOptions};
 
 pub mod bootloader;
 mod memory_merkle_tree;
@@ -170,7 +170,7 @@ pub fn load_initial_memory(program: &AnalysisASMFile) -> MemoryState {
         return MemoryState::default();
     };
 
-    let Expression::ArrayLiteral(array) = expr else {
+    let Expression::ArrayLiteral(_, array) = expr else {
         panic!("initial_memory is not an array literal");
     };
 
@@ -178,18 +178,21 @@ pub fn load_initial_memory(program: &AnalysisASMFile) -> MemoryState {
         .items
         .iter()
         .map(|entry| {
-            let Expression::Tuple(tuple) = entry else {
+            let Expression::Tuple(_, tuple) = entry else {
                 panic!("initial_memory entry is not a tuple");
             };
             assert_eq!(tuple.len(), 2);
-            let Expression::Number(Number {
-                value: key,
-                type_: None,
-            }) = &tuple[0]
+            let Expression::Number(
+                _,
+                Number {
+                    value: key,
+                    type_: None,
+                },
+            ) = &tuple[0]
             else {
                 panic!("initial_memory entry key is not a number");
             };
-            let Expression::Number(Number { value, type_: None }) = &tuple[1] else {
+            let Expression::Number(_, Number { value, type_: None }) = &tuple[1] else {
                 panic!("initial_memory entry value is not a number");
             };
 
@@ -203,6 +206,7 @@ pub fn load_initial_memory(program: &AnalysisASMFile) -> MemoryState {
 /// - The number of rows after which the prover should jump to the shutdown routine.
 pub fn rust_continuations_dry_run<F: FieldElement>(
     pipeline: &mut Pipeline<F>,
+    profiler_opt: Option<ProfilerOptions>,
 ) -> Vec<(Vec<F>, u64)> {
     // All inputs for all chunks.
     let mut bootloader_inputs_and_num_rows = vec![];
@@ -239,6 +243,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             &default_input(&[]),
             usize::MAX,
             powdr_riscv_executor::ExecMode::Trace,
+            profiler_opt,
         )
         .0;
         (transposed_trace::<F>(&trace), trace.mem_ops)
@@ -266,10 +271,13 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         .unwrap();
 
     let length: usize = match length {
-        Expression::Number(Number {
-            value: length,
-            type_: None,
-        }) => length.try_into().unwrap(),
+        Expression::Number(
+            _,
+            Number {
+                value: length,
+                type_: None,
+            },
+        ) => length.try_into().unwrap(),
         e => unimplemented!(
             "degree {e} is not supported in continuations as we don't have an evaluator yet"
         ),
@@ -336,6 +344,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
                 &bootloader_inputs,
                 num_rows,
                 powdr_riscv_executor::ExecMode::Trace,
+                // profiling was done when full trace was generated
+                None,
             );
             (transposed_trace(&trace), memory_snapshot_update)
         };

@@ -131,10 +131,10 @@ impl Runtime {
         );
 
         r.add_syscall(
-            Syscall::PrintChar,
+            Syscall::Output,
             // This is using x0 on purpose, because we do not want to introduce
             // nondeterminism with this.
-            ["x0 <=X= ${ std::prover::Query::PrintChar(std::convert::int(std::prover::eval(x10))) };"]
+            ["x0 <=X= ${ std::prover::Query::Output(std::convert::int(std::prover::eval(x10)), std::convert::int(std::prover::eval(x11))) };"]
         );
 
         r
@@ -234,6 +234,10 @@ impl Runtime {
                     "instr ec_double ~ arith.ec_double {};",
                     instr_register_params(2, 16, 16) // will use registers 2..18
                 ),
+                format!(
+                    "instr mod_256 ~ arith.mod_256 {};",
+                    instr_register_params(3, 24, 8) // will use registers 3..27
+                ),
             ],
             // machine uses the 26 registers from risc-v plus 10 extra registers
             10,
@@ -298,6 +302,27 @@ impl Runtime {
                     .rev()
                     .flat_map(|i| pop_register(&reg(i))));
         self.add_syscall(Syscall::Affine256, affine256);
+
+        // The mod_256 syscall takes as input the addresses of y2, y3, and x1.
+        let mod256 =
+            // Save instruction registers
+            (3..27).flat_map(|i| push_register(&reg(i)))
+            // Load y2 in 3..11
+            .chain((0..8).flat_map(|i| load_word(&reg(0), i as u32 *4 , &reg(i + 3))))
+            // Load y3 in 11..19
+            .chain((0..8).flat_map(|i| load_word(&reg(1), i as u32 *4 , &reg(i + 11))))
+            // Load x1 in 19..27
+            .chain((0..8).flat_map(|i| load_word(&reg(2), i as u32 *4 , &reg(i + 19))))
+            // Call instruction
+            .chain(std::iter::once("mod_256;".to_string()))
+            // Store result x2 in y2's memory
+            .chain((0..8).flat_map(|i| store_word(&reg(0), i as u32 *4 , &reg(i + 3))))
+            // Restore instruction registers
+            .chain(
+                (3..27)
+                    .rev()
+                    .flat_map(|i| pop_register(&reg(i))));
+        self.add_syscall(Syscall::Mod256, mod256);
 
         // The ec_add syscall takes as input the four addresses of x1, y1, x2, y2.
         let ec_add =

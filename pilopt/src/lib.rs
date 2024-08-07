@@ -117,11 +117,14 @@ impl ReferencedSymbols for Expression {
         Box::new(
             self.all_children()
                 .flat_map(|e| match e {
-                    Expression::Reference(Reference::Poly(PolynomialReference {
-                        name,
-                        type_args,
-                        poly_id: _,
-                    })) => Some(
+                    Expression::Reference(
+                        _,
+                        Reference::Poly(PolynomialReference {
+                            name,
+                            type_args,
+                            poly_id: _,
+                        }),
+                    ) => Some(
                         type_args
                             .iter()
                             .flat_map(|t| t.iter())
@@ -220,7 +223,7 @@ fn constant_value(function: &FunctionValueDefinition) -> Option<BigUint> {
                 .filter(|e| !e.is_empty())
                 .flat_map(|e| e.pattern().iter())
                 .map(|e| match e {
-                    Expression::Number(Number { value: n, .. }) => Some(n),
+                    Expression::Number(_, Number { value: n, .. }) => Some(n),
                     _ => None,
                 });
             let first = values.next()??;
@@ -417,11 +420,14 @@ fn substitute_polynomial_references<T: FieldElement>(
     substitutions: &BTreeMap<PolyID, BigUint>,
 ) {
     pil_file.post_visit_expressions_in_definitions_mut(&mut |e: &mut Expression| {
-        if let Expression::Reference(Reference::Poly(PolynomialReference {
-            name: _,
-            poly_id: Some(poly_id),
-            type_args: _,
-        })) = e
+        if let Expression::Reference(
+            _,
+            Reference::Poly(PolynomialReference {
+                name: _,
+                poly_id: Some(poly_id),
+                type_args: _,
+            }),
+        ) = e
         {
             if let Some(value) = substitutions.get(poly_id) {
                 *e = Number {

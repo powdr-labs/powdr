@@ -8,17 +8,17 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [dependencies]
-powdr-asm-to-pil = { path = "../asm-to-pil" }
-powdr-ast = { path = "../ast" }
-powdr-number = { path = "../number" }
-powdr-parser = { path = "../parser" }
+powdr-asm-to-pil.workspace = true
+powdr-ast.workspace = true
+powdr-number.workspace = true
+powdr-parser.workspace = true
 
 itertools = "^0.10"
 lazy_static = "1.4.0"
 log = "0.4.18"
 
 [dev-dependencies]
-powdr-importer = { path = "../importer" }
+powdr-importer.workspace = true
 pretty_assertions = "1.4.0"
 test-log = "0.2.12"
 env_logger = "0.10.0"

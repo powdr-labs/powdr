@@ -126,13 +126,18 @@ pub struct Pipeline<T: FieldElement> {
     log_level: Level,
     /// Optional arguments for various stages of the pipeline.
     arguments: Arguments<T>,
+    /// The context for the host.
+    host_context: HostContext,
 }
+
+use super::HostContext;
 
 impl<T> Default for Pipeline<T>
 where
     T: FieldElement,
 {
     fn default() -> Self {
+        let (ctx, cb) = HostContext::new();
         Pipeline {
             artifact: Default::default(),
             output_dir: None,
@@ -141,10 +146,12 @@ where
             force_overwrite: false,
             pilo: false,
             arguments: Arguments::default(),
+            host_context: ctx,
         }
         // We add the basic callback functionalities
         // to support PrintChar and Hint.
         .add_query_callback(Arc::new(handle_simple_queries_callback()))
+        .add_query_callback(cb)
     }
 }
 
@@ -600,7 +607,11 @@ impl<T: FieldElement> Pipeline<T> {
                 let (path, parsed) = self.artifact.parsed_asm_file.take().unwrap();
 
                 self.log("Loading dependencies and resolving references");
-                powdr_importer::load_dependencies_and_resolve(path, parsed).map_err(|e| vec![e])?
+                powdr_importer::load_dependencies_and_resolve(path, parsed).map_err(|e| {
+                    // TODO at some point, change the error type in Pipeline so that we can forward it here.
+                    e.output_to_stderr();
+                    vec![e.message().to_string()]
+                })?
             });
         }
 
@@ -1101,5 +1112,9 @@ impl<T: FieldElement> Pipeline<T> {
             Err(powdr_backend::Error::BackendError(e)) => Err(vec![e]),
             _ => panic!(),
         }
+    }
+
+    pub fn host_context(&self) -> &HostContext {
+        &self.host_context
     }
 }

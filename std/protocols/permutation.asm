@@ -27,8 +27,10 @@ let permutation = |acc, lhs_selector, lhs, rhs_selector, rhs| {
     let _ = assert(len(lhs) == len(rhs), || "LHS and RHS should have equal length");
     let _ = assert(modulus() > 2**100, || "This implementation assumes a large field");
 
-    let lhs_folded = lhs_selector * compress_expression_array(lhs);
-    let rhs_folded = rhs_selector * compress_expression_array(rhs);
+    // If the selector is 1, contribute a factor of `beta - compress_expression_array(lhs)` to accumulator.
+    // If the selector is 0, contribute a factor of 1 to the accumulator. 
+    let lhs_folded = lhs_selector * (beta - compress_expression_array(lhs) - 1) + 1;
+    let rhs_folded = rhs_selector * (beta - compress_expression_array(rhs) - 1) + 1;
 
     [
         // First and last z needs to be 1
@@ -36,7 +38,7 @@ let permutation = |acc, lhs_selector, lhs, rhs_selector, rhs| {
         is_first * (acc - 1) = 0,
 
         // Update rule:
-        // acc' = acc * (beta - lhs_folded) / (beta - rhs_folded)
-        (beta - rhs_folded) * acc' = acc * (beta - lhs_folded)
+        // acc' = acc * lhs_folded / rhs_folded
+        rhs_folded * acc' = acc * lhs_folded
     ]
 };

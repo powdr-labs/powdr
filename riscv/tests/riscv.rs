@@ -40,7 +40,7 @@ pub fn test_continuations(case: &str) {
 
         Ok(())
     };
-    let bootloader_inputs = rust_continuations_dry_run(&mut pipeline);
+    let bootloader_inputs = rust_continuations_dry_run(&mut pipeline, Default::default());
     rust_continuations(pipeline, pipeline_callback, bootloader_inputs).unwrap();
 }
 
@@ -196,6 +196,13 @@ fn runtime_affine_256() {
     verify_riscv_crate(case, vec![], &Runtime::base().with_arith());
 }
 
+#[test]
+#[ignore = "Too slow"]
+fn runtime_modmul_256() {
+    let case = "modmul_256";
+    verify_riscv_crate(case, vec![], &Runtime::base().with_arith());
+}
+
 /*
 mstore(0, 666)
 return(0, 32)
@@ -272,7 +279,49 @@ fn many_chunks_dry() {
     let mut pipeline = Pipeline::default()
         .from_asm_string(powdr_asm, Some(PathBuf::from(case)))
         .with_prover_inputs(Default::default());
-    rust_continuations_dry_run::<GoldilocksField>(&mut pipeline);
+    rust_continuations_dry_run::<GoldilocksField>(&mut pipeline, Default::default());
+}
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Serialize, Deserialize)]
+struct Point {
+    x: i32,
+    y: i32,
+}
+
+#[test]
+fn output_syscall() {
+    let case = "output";
+    let runtime = Runtime::base();
+    let temp_dir = Temp::new_dir().unwrap();
+    let riscv_asm = powdr_riscv::compile_rust_crate_to_riscv_asm(
+        &format!("tests/riscv_data/{case}/Cargo.toml"),
+        &temp_dir,
+    );
+    let powdr_asm = powdr_riscv::compiler::compile::<GoldilocksField>(riscv_asm, &runtime, false);
+
+    let inputs = vec![1u32, 2, 3]
+        .into_iter()
+        .map(GoldilocksField::from)
+        .collect();
+    let mut pipeline = Pipeline::default()
+        .from_asm_string(powdr_asm, Some(PathBuf::from(case)))
+        .with_prover_inputs(inputs);
+
+    pipeline.compute_witness().unwrap();
+
+    let ctx = &pipeline.host_context();
+    // Need to put the lock in a separate scope, so that it is dropped before the next read.
+    {
+        let fs = &ctx.file_data.lock().unwrap();
+        assert_eq!(fs[&42], vec![1]);
+        assert_eq!(fs[&43], vec![1, 2, 3]);
+    }
+
+    let p: Point = ctx.read(44).unwrap();
+    assert_eq!(p.x, 1);
+    assert_eq!(p.y, 2);
 }
 
 #[test]

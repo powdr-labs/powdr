@@ -8,10 +8,10 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [dependencies]
-powdr-ast = { path = "../ast" }
-powdr-number = { path = "../number" }
-powdr-parser-util = { path = "../parser-util" }
-powdr-pil-analyzer = { path = "../pil-analyzer" }
+powdr-ast.workspace = true
+powdr-number.workspace = true
+powdr-parser-util.workspace = true
+powdr-pil-analyzer.workspace = true
 
 itertools = "^0.10"
 log = { version = "0.4.17" }

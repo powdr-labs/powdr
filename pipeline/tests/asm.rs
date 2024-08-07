@@ -385,6 +385,30 @@ fn enum_in_asm() {
 }
 
 #[test]
+fn pass_range_constraints() {
+    let f = "asm/pass_range_constraints.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn side_effects() {
+    let f = "asm/side_effects.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
+fn multiple_signatures() {
+    let f = "asm/multiple_signatures.asm";
+    verify_asm(f, Default::default());
+    test_halo2(f, Default::default());
+    gen_estark_proof(f, Default::default());
+}
+
+#[test]
 fn permutation_simple() {
     let f = "asm/permutations/simple.asm";
     verify_asm(f, Default::default());
@@ -401,9 +425,9 @@ fn permutation_to_block() {
 }
 
 #[test]
-#[should_panic = "Witness generation failed"]
+#[should_panic = "called `Result::unwrap()` on an `Err` value: Linear constraint is not satisfiable: 18446744069414584320 != 0"]
 fn permutation_to_vm() {
-    // TODO: witgen issue
+    // TODO: witgen issue: Machine incorrectly detected as block machine.
     let f = "asm/permutations/vm_to_vm.asm";
     verify_asm(f, Default::default());
     test_halo2(f, Default::default());
@@ -411,9 +435,9 @@ fn permutation_to_vm() {
 }
 
 #[test]
-#[should_panic = "Witness generation failed"]
+#[should_panic = "Verifier did not say 'PIL OK'."]
 fn permutation_to_block_to_block() {
-    // TODO: witgen issue
+    // TODO: witgen issue (https://github.com/powdr-labs/powdr/issues/1385)
     let f = "asm/permutations/block_to_block.asm";
     verify_asm(f, Default::default());
     test_halo2(f, Default::default());

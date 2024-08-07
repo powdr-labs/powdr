@@ -20,12 +20,12 @@ use powdr_ast::{
         types::{ArrayType, Type},
         SelectedExpressions,
     },
-    SourceRef,
 };
 use powdr_number::{DegreeType, FieldElement};
+use powdr_parser_util::SourceRef;
 
 use crate::{
-    evaluator::{self, Definitions, SymbolLookup, Value},
+    evaluator::{self, Definitions, EvalError, SymbolLookup, Value},
     statement_processor::Counters,
 };
 
@@ -325,7 +325,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         &mut self,
         name: &'a str,
         type_args: Option<Vec<Type>>,
-    ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
+    ) -> Result<Arc<Value<'a, T>>, EvalError> {
         // Cache already computed values.
         // Note that the cache is essential because otherwise
         // we re-evaluate simple values, which users would not expect.
@@ -340,15 +340,12 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         Ok(value)
     }
 
-    fn lookup_public_reference(
-        &self,
-        name: &str,
-    ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
+    fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
         Definitions(self.symbols).lookup_public_reference(name)
     }
 
-    fn degree(&self) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
-        let degree = self.degree.ok_or(evaluator::EvalError::DataNotAvailable)?;
+    fn degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
+        let degree = self.degree.ok_or(EvalError::DataNotAvailable)?;
         Ok(Value::Integer(degree.into()).into())
     }
 
@@ -356,7 +353,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         &mut self,
         name: &str,
         source: SourceRef,
-    ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
+    ) -> Result<Arc<Value<'a, T>>, EvalError> {
         let name = self.find_unused_name(name);
         let symbol = Symbol {
             id: self.next_witness_id,
@@ -383,7 +380,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         &mut self,
         constraints: Arc<Value<'a, T>>,
         source: SourceRef,
-    ) -> Result<(), evaluator::EvalError> {
+    ) -> Result<(), EvalError> {
         match constraints.as_ref() {
             Value::Array(items) => {
                 for item in items {

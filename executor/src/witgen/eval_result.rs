@@ -99,9 +99,14 @@ impl<K> EvalStatus<K> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+/// The result of solving a constraint (polynomial identity, lookup, or permutation).
 pub struct EvalValue<K, T: FieldElement> {
+    /// Assignments and range constraint updates resulting from the solving.
     pub constraints: Constraints<K, T>,
+    /// The status of the solving. If complete, all variables are known after applying the constraints.
     pub status: EvalStatus<K>,
+    /// Whether the solving had side effects. For example, a block might be added to another machine.
+    pub side_effect: bool,
 }
 
 impl<K, T: FieldElement> EvalValue<K, T> {
@@ -134,21 +139,22 @@ impl<K, T: FieldElement> EvalValue<K, T> {
     fn new(constraints: Vec<(K, Constraint<T>)>, status: EvalStatus<K>) -> Self {
         Self {
             constraints,
+            side_effect: false,
             status,
         }
     }
-}
 
-impl<K, T> EvalValue<K, T>
-where
-    K: Clone,
-    T: FieldElement,
-{
     pub fn combine(&mut self, other: Self) {
         // reserve more space?
         self.constraints.extend(other.constraints);
         self.status =
             std::mem::replace(&mut self.status, EvalStatus::Complete).combine(other.status);
+        self.side_effect |= other.side_effect;
+    }
+
+    pub fn report_side_effect(mut self) -> Self {
+        self.side_effect = true;
+        self
     }
 }
 

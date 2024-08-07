@@ -37,6 +37,6 @@ fn print_prover_char(c: u8) {
     let mut value = c as u32;
     #[allow(unused_assignments)]
     unsafe {
-        asm!("ecall", lateout("a0") value, in("a0") value, in("t0") u32::from(Syscall::PrintChar));
+        asm!("ecall", lateout("a0") value, in("a0") 1, in("a1") value, in("t0") u32::from(Syscall::Output));
     }
 }

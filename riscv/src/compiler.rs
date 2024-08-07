@@ -841,95 +841,141 @@ fn process_statement(s: Statement) -> Vec<String> {
             // remove indentation and trailing newline
             let stmt_str = &stmt_str[2..(stmt_str.len() - 1)];
             let mut ret = vec![format!("  .debug insn \"{stmt_str}\";")];
-            ret.extend(
-                process_instruction(instr, args)
-                    .into_iter()
-                    .map(|s| "  ".to_string() + &s),
-            );
+            let processed_instr = match process_instruction(instr, &args[..]) {
+                Ok(s) => s,
+                Err(e) => panic!("Failed to process instruction '{instr}'. {e}"),
+            };
+            ret.extend(processed_instr.into_iter().map(|s| "  ".to_string() + &s));
             ret
         }
     }
 }
 
-fn r(args: &[Argument]) -> Register {
-    match args {
-        [Argument::Register(r1)] => *r1,
-        _ => panic!(),
-    }
+trait Args {
+    type Error;
+
+    fn l(&self) -> Result<String, Self::Error>;
+    fn r(&self) -> Result<Register, Self::Error>;
+    fn rri(&self) -> Result<(Register, Register, u32), Self::Error>;
+    fn rrr(&self) -> Result<(Register, Register, Register), Self::Error>;
+    fn ri(&self) -> Result<(Register, u32), Self::Error>;
+    fn rr(&self) -> Result<(Register, Register), Self::Error>;
+    fn rrl(&self) -> Result<(Register, Register, String), Self::Error>;
+    fn rl(&self) -> Result<(Register, String), Self::Error>;
+    fn rro(&self) -> Result<(Register, Register, u32), Self::Error>;
+    fn rrro(&self) -> Result<(Register, Register, Register, u32), Self::Error>;
+    fn empty(&self) -> Result<(), Self::Error>;
 }
 
-fn rri(args: &[Argument]) -> (Register, Register, u32) {
-    match args {
-        [Argument::Register(r1), Argument::Register(r2), n] => (*r1, *r2, argument_to_number(n)),
-        _ => panic!(),
-    }
-}
+impl Args for [Argument] {
+    type Error = &'static str;
 
-fn rrr(args: &[Argument]) -> (Register, Register, Register) {
-    match args {
-        [Argument::Register(r1), Argument::Register(r2), Argument::Register(r3)] => (*r1, *r2, *r3),
-        _ => panic!(),
-    }
-}
-
-fn ri(args: &[Argument]) -> (Register, u32) {
-    match args {
-        [Argument::Register(r1), n] => (*r1, argument_to_number(n)),
-        _ => panic!(),
-    }
-}
-
-fn rr(args: &[Argument]) -> (Register, Register) {
-    match args {
-        [Argument::Register(r1), Argument::Register(r2)] => (*r1, *r2),
-        _ => panic!(),
-    }
-}
-
-fn rrl(args: &[Argument]) -> (Register, Register, String) {
-    match args {
-        [Argument::Register(r1), Argument::Register(r2), l] => {
-            (*r1, *r2, argument_to_escaped_symbol(l))
+    fn l(&self) -> Result<String, &'static str> {
+        const ERR: &str = "Expected: label";
+        match self {
+            [l] => Ok(argument_to_escaped_symbol(l).ok_or(ERR)?),
+            _ => Err(ERR),
         }
-        _ => panic!(),
     }
-}
 
-fn rl(args: &[Argument]) -> (Register, String) {
-    match args {
-        [Argument::Register(r1), l] => (*r1, argument_to_escaped_symbol(l)),
-        _ => panic!(),
-    }
-}
-
-fn rro(args: &[Argument]) -> (Register, Register, u32) {
-    match args {
-        [Argument::Register(r1), Argument::RegOffset(off, r2)] => (
-            *r1,
-            *r2,
-            expression_to_number(off.as_ref().unwrap_or(&Expression::Number(0))),
-        ),
-        [Argument::Register(r1), Argument::Expression(off)] => {
-            // If the register is not specified, it defaults to x0
-            (*r1, Register::new(0), expression_to_number(off))
+    fn r(&self) -> Result<Register, &'static str> {
+        match self {
+            [Argument::Register(r1)] => Ok(*r1),
+            _ => Err("Expected: register"),
         }
-        _ => panic!(),
     }
-}
 
-fn rrro(args: &[Argument]) -> (Register, Register, Register, u32) {
-    match args {
-        [Argument::Register(r1), Argument::Register(r2), Argument::RegOffset(off, r3)] => (
-            *r1,
-            *r2,
-            *r3,
-            expression_to_number(off.as_ref().unwrap_or(&Expression::Number(0))),
-        ),
-        [Argument::Register(r1), Argument::Register(r2), Argument::Expression(off)] => {
-            // If the register is not specified, it defaults to x0
-            (*r1, *r2, Register::new(0), expression_to_number(off))
+    fn rri(&self) -> Result<(Register, Register, u32), &'static str> {
+        const ERR: &str = "Expected: register, register, immediate";
+        match self {
+            [Argument::Register(r1), Argument::Register(r2), n] => {
+                Ok((*r1, *r2, argument_to_number(n).ok_or(ERR)?))
+            }
+            _ => Err(ERR),
         }
-        _ => panic!(),
+    }
+
+    fn rrr(&self) -> Result<(Register, Register, Register), &'static str> {
+        match self {
+            [Argument::Register(r1), Argument::Register(r2), Argument::Register(r3)] => {
+                Ok((*r1, *r2, *r3))
+            }
+            _ => Err("Expected: register, register, register"),
+        }
+    }
+
+    fn ri(&self) -> Result<(Register, u32), &'static str> {
+        const ERR: &str = "Expected: register, immediate";
+        match self {
+            [Argument::Register(r1), n] => Ok((*r1, argument_to_number(n).ok_or(ERR)?)),
+            _ => Err(ERR),
+        }
+    }
+
+    fn rr(&self) -> Result<(Register, Register), &'static str> {
+        match self {
+            [Argument::Register(r1), Argument::Register(r2)] => Ok((*r1, *r2)),
+            _ => Err("Expected: register, register"),
+        }
+    }
+
+    fn rrl(&self) -> Result<(Register, Register, String), &'static str> {
+        const ERR: &str = "Expected: register, register, label";
+        match self {
+            [Argument::Register(r1), Argument::Register(r2), l] => {
+                Ok((*r1, *r2, argument_to_escaped_symbol(l).ok_or(ERR)?))
+            }
+            _ => Err(ERR),
+        }
+    }
+
+    fn rl(&self) -> Result<(Register, String), &'static str> {
+        const ERR: &str = "Expected: register, label";
+        match self {
+            [Argument::Register(r1), l] => Ok((*r1, argument_to_escaped_symbol(l).ok_or(ERR)?)),
+            _ => Err(ERR),
+        }
+    }
+
+    fn rro(&self) -> Result<(Register, Register, u32), &'static str> {
+        if let [Argument::Register(r1), Argument::RegOffset(off, r2)] = self {
+            if let Some(off) = expression_to_number(off.as_ref().unwrap_or(&Expression::Number(0)))
+            {
+                return Ok((*r1, *r2, off));
+            }
+        }
+        if let [Argument::Register(r1), Argument::Expression(off)] = self {
+            if let Some(off) = expression_to_number(off) {
+                // If the register is not specified, it defaults to x0
+                return Ok((*r1, Register::new(0), off));
+            }
+        }
+
+        Err("Expected: register, offset(register)")
+    }
+
+    fn rrro(&self) -> Result<(Register, Register, Register, u32), &'static str> {
+        if let [Argument::Register(r1), Argument::Register(r2), Argument::RegOffset(off, r3)] = self
+        {
+            if let Some(off) = expression_to_number(off.as_ref().unwrap_or(&Expression::Number(0)))
+            {
+                return Ok((*r1, *r2, *r3, off));
+            }
+        }
+        if let [Argument::Register(r1), Argument::Register(r2), Argument::Expression(off)] = self {
+            if let Some(off) = expression_to_number(off) {
+                // If the register is not specified, it defaults to x0
+                return Ok((*r1, *r2, Register::new(0), off));
+            }
+        }
+        Err("Expected: register, register, offset(register)")
+    }
+
+    fn empty(&self) -> Result<(), &'static str> {
+        match self {
+            [] => Ok(()),
+            _ => Err("Expected: no arguments"),
+        }
     }
 }
 
@@ -961,59 +1007,58 @@ pub fn pop_register(name: &str) -> [String; 2] {
     ]
 }
 
-fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
-    match instr {
+fn process_instruction<A: Args + ?Sized>(instr: &str, args: &A) -> Result<Vec<String>, A::Error> {
+    Ok(match instr {
         // load/store registers
         "li" | "la" => {
             // The difference between "li" and "la" in RISC-V is that the former
             // is for loading values as is, and the later is for loading PC
             // relative values. But since we work on a higher abstraction level,
             // for us they are the same thing.
-            if let [_, Argument::Expression(Expression::Symbol(_))] = args {
-                let (rd, label) = rl(args);
+            if let Ok((rd, label)) = args.rl() {
                 only_if_no_write_to_zero(format!("{rd} <== load_label({label});"), rd)
             } else {
-                let (rd, imm) = ri(args);
+                let (rd, imm) = args.ri()?;
                 only_if_no_write_to_zero(format!("{rd} <=X= {imm};"), rd)
             }
         }
         // TODO check if it is OK to clear the lower order bits
         "lui" => {
-            let (rd, imm) = ri(args);
+            let (rd, imm) = args.ri()?;
             only_if_no_write_to_zero(format!("{rd} <=X= {};", imm << 12), rd)
         }
         "mv" => {
-            let (rd, rs) = rr(args);
+            let (rd, rs) = args.rr()?;
             only_if_no_write_to_zero(format!("{rd} <=X= {rs};"), rd)
         }
 
         // Arithmetic
         "add" => {
-            let (rd, r1, r2) = rrr(args);
+            let (rd, r1, r2) = args.rrr()?;
             only_if_no_write_to_zero(format!("{rd} <== wrap({r1} + {r2});"), rd)
         }
         "addi" => {
-            let (rd, rs, imm) = rri(args);
+            let (rd, rs, imm) = args.rri()?;
             only_if_no_write_to_zero(format!("{rd} <== wrap({rs} + {imm});"), rd)
         }
         "sub" => {
-            let (rd, r1, r2) = rrr(args);
+            let (rd, r1, r2) = args.rrr()?;
             only_if_no_write_to_zero(format!("{rd} <== wrap_signed({r1} - {r2});"), rd)
         }
         "neg" => {
-            let (rd, r1) = rr(args);
+            let (rd, r1) = args.rr()?;
             only_if_no_write_to_zero(format!("{rd} <== wrap_signed(0 - {r1});"), rd)
         }
         "mul" => {
-            let (rd, r1, r2) = rrr(args);
+            let (rd, r1, r2) = args.rrr()?;
             only_if_no_write_to_zero(format!("{rd}, tmp1 <== mul({r1}, {r2});"), rd)
         }
         "mulhu" => {
-            let (rd, r1, r2) = rrr(args);
+            let (rd, r1, r2) = args.rrr()?;
             only_if_no_write_to_zero(format!("tmp1, {rd} <== mul({r1}, {r2});"), rd)
         }
         "mulh" => {
-            let (rd, r1, r2) = rrr(args);
+            let (rd, r1, r2) = args.rrr()?;
             only_if_no_write_to_zero_vec(
                 vec![
                     format!("tmp1 <== to_signed({r1});"),
@@ -1040,7 +1085,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             )
         }
         "mulhsu" => {
-            let (rd, r1, r2) = rrr(args);
+            let (rd, r1, r2) = args.rrr()?;
             only_if_no_write_to_zero_vec(
                 vec![
                     format!("tmp1 <== to_signed({r1});"),
@@ -1061,47 +1106,47 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             )
         }
         "divu" => {
-            let (rd, r1, r2) = rrr(args);
+            let (rd, r1, r2) = args.rrr()?;
             only_if_no_write_to_zero(format!("{rd}, tmp1 <== divremu({r1}, {r2});"), rd)
         }
         "remu" => {
-            let (rd, r1, r2) = rrr(args);
+            let (rd, r1, r2) = args.rrr()?;
             only_if_no_write_to_zero(format!("tmp1, {rd} <== divremu({r1}, {r2});"), rd)
         }
 
         // bitwise
         "xor" => {
-            let (rd, r1, r2) = rrr(args);
+            let (rd, r1, r2) = args.rrr()?;
             only_if_no_write_to_zero(format!("{rd} <== xor({r1}, {r2});"), rd)
         }
         "xori" => {
-            let (rd, r1, imm) = rri(args);
+            let (rd, r1, imm) = args.rri()?;
             only_if_no_write_to_zero(format!("{rd} <== xor({r1}, {imm});"), rd)
         }
         "and" => {
-            let (rd, r1, r2) = rrr(args);
+            let (rd, r1, r2) = args.rrr()?;
             only_if_no_write_to_zero(format!("{rd} <== and({r1}, {r2});"), rd)
         }
         "andi" => {
-            let (rd, r1, imm) = rri(args);
+            let (rd, r1, imm) = args.rri()?;
             only_if_no_write_to_zero(format!("{rd} <== and({r1}, {imm});"), rd)
         }
         "or" => {
-            let (rd, r1, r2) = rrr(args);
+            let (rd, r1, r2) = args.rrr()?;
             only_if_no_write_to_zero(format!("{rd} <== or({r1}, {r2});"), rd)
         }
         "ori" => {
-            let (rd, r1, imm) = rri(args);
+            let (rd, r1, imm) = args.rri()?;
             only_if_no_write_to_zero(format!("{rd} <== or({r1}, {imm});"), rd)
         }
         "not" => {
-            let (rd, rs) = rr(args);
+            let (rd, rs) = args.rr()?;
             only_if_no_write_to_zero(format!("{rd} <== wrap_signed(-{rs} - 1);"), rd)
         }
 
         // shift
         "slli" => {
-            let (rd, rs, amount) = rri(args);
+            let (rd, rs, amount) = args.rri()?;
             assert!(amount <= 31);
             only_if_no_write_to_zero_vec(
                 if amount <= 16 {
@@ -1116,7 +1161,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             )
         }
         "sll" => {
-            let (rd, r1, r2) = rrr(args);
+            let (rd, r1, r2) = args.rrr()?;
             only_if_no_write_to_zero_vec(
                 vec![
                     format!("tmp1 <== and({r2}, 0x1f);"),
@@ -1127,13 +1172,13 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         }
         "srli" => {
             // logical shift right
-            let (rd, rs, amount) = rri(args);
+            let (rd, rs, amount) = args.rri()?;
             assert!(amount <= 31);
             only_if_no_write_to_zero(format!("{rd} <== shr({rs}, {amount});"), rd)
         }
         "srl" => {
             // logical shift right
-            let (rd, r1, r2) = rrr(args);
+            let (rd, r1, r2) = args.rrr()?;
             only_if_no_write_to_zero_vec(
                 vec![
                     format!("tmp1 <== and({r2}, 0x1f);"),
@@ -1147,7 +1192,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // TODO see if we can implement this directly with a machine.
             // Now we are using the equivalence
             // a >>> b = (a >= 0 ? a >> b : ~(~a >> b))
-            let (rd, rs, amount) = rri(args);
+            let (rd, rs, amount) = args.rri()?;
             assert!(amount <= 31);
             only_if_no_write_to_zero_vec(
                 vec![
@@ -1166,15 +1211,15 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
 
         // comparison
         "seqz" => {
-            let (rd, rs) = rr(args);
+            let (rd, rs) = args.rr()?;
             only_if_no_write_to_zero(format!("{rd} <=Y= is_equal_zero({rs});"), rd)
         }
         "snez" => {
-            let (rd, rs) = rr(args);
+            let (rd, rs) = args.rr()?;
             only_if_no_write_to_zero(format!("{rd} <=Y= is_not_equal_zero({rs});"), rd)
         }
         "slti" => {
-            let (rd, rs, imm) = rri(args);
+            let (rd, rs, imm) = args.rri()?;
             only_if_no_write_to_zero_vec(
                 vec![
                     format!("tmp1 <== to_signed({rs});"),
@@ -1184,7 +1229,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             )
         }
         "slt" => {
-            let (rd, r1, r2) = rrr(args);
+            let (rd, r1, r2) = args.rrr()?;
             only_if_no_write_to_zero_vec(
                 vec![
                     format!("tmp1 <== to_signed({r1});"),
@@ -1195,15 +1240,15 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             )
         }
         "sltiu" => {
-            let (rd, rs, imm) = rri(args);
+            let (rd, rs, imm) = args.rri()?;
             only_if_no_write_to_zero(format!("{rd} <=Y= is_positive({imm} - {rs});"), rd)
         }
         "sltu" => {
-            let (rd, r1, r2) = rrr(args);
+            let (rd, r1, r2) = args.rrr()?;
             only_if_no_write_to_zero(format!("{rd} <=Y= is_positive({r2} - {r1});"), rd)
         }
         "sgtz" => {
-            let (rd, rs) = rr(args);
+            let (rd, rs) = args.rr()?;
             only_if_no_write_to_zero_vec(
                 vec![
                     format!("tmp1 <== to_signed({rs});"),
@@ -1215,31 +1260,31 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
 
         // branching
         "beq" => {
-            let (r1, r2, label) = rrl(args);
+            let (r1, r2, label) = args.rrl()?;
             vec![format!("branch_if_zero {r1} - {r2}, {label};")]
         }
         "beqz" => {
-            let (r1, label) = rl(args);
+            let (r1, label) = args.rl()?;
             vec![format!("branch_if_zero {r1}, {label};")]
         }
         "bgeu" => {
-            let (r1, r2, label) = rrl(args);
+            let (r1, r2, label) = args.rrl()?;
             // TODO does this fulfill the input requirements for branch_if_positive?
             vec![format!("branch_if_positive {r1} - {r2} + 1, {label};")]
         }
         "bgez" => {
-            let (r1, label) = rl(args);
+            let (r1, label) = args.rl()?;
             vec![
                 format!("tmp1 <== to_signed({r1});"),
                 format!("branch_if_positive tmp1 + 1, {label};"),
             ]
         }
         "bltu" => {
-            let (r1, r2, label) = rrl(args);
+            let (r1, r2, label) = args.rrl()?;
             vec![format!("branch_if_positive {r2} - {r1}, {label};")]
         }
         "blt" => {
-            let (r1, r2, label) = rrl(args);
+            let (r1, r2, label) = args.rrl()?;
             // Branch if r1 < r2 (signed).
             // TODO does this fulfill the input requirements for branch_if_positive?
             vec![
@@ -1249,7 +1294,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             ]
         }
         "bge" => {
-            let (r1, r2, label) = rrl(args);
+            let (r1, r2, label) = args.rrl()?;
             // Branch if r1 >= r2 (signed).
             // TODO does this fulfill the input requirements for branch_if_positive?
             vec![
@@ -1260,13 +1305,12 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         }
         "bltz" => {
             // branch if 2**31 <= r1 < 2**32
-            let (r1, label) = rl(args);
+            let (r1, label) = args.rl()?;
             vec![format!("branch_if_positive {r1} - 2**31 + 1, {label};")]
         }
-
         "blez" => {
             // branch less or equal zero
-            let (r1, label) = rl(args);
+            let (r1, label) = args.rl()?;
             vec![
                 format!("tmp1 <== to_signed({r1});"),
                 format!("branch_if_positive -tmp1 + 1, {label};"),
@@ -1274,44 +1318,35 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         }
         "bgtz" => {
             // branch if 0 < r1 < 2**31
-            let (r1, label) = rl(args);
+            let (r1, label) = args.rl()?;
             vec![
                 format!("tmp1 <== to_signed({r1});"),
                 format!("branch_if_positive tmp1, {label};"),
             ]
         }
         "bne" => {
-            let (r1, r2, label) = rrl(args);
+            let (r1, r2, label) = args.rrl()?;
             vec![format!("branch_if_nonzero {r1} - {r2}, {label};")]
         }
         "bnez" => {
-            let (r1, label) = rl(args);
+            let (r1, label) = args.rl()?;
             vec![format!("branch_if_nonzero {r1}, {label};")]
         }
 
         // jump and call
-        "j" => {
-            if let [label] = args {
-                vec![format!(
-                    "tmp1 <== jump({});",
-                    argument_to_escaped_symbol(label)
-                )]
-            } else {
-                panic!()
-            }
+        "j" | "tail" => {
+            let label = args.l()?;
+            vec![format!("tmp1 <== jump({label});",)]
         }
         "jr" => {
-            let rs = r(args);
+            let rs = args.r()?;
             vec![format!("tmp1 <== jump_dyn({rs});")]
         }
         "jal" => {
-            if let [label] = args {
-                vec![format!(
-                    "x1 <== jump({});",
-                    argument_to_escaped_symbol(label)
-                )]
+            if let Ok(label) = args.l() {
+                vec![format!("x1 <== jump({label});")]
             } else {
-                let (rd, label) = rl(args);
+                let (rd, label) = args.rl()?;
                 let statement = if rd.is_zero() {
                     format!("tmp1 <== jump({label});")
                 } else {
@@ -1320,20 +1355,23 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
                 vec![statement]
             }
         }
-        "jalr" => {
-            // TODO there is also a form that takes more arguments
-            let rs = r(args);
-            vec![format!("x1 <== jump_dyn({rs});")]
-        }
-        "call" | "tail" => {
-            assert_eq!(args.len(), 1);
-            let label = &args[0];
-            let arg = argument_to_escaped_symbol(label);
-            let dest = if instr == "tail" { "tmp1" } else { "x1" };
-            vec![format!("{dest} <== jump({arg});")]
+        "jalr" => vec![if let Ok(rs) = args.r() {
+            format!("x1 <== jump_dyn({rs});")
+        } else {
+            let (rd, rs, off) = args.rro()?;
+            assert_eq!(off, 0, "jalr with non-zero offset is not supported");
+            if rd.is_zero() {
+                format!("tmp1 <== jump_dyn({rs});")
+            } else {
+                format!("{rd} <== jump_dyn({rs});")
+            }
+        }],
+        "call" => {
+            let label = args.l()?;
+            vec![format!("x1 <== jump({label});")]
         }
         "ecall" => {
-            assert!(args.is_empty());
+            args.empty()?;
             // save ra/x1
             push_register("x1")
                 .into_iter()
@@ -1344,24 +1382,24 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
                 .collect()
         }
         "ebreak" => {
-            assert!(args.is_empty());
+            args.empty()?;
             // we don't use ebreak for anything, ignore
             vec![]
         }
         "ret" => {
-            assert!(args.is_empty());
+            args.empty()?;
             vec!["tmp1 <== jump_dyn(x1);".to_string()]
         }
 
         // memory access
         "lw" => {
-            let (rd, rs, off) = rro(args);
+            let (rd, rs, off) = args.rro()?;
             // TODO we need to consider misaligned loads / stores
             only_if_no_write_to_zero_vec(vec![format!("{rd}, tmp1 <== mload({rs} + {off});")], rd)
         }
         "lb" => {
             // load byte and sign-extend. the memory is little-endian.
-            let (rd, rs, off) = rro(args);
+            let (rd, rs, off) = args.rro()?;
             only_if_no_write_to_zero_vec(
                 vec![
                     format!("{rd}, tmp2 <== mload({rs} + {off});"),
@@ -1373,7 +1411,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         }
         "lbu" => {
             // load byte and zero-extend. the memory is little-endian.
-            let (rd, rs, off) = rro(args);
+            let (rd, rs, off) = args.rro()?;
             only_if_no_write_to_zero_vec(
                 vec![
                     format!("{rd}, tmp2 <== mload({rs} + {off});"),
@@ -1386,7 +1424,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         "lh" => {
             // Load two bytes and sign-extend.
             // Assumes the address is a multiple of two.
-            let (rd, rs, off) = rro(args);
+            let (rd, rs, off) = args.rro()?;
             only_if_no_write_to_zero_vec(
                 vec![
                     format!("{rd}, tmp2 <== mload({rs} + {off});"),
@@ -1399,7 +1437,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         "lhu" => {
             // Load two bytes and zero-extend.
             // Assumes the address is a multiple of two.
-            let (rd, rs, off) = rro(args);
+            let (rd, rs, off) = args.rro()?;
             only_if_no_write_to_zero_vec(
                 vec![
                     format!("{rd}, tmp2 <== mload({rs} + {off});"),
@@ -1410,7 +1448,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             )
         }
         "sw" => {
-            let (r1, r2, off) = rro(args);
+            let (r1, r2, off) = args.rro()?;
             vec![format!("mstore {r2} + {off}, {r1};")]
         }
         "sh" => {
@@ -1418,7 +1456,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
             // TODO this code assumes it is at least aligned on
             // a two-byte boundary
 
-            let (rs, rd, off) = rro(args);
+            let (rs, rd, off) = args.rro()?;
             vec![
                 format!("tmp1, tmp2 <== mload({rd} + {off});"),
                 "tmp3 <== shl(0xffff, 8 * tmp2);".to_string(),
@@ -1432,7 +1470,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         }
         "sb" => {
             // store byte
-            let (rs, rd, off) = rro(args);
+            let (rs, rd, off) = args.rro()?;
             vec![
                 format!("tmp1, tmp2 <== mload({rd} + {off});"),
                 "tmp3 <== shl(0xff, 8 * tmp2);".to_string(),
@@ -1449,7 +1487,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
 
         // atomic instructions
         insn if insn.starts_with("amoadd.w") => {
-            let (rd, rs2, rs1, off) = rrro(args);
+            let (rd, rs2, rs1, off) = args.rrro()?;
             assert_eq!(off, 0);
 
             [
@@ -1465,7 +1503,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
 
         insn if insn.starts_with("lr.w") => {
             // Very similar to "lw":
-            let (rd, rs, off) = rro(args);
+            let (rd, rs, off) = args.rro()?;
             assert_eq!(off, 0);
             // TODO misaligned access should raise misaligned address exceptions
             let mut statements =
@@ -1476,7 +1514,7 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
 
         insn if insn.starts_with("sc.w") => {
             // Some overlap with "sw", but also writes 0 to rd on success
-            let (rd, rs2, rs1, off) = rrro(args);
+            let (rd, rs2, rs1, off) = args.rrro()?;
             assert_eq!(off, 0);
             // TODO: misaligned access should raise misaligned address exceptions
             let mut statements = vec![
@@ -1493,5 +1531,5 @@ fn process_instruction(instr: &str, args: &[Argument]) -> Vec<String> {
         _ => {
             panic!("Unknown instruction: {instr}");
         }
-    }
+    })
 }

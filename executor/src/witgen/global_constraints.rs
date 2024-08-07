@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::marker::PhantomData;
 
 use num_traits::Zero;
 
@@ -32,6 +33,54 @@ impl<'a, T: FieldElement> RangeConstraintSet<&AlgebraicReference, T>
     fn range_constraint(&self, id: &AlgebraicReference) -> Option<RangeConstraint<T>> {
         assert!(!id.next);
         self.range_constraints.get(&id.poly_id).cloned()
+    }
+}
+
+/// A range constraint set that combines two other range constraint sets.
+pub struct CombinedRangeConstraintSet<'a, R1, R2, K, T>
+where
+    T: FieldElement,
+    R1: RangeConstraintSet<K, T>,
+    R2: RangeConstraintSet<K, T>,
+{
+    range_constraints1: &'a R1,
+    range_constraints2: &'a R2,
+    _marker_k: PhantomData<K>,
+    _marker_t: PhantomData<T>,
+}
+
+impl<'a, R1, R2, K, T> CombinedRangeConstraintSet<'a, R1, R2, K, T>
+where
+    T: FieldElement,
+    R1: RangeConstraintSet<K, T>,
+    R2: RangeConstraintSet<K, T>,
+{
+    pub fn new(range_constraints1: &'a R1, range_constraints2: &'a R2) -> Self {
+        Self {
+            range_constraints1,
+            range_constraints2,
+            _marker_k: PhantomData,
+            _marker_t: PhantomData,
+        }
+    }
+}
+
+impl<'a, R1, R2, K, T> RangeConstraintSet<K, T> for CombinedRangeConstraintSet<'a, R1, R2, K, T>
+where
+    T: FieldElement,
+    K: Copy,
+    R1: RangeConstraintSet<K, T>,
+    R2: RangeConstraintSet<K, T>,
+{
+    fn range_constraint(&self, id: K) -> Option<RangeConstraint<T>> {
+        match (
+            self.range_constraints1.range_constraint(id),
+            self.range_constraints2.range_constraint(id),
+        ) {
+            (Some(c1), Some(c2)) => Some(c1.conjunction(&c2)),
+            (Some(c), None) | (None, Some(c)) => Some(c),
+            (None, None) => None,
+        }
     }
 }
 

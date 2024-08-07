@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 
 use super::block_machine::BlockMachine;
@@ -74,10 +75,11 @@ pub fn split_out_machines<'a, T: FieldElement>(
                     .next()
                     .is_some()
             })
-            .collect::<Vec<_>>();
-        assert!(connecting_identities.contains(id));
+            .map(|identity| (identity.id, identity))
+            .collect::<BTreeMap<_, _>>();
+        assert!(connecting_identities.contains_key(&id.id));
 
-        log::debug!(
+        log::trace!(
             "\nExtracted a machine with the following witnesses:\n{} \n and identities:\n{} \n and connecting identities:\n{}",
             machine_witnesses
                 .iter()
@@ -91,7 +93,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
                 .collect::<Vec<_>>()
                 .join("\n"),
             connecting_identities
-                .iter()
+                .values()
                 .map(|id| id.to_string())
                 .collect::<Vec<_>>()
                 .join("\n"),
@@ -142,12 +144,12 @@ pub fn split_out_machines<'a, T: FieldElement>(
             &machine_identities,
             &machine_witnesses,
         ) {
-            log::debug!("Detected machine: block");
+            log::debug!("Detected machine: {machine}");
             machines.push(KnownMachine::BlockMachine(machine));
         } else {
             log::debug!("Detected machine: VM.");
             let latch = connecting_identities
-                .iter()
+                .values()
                 .fold(None, |existing_latch, identity| {
                     let current_latch = identity
                         .right

@@ -5,6 +5,7 @@ use itertools::Itertools;
 use super::super::affine_expression::AffineExpression;
 use super::{EvalResult, FixedData};
 use super::{FixedLookup, Machine};
+use crate::witgen::rows::RowPair;
 use crate::witgen::{
     expression_evaluator::ExpressionEvaluator, fixed_evaluator::FixedEvaluator,
     symbolic_evaluator::SymbolicEvaluator,
@@ -24,6 +25,7 @@ use powdr_number::FieldElement;
 ///  - POSITIVE has all values from 1 to half of the field size.
 pub struct SortedWitnesses<'a, T: FieldElement> {
     rhs_references: BTreeMap<u64, Vec<&'a AlgebraicReference>>,
+    connecting_identities: BTreeMap<u64, &'a Identity<Expression<T>>>,
     key_col: PolyID,
     /// Position of the witness columns in the data.
     witness_positions: HashMap<PolyID, usize>,
@@ -36,7 +38,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
     pub fn try_new(
         name: String,
         fixed_data: &'a FixedData<T>,
-        connecting_identities: &[&'a Identity<Expression<T>>],
+        connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
         identities: &[&Identity<Expression<T>>],
         witnesses: &HashSet<PolyID>,
     ) -> Option<Self> {
@@ -53,7 +55,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                 .collect();
 
             let rhs_references = connecting_identities
-                .iter()
+                .values()
                 .filter_map(|&id| {
                     let rhs_expressions = id
                         .right
@@ -77,6 +79,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
 
             Some(SortedWitnesses {
                 rhs_references,
+                connecting_identities: connecting_identities.clone(),
                 name,
                 key_col,
                 witness_positions,
@@ -169,9 +172,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
         &mut self,
         _mutable_state: &mut MutableState<'a, '_, T, Q>,
         identity_id: u64,
-        args: &[AffineExpression<&'a AlgebraicReference, T>],
+        caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        self.process_plookup_internal(identity_id, args)
+        self.process_plookup_internal(identity_id, caller_rows)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
@@ -208,8 +211,14 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
     fn process_plookup_internal(
         &mut self,
         identity_id: u64,
-        left: &[AffineExpression<&'a AlgebraicReference, T>],
+        caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
+        let left = self.connecting_identities[&identity_id]
+            .left
+            .expressions
+            .iter()
+            .map(|e| caller_rows.evaluate(e).unwrap())
+            .collect::<Vec<_>>();
         let rhs = self.rhs_references.get(&identity_id).unwrap();
         let key_index = rhs.iter().position(|&x| x.poly_id == self.key_col).unwrap();
 
@@ -258,6 +267,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                             "Stored {} = {key_value} -> {r} = {v}",
                             self.fixed_data.column_name(&self.key_col)
                         );
+                        assignments = assignments.report_side_effect();
                         *stored_value = Some(v);
                     }
                     None => {

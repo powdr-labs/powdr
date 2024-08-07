@@ -9,8 +9,8 @@ repository.workspace = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-powdr-ast = { path = "../ast" }
-powdr-number = { path = "../number" }
+powdr-ast.workspace = true
+powdr-number.workspace = true
 
 serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }
 schemars = { version = "0.8.16", features = ["preserve_order"]}

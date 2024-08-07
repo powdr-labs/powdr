@@ -9,7 +9,9 @@ use log::LevelFilter;
 
 use powdr_number::{BigUint, Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::Pipeline;
+use powdr_riscv_executor::ProfilerOptions;
 
+use std::ffi::OsStr;
 use std::io;
 use std::{borrow::Cow, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
@@ -122,6 +124,16 @@ enum Commands {
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         witness: bool,
+
+        /// Generate a flamegraph plot of the execution ("[file].svg")
+        #[arg(long)]
+        #[arg(default_value_t = false)]
+        generate_flamegraph: bool,
+
+        /// Generate callgrind file of the execution ("[file].callgrind")
+        #[arg(long)]
+        #[arg(default_value_t = false)]
+        generate_callgrind: bool,
     },
 }
 
@@ -220,13 +232,29 @@ fn run_command(command: Commands) {
             output_directory,
             continuations,
             witness,
+            generate_flamegraph,
+            generate_callgrind,
         } => {
+            let profiling = if generate_callgrind || generate_flamegraph {
+                Some(ProfilerOptions {
+                    file_stem: Path::new(&file)
+                        .file_stem()
+                        .and_then(OsStr::to_str)
+                        .map(String::from),
+                    output_directory: output_directory.clone(),
+                    flamegraph: generate_flamegraph,
+                    callgrind: generate_callgrind,
+                })
+            } else {
+                None
+            };
             call_with_field!(execute::<field>(
                 Path::new(&file),
                 split_inputs(&inputs),
                 Path::new(&output_directory),
                 continuations,
-                witness
+                witness,
+                profiling
             ))
         }
     };
@@ -297,6 +325,7 @@ fn execute<F: FieldElement>(
     output_dir: &Path,
     continuations: bool,
     witness: bool,
+    profiling: Option<ProfilerOptions>,
 ) -> Result<(), Vec<String>> {
     let mut pipeline = Pipeline::<F>::default()
         .from_file(file_name.to_path_buf())
@@ -304,7 +333,7 @@ fn execute<F: FieldElement>(
 
     let bootloader_inputs = if continuations {
         pipeline = pipeline.with_prover_inputs(inputs.clone());
-        powdr_riscv::continuations::rust_continuations_dry_run(&mut pipeline)
+        powdr_riscv::continuations::rust_continuations_dry_run(&mut pipeline, profiling.clone())
     } else {
         vec![]
     };
@@ -327,6 +356,7 @@ fn execute<F: FieldElement>(
                 pipeline.data_callback().unwrap(),
                 &[],
                 powdr_riscv_executor::ExecMode::Fast,
+                profiling,
             );
             log::info!("Execution trace length: {}", trace.len);
         }

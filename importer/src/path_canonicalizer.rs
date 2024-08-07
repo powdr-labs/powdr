@@ -14,14 +14,16 @@ use powdr_ast::parsed::{
     folder::Folder,
     types::{Type, TypeScheme},
     visitor::{Children, ExpressionVisitable},
-    ArrayLiteral, EnumDeclaration, EnumVariant, Expression, FunctionCall, IndexAccess,
-    LambdaExpression, LetStatementInsideBlock, MatchArm, Pattern, PilStatement,
-    StatementInsideBlock, TypedExpression,
+    ArrayLiteral, BinaryOperation, BlockExpression, EnumDeclaration, EnumVariant, Expression,
+    FunctionCall, IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm,
+    MatchExpression, Pattern, PilStatement, SourceReference, StatementInsideBlock, TypedExpression,
+    UnaryOperation,
 };
+use powdr_parser_util::{Error, SourceRef};
 
 /// Changes all symbol references (symbol paths) from relative paths
 /// to absolute paths, and removes all import statements.
-pub fn canonicalize_paths(program: ASMProgram) -> Result<ASMProgram, String> {
+pub fn canonicalize_paths(program: ASMProgram) -> Result<ASMProgram, Error> {
     let paths = &generate_path_map(&program)?;
 
     let mut canonicalizer = Canonicalizer {
@@ -151,29 +153,34 @@ fn free_inputs_in_expression<'a>(
     expr: &'a Expression,
 ) -> Box<dyn Iterator<Item = &'a Expression> + 'a> {
     match expr {
-        Expression::FreeInput(e) => Box::new(once(e.as_ref())),
-        Expression::Reference(_)
-        | Expression::PublicReference(_)
-        | Expression::Number(_)
-        | Expression::String(_) => Box::new(None.into_iter()),
-        Expression::BinaryOperation(left, _, right) => {
+        Expression::FreeInput(_, e) => Box::new(once(e.as_ref())),
+        Expression::Reference(_, _)
+        | Expression::PublicReference(_, _)
+        | Expression::Number(_, _)
+        | Expression::String(_, _) => Box::new(None.into_iter()),
+        Expression::BinaryOperation(_, BinaryOperation { left, right, .. }) => {
             Box::new(free_inputs_in_expression(left).chain(free_inputs_in_expression(right)))
         }
-        Expression::UnaryOperation(_, expr) => free_inputs_in_expression(expr),
-        Expression::FunctionCall(FunctionCall {
-            function,
-            arguments,
-        }) => Box::new(
+        Expression::UnaryOperation(_, UnaryOperation { expr, .. }) => {
+            free_inputs_in_expression(expr)
+        }
+        Expression::FunctionCall(
+            _,
+            FunctionCall {
+                function,
+                arguments,
+            },
+        ) => Box::new(
             free_inputs_in_expression(function)
                 .chain(arguments.iter().flat_map(|e| free_inputs_in_expression(e))),
         ),
         // These should really not appear in assembly statements.
-        Expression::Tuple(_) => todo!(),
-        Expression::LambdaExpression(_) => todo!(),
-        Expression::ArrayLiteral(_) => todo!(),
-        Expression::IndexAccess(_) => todo!(),
+        Expression::Tuple(_, _) => todo!(),
+        Expression::LambdaExpression(_, _) => todo!(),
+        Expression::ArrayLiteral(_, _) => todo!(),
+        Expression::IndexAccess(_, _) => todo!(),
         Expression::MatchExpression(_, _) => todo!(),
-        Expression::IfExpression(_) => todo!(),
+        Expression::IfExpression(_, _) => todo!(),
         Expression::BlockExpression(_, _) => todo!(),
     }
 }
@@ -183,19 +190,24 @@ fn free_inputs_in_expression_mut<'a>(
     expr: &'a mut Expression,
 ) -> Box<dyn Iterator<Item = &'a mut Expression> + 'a> {
     match expr {
-        Expression::FreeInput(e) => Box::new(once(e.as_mut())),
-        Expression::Reference(_)
-        | Expression::PublicReference(_)
-        | Expression::Number(_)
-        | Expression::String(_) => Box::new(None.into_iter()),
-        Expression::BinaryOperation(left, _, right) => Box::new(
+        Expression::FreeInput(_, e) => Box::new(once(e.as_mut())),
+        Expression::Reference(_, _)
+        | Expression::PublicReference(_, _)
+        | Expression::Number(_, _)
+        | Expression::String(_, _) => Box::new(None.into_iter()),
+        Expression::BinaryOperation(_, BinaryOperation { left, right, .. }) => Box::new(
             free_inputs_in_expression_mut(left).chain(free_inputs_in_expression_mut(right)),
         ),
-        Expression::UnaryOperation(_, expr) => free_inputs_in_expression_mut(expr),
-        Expression::FunctionCall(FunctionCall {
-            function,
-            arguments,
-        }) => Box::new(
+        Expression::UnaryOperation(_, UnaryOperation { expr, .. }) => {
+            free_inputs_in_expression_mut(expr)
+        }
+        Expression::FunctionCall(
+            _,
+            FunctionCall {
+                function,
+                arguments,
+            },
+        ) => Box::new(
             free_inputs_in_expression_mut(function).chain(
                 arguments
                     .iter_mut()
@@ -203,12 +215,12 @@ fn free_inputs_in_expression_mut<'a>(
             ),
         ),
         // These should really not appear in assembly statements.
-        Expression::Tuple(_) => todo!(),
-        Expression::LambdaExpression(_) => todo!(),
-        Expression::ArrayLiteral(_) => todo!(),
-        Expression::IndexAccess(_) => todo!(),
+        Expression::Tuple(_, _) => todo!(),
+        Expression::LambdaExpression(_, _) => todo!(),
+        Expression::ArrayLiteral(_, _) => todo!(),
+        Expression::IndexAccess(_, _) => todo!(),
         Expression::MatchExpression(_, _) => todo!(),
-        Expression::IfExpression(_) => todo!(),
+        Expression::IfExpression(_, _) => todo!(),
         Expression::BlockExpression(_, _) => todo!(),
     }
 }
@@ -220,7 +232,7 @@ fn canonicalize_inside_expression(
 ) {
     e.pre_visit_expressions_mut(&mut |e| {
         match e {
-            Expression::Reference(reference) => {
+            Expression::Reference(_, reference) => {
                 // If resolving the reference fails, we assume it is a local variable that has been checked below.
                 if let Some(n) = paths.get(&path.clone().join(reference.path.clone())) {
                     *reference = n.relative_to(&Default::default()).into();
@@ -228,20 +240,20 @@ fn canonicalize_inside_expression(
                     assert!(reference.path.try_to_identifier().is_some());
                 }
             }
-            Expression::BlockExpression(statements, _expr) => {
+            Expression::BlockExpression(_, BlockExpression { statements, .. }) => {
                 for statement in statements {
                     if let StatementInsideBlock::LetStatement(let_statement) = statement {
                         canonicalize_inside_pattern(&mut let_statement.pattern, path, paths);
                     }
                 }
             }
-            Expression::LambdaExpression(lambda) => {
+            Expression::LambdaExpression(_, lambda) => {
                 lambda.params.iter_mut().for_each(|p| {
                     canonicalize_inside_pattern(p, path, paths);
                 });
             }
-            Expression::MatchExpression(_, match_arms) => {
-                match_arms.iter_mut().for_each(|MatchArm { pattern, .. }| {
+            Expression::MatchExpression(_, MatchExpression { arms, .. }) => {
+                arms.iter_mut().for_each(|MatchArm { pattern, .. }| {
                     canonicalize_inside_pattern(pattern, path, paths);
                 })
             }
@@ -488,7 +500,7 @@ fn check_import(
     check_path(location.join(imported.path), state)
 }
 
-fn generate_path_map(program: &ASMProgram) -> Result<PathMap, String> {
+fn generate_path_map(program: &ASMProgram) -> Result<PathMap, Error> {
     // an empty state starting from this module
     let mut state = State {
         root: &program.main,
@@ -512,15 +524,19 @@ fn check_module(
     location: AbsoluteSymbolPath,
     module: &ASMModule,
     state: &mut State<'_>,
-) -> Result<(), String> {
-    module.symbol_definitions().try_fold(
-        BTreeSet::default(),
-        |mut acc, SymbolDefinition { name, .. }| {
-            acc.insert(name.clone())
-                .then_some(acc)
-                .ok_or(format!("Duplicate name `{name}` in module `{location}`"))
-        },
-    )?;
+) -> Result<(), Error> {
+    module
+        .symbol_definitions()
+        .try_fold(
+            BTreeSet::default(),
+            |mut acc, SymbolDefinition { name, .. }| {
+                // TODO we should store source refs in symbol definitions.
+                acc.insert(name.clone())
+                    .then_some(acc)
+                    .ok_or(format!("Duplicate name `{name}` in module `{location}`"))
+            },
+        )
+        .map_err(|e| SourceRef::default().with_error(e))?;
 
     for SymbolDefinition { name, value } in module.symbol_definitions() {
         // start with the initial state
@@ -536,15 +552,18 @@ fn check_module(
                 };
                 check_module(location.with_part(name), m, state)?;
             }
-            SymbolValue::Import(s) => check_import(location.clone(), s.clone(), state)?,
+            SymbolValue::Import(s) => check_import(location.clone(), s.clone(), state)
+                .map_err(|e| SourceRef::default().with_error(e))?,
             SymbolValue::Expression(TypedExpression { e, type_scheme }) => {
                 if let Some(type_scheme) = type_scheme {
-                    check_type_scheme(&location, type_scheme, state, &Default::default())?;
+                    check_type_scheme(&location, type_scheme, state, &Default::default())
+                        .map_err(|err| e.source_reference().with_error(err))?;
                 }
                 check_expression(&location, e, state, &HashSet::default())?
             }
             SymbolValue::TypeDeclaration(enum_decl) => {
-                check_type_declaration(&location, enum_decl, state)?
+                check_type_declaration(&location, enum_decl, state)
+                    .map_err(|e| SourceRef::default().with_error(e))?
             }
         }
     }
@@ -560,7 +579,7 @@ fn check_machine(
     location: AbsoluteSymbolPath,
     m: &Machine,
     state: &mut State<'_>,
-) -> Result<(), String> {
+) -> Result<(), Error> {
     // we check the path in the context of the parent module
     let module_location = location.clone().parent();
 
@@ -568,13 +587,16 @@ fn check_machine(
     let mut local_variables = HashSet::<String>::default();
     for name in m.local_names() {
         if !local_variables.insert(name.clone()) {
-            return Err(format!("Duplicate name `{name}` in machine `{location}`"));
+            // TODO local_names could also return a source ref.
+            return Err(SourceRef::default()
+                .with_error(format!("Duplicate name `{name}` in machine `{location}`")));
         }
     }
     for statement in &m.statements {
         match statement {
-            MachineStatement::Submachine(_, path, _) => {
-                check_path(module_location.clone().join(path.clone()), state)?
+            MachineStatement::Submachine(source_ref, path, _) => {
+                check_path(module_location.clone().join(path.clone()), state)
+                    .map_err(|e| source_ref.with_error(e))?
             }
             MachineStatement::FunctionDeclaration(_, _, _, statements) => statements
                 .iter()
@@ -582,8 +604,9 @@ fn check_machine(
                 .flat_map(free_inputs_in_expression)
                 .try_for_each(|e| check_expression(&module_location, e, state, &local_variables))?,
             MachineStatement::Pil(_, statement) => {
-                if let PilStatement::LetStatement(_, _, Some(type_scheme), _) = statement {
-                    check_type_scheme(&module_location, type_scheme, state, &local_variables)?;
+                if let PilStatement::LetStatement(source_ref, _, Some(type_scheme), _) = statement {
+                    check_type_scheme(&module_location, type_scheme, state, &local_variables)
+                        .map_err(|e| source_ref.with_error(e))?;
                 }
                 statement.children().try_for_each(|e| {
                     check_expression(&module_location, e, state, &local_variables)
@@ -634,65 +657,88 @@ fn check_expression(
     e: &Expression,
     state: &mut State<'_>,
     local_variables: &HashSet<String>,
-) -> Result<(), String> {
+) -> Result<(), Error> {
     // We cannot use the visitor here because we need to change the local variables
     // inside lambda expressions.
     match e {
-        Expression::Reference(reference) => {
+        Expression::Reference(source_ref, reference) => {
             if let Some(name) = reference.try_to_identifier() {
                 if local_variables.contains(name) {
                     return Ok(());
                 }
             }
             check_path_try_prelude(location.clone(), reference.path.clone(), state)
+                .map_err(|e| source_ref.with_error(e))
         }
-        Expression::PublicReference(_) | Expression::Number(_) | Expression::String(_) => Ok(()),
-        Expression::Tuple(items) | Expression::ArrayLiteral(ArrayLiteral { items }) => {
+        Expression::PublicReference(_, _) | Expression::Number(_, _) | Expression::String(_, _) => {
+            Ok(())
+        }
+        Expression::Tuple(_, items) | Expression::ArrayLiteral(_, ArrayLiteral { items }) => {
             check_expressions(location, items, state, local_variables)
         }
-        Expression::LambdaExpression(LambdaExpression {
-            kind: _,
-            params,
-            body,
-        }) => {
+        Expression::LambdaExpression(
+            source_ref,
+            LambdaExpression {
+                kind: _,
+                params,
+                body,
+            },
+        ) => {
             // Add the local variables, ignore collisions.
             let mut local_variables = local_variables.clone();
-            local_variables.extend(check_patterns(location, params, state)?);
+            local_variables.extend(
+                check_patterns(location, params, state).map_err(|e| source_ref.with_error(e))?,
+            );
             check_expression(location, body, state, &local_variables)
         }
-        Expression::BinaryOperation(a, _, b)
-        | Expression::IndexAccess(IndexAccess { array: a, index: b }) => {
+        Expression::BinaryOperation(
+            _,
+            BinaryOperation {
+                left: a, right: b, ..
+            },
+        )
+        | Expression::IndexAccess(_, IndexAccess { array: a, index: b }) => {
             check_expression(location, a.as_ref(), state, local_variables)?;
             check_expression(location, b.as_ref(), state, local_variables)
         }
-        Expression::UnaryOperation(_, e) | Expression::FreeInput(e) => {
-            check_expression(location, e, state, local_variables)
+        Expression::UnaryOperation(_, UnaryOperation { expr, .. })
+        | Expression::FreeInput(_, expr) => {
+            check_expression(location, expr, state, local_variables)
         }
-        Expression::FunctionCall(FunctionCall {
-            function,
-            arguments,
-        }) => {
+        Expression::FunctionCall(
+            _,
+            FunctionCall {
+                function,
+                arguments,
+            },
+        ) => {
             check_expression(location, function, state, local_variables)?;
             check_expressions(location, arguments, state, local_variables)
         }
-        Expression::MatchExpression(scrutinee, arms) => {
+        Expression::MatchExpression(source_ref, MatchExpression { scrutinee, arms }) => {
             check_expression(location, scrutinee, state, local_variables)?;
             arms.iter().try_for_each(|MatchArm { pattern, value }| {
                 let mut local_variables = local_variables.clone();
-                local_variables.extend(check_pattern(location, pattern, state)?);
+                local_variables.extend(
+                    check_pattern(location, pattern, state)
+                        .map_err(|e| source_ref.with_error(e))?,
+                );
                 check_expression(location, value, state, &local_variables)
             })
         }
-        Expression::IfExpression(powdr_ast::parsed::IfExpression {
-            condition,
-            body,
-            else_body,
-        }) => {
+        Expression::IfExpression(
+            _,
+            powdr_ast::parsed::IfExpression {
+                condition,
+                body,
+                else_body,
+            },
+        ) => {
             check_expression(location, condition, state, local_variables)?;
             check_expression(location, body, state, local_variables)?;
             check_expression(location, else_body, state, local_variables)
         }
-        Expression::BlockExpression(statements, expr) => {
+        Expression::BlockExpression(source_ref, BlockExpression { statements, expr }) => {
             let mut local_variables = local_variables.clone();
             for statement in statements {
                 match statement {
@@ -703,7 +749,11 @@ fn check_expression(
                         if let Some(value) = value {
                             check_expression(location, value, state, &local_variables)?;
                         }
-                        local_variables.extend(check_pattern(location, pattern, state)?);
+                        // TODO we need a much more fine-grained source ref here.
+                        local_variables.extend(
+                            check_pattern(location, pattern, state)
+                                .map_err(|e| source_ref.with_error(e))?,
+                        );
                     }
                     StatementInsideBlock::Expression(expr) => {
                         check_expression(location, expr, state, &local_variables)?;
@@ -720,7 +770,7 @@ fn check_expressions(
     expressions: &[Expression],
     state: &mut State<'_>,
     local_variables: &HashSet<String>,
-) -> Result<(), String> {
+) -> Result<(), Error> {
     expressions
         .iter()
         .try_for_each(|e| check_expression(location, e, state, local_variables))
@@ -822,8 +872,11 @@ fn check_type(
         }
         check_path_try_prelude(location.clone(), p.clone(), state)?
     }
-    ty.children()
-        .try_for_each(|e| check_expression(location, e, state, local_variables))
+    // TODO once the return type of this function changes to Error,
+    // we can keep the erorr here.
+    ty.children().try_for_each(|e| {
+        check_expression(location, e, state, local_variables).map_err(|e| e.message().to_string())
+    })
 }
 
 #[cfg(test)]
@@ -850,7 +903,7 @@ mod tests {
             })
             .map_err(|s| s.to_string());
 
-        assert_eq!(res, expected);
+        assert_eq!(res.map_err(|e| e.message().to_string()), expected);
     }
 
     #[test]

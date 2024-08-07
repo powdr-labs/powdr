@@ -1,7 +1,6 @@
 use powdr_ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID,
 };
-use powdr_ast::parsed::SelectedExpressions;
 use powdr_number::{DegreeType, FieldElement};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -11,11 +10,10 @@ use crate::witgen::processor::OuterQuery;
 use crate::witgen::rows::CellValue;
 use crate::witgen::EvalValue;
 
-use super::affine_expression::AffineExpression;
 use super::block_processor::BlockProcessor;
 use super::data_structures::column_map::WitnessColumnMap;
 use super::machines::{FixedLookup, Machine};
-use super::rows::{Row, RowIndex};
+use super::rows::{Row, RowIndex, RowPair};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use super::vm_processor::VmProcessor;
 use super::{EvalResult, FixedData, MutableState, QueryCallback};
@@ -26,7 +24,7 @@ struct ProcessResult<'a, T: FieldElement> {
 }
 
 pub struct Generator<'a, T: FieldElement> {
-    connecting_rhs: BTreeMap<u64, &'a SelectedExpressions<Expression<T>>>,
+    connecting_identities: BTreeMap<u64, &'a Identity<Expression<T>>>,
     fixed_data: &'a FixedData<'a, T>,
     identities: Vec<&'a Identity<Expression<T>>>,
     witnesses: HashSet<PolyID>,
@@ -37,23 +35,25 @@ pub struct Generator<'a, T: FieldElement> {
 
 impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
-        self.connecting_rhs.keys().cloned().collect()
+        self.connecting_identities.keys().cloned().collect()
     }
 
     fn name(&self) -> &str {
         &self.name
     }
 
-    fn process_plookup<Q: QueryCallback<T>>(
+    fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &mut MutableState<'a, '_, T, Q>,
+        mutable_state: &mut MutableState<'a, 'b, T, Q>,
         identity_id: u64,
-        args: &[AffineExpression<&'a AlgebraicReference, T>],
+        caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
+        let identity = self.connecting_identities.get(&identity_id).unwrap();
+        let outer_query = OuterQuery::new(caller_rows, identity);
+
         log::trace!("Start processing secondary VM '{}'", self.name());
         log::trace!("Arguments:");
-        let right = &self.connecting_rhs.get(&identity_id).unwrap();
-        for (r, l) in right.expressions.iter().zip(args) {
+        for (r, l) in identity.right.expressions.iter().zip(&outer_query.left) {
             log::trace!("  {r} = {l}");
         }
 
@@ -63,22 +63,21 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
             .cloned()
             .unwrap_or_else(|| self.compute_partial_first_row(mutable_state));
 
-        let outer_query = OuterQuery {
-            left: args.to_vec(),
-            right,
-        };
         let ProcessResult { eval_value, block } =
             self.process(first_row, 0, mutable_state, Some(outer_query), false);
 
-        if eval_value.is_complete() {
+        let eval_value = if eval_value.is_complete() {
             log::trace!("End processing VM '{}' (successfully)", self.name());
             // Remove the last row of the previous block, as it is the first row of the current
             // block.
             self.data.pop();
             self.data.extend(block);
+
+            eval_value.report_side_effect()
         } else {
             log::trace!("End processing VM '{}' (incomplete)", self.name());
-        }
+            eval_value
+        };
         Ok(eval_value)
     }
 
@@ -110,17 +109,14 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     pub fn new(
         name: String,
         fixed_data: &'a FixedData<'a, T>,
-        connecting_identities: &[&'a Identity<Expression<T>>],
+        connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
         identities: Vec<&'a Identity<Expression<T>>>,
         witnesses: HashSet<PolyID>,
         latch: Option<Expression<T>>,
     ) -> Self {
         let data = FinalizableData::new(&witnesses);
         Self {
-            connecting_rhs: connecting_identities
-                .iter()
-                .map(|&identity| (identity.id, &identity.right))
-                .collect(),
+            connecting_identities: connecting_identities.clone(),
             name,
             fixed_data,
             identities,
@@ -213,12 +209,12 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         first_row
     }
 
-    fn process<Q: QueryCallback<T>>(
+    fn process<'b, Q: QueryCallback<T>>(
         &self,
         first_row: Row<'a, T>,
         row_offset: DegreeType,
-        mutable_state: &mut MutableState<'a, '_, T, Q>,
-        outer_query: Option<OuterQuery<'a, T>>,
+        mutable_state: &mut MutableState<'a, 'b, T, Q>,
+        outer_query: Option<OuterQuery<'a, 'b, T>>,
         is_main_run: bool,
     ) -> ProcessResult<'a, T> {
         log::trace!(

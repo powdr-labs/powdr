@@ -31,6 +31,7 @@ pub fn verify_riscv_asm_string<S: serde::Serialize + Send + Sync + 'static>(
         &[],
         usize::MAX,
         powdr_riscv_executor::ExecMode::Fast,
+        Default::default(),
     );
     verify_pipeline(pipeline, backend).unwrap();
 }

@@ -14,15 +14,15 @@ complex-tests = []
 estark-polygon = ["powdr-pipeline/estark-polygon"]
 
 [dependencies]
-powdr-ast = { path = "../ast" }
-powdr-asm-utils = { path = "../asm-utils" }
-powdr-executor = { path = "../executor" }
-powdr-number = { path = "../number" }
-powdr-parser = { path = "../parser" }
-powdr-parser-util = { path = "../parser-util" }
-powdr-pipeline = { path = "../pipeline" }
-powdr-riscv-executor = { path = "../riscv-executor" }
-powdr-riscv-syscalls = { path = "../riscv-syscalls" }
+powdr-ast.workspace = true
+powdr-asm-utils.workspace = true
+powdr-executor.workspace = true
+powdr-number.workspace = true
+powdr-parser.workspace = true
+powdr-parser-util.workspace = true
+powdr-pipeline.workspace = true
+powdr-riscv-executor.workspace = true
+powdr-riscv-syscalls.workspace = true
 
 lazy_static = "1.4.0"
 itertools = "^0.10"
@@ -41,8 +41,8 @@ regex-syntax = { version = "0.6", default_features = false, features = [
 lalrpop = "^0.19"
 
 [dev-dependencies]
-powdr-number = { path = "../number" }
-powdr-backend = { path = "../backend" }
+powdr-number.workspace = true
+powdr-backend.workspace = true
 
 test-log = "0.2.12"
 env_logger = "0.10.0"

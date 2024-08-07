@@ -8,17 +8,18 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [dependencies]
-powdr-analysis = { path = "../analysis" }
-powdr-ast = { path = "../ast" }
-powdr-number = { path = "../number" }
+powdr-analysis.workspace = true
+powdr-ast.workspace = true
+powdr-number.workspace = true
+powdr-parser-util.workspace = true
 
 pretty_assertions = "1.4.0"
 itertools = "^0.10"
 
 [dev-dependencies]
-powdr-airgen = { path = "../airgen" }
-powdr-importer = { path = "../importer" }
-powdr-parser = { path = "../parser" }
+powdr-airgen.workspace = true
+powdr-importer.workspace = true
+powdr-parser.workspace = true
 
 [lints.clippy]
 uninlined_format_args = "deny"

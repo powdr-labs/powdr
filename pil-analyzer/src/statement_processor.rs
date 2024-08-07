@@ -12,8 +12,8 @@ use powdr_ast::parsed::{
     SelectedExpressions,
 };
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
-use powdr_ast::SourceRef;
 use powdr_number::DegreeType;
+use powdr_parser_util::SourceRef;
 
 use powdr_ast::analyzed::{
     Expression, FunctionValueDefinition, Identity, IdentityKind, PolynomialType, PublicDeclaration,
@@ -463,10 +463,13 @@ where
                     // The only allowed value for a witness column is a query function.
                     assert!(matches!(
                         expr,
-                        parsed::Expression::LambdaExpression(LambdaExpression {
-                            kind: FunctionKind::Query,
-                            ..
-                        })
+                        parsed::Expression::LambdaExpression(
+                            _,
+                            LambdaExpression {
+                                kind: FunctionKind::Query,
+                                ..
+                            }
+                        )
                     ));
                     assert!(type_scheme.is_none() || type_scheme == Some(Type::Col.into()));
                 }

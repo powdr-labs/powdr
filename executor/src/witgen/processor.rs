@@ -1,9 +1,8 @@
 use std::collections::{BTreeMap, HashSet};
 
 use powdr_ast::analyzed::PolynomialType;
-use powdr_ast::{
-    analyzed::{AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID},
-    parsed::SelectedExpressions,
+use powdr_ast::analyzed::{
+    AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID,
 };
 use powdr_number::{DegreeType, FieldElement};
 
@@ -23,17 +22,33 @@ use super::{
 type Left<'a, T> = Vec<AffineExpression<&'a AlgebraicReference, T>>;
 
 /// Data needed to handle an outer query.
-pub struct OuterQuery<'a, T: FieldElement> {
-    /// A local copy of the left-hand side of the outer query.
-    /// This will be mutated while processing the block.
+#[derive(Clone)]
+pub struct OuterQuery<'a, 'b, T: FieldElement> {
+    /// Rows of the calling machine.
+    pub caller_rows: &'b RowPair<'b, 'a, T>,
+    /// Connecting identity.
+    pub connecting_identity: &'a Identity<Expression<T>>,
+    /// The left side of the connecting identity, evaluated.
     pub left: Left<'a, T>,
-    /// The right-hand side of the outer query.
-    pub right: &'a SelectedExpressions<Expression<T>>,
 }
 
-impl<'a, T: FieldElement> OuterQuery<'a, T> {
-    pub fn new(left: Left<'a, T>, right: &'a SelectedExpressions<Expression<T>>) -> Self {
-        Self { left, right }
+impl<'a, 'b, T: FieldElement> OuterQuery<'a, 'b, T> {
+    pub fn new(
+        caller_rows: &'b RowPair<'b, 'a, T>,
+        connecting_identity: &'a Identity<Expression<T>>,
+    ) -> Self {
+        // Evaluate once, for performance reasons.
+        let left = connecting_identity
+            .left
+            .expressions
+            .iter()
+            .map(|e| caller_rows.evaluate(e).unwrap())
+            .collect();
+        Self {
+            caller_rows,
+            connecting_identity,
+            left,
+        }
     }
 
     pub fn is_complete(&self) -> bool {
@@ -68,7 +83,7 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     /// Whether a given witness column is relevant for this machine (faster than doing a contains check on witness_cols)
     is_relevant_witness: WitnessColumnMap<bool>,
     /// The outer query, if any. If there is none, processing an outer query will fail.
-    outer_query: Option<OuterQuery<'a, T>>,
+    outer_query: Option<OuterQuery<'a, 'c, T>>,
     inputs: Vec<(PolyID, T)>,
     previously_set_inputs: BTreeMap<PolyID, usize>,
     copy_constraints: CopyConstraints<(PolyID, RowIndex)>,
@@ -103,10 +118,17 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         }
     }
 
-    pub fn with_outer_query(self, outer_query: OuterQuery<'a, T>) -> Processor<'a, 'b, 'c, T, Q> {
+    pub fn with_outer_query(
+        self,
+        outer_query: OuterQuery<'a, 'c, T>,
+    ) -> Processor<'a, 'b, 'c, T, Q> {
         log::trace!("  Extracting inputs:");
         let mut inputs = vec![];
-        for (l, r) in outer_query.left.iter().zip(&outer_query.right.expressions) {
+        for (l, r) in outer_query
+            .left
+            .iter()
+            .zip(&outer_query.connecting_identity.right.expressions)
+        {
             if let Some(right_poly) = try_to_simple_poly(r).map(|p| p.poly_id) {
                 if let Some(l) = l.constant_value() {
                     log::trace!("    {} = {}", r, l);
@@ -141,7 +163,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         );
         self.outer_query
             .as_ref()
-            .and_then(|outer_query| outer_query.right.selector.as_ref())
+            .and_then(|outer_query| outer_query.connecting_identity.right.selector.as_ref())
             .and_then(|latch| row_pair.evaluate(latch).ok())
             .and_then(|l| l.constant_value())
             .map(|l| l.is_one())
@@ -211,6 +233,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
 
         if unknown_strategy == UnknownStrategy::Zero {
             assert!(updates.constraints.is_empty());
+            assert!(!updates.side_effect);
             return Ok(IdentityResult {
                 progress: false,
                 is_complete: false,
@@ -218,7 +241,8 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         }
 
         Ok(IdentityResult {
-            progress: self.apply_updates(row_index, &updates, || identity.to_string()),
+            progress: self.apply_updates(row_index, &updates, || identity.to_string())
+                || updates.side_effect,
             is_complete: updates.is_complete(),
         })
     }
@@ -228,7 +252,8 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         row_index: usize,
     ) -> Result<(bool, Constraints<&'a AlgebraicReference, T>), EvalError<T>> {
         let mut progress = false;
-        if let Some(selector) = self.outer_query.as_ref().unwrap().right.selector.as_ref() {
+        let right = &self.outer_query.as_ref().unwrap().connecting_identity.right;
+        if let Some(selector) = right.selector.as_ref() {
             progress |= self
                 .set_value(row_index, selector, T::one(), || {
                     "Set selector to 1".to_string()
@@ -236,7 +261,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                 .unwrap_or(false);
         }
 
-        let OuterQuery { left, right } = self
+        let outer_query = self
             .outer_query
             .as_ref()
             .expect("Asked to process outer query, but it was not set!");
@@ -251,11 +276,11 @@ Known values in current row (local: {row_index}, global {global_row_index}):
 
         let mut identity_processor = IdentityProcessor::new(self.fixed_data, self.mutable_state);
         let updates = identity_processor
-            .process_link(left, right, &row_pair)
+            .process_link(outer_query, &row_pair)
             .map_err(|e| {
                 log::warn!("Error in outer query: {e}");
                 log::warn!("Some of the following entries could not be matched:");
-                for (l, r) in left.iter().zip(right.expressions.iter()) {
+                for (l, r) in outer_query.left.iter().zip(right.expressions.iter()) {
                     if let Ok(r) = row_pair.evaluate(r) {
                         log::warn!("  => {} = {}", l, r);
                     }

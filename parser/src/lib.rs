@@ -6,10 +6,9 @@ use lalrpop_util::*;
 use powdr_ast::parsed::{
     asm::ASMProgram,
     types::{Type, TypeBounds, TypeScheme},
+    Expression, SourceReference,
 };
-use powdr_ast::SourceRef;
-
-use powdr_parser_util::{handle_parse_error, ParseError};
+use powdr_parser_util::{handle_parse_error, Error, SourceRef};
 
 use std::sync::Arc;
 
@@ -24,24 +23,35 @@ lalrpop_mod!(
 
 pub struct ParserContext {
     file_name: Option<Arc<str>>,
-    line_starts: Vec<usize>,
+    file_contents: Option<Arc<str>>,
 }
 
 impl ParserContext {
     pub fn new(file_name: Option<&str>, input: &str) -> Self {
         Self {
             file_name: file_name.map(|s| s.into()),
-            line_starts: powdr_parser_util::lines::compute_line_starts(input),
+            file_contents: Some(input.into()),
         }
     }
 
-    pub fn source_ref(&self, offset: usize) -> SourceRef {
-        let (line, col) = powdr_parser_util::lines::offset_to_line_col(offset, &self.line_starts);
+    pub fn source_ref(&self, start: usize, end: usize) -> SourceRef {
         SourceRef {
-            file: self.file_name.clone(),
-            line,
-            col,
+            file_name: self.file_name.clone(),
+            file_contents: self.file_contents.clone(),
+            start,
+            end,
         }
+    }
+
+    pub fn to_expr_with_source_ref<T: Into<Expression>>(
+        &self,
+        inner_expr: T,
+        start: usize,
+        end: usize,
+    ) -> Box<Expression> {
+        let mut expr = inner_expr.into();
+        *expr.source_reference_mut() = self.source_ref(start, end);
+        Box::new(expr)
     }
 }
 
@@ -52,41 +62,38 @@ lazy_static::lazy_static! {
     static ref TYPE_VAR_BOUNDS_PARSER: powdr::TypeVarBoundsParser = powdr::TypeVarBoundsParser::new();
 }
 
-pub fn parse<'a>(
-    file_name: Option<&str>,
-    input: &'a str,
-) -> Result<powdr_ast::parsed::PILFile, ParseError<'a>> {
+pub fn parse(file_name: Option<&str>, input: &str) -> Result<powdr_ast::parsed::PILFile, Error> {
     let ctx = ParserContext::new(file_name, input);
     PIL_FILE_PARSER
         .parse(&ctx, input)
         .map_err(|err| handle_parse_error(err, file_name, input))
 }
 
-pub fn parse_asm<'a>(
+pub fn parse_asm(
     file_name: Option<&str>,
-    input: &'a str,
-) -> Result<powdr_ast::parsed::asm::ASMProgram, ParseError<'a>> {
+    input: &str,
+) -> Result<powdr_ast::parsed::asm::ASMProgram, Error> {
     parse_module(file_name, input).map(|main| ASMProgram { main })
 }
 
-pub fn parse_module<'a>(
+pub fn parse_module(
     file_name: Option<&str>,
-    input: &'a str,
-) -> Result<powdr_ast::parsed::asm::ASMModule, ParseError<'a>> {
+    input: &str,
+) -> Result<powdr_ast::parsed::asm::ASMModule, Error> {
     let ctx = ParserContext::new(file_name, input);
     ASM_MODULE_PARSER
         .parse(&ctx, input)
         .map_err(|err| handle_parse_error(err, file_name, input))
 }
 
-pub fn parse_type(input: &str) -> Result<Type<powdr_ast::parsed::Expression>, ParseError<'_>> {
+pub fn parse_type(input: &str) -> Result<Type<powdr_ast::parsed::Expression>, Error> {
     let ctx = ParserContext::new(None, input);
     TYPE_PARSER
         .parse(&ctx, input)
         .map_err(|err| handle_parse_error(err, None, input))
 }
 
-pub fn parse_type_var_bounds(input: &str) -> Result<TypeBounds, ParseError<'_>> {
+pub fn parse_type_var_bounds(input: &str) -> Result<TypeBounds, Error> {
     let ctx = ParserContext::new(None, input);
     // We use GoldilocksField here, because we need to specify a concrete type,
     // even though the grammar for TypeBounds does not depend on the field.
@@ -157,9 +164,10 @@ mod test {
             parsed,
             PILFile(vec![PilStatement::Include(
                 SourceRef {
-                    file: None,
-                    line: 1,
-                    col: 0,
+                    file_name: None,
+                    file_contents: Some(input.into()),
+                    start: 0,
+                    end: 11,
                 },
                 "x".to_string()
             )])
@@ -176,17 +184,19 @@ mod test {
             PILFile(vec![
                 PilStatement::Include(
                     SourceRef {
-                        file: None,
-                        line: 1,
-                        col: 0,
+                        file_name: None,
+                        file_contents: Some(input.into()),
+                        start: 0,
+                        end: 11,
                     },
                     "x".to_string()
                 ),
                 PilStatement::PolynomialCommitDeclaration(
                     SourceRef {
-                        file: None,
-                        line: 1,
-                        col: 13,
+                        file_name: None,
+                        file_contents: Some(input.into()),
+                        start: 13,
+                        end: 25,
                     },
                     None,
                     vec![PolynomialName {
@@ -208,9 +218,10 @@ mod test {
             parsed,
             PILFile(vec![PilStatement::PlookupIdentity(
                 SourceRef {
-                    file: None,
-                    line: 1,
-                    col: 0,
+                    file_name: None,
+                    file_contents: Some(input.into()),
+                    start: 0,
+                    end: 6,
                 },
                 SelectedExpressions {
                     selector: None,

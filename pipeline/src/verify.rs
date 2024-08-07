@@ -25,7 +25,7 @@ pub fn verify(temp_dir: &Path) -> Result<(), String> {
     let result = if !verifier_output.status.success() {
         Err("Pil verifier run was unsuccessful.".to_string())
     } else if !output.trim().ends_with("PIL OK!!") {
-        Err("Verified did not say 'PIL OK' for {name}.".to_string())
+        Err("Verifier did not say 'PIL OK'.".to_string())
     } else {
         Ok(())
     };

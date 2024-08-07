@@ -10,6 +10,7 @@ use std::{
 };
 
 use itertools::Either;
+use powdr_parser_util::SourceRef;
 
 use crate::parsed::{
     asm::{
@@ -19,7 +20,6 @@ use crate::parsed::{
     visitor::{ExpressionVisitable, VisitOrder},
     EnumDeclaration, NamespacedPolynomialReference, PilStatement, TypedExpression,
 };
-use crate::SourceRef;
 
 pub use crate::parsed::Expression;
 

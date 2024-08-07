@@ -71,3 +71,90 @@ pub fn affine_256_u32_le(
     }
     (a, b)
 }
+
+/// Calculate `(a*b) % m = r` for 256 bit values (as u8 big-endian arrays).
+/// Returns `r`.
+pub fn modmul_256_u8_be(
+    mut a: [u8; 32],
+    b: [u8; 32],
+    m: [u8; 32],
+) -> [u8; 32] {
+    let mut a1: [u32; 8] = Default::default();
+    let mut b1: [u32; 8] = Default::default();
+    let mut m1: [u32; 8] = Default::default();
+
+    be_to_u32(&a, &mut a1);
+    be_to_u32(&b, &mut b1);
+    be_to_u32(&m, &mut m1);
+
+    unsafe {
+        // First compute the two halves of the result a*b.
+        // Results are stored in place in a and b.
+        asm!("ecall",
+             in("a0") &mut a1 as *mut [u32; 8],
+             in("a1") &mut b1 as *mut [u32; 8],
+             in("a2") &mut [0u32; 8] as *mut [u32; 8],
+             in("t0") u32::from(Syscall::Affine256));
+        // Next compute the remainder, stored in place in a.
+        asm!("ecall",
+             in("a0") &mut a1 as *mut [u32; 8],
+             in("a1") &mut b1 as *mut [u32; 8],
+             in("a2") &mut m1 as *mut [u32; 8],
+             in("t0") u32::from(Syscall::Mod256));
+    }
+
+    u32_to_be(&a1, &mut a);
+    a
+}
+
+/// Calculate `(a*b) % m = r` for 256 bit values (as u8 little-endian arrays).
+/// Returns `r`.
+pub fn modmul_256_u8_le(
+    mut a: [u8; 32],
+    mut b: [u8; 32],
+    m: [u8; 32],
+) -> [u8; 32] {
+    unsafe {
+        // First compute the two halves of the result a*b.
+        // Results are stored in place in a and b.
+        asm!("ecall",
+             in("a0") a.as_mut_ptr() as *mut [u32; 8],
+             in("a1") b.as_mut_ptr() as *mut [u32; 8],
+             in("a2") &mut [0u32; 8] as *mut [u32; 8],
+             in("t0") u32::from(Syscall::Affine256));
+        // Next compute the remainder, stored in place in a.
+        asm!("ecall",
+             in("a0") a.as_mut_ptr() as *mut [u32; 8],
+             in("a1") b.as_mut_ptr() as *mut [u32; 8],
+             in("a2") m.as_ptr() as *const [u32; 8],
+             in("t0") u32::from(Syscall::Mod256));
+    }
+
+    a
+}
+
+/// Calculate `(a*b) % m = r` for 256 bit values (as u32 little-endian arrays).
+/// Returns `r`.
+pub fn modmul_256_u32_le(
+    mut a: [u32; 8],
+    mut b: [u32; 8],
+    m: [u32; 8],
+) -> [u32; 8] {
+    unsafe {
+        // First compute the two halves of the result a*b.
+        // Results are stored in place in a and b.
+        asm!("ecall",
+             in("a0") &mut a as *mut [u32; 8],
+             in("a1") &mut b as *mut [u32; 8],
+             in("a2") &[0u32; 8] as *const [u32; 8],
+             in("t0") u32::from(Syscall::Affine256));
+        // Next compute the remainder, stored in place in a.
+        asm!("ecall",
+             in("a0") &mut a as *mut [u32; 8],
+             in("a1") &mut b as *mut [u32; 8],
+             in("a2") &m as *const [u32; 8],
+             in("t0") u32::from(Syscall::Mod256));
+    }
+
+    a
+}

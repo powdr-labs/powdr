@@ -12,8 +12,8 @@ use powdr_ast::parsed::{
     asm::{OperationId, Param, Params},
     Expression,
 };
-use powdr_ast::SourceRef;
 use powdr_number::{BigUint, FieldElement};
+use powdr_parser_util::SourceRef;
 
 use crate::common::{instruction_flag, RETURN_NAME};
 use crate::{
@@ -32,7 +32,7 @@ fn substitute_name_in_statement_expressions(
     substitution: &HashMap<String, String>,
 ) {
     fn substitute(e: &mut Expression, substitution: &HashMap<String, String>) {
-        if let Expression::Reference(r) = e {
+        if let Expression::Reference(_, r) = e {
             if let Some(n) = r.try_to_identifier() {
                 if let Some(v) = substitution.get(n).cloned() {
                     *r = NamespacedPolynomialReference::from_identifier(v);

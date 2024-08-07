@@ -189,7 +189,7 @@ impl PILAnalyzer {
                 SymbolKind::Other() => match value {
                     // Otherwise, just take the kind of the lambda expression.
                     FunctionValueDefinition::Expression(TypedExpression { type_scheme: _, e }) => {
-                        if let Expression::LambdaExpression(LambdaExpression { kind, .. }) = e {
+                        if let Expression::LambdaExpression(_, LambdaExpression { kind, .. }) = e {
                             *kind
                         } else {
                             FunctionKind::Constr
@@ -291,9 +291,12 @@ impl PILAnalyzer {
             }
         }
         let inferred_types = infer_types(definitions, &mut expressions, &statement_type)
-            .map_err(|e| {
-                eprintln!("\nError during type inference:\n{e}");
-                e
+            .map_err(|mut errors| {
+                eprintln!("\nError during type inference:");
+                for e in &errors {
+                    e.output_to_stderr();
+                }
+                errors.pop().unwrap()
             })
             .unwrap();
         // Store the inferred types.

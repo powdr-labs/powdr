@@ -8,10 +8,10 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [dependencies]
-powdr-number = { path = "../number" }
-powdr-riscv = { path = "../riscv" }
-powdr-riscv-executor = { path = "../riscv-executor" }
-powdr-pipeline = { path = "../pipeline" }
+powdr-number.workspace = true
+powdr-riscv.workspace = true
+powdr-riscv-executor.workspace = true
+powdr-pipeline.workspace = true
 
 clap = { version = "^4.3", features = ["derive"] }
 env_logger = "0.10.0"
