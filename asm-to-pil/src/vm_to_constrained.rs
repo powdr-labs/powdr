@@ -1028,6 +1028,7 @@ impl<T: FieldElement> VMConverter<T> {
                         FunctionCall {
                             function: Box::new(absolute_reference("::std::prover::eval")),
                             arguments: vec![direct_reference(pc_name.as_ref().unwrap())],
+                            resolved_impl: None,
                         }
                         .into(),
                     );

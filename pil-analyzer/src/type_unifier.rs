@@ -128,29 +128,11 @@ impl Unifier {
         ty.children_mut().for_each(|t| self.substitute(t));
     }
 
-    fn add_type_var_bound(&mut self, type_var: String, bound: String) {
-        self.type_var_bounds
-            .entry(type_var)
-            .or_default()
-            .insert(bound);
-    }
-
-    fn add_substitution(&mut self, type_var: String, mut ty: Type) -> Result<(), String> {
-        self.substitute(&mut ty);
-        if ty.contains_type_var(&type_var) {
-            return Err(format!(
-                "Cannot unify types {ty} and {type_var}: They depend on each other"
-            ));
-        }
-
-        for bound in self.type_var_bounds(&type_var) {
-            self.ensure_bound(&ty, bound)?;
-        }
-
-        self.substitutions.insert(type_var, ty);
-        Ok(())
-    }
-
+    /// Instantiates a type scheme by creating new type variables for the quantified
+    /// type variables in the scheme and adds the required trait bounds for the
+    /// new type variables.
+    /// Returns the new type and a vector of the type variables used for those
+    /// declared in the scheme.
     pub fn instantiate_scheme(&mut self, scheme: TypeScheme) -> (Type, Vec<Type>) {
         let mut ty = scheme.ty;
         let vars = scheme
@@ -174,7 +156,30 @@ impl Unifier {
         format!("T{}", self.last_type_var)
     }
 
-    fn new_type_var(&mut self) -> Type {
+    pub fn new_type_var(&mut self) -> Type {
         Type::TypeVar(self.new_type_var_name())
+    }
+
+    fn add_type_var_bound(&mut self, type_var: String, bound: String) {
+        self.type_var_bounds
+            .entry(type_var)
+            .or_default()
+            .insert(bound);
+    }
+
+    fn add_substitution(&mut self, type_var: String, mut ty: Type) -> Result<(), String> {
+        self.substitute(&mut ty);
+        if ty.contains_type_var(&type_var) {
+            return Err(format!(
+                "Cannot unify types {ty} and {type_var}: They depend on each other"
+            ));
+        }
+
+        for bound in self.type_var_bounds(&type_var) {
+            self.ensure_bound(&ty, bound)?;
+        }
+
+        self.substitutions.insert(type_var, ty);
+        Ok(())
     }
 }

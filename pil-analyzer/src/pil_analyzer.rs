@@ -25,7 +25,6 @@ use powdr_parser::{parse, parse_module, parse_type};
 use crate::traits_processor::{check_traits_overlap, traits_resolution};
 use crate::type_builtins::constr_function_statement_type;
 use crate::type_inference::infer_types;
-use crate::type_unifier::Unifier;
 use crate::{side_effect_checker, AnalysisDriver};
 
 use crate::statement_processor::{Counters, PILItem, StatementProcessor};
@@ -51,16 +50,11 @@ pub fn analyze_string<T: FieldElement>(contents: &str) -> Analyzed<T> {
 
 fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
-    let mut unifier = Unifier::new();
 
     analyzer.process(files);
     analyzer.side_effect_check();
-    check_traits_overlap(
-        &mut analyzer.implementations,
-        &analyzer.definitions,
-        &mut unifier,
-    );
-    analyzer.type_check(unifier);
+    check_traits_overlap(&mut analyzer.implementations, &analyzer.definitions);
+    analyzer.type_check();
     traits_resolution(&analyzer.implementations, &mut analyzer.definitions);
     analyzer.condense()
 }
@@ -230,7 +224,7 @@ impl PILAnalyzer {
         }
     }
 
-    pub fn type_check(&mut self, unifier: Unifier) {
+    pub fn type_check(&mut self) {
         let query_type: Type = parse_type("int -> std::prover::Query").unwrap().into();
         let mut expressions = vec![];
         // Collect all definitions with their types and expressions.
@@ -312,7 +306,7 @@ impl PILAnalyzer {
                 }
             }
         }
-        let inferred_types = infer_types(definitions, &mut expressions, unifier)
+        let inferred_types = infer_types(definitions, &mut expressions)
             .map_err(|mut errors| {
                 eprintln!("\nError during type inference:");
                 for e in &errors {
