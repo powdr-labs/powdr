@@ -193,8 +193,7 @@ fn format_witness_column(
         .map(|s| format!("stage({s}) "))
         .unwrap_or_default();
     let length = symbol
-        .length
-        .and_then(|length| Some(format!("[{length}]")))
+        .length.map(|length| format!("[{length}]"))
         .unwrap_or_default();
     let hint = definition
         .as_ref()
