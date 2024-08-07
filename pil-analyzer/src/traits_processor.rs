@@ -13,8 +13,8 @@ pub struct TraitsProcessor<'a> {
     definitions: &'a mut HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     implementations: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
     type_args_stack: Vec<Vec<Type>>,
-    visited: HashSet<String>,
     stack: Vec<String>,
+    entry_point: Option<FunctionValueDefinition>,
 }
 
 impl<'a> TraitsProcessor<'a> {
@@ -26,8 +26,8 @@ impl<'a> TraitsProcessor<'a> {
             definitions,
             implementations,
             type_args_stack: Vec::new(),
-            visited: HashSet::new(),
             stack: Vec::new(),
+            entry_point: None,
         }
     }
 
@@ -45,18 +45,14 @@ impl<'a> TraitsProcessor<'a> {
             .map(|(name, _)| name.clone())
             .collect::<Vec<_>>();
         for name in keys {
-            if !self.visited.contains(&name) {
-                self.dfs_traits(&name);
+            self.dfs_traits(&name);
 
-                self.visited.clear();
-                self.stack.clear();
-                self.type_args_stack.clear();
-            }
+            self.stack.clear();
+            self.type_args_stack.clear();
         }
     }
 
     fn dfs_traits(&mut self, current: &str) {
-        self.visited.insert(current.to_string());
         self.stack.push(current.to_string());
 
         let next_name = {
@@ -94,9 +90,7 @@ impl<'a> TraitsProcessor<'a> {
         };
 
         if let Some(name) = next_name {
-            if !self.visited.contains(&name) {
-                self.dfs_traits(&name);
-            }
+            self.dfs_traits(&name);
         }
     }
 
@@ -119,11 +113,17 @@ impl<'a> TraitsProcessor<'a> {
                 .as_mut()
                 .unwrap();
 
-            self.process_function_call(&func_name, def)
+            self.process_function_call(&func_name, def, impls, &accumulated_type_args);
         }
     }
 
-    fn process_function_call(&self, func_name: &str, def: &mut FunctionValueDefinition) {
+    fn process_function_call(
+        &self,
+        func_name: &str,
+        def: &mut FunctionValueDefinition,
+        impls: &[TraitImplementation<Expression>],
+        accumulated_type_args: &[Type],
+    ) {
         if let FunctionValueDefinition::Expression(TypedExpression {
             e:
                 Expression::FunctionCall(
