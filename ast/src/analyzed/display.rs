@@ -154,29 +154,27 @@ fn format_fixed_column(
         .stage
         .map(|s| format!("stage({s}) "))
         .unwrap_or_default();
-    if symbol.length.is_some() {
-        // Do not print an array size, because we will do it as part of the type.
-        assert!(matches!(
-            definition,
-            None | Some(FunctionValueDefinition::Expression(TypedExpression {
-                e: _,
-                type_scheme: Some(_)
-            }))
-        ));
-    }
     if let Some(TypedExpression { type_scheme, e }) = try_to_simple_expression(definition) {
         assert!(symbol.stage.is_none());
+        if symbol.length.is_some() {
+            assert!(matches!(
+                type_scheme,
+                Some(TypeScheme {
+                    vars: _,
+                    ty: Type::Array(_)
+                })
+            ));
+        }
         format!(
             "let{} = {e};",
             format_type_scheme_around_name(&name, type_scheme)
         )
     } else {
-        // TODO I think this is the only use for Display for FunctionValueDefinition now, we could simplify it?
+        assert!(symbol.length.is_none());
         let value = definition
             .as_ref()
             .map(ToString::to_string)
             .unwrap_or_default();
-        // TODO if this is a witness column and value is not a direct lambda, use set_hint.
         format!("col fixed {stage}{name}{value};",)
     }
 }
