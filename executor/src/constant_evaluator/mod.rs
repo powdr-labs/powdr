@@ -6,7 +6,7 @@ use std::{
 pub use data_structures::{get_uniquely_sized, get_uniquely_sized_cloned, VariablySizedColumn};
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{Analyzed, FunctionValueDefinition, Symbol, TypedExpression},
+    analyzed::{Analyzed, DegreeRange, FunctionValueDefinition, Symbol, TypedExpression},
     parsed::{
         types::{ArrayType, Type},
         IndexAccess,
@@ -18,8 +18,13 @@ use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
 mod data_structures;
 
-pub const MIN_DEGREE_LOG: usize = 5;
-pub const MAX_DEGREE_LOG: usize = 22;
+pub const MIN_DEGREE_LOG: u64 = 5;
+pub const MAX_DEGREE_LOG: u64 = 22;
+
+const DEFAULT_DEGREE_RANGE: DegreeRange = DegreeRange {
+    min: MIN_DEGREE_LOG,
+    max: MAX_DEGREE_LOG,
+};
 
 /// Generates the fixed column values for all fixed columns that are defined
 /// (and not just declared).
@@ -34,17 +39,14 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, Variabl
             // for non-arrays, set index to None.
             for (index, (name, id)) in poly.array_elements().enumerate() {
                 let index = poly.is_array().then_some(index as u64);
-                let values = if let Some(degree) = poly.degree {
-                    generate_values(analyzed, degree, &name, value, index).into()
-                } else {
-                    (MIN_DEGREE_LOG..=MAX_DEGREE_LOG)
-                        .map(|degree_log| {
-                            let degree = 1 << degree_log;
-                            generate_values(analyzed, degree, &name, value, index)
-                        })
-                        .collect::<Vec<_>>()
-                        .into()
-                };
+                let range = poly.degree.unwrap_or(DEFAULT_DEGREE_RANGE);
+                let values = (range.min..=range.max)
+                    .map(|degree_log| {
+                        let degree = 1 << degree_log;
+                        generate_values(analyzed, degree, &name, value, index)
+                    })
+                    .collect::<Vec<_>>()
+                    .into();
                 assert!(fixed_cols.insert(name, (id, values)).is_none());
             }
         }

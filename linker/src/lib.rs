@@ -9,7 +9,7 @@ use powdr_ast::{
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         build::{index_access, namespaced_reference},
-        ArrayLiteral, PILFile, PilStatement, SelectedExpressions, TypedExpression,
+        ArrayLiteral, NamespaceDegree, PILFile, PilStatement, SelectedExpressions, TypedExpression,
     },
 };
 use powdr_parser_util::SourceRef;
@@ -35,7 +35,10 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
         pil.push(PilStatement::Namespace(
             SourceRef::unknown(),
             SymbolPath::from_identifier(location.to_string()),
-            object.degree.or(main_degree.clone()),
+            object
+                .degree
+                .or(main_degree.clone())
+                .map(NamespaceDegree::from_function_call),
         ));
 
         pil.extend(object.pil);

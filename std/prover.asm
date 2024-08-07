@@ -33,3 +33,9 @@ let require_max_degree: int -> () = |m| std::check::assert(degree() <= m, || "De
 
 /// Adds a hint / query function to an existing witness column.
 let set_hint: expr, (int -> std::prover::Query) -> () = [];
+
+/// The degrees allowed when specifying a machine in assembly, either a single value or a range
+enum MachineDegree {
+    Single(int),
+    Range(int, int)
+}

@@ -360,6 +360,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             .unique()
             .exactly_one()
             .unwrap_or_else(|_| panic!("expected all polynomials to have the same degree"))
+            .map(|d| d.try_into_unique().unwrap())
     }
 
     fn common_degree<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> DegreeType {
@@ -389,7 +390,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                         .map(|(name, poly_id)| {
                             let external_values = external_witness_values.remove(name.as_str());
                             if let Some(external_values) = &external_values {
-                                if external_values.len() != poly.degree.unwrap() as usize {
+                                if external_values.len() != poly.degree.unwrap().try_into_unique().unwrap() as usize {
                                     log::debug!(
                                         "External witness values for column {} were only partially provided \
                                         (length is {} but the degree is {})",

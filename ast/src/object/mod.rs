@@ -65,13 +65,6 @@ pub struct Object {
     pub has_pc: bool,
 }
 
-impl Object {
-    pub fn with_degree<D: Into<Expression>>(mut self, degree: Option<D>) -> Self {
-        self.degree = degree.map(Into::into);
-        self
-    }
-}
-
 #[derive(Clone, Debug)]
 /// A link between two machines
 pub struct Link {

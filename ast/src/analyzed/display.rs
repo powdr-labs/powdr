@@ -20,11 +20,17 @@ use self::parsed::{
 
 use super::*;
 
+impl Display for DegreeRange {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}..{}", self.min, self.max)
+    }
+}
+
 impl<T: Display> Display for Analyzed<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let (mut current_namespace, mut current_degree) = (AbsoluteSymbolPath::default(), None);
         let mut update_namespace =
-            |name: &str, degree: Option<DegreeType>, f: &mut Formatter<'_>| {
+            |name: &str, degree: Option<DegreeRange>, f: &mut Formatter<'_>| {
                 let mut namespace =
                     AbsoluteSymbolPath::default().join(SymbolPath::from_str(name).unwrap());
                 let name = namespace.pop().unwrap();
