@@ -21,7 +21,6 @@ use crate::type_unifier::Unifier;
 pub fn check_traits_overlap(
     implementations: &mut HashMap<String, Vec<TraitImplementation<Expression>>>,
     definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    unifier: &mut Unifier,
 ) {
     for trait_impls in implementations.values_mut() {
         // All the impls in trait_impls are of the same trait declaration.
@@ -40,7 +39,7 @@ pub fn check_traits_overlap(
         };
 
         validate_impl_definitions(trait_impls, trait_decl);
-        ensure_unique_impls(trait_impls, unifier);
+        ensure_unique_impls(trait_impls);
     }
 }
 
@@ -97,10 +96,7 @@ fn validate_impl_definitions(
 ///
 /// This function iterates through all the trait implementations comparing them with each other and ensure that
 /// there are no traits with overlapping type variables.
-fn ensure_unique_impls(
-    implementations: &mut [TraitImplementation<Expression>],
-    unifier: &mut Unifier,
-) {
+fn ensure_unique_impls(implementations: &mut [TraitImplementation<Expression>]) {
     for i in 0..implementations.len() {
         let type_vars: HashSet<_> = implementations[i].type_scheme.vars.vars().collect();
         implementations[i]
@@ -116,7 +112,6 @@ fn ensure_unique_impls(
                 .map_to_type_vars(&type_vars);
 
             unify_traits_types(
-                unifier,
                 implementations[i].type_scheme.clone(),
                 implementations[j].type_scheme.clone(),
             )
@@ -130,11 +125,8 @@ fn ensure_unique_impls(
     }
 }
 
-fn unify_traits_types(
-    unifier: &mut Unifier,
-    ty1: TypeScheme,
-    ty2: TypeScheme,
-) -> Result<(), String> {
+fn unify_traits_types(ty1: TypeScheme, ty2: TypeScheme) -> Result<(), String> {
+    let mut unifier = Unifier::new();
     let instantiated_ty1 = unifier.instantiate_scheme(ty1).0;
     let instantiated_ty2 = unifier.instantiate_scheme(ty2).0;
 

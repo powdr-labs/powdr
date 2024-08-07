@@ -31,11 +31,8 @@ use crate::{
 pub fn infer_types(
     definitions: HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
     expressions: &mut [(&mut Expression, ExpectedType)],
-    unifier: Unifier,
 ) -> Result<Vec<(String, Type)>, Vec<Error>> {
-    TypeChecker::new()
-        .with_unifier(unifier)
-        .infer_types(definitions, expressions)
+    TypeChecker::new().infer_types(definitions, expressions)
 }
 
 /// A type to expect and a flag that says if arrays of that type are also fine.
@@ -81,11 +78,6 @@ impl TypeChecker {
             unifier: Default::default(),
             lambda_kind: FunctionKind::Constr,
         }
-    }
-
-    pub fn with_unifier(mut self, unifier: Unifier) -> Self {
-        self.unifier = unifier;
-        self
     }
 
     /// Infers and checks types for all provided definitions and expressions and
