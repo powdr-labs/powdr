@@ -22,7 +22,7 @@ use powdr_ast::analyzed::{
 };
 use powdr_parser::{parse, parse_module, parse_type};
 
-use crate::traits_processor::traits_resolution;
+use crate::traits_processor::TraitsProcessor;
 use crate::type_builtins::constr_function_statement_type;
 use crate::type_inference::infer_types;
 use crate::{side_effect_checker, AnalysisDriver};
@@ -53,7 +53,7 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
     analyzer.process(files);
     analyzer.side_effect_check();
     analyzer.type_check();
-    traits_resolution(&analyzer.implementations, &mut analyzer.definitions);
+    analyzer.traits_resolution();
     analyzer.condense()
 }
 
@@ -324,6 +324,10 @@ impl PILAnalyzer {
             };
             *ts = Some(ty.into());
         }
+    }
+
+    pub fn traits_resolution(&mut self) {
+        TraitsProcessor::new(&mut self.definitions, &self.implementations).traits_resolution()
     }
 
     pub fn condense<T: FieldElement>(self) -> Analyzed<T> {
