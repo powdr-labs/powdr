@@ -18,7 +18,7 @@ use powdr_ast::{
         types::{ArrayType, Type, TypeScheme},
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
         IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number,
-        Pattern, StatementInsideBlock, UnaryOperation, UnaryOperator,
+        Pattern, StatementInsideBlock, TraitImplementation, UnaryOperation, UnaryOperator,
     },
 };
 use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
@@ -724,9 +724,24 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 FunctionCall {
                     function,
                     arguments,
-                    .. // TODO GZ eval
+                    resolved_impl,
                 },
             ) => {
+                match resolved_impl {
+                    Some(body) => {
+                        self.op_stack.push(Operation::Combine(expr));
+                        self.op_stack
+                            .extend(arguments.iter().rev().map(Operation::Expand));
+                        self.expand(body.as_ref())?;
+                    }
+                    None => {
+                        self.op_stack.push(Operation::Combine(expr));
+                        self.op_stack
+                            .extend(arguments.iter().rev().map(Operation::Expand));
+                        self.expand(function)?;
+                    }
+                }
+
                 self.op_stack.push(Operation::Combine(expr));
                 self.op_stack
                     .extend(arguments.iter().rev().map(Operation::Expand));

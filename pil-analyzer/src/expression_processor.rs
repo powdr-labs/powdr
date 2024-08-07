@@ -163,7 +163,11 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 parsed::FunctionCall {
                     function: Box::new(self.process_expression(*c.function)),
                     arguments: self.process_expressions(c.arguments),
-                    resolved_impl: self.process_trait_impl(c.resolved_impl),
+                    resolved_impl: if c.resolved_impl.is_some() {
+                        Some(Box::new(self.process_expression(*c.resolved_impl.unwrap())))
+                    } else {
+                        None
+                    },
                 },
             ),
             PExpression::MatchExpression(src, MatchExpression { scrutinee, arms }) => {

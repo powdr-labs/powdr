@@ -99,7 +99,7 @@ fn validate_impl_definitions(
 
 /// Ensures that there are no overlapping trait implementations in the given `implementations` map.
 ///
-/// This function iterates through all the trait implementations comparing them with each other and ensure that
+/// This function iterates through all the trait implementations comparing them with each other, and ensure that
 /// there are no traits with overlapping type variables.
 fn ensure_unique_impls(
     implementations: &mut [TraitImplementation<Expression>],
@@ -154,49 +154,57 @@ pub fn traits_resolution(
     definitions: &mut HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     implementations: &mut HashMap<String, Vec<TraitImplementation<Expression>>>,
 ) {
-    for (name, def) in definitions.iter_mut() {
-        if let Some(FunctionValueDefinition::Expression(TypedExpression { e, type_scheme })) =
-            &mut def.1
+    let mut updates = Vec::new();
+
+    for (name, def) in definitions.iter() {
+        if let Some(FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ })) =
+            &def.1
         {
-            if let Expression::FunctionCall(
-                _,
-                FunctionCall {
-                    function,
-                    arguments,
-                    ref mut resolved_impl,
-                },
-            ) = e
-            {
+            if let Expression::FunctionCall(_, FunctionCall { function, .. }) = e {
                 if let Expression::Reference(
                     _,
-                    Reference::Poly(PolynomialReference {
-                        name: fname,
-                        type_args,
-                        ..
-                    }),
+                    Reference::Poly(PolynomialReference { name: fname, .. }),
                 ) = function.as_ref()
                 {
-                    let mut parts: Vec<&str> = fname.split('.').collect();
-                    let fname = parts.pop().unwrap_or("");
-                    let trait_name = parts.join(".");
-                    let impls = implementations.get(&trait_name).unwrap();
-                    let trait_decl = definitions.get(&trait_name).unwrap().1.as_ref().unwrap();
-
-                    *resolved_impl = unify_impls(fname, impls, trait_decl, type_scheme);
+                    let (trait_name, fname) = split_trait_and_function(fname);
+                    if let (Some(impls), Some(trait_decl)) = (
+                        implementations.get(&trait_name),
+                        definitions.get(&trait_name).and_then(|d| d.1.as_ref()),
+                    ) {
+                        let new_resolved_impl = unify_impls(&fname, impls, trait_decl);
+                        updates.push((name.clone(), new_resolved_impl));
+                    }
                 }
-            };
+            }
         }
     }
+
+    for (name, new_resolved_impl) in updates {
+        if let Some(FunctionValueDefinition::Expression(TypedExpression { e, .. })) =
+            &mut definitions.get_mut(&name).unwrap().1
+        {
+            if let Expression::FunctionCall(_, FunctionCall { resolved_impl, .. }) = e {
+                *resolved_impl = new_resolved_impl;
+            }
+        }
+    }
+}
+
+fn split_trait_and_function(full_name: &str) -> (String, String) {
+    // TODO GZ: we probably have a better way to do this
+    let mut parts: Vec<&str> = full_name.rsplitn(2, '.').collect();
+    let trait_name = parts.pop().unwrap_or("").to_string();
+    let fname = parts.pop().unwrap_or("").to_string();
+    (trait_name, fname)
 }
 
 fn unify_impls(
     fname: &str,
     impls: &[TraitImplementation<Expression>],
     trait_decl: &FunctionValueDefinition,
-    ftype_scheme: &Option<TypeScheme>,
-) -> Option<TraitImplementation<Expression>> {
+) -> Option<Box<Expression>> {
     let FunctionValueDefinition::TraitDeclaration(TraitDeclaration {
-        name,
+        name: _,
         type_vars,
         functions: trait_functions,
     }) = &trait_decl
@@ -212,17 +220,29 @@ fn unify_impls(
             functions: impl_functions,
         } = i;
 
-        let function_impl = impl_functions.iter().find(|f| f.name == fname);
-        let function_decl = trait_functions.iter().find(|f| f.name == fname);
+        let (function_impl, function_decl) = match (
+            impl_functions.iter().find(|f| f.name == fname),
+            trait_functions.iter().find(|f| f.name == fname),
+        ) {
+            (Some(impl_f), Some(decl_f)) => (impl_f, decl_f),
+            _ => continue,
+        };
 
-        match (function_impl, function_decl) {
-            (Some(function_impl), Some(function_decl)) => {
-                let NamedExpression { name, body } = function_impl;
-                let TraitFunction { name: _, ty } = function_decl;
-                println!("Unifying {name} with {ty}");
-            }
-            _ => panic!("Function {fname} not found"),
-        }
+        let TypeScheme {
+            vars: _,
+            ty: Type::Tuple(TupleType { items }),
+        } = type_scheme
+        else {
+            panic!("Expected type scheme");
+        };
+
+        let type_args: HashMap<_, _> = type_vars.iter().zip(items.iter()).collect();
+
+        let NamedExpression { name, body } = function_impl;
+        let TraitFunction { name: _, ty } = function_decl;
+        println!("Unifying {name} with {ty}");
+
+        return Some(body.clone());
     }
 
     None
