@@ -446,7 +446,7 @@ impl PILAnalyzer {
 }
 
 #[derive(Clone, Copy)]
-pub struct Driver<'a>(&'a PILAnalyzer);
+struct Driver<'a>(&'a PILAnalyzer);
 
 impl<'a> AnalysisDriver for Driver<'a> {
     fn resolve_namespaced_decl(&self, path: &[&String]) -> AbsoluteSymbolPath {
