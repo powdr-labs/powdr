@@ -29,6 +29,9 @@ pub const PAGE_INPUTS_OFFSET: usize = NUM_PAGES_INDEX + 1;
 
 /// Computes an upper bound of how long the shutdown routine will run, for a given number of pages.
 pub fn shutdown_routine_upper_bound(num_pages: usize) -> usize {
+    // Ensure we have enough addresses for the scratch space.
+    assert!(PAGE_SIZE_BYTES > 512);
+
     // Regardless of the number of pages, we have to:
     // - Jump to the start of the routine
     // - Assert all register values are correct (except the PC)
