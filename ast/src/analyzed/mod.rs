@@ -59,6 +59,8 @@ impl<T> Analyzed<T> {
             .unique()
             .exactly_one()
             .unwrap()
+            .try_into_unique()
+            .unwrap()
     }
 
     /// Returns the set of all explicit degrees in this [`Analyzed<T>`].
@@ -66,6 +68,7 @@ impl<T> Analyzed<T> {
         self.definitions
             .values()
             .filter_map(|(symbol, _)| symbol.degree)
+            .map(|d| d.try_into_unique().unwrap())
             .collect::<HashSet<_>>()
     }
 
@@ -507,6 +510,27 @@ pub fn type_from_definition(
     }
 }
 
+#[derive(PartialEq, Eq, Hash, Debug, Clone, Serialize, Deserialize, JsonSchema, Copy)]
+pub struct DegreeRange {
+    pub min: DegreeType,
+    pub max: DegreeType,
+}
+
+impl From<DegreeType> for DegreeRange {
+    fn from(value: DegreeType) -> Self {
+        Self {
+            min: value,
+            max: value,
+        }
+    }
+}
+
+impl DegreeRange {
+    pub fn try_into_unique(self) -> Option<DegreeType> {
+        (self.min == self.max).then_some(self.min)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Symbol {
     pub id: u64,
@@ -514,8 +538,8 @@ pub struct Symbol {
     pub absolute_name: String,
     pub stage: Option<u32>,
     pub kind: SymbolKind,
-    pub length: Option<DegreeType>,
-    pub degree: Option<DegreeType>,
+    pub length: Option<u64>,
+    pub degree: Option<DegreeRange>,
 }
 
 impl Symbol {

@@ -12,7 +12,6 @@ use powdr_ast::parsed::{
     PilStatement, PolynomialName, SelectedExpressions, TraitDeclaration, TraitFunction,
 };
 
-use powdr_number::DegreeType;
 use powdr_parser_util::SourceRef;
 
 use powdr_ast::analyzed::{
@@ -101,19 +100,14 @@ impl Counters {
 pub struct StatementProcessor<'a, D> {
     driver: D,
     counters: &'a mut Counters,
-    degree: Option<DegreeType>,
 }
 
 impl<'a, D> StatementProcessor<'a, D>
 where
     D: AnalysisDriver,
 {
-    pub fn new(driver: D, counters: &'a mut Counters, degree: Option<DegreeType>) -> Self {
-        StatementProcessor {
-            driver,
-            counters,
-            degree,
-        }
+    pub fn new(driver: D, counters: &'a mut Counters) -> Self {
+        StatementProcessor { driver, counters }
     }
 
     pub fn handle_statement(&mut self, statement: PilStatement) -> Vec<PILItem> {
@@ -440,7 +434,7 @@ where
             absolute_name: absolute_name.clone(),
             kind: symbol_kind,
             length,
-            degree: self.degree,
+            degree: None,
         };
 
         if let Some(FunctionDefinition::TypeDeclaration(enum_decl)) = value {

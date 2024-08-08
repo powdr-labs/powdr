@@ -229,7 +229,7 @@ fn set_size<F: Clone>(pil: Arc<Analyzed<F>>, degree: DegreeType) -> Arc<Analyzed
                 .definitions
                 .into_iter()
                 .map(|(name, (mut symbol, def))| {
-                    symbol.degree = Some(degree);
+                    symbol.degree = Some(degree.into());
                     (name, (symbol, def))
                 })
                 .collect();

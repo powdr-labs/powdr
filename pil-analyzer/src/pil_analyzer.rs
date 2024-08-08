@@ -11,10 +11,9 @@ use powdr_ast::parsed::asm::{
 use powdr_ast::parsed::types::{ArrayType, Type};
 use powdr_ast::parsed::visitor::Children;
 use powdr_ast::parsed::{
-    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions,
-    SymbolCategory,
+    FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions, SymbolCategory,
 };
-use powdr_number::{DegreeType, FieldElement, GoldilocksField};
+use powdr_number::FieldElement;
 
 use powdr_ast::analyzed::{
     type_from_definition, Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind,
@@ -26,8 +25,8 @@ use crate::type_builtins::constr_function_statement_type;
 use crate::type_inference::infer_types;
 use crate::{side_effect_checker, AnalysisDriver};
 
+use crate::condenser;
 use crate::statement_processor::{Counters, PILItem, StatementProcessor};
-use crate::{condenser, evaluator, expression_processor::ExpressionProcessor};
 
 pub fn analyze_file<T: FieldElement>(path: &Path) -> Analyzed<T> {
     let files = import_all_dependencies(path);
@@ -60,7 +59,6 @@ struct PILAnalyzer {
     /// Known symbols by name and category, determined in the first step.
     known_symbols: HashMap<String, SymbolCategory>,
     current_namespace: AbsoluteSymbolPath,
-    polynomial_degree: Option<DegreeType>,
     /// Map of definitions, gradually being built up here.
     definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     public_declarations: HashMap<String, PublicDeclaration>,
@@ -368,13 +366,12 @@ impl PILAnalyzer {
     fn handle_statement(&mut self, statement: PilStatement) {
         match statement {
             PilStatement::Include(_, _) => unreachable!(),
-            PilStatement::Namespace(_, name, degree) => self.handle_namespace(name, degree),
+            PilStatement::Namespace(_, name, _) => self.handle_namespace(name),
             _ => {
                 // We need a mutable reference to the counter, but it is short-lived.
                 let mut counters = self.symbol_counters.take().unwrap();
-                let items =
-                    StatementProcessor::new(self.driver(), &mut counters, self.polynomial_degree)
-                        .handle_statement(statement);
+                let items = StatementProcessor::new(self.driver(), &mut counters)
+                    .handle_statement(statement);
                 self.symbol_counters = Some(counters);
                 for item in items {
                     match item {
@@ -405,23 +402,7 @@ impl PILAnalyzer {
         }
     }
 
-    fn handle_namespace(&mut self, name: SymbolPath, degree: Option<parsed::Expression>) {
-        self.polynomial_degree = degree
-            .map(|degree| {
-                ExpressionProcessor::new(self.driver(), &Default::default())
-                    .process_expression(degree)
-            })
-            // TODO we should maybe implement a separate evaluator that is able to run before type checking
-            // and is field-independent (only uses integers)?
-            .map(|degree| {
-                u64::try_from(
-                    evaluator::evaluate_expression::<GoldilocksField>(&degree, &self.definitions)
-                        .unwrap()
-                        .try_to_integer()
-                        .unwrap(),
-                )
-                .unwrap()
-            });
+    fn handle_namespace(&mut self, name: SymbolPath) {
         self.current_namespace = AbsoluteSymbolPath::default().join(name);
     }
 

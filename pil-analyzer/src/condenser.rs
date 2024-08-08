@@ -23,7 +23,7 @@ use powdr_ast::{
         FunctionKind, TypedExpression,
     },
 };
-use powdr_number::{DegreeType, FieldElement};
+use powdr_number::FieldElement;
 use powdr_parser_util::SourceRef;
 
 use crate::{
@@ -55,7 +55,7 @@ pub fn condense<T: FieldElement>(
                 let mut namespace =
                     AbsoluteSymbolPath::default().join(SymbolPath::from_str(name).unwrap());
                 namespace.pop();
-                condenser.set_namespace_and_degree(namespace, definitions[name].0.degree);
+                condenser.set_namespace_and_degree(namespace);
             }
             let statement = match s {
                 StatementIdentifier::Identity(index) => {
@@ -185,7 +185,6 @@ pub fn condense<T: FieldElement>(
 type SymbolCache<'a, T> = HashMap<String, BTreeMap<Option<Vec<Type>>, Arc<Value<'a, T>>>>;
 
 pub struct Condenser<'a, T> {
-    degree: Option<DegreeType>,
     /// All the definitions from the PIL file.
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     /// Evaluation cache.
@@ -210,7 +209,6 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         let counters = Counters::with_existing(symbols.values().map(|(sym, _)| sym), None, None);
         Self {
             symbols,
-            degree: None,
             symbol_values: Default::default(),
             namespace: Default::default(),
             counters,
@@ -253,13 +251,8 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     }
 
     /// Sets the current namespace which will be used for newly generated witness columns.
-    pub fn set_namespace_and_degree(
-        &mut self,
-        namespace: AbsoluteSymbolPath,
-        degree: Option<DegreeType>,
-    ) {
+    pub fn set_namespace_and_degree(&mut self, namespace: AbsoluteSymbolPath) {
         self.namespace = namespace;
-        self.degree = degree;
     }
 
     /// Returns columns generated since the last call to this function.
@@ -359,11 +352,6 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         Definitions(self.symbols).lookup_public_reference(name)
     }
 
-    fn degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
-        let degree = self.degree.ok_or(EvalError::DataNotAvailable)?;
-        Ok(Value::Integer(degree.into()).into())
-    }
-
     fn new_column(
         &mut self,
         name: &str,
@@ -446,7 +434,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             stage: None,
             kind,
             length,
-            degree: self.degree,
+            degree: None,
         };
 
         self.new_symbols.insert(name.clone());
