@@ -38,9 +38,7 @@ pub(crate) struct PowdrCircuit<'a, T> {
     witgen_callback: Option<WitgenCallback<T>>,
     /// Value of challenges at every stage
     challenge_values: Vec<Option<BTreeMap<u64, FieldElement>>>,
-    /// Vector containing traces of higher-stage witnesses.
-    pub(crate) multi_stage_traces: Vec<Option<RowMajorMatrix<Goldilocks>>>,
-    /// The matrix of preprocessed values, used in debug mode to check the constraints before provingg
+    /// The matrix of preprocessed values, used in debug mode to check the constraints before proving
     #[cfg(debug_assertions)]
     preprocessed: Option<RowMajorMatrix<Goldilocks>>,
 }
@@ -388,7 +386,7 @@ impl<'a, T: FieldElement> PowdrAir for PowdrCircuit<'a, T> {
             let symbol = identity.0;
             if Some(stage) == symbol[stage] {
                 width += 1;
-            }; // -> see if id is
+            };
         }
         width as usize
     }
