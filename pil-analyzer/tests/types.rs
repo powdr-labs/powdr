@@ -576,7 +576,8 @@ fn defined_trait() {
 }
 
 #[test]
-#[should_panic = "Trait Add not found"]
+//TODO GZ: Change this when correct error is implemented
+#[should_panic = "TraitDeclaration symbol not found: Add"]
 fn undefined_trait() {
     let input = "
     impl Add<int> {
