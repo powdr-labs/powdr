@@ -654,16 +654,16 @@ where
         }
     }
 
-    pub fn process_trait_implementation(
+    fn process_trait_implementation(
         &self,
         trait_impl: parsed::TraitImplementation<parsed::Expression>,
     ) -> TraitImplementation<Expression> {
         let type_vars = trait_impl.type_scheme.vars.vars().collect();
         let functions = trait_impl
             .functions
-            .iter()
+            .into_iter()
             .map(|named| NamedExpression {
-                name: named.name.clone(),
+                name: named.name,
                 body: Box::new(
                     self.expression_processor(&type_vars)
                         .process_expression(named.body.as_ref().clone()),
@@ -671,10 +671,43 @@ where
             })
             .collect();
 
+        let Type::Tuple(TupleType { items }) = trait_impl.type_scheme.ty.clone() else {
+            panic!("Type from trait scheme is not a tuple.")
+        };
+
+        let mapped_types: Vec<_> = items
+            .into_iter()
+            .map(|mut ty| {
+                ty.map_to_type_vars(&type_vars);
+                ty
+            })
+            .collect();
+
+        let resolved_name = self
+            .driver
+            .resolve_ref(&trait_impl.name, SymbolCategory::TraitDeclaration);
+
         TraitImplementation {
-            name: self.driver.resolve_decl(&trait_impl.name),
+            name: SymbolPath::from_parts(
+                // TODO GZ: Should be a better way to do this.
+                resolved_name
+                    .split('.')
+                    .map(|p| {
+                        if p == "super" {
+                            Part::Super
+                        } else {
+                            Part::Named(p.to_string())
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+            ),
             source_ref: trait_impl.source_ref,
-            type_scheme: trait_impl.type_scheme,
+            type_scheme: TypeScheme {
+                vars: trait_impl.type_scheme.vars,
+                ty: Type::Tuple(TupleType {
+                    items: mapped_types,
+                }),
+            },
             functions,
         }
     }
