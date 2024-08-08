@@ -328,8 +328,11 @@ fn compile_rust<F: FieldElement>(
     };
 
     if continuations {
-        // We assume the user has not tried to add the Poseidon coprocessor.
-        // This will panic if they have.
+        if runtime.has_submachine("poseidon_gl") {
+            return Err(vec![
+                "Poseidon continuations mode is chosen automatically and incompatible with the chosen standard Poseidon coprocessor".to_string(),
+            ]);
+        }
         runtime = runtime.with_poseidon_for_continuations();
     }
 

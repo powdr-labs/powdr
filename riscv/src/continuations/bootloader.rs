@@ -5,6 +5,8 @@ use powdr_riscv_executor::Elem;
 use super::memory_merkle_tree::MerkleTree;
 use crate::code_gen::Register;
 
+use static_assertions::const_assert;
+
 /// 32-Bit architecture -> 2^32 bytes of addressable memory
 pub const MEMORY_SIZE_LOG: usize = 32;
 
@@ -27,11 +29,11 @@ pub const MEMORY_HASH_START_INDEX: usize = 2 * REGISTER_NAMES.len();
 pub const NUM_PAGES_INDEX: usize = MEMORY_HASH_START_INDEX + WORDS_PER_HASH * 2;
 pub const PAGE_INPUTS_OFFSET: usize = NUM_PAGES_INDEX + 1;
 
+// Ensure we have enough addresses for the scratch space.
+const_assert!(PAGE_SIZE_BYTES > 512);
+
 /// Computes an upper bound of how long the shutdown routine will run, for a given number of pages.
 pub fn shutdown_routine_upper_bound(num_pages: usize) -> usize {
-    // Ensure we have enough addresses for the scratch space.
-    assert!(PAGE_SIZE_BYTES > 512);
-
     // Regardless of the number of pages, we have to:
     // - Jump to the start of the routine
     // - Assert all register values are correct (except the PC)
