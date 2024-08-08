@@ -714,7 +714,7 @@ TraitFunction: TraitFunction<Expression> = {
 }
 
 TraitImplementation: TraitImplementation<Expression> = {
-    "impl" <type_scheme: GenericTraitName> "{" <functions:NamedExpressions> "}" => TraitImplementation { name: type_scheme.0, type_scheme: type_scheme.1, functions }
+    <start:@L> "impl" <type_scheme: GenericTraitName> "{" <functions:NamedExpressions> "}" <end:@L> => TraitImplementation { name: type_scheme.0, source_ref: ctx.source_ref(start, end), type_scheme: type_scheme.1, functions }
 }
 
 NamedExpressions: Vec<NamedExpression<Expression>> = {
@@ -727,8 +727,8 @@ NamedExpression: NamedExpression<Expression> = {
 }
 
 GenericTraitName: (SymbolPath, TypeScheme) = {
-    <vars:("<" <TypeVarBounds> ">")> <name:SymbolPath> <items:("<" <TypeTermList<ArrayLengthNumber>> ">")> =>
-        (name, TypeScheme{ vars, ty: Type::Tuple(TupleType{items}) })
+    <vars:("<" <TypeVarBounds> ">")?> <name:SymbolPath> <items:("<" <TypeTermList<ArrayLengthNumber>> ">")> =>
+        (name, TypeScheme{ vars: vars.unwrap_or_default(), ty: Type::Tuple(TupleType{items}) })
 }
 
 

@@ -12,7 +12,7 @@ use powdr_ast::parsed::types::{ArrayType, Type};
 use powdr_ast::parsed::visitor::Children;
 use powdr_ast::parsed::{
     self, FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions,
-    SymbolCategory,
+    SymbolCategory, TraitImplementation,
 };
 use powdr_number::{DegreeType, FieldElement, GoldilocksField};
 
@@ -22,6 +22,7 @@ use powdr_ast::analyzed::{
 };
 use powdr_parser::{parse, parse_module, parse_type};
 
+use crate::traits_processor::validate_trait_implementations;
 use crate::type_builtins::constr_function_statement_type;
 use crate::type_inference::infer_types;
 use crate::{side_effect_checker, AnalysisDriver};
@@ -49,8 +50,10 @@ pub fn analyze_string<T: FieldElement>(contents: &str) -> Analyzed<T> {
 
 fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
+
     analyzer.process(files);
     analyzer.side_effect_check();
+    analyzer.check_traits_overlap();
     analyzer.type_check();
     analyzer.condense()
 }
@@ -71,6 +74,8 @@ struct PILAnalyzer {
     symbol_counters: Option<Counters>,
     /// Symbols from the core that were added automatically but will not be printed.
     auto_added_symbols: HashSet<String>,
+    /// Trait implementations found, organized according to their associated trait name.
+    implementations: HashMap<String, Vec<TraitImplementation<Expression>>>,
 }
 
 /// Reads and parses the given path and all its imports.
@@ -216,6 +221,10 @@ impl PILAnalyzer {
                 })
                 .unwrap_or_else(|err| panic!("Error checking side-effects of identity {id}: {err}"))
         }
+    }
+
+    pub fn check_traits_overlap(&mut self) {
+        validate_trait_implementations(&mut self.implementations, &self.definitions);
     }
 
     pub fn type_check(&mut self) {
@@ -399,6 +408,11 @@ impl PILAnalyzer {
                             self.source_order.push(StatementIdentifier::Identity(index));
                             self.identities.push(identity)
                         }
+                        PILItem::TraitImplementation(trait_impl) => self
+                            .implementations
+                            .entry(trait_impl.name.to_dotted_string().clone())
+                            .or_default()
+                            .push(trait_impl),
                     }
                 }
             }

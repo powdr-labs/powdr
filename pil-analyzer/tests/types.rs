@@ -562,6 +562,138 @@ fn empty_conditional() {
 }
 
 #[test]
+fn defined_trait() {
+    let input = "
+    trait Add<T> {
+        add: T, T -> T,
+    }
+    impl Add<int> {
+        add: |a, b| a + b,
+    }
+    let r: int = Add::add(3, 4);
+    ";
+    type_check(input, &[("r", "", "int")]);
+}
+
+#[test]
+//TODO GZ: Change this when correct error is implemented
+#[should_panic = "TraitDeclaration symbol not found: Add"]
+fn undefined_trait() {
+    let input = "
+    impl Add<int> {
+        add: |a, b| a + b,
+    }
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn defined_trait_generic() {
+    let input = "
+    namespace std::convert(4);
+        let fe = || fe();
+    namespace F(4);
+        trait Add<T, Q> {
+            add: T, T -> Q,
+        }
+        impl<T> Add<T, fe> {
+            add: |a, b| std::convert::fe(a + b),
+        }
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Impls for F::Add: Types (int, fe) and (int, fe) overlap"]
+fn duplicated_trait() {
+    let input = "
+    namespace std::convert(4);
+        let fe = || fe();
+    namespace F(4);
+        trait Add<T, Q> {
+            add: T, T -> Q,
+        }
+        impl Add<int, fe> {
+            add: |a, b| std::convert::fe(a + b),
+        }
+        impl Add<int, fe> {
+            add: |a, b| std::convert::fe(a + b),
+        }
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Impls for F::Add: Types (int, fe) and (T, fe) overlap"]
+fn duplicated_trait_generic() {
+    let input = "
+    namespace std::convert(4);
+        let fe = || fe();
+    namespace F(4);
+        trait Add<T, Q> {
+            add: T, T -> Q,
+        }
+        impl Add<int, fe> {
+            add: |a, b| std::convert::fe(a + b),
+        }
+        impl<T> Add<T, fe> {
+            add: |a, b| std::convert::fe(a + b),
+        }
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Trait Add has 2 type parameters, but implementation has 1"]
+fn impl_with_diff_length() {
+    let input = "
+    trait Add<T, Q> {
+        add: T, T -> Q,
+    }
+    impl Add<int> {
+        add: |a, b| a + b,
+    }
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn impl_combined_test() {
+    let input = "
+    namespace std::convert(4);
+        let fe = || fe();
+    namespace F(4);
+        trait Add<T, Q> {
+            add: T, T -> Q,
+        }
+        impl<Q> Add<int, Q> {
+            add: |a, b| std::convert::fe(a + b),
+        }
+        
+        let x: int -> fe = |q| match Add::add(q, 4) {
+            v => v,
+        };
+        let res: fe = x(5);
+    ";
+
+    type_check(input, &[("F.res", "", "fe")]);
+}
+
+#[test]
+#[should_panic = "Impl Add introduces a type variable Q that is not used"]
+fn unused_type_var_error() {
+    let input = "
+    trait Add<T> {
+        add: T, T -> T,
+    }
+    impl<Q> Add<int> {
+        add: |a, b| a + b,
+    }
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
 fn cols_in_func() {
     let input = "
     namespace Main(104);
