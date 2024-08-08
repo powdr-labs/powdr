@@ -1,6 +1,6 @@
 use core::panic;
 use powdr_ast::{
-    analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
+    analyzed::{Expression, PolynomialReference, Reference},
     parsed::{
         self, asm::SymbolPath, types::Type, ArrayExpression, ArrayLiteral, BinaryOperation,
         BlockExpression, IfExpression, LambdaExpression, LetStatementInsideBlock, MatchArm,
@@ -8,7 +8,7 @@ use powdr_ast::{
         StatementInsideBlock, SymbolCategory, UnaryOperation,
     },
 };
-use powdr_number::DegreeType;
+
 use powdr_parser_util::SourceRef;
 use std::{
     collections::{BTreeSet, HashMap, HashSet},
@@ -53,29 +53,19 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
     pub fn process_array_expression(
         &mut self,
         array_expression: ::powdr_ast::parsed::ArrayExpression,
-        size: DegreeType,
-    ) -> Vec<RepeatedArray> {
+    ) -> ArrayExpression<Reference> {
         match array_expression {
             ArrayExpression::Value(expressions) => {
                 let values = self.process_expressions(expressions);
-                let size = values.len() as DegreeType;
-                vec![RepeatedArray::new(values, size)]
+                ArrayExpression::Value(values)
             }
             ArrayExpression::RepeatedValue(expressions) => {
-                if size == 0 {
-                    vec![]
-                } else {
-                    vec![RepeatedArray::new(
-                        self.process_expressions(expressions),
-                        size,
-                    )]
-                }
+                ArrayExpression::RepeatedValue(self.process_expressions(expressions))
             }
-            ArrayExpression::Concat(left, right) => self
-                .process_array_expression(*left, size)
-                .into_iter()
-                .chain(self.process_array_expression(*right, size))
-                .collect(),
+            ArrayExpression::Concat(left, right) => ArrayExpression::Concat(
+                Box::new(self.process_array_expression(*left)),
+                Box::new(self.process_array_expression(*right)),
+            ),
         }
     }
 

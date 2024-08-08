@@ -110,7 +110,7 @@ fn generate_values<T: FieldElement>(
         FunctionValueDefinition::Array(values) => {
             assert!(index.is_none());
             values
-                .iter()
+                .to_repeated_arrays(degree)
                 .map(|elements| {
                     let items = elements
                         .pattern()

@@ -2,6 +2,7 @@ mod common;
 
 use common::{verify_riscv_asm_file, verify_riscv_asm_string};
 use mktemp::Temp;
+use powdr_number::Bn254Field;
 use powdr_number::GoldilocksField;
 use powdr_pipeline::{
     test_util::{run_pilcom_with_backend_variant, BackendVariant},
@@ -55,6 +56,48 @@ fn run_continuations_test(case: &str, powdr_asm: String) {
     };
     let bootloader_inputs = rust_continuations_dry_run(&mut pipeline, Default::default());
     rust_continuations(pipeline, pipeline_callback, bootloader_inputs).unwrap();
+}
+
+#[test]
+#[ignore = "Too slow"]
+// TODO: this a temporary test so we at least go through the bn254 code path.
+// Once we fully support it, the whole test suite here should probably be modified to take a generic field, and this can be removed.
+fn bn254_sanity_check() {
+    let case = "trivial";
+
+    let temp_dir = Temp::new_dir().unwrap();
+    let compiled = powdr_riscv::compile_rust_crate_to_riscv(
+        &format!("tests/riscv_data/{case}/Cargo.toml"),
+        &temp_dir,
+    );
+
+    log::info!("Verifying {case} converted from ELF file");
+    let runtime = Runtime::base();
+    let from_elf = powdr_riscv::elf::translate::<Bn254Field>(
+        compiled.executable.as_ref().unwrap(),
+        &runtime,
+        false,
+    );
+
+    let temp_dir = mktemp::Temp::new_dir().unwrap().release();
+
+    let file_name = format!("{case}_from_elf.asm");
+    let mut pipeline = Pipeline::default()
+        .with_output(temp_dir.to_path_buf(), false)
+        .from_asm_string(from_elf, Some(PathBuf::from(file_name)));
+
+    let analyzed = pipeline.compute_analyzed_asm().unwrap().clone();
+    powdr_riscv_executor::execute_ast(
+        &analyzed,
+        Default::default(),
+        pipeline.data_callback().unwrap(),
+        // Assume the RISC-V program was compiled without a bootloader, otherwise this will fail.
+        &[],
+        usize::MAX,
+        powdr_riscv_executor::ExecMode::Fast,
+        Default::default(),
+    );
+    run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).unwrap();
 }
 
 #[test]
