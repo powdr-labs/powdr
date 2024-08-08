@@ -419,7 +419,7 @@ impl PILAnalyzer {
                         }
                         PILItem::TraitImplementation(trait_impl) => self
                             .implementations
-                            .entry(trait_impl.name.clone())
+                            .entry(trait_impl.name.to_dotted_string())
                             .or_default()
                             .push(trait_impl),
                     }

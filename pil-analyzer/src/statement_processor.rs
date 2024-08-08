@@ -5,13 +5,15 @@ use std::sync::Arc;
 use itertools::Itertools;
 
 use powdr_ast::analyzed::TypedExpression;
+use powdr_ast::parsed::asm::{Part, SymbolPath};
+use powdr_ast::parsed::types::TupleType;
 use powdr_ast::parsed::{
     self,
     types::{ArrayType, Type, TypeScheme},
     ArrayLiteral, EnumDeclaration, EnumVariant, FunctionDefinition, FunctionKind, LambdaExpression,
     PilStatement, PolynomialName, SelectedExpressions, TraitDeclaration, TraitFunction,
 };
-use powdr_ast::parsed::{NamedExpression, TraitImplementation};
+use powdr_ast::parsed::{NamedExpression, SymbolCategory, TraitImplementation};
 
 use powdr_number::DegreeType;
 use powdr_parser_util::SourceRef;

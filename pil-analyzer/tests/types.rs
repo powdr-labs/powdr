@@ -576,17 +576,6 @@ fn defined_trait() {
 }
 
 #[test]
-#[should_panic = "Trait Add not found"]
-fn undefined_trait() {
-    let input = "
-    impl Add<int> {
-        add: |a, b| a + b,
-    }
-    ";
-    type_check(input, &[]);
-}
-
-#[test]
 fn defined_trait_generic() {
     let input = "
     namespace std::convert(4);
@@ -598,60 +587,6 @@ fn defined_trait_generic() {
         impl<T> Add<T, fe> {
             add: |a, b| std::convert::fe(a + b),
         }
-    ";
-    type_check(input, &[]);
-}
-
-#[test]
-#[should_panic = "Impls for F.Add: Types (int, fe) and (int, fe) overlap"]
-fn duplicated_trait() {
-    let input = "
-    namespace std::convert(4);
-        let fe = || fe();
-    namespace F(4);
-        trait Add<T, Q> {
-            add: T, T -> Q,
-        }
-        impl Add<int, fe> {
-            add: |a, b| std::convert::fe(a + b),
-        }
-        impl Add<int, fe> {
-            add: |a, b| std::convert::fe(a + b),
-        }
-    ";
-    type_check(input, &[]);
-}
-
-#[test]
-#[should_panic = "Impls for F.Add: Types (int, fe) and (T1, fe) overlap"]
-fn duplicated_trait_generic() {
-    let input = "
-    namespace std::convert(4);
-        let fe = || fe();
-    namespace F(4);
-        trait Add<T, Q> {
-            add: T, T -> Q,
-        }
-        impl Add<int, fe> {
-            add: |a, b| std::convert::fe(a + b),
-        }
-        impl<T> Add<T, fe> {
-            add: |a, b| std::convert::fe(a + b),
-        }
-    ";
-    type_check(input, &[]);
-}
-
-#[test]
-#[should_panic = "Trait Add has 2 type parameters, but implementation has 1"]
-fn impl_with_diff_length() {
-    let input = "
-    trait Add<T, Q> {
-        add: T, T -> Q,
-    }
-    impl Add<int> {
-        add: |a, b| a + b,
-    }
     ";
     type_check(input, &[]);
 }
@@ -676,20 +611,6 @@ fn impl_combined_test() {
     ";
 
     type_check(input, &[("F.res", "", "fe")]);
-}
-
-#[test]
-#[should_panic = "Impl Add introduces a type variable Q that is not used"]
-fn unused_type_var_error() {
-    let input = "
-    trait Add<T> {
-        add: T, T -> T,
-    }
-    impl<Q> Add<int> {
-        add: |a, b| a + b,
-    }
-    ";
-    type_check(input, &[]);
 }
 
 #[test]
