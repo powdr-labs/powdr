@@ -49,8 +49,8 @@ fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace<F>) -> HashMap<Strin
 fn render_hash<F: FieldElement>(hash: &[Elem<F>]) -> String {
     hash.iter()
         .map(|&f| match f {
-            Elem::Field(f) => format!("{:016x}", f.to_arbitrary_integer()),
-            Elem::Binary(b) => format!("{b:016x}"),
+            Elem::Field(_) => panic!(),
+            Elem::Binary(b) => format!("{b:08x}"),
         })
         .collect::<Vec<_>>()
         .join("")

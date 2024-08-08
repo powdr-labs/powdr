@@ -328,6 +328,8 @@ fn compile_rust<F: FieldElement>(
     };
 
     if continuations {
+        // We assume the user has not tried to add the Poseidon coprocessor.
+        // This will panic if they have.
         runtime = runtime.with_poseidon_for_continuations();
     }
 

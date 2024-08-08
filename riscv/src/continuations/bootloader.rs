@@ -20,9 +20,11 @@ pub const N_LEAVES_LOG: usize = MEMORY_SIZE_LOG - PAGE_SIZE_BYTES_LOG;
 pub const MERKLE_TREE_DEPTH: usize = N_LEAVES_LOG + 1;
 pub const PAGE_SIZE_BYTES: usize = 1 << PAGE_SIZE_BYTES_LOG;
 pub const PAGE_NUMBER_MASK: usize = (1 << N_LEAVES_LOG) - 1;
-pub const BOOTLOADER_INPUTS_PER_PAGE: usize = WORDS_PER_PAGE + 1 + 8 + (MERKLE_TREE_DEPTH - 1) * 8;
+pub const WORDS_PER_HASH: usize = 8;
+pub const BOOTLOADER_INPUTS_PER_PAGE: usize =
+    WORDS_PER_PAGE + 1 + WORDS_PER_HASH + (MERKLE_TREE_DEPTH - 1) * WORDS_PER_HASH;
 pub const MEMORY_HASH_START_INDEX: usize = 2 * REGISTER_NAMES.len();
-pub const NUM_PAGES_INDEX: usize = MEMORY_HASH_START_INDEX + 16;
+pub const NUM_PAGES_INDEX: usize = MEMORY_HASH_START_INDEX + WORDS_PER_HASH * 2;
 pub const PAGE_INPUTS_OFFSET: usize = NUM_PAGES_INDEX + 1;
 
 /// Computes an upper bound of how long the shutdown routine will run, for a given number of pages.
@@ -39,11 +41,10 @@ pub fn shutdown_routine_upper_bound(num_pages: usize) -> usize {
     // - Start the page loop (14 instructions)
     // - Load all words of the page
     // - Invoke the hash function once every 4 words
-    // TODO is 4 still the true number?
-    // - Assert the page hash is as claimed (4 instructions)
+    // - Assert the page hash is as claimed (8 instructions)
     // TODO is 2 still the true number?
     // - Increment the page index and jump back to the loop start (2 instructions)
-    let cost_per_page = 14 + WORDS_PER_PAGE + WORDS_PER_PAGE / 4 + 4 + 2;
+    let cost_per_page = 14 + WORDS_PER_PAGE + WORDS_PER_PAGE / 4 + WORDS_PER_HASH + 2;
 
     constant_overhead + num_pages * cost_per_page
 }
@@ -224,10 +225,17 @@ bootloader_start_page_loop:
 load_bootloader_input 2, 3, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET};
 and 3, 0, {PAGE_NUMBER_MASK}, 3;
 
+branch_if_diff_nonzero 3, 0, page_number_ok;
+
+page_number_zero:
+fail;
+
+page_number_ok:
+
 // Store & hash {WORDS_PER_PAGE} page words. This is an unrolled loop that for each each word:
 // - Loads the word into the P{{(i % 4) + 4}} register
 // - Stores the word at the address x3 * {PAGE_SIZE_BYTES} + i * {BYTES_PER_WORD}
-// - If i % 4 == 3: Hashes registers mem[0, 96), storing the result in mem[0, 32)
+// - If i % 4 == 3: Hashes mem[0, 96), storing the result in mem[0, 32)
 //
 // At the end of the loop, we'll have a linear hash of the page in [0, 32), using a Merkle-Damgård
 // construction. The initial [0, 32) values are 0, and the capacity [64, 96) is 0 throughout the
@@ -267,7 +275,7 @@ mstore 0, 0, 92, 0;
     for i in 0..WORDS_PER_PAGE {
         // Multiply the index by 8 to skip 2 words, 4 words,
         // one used for the actual 32-bit word and a zero.
-        let idx = ((i % 4) + 4) * 8;
+        let idx = ((i % 4) + 4) * WORDS_PER_HASH;
         bootloader.push_str(&format!(
             r#"
 load_bootloader_input 2, 91, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {i};
@@ -314,7 +322,7 @@ bootloader_merkle_proof_validation_loop:
 // - Else:
 //   - Write mem[0, 32) to mem[32, 64)
 //   - Load sibling into mem[0, 32)
-// - Hash registers mem[0, 92), storing the result in mem[0, 32)
+// - Hash mem[0, 92), storing the result in mem[0, 32)
 //
 // At the end of the loop, we'll have the Merkle root in mem[0, 32).
 "#,
@@ -328,28 +336,28 @@ and 3, 0, {mask}, 4;
 
 branch_if_diff_nonzero 4, 0, bootloader_level_{i}_is_right;
 
-load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 8 + {i} * 8 + 0;
+load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + {WORDS_PER_HASH} + {i} * {WORDS_PER_HASH} + 0;
 mstore 0, 0, 32, 90;
 
-load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 8 + {i} * 8 + 1;
+load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + {WORDS_PER_HASH} + {i} * {WORDS_PER_HASH} + 1;
 mstore 0, 0, 36, 90;
 
-load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 8 + {i} * 8 + 2;
+load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + {WORDS_PER_HASH} + {i} * {WORDS_PER_HASH} + 2;
 mstore 0, 0, 40, 90;
 
-load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 8 + {i} * 8 + 3;
+load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + {WORDS_PER_HASH} + {i} * {WORDS_PER_HASH} + 3;
 mstore 0, 0, 44, 90;
 
-load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 8 + {i} * 8 + 4;
+load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + {WORDS_PER_HASH} + {i} * {WORDS_PER_HASH} + 4;
 mstore 0, 0, 48, 90;
 
-load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 8 + {i} * 8 + 5;
+load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + {WORDS_PER_HASH} + {i} * {WORDS_PER_HASH} + 5;
 mstore 0, 0, 52, 90;
 
-load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 8 + {i} * 8 + 6;
+load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + {WORDS_PER_HASH} + {i} * {WORDS_PER_HASH} + 6;
 mstore 0, 0, 56, 90;
 
-load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 8 + {i} * 8 + 7;
+load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + {WORDS_PER_HASH} + {i} * {WORDS_PER_HASH} + 7;
 mstore 0, 0, 60, 90;
 
 jump bootloader_level_{i}_end, 90;
@@ -379,28 +387,28 @@ mstore 0, 0, 56, 90;
 mload 0, 28, 90, 91;
 mstore 0, 0, 60, 90;
 
-load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 8 + {i} * 8 + 0;
+load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + {WORDS_PER_HASH} + {i} * {WORDS_PER_HASH} + 0;
 mstore 0, 0, 0, 90;
 
-load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 8 + {i} * 8 + 1;
+load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + {WORDS_PER_HASH} + {i} * {WORDS_PER_HASH} + 1;
 mstore 0, 0, 4, 90;
 
-load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 8 + {i} * 8 + 2;
+load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + {WORDS_PER_HASH} + {i} * {WORDS_PER_HASH} + 2;
 mstore 0, 0, 8, 90;
 
-load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 8 + {i} * 8 + 3;
+load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + {WORDS_PER_HASH} + {i} * {WORDS_PER_HASH} + 3;
 mstore 0, 0, 12, 90;
 
-load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 8 + {i} * 8 + 4;
+load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + {WORDS_PER_HASH} + {i} * {WORDS_PER_HASH} + 4;
 mstore 0, 0, 16, 90;
 
-load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 8 + {i} * 8 + 5;
+load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + {WORDS_PER_HASH} + {i} * {WORDS_PER_HASH} + 5;
 mstore 0, 0, 20, 90;
 
-load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 8 + {i} * 8 + 6;
+load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + {WORDS_PER_HASH} + {i} * {WORDS_PER_HASH} + 6;
 mstore 0, 0, 24, 90;
 
-load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + 8 + {i} * 8 + 7;
+load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} + 1 + {WORDS_PER_PAGE} + {WORDS_PER_HASH} + {i} * {WORDS_PER_HASH} + 7;
 mstore 0, 0, 28, 90;
 
 bootloader_level_{i}_end:
@@ -623,7 +631,7 @@ mstore 0, 0, 92, 0;
 
     bootloader.push_str(&format!("affine 90, 3, {PAGE_SIZE_BYTES}, 0;\n"));
     for i in 0..WORDS_PER_PAGE {
-        let idx = ((i % 4) + 4) * 8;
+        let idx = ((i % 4) + 4) * WORDS_PER_HASH;
         bootloader.push_str(&format!("mload 90, {i} * {BYTES_PER_WORD}, 90, 91;\n"));
         bootloader.push_str(&format!("mstore 0, 0, {idx}, 90;\n"));
 
