@@ -22,7 +22,7 @@ use powdr_ast::analyzed::{
 };
 use powdr_parser::{parse, parse_module, parse_type};
 
-use crate::traits_processor::check_traits_overlap;
+use crate::traits_processor::validate_trait_implementations;
 use crate::type_builtins::constr_function_statement_type;
 use crate::type_inference::infer_types;
 use crate::{side_effect_checker, AnalysisDriver};
@@ -53,7 +53,7 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
 
     analyzer.process(files);
     analyzer.side_effect_check();
-    check_traits_overlap(&mut analyzer.implementations, &analyzer.definitions);
+    analyzer.check_traits_overlap();
     analyzer.type_check();
     analyzer.condense()
 }
@@ -221,6 +221,10 @@ impl PILAnalyzer {
                 })
                 .unwrap_or_else(|err| panic!("Error checking side-effects of identity {id}: {err}"))
         }
+    }
+
+    pub fn check_traits_overlap(&mut self) {
+        validate_trait_implementations(&mut self.implementations, &self.definitions);
     }
 
     pub fn type_check(&mut self) {
@@ -411,7 +415,7 @@ impl PILAnalyzer {
                         }
                         PILItem::TraitImplementation(trait_impl) => self
                             .implementations
-                            .entry(trait_impl.name.clone())
+                            .entry(trait_impl.name.name().clone())
                             .or_default()
                             .push(trait_impl),
                     }

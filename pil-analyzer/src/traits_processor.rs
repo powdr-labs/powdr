@@ -10,31 +10,29 @@ use powdr_ast::{
 
 use crate::type_unifier::Unifier;
 
-/// Checks for overlapping trait implementations in the current `PILAnalyzer` instance.
+/// Checks for overlapping trait implementations.
 ///
 /// This method iterates through all the trait implementations.
-/// For each implementation, it checks that there are no traits with overlapping type vars and the same name between them.
-/// Overlapping occurs when there are two implementations of the same trait whose trait types can be unified.
+/// For each implementation, it checks that there are no traits with the same name and overlapping type variables.
+/// Overlapping implementations can lead to ambiguity in trait function calls, even when all types
+/// are fully concrete. This check helps prevent such ambiguities and ensures clear resolution
+/// of trait function calls.
 ///
 /// It also checks that the number of type variables in the implementation matches
 /// the number of type variables in the corresponding trait declaration.
-pub fn check_traits_overlap(
+pub fn validate_trait_implementations(
     implementations: &mut HashMap<String, Vec<TraitImplementation<Expression>>>,
     definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
 ) {
-    for trait_impls in implementations.values_mut() {
-        // All the impls in trait_impls are of the same trait declaration.
-        let trait_name = trait_impls[0].name.clone();
+    for (trait_name, trait_impls) in implementations.iter_mut() {
         let trait_decl = definitions
-            .get(&trait_name)
+            .get(&trait_name.clone())
             .unwrap_or_else(|| panic!("Trait {trait_name} not found"))
             .1
             .as_ref()
             .unwrap_or_else(|| panic!("Trait definition for {trait_name} not found"));
 
-        let trait_decl = if let FunctionValueDefinition::TraitDeclaration(trait_decl) = trait_decl {
-            trait_decl
-        } else {
+        let FunctionValueDefinition::TraitDeclaration(trait_decl) = trait_decl else {
             panic!("Invalid trait declaration");
         };
 
