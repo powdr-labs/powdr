@@ -1326,7 +1326,7 @@ pub struct PolynomialReference {
     /// Guaranteed to be Some(_) after type checking is completed.
     pub type_args: Option<Vec<Type>>,
     ///
-    pub resolved_impl: Option<Box<Expression>>,
+    pub resolved_impl_pos: Option<usize>,
 }
 
 #[derive(

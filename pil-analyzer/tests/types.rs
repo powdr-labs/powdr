@@ -570,7 +570,7 @@ fn defined_trait() {
     impl Add<int> {
         add: |a, b| a + b,
     }
-    let r: int = Add::add(3, 4);
+    let r = Add::add(3, 4);
     ";
     type_check(input, &[("r", "", "int")]);
 }
