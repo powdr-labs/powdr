@@ -193,17 +193,15 @@ fn format_witness_column(
         .length
         .map(|length| format!("[{length}]"))
         .unwrap_or_default();
-    let hint = definition
-        .as_ref()
-        .map(|value| {
-            assert!(symbol.length.is_none());
-            let FunctionValueDefinition::Expression(TypedExpression { e, .. }) = value else {
-                panic!()
-            };
-            format!("\nstd::prover::set_hint({name}, {e});")
-        })
-        .unwrap_or_default();
-    format!("col witness {stage}{name}{length};{hint}")
+    let mut result = format!("col witness {stage}{name}{length};");
+    if let Some(value) = definition {
+        assert!(symbol.length.is_none());
+        let FunctionValueDefinition::Expression(TypedExpression { e, .. }) = value else {
+            panic!()
+        };
+        result += &format!("\nstd::prover::set_hint({}, {e});", symbol.absolute_name);
+    }
+    result
 }
 
 fn format_public_declaration(name: &str, decl: &PublicDeclaration) -> String {

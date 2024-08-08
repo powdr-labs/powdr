@@ -269,8 +269,10 @@ fn set_hint() {
     }
 namespace N(16);
     col witness x;
-    col witness y(i) query std::prover::Query::Hint(std::prover::eval(N.x));
-    col witness z(_) query std::prover::Query::Hint(1);
+    col witness y;
+    std::prover::set_hint(N.y, (query |i| std::prover::Query::Hint(std::prover::eval(N.x))));
+    col witness z;
+    std::prover::set_hint(N.z, (query |_| std::prover::Query::Hint(1)));
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, expected);
@@ -390,8 +392,10 @@ fn set_hint_outside() {
         None,
     }
 namespace N(16);
-    col witness x(_) query std::prover::Query::Hint(8);
-    col witness y(_) query std::prover::Query::Hint(8);
+    col witness x;
+    std::prover::set_hint(N.x, (query |_| std::prover::Query::Hint(8)));
+    col witness y;
+    std::prover::set_hint(N.y, (query |_| std::prover::Query::Hint(8)));
     let create_wit: -> expr = (constr || {
         let w: col;
         w
@@ -401,7 +405,8 @@ namespace N(16);
         std::prover::set_hint(c, (query |_| std::prover::Query::Hint(8)));
 
     });
-    col witness w(_) query std::prover::Query::Hint(8);
+    col witness w;
+    std::prover::set_hint(N.w, (query |_| std::prover::Query::Hint(8)));
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, expected);
