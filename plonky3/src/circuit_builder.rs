@@ -12,6 +12,10 @@ use p3_air::{
     Air, AirBuilder, AirBuilderWithPublicValues, BaseAir, ExtensionBuilder, PairBuilder,
     PermutationAirBuilder,
 };
+
+use p3_uni_stark::{
+    NextStageTraceCallback
+}
 use p3_field::{AbstractField, ExtensionField};
 use p3_goldilocks::Goldilocks;
 use p3_matrix::{dense::RowMajorMatrix, MatrixRowSlices};
@@ -107,8 +111,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
             witgen_callback: None,
             #[cfg(debug_assertions)]
             preprocessed: None,
-            challenge_values: None,
-            multi_stage_traces: None,
+            challenge_values: None
         }
     }
 
@@ -421,6 +424,14 @@ pub trait PowdrAirBuilder:
     fn challenges(&self, stage: u32) -> &Vec<Self::PublicVar>;
 
     fn preprocessed(&self) -> Self::M;
+}
+
+impl<'a, T: FieldElement, SC: StarkGenericConfig> NextStageTraceCallback<SC, T> for PowdrCircuit<'a, T>
+{
+    fn get_next_stage_trace(&self, trace_stage:u32, challenge_values: BTreeMap<u64, FieldElement>) -> RowMajorMatrix<T> {
+        self.next_stage_witness(trace_stage, challenge_values); // next-stage trace filled in
+        self.generate_trace_rows(trace_stage)
+    }
 }
 
 impl<'a, T: FieldElement, AB: PowdrAirBuilder> Air<AB> for PowdrCircuit<'a, T> {
