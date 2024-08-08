@@ -9,7 +9,8 @@ use powdr_ast::{
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         build::{index_access, namespaced_reference},
-        ArrayLiteral, NamespaceDegree, PILFile, PilStatement, SelectedExpressions, TypedExpression,
+        ArrayLiteral, Expression, NamespaceDegree, PILFile, PilStatement, SelectedExpressions,
+        TypedExpression,
     },
 };
 use powdr_parser_util::SourceRef;
@@ -17,6 +18,8 @@ use powdr_parser_util::SourceRef;
 use itertools::Itertools;
 
 const MAIN_OPERATION_NAME: &str = "main";
+const MIN_DEGREE_DEFAULT: u32 = 1 << 6;
+const MAX_DEGREE_DEFAULT: u32 = 1 << 22;
 
 /// The optional degree of the namespace is set to that of the object if it's set, to that of the main object otherwise.
 pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
@@ -38,7 +41,14 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
             object
                 .degree
                 .or(main_degree.clone())
-                .map(NamespaceDegree::from_function_call),
+                .map(|machine_degree| NamespaceDegree {
+                    min: machine_degree
+                        .min
+                        .unwrap_or_else(|| Expression::from(MIN_DEGREE_DEFAULT)),
+                    max: machine_degree
+                        .max
+                        .unwrap_or_else(|| Expression::from(MAX_DEGREE_DEFAULT)),
+                }),
         ));
 
         pil.extend(object.pil);

@@ -4,7 +4,7 @@ use std::{
 };
 
 use powdr_ast::{
-    asm_analysis::AnalysisASMFile,
+    asm_analysis::{AnalysisASMFile, MachineDegree},
     parsed::{asm::parse_absolute_path, Expression, Number, PilStatement},
 };
 use powdr_executor::constant_evaluator::get_uniquely_sized;
@@ -265,15 +265,26 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         .unwrap();
 
     let length: usize = match length {
-        Expression::Number(
-            _,
-            Number {
-                value: length,
-                type_: None,
-            },
-        ) => length.try_into().unwrap(),
+        MachineDegree {
+            min:
+                Some(Expression::Number(
+                    _,
+                    Number {
+                        value: min,
+                        type_: None,
+                    },
+                )),
+            max:
+                Some(Expression::Number(
+                    _,
+                    Number {
+                        value: max,
+                        type_: None,
+                    },
+                )),
+        } if min == max => min.try_into().unwrap(),
         e => unimplemented!(
-            "degree {e} is not supported in continuations as we don't have an evaluator yet"
+            "degree range {e} is not supported in continuations as we don't have an evaluator yet"
         ),
     };
 

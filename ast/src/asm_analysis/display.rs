@@ -20,7 +20,7 @@ use super::{
     AnalysisASMFile, AssignmentStatement, CallableSymbol, CallableSymbolDefinitionRef,
     DebugDirective, FunctionBody, FunctionStatement, FunctionStatements, Incompatible,
     IncompatibleSet, InstructionDefinitionStatement, InstructionStatement, Item, LabelStatement,
-    LinkDefinition, Machine, RegisterDeclarationStatement, RegisterTy, Return, Rom,
+    LinkDefinition, Machine, MachineDegree, RegisterDeclarationStatement, RegisterTy, Return, Rom,
     SubmachineDeclaration,
 };
 
@@ -76,13 +76,32 @@ impl Display for AnalysisASMFile {
     }
 }
 
+impl Display for MachineDegree {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match (&self.min, &self.max) {
+            (Some(min), Some(max)) if min == max => write!(f, "degree: {min}"),
+            (min, max) => write!(
+                f,
+                "{}",
+                min.iter()
+                    .map(|min_degree| format!("min_degree: {min_degree}"))
+                    .chain(
+                        max.iter()
+                            .map(|max_degree| format!("max_degree: {max_degree}")),
+                    )
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        }
+    }
+}
+
 impl Display for Machine {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let props = self
             .degree
-            .as_ref()
-            .map(|s| format!("degree: {s}"))
-            .into_iter()
+            .iter()
+            .map(|d| format!("{d}"))
             .chain(self.latch.as_ref().map(|s| format!("latch: {s}")))
             .chain(
                 self.operation_id

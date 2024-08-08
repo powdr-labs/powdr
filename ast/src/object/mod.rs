@@ -2,9 +2,12 @@ use std::collections::BTreeMap;
 
 use powdr_number::BigUint;
 
-use crate::parsed::{
-    asm::{AbsoluteSymbolPath, CallableParams, OperationParams},
-    EnumDeclaration, Expression, PilStatement, TypedExpression,
+use crate::{
+    asm_analysis::MachineDegree,
+    parsed::{
+        asm::{AbsoluteSymbolPath, CallableParams, OperationParams},
+        EnumDeclaration, Expression, PilStatement, TypedExpression,
+    },
 };
 
 mod display;
@@ -52,7 +55,7 @@ pub enum TypeOrExpression {
 
 #[derive(Default, Clone)]
 pub struct Object {
-    pub degree: Option<Expression>,
+    pub degree: Option<MachineDegree>,
     /// the pil identities for this machine
     pub pil: Vec<PilStatement>,
     /// the links from this machine to its children
