@@ -123,15 +123,8 @@ fn unify_traits_types(ty1: &TypeScheme, ty2: &TypeScheme) -> Result<(), String> 
     let instantiated_ty1 = unifier.instantiate_scheme(ty1.clone());
     let instantiated_ty2 = unifier.instantiate_scheme(ty2.clone());
 
-    println!("Vars type 1: {:?}", instantiated_ty1.1);
-    println!("Vars type 2: {:?}", instantiated_ty2.1);
-
     match unifier.unify_types(instantiated_ty1.0.clone(), instantiated_ty2.0.clone()) {
-        Ok(_) => Err(format!(
-            "Types {} and {} overlap",
-            ty1.ty.clone(),
-            ty2.ty.clone(),
-        )),
+        Ok(_) => Err(format!("Types {} and {} overlap", ty1.ty, ty2.ty)),
         Err(_) => Ok(()),
     }
 }
