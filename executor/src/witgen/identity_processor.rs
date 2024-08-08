@@ -1,6 +1,5 @@
 use std::{
     collections::{BTreeMap, HashMap},
-    iter,
     sync::Mutex,
 };
 
@@ -24,38 +23,38 @@ pub struct Machines<'a, 'b, T: FieldElement> {
     machines: Vec<&'b mut KnownMachine<'a, T>>,
 }
 
-enum SplitOption {
-    WithPrevious,
-    WithoutPrevious,
-}
-
 impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
     /// Splits out the machine at `index` and returns it together with a list of all other machines.
     /// As a result, they can be mutated independently.
-    /// With #515 implemented (making calling machines immutable), this could be removed as there
-    /// would not be a need to split the list of machines.
-    fn split<'c>(
-        &'c mut self,
-        index: usize,
-        split_option: SplitOption,
-    ) -> (&'c mut KnownMachine<'a, T>, Machines<'a, 'c, T>) {
+    fn split<'c>(&'c mut self, index: usize) -> (&'c mut KnownMachine<'a, T>, Machines<'a, 'c, T>) {
         let (before, after) = self.machines.split_at_mut(index);
         let (current, after) = after.split_at_mut(1);
         let current: &'c mut KnownMachine<'a, T> = current.first_mut().unwrap();
 
         // Re-borrow machines to convert from `&'c mut &'b mut KnownMachine<'a, T>` to
         // `&'c mut KnownMachine<'a, T>`.
-        let before_or_none: Box<dyn Iterator<Item = &mut &mut KnownMachine<'a, T>>> =
-            match split_option {
-                SplitOption::WithPrevious => Box::new(before.iter_mut()),
-                SplitOption::WithoutPrevious => Box::new(iter::empty()),
-            };
-        let others: Vec<&'c mut KnownMachine<'a, T>> = before_or_none
+        let others: Machines<'a, 'c, T> = before
+            .iter_mut()
             .chain(after.iter_mut())
             .map(|m| &mut **m)
-            .collect();
+            .into();
 
-        (current, others.into_iter().into())
+        (current, others)
+    }
+
+    /// Like `split`, but with the "other" machines only containing machines after the current one.
+    fn split_skipping_previous_machines<'c>(
+        &'c mut self,
+        index: usize,
+    ) -> (&'c mut KnownMachine<'a, T>, Machines<'a, 'c, T>) {
+        let (before, after) = self.machines.split_at_mut(index + 1);
+        let current: &'c mut KnownMachine<'a, T> = before.last_mut().unwrap();
+
+        // Re-borrow machines to convert from `&'c mut &'b mut KnownMachine<'a, T>` to
+        // `&'c mut KnownMachine<'a, T>`.
+        let others: Machines<'a, 'c, T> = after.iter_mut().map(|m| &mut **m).into();
+
+        (current, others)
     }
 
     pub fn len(&self) -> usize {
@@ -77,7 +76,7 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
             .get(&identity_id)
             .unwrap_or_else(|| panic!("No executor machine matched identity ID: {identity_id}"));
 
-        let (current, others) = self.split(machine_index, SplitOption::WithPrevious);
+        let (current, others) = self.split(machine_index);
         let mut mutable_state = MutableState {
             machines: others,
             query_callback,
@@ -93,7 +92,7 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
         (0..self.len())
             .flat_map(|machine_index| {
                 // Don't include the previous machines, as they are already finalized.
-                let (current, others) = self.split(machine_index, SplitOption::WithoutPrevious);
+                let (current, others) = self.split_skipping_previous_machines(machine_index);
                 let mut mutable_state = MutableState {
                     machines: others,
                     query_callback,
