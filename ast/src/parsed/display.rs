@@ -539,7 +539,7 @@ impl Display for PilStatement {
     }
 }
 
-impl Display for ArrayExpression {
+impl<Ref: Display> Display for ArrayExpression<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             ArrayExpression::Value(expressions) => {

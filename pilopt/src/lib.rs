@@ -216,17 +216,13 @@ fn remove_constant_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 /// value and returns it in that case.
 fn constant_value(function: &FunctionValueDefinition) -> Option<BigUint> {
     match function {
-        FunctionValueDefinition::Array(expressions) => {
+        FunctionValueDefinition::Array(expression) => {
             // TODO use a proper evaluator at some point,
             // combine with constant_evaluator
-            let mut values = expressions
-                .iter()
-                .filter(|e| !e.is_empty())
-                .flat_map(|e| e.pattern().iter())
-                .map(|e| match e {
-                    Expression::Number(_, Number { value: n, .. }) => Some(n),
-                    _ => None,
-                });
+            let mut values = expression.children().map(|e| match e {
+                Expression::Number(_, Number { value: n, .. }) => Some(n),
+                _ => None,
+            });
             let first = values.next()??;
             if values.all(|x| x == Some(first)) {
                 Some(first.clone())
