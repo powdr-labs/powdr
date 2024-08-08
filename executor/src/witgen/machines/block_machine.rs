@@ -5,6 +5,7 @@ use std::iter::{self, once};
 use super::{EvalResult, FixedData, FixedLookup};
 
 use crate::constant_evaluator::MIN_DEGREE_LOG;
+use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::processor::{OuterQuery, Processor};
@@ -18,18 +19,18 @@ use crate::witgen::{MutableState, QueryCallback};
 use crate::Identity;
 use itertools::Itertools;
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, IdentityKind, PolyID, PolynomialType,
+    AlgebraicExpression as Expression, IdentityKind, PolyID, PolynomialType,
 };
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_number::{DegreeType, FieldElement};
 
 enum ProcessResult<'a, T: FieldElement> {
-    Success(FinalizableData<T>, EvalValue<&'a AlgebraicReference, T>),
-    Incomplete(EvalValue<&'a AlgebraicReference, T>),
+    Success(FinalizableData<T>, EvalValue<AlgebraicVariable<'a>, T>),
+    Incomplete(EvalValue<AlgebraicVariable<'a>, T>),
 }
 
 impl<'a, T: FieldElement> ProcessResult<'a, T> {
-    fn new(data: FinalizableData<T>, updates: EvalValue<&'a AlgebraicReference, T>) -> Self {
+    fn new(data: FinalizableData<T>, updates: EvalValue<AlgebraicVariable<'a>, T>) -> Self {
         match updates.is_complete() {
             true => ProcessResult::Success(data, updates),
             false => ProcessResult::Incomplete(updates),
@@ -105,6 +106,7 @@ pub struct BlockMachine<'a, T: FieldElement> {
     identities: Vec<&'a Identity<T>>,
     /// The data of the machine.
     data: FinalizableData<T>,
+    publics: BTreeMap<&'a str, T>,
     /// The index of the first row that has not been finalized yet.
     /// At all times, all rows in the range [block_size..first_in_progress_row) are finalized.
     first_in_progress_row: usize,
@@ -163,6 +165,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             connection_type: is_permutation,
             identities: identities.to_vec(),
             data,
+            publics: Default::default(),
             first_in_progress_row: block_size,
             witness_cols: witness_cols.clone(),
             processing_sequence_cache: ProcessingSequenceCache::new(
@@ -354,6 +357,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             let mut processor = Processor::new(
                 row_offset,
                 dummy_block,
+                self.publics.clone(),
                 &mut mutable_state,
                 self.fixed_data,
                 &self.witness_cols,
@@ -569,6 +573,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let mut processor = BlockProcessor::new(
             row_offset,
             block,
+            self.publics.clone(),
             mutable_state,
             &self.identities,
             self.fixed_data,

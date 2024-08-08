@@ -3,6 +3,7 @@ use std::fmt::Display;
 use itertools::{Either, Itertools};
 
 use num_traits::Zero;
+use powdr_ast::analyzed::AlgebraicReference;
 use powdr_number::{FieldElement, LargeInt};
 
 use super::global_constraints::RangeConstraintSet;
@@ -19,6 +20,21 @@ pub enum AffineExpression<K, T> {
     ManyVars(Vec<(K, T)>, T),
 }
 
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Copy)]
+pub enum AlgebraicVariable<'a> {
+    Reference(&'a AlgebraicReference),
+    Public(&'a str),
+}
+
+impl Display for AlgebraicVariable<'_> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AlgebraicVariable::Reference(r) => write!(f, "{r}"),
+            AlgebraicVariable::Public(p) => write!(f, "{p}"),
+        }
+    }
+}
+
 pub type AffineResult<K, T> = Result<AffineExpression<K, T>, IncompleteCause<K>>;
 
 impl<K, T> From<T> for AffineExpression<K, T> {
@@ -30,7 +46,7 @@ impl<K, T> From<T> for AffineExpression<K, T> {
 
 impl<K, T> AffineExpression<K, T>
 where
-    K: Copy + Ord,
+    K: Ord,
     T: FieldElement,
 {
     pub fn from_variable_id(var_id: K) -> AffineExpression<K, T> {
@@ -514,7 +530,7 @@ where
 
 impl<K, T> std::ops::Neg for AffineExpression<K, T>
 where
-    K: Copy + Ord,
+    K: Ord,
     T: FieldElement,
 {
     type Output = Self;
@@ -569,7 +585,7 @@ impl<K, T: FieldElement> std::ops::Mul<T> for AffineExpression<K, T> {
 
 impl<K, T: FieldElement> Display for AffineExpression<K, T>
 where
-    K: Copy + Ord + Display,
+    K: Ord + Display,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.is_constant() {

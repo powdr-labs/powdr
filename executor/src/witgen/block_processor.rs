@@ -1,11 +1,12 @@
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 
-use powdr_ast::analyzed::{AlgebraicReference, PolyID};
+use powdr_ast::analyzed::PolyID;
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::Identity;
 
 use super::{
+    affine_expression::AlgebraicVariable,
     data_structures::finalizable_data::FinalizableData,
     processor::{OuterQuery, Processor},
     rows::{RowIndex, UnknownStrategy},
@@ -29,6 +30,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
     pub fn new(
         row_offset: RowIndex,
         data: FinalizableData<T>,
+        publics: BTreeMap<&'a str, T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
         identities: &'c [&'a Identity<T>],
         fixed_data: &'a FixedData<'a, T>,
@@ -38,6 +40,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         let processor = Processor::new(
             row_offset,
             data,
+            publics,
             mutable_state,
             fixed_data,
             witness_cols,
@@ -72,7 +75,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
     pub fn solve(
         &mut self,
         sequence_iterator: &mut ProcessingSequenceIterator,
-    ) -> Result<EvalValue<&'a AlgebraicReference, T>, EvalError<T>> {
+    ) -> Result<EvalValue<AlgebraicVariable<'a>, T>, EvalError<T>> {
         let mut outer_assignments = vec![];
 
         let mut is_identity_complete =
@@ -192,6 +195,7 @@ mod tests {
         let processor = BlockProcessor::new(
             row_offset,
             data,
+            Default::default(),
             &mut mutable_state,
             &identities,
             &fixed_data,
