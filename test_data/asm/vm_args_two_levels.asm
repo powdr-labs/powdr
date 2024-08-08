@@ -1,7 +1,9 @@
 use std::machines::memory::Memory;
 use std::machines::range::Byte2;
 
-machine Main with degree: 256 {
+let N: int = 256;
+
+machine Main with degree: N {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
@@ -69,7 +71,7 @@ machine Main with degree: 256 {
     }
 }
 
-machine Child(mem: Memory) {
+machine Child(mem: Memory) with degree: N {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
@@ -106,7 +108,7 @@ machine Child(mem: Memory) {
     }
 }
 
-machine GrandChild(mem: Memory) {
+machine GrandChild(mem: Memory) with degree: N {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
