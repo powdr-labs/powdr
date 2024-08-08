@@ -603,7 +603,7 @@ fn defined_trait_generic() {
 }
 
 #[test]
-#[should_panic = "Impls for F.Add: Types (int, fe) and (int, fe) overlap"]
+#[should_panic = "Impls for F::Add: Types (int, fe) and (int, fe) overlap"]
 fn duplicated_trait() {
     let input = "
     namespace std::convert(4);
@@ -623,7 +623,7 @@ fn duplicated_trait() {
 }
 
 #[test]
-#[should_panic = "Impls for F.Add: Types (int, fe) and (T1, fe) overlap"]
+#[should_panic = "Impls for F::Add: Types (int, fe) and (T, fe) overlap"]
 fn duplicated_trait_generic() {
     let input = "
     namespace std::convert(4);

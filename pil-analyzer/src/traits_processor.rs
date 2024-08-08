@@ -65,14 +65,9 @@ fn validate_impl_definitions(
             );
         }
 
-        let type_vars: HashSet<_> = trait_impl.type_scheme.vars.vars().collect();
-
         let type_vars_in_tuple: Vec<_> = types
             .iter_mut()
-            .flat_map(|t| {
-                t.map_to_type_vars(&type_vars);
-                t.contained_type_vars()
-            })
+            .flat_map(|t| t.contained_type_vars())
             .collect();
 
         let type_vars_in_scheme: Vec<_> = trait_impl.type_scheme.vars.vars().collect();
@@ -92,7 +87,7 @@ fn validate_impl_definitions(
 
 /// Ensures that there are no overlapping trait implementations in the given `implementations` map.
 ///
-/// This function iterates through all the trait implementations comparing them with each other and ensure that
+/// This function iterates through all the trait implementations comparing them with each other and ensuring that
 /// there are no traits with overlapping type variables.
 fn ensure_unique_impls(implementations: &mut [TraitImplementation<Expression>]) {
     for i in 0..implementations.len() {
@@ -110,8 +105,8 @@ fn ensure_unique_impls(implementations: &mut [TraitImplementation<Expression>]) 
                 .map_to_type_vars(&type_vars);
 
             unify_traits_types(
-                implementations[i].type_scheme.clone(),
-                implementations[j].type_scheme.clone(),
+                &implementations[i].type_scheme,
+                &implementations[j].type_scheme,
             )
             .map_err(|err| {
                 implementations[i]
@@ -123,14 +118,19 @@ fn ensure_unique_impls(implementations: &mut [TraitImplementation<Expression>]) 
     }
 }
 
-fn unify_traits_types(ty1: TypeScheme, ty2: TypeScheme) -> Result<(), String> {
+fn unify_traits_types(ty1: &TypeScheme, ty2: &TypeScheme) -> Result<(), String> {
     let mut unifier = Unifier::new();
-    let instantiated_ty1 = unifier.instantiate_scheme(ty1).0;
-    let instantiated_ty2 = unifier.instantiate_scheme(ty2).0;
+    let instantiated_ty1 = unifier.instantiate_scheme(ty1.clone());
+    let instantiated_ty2 = unifier.instantiate_scheme(ty2.clone());
 
-    match unifier.unify_types(instantiated_ty1.clone(), instantiated_ty2.clone()) {
+    println!("Vars type 1: {:?}", instantiated_ty1.1);
+    println!("Vars type 2: {:?}", instantiated_ty2.1);
+
+    match unifier.unify_types(instantiated_ty1.0.clone(), instantiated_ty2.0.clone()) {
         Ok(_) => Err(format!(
-            "Types {instantiated_ty1} and {instantiated_ty2} overlap"
+            "Types {} and {} overlap",
+            ty1.ty.clone(),
+            ty2.ty.clone(),
         )),
         Err(_) => Ok(()),
     }
