@@ -85,7 +85,7 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     inputs: Vec<(PolyID, T)>,
     previously_set_inputs: BTreeMap<PolyID, usize>,
     copy_constraints: CopyConstraints<(PolyID, RowIndex)>,
-    size: DegreeType,
+    pub size: DegreeType,
 }
 
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, Q> {
