@@ -336,8 +336,15 @@ impl<R> Children<Expression<R>> for EnumVariant<Expression<R>> {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct TraitImplementation<Expr> {
     pub name: SymbolPath,
+    pub source_ref: SourceRef,
     pub type_scheme: TypeScheme,
     pub functions: Vec<NamedExpression<Expr>>,
+}
+
+impl<R> TraitImplementation<Expression<R>> {
+    pub fn function_by_name(&self, name: &str) -> Option<&NamedExpression<Expression<R>>> {
+        self.functions.iter().find(|f| f.name == name)
+    }
 }
 
 impl<R> Children<Expression<R>> for TraitImplementation<Expression<R>> {

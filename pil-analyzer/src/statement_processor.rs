@@ -5,12 +5,15 @@ use std::sync::Arc;
 use itertools::Itertools;
 
 use powdr_ast::analyzed::TypedExpression;
+use powdr_ast::parsed::asm::{Part, SymbolPath};
+use powdr_ast::parsed::types::TupleType;
 use powdr_ast::parsed::{
     self,
     types::{ArrayType, Type, TypeScheme},
     ArrayLiteral, EnumDeclaration, EnumVariant, FunctionDefinition, FunctionKind, LambdaExpression,
     PilStatement, PolynomialName, SelectedExpressions, TraitDeclaration, TraitFunction,
 };
+use powdr_ast::parsed::{NamedExpression, SymbolCategory, TraitImplementation};
 
 use powdr_number::DegreeType;
 use powdr_parser_util::SourceRef;
@@ -29,6 +32,7 @@ pub enum PILItem {
     Definition(Symbol, Option<FunctionValueDefinition>),
     PublicDeclaration(PublicDeclaration),
     Identity(Identity<SelectedExpressions<Expression>>),
+    TraitImplementation(TraitImplementation<Expression>),
 }
 
 pub struct Counters {
@@ -202,6 +206,10 @@ where
                 None,
                 Some(FunctionDefinition::TraitDeclaration(trait_decl.clone())),
             ),
+            PilStatement::TraitImplementation(_, trait_impl) => {
+                let trait_impl = self.process_trait_implementation(trait_impl);
+                vec![PILItem::TraitImplementation(trait_impl)]
+            }
             _ => self.handle_identity_statement(statement),
         }
     }
@@ -639,6 +647,64 @@ where
         TraitDeclaration {
             name: self.driver.resolve_decl(&trait_decl.name),
             type_vars: trait_decl.type_vars,
+            functions,
+        }
+    }
+
+    fn process_trait_implementation(
+        &self,
+        trait_impl: parsed::TraitImplementation<parsed::Expression>,
+    ) -> TraitImplementation<Expression> {
+        let type_vars = trait_impl.type_scheme.vars.vars().collect();
+        let functions = trait_impl
+            .functions
+            .into_iter()
+            .map(|named| NamedExpression {
+                name: named.name,
+                body: Box::new(
+                    self.expression_processor(&type_vars)
+                        .process_expression(named.body.as_ref().clone()),
+                ),
+            })
+            .collect();
+
+        let Type::Tuple(TupleType { items }) = trait_impl.type_scheme.ty.clone() else {
+            panic!("Type from trait scheme is not a tuple.")
+        };
+
+        let mapped_types: Vec<_> = items
+            .into_iter()
+            .map(|mut ty| {
+                ty.map_to_type_vars(&type_vars);
+                ty
+            })
+            .collect();
+
+        let resolved_name = self
+            .driver
+            .resolve_ref(&trait_impl.name, SymbolCategory::TraitDeclaration);
+
+        TraitImplementation {
+            name: SymbolPath::from_parts(
+                // TODO GZ: Should be a better way to do this.
+                resolved_name
+                    .split('.')
+                    .map(|p| {
+                        if p == "super" {
+                            Part::Super
+                        } else {
+                            Part::Named(p.to_string())
+                        }
+                    })
+                    .collect::<Vec<_>>(),
+            ),
+            source_ref: trait_impl.source_ref,
+            type_scheme: TypeScheme {
+                vars: trait_impl.type_scheme.vars,
+                ty: Type::Tuple(TupleType {
+                    items: mapped_types,
+                }),
+            },
             functions,
         }
     }

@@ -12,7 +12,7 @@ use powdr_ast::parsed::types::{ArrayType, Type};
 use powdr_ast::parsed::visitor::Children;
 use powdr_ast::parsed::{
     self, FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions,
-    SymbolCategory,
+    SymbolCategory, TraitImplementation,
 };
 use powdr_number::{DegreeType, FieldElement, GoldilocksField};
 
@@ -22,6 +22,7 @@ use powdr_ast::analyzed::{
 };
 use powdr_parser::{parse, parse_module, parse_type};
 
+use crate::traits_processor::TraitsProcessor;
 use crate::type_builtins::constr_function_statement_type;
 use crate::type_inference::infer_types;
 use crate::{side_effect_checker, AnalysisDriver};
@@ -52,6 +53,7 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
     analyzer.process(files);
     analyzer.side_effect_check();
     analyzer.type_check();
+    analyzer.traits_resolution();
     analyzer.condense()
 }
 
@@ -71,6 +73,8 @@ struct PILAnalyzer {
     symbol_counters: Option<Counters>,
     /// Symbols from the core that were added automatically but will not be printed.
     auto_added_symbols: HashSet<String>,
+    /// Implementations found, organized according to their associated trait name.
+    implementations: HashMap<String, Vec<TraitImplementation<Expression>>>,
 }
 
 /// Reads and parses the given path and all its imports.
@@ -317,6 +321,15 @@ impl PILAnalyzer {
         }
     }
 
+    pub fn traits_resolution(&mut self) {
+        TraitsProcessor::new(
+            &mut self.definitions,
+            &mut self.identities,
+            &self.implementations,
+        )
+        .traits_resolution()
+    }
+
     pub fn condense<T: FieldElement>(self) -> Analyzed<T> {
         condenser::condense(
             self.definitions,
@@ -399,6 +412,11 @@ impl PILAnalyzer {
                             self.source_order.push(StatementIdentifier::Identity(index));
                             self.identities.push(identity)
                         }
+                        PILItem::TraitImplementation(trait_impl) => self
+                            .implementations
+                            .entry(trait_impl.name.to_dotted_string())
+                            .or_default()
+                            .push(trait_impl),
                     }
                 }
             }

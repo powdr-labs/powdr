@@ -477,12 +477,6 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a> {
     }
 }
 
-impl<'a> From<&'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>> for Definitions<'a> {
-    fn from(value: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>) -> Self {
-        Definitions(value)
-    }
-}
-
 pub trait SymbolLookup<'a, T: FieldElement> {
     fn lookup(
         &mut self,
