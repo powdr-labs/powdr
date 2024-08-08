@@ -281,10 +281,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         self.connecting_identities.keys().copied().collect()
     }
 
-    fn degree(&self) -> DegreeType {
-        self.degree
-    }
-
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,

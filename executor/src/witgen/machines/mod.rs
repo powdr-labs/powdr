@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use powdr_number::DegreeType;
 use powdr_number::FieldElement;
 
 use self::block_machine::BlockMachine;
@@ -44,9 +43,6 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
 
     /// Returns a unique name for this machine.
     fn name(&self) -> &str;
-
-    /// Return the unique degree of all columns in this machine
-    fn degree(&self) -> DegreeType;
 
     /// Processes a connecting identity of a given ID (which must be known to the callee).
     /// Returns an error if the query leads to a constraint failure.
@@ -104,17 +100,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
             KnownMachine::FixedLookup(m) => {
                 m.process_plookup(mutable_state, identity_id, caller_rows)
             }
-        }
-    }
-
-    fn degree(&self) -> DegreeType {
-        match self {
-            KnownMachine::SortedWitnesses(m) => m.degree(),
-            KnownMachine::DoubleSortedWitnesses(m) => m.degree(),
-            KnownMachine::WriteOnceMemory(m) => m.degree(),
-            KnownMachine::BlockMachine(m) => m.degree(),
-            KnownMachine::Vm(m) => m.degree(),
-            KnownMachine::FixedLookup(m) => m.degree(),
         }
     }
 

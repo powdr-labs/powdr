@@ -175,10 +175,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
         &self.name
     }
 
-    fn degree(&self) -> DegreeType {
-        self.degree
-    }
-
     fn process_plookup<Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &mut MutableState<'a, '_, T, Q>,
@@ -198,7 +194,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
             std::mem::take(&mut self.data).into_iter().unzip();
 
         let mut last_key = keys.last().cloned().unwrap_or_default();
-        while keys.len() < self.degree() as usize {
+        while keys.len() < self.degree as usize {
             last_key += 1u64.into();
             keys.push(last_key);
         }
@@ -209,7 +205,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
                 .iter_mut()
                 .map(|row| std::mem::take(&mut row[i]).unwrap_or_default())
                 .collect::<Vec<_>>();
-            col_values.resize(self.degree() as usize, 0.into());
+            col_values.resize(self.degree as usize, 0.into());
             result.insert(self.fixed_data.column_name(col).to_string(), col_values);
         }
 

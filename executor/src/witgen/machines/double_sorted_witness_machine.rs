@@ -187,10 +187,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
         self.selector_ids.keys().cloned().collect()
     }
 
-    fn degree(&self) -> DegreeType {
-        self.degree
-    }
-
     fn name(&self) -> &str {
         &self.name
     }
