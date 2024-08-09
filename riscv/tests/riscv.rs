@@ -111,29 +111,6 @@ fn trivial() {
 
 #[test]
 #[ignore = "Too slow"]
-#[should_panic(expected = "reached a fail instruction")]
-fn trivial_with_feature() {
-    // enabling the feature adds a panic!() to the code and we reach a fail instruction
-    let case = "trivial";
-
-    let temp_dir = Temp::new_dir().unwrap();
-    let compiled = powdr_riscv::compile_rust_crate_to_riscv(
-        &format!("tests/riscv_data/{case}/Cargo.toml"),
-        &temp_dir,
-        Some(vec!["do_panic".to_string()]),
-    );
-
-    log::info!("Verifying {case} converted from ELF file");
-    let from_elf = powdr_riscv::elf::translate::<GoldilocksField>(
-        compiled.executable.as_ref().unwrap(),
-        &Runtime::base(),
-        false,
-    );
-    verify_riscv_asm_string::<usize>(&format!("{case}_from_elf.asm"), &from_elf, &[], None);
-}
-
-#[test]
-#[ignore = "Too slow"]
 fn halt() {
     let case = "halt";
     verify_riscv_crate(case, Default::default(), &Runtime::base())
@@ -413,6 +390,81 @@ fn dispatch_table_static_relocation() {
 fn print() {
     let case = "print";
     verify_riscv_crate(case, vec![0.into()], &Runtime::base());
+}
+
+#[test]
+#[ignore = "Too slow"]
+// Test compiling a program with features.
+// If no features are enabled, the expected input is 0.
+// The test program has two features, "add_two" and "add_three".
+// Enabling these features adds 2 and 3 to the expected input, respectively.
+fn features() {
+    let case = "features";
+
+    let temp_dir = Temp::new_dir().unwrap();
+
+    // no features
+    let expected = 0;
+    let compiled = powdr_riscv::compile_rust_crate_to_riscv(
+        &format!("tests/riscv_data/{case}/Cargo.toml"),
+        &temp_dir,
+        None,
+    );
+
+    log::info!("Verifying {case} converted from ELF file");
+    let from_elf = powdr_riscv::elf::translate::<GoldilocksField>(
+        compiled.executable.as_ref().unwrap(),
+        &Runtime::base(),
+        false,
+    );
+    verify_riscv_asm_string::<usize>(
+        &format!("{case}_from_elf.asm"),
+        &from_elf,
+        &[expected.into()],
+        None,
+    );
+
+    // "add_two"
+    let expected = 2;
+    let compiled = powdr_riscv::compile_rust_crate_to_riscv(
+        &format!("tests/riscv_data/{case}/Cargo.toml"),
+        &temp_dir,
+        Some(vec!["add_two".to_string()]),
+    );
+
+    log::info!("Verifying {case} converted from ELF file");
+    let from_elf = powdr_riscv::elf::translate::<GoldilocksField>(
+        compiled.executable.as_ref().unwrap(),
+        &Runtime::base(),
+        false,
+    );
+    verify_riscv_asm_string::<usize>(
+        &format!("{case}_from_elf.asm"),
+        &from_elf,
+        &[expected.into()],
+        None,
+    );
+
+    // "add_two" and "add_three"
+    let expected = 5;
+    let compiled = powdr_riscv::compile_rust_crate_to_riscv(
+        &format!("tests/riscv_data/{case}/Cargo.toml"),
+        &temp_dir,
+        Some(vec!["add_two".to_string(), "add_three".to_string()]),
+    );
+
+    log::info!("Verifying {case} converted from ELF file");
+    let from_elf = powdr_riscv::elf::translate::<GoldilocksField>(
+        compiled.executable.as_ref().unwrap(),
+        &Runtime::base(),
+        false,
+    );
+    verify_riscv_asm_string::<usize>(
+        &format!("{case}_from_elf.asm"),
+        &from_elf,
+        &[expected.into()],
+        None,
+    );
 }
 
 #[test]

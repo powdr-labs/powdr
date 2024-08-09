@@ -6,7 +6,4 @@ edition = "2021"
 [dependencies]
 powdr-riscv-runtime = { path = "../../../../riscv-runtime" }
 
-[features]
-do_panic = []
-
 [workspace]
