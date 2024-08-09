@@ -806,6 +806,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
         Ok(match reference {
             Reference::LocalVar(i, _name) => self.local_vars[*i as usize].clone(),
             Reference::Poly(poly) => {
+                println!("Poly: {poly:?}");
                 if let Some((_, b)) = BUILTINS.iter().find(|(n, _)| (n == &poly.name)) {
                     Value::BuiltinFunction(*b).into()
                 } else {
@@ -1704,5 +1705,41 @@ mod test {
     ";
 
         assert_eq!(parse_and_evaluate_symbol(input, "g"), "7".to_string());
+    }
+
+    #[test]
+    fn traits_and_refs() {
+        let input = "
+        namespace std::convert(4);
+            let fe = || fe();
+        namespace F(4);
+            trait Add<T> {
+                add: T, T -> T,
+            }
+
+            impl Add<int> {
+                add: |a, b| a + b,
+            }
+
+            trait Cast<T, U> {
+                cast: T -> U,
+            }
+
+            impl Cast<int, fe> {
+                cast: |a| std::convert::fe(a),
+            }
+
+            // let x: int -> fe = |q| match Add::add(q, 2) {
+            //         v => std::convert::fe(v),
+            // };
+
+            let y: int -> fe = |q| match Add::add(q, 4) {
+                    v => std::convert::fe(v) + Cast::cast(v),
+            };
+
+            let r: fe = y(2);
+        ";
+
+        assert_eq!(parse_and_evaluate_symbol(input, "F.r"), "12".to_string());
     }
 }

@@ -77,7 +77,8 @@ impl<'a> TraitsProcessor<'a> {
         };
 
         for collected_ref in refs_in_def {
-            let resolved_impl_pos = self.resolve_trait_function(current, collected_ref);
+            let (trait_name, resolved_impl_pos) =
+                self.resolve_trait_function(current, collected_ref.clone());
 
             let to_update = &mut self
                 .definitions
@@ -89,7 +90,7 @@ impl<'a> TraitsProcessor<'a> {
 
             if let FunctionValueDefinition::Expression(TypedExpression { e: expr, .. }) = to_update
             {
-                update_reference(current, expr, &resolved_impl_pos);
+                update_reference(&trait_name, &collected_ref.1, expr, &resolved_impl_pos);
             } else {
                 unreachable!();
             }
@@ -100,12 +101,12 @@ impl<'a> TraitsProcessor<'a> {
         &mut self,
         current: &str,
         collected_ref: (String, Vec<Type>),
-    ) -> HashMap<String, usize> {
+    ) -> (String, HashMap<String, usize>) {
         let mut resolved_impl_pos = HashMap::new();
         let Some(FunctionValueDefinition::TraitFunction(ref trait_decl, ref mut trait_fn)) =
             self.definitions.get_mut(&collected_ref.0).unwrap().1
         else {
-            return resolved_impl_pos;
+            return ("".to_string(), resolved_impl_pos); //TODO GZ: Error?
         };
 
         if let Some(impls) = self.implementations.get(&trait_decl.name) {
@@ -134,7 +135,10 @@ impl<'a> TraitsProcessor<'a> {
             }
         }
 
-        resolved_impl_pos
+        (
+            format!("{}::{}", trait_decl.name.replace('.', "::"), trait_fn.name), // TODO GZ: we probably have a better way to do this
+            resolved_impl_pos,
+        )
     }
 
     fn split_trait_and_function(&self, full_name: &str) -> (String, String) {
@@ -149,11 +153,13 @@ impl<'a> TraitsProcessor<'a> {
 // TODO GZ: Is it really needed to go children_mut deep?
 fn update_reference(
     ref_name: &str,
+    type_args: &Vec<Type>,
     expr: &mut Expression,
     resolved_impl_pos: &HashMap<String, usize>,
 ) {
     fn process_expr(
         ref_name: &str,
+        type_args: &Vec<Type>,
         c: &mut Expression,
         resolved_impl_pos: &HashMap<String, usize>,
     ) {
@@ -181,11 +187,11 @@ fn update_reference(
         }
 
         for child in c.children_mut() {
-            process_expr(ref_name, child, resolved_impl_pos);
+            process_expr(ref_name, type_args, child, resolved_impl_pos);
         }
     }
 
     for c in expr.children_mut() {
-        process_expr(ref_name, c, &mut HashMap::new());
+        process_expr(ref_name, type_args, c, resolved_impl_pos);
     }
 }
