@@ -34,6 +34,7 @@ pub fn compile_rust<T: FieldElement>(
     runtime: &Runtime,
     via_elf: bool,
     with_bootloader: bool,
+    features: Option<Vec<String>>,
 ) -> Option<(PathBuf, String)> {
     if with_bootloader {
         assert!(
@@ -51,7 +52,7 @@ pub fn compile_rust<T: FieldElement>(
     };
 
     if via_elf {
-        let elf_path = compile_rust_crate_to_riscv_bin(&file_path, output_dir);
+        let elf_path = compile_rust_crate_to_riscv_bin(&file_path, output_dir, features);
 
         compile_riscv_elf::<T>(
             file_name,
@@ -62,7 +63,7 @@ pub fn compile_rust<T: FieldElement>(
             with_bootloader,
         )
     } else {
-        let riscv_asm = compile_rust_crate_to_riscv_asm(&file_path, output_dir);
+        let riscv_asm = compile_rust_crate_to_riscv_asm(&file_path, output_dir, features);
         if !output_dir.exists() {
             fs::create_dir_all(output_dir).unwrap()
         }
@@ -195,7 +196,11 @@ impl CompilationResult {
     }
 }
 
-pub fn compile_rust_crate_to_riscv(input_dir: &str, output_dir: &Path) -> CompilationResult {
+pub fn compile_rust_crate_to_riscv(
+    input_dir: &str,
+    output_dir: &Path,
+    features: Option<Vec<String>>,
+) -> CompilationResult {
     const CARGO_TARGET_DIR: &str = "cargo_target";
     let target_dir = output_dir.join(CARGO_TARGET_DIR);
 
@@ -205,16 +210,17 @@ pub fn compile_rust_crate_to_riscv(input_dir: &str, output_dir: &Path) -> Compil
     // the build plan json, so we know exactly which object files to use.
 
     // Real build run.
-    let build_status = build_cargo_command(input_dir, &target_dir, use_std, false)
-        .status()
-        .unwrap();
+    let build_status =
+        build_cargo_command(input_dir, &target_dir, use_std, features.clone(), false)
+            .status()
+            .unwrap();
     assert!(build_status.success());
 
     // Build plan run. We must set the target dir to a temporary directory,
     // otherwise cargo will screw up the build done previously.
     let (build_plan, plan_dir): (JsonValue, PathBuf) = {
         let plan_dir = Temp::new_dir().unwrap();
-        let build_plan_run = build_cargo_command(input_dir, &plan_dir, use_std, true)
+        let build_plan_run = build_cargo_command(input_dir, &plan_dir, use_std, features, true)
             .output()
             .unwrap();
         assert!(build_plan_run.status.success());
@@ -285,12 +291,17 @@ pub fn compile_rust_crate_to_riscv(input_dir: &str, output_dir: &Path) -> Compil
 pub fn compile_rust_crate_to_riscv_asm(
     input_dir: &str,
     output_dir: &Path,
+    features: Option<Vec<String>>,
 ) -> BTreeMap<String, String> {
-    compile_rust_crate_to_riscv(input_dir, output_dir).load_asm_files()
+    compile_rust_crate_to_riscv(input_dir, output_dir, features).load_asm_files()
 }
 
-pub fn compile_rust_crate_to_riscv_bin(input_dir: &str, output_dir: &Path) -> PathBuf {
-    compile_rust_crate_to_riscv(input_dir, output_dir)
+pub fn compile_rust_crate_to_riscv_bin(
+    input_dir: &str,
+    output_dir: &Path,
+    features: Option<Vec<String>>,
+) -> PathBuf {
+    compile_rust_crate_to_riscv(input_dir, output_dir, features)
         .executable
         .unwrap()
 }
@@ -332,6 +343,7 @@ fn build_cargo_command(
     input_dir: &str,
     target_dir: &Path,
     use_std: bool,
+    features: Option<Vec<String>>,
     produce_build_plan: bool,
 ) -> Command {
     /*
@@ -418,6 +430,15 @@ fn build_cargo_command(
             "-Zbuild-std=core,alloc"
         ]);
     };
+
+    // we can't do this inside the if because we need to keep a reference to the string
+    let feature_list = features.as_ref().map(|f| f.join(",")).unwrap_or_default();
+
+    if let Some(features) = features {
+        if !features.is_empty() {
+            args.extend(as_ref![OsStr; "--features", feature_list]);
+        }
+    }
 
     // TODO: if asm path is removed, there are better ways to find the
     // executable name than relying on the unstable build plan.
