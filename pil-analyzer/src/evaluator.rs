@@ -1780,17 +1780,55 @@ mod test {
                 cast: |a| std::convert::fe(a),
             }
 
-            // let x: int -> fe = |q| match Add::add(q, 2) {
-            //         v => std::convert::fe(v),
-            // };
+            let x: int -> fe = |q| match Add::add(q, 2) {
+                     v => std::convert::fe(v),
+            };
 
             let y: int -> fe = |q| match Add::add(q, 4) {
-                    v => std::convert::fe(v) + Cast::cast(v),
+                    v => x(v) + Cast::cast(v),
             };
 
             let r: fe = y(2);
         ";
 
-        assert_eq!(parse_and_evaluate_symbol(input, "F.r"), "12".to_string());
+        assert_eq!(parse_and_evaluate_symbol(input, "F.r"), "14".to_string());
+    }
+
+    #[test]
+    fn traits_multiple_fns() {
+        let input = "
+        namespace std::convert(4);
+            let fe = || fe();
+        namespace F(4);
+            trait Do<T, Q> {
+                add1: T, T -> T,
+                add2: T, T -> Q,
+                sub: T, T -> Q,
+                cast: T -> Q,
+            }
+
+            impl Do<int, fe> {
+                add1: |a, b| a + b,
+                add2: |a, b| std::convert::fe(a + b),
+                sub: |a, b| std::convert::fe(a - b),
+                cast: |a| std::convert::fe(a),
+            }
+
+            let x: fe -> fe = |q| match Do::sub(q, q) {
+                    v => {
+                        let one: int = 1;
+                        let two: int = 2;
+                        v + Do::add2(one, two)
+                    },
+            };
+
+            let y: int -> fe = |q| match Do::cast(q) {
+                    v => x(v) + v,
+            };
+
+            let r: fe = y(2);
+        ";
+
+        assert_eq!(parse_and_evaluate_symbol(input, "F.r"), "5".to_string());
     }
 }

@@ -14,8 +14,6 @@ pub struct TraitsProcessor<'a> {
     definitions: &'a mut HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     identities: &'a mut Vec<Identity<SelectedExpressions<Expression>>>,
     implementations: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
-    type_args_stack: Vec<(String, Vec<Type>)>,
-    stack: Vec<String>,
 }
 
 impl<'a> TraitsProcessor<'a> {
@@ -28,8 +26,6 @@ impl<'a> TraitsProcessor<'a> {
             definitions,
             identities,
             implementations,
-            type_args_stack: Vec::new(),
-            stack: Vec::new(),
         }
     }
 
@@ -45,16 +41,50 @@ impl<'a> TraitsProcessor<'a> {
             })
             .map(|(name, _)| name.clone())
             .collect::<Vec<_>>();
+
         for name in keys {
             self.resolve_trait(&name);
-
-            self.stack.clear();
-            self.type_args_stack.clear();
         }
 
-        //for id in self.identities.iter() {
-        //
-        //}
+        let refs_in_identity: Vec<(String, Vec<Type>)> = self
+            .identities
+            .iter()
+            .flat_map(|id| {
+                let Identity {
+                    left:
+                        SelectedExpressions {
+                            selector: selector_left,
+                            expressions: expressions_left,
+                        },
+                    right:
+                        SelectedExpressions {
+                            selector: selector_right,
+                            expressions: expressions_right,
+                        },
+                    ..
+                } = id;
+
+                selector_left
+                    .iter()
+                    .chain(std::iter::once(expressions_left.as_ref()))
+                    .chain(selector_right.iter())
+                    .chain(std::iter::once(expressions_right.as_ref()))
+                    .flat_map(move |e| {
+                        e.all_children().filter_map(move |e| match e {
+                            Expression::Reference(
+                                _,
+                                Reference::Poly(PolynomialReference {
+                                    name,
+                                    type_args: Some(types),
+                                    ..
+                                }),
+                            ) => Some((name.clone(), types.clone())),
+                            _ => None,
+                        })
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
     }
 
     fn resolve_trait(&mut self, current: &str) {
