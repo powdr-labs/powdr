@@ -818,7 +818,6 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
         Ok(match reference {
             Reference::LocalVar(i, _name) => self.local_vars[*i as usize].clone(),
             Reference::Poly(poly) => {
-                println!("Poly: {poly:?}");
                 if let Some((_, b)) = BUILTINS.iter().find(|(n, _)| (n == &poly.name)) {
                     Value::BuiltinFunction(*b).into()
                 } else {

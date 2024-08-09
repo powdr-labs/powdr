@@ -79,7 +79,7 @@ impl<'a> TraitsProcessor<'a> {
 
         for collected_ref in refs_in_def {
             let (trait_name, resolved_impl_pos) =
-                self.resolve_trait_function(current, collected_ref.clone());
+                self.resolve_trait_function(collected_ref.clone());
 
             let to_update = &mut self
                 .definitions
@@ -100,7 +100,6 @@ impl<'a> TraitsProcessor<'a> {
 
     fn resolve_trait_function(
         &mut self,
-        current: &str,
         collected_ref: (String, Vec<Type>),
     ) -> (String, HashMap<String, Box<Expression>>) {
         let mut resolved_impl_pos = HashMap::new();
@@ -111,27 +110,16 @@ impl<'a> TraitsProcessor<'a> {
         };
 
         if let Some(impls) = self.implementations.get(&trait_decl.name) {
-            for (i, impl_) in impls.iter().enumerate() {
-                let (Some(impl_fn), Some(decl_fn)) = (
-                    impl_.function_by_name(&trait_fn.name),
-                    trait_decl.function_by_name(&trait_fn.name),
-                ) else {
+            for impl_ in impls.iter() {
+                let Some(impl_fn) = impl_.function_by_name(&trait_fn.name) else {
                     panic!(
                         "Could not find function {} for {}",
                         trait_fn.name, trait_decl.name
                     );
                 };
-                trait_decl.function_by_name(&trait_fn.name);
-                // let type_vars = trait_decl.type_vars.clone();
-                let collected_types = collected_ref.1.clone();
-                // let substitutions: HashMap<_, _> = type_vars
-                //     .into_iter()
-                //     .zip(collected_types.into_iter())
-                //     .collect();
-                //trait_fn.ty.substitute_type_vars(&substitutions);
 
                 resolved_impl_pos.insert(
-                    collected_types.iter().format(",").to_string(),
+                    collected_ref.1.iter().format(",").to_string(),
                     impl_fn.body.clone(),
                 );
             }
@@ -144,7 +132,6 @@ impl<'a> TraitsProcessor<'a> {
     }
 }
 
-// TODO GZ: Is it really needed to go children_mut deep?
 fn update_reference(
     ref_name: &str,
     type_args: &Vec<Type>,
