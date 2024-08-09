@@ -30,7 +30,7 @@ pub const NUM_PAGES_INDEX: usize = MEMORY_HASH_START_INDEX + WORDS_PER_HASH * 2;
 pub const PAGE_INPUTS_OFFSET: usize = NUM_PAGES_INDEX + 1;
 
 // Ensure we have enough addresses for the scratch space.
-const_assert!(PAGE_SIZE_BYTES > 512);
+const_assert!(PAGE_SIZE_BYTES > 384);
 
 /// Computes an upper bound of how long the shutdown routine will run, for a given number of pages.
 pub fn shutdown_routine_upper_bound(num_pages: usize) -> usize {
@@ -230,6 +230,7 @@ bootloader_start_page_loop:
 load_bootloader_input 2, 3, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET};
 and 3, 0, {PAGE_NUMBER_MASK}, 3;
 
+// Assert that the page number is not zero, as paging in page 0 would overwrite the scratch space.
 branch_if_diff_nonzero 3, 0, page_number_ok;
 
 page_number_zero:
