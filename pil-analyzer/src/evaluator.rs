@@ -138,6 +138,7 @@ pub enum Value<'a, T> {
     Enum(&'a str, Option<Vec<Arc<Self>>>),
     BuiltinFunction(BuiltinFunction),
     Expression(AlgebraicExpression<T>),
+    TraitFunction(TraitFunction<'a, T>),
 }
 
 impl<'a, T: FieldElement> From<T> for Value<'a, T> {
@@ -215,6 +216,12 @@ impl<'a, T: FieldElement> Value<'a, T> {
             Value::Enum(name, _) => name.to_string(),
             Value::BuiltinFunction(b) => format!("builtin_{b:?}"),
             Value::Expression(_) => "expr".to_string(),
+            Value::TraitFunction(trait_function) => {
+                format!(
+                    "trait_function<{}>",
+                    trait_function.type_args.values().format(", ")
+                )
+            }
         }
     }
 
@@ -370,6 +377,11 @@ impl<'a, T: Display> Display for Value<'a, T> {
             }
             Value::BuiltinFunction(b) => write!(f, "{b:?}"),
             Value::Expression(e) => write!(f, "{e}"),
+            Value::TraitFunction(trait_function) => write!(
+                f,
+                "trait_function<{}>",
+                trait_function.type_args.values().format(", ")
+            ),
         }
     }
 }
@@ -398,6 +410,13 @@ impl<'a, T> Closure<'a, T> {
         // TODO should use proper types as soon as we have them
         "closure".to_string()
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct TraitFunction<'a, T> {
+    pub body: Box<Expression>,
+    pub environment: Vec<Arc<Value<'a, T>>>,
+    pub type_args: HashMap<String, Type>,
 }
 
 pub struct Definitions<'a>(pub &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>);
@@ -816,7 +835,38 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                         }
                         ta
                     });
-                    self.symbols.lookup(&poly.name, &type_args)?
+
+                    let impl_pos = type_args.as_ref().and_then(|type_args| {
+                        let key = type_args.iter().format(",").to_string();
+                        poly.resolved_impls.get(&key).as_ref().copied()
+                    });
+
+                    match impl_pos {
+                        Some(body) => {
+                            let local_type_args = poly
+                                .type_args
+                                .clone()
+                                .map(|ta| {
+                                    ta.into_iter()
+                                        .filter_map(|ty| {
+                                            let key = ty.to_string();
+                                            self.type_args
+                                                .get(&key)
+                                                .map(|value| (key, value.clone()))
+                                        })
+                                        .collect::<HashMap<_, _>>()
+                                })
+                                .unwrap();
+
+                            Value::TraitFunction(TraitFunction {
+                                body: body.clone(),
+                                environment: vec![],
+                                type_args: local_type_args.clone(),
+                            })
+                            .into()
+                        }
+                        None => self.symbols.lookup(&poly.name, &type_args)?,
+                    }
                 }
             }
         })
@@ -984,6 +1034,19 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 self.local_vars = local_vars;
                 self.type_args = type_args.clone();
                 self.expand(&lambda.body)?;
+            }
+            Value::TraitFunction(TraitFunction {
+                body,
+                environment,
+                type_args,
+            }) => {
+                self.op_stack.push(Operation::SetEnvironment(
+                    std::mem::take(&mut self.local_vars),
+                    std::mem::take(&mut self.type_args),
+                ));
+                self.local_vars = vec![];
+                self.type_args = type_args.clone();
+                self.expand(&body)?;
             }
             e => panic!("Expected function but got {e}"),
         };

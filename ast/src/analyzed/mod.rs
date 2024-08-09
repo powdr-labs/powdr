@@ -1326,7 +1326,7 @@ pub struct PolynomialReference {
     /// Guaranteed to be Some(_) after type checking is completed.
     pub type_args: Option<Vec<Type>>,
     ///
-    pub resolved_impl_pos: HashMap<String, usize>,
+    pub resolved_impls: HashMap<String, Box<Expression>>,
 }
 
 #[derive(

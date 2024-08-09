@@ -394,7 +394,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             name: self.driver.resolve_value_ref(&reference.path),
             poly_id: None,
             type_args,
-            resolved_impl_pos: HashMap::new(),
+            resolved_impls: HashMap::new(),
         }
     }
 

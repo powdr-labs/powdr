@@ -1,6 +1,7 @@
 use core::panic;
 use std::collections::HashMap;
 
+use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
         Expression, FunctionValueDefinition, Identity, PolynomialReference, Reference, Symbol,
@@ -101,12 +102,12 @@ impl<'a> TraitsProcessor<'a> {
         &mut self,
         current: &str,
         collected_ref: (String, Vec<Type>),
-    ) -> (String, HashMap<String, usize>) {
+    ) -> (String, HashMap<String, Box<Expression>>) {
         let mut resolved_impl_pos = HashMap::new();
         let Some(FunctionValueDefinition::TraitFunction(ref trait_decl, ref mut trait_fn)) =
             self.definitions.get_mut(&collected_ref.0).unwrap().1
         else {
-            return ("".to_string(), resolved_impl_pos); //TODO GZ: Error?
+            return ("".to_string(), resolved_impl_pos); //TODO GZ: Error
         };
 
         if let Some(impls) = self.implementations.get(&trait_decl.name) {
@@ -121,17 +122,19 @@ impl<'a> TraitsProcessor<'a> {
                     );
                 };
                 trait_decl.function_by_name(&trait_fn.name);
-                let type_vars = trait_decl.type_vars.clone();
+                // let type_vars = trait_decl.type_vars.clone();
                 let collected_types = collected_ref.1.clone();
-                let substitutions: HashMap<_, _> = type_vars
-                    .into_iter()
-                    .zip(collected_types.into_iter())
-                    .collect();
-                trait_fn.ty.substitute_type_vars(&substitutions); // TODO GZ: avoid mutation?
+                // let substitutions: HashMap<_, _> = type_vars
+                //     .into_iter()
+                //     .zip(collected_types.into_iter())
+                //     .collect();
+                //trait_fn.ty.substitute_type_vars(&substitutions); // TODO GZ: avoid mutation?
 
                 //check first!
-
-                resolved_impl_pos.insert(trait_decl.name.clone(), i);
+                resolved_impl_pos.insert(
+                    collected_types.iter().format(",").to_string(),
+                    impl_fn.body.clone(),
+                );
             }
         }
 
@@ -140,14 +143,6 @@ impl<'a> TraitsProcessor<'a> {
             resolved_impl_pos,
         )
     }
-
-    fn split_trait_and_function(&self, full_name: &str) -> (String, String) {
-        // TODO GZ: we probably have a better way to do this (SymbolPath insteand of String)
-        let mut parts: Vec<&str> = full_name.rsplitn(2, "::").collect();
-        let trait_name = parts.pop().unwrap_or("").to_string();
-        let fname = parts.pop().unwrap_or("").to_string();
-        (trait_name, fname)
-    }
 }
 
 // TODO GZ: Is it really needed to go children_mut deep?
@@ -155,13 +150,13 @@ fn update_reference(
     ref_name: &str,
     type_args: &Vec<Type>,
     expr: &mut Expression,
-    resolved_impl_pos: &HashMap<String, usize>,
+    resolved_impl_pos: &HashMap<String, Box<Expression>>,
 ) {
     fn process_expr(
         ref_name: &str,
         type_args: &Vec<Type>,
         c: &mut Expression,
-        resolved_impl_pos: &HashMap<String, usize>,
+        resolved_impl_pos: &HashMap<String, Box<Expression>>,
     ) {
         if let Expression::Reference(
             sr,
@@ -180,7 +175,7 @@ fn update_reference(
                         name: name.clone(),
                         type_args: type_args.clone(),
                         poly_id: poly_id.clone(),
-                        resolved_impl_pos: resolved_impl_pos.clone(),
+                        resolved_impls: resolved_impl_pos.clone(),
                     }),
                 );
             }
