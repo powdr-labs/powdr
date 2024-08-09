@@ -7,6 +7,7 @@ use powdr_riscv_runtime::io::read_u32;
 
 #[no_mangle]
 pub fn main() {
+    #[allow(unused_mut)]
     let mut n = 0;
     let expected = read_u32(0);
     #[cfg(feature = "add_two")]
