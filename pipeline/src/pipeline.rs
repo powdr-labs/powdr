@@ -3,7 +3,6 @@ use std::{
     fmt::Display,
     fs,
     io::{self, BufReader},
-    marker::Send,
     path::{Path, PathBuf},
     rc::Rc,
     sync::Arc,
@@ -260,18 +259,12 @@ impl<T: FieldElement> Pipeline<T> {
         self
     }
 
-    pub fn add_data<S: serde::Serialize + Send + Sync + 'static>(
-        self,
-        channel: u32,
-        data: &S,
-    ) -> Self {
-        self.add_query_callback(Arc::new(serde_data_to_query_callback(channel, data)))
+    pub fn add_data<S: serde::Serialize + 'static>(self, channel: u32, data: &S) -> Self {
+        let bytes = serde_cbor::to_vec(&data).unwrap();
+        self.add_query_callback(Arc::new(serde_data_to_query_callback(channel, bytes)))
     }
 
-    pub fn add_data_vec<S: serde::Serialize + Send + Sync + 'static>(
-        self,
-        data: &[(u32, S)],
-    ) -> Self {
+    pub fn add_data_vec<S: serde::Serialize + 'static>(self, data: &[(u32, S)]) -> Self {
         data.iter()
             .fold(self, |pipeline, data| pipeline.add_data(data.0, &data.1))
     }
