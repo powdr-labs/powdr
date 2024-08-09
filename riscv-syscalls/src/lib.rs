@@ -1,17 +1,5 @@
 #![no_std]
 
-/// For parameter passing and return values in `ecall`, we allow use of all "caller saved" registers in RISC-V: `a0-a7,t0-t6`.
-/// Register `t0` is reserved for passing the syscall number.
-/// By convention, arguments and return values are used in this given order
-/// (e.g., if 7 registers are needed, use reg indexes `0..6`).
-/// Registers directly used as input/output to the ecall shouldn't need any special handling.
-/// Any other register used inside the syscall implementation *must be explicitly saved and restored*,
-/// as they are not visible from LLVM.
-/// For an example, see the `poseidon_gl` syscall implementation in the riscv runtime.
-pub static SYSCALL_REGISTERS: [&str; 14] = [
-    "x10", "x11", "x12", "x13", "x14", "x15", "x16", "x17", "x6", "x7", "x28", "x29", "x30", "x31",
-];
-
 macro_rules! syscalls {
     ($(($num:expr, $identifier:ident, $name:expr)),* $(,)?) => {
         #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -65,6 +53,7 @@ syscalls!(
     (4, Affine256, "affine_256"),
     (5, EcAdd, "ec_add"),
     (6, EcDouble, "ec_double"),
-    (8, Mod256, "mod_256"),
     (7, KeccakF, "keccakf"),
+    (8, Mod256, "mod_256"),
+    (9, Halt, "halt"),
 );

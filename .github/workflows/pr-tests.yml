@@ -10,6 +10,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  POWDR_GENERATE_PROOFS: "true"
 
 jobs:
   build:
@@ -60,6 +61,11 @@ jobs:
   test_quick:
     needs: build
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        test:
+        - "1"
+        - "2"
 
     steps:
     - uses: actions/checkout@v3
@@ -78,18 +84,39 @@ jobs:
     - name: Install Rust toolchain 1.77 (with clippy and rustfmt)
       run: rustup toolchain install 1.77-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.77-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.77-x86_64-unknown-linux-gnu
     - name: Install nightly
-      run: rustup toolchain install nightly-2024-02-01-x86_64-unknown-linux-gnu
-    - name: Install riscv target
-      run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-02-01-x86_64-unknown-linux-gnu
+      run: rustup toolchain install nightly-2024-08-01-x86_64-unknown-linux-gnu
     - name: Install stdlib
-      run: rustup component add rust-src --toolchain nightly-2024-02-01-x86_64-unknown-linux-gnu
+      run: rustup component add rust-src --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
     - name: Install pilcom
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - uses: taiki-e/install-action@nextest
     - name: Run default tests
-      run: cargo nextest run --archive-file tests.tar.zst --verbose
+      run: cargo nextest run --archive-file tests.tar.zst --verbose --partition count:"${{ matrix.test }}"/2
       env:
         PILCOM: ${{ github.workspace }}/pilcom/
+
+  run_examples:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+      with:
+        submodules: recursive
+    - name: ⚡ Restore rust cache
+      id: cache
+      uses: actions/cache/restore@v3
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+          Cargo.lock
+        key: ${{ runner.os }}-cargo-pr-tests-${{ hashFiles('**/Cargo.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-cargo-pr-tests-
+    - name: Install Rust toolchain 1.77 (with clippy and rustfmt)
+      run: rustup toolchain install 1.77-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.77-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.77-x86_64-unknown-linux-gnu
     - name: Run examples
       run: cargo run --example hello_world
 
@@ -113,11 +140,9 @@ jobs:
     - name: Install Rust toolchain 1.77 (with clippy and rustfmt)
       run: rustup toolchain install 1.77-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.77-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.77-x86_64-unknown-linux-gnu
     - name: Install nightly
-      run: rustup toolchain install nightly-2024-02-01-x86_64-unknown-linux-gnu
-    - name: Install riscv target
-      run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-02-01-x86_64-unknown-linux-gnu
+      run: rustup toolchain install nightly-2024-08-01-x86_64-unknown-linux-gnu
     - name: Install stdlib
-      run: rustup component add rust-src --toolchain nightly-2024-02-01-x86_64-unknown-linux-gnu
+      run: rustup component add rust-src --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
     - name: Install pilcom
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - name: Install EStarkPolygon prover system dependency
@@ -134,8 +159,14 @@ jobs:
     strategy:
       matrix:
         test:
-        - "subset1"
-        - "subset2"
+        - "1"
+        - "2"
+        - "3"
+        - "4"
+        - "5"
+        - "6"
+        - "7"
+        - "8"
     needs: build
     runs-on: ubuntu-latest
 
@@ -155,24 +186,20 @@ jobs:
         key: ${{ runner.os }}-pilcom-node-modules
     - name: Install Rust toolchain 1.77 (with clippy and rustfmt)
       run: rustup toolchain install 1.77-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.77-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.77-x86_64-unknown-linux-gnu
+    - name: Install test dependencies
+      run: sudo apt-get install -y binutils-riscv64-unknown-elf lld
     - name: Install nightly
-      run: rustup toolchain install nightly-2024-02-01-x86_64-unknown-linux-gnu
-    - name: Install riscv target
-      run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-02-01-x86_64-unknown-linux-gnu
+      run: rustup toolchain install nightly-2024-08-01-x86_64-unknown-linux-gnu
     - name: Install stdlib
-      run: rustup component add rust-src --toolchain nightly-2024-02-01-x86_64-unknown-linux-gnu
+      run: rustup component add rust-src --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
     - name: Install pilcom
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - uses: taiki-e/install-action@nextest
     - name: Run slow tests
-      # Number threads is set to 1 because the runner does not have enough memory for more.
+      # Number threads is set to 2 because the runner does not have enough memory for more.
       run: |
-        if [[ "${{ matrix.test }}" == "subset1" ]]; then
-          TESTS="test(=arith_test)"
-        elif [[ "${{ matrix.test }}" == "subset2" ]]; then
-          TESTS="test(=keccak) | test(=vec_median) | test(=instruction_tests::addi) | test(=many_chunks) | test(=sum_serde)"
-        fi
-        cargo nextest run --archive-file tests.tar.zst --verbose --run-ignored=ignored-only --no-capture -E "$TESTS"
+        NIGHTLY_TESTS=$(cat .github/workflows/nightly_tests_list.txt)
+        cargo nextest run --archive-file tests.tar.zst --verbose --run-ignored=ignored-only -E "!($NIGHTLY_TESTS)" --test-threads 2 --partition hash:"${{ matrix.test }}"/8
       shell: bash
       env:
         PILCOM: ${{ github.workspace }}/pilcom/

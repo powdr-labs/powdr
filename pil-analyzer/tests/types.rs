@@ -197,7 +197,7 @@ fn constraints() {
     let input = "
         let a;
         let BYTE: col = |i| std::convert::fe(i & 0xff);
-        { a + 1 } in {BYTE};
+        [ a + 1 ] in [BYTE];
         namespace std::convert(8);
         let fe = 18;
     ";
@@ -327,7 +327,7 @@ fn enum_is_not_constr() {
 }
 
 #[test]
-#[should_panic = "Expected type: int -> std::prover::Query"]
+#[should_panic = "Expected type int -> std::prover::Query"]
 fn query_with_wrong_type() {
     let input = "col witness w(i) query i;";
     type_check(input, &[]);
@@ -479,7 +479,7 @@ fn multi_ellipsis() {
 }
 
 #[test]
-#[should_panic = "Expected enum variant for pattern X::A but got int -> X - maybe you forgot the parentheses?"]
+#[should_panic = "Expected enum variant for pattern but got int -> X - maybe you forgot the parentheses?"]
 fn enum_no_paren_for_paren() {
     let input = "
     enum X { A(int) }
@@ -492,7 +492,7 @@ fn enum_no_paren_for_paren() {
 }
 
 #[test]
-#[should_panic = "Enum variant X::A does not have fields, but is used with parentheses in X::A()"]
+#[should_panic = "Enum variant X::A does not have fields, but is used with parentheses in pattern"]
 fn enum_paren_for_no_paren() {
     let input = "
     enum X { A }
@@ -514,5 +514,103 @@ fn enum_too_many_fields() {
         _ => 3,
     };
     ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn empty_function() {
+    let input = "
+    let f: int -> () = |i| { };
+    let g: int -> () = |i| {
+        f(i);
+    };
+    
+    let h: () = g(4);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn empty_match() {
+    let input = "
+    let h: int -> int = |i| i;
+    let f: int -> () = |i| match i {
+        5 => { 
+            let _ = h(4);
+        },
+        _ => { }
+    };
+
+    let g: () = f(4);
+    let k: () = f(5);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn empty_conditional() {
+    let input = "
+    let h: int -> int = |i| i;
+    let f: int -> () = |i| if i == 5 {
+        let _ = h(4);
+    } else { };
+
+    let g: () = f(4);
+    let k: () = f(5);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn cols_in_func() {
+    let input = "
+    namespace Main(104);
+    let h: -> () = constr || {
+        let w: col;
+        let f: col = |j| j + 1;
+        w = f;
+    };
+    h();
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn type_vars_in_block_let() {
+    let input = "
+    let<T> f: T -> T[] = |i| [i];
+    let<Q> x: Q -> Q[][] = |i| {
+        let y: Q[] = f(i);
+        [y]
+    };
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Expected type: int -> T\\nInferred type: int\\n"]
+fn new_fixed_column_wrong_value_type() {
+    let input = r#"namespace N(16);
+        let f = constr |j| {
+            let k: int = 2;
+            let fi: col = k;
+            fi
+        };
+        let ev = f(2);
+        let x;
+        x = ev;
+    "#;
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Let-declared variables without value must have type 'col'"]
+fn new_fixed_column_wrong_type() {
+    let input = r#"namespace N(16);
+        let f = constr || {
+            let fi: int;
+        };
+        f();
+    "#;
     type_check(input, &[]);
 }

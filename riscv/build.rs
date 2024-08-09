@@ -36,17 +36,16 @@ fn build_instruction_tests() {
             .to_string()
             .strip_suffix(".S")
         {
-            println!("cargo:rerun-if-changed={generated_path}/{file_name}.S");
             write!(
                 test_file,
-                r#"
+                r##"
 #[test]
 #[ignore = "Too slow"]
 fn {file_name}() {{
-    run_instruction_test(include_str!("{test_file}"), "{file_name}");
+    run_instruction_test(Path::new(r#"{file}"#), r#"{file_name}"#);
 }}
-"#,
-                test_file = file.path().canonicalize().unwrap().display(),
+"##,
+                file = file.path().to_str().unwrap(),
             )
             .unwrap();
         }

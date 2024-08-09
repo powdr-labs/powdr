@@ -25,8 +25,8 @@ machine Main with degree: 256 {
     reg B;
 
     WriteOnceMemory memory;
-    instr mstore X1, X2, Y1, Y2 -> = memory.access X1, X2, Y1, Y2 ->;
-    instr mload X1, X2 -> Y1, Y2 = memory.access X1, X2, Y1, Y2 ->;
+    instr mstore X1, X2, Y1, Y2 -> link => memory.access(X1, X2, Y1, Y2);
+    instr mload X1, X2 -> Y1, Y2 link => memory.access(X1, X2, Y1, Y2);
 
     instr assert_eq X1, Y1 { X1 = Y1 }
 

@@ -3,8 +3,9 @@ use std::collections::HashMap;
 use std::{cmp, path::PathBuf};
 
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperator, AlgebraicExpression as Expression, AlgebraicUnaryOperator, Analyzed,
-    IdentityKind, PolyID, PolynomialType, StatementIdentifier, SymbolKind,
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, IdentityKind, PolyID,
+    PolynomialType, StatementIdentifier, SymbolKind,
 };
 use powdr_parser_util::SourceRef;
 use starky::types::{
@@ -166,7 +167,6 @@ fn symbol_kind_to_json_string(k: SymbolKind) -> &'static str {
     match k {
         SymbolKind::Poly(poly_type) => polynomial_type_to_json_string(poly_type),
         SymbolKind::Other() => panic!("Cannot translate \"other\" symbol to json."),
-        SymbolKind::Constant() => unreachable!(),
     }
 }
 
@@ -224,7 +224,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                         panic!("Should be in intermediates")
                     }
                     SymbolKind::Poly(_) => Some(symbol.id),
-                    SymbolKind::Other() | SymbolKind::Constant() => None,
+                    SymbolKind::Other() => None,
                 }?;
 
                 let out = Reference {
@@ -323,7 +323,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                     ..DEFAULT_EXPR
                 },
             ),
-            Expression::BinaryOperation(left, op, right) => {
+            Expression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
                 let (deg_left, left) = self.expression_to_json(left);
                 let (deg_right, right) = self.expression_to_json(right);
                 let (op, degree) = match op {
@@ -349,7 +349,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
                     },
                 )
             }
-            Expression::UnaryOperation(op, value) => {
+            Expression::UnaryOperation(AlgebraicUnaryOperation { op, expr: value }) => {
                 let (deg, value) = self.expression_to_json(value);
                 match op {
                     AlgebraicUnaryOperator::Minus => (
@@ -416,184 +416,10 @@ fn offset_to_line_col(offset: usize, line_starts: &[usize]) -> (usize, usize) {
 
 #[cfg(test)]
 mod test {
-    use powdr_pil_analyzer::analyze_file;
     use pretty_assertions::assert_eq;
-    use serde_json::Value as JsonValue;
-    use std::{fs, process::Command};
     use test_log::test;
 
-    use powdr_number::GoldilocksField;
-
     use super::*;
-
-    fn generate_json_pair(file: &str) -> (JsonValue, JsonValue) {
-        let temp_dir = mktemp::Temp::new_dir().unwrap();
-        let output_file = temp_dir.join("out.json");
-
-        let file = std::path::PathBuf::from(format!(
-            "{}/../test_data/polygon-hermez/",
-            env!("CARGO_MANIFEST_DIR")
-        ))
-        .join(file);
-
-        let analyzed = analyze_file::<GoldilocksField>(&file);
-        let pil_out = export(&analyzed);
-
-        let pilcom = std::env::var("PILCOM").expect(
-            "Please set the PILCOM environment variable to the path to the pilcom repository.",
-        );
-        let pilcom_output = Command::new("node")
-            .args([
-                format!("{pilcom}/src/pil.js"),
-                file.display().to_string(),
-                "-o".to_string(),
-                format!("{}", output_file.to_string_lossy()),
-            ])
-            .output()
-            .expect("failed to run pilcom");
-        if !pilcom_output.status.success() {
-            panic!(
-                "Pilcom run was unsuccessful.\nStdout: {}\nStderr: {}\n",
-                String::from_utf8_lossy(&pilcom_output.stdout),
-                String::from_utf8_lossy(&pilcom_output.stderr)
-            );
-        }
-
-        let pilcom_out = fs::read_to_string(&output_file).unwrap_or_else(|_| {
-            panic!("Pilcom did not generate {output_file:?} at the expected location.")
-        });
-        drop(temp_dir);
-
-        let json_out = serde_json::to_value(pil_out).unwrap();
-
-        let mut pilcom_parsed =
-            serde_json::from_str(&pilcom_out).expect("Invalid json from pilcom.");
-
-        // Filter out expression's "deps" before comparison, since we don't
-        // export them.
-        filter_out_deps(&mut pilcom_parsed);
-
-        (json_out, pilcom_parsed)
-    }
-
-    fn filter_out_deps(value: &mut serde_json::Value) {
-        match value {
-            JsonValue::Array(arr) => {
-                for e in arr {
-                    filter_out_deps(e);
-                }
-            }
-            JsonValue::Object(obj) => {
-                if let serde_json::map::Entry::Occupied(deps) = obj.entry("deps") {
-                    deps.remove();
-                }
-
-                for (_, e) in obj.iter_mut() {
-                    filter_out_deps(e);
-                }
-            }
-            _ => (),
-        }
-    }
-
-    fn compare_export_file(file: &str) {
-        let (json_out, pilcom_parsed) = generate_json_pair(file);
-        if json_out != pilcom_parsed {
-            // Computing the pretty diff can take minutes, so we are printing an error already here.
-            eprintln!("Exported json and file re-exported by pilcom differ:");
-            assert_eq!(json_out, pilcom_parsed);
-        }
-    }
-
-    /// Normalizes the json in that it replaces all idQ values by "99"
-    /// and converts hex numbers to decimal.
-    fn normalize_idq_and_hex(v: &mut JsonValue) {
-        match v {
-            JsonValue::Object(obj) => obj.iter_mut().for_each(|(key, value)| {
-                if key == "idQ" {
-                    *value = 99.into();
-                } else if key == "value" {
-                    match value.as_str() {
-                        Some(v) if v.starts_with("0x") => {
-                            *value =
-                                format!("{}", i64::from_str_radix(&v[2..], 16).unwrap()).into();
-                        }
-                        _ => {}
-                    }
-                } else {
-                    normalize_idq_and_hex(value)
-                }
-            }),
-            JsonValue::Array(arr) => arr.iter_mut().for_each(normalize_idq_and_hex),
-            _ => {}
-        }
-    }
-
-    fn compare_export_file_ignore_idq_hex(file: &str) {
-        let (mut json_out, mut pilcom_parsed) = generate_json_pair(file);
-        normalize_idq_and_hex(&mut json_out);
-        normalize_idq_and_hex(&mut pilcom_parsed);
-        assert_eq!(json_out, pilcom_parsed);
-    }
-
-    #[test]
-    fn export_config() {
-        compare_export_file("config.pil");
-    }
-
-    #[test]
-    fn export_binary() {
-        compare_export_file("binary.pil");
-    }
-
-    #[test]
-    fn export_byte4() {
-        compare_export_file("byte4.pil");
-    }
-
-    #[test]
-    fn export_global() {
-        compare_export_file("global.pil");
-    }
-
-    #[test]
-    fn export_arith() {
-        // We ignore the specific value assigned to idQ.
-        // It is just a counter and pilcom assigns it in a weird order.
-        compare_export_file_ignore_idq_hex("arith.pil");
-    }
-
-    #[test]
-    fn export_mem() {
-        compare_export_file_ignore_idq_hex("mem.pil");
-        compare_export_file_ignore_idq_hex("mem_align.pil");
-    }
-
-    #[test]
-    fn export_keccakf() {
-        compare_export_file_ignore_idq_hex("keccakf.pil");
-    }
-
-    #[test]
-    fn export_padding() {
-        compare_export_file("nine2one.pil");
-        compare_export_file_ignore_idq_hex("padding_kkbit.pil");
-        compare_export_file_ignore_idq_hex("padding_kk.pil");
-        compare_export_file_ignore_idq_hex("padding_kk.pil");
-    }
-
-    #[test]
-    fn export_poseidong() {
-        compare_export_file_ignore_idq_hex("padding_pg.pil");
-        compare_export_file_ignore_idq_hex("poseidong.pil");
-        compare_export_file_ignore_idq_hex("storage.pil");
-    }
-
-    #[test]
-    fn export_main() {
-        compare_export_file_ignore_idq_hex("rom.pil");
-        compare_export_file_ignore_idq_hex("main.pil");
-    }
 
     #[test]
     fn line_calc() {

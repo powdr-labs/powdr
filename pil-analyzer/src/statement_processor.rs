@@ -8,10 +8,10 @@ use powdr_ast::analyzed::TypedExpression;
 use powdr_ast::parsed::{
     self,
     types::{ArrayType, Type, TypeScheme},
-    EnumDeclaration, EnumVariant, FunctionDefinition, PilStatement, PolynomialName,
-    SelectedExpressions,
+    ArrayLiteral, EnumDeclaration, EnumVariant, FunctionDefinition, FunctionKind, LambdaExpression,
+    PilStatement, PolynomialName, SelectedExpressions, TraitDeclaration, TraitFunction,
 };
-use powdr_ast::parsed::{FunctionKind, LambdaExpression};
+
 use powdr_number::DegreeType;
 use powdr_parser_util::SourceRef;
 
@@ -28,7 +28,7 @@ use crate::expression_processor::ExpressionProcessor;
 pub enum PILItem {
     Definition(Symbol, Option<FunctionValueDefinition>),
     PublicDeclaration(PublicDeclaration),
-    Identity(Identity<Expression>),
+    Identity(Identity<SelectedExpressions<Expression>>),
 }
 
 pub struct Counters {
@@ -44,7 +44,6 @@ impl Default for Counters {
                 SymbolKind::Poly(PolynomialType::Committed),
                 SymbolKind::Poly(PolynomialType::Constant),
                 SymbolKind::Poly(PolynomialType::Intermediate),
-                SymbolKind::Constant(),
                 SymbolKind::Other(),
             ]
             .into_iter()
@@ -57,6 +56,28 @@ impl Default for Counters {
 }
 
 impl Counters {
+    /// Creates a new counter struct that can dispense IDs that do not conflict with the
+    /// provided existing IDs.
+    pub fn with_existing<'a>(
+        symbols: impl IntoIterator<Item = &'a Symbol>,
+        identity: Option<u64>,
+        public: Option<u64>,
+    ) -> Self {
+        let mut counters = Self::default();
+        if let Some(id) = identity {
+            counters.identity_counter = id + 1;
+        }
+        if let Some(id) = public {
+            counters.public_counter = id + 1;
+        }
+        for symbol in symbols {
+            let counter = counters.symbol_counters.get_mut(&symbol.kind).unwrap();
+            let next = symbol.id + symbol.length.unwrap_or(1);
+            *counter = std::cmp::max(*counter, next);
+        }
+        counters
+    }
+
     pub fn dispense_identity_id(&mut self) -> u64 {
         let id = self.identity_counter;
         self.identity_counter += 1;
@@ -103,15 +124,17 @@ where
             PilStatement::Namespace(_, _, _) => {
                 panic!("Namespaces must be handled outside the statement processor.")
             }
-            PilStatement::PolynomialDefinition(source, name, value) => self
-                .handle_symbol_definition(
+            PilStatement::PolynomialDefinition(source, name, value) => {
+                let (name, ty) = self.name_and_type_from_polynomial_name(name, Type::Inter);
+                self.handle_symbol_definition(
                     source,
                     name,
                     SymbolKind::Poly(PolynomialType::Intermediate),
                     None,
-                    Some(Type::Expr.into()),
+                    ty,
                     Some(FunctionDefinition::Expression(value)),
-                ),
+                )
+            }
             PilStatement::PublicDeclaration(source, name, polynomial, array_index, index) => {
                 self.handle_public_declaration(source, name, polynomial, array_index, index)
             }
@@ -146,25 +169,17 @@ where
             ) => {
                 assert!(polynomials.len() == 1);
                 let (name, ty) =
-                    self.name_and_type_from_polynomial_name(polynomials.pop().unwrap());
+                    self.name_and_type_from_polynomial_name(polynomials.pop().unwrap(), Type::Col);
 
                 self.handle_symbol_definition(
                     source,
                     name,
                     SymbolKind::Poly(PolynomialType::Committed),
                     stage,
-                    ty.map(Into::into),
+                    ty,
                     Some(definition),
                 )
             }
-            PilStatement::ConstantDefinition(source, name, value) => self.handle_symbol_definition(
-                source,
-                name,
-                SymbolKind::Constant(),
-                None,
-                Some(Type::Fe.into()),
-                Some(FunctionDefinition::Expression(value)),
-            ),
             PilStatement::LetStatement(source, name, type_scheme, value) => {
                 self.handle_generic_definition(source, name, type_scheme, value)
             }
@@ -179,6 +194,14 @@ where
                         enum_declaration.clone(),
                     )),
                 ),
+            PilStatement::TraitDeclaration(source, trait_decl) => self.handle_symbol_definition(
+                source,
+                trait_decl.name.clone(),
+                SymbolKind::Other(),
+                None,
+                None,
+                Some(FunctionDefinition::TraitDeclaration(trait_decl.clone())),
+            ),
             _ => self.handle_identity_statement(statement),
         }
     }
@@ -186,9 +209,10 @@ where
     fn name_and_type_from_polynomial_name(
         &mut self,
         PolynomialName { name, array_size }: PolynomialName,
-    ) -> (String, Option<Type>) {
+        base_type: Type,
+    ) -> (String, Option<TypeScheme>) {
         let ty = Some(match array_size {
-            None => Type::Col,
+            None => base_type.into(),
             Some(len) => {
                 let length = untyped_evaluator::evaluate_expression_to_int(self.driver, len)
                     .map(|length| {
@@ -201,9 +225,10 @@ where
                     })
                     .ok();
                 Type::Array(ArrayType {
-                    base: Box::new(Type::Col),
+                    base: Box::new(base_type),
                     length,
                 })
+                .into()
             }
         });
         (name, ty)
@@ -292,14 +317,13 @@ where
             return SymbolKind::Other();
         }
         match &ts.ty {
-            Type::Expr => SymbolKind::Poly(PolynomialType::Intermediate),
-            Type::Fe => SymbolKind::Constant(),
+            Type::Inter => SymbolKind::Poly(PolynomialType::Intermediate),
             Type::Col => SymbolKind::Poly(PolynomialType::Constant),
             Type::Array(ArrayType { base, length: _ }) if base.as_ref() == &Type::Col => {
                 // Array of fixed columns
                 SymbolKind::Poly(PolynomialType::Constant)
             }
-            Type::Array(ArrayType { base, length: _ }) if base.as_ref() == &Type::Expr => {
+            Type::Array(ArrayType { base, length: _ }) if base.as_ref() == &Type::Inter => {
                 SymbolKind::Poly(PolynomialType::Intermediate)
             }
             // Otherwise, treat it as "generic definition"
@@ -317,7 +341,7 @@ where
                         self.expression_processor(&Default::default())
                             .process_expression(expression),
                     ),
-                    expressions: vec![],
+                    expressions: Box::new(ArrayLiteral { items: vec![] }.into()),
                 },
                 SelectedExpressions::default(),
             ),
@@ -340,18 +364,10 @@ where
             PilStatement::ConnectIdentity(source, left, right) => (
                 source,
                 IdentityKind::Connect,
-                SelectedExpressions {
-                    selector: None,
-                    expressions: self
-                        .expression_processor(&Default::default())
-                        .process_expressions(left),
-                },
-                SelectedExpressions {
-                    selector: None,
-                    expressions: self
-                        .expression_processor(&Default::default())
-                        .process_expressions(right),
-                },
+                self.expression_processor(&Default::default())
+                    .process_vec_into_selected_expression(left),
+                self.expression_processor(&Default::default())
+                    .process_vec_into_selected_expression(right),
             ),
             // TODO at some point, these should all be caught by the type checker.
             _ => {
@@ -378,13 +394,13 @@ where
         polynomials
             .into_iter()
             .flat_map(|poly_name| {
-                let (name, ty) = self.name_and_type_from_polynomial_name(poly_name);
+                let (name, ty) = self.name_and_type_from_polynomial_name(poly_name, Type::Col);
                 self.handle_symbol_definition(
                     source.clone(),
                     name,
                     SymbolKind::Poly(polynomial_type),
                     stage,
-                    ty.map(Into::into),
+                    ty,
                     None,
                 )
             })
@@ -416,6 +432,7 @@ where
 
         let id = self.counters.dispense_symbol_id(symbol_kind, length);
         let absolute_name = self.driver.resolve_decl(&name);
+
         let symbol = Symbol {
             id,
             source: source.clone(),
@@ -423,6 +440,7 @@ where
             absolute_name: absolute_name.clone(),
             kind: symbol_kind,
             length,
+            degree: self.degree,
         };
 
         if let Some(FunctionDefinition::TypeDeclaration(enum_decl)) = value {
@@ -442,6 +460,7 @@ where
                     stage: None,
                     kind: SymbolKind::Other(),
                     length: None,
+                    degree: None,
                 };
                 let value = FunctionValueDefinition::TypeConstructor(
                     shared_enum_decl.clone(),
@@ -454,6 +473,36 @@ where
                 Some(FunctionValueDefinition::TypeDeclaration(enum_decl.clone())),
             ))
             .chain(var_items)
+            .collect();
+        } else if let Some(FunctionDefinition::TraitDeclaration(trait_decl)) = value {
+            let trait_decl = self.process_trait_declaration(trait_decl);
+            let shared_trait_decl = Arc::new(trait_decl.clone());
+            let trait_functions = trait_decl.functions.iter().map(|function| {
+                let f_symbol = Symbol {
+                    id: self.counters.dispense_symbol_id(SymbolKind::Other(), None),
+                    source: source.clone(),
+                    absolute_name: self
+                        .driver
+                        .resolve_namespaced_decl(&[&name, &function.name])
+                        .to_dotted_string(),
+                    stage: None,
+                    kind: SymbolKind::Other(),
+                    length: None,
+                    degree: None,
+                };
+                let value = FunctionValueDefinition::TraitFunction(
+                    shared_trait_decl.clone(),
+                    function.clone(),
+                );
+                PILItem::Definition(f_symbol, Some(value))
+            });
+            return iter::once(PILItem::Definition(
+                symbol,
+                Some(FunctionValueDefinition::TraitDeclaration(
+                    trait_decl.clone(),
+                )),
+            ))
+            .chain(trait_functions)
             .collect();
         }
 
@@ -485,18 +534,15 @@ where
                 })
             }
             FunctionDefinition::Array(value) => {
-                let size = value.solve(self.degree.unwrap());
                 let expression = self
                     .expression_processor(&Default::default())
-                    .process_array_expression(value, size);
-                assert_eq!(
-                    expression.iter().map(|e| e.size()).sum::<DegreeType>(),
-                    self.degree.unwrap()
-                );
+                    .process_array_expression(value);
                 assert!(type_scheme.is_none() || type_scheme == Some(Type::Col.into()));
                 FunctionValueDefinition::Array(expression)
             }
-            FunctionDefinition::TypeDeclaration(_enum_declaration) => unreachable!(),
+            FunctionDefinition::TypeDeclaration(_) | FunctionDefinition::TraitDeclaration(_) => {
+                unreachable!()
+            }
         });
         vec![PILItem::Definition(symbol, value)]
     }
@@ -574,6 +620,26 @@ where
                     .map(|ty| self.type_processor(type_vars).process_type(ty))
                     .collect()
             }),
+        }
+    }
+
+    fn process_trait_declaration(
+        &self,
+        trait_decl: parsed::TraitDeclaration<parsed::Expression>,
+    ) -> TraitDeclaration {
+        let type_vars = trait_decl.type_vars.iter().collect();
+        let functions = trait_decl
+            .functions
+            .into_iter()
+            .map(|f| TraitFunction {
+                name: f.name,
+                ty: self.type_processor(&type_vars).process_type(f.ty),
+            })
+            .collect();
+        TraitDeclaration {
+            name: self.driver.resolve_decl(&trait_decl.name),
+            type_vars: trait_decl.type_vars,
+            functions,
         }
     }
 }

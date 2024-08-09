@@ -12,7 +12,7 @@ machine Binary with
     C = A + B;
 }
 
-machine Main with degree: 65536 {
+machine Main with degree: 32 {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
@@ -22,7 +22,7 @@ machine Main with degree: 65536 {
     Binary bin;
 
     // permutation into Binary
-    instr add X, Y -> Z ~ bin.add;
+    instr add X, Y -> Z link ~> Z = bin.add(X, Y);
 
     instr assert_eq X, Y { X = Y }
 

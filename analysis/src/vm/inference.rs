@@ -21,6 +21,10 @@ pub fn infer(file: AnalysisASMFile) -> Result<AnalysisASMFile, Vec<String>> {
             },
             Item::Expression(e) => Some((name, Item::Expression(e))),
             Item::TypeDeclaration(enum_decl) => Some((name, Item::TypeDeclaration(enum_decl))),
+            Item::TraitImplementation(trait_impl) => {
+                Some((name, Item::TraitImplementation(trait_impl)))
+            }
+            Item::TraitDeclaration(trait_decl) => Some((name, Item::TraitDeclaration(trait_decl))),
         })
         .collect();
 

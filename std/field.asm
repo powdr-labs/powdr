@@ -22,3 +22,9 @@ let known_field: -> Option<KnownField> = || if modulus() == GOLDILOCKS_PRIME {
         Option::None
     }
 };
+
+let require_known_field: KnownField, (-> string) -> () = |f, err| match (f, known_field()) {
+    (KnownField::Goldilocks, Option::Some(KnownField::Goldilocks)) => (),
+    (KnownField::BN254, Option::Some(KnownField::BN254)) => (),
+    _ => std::check::panic(err()),
+};

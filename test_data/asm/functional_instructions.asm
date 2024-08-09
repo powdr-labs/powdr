@@ -1,4 +1,6 @@
-machine FunctionalInstructions {
+use std::array;
+
+machine FunctionalInstructions with degree: 32 {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
@@ -14,17 +16,10 @@ machine FunctionalInstructions {
 
     // Wraps a value in Y to 32 bits.
     // Requires 0 <= Y < 2**33
-    instr wrap Y -> X { Y = X + wrap_bit * 2**32, X = XB1 + 0x100 * XB2 + 0x10000 * XB3 + 0x1000000 * XB4 }
+    instr wrap Y -> X { Y = X + wrap_bit * 2**32, X = array::sum(array::map_enumerated(NIB, |i, nib| (2 ** (i * 4)) * nib)) }
 
-    col fixed BYTES(i) { i & 0xff };
-    col commit XB1;
-    col commit XB2;
-    col commit XB3;
-    col commit XB4;
-    { XB1 } in { BYTES };
-    { XB2 } in { BYTES };
-    { XB3 } in { BYTES };
-    { XB4 } in { BYTES };
+    col fixed NIBBLES(i) { i & 0xf };
+    let NIB = std::array::new(8, constr |i| { let XN; Constr::Lookup((Option::None, Option::None), [(XN, NIBBLES)]); XN });
     col commit wrap_bit;
     wrap_bit * (1 - wrap_bit) = 0;
 

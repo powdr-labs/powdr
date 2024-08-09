@@ -20,7 +20,7 @@ mod utils {
     let one = zero + 1;
 }
 
-machine Main {
+machine Main with degree: 8 {
     // use a machine from another module by relative path
     my_module::Other a;
 
@@ -35,10 +35,10 @@ machine Main {
 
     reg pc[@pc];
 
-    instr nothing = a.nothing;
-    instr also_nothing = b.nothing;
-    instr still_nothing = c.nothing;
-    instr nothing_again = d.nothing;
+    instr nothing link => a.nothing();
+    instr also_nothing link => b.nothing();
+    instr still_nothing link => c.nothing();
+    instr nothing_again link => d.nothing();
 
     function main {
         nothing;

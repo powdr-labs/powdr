@@ -3,6 +3,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
+pub use data_structures::{get_uniquely_sized, get_uniquely_sized_cloned, VariablySizedColumn};
 use itertools::Itertools;
 use powdr_ast::{
     analyzed::{Analyzed, FunctionValueDefinition, Symbol, TypedExpression},
@@ -15,12 +16,17 @@ use powdr_number::{BigInt, BigUint, DegreeType, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Definitions, SymbolLookup, Value};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
+mod data_structures;
+
+pub const MIN_DEGREE_LOG: usize = 5;
+pub const MAX_DEGREE_LOG: usize = 22;
+
 /// Generates the fixed column values for all fixed columns that are defined
 /// (and not just declared).
 /// @returns the names (in source order) and the values for the columns.
 /// Arrays of columns are flattened, the name of the `i`th array element
 /// is `name[i]`.
-pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, Vec<T>)> {
+pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, VariablySizedColumn<T>)> {
     let mut fixed_cols = HashMap::new();
     for (poly, value) in analyzed.constant_polys_in_source_order() {
         if let Some(value) = value {
@@ -28,7 +34,17 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, Vec<T>)
             // for non-arrays, set index to None.
             for (index, (name, id)) in poly.array_elements().enumerate() {
                 let index = poly.is_array().then_some(index as u64);
-                let values = generate_values(analyzed, analyzed.degree(), &name, value, index);
+                let values = if let Some(degree) = poly.degree {
+                    generate_values(analyzed, degree, &name, value, index).into()
+                } else {
+                    (MIN_DEGREE_LOG..=MAX_DEGREE_LOG)
+                        .map(|degree_log| {
+                            let degree = 1 << degree_log;
+                            generate_values(analyzed, degree, &name, value, index)
+                        })
+                        .collect::<Vec<_>>()
+                        .into()
+                };
                 assert!(fixed_cols.insert(name, (id, values)).is_none());
             }
         }
@@ -38,7 +54,7 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, Vec<T>)
         .into_iter()
         .sorted_by_key(|(_, (id, _))| *id)
         .map(|(name, (_, values))| (name, values))
-        .collect::<Vec<_>>()
+        .collect()
 }
 
 fn generate_values<T: FieldElement>(
@@ -78,24 +94,23 @@ fn generate_values<T: FieldElement>(
             } else {
                 e
             };
+            let fun = evaluator::evaluate(e, &mut symbols.clone()).unwrap();
             (0..degree)
                 .into_par_iter()
                 .map(|i| {
-                    let mut symbols = symbols.clone();
-                    let fun = evaluator::evaluate(e, &mut symbols).unwrap();
                     evaluator::evaluate_function_call(
-                        fun,
+                        fun.clone(),
                         vec![Arc::new(Value::Integer(BigInt::from(i)))],
-                        &mut symbols,
-                    )
-                    .and_then(|v| v.try_to_field_element())
+                        &mut symbols.clone(),
+                    )?
+                    .try_to_field_element()
                 })
                 .collect::<Result<Vec<_>, _>>()
         }
         FunctionValueDefinition::Array(values) => {
             assert!(index.is_none());
             values
-                .iter()
+                .to_repeated_arrays(degree)
                 .map(|elements| {
                     let items = elements
                         .pattern()
@@ -121,7 +136,9 @@ fn generate_values<T: FieldElement>(
                 })
         }
         FunctionValueDefinition::TypeDeclaration(_)
-        | FunctionValueDefinition::TypeConstructor(_, _) => panic!(),
+        | FunctionValueDefinition::TypeConstructor(_, _)
+        | FunctionValueDefinition::TraitDeclaration(_)
+        | FunctionValueDefinition::TraitFunction(_, _) => panic!(),
     };
     match result {
         Err(err) => {
@@ -132,7 +149,7 @@ fn generate_values<T: FieldElement>(
     }
 }
 
-type SymbolCache<'a, T> = BTreeMap<(String, Option<Vec<Type>>), Arc<Value<'a, T>>>;
+type SymbolCache<'a, T> = HashMap<String, BTreeMap<Option<Vec<Type>>, Arc<Value<'a, T>>>>;
 
 #[derive(Clone)]
 pub struct CachedSymbols<'a, T> {
@@ -145,17 +162,24 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
     fn lookup(
         &mut self,
         name: &'a str,
-        type_args: Option<Vec<Type>>,
+        type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
-        let cache_key = (name.to_string(), type_args.clone());
-        if let Some(v) = self.cache.read().unwrap().get(&cache_key) {
+        if let Some(v) = self
+            .cache
+            .read()
+            .unwrap()
+            .get(name)
+            .and_then(|map| map.get(type_args))
+        {
             return Ok(v.clone());
         }
         let result = Definitions::lookup_with_symbols(self.symbols, name, type_args, self)?;
         self.cache
             .write()
             .unwrap()
-            .entry(cache_key)
+            .entry(name.to_string())
+            .or_default()
+            .entry(type_args.clone())
             .or_insert_with(|| result.clone());
         Ok(result)
     }
@@ -167,15 +191,26 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
 
 #[cfg(test)]
 mod test {
+    use powdr_ast::analyzed::Analyzed;
     use powdr_number::GoldilocksField;
     use powdr_pil_analyzer::analyze_string;
     use pretty_assertions::assert_eq;
     use test_log::test;
 
-    use super::*;
+    use crate::constant_evaluator::{
+        data_structures::get_uniquely_sized, generate as generate_variably_sized,
+    };
 
     fn convert(input: Vec<i32>) -> Vec<GoldilocksField> {
         input.into_iter().map(|x| x.into()).collect()
+    }
+
+    fn generate(analyzed: &Analyzed<GoldilocksField>) -> Vec<(String, Vec<GoldilocksField>)> {
+        get_uniquely_sized(&generate_variably_sized(analyzed))
+            .unwrap()
+            .into_iter()
+            .map(|(name, values)| (name, values.clone()))
+            .collect()
     }
 
     #[test]
@@ -197,8 +232,8 @@ mod test {
     #[test]
     fn counter() {
         let src = r#"
-            constant %N = 8;
-            namespace F(%N);
+            let N: int = 8;
+            namespace F(N);
             pol constant EVEN(i) { 2 * (i - 1) + 4 };
         "#;
         let analyzed = analyze_string(src);
@@ -216,8 +251,8 @@ mod test {
     #[test]
     fn xor() {
         let src = r#"
-            constant %N = 8;
-            namespace F(%N);
+            let N: int = 8;
+            namespace F(N);
             pol constant X(i) { i ^ (i + 17) | 3 };
         "#;
         let analyzed = analyze_string(src);
@@ -235,8 +270,8 @@ mod test {
     #[test]
     fn match_expression() {
         let src = r#"
-            constant %N = 8;
-            namespace F(%N);
+            let N: int = 8;
+            namespace F(N);
             pol constant X(i) { match i {
                 0 => 7,
                 3 => 9,
@@ -256,8 +291,8 @@ mod test {
     #[test]
     fn if_expression() {
         let src = r#"
-            constant %N = 8;
-            namespace F(%N);
+            let N: int = 8;
+            namespace F(N);
             let X: col = |i| if i < 3 { 7 } else { 9 };
         "#;
         let analyzed = analyze_string(src);
@@ -272,8 +307,8 @@ mod test {
     #[test]
     fn macro_directive() {
         let src = r#"
-            constant %N = 8;
-            namespace F(%N);
+            let N: int = 8;
+            namespace F(N);
             let minus_one: int -> int = |x| x - 1;
             pol constant EVEN(i) { 2 * minus_one(i) + 2 };
         "#;
@@ -372,8 +407,8 @@ mod test {
     #[test]
     fn repetition_front() {
         let src = r#"
-            constant %N = 10;
-            namespace F(%N);
+            let N: int = 10;
+            namespace F(N);
             col fixed arr = [0, 1, 2]* + [7];
         "#;
         let analyzed = analyze_string(src);
@@ -465,8 +500,8 @@ mod test {
     #[should_panic = "got `expr` when calling function F.w"]
     fn calling_witness() {
         let src = r#"
-            constant %N = 10;
-            namespace F(%N);
+            let N: int = 10;
+            namespace F(N);
             let w;
             let x: col = |i| w(i) + 1;
         "#;
@@ -479,8 +514,8 @@ mod test {
     #[should_panic = "Value symbol not found: w"]
     fn symbol_not_found() {
         let src = r#"
-            constant %N = 10;
-            namespace F(%N);
+            let N: int = 10;
+            namespace F(N);
             let x = |i| w(i) + 1;
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
@@ -492,8 +527,8 @@ mod test {
     #[should_panic = "got `expr` when calling function F.y"]
     fn forward_reference_to_array() {
         let src = r#"
-            constant %N = 10;
-            namespace F(%N);
+            let N: int = 10;
+            namespace F(N);
             let x: col = |i| y(i) + 1;
             col fixed y = [1, 2, 3]*;
         "#;
@@ -505,8 +540,8 @@ mod test {
     #[test]
     fn forward_reference_to_function() {
         let src = r#"
-            constant %N = 4;
-            namespace F(%N);
+            let N: int = 4;
+            namespace F(N);
             let x = |i| y(i) + 1;
             let y = |i| i + 20;
             let X: col = x;
@@ -528,11 +563,11 @@ mod test {
     #[test]
     fn bigint_arith() {
         let src = r#"
-            constant %N = 4;
-            namespace std::convert(%N);
+            let N: int = 4;
+            namespace std::convert(N);
             let int = [];
             let fe = [];
-            namespace F(%N);
+            namespace F(N);
             let x: col = |i| (1 << (2000 + i)) >> 2000;
         "#;
         let analyzed = analyze_string::<GoldilocksField>(src);
@@ -547,11 +582,11 @@ mod test {
     #[test]
     fn modulo_negative() {
         let src = r#"
-            constant %N = 4;
-            namespace std::convert(%N);
+            let N: int = 4;
+            namespace std::convert(N);
             let int = [];
             let fe = [];
-            namespace F(%N);
+            namespace F(N);
             let x_arr = [ 3 % 4, (-3) % 4, 3 % (-4), (-3) % (-4)];
             let x: col = |i| 100 + x_arr[i];
         "#;
@@ -605,6 +640,26 @@ mod test {
         assert_eq!(
             constants[0],
             ("F.a".to_string(), convert([14, 15, 16, 17].to_vec()))
+        );
+    }
+
+    #[test]
+    fn do_not_add_constraint_for_empty_tuple() {
+        let input = r#"namespace N(4);
+            let f: -> () = || ();
+            let g: col = |i| {
+                // This returns an empty tuple, we check that this does not lead to
+                // a call to add_constraints()
+                f();
+                i
+            };
+        "#;
+        let analyzed = analyze_string::<GoldilocksField>(input);
+        assert_eq!(analyzed.degree(), 4);
+        let constants = generate(&analyzed);
+        assert_eq!(
+            constants[0],
+            ("N.g".to_string(), convert([0, 1, 2, 3].to_vec()))
         );
     }
 }

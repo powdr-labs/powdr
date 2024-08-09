@@ -1,9 +1,12 @@
 #![deny(clippy::print_stdout)]
 
-use std::{io, path::Path};
+use std::io;
+use std::path::PathBuf;
+use std::sync::Arc;
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 use powdr_ast::analyzed::Analyzed;
+use powdr_executor::constant_evaluator::{get_uniquely_sized_cloned, VariablySizedColumn};
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement};
 use prover::{generate_setup, Halo2Prover};
@@ -73,15 +76,21 @@ where
 impl<F: FieldElement> BackendFactory<F> for Halo2ProverFactory {
     fn create<'a>(
         &self,
-        pil: &'a Analyzed<F>,
-        fixed: &'a [(String, Vec<F>)],
-        _output_dir: Option<&'a Path>,
+        pil: Arc<Analyzed<F>>,
+        fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
+        _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,
         options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
+        if pil.degrees().len() > 1 {
+            return Err(Error::NoVariableDegreeAvailable);
+        }
         let proof_type = ProofType::from(options);
+        let fixed = Arc::new(
+            get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
+        );
         let mut halo2 = Box::new(Halo2Prover::new(pil, fixed, setup, proof_type)?);
         if let Some(vk) = verification_key {
             halo2.add_verification_key(vk);
@@ -107,9 +116,9 @@ fn fe_slice_to_string<F: FieldElement>(fe: &[F]) -> Vec<String> {
     fe.iter().map(|x| x.to_string()).collect()
 }
 
-impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<'a, T> {
+impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<T> {
     fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
-        let proof: Halo2Proof = serde_json::from_slice(proof).unwrap();
+        let proof: Halo2Proof = bincode::deserialize(proof).unwrap();
         // TODO should do a verification refactoring making it a 1d vec
         assert!(instances.len() == 1);
         if proof.publics != fe_slice_to_string(&instances[0]) {
@@ -137,7 +146,7 @@ impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<'a, T> {
             ProofType::SnarkSingle => self.prove_snark_single(witness, witgen_callback),
             ProofType::SnarkAggr => match prev_proof {
                 Some(proof) => {
-                    let proof: Halo2Proof = serde_json::from_slice(&proof).unwrap();
+                    let proof: Halo2Proof = bincode::deserialize(&proof).unwrap();
                     self.prove_snark_aggr(witness, witgen_callback, proof.proof)
                 }
                 None => Err("Aggregated proof requires a previous proof".to_string()),
@@ -146,7 +155,7 @@ impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<'a, T> {
         let (proof, publics) = proof_and_publics?;
         let publics = fe_slice_to_string(&publics);
         let proof = Halo2Proof { proof, publics };
-        let proof = serde_json::to_vec(&proof).unwrap();
+        let proof = bincode::serialize(&proof).unwrap();
         Ok(proof)
     }
 
@@ -154,11 +163,9 @@ impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<'a, T> {
         Ok(self.write_setup(&mut output)?)
     }
 
-    fn export_verification_key(&self, mut output: &mut dyn io::Write) -> Result<(), Error> {
+    fn verification_key_bytes(&self) -> Result<Vec<u8>, Error> {
         let vk = self.verification_key()?;
-        vk.write(&mut output, SerdeFormat::Processed)?;
-
-        Ok(())
+        Ok(vk.to_bytes(SerdeFormat::Processed))
     }
 
     fn export_ethereum_verifier(&self, output: &mut dyn io::Write) -> Result<(), Error> {
@@ -179,9 +186,9 @@ pub(crate) struct Halo2MockFactory;
 impl<F: FieldElement> BackendFactory<F> for Halo2MockFactory {
     fn create<'a>(
         &self,
-        pil: &'a Analyzed<F>,
-        fixed: &'a [(String, Vec<F>)],
-        _output_dir: Option<&'a Path>,
+        pil: Arc<Analyzed<F>>,
+        fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
+        _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,
@@ -197,16 +204,20 @@ impl<F: FieldElement> BackendFactory<F> for Halo2MockFactory {
             return Err(Error::NoAggregationAvailable);
         }
 
+        let fixed = Arc::new(
+            get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
+        );
+
         Ok(Box::new(Halo2Mock { pil, fixed }))
     }
 }
 
-pub struct Halo2Mock<'a, F: FieldElement> {
-    pil: &'a Analyzed<F>,
-    fixed: &'a [(String, Vec<F>)],
+pub struct Halo2Mock<F: FieldElement> {
+    pil: Arc<Analyzed<F>>,
+    fixed: Arc<Vec<(String, Vec<F>)>>,
 }
 
-impl<'a, T: FieldElement> Backend<'a, T> for Halo2Mock<'a, T> {
+impl<'a, T: FieldElement> Backend<'a, T> for Halo2Mock<T> {
     fn prove(
         &self,
         witness: &[(String, Vec<T>)],
@@ -217,7 +228,7 @@ impl<'a, T: FieldElement> Backend<'a, T> for Halo2Mock<'a, T> {
             return Err(Error::NoAggregationAvailable);
         }
 
-        mock_prover::mock_prove(self.pil, self.fixed, witness, witgen_callback)
+        mock_prover::mock_prove(self.pil.clone(), &self.fixed, witness, witgen_callback)
             .map_err(Error::BackendError)?;
 
         Ok(vec![])

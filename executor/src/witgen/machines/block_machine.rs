@@ -1,45 +1,38 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
-use std::iter;
+use std::iter::{self, once};
 
 use super::{EvalResult, FixedData, FixedLookup};
 
+use crate::constant_evaluator::MIN_DEGREE_LOG;
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
-use crate::witgen::identity_processor::IdentityProcessor;
 use crate::witgen::processor::{OuterQuery, Processor};
-use crate::witgen::rows::{CellValue, Row, RowIndex, RowPair, UnknownStrategy};
+use crate::witgen::rows::{Row, RowIndex, RowPair};
 use crate::witgen::sequence_iterator::{
     DefaultSequenceIterator, ProcessingSequenceCache, ProcessingSequenceIterator,
 };
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause};
 use crate::witgen::{MutableState, QueryCallback};
+use crate::Identity;
 use itertools::Itertools;
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
-    PolynomialType,
+    AlgebraicExpression as Expression, AlgebraicReference, IdentityKind, PolyID, PolynomialType,
 };
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_number::{DegreeType, FieldElement};
 
 enum ProcessResult<'a, T: FieldElement> {
-    Success(FinalizableData<'a, T>, EvalValue<&'a AlgebraicReference, T>),
+    Success(FinalizableData<T>, EvalValue<&'a AlgebraicReference, T>),
     Incomplete(EvalValue<&'a AlgebraicReference, T>),
 }
 
 impl<'a, T: FieldElement> ProcessResult<'a, T> {
-    fn new(data: FinalizableData<'a, T>, updates: EvalValue<&'a AlgebraicReference, T>) -> Self {
+    fn new(data: FinalizableData<T>, updates: EvalValue<&'a AlgebraicReference, T>) -> Self {
         match updates.is_complete() {
             true => ProcessResult::Success(data, updates),
             false => ProcessResult::Incomplete(updates),
-        }
-    }
-
-    fn is_success(&self) -> bool {
-        match self {
-            ProcessResult::Success(_, _) => true,
-            ProcessResult::Incomplete(_) => false,
         }
     }
 }
@@ -98,18 +91,23 @@ impl<'a, T: FieldElement> Display for BlockMachine<'a, T> {
 /// TODO we do not actually "detect" the machine yet, we just check if
 /// the lookup has a binary selector that is 1 every k rows for some k
 pub struct BlockMachine<'a, T: FieldElement> {
+    /// The unique degree of all columns in this machine
+    degree: DegreeType,
     /// Block size, the period of the selector.
     block_size: usize,
     /// The row index (within the block) of the latch row
     latch_row: usize,
     /// Connecting identities, indexed by their ID.
-    connecting_identities: BTreeMap<u64, &'a Identity<Expression<T>>>,
+    connecting_identities: BTreeMap<u64, &'a Identity<T>>,
     /// The type of constraint used to connect this machine to its caller.
     connection_type: ConnectionType,
     /// The internal identities
-    identities: Vec<&'a Identity<Expression<T>>>,
+    identities: Vec<&'a Identity<T>>,
     /// The data of the machine.
-    data: FinalizableData<'a, T>,
+    data: FinalizableData<T>,
+    /// The index of the first row that has not been finalized yet.
+    /// At all times, all rows in the range [block_size..first_in_progress_row) are finalized.
+    first_in_progress_row: usize,
     /// The set of witness columns that are actually part of this machine.
     witness_cols: HashSet<PolyID>,
     /// Cache that states the order in which to evaluate identities
@@ -123,10 +121,12 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     pub fn try_new(
         name: String,
         fixed_data: &'a FixedData<'a, T>,
-        connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
-        identities: &[&'a Identity<Expression<T>>],
+        connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
+        identities: &[&'a Identity<T>],
         witness_cols: &HashSet<PolyID>,
     ) -> Option<Self> {
+        let degree = fixed_data.common_degree(witness_cols);
+
         let (is_permutation, block_size, latch_row) =
             detect_connection_type_and_block_size(fixed_data, connecting_identities)?;
 
@@ -143,25 +143,27 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             }
         }
 
-        assert!(block_size <= fixed_data.degree as usize);
+        assert!(block_size <= degree as usize);
         // Because block shapes are not always rectangular, we add the last block to the data at the
         // beginning. It starts out with unknown values. Should the first block decide to write to
         // rows < 0, they will be written to this block.
         // In `take_witness_col_values()`, this block will be removed and its values will be used to
         // construct the "default" block used to fill up unused rows.
-        let start_index = RowIndex::from_i64(-(block_size as i64), fixed_data.degree);
+        let start_index = RowIndex::from_i64(-(block_size as i64), degree);
         let data = FinalizableData::with_initial_rows_in_progress(
             witness_cols,
             (0..block_size).map(|i| Row::fresh(fixed_data, start_index + i)),
         );
         Some(BlockMachine {
             name,
+            degree,
             block_size,
             latch_row,
             connecting_identities: connecting_identities.clone(),
             connection_type: is_permutation,
             identities: identities.to_vec(),
             data,
+            first_in_progress_row: block_size,
             witness_cols: witness_cols.clone(),
             processing_sequence_cache: ProcessingSequenceCache::new(
                 block_size,
@@ -175,7 +177,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
 fn detect_connection_type_and_block_size<'a, T: FieldElement>(
     fixed_data: &'a FixedData<'a, T>,
-    connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
+    connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
 ) -> Option<(ConnectionType, usize, usize)> {
     // TODO we should check that the other constraints/fixed columns are also periodic.
 
@@ -246,11 +248,13 @@ fn try_to_period<T: FieldElement>(
                 return None;
             }
 
-            let values = fixed_data.fixed_cols[&poly.poly_id].values;
+            let degree = fixed_data.common_degree(once(&poly.poly_id));
+
+            let values = fixed_data.fixed_cols[&poly.poly_id].values(degree);
 
             let offset = values.iter().position(|v| v.is_one())?;
             let period = 1 + values.iter().skip(offset + 1).position(|v| v.is_one())?;
-            if period > fixed_data.degree as usize / 2 {
+            if period > degree as usize / 2 {
                 // This filters out columns like [0]* + [1], which might appear in a block machine
                 // but shouldn't be detected as the latch.
                 return None;
@@ -275,6 +279,10 @@ fn try_to_period<T: FieldElement>(
 impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
         self.connecting_identities.keys().copied().collect()
+    }
+
+    fn degree(&self) -> DegreeType {
+        self.degree
     }
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
@@ -310,6 +318,19 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             );
         }
 
+        if self.fixed_data.is_variable_size(&self.witness_cols) {
+            let new_degree = self.data.len().next_power_of_two() as DegreeType;
+            let new_degree = new_degree.max(1 << MIN_DEGREE_LOG);
+            log::info!(
+                "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
+                self.name,
+                self.degree,
+                new_degree,
+                self.data.len()
+            );
+            self.degree = new_degree;
+        }
+
         if matches!(self.connection_type, ConnectionType::Permutation) {
             // We have to make sure that *all* selectors are 0 in the dummy block,
             // because otherwise this block won't have a matching block on the LHS.
@@ -324,7 +345,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             );
 
             // Instantiate a processor
-            let row_offset = RowIndex::from_i64(-1, self.fixed_data.degree);
+            let row_offset = RowIndex::from_i64(-1, self.degree);
             let mut mutable_state = MutableState {
                 fixed_lookup,
                 machines: vec![].into_iter().into(),
@@ -336,6 +357,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 &mut mutable_state,
                 self.fixed_data,
                 &self.witness_cols,
+                self.degree,
             );
 
             // Set all selectors to 0
@@ -382,7 +404,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
 
                 // For all constraints to be satisfied, unused cells have to be filled with valid values.
                 // We do this, we construct a default block, by repeating the first input to the block machine.
-                values.resize(self.fixed_data.degree as usize, None);
+                values.resize(self.degree as usize, None);
 
                 // Use the block as the default block. However, it needs to be merged with the dummy block,
                 // to handle blocks of non-rectangular shape.
@@ -445,7 +467,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 .ends_with("_operation_id_no_change")
             {
                 log::trace!("Setting _operation_id_no_change to 0.");
-                col[self.fixed_data.degree as usize - 1] = T::zero();
+                col[self.degree as usize - 1] = T::zero();
             }
         }
     }
@@ -457,10 +479,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     }
 
     fn last_row_index(&self) -> RowIndex {
-        RowIndex::from_i64(self.rows() as i64 - 1, self.fixed_data.degree)
+        RowIndex::from_i64(self.rows() as i64 - 1, self.degree)
     }
 
-    fn get_row(&self, row: RowIndex) -> &Row<'a, T> {
+    fn get_row(&self, row: RowIndex) -> &Row<T> {
         // The first block is a dummy block corresponding to rows (-block_size, 0),
         // so we have to add the block size to the row index.
         &self.data[(row + self.block_size).into()]
@@ -480,38 +502,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             log::trace!("  {}", l);
         }
 
-        // First check if we already store the value.
-        // This can happen in the loop detection case, where this function is just called
-        // to validate the constraints.
-        if outer_query.left.iter().all(|v| v.is_constant()) && self.rows() > 0 {
-            // All values on the left hand side are known, check if this is a query
-            // to the last row.
-            let row_index = self.last_row_index();
-
-            let current = &self.get_row(row_index);
-            // We don't have the next row, because it would be the first row of the next block.
-            // We'll use a fresh row instead.
-            let next = Row::fresh(self.fixed_data, row_index + 1);
-            let row_pair = RowPair::new(
-                current,
-                &next,
-                row_index,
-                self.fixed_data,
-                UnknownStrategy::Unknown,
-            );
-
-            let mut identity_processor = IdentityProcessor::new(self.fixed_data, mutable_state);
-            if let Ok(result) = identity_processor.process_link(&outer_query, &row_pair) {
-                if result.is_complete() && result.constraints.is_empty() {
-                    log::trace!(
-                        "End processing block machine '{}' (already solved)",
-                        self.name()
-                    );
-                    return Ok(result);
-                }
-            }
-        }
-
         // TODO this assumes we are always using the same lookup for this machine.
         let mut sequence_iterator = self
             .processing_sequence_cache
@@ -528,24 +518,12 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             ));
         }
 
-        if self.rows() + self.block_size as DegreeType >= self.fixed_data.degree {
+        if self.rows() + self.block_size as DegreeType >= self.degree {
             return Err(EvalError::RowsExhausted(self.name.clone()));
         }
 
         let process_result =
             self.process(mutable_state, &mut sequence_iterator, outer_query.clone())?;
-
-        let process_result = if sequence_iterator.is_cached() && !process_result.is_success() {
-            log::debug!("The cached sequence did not complete the block machine. \
-                         This can happen if the machine's execution steps depend on the input or constant values. \
-                         We'll try again with the default sequence.");
-            let mut sequence_iterator = self
-                .processing_sequence_cache
-                .get_default_sequence_iterator();
-            self.process(mutable_state, &mut sequence_iterator, outer_query.clone())?
-        } else {
-            process_result
-        };
 
         match process_result {
             ProcessResult::Success(new_block, updates) => {
@@ -555,10 +533,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 );
                 self.append_block(new_block)?;
 
-                // TODO: This would be the right thing to do, but currently leads to failing tests
-                // due to #1385 ("Witgen: Block machines "forget" that they already completed a block"):
-                // https://github.com/powdr-labs/powdr/issues/1385
-                // let updates = updates.report_side_effect();
+                let updates = updates.report_side_effect();
 
                 // We solved the query, so report it to the cache.
                 self.processing_sequence_cache
@@ -598,6 +573,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             &self.identities,
             self.fixed_data,
             &self.witness_cols,
+            self.degree,
         )
         .with_outer_query(outer_query);
 
@@ -612,9 +588,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     /// the last row of its previous block is merged with the one we have already.
     /// This is necessary to handle non-rectangular block machines, which already use
     /// unused cells in the previous block.
-    fn append_block(&mut self, mut new_block: FinalizableData<'a, T>) -> Result<(), EvalError<T>> {
+    fn append_block(&mut self, mut new_block: FinalizableData<T>) -> Result<(), EvalError<T>> {
         assert!(
-            (self.rows() + self.block_size as DegreeType) < self.fixed_data.degree,
+            (self.rows() + self.block_size as DegreeType) < self.degree,
             "Block machine is full (this should have been checked before)"
         );
 
@@ -623,27 +599,24 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // 1. Ignore the first row of the next block:
         new_block.pop();
         // 2. Merge the last row of the previous block
-        let updated_last_row = new_block.get_mut(0).unwrap();
-        for (poly_id, existing_value) in self.get_row(self.last_row_index()).iter() {
-            if let CellValue::Known(v) = existing_value.value {
-                if updated_last_row[&poly_id].value.is_known()
-                    && updated_last_row[&poly_id].value != existing_value.value
-                {
-                    return Err(EvalError::Generic(
-                        "Block machine overwrites existing value with different value!".to_string(),
-                    ));
-                }
-                updated_last_row[&poly_id].value = CellValue::Known(v);
-            }
-        }
 
+        new_block
+            .get_mut(0)
+            .unwrap()
+            .merge_with(self.get_row(self.last_row_index()))
+            .map_err(|_| {
+                EvalError::Generic(
+                    "Block machine overwrites existing value with different value!".to_string(),
+                )
+            })?;
         // 3. Remove the last row of the previous block from data
         self.data.pop();
 
-        // 4. Finalize most of the block (unless it's the dummy block)
-        // The last row might be needed later, so we do not finalize it yet.
+        // 4. Finalize everything so far (except the dummy block)
         if self.data.len() > self.block_size {
-            new_block.finalize_range(0..self.block_size);
+            self.data
+                .finalize_range(self.first_in_progress_row..self.data.len());
+            self.first_in_progress_row = self.data.len();
         }
 
         // 5. Append the new block (including the merged last row of the previous block)

@@ -6,10 +6,8 @@
     round_char_boundary
 )]
 
-use core::arch::asm;
-use core::panic::PanicInfo;
-
-use crate::fmt::print_str;
+use core::arch::{asm, global_asm};
+use powdr_riscv_syscalls::Syscall;
 
 mod allocator;
 pub mod arith;
@@ -18,29 +16,41 @@ pub mod fmt;
 pub mod hash;
 pub mod io;
 
-#[panic_handler]
-unsafe fn panic(panic: &PanicInfo<'_>) -> ! {
-    static mut IS_PANICKING: bool = false;
+#[cfg(not(feature = "std"))]
+mod no_std_support;
+#[cfg(feature = "std")]
+mod std_support;
 
-    if !IS_PANICKING {
-        IS_PANICKING = true;
-
-        print!("{panic}\n");
-    } else {
-        print_str("Panic handler has panicked! Things are very dire indeed...\n");
+pub fn halt() -> ! {
+    unsafe {
+        asm!("ecall", in("t0") u32::from(Syscall::Halt));
     }
-
-    asm!("unimp");
     loop {}
 }
 
-extern "Rust" {
-    fn main();
-}
-#[no_mangle]
-#[start]
-pub unsafe extern "C" fn __runtime_start() {
-    unsafe {
-        main();
-    }
-}
+// Entry point function __runtime_start:
+// 1. Sets the global pointer register (the symbol __global_pointer$ is standard
+//    in RISC-V, and it is set by the linker).
+// 2. Sets the stack pointer to the extern symbol __powdr_stack_start (this must
+//    also be set by the linker, but the name is powdr specific).
+// 3. Tail call the main function (in powdr, the return address register is already
+//    set, so that returning from the entry point function will cause the execution
+//    to succeed).
+// TODO: support Position Independent Executables (PIE) by using lla.
+global_asm!(
+    r"
+.global __runtime_start
+.type __runtime_start, @function
+__runtime_start:
+    .option push
+    .option norelax
+    #lla gp, __global_pointer$
+    lui gp, %hi(__global_pointer$)
+    addi gp, gp, %lo(__global_pointer$)
+    .option pop
+    #lla sp, __powdr_stack_start
+    lui sp, %hi(__powdr_stack_start)
+    addi sp, sp, %lo(__powdr_stack_start)
+    tail main
+"
+);

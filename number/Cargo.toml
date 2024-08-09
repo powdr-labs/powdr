@@ -20,6 +20,8 @@ serde = { version = "1.0", default-features = false, features = ["alloc", "deriv
 serde_with = "3.6.1"
 schemars = { version = "0.8.16", features = ["preserve_order"]}
 ibig = { version = "0.3.6", features = ["serde"]}
+serde_cbor = "0.11.2"
+derive_more = "0.99.17"
 
 [dev-dependencies]
 test-log = "0.2.12"

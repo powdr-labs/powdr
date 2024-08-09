@@ -2,23 +2,15 @@ use std::convert::int;
 use std::utils::cross_product;
 use std::utils::unchanged_until;
 
-machine Binary with
+// Binary for single bytes using an exhaustive table
+machine ByteBinary with
     latch: latch,
-    operation_id: operation_id,
-    // Allow this machine to be connected via a permutation
-    call_selectors: sel,
+    operation_id: operation_id
 {
-    operation and<0> A, B -> C;
+    operation run<0> P_operation, P_A, P_B -> P_C;
 
-    operation or<1> A, B -> C;
-
-    operation xor<2> A, B -> C;
-
-    col witness operation_id;
-    unchanged_until(operation_id, latch);
-
-    col fixed latch(i) { if (i % 4) == 3 { 1 } else { 0 } };
-    col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
+    col fixed latch = [1]*;
+    col fixed operation_id = [0]*;
 
     let bit_counts = [256, 256, 3];
     let min_degree = std::array::product(bit_counts);
@@ -38,6 +30,25 @@ machine Binary with
             2 => a(i) ^ b(i),
         }
     };
+}
+
+machine Binary(byte_binary: ByteBinary) with
+    latch: latch,
+    operation_id: operation_id,
+    // Allow this machine to be connected via a permutation
+    call_selectors: sel,
+{
+    operation and<0> A, B -> C;
+
+    operation or<1> A, B -> C;
+
+    operation xor<2> A, B -> C;
+
+    col witness operation_id;
+    unchanged_until(operation_id, latch);
+
+    col fixed latch(i) { if (i % 4) == 3 { 1 } else { 0 } };
+    col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
 
     col witness A_byte;
     col witness B_byte;
@@ -51,5 +62,5 @@ machine Binary with
     B' = B * (1 - latch) + B_byte * FACTOR;
     C' = C * (1 - latch) + C_byte * FACTOR;
 
-    {operation_id', A_byte, B_byte, C_byte} in {P_operation, P_A, P_B, P_C};
+    link => C_byte = byte_binary.run(operation_id', A_byte, B_byte);
 }

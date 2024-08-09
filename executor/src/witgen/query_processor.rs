@@ -3,7 +3,7 @@ use std::sync::Arc;
 use powdr_ast::analyzed::Challenge;
 use powdr_ast::analyzed::{AlgebraicReference, Expression, PolyID, PolynomialType};
 use powdr_ast::parsed::types::Type;
-use powdr_number::{BigInt, FieldElement};
+use powdr_number::{BigInt, DegreeType, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Definitions, EvalError, SymbolLookup, Value};
 
 use super::{rows::RowPair, Constraint, EvalResult, EvalValue, FixedData, IncompleteCause};
@@ -12,28 +12,39 @@ use super::{rows::RowPair, Constraint, EvalResult, EvalValue, FixedData, Incompl
 pub struct QueryProcessor<'a, 'b, T: FieldElement, QueryCallback: Send + Sync> {
     fixed_data: &'a FixedData<'a, T>,
     query_callback: &'b mut QueryCallback,
+    size: DegreeType,
 }
 
 impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
     QueryProcessor<'a, 'b, T, QueryCallback>
 {
-    pub fn new(fixed_data: &'a FixedData<'a, T>, query_callback: &'b mut QueryCallback) -> Self {
+    pub fn new(
+        fixed_data: &'a FixedData<'a, T>,
+        query_callback: &'b mut QueryCallback,
+        size: DegreeType,
+    ) -> Self {
         Self {
             fixed_data,
             query_callback,
+            size,
         }
     }
 
-    pub fn process_query(&mut self, rows: &RowPair<T>, poly_id: &PolyID) -> EvalResult<'a, T> {
+    /// Process the prover query of a witness column.
+    /// Panics if the column does not have a query attached.
+    /// @returns None if the value for that column is already known.
+    pub fn process_query(
+        &mut self,
+        rows: &RowPair<T>,
+        poly_id: &PolyID,
+    ) -> Option<EvalResult<'a, T>> {
         let column = &self.fixed_data.witness_cols[poly_id];
 
-        if let Some(query) = column.query.as_ref() {
-            if rows.get_value(&column.poly).is_none() {
-                return self.process_witness_query(query, &column.poly, rows);
-            }
+        if !rows.value_is_known(&column.poly) {
+            Some(self.process_witness_query(column.query.unwrap(), &column.poly, rows))
+        } else {
+            None
         }
-        // Either no query or the value is already known.
-        Ok(EvalValue::complete(vec![]))
     }
 
     fn process_witness_query(
@@ -82,6 +93,7 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
         let mut symbols = Symbols {
             fixed_data: self.fixed_data,
             rows,
+            size: self.size,
         };
         let fun = evaluator::evaluate(query, &mut symbols)?;
         evaluator::evaluate_function_call(fun, arguments, &mut symbols).map(|v| v.to_string())
@@ -92,13 +104,14 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
 struct Symbols<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     rows: &'a RowPair<'a, 'a, T>,
+    size: DegreeType,
 }
 
 impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
     fn lookup<'b>(
         &mut self,
         name: &'a str,
-        type_args: Option<Vec<Type>>,
+        type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         match self.fixed_data.analyzed.intermediate_columns.get(name) {
             // Intermediate polynomials (which includes challenges) are not inlined in hints,
@@ -139,7 +152,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
                 .get_value(poly_ref)
                 .ok_or(EvalError::DataNotAvailable)?,
             PolynomialType::Constant => {
-                let values = self.fixed_data.fixed_cols[&poly_ref.poly_id].values;
+                let values = self.fixed_data.fixed_cols[&poly_ref.poly_id].values(self.size);
                 let row = self.rows.current_row_index + if poly_ref.next { 1 } else { 0 };
                 values[usize::from(row)]
             }
@@ -148,6 +161,17 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
     }
 
     fn eval_challenge(&self, challenge: &Challenge) -> Result<Arc<Value<'a, T>>, EvalError> {
-        Ok(Value::FieldElement(self.fixed_data.challenges[&challenge.id]).into())
+        let challenge = *self
+            .fixed_data
+            .challenges
+            .get(&challenge.id)
+            .unwrap_or_else(|| {
+                panic!(
+                    "Challenge {} not found! Available challenges: {:?}",
+                    challenge.id,
+                    self.fixed_data.challenges.keys()
+                )
+            });
+        Ok(Value::FieldElement(challenge).into())
     }
 }

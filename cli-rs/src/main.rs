@@ -12,8 +12,8 @@ use powdr_pipeline::Pipeline;
 use powdr_riscv_executor::ProfilerOptions;
 
 use std::ffi::OsStr;
-use std::io;
 use std::{borrow::Cow, io::Write, path::Path};
+use std::{fs, io};
 use strum::{Display, EnumString, EnumVariantNames};
 
 #[derive(Clone, EnumString, EnumVariantNames, Display)]
@@ -41,11 +41,42 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Compiles (no-std) rust code to riscv assembly.
-    /// Needs `rustup target add riscv32imac-unknown-none-elf`.
+    /// Compiles rust code to Powdr assembly.
+    /// Needs `rustup component add rust-src --toolchain nightly-2024-08-01`.
     Compile {
         /// input rust code, points to a crate dir or its Cargo.toml file
         file: String,
+
+        /// The field to use
+        #[arg(long)]
+        #[arg(default_value_t = FieldArgument::Gl)]
+        #[arg(value_parser = clap_enum_variants!(FieldArgument))]
+        field: FieldArgument,
+
+        /// Directory for output files.
+        #[arg(short, long)]
+        #[arg(default_value_t = String::from("."))]
+        output_directory: String,
+
+        /// Comma-separated list of coprocessors.
+        #[arg(long)]
+        coprocessors: Option<String>,
+
+        /// Convert from the assembly files instead of the ELF executable.
+        #[arg(short, long)]
+        #[arg(default_value_t = false)]
+        asm: bool,
+
+        /// Run a long execution in chunks (Experimental and not sound!)
+        #[arg(short, long)]
+        #[arg(default_value_t = false)]
+        continuations: bool,
+    },
+    /// Compiles riscv assembly to powdr assembly.
+    RiscvAsm {
+        /// Input files
+        #[arg(required = true)]
+        files: Vec<String>,
 
         /// The field to use
         #[arg(long)]
@@ -67,12 +98,11 @@ enum Commands {
         #[arg(default_value_t = false)]
         continuations: bool,
     },
-    /// Compiles riscv assembly to powdr assembly and then to PIL
-    /// and generates fixed and witness columns.
-    RiscvAsm {
-        /// Input files
+    /// Translates a RISC-V statically linked executable to powdr assembly.
+    RiscvElf {
+        /// Input file
         #[arg(required = true)]
-        files: Vec<String>,
+        file: String,
 
         /// The field to use
         #[arg(long)]
@@ -194,12 +224,14 @@ fn run_command(command: Commands) {
             field,
             output_directory,
             coprocessors,
+            asm,
             continuations,
         } => {
             call_with_field!(compile_rust::<field>(
                 &file,
                 Path::new(&output_directory),
                 coprocessors,
+                !asm,
                 continuations
             ))
         }
@@ -220,6 +252,20 @@ fn run_command(command: Commands) {
             call_with_field!(compile_riscv_asm::<field>(
                 &name,
                 files.into_iter(),
+                Path::new(&output_directory),
+                coprocessors,
+                continuations
+            ))
+        }
+        Commands::RiscvElf {
+            file,
+            field,
+            output_directory,
+            coprocessors,
+            continuations,
+        } => {
+            call_with_field!(compile_riscv_elf::<field>(
+                &file,
                 Path::new(&output_directory),
                 coprocessors,
                 continuations
@@ -271,6 +317,7 @@ fn compile_rust<F: FieldElement>(
     file_name: &str,
     output_dir: &Path,
     coprocessors: Option<String>,
+    via_elf: bool,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
     let mut runtime = match coprocessors {
@@ -284,8 +331,15 @@ fn compile_rust<F: FieldElement>(
         runtime = runtime.with_poseidon();
     }
 
-    powdr_riscv::compile_rust::<F>(file_name, output_dir, true, &runtime, continuations)
-        .ok_or_else(|| vec!["could not compile rust".to_string()])?;
+    powdr_riscv::compile_rust::<F>(
+        file_name,
+        output_dir,
+        true,
+        &runtime,
+        via_elf,
+        continuations,
+    )
+    .ok_or_else(|| vec!["could not compile rust".to_string()])?;
 
     Ok(())
 }
@@ -305,15 +359,46 @@ fn compile_riscv_asm<F: FieldElement>(
         None => powdr_riscv::Runtime::base(),
     };
 
-    powdr_riscv::compile_riscv_asm::<F>(
+    powdr_riscv::compile_riscv_asm_bundle::<F>(
         original_file_name,
-        file_names,
+        file_names
+            .map(|name| {
+                let contents = fs::read_to_string(&name).unwrap();
+                (name, contents)
+            })
+            .collect(),
         output_dir,
         true,
         &runtime,
         continuations,
     )
     .ok_or_else(|| vec!["could not compile RISC-V assembly".to_string()])?;
+
+    Ok(())
+}
+
+fn compile_riscv_elf<F: FieldElement>(
+    input_file: &str,
+    output_dir: &Path,
+    coprocessors: Option<String>,
+    continuations: bool,
+) -> Result<(), Vec<String>> {
+    let runtime = match coprocessors {
+        Some(list) => {
+            powdr_riscv::Runtime::try_from(list.split(',').collect::<Vec<_>>().as_ref()).unwrap()
+        }
+        None => powdr_riscv::Runtime::base(),
+    };
+
+    powdr_riscv::compile_riscv_elf::<F>(
+        input_file,
+        Path::new(input_file),
+        output_dir,
+        true,
+        &runtime,
+        continuations,
+    )
+    .ok_or_else(|| vec!["could not translate RISC-V executable".to_string()])?;
 
     Ok(())
 }
@@ -350,7 +435,7 @@ fn execute<F: FieldElement>(
         (false, false) => {
             let mut pipeline = pipeline.with_prover_inputs(inputs);
             let program = pipeline.compute_asm_string().unwrap().clone();
-            let (trace, _mem) = powdr_riscv_executor::execute::<F>(
+            let (trace, _mem, _reg_mem) = powdr_riscv_executor::execute::<F>(
                 &program.1,
                 powdr_riscv_executor::MemoryState::new(),
                 pipeline.data_callback().unwrap(),

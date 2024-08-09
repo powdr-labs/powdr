@@ -1,8 +1,6 @@
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
-};
+use powdr_ast::analyzed::{AlgebraicReference, IdentityKind, PolyID};
 use powdr_ast::indent;
 use powdr_number::{DegreeType, FieldElement};
 use std::cmp::max;
@@ -11,6 +9,7 @@ use std::time::Instant;
 
 use crate::witgen::identity_processor::{self};
 use crate::witgen::IncompleteCause;
+use crate::Identity;
 
 use super::data_structures::finalizable_data::FinalizableData;
 use super::processor::{OuterQuery, Processor};
@@ -25,18 +24,18 @@ const REPORT_FREQUENCY: u64 = 1_000;
 
 /// A list of identities with a flag whether it is complete.
 struct CompletableIdentities<'a, T: FieldElement> {
-    identities_with_complete: Vec<(&'a Identity<Expression<T>>, bool)>,
+    identities_with_complete: Vec<(&'a Identity<T>, bool)>,
 }
 
 impl<'a, T: FieldElement> CompletableIdentities<'a, T> {
-    fn new(identities: impl Iterator<Item = &'a Identity<Expression<T>>>) -> Self {
+    fn new(identities: impl Iterator<Item = &'a Identity<T>>) -> Self {
         Self {
             identities_with_complete: identities.map(|identity| (identity, false)).collect(),
         }
     }
 
     /// Yields immutable references to the identity and mutable references to the complete flag.
-    fn iter_mut(&mut self) -> impl Iterator<Item = (&'a Identity<Expression<T>>, &mut bool)> {
+    fn iter_mut(&mut self) -> impl Iterator<Item = (&'a Identity<T>, &mut bool)> {
         self.identities_with_complete
             .iter_mut()
             .map(|(identity, complete)| (*identity, complete))
@@ -44,6 +43,8 @@ impl<'a, T: FieldElement> CompletableIdentities<'a, T> {
 }
 
 pub struct VmProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
+    /// The common degree of all referenced columns
+    degree: DegreeType,
     /// The global index of the first row of [VmProcessor::data].
     row_offset: DegreeType,
     /// The witness columns belonging to this machine
@@ -51,10 +52,10 @@ pub struct VmProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     fixed_data: &'a FixedData<'a, T>,
     /// The subset of identities that contains a reference to the next row
     /// (precomputed once for performance reasons)
-    identities_with_next_ref: Vec<&'a Identity<Expression<T>>>,
+    identities_with_next_ref: Vec<&'a Identity<T>>,
     /// The subset of identities that does not contain a reference to the next row
     /// (precomputed once for performance reasons)
-    identities_without_next_ref: Vec<&'a Identity<Expression<T>>>,
+    identities_without_next_ref: Vec<&'a Identity<T>>,
     last_report: DegreeType,
     last_report_time: Instant,
     processor: Processor<'a, 'b, 'c, T, Q>,
@@ -65,17 +66,26 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
     pub fn new(
         row_offset: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
-        identities: &[&'a Identity<Expression<T>>],
+        identities: &[&'a Identity<T>],
         witnesses: &'c HashSet<PolyID>,
-        data: FinalizableData<'a, T>,
+        data: FinalizableData<T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
     ) -> Self {
+        let degree = fixed_data.common_degree(witnesses);
+
         let (identities_with_next, identities_without_next): (Vec<_>, Vec<_>) = identities
             .iter()
             .partition(|identity| identity.contains_next_ref());
-        let processor = Processor::new(row_offset, data, mutable_state, fixed_data, witnesses);
+        let processor = Processor::new(
+            row_offset,
+            data,
+            mutable_state,
+            fixed_data,
+            witnesses,
+            degree,
+        );
 
-        let progress_bar = ProgressBar::new(fixed_data.degree);
+        let progress_bar = ProgressBar::new(degree);
         progress_bar.set_style(
             ProgressStyle::with_template(
                 "[{elapsed_precise} (ETA: {eta_precise})] {bar} {percent}% - {msg}",
@@ -84,6 +94,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         );
 
         VmProcessor {
+            degree,
             row_offset: row_offset.into(),
             witnesses: witnesses.clone(),
             fixed_data,
@@ -101,7 +112,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         Self { processor, ..self }
     }
 
-    pub fn finish(self) -> FinalizableData<'a, T> {
+    pub fn finish(self) -> FinalizableData<T> {
         self.processor.finish()
     }
 
@@ -111,7 +122,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         assert!(self.processor.len() == 1);
 
         if is_main_run {
-            log::info!("Running main machine for {} rows", self.fixed_data.degree);
+            log::info!("Running main machine for {} rows", self.degree);
             self.progress_bar.reset();
             self.progress_bar.set_message("Starting...");
             self.progress_bar.tick();
@@ -126,7 +137,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         } else {
             log::Level::Debug
         };
-        let rows_left = self.fixed_data.degree - self.row_offset + 1;
+        let rows_left = self.degree - self.row_offset + 1;
         let mut finalize_start = 1;
         for row_index in 0..rows_left {
             if is_main_run {
@@ -201,7 +212,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
 
         assert_eq!(
             self.processor.len() as DegreeType + self.row_offset,
-            self.fixed_data.degree + 1
+            self.degree + 1
         );
 
         if is_main_run {
@@ -220,13 +231,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
 
         let row = row_index as usize;
         (1..MAX_PERIOD).find(|&period| {
-            (1..=period).all(|i| {
-                self.processor
-                    .row(row - i - period)
-                    .values()
-                    .zip(self.processor.row(row - i).values())
-                    .all(|(a, b)| a.value == b.value)
-            })
+            (1..=period)
+                .all(|i| self.processor.row(row - i - period) == self.processor.row(row - i))
         })
     }
 
@@ -237,7 +243,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                 self.processor.len(),
                 Row::fresh(
                     self.fixed_data,
-                    RowIndex::from_degree(row_index, self.fixed_data.degree) + 1,
+                    RowIndex::from_degree(row_index, self.degree) + 1,
                 ),
             );
         }
@@ -299,7 +305,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                     row_index as DegreeType + self.row_offset
                 ),
                 true,
-                &self.witnesses
+                &self.witnesses,
+                self.fixed_data,
             )
         );
 
@@ -314,9 +321,29 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         identities: &mut CompletableIdentities<'a, T>,
     ) -> Result<Constraints<&'a AlgebraicReference, T>, Vec<EvalError<T>>> {
         let mut outer_assignments = vec![];
+
+        // The PC lookup fills most of the columns and enables hints thus it should be run first.
+        // We find it as largest plookup identity.
+        let pc_lookup_index = identities
+            .iter_mut()
+            .enumerate()
+            .filter(|(_, (ident, _))| ident.kind == IdentityKind::Plookup)
+            .max_by_key(|(_, (ident, _))| ident.left.expressions.len())
+            .map(|(i, _)| i);
         loop {
-            let mut progress =
-                self.process_identities(row_index, identities, UnknownStrategy::Unknown)?;
+            let mut progress = false;
+            if let Some(pc_lookup_index) = pc_lookup_index {
+                let (identity, is_complete) =
+                    &mut identities.identities_with_complete[pc_lookup_index];
+                let result = self
+                    .process_identity(row_index, identity, is_complete, UnknownStrategy::Unknown)
+                    .map_err(|e| vec![e])?;
+                if result == Some(true) {
+                    progress |= true;
+                }
+            }
+
+            progress |= self.process_identities(row_index, identities, UnknownStrategy::Unknown)?;
             let row_index = row_index as usize;
             if let Some(true) = self.processor.latch_value(row_index) {
                 let (outer_query_progress, new_outer_assignments) = self
@@ -358,35 +385,11 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         let mut errors = vec![];
 
         for (identity, is_complete) in identities.iter_mut() {
-            if *is_complete {
-                continue;
+            match self.process_identity(row_index, identity, is_complete, unknown_strategy) {
+                Ok(Some(result)) => progress |= result,
+                Ok(None) => (),
+                Err(e) => errors.push(e),
             }
-
-            let is_machine_call = matches!(
-                identity.kind,
-                IdentityKind::Plookup | IdentityKind::Permutation
-            );
-            if is_machine_call && unknown_strategy == UnknownStrategy::Zero {
-                // The fact that we got to the point where we assume 0 for unknown cells, but this identity
-                // is still not complete, means that either the inputs or the machine is under-constrained.
-                errors.push(format!("{identity}:\n{}",
-                    indent("This machine call could not be completed. Either some inputs are missing or the machine is under-constrained.", 1)).into());
-                continue;
-            }
-
-            let result =
-                self.processor
-                    .process_identity(row_index as usize, identity, unknown_strategy);
-
-            match result {
-                Ok(res) => {
-                    *is_complete = res.is_complete;
-                    progress |= res.progress;
-                }
-                Err(e) => {
-                    errors.push(e);
-                }
-            };
         }
 
         if errors.is_empty() {
@@ -394,6 +397,42 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         } else {
             Err(errors)
         }
+    }
+
+    /// Processes a single identity and updates the "is_complete" flag.
+    /// Returns:
+    /// * `Ok(Some(true)`: If progress was made.
+    /// * `Ok(Some(false)`: If no progress was made.
+    /// * `Ok(None)`: If the identity has been complete already.
+    /// * `Err(e)`: If an error occurred.
+    fn process_identity(
+        &mut self,
+        row_index: DegreeType,
+        identity: &'a Identity<T>,
+        is_complete: &mut bool,
+        unknown_strategy: UnknownStrategy,
+    ) -> Result<Option<bool>, EvalError<T>> {
+        if *is_complete {
+            return Ok(None);
+        }
+
+        let is_machine_call = matches!(
+            identity.kind,
+            IdentityKind::Plookup | IdentityKind::Permutation
+        );
+        if is_machine_call && unknown_strategy == UnknownStrategy::Zero {
+            // The fact that we got to the point where we assume 0 for unknown cells, but this identity
+            // is still not complete, means that either the inputs or the machine is under-constrained.
+            return Err(format!(
+                "{identity}:\n    This machine call could not be completed. Either some inputs are missing or the machine is under-constrained."
+            ).into());
+        }
+
+        let result =
+            self.processor
+                .process_identity(row_index as usize, identity, unknown_strategy)?;
+        *is_complete = result.is_complete;
+        Ok(Some(result.progress))
     }
 
     fn report_failure_and_panic_unsatisfiable(
@@ -412,7 +451,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             self.processor.row(row_index).render(
                 &format!("Current row ({row_index})"),
                 false,
-                &self.witnesses
+                &self.witnesses,
+                self.fixed_data,
             )
         );
         log::debug!(
@@ -420,7 +460,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             self.processor.row(row_index + 1).render(
                 &format!("Next row ({})", row_index + 1),
                 false,
-                &self.witnesses
+                &self.witnesses,
+                self.fixed_data,
             )
         );
         log::debug!("Set RUST_LOG=trace to understand why these values were chosen.");
@@ -448,7 +489,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             self.processor.row(row_index).render(
                 &format!("Current row ({row_index})"),
                 true,
-                &self.witnesses
+                &self.witnesses,
+                self.fixed_data,
             )
         );
         log::debug!(
@@ -456,7 +498,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             self.processor.row(row_index + 1).render(
                 &format!("Next row ({})", row_index + 1),
                 true,
-                &self.witnesses
+                &self.witnesses,
+                self.fixed_data,
             )
         );
         log::debug!("\nSet RUST_LOG=trace to understand why these values were (not) chosen.");
@@ -470,7 +513,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
     /// Verifies the proposed values for the next row.
     /// TODO this is bad for machines because we might introduce rows in the machine that are then
     /// not used.
-    fn try_proposed_row(&mut self, row_index: DegreeType, proposed_row: Row<'a, T>) -> bool {
+    fn try_proposed_row(&mut self, row_index: DegreeType, proposed_row: Row<T>) -> bool {
         let constraints_valid = self.identities_with_next_ref.iter().all(|i| {
             self.processor
                 .check_row_pair(row_index as usize, &proposed_row, i, true)

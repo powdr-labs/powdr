@@ -1,20 +1,19 @@
 use core::panic;
-use std::{
-    collections::{HashMap, HashSet},
-    str::FromStr,
-};
-
 use powdr_ast::{
-    analyzed::{Expression, PolynomialReference, Reference, RepeatedArray},
+    analyzed::{Expression, PolynomialReference, Reference},
     parsed::{
-        self, asm::SymbolPath, ArrayExpression, ArrayLiteral, BinaryOperation, BlockExpression,
-        IfExpression, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression,
-        NamespacedPolynomialReference, Number, Pattern, SelectedExpressions, StatementInsideBlock,
-        SymbolCategory, UnaryOperation,
+        self, asm::SymbolPath, types::Type, ArrayExpression, ArrayLiteral, BinaryOperation,
+        BlockExpression, IfExpression, LambdaExpression, LetStatementInsideBlock, MatchArm,
+        MatchExpression, NamespacedPolynomialReference, Number, Pattern, SelectedExpressions,
+        StatementInsideBlock, SymbolCategory, UnaryOperation,
     },
 };
-use powdr_number::DegreeType;
+
 use powdr_parser_util::SourceRef;
+use std::{
+    collections::{BTreeSet, HashMap, HashSet},
+    str::FromStr,
+};
 
 use crate::{type_processor::TypeProcessor, AnalysisDriver};
 
@@ -26,6 +25,8 @@ pub struct ExpressionProcessor<'a, D: AnalysisDriver> {
     type_vars: &'a HashSet<&'a String>,
     local_variables: HashMap<String, u64>,
     local_variable_counter: u64,
+    /// Tracks references to local variables to record them for closures.
+    local_var_references: HashSet<u64>,
 }
 
 impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
@@ -35,6 +36,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             type_vars,
             local_variables: Default::default(),
             local_variable_counter: 0,
+            local_var_references: Default::default(),
         }
     }
 
@@ -44,36 +46,26 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
     ) -> SelectedExpressions<Expression> {
         SelectedExpressions {
             selector: expr.selector.map(|e| self.process_expression(e)),
-            expressions: self.process_expressions(expr.expressions),
+            expressions: Box::new(self.process_expression(*expr.expressions)),
         }
     }
 
     pub fn process_array_expression(
         &mut self,
         array_expression: ::powdr_ast::parsed::ArrayExpression,
-        size: DegreeType,
-    ) -> Vec<RepeatedArray> {
+    ) -> ArrayExpression<Reference> {
         match array_expression {
             ArrayExpression::Value(expressions) => {
                 let values = self.process_expressions(expressions);
-                let size = values.len() as DegreeType;
-                vec![RepeatedArray::new(values, size)]
+                ArrayExpression::Value(values)
             }
             ArrayExpression::RepeatedValue(expressions) => {
-                if size == 0 {
-                    vec![]
-                } else {
-                    vec![RepeatedArray::new(
-                        self.process_expressions(expressions),
-                        size,
-                    )]
-                }
+                ArrayExpression::RepeatedValue(self.process_expressions(expressions))
             }
-            ArrayExpression::Concat(left, right) => self
-                .process_array_expression(*left, size)
-                .into_iter()
-                .chain(self.process_array_expression(*right, size))
-                .collect(),
+            ArrayExpression::Concat(left, right) => ArrayExpression::Concat(
+                Box::new(self.process_array_expression(*left)),
+                Box::new(self.process_array_expression(*right)),
+            ),
         }
     }
 
@@ -82,6 +74,23 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             .into_iter()
             .map(|e| self.process_expression(e))
             .collect()
+    }
+
+    pub fn process_vec_into_selected_expression(
+        &mut self,
+        exprs: Vec<parsed::Expression>,
+    ) -> SelectedExpressions<Expression> {
+        let exprs = Expression::ArrayLiteral(
+            SourceRef::unknown(),
+            ArrayLiteral {
+                items: self.process_expressions(exprs),
+            },
+        );
+
+        SelectedExpressions {
+            selector: None,
+            expressions: Box::new(exprs),
+        }
     }
 
     pub fn process_expression(&mut self, expr: parsed::Expression) -> Expression {
@@ -179,7 +188,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 },
             ),
             PExpression::BlockExpression(src, BlockExpression { statements, expr }) => {
-                self.process_block_expression(statements, *expr, src)
+                self.process_block_expression(statements, expr, src)
             }
             PExpression::FreeInput(_, _) => panic!(),
         }
@@ -190,41 +199,49 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
     /// to anything into Variable patterns.
     fn process_pattern(&mut self, pattern: Pattern) -> Pattern {
         match pattern {
-            Pattern::CatchAll | Pattern::Ellipsis | Pattern::Number(_) | Pattern::String(_) => {
-                pattern
-            }
-            Pattern::Array(items) => {
+            Pattern::CatchAll(_)
+            | Pattern::Ellipsis(_)
+            | Pattern::Number(_, _)
+            | Pattern::String(_, _) => pattern,
+            Pattern::Array(source_ref, items) => {
                 // If there is more than one Pattern::Ellipsis in items, it is an error
-                if items.iter().filter(|p| *p == &Pattern::Ellipsis).count() > 1 {
+                if items
+                    .iter()
+                    .filter(|p| matches!(p, Pattern::Ellipsis(_)))
+                    .count()
+                    > 1
+                {
                     panic!("Only one \"..\"-item allowed in array pattern");
                 }
-                Pattern::Array(self.process_pattern_vec(items))
+                Pattern::Array(source_ref, self.process_pattern_vec(items))
             }
-            Pattern::Tuple(items) => Pattern::Tuple(self.process_pattern_vec(items)),
-            Pattern::Variable(name) => self.process_variable_pattern(name),
-            Pattern::Enum(name, None) => {
+            Pattern::Tuple(source_ref, items) => {
+                Pattern::Tuple(source_ref, self.process_pattern_vec(items))
+            }
+            Pattern::Variable(source_ref, name) => self.process_variable_pattern(source_ref, name),
+            Pattern::Enum(source_ref, name, None) => {
                 // The parser cannot distinguish between Enum and Variable patterns.
                 // So if "name" is a single identifier that does not resolve to an enum variant,
                 // it is a variable pattern.
 
                 if let Some((resolved_name, category)) = self.driver.try_resolve_ref(&name) {
                     if category.compatible_with_request(SymbolCategory::TypeConstructor) {
-                        self.process_enum_pattern(resolved_name, None)
+                        self.process_enum_pattern(source_ref, resolved_name, None)
                     } else if let Some(identifier) = name.try_to_identifier() {
                         // It's a single identifier that does not resolve to an enum variant.
-                        self.process_variable_pattern(identifier.clone())
+                        self.process_variable_pattern(source_ref, identifier.clone())
                     } else {
                         panic!("Expected enum variant but got {category}: {resolved_name}");
                     }
                 } else if let Some(identifier) = name.try_to_identifier() {
                     // It's a single identifier that does not resolve to an enum variant.
-                    self.process_variable_pattern(identifier.clone())
+                    self.process_variable_pattern(source_ref, identifier.clone())
                 } else {
                     panic!("Symbol not found: {name}");
                 }
             }
-            Pattern::Enum(name, fields) => {
-                self.process_enum_pattern(self.driver.resolve_value_ref(&name), fields)
+            Pattern::Enum(source_ref, name, fields) => {
+                self.process_enum_pattern(source_ref, self.driver.resolve_value_ref(&name), fields)
             }
         }
     }
@@ -236,17 +253,23 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             .collect()
     }
 
-    fn process_variable_pattern(&mut self, name: String) -> Pattern {
+    fn process_variable_pattern(&mut self, source_ref: SourceRef, name: String) -> Pattern {
         let id = self.local_variable_counter;
         if self.local_variables.insert(name.clone(), id).is_some() {
             panic!("Variable already defined: {name}");
         }
         self.local_variable_counter += 1;
-        Pattern::Variable(name)
+        Pattern::Variable(source_ref, name)
     }
 
-    fn process_enum_pattern(&mut self, name: String, fields: Option<Vec<Pattern>>) -> Pattern {
+    fn process_enum_pattern(
+        &mut self,
+        source_ref: SourceRef,
+        name: String,
+        fields: Option<Vec<Pattern>>,
+    ) -> Pattern {
         Pattern::Enum(
+            source_ref,
             SymbolPath::from_str(&name).unwrap(),
             fields.map(|fields| {
                 fields
@@ -261,6 +284,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         match reference.try_to_identifier() {
             Some(name) if self.local_variables.contains_key(name) => {
                 let id = self.local_variables[name];
+                self.local_var_references.insert(id);
                 Reference::LocalVar(id, name.to_string())
             }
             _ => Reference::Poly(self.process_namespaced_polynomial_reference(reference)),
@@ -269,9 +293,16 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
 
     pub fn process_lambda_expression(
         &mut self,
-        LambdaExpression { kind, params, body }: LambdaExpression,
+        LambdaExpression {
+            kind,
+            params,
+            body,
+            outer_var_references: _,
+        }: LambdaExpression,
     ) -> LambdaExpression<Expression> {
         let previous_local_vars = self.save_local_variables();
+        let previous_local_var_refs = std::mem::take(&mut self.local_var_references);
+        let local_variable_height = self.local_variable_counter;
 
         let params = params
             .into_iter()
@@ -285,14 +316,26 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         }
         let body = Box::new(self.process_expression(*body));
 
+        let outer_var_references: BTreeSet<u64> =
+            std::mem::replace(&mut self.local_var_references, previous_local_var_refs)
+                .into_iter()
+                .filter(|id| *id < local_variable_height)
+                .collect();
+        self.local_var_references
+            .extend(outer_var_references.clone());
         self.reset_local_variables(previous_local_vars);
-        LambdaExpression { kind, params, body }
+        LambdaExpression {
+            kind,
+            params,
+            body,
+            outer_var_references,
+        }
     }
 
     fn process_block_expression(
         &mut self,
         statements: Vec<StatementInsideBlock>,
-        expr: ::powdr_ast::parsed::Expression,
+        expr: Option<Box<::powdr_ast::parsed::Expression>>,
         src: SourceRef,
     ) -> Expression {
         let vars = self.save_local_variables();
@@ -300,16 +343,17 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         let processed_statements = statements
             .into_iter()
             .map(|statement| match statement {
-                StatementInsideBlock::LetStatement(LetStatementInsideBlock { pattern, value }) => {
+                StatementInsideBlock::LetStatement(LetStatementInsideBlock { pattern, ty, value }) => {
                     let value = value.map(|v| self.process_expression(v));
                     let pattern = self.process_pattern(pattern);
-                    if value.is_none() && !matches!(pattern, Pattern::Variable(_)) {
+                    let ty = ty.map(|ty| self.process_number_type(ty));
+                    if value.is_none() && !matches!(pattern, Pattern::Variable(_, _)) {
                         panic!("Let statement without value requires a single variable, but got {pattern}.");
                     }
                     if !pattern.is_irrefutable() {
                         panic!("Let statement requires an irrefutable pattern, but {pattern} is refutable.");
                     }
-                    StatementInsideBlock::LetStatement(LetStatementInsideBlock { pattern, value })
+                    StatementInsideBlock::LetStatement(LetStatementInsideBlock { pattern, ty, value })
                 }
                 StatementInsideBlock::Expression(expr) => {
                     StatementInsideBlock::Expression(self.process_expression(expr))
@@ -317,13 +361,14 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             })
             .collect::<Vec<_>>();
 
-        let processed_expr = self.process_expression(expr);
+        let processed_expr = expr.map(|expr| Box::new(self.process_expression(*expr)));
+
         self.reset_local_variables(vars);
         Expression::BlockExpression(
             src,
             BlockExpression {
                 statements: processed_statements,
-                expr: Box::new(processed_expr),
+                expr: processed_expr,
             },
         )
     }
@@ -332,17 +377,22 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         &mut self,
         reference: NamespacedPolynomialReference,
     ) -> PolynomialReference {
-        let type_processor = TypeProcessor::new(self.driver, self.type_vars);
-        let type_args = reference.type_args.map(|args| {
-            args.into_iter()
-                .map(|t| type_processor.process_type(t))
-                .collect()
-        });
+        let type_args = reference
+            .type_args
+            .map(|args| args.into_iter().map(|t| self.process_type(t)).collect());
         PolynomialReference {
             name: self.driver.resolve_value_ref(&reference.path),
             poly_id: None,
             type_args,
         }
+    }
+
+    fn process_type(&self, ty: Type<parsed::Expression>) -> Type<u64> {
+        TypeProcessor::new(self.driver, self.type_vars).process_type(ty)
+    }
+
+    fn process_number_type(&self, ty: Type<u64>) -> Type<u64> {
+        TypeProcessor::new(self.driver, self.type_vars).process_number_type(ty)
     }
 
     fn save_local_variables(&self) -> LocalVariableState {

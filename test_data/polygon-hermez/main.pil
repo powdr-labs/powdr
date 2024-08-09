@@ -18,7 +18,7 @@ include "storage.pil";
 include "padding_kk.pil";
 include "mem.pil";
 
-namespace Main(%N);
+namespace Main(N);
 
 ///////////
 // Definitions
@@ -392,14 +392,14 @@ namespace Main(%N);
     public chainId = GAS(0);
     Global.L1 * (GAS - :chainId) = 0;
 
-    public newStateRoot0 = SR0(%N-1);
-    public newStateRoot1 = SR1(%N-1);
-    public newStateRoot2 = SR2(%N-1);
-    public newStateRoot3 = SR3(%N-1);
-    public newStateRoot4 = SR4(%N-1);
-    public newStateRoot5 = SR5(%N-1);
-    public newStateRoot6 = SR6(%N-1);
-    public newStateRoot7 = SR7(%N-1);
+    public newStateRoot0 = SR0(N-1);
+    public newStateRoot1 = SR1(N-1);
+    public newStateRoot2 = SR2(N-1);
+    public newStateRoot3 = SR3(N-1);
+    public newStateRoot4 = SR4(N-1);
+    public newStateRoot5 = SR5(N-1);
+    public newStateRoot6 = SR6(N-1);
+    public newStateRoot7 = SR7(N-1);
     Global.LLAST * (SR0 - :newStateRoot0) = 0;
     Global.LLAST * (SR1 - :newStateRoot1) = 0;
     Global.LLAST * (SR2 - :newStateRoot2) = 0;
@@ -409,14 +409,14 @@ namespace Main(%N);
     Global.LLAST * (SR6 - :newStateRoot6) = 0;
     Global.LLAST * (SR7 - :newStateRoot7) = 0;
 
-    public newAccInputHash0 = D0(%N -1);
-    public newAccInputHash1 = D1(%N -1);
-    public newAccInputHash2 = D2(%N -1);
-    public newAccInputHash3 = D3(%N -1);
-    public newAccInputHash4 = D4(%N -1);
-    public newAccInputHash5 = D5(%N -1);
-    public newAccInputHash6 = D6(%N -1);
-    public newAccInputHash7 = D7(%N -1);
+    public newAccInputHash0 = D0(N -1);
+    public newAccInputHash1 = D1(N -1);
+    public newAccInputHash2 = D2(N -1);
+    public newAccInputHash3 = D3(N -1);
+    public newAccInputHash4 = D4(N -1);
+    public newAccInputHash5 = D5(N -1);
+    public newAccInputHash6 = D6(N -1);
+    public newAccInputHash7 = D7(N -1);
     Global.LLAST * (D0 - :newAccInputHash0) = 0;
     Global.LLAST * (D1 - :newAccInputHash1) = 0;
     Global.LLAST * (D2 - :newAccInputHash2) = 0;
@@ -426,14 +426,14 @@ namespace Main(%N);
     Global.LLAST * (D6 - :newAccInputHash6) = 0;
     Global.LLAST * (D7 - :newAccInputHash7) = 0;
 
-    public localExitRoot0 = E0(%N-1);
-    public localExitRoot1 = E1(%N-1);
-    public localExitRoot2 = E2(%N-1);
-    public localExitRoot3 = E3(%N-1);
-    public localExitRoot4 = E4(%N-1);
-    public localExitRoot5 = E5(%N-1);
-    public localExitRoot6 = E6(%N-1);
-    public localExitRoot7 = E7(%N-1);
+    public localExitRoot0 = E0(N-1);
+    public localExitRoot1 = E1(N-1);
+    public localExitRoot2 = E2(N-1);
+    public localExitRoot3 = E3(N-1);
+    public localExitRoot4 = E4(N-1);
+    public localExitRoot5 = E5(N-1);
+    public localExitRoot6 = E6(N-1);
+    public localExitRoot7 = E7(N-1);
     Global.LLAST * (E0 - :localExitRoot0) = 0;
     Global.LLAST * (E1 - :localExitRoot1) = 0;
     Global.LLAST * (E2 - :localExitRoot2) = 0;
@@ -443,18 +443,18 @@ namespace Main(%N);
     Global.LLAST * (E6 - :localExitRoot6) = 0;
     Global.LLAST * (E7 - :localExitRoot7) = 0;
 
-    public newBatchNum = PC(%N-1);
+    public newBatchNum = PC(N-1);
     Global.LLAST * (PC - :newBatchNum) = 0;
 
 
 
     // Check that the calculated hash is well formed
-    sWR + hashPDigest {
+    sWR + hashPDigest $ [
         op0, op1, op2, op3, op4, op5, op6, op7
-    } is
-    Binary.resultValidRange {
+     ] is
+    Binary.resultValidRange $ [
         Binary.a[0], Binary.a[1], Binary.a[2], Binary.a[3], Binary.a[4], Binary.a[5], Binary.a[6], Binary.a[7]
-    };
+    ];
 
 /////////
 // ROM Plookpups
@@ -528,19 +528,19 @@ namespace Main(%N);
     (1 - hashP1) * hashP1 = 0;
     (1 - useElseAddr) * useElseAddr = 0;
 
-    {
+    [
         CONST0, CONST1, CONST2, CONST3, CONST4, CONST5, CONST6, CONST7,
         inA, inB, inC, inROTL_C, inD, inE, inSR, inFREE,
         inCTX, inSP, inPC, inGAS, inMAXMEM, inHASHPOS, inSTEP, inRR, inHASHPOS, inRCX,
         inCntArith, inCntBinary, inCntKeccakF, inCntMemAlign, inCntPaddingPG, inCntPoseidonG,
         operations, offset, incStack, binOpcode, jmpAddr, elseAddr, zkPC
-    } in {
+     ] in [
         Rom.CONST0, Rom.CONST1, Rom.CONST2, Rom.CONST3, Rom.CONST4, Rom.CONST5, Rom.CONST6, Rom.CONST7,
         Rom.inA, Rom.inB, Rom.inC, Rom.inROTL_C, Rom.inD, Rom.inE, Rom.inSR, Rom.inFREE,
         Rom.inCTX, Rom.inSP, Rom.inPC, Rom.inGAS, Rom.inMAXMEM, Rom.inHASHPOS, Rom.inSTEP, Rom.inRR, Rom.inHASHPOS, Rom.inRCX,
         Rom.inCntArith, Rom.inCntBinary, Rom.inCntKeccakF, Rom.inCntMemAlign, Rom.inCntPaddingPG, Rom.inCntPoseidonG,
         Rom.operations, Rom.offset, Rom.incStack, Rom.binOpcode, Rom.jmpAddr, Rom.elseAddr, Rom.line
-    };
+     ];
 
     pol commit sKeyI[4];
     pol commit sKey[4];
@@ -603,29 +603,29 @@ namespace Main(%N);
     pol ay3_6 = Arith.y3[12] + Arith.y3[13]*2**16;
     pol ay3_7 = Arith.y3[14] + Arith.y3[15]*2**16;
 
-    arithEq0 {  1, 0, 0, 0,
+    arithEq0 $ [  1, 0, 0, 0,
         A0, A1, A2, A3, A4, A5, A6, A7,
         B0, B1, B2, B3, B4, B5, B6, B7,
         C0, C1, C2, C3, C4, C5, C6, C7,
         D0, D1, D2, D3, D4, D5, D6, D7,
-        op0, op1, op2, op3, op4, op5, op6, op7 } is
-    Arith.resultEq0 {
+        op0, op1, op2, op3, op4, op5, op6, op7 ] is
+    Arith.resultEq0 $ [
         Arith.selEq[0], Arith.selEq[1], Arith.selEq[2], Arith.selEq[3],
         ax1_0, ax1_1, ax1_2, ax1_3, ax1_4, ax1_5, ax1_6, ax1_7,
         ay1_0, ay1_1, ay1_2, ay1_3, ay1_4, ay1_5, ay1_6, ay1_7,
         ax2_0, ax2_1, ax2_2, ax2_3, ax2_4, ax2_5, ax2_6, ax2_7,
         ay2_0, ay2_1, ay2_2, ay2_3, ay2_4, ay2_5, ay2_6, ay2_7,
         ay3_0, ay3_1, ay3_2, ay3_3, ay3_4, ay3_5, ay3_6, ay3_7
-    };
+    ];
 
-    arithEq1 {  0, 1, 0, 1,
+    arithEq1 $ [  0, 1, 0, 1,
         A0, A1, A2, A3, A4, A5, A6, A7,
         B0, B1, B2, B3, B4, B5, B6, B7,
         C0, C1, C2, C3, C4, C5, C6, C7,
         D0, D1, D2, D3, D4, D5, D6, D7,
         E0, E1, E2, E3, E4, E5, E6, E7,
-        op0, op1, op2, op3, op4, op5, op6, op7 } is
-    Arith.resultEq1 {
+        op0, op1, op2, op3, op4, op5, op6, op7 ] is
+    Arith.resultEq1 $ [
         Arith.selEq[0], Arith.selEq[1], Arith.selEq[2], Arith.selEq[3],
         ax1_0, ax1_1, ax1_2, ax1_3, ax1_4, ax1_5, ax1_6, ax1_7,
         ay1_0, ay1_1, ay1_2, ay1_3, ay1_4, ay1_5, ay1_6, ay1_7,
@@ -633,16 +633,16 @@ namespace Main(%N);
         ay2_0, ay2_1, ay2_2, ay2_3, ay2_4, ay2_5, ay2_6, ay2_7,
         ax3_0, ax3_1, ax3_2, ax3_3, ax3_4, ax3_5, ax3_6, ax3_7,
         ay3_0, ay3_1, ay3_2, ay3_3, ay3_4, ay3_5, ay3_6, ay3_7
-    };
+    ];
 
-    arithEq2 {  0, 0, 1, 1,
+    arithEq2 $ [  0, 0, 1, 1,
         A0, A1, A2, A3, A4, A5, A6, A7,
         B0, B1, B2, B3, B4, B5, B6, B7,
         A0, A1, A2, A3, A4, A5, A6, A7,
         B0, B1, B2, B3, B4, B5, B6, B7,
         E0, E1, E2, E3, E4, E5, E6, E7,
-        op0, op1, op2, op3, op4, op5, op6, op7 } is
-    Arith.resultEq2 {
+        op0, op1, op2, op3, op4, op5, op6, op7 ] is
+    Arith.resultEq2 $ [
         Arith.selEq[0], Arith.selEq[1], Arith.selEq[2], Arith.selEq[3],
         ax1_0, ax1_1, ax1_2, ax1_3, ax1_4, ax1_5, ax1_6, ax1_7,
         ay1_0, ay1_1, ay1_2, ay1_3, ay1_4, ay1_5, ay1_6, ay1_7,
@@ -650,7 +650,7 @@ namespace Main(%N);
         ay2_0, ay2_1, ay2_2, ay2_3, ay2_4, ay2_5, ay2_6, ay2_7,
         ax3_0, ax3_1, ax3_2, ax3_3, ax3_4, ax3_5, ax3_6, ax3_7,
         ay3_0, ay3_1, ay3_2, ay3_3, ay3_4, ay3_5, ay3_6, ay3_7
-    };
+    ];
 
     cntArith' = cntArith*(1-Global.L1) + arithEq0 + arithEq1 + arithEq2;
 
@@ -658,108 +658,108 @@ namespace Main(%N);
 // Binary Plookpups
 /////////
 
-    bin {
+    bin $ [
         binOpcode,
         A0, A1, A2, A3, A4, A5, A6, A7,
         B0, B1, B2, B3, B4, B5, B6, B7,
         op0, op1, op2, op3, op4, op5, op6, op7,
         carry
-    } is
-    Binary.resultBinOp {
+     ] is
+    Binary.resultBinOp $ [
         Binary.lOpcode,
         Binary.a[0], Binary.a[1], Binary.a[2], Binary.a[3], Binary.a[4], Binary.a[5], Binary.a[6], Binary.a[7],
         Binary.b[0], Binary.b[1], Binary.b[2], Binary.b[3], Binary.b[4], Binary.b[5], Binary.b[6], Binary.b[7],
         Binary.c[0], Binary.c[1], Binary.c[2], Binary.c[3], Binary.c[4], Binary.c[5], Binary.c[6], Binary.c[7],
         Binary.lCout
-    };
+    ];
 
     cntBinary' = cntBinary*(1-Global.L1) + bin + sWR + hashPDigest;
 
 /////////
 // HASHK Plookpups
 /////////
-    hashK + hashK1 {
+    hashK + hashK1 $ [
         addr,
         HASHPOS,
         D0 * hashK + hashK1,
         op0, op1, op2, op3,
         op4, op5, op6, op7
-    } in
-    PaddingKK.crLatch * PaddingKK.r8valid {
+     ] in
+    PaddingKK.crLatch * PaddingKK.r8valid $ [
         PaddingKK.addr,
         PaddingKK.len - PaddingKK.rem - PaddingKK.crLen + 1,
         PaddingKK.crLen,
         PaddingKK.crV0C, PaddingKK.crV1C, PaddingKK.crV2C, PaddingKK.crV3C,
         PaddingKK.crV4C, PaddingKK.crV5C, PaddingKK.crV6C, PaddingKK.crV7C
-    };
+    ];
 
-    hashKLen {
+    hashKLen $ [
         addr,
         op0
-    } is
-    PaddingKK.lastHashLen {
+     ] is
+    PaddingKK.lastHashLen $ [
         PaddingKK.addr,
         PaddingKK.len
-    };
+    ];
 
-    hashKDigest {
+    hashKDigest $ [
         addr,
         op0, op1, op2, op3,
         op4, op5, op6, op7,
         incCounter
-    } is
-    PaddingKK.lastHashDigest {
+     ] is
+    PaddingKK.lastHashDigest $ [
         PaddingKK.addr,
         PaddingKK.hash0, PaddingKK.hash1, PaddingKK.hash2, PaddingKK.hash3,
         PaddingKK.hash4, PaddingKK.hash5, PaddingKK.hash6, PaddingKK.hash7,
         PaddingKK.incCounter
-    };
+    ];
 
     cntKeccakF' = cntKeccakF*(1-Global.L1) + incCounter*hashKDigest;
 
 /////////
 // HASHP Plookpups
 /////////
-    hashP + hashP1 {
+    hashP + hashP1 $ [
         addr,
         HASHPOS,
         D0 * hashP + hashP1,
         op0, op1, op2, op3,
         op4, op5, op6, op7
-    } in
-    PaddingPG.crLatch {
+     ] in
+    PaddingPG.crLatch $ [
         PaddingPG.addr,
         PaddingPG.len - PaddingPG.rem - PaddingPG.crLen + 1,
         PaddingPG.crLen,
         PaddingPG.crV0C, PaddingPG.crV1C, PaddingPG.crV2C, PaddingPG.crV3C,
         PaddingPG.crV4C, PaddingPG.crV5C, PaddingPG.crV6C, PaddingPG.crV7C
-    };
+    ];
 
-    hashPLen {
+    hashPLen $ [
         addr,
         op0
-    } is
-    PaddingPG.lastHashLen {
+     ] is
+    PaddingPG.lastHashLen $ [
         PaddingPG.addr,
         PaddingPG.len
-    };
+    ];
 
-    hashPDigest {
+    hashPDigest $ [
         addr,
         op0 + 2**32 * op1,
         op2 + 2**32 * op3,
         op4 + 2**32 * op5,
         op6 + 2**32 * op7,
         incCounter
-    } is
-    PaddingPG.lastHashDigest {
+     ] is
+    PaddingPG.lastHashDigest $ [
         PaddingPG.addr,
         PaddingPG.curHash0,
         PaddingPG.curHash1,
         PaddingPG.curHash2,
         PaddingPG.curHash3,
         PaddingPG.incCounter
-    };
+    ];
 
     cntPaddingPG' = cntPaddingPG*(1-Global.L1) + hashPDigest*incCounter;
     cntPoseidonG' = cntPoseidonG*(1-Global.L1) + (hashPDigest + sRD + sWR) * incCounter;
@@ -767,33 +767,33 @@ namespace Main(%N);
 /////////
 // Mem Plookpups
 /////////
-    mOp {
+    mOp $ [
         addr,
         Global.STEP,
         mWR,
         op0, op1, op2, op3,
         op4, op5, op6, op7
-    } is
-    Mem.mOp {
+     ] is
+    Mem.mOp $ [
         Mem.addr,
         Mem.step,
         Mem.mWr,
         Mem.val[0], Mem.val[1], Mem.val[2], Mem.val[3],
         Mem.val[4], Mem.val[5], Mem.val[6], Mem.val[7]
-    };
+    ];
 
 
 /////////
 // Storage Plookpups
 /////////
 
-    (sRD + sWR) {
+    (sRD + sWR) $ [
         1, 0, 0, // Poseidon Result ID
         C0, C1, C2, C3, C4, C5, C6, C7,
         0, 0, 0, 0,
         sKeyI[0], sKeyI[1], sKeyI[2], sKeyI[3]
-    } is
-    PoseidonG.result1 {
+     ] is
+    PoseidonG.result1 $ [
         PoseidonG.result1, PoseidonG.result2, PoseidonG.result3,
         PoseidonG.in0,
         PoseidonG.in1,
@@ -811,15 +811,15 @@ namespace Main(%N);
         PoseidonG.hash1,
         PoseidonG.hash2,
         PoseidonG.hash3
-    };
+    ];
 
-    (sRD + sWR) {
+    (sRD + sWR) $ [
         0, 1, 0,
         A0, A1, A2, A3, A4, A5, B0, B1,
         sKeyI[0], sKeyI[1], sKeyI[2], sKeyI[3],
         sKey[0], sKey[1], sKey[2], sKey[3]
-    } is
-    PoseidonG.result2 {
+     ] is
+    PoseidonG.result2 $ [
         PoseidonG.result1, PoseidonG.result2, PoseidonG.result3,
         PoseidonG.in0,
         PoseidonG.in1,
@@ -837,40 +837,40 @@ namespace Main(%N);
         PoseidonG.hash1,
         PoseidonG.hash2,
         PoseidonG.hash3
-    };
+    ];
 
-    sRD {
+    sRD $ [
         SR0 + 2**32*SR1, SR2 + 2**32*SR3, SR4 + 2**32*SR5, SR6 + 2**32*SR7,
         sKey[0], sKey[1], sKey[2], sKey[3],
         op0, op1, op2, op3,
         op4, op5, op6, op7,
         incCounter
-    } is
-    Storage.iLatchGet {
+     ] is
+    Storage.iLatchGet $ [
         Storage.oldRoot0, Storage.oldRoot1, Storage.oldRoot2, Storage.oldRoot3,
         Storage.rkey0, Storage.rkey1, Storage.rkey2, Storage.rkey3,
         Storage.valueLow0, Storage.valueLow1, Storage.valueLow2, Storage.valueLow3,
         Storage.valueHigh0, Storage.valueHigh1, Storage.valueHigh2, Storage.valueHigh3,
         Storage.incCounter + 2
-    };
+    ];
 
 
-    sWR {
+    sWR $ [
         SR0 + 2**32*SR1, SR2 + 2**32*SR3, SR4 + 2**32*SR5, SR6 + 2**32*SR7,
         sKey[0], sKey[1], sKey[2], sKey[3],
         D0, D1, D2, D3,
         D4, D5, D6, D7,
         op0 + 2**32*op1, op2 + 2**32*op3, op4 + 2**32*op5, op6 + 2**32*op7,
         incCounter
-    } is
-    Storage.iLatchSet {
+     ] is
+    Storage.iLatchSet $ [
         Storage.oldRoot0, Storage.oldRoot1, Storage.oldRoot2, Storage.oldRoot3,
         Storage.rkey0, Storage.rkey1, Storage.rkey2, Storage.rkey3,
         Storage.valueLow0, Storage.valueLow1, Storage.valueLow2, Storage.valueLow3,
         Storage.valueHigh0, Storage.valueHigh1, Storage.valueHigh2, Storage.valueHigh3,
         Storage.newRoot0, Storage.newRoot1, Storage.newRoot2, Storage.newRoot3,
         Storage.incCounter + 2
-    };
+    ];
 
 
 /////////
@@ -878,7 +878,7 @@ namespace Main(%N);
 /////////
 
     // memAlign RD
-    memAlignRD {
+    memAlignRD $ [
         0, 0,
         A0, A1, A2, A3,
         A4, A5, A6, A7,
@@ -887,8 +887,8 @@ namespace Main(%N);
         op0, op1, op2, op3,
         op4, op5, op6, op7,
         C0
-    } is
-    MemAlign.resultRd {
+     ] is
+    MemAlign.resultRd $ [
         MemAlign.wr256,
         MemAlign.wr8,
         MemAlign.m0[0], MemAlign.m0[1], MemAlign.m0[2], MemAlign.m0[3],
@@ -898,9 +898,9 @@ namespace Main(%N);
         MemAlign.v[0], MemAlign.v[1], MemAlign.v[2], MemAlign.v[3],
         MemAlign.v[4], MemAlign.v[5], MemAlign.v[6], MemAlign.v[7],
         MemAlign.offset
-    };
+    ];
 
-    memAlignWR {
+    memAlignWR $ [
         1, 0,
         A0, A1, A2, A3,
         A4, A5, A6, A7,
@@ -913,8 +913,8 @@ namespace Main(%N);
         D4, D5, D6, D7,
         E0, E1, E2, E3,
         E4, E5, E6, E7
-    } is
-    MemAlign.resultWr256 {
+     ] is
+    MemAlign.resultWr256 $ [
         MemAlign.wr256,
         MemAlign.wr8,
         MemAlign.m0[0], MemAlign.m0[1], MemAlign.m0[2], MemAlign.m0[3],
@@ -928,9 +928,9 @@ namespace Main(%N);
         MemAlign.w0[4], MemAlign.w0[5], MemAlign.w0[6], MemAlign.w0[7],
         MemAlign.w1[0], MemAlign.w1[1], MemAlign.w1[2], MemAlign.w1[3],
         MemAlign.w1[4], MemAlign.w1[5], MemAlign.w1[6], MemAlign.w1[7]
-    };
+    ];
 
-    memAlignWR8 {
+    memAlignWR8 $ [
         0, 1,
         A0, A1, A2, A3,
         A4, A5, A6, A7,
@@ -939,8 +939,8 @@ namespace Main(%N);
         C0,
         D0, D1, D2, D3,
         D4, D5, D6, D7
-    } is
-    MemAlign.resultWr8 {
+     ] is
+    MemAlign.resultWr8 $ [
         MemAlign.wr256,
         MemAlign.wr8,
         MemAlign.m0[0], MemAlign.m0[1], MemAlign.m0[2], MemAlign.m0[3],
@@ -950,7 +950,7 @@ namespace Main(%N);
         MemAlign.offset,
         MemAlign.w0[0], MemAlign.w0[1], MemAlign.w0[2], MemAlign.w0[3],
         MemAlign.w0[4], MemAlign.w0[5], MemAlign.w0[6], MemAlign.w0[7]
-    };
+    ];
 
     cntMemAlign' = cntMemAlign*(1-Global.L1) + memAlignRD + memAlignWR + memAlignWR8;
 

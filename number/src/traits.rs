@@ -32,7 +32,6 @@ pub trait LargeInt:
     + Zero
     + ConstZero
     + fmt::LowerHex
-    + TryFrom<crate::BigUint, Error = ()>
 {
     /// Number of bits of this base type. Not to be confused with the number of bits
     /// of the field elements!
@@ -57,6 +56,10 @@ pub trait LargeInt:
     ///
     /// Returns None if value is out of u32 range.
     fn try_into_u32(&self) -> Option<u32>;
+
+    /// Creates a LargeInt from a hex string.
+    /// Panics on failure - intended for testing.
+    fn from_hex(s: &str) -> Self;
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
@@ -122,10 +125,6 @@ pub trait FieldElement:
 
     fn pow(self, exponent: Self::Integer) -> Self;
 
-    fn integer_div(self, other: Self) -> Self;
-
-    fn integer_mod(self, other: Self) -> Self;
-
     fn to_bytes_le(&self) -> Vec<u8>;
 
     fn from_bytes_le(bytes: &[u8]) -> Self;
@@ -151,5 +150,5 @@ pub trait FieldElement:
 
 #[cfg(test)]
 pub fn int_from_hex_str<T: FieldElement>(s: &str) -> T::Integer {
-    T::Integer::try_from(BigUint::from_str_radix(s, 16).unwrap()).unwrap()
+    T::Integer::from_hex(s)
 }

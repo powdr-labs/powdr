@@ -32,7 +32,6 @@ machine PoseidonGL with
     let PARTIAL_ROUNDS: int = 22;
     let ROWS_PER_HASH = FULL_ROUNDS + PARTIAL_ROUNDS + 1;
 
-    pol constant L0 = [1] + [0]*;
     pol constant FIRSTBLOCK(i) { if i % ROWS_PER_HASH == 0 { 1 } else { 0 } };
     pol constant LASTBLOCK(i) { if i % ROWS_PER_HASH == ROWS_PER_HASH - 1 { 1 } else { 0 } };
     // Like LASTBLOCK, but also 1 in the last row of the table
@@ -65,16 +64,16 @@ machine PoseidonGL with
     pol commit output[OUTPUT_SIZE];
 
     // Add round constants
-    let a: expr[STATE_SIZE] = array::zip(state, C, |state, C| state + C);
+    let a = array::zip(state, C, |state, C| state + C);
 
     // Compute S-Boxes (x^7)
-    let x2: expr[STATE_SIZE] = array::map(a, |a| a * a);
-    let x4: expr[STATE_SIZE] = array::map(x2, |x2| x2 * x2);
-    let x6: expr[STATE_SIZE] = array::zip(x4, x2, |x4, x2| x4 * x2);
-    let x7: expr[STATE_SIZE] = array::zip(x6, a, |x6, a| x6 * a);
+    let x2: inter[STATE_SIZE] = array::map(a, |a| a * a);
+    let x4: inter[STATE_SIZE] = array::map(x2, |x2| x2 * x2);
+    let x6: inter[STATE_SIZE] = array::zip(x4, x2, |x4, x2| x4 * x2);
+    let x7: inter[STATE_SIZE] = array::zip(x6, a, |x6, a| x6 * a);
 
     // Apply S-Boxes on the first element and otherwise if it is a full round.
-    let b: expr[STATE_SIZE] = array::new(STATE_SIZE, |i| if i == 0 {
+    let b = array::new(STATE_SIZE, |i| if i == 0 {
         x7[i]
     } else {
         PARTIAL * (a[i] - x7[i]) + x7[i]
@@ -98,7 +97,7 @@ machine PoseidonGL with
 
     // Multiply with MDS Matrix
     let dot_product = |v1, v2| array::sum(array::zip(v1, v2, |v1_i, v2_i| v1_i * v2_i));
-    let c: expr[STATE_SIZE] = array::map(M, |M_row_i| dot_product(M_row_i, b));
+    let c = array::map(M, |M_row_i| dot_product(M_row_i, b));
 
     // Copy c to state in the next row
     array::zip(state, c, |state, c| (state' - c) * (1-LAST) = 0);

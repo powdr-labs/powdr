@@ -20,13 +20,16 @@ enum Query {
 
 /// Constructs a challenge object.
 /// The arguments are the proof stage and the id of the challenge, in this order.
-let challenge: int, int -> expr = [];
+let challenge: int, int -> expr = constr |st, id| std::prelude::challenge(st, id);
 
 /// Returns the current number of rows, sometimes known as the "degree".
 let degree: -> int = [];
 
 /// Asserts that the current degree or row count is at least m.
-let require_min_degree: int -> Constr[] = |m| std::check::assert(degree() >= m, || "Degree too small.");
+let require_min_degree: int -> () = |m| std::check::assert(degree() >= m, || "Degree too small.");
 
 /// Asserts that the current degree or row count is at most m;
-let require_max_degree: int -> Constr[] = |m| std::check::assert(degree() <= m, || "Degree too large.");
+let require_max_degree: int -> () = |m| std::check::assert(degree() <= m, || "Degree too large.");
+
+/// Adds a hint / query function to an existing witness column.
+let set_hint: expr, (int -> std::prover::Query) -> () = [];

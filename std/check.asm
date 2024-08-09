@@ -9,4 +9,4 @@ let panic: string -> ! = [];
 /// prover-internal consistency.
 /// The panic message is obtained by calling the function `reason`.
 /// Returns an empty array on success, which allows it to be used at statement level.
-let assert: bool, (-> string) -> Constr[] = |condition, reason| if !condition { panic(reason()) } else { [] };
+let assert: bool, (-> string) -> () = |condition, reason| if !condition { panic(reason()) } else { () };

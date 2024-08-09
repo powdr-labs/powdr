@@ -41,11 +41,9 @@ pub fn escape_label(l: &str) -> String {
     l.replace('.', "_dot_").replace('/', "_slash_")
 }
 
-pub fn argument_to_escaped_symbol<R: Register, F: FunctionOpKind>(
-    x: &Argument<R, F>,
-) -> Option<String> {
+pub fn argument_to_symbol<R: Register, F: FunctionOpKind>(x: &Argument<R, F>) -> Option<&str> {
     if let Argument::Expression(Expression::Symbol(symbol)) = x {
-        Some(escape_label(symbol))
+        Some(symbol)
     } else {
         None
     }

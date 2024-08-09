@@ -16,7 +16,7 @@ machine Binary with
     col fixed P_X = [0, 0, 1, 1, 0, 0, 1, 1] + [1]*;
     col fixed P_Y = [0, 1, 0, 1, 0, 1, 0, 1] + [1]*;
     col fixed P_Z = [0, 0, 0, 1, 0, 1, 1, 1] + [1]*;
-    { operation_id, x, y, z } in { P_FUNCTION, P_X, P_Y, P_Z };
+    [ operation_id, x, y, z ] in [ P_FUNCTION, P_X, P_Y, P_Z ];
 }
 
 machine Arith with
@@ -36,7 +36,7 @@ machine Arith with
     z = (1 - operation_id) * (x + y) + operation_id * (x - y);
 }
 
-machine Main with degree: 32{
+machine Main with degree: 32 {
     Arith arith;
     Binary binary;
 
@@ -46,10 +46,10 @@ machine Main with degree: 32{
     reg Z[<=];
     reg A;
 
-    instr add X, Y -> Z = arith.add;
-    instr sub X, Y -> Z = arith.sub;
-    instr and X, Y -> Z = binary.and;
-    instr or X, Y -> Z = binary.or;
+    instr add X, Y -> Z link => Z = arith.add(X, Y);
+    instr sub X, Y -> Z link => Z = arith.sub(X, Y);
+    instr and X, Y -> Z link => Z = binary.and(X, Y);
+    instr or X, Y -> Z link => Z = binary.or(X, Y);
     instr assert_eq X, Y { X = Y }
 
     function main {

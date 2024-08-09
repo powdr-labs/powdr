@@ -3,16 +3,16 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::iter::once;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
 
 use itertools::Itertools;
 use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, ModuleStatement, SymbolPath,
 };
-use powdr_ast::parsed::types::Type;
+use powdr_ast::parsed::types::{ArrayType, Type};
 use powdr_ast::parsed::visitor::Children;
 use powdr_ast::parsed::{
-    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SymbolCategory,
+    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions,
+    SymbolCategory,
 };
 use powdr_number::{DegreeType, FieldElement, GoldilocksField};
 
@@ -22,7 +22,8 @@ use powdr_ast::analyzed::{
 };
 use powdr_parser::{parse, parse_module, parse_type};
 
-use crate::type_inference::{infer_types, ExpectedType};
+use crate::type_builtins::constr_function_statement_type;
+use crate::type_inference::infer_types;
 use crate::{side_effect_checker, AnalysisDriver};
 
 use crate::statement_processor::{Counters, PILItem, StatementProcessor};
@@ -30,11 +31,11 @@ use crate::{condenser, evaluator, expression_processor::ExpressionProcessor};
 
 pub fn analyze_file<T: FieldElement>(path: &Path) -> Analyzed<T> {
     let files = import_all_dependencies(path);
-    analyze::<T>(files)
+    analyze(files)
 }
 
 pub fn analyze_ast<T: FieldElement>(pil_file: PILFile) -> Analyzed<T> {
-    analyze::<T>(vec![pil_file])
+    analyze(vec![pil_file])
 }
 
 pub fn analyze_string<T: FieldElement>(contents: &str) -> Analyzed<T> {
@@ -51,7 +52,7 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
     analyzer.process(files);
     analyzer.side_effect_check();
     analyzer.type_check();
-    analyzer.condense::<T>()
+    analyzer.condense()
 }
 
 #[derive(Default)]
@@ -63,7 +64,7 @@ struct PILAnalyzer {
     /// Map of definitions, gradually being built up here.
     definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     public_declarations: HashMap<String, PublicDeclaration>,
-    identities: Vec<Identity<Expression>>,
+    identities: Vec<Identity<SelectedExpressions<Expression>>>,
     /// The order in which definitions and identities
     /// appear in the source.
     source_order: Vec<StatementIdentifier>,
@@ -154,7 +155,7 @@ impl PILAnalyzer {
     fn core_types_if_not_present(&self) -> Option<PILFile> {
         // We are extracting some specific symbols from the prelude file.
         let prelude = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../std/prelude.asm"));
-        let missing_symbols = ["Constr", "Option"]
+        let missing_symbols = ["Constr", "Option", "challenge"]
             .into_iter()
             .filter(|symbol| {
                 !self
@@ -171,6 +172,7 @@ impl PILAnalyzer {
                     ModuleStatement::SymbolDefinition(s) => missing_symbols
                         .contains(&s.name.as_str())
                         .then_some(format!("{s}")),
+                    ModuleStatement::TraitImplementation(_) => None,
                 })
                 .join("\n");
             parse(None, &format!("namespace std::prelude;\n{missing_symbols}")).unwrap()
@@ -227,7 +229,11 @@ impl PILAnalyzer {
             .definitions
             .iter_mut()
             .filter(|(_name, (_symbol, value))| {
-                !matches!(value, Some(FunctionValueDefinition::TypeDeclaration(_)))
+                !matches!(
+                    value,
+                    Some(FunctionValueDefinition::TypeDeclaration(_))
+                        | Some(FunctionValueDefinition::TraitDeclaration(_))
+                )
             })
             .flat_map(|(name, (symbol, value))| {
                 let (type_scheme, expr) = match (symbol.kind, value) {
@@ -256,12 +262,7 @@ impl PILAnalyzer {
 
                         if let Some(FunctionValueDefinition::Array(items)) = value {
                             // Expect all items in the arrays to be field elements.
-                            expressions.extend(
-                                items
-                                    .iter_mut()
-                                    .flat_map(|item| item.pattern_mut())
-                                    .map(|e| (e, Type::Fe.into())),
-                            );
+                            expressions.extend(items.children_mut().map(|e| (e, Type::Fe.into())));
                         }
 
                         (type_scheme, None)
@@ -270,27 +271,31 @@ impl PILAnalyzer {
                 Some((name.clone(), (type_scheme, expr)))
             })
             .collect();
-        // Collect all expressions in identities.
-        let statement_type = ExpectedType {
-            ty: Type::NamedType(SymbolPath::from_str("std::prelude::Constr").unwrap(), None),
-            allow_array: true,
-        };
         for id in &mut self.identities {
             if id.kind == IdentityKind::Polynomial {
-                // At statement level, we allow Constr or Constr[].
-                expressions.push((id.expression_for_poly_id_mut(), statement_type.clone()));
+                // At statement level, we allow Constr, Constr[] or ().
+                expressions.push((
+                    id.expression_for_poly_id_mut(),
+                    constr_function_statement_type(),
+                ));
             } else {
                 for part in [&mut id.left, &mut id.right] {
                     if let Some(selector) = &mut part.selector {
                         expressions.push((selector, Type::Expr.into()))
                     }
-                    for e in &mut part.expressions {
-                        expressions.push((e, Type::Expr.into()))
-                    }
+
+                    expressions.push((
+                        part.expressions.as_mut(),
+                        Type::Array(ArrayType {
+                            base: Box::new(Type::Expr),
+                            length: None,
+                        })
+                        .into(),
+                    ))
                 }
             }
         }
-        let inferred_types = infer_types(definitions, &mut expressions, &statement_type)
+        let inferred_types = infer_types(definitions, &mut expressions)
             .map_err(|mut errors| {
                 eprintln!("\nError during type inference:");
                 for e in &errors {
@@ -313,8 +318,7 @@ impl PILAnalyzer {
     }
 
     pub fn condense<T: FieldElement>(self) -> Analyzed<T> {
-        condenser::condense::<T>(
-            self.polynomial_degree,
+        condenser::condense(
             self.definitions,
             self.public_declarations,
             &self.identities,
@@ -402,27 +406,22 @@ impl PILAnalyzer {
     }
 
     fn handle_namespace(&mut self, name: SymbolPath, degree: Option<parsed::Expression>) {
-        if let Some(degree) = degree {
-            let degree = ExpressionProcessor::new(self.driver(), &Default::default())
-                .process_expression(degree);
+        self.polynomial_degree = degree
+            .map(|degree| {
+                ExpressionProcessor::new(self.driver(), &Default::default())
+                    .process_expression(degree)
+            })
             // TODO we should maybe implement a separate evaluator that is able to run before type checking
             // and is field-independent (only uses integers)?
-            let namespace_degree: u64 = u64::try_from(
-                evaluator::evaluate_expression::<GoldilocksField>(&degree, &self.definitions)
-                    .unwrap()
-                    .try_to_integer()
-                    .unwrap(),
-            )
-            .unwrap();
-            if let Some(degree) = self.polynomial_degree {
-                assert_eq!(
-                    degree, namespace_degree,
-                    "all namespaces must have the same degree"
-                );
-            } else {
-                self.polynomial_degree = Some(namespace_degree);
-            }
-        }
+            .map(|degree| {
+                u64::try_from(
+                    evaluator::evaluate_expression::<GoldilocksField>(&degree, &self.definitions)
+                        .unwrap()
+                        .try_to_integer()
+                        .unwrap(),
+                )
+                .unwrap()
+            });
         self.current_namespace = AbsoluteSymbolPath::default().join(name);
     }
 
@@ -438,13 +437,7 @@ impl<'a> AnalysisDriver for Driver<'a> {
     fn resolve_namespaced_decl(&self, path: &[&String]) -> AbsoluteSymbolPath {
         path.iter()
             .fold(self.0.current_namespace.clone(), |path, part| {
-                if part.starts_with('%') {
-                    // Constants are not namespaced
-                    AbsoluteSymbolPath::default()
-                } else {
-                    path
-                }
-                .with_part(part)
+                path.with_part(part)
             })
     }
 

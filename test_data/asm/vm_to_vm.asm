@@ -1,4 +1,4 @@
-machine Main with degree: 256 {
+machine Main with degree: 16 {
 
     VM vm;
 
@@ -8,8 +8,8 @@ machine Main with degree: 256 {
     reg Z[<=];
     reg A;
 
-    instr add X, Y -> Z = vm.add;
-    instr sub X, Y -> Z = vm.sub;
+    instr add X, Y -> Z link => Z = vm.add(X, Y);
+    instr sub X, Y -> Z link => Z = vm.sub(X, Y);
     instr assert_eq X, Y { X = Y }
 
     function main {

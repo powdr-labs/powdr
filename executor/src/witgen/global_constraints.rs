@@ -4,13 +4,14 @@ use std::marker::PhantomData;
 use num_traits::Zero;
 
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperator, AlgebraicExpression as Expression, AlgebraicReference, Identity,
-    IdentityKind, PolyID, PolynomialType,
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
+    AlgebraicReference, IdentityKind, PolyID, PolynomialType,
 };
 
 use powdr_number::FieldElement;
 
 use crate::witgen::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
+use crate::Identity;
 
 use super::expression_evaluator::ExpressionEvaluator;
 use super::range_constraints::RangeConstraint;
@@ -109,15 +110,15 @@ impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for GlobalConst
 /// TODO at some point, we should check that they still hold.
 pub fn set_global_constraints<'a, T: FieldElement>(
     fixed_data: FixedData<T>,
-    identities: impl IntoIterator<Item = &'a Identity<Expression<T>>>,
-) -> (FixedData<T>, Vec<&'a Identity<Expression<T>>>) {
+    identities: impl IntoIterator<Item = &'a Identity<T>>,
+) -> (FixedData<T>, Vec<&'a Identity<T>>) {
     let mut known_constraints = BTreeMap::new();
     // For these columns, we know that they are not only constrained to those bits
     // but also have one row for each possible value.
     // It allows us to completely remove some lookups.
     let mut full_span = BTreeSet::new();
     for (poly_id, col) in fixed_data.fixed_cols.iter() {
-        if let Some((cons, full)) = process_fixed_column(col.values) {
+        if let Some((cons, full)) = process_fixed_column(col.values_max_size()) {
             assert!(known_constraints.insert(poly_id, cons).is_none());
             if full {
                 full_span.insert(poly_id);
@@ -208,7 +209,7 @@ fn process_fixed_column<T: FieldElement>(fixed: &[T]) -> Option<(RangeConstraint
 /// no further information than the range constraint.
 fn propagate_constraints<T: FieldElement>(
     mut known_constraints: BTreeMap<PolyID, RangeConstraint<T>>,
-    identity: &Identity<Expression<T>>,
+    identity: &Identity<T>,
     full_span: &BTreeSet<PolyID>,
 ) -> (BTreeMap<PolyID, RangeConstraint<T>>, bool) {
     let mut remove = false;
@@ -271,13 +272,23 @@ fn propagate_constraints<T: FieldElement>(
 /// Tries to find "X * (1 - X) = 0"
 fn is_binary_constraint<T: FieldElement>(expr: &Expression<T>) -> Option<PolyID> {
     // TODO Write a proper pattern matching engine.
-    if let Expression::BinaryOperation(left, AlgebraicBinaryOperator::Sub, right) = expr {
+    if let Expression::BinaryOperation(AlgebraicBinaryOperation {
+        left,
+        op: AlgebraicBinaryOperator::Sub,
+        right,
+    }) = expr
+    {
         if let Expression::Number(n) = right.as_ref() {
             if n.is_zero() {
                 return is_binary_constraint(left.as_ref());
             }
         }
-    } else if let Expression::BinaryOperation(left, AlgebraicBinaryOperator::Mul, right) = expr {
+    } else if let Expression::BinaryOperation(AlgebraicBinaryOperation {
+        left,
+        op: AlgebraicBinaryOperator::Mul,
+        right,
+    }) = expr
+    {
         let symbolic_ev = SymbolicEvaluator;
         let left_root = ExpressionEvaluator::new(symbolic_ev.clone())
             .evaluate(left)
@@ -354,6 +365,8 @@ mod test {
     use pretty_assertions::assert_eq;
     use test_log::test;
 
+    use crate::constant_evaluator::get_uniquely_sized;
+
     use super::*;
 
     #[test]
@@ -417,15 +430,16 @@ namespace Global(2**20);
     // A bit more complicated to see that the 'pattern matcher' works properly.
     (1 - A + 0) * (A + 1 - 1) = 0;
     col witness B;
-    { B } in { BYTE };
+    [ B ] in [ BYTE ];
     col witness C;
     C = A * 512 + B;
     col witness D;
-    { D } in { BYTE };
-    { D } in { SHIFTED };
+    [ D ] in [ BYTE ];
+    [ D ] in [ SHIFTED ];
 ";
         let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(pil_source);
         let constants = crate::constant_evaluator::generate(&analyzed);
+        let constants = get_uniquely_sized(&constants).unwrap();
         let fixed_polys = (0..constants.len())
             .map(|i| constant_poly_id(i as u64))
             .collect::<Vec<_>>();
@@ -485,7 +499,7 @@ namespace Global(2**20);
 namespace Global(1024);
     let bytes: col = |i| i % 256;
     let X;
-    { X * 4 } in { bytes };
+    [ X * 4 ] in [ bytes ];
 ";
         let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(pil_source);
         let known_constraints = vec![(constant_poly_id(0), RangeConstraint::from_max_bit(7))]

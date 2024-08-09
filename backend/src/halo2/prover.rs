@@ -48,6 +48,7 @@ use itertools::Itertools;
 use rand::rngs::OsRng;
 use std::{
     io::{self, Cursor},
+    sync::Arc,
     time::Instant,
 };
 
@@ -58,9 +59,9 @@ use std::{
 /// This only works with Bn254, so it really shouldn't be generic over the field
 /// element, but without RFC #1210, the only alternative I found is a very ugly
 /// "unsafe" code, and unsafe code is harder to explain and maintain.
-pub struct Halo2Prover<'a, F> {
-    analyzed: &'a Analyzed<F>,
-    fixed: &'a [(String, Vec<F>)],
+pub struct Halo2Prover<F> {
+    analyzed: Arc<Analyzed<F>>,
+    fixed: Arc<Vec<(String, Vec<F>)>>,
     params: ParamsKZG<Bn256>,
     // Verification key of the proof type we're generating
     vkey: Option<VerifyingKey<G1Affine>>,
@@ -82,10 +83,10 @@ pub fn generate_setup(size: DegreeType) -> ParamsKZG<Bn256> {
     ParamsKZG::<Bn256>::new(std::cmp::max(4, degree_bits(size)))
 }
 
-impl<'a, F: FieldElement> Halo2Prover<'a, F> {
+impl<F: FieldElement> Halo2Prover<F> {
     pub fn new(
-        analyzed: &'a Analyzed<F>,
-        fixed: &'a [(String, Vec<F>)],
+        analyzed: Arc<Analyzed<F>>,
+        fixed: Arc<Vec<(String, Vec<F>)>>,
         setup: Option<&mut dyn io::Read>,
         proof_type: ProofType,
     ) -> Result<Self, io::Error> {
@@ -129,7 +130,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
     ) -> Result<(Vec<u8>, Vec<Vec<Fr>>), String> {
         log::info!("Starting proof generation...");
 
-        let circuit = PowdrCircuit::new(self.analyzed, self.fixed)
+        let circuit = PowdrCircuit::new(self.analyzed.clone(), &self.fixed)
             .with_witgen_callback(witgen_callback)
             .with_witness(witness);
         let publics = vec![circuit.instance_column()];
@@ -238,7 +239,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
 
         log::info!("Generating circuit for app snark...");
 
-        let circuit_app = PowdrCircuit::new(self.analyzed, self.fixed)
+        let circuit_app = PowdrCircuit::new(self.analyzed.clone(), &self.fixed)
             .with_witgen_callback(witgen_callback)
             .with_witness(witness);
 
@@ -362,7 +363,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
     }
 
     fn generate_verification_key_single(&self) -> Result<VerifyingKey<G1Affine>, String> {
-        let circuit = PowdrCircuit::new(self.analyzed, self.fixed);
+        let circuit = PowdrCircuit::new(self.analyzed.clone(), &self.fixed);
         keygen_vk(&self.params, &circuit).map_err(|e| e.to_string())
     }
 

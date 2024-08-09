@@ -1,15 +1,17 @@
+use std::machines::range::Byte2;
 use std::machines::memory::Memory;
 
 machine Main with
     degree: 65536,
     operation_id: operation_id
 {
-    Memory memory;
+    Byte2 byte2;
+    Memory memory(byte2);
 
     // Read values from ADDR1 & ADDR2, write value3 to ADDR3
-    link ACTIVE ~> memory.mload ADDR1, STEP -> value1;
-    link ACTIVE ~> memory.mload ADDR2, STEP + 1 -> value2;
-    link ACTIVE ~> memory.mstore ADDR3, STEP + 2, value3 ->;
+    link if ACTIVE ~> value1 = memory.mload(ADDR1, STEP);
+    link if ACTIVE ~> value2 = memory.mload(ADDR2, STEP + 1);
+    link if ACTIVE ~> memory.mstore(ADDR3, STEP + 2, value3);
 
     // Because we're doing 3 memory operations in each time step, we'll
     // increment the time step by 3

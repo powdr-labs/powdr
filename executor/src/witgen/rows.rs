@@ -1,6 +1,6 @@
 use std::{
     collections::HashSet,
-    fmt::Debug,
+    fmt::Display,
     ops::{Add, Sub},
 };
 
@@ -12,7 +12,7 @@ use crate::witgen::Constraint;
 
 use super::{
     affine_expression::{AffineExpression, AffineResult},
-    data_structures::column_map::WitnessColumnMap,
+    data_structures::{column_map::WitnessColumnMap, finalizable_data::FinalizedRow},
     expression_evaluator::ExpressionEvaluator,
     global_constraints::RangeConstraintSet,
     range_constraints::RangeConstraint,
@@ -105,16 +105,17 @@ impl Sub<RowIndex> for RowIndex {
     }
 }
 
-impl std::fmt::Display for RowIndex {
+impl Display for RowIndex {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{}", self.index)
     }
 }
 
-#[derive(Clone, PartialEq, Debug)]
-pub enum CellValue<T: FieldElement> {
+#[derive(Default, Clone, PartialEq)]
+enum CellValue<T: FieldElement> {
     Known(T),
     RangeConstraint(RangeConstraint<T>),
+    #[default]
     Unknown,
 }
 
@@ -123,170 +124,218 @@ impl<T: FieldElement> CellValue<T> {
         matches!(self, CellValue::Known(_))
     }
 
-    pub fn unwrap_or_default(&self) -> T {
+    /// Returns the value if known, otherwise zero.
+    pub fn unwrap_or_zero(&self) -> T {
         match self {
             CellValue::Known(v) => *v,
             _ => Default::default(),
         }
     }
 
-    /// Returns the new combined range constraint or new value for this cell.
+    /// Returns Some(value) if known, otherwise None.
+    pub fn value(&self) -> Option<T> {
+        match self {
+            CellValue::Known(v) => Some(*v),
+            _ => None,
+        }
+    }
+
+    /// Updates the cell with the new combined range constraint or new value for this cell.
     ///
     /// # Panics
     /// Panics if the update is not an improvement.
-    pub fn update_with(&self, c: &Constraint<T>) -> Self {
-        match (self, c) {
+    pub fn apply_update(&mut self, c: &Constraint<T>) {
+        match (&self, c) {
             (CellValue::Known(_), _) => {
                 // Note that this is a problem even if the value that was set is the same,
                 // because we would return that progress was made when it wasn't.
                 panic!("Value was already set.");
             }
-            (_, Constraint::Assignment(v)) => CellValue::Known(*v),
+            (_, Constraint::Assignment(v)) => {
+                *self = CellValue::Known(*v);
+            }
             (CellValue::RangeConstraint(current), Constraint::RangeConstraint(c)) => {
                 let new = c.conjunction(current);
                 assert!(new != *current, "Range constraint was already set");
                 log::trace!("         (the conjunction is {})", new);
-                CellValue::RangeConstraint(new)
+                *self = CellValue::RangeConstraint(new)
             }
             (CellValue::Unknown, Constraint::RangeConstraint(c)) => {
-                CellValue::RangeConstraint(c.clone())
+                *self = CellValue::RangeConstraint(c.clone())
             }
         }
     }
 }
 
-impl<T: FieldElement> From<CellValue<T>> for Option<T> {
-    fn from(val: CellValue<T>) -> Self {
-        match val {
-            CellValue::Known(v) => Some(v),
+impl<T: FieldElement> Display for CellValue<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CellValue::Known(v) => write!(f, "{v}"),
+            CellValue::RangeConstraint(rc) => write!(f, "?  (range constraint: {rc})"),
+            CellValue::Unknown => write!(f, "?"),
+        }
+    }
+}
+
+#[derive(Clone, PartialEq)]
+pub struct Row<T: FieldElement> {
+    values: WitnessColumnMap<CellValue<T>>,
+}
+
+impl<T: FieldElement> Row<T> {
+    pub fn value_or_zero(&self, poly_id: &PolyID) -> T {
+        self.values[poly_id].unwrap_or_zero()
+    }
+
+    pub fn value(&self, poly_id: &PolyID) -> Option<T> {
+        self.values[poly_id].value()
+    }
+
+    pub fn range_constraint(&self, poly_id: &PolyID) -> Option<RangeConstraint<T>> {
+        match &self.values[poly_id] {
+            CellValue::RangeConstraint(c) => Some(c.clone()),
             _ => None,
         }
     }
-}
 
-/// A single cell, holding an optional value and range constraint.
-#[derive(Clone)]
-pub struct Cell<'a, T: FieldElement> {
-    /// The column name, for debugging purposes.
-    pub name: &'a str,
-    pub value: CellValue<T>,
-}
-
-impl<'a, T: FieldElement> Cell<'a, T> {
-    /// Applies the new range constraint or new value to this cell.
-    ///
-    /// # Panics
-    /// Panics if the update is not an improvement.
-    pub fn apply_update(&mut self, c: &Constraint<T>) {
-        self.value = self.value.update_with(c);
-    }
-}
-
-impl<T: FieldElement> Debug for Cell<'_, T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let debug_str = match &self.value {
-            CellValue::Known(v) => format!("{} = {}", self.name, v),
-            CellValue::RangeConstraint(rc) => {
-                format!("{} = ?  (range constraint: {})", self.name, rc)
-            }
-            CellValue::Unknown => format!("{} = ?", self.name),
+    /// Merges two rows, updating the first.
+    /// Range constraints from the second row are ignored.
+    pub fn merge_with(&mut self, other: &Row<T>) -> Result<(), ()> {
+        // First check for conflicts, otherwise we would have to roll back changes.
+        if self
+            .values
+            .values()
+            .zip(other.values.values())
+            .any(|(cell1, cell2)| match (&cell1, &cell2) {
+                (CellValue::Known(v1), CellValue::Known(v2)) => v1 != v2,
+                _ => false,
+            })
+        {
+            return Err(());
         };
-        f.write_str(&debug_str)
+
+        self.values
+            .values_iter_mut()
+            .zip(other.values.values())
+            .for_each(|(cell1, cell2)| match (&cell1, &cell2) {
+                (CellValue::Known(_), _) => {}
+                _ => *cell1 = cell2.clone(),
+            });
+        Ok(())
+    }
+
+    pub fn value_is_known(&self, poly_id: &PolyID) -> bool {
+        self.values[poly_id].is_known()
+    }
+
+    pub fn set_cell_unknown(&mut self, poly_id: &PolyID) {
+        self.values[poly_id] = CellValue::Unknown;
+    }
+
+    pub fn apply_update(&mut self, poly_id: &PolyID, constr: &Constraint<T>) {
+        self.values[poly_id].apply_update(constr);
+    }
+
+    pub fn finalize(&self, column_ids: &[PolyID]) -> FinalizedRow<T> {
+        let (values, known_cells) = column_ids
+            .iter()
+            .map(|poly_id| {
+                // TODO avoid these accesses.
+                let cell = &self.values[poly_id];
+                (cell.unwrap_or_zero(), cell.is_known())
+            })
+            .unzip();
+        FinalizedRow::new(values, known_cells)
     }
 }
 
-/// A row of cells, indexed by polynomial ID.
-pub type Row<'a, T> = WitnessColumnMap<Cell<'a, T>>;
-
-impl<T: FieldElement> Debug for Row<'_, T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Row:\n{}", self.render_values(true, None))
-    }
-}
-
-impl<'a, T: FieldElement> Row<'a, T> {
+impl<T: FieldElement> Row<T> {
     /// Creates a "fresh" row, i.e., one that is empty but initialized with the global range constraints.
-    pub fn fresh(fixed_data: &'a FixedData<'a, T>, row: RowIndex) -> Row<'a, T> {
-        WitnessColumnMap::from(
+    pub fn fresh(fixed_data: &FixedData<'_, T>, row: RowIndex) -> Row<T> {
+        // TODO this instance could be computed exactly once (per column set) and then cloned.
+        // TODO and we could copy in the external witnesses later on
+        // TODO we should really only have a subset of the columns.
+        let values = WitnessColumnMap::from(
             fixed_data
                 .global_range_constraints()
                 .witness_constraints
                 .iter()
-                .map(|(poly_id, range_constraint)| {
-                    let name = fixed_data.column_name(&poly_id);
-                    let value = match (
-                        fixed_data.external_witness(row.into(), &poly_id),
-                        range_constraint.as_ref(),
-                    ) {
-                        (Some(external_witness), _) => CellValue::Known(external_witness),
-                        (None, Some(range_constraint)) => {
-                            CellValue::RangeConstraint(range_constraint.clone())
-                        }
-                        (None, None) => CellValue::Unknown,
-                    };
-                    Cell { name, value }
+                .map(|(poly_id, rc)| {
+                    if let Some(external_witness) =
+                        fixed_data.external_witness(row.into(), &poly_id)
+                    {
+                        CellValue::Known(external_witness)
+                    } else if let Some(rc) = rc {
+                        CellValue::RangeConstraint(rc.clone())
+                    } else {
+                        CellValue::Unknown
+                    }
                 }),
-        )
+        );
+        Self { values }
     }
 
     /// Builds a string representing the current row
-    pub fn render(&self, title: &str, include_unknown: bool, cols: &HashSet<PolyID>) -> String {
+    pub fn render(
+        &self,
+        title: &str,
+        include_unknown: bool,
+        cols: &HashSet<PolyID>,
+        fixed_data: &FixedData<'_, T>,
+    ) -> String {
         format!(
             "{}:\n{}\n---------------------",
             title,
-            self.render_values(include_unknown, Some(cols))
+            self.render_values(include_unknown, Some(cols), fixed_data)
         )
     }
 
     /// Builds a string listing all values, one by row. Nonzero entries are
     /// first, then zero, then unknown (if `include_unknown == true`).
-    pub fn render_values(&self, include_unknown: bool, cols: Option<&HashSet<PolyID>>) -> String {
-        let mut cells = self
+    pub fn render_values(
+        &self,
+        include_unknown: bool,
+        cols: Option<&HashSet<PolyID>>,
+        fixed_data: &FixedData<'_, T>,
+    ) -> String {
+        self.values
             .iter()
-            .filter(|(_, cell)| cell.value.is_known() || include_unknown)
+            .filter(|(_, cell)| cell.is_known() || include_unknown)
             .filter(|(col, _)| cols.map(|cols| cols.contains(col)).unwrap_or(true))
-            .collect::<Vec<_>>();
-
-        // Nonzero first, then zero, then unknown
-        cells.sort_by_key(|(i, cell)| {
-            (
-                match cell.value {
-                    CellValue::Known(v) if v.is_zero() => 1,
-                    CellValue::Known(_) => 0,
-                    _ => 2,
-                },
-                *i,
-            )
-        });
-
-        cells
-            .into_iter()
-            .map(|(_, cell)| format!("    {cell:?}"))
+            // Nonzero first, then zero, then unknown
+            .sorted_by_key(|(i, cell)| {
+                (
+                    match cell {
+                        CellValue::Known(v) if v.is_zero() => 1,
+                        CellValue::Known(_) => 0,
+                        _ => 2,
+                    },
+                    *i,
+                )
+            })
+            .map(|(poly_id, cell)| format!("    {} = {cell}", fixed_data.column_name(&poly_id)))
             .join("\n")
     }
 }
 
-impl<T: FieldElement> From<Row<'_, T>> for WitnessColumnMap<T> {
+impl<T: FieldElement> From<Row<T>> for WitnessColumnMap<T> {
     /// Builds a map from polynomial ID to value. Unknown values are set to zero.
-    fn from(val: Row<T>) -> Self {
-        WitnessColumnMap::from(
-            val.into_iter()
-                .map(|(_, cell)| cell.value.unwrap_or_default()),
-        )
+    fn from(row: Row<T>) -> Self {
+        WitnessColumnMap::from(row.values.values_into_iter().map(|c| c.unwrap_or_zero()))
     }
 }
 
 /// A pair of mutable row references which knows how to apply updates.
-pub struct RowUpdater<'row, 'a, T: FieldElement> {
-    current: &'row mut Row<'a, T>,
-    next: &'row mut Row<'a, T>,
+pub struct RowUpdater<'row, T: FieldElement> {
+    current: &'row mut Row<T>,
+    next: &'row mut Row<T>,
     current_row_index: RowIndex,
 }
 
-impl<'row, 'a, T: FieldElement> RowUpdater<'row, 'a, T> {
+impl<'row, T: FieldElement> RowUpdater<'row, T> {
     pub fn new(
-        current: &'row mut Row<'a, T>,
-        next: &'row mut Row<'a, T>,
+        current: &'row mut Row<T>,
+        next: &'row mut Row<T>,
         current_row_index: RowIndex,
     ) -> Self {
         Self {
@@ -315,13 +364,13 @@ impl<'row, 'a, T: FieldElement> RowUpdater<'row, 'a, T> {
                 );
             }
         }
-        self.get_cell_mut(poly).apply_update(c);
+        self.get_row_mut(poly.next).apply_update(&poly.poly_id, c);
     }
 
-    fn get_cell_mut<'b>(&'b mut self, poly: &AlgebraicReference) -> &'b mut Cell<'a, T> {
-        match poly.next {
-            false => &mut self.current[&poly.poly_id],
-            true => &mut self.next[&poly.poly_id],
+    fn get_row_mut(&mut self, next: bool) -> &mut Row<T> {
+        match next {
+            false => self.current,
+            true => self.next,
         }
     }
 
@@ -344,20 +393,22 @@ pub enum UnknownStrategy {
 /// A pair of row references which knows which value / range constraint
 /// to return for a given [AlgebraicReference].
 pub struct RowPair<'row, 'a, T: FieldElement> {
-    pub current: &'row Row<'a, T>,
-    pub next: Option<&'row Row<'a, T>>,
+    pub current: &'row Row<T>,
+    pub next: Option<&'row Row<T>>,
     pub current_row_index: RowIndex,
     fixed_data: &'a FixedData<'a, T>,
     unknown_strategy: UnknownStrategy,
+    size: DegreeType,
 }
 impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     /// Creates a new row pair.
     pub fn new(
-        current: &'row Row<'a, T>,
-        next: &'row Row<'a, T>,
+        current: &'row Row<T>,
+        next: &'row Row<T>,
         current_row_index: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
         unknown_strategy: UnknownStrategy,
+        size: DegreeType,
     ) -> Self {
         Self {
             current,
@@ -365,15 +416,17 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
             current_row_index,
             fixed_data,
             unknown_strategy,
+            size,
         }
     }
 
     /// Creates a new row pair from a single row, setting the next row to None.
     pub fn from_single_row(
-        current: &'row Row<'a, T>,
+        current: &'row Row<T>,
         current_row_index: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
         unknown_strategy: UnknownStrategy,
+        size: DegreeType,
     ) -> Self {
         Self {
             current,
@@ -381,29 +434,38 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
             current_row_index,
             fixed_data,
             unknown_strategy,
+            size,
         }
     }
 
-    /// Gets the cell corresponding to the given polynomial reference.
-    ///
-    /// # Panics
-    /// Panics if the next row is accessed but the row pair has been constructed with
-    /// [RowPair::from_single_row].
-    fn get_cell(&self, poly: &AlgebraicReference) -> &Cell<T> {
-        match (poly.next, self.next.as_ref()) {
-            (false, _) => &self.current[&poly.poly_id],
-            (true, Some(next)) => &next[&poly.poly_id],
-            (true, None) => panic!("Tried to access next row, but it is not available."),
+    pub fn value_is_known(&self, poly: &AlgebraicReference) -> bool {
+        self.get_row_mut(poly.next).value_is_known(&poly.poly_id)
+    }
+
+    fn get_row_mut(&self, next: bool) -> &Row<T> {
+        match next {
+            false => self.current,
+            true => self
+                .next
+                .unwrap_or_else(|| panic!("Tried to access next row, but it is not available.")),
+        }
+    }
+
+    fn get_row(&self, next: bool) -> &Row<T> {
+        match next {
+            false => self.current,
+            true => self
+                .next
+                .unwrap_or_else(|| panic!("Tried to access next row, but it is not available.")),
         }
     }
 
     pub fn get_value(&self, poly: &AlgebraicReference) -> Option<T> {
-        match self.get_cell(poly).value {
-            CellValue::Known(value) => Some(value),
-            _ => match self.unknown_strategy {
-                UnknownStrategy::Zero => Some(T::zero()),
-                UnknownStrategy::Unknown => None,
-            },
+        let row = self.get_row(poly.next);
+        if self.unknown_strategy == UnknownStrategy::Zero {
+            Some(row.value_or_zero(&poly.poly_id))
+        } else {
+            row.value(&poly.poly_id)
         }
     }
 
@@ -415,6 +477,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
             self.fixed_data,
             self.current_row_index.into(),
             self,
+            self.size,
         ))
         .evaluate(expr)
     }
@@ -431,9 +494,6 @@ impl<T: FieldElement> WitnessColumnEvaluator<T> for RowPair<'_, '_, T> {
 
 impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for RowPair<'_, '_, T> {
     fn range_constraint(&self, poly: &AlgebraicReference) -> Option<RangeConstraint<T>> {
-        match self.get_cell(poly).value {
-            CellValue::RangeConstraint(ref c) => Some(c.clone()),
-            _ => None,
-        }
+        self.get_row(poly.next).range_constraint(&poly.poly_id)
     }
 }

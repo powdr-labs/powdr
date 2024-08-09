@@ -11,13 +11,29 @@ use crate::witgen::rows::Row;
 
 /// A row entry in [FinalizableData].
 #[derive(Clone)]
-enum Entry<'a, T: FieldElement> {
+enum Entry<T: FieldElement> {
     /// The row is still in progress, and range constraints are still available.
-    InProgress(Row<'a, T>),
-    /// A finalized row, represented as a vector of values (corresponding to the columns
-    /// stored in [FinalizableData]) and a bit vector indicating which cells are known.
-    /// The value of unknown cells should be ignored.
-    Finalized(Vec<T>, BitVec),
+    InProgress(Row<T>),
+    Finalized(FinalizedRow<T>),
+}
+
+/// A finalized row, containing an indication which of the cells are known.
+/// Finalized rows cannot be changed and their range constraints are no longer available.
+#[derive(Clone)]
+pub struct FinalizedRow<T> {
+    /// The values, indices according to the columns stored in [FinalizableData].
+    values: Vec<T>,
+    /// A bit vector indicating which cells are known. Values of unknown cells should be ignored.
+    known_cells: BitVec,
+}
+
+impl<T> FinalizedRow<T> {
+    pub fn new(values: Vec<T>, known_cells: BitVec) -> Self {
+        Self {
+            values,
+            known_cells,
+        }
+    }
 }
 
 /// A data structure that stores rows of a witness table, and behaves much like a `Vec<Row<T>>`.
@@ -26,21 +42,21 @@ enum Entry<'a, T: FieldElement> {
 /// Once a row has been finalized, any operation trying to access it again will fail at runtime.
 /// [FinalizableData::take_transposed] can be used to access the final cells.
 #[derive(Clone)]
-pub struct FinalizableData<'a, T: FieldElement> {
+pub struct FinalizableData<T: FieldElement> {
     /// The list of rows (either in progress or finalized)
-    data: Vec<Entry<'a, T>>,
+    data: Vec<Entry<T>>,
     /// The list of column IDs (in sorted order), used to index finalized rows.
     column_ids: Vec<PolyID>,
 }
 
-impl<'a, T: FieldElement> FinalizableData<'a, T> {
+impl<T: FieldElement> FinalizableData<T> {
     pub fn new(column_ids: &HashSet<PolyID>) -> Self {
         Self::with_initial_rows_in_progress(column_ids, [].into_iter())
     }
 
     pub fn with_initial_rows_in_progress(
         column_ids: &HashSet<PolyID>,
-        rows: impl Iterator<Item = Row<'a, T>>,
+        rows: impl Iterator<Item = Row<T>>,
     ) -> Self {
         let mut column_ids = column_ids.iter().cloned().collect::<Vec<_>>();
         column_ids.sort();
@@ -56,14 +72,14 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
         self.data.is_empty()
     }
 
-    pub fn push(&mut self, row: Row<'a, T>) {
+    pub fn push(&mut self, row: Row<T>) {
         self.data.push(Entry::InProgress(row));
     }
 
-    pub fn pop(&mut self) -> Option<Row<'a, T>> {
+    pub fn pop(&mut self) -> Option<Row<T>> {
         match self.data.pop() {
             Some(Entry::InProgress(row)) => Some(row),
-            Some(Entry::Finalized(_, _)) => panic!("Row already finalized."),
+            Some(Entry::Finalized(_)) => panic!("Row already finalized."),
             None => None,
         }
     }
@@ -72,10 +88,10 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
         self.data.extend(other.data);
     }
 
-    pub fn remove(&mut self, i: usize) -> Row<'a, T> {
+    pub fn remove(&mut self, i: usize) -> Row<T> {
         match self.data.remove(i) {
             Entry::InProgress(row) => row,
-            Entry::Finalized(_, _) => panic!("Row {i} already finalized."),
+            Entry::Finalized(_) => panic!("Row {i} already finalized."),
         }
     }
 
@@ -83,22 +99,22 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
         self.data.truncate(len);
     }
 
-    pub fn get_mut(&mut self, i: usize) -> Option<&mut Row<'a, T>> {
+    pub fn get_mut(&mut self, i: usize) -> Option<&mut Row<T>> {
         match &mut self.data[i] {
             Entry::InProgress(row) => Some(row),
-            Entry::Finalized(_, _) => panic!("Row {i} already finalized."),
+            Entry::Finalized(_) => panic!("Row {i} already finalized."),
         }
     }
 
-    pub fn last(&self) -> Option<&Row<'a, T>> {
+    pub fn last(&self) -> Option<&Row<T>> {
         match self.data.last() {
             Some(Entry::InProgress(row)) => Some(row),
-            Some(Entry::Finalized(_, _)) => panic!("Last row already finalized."),
+            Some(Entry::Finalized(_)) => panic!("Last row already finalized."),
             None => None,
         }
     }
 
-    pub fn mutable_row_pair(&mut self, i: usize) -> (&mut Row<'a, T>, &mut Row<'a, T>) {
+    pub fn mutable_row_pair(&mut self, i: usize) -> (&mut Row<T>, &mut Row<T>) {
         let (before, after) = self.data.split_at_mut(i + 1);
         let current = before.last_mut().unwrap();
         let next = after.first_mut().unwrap();
@@ -109,13 +125,8 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
     }
 
     pub fn finalize(&mut self, i: usize) -> bool {
-        if let Entry::InProgress(row) = &self.data[i] {
-            let (values, known_cells) = self
-                .column_ids
-                .iter()
-                .map(|c| (row[c].value.unwrap_or_default(), row[c].value.is_known()))
-                .unzip();
-            self.data[i] = Entry::Finalized(values, known_cells);
+        if let Entry::InProgress(row) = &mut self.data[i] {
+            self.data[i] = Entry::Finalized(row.finalize(&self.column_ids));
             true
         } else {
             false
@@ -154,9 +165,12 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
         for row in std::mem::take(&mut self.data) {
             match row {
                 Entry::InProgress(_) => unreachable!(),
-                Entry::Finalized(row, known_cells) => {
+                Entry::Finalized(FinalizedRow {
+                    values,
+                    known_cells,
+                }) => {
                     for (col_index, (value, is_known)) in
-                        row.into_iter().zip(known_cells).enumerate()
+                        values.into_iter().zip(known_cells).enumerate()
                     {
                         known_cells_col[col_index].push(is_known);
                         columns[col_index].push(value);
@@ -177,22 +191,22 @@ impl<'a, T: FieldElement> FinalizableData<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement> Index<usize> for FinalizableData<'a, T> {
-    type Output = Row<'a, T>;
+impl<T: FieldElement> Index<usize> for FinalizableData<T> {
+    type Output = Row<T>;
 
     fn index(&self, index: usize) -> &Self::Output {
         match &self.data[index] {
             Entry::InProgress(row) => row,
-            Entry::Finalized(_, _) => panic!("Row {index} already finalized."),
+            Entry::Finalized(_) => panic!("Row {index} already finalized."),
         }
     }
 }
 
-impl<'a, T: FieldElement> IndexMut<usize> for FinalizableData<'a, T> {
+impl<T: FieldElement> IndexMut<usize> for FinalizableData<T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
         match &mut self.data[index] {
             Entry::InProgress(row) => row,
-            Entry::Finalized(_, _) => panic!("Row {index} already finalized."),
+            Entry::Finalized(_) => panic!("Row {index} already finalized."),
         }
     }
 }

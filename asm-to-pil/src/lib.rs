@@ -1,11 +1,14 @@
 #![deny(clippy::print_stdout)]
 
-use powdr_ast::asm_analysis::{AnalysisASMFile, Item};
+use powdr_ast::asm_analysis::{AnalysisASMFile, Item, SubmachineDeclaration};
 use powdr_number::FieldElement;
 use romgen::generate_machine_rom;
+use vm_to_constrained::ROM_SUBMACHINE_NAME;
 mod common;
 mod romgen;
 mod vm_to_constrained;
+
+pub const ROM_SUFFIX: &str = "ROM";
 
 /// Remove all ASM from the machine tree. Takes a tree of virtual or constrained machines and returns a tree of constrained machines
 pub fn compile<T: FieldElement>(file: AnalysisASMFile) -> AnalysisASMFile {
@@ -13,18 +16,36 @@ pub fn compile<T: FieldElement>(file: AnalysisASMFile) -> AnalysisASMFile {
         items: file
             .items
             .into_iter()
-            .map(|(name, m)| {
-                (
-                    name,
-                    match m {
-                        Item::Machine(m) => {
-                            let (m, rom) = generate_machine_rom::<T>(m);
-                            Item::Machine(vm_to_constrained::convert_machine::<T>(m, rom))
+            .flat_map(|(name, m)| match m {
+                Item::Machine(m) => {
+                    let (m, rom) = generate_machine_rom::<T>(m);
+                    let (mut m, rom_machine) = vm_to_constrained::convert_machine::<T>(m, rom);
+
+                    match rom_machine {
+                        // in the absence of ROM, simply return the machine
+                        None => vec![(name, Item::Machine(m))],
+                        Some(rom_machine) => {
+                            // introduce a new name for the ROM machine, based on the original name
+                            let mut rom_name = name.clone();
+                            let machine_name = rom_name.pop().unwrap();
+                            rom_name.push(format!("{machine_name}{ROM_SUFFIX}"));
+
+                            // add the ROM as a submachine
+                            m.submachines.push(SubmachineDeclaration {
+                                name: ROM_SUBMACHINE_NAME.into(),
+                                ty: rom_name.clone(),
+                                args: vec![],
+                            });
+
+                            // return both the machine and the rom
+                            vec![
+                                (name, Item::Machine(m)),
+                                (rom_name, Item::Machine(rom_machine)),
+                            ]
                         }
-                        Item::Expression(e) => Item::Expression(e),
-                        Item::TypeDeclaration(enum_decl) => Item::TypeDeclaration(enum_decl),
-                    },
-                )
+                    }
+                }
+                item => vec![(name, item)],
             })
             .collect(),
     }
@@ -33,11 +54,13 @@ pub fn compile<T: FieldElement>(file: AnalysisASMFile) -> AnalysisASMFile {
 pub mod utils {
     use powdr_ast::{
         asm_analysis::{
-            AssignmentStatement, FunctionStatement, Instruction, InstructionDefinitionStatement,
+            AssignmentStatement, FunctionStatement, InstructionDefinitionStatement,
             InstructionStatement, LabelStatement, RegisterDeclarationStatement, RegisterTy,
         },
         parsed::{
-            asm::{AssignmentRegister, InstructionBody, MachineStatement, RegisterFlag},
+            asm::{
+                AssignmentRegister, Instruction, InstructionBody, MachineStatement, RegisterFlag,
+            },
             PilStatement,
         },
     };
@@ -70,6 +93,7 @@ pub mod utils {
                     instruction: Instruction {
                         params: instruction.params,
                         body: instruction.body,
+                        links: instruction.links,
                     },
                 }
             }
@@ -83,6 +107,7 @@ pub mod utils {
         Instruction {
             params: instr.params,
             body: instr.body,
+            links: instr.links,
         }
     }
 

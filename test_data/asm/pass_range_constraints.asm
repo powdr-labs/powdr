@@ -26,8 +26,8 @@ machine Mul with
     // Make range constraints conditional on "used", just so
     // that witgen is forced to infer the range constraints
     // while solving, rather than inferring global range constraints.
-    used { x } in { FOUR_BIT };
-    used { y } in { FOUR_BIT };
+    used $ [ x ] in [ FOUR_BIT ];
+    used $ [ y ] in [ FOUR_BIT ];
 
     z = x * y;
 }
@@ -41,7 +41,7 @@ machine Main with
 
     operation main<0>;
 
-    link latch ~> mul.mul x -> res;
+    link if latch ~> res = mul.mul(x);
 
     col fixed operation_id = [0]*;
     col fixed latch = [1, 0]*;
@@ -53,6 +53,6 @@ machine Main with
 
     // Again, make range constraints conditional
     col fixed FOUR_BIT(i) { i & 0xf };
-    latch { res_lower } in { FOUR_BIT };
-    latch { res_upper } in { FOUR_BIT };
+    latch $ [ res_lower ] in [ FOUR_BIT ];
+    latch $ [ res_upper ] in [ FOUR_BIT ];
 }

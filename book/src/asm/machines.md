@@ -51,3 +51,19 @@ machine MyMachine {
     MySubmachine my_submachine;
 }
 ```
+
+Machines can also receive submachines as construction parameters.
+A machine passed in as an argument can be accessed in the same way as locally declared submachines:
+
+```
+machine MachineWithParam(subm: MySubmachine) {
+    // `subm` can be accessed as a submachine
+    ...
+}
+
+machine MyMachine {
+    MySubmachine my_submachine;
+    // `my_submachine` is passed to `another_submachine` as a construction argument
+    MachineWithParam another_submachine(my_submachine);
+}
+```

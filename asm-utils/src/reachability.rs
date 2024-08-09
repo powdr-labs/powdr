@@ -141,13 +141,20 @@ fn extract_replacements<R: Register, F: FunctionOpKind>(
         .iter()
         .filter_map(|s| match s {
             Statement::Directive(dir, args) if dir.as_str() == ".set" => {
-                if let [Argument::Expression(Expression::Symbol(from)), Argument::Expression(Expression::Symbol(to))] = &args[..]
-                {
-                    Some((from.to_string(), to.to_string()))
-                } else {
-                    panic!();
+                match &args[..] {
+                    [Argument::Expression(Expression::Symbol(from)), Argument::Expression(Expression::Symbol(to))] =>
+                    {
+                        Some((from.to_string(), to.to_string()))
+                    },
+                    [Argument::Expression(Expression::Symbol(_)), Argument::Expression(Expression::Number(_))] => {
+                        // Not a replacement, but not an error either, so ignore.
+                        None
+                    }
+                    _ =>{
+                        panic!();
+                    }
                 }
-            }
+            },
             _ => None,
         })
         .fold(BTreeMap::new(), |mut acc, (from, to)| {

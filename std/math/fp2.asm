@@ -1,7 +1,13 @@
+use std::array::len;
+use std::array::fold;
+use std::check::assert;
+use std::check::panic;
 use std::convert::fe;
 use std::convert::int;
 use std::convert::expr;
 use std::field::modulus;
+use std::field::known_field;
+use std::field::KnownField;
 use std::prover::eval;
 
 /// An element of the extension field over the implied base field (which has to be either
@@ -58,6 +64,11 @@ let eq_ext: Fp2<fe>, Fp2<fe> -> bool = |a, b| match (a, b) {
     (Fp2::Fp2(a0, a1), Fp2::Fp2(b0, b1)) => (a0 == b0) && (a1 == b1)
 };
 
+/// Returns constraints that two extension field elements are equal
+let constrain_eq_ext: Fp2<expr>, Fp2<expr> -> Constr[] = |a, b| match (a, b) {
+    (Fp2::Fp2(a0, a1), Fp2::Fp2(b0, b1)) => [a0 = b0, a1 = b1]
+};
+
 /// Field inversion (defined on fe instead of int)
 let inv_field: fe -> fe = |x| fe(std::math::ff::inverse(int(x), modulus()));
 
@@ -72,6 +83,45 @@ let inv_ext: Fp2<fe> -> Fp2<fe> = |a| match a {
     Fp2::Fp2(a0, a1) => {
         let factor = inv_field(7 * a1 * a1 - a0 * a0);
         Fp2::Fp2(-a0 * factor, a1 * factor)
+    }
+};
+
+/// Applies the next operator to both components of the extension field element
+let next_ext: Fp2<expr> -> Fp2<expr> = |a| match a {
+    Fp2::Fp2(a0, a1) => Fp2::Fp2(a0', a1')
+};
+
+/// Returns the two components of the extension field element as a tuple
+let<T> unpack_ext: Fp2<T> -> (T, T) = |a| match a {
+    Fp2::Fp2(a0, a1) => (a0, a1)
+};
+
+/// Returns the two components of the extension field element as an array
+let<T> unpack_ext_array: Fp2<T> -> T[] = |a| match a {
+    Fp2::Fp2(a0, a1) => [a0, a1]
+};
+
+/// Whether we need to operate on the F_{p^2} extension field (because the current field is too small).
+let needs_extension: -> bool = || match known_field() {
+    Option::Some(KnownField::Goldilocks) => true,
+    Option::Some(KnownField::BN254) => false,
+    None => panic("The permutation/lookup argument is not implemented for the current field!")
+};
+
+/// Matches whether the length of a given array is correct to operate on the extension field
+let is_extension = |arr| match len(arr) {
+        1 => false,
+        2 => true,
+        _ => panic("Expected 1 or 2 accumulator columns!")
+};
+
+/// Constructs an extension field element `a0 + a1 * X` from either `[a0, a1]` or `[a0]` (setting `a1`to zero in that case)
+let fp2_from_array = |arr| {
+    if is_extension(arr) {
+        Fp2::Fp2(arr[0], arr[1])
+    } else {
+        let _ = assert(!needs_extension(), || "The field is too small and needs to move to the extension field. Pass two elements instead!");
+        from_base(arr[0])
     }
 };
 

@@ -1,18 +1,19 @@
+use std::machines::binary::ByteBinary;
 use std::machines::binary::Binary;
 
-
-machine Main with degree: 262144 {
+machine Main with degree: 196608 {
     reg pc[@pc];
     reg X0[<=];
     reg X1[<=];
     reg X2[<=];
     reg A;
 
-    Binary binary;
+    ByteBinary byte_binary;
+    Binary binary(byte_binary);
 
-    instr and X0, X1 -> X2 ~ binary.and;
-    instr or X0, X1 -> X2 ~ binary.or;
-    instr xor X0, X1 -> X2 ~ binary.xor;
+    instr and X0, X1 -> X2 link ~> X2 = binary.and(X0, X1);
+    instr or X0, X1 -> X2 link ~> X2 = binary.or(X0, X1);
+    instr xor X0, X1 -> X2 link ~> X2 = binary.xor(X0, X1);
 
     instr assert_eq X0, X1 {
         X0 = X1

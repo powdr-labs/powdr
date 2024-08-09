@@ -142,7 +142,7 @@ machine Sqrt {
 ### Challenges
 
 ```rust
-let std::prover::challenge: int, int -> expr
+let std::prelude::challenge: int, int -> expr
 ```
 
 Constructs a challenge object, essentially asking the verifier for a random number.
@@ -160,6 +160,19 @@ let std::prover::degree: -> int
 
 Returns the current number of rows / the length of the witness columns, also
 known as the degree.
+
+### Hints
+
+```rust
+let std::prover::set_hint: expr, (int -> std::prover::Query) -> ()
+```
+
+This function can be used to set a "query function" for a witness column.
+Query functions are used during witness generation and allow witness column cells
+to receive a value even though they are not uniquely constrained by the constraints.
+
+The first argument must be a witness column and the function can only be called
+once per witness column.
 
 ## Types
 
@@ -179,11 +192,11 @@ enum Constr {
     /// A polynomial identity.
     Identity(expr, expr),
     /// A lookup constraint with selectors.
-    Lookup(Option<expr>, expr[], Option<expr>, expr[]),
+    Lookup((Option<expr>, Option<expr>), (expr, expr)[]),
     /// A permutation constraint with selectors.
-    Permutation(Option<expr>, expr[], Option<expr>, expr[]),
+    Permutation((Option<expr>, Option<expr>), (expr, expr)[]),
     /// A connection constraint (copy constraint).
-    Connection(expr[], expr[])
+    Connection((expr, expr)[])
 }
 ```
 

@@ -10,15 +10,17 @@ use std::{
 };
 
 use itertools::Either;
+use num_traits::One;
 use powdr_parser_util::SourceRef;
 
 use crate::parsed::{
     asm::{
-        AbsoluteSymbolPath, AssignmentRegister, CallableRef, FunctionParams, InstructionBody,
-        InstructionParams, OperationId, OperationParams,
+        AbsoluteSymbolPath, AssignmentRegister, CallableRef, FunctionParams, Instruction,
+        MachineParams, OperationId, OperationParams,
     },
     visitor::{ExpressionVisitable, VisitOrder},
-    EnumDeclaration, NamespacedPolynomialReference, PilStatement, TypedExpression,
+    EnumDeclaration, NamespacedPolynomialReference, PilStatement, TraitDeclaration,
+    TraitImplementation, TypedExpression,
 };
 
 pub use crate::parsed::Expression;
@@ -64,20 +66,29 @@ pub struct InstructionDefinitionStatement {
 }
 
 #[derive(Clone, Debug)]
-pub struct Instruction {
-    pub params: InstructionParams,
-    pub body: InstructionBody,
-}
-
-#[derive(Clone, Debug)]
-pub struct LinkDefinitionStatement {
+pub struct LinkDefinition {
     pub source: SourceRef,
-    /// the flag which activates this link. Should be boolean.
-    pub flag: Expression,
+    /// the instruction flag, if this is an instruction link. Should be boolean.
+    /// This is kept separate from the link flag to easily identity links from different instructions (for link merging).
+    /// The final link selector is the product of the instruction flag, if present, and the link flag.
+    pub instr_flag: Option<Expression>,
+    /// the link flag. Should be boolean.
+    pub link_flag: Expression,
     /// the callable to invoke when the flag is on. TODO: check this during type checking
     pub to: CallableRef,
     /// true if this is a permutation link
     pub is_permutation: bool,
+}
+
+/// Helper function to multiply optional instruction flag with link flag
+pub fn combine_flags(instr_flag: Option<Expression>, link_flag: Expression) -> Expression {
+    match instr_flag {
+        Some(f) => match link_flag {
+            Expression::Number(_, n) if n.value.is_one() => f,
+            _ => f * link_flag,
+        },
+        None => link_flag,
+    }
 }
 
 #[derive(Clone, Debug, Default)]
@@ -659,6 +670,8 @@ pub struct SubmachineDeclaration {
     pub name: String,
     /// the type of the submachine
     pub ty: AbsoluteSymbolPath,
+    /// machine arguments
+    pub args: Vec<Expression>,
 }
 
 /// An item that is part of the module tree after all modules,
@@ -668,13 +681,18 @@ pub enum Item {
     Machine(Machine),
     Expression(TypedExpression),
     TypeDeclaration(EnumDeclaration<Expression>),
+    TraitImplementation(TraitImplementation<Expression>),
+    TraitDeclaration(TraitDeclaration<Expression>),
 }
 
 impl Item {
     pub fn try_to_machine(&self) -> Option<&Machine> {
         match self {
             Item::Machine(m) => Some(m),
-            Item::Expression(_) | Item::TypeDeclaration(_) => None,
+            Item::Expression(_)
+            | Item::TypeDeclaration(_)
+            | Item::TraitImplementation(_)
+            | Item::TraitDeclaration(_) => None,
         }
     }
 }
@@ -689,6 +707,8 @@ pub struct Machine {
     pub operation_id: Option<String>,
     /// call selector array
     pub call_selectors: Option<String>,
+    /// Declared machine parameters
+    pub params: MachineParams,
     /// The set of registers for this machine
     pub registers: Vec<RegisterDeclarationStatement>,
     /// The index of the program counter in the registers, if any
@@ -698,7 +718,7 @@ pub struct Machine {
     /// The set of instructions which can be invoked in functions
     pub instructions: Vec<InstructionDefinitionStatement>,
     /// The set of low level links to other machines
-    pub links: Vec<LinkDefinitionStatement>,
+    pub links: Vec<LinkDefinition>,
     /// The set of functions and operations in the same namespace
     pub callable: CallableSymbolDefinitions,
     /// The set of submachines
@@ -795,13 +815,19 @@ impl AnalysisASMFile {
     pub fn machines(&self) -> impl Iterator<Item = (&AbsoluteSymbolPath, &Machine)> {
         self.items.iter().filter_map(|(n, m)| match m {
             Item::Machine(m) => Some((n, m)),
-            Item::Expression(_) | Item::TypeDeclaration(_) => None,
+            Item::Expression(_)
+            | Item::TypeDeclaration(_)
+            | Item::TraitDeclaration(_)
+            | Item::TraitImplementation(_) => None,
         })
     }
     pub fn machines_mut(&mut self) -> impl Iterator<Item = (&AbsoluteSymbolPath, &mut Machine)> {
         self.items.iter_mut().filter_map(|(n, m)| match m {
             Item::Machine(m) => Some((n, m)),
-            Item::Expression(_) | Item::TypeDeclaration(_) => None,
+            Item::Expression(_)
+            | Item::TypeDeclaration(_)
+            | Item::TraitDeclaration(_)
+            | Item::TraitImplementation(_) => None,
         })
     }
 }

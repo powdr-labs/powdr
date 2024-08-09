@@ -34,6 +34,7 @@ impl Display for ModuleStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             ModuleStatement::SymbolDefinition(symbol_def) => write!(f, "{symbol_def}"),
+            ModuleStatement::TraitImplementation(trait_impl) => write!(f, "{trait_impl}"),
         }
     }
 }
@@ -62,6 +63,7 @@ impl Display for SymbolDefinition {
                 )
             }
             SymbolValue::TypeDeclaration(ty) => write!(f, "{ty}"),
+            SymbolValue::TraitDeclaration(trait_decl) => write!(f, "{trait_decl}"),
         }
     }
 }
@@ -87,13 +89,13 @@ impl Display for Import {
 
 impl Display for Machine {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        writeln!(f, "{}{} {{", &self.arguments, &self.properties)?;
+        writeln!(f, "{}{} {{", &self.params, &self.properties)?;
         write_items_indented(f, &self.statements)?;
         write!(f, "}}")
     }
 }
 
-impl Display for MachineArguments {
+impl Display for MachineParams {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let args = self.0.iter().join(", ");
         if !args.is_empty() {
@@ -131,18 +133,11 @@ impl Display for MachineProperties {
 
 impl Display for InstructionBody {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            InstructionBody::Local(elements) => write!(
-                f,
-                "{{ {} }}",
-                elements
-                    .iter()
-                    .map(format_instruction_statement)
-                    .format(", ")
-            ),
-            InstructionBody::CallablePlookup(r) => write!(f, " = {r};"),
-            InstructionBody::CallablePermutation(r) => write!(f, " ~ {r};"),
-        }
+        write!(
+            f,
+            "{{ {} }}",
+            self.0.iter().map(format_instruction_statement).format(", ")
+        )
     }
 }
 
@@ -165,8 +160,13 @@ impl Display for Instruction {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "{}{}",
+            "{}{}{}",
             self.params.prepend_space_if_non_empty(),
+            if self.links.is_empty() {
+                "".to_string()
+            } else {
+                " ".to_string() + &self.links.iter().join(" ")
+            },
             self.body
         )
     }
@@ -176,17 +176,32 @@ impl Display for LinkDeclaration {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "link {} {} {};",
-            self.flag,
+            "link {}{} {}",
+            if self.flag == 1.into() {
+                "".to_string()
+            } else {
+                format!("if {} ", self.flag)
+            },
             if self.is_permutation { "~>" } else { "=>" },
-            self.to,
+            self.link,
         )
     }
 }
 
 impl Display for CallableRef {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}.{} {}", self.instance, self.callable, self.params)
+        write!(
+            f,
+            "{}{}.{}({})",
+            match &self.params.outputs[..] {
+                [] => "".to_string(),
+                [output] => format!("{output} = "),
+                outputs => format!("({}) = ", outputs.iter().join(", ")),
+            },
+            self.instance,
+            self.callable,
+            self.params.inputs.iter().join(", ")
+        )
     }
 }
 
@@ -194,7 +209,13 @@ impl Display for MachineStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             MachineStatement::Pil(_, statement) => write!(f, "{statement}"),
-            MachineStatement::Submachine(_, ty, name) => write!(f, "{ty} {name};"),
+            MachineStatement::Submachine(_, ty, name, args) => {
+                let mut args = args.iter().join(", ");
+                if !args.is_empty() {
+                    args = format!("({args})");
+                }
+                write!(f, "{ty} {name}{args};")
+            }
             MachineStatement::RegisterDeclaration(_, name, flag) => write!(
                 f,
                 "reg {}{};",
@@ -207,7 +228,7 @@ impl Display for MachineStatement {
                 write!(f, "instr {name}{instruction}")
             }
             MachineStatement::LinkDeclaration(_, link) => {
-                write!(f, "{link}")
+                write!(f, "{link};")
             }
             MachineStatement::FunctionDeclaration(_, name, params, statements) => {
                 write!(
@@ -358,14 +379,14 @@ impl<E: Display> Display for MatchArm<E> {
 impl Display for Pattern {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            Pattern::CatchAll => write!(f, "_"),
-            Pattern::Ellipsis => write!(f, ".."),
-            Pattern::Number(n) => write!(f, "{n}"),
-            Pattern::String(s) => write!(f, "{}", quote(s)),
-            Pattern::Tuple(t) => write!(f, "({})", t.iter().format(", ")),
-            Pattern::Array(a) => write!(f, "[{}]", a.iter().format(", ")),
-            Pattern::Variable(v) => write!(f, "{v}"),
-            Pattern::Enum(name, fields) => write!(
+            Pattern::CatchAll(_) => write!(f, "_"),
+            Pattern::Ellipsis(_) => write!(f, ".."),
+            Pattern::Number(_, n) => write!(f, "{n}"),
+            Pattern::String(_, s) => write!(f, "{}", quote(s)),
+            Pattern::Tuple(_, t) => write!(f, "({})", t.iter().format(", ")),
+            Pattern::Array(_, a) => write!(f, "[{}]", a.iter().format(", ")),
+            Pattern::Variable(_, v) => write!(f, "{v}"),
+            Pattern::Enum(_, name, fields) => write!(
                 f,
                 "{name}{}",
                 fields
@@ -399,6 +420,9 @@ impl<E: Display> Display for StatementInsideBlock<E> {
 impl<E: Display> Display for LetStatementInsideBlock<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "let {}", self.pattern)?;
+        if let Some(ty) = &self.ty {
+            write!(f, ": {ty}")?;
+        }
         if let Some(v) = &self.value {
             write!(f, " = {v};")
         } else {
@@ -434,14 +458,19 @@ impl Display for PilStatement {
         match self {
             PilStatement::Include(_, path) => write!(f, "include {};", quote(path)),
             PilStatement::Namespace(_, name, poly_length) => {
-                write!(
-                    f,
-                    "namespace {name}{};",
-                    poly_length
-                        .as_ref()
-                        .map(|l| format!("({l})"))
-                        .unwrap_or_default()
-                )
+                write!(f, "namespace")?;
+                let name = name.to_string();
+                match poly_length {
+                    None if name.is_empty() => {
+                        write!(f, ";")
+                    }
+                    None => {
+                        write!(f, " {name};")
+                    }
+                    Some(poly_length) => {
+                        write!(f, " {name}({poly_length});")
+                    }
+                }
             }
             PilStatement::LetStatement(_, pattern, type_scheme, value) => write_indented_by(
                 f,
@@ -496,22 +525,21 @@ impl Display for PilStatement {
             PilStatement::ConnectIdentity(_, left, right) => write_indented_by(
                 f,
                 format!(
-                    "{{ {} }} connect {{ {} }};",
+                    "[ {} ] connect [ {} ];",
                     format_list(left),
                     format_list(right)
                 ),
                 1,
             ),
-            PilStatement::ConstantDefinition(_, name, value) => {
-                write_indented_by(f, format!("constant {name} = {value};"), 1)
-            }
             PilStatement::Expression(_, e) => write_indented_by(f, format!("{e};"), 1),
             PilStatement::EnumDeclaration(_, enum_decl) => write_indented_by(f, enum_decl, 1),
+            PilStatement::TraitImplementation(_, trait_impl) => write_indented_by(f, trait_impl, 1),
+            PilStatement::TraitDeclaration(_, trait_decl) => write_indented_by(f, trait_decl, 1),
         }
     }
 }
 
-impl Display for ArrayExpression {
+impl<Ref: Display> Display for ArrayExpression<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             ArrayExpression::Value(expressions) => {
@@ -546,10 +574,31 @@ impl Display for FunctionDefinition {
                 )
             }
             FunctionDefinition::Expression(e) => write!(f, " = {e}"),
-            FunctionDefinition::TypeDeclaration(_) => {
+            FunctionDefinition::TypeDeclaration(_) | FunctionDefinition::TraitDeclaration(_) => {
                 panic!("Should not use this formatting function.")
             }
         }
+    }
+}
+
+impl<E: Display> Display for TraitDeclaration<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "trait {name}<{type_vars}> {{\n{functions}}}",
+            name = self.name,
+            type_vars = self.type_vars.iter().format(", "),
+            functions = indent(
+                self.functions.iter().map(|m| format!("{m},\n")).format(""),
+                1
+            )
+        )
+    }
+}
+
+impl<E: Display> Display for TraitFunction<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}: {}", self.name, self.ty)
     }
 }
 
@@ -574,6 +623,56 @@ impl<E: Display> EnumDeclaration<E> {
                 1
             )
         )
+    }
+}
+
+impl<E: Display> Display for TraitImplementation<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let type_vars = if self.type_scheme.vars.is_empty() {
+            Default::default()
+        } else {
+            format!("<{}>", self.type_scheme.vars)
+        };
+
+        let Type::Tuple(TupleType { items }) = &self.type_scheme.ty else {
+            panic!("Type from trait scheme is not a tuple.")
+        };
+
+        let trait_vars = if items.is_empty() {
+            Default::default()
+        } else {
+            format!("<{}>", items.iter().format(", "))
+        };
+
+        write!(
+            f,
+            "impl{type_vars} {trait_name}{trait_vars} {{\n{methods}}}",
+            trait_name = self.name,
+            methods = indent(
+                self.functions.iter().map(|m| format!("{m},\n")).format(""),
+                1
+            )
+        )
+    }
+}
+
+impl<Expr: Display> Display for SelectedExpressions<Expr> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "{}{}",
+            self.selector
+                .as_ref()
+                .map(|s| format!("{s} $ "))
+                .unwrap_or_default(),
+            self.expressions
+        )
+    }
+}
+
+impl<E: Display> Display for NamedExpression<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}: {}", self.name, self.body)
     }
 }
 
@@ -642,7 +741,7 @@ impl Display for PolynomialName {
 impl Display for NamespacedPolynomialReference {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if let Some(type_args) = &self.type_args {
-            write!(f, "{}::<{}>", self.path, format_list(type_args))
+            write!(f, "{}::{}", self.path, format_type_args(type_args))
         } else {
             write!(f, "{}", self.path.to_dotted_string())
         }
@@ -801,11 +900,17 @@ impl Display for UnaryOperator {
 impl<E: Display> Display for BlockExpression<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         if self.statements.is_empty() {
-            write!(f, "{{ {} }}", self.expr)
+            if let Some(expr) = &self.expr {
+                write!(f, "{{ {expr} }}")
+            } else {
+                write!(f, "{{ }}")
+            }
         } else {
             writeln!(f, "{{")?;
             write_items_indented(f, &self.statements)?;
-            write_indented_by(f, &self.expr, 1)?;
+            if let Some(expr) = &self.expr {
+                write_indented_by(f, expr, 1)?;
+            }
             write!(f, "\n}}")
         }
     }
@@ -820,13 +925,14 @@ impl<E: Display> Display for Type<E> {
             Type::Fe => write!(f, "fe"),
             Type::String => write!(f, "string"),
             Type::Col => write!(f, "col"),
+            Type::Inter => write!(f, "inter"),
             Type::Expr => write!(f, "expr"),
             Type::Array(array) => write!(f, "{array}"),
             Type::Tuple(tuple) => write!(f, "{tuple}"),
             Type::Function(fun) => write!(f, "{fun}"),
             Type::TypeVar(name) => write!(f, "{name}"),
             Type::NamedType(name, Some(args)) => {
-                write!(f, "{name}<{}>", args.iter().format(", "))
+                write!(f, "{name}{}", format_type_args(args))
             }
             Type::NamedType(name, None) => write!(f, "{name}"),
         }
@@ -878,6 +984,25 @@ fn format_list_of_types<E: Display>(types: &[Type<E>]) -> String {
         .to_string()
 }
 
+/// Formats a list of types to be used as values for type arguments
+/// and puts them in angle brackets.
+/// Puts the last item in parentheses if it ends in `>` to avoid parser problems.
+pub fn format_type_args<E: Display>(args: &[Type<E>]) -> String {
+    format!(
+        "<{}>",
+        args.iter()
+            .map(|arg| arg.to_string())
+            .map(|s| {
+                if s.contains('>') {
+                    format!("({s})")
+                } else {
+                    s
+                }
+            })
+            .join(", ")
+    )
+}
+
 pub fn format_type_scheme_around_name<E: Display, N: Display>(
     name: &N,
     type_scheme: &Option<TypeScheme<E>>,
@@ -895,17 +1020,13 @@ pub fn format_type_scheme_around_name<E: Display, N: Display>(
 
 impl Display for TypeBounds {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        fn format_var((var, bounds): (&String, &BTreeSet<String>)) -> String {
-            format!(
-                "{var}{}",
-                if bounds.is_empty() {
-                    String::new()
-                } else {
-                    format!(": {}", bounds.iter().join(" + "))
-                }
-            )
-        }
-        write!(f, "{}", self.bounds().map(format_var).format(", "))
+        write!(
+            f,
+            "{}",
+            self.bounds()
+                .map(|(var, bounds)| TypeBounds::format_var_bound(var, bounds))
+                .format(", ")
+        )
     }
 }
 
@@ -919,7 +1040,7 @@ mod tests {
         let p = Param {
             name: "abc".into(),
             index: None,
-            ty: Some("ty".into()),
+            ty: "ty".parse().ok(),
         };
         assert_eq!(p.to_string(), "abc: ty");
         let empty = Params::<Param>::default();
@@ -930,24 +1051,24 @@ mod tests {
                 Param {
                     name: "abc".into(),
                     index: Some(7u32.into()),
-                    ty: Some("ty0".into()),
+                    ty: "ty0".parse().ok(),
                 },
                 Param {
                     name: "def".into(),
                     index: None,
-                    ty: Some("ty1".into()),
+                    ty: "ty1".parse().ok(),
                 },
             ],
             outputs: vec![
                 Param {
                     name: "abc".into(),
                     index: None,
-                    ty: Some("ty0".into()),
+                    ty: "ty0".parse().ok(),
                 },
                 Param {
                     name: "def".into(),
                     index: Some(2u32.into()),
-                    ty: Some("ty1".into()),
+                    ty: "ty1".parse().ok(),
                 },
             ],
         };
@@ -964,7 +1085,7 @@ mod tests {
             outputs: vec![Param {
                 name: "abc".into(),
                 index: None,
-                ty: Some("ty".into()),
+                ty: "ty".parse().ok(),
             }],
         };
         assert_eq!(out.to_string(), "-> abc: ty");
@@ -973,7 +1094,7 @@ mod tests {
             inputs: vec![Param {
                 name: "abc".into(),
                 index: None,
-                ty: Some("ty".into()),
+                ty: "ty".parse().ok(),
             }],
             outputs: vec![],
         };
@@ -996,5 +1117,143 @@ mod tests {
 
         assert_eq!(p.clone().join(s.clone()).to_string(), "::abc::y");
         assert_eq!(SymbolPath::from(p.join(s)).to_string(), "::abc::y");
+    }
+
+    #[cfg(test)]
+    mod parentheses {
+        use powdr_parser::parse;
+        use powdr_parser::test_utils::ClearSourceRefs;
+        use powdr_parser_util::UnwrapErrToStderr;
+        use pretty_assertions::assert_eq;
+        use test_log::test;
+
+        type TestCase = (&'static str, &'static str);
+
+        fn test_paren(test_case: &TestCase) {
+            let (input, expected) = test_case;
+            let mut parsed = parse(None, input).unwrap_err_to_stderr();
+            let printed = parsed.to_string();
+            assert_eq!(expected.trim(), printed.trim());
+            let mut re_parsed = parse(None, printed.as_str()).unwrap_err_to_stderr();
+
+            parsed.clear_source_refs();
+            re_parsed.clear_source_refs();
+            assert_eq!(parsed, re_parsed);
+        }
+
+        #[test]
+        fn binary_op() {
+            let test_cases: Vec<TestCase> = vec![
+                // Complete line
+                ("let t = ((x + y) * z);", "let t = (x + y) * z;"),
+                // Don't add extra
+                ("-x + y * !z;", "-x + y * !z;"),
+                ("x = (y <= z);", "x = (y <= z);"),
+                ("(x = y) <= z;", "(x = y) <= z;"),
+                ("x + y + z;", "x + y + z;"),
+                ("x * y * z;", "x * y * z;"),
+                ("x / y / z;", "x / y / z;"),
+                // Remove unneeded
+                ("(-x) + y * (!z);", "-x + y * !z;"),
+                ("(x * y) * z;", "x * y * z;"),
+                ("(x / y) / z;", "x / y / z;"),
+                ("(x ** (y ** z));", "x ** (y ** z);"),
+                ("(x - (y + z));", "x - (y + z);"),
+                // Observe associativity
+                ("x * (y * z);", "x * (y * z);"),
+                ("x / (y / z);", "x / (y / z);"),
+                ("x ** (y ** z);", "x ** (y ** z);"),
+                ("(x ** y) ** z;", "(x ** y) ** z;"),
+                // Don't remove needed
+                ("(x + y) * z;", "(x + y) * z;"),
+                ("((x + y) * z);", "(x + y) * z;"),
+                ("-(x + y);", "-(x + y);"),
+                // function call
+                ("(a + b)(2);", "(a + b)(2);"),
+                // Index access
+                ("(a + b)[2];", "(a + b)[2];"),
+                ("(i < 7) && (6 >= -i);", "i < 7 && 6 >= -i;"),
+                // Power test
+                ("(-x) ** (-y);", "(-x) ** (-y);"),
+                ("2 ** x';", "2 ** (x');"),
+                ("(2 ** x)';", "(2 ** x)';"),
+            ];
+
+            for test_case in test_cases {
+                test_paren(&test_case);
+            }
+        }
+
+        #[test]
+        fn lambda_ex() {
+            let test_cases: Vec<TestCase> = vec![
+                ("let x = 1 + (|i| i + 2);", "let x = 1 + (|i| i + 2);"),
+                ("let x = 1 + (|i| i) + 2;", "let x = 1 + (|i| i) + 2;"),
+                ("let x = 1 + (|i| (i + 2));", "let x = 1 + (|i| i + 2);"),
+                ("let x = (1 + (|i| i)) + 2;", "let x = 1 + (|i| i) + 2;"),
+                ("let x = (1 + (|i| (i + 2)));", "let x = 1 + (|i| i + 2);"),
+                ("let x = (1 + (|i| i + 2));", "let x = 1 + (|i| i + 2);"),
+                // Index access
+                ("(|i| i)[j];", "(|i| i)[j];"),
+            ];
+
+            for test_case in test_cases {
+                test_paren(&test_case);
+            }
+        }
+
+        #[test]
+        fn complex() {
+            let test_cases: Vec<TestCase> = vec![
+            // Don't change concise expression
+            (
+                "a | b * (c << d + e) & (f ^ g) = h * (i + g);",
+                "a | b * (c << d + e) & (f ^ g) = h * (i + g);",
+            ),
+            // Remove extra parentheses
+            (
+                "(a | ((b * (c << (d + e))) & (f ^ g))) = (h * ((i + g)));",
+                "a | b * (c << d + e) & (f ^ g) = h * (i + g);",
+            ),
+            (
+                "instr_or $ [0, X, Y, Z] is (main_bin.latch * main_bin.sel[0]) $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];",
+                "instr_or $ [0, X, Y, Z] is main_bin.latch * main_bin.sel[0] $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];",
+            ),
+            (
+                "instr_or $ [0, X, Y, Z] is main_bin.latch * main_bin.sel[0] $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];",
+                "instr_or $ [0, X, Y, Z] is main_bin.latch * main_bin.sel[0] $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];",
+            ),
+            (
+                "pc' = (1 - first_step') * ((((instr__jump_to_operation * _operation_id) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((instr__jump_to_operation + instr__loop) + instr_return)) * (pc + 1)));",
+                "pc' = (1 - first_step') * (instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1));",
+            ),
+            (
+                "let root_of_unity_for_log_degree: int -> fe = |n| root_of_unity ** (2**(32 - n));",
+                "let root_of_unity_for_log_degree: int -> fe = (|n| root_of_unity ** (2 ** (32 - n)));",
+            ),
+        ];
+
+            for test_case in test_cases {
+                test_paren(&test_case);
+            }
+        }
+
+        #[test]
+        fn index_access_parentheses() {
+            let test_cases: Vec<TestCase> = vec![
+                ("(x')(2);", "(x')(2);"),
+                ("x[2](2);", "x[2](2);"),
+                ("(x')[2];", "(x')[2];"),
+                ("-x[2];", "-x[2];"),
+                ("(-x)[2];", "(-x)[2];"),
+                ("-(x[2]);", "-x[2];"),
+                ("1 + x[2];", "1 + x[2];"),
+                ("1 + x(2);", "1 + x(2);"),
+            ];
+
+            for test_case in test_cases {
+                test_paren(&test_case);
+            }
+        }
     }
 }

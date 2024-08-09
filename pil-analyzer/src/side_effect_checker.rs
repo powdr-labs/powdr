@@ -4,7 +4,10 @@ use powdr_ast::{
     analyzed::{
         Expression, FunctionValueDefinition, Reference, Symbol, SymbolKind, TypedExpression,
     },
-    parsed::{BlockExpression, FunctionKind, LambdaExpression, StatementInsideBlock},
+    parsed::{
+        types::Type, BlockExpression, FunctionCall, FunctionKind, LambdaExpression,
+        StatementInsideBlock,
+    },
 };
 
 use lazy_static::lazy_static;
@@ -47,6 +50,7 @@ impl<'a> SideEffectChecker<'a> {
                     kind,
                     params: _,
                     body,
+                    outer_var_references: _,
                 },
             ) => {
                 if *kind != FunctionKind::Pure && *kind != self.context {
@@ -62,26 +66,47 @@ impl<'a> SideEffectChecker<'a> {
             }
             Expression::BlockExpression(_, BlockExpression { statements, .. }) => {
                 for s in statements {
-                    match s {
-                        StatementInsideBlock::LetStatement(s) => {
-                            if s.value.is_none() && self.context != FunctionKind::Constr {
-                                return Err(format!(
-                                    "Tried to create a witness column in a {} context: {s}",
-                                    self.context
-                                ));
-                            }
-                        }
-                        StatementInsideBlock::Expression(expr) => {
-                            if self.context != FunctionKind::Constr {
-                                return Err(format!(
-                                    "Tried to add a constraint in a {} context: {expr}",
-                                    self.context
-                                ));
-                            }
+                    if let StatementInsideBlock::LetStatement(ls) = s {
+                        if ls.value.is_none() && self.context != FunctionKind::Constr {
+                            return Err(format!(
+                                "Tried to create a witness column in a {} context: {ls}",
+                                self.context
+                            ));
+                        } else if ls.ty == Some(Type::Col) && self.context != FunctionKind::Constr {
+                            return Err(format!(
+                                "Tried to create a fixed column in a {} context: {ls}",
+                                self.context
+                            ));
                         }
                     }
                 }
                 e.children().try_for_each(|e| self.check(e))
+            }
+            Expression::FunctionCall(
+                _,
+                FunctionCall {
+                    function,
+                    arguments,
+                },
+            ) if matches!(function.as_ref(), Expression::Reference(_, Reference::Poly(r)) if r.name == "std::prover::set_hint") =>
+            {
+                // The function "set_hint" is special: It expects a "query" function as
+                // second argument, so we switch context when descending into the second argument.
+                self.check(function)?;
+                match &arguments[..] {
+                    [col, hint] => {
+                        self.check(col)?;
+                        assert_eq!(self.context, FunctionKind::Constr);
+                        self.context = FunctionKind::Query;
+                        let result = self.check(hint);
+                        self.context = FunctionKind::Constr;
+                        result
+                    }
+                    _ => {
+                        // Not the correct number of arguments, will lead to a type error later.
+                        arguments.iter().try_for_each(|e| self.check(e))
+                    }
+                }
             }
             _ => e.children().try_for_each(|e| self.check(e)),
         }
@@ -119,8 +144,9 @@ lazy_static! {
         ("std::convert::expr", FunctionKind::Pure),
         ("std::debug::print", FunctionKind::Pure),
         ("std::field::modulus", FunctionKind::Pure),
-        ("std::prover::challenge", FunctionKind::Constr), // strictly, only new_challenge would need "constr"
+        ("std::prelude::challenge", FunctionKind::Constr), // strictly, only new_challenge would need "constr"
         ("std::prover::degree", FunctionKind::Pure),
+        ("std::prover::set_hint", FunctionKind::Constr),
         ("std::prover::eval", FunctionKind::Query),
     ]
     .into_iter()

@@ -2,7 +2,8 @@
 //! i.e. it turns more complex expressions in identities to simpler expressions.
 
 use std::{
-    collections::{BTreeMap, HashMap, HashSet},
+    collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
+    fmt::Display,
     iter::once,
     str::FromStr,
     sync::Arc,
@@ -10,15 +11,16 @@ use std::{
 
 use powdr_ast::{
     analyzed::{
-        AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
-        Identity, IdentityKind, PolynomialType, PublicDeclaration, StatementIdentifier, Symbol,
-        SymbolKind,
+        self, AlgebraicExpression, AlgebraicReference, Analyzed, Expression,
+        FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialType, PublicDeclaration,
+        SelectedExpressions, StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
+        self,
         asm::{AbsoluteSymbolPath, SymbolPath},
         display::format_type_scheme_around_name,
         types::{ArrayType, Type},
-        SelectedExpressions,
+        FunctionKind, TypedExpression,
     },
 };
 use powdr_number::{DegreeType, FieldElement};
@@ -29,22 +31,22 @@ use crate::{
     statement_processor::Counters,
 };
 
+type ParsedIdentity = Identity<parsed::SelectedExpressions<Expression>>;
+type AnalyzedIdentity<T> = Identity<SelectedExpressions<AlgebraicExpression<T>>>;
+
 pub fn condense<T: FieldElement>(
-    degree: Option<DegreeType>,
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     mut public_declarations: HashMap<String, PublicDeclaration>,
-    identities: &[Identity<Expression>],
+    identities: &[ParsedIdentity],
     source_order: Vec<StatementIdentifier>,
     auto_added_symbols: HashSet<String>,
 ) -> Analyzed<T> {
-    let mut condenser = Condenser::new(&definitions, degree);
-
-    // Counter needed to re-assign identity IDs.
-    let mut counters = Counters::default();
+    let mut condenser = Condenser::new(&definitions);
 
     let mut condensed_identities = vec![];
     let mut intermediate_columns = HashMap::new();
-    let mut new_witness_columns = vec![];
+    let mut new_columns = vec![];
+    let mut new_values = HashMap::new();
     // Condense identities and intermediate columns and update the source order.
     let source_order = source_order
         .into_iter()
@@ -53,7 +55,7 @@ pub fn condense<T: FieldElement>(
                 let mut namespace =
                     AbsoluteSymbolPath::default().join(SymbolPath::from_str(name).unwrap());
                 namespace.pop();
-                condenser.set_namespace(namespace);
+                condenser.set_namespace_and_degree(namespace, definitions[name].0.degree);
             }
             let statement = match s {
                 StatementIdentifier::Identity(index) => {
@@ -77,8 +79,8 @@ pub fn condense<T: FieldElement>(
                                 && matches!(
                                 &scheme.unwrap().ty,
                                 Type::Array(ArrayType { base, length: _ })
-                                if base.as_ref() == &Type::Expr),
-                            "Intermediate column type has to be expr[], but got: {}",
+                                if base.as_ref() == &Type::Inter),
+                            "Intermediate column type has to be inter[], but got: {}",
                             format_type_scheme_around_name(&name, &e.type_scheme)
                         );
                         let result = condenser.condense_to_array_of_algebraic_expressions(&e.e);
@@ -87,8 +89,8 @@ pub fn condense<T: FieldElement>(
                     } else {
                         assert_eq!(
                             e.type_scheme,
-                            Some(Type::Expr.into()),
-                            "Intermediate column type has to be expr, but got: {}",
+                            Some(Type::Inter.into()),
+                            "Intermediate column type has to be inter, but got: {}",
                             format_type_scheme_around_name(&name, &e.type_scheme)
                         );
                         vec![condenser.condense_to_algebraic_expression(&e.e)]
@@ -98,30 +100,45 @@ pub fn condense<T: FieldElement>(
                 }
                 s => Some(s),
             };
-            // Extract and prepend the new witness columns, then identites
-            // and finally the original statment (if it exists).
-            let new_wits = condenser
-                .extract_new_witness_columns()
+
+            let mut intermediate_values = condenser.extract_new_intermediate_column_values();
+
+            // Extract and prepend the new columns, then identities
+            // and finally the original statement (if it exists).
+            let new_cols = condenser
+                .extract_new_columns()
                 .into_iter()
-                .map(|new_wit| {
-                    let name = new_wit.absolute_name.clone();
-                    new_witness_columns.push(new_wit);
-                    StatementIdentifier::Definition(name)
+                .map(|new_col| {
+                    if new_col.kind == SymbolKind::Poly(PolynomialType::Intermediate) {
+                        let name = new_col.absolute_name.clone();
+                        let values = intermediate_values.remove(&name).unwrap();
+                        intermediate_columns.insert(name, (new_col.clone(), values));
+                    } else {
+                        new_columns.push(new_col.clone());
+                    }
+                    StatementIdentifier::Definition(new_col.absolute_name)
                 })
                 .collect::<Vec<_>>();
+
+            assert!(intermediate_values.is_empty(), "");
 
             let identity_statements = condenser
                 .extract_new_constraints()
                 .into_iter()
                 .map(|identity| {
                     let index = condensed_identities.len();
-                    let id = counters.dispense_identity_id();
-                    condensed_identities.push(identity.into_identity(id));
+                    condensed_identities.push(identity);
                     StatementIdentifier::Identity(index)
                 })
                 .collect::<Vec<_>>();
 
-            new_wits
+            for (name, value) in condenser.extract_new_column_values() {
+                if new_values.insert(name.clone(), value).is_some() {
+                    panic!("Column {name} already has a hint set, but tried to add another one.",)
+                }
+            }
+
+            new_cols
                 .into_iter()
                 .chain(identity_statements)
                 .chain(statement)
@@ -129,8 +146,20 @@ pub fn condense<T: FieldElement>(
         .collect();
 
     definitions.retain(|name, _| !intermediate_columns.contains_key(name));
-    for wit in new_witness_columns {
-        definitions.insert(wit.absolute_name.clone(), (wit, None));
+    for symbol in new_columns {
+        definitions.insert(symbol.absolute_name.clone(), (symbol, None));
+    }
+    for (name, new_value) in new_values {
+        if let Some((_, value)) = definitions.get_mut(&name) {
+            if !value.is_none() {
+                panic!(
+                    "Column {name} already has a value / hint set, but tried to add another one."
+                )
+            }
+            *value = Some(new_value);
+        } else {
+            panic!("Column {name} not found.");
+        }
     }
 
     for decl in public_declarations.values_mut() {
@@ -144,7 +173,6 @@ pub fn condense<T: FieldElement>(
         reference.poly_id = Some(symbol.into());
     }
     Analyzed {
-        degree,
         definitions,
         public_declarations,
         intermediate_columns,
@@ -154,91 +182,58 @@ pub fn condense<T: FieldElement>(
     }
 }
 
-type SymbolCacheKey = (String, Option<Vec<Type>>);
+type SymbolCache<'a, T> = HashMap<String, BTreeMap<Option<Vec<Type>>, Arc<Value<'a, T>>>>;
 
 pub struct Condenser<'a, T> {
     degree: Option<DegreeType>,
     /// All the definitions from the PIL file.
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     /// Evaluation cache.
-    symbol_values: BTreeMap<SymbolCacheKey, Arc<Value<'a, T>>>,
-    /// Current namespace (for names of generated witnesses).
+    symbol_values: SymbolCache<'a, T>,
+    /// Current namespace (for names of generated columns).
     namespace: AbsoluteSymbolPath,
-    next_witness_id: u64,
-    /// The generated witness columns since the last extraction.
-    new_witnesses: Vec<Symbol>,
-    /// The names of all new witness columns ever generated, to avoid duplicates.
-    all_new_witness_names: HashSet<String>,
-    new_constraints: Vec<IdentityWithoutID<AlgebraicExpression<T>>>,
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct IdentityWithoutID<Expr> {
-    pub kind: IdentityKind,
-    pub source: SourceRef,
-    /// For a simple polynomial identity, the selector contains
-    /// the actual expression (see expression_for_poly_id).
-    pub left: SelectedExpressions<Expr>,
-    pub right: SelectedExpressions<Expr>,
-}
-
-impl<Expr> IdentityWithoutID<Expr> {
-    /// Constructs an Identity from a polynomial identity (expression assumed to be identical zero).
-    pub fn from_polynomial_identity(source: SourceRef, identity: Expr) -> Self {
-        Self {
-            kind: IdentityKind::Polynomial,
-            source,
-            left: SelectedExpressions {
-                selector: Some(identity),
-                expressions: vec![],
-            },
-            right: Default::default(),
-        }
-    }
-
-    pub fn into_identity(self, id: u64) -> Identity<Expr> {
-        Identity {
-            id,
-            kind: self.kind,
-            source: self.source,
-            left: self.left,
-            right: self.right,
-        }
-    }
+    /// ID dispensers.
+    counters: Counters,
+    /// The generated columns since the last extraction in creation order.
+    new_columns: Vec<Symbol>,
+    /// The hints and fixed column definitions added since the last extraction.
+    new_column_values: HashMap<String, FunctionValueDefinition>,
+    /// The values of intermediate columns generated since the last extraction.
+    new_intermediate_column_values: HashMap<String, Vec<AlgebraicExpression<T>>>,
+    /// The names of all new columns ever generated, to avoid duplicates.
+    new_symbols: HashSet<String>,
+    new_constraints: Vec<AnalyzedIdentity<T>>,
 }
 
 impl<'a, T: FieldElement> Condenser<'a, T> {
-    pub fn new(
-        symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-        degree: Option<DegreeType>,
-    ) -> Self {
-        let next_witness_id = symbols
-            .values()
-            .filter_map(|(sym, _)| match sym.kind {
-                SymbolKind::Poly(PolynomialType::Committed) => {
-                    Some(sym.id + sym.length.unwrap_or(1))
-                }
-                _ => None,
-            })
-            .max()
-            .unwrap_or_default();
+    pub fn new(symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>) -> Self {
+        let counters = Counters::with_existing(symbols.values().map(|(sym, _)| sym), None, None);
         Self {
-            degree,
             symbols,
+            degree: None,
             symbol_values: Default::default(),
             namespace: Default::default(),
-            next_witness_id,
-            new_witnesses: vec![],
-            all_new_witness_names: HashSet::new(),
+            counters,
+            new_columns: vec![],
+            new_column_values: Default::default(),
+            new_intermediate_column_values: Default::default(),
+            new_symbols: HashSet::new(),
             new_constraints: vec![],
         }
     }
 
-    pub fn condense_identity(&mut self, identity: &'a Identity<Expression>) {
+    pub fn condense_identity(&mut self, identity: &'a ParsedIdentity) {
         if identity.kind == IdentityKind::Polynomial {
             let expr = identity.expression_for_poly_id();
             evaluator::evaluate(expr, self)
-                .and_then(|expr| self.add_constraints(expr, identity.source.clone()))
+                .and_then(|expr| {
+                    if let Value::Tuple(items) = expr.as_ref() {
+                        assert!(items.is_empty());
+                        Ok(())
+                    } else {
+                        self.add_constraints(expr, identity.source.clone())
+                    }
+                })
                 .unwrap_or_else(|err| {
                     panic!(
                         "Error reducing expression to constraint:\nExpression: {expr}\nError: {err:?}"
@@ -247,7 +242,8 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         } else {
             let left = self.condense_selected_expressions(&identity.left);
             let right = self.condense_selected_expressions(&identity.right);
-            self.new_constraints.push(IdentityWithoutID {
+            self.new_constraints.push(Identity {
+                id: self.counters.dispense_identity_id(),
                 kind: identity.kind,
                 source: identity.source.clone(),
                 left,
@@ -257,34 +253,48 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     }
 
     /// Sets the current namespace which will be used for newly generated witness columns.
-    pub fn set_namespace(&mut self, namespace: AbsoluteSymbolPath) {
+    pub fn set_namespace_and_degree(
+        &mut self,
+        namespace: AbsoluteSymbolPath,
+        degree: Option<DegreeType>,
+    ) {
         self.namespace = namespace;
+        self.degree = degree;
     }
 
-    /// Returns the witness columns generated since the last call to this function.
-    pub fn extract_new_witness_columns(&mut self) -> Vec<Symbol> {
-        std::mem::take(&mut self.new_witnesses)
+    /// Returns columns generated since the last call to this function.
+    pub fn extract_new_columns(&mut self) -> Vec<Symbol> {
+        std::mem::take(&mut self.new_columns)
+    }
+
+    /// Return the new column values (fixed column definitions or witness column hints)
+    /// added since the last call to this function.
+    pub fn extract_new_column_values(&mut self) -> HashMap<String, FunctionValueDefinition> {
+        std::mem::take(&mut self.new_column_values)
+    }
+
+    /// Return the values of intermediate columns generated since the last call to this function.
+    pub fn extract_new_intermediate_column_values(
+        &mut self,
+    ) -> HashMap<String, Vec<AlgebraicExpression<T>>> {
+        std::mem::take(&mut self.new_intermediate_column_values)
     }
 
     /// Returns the new constraints generated since the last call to this function.
-    pub fn extract_new_constraints(&mut self) -> Vec<IdentityWithoutID<AlgebraicExpression<T>>> {
+    pub fn extract_new_constraints(&mut self) -> Vec<AnalyzedIdentity<T>> {
         std::mem::take(&mut self.new_constraints)
     }
 
     fn condense_selected_expressions(
         &mut self,
-        sel_expr: &'a SelectedExpressions<Expression>,
+        sel_expr: &'a parsed::SelectedExpressions<Expression>,
     ) -> SelectedExpressions<AlgebraicExpression<T>> {
         SelectedExpressions {
             selector: sel_expr
                 .selector
                 .as_ref()
                 .map(|expr| self.condense_to_algebraic_expression(expr)),
-            expressions: sel_expr
-                .expressions
-                .iter()
-                .map(|expr| self.condense_to_algebraic_expression(expr))
-                .collect(),
+            expressions: self.condense_to_array_of_algebraic_expressions(&sel_expr.expressions),
         }
     }
 
@@ -315,7 +325,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
                     _ => panic!("Expected expression but got {item}"),
                 })
                 .collect(),
-            _ => panic!("Expected array of algebraic expressions, but got {result}"),
+            _ => panic!("Expected array of algebraic expressions but got {result}"),
         }
     }
 }
@@ -324,18 +334,23 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
     fn lookup(
         &mut self,
         name: &'a str,
-        type_args: Option<Vec<Type>>,
+        type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         // Cache already computed values.
         // Note that the cache is essential because otherwise
         // we re-evaluate simple values, which users would not expect.
-        let cache_key = (name.to_string(), type_args.clone());
-        if let Some(v) = self.symbol_values.get(&cache_key) {
+        if let Some(v) = self
+            .symbol_values
+            .get(name)
+            .and_then(|map| map.get(type_args))
+        {
             return Ok(v.clone());
         }
         let value = Definitions::lookup_with_symbols(self.symbols, name, type_args, self)?;
         self.symbol_values
-            .entry(cache_key)
+            .entry(name.to_string())
+            .or_default()
+            .entry(type_args.clone())
             .or_insert_with(|| value.clone());
         Ok(value)
     }
@@ -349,31 +364,166 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         Ok(Value::Integer(degree.into()).into())
     }
 
-    fn new_witness_column(
+    fn new_column(
         &mut self,
         name: &str,
+        ty: Option<&Type>,
+        value: Option<Arc<Value<'a, T>>>,
         source: SourceRef,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         let name = self.find_unused_name(name);
+        let mut length = None;
+        let mut is_array = false;
+        let kind = match (ty, &value) {
+            (Some(Type::Inter), Some(_)) => SymbolKind::Poly(PolynomialType::Intermediate),
+            (Some(Type::Array(ArrayType { base, length: len })), Some(_))
+                if base.as_ref() == &Type::Inter =>
+            {
+                is_array = true;
+                length = *len;
+                SymbolKind::Poly(PolynomialType::Intermediate)
+            }
+            (Some(Type::Col) | None, Some(_)) => SymbolKind::Poly(PolynomialType::Constant),
+            (Some(Type::Col) | None, None) => SymbolKind::Poly(PolynomialType::Committed),
+            _ => {
+                return Err(EvalError::TypeError(format!(
+                    "Invalid type for new column {name}: {}.",
+                    ty.map(|ty| ty.to_string()).unwrap_or_default(),
+                )))
+            }
+        };
+
+        if kind == SymbolKind::Poly(PolynomialType::Intermediate) {
+            let expr = if is_array {
+                let Value::Array(exprs) = value.unwrap().as_ref().clone() else {
+                    panic!("Expected array");
+                };
+                if let Some(length) = length {
+                    if exprs.len() as u64 != length {
+                        return Err(EvalError::TypeError(format!(
+                            "Error creating intermediate column array {name}: Expected array of length {length} as value but it has {} elements." ,
+                            exprs.len(),
+                        )));
+                    }
+                } else {
+                    length = Some(exprs.len() as u64);
+                }
+                exprs
+                    .into_iter()
+                    .map(|expr| {
+                        let Value::Expression(expr) = expr.as_ref() else {
+                            panic!("Expected algebraic expression");
+                        };
+                        expr.clone()
+                    })
+                    .collect()
+            } else {
+                let Value::Expression(expr) = value.unwrap().as_ref().clone() else {
+                    panic!("Expected algebraic expression");
+                };
+                vec![expr]
+            };
+            self.new_intermediate_column_values
+                .insert(name.clone(), expr);
+        } else if let Some(value) = value {
+            let value =
+                closure_to_function(&source, value.as_ref(), FunctionKind::Pure).map_err(|e| {
+                    match e {
+                        EvalError::TypeError(e) => {
+                            EvalError::TypeError(format!("Error creating fixed column {name}: {e}"))
+                        }
+                        _ => e,
+                    }
+                })?;
+
+            self.new_column_values.insert(name.clone(), value);
+        }
+
         let symbol = Symbol {
-            id: self.next_witness_id,
+            id: self.counters.dispense_symbol_id(kind, length),
             source,
             absolute_name: name.clone(),
             stage: None,
-            kind: SymbolKind::Poly(PolynomialType::Committed),
-            length: None,
+            kind,
+            length,
+            degree: self.degree,
         };
-        self.next_witness_id += 1;
-        self.all_new_witness_names.insert(name.clone());
-        self.new_witnesses.push(symbol.clone());
-        Ok(
+
+        self.new_symbols.insert(name.clone());
+        self.new_columns.push(symbol.clone());
+
+        Ok((if is_array {
+            Value::Array(
+                symbol
+                    .array_elements()
+                    .map(|(name, poly_id)| {
+                        Value::Expression(AlgebraicExpression::Reference(AlgebraicReference {
+                            name,
+                            poly_id,
+                            next: false,
+                        }))
+                        .into()
+                    })
+                    .collect(),
+            )
+        } else {
             Value::Expression(AlgebraicExpression::Reference(AlgebraicReference {
                 name,
-                poly_id: (&symbol).into(),
+                poly_id: PolyID::from(&symbol),
                 next: false,
             }))
-            .into(),
-        )
+        })
+        .into())
+    }
+
+    fn set_hint(
+        &mut self,
+        col: Arc<Value<'a, T>>,
+        expr: Arc<Value<'a, T>>,
+    ) -> Result<(), EvalError> {
+        let name = match col.as_ref() {
+            Value::Expression(AlgebraicExpression::Reference(AlgebraicReference {
+                name,
+                poly_id,
+                next: false,
+            })) => {
+                if poly_id.ptype != PolynomialType::Committed {
+                    return Err(EvalError::TypeError(format!(
+                        "Expected reference to witness column as first argument for std::prover::set_hint, but got {} column {name}.",
+                        poly_id.ptype
+                    )));
+                }
+                if name.contains('[') {
+                    return Err(EvalError::TypeError(format!(
+                        "Array elements are not supported for std::prover::set_hint (called on {name})."
+                    )));
+                }
+                name.clone()
+            }
+            col => {
+                return Err(EvalError::TypeError(format!(
+                    "Expected reference to witness column as first argument for std::prover::set_hint, but got {col}: {}",
+                    col.type_formatted()
+                )));
+            }
+        };
+
+        let value = closure_to_function(&SourceRef::unknown(), expr.as_ref(), FunctionKind::Query)
+            .map_err(|e| match e {
+                EvalError::TypeError(e) => {
+                    EvalError::TypeError(format!("Error setting hint for column {col}: {e}"))
+                }
+                _ => e,
+            })?;
+        match self.new_column_values.entry(name) {
+            Entry::Vacant(entry) => entry.insert(value),
+            Entry::Occupied(_) => {
+                return Err(EvalError::TypeError(format!(
+                    "Column {col} already has a hint set, but tried to add another one."
+                )));
+            }
+        };
+        Ok(())
     }
 
     fn add_constraints(
@@ -384,13 +534,16 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         match constraints.as_ref() {
             Value::Array(items) => {
                 for item in items {
-                    self.new_constraints
-                        .push(to_constraint(item, source.clone()))
+                    self.new_constraints.push(to_constraint(
+                        item,
+                        source.clone(),
+                        &mut self.counters,
+                    ))
                 }
             }
             _ => self
                 .new_constraints
-                .push(to_constraint(&constraints, source)),
+                .push(to_constraint(&constraints, source, &mut self.counters)),
         }
         Ok(())
     }
@@ -402,9 +555,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             .chain((1..).map(Some))
             .map(|cnt| format!("{name}{}", cnt.map(|c| format!("_{c}")).unwrap_or_default()))
             .map(|name| self.namespace.with_part(&name).to_dotted_string())
-            .find(|name| {
-                !self.symbols.contains_key(name) && !self.all_new_witness_names.contains(name)
-            })
+            .find(|name| !self.symbols.contains_key(name) && !self.new_symbols.contains(name))
             .unwrap()
     }
 }
@@ -412,41 +563,84 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
 fn to_constraint<T: FieldElement>(
     constraint: &Value<'_, T>,
     source: SourceRef,
-) -> IdentityWithoutID<AlgebraicExpression<T>> {
+    counters: &mut Counters,
+) -> AnalyzedIdentity<T> {
     match constraint {
         Value::Enum("Identity", Some(fields)) => {
             assert_eq!(fields.len(), 2);
-            IdentityWithoutID::from_polynomial_identity(
+            AnalyzedIdentity::from_polynomial_identity(
+                counters.dispense_identity_id(),
                 source,
                 to_expr(&fields[0]) - to_expr(&fields[1]),
             )
         }
         Value::Enum(kind @ "Lookup" | kind @ "Permutation", Some(fields)) => {
-            assert_eq!(fields.len(), 4);
+            assert_eq!(fields.len(), 2);
             let kind = if *kind == "Lookup" {
                 IdentityKind::Plookup
             } else {
                 IdentityKind::Permutation
             };
-            IdentityWithoutID {
+
+            let (sel_from, sel_to) = if let Value::Tuple(t) = fields[0].as_ref() {
+                assert_eq!(t.len(), 2);
+                (&t[0], &t[1])
+            } else {
+                unreachable!()
+            };
+
+            let (from, to): (Vec<_>, Vec<_>) = if let Value::Array(a) = fields[1].as_ref() {
+                a.iter()
+                    .map(|pair| {
+                        if let Value::Tuple(pair) = pair.as_ref() {
+                            assert_eq!(pair.len(), 2);
+                            (pair[0].as_ref(), pair[1].as_ref())
+                        } else {
+                            unreachable!()
+                        }
+                    })
+                    .unzip()
+            } else {
+                unreachable!()
+            };
+
+            Identity {
+                id: counters.dispense_identity_id(),
                 kind,
                 source,
-                left: to_selected_exprs(&fields[0], &fields[1]),
-                right: to_selected_exprs(&fields[2], &fields[3]),
+                left: to_selected_exprs(sel_from, from),
+                right: to_selected_exprs(sel_to, to),
             }
         }
         Value::Enum("Connection", Some(fields)) => {
-            assert_eq!(fields.len(), 2);
-            IdentityWithoutID {
+            assert_eq!(fields.len(), 1);
+
+            let (from, to): (Vec<_>, Vec<_>) = if let Value::Array(a) = fields[0].as_ref() {
+                a.iter()
+                    .map(|pair| {
+                        if let Value::Tuple(pair) = pair.as_ref() {
+                            assert_eq!(pair.len(), 2);
+                            (pair[0].as_ref(), pair[1].as_ref())
+                        } else {
+                            unreachable!()
+                        }
+                    })
+                    .unzip()
+            } else {
+                unreachable!()
+            };
+
+            Identity {
+                id: counters.dispense_identity_id(),
                 kind: IdentityKind::Connect,
                 source,
-                left: SelectedExpressions {
+                left: analyzed::SelectedExpressions {
                     selector: None,
-                    expressions: to_vec_expr(&fields[0]),
+                    expressions: from.into_iter().map(to_expr).collect(),
                 },
-                right: SelectedExpressions {
+                right: analyzed::SelectedExpressions {
                     selector: None,
-                    expressions: to_vec_expr(&fields[1]),
+                    expressions: to.into_iter().map(to_expr).collect(),
                 },
             }
         }
@@ -456,11 +650,11 @@ fn to_constraint<T: FieldElement>(
 
 fn to_selected_exprs<'a, T: Clone>(
     selector: &Value<'a, T>,
-    exprs: &Value<'a, T>,
+    exprs: Vec<&Value<'a, T>>,
 ) -> SelectedExpressions<AlgebraicExpression<T>> {
     SelectedExpressions {
         selector: to_option_expr(selector),
-        expressions: to_vec_expr(exprs),
+        expressions: exprs.into_iter().map(to_expr).collect(),
     }
 }
 
@@ -475,17 +669,55 @@ fn to_option_expr<T: Clone>(value: &Value<'_, T>) -> Option<AlgebraicExpression<
     }
 }
 
-fn to_vec_expr<T: Clone>(value: &Value<'_, T>) -> Vec<AlgebraicExpression<T>> {
-    match value {
-        Value::Array(items) => items.iter().map(|item| to_expr(item)).collect(),
-        _ => panic!(),
-    }
-}
-
 fn to_expr<T: Clone>(value: &Value<'_, T>) -> AlgebraicExpression<T> {
     if let Value::Expression(expr) = value {
         (*expr).clone()
     } else {
         panic!()
     }
+}
+
+/// Turns a value of function type (i.e. a closure) into a FunctionValueDefinition
+/// and sets the expected function kind.
+/// Does not allow captured variables.
+fn closure_to_function<T: Clone + Display>(
+    source: &SourceRef,
+    value: &Value<'_, T>,
+    expected_kind: FunctionKind,
+) -> Result<FunctionValueDefinition, EvalError> {
+    let Value::Closure(evaluator::Closure {
+        lambda,
+        environment: _,
+        type_args,
+    }) = value
+    else {
+        return Err(EvalError::TypeError(format!(
+            "Expected lambda expressions but got {value}."
+        )));
+    };
+
+    if !type_args.is_empty() {
+        return Err(EvalError::TypeError(
+            "Lambda expression must not have type arguments.".to_string(),
+        ));
+    }
+    if !lambda.outer_var_references.is_empty() {
+        return Err(EvalError::TypeError(format!(
+            "Lambda expression must not reference outer variables: {lambda}"
+        )));
+    }
+    if lambda.kind != FunctionKind::Pure && lambda.kind != expected_kind {
+        return Err(EvalError::TypeError(format!(
+            "Expected {expected_kind} lambda expression but got {}.",
+            lambda.kind
+        )));
+    }
+
+    let mut lambda = (*lambda).clone();
+    lambda.kind = expected_kind;
+
+    Ok(FunctionValueDefinition::Expression(TypedExpression {
+        e: Expression::LambdaExpression(source.clone(), lambda),
+        type_scheme: None,
+    }))
 }

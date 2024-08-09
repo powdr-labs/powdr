@@ -34,7 +34,7 @@ machine Sqrt with
     
     // Note that this is required to make the witness unique
     // (y := -y would also satisfy y * y = x, but we want the positive solution).
-    { y } in { range };
+    [ y ] in [ range ];
 }
 
 
@@ -54,7 +54,7 @@ machine Main with degree: 8 {
 
     instr assert_zero X { XIsZero = 1 }
 
-    instr sqrt X -> Y = sqrt.sqrt;
+    instr sqrt X -> Y link => Y = sqrt.sqrt(X);
 
 
     function main {

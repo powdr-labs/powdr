@@ -9,13 +9,13 @@ use num_traits::Signed;
 
 use powdr_ast::{
     analyzed::{
-        AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, AlgebraicUnaryOperator,
-        Challenge, Expression, FunctionValueDefinition, Reference, Symbol, SymbolKind,
-        TypedExpression,
+        AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
+        AlgebraicUnaryOperation, AlgebraicUnaryOperator, Challenge, Expression,
+        FunctionValueDefinition, Reference, Symbol, SymbolKind, TypedExpression,
     },
     parsed::{
         display::quote,
-        types::{Type, TypeScheme},
+        types::{ArrayType, Type, TypeScheme},
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
         IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number,
         Pattern, StatementInsideBlock, UnaryOperation, UnaryOperator,
@@ -63,7 +63,7 @@ pub fn evaluate_function_call<'a, T: FieldElement>(
 /// from type name to type.
 pub fn type_arg_mapping(
     type_scheme: &Option<TypeScheme>,
-    args: Option<Vec<Type>>,
+    args: &Option<Vec<Type>>,
 ) -> HashMap<String, Type> {
     let Some(type_scheme) = type_scheme else {
         return Default::default();
@@ -225,29 +225,29 @@ impl<'a, T: FieldElement> Value<'a, T> {
         pattern: &Pattern,
     ) -> Option<Vec<Arc<Value<'b, T>>>> {
         match pattern {
-            Pattern::Ellipsis => unreachable!("Should be handled higher up"),
-            Pattern::CatchAll => Some(vec![]),
-            Pattern::Number(n) => match v.as_ref() {
+            Pattern::Ellipsis(_) => unreachable!("Should be handled higher up"),
+            Pattern::CatchAll(_) => Some(vec![]),
+            Pattern::Number(_, n) => match v.as_ref() {
                 Value::Integer(x) if x == n => Some(vec![]),
                 Value::FieldElement(x) if BigInt::from(x.to_arbitrary_integer()) == *n => {
                     Some(vec![])
                 }
                 _ => None,
             },
-            Pattern::String(s) => match v.as_ref() {
+            Pattern::String(_, s) => match v.as_ref() {
                 Value::String(x) if x == s => Some(vec![]),
                 _ => None,
             },
-            Pattern::Tuple(items) => match v.as_ref() {
+            Pattern::Tuple(_, items) => match v.as_ref() {
                 Value::Tuple(values) => Value::try_match_pattern_list(values, items),
                 _ => unreachable!(),
             },
-            Pattern::Array(items) => {
+            Pattern::Array(_, items) => {
                 let Value::Array(values) = v.as_ref() else {
                     panic!("Type error")
                 };
                 // Index of ".."
-                let ellipsis_pos = items.iter().position(|i| *i == Pattern::Ellipsis);
+                let ellipsis_pos = items.iter().position(|i| matches!(i, Pattern::Ellipsis(_)));
                 // Check if the value is too short.
                 let length_matches = match ellipsis_pos {
                     Some(_) => values.len() >= items.len() - 1,
@@ -266,7 +266,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
                     items.len() - ellipsis_pos.map(|_| 1).unwrap_or_default()
                 );
                 left.chain(right)
-                    .zip(items.iter().filter(|&i| *i != Pattern::Ellipsis))
+                    .zip(items.iter().filter(|&i| !matches!(i, Pattern::Ellipsis(_))))
                     .try_fold(vec![], |mut vars, (e, p)| {
                         Value::try_match_pattern(e, p).map(|v| {
                             vars.extend(v);
@@ -274,8 +274,8 @@ impl<'a, T: FieldElement> Value<'a, T> {
                         })
                     })
             }
-            Pattern::Variable(_) => Some(vec![v.clone()]),
-            Pattern::Enum(name, fields_pattern) => {
+            Pattern::Variable(_, _) => Some(vec![v.clone()]),
+            Pattern::Enum(_, name, fields_pattern) => {
                 let Value::Enum(n, data) = v.as_ref() else {
                     panic!()
                 };
@@ -308,7 +308,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
     }
 }
 
-const BUILTINS: [(&str, BuiltinFunction); 10] = [
+const BUILTINS: [(&str, BuiltinFunction); 11] = [
     ("std::array::len", BuiltinFunction::ArrayLen),
     ("std::check::panic", BuiltinFunction::Panic),
     ("std::convert::expr", BuiltinFunction::ToExpr),
@@ -316,7 +316,8 @@ const BUILTINS: [(&str, BuiltinFunction); 10] = [
     ("std::convert::int", BuiltinFunction::ToInt),
     ("std::debug::print", BuiltinFunction::Print),
     ("std::field::modulus", BuiltinFunction::Modulus),
-    ("std::prover::challenge", BuiltinFunction::Challenge),
+    ("std::prelude::challenge", BuiltinFunction::Challenge),
+    ("std::prover::set_hint", BuiltinFunction::SetHint),
     ("std::prover::degree", BuiltinFunction::Degree),
     ("std::prover::eval", BuiltinFunction::Eval),
 ];
@@ -341,6 +342,8 @@ pub enum BuiltinFunction {
     ToFe,
     /// std::prover::challenge: int, int -> expr, constructs a challenge with a given stage and ID.
     Challenge,
+    /// std::prover::set_hint: expr, (int -> std::prover::Query) -> (), adds a hint to a witness column.
+    SetHint,
     /// std::prover::degree: -> int, returns the current column length / degree.
     Degree,
     /// std::prover::eval: expr -> fe, evaluates an expression on the current row
@@ -405,7 +408,7 @@ impl<'a> Definitions<'a> {
     pub fn lookup_with_symbols<T: FieldElement>(
         definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
         name: &str,
-        type_args: Option<Vec<Type>>,
+        type_args: &Option<Vec<Type>>,
         symbols: &mut impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         let name = name.to_string();
@@ -464,7 +467,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a> {
     fn lookup(
         &mut self,
         name: &str,
-        type_args: Option<Vec<Type>>,
+        type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Self::lookup_with_symbols(self.0, name, type_args, self)
     }
@@ -484,7 +487,7 @@ pub trait SymbolLookup<'a, T: FieldElement> {
     fn lookup(
         &mut self,
         name: &'a str,
-        type_args: Option<Vec<Type>>,
+        type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError>;
 
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
@@ -499,7 +502,7 @@ pub trait SymbolLookup<'a, T: FieldElement> {
             AlgebraicExpression::PublicReference(_) => unimplemented!(),
             AlgebraicExpression::Challenge(challenge) => self.eval_challenge(challenge)?,
             AlgebraicExpression::Number(n) => Value::FieldElement(*n).into(),
-            AlgebraicExpression::BinaryOperation(left, op, right) => {
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
                 let left = self.eval_expr(left)?;
                 let right = self.eval_expr(right)?;
                 match (left.as_ref(), right.as_ref()) {
@@ -509,15 +512,17 @@ pub trait SymbolLookup<'a, T: FieldElement> {
                     _ => panic!("Expected field elements"),
                 }
             }
-            AlgebraicExpression::UnaryOperation(op, operand) => match op {
-                AlgebraicUnaryOperator::Minus => {
-                    let operand = self.eval_expr(operand)?;
-                    match operand.as_ref() {
-                        Value::FieldElement(fe) => Value::FieldElement(-*fe).into(),
-                        _ => panic!("Expected field element"),
+            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr: operand }) => {
+                match op {
+                    AlgebraicUnaryOperator::Minus => {
+                        let operand = self.eval_expr(operand)?;
+                        match operand.as_ref() {
+                            Value::FieldElement(fe) => Value::FieldElement(-*fe).into(),
+                            _ => panic!("Expected field element"),
+                        }
                     }
                 }
-            },
+            }
         })
     }
 
@@ -538,14 +543,26 @@ pub trait SymbolLookup<'a, T: FieldElement> {
         ))
     }
 
-    fn new_witness_column(
+    fn new_column(
         &mut self,
         name: &str,
+        _type: Option<&Type>,
+        _value: Option<Arc<Value<'a, T>>>,
         _source: SourceRef,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Err(EvalError::Unsupported(format!(
-            "Tried to create witness column outside of statement context: {name}"
+            "Tried to create column outside of statement context: {name}"
         )))
+    }
+
+    fn set_hint(
+        &mut self,
+        _col: Arc<Value<'a, T>>,
+        _expr: Arc<Value<'a, T>>,
+    ) -> Result<(), EvalError> {
+        Err(EvalError::Unsupported(
+            "Tried to add hint to column outside of statement context.".to_string(),
+        ))
     }
 
     fn add_constraints(
@@ -632,25 +649,13 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     self.local_vars = new_locals;
                     self.type_args = new_type_args;
                 }
-                Operation::LetStatement(s) => {
-                    let value = if s.value.is_some() {
-                        self.value_stack.pop().unwrap()
-                    } else {
-                        let Pattern::Variable(name) = &s.pattern else {
-                            unreachable!()
-                        };
-                        self.symbols
-                            .new_witness_column(name, SourceRef::unknown())?
-                    };
-                    self.local_vars.extend(
-                        Value::try_match_pattern(&value, &s.pattern).unwrap_or_else(|| {
-                            panic!("Irrefutable pattern did not match: {} = {value}", s.pattern)
-                        }),
-                    );
-                }
+                Operation::LetStatement(s) => self.evaluate_let_statement(s)?,
                 Operation::AddConstraint => {
                     let result = self.value_stack.pop().unwrap();
-                    self.symbols.add_constraints(result, SourceRef::unknown())?;
+                    match result.as_ref() {
+                        Value::Tuple(t) if t.is_empty() => {}
+                        _ => self.symbols.add_constraints(result, SourceRef::unknown())?,
+                    }
                 }
             };
         }
@@ -747,7 +752,10 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             Expression::BlockExpression(_, BlockExpression { statements, expr }) => {
                 self.op_stack
                     .push(Operation::TruncateLocals(self.local_vars.len()));
-                self.op_stack.push(Operation::Expand(expr));
+                match expr {
+                    Some(expr) => self.op_stack.push(Operation::Expand(expr)),
+                    None => self.value_stack.push(Value::Tuple(vec![]).into()),
+                }
                 for s in statements.iter().rev() {
                     match s {
                         StatementInsideBlock::LetStatement(s) => {
@@ -770,6 +778,33 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
         Ok(())
     }
 
+    fn evaluate_let_statement(
+        &mut self,
+        s: &'a LetStatementInsideBlock<Expression>,
+    ) -> Result<(), EvalError> {
+        let value = if s.value.is_none()
+            || matches!(&s.ty, Some(Type::Col) | Some(Type::Inter))
+            || matches!(&s.ty, Some(Type::Array(ArrayType { base, .. })) if matches!(base.as_ref(), Type::Col | Type::Inter))
+        {
+            // Dynamic column creation
+            let Pattern::Variable(_, name) = &s.pattern else {
+                unreachable!()
+            };
+            let value = s.value.as_ref().map(|_| self.value_stack.pop().unwrap());
+            self.symbols
+                .new_column(name, s.ty.as_ref(), value, SourceRef::unknown())?
+        } else {
+            // Regular local variable declaration.
+            self.value_stack.pop().unwrap()
+        };
+        self.local_vars.extend(
+            Value::try_match_pattern(&value, &s.pattern).unwrap_or_else(|| {
+                panic!("Irrefutable pattern did not match: {} = {value}", s.pattern)
+            }),
+        );
+        Ok(())
+    }
+
     fn evaluate_reference(
         &mut self,
         reference: &'a Reference,
@@ -786,7 +821,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                         }
                         ta
                     });
-                    self.symbols.lookup(&poly.name, type_args)?
+                    self.symbols.lookup(&poly.name, &type_args)?
                 }
             }
         })
@@ -820,27 +855,20 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     }
                     (UnaryOperator::LogicalNot, Value::Bool(b)) => Value::Bool(!b).into(),
                     (UnaryOperator::Minus, Value::Integer(n)) => Value::Integer(-n).into(),
-                    (UnaryOperator::Next, Value::Expression(e)) => {
-                        let AlgebraicExpression::Reference(reference) = e else {
-                            return Err(EvalError::TypeError(format!(
-                                "Expected column for \"'\" operator, but got: {e}"
-                            )));
-                        };
-
-                        if reference.next {
-                            return Err(EvalError::TypeError(format!(
-                                "Double application of \"'\" on: {reference}"
-                            )));
-                        }
-                        Value::from(AlgebraicExpression::Reference(AlgebraicReference {
-                            next: true,
-                            ..reference.clone()
-                        }))
-                        .into()
-                    }
-                    (op, Value::Expression(e)) => Value::from(AlgebraicExpression::UnaryOperation(
+                    (UnaryOperator::Next, Value::Expression(e)) => e
+                        .clone()
+                        .next()
+                        .map(|next| Value::from(next).into())
+                        // a reference already had its `next` flag on
+                        .map_err(|reference| {
+                            EvalError::TypeError(format!(
+                                "Double application of \"'\" on: {}",
+                                reference.name
+                            ))
+                        })?,
+                    (op, Value::Expression(e)) => Value::from(AlgebraicExpression::new_unary(
                         (*op).try_into().unwrap(),
-                        e.clone().into(),
+                        e.clone(),
                     ))
                     .into(),
                     (_, inner) => Err(EvalError::TypeError(format!(
@@ -1048,10 +1076,10 @@ fn evaluate_binary_operation<'a, T: FieldElement>(
                         BigUint::from(exp) < T::modulus().to_arbitrary_integer(),
                         "Exponent too large: {exp}"
                     );
-                    Value::from(AlgebraicExpression::BinaryOperation(
-                        Box::new(l.clone()),
+                    Value::from(AlgebraicExpression::new_binary(
+                        l.clone(),
                         AlgebraicBinaryOperator::Pow,
-                        Box::new(T::from(exp).into()),
+                        T::from(exp).into(),
                     ))
                     .into()
                 }
@@ -1068,10 +1096,10 @@ fn evaluate_binary_operation<'a, T: FieldElement>(
                 };
                 Value::from(AlgebraicExpression::Number(*result)).into()
             }
-            (l, r) => Value::from(AlgebraicExpression::BinaryOperation(
-                Box::new(l.clone()),
+            (l, r) => Value::from(AlgebraicExpression::new_binary(
+                l.clone(),
                 op.try_into().unwrap(),
-                Box::new(r.clone()),
+                r.clone(),
             ))
             .into(),
         },
@@ -1098,6 +1126,7 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
         BuiltinFunction::ToFe => 1,
         BuiltinFunction::ToInt => 1,
         BuiltinFunction::Challenge => 2,
+        BuiltinFunction::SetHint => 2,
         BuiltinFunction::Degree => 0,
         BuiltinFunction::Eval => 1,
     };
@@ -1133,7 +1162,7 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
             } else {
                 print!("{msg}");
             }
-            Value::Array(Default::default()).into()
+            Value::Tuple(vec![]).into()
         }
         BuiltinFunction::ToExpr => {
             let arg = arguments.pop().unwrap();
@@ -1165,6 +1194,12 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
                 stage: u32::try_from(stage).unwrap(),
             }))
             .into()
+        }
+        BuiltinFunction::SetHint => {
+            let expr = arguments.pop().unwrap();
+            let col = arguments.pop().unwrap();
+            symbols.set_hint(col, expr)?;
+            Value::Tuple(vec![]).into()
         }
         BuiltinFunction::Degree => symbols.degree()?,
         BuiltinFunction::Eval => {
@@ -1255,7 +1290,7 @@ mod test {
     pub fn evaluate_function<T: FieldElement>(input: &str, function: &str) -> T {
         let analyzed = analyze_string::<GoldilocksField>(input);
         let mut symbols = evaluator::Definitions(&analyzed.definitions);
-        let function = symbols.lookup(function, None).unwrap();
+        let function = symbols.lookup(function, &None).unwrap();
         let result = evaluator::evaluate_function_call(function, vec![], &mut symbols)
             .unwrap()
             .as_ref()
@@ -1352,10 +1387,10 @@ mod test {
     #[should_panic = r#"FailedAssertion("this text")"#]
     fn panic_complex() {
         let src = r#"
-            constant %N = 2;
-            namespace std::check(%N);
+            let N: int = 2;
+            namespace std::check(N);
             let panic = 123;
-            namespace F(%N);
+            namespace F(N);
             let concat = |a, b| a + b;
             let arg: int = 1;
             let x: int[] = (|i| if i == 1 { std::check::panic(concat("this ", "text")) } else { [9] })(arg);
@@ -1367,10 +1402,10 @@ mod test {
     #[should_panic = r#"FailedAssertion("text")"#]
     fn panic_string() {
         let src = r#"
-            constant %N = 2;
-            namespace std::check(%N);
+            let N: int = 2;
+            namespace std::check(N);
             let panic = 123;
-            namespace F(%N);
+            namespace F(N);
             let x: int = std::check::panic("text");
         "#;
         parse_and_evaluate_symbol(src, "F.x");
@@ -1651,5 +1686,29 @@ mod test {
             evaluate_function::<GoldilocksField>(src, "main.test"),
             7u64.into()
         );
+    }
+
+    #[test]
+    fn no_stmts_in_block() {
+        let input = "
+    let f: int -> () = |i| ();
+    let g: int -> () = |i| {
+        f(1)
+    };
+    
+    let h: () = g(1);
+    ";
+
+        assert_eq!(parse_and_evaluate_symbol(input, "h"), "()".to_string());
+    }
+
+    #[test]
+    fn called_with_empty_block() {
+        let input = "
+    let<T1, T2: FromLiteral> f: T1 -> T2 = |_| 7;
+    let g: int = f({ });
+    ";
+
+        assert_eq!(parse_and_evaluate_symbol(input, "g"), "7".to_string());
     }
 }

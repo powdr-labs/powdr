@@ -3,7 +3,7 @@ use std::prover::eval;
 use std::prover::challenge;
 
 machine Main with degree: 8 {
-    col fixed is_first = [1] + [0]*;
+    let is_first: col = std::well_known::is_first;
 
     let count;
 

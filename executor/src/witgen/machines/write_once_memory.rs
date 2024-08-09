@@ -2,14 +2,15 @@ use std::collections::{BTreeMap, HashMap};
 
 use itertools::{Either, Itertools};
 
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, Identity, IdentityKind, PolyID, PolynomialType,
-};
+use powdr_ast::analyzed::{IdentityKind, PolyID, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
-use crate::witgen::{
-    rows::RowPair, util::try_to_simple_poly, EvalError, EvalResult, EvalValue, FixedData,
-    IncompleteCause, MutableState, QueryCallback,
+use crate::{
+    witgen::{
+        rows::RowPair, util::try_to_simple_poly, EvalError, EvalResult, EvalValue, FixedData,
+        IncompleteCause, MutableState, QueryCallback,
+    },
+    Identity,
 };
 
 use super::{FixedLookup, Machine};
@@ -21,14 +22,15 @@ use super::{FixedLookup, Machine};
 /// let ADDR = |i| i;
 /// let v;
 /// // Stores a value, fails if the cell already has a value that's different
-/// instr mstore X, Y -> { {X, Y} in {ADDR, v} }
+/// instr mstore X, Y -> { [X, Y] in [ADDR, v] }
 /// // Loads a value. If the cell is empty, the prover can choose a value.
 /// // Note that this is the same lookup, only Y is considered an output instead
 /// // of an input.
-/// instr mload X -> Y { {X, Y} in {ADDR, v} }
+/// instr mload X -> Y { [X, Y] in [ADDR, v] }
 /// ```
 pub struct WriteOnceMemory<'a, T: FieldElement> {
-    connecting_identities: BTreeMap<u64, &'a Identity<Expression<T>>>,
+    degree: DegreeType,
+    connecting_identities: BTreeMap<u64, &'a Identity<T>>,
     /// The fixed data
     fixed_data: &'a FixedData<'a, T>,
     /// The polynomials that are used as values (witness polynomials on the RHS)
@@ -44,8 +46,8 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
     pub fn try_new(
         name: String,
         fixed_data: &'a FixedData<'a, T>,
-        connecting_identities: &BTreeMap<u64, &'a Identity<Expression<T>>>,
-        identities: &[&Identity<Expression<T>>],
+        connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
+        identities: &[&Identity<T>],
     ) -> Option<Self> {
         if !identities.is_empty() {
             return None;
@@ -98,11 +100,13 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             }
         });
 
+        let degree = fixed_data.common_degree(key_polys.iter().chain(value_polys.iter()));
+
         let mut key_to_index = BTreeMap::new();
-        for row in 0..fixed_data.degree {
+        for row in 0..degree {
             let key = key_polys
                 .iter()
-                .map(|k| fixed_data.fixed_cols[k].values[row as usize])
+                .map(|k| fixed_data.fixed_cols[k].values(degree)[row as usize])
                 .collect::<Vec<_>>();
             if key_to_index.insert(key, row).is_some() {
                 // Duplicate keys, can't be a write-once memory
@@ -111,6 +115,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         }
 
         Some(Self {
+            degree,
             connecting_identities: connecting_identities.clone(),
             name,
             fixed_data,
@@ -228,6 +233,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
         &self.name
     }
 
+    fn degree(&self) -> DegreeType {
+        self.degree
+    }
+
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
@@ -251,11 +260,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
                     .cloned()
                     .map(|mut external_values| {
                         // External witness values might only be provided partially.
-                        external_values.resize(self.fixed_data.degree as usize, T::zero());
+                        external_values.resize(self.degree as usize, T::zero());
                         external_values
                     })
                     .unwrap_or_else(|| {
-                        let mut column = vec![T::zero(); self.fixed_data.degree as usize];
+                        let mut column = vec![T::zero(); self.degree as usize];
                         for (row, values) in self.data.iter() {
                             column[*row as usize] = values[value_index].unwrap_or_default();
                         }

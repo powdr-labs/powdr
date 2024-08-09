@@ -79,54 +79,64 @@ impl<'a> Profiler<'a> {
         let file = File::create(path).unwrap();
         let mut w = BufWriter::new(file);
         writeln!(&mut w, "events: Instructions\n").unwrap();
-        for func in self.function_begin.values() {
-            let loc_stats: Vec<_> = self
-                .location_stats
-                .iter()
-                .filter_map(|(loc, cost)| {
-                    if &loc.function == func {
-                        Some((loc.file, loc.line, cost))
-                    } else {
-                        None
-                    }
-                })
-                .sorted()
-                .collect();
-            let call_stats: Vec<_> = self
-                .call_stats
-                .iter()
-                .filter_map(|(call, (count, cost))| {
-                    if &call.from.function == func {
-                        Some((call, count, cost))
-                    } else {
-                        None
-                    }
-                })
-                .collect();
 
-            if loc_stats.is_empty() && call_stats.is_empty() {
-                continue;
+        struct CallCost<'a> {
+            call: &'a Call<'a>,
+            count: usize,
+            cost: usize,
+        }
+
+        let mut func_ids = BTreeMap::new();
+        let mut loc_stats: BTreeMap<_, Vec<_>> = BTreeMap::new();
+        let mut call_stats: BTreeMap<_, Vec<_>> = BTreeMap::new();
+
+        // group stats per (function_id, file)
+        for (id, func) in self.function_begin.values().enumerate() {
+            for (loc, cost) in &self.location_stats {
+                if &loc.function == func {
+                    func_ids.entry(func).or_insert(id);
+                    loc_stats
+                        .entry((id, loc.file))
+                        .or_default()
+                        .push((loc.line, cost));
+                }
             }
 
-            writeln!(w, "fn={}", format_function_name(func)).unwrap();
-
-            let mut curr_file = None;
-            for (file_nr, line, cost) in loc_stats {
-                if Some(file_nr) != curr_file {
-                    curr_file = Some(file_nr);
-                    let file = self.debug_files[file_nr - 1];
-                    writeln!(w, "fl={}/{}", file.0, file.1).unwrap();
+            for (call, (count, cost)) in &self.call_stats {
+                if &call.from.function == func {
+                    assert!(func_ids.contains_key(func));
+                    call_stats
+                        .entry((id, call.from.file))
+                        .or_default()
+                        .push(CallCost {
+                            call,
+                            count: *count,
+                            cost: *cost,
+                        });
                 }
-                writeln!(w, "{line} {cost}").unwrap();
             }
-            for (call, count, cost) in call_stats {
-                let target_file_nr = call.target.file;
-                if Some(target_file_nr) != curr_file {
-                    curr_file = Some(target_file_nr);
-                    let file = self.debug_files[target_file_nr - 1];
-                    writeln!(w, "cfi={}/{}", file.0, file.1).unwrap();
-                }
-                writeln!(w, "cfn={}", format_function_name(call.target.function)).unwrap();
+        }
+
+        // use function name id mapping, without it callgrind was showing duplicate entries
+        for (func, id) in &func_ids {
+            writeln!(&mut w, "fn=({id}) {}", format_function_name(func)).unwrap();
+        }
+        writeln!(w).unwrap();
+
+        // print stats
+        for ((func_id, file), line_costs) in &loc_stats {
+            let (dir, name) = self.debug_files[*file - 1];
+            writeln!(&mut w, "fl={dir}/{name}").unwrap();
+            writeln!(w, "fn=({func_id})").unwrap();
+            for (line, cost) in line_costs {
+                writeln!(&mut w, "{line} {cost}").unwrap();
+            }
+            for CallCost { call, cost, count } in
+                call_stats.get(&(*func_id, *file)).unwrap_or(&vec![])
+            {
+                let (dir, name) = self.debug_files[*file - 1];
+                writeln!(&mut w, "cfl={dir}/{name}").unwrap();
+                writeln!(w, "cfn=({})", func_ids[&call.target.function]).unwrap();
                 writeln!(w, "calls={count} {}", call.target.line).unwrap();
                 writeln!(w, "{} {cost}", call.from.line).unwrap();
             }
@@ -182,15 +192,19 @@ impl<'a> Profiler<'a> {
         self.function_begin
             .range(..=pc)
             .last()
-            .and_then(|(_, function)| {
-                self.location_begin
+            .map(|(_, function)| {
+                let (file, line) = self
+                    .location_begin
                     .range(..=pc)
                     .last()
-                    .map(|(_, (file, line))| Loc {
-                        function,
-                        file: *file,
-                        line: *line,
-                    })
+                    .map(|(_, (file, line))| (*file, *line))
+                    // for labels with no .loc above them, just point to main file
+                    .unwrap_or((1, 0));
+                Loc {
+                    function,
+                    file,
+                    line,
+                }
             })
     }
 
@@ -255,9 +269,10 @@ impl<'a> Profiler<'a> {
                 // we start profiling on the initial call to "__runtime_start"
                 if target.function == "__runtime_start" {
                     let call = Call {
+                        // __runtime_start does not have a proper ".debug loc", just point to main file
                         from: Loc {
                             function: "",
-                            file: 0,
+                            file: 1,
                             line: 0,
                         },
                         target,

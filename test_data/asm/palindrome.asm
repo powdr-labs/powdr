@@ -4,7 +4,7 @@
 use std::prover::Query;
 use std::convert::int;
 
-machine Palindrome with degree: 1024 {
+machine Palindrome with degree: 32 {
     reg pc[@pc];
     reg X[<=];
     reg A;
@@ -30,13 +30,13 @@ machine Palindrome with degree: 1024 {
 
     // This enforces that addresses are stored in an ascending order
     // (and in particular, are unique).
-    NOTLAST { m_addr' - m_addr } in POSITIVE;
+    NOTLAST $ [ m_addr' - m_addr ] in [POSITIVE];
 
     instr jmpz X, l: label { pc' = XIsZero * l + (1 - XIsZero) * (pc + 1) }
     instr jmp l: label { pc' = l }
     instr assert_zero X { XIsZero = 1 }
-    instr mstore X { { ADDR, X } in { m_addr, m_value } }
-    instr mload -> X { { ADDR, X } in { m_addr, m_value } }
+    instr mstore X { [ ADDR, X ] in [ m_addr, m_value ] }
+    instr mload -> X { [ ADDR, X ] in [ m_addr, m_value ] }
 
     function main {
         // TOOD somehow this is not properly resolved here without "std::prover::"

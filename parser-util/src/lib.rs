@@ -50,6 +50,12 @@ pub struct Error {
     message: String,
 }
 
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+        write!(f, "{} at {:?}", self.message, self.source_ref)
+    }
+}
+
 impl Error {
     pub fn output_to_stderr(&self) {
         use codespan_reporting::diagnostic::{Diagnostic, Label};
@@ -78,11 +84,11 @@ impl Error {
 }
 
 pub fn handle_parse_error(
-    err: lalrpop_util::ParseError<usize, lalrpop_util::lexer::Token, String>,
+    err: lalrpop_util::ParseError<usize, lalrpop_util::lexer::Token, Error>,
     file_name: Option<&str>,
     input: &str,
 ) -> Error {
-    let (&start, &end) = match &err {
+    let (start, end) = match err {
         lalrpop_util::ParseError::InvalidToken { location } => (location, location),
         lalrpop_util::ParseError::UnrecognizedEOF {
             location,
@@ -95,7 +101,9 @@ pub fn handle_parse_error(
         lalrpop_util::ParseError::ExtraToken {
             token: (start, _, end),
         } => (start, end),
-        lalrpop_util::ParseError::User { error: _ } => (&0, &0),
+        lalrpop_util::ParseError::User { error } => {
+            return error;
+        }
     };
     Error {
         source_ref: SourceRef {

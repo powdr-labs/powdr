@@ -81,7 +81,7 @@
 # 14 "sources/simple.S" 2
 
 
-.globl __runtime_start; __runtime_start: la x10,__return_pointer; sw x1,0(x10); li x10,0
+.globl _start; .globl __runtime_start; _start: __runtime_start: la x10,__return_pointer; sw x1,0(x10); li x10,0
 
 la x10,__return_pointer; lw x1,0(x10); ret;
 

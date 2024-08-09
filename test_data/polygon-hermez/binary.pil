@@ -22,7 +22,7 @@
 
 include "global.pil";
 
-namespace Binary(%N);
+namespace Binary(N);
 
 //  ##############################################################
     //  CONSTANT POLINOMIALS
@@ -91,8 +91,8 @@ namespace Binary(%N);
     lCout' = cOut;
     lOpcode' = opcode;
 
-    {0, opcode, freeInA[0], freeInB[0], cIn, 0, freeInC[0], cMiddle} in {P_LAST, P_OPCODE, Global.BYTE_2A, Global.BYTE, P_CIN, P_USE_CARRY, P_C, P_COUT};
-    {resultValidRange' + resultBinOp', opcode, freeInA[1], freeInB[1], cMiddle, useCarry ,freeInC[1], cOut} in {P_LAST, P_OPCODE, Global.BYTE_2A, Global.BYTE, P_CIN, P_USE_CARRY, P_C, P_COUT};
+    [0, opcode, freeInA[0], freeInB[0], cIn, 0, freeInC[0], cMiddle] in [P_LAST, P_OPCODE, Global.BYTE_2A, Global.BYTE, P_CIN, P_USE_CARRY, P_C, P_COUT];
+    [resultValidRange' + resultBinOp', opcode, freeInA[1], freeInB[1], cMiddle, useCarry ,freeInC[1], cOut] in [P_LAST, P_OPCODE, Global.BYTE_2A, Global.BYTE, P_CIN, P_USE_CARRY, P_C, P_COUT];
 
     a[0]' = a[0] * (1 - RESET) + freeInA[0] * FACTOR[0] + 256 * freeInA[1] * FACTOR[0];
     a[1]' = a[1] * (1 - RESET) + freeInA[0] * FACTOR[1] + 256 * freeInA[1] * FACTOR[1];

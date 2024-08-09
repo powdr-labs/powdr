@@ -1,0 +1,5 @@
+namespace Add(8);
+    let a;
+    let b;
+    let c;
+    a + b = c;

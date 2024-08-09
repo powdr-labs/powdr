@@ -6,6 +6,7 @@ use std::{
 use itertools::Itertools;
 
 use crate::{
+    asm_analysis::combine_flags,
     indent,
     parsed::{
         asm::{AbsoluteSymbolPath, Part},
@@ -18,9 +19,9 @@ use crate::{
 use super::{
     AnalysisASMFile, AssignmentStatement, CallableSymbol, CallableSymbolDefinitionRef,
     DebugDirective, FunctionBody, FunctionStatement, FunctionStatements, Incompatible,
-    IncompatibleSet, Instruction, InstructionDefinitionStatement, InstructionStatement, Item,
-    LabelStatement, LinkDefinitionStatement, Machine, RegisterDeclarationStatement, RegisterTy,
-    Return, Rom, SubmachineDeclaration,
+    IncompatibleSet, InstructionDefinitionStatement, InstructionStatement, Item, LabelStatement,
+    LinkDefinition, Machine, RegisterDeclarationStatement, RegisterTy, Return, Rom,
+    SubmachineDeclaration,
 };
 
 impl Display for AnalysisASMFile {
@@ -58,6 +59,12 @@ impl Display for AnalysisASMFile {
                 )?,
                 Item::TypeDeclaration(enum_decl) => {
                     write_indented_by(f, enum_decl, current_path.len())?
+                }
+                Item::TraitImplementation(trait_impl) => {
+                    write_indented_by(f, trait_impl, current_path.len())?
+                }
+                Item::TraitDeclaration(trait_decl) => {
+                    write_indented_by(f, trait_decl, current_path.len())?
                 }
             }
         }
@@ -105,12 +112,17 @@ impl Display for Machine {
     }
 }
 
-impl Display for LinkDefinitionStatement {
+impl Display for LinkDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let flag = combine_flags(self.instr_flag.clone(), self.link_flag.clone());
         write!(
             f,
-            "link {} {} {};",
-            self.flag,
+            "link {}{} {};",
+            if flag == 1.into() {
+                "".to_string()
+            } else {
+                format!("if {flag} ")
+            },
             if self.is_permutation { "~>" } else { "=>" },
             self.to
         )
@@ -216,17 +228,6 @@ impl Display for RegisterTy {
 impl Display for InstructionDefinitionStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "instr {}{}", self.name, self.instruction)
-    }
-}
-
-impl Display for Instruction {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "{}{}",
-            self.params.prepend_space_if_non_empty(),
-            self.body
-        )
     }
 }
 

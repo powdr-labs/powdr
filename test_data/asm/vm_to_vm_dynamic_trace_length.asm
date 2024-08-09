@@ -1,4 +1,4 @@
-machine Main with degree: 256 {
+machine Main with degree: 128 {
     Pow pow;
 
     reg pc[@pc];
@@ -7,7 +7,7 @@ machine Main with degree: 256 {
     reg Z[<=];
     reg A;
 
-    instr pow X, Y -> Z = pow.pow;
+    instr pow X, Y -> Z link => Z = pow.pow(X, Y);
     instr assert_eq X, Y { X = Y }
 
     function main {
