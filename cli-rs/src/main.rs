@@ -343,6 +343,7 @@ fn compile_rust<F: FieldElement>(
         &runtime,
         via_elf,
         continuations,
+        None,
     )
     .ok_or_else(|| vec!["could not compile rust".to_string()])?;
 

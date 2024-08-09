@@ -4,4 +4,7 @@
 extern crate powdr_riscv_runtime;
 
 #[no_mangle]
-pub fn main() {}
+pub fn main() {
+    #[cfg(feature = "do_panic")]
+    panic!()
+}

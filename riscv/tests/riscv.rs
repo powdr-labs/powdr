@@ -25,6 +25,7 @@ pub fn test_continuations(case: &str) {
     let compiled = powdr_riscv::compile_rust_crate_to_riscv(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
+        None,
     );
 
     // Test continuations from ELF file.
@@ -69,6 +70,7 @@ fn bn254_sanity_check() {
     let compiled = powdr_riscv::compile_rust_crate_to_riscv(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
+        None,
     );
 
     log::info!("Verifying {case} converted from ELF file");
@@ -105,6 +107,29 @@ fn bn254_sanity_check() {
 fn trivial() {
     let case = "trivial";
     verify_riscv_crate(case, Default::default(), &Runtime::base())
+}
+
+#[test]
+#[ignore = "Too slow"]
+#[should_panic(expected = "reached a fail instruction")]
+fn trivial_with_feature() {
+    // enabling the feature adds a panic!() to the code and we reach a fail instruction
+    let case = "trivial";
+
+    let temp_dir = Temp::new_dir().unwrap();
+    let compiled = powdr_riscv::compile_rust_crate_to_riscv(
+        &format!("tests/riscv_data/{case}/Cargo.toml"),
+        &temp_dir,
+        Some(vec!["do_panic".to_string()]),
+    );
+
+    log::info!("Verifying {case} converted from ELF file");
+    let from_elf = powdr_riscv::elf::translate::<GoldilocksField>(
+        compiled.executable.as_ref().unwrap(),
+        &Runtime::base(),
+        false,
+    );
+    verify_riscv_asm_string::<usize>(&format!("{case}_from_elf.asm"), &from_elf, &[], None);
 }
 
 #[test]
@@ -318,6 +343,7 @@ fn read_slice() {
     let riscv_asm = powdr_riscv::compile_rust_crate_to_riscv_asm(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
+        None,
     );
     let powdr_asm = powdr_riscv::asm::compile::<GoldilocksField>(riscv_asm, &runtime, false);
 
@@ -400,6 +426,7 @@ fn many_chunks_dry() {
     let riscv_asm = powdr_riscv::compile_rust_crate_to_riscv_asm(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
+        None,
     );
     let powdr_asm = powdr_riscv::asm::compile::<GoldilocksField>(riscv_asm, &runtime, true);
 
@@ -425,6 +452,7 @@ fn output_syscall() {
     let riscv_asm = powdr_riscv::compile_rust_crate_to_riscv_asm(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
+        None,
     );
     let powdr_asm = powdr_riscv::asm::compile::<GoldilocksField>(riscv_asm, &runtime, false);
 
@@ -488,6 +516,7 @@ fn verify_riscv_crate_impl<S: serde::Serialize + Send + Sync + 'static>(
     let compiled = powdr_riscv::compile_rust_crate_to_riscv(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
+        None,
     );
 
     if via_elf {
