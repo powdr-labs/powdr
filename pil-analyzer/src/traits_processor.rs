@@ -128,9 +128,8 @@ impl<'a> TraitsProcessor<'a> {
                 //     .into_iter()
                 //     .zip(collected_types.into_iter())
                 //     .collect();
-                //trait_fn.ty.substitute_type_vars(&substitutions); // TODO GZ: avoid mutation?
+                //trait_fn.ty.substitute_type_vars(&substitutions);
 
-                //check first!
                 resolved_impl_pos.insert(
                     collected_types.iter().format(",").to_string(),
                     impl_fn.body.clone(),

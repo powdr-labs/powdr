@@ -138,7 +138,7 @@ pub enum Value<'a, T> {
     Enum(&'a str, Option<Vec<Arc<Self>>>),
     BuiltinFunction(BuiltinFunction),
     Expression(AlgebraicExpression<T>),
-    TraitFunction(TraitFunction<'a, T>),
+    TraitFunction(Closure<'a, T>),
 }
 
 impl<'a, T: FieldElement> From<T> for Value<'a, T> {
@@ -410,13 +410,6 @@ impl<'a, T> Closure<'a, T> {
         // TODO should use proper types as soon as we have them
         "closure".to_string()
     }
-}
-
-#[derive(Clone, Debug)]
-pub struct TraitFunction<'a, T> {
-    pub body: Box<Expression>,
-    pub environment: Vec<Arc<Value<'a, T>>>,
-    pub type_args: HashMap<String, Type>,
 }
 
 pub struct Definitions<'a>(pub &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>);
@@ -842,7 +835,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     });
 
                     match impl_pos {
-                        Some(body) => {
+                        Some(expr) => {
                             let local_type_args = poly
                                 .type_args
                                 .clone()
@@ -858,8 +851,12 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                                 })
                                 .unwrap();
 
-                            Value::TraitFunction(TraitFunction {
-                                body: body.clone(),
+                            let Expression::LambdaExpression(_, body) = &expr.as_ref() else {
+                                unreachable!()
+                            };
+
+                            Value::TraitFunction(Closure {
+                                lambda: body,
                                 environment: vec![],
                                 type_args: local_type_args.clone(),
                             })
@@ -1009,6 +1006,11 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 lambda,
                 environment,
                 type_args,
+            })
+            | Value::TraitFunction(Closure {
+                lambda,
+                environment,
+                type_args,
             }) => {
                 assert_eq!(lambda.params.len(), arguments.len());
                 let matched_arguments =
@@ -1034,19 +1036,6 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 self.local_vars = local_vars;
                 self.type_args = type_args.clone();
                 self.expand(&lambda.body)?;
-            }
-            Value::TraitFunction(TraitFunction {
-                body,
-                environment,
-                type_args,
-            }) => {
-                self.op_stack.push(Operation::SetEnvironment(
-                    std::mem::take(&mut self.local_vars),
-                    std::mem::take(&mut self.type_args),
-                ));
-                self.local_vars = vec![];
-                self.type_args = type_args.clone();
-                self.expand(&body)?;
             }
             e => panic!("Expected function but got {e}"),
         };
