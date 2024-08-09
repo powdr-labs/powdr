@@ -276,6 +276,33 @@ impl Runtime {
         self.syscalls.contains_key(&s)
     }
 
+    pub fn with_keccak(mut self) -> Self {
+        self.add_submachine(
+            "std::machines::hash::keccakf::KeccakF",
+            None,
+            "keccakf",
+            vec![],
+            [format!(
+                "instr keccakf link ~> keccakf.keccakf({}, {}, STEP);",
+                reg(0),
+                reg(1)
+            )],
+            2,
+            std::iter::once(format!("{} <=X= 0x100;", reg(0))) // filler value for input pointer
+                .chain(std::iter::once(format!("{} <=X= 0x300;", reg(1)))) // filler value for output pointer (at least 200 bytes away)
+                .chain(std::iter::once("keccakf;".to_string())) // must be called at least once
+                .chain((0..50).flat_map(|i| store_word(11, i as u32 * 4, "x0"))), // zero out 200 bytes following output pointer
+        );
+
+        // The keccakf syscall has a two arguments passed on x10 and x11,
+        // the memory address of the 25 field element input array
+        // and the memory address of the 25 field element output array to store results to.
+        let implementation = std::iter::once("keccakf;".to_string());
+
+        self.add_syscall(Syscall::KeccakF, implementation);
+        self
+    }
+
     pub fn with_poseidon(mut self) -> Self {
         self.add_submachine(
             "std::machines::hash::poseidon_gl::PoseidonGL",
@@ -579,6 +606,7 @@ impl TryFrom<&[&str]> for Runtime {
             }
             match *name {
                 "poseidon_gl" => runtime = runtime.with_poseidon(),
+                "keccakf" => runtime = runtime.with_keccak(),
                 "arith" => runtime = runtime.with_arith(),
                 _ => return Err(format!("Invalid co-processor specified: {name}")),
             }
