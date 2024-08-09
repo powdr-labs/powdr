@@ -742,7 +742,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let factor = args[2].bin();
                 let offset = args[3].bin();
 
-                let actual_val = self.bootloader_inputs[(addr.bin() * factor + offset) as usize];
+                let addr = (addr.bin() * factor + offset) as usize;
+                let actual_val = self.bootloader_inputs[addr];
 
                 assert_eq!(val, actual_val);
 
@@ -785,6 +786,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "branch_if_diff_nonzero" => {
                 let val1 = self.proc.get_reg_mem(args[0].u());
                 let val2 = self.proc.get_reg_mem(args[1].u());
+
                 let val: Elem<F> = val1.sub(&val2);
                 if !val.is_zero() {
                     self.proc.set_pc(args[2]);
@@ -1022,14 +1024,32 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 Vec::new()
             }
             "poseidon_gl" => {
-                assert!(args.is_empty());
-                let inputs = (0..12)
-                    .map(|i| self.proc.get_reg(&register_by_idx(i)).into_fe())
+                let input_ptr = self.proc.get_reg_mem(args[0].u()).u();
+                assert_eq!(input_ptr % 4, 0);
+
+                let inputs = (0..24)
+                    .map(|i| self.proc.get_mem(input_ptr + i * 4))
+                    .chunks(2)
+                    .into_iter()
+                    .map(|mut chunk| {
+                        let low = chunk.next().unwrap() as u64;
+                        let high = chunk.next().unwrap() as u64;
+                        F::from((high << 32) | low)
+                    })
                     .collect::<Vec<_>>();
-                let result = poseidon_gl::poseidon_gl(&inputs);
-                (0..4).for_each(|i| {
-                    self.proc
-                        .set_reg(&register_by_idx(i), Elem::Field(result[i]))
+
+                let result = poseidon_gl::poseidon_gl(&inputs)
+                    .into_iter()
+                    .flat_map(|v| {
+                        let v = v.to_integer().try_into_u64().unwrap();
+                        vec![(v & 0xffffffff) as u32, (v >> 32) as u32]
+                    })
+                    .collect::<Vec<_>>();
+
+                let output_ptr = self.proc.get_reg_mem(args[1].u()).u();
+                assert_eq!(output_ptr % 4, 0);
+                result.iter().enumerate().for_each(|(i, &v)| {
+                    self.proc.set_mem(output_ptr + i as u32 * 4, v);
                 });
 
                 vec![]

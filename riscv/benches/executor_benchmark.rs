@@ -30,7 +30,11 @@ fn executor_benchmark(c: &mut Criterion) {
     // The first chunk of `many_chunks`, with Poseidon co-processor & bootloader
     let riscv_asm_files =
         compile_rust_crate_to_riscv_asm("./tests/riscv_data/many_chunks/Cargo.toml", &tmp_dir);
-    let contents = asm::compile::<T>(riscv_asm_files, &Runtime::base().with_poseidon(), true);
+    let contents = asm::compile::<T>(
+        riscv_asm_files,
+        &Runtime::base().with_poseidon_for_continuations(),
+        true,
+    );
     let mut pipeline = Pipeline::<T>::default().from_asm_string(contents, None);
     pipeline.compute_optimized_pil().unwrap();
     pipeline.compute_fixed_cols().unwrap();

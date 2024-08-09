@@ -53,6 +53,7 @@ pub struct DoubleSortedWitnesses<'a, T: FieldElement> {
     /// (addr, step) -> value
     trace: BTreeMap<(T, T), Operation<T>>,
     data: BTreeMap<T, T>,
+    is_initialized: BTreeMap<T, bool>,
     namespace: String,
     name: String,
     /// If the machine has the `m_diff_upper` and `m_diff_lower` columns, this is the base of the
@@ -159,6 +160,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                     has_bootloader_write_column,
                     trace: Default::default(),
                     data: Default::default(),
+                    is_initialized: Default::default(),
                     selector_ids,
                     connecting_identities: connecting_identities.clone(),
                 })
@@ -175,6 +177,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                 has_bootloader_write_column,
                 trace: Default::default(),
                 data: Default::default(),
+                is_initialized: Default::default(),
                 selector_ids,
                 connecting_identities: connecting_identities.clone(),
             })
@@ -382,6 +385,14 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                 ))
             }
         };
+
+        if self.has_bootloader_write_column {
+            let is_initialized = self.is_initialized.get(&addr).cloned().unwrap_or_default();
+            if !is_initialized && !is_bootloader_write {
+                panic!("Memory address {addr:x} must be initialized with a bootloader write",);
+            }
+            self.is_initialized.insert(addr, true);
+        }
 
         let step = args[2]
             .constant_value()

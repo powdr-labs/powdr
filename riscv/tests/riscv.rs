@@ -19,7 +19,7 @@ use powdr_riscv::{
 /// Compiles and runs a rust program with continuations, runs the full
 /// witness generation & verifies it using Pilcom.
 pub fn test_continuations(case: &str) {
-    let runtime = Runtime::base().with_poseidon();
+    let runtime = Runtime::base().with_poseidon_for_continuations();
     let temp_dir = Temp::new_dir().unwrap();
 
     let compiled = powdr_riscv::compile_rust_crate_to_riscv(
@@ -125,7 +125,11 @@ fn zero_with_values() {
 #[ignore = "Too slow"]
 fn runtime_poseidon_gl() {
     let case = "poseidon_gl_via_coprocessor";
-    verify_riscv_crate(case, Default::default(), &Runtime::base().with_poseidon());
+    verify_riscv_crate(
+        case,
+        Default::default(),
+        &Runtime::base().with_poseidon_no_continuations(),
+    );
 }
 
 #[test]
@@ -391,7 +395,7 @@ fn many_chunks_dry() {
     // and validating the bootloader inputs.
     // Doesn't do a full witness generation, verification, or proving.
     let case = "many_chunks";
-    let runtime = Runtime::base().with_poseidon();
+    let runtime = Runtime::base().with_poseidon_for_continuations();
     let temp_dir = Temp::new_dir().unwrap();
     let riscv_asm = powdr_riscv::compile_rust_crate_to_riscv_asm(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
