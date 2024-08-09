@@ -3,7 +3,7 @@ use std::iter::once;
 
 use itertools::Itertools;
 
-use super::{FixedLookup, Machine};
+use super::Machine;
 use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{EvalResult, FixedData, MutableState, QueryCallback};
@@ -190,10 +190,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
         self.selector_ids.keys().cloned().collect()
     }
 
-    fn degree(&self) -> DegreeType {
-        self.degree
-    }
-
     fn name(&self) -> &str {
         &self.name
     }
@@ -209,8 +205,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        _fixed_lookup: &'b mut FixedLookup<T>,
-        _query_callback: &'b mut Q,
+        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         let mut addr = vec![];
         let mut step = vec![];
