@@ -1,6 +1,8 @@
 use powdr_ast::analyzed::Analyzed;
 use powdr_backend::BackendType;
-use powdr_number::{buffered_write_file, BigInt, Bn254Field, FieldElement, GoldilocksField};
+use powdr_number::{
+    buffered_write_file, BabyBearField, BigInt, Bn254Field, FieldElement, GoldilocksField,
+};
 use powdr_pil_analyzer::evaluator::{self, SymbolLookup};
 use std::path::PathBuf;
 use std::{env, fs};
@@ -69,6 +71,10 @@ pub fn regular_test(file_name: &str, inputs: &[i32]) {
     let inputs_bn = inputs.iter().map(|x| Bn254Field::from(*x)).collect();
     let pipeline_bn = make_prepared_pipeline(file_name, inputs_bn, vec![]);
     test_halo2(pipeline_bn);
+
+    let inputs_bb = inputs.iter().map(|x| BabyBearField::from(*x)).collect();
+    let mut pipeline_bb = make_prepared_pipeline(file_name, inputs_bb, vec![]);
+    pipeline_bb.compute_witness().unwrap();
 }
 
 pub fn test_pilcom(pipeline: Pipeline<GoldilocksField>) {
