@@ -6,9 +6,10 @@ use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::{
     test_util::{
         asm_string_to_pil, gen_estark_proof_with_backend_variant, make_prepared_pipeline,
-        make_simple_prepared_pipeline, regular_test, resolve_test_file,
-        run_pilcom_with_backend_variant, test_halo2, test_halo2_with_backend_variant, test_pilcom,
-        test_plonky3_with_backend_variant, BackendVariant,
+        make_simple_prepared_pipeline, regular_test, regular_test_without_babybear,
+        resolve_test_file, run_pilcom_with_backend_variant, test_halo2,
+        test_halo2_with_backend_variant, test_pilcom, test_plonky3_with_backend_variant,
+        BackendVariant,
     },
     util::{FixedPolySet, PolySet, WitnessPolySet},
     Pipeline,
@@ -292,7 +293,7 @@ fn multi_return_wrong_assignment_register_length() {
 fn bit_access() {
     let f = "asm/bit_access.asm";
     let i = [20];
-    regular_test(f, &i);
+    regular_test_without_babybear(f, &i);
 }
 
 #[test]
@@ -305,7 +306,7 @@ fn sqrt() {
 fn functional_instructions() {
     let f = "asm/functional_instructions.asm";
     let i = [20];
-    regular_test(f, &i);
+    regular_test_without_babybear(f, &i);
 }
 
 #[test]
@@ -387,13 +388,13 @@ fn multiple_signatures() {
 #[test]
 fn permutation_simple() {
     let f = "asm/permutations/simple.asm";
-    regular_test(f, Default::default());
+    regular_test_without_babybear(f, Default::default());
 }
 
 #[test]
 fn permutation_to_block() {
     let f = "asm/permutations/vm_to_block.asm";
-    regular_test(f, Default::default());
+    regular_test_without_babybear(f, Default::default());
 }
 
 #[test]
@@ -407,7 +408,7 @@ fn permutation_to_vm() {
 #[test]
 fn permutation_to_block_to_block() {
     let f = "asm/permutations/block_to_block.asm";
-    regular_test(f, Default::default());
+    regular_test_without_babybear(f, Default::default());
 }
 
 #[test]
@@ -420,14 +421,14 @@ fn permutation_incoming_needs_selector() {
 #[test]
 fn call_selectors_with_no_permutation() {
     let f = "asm/permutations/call_selectors_with_no_permutation.asm";
-    regular_test(f, Default::default());
+    regular_test_without_babybear(f, Default::default());
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn vm_args() {
     let f = "asm/vm_args.asm";
-    regular_test(f, Default::default());
+    regular_test_without_babybear(f, Default::default());
 }
 
 #[test]

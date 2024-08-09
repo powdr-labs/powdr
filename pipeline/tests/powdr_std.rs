@@ -6,8 +6,8 @@ use powdr_pil_analyzer::evaluator::Value;
 use powdr_pipeline::{
     test_util::{
         evaluate_function, evaluate_integer_function, execute_test_file, gen_estark_proof,
-        gen_halo2_proof, make_simple_prepared_pipeline, regular_test, std_analyzed, test_halo2,
-        test_pilcom, BackendVariant,
+        gen_halo2_proof, make_simple_prepared_pipeline, regular_test, regular_test_only_babybear,
+        std_analyzed, test_halo2, test_pilcom, BackendVariant,
     },
     Pipeline,
 };
@@ -180,6 +180,18 @@ fn binary_test() {
     let f = "std/binary_test.asm";
     test_pilcom(make_simple_prepared_pipeline(f));
     test_halo2(make_simple_prepared_pipeline(f));
+}
+
+#[test]
+fn binary_bb_8_test() {
+    let f = "std/binary_bb_test_8.asm";
+    regular_test_only_babybear(f, &[]);
+}
+
+#[test]
+fn binary_bb_16_test() {
+    let f = "std/binary_bb_test_16.asm";
+    regular_test_only_babybear(f, &[]);
 }
 
 #[test]
