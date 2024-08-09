@@ -33,6 +33,7 @@ machine ByteBinary with
 }
 
 machine Binary(byte_binary: ByteBinary) with
+    degree: 2**19,
     latch: latch,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation

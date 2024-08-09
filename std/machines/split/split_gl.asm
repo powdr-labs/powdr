@@ -3,6 +3,7 @@ use super::ByteCompare;
 
 // Splits an arbitrary field element into two u32s, on the Goldilocks field.
 machine SplitGL(byte_compare: ByteCompare) with
+    degree: 2**19,
     latch: RESET,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
