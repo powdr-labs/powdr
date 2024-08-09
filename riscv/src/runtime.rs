@@ -281,17 +281,17 @@ impl Runtime {
             "std::machines::hash::keccakf::KeccakF",
             None,
             "keccakf",
+            vec![],
             [format!(
-                "instr keccakf {} ~ keccakf.keccakf {}, {}, STEP ->;", // instr keccakf X, Y -> ~ keccakf X, Y, STEP ->; (sub calls asm)
-                instr_register_params(0, 2, 0), // one pointer for input and one pointer for output (both as input arguments)
+                "instr keccakf link ~> keccakf.keccakf({}, {}, STEP);",
                 reg(0),
-                reg(1),
+                reg(1)
             )],
-            0,
+            2,
             std::iter::once(format!("{} <=X= 0x100;", reg(0))) // filler value for input pointer
                 .chain(std::iter::once(format!("{} <=X= 0x300;", reg(1)))) // filler value for output pointer (at least 200 bytes away)
                 .chain(std::iter::once("keccakf;".to_string())) // must be called at least once
-                .chain((0..50).flat_map(|i| store_word(&reg(1), i as u32 * 4, "x0"))), // zero out 200 bytes following output pointer
+                .chain((0..50).flat_map(|i| store_word(11, i as u32 * 4, "x0"))), // zero out 200 bytes following output pointer
         );
 
         // The keccakf syscall has a two arguments passed on x10 and x11,
