@@ -32,7 +32,10 @@ pub fn poseidon_gl(data: [u64; 12]) -> [u64; 4] {
 /// Calls the keccakf machine.
 /// Return value is placed in the output array.
 pub fn keccakf(input: &[u64; 25], output: &mut [u64; 25]) {
-    unimplemented!()
+    unsafe {
+        // Syscall inputs: memory pointer to input array and memory pointer to output array.
+        asm!("ecall", in("a0") input, in("a1") output, in("t0") u32::from(Syscall::KeccakF));
+    }
 }
 
 // Output number of bytes for keccak-256 (32 bytes)

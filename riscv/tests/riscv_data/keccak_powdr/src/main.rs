@@ -1,3 +1,4 @@
+#![no_main]
 #![no_std]
 extern crate alloc;
 use alloc::vec::Vec;
@@ -7,7 +8,7 @@ use hex_literal::hex;
 
 #[no_mangle]
 pub fn main() {
-     // Tests using our keccak syscall.
+    // Tests using our keccak syscall.
      let input: [&[u8]; 4] = [
         // Zokrates test vectors
         &[0x7a, 0x6f, 0x6b, 0x72, 0x61, 0x74, 0x65, 0x73],
@@ -17,8 +18,7 @@ pub fn main() {
         &[0x00; 256],
     ];
 
-    // Currently commented out because keccakf syscall is not ready (roadblocked by circuit compiler).
-    // let output: Vec<[u8; 32]> = input.iter().map(|x| keccak(x, 0x01)).collect();
+    let output: Vec<[u8; 32]> = input.iter().map(|x| keccak(x, 0x01)).collect();
 
     let expected = [
         hex!("ca85d1976d40dcb6ca3becc8c6596e83c0774f4185cf016a05834f5856a37f39"), 
