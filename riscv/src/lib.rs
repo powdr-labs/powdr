@@ -435,7 +435,7 @@ fn build_cargo_command(
     let feature_list = features.as_ref().map(|f| f.join(",")).unwrap_or_default();
 
     if let Some(features) = features {
-        if features.len() > 0 {
+        if !features.is_empty() {
             args.extend(as_ref![OsStr; "--features", feature_list]);
         }
     }
