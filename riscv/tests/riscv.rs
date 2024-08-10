@@ -25,6 +25,7 @@ pub fn test_continuations(case: &str) {
     let compiled = powdr_riscv::compile_rust_crate_to_riscv(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
+        None,
     );
 
     // Test continuations from ELF file.
@@ -69,6 +70,7 @@ fn bn254_sanity_check() {
     let compiled = powdr_riscv::compile_rust_crate_to_riscv(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
+        None,
     );
 
     log::info!("Verifying {case} converted from ELF file");
@@ -318,6 +320,7 @@ fn read_slice() {
     let riscv_asm = powdr_riscv::compile_rust_crate_to_riscv_asm(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
+        None,
     );
     let powdr_asm = powdr_riscv::asm::compile::<GoldilocksField>(riscv_asm, &runtime, false);
 
@@ -390,6 +393,81 @@ fn print() {
 }
 
 #[test]
+#[ignore = "Too slow"]
+// Test compiling a program with features.
+// If no features are enabled, the expected input is 0.
+// The test program has two features, "add_two" and "add_three".
+// Enabling these features adds 2 and 3 to the expected input, respectively.
+fn features() {
+    let case = "features";
+
+    let temp_dir = Temp::new_dir().unwrap();
+
+    // no features
+    let expected = 0;
+    let compiled = powdr_riscv::compile_rust_crate_to_riscv(
+        &format!("tests/riscv_data/{case}/Cargo.toml"),
+        &temp_dir,
+        None,
+    );
+
+    log::info!("Verifying {case} converted from ELF file");
+    let from_elf = powdr_riscv::elf::translate::<GoldilocksField>(
+        compiled.executable.as_ref().unwrap(),
+        &Runtime::base(),
+        false,
+    );
+    verify_riscv_asm_string::<usize>(
+        &format!("{case}_from_elf.asm"),
+        &from_elf,
+        &[expected.into()],
+        None,
+    );
+
+    // "add_two"
+    let expected = 2;
+    let compiled = powdr_riscv::compile_rust_crate_to_riscv(
+        &format!("tests/riscv_data/{case}/Cargo.toml"),
+        &temp_dir,
+        Some(vec!["add_two".to_string()]),
+    );
+
+    log::info!("Verifying {case} converted from ELF file");
+    let from_elf = powdr_riscv::elf::translate::<GoldilocksField>(
+        compiled.executable.as_ref().unwrap(),
+        &Runtime::base(),
+        false,
+    );
+    verify_riscv_asm_string::<usize>(
+        &format!("{case}_from_elf.asm"),
+        &from_elf,
+        &[expected.into()],
+        None,
+    );
+
+    // "add_two" and "add_three"
+    let expected = 5;
+    let compiled = powdr_riscv::compile_rust_crate_to_riscv(
+        &format!("tests/riscv_data/{case}/Cargo.toml"),
+        &temp_dir,
+        Some(vec!["add_two".to_string(), "add_three".to_string()]),
+    );
+
+    log::info!("Verifying {case} converted from ELF file");
+    let from_elf = powdr_riscv::elf::translate::<GoldilocksField>(
+        compiled.executable.as_ref().unwrap(),
+        &Runtime::base(),
+        false,
+    );
+    verify_riscv_asm_string::<usize>(
+        &format!("{case}_from_elf.asm"),
+        &from_elf,
+        &[expected.into()],
+        None,
+    );
+}
+
+#[test]
 fn many_chunks_dry() {
     // Compiles and runs the many_chunks example with continuations, just computing
     // and validating the bootloader inputs.
@@ -400,6 +478,7 @@ fn many_chunks_dry() {
     let riscv_asm = powdr_riscv::compile_rust_crate_to_riscv_asm(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
+        None,
     );
     let powdr_asm = powdr_riscv::asm::compile::<GoldilocksField>(riscv_asm, &runtime, true);
 
@@ -425,6 +504,7 @@ fn output_syscall() {
     let riscv_asm = powdr_riscv::compile_rust_crate_to_riscv_asm(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
+        None,
     );
     let powdr_asm = powdr_riscv::asm::compile::<GoldilocksField>(riscv_asm, &runtime, false);
 
@@ -488,6 +568,7 @@ fn verify_riscv_crate_impl<S: serde::Serialize + Send + Sync + 'static>(
     let compiled = powdr_riscv::compile_rust_crate_to_riscv(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
+        None,
     );
 
     if via_elf {
