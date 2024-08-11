@@ -1,5 +1,6 @@
 //! A plonky3 prover using FRI and Poseidon
 
+use p3_baby_bear::BabyBear;
 use p3_goldilocks::Goldilocks;
 use p3_matrix::dense::RowMajorMatrix;
 
@@ -16,7 +17,7 @@ use p3_uni_stark::{
 };
 use powdr_number::{FieldElement, KnownField};
 
-use crate::circuit_builder::{cast_to_goldilocks, PowdrCircuit};
+use crate::circuit_builder::{cast_to_babybear, cast_to_goldilocks, PowdrCircuit};
 
 use crate::params::{get_challenger, get_config, Config};
 

@@ -8,7 +8,7 @@ use p3_commit::ExtensionMmcs;
 use p3_dft::Radix2DitParallel;
 use p3_field::{extension::BinomialExtensionField, Field};
 use p3_fri::{FriConfig, TwoAdicFriPcs};
-use p3_goldilocks::MdsMatrixGoldilocks;
+use p3_goldilocks::{Goldilocks, MdsMatrixGoldilocks};
 use p3_merkle_tree::FieldMerkleTreeMmcs;
 use p3_poseidon::Poseidon;
 use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
@@ -16,7 +16,7 @@ use p3_uni_stark::StarkConfig;
 
 use rand::{distributions::Standard, Rng, SeedableRng};
 
-use crate::circuit_builder::Val;
+type Val = Goldilocks;
 
 const D: usize = 2;
 type Challenge = BinomialExtensionField<Val, D>;

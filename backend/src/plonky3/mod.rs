@@ -5,7 +5,7 @@ use powdr_executor::{
     constant_evaluator::{get_uniquely_sized_cloned, VariablySizedColumn},
     witgen::WitgenCallback,
 };
-use powdr_number::{FieldElement, GoldilocksField, LargeInt};
+use powdr_number::{BabyBearField, FieldElement, GoldilocksField, LargeInt};
 use powdr_plonky3::Plonky3Prover;
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
@@ -24,8 +24,10 @@ impl<T: FieldElement> BackendFactory<T> for Factory {
         _: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, T> + 'a>, Error> {
         if T::modulus().to_arbitrary_integer() != GoldilocksField::modulus().to_arbitrary_integer()
+            && T::modulus().to_arbitrary_integer()
+                != BabyBearField::modulus().to_arbitrary_integer()
         {
-            unimplemented!("plonky3 is only implemented for the Goldilocks field");
+            unimplemented!("plonky3 is only implemented for the BabyBear and Goldilocks fields");
         }
         if setup.is_some() {
             return Err(Error::NoSetupAvailable);
