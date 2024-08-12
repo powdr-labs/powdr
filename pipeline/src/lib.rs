@@ -1,5 +1,6 @@
-//! The main powdr lib, used to compile from assembly to PIL
+#![feature(stdarch_x86_avx512)]
 
+//! The main powdr lib, used to compile from assembly to PIL
 #![deny(clippy::print_stdout)]
 
 pub mod pipeline;
