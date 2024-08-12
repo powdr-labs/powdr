@@ -9,10 +9,11 @@
 use std::{any::TypeId, collections::BTreeMap};
 
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir, PairBuilder};
-use p3_baby_bear::{BabyBear, MdsMatrixBabyBear};
-use p3_field::{AbstractField, Field};
+use p3_baby_bear::{BabyBear, MDSBabyBearData, MdsMatrixBabyBear};
+use p3_field::{extension::ComplexExtendable, AbstractField, PrimeField};
 use p3_goldilocks::{Goldilocks, MdsMatrixGoldilocks};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
+use p3_mds::MdsPermutation;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, IdentityKind, PolynomialType,
@@ -20,8 +21,8 @@ use powdr_ast::analyzed::{
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{BabyBearField, FieldElement, GoldilocksField, LargeInt};
 
-pub trait FieldElementMap: Sync {
-    type P3Field: Sync;
+pub trait FieldElementMap: Clone + Send + Sync {
+    type P3Field: PrimeField;
     type MdsMatrix;
     fn to_p3_field(&self) -> Self::P3Field;
 }
@@ -123,7 +124,7 @@ impl<'a, T: FieldElement + FieldElementMap> PowdrCircuit<'a, T> {
             .iter()
             .map(|(col_name, _, idx)| {
                 let vals = *witness.get(&col_name).unwrap();
-                cast_to_goldilocks(vals[*idx])
+                vals[*idx].to_p3_field()
             })
             .collect()
     }
@@ -192,7 +193,7 @@ impl<'a, T: FieldElement + FieldElementMap> PowdrCircuit<'a, T> {
                 .get(id)
                 .expect("Referenced public value does not exist"))
             .into(),
-            AlgebraicExpression::Number(n) => AB::Expr::from(cast_to_goldilocks(*n)),
+            AlgebraicExpression::Number(n) => AB::Expr::from(n.to_p3_field()),
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
                 let left = self.to_plonky3_expr::<AB>(left, main, fixed, publics);
                 let right = self.to_plonky3_expr::<AB>(right, main, fixed, publics);

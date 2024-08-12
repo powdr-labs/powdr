@@ -17,19 +17,19 @@ use p3_uni_stark::{
 };
 use powdr_number::{FieldElement, KnownField};
 
-use crate::circuit_builder::{cast_to_babybear, cast_to_goldilocks, PowdrCircuit};
+use crate::circuit_builder::{FieldElementMap, PowdrCircuit};
 
 use crate::params::{get_challenger, get_config, Config};
 
-pub struct Plonky3Prover<T> {
+pub struct Plonky3Prover<T: FieldElement + FieldElementMap> {
     /// The analyzed PIL
     analyzed: Arc<Analyzed<T>>,
     /// The value of the fixed columns
     fixed: Arc<Vec<(String, Vec<T>)>>,
     /// Proving key
-    proving_key: Option<StarkProvingKey<Config>>,
+    proving_key: Option<StarkProvingKey<Config<T>>>,
     /// Verifying key
-    verifying_key: Option<StarkVerifyingKey<Config>>,
+    verifying_key: Option<StarkVerifyingKey<Config<T>>>,
 }
 
 pub enum VerificationKeyExportError {
@@ -44,7 +44,7 @@ impl fmt::Display for VerificationKeyExportError {
     }
 }
 
-impl<T: FieldElement> Plonky3Prover<T> {
+impl<T: FieldElement + FieldElementMap> Plonky3Prover<T> {
     pub fn new(analyzed: Arc<Analyzed<T>>, fixed: Arc<Vec<(String, Vec<T>)>>) -> Self {
         Self {
             analyzed,
@@ -69,7 +69,7 @@ impl<T: FieldElement> Plonky3Prover<T> {
 
     /// Returns preprocessed matrix based on the fixed inputs [`Plonky3Prover<T>`].
     /// This is used when running the setup phase
-    pub fn get_preprocessed_matrix(&self) -> RowMajorMatrix<Goldilocks> {
+    pub fn get_preprocessed_matrix(&self) -> RowMajorMatrix<<T as FieldElementMap>::P3Field> {
         let publics = self
             .analyzed
             .get_publics()
@@ -83,18 +83,18 @@ impl<T: FieldElement> Plonky3Prover<T> {
             .collect::<Vec<(String, Vec<T>)>>();
 
         match self.fixed.len() + publics.len() {
-            0 => RowMajorMatrix::new(Vec::<Goldilocks>::new(), 0),
+            0 => RowMajorMatrix::new(Vec::<<T as FieldElementMap>::P3Field>::new(), 0),
             _ => RowMajorMatrix::new(
                 // write fixed row by row
                 (0..self.analyzed.degree())
                     .flat_map(|i| {
                         self.fixed
                             .iter()
-                            .map(move |(_, values)| cast_to_goldilocks(values[i as usize]))
+                            .map(move |(_, values)| values[i as usize].to_p3_field())
                             .chain(
                                 publics
                                     .iter()
-                                    .map(move |(_, values)| cast_to_goldilocks(values[i as usize])),
+                                    .map(move |(_, values)| values[i as usize].to_p3_field()),
                             )
                     })
                     .collect(),
@@ -104,7 +104,7 @@ impl<T: FieldElement> Plonky3Prover<T> {
     }
 }
 
-impl<T: FieldElement> Plonky3Prover<T> {
+impl<T: FieldElement + FieldElementMap> Plonky3Prover<T> {
     pub fn setup(&mut self) {
         // get fixed columns
         let fixed = &self.fixed;
@@ -142,7 +142,7 @@ impl<T: FieldElement> Plonky3Prover<T> {
                     fixed
                         .iter()
                         .chain(publics.iter())
-                        .map(move |(_, values)| cast_to_goldilocks(values[i as usize]))
+                        .map(move |(_, values)| values[i as usize].to_p3_field())
                 })
                 .collect(),
             self.fixed.len() + publics.len(),
@@ -171,7 +171,10 @@ impl<T: FieldElement> Plonky3Prover<T> {
         witness: &[(String, Vec<T>)],
         witgen_callback: WitgenCallback<T>,
     ) -> Result<Vec<u8>, String> {
-        assert_eq!(T::known_field(), Some(KnownField::GoldilocksField));
+        assert!(
+            T::known_field() == Some(KnownField::GoldilocksField)
+                || T::known_field() == Some(KnownField::BabyBearField)
+        );
 
         let circuit = PowdrCircuit::new(&self.analyzed)
             .with_witgen_callback(witgen_callback)
@@ -221,7 +224,7 @@ impl<T: FieldElement> Plonky3Prover<T> {
         let publics = instances
             .iter()
             .flatten()
-            .map(|v| cast_to_goldilocks(*v))
+            .map(|v| v.to_p3_field())
             .collect();
 
         let config = get_config();

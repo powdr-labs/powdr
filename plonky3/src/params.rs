@@ -3,6 +3,7 @@
 
 use lazy_static::lazy_static;
 
+use p3_baby_bear::MdsMatrixBabyBear;
 use p3_challenger::DuplexChallenger;
 use p3_commit::ExtensionMmcs;
 use p3_dft::Radix2DitParallel;
@@ -16,35 +17,36 @@ use p3_uni_stark::StarkConfig;
 
 use rand::{distributions::Standard, Rng, SeedableRng};
 
-type Val = Goldilocks;
+use crate::circuit_builder::FieldElementMap;
+use powdr_number::{BabyBearField, GoldilocksField};
 
 const D: usize = 2;
-type Challenge = BinomialExtensionField<Val, D>;
+type Challenge<T: FieldElementMap> = BinomialExtensionField<T::P3Field, D>;
 const WIDTH: usize = 8;
 const ALPHA: u64 = 7;
-type Perm = Poseidon<Val, MdsMatrixGoldilocks, WIDTH, ALPHA>;
+type Perm<T: FieldElementMap> = Poseidon<T::P3Field, T::MdsMatrix, WIDTH, ALPHA>;
 
 const RATE: usize = 4;
 const OUT: usize = 4;
-type Hash = PaddingFreeSponge<Perm, WIDTH, RATE, OUT>;
+type Hash<T: FieldElementMap> = PaddingFreeSponge<Perm<T>, WIDTH, RATE, OUT>;
 
 const N: usize = 2;
 const CHUNK: usize = 4;
-type Compress = TruncatedPermutation<Perm, N, CHUNK, WIDTH>;
+type Compress<T: FieldElementMap> = TruncatedPermutation<Perm<T>, N, CHUNK, WIDTH>;
 
 const DIGEST_ELEMS: usize = 4;
-type ValMmcs = FieldMerkleTreeMmcs<
-    <Val as Field>::Packing,
-    <Val as Field>::Packing,
-    Hash,
-    Compress,
+type ValMmcs<T: FieldElementMap> = FieldMerkleTreeMmcs<
+    <T::P3Field as Field>::Packing,
+    <T::P3Field as Field>::Packing,
+    Hash<T>,
+    Compress<T>,
     DIGEST_ELEMS,
 >;
-pub type Challenger = DuplexChallenger<Val, Perm, WIDTH, RATE>;
-type ChallengeMmcs = ExtensionMmcs<Val, Challenge, ValMmcs>;
+pub type Challenger<T: FieldElementMap> = DuplexChallenger<T::P3Field, Perm<T>, WIDTH, RATE>;
+type ChallengeMmcs<T: FieldElementMap> = ExtensionMmcs<T::P3Field, Challenge<T>, ValMmcs<T>>;
 type Dft = Radix2DitParallel;
-type MyPcs = TwoAdicFriPcs<Val, Dft, ValMmcs, ChallengeMmcs>;
-pub type Config = StarkConfig<MyPcs, Challenge, Challenger>;
+type MyPcs<T: FieldElementMap> = TwoAdicFriPcs<T::P3Field, Dft, ValMmcs<T>, ChallengeMmcs<T>>;
+pub type Config<T: FieldElementMap> = StarkConfig<MyPcs<T>, Challenge<T>, Challenger<T>>;
 
 const HALF_NUM_FULL_ROUNDS: usize = 4;
 const NUM_PARTIAL_ROUNDS: usize = 22;
@@ -59,7 +61,7 @@ const NUM_CONSTANTS: usize = WIDTH * NUM_ROUNDS;
 const RNG_SEED: u64 = 42;
 
 lazy_static! {
-    static ref PERM: Perm = Perm::new(
+    static ref PERM_GL: Perm<GoldilocksField> = Perm::new(
         HALF_NUM_FULL_ROUNDS,
         NUM_PARTIAL_ROUNDS,
         rand_chacha::ChaCha8Rng::seed_from_u64(RNG_SEED)
@@ -70,18 +72,36 @@ lazy_static! {
     );
 }
 
-pub fn get_challenger() -> Challenger {
-    Challenger::new(PERM.clone())
+lazy_static! {
+    static ref PERM_BB: Perm<BabyBearField> = Perm::new(
+        HALF_NUM_FULL_ROUNDS,
+        NUM_PARTIAL_ROUNDS,
+        rand_chacha::ChaCha8Rng::seed_from_u64(RNG_SEED)
+            .sample_iter(Standard)
+            .take(NUM_CONSTANTS)
+            .collect(),
+        MdsMatrixBabyBear::new(),
+    );
 }
 
-pub fn get_config() -> StarkConfig<MyPcs, Challenge, Challenger> {
-    let hash = Hash::new(PERM.clone());
+pub trait Permutation {
+    fn get_challenger<T: FieldElementMap>() -> Challenger<T>;
+}
 
-    let compress = Compress::new(PERM.clone());
+impl Permutation for GoldilocksField {
+    fn get_challenger<T>() -> Challenger<GoldilocksField> {
+        Challenger::new(PERM_GL.clone())
+    }
+}
 
-    let val_mmcs = ValMmcs::new(hash, compress);
+pub fn get_config<T: FieldElementMap>() -> StarkConfig<MyPcs<T>, Challenge<T>, Challenger<T>> {
+    let hash = Hash::<GoldilocksField>::new(PERM_GL.clone());
 
-    let challenge_mmcs = ChallengeMmcs::new(val_mmcs.clone());
+    let compress = Compress::<T>::new(PERM_GL.clone());
+
+    let val_mmcs = ValMmcs::<T>::new(hash, compress);
+
+    let challenge_mmcs = ChallengeMmcs::<T>::new(val_mmcs.clone());
 
     let dft = Dft {};
 
@@ -92,7 +112,7 @@ pub fn get_config() -> StarkConfig<MyPcs, Challenge, Challenger> {
         mmcs: challenge_mmcs,
     };
 
-    let pcs = MyPcs::new(dft, val_mmcs, fri_config);
+    let pcs = MyPcs::<T>::new(dft, val_mmcs, fri_config);
 
     Config::new(pcs)
 }
