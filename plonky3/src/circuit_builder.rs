@@ -374,26 +374,6 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
 
 /// An extension of [Air] allowing access to the number of fixed columns
 
-pub trait PowdrAir: BaseAir<Val> {
-    fn multi_stage_width(&self, stage: u32) -> usize;
-}
-
-impl<'a, T: FieldElement> PowdrAir for PowdrCircuit<'a, T> {
-    // TODO: return count for which this is true, make this better
-    fn multi_stage_width(&self, stage: u32) -> usize {
-        let mut width = 0;
-        for identity in &self
-            .analyzed
-            .definitions_in_source_order(PolynomialType::Committed)
-        {
-            let symbol = identity.0;
-            if Some(stage) == symbol[stage] {
-                width += 1;
-            };
-        }
-        width as usize
-    }
-}
 
 impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
     fn width(&self) -> usize {
@@ -412,6 +392,21 @@ impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
         #[cfg(not(debug_assertions))]
         unimplemented!()
     }
+
+    
+    // fn multi_stage_width(&self, stage: u32) -> usize {
+    //     let mut width = 0;
+    //     for identity in &self
+    //         .analyzed
+    //         .definitions_in_source_order(PolynomialType::Committed)
+    //     {
+    //         let symbol = identity.0;
+    //         if Some(stage) == symbol[stage] {
+    //             width += 1;
+    //         };
+    //     }
+    //     width as usize
+    // }
 }
 
 pub trait PowdrAirBuilder:
@@ -424,6 +419,11 @@ pub trait PowdrAirBuilder:
     fn challenges(&self, stage: u32) -> &Vec<Self::PublicVar>;
 
     fn preprocessed(&self) -> Self::M;
+}
+
+
+impl<'a, T: FieldElement> MultistageAirBuilder for PowdrCircuit<'a, T> {
+
 }
 
 impl<'a, T: FieldElement, SC: StarkGenericConfig> NextStageTraceCallback<SC, T> for PowdrCircuit<'a, T>
