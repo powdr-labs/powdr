@@ -179,7 +179,7 @@ impl<'a> Folder for Canonicalizer<'a> {
         }
         // canonicalize machine degree
         if let Some(degree) = machine.properties.degree.as_mut() {
-            canonicalize_inside_expression(degree, &self.path, &self.paths);
+            canonicalize_inside_expression(degree, &self.path, self.paths);
         }
 
         Ok(machine)
