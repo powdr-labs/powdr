@@ -4,22 +4,20 @@ use std::mem;
 use std::num::NonZeroUsize;
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, IdentityKind, PolyID, PolynomialType,
-    SelectedExpressions,
-};
+use powdr_ast::analyzed::{AlgebraicReference, IdentityKind, PolyID, PolynomialType};
 use powdr_number::FieldElement;
 
 use crate::witgen::affine_expression::AffineExpression;
 use crate::witgen::global_constraints::{GlobalConstraints, RangeConstraintSet};
-use crate::witgen::machines::record_start;
+use crate::witgen::processor::OuterQuery;
 use crate::witgen::range_constraints::RangeConstraint;
 use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly_ref;
-use crate::witgen::{EvalError, EvalValue, IncompleteCause};
+use crate::witgen::{EvalError, EvalValue, IncompleteCause, MutableState, QueryCallback};
 use crate::witgen::{EvalResult, FixedData};
+use crate::Identity;
 
-use super::record_end;
+use super::Machine;
 
 type Application = (Vec<PolyID>, Vec<PolyID>);
 type Index<T> = BTreeMap<Vec<T>, IndexValue>;
@@ -172,68 +170,47 @@ impl<T: FieldElement> IndexedColumns<T> {
 }
 
 /// Machine to perform a lookup in fixed columns only.
-pub struct FixedLookup<T: FieldElement> {
+pub struct FixedLookup<'a, T: FieldElement> {
     global_constraints: GlobalConstraints<T>,
     indices: IndexedColumns<T>,
+    connecting_identities: BTreeMap<u64, &'a Identity<T>>,
+    fixed_data: &'a FixedData<'a, T>,
 }
 
-impl<T: FieldElement> FixedLookup<T> {
-    pub fn new(global_constraints: GlobalConstraints<T>) -> Self {
+impl<'a, T: FieldElement> FixedLookup<'a, T> {
+    pub fn new(
+        global_constraints: GlobalConstraints<T>,
+        all_identities: Vec<&'a Identity<T>>,
+        fixed_data: &'a FixedData<'a, T>,
+    ) -> Self {
+        let connecting_identities = all_identities
+            .into_iter()
+            .filter_map(|i| {
+                (i.kind == IdentityKind::Plookup
+                    && i.right.selector.is_none()
+                    && i.right.expressions.iter().all(|e| {
+                        try_to_simple_poly_ref(e)
+                            .map(|poly| poly.poly_id.ptype == PolynomialType::Constant)
+                            .unwrap_or(false)
+                    })
+                    && !i.right.expressions.is_empty())
+                .then_some((i.id, i))
+            })
+            .collect();
         Self {
             global_constraints,
             indices: Default::default(),
+            connecting_identities,
+            fixed_data,
         }
     }
 
-    pub fn process_plookup_timed<'b>(
+    fn process_plookup_internal(
         &mut self,
-        fixed_data: &FixedData<T>,
         rows: &RowPair<'_, '_, T>,
-        kind: IdentityKind,
-        left: &[AffineExpression<&'b AlgebraicReference, T>],
-        right: &'b SelectedExpressions<Expression<T>>,
-    ) -> Option<EvalResult<'b, T>> {
-        record_start("FixedLookup");
-        let result = self.process_plookup(fixed_data, rows, kind, left, right);
-        record_end("FixedLookup");
-        result
-    }
-
-    pub fn process_plookup<'b>(
-        &mut self,
-        fixed_data: &FixedData<T>,
-        rows: &RowPair<'_, '_, T>,
-        kind: IdentityKind,
-        left: &[AffineExpression<&'b AlgebraicReference, T>],
-        right: &'b SelectedExpressions<Expression<T>>,
-    ) -> Option<EvalResult<'b, T>> {
-        // This is a matching machine if it is a plookup and the RHS is fully constant.
-        if kind != IdentityKind::Plookup
-            || right.selector.is_some()
-            || right.expressions.iter().any(|e| e.contains_witness_ref())
-        {
-            return None;
-        }
-
-        // get the values of the fixed columns
-        let mut right = right
-            .expressions
-            .iter()
-            .filter_map(try_to_simple_poly_ref)
-            .peekable();
-        // early return if right is empty
-        right.peek()?;
-
-        Some(self.process_plookup_internal(fixed_data, rows, left, right))
-    }
-
-    fn process_plookup_internal<'b>(
-        &mut self,
-        fixed_data: &FixedData<T>,
-        rows: &RowPair<'_, '_, T>,
-        left: &[AffineExpression<&'b AlgebraicReference, T>],
-        mut right: Peekable<impl Iterator<Item = &'b AlgebraicReference>>,
-    ) -> EvalResult<'b, T> {
+        left: &[AffineExpression<&'a AlgebraicReference, T>],
+        mut right: Peekable<impl Iterator<Item = &'a AlgebraicReference>>,
+    ) -> EvalResult<'a, T> {
         if left.len() == 1
             && !left.first().unwrap().is_constant()
             && right.peek().unwrap().poly_id.ptype == PolynomialType::Constant
@@ -265,7 +242,7 @@ impl<T: FieldElement> FixedLookup<T> {
         let index_value = self
             .indices
             .get_match(
-                fixed_data,
+                self.fixed_data,
                 input_assignment_with_ids,
                 output_columns.clone(),
             )
@@ -290,7 +267,7 @@ impl<T: FieldElement> FixedLookup<T> {
 
         let output = output_columns
             .iter()
-            .map(|column| fixed_data.fixed_cols[column].values_max_size()[row]);
+            .map(|column| self.fixed_data.fixed_cols[column].values_max_size()[row]);
 
         let mut result = EvalValue::complete(vec![]);
         for (l, r) in output_expressions.into_iter().zip(output) {
@@ -336,6 +313,43 @@ impl<T: FieldElement> FixedLookup<T> {
                 .collect(),
             IncompleteCause::NotConcrete,
         ))
+    }
+}
+
+impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
+    fn name(&self) -> &str {
+        "FixedLookup"
+    }
+
+    fn process_plookup<'b, Q: crate::witgen::QueryCallback<T>>(
+        &mut self,
+        _mutable_state: &'b mut crate::witgen::MutableState<'a, 'b, T, Q>,
+        identity_id: u64,
+        caller_rows: &'b RowPair<'b, 'a, T>,
+    ) -> EvalResult<'a, T> {
+        let identity = self.connecting_identities[&identity_id];
+        let right = &identity.right;
+
+        // get the values of the fixed columns
+        let right = right
+            .expressions
+            .iter()
+            .map(|e| try_to_simple_poly_ref(e).unwrap())
+            .peekable();
+
+        let outer_query = OuterQuery::new(caller_rows, identity);
+        self.process_plookup_internal(caller_rows, &outer_query.left, right)
+    }
+
+    fn take_witness_col_values<'b, Q: QueryCallback<T>>(
+        &mut self,
+        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+    ) -> HashMap<String, Vec<T>> {
+        Default::default()
+    }
+
+    fn identity_ids(&self) -> Vec<u64> {
+        self.connecting_identities.keys().copied().collect()
     }
 }
 

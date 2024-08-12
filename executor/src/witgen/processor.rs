@@ -223,7 +223,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         );
 
         // Compute updates
-        let mut identity_processor = IdentityProcessor::new(self.fixed_data, self.mutable_state);
+        let mut identity_processor = IdentityProcessor::new(self.mutable_state);
         let updates = identity_processor
             .process_identity(identity, &row_pair)
             .map_err(|e| -> EvalError<T> {
@@ -298,7 +298,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             self.size,
         );
 
-        let mut identity_processor = IdentityProcessor::new(self.fixed_data, self.mutable_state);
+        let mut identity_processor = IdentityProcessor::new(self.mutable_state);
         let updates = identity_processor
             .process_link(outer_query, &row_pair)
             .map_err(|e| {
@@ -502,7 +502,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         // This could be computed from the identity, but should be pre-computed for performance reasons.
         has_next_reference: bool,
     ) -> bool {
-        let mut identity_processor = IdentityProcessor::new(self.fixed_data, self.mutable_state);
+        let mut identity_processor = IdentityProcessor::new(self.mutable_state);
         let row_pair = match has_next_reference {
             // Check whether identities with a reference to the next row are satisfied
             // when applied to the previous row and the proposed row.
