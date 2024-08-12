@@ -570,7 +570,7 @@ fn defined_trait() {
     impl Add<int> {
         add: |a, b| a + b,
     }
-    let r = Add::add(3, 4);
+    let r: int = Add::add(3, 4);
     ";
     type_check(input, &[("r", "", "int")]);
 }
@@ -774,12 +774,12 @@ fn traits_and_refs() {
             cast: |a| std::convert::fe(a),
         }
 
-        // let x: int -> fe = |q| match Add::add(q, 2) {
-        //         v => std::convert::fe(v),
-        // };
+        let x: int -> fe = |q| match Add::add(q, 2) {
+                v => std::convert::fe(v),
+        };
 
         let y: int -> fe = |q| match Add::add(q, 4) {
-                v => std::convert::fe(v) + Cast::cast(v),
+                v => x(v) + Cast::cast(v),
         };
 
         let r: fe = y(2);
