@@ -1,5 +1,5 @@
 use std::machines::binary_bb::ByteBinary;
-use std::machines::binary_bb::Binary;
+use std::machines::binary_bb::Binary8;
 
 machine Main with degree: 196608 {
     reg pc[@pc];
@@ -21,7 +21,7 @@ machine Main with degree: 196608 {
     reg A4;
 
     ByteBinary byte_binary;
-    Binary binary(byte_binary);
+    Binary8 binary(byte_binary);
 
     instr and X0_1, X0_2, X0_3, X0_4, X1_1, X1_2, X1_3, X1_4 -> X2_1, X2_2, X2_3, X2_4 link ~> (X2_1, X2_2, X2_3, X2_4) = binary.and(X0_1, X0_2, X0_3, X0_4, X1_1, X1_2, X1_3, X1_4);
     instr or X0_1, X0_2, X0_3, X0_4, X1_1, X1_2, X1_3, X1_4 -> X2_1, X2_2, X2_3, X2_4 link ~> (X2_1, X2_2, X2_3, X2_4) = binary.or(X0_1, X0_2, X0_3, X0_4, X1_1, X1_2, X1_3, X1_4);
