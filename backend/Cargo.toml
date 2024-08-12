@@ -12,6 +12,8 @@ default = []
 halo2 = ["dep:halo2_proofs", "dep:halo2_curves", "dep:snark-verifier", "dep:halo2_solidity_verifier"]
 estark-polygon = ["dep:pil-stark-prover"]
 plonky3 = ["dep:powdr-plonky3"]
+# Needed to compile with avx512 support. This feature also requires using a nightly toolchain.
+avx512 = ["fields/avx512"]
 
 [dependencies]
 powdr-ast.workspace = true
@@ -24,6 +26,7 @@ powdr-parser-util.workspace = true
 powdr-plonky3 = { path = "../plonky3", optional = true }
 
 starky = { git = "https://github.com/0xEigenLabs/eigen-zkvm.git", rev = "cf405b2e2cecb8567cfd083a55936b71722276d5" }
+fields = { git = "https://github.com/0xEigenLabs/eigen-zkvm.git", rev = "cf405b2e2cecb8567cfd083a55936b71722276d5" }
 pil-stark-prover = { git = "https://github.com/powdr-labs/pil-stark-prover.git", rev = "769b1153f3ae2d7cbab4c8acf33865ed13f8a823", optional = true }
 
 # TODO change this once Halo2 releases 0.3.1
