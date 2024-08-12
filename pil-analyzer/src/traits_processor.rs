@@ -1,5 +1,5 @@
 use core::panic;
-use std::collections::HashMap;
+use std::{collections::HashMap, iter::once};
 
 use itertools::Itertools;
 use powdr_ast::{
@@ -28,7 +28,7 @@ impl<'a> TraitsProcessor<'a> {
 
     pub fn traits_resolution(
         &mut self,
-        identities: &mut Vec<Identity<SelectedExpressions<Expression>>>,
+        identities: &mut [Identity<SelectedExpressions<Expression>>],
     ) {
         let keys: Vec<String> = self
             .definitions
@@ -72,9 +72,9 @@ impl<'a> TraitsProcessor<'a> {
 
                 selector_left
                     .iter()
-                    .chain(std::iter::once(expressions_left.as_ref()))
+                    .chain(once(expressions_left.as_ref()))
                     .chain(selector_right.iter())
-                    .chain(std::iter::once(expressions_right.as_ref()))
+                    .chain(once(expressions_right.as_ref()))
                     .flat_map(move |e| {
                         e.all_children().filter_map(move |e| match e {
                             Expression::Reference(
