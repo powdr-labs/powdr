@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use itertools::Itertools;
 
-use powdr_ast::analyzed::TypedExpression;
+use powdr_ast::analyzed::{DegreeRange, TypedExpression};
 use powdr_ast::parsed::{
     self,
     types::{ArrayType, Type, TypeScheme},
@@ -100,14 +100,19 @@ impl Counters {
 pub struct StatementProcessor<'a, D> {
     driver: D,
     counters: &'a mut Counters,
+    degree: Option<DegreeRange>,
 }
 
 impl<'a, D> StatementProcessor<'a, D>
 where
     D: AnalysisDriver,
 {
-    pub fn new(driver: D, counters: &'a mut Counters) -> Self {
-        StatementProcessor { driver, counters }
+    pub fn new(driver: D, counters: &'a mut Counters, degree: Option<DegreeRange>) -> Self {
+        StatementProcessor {
+            driver,
+            counters,
+            degree,
+        }
     }
 
     pub fn handle_statement(&mut self, statement: PilStatement) -> Vec<PILItem> {
@@ -434,7 +439,7 @@ where
             absolute_name: absolute_name.clone(),
             kind: symbol_kind,
             length,
-            degree: None,
+            degree: self.degree,
         };
 
         if let Some(FunctionDefinition::TypeDeclaration(enum_decl)) = value {

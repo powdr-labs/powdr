@@ -22,7 +22,10 @@ use super::*;
 
 impl Display for DegreeRange {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}..{}", self.min, self.max)
+        match (self.min, self.max) {
+            (min, max) if min == max => write!(f, "{min}"),
+            (min, max) => write!(f, "{min}..{max}"),
+        }
     }
 }
 

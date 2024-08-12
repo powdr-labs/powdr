@@ -11,7 +11,7 @@ use std::{
 
 use powdr_ast::{
     analyzed::{
-        self, AlgebraicExpression, AlgebraicReference, Analyzed, Expression,
+        self, AlgebraicExpression, AlgebraicReference, Analyzed, DegreeRange, Expression,
         FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialType, PublicDeclaration,
         SelectedExpressions, StatementIdentifier, Symbol, SymbolKind,
     },
@@ -55,7 +55,7 @@ pub fn condense<T: FieldElement>(
                 let mut namespace =
                     AbsoluteSymbolPath::default().join(SymbolPath::from_str(name).unwrap());
                 namespace.pop();
-                condenser.set_namespace_and_degree(namespace);
+                condenser.set_namespace_and_degree(namespace, definitions[name].0.degree);
             }
             let statement = match s {
                 StatementIdentifier::Identity(index) => {
@@ -185,6 +185,7 @@ pub fn condense<T: FieldElement>(
 type SymbolCache<'a, T> = HashMap<String, BTreeMap<Option<Vec<Type>>, Arc<Value<'a, T>>>>;
 
 pub struct Condenser<'a, T> {
+    degree: Option<DegreeRange>,
     /// All the definitions from the PIL file.
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     /// Evaluation cache.
@@ -209,6 +210,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         let counters = Counters::with_existing(symbols.values().map(|(sym, _)| sym), None, None);
         Self {
             symbols,
+            degree: None,
             symbol_values: Default::default(),
             namespace: Default::default(),
             counters,
@@ -251,8 +253,13 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     }
 
     /// Sets the current namespace which will be used for newly generated witness columns.
-    pub fn set_namespace_and_degree(&mut self, namespace: AbsoluteSymbolPath) {
+    pub fn set_namespace_and_degree(
+        &mut self,
+        namespace: AbsoluteSymbolPath,
+        degree: Option<DegreeRange>,
+    ) {
         self.namespace = namespace;
+        self.degree = degree;
     }
 
     /// Returns columns generated since the last call to this function.
@@ -434,7 +441,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             stage: None,
             kind,
             length,
-            degree: None,
+            degree: self.degree,
         };
 
         self.new_symbols.insert(name.clone());

@@ -132,7 +132,8 @@ Include: PilStatement = {
 };
 
 NamespaceDegree: NamespaceDegree = {
-    <min:Expression> ".." <max:Expression> => NamespaceDegree {min, max}
+    <min:Expression> ".." <max:Expression> => NamespaceDegree {min, max},
+    <degree:Expression> => NamespaceDegree { min: degree.clone(), max: degree }
 }
 
 Namespace: PilStatement = {

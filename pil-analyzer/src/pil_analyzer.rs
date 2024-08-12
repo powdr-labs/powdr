@@ -11,13 +11,15 @@ use powdr_ast::parsed::asm::{
 use powdr_ast::parsed::types::{ArrayType, Type};
 use powdr_ast::parsed::visitor::Children;
 use powdr_ast::parsed::{
-    FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions, SymbolCategory,
+    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions,
+    SymbolCategory,
 };
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
-    type_from_definition, Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind,
-    PolynomialType, PublicDeclaration, StatementIdentifier, Symbol, SymbolKind, TypedExpression,
+    type_from_definition, Analyzed, DegreeRange, Expression, FunctionValueDefinition, Identity,
+    IdentityKind, PolynomialType, PublicDeclaration, StatementIdentifier, Symbol, SymbolKind,
+    TypedExpression,
 };
 use powdr_parser::{parse, parse_module, parse_type};
 
@@ -25,8 +27,8 @@ use crate::type_builtins::constr_function_statement_type;
 use crate::type_inference::infer_types;
 use crate::{side_effect_checker, AnalysisDriver};
 
-use crate::condenser;
 use crate::statement_processor::{Counters, PILItem, StatementProcessor};
+use crate::{condenser, evaluator, expression_processor::ExpressionProcessor};
 
 pub fn analyze_file<T: FieldElement>(path: &Path) -> Analyzed<T> {
     let files = import_all_dependencies(path);
@@ -59,6 +61,7 @@ struct PILAnalyzer {
     /// Known symbols by name and category, determined in the first step.
     known_symbols: HashMap<String, SymbolCategory>,
     current_namespace: AbsoluteSymbolPath,
+    polynomial_degree: Option<DegreeRange>,
     /// Map of definitions, gradually being built up here.
     definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     public_declarations: HashMap<String, PublicDeclaration>,
@@ -366,12 +369,13 @@ impl PILAnalyzer {
     fn handle_statement(&mut self, statement: PilStatement) {
         match statement {
             PilStatement::Include(_, _) => unreachable!(),
-            PilStatement::Namespace(_, name, _) => self.handle_namespace(name),
+            PilStatement::Namespace(_, name, degree) => self.handle_namespace(name, degree),
             _ => {
                 // We need a mutable reference to the counter, but it is short-lived.
                 let mut counters = self.symbol_counters.take().unwrap();
-                let items = StatementProcessor::new(self.driver(), &mut counters)
-                    .handle_statement(statement);
+                let items =
+                    StatementProcessor::new(self.driver(), &mut counters, self.polynomial_degree)
+                        .handle_statement(statement);
                 self.symbol_counters = Some(counters);
                 for item in items {
                     match item {
@@ -402,7 +406,23 @@ impl PILAnalyzer {
         }
     }
 
-    fn handle_namespace(&mut self, name: SymbolPath) {
+    fn handle_namespace(&mut self, name: SymbolPath, degree: Option<parsed::NamespaceDegree>) {
+        let evaluate_degree_bound = |e| {
+            let e =
+                ExpressionProcessor::new(self.driver(), &Default::default()).process_expression(e);
+            u64::try_from(
+                evaluator::evaluate_expression::<GoldilocksField>(&e, &self.definitions)
+                    .unwrap()
+                    .try_to_integer()
+                    .unwrap(),
+            )
+            .unwrap()
+        };
+
+        self.polynomial_degree = degree.map(|degree| DegreeRange {
+            min: evaluate_degree_bound(degree.min),
+            max: evaluate_degree_bound(degree.max),
+        });
         self.current_namespace = AbsoluteSymbolPath::default().join(name);
     }
 
