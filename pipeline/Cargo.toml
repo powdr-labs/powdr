@@ -12,7 +12,6 @@ default = [] # halo2 is disabled by default
 halo2 = ["powdr-backend/halo2"]
 plonky3 = ["powdr-backend/plonky3"]
 estark-polygon = ["powdr-backend/estark-polygon"]
-avx512 = ["powdr-backend/avx512"]
 
 [dependencies]
 powdr-airgen.workspace = true
