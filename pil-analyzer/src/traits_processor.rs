@@ -51,7 +51,7 @@ impl<'a> TraitsProcessor<'a> {
 
     fn collect_refs_in_identities(
         &self,
-        identities: &mut Vec<Identity<SelectedExpressions<Expression>>>,
+        identities: &mut [Identity<SelectedExpressions<Expression>>],
     ) -> Vec<(String, Vec<Type>)> {
         identities
             .iter()
@@ -92,7 +92,7 @@ impl<'a> TraitsProcessor<'a> {
             .collect()
     }
 
-    fn resolve_trait(&mut self, current: &str, refs_in_identities: &Vec<(String, Vec<Type>)>) {
+    fn resolve_trait(&mut self, current: &str, refs_in_identities: &[(String, Vec<Type>)]) {
         let current_def = &self.definitions.get(current).unwrap().1;
         let refs_in_def = self.collect_refs(current_def);
         let refs = refs_in_def.iter().chain(refs_in_identities.iter());
@@ -107,7 +107,7 @@ impl<'a> TraitsProcessor<'a> {
             if let Some(FunctionValueDefinition::Expression(TypedExpression { e: expr, .. })) =
                 self.definitions.get_mut(current).unwrap().1.as_mut()
             {
-                update_reference(&trait_name, &collected_ref.1, expr, &resolved_impl_pos);
+                update_reference(&trait_name, expr, &resolved_impl_pos);
             }
         }
     }
@@ -171,13 +171,11 @@ impl<'a> TraitsProcessor<'a> {
 
 fn update_reference(
     ref_name: &str,
-    type_args: &[Type],
     expr: &mut Expression,
     resolved_impl_pos: &HashMap<String, Box<Expression>>,
 ) {
     fn process_expr(
         ref_name: &str,
-        type_args: &[Type],
         c: &mut Expression,
         resolved_impl_pos: &HashMap<String, Box<Expression>>,
     ) {
@@ -186,7 +184,7 @@ fn update_reference(
             Reference::Poly(PolynomialReference {
                 name,
                 poly_id,
-                type_args: current_type_args,
+                type_args,
                 ..
             }),
         ) = c
@@ -196,8 +194,8 @@ fn update_reference(
                     sr.clone(),
                     Reference::Poly(PolynomialReference {
                         name: name.clone(),
-                        type_args: current_type_args.clone(),
-                        poly_id: poly_id.clone(),
+                        type_args: type_args.clone(),
+                        poly_id: *poly_id,
                         resolved_impls: resolved_impl_pos.clone(),
                     }),
                 );
@@ -205,9 +203,9 @@ fn update_reference(
         }
 
         for child in c.children_mut() {
-            process_expr(ref_name, type_args, child, resolved_impl_pos);
+            process_expr(ref_name, child, resolved_impl_pos);
         }
     }
 
-    process_expr(ref_name, type_args, expr, resolved_impl_pos);
+    process_expr(ref_name, expr, resolved_impl_pos);
 }
