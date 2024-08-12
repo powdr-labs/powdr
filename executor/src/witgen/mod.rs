@@ -350,7 +350,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     }
 
     fn common_degree<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> DegreeType {
-        self.common_set_degree(ids).unwrap_or(1 << MAX_DEGREE_LOG)
+        self.common_set_degree(ids).unwrap_or(1 << *MAX_DEGREE_LOG)
     }
 
     fn is_variable_size<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> bool {
