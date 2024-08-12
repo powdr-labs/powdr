@@ -1,10 +1,12 @@
 use std::{
     collections::{BTreeMap, HashMap},
+    env,
     sync::{Arc, RwLock},
 };
 
 pub use data_structures::{get_uniquely_sized, get_uniquely_sized_cloned, VariablySizedColumn};
 use itertools::Itertools;
+use lazy_static::lazy_static;
 use powdr_ast::{
     analyzed::{Analyzed, FunctionValueDefinition, Symbol, TypedExpression},
     parsed::{
@@ -19,7 +21,22 @@ use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 mod data_structures;
 
 pub const MIN_DEGREE_LOG: usize = 5;
-pub const MAX_DEGREE_LOG: usize = 22;
+lazy_static! {
+    // The maximum degree can add a significant cost during setup, because
+    // the fixed columns need to be committed to in all sizes up to the max degree.
+    // This gives the user the possibility to overwrite the default value.
+    pub static ref MAX_DEGREE_LOG: usize = {
+        let default_max_degree_log = 22;
+
+        let max_degree_log = match env::var("MAX_DEGREE_LOG") {
+            Ok(val) => val.parse::<usize>().unwrap(),
+            Err(_) => default_max_degree_log,
+        };
+        log::info!("For variably-sized machine, the maximum degree is 2^{max_degree_log}. \
+            You can set the environment variable MAX_DEGREE_LOG to change this value.");
+        max_degree_log
+    };
+}
 
 /// Generates the fixed column values for all fixed columns that are defined
 /// (and not just declared).
@@ -37,7 +54,7 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, Variabl
                 let values = if let Some(degree) = poly.degree {
                     generate_values(analyzed, degree, &name, value, index).into()
                 } else {
-                    (MIN_DEGREE_LOG..=MAX_DEGREE_LOG)
+                    (MIN_DEGREE_LOG..=*MAX_DEGREE_LOG)
                         .map(|degree_log| {
                             let degree = 1 << degree_log;
                             generate_values(analyzed, degree, &name, value, index)

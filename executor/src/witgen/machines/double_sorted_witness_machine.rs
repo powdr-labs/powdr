@@ -3,7 +3,7 @@ use std::iter::once;
 
 use itertools::Itertools;
 
-use super::{FixedLookup, Machine};
+use super::Machine;
 use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{EvalResult, FixedData, MutableState, QueryCallback};
@@ -53,6 +53,7 @@ pub struct DoubleSortedWitnesses<'a, T: FieldElement> {
     /// (addr, step) -> value
     trace: BTreeMap<(T, T), Operation<T>>,
     data: BTreeMap<T, T>,
+    is_initialized: BTreeMap<T, bool>,
     namespace: String,
     name: String,
     /// If the machine has the `m_diff_upper` and `m_diff_lower` columns, this is the base of the
@@ -159,6 +160,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                     has_bootloader_write_column,
                     trace: Default::default(),
                     data: Default::default(),
+                    is_initialized: Default::default(),
                     selector_ids,
                     connecting_identities: connecting_identities.clone(),
                 })
@@ -175,6 +177,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                 has_bootloader_write_column,
                 trace: Default::default(),
                 data: Default::default(),
+                is_initialized: Default::default(),
                 selector_ids,
                 connecting_identities: connecting_identities.clone(),
             })
@@ -185,10 +188,6 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
 impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
         self.selector_ids.keys().cloned().collect()
-    }
-
-    fn degree(&self) -> DegreeType {
-        self.degree
     }
 
     fn name(&self) -> &str {
@@ -206,8 +205,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        _fixed_lookup: &'b mut FixedLookup<T>,
-        _query_callback: &'b mut Q,
+        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         let mut addr = vec![];
         let mut step = vec![];
@@ -382,6 +380,14 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                 ))
             }
         };
+
+        if self.has_bootloader_write_column {
+            let is_initialized = self.is_initialized.get(&addr).cloned().unwrap_or_default();
+            if !is_initialized && !is_bootloader_write {
+                panic!("Memory address {addr:x} must be initialized with a bootloader write",);
+            }
+            self.is_initialized.insert(addr, true);
+        }
 
         let step = args[2]
             .constant_value()

@@ -678,7 +678,7 @@ fn mul_instruction<T: FieldElement>(runtime: &Runtime) -> &'static str {
         link ~> tmp1_col = regs.mload(X, STEP)
         link ~> tmp2_col = regs.mload(Y, STEP + 1)
         link ~> regs.mstore(Z, STEP + 2, tmp3_col)
-        link ~> regs.mstore(W, STEP + 3, tmp4_col);
+        link ~> regs.mstore(W, STEP + 3, tmp4_col)
     {
         tmp1_col * tmp2_col = tmp3_col + tmp4_col * 2**32,
         tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
