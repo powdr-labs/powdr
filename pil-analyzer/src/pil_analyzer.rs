@@ -327,12 +327,8 @@ impl PILAnalyzer {
     }
 
     pub fn traits_resolution(&mut self) {
-        TraitsProcessor::new(
-            &mut self.definitions,
-            &mut self.identities,
-            &self.implementations,
-        )
-        .traits_resolution()
+        TraitsProcessor::new(&mut self.definitions, &self.implementations)
+            .traits_resolution(&mut self.identities)
     }
 
     pub fn condense<T: FieldElement>(self) -> Analyzed<T> {
