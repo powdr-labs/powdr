@@ -4,6 +4,7 @@ mod binary_bb;
 mod range;
 mod hash;
 mod memory;
+mod memory_bb;
 mod memory_with_bootloader_write;
 mod shift;
 mod split;

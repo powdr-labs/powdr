@@ -9,16 +9,18 @@ use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{EvalResult, FixedData, MutableState, QueryCallback};
 use crate::witgen::{EvalValue, IncompleteCause};
 use crate::Identity;
-use powdr_number::{DegreeType, FieldElement};
+use powdr_number::{DegreeType, FieldElement, LargeInt};
 
 use powdr_ast::analyzed::{IdentityKind, PolyID};
 
 /// If all witnesses of a machine have a name in this list (disregarding the namespace),
 /// we'll consider it to be a double-sorted machine.
 /// This does not include the selectors, which are dynamically added to this list.
-const ALLOWED_WITNESSES: [&str; 8] = [
-    "m_value",
-    "m_addr",
+const ALLOWED_WITNESSES: [&str; 10] = [
+    "m_value1",
+    "m_value2",
+    "m_addr1",
+    "m_addr2",
     "m_step",
     "m_change",
     "m_is_write",
@@ -50,9 +52,9 @@ pub struct DoubleSortedWitnesses<'a, T: FieldElement> {
     /// Position of the witness columns in the data.
     /// The key column has a position of usize::max
     //witness_positions: HashMap<String, usize>,
-    /// (addr, step) -> value
-    trace: BTreeMap<(T, T), Operation<T>>,
-    data: BTreeMap<T, T>,
+    /// (addr1, addr2, step) -> (value1, value2)
+    trace: BTreeMap<(T, T, T), Operation<T>>,
+    data: BTreeMap<u64, u64>,
     is_initialized: BTreeMap<T, bool>,
     namespace: String,
     name: String,
@@ -69,7 +71,8 @@ pub struct DoubleSortedWitnesses<'a, T: FieldElement> {
 struct Operation<T> {
     pub is_normal_write: bool,
     pub is_bootloader_write: bool,
-    pub value: T,
+    pub value1: T,
+    pub value2: T,
     pub selector_id: PolyID,
 }
 
@@ -207,9 +210,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
         &mut self,
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
-        let mut addr = vec![];
+        let mut addr1 = vec![];
+        let mut addr2 = vec![];
         let mut step = vec![];
-        let mut value = vec![];
+        let mut value1 = vec![];
+        let mut value2 = vec![];
         let mut is_normal_write = vec![];
         let mut is_bootloader_write = vec![];
         let mut diff = vec![];
@@ -228,17 +233,17 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
             }
         };
 
-        for ((a, s), o) in std::mem::take(&mut self.trace) {
-            if let Some(prev_address) = addr.last() {
-                assert!(a >= *prev_address, "Expected addresses to be sorted");
+        for ((a1, a2, s), o) in std::mem::take(&mut self.trace) {
+            if let Some(prev_address) = addr1.last() {
+                assert!(a1 >= *prev_address, "Expected addresses to be sorted");
                 if self.diff_columns_base.is_none()
-                    && (a - *prev_address).to_degree() >= self.degree
+                    && (a1 - *prev_address).to_degree() >= self.degree
                 {
-                    log::error!("Jump in memory accesses between {prev_address:x} and {a:x} is larger than or equal to the degree {}! This will violate the constraints.", self.degree);
+                    log::error!("Jump in memory accesses between {prev_address:x} and {a1:x} is larger than or equal to the degree {}! This will violate the constraints.", self.degree);
                 }
 
-                let current_diff = if a != *prev_address {
-                    a - *prev_address
+                let current_diff = if a1 != *prev_address {
+                    a1 - *prev_address
                 } else {
                     s - *step.last().unwrap()
                 };
@@ -246,28 +251,34 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
                 diff.push(current_diff.to_degree() - 1);
             }
 
-            addr.push(a);
+            addr1.push(a1);
+            addr2.push(a2);
             step.push(s);
-            value.push(o.value);
+            value1.push(o.value1);
+            value2.push(o.value2);
 
             is_normal_write.push(o.is_normal_write.into());
             is_bootloader_write.push(o.is_bootloader_write.into());
             set_selector(Some(o.selector_id));
         }
-        if addr.is_empty() {
+        if addr1.is_empty() {
             // No memory access at all - fill a first row with something.
-            addr.push(-T::one());
+            addr1.push(-T::one());
+            addr2.push(-T::one());
             step.push(0.into());
-            value.push(0.into());
+            value1.push(0.into());
+            value2.push(0.into());
             is_normal_write.push(0.into());
             is_bootloader_write.push(0.into());
             set_selector(None);
         }
-        while addr.len() < self.degree as usize {
-            addr.push(*addr.last().unwrap());
+        while addr1.len() < self.degree as usize {
+            addr1.push(*addr1.last().unwrap());
+            addr2.push(*addr2.last().unwrap());
             step.push(*step.last().unwrap() + T::from(1));
             diff.push(0);
-            value.push(*value.last().unwrap());
+            value1.push(*value1.last().unwrap());
+            value2.push(*value2.last().unwrap());
             is_normal_write.push(0.into());
             is_bootloader_write.push(0.into());
             set_selector(None);
@@ -278,19 +289,19 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
         diff.push(0);
 
         let last_row_change_value = match self.has_bootloader_write_column {
-            true => (&addr[0] != addr.last().unwrap()).into(),
+            true => (&addr1[0] != addr1.last().unwrap()).into(),
             // In the machine without the bootloader write column, m_change is constrained
             // to be 1 in the last row.
             false => 1.into(),
         };
 
-        let change = addr
+        let change = addr1
             .iter()
             .tuple_windows()
             .map(|(a, a_next)| if a == a_next { 0.into() } else { 1.into() })
             .chain(once(last_row_change_value))
             .collect::<Vec<_>>();
-        assert_eq!(change.len(), addr.len());
+        assert_eq!(change.len(), addr1.len());
 
         let diff_columns = if let Some(diff_columns_base) = self.diff_columns_base {
             let diff_upper = diff
@@ -324,8 +335,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
             .collect::<Vec<_>>();
 
         [
-            (self.namespaced("m_value"), value),
-            (self.namespaced("m_addr"), addr),
+            (self.namespaced("m_value1"), value1),
+            (self.namespaced("m_value2"), value2),
+            (self.namespaced("m_addr1"), addr1),
+            (self.namespaced("m_addr2"), addr2),
             (self.namespaced("m_step"), step),
             (self.namespaced("m_change"), change),
             (self.namespaced("m_is_write"), is_normal_write.clone()),
@@ -372,46 +385,79 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
         let is_normal_write = operation_id == T::from(OPERATION_ID_WRITE);
         let is_bootloader_write = operation_id == T::from(OPERATION_ID_BOOTLOADER_WRITE);
         let is_write = is_bootloader_write || is_normal_write;
-        let addr = match args[1].constant_value() {
+        let addr1 = match args[1].constant_value() {
             Some(v) => v,
             None => {
                 return Ok(EvalValue::incomplete(
-                    IncompleteCause::NonConstantRequiredArgument("m_addr"),
+                    IncompleteCause::NonConstantRequiredArgument("m_addr1"),
+                ))
+            }
+        };
+        let addr2 = match args[2].constant_value() {
+            Some(v) => v,
+            None => {
+                return Ok(EvalValue::incomplete(
+                    IncompleteCause::NonConstantRequiredArgument("m_addr2"),
                 ))
             }
         };
 
+        let addr1_int = addr1.to_integer().try_into_u64().unwrap();
+        let addr2_int = addr2.to_integer().try_into_u64().unwrap();
+        let addr = addr1_int + (addr2_int << 16);
+
         if self.has_bootloader_write_column {
-            let is_initialized = self.is_initialized.get(&addr).cloned().unwrap_or_default();
+            let is_initialized = self
+                .is_initialized
+                .get(&addr.into())
+                .cloned()
+                .unwrap_or_default();
             if !is_initialized && !is_bootloader_write {
                 panic!("Memory address {addr:x} must be initialized with a bootloader write",);
             }
-            self.is_initialized.insert(addr, true);
+            self.is_initialized.insert(addr.into(), true);
         }
 
-        let step = args[2]
+        let step = args[3]
             .constant_value()
-            .ok_or_else(|| format!("Step must be known but is: {}", args[2]))?;
+            .ok_or_else(|| format!("Step must be known but is: {}", args[3]))?;
 
-        let value_expr = &args[3];
+        let value1_expr = &args[4];
+        let value2_expr = &args[5];
 
         log::trace!(
             "Query addr={:x}, step={step}, write: {is_write}, value: {}",
-            addr.to_arbitrary_integer(),
-            value_expr
+            addr,
+            value1_expr
         );
 
         // TODO this does not check any of the failure modes
         let mut assignments = EvalValue::complete(vec![]);
         let has_side_effect = if is_write {
-            let value = match value_expr.constant_value() {
+            let value1 = match value1_expr.constant_value() {
                 Some(v) => v,
                 None => {
                     return Ok(EvalValue::incomplete(
-                        IncompleteCause::NonConstantRequiredArgument("m_value"),
+                        IncompleteCause::NonConstantRequiredArgument("m_value1"),
                     ))
                 }
             };
+
+            let value2 = match value2_expr.constant_value() {
+                Some(v) => v,
+                None => {
+                    return Ok(EvalValue::incomplete(
+                        IncompleteCause::NonConstantRequiredArgument("m_value2"),
+                    ))
+                }
+            };
+
+            let value1_int = value1.to_integer().try_into_u64().unwrap();
+            let value2_int = value2.to_integer().try_into_u64().unwrap();
+            let value = value1_int + (value2_int << 16);
+
+            assert!(value1_int < 0x10000);
+            assert!(value2_int < 0x10000);
 
             log::trace!(
                 "Memory write: addr={:x}, step={step}, value={:x}",
@@ -421,11 +467,12 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
             self.data.insert(addr, value);
             self.trace
                 .insert(
-                    (addr, step),
+                    (addr1, addr2, step),
                     Operation {
                         is_normal_write,
                         is_bootloader_write,
-                        value,
+                        value1,
+                        value2,
                         selector_id,
                     },
                 )
@@ -437,16 +484,27 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                 addr,
                 value
             );
-            let ass =
-                (value_expr.clone() - (*value).into()).solve_with_range_constraints(caller_rows)?;
+
+            let value_int: u64 = *value;
+            let value1_int = value_int & 0xffff;
+            let value2_int = value_int >> 16;
+            let value1_fe: T = value1_int.into();
+            let value2_fe: T = value2_int.into();
+
+            let ass = (value1_expr.clone() - value1_fe.into())
+                .solve_with_range_constraints(caller_rows)?;
             assignments.combine(ass);
+            let ass2 = (value2_expr.clone() - value2_fe.into())
+                .solve_with_range_constraints(caller_rows)?;
+            assignments.combine(ass2);
             self.trace
                 .insert(
-                    (addr, step),
+                    (addr1, addr2, step),
                     Operation {
                         is_normal_write,
                         is_bootloader_write,
-                        value: *value,
+                        value1: value1_fe,
+                        value2: value2_fe,
                         selector_id,
                     },
                 )
