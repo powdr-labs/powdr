@@ -22,7 +22,7 @@ use self::global_constraints::GlobalConstraints;
 use self::identity_processor::Machines;
 use self::machines::machine_extractor::ExtractionOutput;
 use self::machines::profiling::{record_end, record_start, reset_and_print_profile_summary};
-use self::machines::{FixedLookup, Machine};
+use self::machines::Machine;
 
 mod affine_expression;
 mod block_processor;
@@ -125,7 +125,6 @@ pub fn unused_query_callback<T>() -> impl QueryCallback<T> {
 
 /// Everything [Generator] needs to mutate in order to compute a new row.
 pub struct MutableState<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
-    pub fixed_lookup: &'b mut FixedLookup<T>,
     pub machines: Machines<'a, 'b, T>,
     pub query_callback: &'b mut Q,
 }
@@ -211,7 +210,6 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         let (fixed, retained_identities) =
             global_constraints::set_global_constraints(fixed, &identities);
         let ExtractionOutput {
-            mut fixed_lookup,
             mut machines,
             base_identities,
             base_witnesses,
@@ -228,8 +226,6 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                 .filter(|identity| identity.kind == IdentityKind::Polynomial)
                 .collect::<Vec<_>>();
             ExtractionOutput {
-                // This FixedLookup instance will never be called, because we removed lookups and permutations.
-                fixed_lookup: FixedLookup::new(fixed.global_range_constraints().clone()),
                 machines: Vec::new(),
                 base_identities: polynomial_identities,
                 base_witnesses: fixed.witness_cols.keys().collect::<HashSet<_>>(),
@@ -237,43 +233,34 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         };
         let mut query_callback = self.query_callback;
         let mut mutable_state = MutableState {
-            fixed_lookup: &mut fixed_lookup,
             machines: Machines::from(machines.iter_mut()),
             query_callback: &mut query_callback,
         };
 
-        let main_columns = (!base_witnesses.is_empty())
-            .then(|| {
-                let mut generator = Generator::new(
-                    "Main Machine".to_string(),
-                    &fixed,
-                    &BTreeMap::new(), // No connecting identities
-                    base_identities,
-                    base_witnesses,
-                    // We could set the latch of the main VM here, but then we would have to detect it.
-                    // Instead, the main VM will be computed in one block, directly continuing into the
-                    // infinite loop after the first return.
-                    None,
-                );
+        let generator = (!base_witnesses.is_empty()).then(|| {
+            let mut generator = Generator::new(
+                "Main Machine".to_string(),
+                &fixed,
+                &BTreeMap::new(), // No connecting identities
+                base_identities,
+                base_witnesses,
+                // We could set the latch of the main VM here, but then we would have to detect it.
+                // Instead, the main VM will be computed in one block, directly continuing into the
+                // infinite loop after the first return.
+                None,
+            );
 
-                generator.run(&mut mutable_state);
-                generator.take_witness_col_values(
-                    mutable_state.fixed_lookup,
-                    mutable_state.query_callback,
-                )
-            })
-            .unwrap_or_default();
+            generator.run(&mut mutable_state);
+            generator
+        });
 
         // Get columns from machines
         let mut columns = mutable_state
             .machines
-            .iter_mut()
-            .flat_map(|m| {
-                m.take_witness_col_values(mutable_state.fixed_lookup, mutable_state.query_callback)
-                    .into_iter()
-            })
-            .chain(main_columns)
-            .collect::<BTreeMap<_, _>>();
+            .take_witness_col_values(mutable_state.query_callback);
+        if let Some(mut generator) = generator {
+            columns.extend(generator.take_witness_col_values(&mut mutable_state));
+        }
 
         record_end(OUTER_CODE_NAME);
         reset_and_print_profile_summary();
@@ -364,7 +351,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     }
 
     fn common_degree<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> DegreeType {
-        self.common_set_degree(ids).unwrap_or(1 << MAX_DEGREE_LOG)
+        self.common_set_degree(ids).unwrap_or(1 << *MAX_DEGREE_LOG)
     }
 
     fn is_variable_size<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> bool {

@@ -11,8 +11,11 @@ default-run = "powdr"
 [features]
 default = [] # halo2 is disabled by default
 halo2 = ["powdr-backend/halo2", "powdr-pipeline/halo2"]
-plonky3 = ["powdr-backend/plonky3"]
-estark-polygon = ["powdr-backend/estark-polygon", "powdr-pipeline/estark-polygon"]
+plonky3 = ["powdr-backend/plonky3", "powdr-pipeline/plonky3"]
+estark-polygon = [
+  "powdr-backend/estark-polygon",
+  "powdr-pipeline/estark-polygon",
+]
 
 [dependencies]
 powdr-backend.workspace = true
