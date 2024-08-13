@@ -138,7 +138,6 @@ pub enum Value<'a, T> {
     Enum(&'a str, Option<Vec<Arc<Self>>>),
     BuiltinFunction(BuiltinFunction),
     Expression(AlgebraicExpression<T>),
-    TraitFunction(Closure<'a, T>),
 }
 
 impl<'a, T: FieldElement> From<T> for Value<'a, T> {
@@ -216,12 +215,6 @@ impl<'a, T: FieldElement> Value<'a, T> {
             Value::Enum(name, _) => name.to_string(),
             Value::BuiltinFunction(b) => format!("builtin_{b:?}"),
             Value::Expression(_) => "expr".to_string(),
-            Value::TraitFunction(trait_function) => {
-                format!(
-                    "trait_function<{}>",
-                    trait_function.type_args.values().format(", ")
-                )
-            }
         }
     }
 
@@ -377,11 +370,6 @@ impl<'a, T: Display> Display for Value<'a, T> {
             }
             Value::BuiltinFunction(b) => write!(f, "{b:?}"),
             Value::Expression(e) => write!(f, "{e}"),
-            Value::TraitFunction(trait_function) => write!(
-                f,
-                "trait_function<{}>",
-                trait_function.type_args.values().format(", ")
-            ),
         }
     }
 }
@@ -833,7 +821,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                         .and_then(|type_args| poly.resolved_impls.get(type_args).as_ref().copied());
 
                     match impl_pos {
-                        Some(expr) => {
+                        Some(index) => {
                             let local_type_args = poly
                                 .type_args
                                 .clone()
@@ -849,16 +837,20 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                                 })
                                 .unwrap();
 
-                            let Expression::LambdaExpression(_, body) = &expr.as_ref() else {
-                                unreachable!()
-                            };
+                            // let Expression::LambdaExpression(_, body) = &expr.as_ref() else {
+                            //     unreachable!()
+                            // };
 
-                            Value::Closure(Closure {
-                                lambda: body,
-                                environment: vec![],
-                                type_args: local_type_args.clone(),
-                            })
-                            .into()
+                            let symbol = self.symbols.lookup(&poly.name, &type_args)?;
+                            println!("{:?}", symbol);
+                            symbol
+
+                            // Value::Closure(Closure {
+                            //     lambda: body,
+                            //     environment: vec![],
+                            //     type_args: local_type_args.clone(),
+                            // })
+                            // .into()
                         }
                         None => self.symbols.lookup(&poly.name, &type_args)?,
                     }
@@ -1001,11 +993,6 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 .value_stack
                 .push(Value::Enum(name, Some(arguments)).into()),
             Value::Closure(Closure {
-                lambda,
-                environment,
-                type_args,
-            })
-            | Value::TraitFunction(Closure {
                 lambda,
                 environment,
                 type_args,

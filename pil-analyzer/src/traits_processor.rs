@@ -17,7 +17,7 @@ impl<'a> TraitsProcessor<'a> {
 
     pub fn traits_resolution(
         &self,
-        references: &mut Vec<&mut Reference>,
+        references: &mut [&mut Reference],
         traits_functions_defs: HashMap<String, FunctionValueDefinition>,
     ) {
         for r in references.iter_mut() {
@@ -44,9 +44,8 @@ impl<'a> TraitsProcessor<'a> {
         &self,
         collected_ref: (String, &Vec<Type>),
         traits_functions_definition: &HashMap<String, FunctionValueDefinition>,
-    ) -> Option<(String, BTreeMap<Vec<Type>, Box<Expression>>)> {
+    ) -> Option<(String, BTreeMap<Vec<Type>, usize>)> {
         let mut resolved_impl_pos = BTreeMap::new();
-
         let Some(FunctionValueDefinition::TraitFunction(ref trait_decl, ref trait_fn)) =
             traits_functions_definition.get(&collected_ref.0)
         else {
@@ -54,7 +53,7 @@ impl<'a> TraitsProcessor<'a> {
         };
 
         if let Some(impls) = self.implementations.get(&trait_decl.name) {
-            for impl_ in impls.iter() {
+            for (index, impl_) in impls.iter().enumerate() {
                 let Some(impl_fn) = impl_.function_by_name(&trait_fn.name) else {
                     panic!(
                         "Could not find function {} for {}",
@@ -62,7 +61,7 @@ impl<'a> TraitsProcessor<'a> {
                     );
                 };
 
-                resolved_impl_pos.insert(collected_ref.1.clone(), impl_fn.body.clone());
+                resolved_impl_pos.insert(collected_ref.1.clone(), index);
             }
         }
 
@@ -76,7 +75,7 @@ impl<'a> TraitsProcessor<'a> {
 fn update_reference(
     ref_name: &str,
     c: &mut Reference,
-    resolved_impl_pos: &BTreeMap<Vec<Type>, Box<Expression>>,
+    resolved_impl_pos: &BTreeMap<Vec<Type>, usize>,
 ) {
     if let Reference::Poly(PolynomialReference {
         name,
