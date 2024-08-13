@@ -56,16 +56,15 @@ impl<'a> TraitsProcessor<'a> {
             for collected_ref in refs_in_identity {
                 let (trait_name, resolved_impl_pos) =
                     self.resolve_trait_function(collected_ref.clone());
-                updates.push((index, trait_name, collected_ref.1, resolved_impl_pos));
+                updates.push((index, trait_name, resolved_impl_pos));
             }
         }
 
-        for (index, trait_name, type_args, resolved_impl_pos) in updates {
+        for (index, trait_name, resolved_impl_pos) in updates {
             let identity = &mut self.identities[index];
             TraitsProcessor::update_references_in_identity(
                 identity,
                 &trait_name,
-                &type_args,
                 &resolved_impl_pos,
             );
         }
@@ -113,7 +112,6 @@ impl<'a> TraitsProcessor<'a> {
     fn update_references_in_identity(
         identity: &mut Identity<SelectedExpressions<Expression>>,
         trait_name: &str,
-        type_args: &[Type],
         resolved_impl_pos: &HashMap<String, Box<Expression>>,
     ) {
         let Identity {
@@ -137,7 +135,7 @@ impl<'a> TraitsProcessor<'a> {
             .chain(std::iter::once(expressions_right.as_mut()));
 
         for expr in to_update {
-            update_reference(trait_name, type_args, expr, resolved_impl_pos);
+            update_reference(trait_name, expr, resolved_impl_pos);
         }
     }
 
@@ -152,7 +150,7 @@ impl<'a> TraitsProcessor<'a> {
             if let Some(FunctionValueDefinition::Expression(TypedExpression { e: expr, .. })) =
                 self.definitions.get_mut(current).unwrap().1.as_mut()
             {
-                update_reference(&trait_name, &collected_ref.1, expr, &resolved_impl_pos);
+                update_reference(&trait_name, expr, &resolved_impl_pos);
             }
         }
     }
@@ -216,13 +214,11 @@ impl<'a> TraitsProcessor<'a> {
 
 fn update_reference(
     ref_name: &str,
-    type_args: &[Type],
     expr: &mut Expression,
     resolved_impl_pos: &HashMap<String, Box<Expression>>,
 ) {
     fn process_expr(
         ref_name: &str,
-        type_args: &[Type],
         c: &mut Expression,
         resolved_impl_pos: &HashMap<String, Box<Expression>>,
     ) {
@@ -242,7 +238,7 @@ fn update_reference(
                     Reference::Poly(PolynomialReference {
                         name: name.clone(),
                         type_args: current_type_args.clone(),
-                        poly_id: poly_id.clone(),
+                        poly_id: *poly_id,
                         resolved_impls: resolved_impl_pos.clone(),
                     }),
                 );
@@ -250,9 +246,9 @@ fn update_reference(
         }
 
         for child in c.children_mut() {
-            process_expr(ref_name, type_args, child, resolved_impl_pos);
+            process_expr(ref_name, child, resolved_impl_pos);
         }
     }
 
-    process_expr(ref_name, type_args, expr, resolved_impl_pos);
+    process_expr(ref_name, expr, resolved_impl_pos);
 }
