@@ -1,6 +1,7 @@
 machine Byte with
     latch: latch,
-    operation_id: operation_id
+    operation_id: operation_id,
+    degree: 262144
 {
     operation check<0> BYTE -> ;
 
@@ -11,7 +12,8 @@ machine Byte with
 
 machine Byte2 with
     latch: latch,
-    operation_id: operation_id
+    operation_id: operation_id,
+    degree: 262144
 {
     operation check<0> BYTE2 -> ;
 
@@ -22,7 +24,8 @@ machine Byte2 with
 
 machine Bit2 with
     latch: latch,
-    operation_id: operation_id
+    operation_id: operation_id,
+    degree: 262144
 {
     operation check<0> BIT2 -> ;
 
@@ -33,7 +36,8 @@ machine Bit2 with
 
 machine Bit6 with
     latch: latch,
-    operation_id: operation_id
+    operation_id: operation_id,
+    degree: 262144
 {
     operation check<0> BIT6 -> ;
 
@@ -44,7 +48,8 @@ machine Bit6 with
 
 machine Bit7 with
     latch: latch,
-    operation_id: operation_id
+    operation_id: operation_id,
+    degree: 262144
 {
     operation check<0> BIT7 -> ;
 
