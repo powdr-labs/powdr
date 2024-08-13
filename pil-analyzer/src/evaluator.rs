@@ -1801,15 +1801,13 @@ mod test {
             let fe = || fe();
         namespace F(4);
             trait Do<T, Q> {
-                add1: T, T -> T,
-                add2: T, T -> Q,
+                add: T, T -> Q,
                 sub: T, T -> Q,
                 cast: T -> Q,
             }
 
             impl Do<int, fe> {
-                add1: |a, b| a + b,
-                add2: |a, b| std::convert::fe(a + b),
+                add: |a, b| std::convert::fe(a + b),
                 sub: |a, b| std::convert::fe(a - b),
                 cast: |a| std::convert::fe(a),
             }
@@ -1818,7 +1816,7 @@ mod test {
                     v => {
                         let one: int = 1;
                         let two: int = 2;
-                        v + Do::add2(one, two)
+                        v + Do::add(one, two)
                     },
             };
 

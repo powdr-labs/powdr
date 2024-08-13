@@ -567,12 +567,12 @@ fn defined_trait() {
     trait Add<T> {
         add: T, T -> T,
     }
-    impl Add<int> {
+    impl Add<fe> {
         add: |a, b| a + b,
     }
-    let r: int = Add::add(3, 4);
+    let r: fe = Add::add(3, 4);
     ";
-    type_check(input, &[("r", "", "int")]);
+    type_check(input, &[("r", "", "fe")]);
 }
 
 #[test]
