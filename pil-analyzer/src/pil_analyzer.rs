@@ -18,7 +18,8 @@ use powdr_number::{DegreeType, FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
     type_from_definition, Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind,
-    PolynomialType, PublicDeclaration, StatementIdentifier, Symbol, SymbolKind, TypedExpression,
+    PolynomialType, PublicDeclaration, Reference, StatementIdentifier, Symbol, SymbolKind,
+    TypedExpression,
 };
 use powdr_parser::{parse, parse_module, parse_type};
 
@@ -327,14 +328,47 @@ impl PILAnalyzer {
     }
 
     pub fn traits_resolution(&mut self) {
-        // TraitsProcessor::new(&mut self.definitions, &self.implementations)
-        //     .traits_resolution(&mut self.identities)
-        TraitsProcessor::new(
-            &mut self.definitions,
-            &mut self.identities,
-            &self.implementations,
-        )
-        .traits_resolution();
+        fn collect_references(expr: &mut Expression) -> Vec<&mut Reference> {
+            match expr {
+                Expression::Reference(_, ref mut r @ Reference::Poly(_)) => vec![r],
+                _ => expr.children_mut().flat_map(collect_references).collect(),
+            }
+        }
+
+        let traits_functions_defs: HashMap<String, FunctionValueDefinition> = self
+            .definitions
+            .iter()
+            .filter_map(|(name, (_, def))| match def {
+                Some(FunctionValueDefinition::TraitFunction(_, _)) => {
+                    Some((name.clone(), def.clone().unwrap()))
+                }
+                _ => None,
+            })
+            .collect();
+
+        let mut references: Vec<&mut Reference> = self
+            .definitions
+            .iter_mut()
+            .flat_map(|(_, (_, def))| match def {
+                Some(FunctionValueDefinition::Expression(TypedExpression { e: expr, .. })) => {
+                    collect_references(expr)
+                }
+                _ => Vec::new(),
+            })
+            .chain(self.identities.iter_mut().flat_map(|identity| {
+                identity
+                    .left
+                    .selector
+                    .iter_mut()
+                    .chain(once(identity.left.expressions.as_mut()))
+                    .chain(identity.right.selector.iter_mut())
+                    .chain(once(identity.right.expressions.as_mut()))
+                    .flat_map(collect_references)
+            }))
+            .collect();
+
+        TraitsProcessor::new(&self.implementations)
+            .traits_resolution(&mut references, traits_functions_defs);
     }
 
     pub fn condense<T: FieldElement>(self) -> Analyzed<T> {

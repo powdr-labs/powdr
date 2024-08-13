@@ -828,10 +828,9 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                         ta
                     });
 
-                    let impl_pos = type_args.as_ref().and_then(|type_args| {
-                        let key = type_args.iter().format(",").to_string();
-                        poly.resolved_impls.get(&key).as_ref().copied()
-                    });
+                    let impl_pos = type_args
+                        .as_ref()
+                        .and_then(|type_args| poly.resolved_impls.get(type_args).as_ref().copied());
 
                     match impl_pos {
                         Some(expr) => {
@@ -854,7 +853,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                                 unreachable!()
                             };
 
-                            Value::TraitFunction(Closure {
+                            Value::Closure(Closure {
                                 lambda: body,
                                 environment: vec![],
                                 type_args: local_type_args.clone(),

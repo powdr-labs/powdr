@@ -11,7 +11,7 @@ use powdr_ast::{
 use powdr_number::DegreeType;
 use powdr_parser_util::SourceRef;
 use std::{
-    collections::{BTreeSet, HashMap, HashSet},
+    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
     str::FromStr,
 };
 
@@ -394,7 +394,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             name: self.driver.resolve_value_ref(&reference.path),
             poly_id: None,
             type_args,
-            resolved_impls: HashMap::new(),
+            resolved_impls: BTreeMap::new(),
         }
     }
 

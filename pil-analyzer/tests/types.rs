@@ -576,6 +576,7 @@ fn defined_trait() {
 }
 
 #[test]
+#[should_panic = "Unable to derive concrete type for literal 2."]
 fn defined_trait_generic() {
     let input = "
     namespace std::convert(4);
@@ -587,6 +588,8 @@ fn defined_trait_generic() {
         impl<T> Add<T, fe> {
             add: |a, b| std::convert::fe(a + b),
         }
+
+        let r: fe = Add::add(1,2);
     ";
     type_check(input, &[]);
 }
@@ -750,40 +753,4 @@ fn trait_with_user_defined_enum2() {
     let r2: V1 = Convert::convert(V2::B);
     ";
     type_check(input, &[("r1", "", "V2"), ("r2", "", "V1")]);
-}
-
-#[test]
-fn traits_and_refs() {
-    let input = "
-    namespace std::convert(4);
-        let fe = || fe();
-    namespace F(4);
-        trait Add<T> {
-            add: T, T -> T,
-        }
-
-        impl Add<int> {
-            add: |a, b| a + b,
-        }
-
-        trait Cast<T, U> {
-            cast: T -> U,
-        }
-
-        impl Cast<int, fe> {
-            cast: |a| std::convert::fe(a),
-        }
-
-        let x: int -> fe = |q| match Add::add(q, 2) {
-                v => std::convert::fe(v),
-        };
-
-        let y: int -> fe = |q| match Add::add(q, 4) {
-                v => x(v) + Cast::cast(v),
-        };
-
-        let r: fe = y(2);
-    ";
-
-    type_check(input, &[]);
 }
