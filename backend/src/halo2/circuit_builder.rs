@@ -271,10 +271,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
                 .keys()
                 .map(|name| {
                     let first_row = meta.query_advice(config.advice[name], Rotation::cur());
-                    let last_row = meta.query_advice(
-                        config.advice[name],
-                        Rotation(analyzed.degree().try_into().unwrap()),
-                    );
+                    let last_row = meta.query_advice(config.advice[name], Rotation::prev());
                     let expr = first_step.clone() * (first_row - last_row);
                     (format!("enforce wrapping ({name})"), expr)
                 })

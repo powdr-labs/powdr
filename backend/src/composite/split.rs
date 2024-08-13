@@ -37,7 +37,7 @@ pub(crate) fn split_pil<F: FieldElement>(pil: &Analyzed<F>) -> BTreeMap<String, 
         .collect()
 }
 
-/// Given a set of columns and a PIL describing the machine, returns the witness column that belong to the machine.
+/// Given a set of columns and a PIL describing the machine, returns the witness columns that belong to the machine.
 /// Note that this also adds the dummy column.
 pub(crate) fn machine_witness_columns<F: FieldElement>(
     all_witness_columns: &[(String, Vec<F>)],
