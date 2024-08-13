@@ -4,10 +4,10 @@ use std::iter::once;
 use itertools::Itertools;
 
 use super::Machine;
-use crate::constant_evaluator::MIN_DEGREE_LOG;
+use crate::constant_evaluator::{MAX_DEGREE_LOG, MIN_DEGREE_LOG};
 use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
-use crate::witgen::{EvalResult, FixedData, MutableState, QueryCallback};
+use crate::witgen::{EvalError, EvalResult, FixedData, MutableState, QueryCallback};
 use crate::witgen::{EvalValue, IncompleteCause};
 use crate::Identity;
 use powdr_number::{DegreeType, FieldElement};
@@ -272,6 +272,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
 
         if self.fixed.is_variable_size(&self.witness_cols) {
             let current_size = addr.len();
+            assert!(current_size <= 1 << *MAX_DEGREE_LOG);
             let new_size = current_size.next_power_of_two() as DegreeType;
             let new_size = new_size.max(1 << MIN_DEGREE_LOG);
             log::info!(
@@ -475,6 +476,10 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
         };
         if has_side_effect {
             assignments = assignments.report_side_effect();
+        }
+
+        if self.trace.len() >= (self.degree as usize) {
+            return Err(EvalError::RowsExhausted(self.name.clone()));
         }
 
         Ok(assignments)
