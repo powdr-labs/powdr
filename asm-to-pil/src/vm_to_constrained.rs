@@ -286,7 +286,7 @@ impl<T: FieldElement> VMConverter<T> {
         let rom_degree = input
             .degree
             .clone()
-            .unwrap_or_else(|| Expression::from(self.code_lines.len() as u32));
+            .unwrap_or_else(|| Expression::from(self.code_lines.len().next_power_of_two() as u32));
 
         (
             input,
