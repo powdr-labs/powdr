@@ -1,4 +1,4 @@
-machine Main with degree: 16 {
+machine Main {
     Arith arith;
 
     reg pc[@pc];
@@ -21,8 +21,7 @@ machine Main with degree: 16 {
 
 machine Arith with
     latch: latch,
-    operation_id: operation_id,
-    degree: 16
+    operation_id: operation_id
 {
 
     operation add<0> x[0], x[1] -> y;

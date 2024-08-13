@@ -201,8 +201,8 @@ fn vm_to_block_array() {
 }
 
 #[test]
-fn vm_to_block_different_length() {
-    let f = "asm/vm_to_block_different_length.asm";
+fn dynamic_vadcop() {
+    let f = "asm/dynamic_vadcop.asm";
     // Because machines have different lengths, this can only be proven
     // with a composite proof.
     run_pilcom_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite)
