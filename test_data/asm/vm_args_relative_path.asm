@@ -1,4 +1,4 @@
-// we cannot have `N` at the top level because of how shorts paths are displayed with `.` instead of `::`
+// we cannot have `N` at the top level because of how short paths are displayed with `.` instead of `::`
 mod size {
     let N: int = 16;
 }

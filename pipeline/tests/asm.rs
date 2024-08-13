@@ -179,8 +179,13 @@ fn vm_to_vm() {
 #[test]
 fn vm_to_vm_dynamic_trace_length() {
     let f = "asm/vm_to_vm_dynamic_trace_length.asm";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_halo2_with_backend_variant(pipeline.clone(), BackendVariant::Composite);
+    run_pilcom_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite)
+        .unwrap();
+    test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite);
+    gen_estark_proof_with_backend_variant(
+        make_simple_prepared_pipeline(f),
+        BackendVariant::Composite,
+    );
 }
 
 #[test]
