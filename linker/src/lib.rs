@@ -1,7 +1,6 @@
 #![deny(clippy::print_stdout)]
 
-use std::collections::BTreeMap;
-
+use lazy_static::lazy_static;
 use powdr_analysis::utils::parse_pil_statement;
 use powdr_ast::{
     asm_analysis::combine_flags,
@@ -14,12 +13,28 @@ use powdr_ast::{
     },
 };
 use powdr_parser_util::SourceRef;
+use std::collections::BTreeMap;
 
 use itertools::Itertools;
 
 const MAIN_OPERATION_NAME: &str = "main";
-const MIN_DEGREE_DEFAULT: u32 = 1 << 6;
-const MAX_DEGREE_DEFAULT: u32 = 1 << 22;
+pub const MIN_DEGREE_LOG: usize = 5;
+lazy_static! {
+    // The maximum degree can add a significant cost during setup, because
+    // the fixed columns need to be committed to in all sizes up to the max degree.
+    // This gives the user the possibility to overwrite the default value.
+    pub static ref MAX_DEGREE_LOG: usize = {
+        let default_max_degree_log = 23;
+
+        let max_degree_log = match std::env::var("MAX_DEGREE_LOG") {
+            Ok(val) => val.parse::<usize>().unwrap(),
+            Err(_) => default_max_degree_log,
+        };
+        log::info!("For variably-sized machine, the maximum degree is 2^{max_degree_log}. \
+            You can set the environment variable MAX_DEGREE_LOG to change this value.");
+        max_degree_log
+    };
+}
 
 /// The optional degree of the namespace is set to that of the object if it's set, to that of the main object otherwise.
 pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
@@ -38,17 +53,18 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
         pil.push(PilStatement::Namespace(
             SourceRef::unknown(),
             SymbolPath::from_identifier(location.to_string()),
-            object
-                .degree
-                .or(main_degree.clone())
-                .map(|machine_degree| NamespaceDegree {
-                    min: machine_degree
-                        .min
-                        .unwrap_or_else(|| Expression::from(MIN_DEGREE_DEFAULT)),
-                    max: machine_degree
-                        .max
-                        .unwrap_or_else(|| Expression::from(MAX_DEGREE_DEFAULT)),
-                }),
+            Some(NamespaceDegree {
+                min: object
+                    .degree
+                    .min
+                    .or(main_degree.min.clone())
+                    .unwrap_or_else(|| Expression::from(1 << MIN_DEGREE_LOG)),
+                max: object
+                    .degree
+                    .max
+                    .or(main_degree.max.clone())
+                    .unwrap_or_else(|| Expression::from(1 << *MAX_DEGREE_LOG)),
+            }),
         ));
 
         pil.extend(object.pil);

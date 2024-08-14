@@ -107,7 +107,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         let data = FinalizableData::new(&witnesses);
 
         Self {
-            degree: fixed_data.common_degree(&witnesses),
+            degree: fixed_data.common_degree_range(&witnesses).max,
             connecting_identities: connecting_identities.clone(),
             name,
             fixed_data,

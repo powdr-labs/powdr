@@ -180,19 +180,25 @@ impl TypeChecker {
         } = machine.properties;
 
         let degree = match (degree, min_degree, max_degree) {
-            (Some(d), None, None) => Some(MachineDegree {
+            (Some(d), None, None) => MachineDegree {
                 min: Some(d.clone()),
                 max: Some(d),
-            }),
-            (Some(_), Some(_), _) => {
+            },
+            (Some(d), Some(_), _) => {
                 errors.push("Machine {ctx} should not have a min_degree if it has a degree".into());
-                None
+                MachineDegree {
+                    min: Some(d.clone()),
+                    max: Some(d),
+                }
             }
-            (Some(_), _, Some(_)) => {
+            (Some(d), _, Some(_)) => {
                 errors.push("Machine {ctx} should not have a max_degree if it has a degree".into());
-                None
+                MachineDegree {
+                    min: Some(d.clone()),
+                    max: Some(d),
+                }
             }
-            (None, min, max) => Some(MachineDegree { min, max }),
+            (None, min, max) => MachineDegree { min, max },
         };
 
         if !registers.iter().any(|r| r.ty.is_pc()) {

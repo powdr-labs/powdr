@@ -24,6 +24,8 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
         verification_app_key: Option<&mut dyn std::io::Read>,
         options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
+        println!("{analyzed}");
+
         let fixed = Arc::new(
             get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
         );

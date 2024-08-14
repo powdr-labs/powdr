@@ -22,7 +22,7 @@ use self::sub_prover::RunStatus;
 mod split;
 
 /// Maps each size to the corresponding verification key.
-type VerificationKeyBySize = BTreeMap<usize, Vec<u8>>;
+type VerificationKeyBySize = BTreeMap<DegreeType, Vec<u8>>;
 
 /// A composite verification key that contains a verification key for each machine separately.
 #[derive(Serialize, Deserialize)]
@@ -35,7 +35,7 @@ struct CompositeVerificationKey {
 #[derive(Serialize, Deserialize)]
 struct MachineProof {
     /// The (dynamic) size of the machine.
-    size: usize,
+    size: DegreeType,
     /// The proof for the machine.
     proof: Vec<u8>,
 }
@@ -204,7 +204,7 @@ pub(crate) struct CompositeBackend<'a, F> {
     /// Maps each machine name to the corresponding machine data
     /// Note that it is essential that we use BTreeMap here to ensure that the machines are
     /// deterministically ordered.
-    machine_data: BTreeMap<String, BTreeMap<usize, MachineData<'a, F>>>,
+    machine_data: BTreeMap<String, BTreeMap<DegreeType, MachineData<'a, F>>>,
 }
 
 /// Makes sure that all columns in the machine PIL have the provided degree, cloning
@@ -215,35 +215,24 @@ pub(crate) struct CompositeBackend<'a, F> {
 /// Panics if the machine PIL contains definitions with different degrees, or if the machine
 /// already has a degree set that is different from the provided degree.
 fn set_size<F: Clone>(pil: Arc<Analyzed<F>>, degree: DegreeType) -> Arc<Analyzed<F>> {
-    let current_degrees = pil.degrees();
-    assert!(
-        current_degrees.len() <= 1,
-        "Expected at most one degree within a machine"
-    );
-
-    match current_degrees.iter().next() {
-        None => {
-            // Clone the PIL and set the degree for all definitions
-            let pil = (*pil).clone();
-            let definitions = pil
-                .definitions
-                .into_iter()
-                .map(|(name, (mut symbol, def))| {
-                    symbol.degree = Some(degree.into());
-                    (name, (symbol, def))
-                })
-                .collect();
-            Arc::new(Analyzed { definitions, ..pil })
-        }
-        Some(existing_degree) => {
-            // Keep the the PIL as is
-            assert_eq!(
-                existing_degree, &degree,
-                "Expected all definitions within a machine to have the same degree"
-            );
-            pil
-        }
-    }
+    // Clone the PIL and set the degree for all definitions
+    let pil = (*pil).clone();
+    let definitions = pil
+        .definitions
+        .into_iter()
+        .map(|(name, (mut symbol, def))| {
+            match symbol.degree.as_mut() {
+                Some(range) => {
+                    assert!(degree <= range.max);
+                    assert!(degree >= range.min);
+                    *range = degree.into();
+                }
+                None => {}
+            };
+            (name, (symbol, def))
+        })
+        .collect();
+    Arc::new(Analyzed { definitions, ..pil })
 }
 
 mod sub_prover;
@@ -261,9 +250,9 @@ fn accumulate_challenges<F: FieldElement>(into: &mut BTreeMap<u64, F>, from: BTr
 
 fn process_witness_for_machine<F: FieldElement>(
     machine: &str,
-    machine_data: &BTreeMap<usize, MachineData<F>>,
+    machine_data: &BTreeMap<DegreeType, MachineData<F>>,
     witness: &[(String, Vec<F>)],
-) -> (Vec<(String, Vec<F>)>, usize) {
+) -> (Vec<(String, Vec<F>)>, DegreeType) {
     // Pick any available PIL; they all contain the same witness columns
     let any_pil = &machine_data.values().next().unwrap().pil;
     let witness = machine_witness_columns(witness, any_pil, machine);
@@ -272,14 +261,14 @@ fn process_witness_for_machine<F: FieldElement>(
         .map(|(_, witness)| witness.len())
         .unique()
         .exactly_one()
-        .expect("All witness columns of a machine must have the same size");
+        .expect("All witness columns of a machine must have the same size") as DegreeType;
 
     (witness, size)
 }
 
 fn time_stage<'a, F: FieldElement>(
     machine_name: &str,
-    size: usize,
+    size: DegreeType,
     stage: u8,
     stage_run: impl FnOnce() -> RunStatus<'a, F>,
 ) -> RunStatus<'a, F> {

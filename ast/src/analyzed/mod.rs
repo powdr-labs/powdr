@@ -63,6 +63,13 @@ impl<T> Analyzed<T> {
             .unwrap()
     }
 
+    pub fn degree_ranges(&self) -> HashSet<DegreeRange> {
+        self.definitions
+            .values()
+            .filter_map(|(symbol, _)| symbol.degree)
+            .collect::<HashSet<_>>()
+    }
+
     /// Returns the set of all explicit degrees in this [`Analyzed<T>`].
     pub fn degrees(&self) -> HashSet<DegreeType> {
         self.definitions
@@ -528,6 +535,14 @@ impl From<DegreeType> for DegreeRange {
 impl DegreeRange {
     pub fn try_into_unique(self) -> Option<DegreeType> {
         (self.min == self.max).then_some(self.min)
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = DegreeType> {
+        let min_ceil = self.min.next_power_of_two();
+        let max_ceil = self.max.next_power_of_two();
+        let min_log = usize::BITS - min_ceil.leading_zeros() - 1;
+        let max_log = usize::BITS - max_ceil.leading_zeros() - 1;
+        (min_log..=max_log).map(|exponent| 1 << exponent)
     }
 }
 
@@ -1346,7 +1361,7 @@ impl Display for PolynomialType {
 mod tests {
     use powdr_parser_util::SourceRef;
 
-    use crate::analyzed::{AlgebraicReference, PolyID, PolynomialType};
+    use crate::analyzed::{AlgebraicReference, DegreeRange, PolyID, PolynomialType};
 
     use super::{AlgebraicExpression, Analyzed};
 
@@ -1417,5 +1432,27 @@ mod tests {
 
         let expr = column.clone() * column.clone() * column.clone();
         assert_eq!(expr.degree(), 3);
+    }
+
+    #[test]
+    fn degree_range() {
+        assert_eq!(
+            DegreeRange { min: 4, max: 4 }.iter().collect::<Vec<_>>(),
+            vec![4]
+        );
+        assert_eq!(
+            DegreeRange { min: 4, max: 16 }.iter().collect::<Vec<_>>(),
+            vec![4, 8, 16]
+        );
+        assert_eq!(
+            DegreeRange { min: 3, max: 15 }.iter().collect::<Vec<_>>(),
+            vec![4, 8, 16]
+        );
+        assert_eq!(
+            DegreeRange { min: 15, max: 3 }
+                .iter()
+                .collect::<Vec<usize>>(),
+            vec![]
+        );
     }
 }

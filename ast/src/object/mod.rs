@@ -55,7 +55,7 @@ pub enum TypeOrExpression {
 
 #[derive(Default, Clone)]
 pub struct Object {
-    pub degree: Option<MachineDegree>,
+    pub degree: MachineDegree,
     /// the pil identities for this machine
     pub pil: Vec<PilStatement>,
     /// the links from this machine to its children

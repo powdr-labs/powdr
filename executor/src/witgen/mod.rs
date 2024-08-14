@@ -3,14 +3,14 @@ use std::sync::Arc;
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
-    AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
-    IdentityKind, PolyID, PolynomialType, SymbolKind, TypedExpression,
+    AlgebraicExpression, AlgebraicReference, Analyzed, DegreeRange, Expression,
+    FunctionValueDefinition, IdentityKind, PolyID, PolynomialType, SymbolKind, TypedExpression,
 };
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_number::{DegreeType, FieldElement};
 
-use crate::constant_evaluator::{VariablySizedColumn, MAX_DEGREE_LOG};
+use crate::constant_evaluator::VariablySizedColumn;
 
 use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{
@@ -328,7 +328,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     fn common_set_degree<'b>(
         &self,
         ids: impl IntoIterator<Item = &'b PolyID>,
-    ) -> Option<DegreeType> {
+    ) -> Option<DegreeRange> {
         let ids: HashSet<_> = ids.into_iter().collect();
 
         self.analyzed
@@ -347,15 +347,10 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             .unique()
             .exactly_one()
             .unwrap_or_else(|_| panic!("expected all polynomials to have the same degree"))
-            .map(|d| d.try_into_unique().unwrap())
     }
 
-    fn common_degree<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> DegreeType {
-        self.common_set_degree(ids).unwrap_or(1 << *MAX_DEGREE_LOG)
-    }
-
-    fn is_variable_size<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> bool {
-        self.common_set_degree(ids).is_none()
+    fn common_degree_range<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> DegreeRange {
+        self.common_set_degree(ids).unwrap()
     }
 
     pub fn new(
@@ -494,7 +489,7 @@ impl<'a, T> FixedColumn<'a, T> {
     }
 
     pub fn values(&self, size: DegreeType) -> &[T] {
-        self.values.get_by_size(size as usize).unwrap()
+        self.values.get_by_size(size).unwrap()
     }
 
     pub fn values_max_size(&self) -> &[T] {

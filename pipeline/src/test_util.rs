@@ -87,6 +87,8 @@ pub fn run_pilcom_with_backend_variant(
     pipeline: Pipeline<GoldilocksField>,
     backend_variant: BackendVariant,
 ) -> Result<(), String> {
+    println!("run");
+
     let backend = match backend_variant {
         BackendVariant::Monolithic => BackendType::EStarkDump,
         BackendVariant::Composite => BackendType::EStarkDumpComposite,

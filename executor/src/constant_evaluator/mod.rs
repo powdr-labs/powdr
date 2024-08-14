@@ -1,14 +1,12 @@
 use std::{
     collections::{BTreeMap, HashMap},
-    env,
     sync::{Arc, RwLock},
 };
 
 pub use data_structures::{get_uniquely_sized, get_uniquely_sized_cloned, VariablySizedColumn};
 use itertools::Itertools;
-use lazy_static::lazy_static;
 use powdr_ast::{
-    analyzed::{Analyzed, DegreeRange, FunctionValueDefinition, Symbol, TypedExpression},
+    analyzed::{Analyzed, FunctionValueDefinition, Symbol, TypedExpression},
     parsed::{
         types::{ArrayType, Type},
         IndexAccess,
@@ -19,29 +17,6 @@ use powdr_pil_analyzer::evaluator::{self, Definitions, SymbolLookup, Value};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
 mod data_structures;
-
-pub const MIN_DEGREE_LOG: usize = 5;
-lazy_static! {
-    // The maximum degree can add a significant cost during setup, because
-    // the fixed columns need to be committed to in all sizes up to the max degree.
-    // This gives the user the possibility to overwrite the default value.
-    pub static ref MAX_DEGREE_LOG: usize = {
-        let default_max_degree_log = 22;
-
-        let max_degree_log = match env::var("MAX_DEGREE_LOG") {
-            Ok(val) => val.parse::<usize>().unwrap(),
-            Err(_) => default_max_degree_log,
-        };
-        log::info!("For variably-sized machine, the maximum degree is 2^{max_degree_log}. \
-            You can set the environment variable MAX_DEGREE_LOG to change this value.");
-        max_degree_log
-    };
-
-    pub static ref DEFAULT_DEGREE_RANGE: DegreeRange = DegreeRange {
-        min: 1 << MIN_DEGREE_LOG,
-        max: 1 << *MAX_DEGREE_LOG,
-    };
-}
 
 /// Generates the fixed column values for all fixed columns that are defined
 /// (and not just declared).
@@ -56,14 +31,10 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, Variabl
             // for non-arrays, set index to None.
             for (index, (name, id)) in poly.array_elements().enumerate() {
                 let index = poly.is_array().then_some(index as u64);
-                let range = poly.degree.unwrap_or(*DEFAULT_DEGREE_RANGE);
-                let min_log = u64::BITS - range.min.leading_zeros();
-                let max_log = u64::BITS - range.max.leading_zeros();
-                let values = (min_log..=max_log)
-                    .map(|degree_log| {
-                        let degree = 1 << degree_log;
-                        generate_values(analyzed, degree, &name, value, index)
-                    })
+                let range = poly.degree.unwrap();
+                let values = range
+                    .iter()
+                    .map(|degree| generate_values(analyzed, degree as u64, &name, value, index))
                     .collect::<Vec<_>>()
                     .into();
                 assert!(fixed_cols.insert(name, (id, values)).is_none());
