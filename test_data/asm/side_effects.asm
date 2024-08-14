@@ -4,19 +4,22 @@
 // entry to the memory machine). Because of this, processing the link should not be skipped.
 
 use std::machines::memory::Memory;
-use std::machines::range::Byte2;
+use std::machines::test_util::FakeByte2;
+
+let N: int = 256;
 
 machine MemoryProxy with
     latch: latch,
     operation_id: operation_id,
     call_selectors: sel,
+    degree: N
 {
     operation mstore<0> addr, step, value ->;
 
     col witness operation_id;
     col fixed latch = [1]*;
 
-    Byte2 byte2;
+    FakeByte2 byte2;
     Memory mem(byte2);
 
     col witness addr, step, value;
@@ -28,7 +31,7 @@ machine MemoryProxy with
     link if used ~> mem.mstore(addr, step, value);
 }
 
-machine Main with degree: 8 {
+machine Main with degree: N {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
