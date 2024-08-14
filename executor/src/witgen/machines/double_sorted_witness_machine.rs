@@ -4,9 +4,10 @@ use std::iter::once;
 use itertools::Itertools;
 
 use super::Machine;
+use crate::constant_evaluator::{MAX_DEGREE_LOG, MIN_DEGREE_LOG};
 use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
-use crate::witgen::{EvalResult, FixedData, MutableState, QueryCallback};
+use crate::witgen::{EvalError, EvalResult, FixedData, MutableState, QueryCallback};
 use crate::witgen::{EvalValue, IncompleteCause};
 use crate::Identity;
 use powdr_number::{DegreeType, FieldElement};
@@ -52,10 +53,13 @@ pub struct DoubleSortedWitnesses<'a, T: FieldElement> {
     //witness_positions: HashMap<String, usize>,
     /// (addr, step) -> value
     trace: BTreeMap<(T, T), Operation<T>>,
+    /// A map addr -> value, the current content of the memory.
     data: BTreeMap<T, T>,
     is_initialized: BTreeMap<T, bool>,
     namespace: String,
     name: String,
+    /// The set of witness columns that are actually part of this machine.
+    witness_cols: HashSet<PolyID>,
     /// If the machine has the `m_diff_upper` and `m_diff_lower` columns, this is the base of the
     /// two digits.
     diff_columns_base: Option<u64>,
@@ -153,6 +157,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                 let diff_columns_base = Some(max.to_degree() + 1);
                 Some(Self {
                     name,
+                    witness_cols: witness_cols.clone(),
                     namespace,
                     fixed: fixed_data,
                     degree,
@@ -170,6 +175,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
         } else {
             Some(Self {
                 name,
+                witness_cols: witness_cols.clone(),
                 namespace,
                 fixed: fixed_data,
                 degree,
@@ -263,6 +269,22 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
             is_bootloader_write.push(0.into());
             set_selector(None);
         }
+
+        if self.fixed.is_variable_size(&self.witness_cols) {
+            let current_size = addr.len();
+            assert!(current_size <= 1 << *MAX_DEGREE_LOG);
+            let new_size = current_size.next_power_of_two() as DegreeType;
+            let new_size = new_size.max(1 << MIN_DEGREE_LOG);
+            log::info!(
+                "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
+                self.name,
+                self.degree,
+                new_size,
+                current_size
+            );
+            self.degree = new_size;
+        }
+
         while addr.len() < self.degree as usize {
             addr.push(*addr.last().unwrap());
             step.push(*step.last().unwrap() + T::from(1));
@@ -454,6 +476,10 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
         };
         if has_side_effect {
             assignments = assignments.report_side_effect();
+        }
+
+        if self.trace.len() >= (self.degree as usize) {
+            return Err(EvalError::RowsExhausted(self.name.clone()));
         }
 
         Ok(assignments)
