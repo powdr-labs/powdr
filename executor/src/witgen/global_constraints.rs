@@ -380,7 +380,7 @@ mod test {
 
     #[test]
     fn zero_one() {
-        let fixed = [0, 1, 0, 1, 0].map(|v| v.into());
+        let fixed = [0, 1, 0, 1].map(|v| v.into());
         assert_eq!(
             process_fixed_column::<GoldilocksField>(&fixed),
             Some((RangeConstraint::from_mask(1_u32), true))
@@ -389,7 +389,7 @@ mod test {
 
     #[test]
     fn zero_one_two_three() {
-        let fixed = [0, 1, 2, 3, 0].map(|v| v.into());
+        let fixed = [0, 1, 2, 3].map(|v| v.into());
         assert_eq!(
             process_fixed_column::<GoldilocksField>(&fixed),
             Some((RangeConstraint::from_mask(3_u32), true))
