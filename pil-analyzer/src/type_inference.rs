@@ -605,7 +605,10 @@ impl TypeChecker {
             }
             Expression::BinaryOperation(source_ref, BinaryOperation { left, op, right }) => {
                 // TODO at some point, also store the generic args for operators
-                let fun_type = self.instantiate_scheme(binary_operator_scheme(*op)).0;
+                let fun_type = self
+                    .unifier
+                    .instantiate_scheme(binary_operator_scheme(*op))
+                    .0;
                 self.infer_type_of_function_call(
                     fun_type,
                     [left, right].into_iter().map(AsMut::as_mut),
@@ -615,7 +618,10 @@ impl TypeChecker {
             }
             Expression::UnaryOperation(source_ref, UnaryOperation { op, expr: inner }) => {
                 // TODO at some point, also store the generic args for operators
-                let fun_type = self.instantiate_scheme(unary_operator_scheme(*op)).0;
+                let fun_type = self
+                    .unifier
+                    .instantiate_scheme(unary_operator_scheme(*op))
+                    .0;
                 self.infer_type_of_function_call(
                     fun_type,
                     [inner].into_iter().map(AsMut::as_mut),
@@ -836,6 +842,7 @@ impl TypeChecker {
                 // We just ignore the generic args here, storing them in the pattern
                 // is not helpful because the type is obvious from the value.
                 let (ty, _generic_args) = self
+                    .unifier
                     .instantiate_scheme(self.declared_types[&name.to_dotted_string()].1.clone());
                 let ty = type_for_reference(&ty);
 
@@ -921,15 +928,6 @@ impl TypeChecker {
 
     fn substitute(&self, ty: &mut Type) {
         self.unifier.substitute(ty);
-    }
-
-    /// Instantiates a type scheme by creating new type variables for the quantified
-    /// type variables in the scheme and adds the required trait bounds for the
-    /// new type variables.
-    /// Returns the new type and a vector of the type variables used for those
-    /// declared in the scheme.
-    fn instantiate_scheme(&mut self, scheme: TypeScheme) -> (Type, Vec<Type>) {
-        self.unifier.instantiate_scheme(scheme)
     }
 
     fn format_type_with_bounds(&self, ty: Type) -> String {
