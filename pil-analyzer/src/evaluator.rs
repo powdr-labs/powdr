@@ -18,7 +18,7 @@ use powdr_ast::{
         types::{ArrayType, Type, TypeScheme},
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
         IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number,
-        Pattern, StatementInsideBlock, UnaryOperation, UnaryOperator,
+        Pattern, StatementInsideBlock, TraitImplementation, UnaryOperation, UnaryOperator,
     },
 };
 use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
@@ -28,8 +28,9 @@ use powdr_parser_util::SourceRef;
 pub fn evaluate_expression<'a, T: FieldElement>(
     expr: &'a Expression,
     definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    implementations: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
-    evaluate(expr, &mut Definitions(definitions))
+    evaluate(expr, &mut Definitions(definitions, implementations))
 }
 
 /// Evaluates an expression given a symbol lookup implementation
@@ -400,7 +401,10 @@ impl<'a, T> Closure<'a, T> {
     }
 }
 
-pub struct Definitions<'a>(pub &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>);
+pub struct Definitions<'a>(
+    pub &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    pub &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
+);
 
 impl<'a> Definitions<'a> {
     /// Implementation of `lookup` that allows to provide a different implementation
@@ -475,6 +479,18 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a> {
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
         Ok(Value::from(AlgebraicExpression::PublicReference(name.to_string())).into())
     }
+
+    fn implementations(
+        &self,
+        trait_name: &str,
+    ) -> Result<&'a Vec<TraitImplementation<Expression>>, EvalError> {
+        match self.1.get(trait_name) {
+            Some(impls) => Ok(impls),
+            None => Err(EvalError::SymbolNotFound(format!(
+                "Trait {trait_name} not found."
+            ))),
+        }
+    }
 }
 
 pub trait SymbolLookup<'a, T: FieldElement> {
@@ -483,6 +499,11 @@ pub trait SymbolLookup<'a, T: FieldElement> {
         name: &'a str,
         type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError>;
+
+    fn implementations(
+        &self,
+        trait_name: &str,
+    ) -> Result<&'a Vec<TraitImplementation<Expression>>, EvalError>;
 
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
         Err(EvalError::Unsupported(format!(
@@ -837,20 +858,33 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                                 })
                                 .unwrap();
 
-                            // let Expression::LambdaExpression(_, body) = &expr.as_ref() else {
-                            //     unreachable!()
-                            // };
+                            let poly_name = poly.name.clone().replace(".", "::");
+                            let parts = poly_name.split("::").collect::<Vec<_>>();
+                            let fn_name = parts.last().unwrap().to_string();
+                            let trait_name = parts[..parts.len() - 1].join(".");
 
-                            let symbol = self.symbols.lookup(&poly.name, &type_args)?;
-                            println!("{:?}", symbol);
-                            symbol
+                            let impls = self.symbols.implementations(&trait_name)?;
+                            let impl_ = &impls[*index];
 
-                            // Value::Closure(Closure {
-                            //     lambda: body,
-                            //     environment: vec![],
-                            //     type_args: local_type_args.clone(),
-                            // })
-                            // .into()
+                            match impl_.function_by_name(&fn_name) {
+                                Some(func) => {
+                                    let Expression::LambdaExpression(_, lambda) =
+                                        func.body.as_ref()
+                                    else {
+                                        unreachable!()
+                                    };
+                                    let closure = Closure {
+                                        lambda,
+                                        environment: vec![],
+                                        type_args: local_type_args,
+                                    };
+                                    Value::Closure(closure).into()
+                                }
+                                None => Err(EvalError::SymbolNotFound(format!(
+                                    "Function {} not found in trait {}",
+                                    fn_name, trait_name
+                                )))?,
+                            }
                         }
                         None => self.symbols.lookup(&poly.name, &type_args)?,
                     }
@@ -1314,14 +1348,17 @@ mod test {
         else {
             panic!()
         };
-        evaluate::<GoldilocksField>(symbol, &mut Definitions(&analyzed.definitions))
-            .unwrap()
-            .to_string()
+        evaluate::<GoldilocksField>(
+            symbol,
+            &mut Definitions(&analyzed.definitions, &analyzed.implementations),
+        )
+        .unwrap()
+        .to_string()
     }
 
     pub fn evaluate_function<T: FieldElement>(input: &str, function: &str) -> T {
         let analyzed = analyze_string::<GoldilocksField>(input);
-        let mut symbols = evaluator::Definitions(&analyzed.definitions);
+        let mut symbols = evaluator::Definitions(&analyzed.definitions, &analyzed.implementations);
         let function = symbols.lookup(function, &None).unwrap();
         let result = evaluator::evaluate_function_call(function, vec![], &mut symbols)
             .unwrap()

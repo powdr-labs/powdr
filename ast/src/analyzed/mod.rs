@@ -21,6 +21,7 @@ pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
     self, ArrayLiteral, EnumDeclaration, EnumVariant, TraitDeclaration, TraitFunction,
+    TraitImplementation,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -43,6 +44,7 @@ pub struct Analyzed<T> {
     pub source_order: Vec<StatementIdentifier>,
     /// Symbols from the core that were added automatically but will not be printed.
     pub auto_added_symbols: HashSet<String>,
+    pub implementations: HashMap<String, Vec<TraitImplementation<Expression>>>,
 }
 
 impl<T> Analyzed<T> {

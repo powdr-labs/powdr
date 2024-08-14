@@ -6,14 +6,14 @@ use std::{
 pub use data_structures::{get_uniquely_sized, get_uniquely_sized_cloned, VariablySizedColumn};
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{Analyzed, FunctionValueDefinition, Symbol, TypedExpression},
+    analyzed::{Analyzed, Expression, FunctionValueDefinition, Symbol, TypedExpression},
     parsed::{
         types::{ArrayType, Type},
-        IndexAccess,
+        IndexAccess, TraitImplementation,
     },
 };
 use powdr_number::{BigInt, BigUint, DegreeType, FieldElement};
-use powdr_pil_analyzer::evaluator::{self, Definitions, SymbolLookup, Value};
+use powdr_pil_analyzer::evaluator::{self, Definitions, EvalError, SymbolLookup, Value};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
 mod data_structures;
@@ -66,6 +66,7 @@ fn generate_values<T: FieldElement>(
 ) -> Vec<T> {
     let symbols = CachedSymbols {
         symbols: &analyzed.definitions,
+        implementations: &analyzed.implementations,
         cache: Arc::new(RwLock::new(Default::default())),
         degree,
     };
@@ -154,6 +155,7 @@ type SymbolCache<'a, T> = HashMap<String, BTreeMap<Option<Vec<Type>>, Arc<Value<
 #[derive(Clone)]
 pub struct CachedSymbols<'a, T> {
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    implementations: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
     cache: Arc<RwLock<SymbolCache<'a, T>>>,
     degree: DegreeType,
 }
@@ -186,6 +188,18 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
 
     fn degree(&self) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
         Ok(Value::Integer(self.degree.into()).into())
+    }
+
+    fn implementations(
+        &self,
+        trait_name: &str,
+    ) -> Result<&'a Vec<TraitImplementation<Expression>>, EvalError> {
+        match self.implementations.get(trait_name) {
+            Some(impls) => Ok(impls),
+            None => Err(EvalError::SymbolNotFound(format!(
+                "Trait {trait_name} not found."
+            ))),
+        }
     }
 }
 

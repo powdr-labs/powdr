@@ -17,10 +17,10 @@ mod untyped_evaluator;
 use std::collections::HashMap;
 
 use powdr_ast::{
-    analyzed::{FunctionValueDefinition, Symbol},
+    analyzed::{Expression, FunctionValueDefinition, Symbol},
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
-        SymbolCategory,
+        SymbolCategory, TraitImplementation,
     },
 };
 
@@ -51,4 +51,5 @@ pub trait AnalysisDriver: Clone + Copy {
     /// Turns a reference to a name with an optional namespace into an absolute name.
     fn try_resolve_ref(&self, path: &SymbolPath) -> Option<(String, SymbolCategory)>;
     fn definitions(&self) -> &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>;
+    fn implementations(&self) -> &HashMap<String, Vec<TraitImplementation<Expression>>>;
 }

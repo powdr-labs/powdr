@@ -374,6 +374,7 @@ impl PILAnalyzer {
     pub fn condense<T: FieldElement>(self) -> Analyzed<T> {
         condenser::condense(
             self.definitions,
+            self.implementations,
             self.public_declarations,
             &self.identities,
             self.source_order,
@@ -474,10 +475,14 @@ impl PILAnalyzer {
             // and is field-independent (only uses integers)?
             .map(|degree| {
                 u64::try_from(
-                    evaluator::evaluate_expression::<GoldilocksField>(&degree, &self.definitions)
-                        .unwrap()
-                        .try_to_integer()
-                        .unwrap(),
+                    evaluator::evaluate_expression::<GoldilocksField>(
+                        &degree,
+                        &self.definitions,
+                        &self.implementations,
+                    )
+                    .unwrap()
+                    .try_to_integer()
+                    .unwrap(),
                 )
                 .unwrap()
             });
@@ -517,5 +522,9 @@ impl<'a> AnalysisDriver for Driver<'a> {
 
     fn definitions(&self) -> &HashMap<String, (Symbol, Option<FunctionValueDefinition>)> {
         &self.0.definitions
+    }
+
+    fn implementations(&self) -> &HashMap<String, Vec<TraitImplementation<Expression>>> {
+        &self.0.implementations
     }
 }
