@@ -858,7 +858,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                                 })
                                 .unwrap();
 
-                            let poly_name = poly.name.clone().replace(".", "::");
+                            let poly_name = poly.name.clone().replace('.', "::");
                             let parts = poly_name.split("::").collect::<Vec<_>>();
                             let fn_name = parts.last().unwrap().to_string();
                             let trait_name = parts[..parts.len() - 1].join(".");
@@ -881,8 +881,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                                     Value::Closure(closure).into()
                                 }
                                 None => Err(EvalError::SymbolNotFound(format!(
-                                    "Function {} not found in trait {}",
-                                    fn_name, trait_name
+                                    "Function {fn_name} not found in trait {trait_name}"
                                 )))?,
                             }
                         }

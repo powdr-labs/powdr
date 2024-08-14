@@ -99,7 +99,7 @@ pub(crate) fn machine_fixed_columns<F: FieldElement>(
         );
         match machine_degrees.iter().next() {
             Some(&degree) => iter::once(degree as usize).collect(),
-            None => (MIN_DEGREE_LOG..=MAX_DEGREE_LOG)
+            None => (MIN_DEGREE_LOG..=*MAX_DEGREE_LOG)
                 .map(|log_size| 1 << log_size)
                 .collect(),
         }

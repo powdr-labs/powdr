@@ -173,10 +173,8 @@ pub fn gen_estark_proof_with_backend_variant(
 }
 
 pub fn test_halo2(pipeline: Pipeline<Bn254Field>) {
-    if should_generate_proofs() {
-        test_halo2_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic);
-        test_halo2_with_backend_variant(pipeline, BackendVariant::Composite);
-    }
+    test_halo2_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic);
+    test_halo2_with_backend_variant(pipeline, BackendVariant::Composite);
 }
 
 /// Whether to compute a monolithic or composite proof.
@@ -207,7 +205,8 @@ pub fn test_halo2_with_backend_variant(
     let is_nightly_test = env::var("IS_NIGHTLY_TEST")
         .map(|v| v == "true")
         .unwrap_or(false);
-    if is_nightly_test {
+
+    if is_nightly_test && should_generate_proofs() {
         gen_halo2_proof(pipeline, backend_variant);
     }
 }
@@ -336,7 +335,7 @@ pub fn evaluate_function<'a, T: FieldElement>(
     function: &'a str,
     arguments: Vec<Arc<evaluator::Value<'a, T>>>,
 ) -> evaluator::Value<'a, T> {
-    let mut symbols = evaluator::Definitions(&analyzed.definitions);
+    let mut symbols = evaluator::Definitions(&analyzed.definitions, &analyzed.implementations);
     let function = symbols.lookup(function, &None).unwrap();
     evaluator::evaluate_function_call(function, arguments, &mut symbols)
         .unwrap()

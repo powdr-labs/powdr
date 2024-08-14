@@ -67,10 +67,17 @@ machine PoseidonGL with
     let a = array::zip(state, C, |state, C| state + C);
 
     // Compute S-Boxes (x^7)
-    let x2: inter[STATE_SIZE] = array::map(a, |a| a * a);
-    let x4: inter[STATE_SIZE] = array::map(x2, |x2| x2 * x2);
-    let x6: inter[STATE_SIZE] = array::zip(x4, x2, |x4, x2| x4 * x2);
-    let x7: inter[STATE_SIZE] = array::zip(x6, a, |x6, a| x6 * a);
+    col witness x2[STATE_SIZE];
+    array::zip(x2, array::map(a, |a| a * a), |x2, a_a| x2 = a_a);
+
+    col witness x4[STATE_SIZE];
+    array::zip(x4, x2, |x4, x2| x4 = x2 * x2);
+
+    col witness x6[STATE_SIZE];
+    array::zip(x6, array::zip(x4, x2, |x4, x2| x4 * x2), |x6, x4_x2| x6 = x4_x2);
+
+    col witness x7[STATE_SIZE];
+    array::zip(x7, array::zip(x6, a, |x6, a| x6 * a), |x7, x6_a| x7 = x6_a);
 
     // Apply S-Boxes on the first element and otherwise if it is a full round.
     let b = array::new(STATE_SIZE, |i| if i == 0 {

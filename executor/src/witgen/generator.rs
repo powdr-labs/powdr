@@ -9,7 +9,7 @@ use crate::witgen::EvalValue;
 use crate::Identity;
 
 use super::block_processor::BlockProcessor;
-use super::machines::{FixedLookup, Machine};
+use super::machines::Machine;
 use super::rows::{Row, RowIndex, RowPair};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use super::vm_processor::VmProcessor;
@@ -34,10 +34,6 @@ pub struct Generator<'a, T: FieldElement> {
 impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
         self.connecting_identities.keys().cloned().collect()
-    }
-
-    fn degree(&self) -> DegreeType {
-        self.degree
     }
 
     fn name(&self) -> &str {
@@ -85,19 +81,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        fixed_lookup: &'b mut FixedLookup<T>,
-        query_callback: &'b mut Q,
+        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         log::debug!("Finalizing VM: {}", self.name());
 
-        // In this stage, we don't have access to other machines, as they might already be finalized.
-        let mut mutable_state_no_machines = MutableState {
-            fixed_lookup,
-            machines: [].into_iter().into(),
-            query_callback,
-        };
-
-        self.fill_remaining_rows(&mut mutable_state_no_machines);
+        self.fill_remaining_rows(mutable_state);
         self.fix_first_row();
 
         self.data
@@ -143,7 +131,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         &mut self,
         mutable_state: &mut MutableState<'a, '_, T, Q>,
     ) {
-        if self.data.len() < self.degree() as usize + 1 {
+        if self.data.len() < self.degree as usize + 1 {
             assert!(self.latch.is_some());
 
             let first_row = self.data.pop().unwrap();
@@ -175,8 +163,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         let data = FinalizableData::with_initial_rows_in_progress(
             &self.witnesses,
             [
-                Row::fresh(self.fixed_data, RowIndex::from_i64(-1, self.degree())),
-                Row::fresh(self.fixed_data, RowIndex::from_i64(0, self.degree())),
+                Row::fresh(self.fixed_data, RowIndex::from_i64(-1, self.degree)),
+                Row::fresh(self.fixed_data, RowIndex::from_i64(0, self.degree)),
             ]
             .into_iter(),
         );
@@ -191,7 +179,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             .filter_map(|identity| identity.contains_next_ref().then_some(*identity))
             .collect::<Vec<_>>();
         let mut processor = BlockProcessor::new(
-            RowIndex::from_i64(-1, self.degree()),
+            RowIndex::from_i64(-1, self.degree),
             data,
             mutable_state,
             &identities_with_next_reference,
@@ -208,7 +196,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     }
 
     fn process<'b, Q: QueryCallback<T>>(
-        &self,
+        &mut self,
         first_row: Row<T>,
         row_offset: DegreeType,
         mutable_state: &mut MutableState<'a, 'b, T, Q>,
@@ -224,10 +212,9 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             [first_row].into_iter(),
         );
 
-        let degree = self.degree();
-
         let mut processor = VmProcessor::new(
-            RowIndex::from_degree(row_offset, degree),
+            self.name().to_string(),
+            RowIndex::from_degree(row_offset, self.degree),
             self.fixed_data,
             &self.identities,
             &self.witnesses,
@@ -238,16 +225,33 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             processor = processor.with_outer_query(outer_query);
         }
         let eval_value = processor.run(is_main_run);
-        let block = processor.finish();
+        let (block, degree) = processor.finish();
+
+        // The processor might have detected a loop, in which case the degree has changed
+        self.degree = degree;
+
         ProcessResult { eval_value, block }
     }
 
     /// At the end of the solving algorithm, we'll have computed the first row twice
     /// (as row 0 and as row <degree>). This function merges the two versions.
     fn fix_first_row(&mut self) {
-        assert_eq!(self.data.len() as DegreeType, self.degree() + 1);
+        assert_eq!(self.data.len() as DegreeType, self.degree + 1);
 
         let last_row = self.data.pop().unwrap();
-        self.data[0].merge_with(&last_row).unwrap();
+        if self.data[0].merge_with(&last_row).is_err() {
+            log::error!(
+                "{}",
+                self.data[0].render("First row", false, &self.witnesses, self.fixed_data)
+            );
+            log::error!(
+                "{}",
+                last_row.render("Last row", false, &self.witnesses, self.fixed_data)
+            );
+            panic!(
+                "Failed to merge the first and last row of the VM '{}'",
+                self.name()
+            );
+        }
     }
 }

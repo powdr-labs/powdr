@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use powdr_number::DegreeType;
 use powdr_number::FieldElement;
 
 use self::block_machine::BlockMachine;
@@ -45,9 +44,6 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     /// Returns a unique name for this machine.
     fn name(&self) -> &str;
 
-    /// Return the unique degree of all columns in this machine
-    fn degree(&self) -> DegreeType;
-
     /// Processes a connecting identity of a given ID (which must be known to the callee).
     /// Returns an error if the query leads to a constraint failure.
     /// Otherwise, it computes any updates to the caller row pair and returns them.
@@ -61,8 +57,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     /// Returns the final values of the witness columns.
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        fixed_lookup: &'b mut FixedLookup<T>,
-        query_callback: &'b mut Q,
+        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>>;
 
     /// Returns the identity IDs that this machine is responsible for.
@@ -78,6 +73,7 @@ pub enum KnownMachine<'a, T: FieldElement> {
     WriteOnceMemory(WriteOnceMemory<'a, T>),
     BlockMachine(BlockMachine<'a, T>),
     Vm(Generator<'a, T>),
+    FixedLookup(FixedLookup<'a, T>),
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
@@ -101,16 +97,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
                 m.process_plookup(mutable_state, identity_id, caller_rows)
             }
             KnownMachine::Vm(m) => m.process_plookup(mutable_state, identity_id, caller_rows),
-        }
-    }
-
-    fn degree(&self) -> DegreeType {
-        match self {
-            KnownMachine::SortedWitnesses(m) => m.degree(),
-            KnownMachine::DoubleSortedWitnesses(m) => m.degree(),
-            KnownMachine::WriteOnceMemory(m) => m.degree(),
-            KnownMachine::BlockMachine(m) => m.degree(),
-            KnownMachine::Vm(m) => m.degree(),
+            KnownMachine::FixedLookup(m) => {
+                m.process_plookup(mutable_state, identity_id, caller_rows)
+            }
         }
     }
 
@@ -121,28 +110,21 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
             KnownMachine::WriteOnceMemory(m) => m.name(),
             KnownMachine::BlockMachine(m) => m.name(),
             KnownMachine::Vm(m) => m.name(),
+            KnownMachine::FixedLookup(m) => m.name(),
         }
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        fixed_lookup: &'b mut FixedLookup<T>,
-        query_callback: &'b mut Q,
+        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         match self {
-            KnownMachine::SortedWitnesses(m) => {
-                m.take_witness_col_values(fixed_lookup, query_callback)
-            }
-            KnownMachine::DoubleSortedWitnesses(m) => {
-                m.take_witness_col_values(fixed_lookup, query_callback)
-            }
-            KnownMachine::WriteOnceMemory(m) => {
-                m.take_witness_col_values(fixed_lookup, query_callback)
-            }
-            KnownMachine::BlockMachine(m) => {
-                m.take_witness_col_values(fixed_lookup, query_callback)
-            }
-            KnownMachine::Vm(m) => m.take_witness_col_values(fixed_lookup, query_callback),
+            KnownMachine::SortedWitnesses(m) => m.take_witness_col_values(mutable_state),
+            KnownMachine::DoubleSortedWitnesses(m) => m.take_witness_col_values(mutable_state),
+            KnownMachine::WriteOnceMemory(m) => m.take_witness_col_values(mutable_state),
+            KnownMachine::BlockMachine(m) => m.take_witness_col_values(mutable_state),
+            KnownMachine::Vm(m) => m.take_witness_col_values(mutable_state),
+            KnownMachine::FixedLookup(m) => m.take_witness_col_values(mutable_state),
         }
     }
 
@@ -153,6 +135,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
             KnownMachine::WriteOnceMemory(m) => m.identity_ids(),
             KnownMachine::BlockMachine(m) => m.identity_ids(),
             KnownMachine::Vm(m) => m.identity_ids(),
+            KnownMachine::FixedLookup(m) => m.identity_ids(),
         }
     }
 }

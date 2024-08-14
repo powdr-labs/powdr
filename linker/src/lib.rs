@@ -407,7 +407,7 @@ namespace main_sub(16);
     pc' = (1 - first_step') * pc_update;
     pol commit _output_0_free_value;
     1 $ [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return, _output_0_const, _output_0_read_free, read__output_0_pc, read__output_0__input_0] in main_sub__rom.latch $ [main_sub__rom.operation_id, main_sub__rom.p_line, main_sub__rom.p_instr__jump_to_operation, main_sub__rom.p_instr__reset, main_sub__rom.p_instr__loop, main_sub__rom.p_instr_return, main_sub__rom.p__output_0_const, main_sub__rom.p__output_0_read_free, main_sub__rom.p_read__output_0_pc, main_sub__rom.p_read__output_0__input_0];
-namespace main_sub__rom(16);
+namespace main_sub__rom(8);
     pol constant p_line = [0, 1, 2, 3, 4, 5] + [5]*;
     pol constant p__output_0_const = [0, 0, 0, 0, 1, 0] + [0]*;
     pol constant p__output_0_read_free = [0]*;
@@ -553,7 +553,7 @@ machine Machine {
     1 $ [0, pc, instr_inc_fp, instr_inc_fp_param_amount, instr_adjust_fp, instr_adjust_fp_param_amount, instr_adjust_fp_param_t, instr__jump_to_operation, instr__reset, instr__loop, instr_return] in main__rom.latch $ [main__rom.operation_id, main__rom.p_line, main__rom.p_instr_inc_fp, main__rom.p_instr_inc_fp_param_amount, main__rom.p_instr_adjust_fp, main__rom.p_instr_adjust_fp_param_amount, main__rom.p_instr_adjust_fp_param_t, main__rom.p_instr__jump_to_operation, main__rom.p_instr__reset, main__rom.p_instr__loop, main__rom.p_instr_return];
     pol constant _linker_first_step(i) { if i == 0 { 1 } else { 0 } };
     _linker_first_step * (_operation_id - 2) = 0;
-namespace main__rom;
+namespace main__rom(8);
     pol constant p_line = [0, 1, 2, 3, 4] + [4]*;
     pol constant p_instr__jump_to_operation = [0, 1, 0, 0, 0] + [0]*;
     pol constant p_instr__loop = [0, 0, 0, 0, 1] + [1]*;
@@ -649,7 +649,7 @@ machine Main {
     1 $ [0, pc, reg_write_X_A, instr_add5_into_A, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc] in main__rom.latch $ [main__rom.operation_id, main__rom.p_line, main__rom.p_reg_write_X_A, main__rom.p_instr_add5_into_A, main__rom.p_instr__jump_to_operation, main__rom.p_instr__reset, main__rom.p_instr__loop, main__rom.p_instr_return, main__rom.p_X_const, main__rom.p_X_read_free, main__rom.p_read_X_A, main__rom.p_read_X_pc];
     pol constant _linker_first_step(i) { if i == 0 { 1 } else { 0 } };
     _linker_first_step * (_operation_id - 2) = 0;
-namespace main__rom;
+namespace main__rom(4);
     pol constant p_line = [0, 1, 2, 3] + [3]*;
     pol constant p_X_const = [0, 0, 10, 0] + [0]*;
     pol constant p_X_read_free = [0]*;

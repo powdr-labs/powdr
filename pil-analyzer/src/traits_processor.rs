@@ -54,7 +54,7 @@ impl<'a> TraitsProcessor<'a> {
 
         if let Some(impls) = self.implementations.get(&trait_decl.name) {
             for (index, impl_) in impls.iter().enumerate() {
-                let Some(impl_fn) = impl_.function_by_name(&trait_fn.name) else {
+                let Some(_) = impl_.function_by_name(&trait_fn.name) else {
                     panic!(
                         "Could not find function {} for {}",
                         trait_fn.name, trait_decl.name
