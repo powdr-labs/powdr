@@ -196,7 +196,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     }
 
     fn process<'b, Q: QueryCallback<T>>(
-        &self,
+        &mut self,
         first_row: Row<T>,
         row_offset: DegreeType,
         mutable_state: &mut MutableState<'a, 'b, T, Q>,
@@ -213,6 +213,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         );
 
         let mut processor = VmProcessor::new(
+            self.name().to_string(),
             RowIndex::from_degree(row_offset, self.degree),
             self.fixed_data,
             &self.identities,
@@ -224,7 +225,11 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             processor = processor.with_outer_query(outer_query);
         }
         let eval_value = processor.run(is_main_run);
-        let block = processor.finish();
+        let (block, degree) = processor.finish();
+
+        // The processor might have detected a loop, in which case the degree has changed
+        self.degree = degree;
+
         ProcessResult { eval_value, block }
     }
 
@@ -234,6 +239,19 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         assert_eq!(self.data.len() as DegreeType, self.degree + 1);
 
         let last_row = self.data.pop().unwrap();
-        self.data[0].merge_with(&last_row).unwrap();
+        if self.data[0].merge_with(&last_row).is_err() {
+            log::error!(
+                "{}",
+                self.data[0].render("First row", false, &self.witnesses, self.fixed_data)
+            );
+            log::error!(
+                "{}",
+                last_row.render("Last row", false, &self.witnesses, self.fixed_data)
+            );
+            panic!(
+                "Failed to merge the first and last row of the VM '{}'",
+                self.name()
+            );
+        }
     }
 }

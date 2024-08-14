@@ -152,6 +152,10 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         }
     }
 
+    pub fn set_size(&mut self, size: DegreeType) {
+        self.size = size;
+    }
+
     pub fn finished_outer_query(&self) -> bool {
         self.outer_query
             .as_ref()

@@ -1,6 +1,9 @@
 use std::collections::{HashMap, HashSet};
 
-use powdr_ast::parsed::{types::Type, visitor::Children};
+use powdr_ast::parsed::{
+    types::{Type, TypeScheme},
+    visitor::Children,
+};
 
 use crate::type_builtins::elementary_type_bounds;
 
@@ -10,6 +13,8 @@ pub struct Unifier {
     type_var_bounds: HashMap<String, HashSet<String>>,
     /// Substitutions for type variables
     substitutions: HashMap<String, Type>,
+    /// Last used type variable index.
+    last_type_var: usize,
 }
 
 impl Unifier {
@@ -113,6 +118,38 @@ impl Unifier {
             }
         }
         ty.children_mut().for_each(|t| self.substitute(t));
+    }
+
+    /// Instantiates a type scheme by creating new type variables for the quantified
+    /// type variables in the scheme and adds the required trait bounds for the
+    /// new type variables.
+    /// Returns the new type and a vector of the type variables used for those
+    /// declared in the scheme.
+    pub fn instantiate_scheme(&mut self, scheme: TypeScheme) -> (Type, Vec<Type>) {
+        let mut ty = scheme.ty;
+        let vars = scheme
+            .vars
+            .bounds()
+            .map(|(_, bounds)| {
+                let new_var = self.new_type_var();
+                for b in bounds {
+                    self.ensure_bound(&new_var, b.clone()).unwrap();
+                }
+                new_var
+            })
+            .collect::<Vec<_>>();
+        let substitutions = scheme.vars.vars().cloned().zip(vars.clone()).collect();
+        ty.substitute_type_vars(&substitutions);
+        (ty, vars)
+    }
+
+    pub fn new_type_var_name(&mut self) -> String {
+        self.last_type_var += 1;
+        format!("T{}", self.last_type_var)
+    }
+
+    pub fn new_type_var(&mut self) -> Type {
+        Type::TypeVar(self.new_type_var_name())
     }
 
     fn add_type_var_bound(&mut self, type_var: String, bound: String) {
