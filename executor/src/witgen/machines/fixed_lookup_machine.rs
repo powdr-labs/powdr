@@ -5,7 +5,7 @@ use std::num::NonZeroUsize;
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicReference, IdentityKind, PolyID, PolynomialType};
-use powdr_number::FieldElement;
+use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::affine_expression::{AffineExpression, AlgebraicVariable};
 use crate::witgen::global_constraints::{GlobalConstraints, RangeConstraintSet};
@@ -169,12 +169,25 @@ impl<T: FieldElement> IndexedColumns<T> {
     }
 }
 
+fn split_column_name(name: &str) -> (&str, &str) {
+    let mut limbs = name.split('.');
+    let namespace = limbs.next().unwrap();
+    let col = limbs.next().unwrap();
+    (namespace, col)
+}
+
+const MULTIPLICITY_LOOKUP_COLUMN: &str = "m_logup_multiplicity";
+const MAIN_MULTIPLICITY_TO_TRY: &str = "main.m_logup_multiplicity";
+
 /// Machine to perform a lookup in fixed columns only.
 pub struct FixedLookup<'a, T: FieldElement> {
+    degree: DegreeType,
     global_constraints: GlobalConstraints<T>,
     indices: IndexedColumns<T>,
     connecting_identities: BTreeMap<u64, &'a Identity<T>>,
     fixed_data: &'a FixedData<'a, T>,
+    multiplicities: BTreeMap<u64, BTreeMap<usize, u64>>,
+    has_logup_multiplicity_column: bool
 }
 
 impl<'a, T: FieldElement> FixedLookup<'a, T> {
@@ -197,11 +210,29 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
                 .then_some((i.id, i))
             })
             .collect();
+        
+        let degree = fixed_data
+            .fixed_cols
+            .values()
+            .map(|col| col.values_max_size().len())
+            .max()
+            .unwrap_or(0) as u64;
+
+        println!("Degree: {:?}", degree);
+        
+        let has_logup_multiplicity_column = fixed_data
+            .witness_cols
+            .values()
+            .any(|col| split_column_name(&col.poly.name).1 == MULTIPLICITY_LOOKUP_COLUMN);
+        
         Self {
+            degree,
             global_constraints,
             indices: Default::default(),
             connecting_identities,
             fixed_data,
+            multiplicities: Default::default(),
+            has_logup_multiplicity_column
         }
     }
 
@@ -210,6 +241,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         rows: &RowPair<'_, '_, T>,
         left: &[AffineExpression<AlgebraicVariable<'a>, T>],
         mut right: Peekable<impl Iterator<Item = &'a AlgebraicReference>>,
+        identity_id: u64,
     ) -> EvalResult<'a, T> {
         if left.len() == 1
             && !left.first().unwrap().is_constant()
@@ -269,6 +301,16 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             }
         };
 
+        // update multiplicities
+        self.multiplicities
+            .entry(identity_id)
+            .or_insert_with(BTreeMap::new)
+            .entry(row)
+            .and_modify(|e| *e += 1)
+            .or_insert(1);
+
+        println!("Multiplicities: {:?}", self.multiplicities);
+
         let output = output_columns
             .iter()
             .map(|column| self.fixed_data.fixed_cols[column].values_max_size()[row]);
@@ -289,7 +331,6 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
                 }
             }
         }
-
         Ok(result)
     }
 
@@ -347,14 +388,48 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
             .peekable();
 
         let outer_query = OuterQuery::new(caller_rows, identity);
-        self.process_plookup_internal(caller_rows, &outer_query.left, right)
+        self.process_plookup_internal(caller_rows, &outer_query.left, right, identity_id)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
-        Default::default()
+        // Clone the self.multiplcities by changing the type of the multiplicity from u64 to T by using T::from() 
+        // and adding the rows that are not present in the multiplicities for each identity
+        let multiplicities: BTreeMap<u64, BTreeMap<usize, T>> = self.multiplicities.clone()
+            .into_iter()
+            .map(|(identity_id, multiplicity)| {
+                let mut multiplicity: BTreeMap<usize, T> = multiplicity
+                    .into_iter()
+                    .map(|(row, multiplicity)| (row, T::from(multiplicity)))
+                    .collect();
+                for row in 0..self.degree as usize {
+                    if !multiplicity.contains_key(&row) {
+                        multiplicity.insert(row, T::zero());
+                    }
+                }
+                (identity_id, multiplicity)
+            })
+            .collect();
+
+        // Collect all the rows of an identity as a Vec<T>
+        let mut witness_col_values = HashMap::new();
+        for (identity_id, multiplicity) in &multiplicities {
+            let mut values = vec![];
+            for row in 0..self.degree as usize {
+                values.push(multiplicity[&row]);
+            }
+            if self.has_logup_multiplicity_column{
+                witness_col_values.insert(MAIN_MULTIPLICITY_TO_TRY.to_string(), values);
+            }
+        }
+
+        // Add namespace like main or arith to the column name
+
+        println!("Multiplicities: {:?}", multiplicities);
+        println!("Witness col values: {:?}", witness_col_values);
+        witness_col_values
     }
 
     fn identity_ids(&self) -> Vec<u64> {

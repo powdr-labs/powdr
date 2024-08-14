@@ -266,6 +266,14 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         let mut columns = mutable_state
             .machines
             .take_witness_col_values(mutable_state.query_callback);
+        println!("columns: {:?}", columns);
+        // Print the Vec<T> values of the columns
+        println!("Vec<T> parts: {:?}", columns.iter().map(|(_, values)| (values)).collect::<Vec<_>>());
+        // Print the String part of the columns
+        println!("String parts: {:?}", columns.iter().map(|(name, _)| name).collect::<Vec<&String>>());
+        // Print how many elements are there inside the columns HashMap
+        println!("columns.len(): {:?}", columns.len());
+
         if let Some(mut generator) = generator {
             columns.extend(generator.take_witness_col_values(&mut mutable_state));
         }
@@ -286,6 +294,8 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                 (name, column)
             })
             .collect::<Vec<_>>();
+        // Print witness_cols:
+        println!("witness_cols: {:?}", witness_cols); 
 
         log::debug!("Publics:");
         for (name, value) in extract_publics(&witness_cols, self.analyzed) {

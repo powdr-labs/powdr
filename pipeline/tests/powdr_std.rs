@@ -166,6 +166,12 @@ fn bus_permutation_via_challenges_bn() {
 }
 
 #[test]
+fn test_multiplicities() {
+    let f = "std/multiplicities.asm";
+    test_halo2(make_simple_prepared_pipeline(f));
+}
+
+#[test]
 fn bus_permutation_via_challenges_ext_bn() {
     let f = "std/bus_permutation_via_challenges_ext.asm";
     test_halo2(make_simple_prepared_pipeline(f));
