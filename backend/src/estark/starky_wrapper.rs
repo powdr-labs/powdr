@@ -36,8 +36,6 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
         verification_app_key: Option<&mut dyn std::io::Read>,
         options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
-        println!("estark");
-
         if F::modulus().to_arbitrary_integer() != GoldilocksField::modulus().to_arbitrary_integer()
         {
             unimplemented!("eSTARK is only implemented for Goldilocks field");

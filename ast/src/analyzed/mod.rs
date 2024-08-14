@@ -1359,6 +1359,7 @@ impl Display for PolynomialType {
 
 #[cfg(test)]
 mod tests {
+    use powdr_number::DegreeType;
     use powdr_parser_util::SourceRef;
 
     use crate::analyzed::{AlgebraicReference, DegreeRange, PolyID, PolynomialType};
@@ -1451,8 +1452,8 @@ mod tests {
         assert_eq!(
             DegreeRange { min: 15, max: 3 }
                 .iter()
-                .collect::<Vec<usize>>(),
-            vec![]
+                .collect::<Vec<DegreeType>>(),
+            Vec::<DegreeType>::new()
         );
     }
 }

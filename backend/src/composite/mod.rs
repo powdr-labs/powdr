@@ -221,13 +221,10 @@ fn set_size<F: Clone>(pil: Arc<Analyzed<F>>, degree: DegreeType) -> Arc<Analyzed
         .definitions
         .into_iter()
         .map(|(name, (mut symbol, def))| {
-            match symbol.degree.as_mut() {
-                Some(range) => {
-                    assert!(degree <= range.max);
-                    assert!(degree >= range.min);
-                    *range = degree.into();
-                }
-                None => {}
+            if let Some(range) = symbol.degree.as_mut() {
+                assert!(degree <= range.max);
+                assert!(degree >= range.min);
+                *range = degree.into();
             };
             (name, (symbol, def))
         })
@@ -261,7 +258,8 @@ fn process_witness_for_machine<F: FieldElement>(
         .map(|(_, witness)| witness.len())
         .unique()
         .exactly_one()
-        .expect("All witness columns of a machine must have the same size") as DegreeType;
+        .expect("All witness columns of a machine must have the same size")
+        as DegreeType;
 
     (witness, size)
 }

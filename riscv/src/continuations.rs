@@ -263,9 +263,15 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     let mut proven_trace = first_real_execution_row;
     let mut chunk_index = 0;
 
-    let length = program
-        .machines()
-        .fold(Default::default(), |MachineDegree {min, max}, (_, m)| MachineDegree { min: min.or(m.degree.min.clone()), max: max.or(m.degree.max.clone()) });
+    let length =
+        program
+            .machines()
+            .fold(Default::default(), |MachineDegree { min, max }, (_, m)| {
+                MachineDegree {
+                    min: min.or(m.degree.min.clone()),
+                    max: max.or(m.degree.max.clone()),
+                }
+            });
 
     let length: usize = match length {
         MachineDegree {

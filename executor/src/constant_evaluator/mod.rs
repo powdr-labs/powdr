@@ -34,7 +34,7 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, Variabl
                 let range = poly.degree.unwrap();
                 let values = range
                     .iter()
-                    .map(|degree| generate_values(analyzed, degree as u64, &name, value, index))
+                    .map(|degree| generate_values(analyzed, degree, &name, value, index))
                     .collect::<Vec<_>>()
                     .into();
                 assert!(fixed_cols.insert(name, (id, values)).is_none());
