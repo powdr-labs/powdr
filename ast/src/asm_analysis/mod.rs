@@ -703,6 +703,15 @@ pub struct MachineDegree {
     pub max: Option<Expression>,
 }
 
+impl From<Expression> for MachineDegree {
+    fn from(value: Expression) -> Self {
+        Self {
+            min: Some(value.clone()),
+            max: Some(value),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct Machine {
     /// The degree i.e. the number of rows in instances of this machine type
