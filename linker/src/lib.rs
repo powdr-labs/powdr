@@ -24,7 +24,7 @@ lazy_static! {
     // the fixed columns need to be committed to in all sizes up to the max degree.
     // This gives the user the possibility to overwrite the default value.
     pub static ref MAX_DEGREE_LOG: usize = {
-        let default_max_degree_log = 23;
+        let default_max_degree_log = 22;
 
         let max_degree_log = match std::env::var("MAX_DEGREE_LOG") {
             Ok(val) => val.parse::<usize>().unwrap(),
