@@ -73,6 +73,12 @@ where
     PipelineCallback: Fn(Pipeline<F>) -> Result<(), E>,
 {
     let num_chunks = bootloader_inputs.len();
+
+    // The size of the main machine is dynamic, so we need to chose a size.
+    // We chose a size 4x smaller than the maximum size, so that we can guarantee
+    // that the register memory does not run out of rows.
+    // TODO: After #1667 ("Support degree ranges") is merged, this can be set in ASM
+    //       and we can just use the maximum size here.
     let length = 1 << (*MAX_DEGREE_LOG - 2);
 
     log::info!("Computing fixed columns...");
