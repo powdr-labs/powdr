@@ -13,11 +13,6 @@ namespace Bin(65536);
     col witness bla;
 namespace std::prover(65536);
     let eval: expr -> fe = [];
-    enum Query {
-        Input(int),
-        None,
-    }
-    let set_hint = 9;
 namespace std::convert(65536);
     let int = [];
 namespace T(65536);
@@ -50,11 +45,11 @@ namespace T(65536);
     T.X = T.read_X_A * T.A + T.read_X_CNT * T.CNT + T.X_const + T.X_read_free * T.X_free_value;
     T.A' = T.first_step' * 0 + T.reg_write_X_A * T.X + (1 - (T.first_step' + T.reg_write_X_A)) * T.A;
     col witness X_free_value;
-    std::prover::set_hint(T.X_free_value, (query |_| match std::prover::eval(T.pc) {
-        0 => std::prover::Query::Input(1),
-        3 => std::prover::Query::Input(std::convert::int::<fe>(std::prover::eval(T.CNT) + 1)),
-        7 => std::prover::Query::Input(0),
-        _ => std::prover::Query::None,
+    std::prelude::set_hint(T.X_free_value, (query |_| match std::prover::eval(T.pc) {
+        0 => std::prelude::Query::Input(1),
+        3 => std::prelude::Query::Input(std::convert::int::<fe>(std::prover::eval(T.CNT) + 1)),
+        7 => std::prelude::Query::Input(0),
+        _ => std::prelude::Query::None,
     }));
     col fixed p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
     col fixed p_X_read_free = [1, 0, 0, 1, 0, 0, 0, -1, 0] + [0]*;

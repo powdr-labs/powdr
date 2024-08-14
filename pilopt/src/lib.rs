@@ -51,7 +51,7 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         {
             let set_hint = (sym.kind == SymbolKind::Poly(PolynomialType::Committed)
                 && value.is_some())
-            .then_some(Cow::from("std::prover::set_hint"));
+            .then_some(Cow::from("std::prelude::set_hint"));
             Box::new(
                 value
                     .iter()

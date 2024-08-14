@@ -1,4 +1,4 @@
-use std::prover::Query;
+use std::prelude::Query;
 use super::ByteCompare;
 
 // Splits an arbitrary field element into two u32s, on the Goldilocks field.

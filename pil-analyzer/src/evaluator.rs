@@ -317,7 +317,7 @@ const BUILTINS: [(&str, BuiltinFunction); 11] = [
     ("std::debug::print", BuiltinFunction::Print),
     ("std::field::modulus", BuiltinFunction::Modulus),
     ("std::prelude::challenge", BuiltinFunction::Challenge),
-    ("std::prover::set_hint", BuiltinFunction::SetHint),
+    ("std::prelude::set_hint", BuiltinFunction::SetHint),
     ("std::prover::degree", BuiltinFunction::Degree),
     ("std::prover::eval", BuiltinFunction::Eval),
 ];
@@ -342,7 +342,7 @@ pub enum BuiltinFunction {
     ToFe,
     /// std::prover::challenge: int, int -> expr, constructs a challenge with a given stage and ID.
     Challenge,
-    /// std::prover::set_hint: expr, (int -> std::prover::Query) -> (), adds a hint to a witness column.
+    /// std::prelude::set_hint: expr, (int -> std::prelude::Query) -> (), adds a hint to a witness column.
     SetHint,
     /// std::prover::degree: -> int, returns the current column length / degree.
     Degree,

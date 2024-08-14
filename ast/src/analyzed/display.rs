@@ -199,7 +199,7 @@ fn format_witness_column(
         let FunctionValueDefinition::Expression(TypedExpression { e, .. }) = value else {
             panic!()
         };
-        result += &format!("\nstd::prover::set_hint({}, {e});", symbol.absolute_name);
+        result += &format!("\nstd::prelude::set_hint({}, {e});", symbol.absolute_name);
     }
     result
 }
