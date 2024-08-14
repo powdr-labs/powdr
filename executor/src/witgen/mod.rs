@@ -238,8 +238,13 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         };
 
         let generator = (!base_witnesses.is_empty()).then(|| {
+            // HACK
+            let main_size = fixed
+                .common_set_degree(&base_witnesses)
+                .unwrap_or(1 << (*MAX_DEGREE_LOG - 2));
             let mut generator = Generator::new(
                 "Main Machine".to_string(),
+                main_size,
                 &fixed,
                 &BTreeMap::new(), // No connecting identities
                 base_identities,
@@ -376,7 +381,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                         .map(|(name, poly_id)| {
                             let external_values = external_witness_values.remove(name.as_str());
                             if let Some(external_values) = &external_values {
-                                if external_values.len() != poly.degree.unwrap() as usize {
+                                if Some(external_values.len() as DegreeType) != poly.degree {
                                     log::debug!(
                                         "External witness values for column {} were only partially provided \
                                         (length is {} but the degree is {})",
