@@ -512,7 +512,9 @@ impl TypeChecker {
                     type_args,
                 }),
             ) => {
-                let (ty, args) = self.instantiate_scheme(self.declared_types[name].1.clone());
+                let (ty, args) = self
+                    .unifier
+                    .instantiate_scheme(self.declared_types[name].1.clone());
                 if let Some(requested_type_args) = type_args {
                     if requested_type_args.len() != args.len() {
                         return Err(source_ref.with_error(format!(
