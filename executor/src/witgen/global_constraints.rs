@@ -353,7 +353,7 @@ fn smallest_period_candidate<T: FieldElement>(fixed: &[T]) -> Option<u64> {
     if fixed.first() != Some(&0.into()) {
         return None;
     }
-    (1..63).find(|bit| fixed.get(1usize << bit) == Some(&0.into()))
+    (1..63).find(|bit| fixed.last() == Some(&((1u64 << bit) - 1).into()))
 }
 
 #[cfg(test)]
