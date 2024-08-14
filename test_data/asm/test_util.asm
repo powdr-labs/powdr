@@ -1,4 +1,5 @@
-/// A too-small version of std::machines::range::Byte2.
+/// A version of std::machines::range::Byte2 that actually constrains
+/// to 0..255 because of the limited number of rows.
 /// It is used in tests which happen to only use the first 256 values.
 machine FakeByte2 with
     latch: latch,

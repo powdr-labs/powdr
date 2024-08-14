@@ -1,5 +1,7 @@
 use std::machines::memory::Memory;
-use std::machines::test_util::FakeByte2;
+
+mod test_util;
+use test_util::FakeByte2 as Byte2;
 
 let N: int = 256;
 
@@ -10,7 +12,7 @@ machine Main with degree: N {
     reg A;
 
     col fixed STEP(i) { i };
-    FakeByte2 byte2;
+    Byte2 byte2;
     Memory memory(byte2);
     WithArg sub(memory);
 

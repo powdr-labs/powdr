@@ -4,7 +4,9 @@
 // entry to the memory machine). Because of this, processing the link should not be skipped.
 
 use std::machines::memory::Memory;
-use std::machines::test_util::FakeByte2;
+
+mod test_util;
+use test_util::FakeByte2 as Byte2;
 
 let N: int = 256;
 
@@ -19,7 +21,7 @@ machine MemoryProxy with
     col witness operation_id;
     col fixed latch = [1]*;
 
-    FakeByte2 byte2;
+    Byte2 byte2;
     Memory mem(byte2);
 
     col witness addr, step, value;
