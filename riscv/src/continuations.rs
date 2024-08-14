@@ -75,6 +75,9 @@ where
     let num_chunks = bootloader_inputs.len();
     let length = 1 << (*MAX_DEGREE_LOG - 2);
 
+    log::info!("Computing fixed columns...");
+    pipeline.compute_fixed_cols().unwrap();
+
     // Advance the pipeline to the optimized PIL stage, so that it doesn't need to be computed
     // in every chunk.
     pipeline.compute_optimized_pil().unwrap();
