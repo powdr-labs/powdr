@@ -11,7 +11,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   POWDR_GENERATE_PROOFS: "true"
-  MAX_DEGREE_LOG: "15"
+  MAX_DEGREE_LOG: "18"
 
 jobs:
   build:
