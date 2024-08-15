@@ -22,7 +22,11 @@ enum Query {
 /// The arguments are the proof stage and the id of the challenge, in this order.
 let challenge: int, int -> expr = constr |st, id| std::prelude::challenge(st, id);
 
-/// Returns the current number of rows, sometimes known as the "degree".
+/// Returns the minimum number of rows in this namespace, sometimes known as the minimum "degree".
+let min_degree: -> int = [];
+/// Returns the maximum number of rows in this namespace, sometimes known as the maximum "degree".
+let max_degree: -> int = [];
+/// Returns the number of rows in this namespace, sometimes known as the "degree". Fails if the minimum and maximum degree are not equal.
 let degree: -> int = [];
 
 /// Asserts that the current degree or row count is at least m.

@@ -3,7 +3,7 @@
 use lazy_static::lazy_static;
 use powdr_analysis::utils::parse_pil_statement;
 use powdr_ast::{
-    asm_analysis::combine_flags,
+    asm_analysis::{combine_flags, MachineDegree},
     object::{Link, Location, PILGraph, TypeOrExpression},
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
@@ -36,35 +36,41 @@ lazy_static! {
     };
 }
 
+fn to_namespace_degree(d: MachineDegree) -> NamespaceDegree {
+    NamespaceDegree {
+        min: d
+            .min
+            .unwrap_or_else(|| Expression::from(1 << MIN_DEGREE_LOG)),
+        max: d
+            .max
+            .unwrap_or_else(|| Expression::from(1 << *MAX_DEGREE_LOG)),
+    }
+}
+
 /// The optional degree of the namespace is set to that of the object if it's set, to that of the main object otherwise.
 pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
     let main_machine = graph.main;
-    let main_degree = graph
-        .objects
-        .get(&main_machine.location)
-        .unwrap()
-        .degree
-        .clone();
+    let main_degree = 
+        graph
+            .objects
+            .get(&main_machine.location)
+            .unwrap()
+            .degree
+            .clone();
 
     let mut pil = process_definitions(graph.definitions);
 
     for (location, object) in graph.objects.into_iter() {
         // create a namespace for this object
+        let degree = match main_degree.is_static() {
+            true => main_degree.clone(),
+            false => object.degree,
+        };
+
         pil.push(PilStatement::Namespace(
             SourceRef::unknown(),
             SymbolPath::from_identifier(location.to_string()),
-            Some(NamespaceDegree {
-                min: object
-                    .degree
-                    .min
-                    .or(main_degree.min.clone())
-                    .unwrap_or_else(|| Expression::from(1 << MIN_DEGREE_LOG)),
-                max: object
-                    .degree
-                    .max
-                    .or(main_degree.max.clone())
-                    .unwrap_or_else(|| Expression::from(1 << *MAX_DEGREE_LOG)),
-            }),
+            Some(to_namespace_degree(degree)),
         ));
 
         pil.extend(object.pil);
@@ -266,7 +272,7 @@ mod test {
 
     use pretty_assertions::assert_eq;
 
-    use crate::link;
+    use crate::{link, MAX_DEGREE_LOG, MIN_DEGREE_LOG};
 
     fn parse_analyze_and_compile_file<T: FieldElement>(file: &str) -> PILGraph {
         let contents = fs::read_to_string(file).unwrap();
@@ -332,8 +338,12 @@ namespace main__rom(4 + 4);
 
     #[test]
     fn compile_really_empty_vm() {
-        let expectation = r#"namespace main;
-"#;
+        let expectation = format!(
+            r#"namespace main({}..{});
+"#,
+            1 << MIN_DEGREE_LOG,
+            1 << *MAX_DEGREE_LOG
+        );
 
         let graph = parse_analyze_and_compile::<GoldilocksField>("");
         let pil = link(graph).unwrap();
@@ -436,7 +446,7 @@ namespace main_sub(16);
     pc' = (1 - first_step') * pc_update;
     pol commit _output_0_free_value;
     1 $ [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return, _output_0_const, _output_0_read_free, read__output_0_pc, read__output_0__input_0] in main_sub__rom.latch $ [main_sub__rom.operation_id, main_sub__rom.p_line, main_sub__rom.p_instr__jump_to_operation, main_sub__rom.p_instr__reset, main_sub__rom.p_instr__loop, main_sub__rom.p_instr_return, main_sub__rom.p__output_0_const, main_sub__rom.p__output_0_read_free, main_sub__rom.p_read__output_0_pc, main_sub__rom.p_read__output_0__input_0];
-namespace main_sub__rom(8);
+namespace main_sub__rom(16);
     pol constant p_line = [0, 1, 2, 3, 4, 5] + [5]*;
     pol constant p__output_0_const = [0, 0, 0, 0, 1, 0] + [0]*;
     pol constant p__output_0_read_free = [0]*;
@@ -544,7 +554,7 @@ namespace main__rom(16);
     #[test]
     fn compile_literal_number_args() {
         let source = r#"
-machine Machine {
+machine Machine with min_degree: 32, max_degree: 64 {
     reg pc[@pc];
     reg fp;
 
@@ -558,7 +568,7 @@ machine Machine {
     }
 }
 "#;
-        let expectation = r#"namespace main;
+        let expectation = r#"namespace main(32..64);
     pol commit _operation_id(i) query std::prover::Query::Hint(4);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
@@ -623,7 +633,7 @@ machine NegativeForUnsigned {
     #[test]
     fn instr_links_generated_pil() {
         let asm = r"
-machine SubVM with latch: latch, operation_id: operation_id {
+machine SubVM with latch: latch, operation_id: operation_id, min_degree: 64, max_degree: 128 {
     operation add5<0> x -> y;
 
     col witness operation_id;
@@ -635,7 +645,7 @@ machine SubVM with latch: latch, operation_id: operation_id {
     y = x + 5;
 }
 
-machine Main {
+machine Main with min_degree: 32, max_degree: 64 {
     reg pc[@pc];
     reg X[<=];
     reg A;
@@ -649,7 +659,7 @@ machine Main {
     }
 }
 ";
-        let expected = r#"namespace main;
+        let expected = r#"namespace main(32..64);
     pol commit _operation_id(i) query std::prover::Query::Hint(3);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
@@ -692,7 +702,7 @@ namespace main__rom(4);
     pol constant p_reg_write_X_A = [0]*;
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
-namespace main_vm;
+namespace main_vm(64..128);
     pol commit operation_id;
     pol constant latch = [1]*;
     pol commit x;

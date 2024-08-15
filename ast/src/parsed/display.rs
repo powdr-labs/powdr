@@ -455,7 +455,11 @@ pub fn quote(input: &str) -> String {
 
 impl Display for NamespaceDegree {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}..{}", self.min, self.max)
+        if self.min == self.max {
+            write!(f, "{}", self.min)
+        } else {
+            write!(f, "{}..{}", self.min, self.max)
+        }
     }
 }
 

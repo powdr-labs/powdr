@@ -703,6 +703,12 @@ pub struct MachineDegree {
     pub max: Option<Expression>,
 }
 
+impl MachineDegree {
+    pub fn is_static(&self) -> bool {
+        matches!((&self.min, &self.max), (Some(min), Some(max)) if min == max)
+    }
+}
+
 impl From<Expression> for MachineDegree {
     fn from(value: Expression) -> Self {
         Self {

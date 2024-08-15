@@ -359,6 +359,25 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         Definitions(self.symbols).lookup_public_reference(name)
     }
 
+    fn min_degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
+        let degree = self.degree.ok_or(EvalError::DataNotAvailable)?;
+        Ok(Value::Integer(degree.min.into()).into())
+    }
+
+    fn max_degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
+        let degree = self.degree.ok_or(EvalError::DataNotAvailable)?;
+        Ok(Value::Integer(degree.max.into()).into())
+    }
+
+    fn degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
+        let degree = self.degree.ok_or(EvalError::DataNotAvailable)?;
+        if degree.min == degree.max {
+            Ok(Value::Integer(degree.min.into()).into())
+        } else {
+            Err(EvalError::DataNotAvailable)
+        }
+    }
+
     fn new_column(
         &mut self,
         name: &str,

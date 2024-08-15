@@ -283,13 +283,10 @@ impl<T: FieldElement> VMConverter<T> {
         // This is hacky: in the absence of proof objects, we want to support both monolithic proofs and composite proofs.
         // In the monolithic case, all degrees must be the same, so we align the degree of the rom to that of the vm.
         // In the composite case, we set the minimum degree for the rom, which is the number of lines in the code.
-        let rom_degree = MachineDegree {
-            min: input.degree.min.clone().or(Some(Expression::from(
-                self.code_lines.len().next_power_of_two() as u32,
-            ))),
-            max: input.degree.max.clone().or(Some(Expression::from(
-                self.code_lines.len().next_power_of_two() as u32,
-            ))),
+        // this can lead to false negatives as we apply expression equality here, so `4` and `2 + 2` would be considered different.
+        let rom_degree = match input.degree.is_static() {
+            true => input.degree.clone(),
+            false => Expression::from(self.code_lines.len().next_power_of_two() as u32).into(),
         };
 
         (
