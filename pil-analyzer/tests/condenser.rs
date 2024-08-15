@@ -116,6 +116,8 @@ pub fn degree() {
             let expr = [];
         namespace std::prover;
             let degree = [];
+            let min_degree = [];
+            let max_degree = [];
         namespace Main(8);
             let d = std::prover::degree();
             let w;
@@ -131,6 +133,8 @@ pub fn degree() {
     let expr = [];
 namespace std::prover;
     let degree = [];
+    let min_degree = [];
+    let max_degree = [];
 namespace Main(8);
     let d: int = std::prover::degree();
     col witness w;
@@ -139,7 +143,7 @@ namespace Other(32..64);
     let min: int = std::prover::min_degree();
     let max: int = std::prover::max_degree();
     col witness w;
-    Main.w = 8;
+    Other.w = 8;
 "#;
     assert_eq!(formatted, expected);
 }
