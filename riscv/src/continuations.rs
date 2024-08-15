@@ -121,11 +121,11 @@ where
                     .collect();
                 let pipeline = pipeline.add_external_witness_values(vec![
                     (
-                        "main_bootloader_inputs.value".to_string(),
+                        "main_bootloader_inputs::value".to_string(),
                         bootloader_inputs,
                     ),
                     (
-                        "main.jump_to_shutdown_routine".to_string(),
+                        "main::jump_to_shutdown_routine".to_string(),
                         jump_to_shutdown_routine,
                     ),
                 ]);
@@ -245,10 +245,10 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         (transposed_trace::<F>(&trace), trace.mem_ops)
     };
 
-    let full_trace_length = full_trace["main.pc"].len();
+    let full_trace_length = full_trace["main::pc"].len();
     log::info!("Total trace length: {}", full_trace_length);
 
-    let (first_real_execution_row, _) = full_trace["main.pc"]
+    let (first_real_execution_row, _) = full_trace["main::pc"]
         .iter()
         .enumerate()
         .find(|(_, &pc)| pc.bin() as u64 == DEFAULT_PC)
@@ -396,13 +396,13 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         let register_iter = REGISTER_NAMES.iter().take(REGISTER_NAMES.len() - 1);
         register_values = register_iter
             .map(|reg| {
-                let reg = reg.strip_prefix("main.").unwrap();
+                let reg = reg.strip_prefix("main::").unwrap();
                 let id = Register::from(reg).addr();
                 *register_memory_snapshot.get(&(id as u32)).unwrap()
             })
             .collect::<Vec<_>>();
 
-        register_values.push(*chunk_trace["main.pc"].last().unwrap());
+        register_values.push(*chunk_trace["main::pc"].last().unwrap());
 
         // Replace final register values of the current chunk
         bootloader_inputs[REGISTER_NAMES.len()..2 * REGISTER_NAMES.len()]
@@ -429,16 +429,16 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             )
         );
 
-        let actual_num_rows = chunk_trace["main.pc"].len();
+        let actual_num_rows = chunk_trace["main::pc"].len();
         bootloader_inputs_and_num_rows.push((
             bootloader_inputs.iter().map(|e| e.into_fe()).collect(),
             actual_num_rows as u64,
         ));
 
-        log::info!("Chunk trace length: {}", chunk_trace["main.pc"].len());
+        log::info!("Chunk trace length: {}", chunk_trace["main::pc"].len());
         log::info!("Validating chunk...");
         log::info!("Looking for pc = {}...", bootloader_inputs[PC_INDEX]);
-        let (start, _) = chunk_trace["main.pc"]
+        let (start, _) = chunk_trace["main::pc"]
             .iter()
             .enumerate()
             .find(|(_, &pc)| pc == bootloader_inputs[PC_INDEX])
@@ -450,8 +450,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             length,
             (length - start - shutdown_routine_rows) * 100 / length
         );
-        for i in 0..(chunk_trace["main.pc"].len() - start) {
-            for &reg in ["main.pc", "main.query_arg_1", "main.query_arg_2"].iter() {
+        for i in 0..(chunk_trace["main::pc"].len() - start) {
+            for &reg in ["main::pc", "main::query_arg_1", "main::query_arg_2"].iter() {
                 let chunk_i = i + start;
                 let full_i = i + proven_trace;
                 if chunk_trace[reg][chunk_i] != full_trace[reg][full_i] {
@@ -461,8 +461,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
                     );
                     log::error!(
                         "The PCs are {} and {}.",
-                        chunk_trace["main.pc"][chunk_i],
-                        full_trace["main.pc"][full_i]
+                        chunk_trace["main::pc"][chunk_i],
+                        full_trace["main::pc"][full_i]
                     );
                     log::error!(
                         "The first difference is in register {}: {} != {} ",
@@ -475,11 +475,11 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             }
         }
 
-        if chunk_trace["main.pc"].len() < num_rows {
+        if chunk_trace["main::pc"].len() < num_rows {
             log::info!("Done!");
             break;
         }
-        assert_eq!(chunk_trace["main.pc"].len(), num_rows);
+        assert_eq!(chunk_trace["main::pc"].len(), num_rows);
 
         // Minus one, because the last row will have to be repeated in the next chunk.
         let new_rows = num_rows - start - 1;

@@ -192,7 +192,7 @@ impl Display for CallableRef {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "{}{}.{}({})",
+            "{}{}::{}({})",
             match &self.params.outputs[..] {
                 [] => "".to_string(),
                 [output] => format!("{output} = "),

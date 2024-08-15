@@ -697,7 +697,7 @@ fn memory(with_bootloader: bool) -> String {
         link ~> tmp1_col = regs.mload(X, STEP)
         link ~> tmp2_col = regs.mload(Z, STEP + 1)
         link ~> tmp3_col = regs.mload(W, STEP + 2)
-        link ~> memory.mstore_bootloader(X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP + 3, tmp3_col)
+        link ~> memory::mstore_bootloader(X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP + 3, tmp3_col)
     {
         tmp1_col - tmp2_col + Y = (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000) + wrap_bit * 2**32
     }
@@ -722,7 +722,7 @@ fn memory(with_bootloader: bool) -> String {
     /// respectively.
     instr mload X, Y, Z, W
         link ~> tmp1_col = regs.mload(X, STEP)
-        link ~> tmp3_col = memory.mload(X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4, STEP + 1)
+        link ~> tmp3_col = memory::mload(X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4, STEP + 1)
         link ~> regs.mstore(Z, STEP + 2, tmp3_col)
         link ~> regs.mstore(W, STEP + 3, tmp4_col)
         link => bit2.check(tmp4_col)
@@ -738,7 +738,7 @@ fn memory(with_bootloader: bool) -> String {
         link ~> tmp1_col = regs.mload(X, STEP)
         link ~> tmp2_col = regs.mload(Y, STEP + 1)
         link ~> tmp3_col = regs.mload(W, STEP + 2)
-        link ~> memory.mstore(X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP + 3, tmp3_col)
+        link ~> memory::mstore(X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP + 3, tmp3_col)
     {
         tmp1_col - tmp2_col + Z = (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000) + wrap_bit * 2**32
     }

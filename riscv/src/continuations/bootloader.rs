@@ -87,28 +87,28 @@ pub fn bootloader_preamble() -> String {
 "#.to_string();
 
     for (i, reg) in REGISTER_NAMES.iter().enumerate() {
-        let reg = reg.strip_prefix("main.").unwrap();
+        let reg = reg.strip_prefix("main::").unwrap();
         preamble.push_str(&format!(
-            "    //public initial_{reg} = main_bootloader_inputs.value({i});\n"
+            "    //public initial_{reg} = main_bootloader_inputs::value({i});\n"
         ));
     }
     for (i, reg) in REGISTER_NAMES.iter().enumerate() {
-        let reg = reg.strip_prefix("main.").unwrap();
+        let reg = reg.strip_prefix("main::").unwrap();
         preamble.push_str(&format!(
-            "    //public final_{reg} = main_bootloader_inputs.value({});\n",
+            "    //public final_{reg} = main_bootloader_inputs::value({});\n",
             i + REGISTER_NAMES.len()
         ));
     }
     preamble.push_str(&format!(
         r#"
-    //public initial_memory_hash_1 = main_bootloader_inputs.value({});
-    //public initial_memory_hash_2 = main_bootloader_inputs.value({});
-    //public initial_memory_hash_3 = main_bootloader_inputs.value({});
-    //public initial_memory_hash_4 = main_bootloader_inputs.value({});
-    //public initial_memory_hash_5 = main_bootloader_inputs.value({});
-    //public initial_memory_hash_6 = main_bootloader_inputs.value({});
-    //public initial_memory_hash_7 = main_bootloader_inputs.value({});
-    //public initial_memory_hash_8 = main_bootloader_inputs.value({});
+    //public initial_memory_hash_1 = main_bootloader_inputs::value({});
+    //public initial_memory_hash_2 = main_bootloader_inputs::value({});
+    //public initial_memory_hash_3 = main_bootloader_inputs::value({});
+    //public initial_memory_hash_4 = main_bootloader_inputs::value({});
+    //public initial_memory_hash_5 = main_bootloader_inputs::value({});
+    //public initial_memory_hash_6 = main_bootloader_inputs::value({});
+    //public initial_memory_hash_7 = main_bootloader_inputs::value({});
+    //public initial_memory_hash_8 = main_bootloader_inputs::value({});
 "#,
         MEMORY_HASH_START_INDEX,
         MEMORY_HASH_START_INDEX + 1,
@@ -121,14 +121,14 @@ pub fn bootloader_preamble() -> String {
     ));
     preamble.push_str(&format!(
         r#"
-    //public final_memory_hash_1 = main_bootloader_inputs.value({});
-    //public final_memory_hash_2 = main_bootloader_inputs.value({});
-    //public final_memory_hash_3 = main_bootloader_inputs.value({});
-    //public final_memory_hash_4 = main_bootloader_inputs.value({});
-    //public final_memory_hash_5 = main_bootloader_inputs.value({});
-    //public final_memory_hash_6 = main_bootloader_inputs.value({});
-    //public final_memory_hash_7 = main_bootloader_inputs.value({});
-    //public final_memory_hash_8 = main_bootloader_inputs.value({});
+    //public final_memory_hash_1 = main_bootloader_inputs::value({});
+    //public final_memory_hash_2 = main_bootloader_inputs::value({});
+    //public final_memory_hash_3 = main_bootloader_inputs::value({});
+    //public final_memory_hash_4 = main_bootloader_inputs::value({});
+    //public final_memory_hash_5 = main_bootloader_inputs::value({});
+    //public final_memory_hash_6 = main_bootloader_inputs::value({});
+    //public final_memory_hash_7 = main_bootloader_inputs::value({});
+    //public final_memory_hash_8 = main_bootloader_inputs::value({});
 "#,
         MEMORY_HASH_START_INDEX + 8,
         MEMORY_HASH_START_INDEX + 9,
@@ -524,7 +524,7 @@ assert_bootloader_input 0, 25, 1, {MEMORY_HASH_START_INDEX} + 15;
     let register_iter = REGISTER_NAMES.iter().take(REGISTER_NAMES.len() - 1);
 
     for (i, reg) in register_iter.enumerate() {
-        let reg = reg.strip_prefix("main.").unwrap();
+        let reg = reg.strip_prefix("main::").unwrap();
         bootloader.push_str(&format!(
             r#"load_bootloader_input 0, {}, 1, {i};"#,
             Register::from(reg).addr()
@@ -574,7 +574,7 @@ shutdown_start:
     let register_iter = REGISTER_NAMES.iter().take(REGISTER_NAMES.len() - 1);
 
     for (i, reg) in register_iter.enumerate() {
-        let reg = reg.strip_prefix("main.").unwrap();
+        let reg = reg.strip_prefix("main::").unwrap();
         bootloader.push_str(&format!(
             "assert_bootloader_input {i}, {}, 1, {};\n",
             Register::from(reg).addr(),
@@ -697,43 +697,43 @@ computation_start:
 
 /// The names of the registers in the order in which they are expected by the bootloader.
 pub const REGISTER_NAMES: [&str; 37] = [
-    "main.x1",
-    "main.x2",
-    "main.x3",
-    "main.x4",
-    "main.x5",
-    "main.x6",
-    "main.x7",
-    "main.x8",
-    "main.x9",
-    "main.x10",
-    "main.x11",
-    "main.x12",
-    "main.x13",
-    "main.x14",
-    "main.x15",
-    "main.x16",
-    "main.x17",
-    "main.x18",
-    "main.x19",
-    "main.x20",
-    "main.x21",
-    "main.x22",
-    "main.x23",
-    "main.x24",
-    "main.x25",
-    "main.x26",
-    "main.x27",
-    "main.x28",
-    "main.x29",
-    "main.x30",
-    "main.x31",
-    "main.tmp1",
-    "main.tmp2",
-    "main.tmp3",
-    "main.tmp4",
-    "main.lr_sc_reservation",
-    "main.pc",
+    "main::x1",
+    "main::x2",
+    "main::x3",
+    "main::x4",
+    "main::x5",
+    "main::x6",
+    "main::x7",
+    "main::x8",
+    "main::x9",
+    "main::x10",
+    "main::x11",
+    "main::x12",
+    "main::x13",
+    "main::x14",
+    "main::x15",
+    "main::x16",
+    "main::x17",
+    "main::x18",
+    "main::x19",
+    "main::x20",
+    "main::x21",
+    "main::x22",
+    "main::x23",
+    "main::x24",
+    "main::x25",
+    "main::x26",
+    "main::x27",
+    "main::x28",
+    "main::x29",
+    "main::x30",
+    "main::x31",
+    "main::tmp1",
+    "main::tmp2",
+    "main::tmp3",
+    "main::tmp4",
+    "main::lr_sc_reservation",
+    "main::pc",
 ];
 
 /// Index of the PC in the bootloader input.
