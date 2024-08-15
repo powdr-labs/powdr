@@ -1,14 +1,14 @@
-use std::collections::BTreeSet;
+
 
 use powdr_ast::{
     analyzed::{Analyzed, Expression, FunctionValueDefinition},
-    parsed::{LambdaExpression, TypedExpression},
+    parsed::{TypedExpression},
 };
-use powdr_number::GoldilocksField;
 
-use powdr_pil_analyzer::analyze_string;
 
-use pretty_assertions::assert_eq;
+
+
+
 
 fn extract_expression<'a, T>(analyzed: &'a Analyzed<T>, name: &str) -> &'a Expression {
     match analyzed.definitions[name].1.as_ref().unwrap() {

@@ -11,7 +11,7 @@ use powdr_ast::{
 
 use powdr_parser_util::SourceRef;
 use std::{
-    collections::{BTreeMap, BTreeSet, HashMap, HashSet},
+    collections::{HashMap, HashSet},
     str::FromStr,
 };
 
@@ -292,7 +292,6 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         LambdaExpression { kind, params, body }: LambdaExpression,
     ) -> LambdaExpression<Expression> {
         let previous_local_vars = self.save_local_variables();
-        let local_variable_height = self.local_variable_counter;
 
         let params = params
             .into_iter()

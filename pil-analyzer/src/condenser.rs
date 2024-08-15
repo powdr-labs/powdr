@@ -23,7 +23,7 @@ use powdr_ast::{
         display::format_type_scheme_around_name,
         types::{ArrayType, Type},
         visitor::{AllChildren, Children},
-        ArrayLiteral, BlockExpression, FunctionKind, LambdaExpression, LetStatementInsideBlock,
+        ArrayLiteral, BlockExpression, FunctionKind, LetStatementInsideBlock,
         Number, Pattern, TypedExpression, UnaryOperation,
     },
 };
@@ -720,7 +720,7 @@ fn closure_to_function<T: FieldElement>(
 
     compact_var_refs(
         &mut lambda.body,
-        &outer_var_refs.iter().map(|(id, _)| *id).collect(),
+        &outer_var_refs.keys().copied().collect(),
         environment.len() as u64,
     );
 
@@ -752,10 +752,10 @@ fn closure_to_function<T: FieldElement>(
         .into()
     };
 
-    return Ok(FunctionValueDefinition::Expression(TypedExpression {
+    Ok(FunctionValueDefinition::Expression(TypedExpression {
         e,
         type_scheme: None,
-    }));
+    }))
 }
 
 fn outer_var_refs(environment_size: u64, e: &Expression) -> impl Iterator<Item = (u64, &String)> {
@@ -771,7 +771,7 @@ fn outer_var_refs(environment_size: u64, e: &Expression) -> impl Iterator<Item =
 /// Updates local variable IDs to be compact.
 fn compact_var_refs(e: &mut Expression, referenced_outer_vars: &Vec<u64>, environment_size: u64) {
     e.children_mut().for_each(|e| {
-        if let Expression::Reference(_, Reference::LocalVar(id, name)) = e {
+        if let Expression::Reference(_, Reference::LocalVar(id, _name)) = e {
             if *id >= environment_size {
                 // Local variable.
                 *id -= environment_size - referenced_outer_vars.len() as u64;
@@ -843,7 +843,7 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
                 "Type constructor as captured value not supported: {c}."
             )))
         }
-        Value::Enum(variant, items) => {
+        Value::Enum(variant, _items) => {
             // TODO the main problem is that we do not know the type of the enum.
             return Err(EvalError::TypeError(format!(
                 "Enum as captured value not supported: {variant}."
@@ -854,7 +854,7 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
                 "Builtin function as captured value not supported.".to_string(),
             ))
         }
-        Value::Expression(e) => {
+        Value::Expression(_e) => {
             return Err(EvalError::TypeError(
                 "Expression as captured value not supported: {e}.".to_string(),
             ))
