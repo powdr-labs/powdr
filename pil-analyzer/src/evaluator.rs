@@ -317,7 +317,7 @@ const BUILTINS: [(&str, BuiltinFunction); 13] = [
     ("std::debug::print", BuiltinFunction::Print),
     ("std::field::modulus", BuiltinFunction::Modulus),
     ("std::prelude::challenge", BuiltinFunction::Challenge),
-    ("std::prover::set_hint", BuiltinFunction::SetHint),
+    ("std::prelude::set_hint", BuiltinFunction::SetHint),
     ("std::prover::min_degree", BuiltinFunction::MinDegree),
     ("std::prover::max_degree", BuiltinFunction::MaxDegree),
     ("std::prover::degree", BuiltinFunction::Degree),
