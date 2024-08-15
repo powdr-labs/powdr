@@ -238,8 +238,17 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         };
 
         let generator = (!base_witnesses.is_empty()).then(|| {
+            let main_size = fixed
+                .common_set_degree(&base_witnesses)
+                // In the dynamic VADCOP setting, we assume that some machines
+                // (e.g. register memory) may take up to 4x the number of rows
+                // of the main machine. By running the main machine only 1/4 of
+                // of the steps, we ensure that no secondary machine will run out
+                // of rows.
+                .unwrap_or(1 << (*MAX_DEGREE_LOG - 2));
             let mut generator = Generator::new(
                 "Main Machine".to_string(),
+                main_size,
                 &fixed,
                 &BTreeMap::new(), // No connecting identities
                 base_identities,
@@ -375,25 +384,18 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                     poly.array_elements()
                         .map(|(name, poly_id)| {
                             let external_values = external_witness_values.remove(name.as_str());
-                            if let Some(external_values) = &external_values {
-                                if external_values.len() != poly.degree.unwrap() as usize {
-                                    log::debug!(
-                                        "External witness values for column {} were only partially provided \
-                                        (length is {} but the degree is {})",
-                                        name,
-                                        external_values.len(),
-                                        poly.degree.unwrap()
-                                    );
-                                }
-                            }
                             // Remove any hint for witness columns of a later stage
                             // (because it might reference a challenge that is not available yet)
-                            let value = if poly.stage.unwrap_or_default() <= stage.into() { value.as_ref() } else { None };
+                            let value = if poly.stage.unwrap_or_default() <= stage.into() {
+                                value.as_ref()
+                            } else {
+                                None
+                            };
                             WitnessColumn::new(poly_id.id as usize, &name, value, external_values)
                         })
                         .collect::<Vec<_>>()
                 },
-        ));
+            ));
 
         if !external_witness_values.is_empty() {
             let available_columns = witness_cols

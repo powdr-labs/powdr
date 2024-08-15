@@ -98,6 +98,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
 impl<'a, T: FieldElement> Generator<'a, T> {
     pub fn new(
         name: String,
+        degree: DegreeType,
         fixed_data: &'a FixedData<'a, T>,
         connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
         identities: Vec<&'a Identity<T>>,
@@ -107,7 +108,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         let data = FinalizableData::new(&witnesses);
 
         Self {
-            degree: fixed_data.common_degree(&witnesses),
+            degree,
             connecting_identities: connecting_identities.clone(),
             name,
             fixed_data,
@@ -214,6 +215,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
 
         let mut processor = VmProcessor::new(
             self.name().to_string(),
+            self.degree,
             RowIndex::from_degree(row_offset, self.degree),
             self.fixed_data,
             &self.identities,
