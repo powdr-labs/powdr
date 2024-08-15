@@ -62,5 +62,5 @@ machine Shift(byte_shift: ByteShift) with
     unchanged_until(B, latch);
     C' = C * (1 - latch) + C_part;
 
-    link => C_part = byte_shift.run(operation_id', A_byte, B', FACTOR_ROW);
+    link => C_part = byte_shift::run(operation_id', A_byte, B', FACTOR_ROW);
 }
