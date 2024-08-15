@@ -27,10 +27,10 @@ machine Main {
     reg B;
     reg Z[<=]; // we declare this assignment register last to test that the ordering does not matter
 
-    instr add X, Y -> Z link => Z = arith.add(X, Y);
-    instr mul X, Y -> Z link => Z = arith.mul(X, Y);
-    instr mload X -> Y link ~> Y = memory.mload(X, STEP);
-    instr mstore X, Y -> link ~> memory.mstore(X, STEP, Y);
+    instr add X, Y -> Z link => Z = arith::add(X, Y);
+    instr mul X, Y -> Z link => Z = arith::mul(X, Y);
+    instr mload X -> Y link ~> Y = memory::mload(X, STEP);
+    instr mstore X, Y -> link ~> memory::mstore(X, STEP, Y);
     instr assert_eq X, Y { X = Y }
 
     function main {

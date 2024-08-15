@@ -10,21 +10,21 @@ machine Main with degree: 32 {
     reg ADD;
 
     // basic external instructions
-    instr add X, Y -> Z link ~> Z = arith.add(X, Y);
-    instr sub X, Y -> Z link ~> Z = arith.sub(X, Y);
+    instr add X, Y -> Z link ~> Z = arith::add(X, Y);
+    instr sub X, Y -> Z link ~> Z = arith::sub(X, Y);
     instr assert_eq X, Y { X = Y }
 
     // instructions activating multiple permutations
     instr add_one X -> Y
-    link ~> B = arith.add(X, 2)
-    link ~> Y = arith.sub(B, 1)
+    link ~> B = arith::add(X, 2)
+    link ~> Y = arith::sub(B, 1)
     {
     }
 
     // multiple links with flags
     instr add_or_sub X, Y -> Z
-    link if ADD ~> Z = arith.add(X, Y)
-    link if (1 - ADD) ~> Z = arith.sub(X, Y);
+    link if ADD ~> Z = arith::add(X, Y)
+    link if (1 - ADD) ~> Z = arith::sub(X, Y);
 
     function main {
         A <== add(1, 1);

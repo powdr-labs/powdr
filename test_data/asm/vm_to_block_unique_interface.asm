@@ -46,10 +46,10 @@ machine Main with degree: 32 {
     reg Z[<=];
     reg A;
 
-    instr add X, Y -> Z link => Z = arith.add(X, Y);
-    instr sub X, Y -> Z link => Z = arith.sub(X, Y);
-    instr and X, Y -> Z link => Z = binary.and(X, Y);
-    instr or X, Y -> Z link => Z = binary.or(X, Y);
+    instr add X, Y -> Z link => Z = arith::add(X, Y);
+    instr sub X, Y -> Z link => Z = arith::sub(X, Y);
+    instr and X, Y -> Z link => Z = binary::and(X, Y);
+    instr or X, Y -> Z link => Z = binary::or(X, Y);
     instr assert_eq X, Y { X = Y }
 
     function main {

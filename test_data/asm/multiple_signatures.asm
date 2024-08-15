@@ -28,8 +28,8 @@ machine Main with degree: 32 {
 
     Add add;
 
-    instr add X, Y -> Z link ~> Z = add.add(X, Y);
-    instr sub X, Y -> Z link ~> Z = add.sub(X, Y);
+    instr add X, Y -> Z link ~> Z = add::add(X, Y);
+    instr sub X, Y -> Z link ~> Z = add::sub(X, Y);
 
     instr assert_eq X, Y { X = Y }
 

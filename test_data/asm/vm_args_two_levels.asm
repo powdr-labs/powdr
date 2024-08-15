@@ -17,13 +17,13 @@ machine Main with degree: N {
     Memory memory(byte2);
     Child sub(memory);
 
-    instr mload X -> Y link ~> Y = memory.mload(X, STEP);
-    instr mstore X, Y -> link ~> memory.mstore(X, STEP, Y);
+    instr mload X -> Y link ~> Y = memory::mload(X, STEP);
+    instr mstore X, Y -> link ~> memory::mstore(X, STEP, Y);
 
-    instr child_mload X -> Y link => Y = sub.mload(X, STEP);
-    instr child_mstore X, Y -> link => sub.mstore(X, STEP, Y);
-    instr grandchild_mload X -> Y link => Y = sub.child_mload(X, STEP);
-    instr grandchild_mstore X, Y -> link => sub.child_mstore(X, STEP, Y);
+    instr child_mload X -> Y link => Y = sub::mload(X, STEP);
+    instr child_mstore X, Y -> link => sub::mstore(X, STEP, Y);
+    instr grandchild_mload X -> Y link => Y = sub::child_mload(X, STEP);
+    instr grandchild_mstore X, Y -> link => sub::child_mstore(X, STEP, Y);
 
     instr assert_eq X, Y { X = Y }
 
@@ -83,11 +83,11 @@ machine Child(mem: Memory) with degree: N {
 
     GrandChild sub(mem);
 
-    instr mload X, Y -> Z link ~> Z = mem.mload(X, Y);
-    instr mstore X, Y, Z -> link ~> mem.mstore(X, Y, Z);
+    instr mload X, Y -> Z link ~> Z = mem::mload(X, Y);
+    instr mstore X, Y, Z -> link ~> mem::mstore(X, Y, Z);
 
-    instr child_mload X, Y -> Z link => Z = sub.mload(X, Y);
-    instr child_mstore X, Y, Z -> link => sub.mstore(X, Y, Z);
+    instr child_mload X, Y -> Z link => Z = sub::mload(X, Y);
+    instr child_mstore X, Y, Z -> link => sub::mstore(X, Y, Z);
 
     function mload a, step -> b {
         A <== mload(a, step);
@@ -118,8 +118,8 @@ machine GrandChild(mem: Memory) with degree: N {
     reg A;
     reg B;
 
-    instr mload X, Y -> Z link ~> Z = mem.mload(X, Y);
-    instr mstore X, Y, Z link ~> mem.mstore(X, Y, Z);
+    instr mload X, Y -> Z link ~> Z = mem::mload(X, Y);
+    instr mstore X, Y, Z link ~> mem::mstore(X, Y, Z);
 
     function mload a, step -> b {
         A <== mload(a, step);

@@ -14,11 +14,11 @@ machine Main with degree: N {
     Shift shift(byte_shift);
     WithArg sub(shift);
 
-    instr shl X, Y -> Z link ~> Z = shift.shl(X, Y);
-    instr shr X, Y -> Z link ~> Z = shift.shr(X, Y);
+    instr shl X, Y -> Z link ~> Z = shift::shl(X, Y);
+    instr shr X, Y -> Z link ~> Z = shift::shr(X, Y);
 
-    instr shl1 X, Y -> Z link => Z = sub.shl(X, Y);
-    instr shr1 X, Y -> Z link => Z = sub.shr(X, Y);
+    instr shl1 X, Y -> Z link => Z = sub::shl(X, Y);
+    instr shr1 X, Y -> Z link => Z = sub::shr(X, Y);
 
     instr assert_eq X, Y { X = Y }
 
@@ -45,8 +45,8 @@ machine WithArg(shift: Shift) with degree: N {
     reg A;
     reg B;
 
-    instr shl X, Y -> Z link ~> Z = shift.shl(X, Y);
-    instr shr X, Y -> Z link ~> Z = shift.shr(X, Y);
+    instr shl X, Y -> Z link ~> Z = shift::shl(X, Y);
+    instr shr X, Y -> Z link ~> Z = shift::shr(X, Y);
 
     function shl a, b -> c {
         A <== shl(a,b);

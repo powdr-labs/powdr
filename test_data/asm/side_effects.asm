@@ -30,7 +30,7 @@ machine MemoryProxy with
     used = std::array::sum(sel);
     std::utils::force_bool(used);
 
-    link if used ~> mem.mstore(addr, step, value);
+    link if used ~> mem::mstore(addr, step, value);
 }
 
 machine Main with degree: N {
@@ -41,7 +41,7 @@ machine Main with degree: N {
 
     col fixed STEP(i) { i };
     MemoryProxy mem;
-    instr mstore X, Y -> link ~> mem.mstore(X, STEP, Y);
+    instr mstore X, Y -> link ~> mem::mstore(X, STEP, Y);
 
     function main {
         

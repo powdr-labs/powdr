@@ -11,8 +11,8 @@ machine Main with degree: 65536 {
     Byte2 byte2;
     Memory memory(byte2);
 
-    instr mload X -> Y link ~> Y = memory.mload(X, STEP);
-    instr mstore X, Y -> link ~> memory.mstore(X, STEP, Y);
+    instr mload X -> Y link ~> Y = memory::mload(X, STEP);
+    instr mstore X, Y -> link ~> memory::mstore(X, STEP, Y);
 
     instr assert_eq X, Y {
         X = Y

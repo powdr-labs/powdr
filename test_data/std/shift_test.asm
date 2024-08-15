@@ -11,8 +11,8 @@ machine Main with degree: 65536 {
     ByteShift byte_shift;
     Shift shift(byte_shift);
 
-    instr shl X0, X1 -> X2 link ~> X2 = shift.shl(X0, X1);
-    instr shr X0, X1 -> X2 link ~> X2 = shift.shr(X0, X1);
+    instr shl X0, X1 -> X2 link ~> X2 = shift::shl(X0, X1);
+    instr shr X0, X1 -> X2 link ~> X2 = shift::shr(X0, X1);
 
     instr assert_eq X0, X1 {
         X0 = X1

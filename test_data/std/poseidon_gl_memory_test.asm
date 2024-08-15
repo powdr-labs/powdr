@@ -20,16 +20,16 @@ machine Main with degree: 65536 {
     Byte2 byte2;
     Memory memory(byte2);
     instr mstore_le ADDR1, X1, X2 ->
-        link ~> memory.mstore(ADDR1, STEP, X2)
-        link ~> memory.mstore(ADDR1 + 4, STEP, X1);
+        link ~> memory::mstore(ADDR1, STEP, X2)
+        link ~> memory::mstore(ADDR1 + 4, STEP, X1);
 
     PoseidonGLMemory poseidon(memory, split);
     instr poseidon ADDR1, ADDR2 -> link ~> poseidon.poseidon_permutation(ADDR1, ADDR2, STEP);
 
     col witness val_low, val_high;
     instr assert_eq ADDR1, X1 ->
-        link ~> val_low = memory.mload(ADDR1, STEP)
-        link ~> val_high = memory.mload(ADDR1 + 4, STEP)
+        link ~> val_low = memory::mload(ADDR1, STEP)
+        link ~> val_high = memory::mload(ADDR1 + 4, STEP)
     {
         val_low + 2**32 * val_high = X1
     }

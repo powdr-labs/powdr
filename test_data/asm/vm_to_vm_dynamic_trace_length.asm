@@ -7,7 +7,7 @@ machine Main with degree: 128 {
     reg Z[<=];
     reg A;
 
-    instr pow X, Y -> Z link => Z = pow.pow(X, Y);
+    instr pow X, Y -> Z link => Z = pow::pow(X, Y);
     instr assert_eq X, Y { X = Y }
 
     function main {

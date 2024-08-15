@@ -39,8 +39,8 @@ machine Pythagoras with degree: N {
     reg B;
 
 
-    instr add X, Y -> Z link => Z = arith.add(X, Y);
-    instr mul X, Y -> Z link => Z = arith.mul(X, Y);
+    instr add X, Y -> Z link => Z = arith::add(X, Y);
+    instr mul X, Y -> Z link => Z = arith::mul(X, Y);
 
     function pythagoras a: field, b: field -> field {
         A <== mul(a, a);

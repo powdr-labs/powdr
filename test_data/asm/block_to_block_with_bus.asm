@@ -82,7 +82,7 @@ machine Main with
     // return `3*x + 3*y`, adding twice locally and twice externally
     operation main<0>;
 
-    link if instr_add ~> z = arith.add(x, y);
+    link if instr_add ~> z = arith::add(x, y);
 
     // Can't have a challenge without a witness column, so add one here
     col witness dummy;
