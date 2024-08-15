@@ -22,7 +22,7 @@ use self::sub_prover::RunStatus;
 mod split;
 
 /// Maps each size to the corresponding verification key.
-type VerificationKeyBySize = BTreeMap<usize, Vec<u8>>;
+type VerificationKeyBySize = BTreeMap<DegreeType, Vec<u8>>;
 
 /// A composite verification key that contains a verification key for each machine separately.
 #[derive(Serialize, Deserialize)]
@@ -35,7 +35,7 @@ struct CompositeVerificationKey {
 #[derive(Serialize, Deserialize)]
 struct MachineProof {
     /// The (dynamic) size of the machine.
-    size: usize,
+    size: DegreeType,
     /// The proof for the machine.
     proof: Vec<u8>,
 }
@@ -204,7 +204,7 @@ pub(crate) struct CompositeBackend<'a, F> {
     /// Maps each machine name to the corresponding machine data
     /// Note that it is essential that we use BTreeMap here to ensure that the machines are
     /// deterministically ordered.
-    machine_data: BTreeMap<String, BTreeMap<usize, MachineData<'a, F>>>,
+    machine_data: BTreeMap<String, BTreeMap<DegreeType, MachineData<'a, F>>>,
 }
 
 /// Makes sure that all columns in the machine PIL have the provided degree, cloning
@@ -261,9 +261,9 @@ fn accumulate_challenges<F: FieldElement>(into: &mut BTreeMap<u64, F>, from: BTr
 
 fn process_witness_for_machine<F: FieldElement>(
     machine: &str,
-    machine_data: &BTreeMap<usize, MachineData<F>>,
+    machine_data: &BTreeMap<DegreeType, MachineData<F>>,
     witness: &[(String, Vec<F>)],
-) -> (Vec<(String, Vec<F>)>, usize) {
+) -> (Vec<(String, Vec<F>)>, DegreeType) {
     // Pick any available PIL; they all contain the same witness columns
     let any_pil = &machine_data.values().next().unwrap().pil;
     let witness = machine_witness_columns(witness, any_pil, machine);
@@ -274,12 +274,12 @@ fn process_witness_for_machine<F: FieldElement>(
         .exactly_one()
         .expect("All witness columns of a machine must have the same size");
 
-    (witness, size)
+    (witness, size as DegreeType)
 }
 
 fn time_stage<'a, F: FieldElement>(
     machine_name: &str,
-    size: usize,
+    size: DegreeType,
     stage: u8,
     stage_run: impl FnOnce() -> RunStatus<'a, F>,
 ) -> RunStatus<'a, F> {

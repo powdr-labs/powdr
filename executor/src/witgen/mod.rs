@@ -493,7 +493,7 @@ impl<'a, T> FixedColumn<'a, T> {
     }
 
     pub fn values(&self, size: DegreeType) -> &[T] {
-        self.values.get_by_size(size as usize).unwrap()
+        self.values.get_by_size(size).unwrap()
     }
 
     pub fn values_max_size(&self) -> &[T] {
