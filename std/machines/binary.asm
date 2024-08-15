@@ -5,7 +5,8 @@ use std::utils::unchanged_until;
 // Binary for single bytes using an exhaustive table
 machine ByteBinary with
     latch: latch,
-    operation_id: operation_id
+    operation_id: operation_id,
+    degree: 262144
 {
     operation run<0> P_operation, P_A, P_B -> P_C;
 

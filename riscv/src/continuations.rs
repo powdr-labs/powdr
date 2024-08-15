@@ -7,8 +7,7 @@ use powdr_ast::{
     asm_analysis::{AnalysisASMFile, MachineDegree},
     parsed::{asm::parse_absolute_path, Expression, Number, PilStatement},
 };
-use powdr_executor::constant_evaluator::get_uniquely_sized;
-use powdr_number::FieldElement;
+use powdr_number::{DegreeType, FieldElement};
 use powdr_pipeline::Pipeline;
 use powdr_riscv_executor::{get_main_machine, Elem, ExecutionTrace, MemoryState, ProfilerOptions};
 
@@ -75,20 +74,11 @@ where
     let num_chunks = bootloader_inputs.len();
 
     log::info!("Computing fixed columns...");
-    let fixed_cols = pipeline.compute_fixed_cols().unwrap();
+    pipeline.compute_fixed_cols().unwrap();
 
     // Advance the pipeline to the optimized PIL stage, so that it doesn't need to be computed
     // in every chunk.
     pipeline.compute_optimized_pil().unwrap();
-
-    // TODO hacky way to find the degree of the main machine, fix.
-    let length = get_uniquely_sized(&fixed_cols)
-        .unwrap()
-        .iter()
-        .find(|(col, _)| col == "main.STEP")
-        .unwrap()
-        .1
-        .len() as u64;
 
     bootloader_inputs
         .into_iter()
@@ -115,6 +105,14 @@ where
                 } else {
                     pipeline
                 };
+
+                let length = pipeline
+                    .witness()
+                    .unwrap()
+                    .iter()
+                    .find_map(|(name, values)| name.starts_with("main.").then_some(values.len()))
+                    .unwrap() as DegreeType;
+
                 // The `jump_to_shutdown_routine` column indicates when the execution should jump to the shutdown routine.
                 // In that row, the normal PC update is ignored and the PC is set to the address of the shutdown routine.
                 // In other words, it should be a one-hot encoding of `start_of_shutdown_routine`.
@@ -297,8 +295,10 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         ),
     };
 
+    let length = length / 4;
+
     loop {
-        log::info!("\nRunning chunk {}...", chunk_index);
+        log::info!("\nRunning chunk {} for {} steps...", chunk_index, length);
 
         log::info!("Building bootloader inputs for chunk {}...", chunk_index);
         let mut accessed_pages = BTreeSet::new();

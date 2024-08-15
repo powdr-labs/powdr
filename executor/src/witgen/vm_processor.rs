@@ -67,6 +67,7 @@ pub struct VmProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
 }
 
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T, Q> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         machine_name: String,
         row_offset: RowIndex,
