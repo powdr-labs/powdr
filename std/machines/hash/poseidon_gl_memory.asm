@@ -116,7 +116,7 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
 
     // Make sure that in row i + STATE_SIZE, word_low and word_high correspond to output i
     let current_output = array::sum(array::new(OUTPUT_SIZE, |i| CLK[i + STATE_SIZE] * output[i]));
-    link if do_mstore ~> (word_low, word_high) = split_gl.split(current_output);
+    link if do_mstore ~> (word_low, word_high) = split_gl::split(current_output);
 
 
     // ------------- End memory read / write ---------------
