@@ -50,13 +50,12 @@ fn to_namespace_degree(d: MachineDegree) -> NamespaceDegree {
 /// The optional degree of the namespace is set to that of the object if it's set, to that of the main object otherwise.
 pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
     let main_machine = graph.main;
-    let main_degree = 
-        graph
-            .objects
-            .get(&main_machine.location)
-            .unwrap()
-            .degree
-            .clone();
+    let main_degree = graph
+        .objects
+        .get(&main_machine.location)
+        .unwrap()
+        .degree
+        .clone();
 
     let mut pil = process_definitions(graph.definitions);
 
@@ -303,7 +302,7 @@ mod test {
     #[test]
     fn compile_empty_vm() {
         let expectation = r#"namespace main(4 + 4);
-    pol commit _operation_id(i) query std::prover::Query::Hint(2);
+    pol commit _operation_id(i) query std::prelude::Query::Hint(2);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
     _operation_id_no_change * (_operation_id' - _operation_id) = 0;
@@ -361,7 +360,7 @@ namespace main__rom(4 + 4);
     #[test]
     fn compile_different_signatures() {
         let expectation = r#"namespace main(16);
-    pol commit _operation_id(i) query std::prover::Query::Hint(4);
+    pol commit _operation_id(i) query std::prelude::Query::Hint(4);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
     _operation_id_no_change * (_operation_id' - _operation_id) = 0;
@@ -423,7 +422,7 @@ namespace main__rom(16);
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
 namespace main_sub(16);
-    pol commit _operation_id(i) query std::prover::Query::Hint(5);
+    pol commit _operation_id(i) query std::prelude::Query::Hint(5);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
     _operation_id_no_change * (_operation_id' - _operation_id) = 0;
@@ -476,7 +475,7 @@ namespace main_sub__rom(16);
     XIsZero = 1 - X * XInv;
     XIsZero * X = 0;
     XIsZero * (1 - XIsZero) = 0;
-    pol commit _operation_id(i) query std::prover::Query::Hint(10);
+    pol commit _operation_id(i) query std::prelude::Query::Hint(10);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
     _operation_id_no_change * (_operation_id' - _operation_id) = 0;
@@ -512,10 +511,10 @@ namespace main_sub__rom(16);
     pc_update = instr_jmpz * (instr_jmpz_pc_update + instr_jmpz_pc_update_1) + instr_jmp * instr_jmp_param_l + instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr_jmpz + instr_jmp + instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1);
     pc' = (1 - first_step') * pc_update;
     pol commit X_free_value(__i) query match std::prover::eval(pc) {
-        2 => std::prover::Query::Input(1),
-        4 => std::prover::Query::Input(std::convert::int(std::prover::eval(CNT) + 1)),
-        7 => std::prover::Query::Input(0),
-        _ => std::prover::Query::None,
+        2 => std::prelude::Query::Input(1),
+        4 => std::prelude::Query::Input(std::convert::int(std::prover::eval(CNT) + 1)),
+        7 => std::prelude::Query::Input(0),
+        _ => std::prelude::Query::None,
     };
     1 $ [0, pc, reg_write_X_A, reg_write_X_CNT, instr_jmpz, instr_jmpz_param_l, instr_jmp, instr_jmp_param_l, instr_dec_CNT, instr_assert_zero, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_CNT, read_X_pc] in main__rom.latch $ [main__rom.operation_id, main__rom.p_line, main__rom.p_reg_write_X_A, main__rom.p_reg_write_X_CNT, main__rom.p_instr_jmpz, main__rom.p_instr_jmpz_param_l, main__rom.p_instr_jmp, main__rom.p_instr_jmp_param_l, main__rom.p_instr_dec_CNT, main__rom.p_instr_assert_zero, main__rom.p_instr__jump_to_operation, main__rom.p_instr__reset, main__rom.p_instr__loop, main__rom.p_instr_return, main__rom.p_X_const, main__rom.p_X_read_free, main__rom.p_read_X_A, main__rom.p_read_X_CNT, main__rom.p_read_X_pc];
     pol constant _linker_first_step(i) { if i == 0 { 1 } else { 0 } };
@@ -569,7 +568,7 @@ machine Machine with min_degree: 32, max_degree: 64 {
 }
 "#;
         let expectation = r#"namespace main(32..64);
-    pol commit _operation_id(i) query std::prover::Query::Hint(4);
+    pol commit _operation_id(i) query std::prelude::Query::Hint(4);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
     _operation_id_no_change * (_operation_id' - _operation_id) = 0;
@@ -660,7 +659,7 @@ machine Main with min_degree: 32, max_degree: 64 {
 }
 ";
         let expected = r#"namespace main(32..64);
-    pol commit _operation_id(i) query std::prover::Query::Hint(3);
+    pol commit _operation_id(i) query std::prelude::Query::Hint(3);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
     _operation_id_no_change * (_operation_id' - _operation_id) = 0;
@@ -717,7 +716,7 @@ namespace main_vm(64..128);
     #[test]
     fn permutation_instructions() {
         let expected = r#"namespace main(128);
-    pol commit _operation_id(i) query std::prover::Query::Hint(13);
+    pol commit _operation_id(i) query std::prelude::Query::Hint(13);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
     _operation_id_no_change * (_operation_id' - _operation_id) = 0;
@@ -841,7 +840,7 @@ namespace main_bin(128);
     fn link_merging() {
         let expected = r#"namespace main(32);
     pol commit tmp;
-    pol commit _operation_id(i) query std::prover::Query::Hint(18);
+    pol commit _operation_id(i) query std::prelude::Query::Hint(18);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
     _operation_id_no_change * (_operation_id' - _operation_id) = 0;

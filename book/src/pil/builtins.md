@@ -131,7 +131,7 @@ machine Sqrt {
     };
 
     col witness x;
-    col witness y(i) query std::prover::Query::Hint(sqrt_hint(std::prover::eval(x)));
+    col witness y(i) query std::prelude::Query::Hint(sqrt_hint(std::prover::eval(x)));
 
     y * y = x;
 
@@ -166,7 +166,7 @@ known as the degree. `degree` fails if `min_degree` and `max_degree` are differe
 ### Hints
 
 ```rust
-let std::prover::set_hint: expr, (int -> std::prover::Query) -> ()
+let std::prelude::set_hint: expr, (int -> std::prelude::Query) -> ()
 ```
 
 This function can be used to set a "query function" for a witness column.

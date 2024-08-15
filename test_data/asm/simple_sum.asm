@@ -11,7 +11,7 @@
 // between integers and field elements.
 use std::convert::int;
 
-use std::prover::Query;
+use std::prelude::Query;
 
 machine Main with degree: 16 {
     reg pc[@pc]; // "@pc" means "pc' = pc + 1" is the default propagation (instead of pc' = pc) and it tracks the line in the program.

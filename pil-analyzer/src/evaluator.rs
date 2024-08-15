@@ -344,7 +344,7 @@ pub enum BuiltinFunction {
     ToFe,
     /// std::prover::challenge: int, int -> expr, constructs a challenge with a given stage and ID.
     Challenge,
-    /// std::prover::set_hint: expr, (int -> std::prover::Query) -> (), adds a hint to a witness column.
+    /// std::prelude::set_hint: expr, (int -> std::prelude::Query) -> (), adds a hint to a witness column.
     SetHint,
     /// std::prover::min_degree: -> int, returns the minimum column length / degree.
     MinDegree,

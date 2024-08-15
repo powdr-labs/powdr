@@ -46,8 +46,8 @@ lazy_static! {
         ("std::prover::max_degree", ("", "-> int")),
         ("std::prover::degree", ("", "-> int")),
         (
-            "std::prover::set_hint",
-            ("", "expr, (int -> std::prover::Query) -> ()")
+            "std::prelude::set_hint",
+            ("", "expr, (int -> std::prelude::Query) -> ()")
         ),
         ("std::prover::eval", ("", "expr -> fe")),
     ]

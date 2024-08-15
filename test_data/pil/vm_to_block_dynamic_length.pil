@@ -10,7 +10,7 @@ namespace std::prover;
         None,
     }
 namespace main(256);
-    col witness _operation_id(i) query std::prover::Query::Hint(6);
+    col witness _operation_id(i) query std::prelude::Query::Hint(6);
     col fixed _block_enforcer_last_step = [0]* + [1];
     (1 - main._block_enforcer_last_step) * (1 - main.instr_return) * (main._operation_id' - main._operation_id) = 0;
     col witness pc;

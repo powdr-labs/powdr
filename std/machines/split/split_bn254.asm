@@ -1,4 +1,4 @@
-use std::prover::Query;
+use std::prelude::Query;
 use super::ByteCompare;
 
 // Splits an arbitrary field element into 8 u32s (in little endian order), on the BN254 field.

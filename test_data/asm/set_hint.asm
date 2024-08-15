@@ -1,6 +1,6 @@
 let new_col_with_hint: -> expr = constr || {
     let x;
-    std::prover::set_hint(x, |_| std::prover::Query::Hint(2));
+    std::prelude::set_hint(x, |_| std::prelude::Query::Hint(2));
     x
 };
 
