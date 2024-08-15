@@ -1,7 +1,6 @@
 //! A plonky3 prover using FRI and Poseidon
 
 use p3_baby_bear::BabyBear;
-use p3_goldilocks::Goldilocks;
 use p3_matrix::dense::RowMajorMatrix;
 
 use core::fmt;
@@ -18,9 +17,9 @@ use powdr_number::{FieldElement, KnownField};
 
 use crate::{circuit_builder::PowdrCircuit, params::FieldElementMap};
 
-use crate::goldilocks::{get_challenger_goldilocks, get_config_goldilocks, Challenger, Config};
+use crate::baby_bear::{get_challenger_baby_bear, get_config_baby_bear, Challenger, Config};
 
-pub struct Plonky3Prover<T: FieldElement, F: FieldElementMap> {
+pub struct Plonky3ProverBabyBear<T: FieldElement, F: FieldElementMap> {
     /// The analyzed PIL
     analyzed: Arc<Analyzed<T>>,
     /// The value of the fixed columns
@@ -43,7 +42,7 @@ impl fmt::Display for VerificationKeyExportError {
     }
 }
 
-impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T> {
+impl<T: FieldElement, F: FieldElementMap> Plonky3ProverBabyBear<T, F> {
     pub fn new(analyzed: Arc<Analyzed<T>>, fixed: Arc<Vec<(String, Vec<T>)>>) -> Self {
         Self {
             analyzed,
@@ -103,7 +102,7 @@ impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T> {
     }
 }
 
-impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T> {
+impl<T: FieldElement, F: FieldElementMap> Plonky3ProverBabyBear<T> {
     pub fn setup(&mut self) {
         // get fixed columns
         let fixed = &self.fixed;
@@ -126,7 +125,7 @@ impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T> {
         }
 
         // get the config
-        let config = get_config_goldilocks();
+        let config = get_config_baby_bear();
 
         // commit to the fixed columns
         let pcs = config.pcs();
@@ -186,9 +185,9 @@ impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T> {
 
         let trace = circuit.generate_trace_rows();
 
-        let config = get_config_goldilocks();
+        let config = get_config_baby_bear();
 
-        let mut challenger = get_challenger_goldilocks();
+        let mut challenger = get_challenger_baby_bear();
 
         let proving_key = self.proving_key.as_ref();
 
@@ -201,7 +200,7 @@ impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T> {
             &publics,
         );
 
-        let mut challenger = get_challenger_goldilocks();
+        let mut challenger = get_challenger_baby_bear();
 
         let verifying_key = self.verifying_key.as_ref();
 
@@ -226,9 +225,9 @@ impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T> {
             .map(|v| v.to_p3_field())
             .collect();
 
-        let config = get_config_goldilocks();
+        let config = get_config_baby_bear();
 
-        let mut challenger = get_challenger_goldilocks();
+        let mut challenger = get_challenger_baby_bear();
 
         let verifying_key = self.verifying_key.as_ref();
 
@@ -249,19 +248,19 @@ mod tests {
     use std::sync::Arc;
 
     use powdr_executor::constant_evaluator::get_uniquely_sized_cloned;
-    use powdr_number::GoldilocksField;
+    use powdr_number::BabyBearField;
     use powdr_pipeline::Pipeline;
     use test_log::test;
 
     use crate::Plonky3Prover;
 
     /// Prove and verify execution
-    fn run_test_goldilocks(pil: &str) {
-        run_test_goldilocks_publics(pil, None)
+    fn run_test_baby_bear(pil: &str) {
+        run_test_baby_bear_publics(pil, None)
     }
 
-    fn run_test_goldilocks_publics(pil: &str, malicious_publics: Option<Vec<GoldilocksField>>) {
-        let mut pipeline = Pipeline::<GoldilocksField>::default().from_pil_string(pil.to_string());
+    fn run_test_baby_bear_publics(pil: &str, malicious_publics: Option<Vec<BabyBearField>>) {
+        let mut pipeline = Pipeline::<BabyBearField>::default().from_pil_string(pil.to_string());
 
         let pil = pipeline.compute_optimized_pil().unwrap();
         let witness_callback = pipeline.witgen_callback().unwrap();
@@ -283,7 +282,7 @@ mod tests {
     #[test]
     fn public_values() {
         let content = "namespace Global(8); pol witness x; x * (x - 1) = 0; public out = x(7);";
-        run_test_goldilocks(content);
+        run_test_baby_bear(content);
     }
 
     #[test]
@@ -297,7 +296,7 @@ mod tests {
             x = 0;
             y = 1 + :oldstate;
         "#;
-        run_test_goldilocks(content);
+        run_test_baby_bear(content);
     }
 
     #[test]
@@ -314,15 +313,15 @@ mod tests {
 
             public outz = z(7);
         "#;
-        let malicious_publics = Some(vec![GoldilocksField::from(0)]);
-        run_test_goldilocks_publics(content, malicious_publics);
+        let malicious_publics = Some(vec![BabyBearField::from(0)]);
+        run_test_baby_bear_publics(content, malicious_publics);
     }
 
     #[test]
     #[should_panic = "assertion `left == right` failed: Not a power of two: 0\n  left: 0\n right: 1"]
     fn empty() {
         let content = "namespace Global(8);";
-        run_test_goldilocks(content);
+        run_test_baby_bear(content);
     }
 
     #[test]
@@ -334,7 +333,7 @@ mod tests {
             col witness z;
             x + y = z;
         "#;
-        run_test_goldilocks(content);
+        run_test_baby_bear(content);
     }
 
     #[test]
@@ -345,7 +344,7 @@ mod tests {
             col fixed y = [1, 0]*;
             x * y = y;
         "#;
-        run_test_goldilocks(content);
+        run_test_baby_bear(content);
     }
 
     #[test]
@@ -360,19 +359,19 @@ mod tests {
             col witness stage(1) y;
             x = y + beta;
         "#;
-        run_test_goldilocks(content);
+        run_test_baby_bear(content);
     }
 
     #[test]
     fn polynomial_identity() {
         let content = "namespace Global(8); pol fixed z = [1, 2]*; pol witness a; a = z + 1;";
-        run_test_goldilocks(content);
+        run_test_baby_bear(content);
     }
 
     #[test]
     #[should_panic = "not implemented"]
     fn lookup() {
         let content = "namespace Global(8); pol fixed z = [0, 1]*; pol witness a; [a] in [z];";
-        run_test_goldilocks(content);
+        run_test_baby_bear(content);
     }
 }
