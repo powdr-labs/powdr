@@ -78,7 +78,7 @@ fn mem_write_once_external_write() {
     let pipeline = make_prepared_pipeline(
         f,
         Default::default(),
-        vec![("main_memory.value".to_string(), mem)],
+        vec![("main_memory::value".to_string(), mem)],
     );
     test_pilcom(pipeline);
 }
@@ -214,9 +214,9 @@ fn dynamic_vadcop() {
         .collect::<BTreeMap<_, _>>();
 
     // Spot-check some witness columns to have the expected length.
-    assert_eq!(witness_by_name["main.X"].len(), 128);
-    assert_eq!(witness_by_name["main_arith.y"].len(), 32);
-    assert_eq!(witness_by_name["main_memory.m_addr"].len(), 32);
+    assert_eq!(witness_by_name["main::X"].len(), 128);
+    assert_eq!(witness_by_name["main_arith::y"].len(), 32);
+    assert_eq!(witness_by_name["main_memory::m_addr"].len(), 32);
 
     // Because machines have different lengths, this can only be proven
     // with a composite proof.
