@@ -7,12 +7,12 @@ use powdr_ast::{
 };
 
 pub struct TraitsProcessor<'a> {
-    implementations: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
+    trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
 }
 
 impl<'a> TraitsProcessor<'a> {
-    pub fn new(implementations: &'a HashMap<String, Vec<TraitImplementation<Expression>>>) -> Self {
-        Self { implementations }
+    pub fn new(trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>) -> Self {
+        Self { trait_impls }
     }
 
     pub fn traits_resolution(
@@ -52,7 +52,7 @@ impl<'a> TraitsProcessor<'a> {
             return None;
         };
 
-        if let Some(impls) = self.implementations.get(&trait_decl.name) {
+        if let Some(impls) = self.trait_impls.get(&trait_decl.name) {
             for (index, impl_) in impls.iter().enumerate() {
                 let Some(_) = impl_.function_by_name(&trait_fn.name) else {
                     panic!(

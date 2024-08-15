@@ -36,13 +36,13 @@ type AnalyzedIdentity<T> = Identity<SelectedExpressions<AlgebraicExpression<T>>>
 
 pub fn condense<T: FieldElement>(
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    implementations: HashMap<String, Vec<TraitImplementation<Expression>>>,
+    trait_impls: HashMap<String, Vec<TraitImplementation<Expression>>>,
     mut public_declarations: HashMap<String, PublicDeclaration>,
     identities: &[ParsedIdentity],
     source_order: Vec<StatementIdentifier>,
     auto_added_symbols: HashSet<String>,
 ) -> Analyzed<T> {
-    let mut condenser = Condenser::new(&definitions, &implementations);
+    let mut condenser = Condenser::new(&definitions, &trait_impls);
 
     let mut condensed_identities = vec![];
     let mut intermediate_columns = HashMap::new();
@@ -175,7 +175,7 @@ pub fn condense<T: FieldElement>(
     }
     Analyzed {
         definitions,
-        implementations,
+        trait_impls,
         public_declarations,
         intermediate_columns,
         identities: condensed_identities,
@@ -190,6 +190,8 @@ pub struct Condenser<'a, T> {
     degree: Option<DegreeType>,
     /// All the definitions from the PIL file.
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    /// All the trait implementations from the PIL file.
+    trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
     /// Evaluation cache.
     symbol_values: SymbolCache<'a, T>,
     /// Current namespace (for names of generated columns).
@@ -205,13 +207,12 @@ pub struct Condenser<'a, T> {
     /// The names of all new columns ever generated, to avoid duplicates.
     new_symbols: HashSet<String>,
     new_constraints: Vec<AnalyzedIdentity<T>>,
-    implementations: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
 }
 
 impl<'a, T: FieldElement> Condenser<'a, T> {
     pub fn new(
         symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-        implementations: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
+        trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
     ) -> Self {
         let counters = Counters::with_existing(symbols.values().map(|(sym, _)| sym), None, None);
         Self {
@@ -225,7 +226,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             new_intermediate_column_values: Default::default(),
             new_symbols: HashSet::new(),
             new_constraints: vec![],
-            implementations,
+            trait_impls,
         }
     }
 
@@ -363,7 +364,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
     }
 
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
-        Definitions(self.symbols, self.implementations).lookup_public_reference(name)
+        Definitions(self.symbols, self.trait_impls).lookup_public_reference(name)
     }
 
     fn degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
@@ -559,7 +560,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         &self,
         trait_name: &str,
     ) -> Result<&'a Vec<TraitImplementation<Expression>>, EvalError> {
-        match self.implementations.get(trait_name) {
+        match self.trait_impls.get(trait_name) {
             Some(impls) => Ok(impls),
             None => Err(EvalError::SymbolNotFound(format!(
                 "Trait {trait_name} not found."

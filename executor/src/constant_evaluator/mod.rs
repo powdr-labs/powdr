@@ -83,7 +83,7 @@ fn generate_values<T: FieldElement>(
 ) -> Vec<T> {
     let symbols = CachedSymbols {
         symbols: &analyzed.definitions,
-        implementations: &analyzed.implementations,
+        trait_impls: &analyzed.trait_impls,
         cache: Arc::new(RwLock::new(Default::default())),
         degree,
     };
@@ -172,7 +172,7 @@ type SymbolCache<'a, T> = HashMap<String, BTreeMap<Option<Vec<Type>>, Arc<Value<
 #[derive(Clone)]
 pub struct CachedSymbols<'a, T> {
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    implementations: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
+    trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
     cache: Arc<RwLock<SymbolCache<'a, T>>>,
     degree: DegreeType,
 }
@@ -211,7 +211,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
         &self,
         trait_name: &str,
     ) -> Result<&'a Vec<TraitImplementation<Expression>>, EvalError> {
-        match self.implementations.get(trait_name) {
+        match self.trait_impls.get(trait_name) {
             Some(impls) => Ok(impls),
             None => Err(EvalError::SymbolNotFound(format!(
                 "Trait {trait_name} not found."

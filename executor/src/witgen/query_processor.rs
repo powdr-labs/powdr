@@ -179,7 +179,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
         &self,
         trait_name: &str,
     ) -> Result<&'a Vec<powdr_ast::parsed::TraitImplementation<Expression>>, EvalError> {
-        match self.fixed_data.analyzed.implementations.get(trait_name) {
+        match self.fixed_data.analyzed.trait_impls.get(trait_name) {
             Some(implementations) => Ok(implementations),
             None => Err(EvalError::SymbolNotFound(format!(
                 "Trait {trait_name} not found."

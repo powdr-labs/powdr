@@ -880,9 +880,9 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                                     };
                                     Value::Closure(closure).into()
                                 }
-                                None => Err(EvalError::SymbolNotFound(format!(
-                                    "Function {fn_name} not found in trait {trait_name}"
-                                )))?,
+                                None => {
+                                    panic!("Function {fn_name} not found in trait {trait_name}")
+                                }
                             }
                         }
                         None => self.symbols.lookup(&poly.name, &type_args)?,
@@ -1349,7 +1349,7 @@ mod test {
         };
         evaluate::<GoldilocksField>(
             symbol,
-            &mut Definitions(&analyzed.definitions, &analyzed.implementations),
+            &mut Definitions(&analyzed.definitions, &analyzed.trait_impls),
         )
         .unwrap()
         .to_string()
@@ -1357,7 +1357,7 @@ mod test {
 
     pub fn evaluate_function<T: FieldElement>(input: &str, function: &str) -> T {
         let analyzed = analyze_string::<GoldilocksField>(input);
-        let mut symbols = evaluator::Definitions(&analyzed.definitions, &analyzed.implementations);
+        let mut symbols = evaluator::Definitions(&analyzed.definitions, &analyzed.trait_impls);
         let function = symbols.lookup(function, &None).unwrap();
         let result = evaluator::evaluate_function_call(function, vec![], &mut symbols)
             .unwrap()
