@@ -6,44 +6,22 @@
 //! everywhere save for at row j is constructed to constrain s * (pub - x) on
 //! every row.
 
-use std::{any::TypeId, collections::BTreeMap};
+use std::collections::BTreeMap;
 
+use crate::params::FieldElementMap;
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir, PairBuilder};
-use p3_baby_bear::{BabyBear, MDSBabyBearData, MdsMatrixBabyBear};
-use p3_field::{extension::ComplexExtendable, AbstractField, PrimeField};
-use p3_goldilocks::{Goldilocks, MdsMatrixGoldilocks};
+// use p3_baby_bear::BabyBear;
+// use p3_field::{extension::ComplexExtendable, AbstractField, PrimeField};
+// use p3_goldilocks::Goldilocks;
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
-use p3_mds::MdsPermutation;
+// use p3_mds::MdsPermutation;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, IdentityKind, PolynomialType,
 };
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{BabyBearField, FieldElement, GoldilocksField, LargeInt};
-
-pub trait FieldElementMap: Clone + Send + Sync {
-    type P3Field: PrimeField;
-    type MdsMatrix;
-    fn to_p3_field(&self) -> Self::P3Field;
-}
-
-impl FieldElementMap for GoldilocksField {
-    type P3Field = Goldilocks;
-    type MdsMatrix = MdsMatrixGoldilocks;
-
-    fn to_p3_field(&self) -> Self::P3Field {
-        Goldilocks::from_canonical_u64(self.to_integer().try_into_u64().unwrap())
-    }
-}
-
-impl FieldElementMap for BabyBearField {
-    type P3Field = BabyBear;
-    type MdsMatrix = MdsMatrixBabyBear;
-
-    fn to_p3_field(&self) -> Self::P3Field {
-        BabyBear::from_canonical_u32(self.to_integer().try_into_u32().unwrap())
-    }
-}
+// use powdr_number::{BabyBearField, FieldElement, GoldilocksField, LargeInt};
+use powdr_number::FieldElement;
 
 pub(crate) struct PowdrCircuit<'a, T: FieldElementMap> {
     /// The analyzed PIL
@@ -110,7 +88,7 @@ impl<'a, T: FieldElement + FieldElementMap> PowdrCircuit<'a, T> {
     }
 
     /// Calculates public values from generated witness values.
-    pub(crate) fn get_public_values(&self) -> Vec<Goldilocks> {
+    pub(crate) fn get_public_values(&self) -> Vec<<T as FieldElementMap>::P3Field> {
         let witness = self
             .witness
             .as_ref()

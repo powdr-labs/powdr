@@ -7,7 +7,6 @@ use p3_matrix::dense::RowMajorMatrix;
 use core::fmt;
 use std::sync::Arc;
 
-use crate::params::Challenger;
 use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
@@ -17,9 +16,9 @@ use p3_uni_stark::{
 };
 use powdr_number::{FieldElement, KnownField};
 
-use crate::circuit_builder::{FieldElementMap, PowdrCircuit};
+use crate::{circuit_builder::PowdrCircuit, params::FieldElementMap};
 
-use crate::params::{get_challenger, get_config, Config};
+use crate::goldilocks::{get_challenger_goldilocks, get_config_goldilocks, Challenger, Config};
 
 pub struct Plonky3Prover<T: FieldElement + FieldElementMap> {
     /// The analyzed PIL
@@ -127,7 +126,7 @@ impl<T: FieldElement + FieldElementMap> Plonky3Prover<T> {
         }
 
         // get the config
-        let config = get_config();
+        let config = get_config_goldilocks();
 
         // commit to the fixed columns
         let pcs = config.pcs();
@@ -187,9 +186,9 @@ impl<T: FieldElement + FieldElementMap> Plonky3Prover<T> {
 
         let trace = circuit.generate_trace_rows();
 
-        let config = get_config();
+        let config = get_config_goldilocks();
 
-        let mut challenger = get_challenger();
+        let mut challenger = get_challenger_goldilocks();
 
         let proving_key = self.proving_key.as_ref();
 
@@ -202,7 +201,7 @@ impl<T: FieldElement + FieldElementMap> Plonky3Prover<T> {
             &publics,
         );
 
-        let mut challenger = get_challenger();
+        let mut challenger = get_challenger_goldilocks();
 
         let verifying_key = self.verifying_key.as_ref();
 
@@ -227,9 +226,9 @@ impl<T: FieldElement + FieldElementMap> Plonky3Prover<T> {
             .map(|v| v.to_p3_field())
             .collect();
 
-        let config = get_config();
+        let config = get_config_goldilocks();
 
-        let mut challenger = get_challenger();
+        let mut challenger = get_challenger_goldilocks();
 
         let verifying_key = self.verifying_key.as_ref();
 
