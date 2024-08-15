@@ -89,7 +89,7 @@ fn create_stark_setup(
         const_pols,
         &mut pil,
         params,
-        Some("main.first_step".to_string()),
+        Some("main::first_step".to_string()),
     )
     .unwrap()
 }

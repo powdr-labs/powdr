@@ -42,7 +42,7 @@ fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace<F>) -> HashMap<Strin
 
     reg_values
         .into_iter()
-        .map(|(n, c)| (format!("main.{n}"), c))
+        .map(|(n, c)| (format!("main::{n}"), c))
         .collect()
 }
 
