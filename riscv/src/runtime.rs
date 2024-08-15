@@ -239,7 +239,7 @@ impl Runtime {
                 // TODO this is a quite inefficient way of getting prover inputs.
                 // We need to be able to access the register memory within PIL functions.
                 "query_arg_1 <== get_reg(10);",
-                "set_reg 10, ${ std::prover::Query::Input(std::convert::int(std::prover::eval(query_arg_1))) };",
+                "set_reg 10, ${ std::prelude::Query::Input(std::convert::int(std::prover::eval(query_arg_1))) };",
             ],
         );
 
@@ -248,7 +248,7 @@ impl Runtime {
             [
                 "query_arg_1 <== get_reg(10);",
                 "query_arg_2 <== get_reg(11);",
-                "set_reg 10, ${ std::prover::Query::DataIdentifier(std::convert::int(std::prover::eval(query_arg_2)), std::convert::int(std::prover::eval(query_arg_1))) };",
+                "set_reg 10, ${ std::prelude::Query::DataIdentifier(std::convert::int(std::prover::eval(query_arg_2)), std::convert::int(std::prover::eval(query_arg_1))) };",
             ]
         );
 
@@ -259,7 +259,7 @@ impl Runtime {
             [
                 "query_arg_1 <== get_reg(10);",
                 "query_arg_2 <== get_reg(11);",
-                "set_reg 0, ${ std::prover::Query::Output(std::convert::int(std::prover::eval(query_arg_1)), std::convert::int(std::prover::eval(query_arg_2))) };"
+                "set_reg 0, ${ std::prelude::Query::Output(std::convert::int(std::prover::eval(query_arg_1)), std::convert::int(std::prover::eval(query_arg_2))) };"
             ]
         );
 
