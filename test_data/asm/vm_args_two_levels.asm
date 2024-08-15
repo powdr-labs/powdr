@@ -1,5 +1,7 @@
 use std::machines::memory::Memory;
-use std::machines::range::Byte2;
+
+mod test_util;
+use test_util::FakeByte2 as Byte2;
 
 let N: int = 256;
 
