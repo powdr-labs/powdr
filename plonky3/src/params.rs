@@ -8,8 +8,6 @@ use p3_fri::{FriConfig, TwoAdicFriPcs};
 use p3_symmetric::{compression::TruncatedPermutation, CryptographicPermutation, Permutation};
 use p3_uni_stark::StarkConfig;
 
-type Dft = Radix2DitParallel;
-
 pub trait FieldElementMap: Clone + Send + Sync {
     type P3Field: PrimeField;
     type MdsMatrix;
@@ -21,6 +19,7 @@ pub trait FieldElementMap: Clone + Send + Sync {
     type Challenge = BinomialExtensionField<P3Field, DEGREE>;
     type Challenger = DuplexChallenger<P3Field, Perm>;
     type ChallengeMmcs = ExtensionMmcs<P3Field, Challenge, ValMmcs>;
+    type Dft = Radix2DitParallel;
     type MyPcs = TwoAdicFriPcs<P3Field, Dft, ValMmcs, ChallengeMmcs>;
     type Config = StarkConfig<MyPcs, Challenge, Challenger>;
 
@@ -31,6 +30,7 @@ pub trait FieldElementMap: Clone + Send + Sync {
     const N: usize;
     const CHUNK: usize;
     const DIGEST_ELEMS: usize;
+
     const FRI_LOG_BLOWUP: usize = 1;
     const FRI_NUM_QUERIES: usize = 100;
     const FRI_PROOF_OF_WORK_BITS: usize = 16;

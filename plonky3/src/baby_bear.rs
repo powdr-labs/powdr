@@ -8,10 +8,10 @@ use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear, MdsMatrixBabyBear};
 use p3_challenger::DuplexChallenger;
 use p3_commit::ExtensionMmcs;
 use p3_dft::Radix2DitParallel;
-use p3_field::{extension::BinomialExtensionField, Field};
+use p3_field::{extension::BinomialExtensionField, Field}, AbstractField;
 use p3_fri::{FriConfig, TwoAdicFriPcs};
 use p3_merkle_tree::FieldMerkleTreeMmcs;
-use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
+use p3_poseidon2::{DiffusionPermutation, Poseidon2, Poseidon2ExternalMatrixGeneral};
 use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
 use p3_uni_stark::StarkConfig;
 
@@ -27,10 +27,10 @@ pub trait Poseidon2Compatible {
     const RNG_SEED: u64 = 42;
 
     type Poseidon2Perm: Poseidon2<
-        BabyBear,
+        PrimeField,
         Poseidon2ExternalMatrixGeneral,
-        DiffusionMatrixBabyBear,
-        WIDTH,
+        DiffusionPermutation<AbstractField, PERM_WIDTH>,
+        PERM_WIDTH,
         D,
     >;
 }
@@ -44,11 +44,11 @@ impl Poseidon2Compatible for BabyBearField {
     const PERM_WIDTH: usize = 16;
 
     type Poseidon2Perm =
-        Poseidon2<BabyBear, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, WIDTH, D>;
+        Poseidon2<BabyBear, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, PERM_WIDTH, D>;
 }
 
 lazy_static! {
-    static ref PERM_BB: Poseidon2Compatible::Perm = BabyBearField::Poseidon2Perm::new(
+    static ref PERM_BB: Poseidon2Compatible::Poseidon2Perm = BabyBearField::Poseidon2Perm::new(
         BabyBearField::ROUNDS_F,
         rand_chacha::ChaCha8Rng::seed_from_u64(BabyBearField::RNG_SEED)
             .sample_iter(Standard)
