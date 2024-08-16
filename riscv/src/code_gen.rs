@@ -314,9 +314,9 @@ let initial_memory: (fe, fe)[] = [
     }}
 }}    
 "#,
+        runtime.submachines_import(),
         1 << (powdr_linker::MIN_DEGREE_LOG - 2),
         1 << (*powdr_linker::MAX_DEGREE_LOG - 2),
-        runtime.submachines_import(),
         runtime.submachines_declare(),
         preamble,
         initial_memory
