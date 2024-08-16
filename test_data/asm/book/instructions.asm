@@ -40,19 +40,19 @@ machine Main with degree: 32 {
 // ANCHOR: trivial
     SubMachine submachine;
 
-    instr add X, Y -> Z link => Z = submachine::add(X, Y); // - trivial usage: only instruction inputs/outputs used in the call
+    instr add X, Y -> Z link => Z = submachine.add(X, Y); // - trivial usage: only instruction inputs/outputs used in the call
 // ANCHOR_END: trivial
-    instr add_to_A X, Y link => A' = submachine::add(X, Y);// - output to a regular register
-    instr addAB -> X link => X = submachine::add(A, B);    // - inputs from regular registers
-    instr addAB_to_C link => C' = submachine::add(A, B);   // - inputs and output from regular registers
-    instr addAB_to_A link => A' = submachine::add(A, B);   // - reusing an input register as output
-    instr sub X, Y -> Z link => X = submachine::add(Y, Z); // - swapping input/output
+    instr add_to_A X, Y link => A' = submachine.add(X, Y);// - output to a regular register
+    instr addAB -> X link => X = submachine.add(A, B);    // - inputs from regular registers
+    instr addAB_to_C link => C' = submachine.add(A, B);   // - inputs and output from regular registers
+    instr addAB_to_A link => A' = submachine.add(A, B);   // - reusing an input register as output
+    instr sub X, Y -> Z link => X = submachine.add(Y, Z); // - swapping input/output
     // expressions can also be used as call parameters
-    instr add5 X -> Z link => Z = submachine::add(X, 3+2); // - literal expression as argument
+    instr add5 X -> Z link => Z = submachine.add(X, 3+2); // - literal expression as argument
     col fixed STEP(i) { i };
-    instr add_current_time_step X -> Z link => Z = submachine::add(X, STEP);// - machine columns can be referenced
+    instr add_current_time_step X -> Z link => Z = submachine.add(X, STEP);// - machine columns can be referenced
     let arr = [1,2,3,4,5];                          // - functions can be used
-    instr add_arr_sum X -> Z link => Z = submachine::add(X, std::array::sum(arr));
+    instr add_arr_sum X -> Z link => Z = submachine.add(X, std::array::sum(arr));
 
     instr assert_eq X, Y { X = Y }
 

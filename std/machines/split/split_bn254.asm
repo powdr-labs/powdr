@@ -69,7 +69,7 @@ machine SplitBN254(byte_compare: ByteCompare) with
     // Compare the current byte with the corresponding byte of the maximum value.
     col witness lt;
     col witness gt;
-    link => (lt, gt) = byte_compare::run(bytes, BYTES_MAX);
+    link => (lt, gt) = byte_compare.run(bytes, BYTES_MAX);
 
     // Compute whether the current or any previous byte has been less than
     // the corresponding byte of the maximum value.

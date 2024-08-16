@@ -11,7 +11,7 @@ machine Main with degree: 128 {
     Binary4 bin;
 
     // lookup to machine bin
-    instr or X, Y -> Z link => Z = bin::or(X, Y);
+    instr or X, Y -> Z link => Z = bin.or(X, Y);
 
     instr assert_eq X, Y { X = Y }
 

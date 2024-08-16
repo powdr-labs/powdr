@@ -11,7 +11,7 @@ machine Main with degree: 16 {
 
     instr assert_eq X, Y { X = Y }
 
-    instr add4 X,Y,Z,W -> R link => R = adder::add4(X,Y,Z,W);
+    instr add4 X,Y,Z,W -> R link => R = adder.add4(X,Y,Z,W);
 
     function main {
        A <== add4(1, 2, 3, 4);
@@ -31,12 +31,12 @@ machine Add4 with
     operation add4<0> x, y, z, w -> r;
 
     // Links without a flag are active on every row.
-    // - constrain the values of `x`, `y`, and `n` so that `n = adder::add(x, y)`
-    link => n = adder::add(x, y);
-    // - constrain the values of `z`, `w`, and `m` so that `m = adder::add(z, w)`
-    link => m = adder::add(z, w);
-    // - constrain the values of `m`, `n` and `r` so that `r = adder::add(m,n)`
-    link => r = adder::add(m, n);
+    // - constrain the values of `x`, `y`, and `n` so that `n = adder.add(x, y)`
+    link => n = adder.add(x, y);
+    // - constrain the values of `z`, `w`, and `m` so that `m = adder.add(z, w)`
+    link => m = adder.add(z, w);
+    // - constrain the values of `m`, `n` and `r` so that `r = adder.add(m,n)`
+    link => r = adder.add(m, n);
 
     col fixed operation_id = [0]*;
     col fixed latch = [1]*;

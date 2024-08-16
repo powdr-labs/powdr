@@ -35,8 +35,8 @@ machine Main with degree: 8 {
     reg Y[<=];
     reg A;
 
-    instr double X -> Y link => Y = arith::double(X);
-    instr square X -> Y link => Y = arith::square(X);
+    instr double X -> Y link => Y = arith.double(X);
+    instr square X -> Y link => Y = arith.square(X);
     instr assert_eq X, Y { X = Y }
 
     function main {

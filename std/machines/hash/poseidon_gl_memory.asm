@@ -96,8 +96,8 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     let do_mload;
     do_mload = used * sum(STATE_SIZE, |i| CLK[i]);
     let input_index = sum(STATE_SIZE, |i| expr(i) * CLK[i]);
-    link if do_mload ~> word_low = mem::mload(input_addr + 8 * input_index, time_step);
-    link if do_mload ~> word_high = mem::mload(input_addr + 8 * input_index + 4, time_step);
+    link if do_mload ~> word_low = mem.mload(input_addr + 8 * input_index, time_step);
+    link if do_mload ~> word_high = mem.mload(input_addr + 8 * input_index + 4, time_step);
 
     // Combine the low and high words and write it into `input`
     let current_input = array::sum(array::new(STATE_SIZE, |i| CLK[i] * input[i]));
@@ -111,12 +111,12 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     // TODO: This translates to two additional permutations. But because they go to the same machine
     // as the mloads above *and* never happen at the same time, they could actually be combined with
     // the mload permutations. But there is currently no way to express this.
-    link if do_mstore ~> mem::mstore(output_addr + 8 * output_index, time_step + 1, word_low);
-    link if do_mstore ~> mem::mstore(output_addr + 8 * output_index + 4, time_step + 1, word_high);
+    link if do_mstore ~> mem.mstore(output_addr + 8 * output_index, time_step + 1, word_low);
+    link if do_mstore ~> mem.mstore(output_addr + 8 * output_index + 4, time_step + 1, word_high);
 
     // Make sure that in row i + STATE_SIZE, word_low and word_high correspond to output i
     let current_output = array::sum(array::new(OUTPUT_SIZE, |i| CLK[i + STATE_SIZE] * output[i]));
-    link if do_mstore ~> (word_low, word_high) = split_gl::split(current_output);
+    link if do_mstore ~> (word_low, word_high) = split_gl.split(current_output);
 
 
     // ------------- End memory read / write ---------------

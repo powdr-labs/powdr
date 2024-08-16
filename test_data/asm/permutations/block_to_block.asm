@@ -14,9 +14,9 @@ machine Binary4x with
     // Only enable the links in rows that have been 'used' by a call into this machine.
     let used = std::array::sum(sel);
     std::utils::force_bool(used);
-    link if used ~> X = bin::or(A, B);
-    link if used ~> Y = bin::or(C, D);
-    link if used ~> E = bin::or(X, Y);
+    link if used ~> X = bin.or(A, B);
+    link if used ~> Y = bin.or(C, D);
+    link if used ~> E = bin.or(X, Y);
 
     col fixed operation_id = [0]*;
     col fixed latch = [1]*;
@@ -44,11 +44,11 @@ machine Main with degree: 256 {
     Binary4x bin4;
 
     // two permutations to machine bin
-    instr or X, Y -> Z link ~> Z = bin::or(X, Y);
-    instr or_into_B X, Y link ~> B' = bin::or(X, Y);
+    instr or X, Y -> Z link ~> Z = bin.or(X, Y);
+    instr or_into_B X, Y link ~> B' = bin.or(X, Y);
 
     // permutation to machine bin4
-    instr or4 X, Y, Z, W -> R link ~> R = bin4::or4(X, Y, Z, W);
+    instr or4 X, Y, Z, W -> R link ~> R = bin4.or4(X, Y, Z, W);
 
     instr assert_eq X, Y { X = Y }
 

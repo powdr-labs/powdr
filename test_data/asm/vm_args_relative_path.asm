@@ -42,8 +42,8 @@ mod a {
         reg Z[<=];
         reg A;
 
-        instr add X, Y -> Z link => Z = arith::add(X, Y);
-        instr sub X, Y -> Z link => Z = arith::sub(X, Y);
+        instr add X, Y -> Z link => Z = arith.add(X, Y);
+        instr sub X, Y -> Z link => Z = arith.sub(X, Y);
 
         function add a, b -> c {
             A <== add(a,b);

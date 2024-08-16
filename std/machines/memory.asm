@@ -52,8 +52,8 @@ machine Memory(byte2: Byte2) with
     col fixed FIRST = [1] + [0]*;
     let LAST = FIRST';
 
-    link => byte2::check(m_diff_lower);
-    link => byte2::check(m_diff_upper);
+    link => byte2.check(m_diff_lower);
+    link => byte2.check(m_diff_upper);
 
     std::utils::force_bool(m_change);
 

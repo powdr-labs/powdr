@@ -11,8 +11,8 @@ machine WriteOnceMemory with
 
     // Accesses the memory cell at the given address. This can be used
     // both for reading and writing, e.g.:
-    //   instr mload X -> Y link => memory::access(X, Y);
-    //   instr mstore X, Y -> link => memory::access(X, Y);
+    //   instr mload X -> Y link => memory.access(X, Y);
+    //   instr mstore X, Y -> link => memory.access(X, Y);
     operation access ADDR, value ->;
 
     let LATCH = 1;

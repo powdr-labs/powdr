@@ -35,10 +35,10 @@ machine Main with degree: 8 {
 
     reg pc[@pc];
 
-    instr nothing link => a::nothing();
-    instr also_nothing link => b::nothing();
-    instr still_nothing link => c::nothing();
-    instr nothing_again link => d::nothing();
+    instr nothing link => a.nothing();
+    instr also_nothing link => b.nothing();
+    instr still_nothing link => c.nothing();
+    instr nothing_again link => d.nothing();
 
     function main {
         nothing;
