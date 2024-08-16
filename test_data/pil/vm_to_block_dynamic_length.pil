@@ -59,7 +59,7 @@ namespace main__rom(8);
     col fixed p_read_X_A = [0, 0, 0, 1, 1, 0, 0] + [0]*;
     col fixed p_reg_write_Z_A = [0, 0, 1, 1, 0, 0, 0] + [0]*;
 
-// CHANGED HERE: The degree of this namespace is None, meaning that this machine has a variable size.
+// CHANGED HERE: The degree of this namespace is a range, meaning that this machine has a variable size.
 namespace main_arith(8..64);
     col witness operation_id;
     col witness x[2];

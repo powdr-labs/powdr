@@ -7,7 +7,7 @@ use powdr_ast::{
     asm_analysis::{AnalysisASMFile, MachineDegree},
     parsed::{asm::parse_absolute_path, Expression, Number, PilStatement},
 };
-use powdr_number::{DegreeType, FieldElement};
+use powdr_number::{FieldElement};
 use powdr_pipeline::Pipeline;
 use powdr_riscv_executor::{get_main_machine, Elem, ExecutionTrace, MemoryState, ProfilerOptions};
 
@@ -107,11 +107,15 @@ where
                 };
 
                 let length = pipeline
-                    .witness()
+                    .optimized_pil()
                     .unwrap()
+                    .definitions
                     .iter()
-                    .find_map(|(name, values)| name.starts_with("main.").then_some(values.len()))
-                    .unwrap() as DegreeType;
+                    .find_map(|(name, (s, _))| match (name.starts_with("main."), s) {
+                        (true, s) => s.degree.map(|d| d.max),
+                        _ => None,
+                    })
+                    .unwrap();
 
                 // The `jump_to_shutdown_routine` column indicates when the execution should jump to the shutdown routine.
                 // In that row, the normal PC update is ignored and the PC is set to the address of the shutdown routine.
