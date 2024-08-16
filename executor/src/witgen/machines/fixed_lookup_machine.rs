@@ -319,7 +319,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         // Update the multiplicities
         self.multiplicities
             .entry(identity_id)
-            .or_insert_with(BTreeMap::new)
+            .or_default()
             .entry(row)
             .and_modify(|e| *e += 1)
             .or_insert(1);
@@ -418,9 +418,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
                     .map(|(row, multiplicity)| (row, T::from(multiplicity)))
                     .collect();
                 for row in 0..self.degree as usize {
-                    if !multiplicity.contains_key(&row) {
-                        multiplicity.insert(row, T::zero());
-                    }
+                    multiplicity.entry(row).or_insert_with(|| T::zero());
                 }
                 (identity_id, multiplicity)
             })
@@ -428,7 +426,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
 
         // Collects all the rows of an identity as a Vec<T>
         let mut witness_col_values = HashMap::new();
-        for (_, multiplicity) in &multiplicities {
+        for multiplicity in multiplicities.values() {
             let mut values = vec![];
             for row in 0..self.degree as usize {
                 values.push(multiplicity[&row]);

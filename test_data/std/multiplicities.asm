@@ -23,8 +23,7 @@ machine Main with degree: 8 {
     let alpha = from_base(challenge(0, 1));
     let beta = from_base(challenge(0, 2));
 
-    // This is the multiplicities witness column. Currently, witgen just sets it to
-    // 0, causing the constraints to fail.
+    // Machine extractor currently accepts the multiplicity column with exact the name of "m_logup_multiplicity"
     col witness m_logup_multiplicity;
 
     // This would be the correct multiplicity values that would satisfy the constraints:
