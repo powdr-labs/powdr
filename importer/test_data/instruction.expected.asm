@@ -14,6 +14,6 @@ machine Main {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
-    instr id X, l: label -> Y link => X = id::id(too::ls::identity(l)) link => Y = id::id(too::ls::identity(Y)){     Y = too::ls::identity(X) }
-    link => X = id::id(too::ls::identity(X));
+    instr id X, l: label -> Y link => X = id.id(too::ls::identity(l)) link => Y = id.id(too::ls::identity(Y)){     Y = too::ls::identity(X) }
+    link => X = id.id(too::ls::identity(X));
 }

@@ -61,7 +61,7 @@ fn call_eval_in_query() {
 }
 
 #[test]
-#[should_panic = "Referenced a constr function inside a query context: N::new_wit"]
+#[should_panic = "Referenced a constr function inside a query context: N.new_wit"]
 fn call_constr_in_query() {
     let input = r#"
     namespace std::prover(16);

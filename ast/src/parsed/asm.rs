@@ -350,6 +350,11 @@ impl AbsoluteSymbolPath {
         parts.push(part.to_string());
         Self { parts }
     }
+
+    // TODO GZ: Remove or document
+    pub fn to_relative_string(&self) -> String {
+        self.parts.join("::")
+    }
 }
 
 impl Display for AbsoluteSymbolPath {

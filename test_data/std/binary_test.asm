@@ -11,9 +11,9 @@ machine Main with degree: 262144 {
     ByteBinary byte_binary;
     Binary binary(byte_binary);
 
-    instr and X0, X1 -> X2 link ~> X2 = binary::and(X0, X1);
-    instr or X0, X1 -> X2 link ~> X2 = binary::or(X0, X1);
-    instr xor X0, X1 -> X2 link ~> X2 = binary::xor(X0, X1);
+    instr and X0, X1 -> X2 link ~> X2 = binary.and(X0, X1);
+    instr or X0, X1 -> X2 link ~> X2 = binary.or(X0, X1);
+    instr xor X0, X1 -> X2 link ~> X2 = binary.xor(X0, X1);
 
     instr assert_eq X0, X1 {
         X0 = X1
