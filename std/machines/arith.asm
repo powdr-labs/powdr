@@ -157,7 +157,7 @@ machine Arith with
 
     let y1: expr[] = array::new(16, |i| {
         let y1;
-        std::prover::set_hint(y1, |_| hint_if_eq0(quotient_hint, i));
+        std::prelude::set_hint(y1, |_| hint_if_eq0(quotient_hint, i));
         y1
     });
 
