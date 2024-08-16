@@ -33,9 +33,9 @@ machine Main with degree: 16 {
     reg Y[<=];
     reg A;
 
-    instr identity X -> Y = sub.identity;
-    instr one -> Y = sub.one;
-    instr nothing = sub.nothing;
+    instr identity X -> Y = sub::identity;
+    instr one -> Y = sub::one;
+    instr nothing = sub::nothing;
 
     function main {
         start:
@@ -226,9 +226,9 @@ The diff for our example program is as follows:
 -       reg A;
 +       operation main<2>;
 // external instructions are removed and replaced with links, see down below
--       instr identity X -> Y = sub.identity;
--       instr one -> Y = sub.one;
--       instr nothing = sub.nothing;
+-       instr identity X -> Y = sub::identity;
+-       instr one -> Y = sub::one;
+-       instr nothing = sub::nothing;
 -
 -       function main {
 -               start:
@@ -295,9 +295,9 @@ The diff for our example program is as follows:
 +
 +
 // we use links to encode cross-machine calls
-+       link instr_identity => sub.identity X -> Y;
-+       link instr_one => sub.one -> Y;
-+       link instr_nothing => sub.nothing;
++       link instr_identity => sub::identity X -> Y;
++       link instr_one => sub::one -> Y;
++       link instr_nothing => sub::nothing;
 ```
 
 ### Block enforcer
@@ -440,9 +440,9 @@ machine Main with degree: 16, latch: instr_return, operation_id: _operation_id {
         }
 
 
-        link instr_identity X -> Y => sub.identity;
-        link instr_one -> Y => sub.one;
-        link instr_nothing => sub.nothing;
+        link instr_identity X -> Y => sub::identity;
+        link instr_one -> Y => sub::one;
+        link instr_nothing => sub::nothing;
 
 }
 ```
@@ -616,9 +616,9 @@ pol constant _block_enforcer_last_step = [0]* + [1];
 pol commit _operation_id_no_change;
 _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
 (_operation_id_no_change * (_operation_id' - _operation_id)) = 0;
-instr_identity $ [ 2, X, Y ] in main_sub.instr_return $ [ main_sub._operation_id, main_sub._input_0, main_sub._output_0 ];
-instr_one $ [ 4, Y ] in main_sub.instr_return $ [ main_sub._operation_id, main_sub._output_0 ];
-instr_nothing $ [ 3 ] in main_sub.instr_return $ [ main_sub._operation_id ];
+instr_identity $ [ 2, X, Y ] in main_sub::instr_return $ [ main_sub::_operation_id, main_sub::_input_0, main_sub::_output_0 ];
+instr_one $ [ 4, Y ] in main_sub::instr_return $ [ main_sub::_operation_id, main_sub::_output_0 ];
+instr_nothing $ [ 3 ] in main_sub::instr_return $ [ main_sub::_operation_id ];
 pol constant _linker_first_step = [1] + [0]*;
 (_linker_first_step * (_operation_id - 2)) = 0;
 namespace main_sub(16);

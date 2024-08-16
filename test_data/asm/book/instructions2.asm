@@ -33,16 +33,16 @@ machine Main with degree: 16 {
     // witness columns can be used for temporary values,
     // and additional constraints can be used
     instr double_then_mul X, Y -> Z
-        link => B = submachine.add(X, X)
-        link => C = submachine.add(Y, Y)
+        link => B = submachine::add(X, X)
+        link => C = submachine::add(Y, Y)
     {
         Z = B * C
     }
 
     // links activated conditional on a boolean flag
     instr add_or_sub W, X, Y -> Z
-        link if W => Z = submachine.add(X, Y)
-        link if (1 - W) => Z = submachine.sub(X, Y);
+        link if W => Z = submachine::add(X, Y)
+        link if (1 - W) => Z = submachine::sub(X, Y);
 
     instr assert_eq X, Y { X = Y }
 

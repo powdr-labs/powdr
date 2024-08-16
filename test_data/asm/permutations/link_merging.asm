@@ -28,22 +28,22 @@ machine Main with degree: 32 {
     SubMachine submachine;
 
     // these are merged into 1 link
-    instr add X, Y -> Z link => Z = submachine.add(X, Y);
-    instr sub_with_add X, Y -> Z link => X = submachine.add(Y, Z);
-    instr addAB -> X link => X = submachine.add(A, B);
+    instr add X, Y -> Z link => Z = submachine::add(X, Y);
+    instr sub_with_add X, Y -> Z link => X = submachine::add(Y, Z);
+    instr addAB -> X link => X = submachine::add(A, B);
 
     // one of these will be merged into the previous link, the other will be separate
     instr add3 X, Y, Z -> W
-        link => tmp = submachine.add(X, Y)
-        link => W = submachine.add(tmp, Z);
+        link => tmp = submachine::add(X, Y)
+        link => W = submachine::add(tmp, Z);
 
     // these will be separate links, as we disallow merging links with next references due to a witgen limitation
-    instr add_to_A X, Y link => A' = submachine.add(X, Y);
-    instr add_BC_to_A link => A' = submachine.add(B, C);
+    instr add_to_A X, Y link => A' = submachine::add(X, Y);
+    instr add_BC_to_A link => A' = submachine::add(B, C);
 
     // these are merged into 1 link
-    instr sub X, Y -> Z link => Z = submachine.sub(X, Y);
-    instr add_with_sub X, Y -> Z link => Y = submachine.sub(Z, X);
+    instr sub X, Y -> Z link => Z = submachine::sub(X, Y);
+    instr add_with_sub X, Y -> Z link => Y = submachine::sub(Z, X);
 
     instr assert_eq X, Y { X = Y }
 

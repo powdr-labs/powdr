@@ -26,8 +26,8 @@ machine Main with degree: 32 {
     Binary bin;
 
     // two permutations to bin machine
-    instr add X, Y -> Z link ~> Z = bin.add(X, Y);
-    instr add_into_B X, Y link ~> B' = bin.add(X, Y);
+    instr add X, Y -> Z link ~> Z = bin::add(X, Y);
+    instr add_into_B X, Y link ~> B' = bin::add(X, Y);
 
     instr assert_eq X, Y { X = Y }
 

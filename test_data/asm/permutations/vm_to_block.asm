@@ -12,8 +12,8 @@ machine Main with degree: 128 {
     Binary4 bin;
 
     // two permutations to machine bin
-    instr or X, Y -> Z link ~> Z = bin.or(X, Y);
-    instr or_into_B X, Y link ~> B' = bin.or(X, Y);
+    instr or X, Y -> Z link ~> Z = bin::or(X, Y);
+    instr or_into_B X, Y link ~> B' = bin::or(X, Y);
 
     instr assert_eq X, Y { X = Y }
 

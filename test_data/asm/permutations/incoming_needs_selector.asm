@@ -22,7 +22,7 @@ machine Main with degree: 32 {
     Binary bin;
 
     // permutation into Binary
-    instr add X, Y -> Z link ~> Z = bin.add(X, Y);
+    instr add X, Y -> Z link ~> Z = bin::add(X, Y);
 
     instr assert_eq X, Y { X = Y }
 

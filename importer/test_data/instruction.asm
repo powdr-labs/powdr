@@ -23,11 +23,11 @@ machine Main {
     reg Y[<=];
 
     instr id X, l: label -> Y
-        link => X = id.id(identity(l))
-        link => Y = id.id(identity(Y))
+        link => X = id::id(identity(l))
+        link => Y = id::id(identity(Y))
     {
         Y = identity(X)
     }
 
-    link => X = id.id(identity(X));
+    link => X = id::id(identity(X));
 }
