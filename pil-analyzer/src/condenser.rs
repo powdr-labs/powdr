@@ -783,6 +783,7 @@ fn compact_var_refs(e: &mut Expression, referenced_outer_vars: &Vec<u64>, enviro
     });
 }
 
+/// Tries to convert an evaluator value to an expression with the same value.
 fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expression, EvalError> {
     Ok(match value {
         Value::Integer(v) => {

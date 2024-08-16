@@ -489,31 +489,25 @@ fn intermediate_arr_wrong_length() {
 fn closure() {
     let input = r#"
     namespace std::prover;
-        let set_hint = 8;
         let eval = 8;
-        enum Query { Hint(fe), None, }
     namespace N(16);
         col witness x;
-        let y = |a, b, c| std::prover::Query::Hint(a + c());
+        let y = |a, b, c| Query::Hint(a + c());
         {
             let r = 9;
-            std::prover::set_hint(x, |i| y(1, i, || 9 + r));
+            set_hint(x, |i| y(1, i, || 9 + r));
         };
 "#;
     let analyzed = analyze_string::<GoldilocksField>(input);
     let expected = r#"namespace std::prover;
-    let set_hint = 8;
     let eval = 8;
-    enum Query {
-        Hint(fe),
-        None,
-    }
 namespace N(16);
-    col witness x = {
+    col witness x;
+    std::prelude::set_hint(N.x, {
         let r = 9;
         (query |i| N.y(1, i, (|| 9 + r)))
-    };
-    let y: fe, int, (-> fe) -> std::prover::Query = (|a, b, c| std::prover::Query::Hint(a + c()));
+    });
+    let y: fe, int, (-> fe) -> std::prelude::Query = (|a, b, c| std::prelude::Query::Hint(a + c()));
 "#;
     assert_eq!(analyzed.to_string(), expected);
 }
