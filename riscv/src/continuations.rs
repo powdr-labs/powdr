@@ -106,6 +106,8 @@ where
                     pipeline
                 };
 
+                // get the length of the columns in the machine we want to extend with external witness values
+                // quite hacky, is there a better way?
                 let length = pipeline
                     .optimized_pil()
                     .unwrap()

@@ -271,9 +271,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
         }
 
         let current_size = addr.len();
-        assert!(current_size as DegreeType <= self.degree_range.max);
         let new_size = current_size.next_power_of_two() as DegreeType;
-        let new_size = new_size.max(self.degree_range.min);
+        let new_size = self.degree_range.fit(new_size);
         log::info!(
             "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
             self.name,

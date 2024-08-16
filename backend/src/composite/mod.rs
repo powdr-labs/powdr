@@ -215,6 +215,11 @@ pub(crate) struct CompositeBackend<'a, F> {
 /// Panics if the machine PIL contains definitions with different degrees, or if the machine
 /// already has a degree set that is different from the provided degree.
 fn set_size<F: Clone>(pil: Arc<Analyzed<F>>, degree: DegreeType) -> Arc<Analyzed<F>> {
+    let current_ranges = pil.degree_ranges();
+    assert!(
+        current_ranges.len() <= 1,
+        "Expected at most one degree within a machine"
+    );
     // Clone the PIL and set the degree for all definitions
     let pil = (*pil).clone();
     let definitions = pil

@@ -320,7 +320,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         }
 
         let new_degree = self.data.len().next_power_of_two() as DegreeType;
-        let new_degree = new_degree.max(self.degree_range.min);
+        let new_degree = self.degree_range.fit(new_degree);
         log::info!(
             "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
             self.name,
@@ -328,7 +328,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             new_degree,
             self.data.len()
         );
-        assert!(new_degree <= self.degree_range.max);
         self.degree = new_degree;
 
         if matches!(self.connection_type, ConnectionType::Permutation) {

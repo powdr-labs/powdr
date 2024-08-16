@@ -537,12 +537,21 @@ impl DegreeRange {
         (self.min == self.max).then_some(self.min)
     }
 
+    /// Iterate through powers of two in this range
     pub fn iter(&self) -> impl Iterator<Item = DegreeType> {
         let min_ceil = self.min.next_power_of_two();
         let max_ceil = self.max.next_power_of_two();
         let min_log = usize::BITS - min_ceil.leading_zeros() - 1;
         let max_log = usize::BITS - max_ceil.leading_zeros() - 1;
         (min_log..=max_log).map(|exponent| 1 << exponent)
+    }
+    
+    /// Fit a degree to this range:
+    /// - returns the smallest value in the range which is larger or equal to `new_degree`
+    /// - panics if no such value exists
+    pub fn fit(&self, new_degree: u64) -> u64 {
+        assert!(new_degree <= self.max);
+        self.min.max(new_degree)
     }
 }
 

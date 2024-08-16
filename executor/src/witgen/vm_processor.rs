@@ -185,8 +185,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                     );
 
                     let new_degree = self.processor.len().next_power_of_two() as DegreeType;
-                    assert!(new_degree as u64 <= self.degree_range.max);
-                    let new_degree = new_degree.max(self.degree_range.min);
+                    let new_degree = self.degree_range.fit(new_degree);
                     log::info!(
                         "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
                         self.machine_name,

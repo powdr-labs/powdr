@@ -325,10 +325,10 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     /// - the degree is not unique
     /// - the set of polynomials is empty
     /// - a declared polynomial does not have an explicit degree
-    fn common_set_degree<'b>(
+    fn common_degree_range<'b>(
         &self,
         ids: impl IntoIterator<Item = &'b PolyID>,
-    ) -> Option<DegreeRange> {
+    ) -> DegreeRange {
         let ids: HashSet<_> = ids.into_iter().collect();
 
         self.analyzed
@@ -347,10 +347,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             .unique()
             .exactly_one()
             .unwrap_or_else(|_| panic!("expected all polynomials to have the same degree"))
-    }
-
-    fn common_degree_range<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> DegreeRange {
-        self.common_set_degree(ids).unwrap()
+            .unwrap()
     }
 
     pub fn new(
