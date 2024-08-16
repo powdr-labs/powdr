@@ -98,20 +98,20 @@ impl Runtime {
             vec!["byte_binary"],
             [
                 r#"instr and X, Y, Z, W
-                    link ~> tmp1_col = regs::mload(X, STEP)
-                    link ~> tmp2_col = regs::mload(Y, STEP + 1)
-                    link ~> tmp3_col = binary::and(tmp1_col, tmp2_col + Z)
-                    link ~> regs::mstore(W, STEP + 3, tmp3_col);"#,
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
+                    link ~> tmp3_col = binary.and(tmp1_col, tmp2_col + Z)
+                    link ~> regs.mstore(W, STEP + 3, tmp3_col);"#,
                 r#"instr or X, Y, Z, W
-                    link ~> tmp1_col = regs::mload(X, STEP)
-                    link ~> tmp2_col = regs::mload(Y, STEP + 1)
-                    link ~> tmp3_col = binary::or(tmp1_col, tmp2_col + Z)
-                    link ~> regs::mstore(W, STEP + 3, tmp3_col);"#,
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
+                    link ~> tmp3_col = binary.or(tmp1_col, tmp2_col + Z)
+                    link ~> regs.mstore(W, STEP + 3, tmp3_col);"#,
                 r#"instr xor X, Y, Z, W
-                    link ~> tmp1_col = regs::mload(X, STEP)
-                    link ~> tmp2_col = regs::mload(Y, STEP + 1)
-                    link ~> tmp3_col = binary::xor(tmp1_col, tmp2_col + Z)
-                    link ~> regs::mstore(W, STEP + 3, tmp3_col);"#,
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
+                    link ~> tmp3_col = binary.xor(tmp1_col, tmp2_col + Z)
+                    link ~> regs.mstore(W, STEP + 3, tmp3_col);"#,
             ],
             0,
             ["and 0, 0, 0, 0;"],
@@ -124,15 +124,15 @@ impl Runtime {
             vec!["byte_shift"],
             [
                 r#"instr shl X, Y, Z, W
-                    link ~> tmp1_col = regs::mload(X, STEP)
-                    link ~> tmp2_col = regs::mload(Y, STEP + 1)
-                    link ~> tmp3_col = shift::shl(tmp1_col, tmp2_col + Z)
-                    link ~> regs::mstore(W, STEP + 3, tmp3_col);"#,
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
+                    link ~> tmp3_col = shift.shl(tmp1_col, tmp2_col + Z)
+                    link ~> regs.mstore(W, STEP + 3, tmp3_col);"#,
                 r#"instr shr X, Y, Z, W
-                    link ~> tmp1_col = regs::mload(X, STEP)
-                    link ~> tmp2_col = regs::mload(Y, STEP + 1)
-                    link ~> tmp3_col = shift::shr(tmp1_col, tmp2_col + Z)
-                    link ~> regs::mstore(W, STEP + 3, tmp3_col);"#,
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
+                    link ~> tmp3_col = shift.shr(tmp1_col, tmp2_col + Z)
+                    link ~> regs.mstore(W, STEP + 3, tmp3_col);"#,
             ],
             0,
             ["shl 0, 0, 0, 0;"],
@@ -144,10 +144,10 @@ impl Runtime {
             "split_gl",
             vec!["byte_compare"],
             [r#"instr split_gl X, Z, W
-                    link ~> tmp1_col = regs::mload(X, STEP)
-                    link ~> (tmp3_col, tmp4_col) = split_gl::split(tmp1_col)
-                    link ~> regs::mstore(Z, STEP + 2, tmp3_col)
-                    link ~> regs::mstore(W, STEP + 3, tmp4_col);"#],
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> (tmp3_col, tmp4_col) = split_gl.split(tmp1_col)
+                    link ~> regs.mstore(Z, STEP + 2, tmp3_col)
+                    link ~> regs.mstore(W, STEP + 3, tmp4_col);"#],
             0,
             ["split_gl 0, 0, 0;"],
         );
@@ -355,19 +355,19 @@ impl Runtime {
             [
                 format!(
                     "instr affine_256 link ~> {};",
-                    instr_link("arith::affine_256", 24, 16)
+                    instr_link("arith.affine_256", 24, 16)
                 ),
                 format!(
                     "instr ec_add link ~> {};",
-                    instr_link("arith::ec_add", 32, 16)
+                    instr_link("arith.ec_add", 32, 16)
                 ),
                 format!(
                     "instr ec_double link ~> {};",
-                    instr_link("arith::ec_double", 16, 16)
+                    instr_link("arith.ec_double", 16, 16)
                 ),
                 format!(
                     "instr mod_256 link ~> {};",
-                    instr_link("arith::mod_256", 24, 8)
+                    instr_link("arith.mod_256", 24, 8)
                 ),
             ],
             32,
