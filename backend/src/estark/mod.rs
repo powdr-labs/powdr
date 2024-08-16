@@ -74,7 +74,7 @@ type Fixed<F> = Vec<(String, Vec<F>)>;
 
 /// eStark provers require a fixed column with the equivalent semantics to
 /// Polygon zkEVM's `L1` column. Powdr generated PIL will always have
-/// `main.first_step`, but directly given PIL may not have it. This is a fixup
+/// `main::first_step`, but directly given PIL may not have it. This is a fixup
 /// to inject such column if it doesn't exist.
 ///
 /// TODO Improve how this is done.
@@ -86,11 +86,11 @@ fn first_step_fixup<F: FieldElement>(
 
     let mut pil: PIL = json_exporter::export(pil);
 
-    let patched_constants = if !fixed.iter().any(|(k, _)| k == "main.first_step") {
+    let patched_constants = if !fixed.iter().any(|(k, _)| k == "main::first_step") {
         use starky::types::Reference;
         pil.nConstants += 1;
         pil.references.insert(
-            "main.first_step".to_string(),
+            "main::first_step".to_string(),
             Reference {
                 polType: None,
                 type_: "constP".to_string(),
@@ -106,7 +106,7 @@ fn first_step_fixup<F: FieldElement>(
             .iter()
             .cloned()
             .chain(once((
-                "main.first_step".to_string(),
+                "main::first_step".to_string(),
                 once(F::one())
                     .chain(repeat(F::zero()))
                     .take(degree as usize)
