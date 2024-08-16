@@ -300,7 +300,7 @@ fn riscv_machine(
     format!(
         r#"
 {}
-machine Main {{
+machine Main with min_degree: {}, max_degree: {} {{
 {}
 
 {}
@@ -314,6 +314,8 @@ let initial_memory: (fe, fe)[] = [
     }}
 }}    
 "#,
+        1 << (powdr_linker::MIN_DEGREE_LOG - 2),
+        1 << (*powdr_linker::MAX_DEGREE_LOG - 2),
         runtime.submachines_import(),
         runtime.submachines_declare(),
         preamble,
