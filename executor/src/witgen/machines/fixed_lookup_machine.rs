@@ -187,7 +187,7 @@ pub struct FixedLookup<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     multiplicities: BTreeMap<u64, BTreeMap<usize, u64>>,
     has_logup_multiplicity_column: bool,
-    namespace: String
+    namespace: String,
 }
 
 impl<'a, T: FieldElement> FixedLookup<'a, T> {
@@ -223,7 +223,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
                 .then_some((i.id, i))
             })
             .collect();
-        
+
         let degree = fixed_data
             .fixed_cols
             .values()
@@ -232,13 +232,14 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             .unwrap_or(0) as u64;
 
         // Splitting the column name to get the namespace
-        let (namespace, _) = split_column_name(&fixed_data.witness_cols.values().next().unwrap().poly.name);
-        
+        let (namespace, _) =
+            split_column_name(&fixed_data.witness_cols.values().next().unwrap().poly.name);
+
         let has_logup_multiplicity_column = fixed_data
             .witness_cols
             .values()
             .any(|col| split_column_name(&col.poly.name).1 == MULTIPLICITY_LOOKUP_COLUMN);
-        
+
         Self {
             degree,
             global_constraints,
@@ -247,7 +248,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             fixed_data,
             multiplicities: Default::default(),
             has_logup_multiplicity_column,
-            namespace: namespace.to_string()
+            namespace: namespace.to_string(),
         }
     }
 
@@ -408,9 +409,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         &mut self,
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
-        // Clones the self.multiplcities by changing the type of the multiplicity from u64 to T by using T::from() 
+        // Clones the self.multiplcities by changing the type of the multiplicity from u64 to T by using T::from()
         // and adds the rows that are not present in the multiplicities for each identity as T::zero()
-        let multiplicities: BTreeMap<u64, BTreeMap<usize, T>> = self.multiplicities.clone()
+        let multiplicities: BTreeMap<u64, BTreeMap<usize, T>> = self
+            .multiplicities
+            .clone()
             .into_iter()
             .map(|(identity_id, multiplicity)| {
                 let mut multiplicity: BTreeMap<usize, T> = multiplicity
@@ -431,7 +434,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
             for row in 0..self.degree as usize {
                 values.push(multiplicity[&row]);
             }
-            if self.has_logup_multiplicity_column{
+            if self.has_logup_multiplicity_column {
                 log::trace!("Detected LogUp Multiplicity Column");
                 witness_col_values.insert(self.namespaced(MULTIPLICITY_LOOKUP_COLUMN), values);
             }
