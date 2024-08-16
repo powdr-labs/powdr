@@ -261,7 +261,7 @@ fn process_witness_for_machine<F: FieldElement>(
         .expect("All witness columns of a machine must have the same size")
         as DegreeType;
 
-    (witness, size)
+    (witness, size as DegreeType)
 }
 
 fn time_stage<'a, F: FieldElement>(

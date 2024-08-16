@@ -7,7 +7,7 @@ use powdr_ast::{
     asm_analysis::{AnalysisASMFile, MachineDegree},
     parsed::{asm::parse_absolute_path, Expression, Number, PilStatement},
 };
-use powdr_number::{FieldElement};
+use powdr_number::FieldElement;
 use powdr_pipeline::Pipeline;
 use powdr_riscv_executor::{get_main_machine, Elem, ExecutionTrace, MemoryState, ProfilerOptions};
 
