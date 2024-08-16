@@ -354,7 +354,8 @@ impl TypeChecker {
                     }
                 }
                 ModuleStatement::TraitImplementation(trait_impl) => {
-                    // comment by Thibaut: here I'm confused why we add an implementation to the items, as it is not bound to a name (here it's bound to the name of the module). Shouldn't we rather, for example, have a single `Item::Trait` and store both the declaration and the implementations there?
+                    // treat trait implementations as items whose path is the module they are defined in
+                    // see [https://github.com/powdr-labs/powdr/issues/1697]
                     self.insert_item(ctx, Item::TraitImplementation(trait_impl.clone()));
                 }
             }
@@ -389,11 +390,11 @@ impl TypeChecker {
 
     fn check_trait_declaration(
         &self,
-        enum_decl: TraitDeclaration<parsed::Expression>,
+        trait_decl: TraitDeclaration<parsed::Expression>,
         ctx: &AbsoluteSymbolPath,
     ) -> Result<(), Vec<String>> {
         // TODO: actually check the trait declaration?
-        self.insert_item(ctx, Item::TraitDeclaration(enum_decl.clone()));
+        self.insert_item(ctx, Item::TraitDeclaration(trait_decl.clone()));
         Ok(())
     }
 
