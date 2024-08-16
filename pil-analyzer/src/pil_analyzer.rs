@@ -345,7 +345,7 @@ impl PILAnalyzer {
                                 Some(sub_name) => self
                                     .driver()
                                     .resolve_namespaced_decl(&[name, sub_name])
-                                    .to_string(),
+                                    .to_relative_string(), //TODO GZ
                             },
                             symbol_category,
                         )
@@ -451,7 +451,7 @@ impl<'a> AnalysisDriver for Driver<'a> {
             .iter_to_root()
             .chain(once(parse_absolute_path("::std::prelude")))
             .find_map(|prefix| {
-                let path = prefix.join(path.clone()).to_string();
+                let path = prefix.join(path.clone()).to_relative_string();
                 self.0.known_symbols.get(&path).map(|cat| (path, *cat))
             })
     }
