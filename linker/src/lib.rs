@@ -1,6 +1,5 @@
 #![deny(clippy::print_stdout)]
 
-use std::collections::BTreeMap;
 use lazy_static::lazy_static;
 use powdr_analysis::utils::parse_pil_statement;
 use powdr_ast::{
@@ -14,6 +13,7 @@ use powdr_ast::{
     },
 };
 use powdr_parser_util::SourceRef;
+use std::collections::BTreeMap;
 
 use itertools::Itertools;
 

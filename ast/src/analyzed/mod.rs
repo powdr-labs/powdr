@@ -545,7 +545,7 @@ impl DegreeRange {
         let max_log = usize::BITS - max_ceil.leading_zeros() - 1;
         (min_log..=max_log).map(|exponent| 1 << exponent)
     }
-    
+
     /// Fit a degree to this range:
     /// - returns the smallest value in the range which is larger or equal to `new_degree`
     /// - panics if no such value exists
