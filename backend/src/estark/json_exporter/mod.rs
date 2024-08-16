@@ -197,7 +197,7 @@ fn fixup_name(name: &str) -> String {
     if name.contains('.') {
         name.to_string()
     } else if let Some(last) = name.rfind("::") {
-        format!("{}.{}", &name[..last], &name[last + 1..])
+        format!("{}.{}", &name[..last], &name[last + 2..])
     } else {
         panic!("Witness or intermediate column is not inside a namespace: {name}");
     }
