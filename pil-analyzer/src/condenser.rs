@@ -22,7 +22,7 @@ use powdr_ast::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         display::format_type_scheme_around_name,
         types::{ArrayType, Type},
-        visitor::{AllChildren, Children},
+        visitor::AllChildren,
         ArrayLiteral, BlockExpression, FunctionKind, LetStatementInsideBlock, Number, Pattern,
         TypedExpression, UnaryOperation,
     },
@@ -713,14 +713,14 @@ fn closure_to_function<T: FieldElement>(
     }
 
     let var_height = environment.len() as u64;
-    let outer_var_refs = outer_var_refs(var_height, &lambda.body).collect::<HashMap<_, _>>();
+    let outer_var_refs = outer_var_refs(var_height, &lambda.body).collect::<BTreeMap<_, _>>();
 
     let mut lambda = (*lambda).clone();
     lambda.kind = expected_kind;
 
     compact_var_refs(
         &mut lambda.body,
-        &outer_var_refs.keys().copied().collect(),
+        &outer_var_refs.keys().copied().collect::<Vec<_>>(),
         var_height,
     );
 
@@ -769,7 +769,7 @@ fn outer_var_refs(environment_size: u64, e: &Expression) -> impl Iterator<Item =
 }
 
 /// Updates local variable IDs to be compact.
-fn compact_var_refs(e: &mut Expression, referenced_outer_vars: &Vec<u64>, environment_size: u64) {
+fn compact_var_refs(e: &mut Expression, referenced_outer_vars: &[u64], environment_size: u64) {
     e.children_mut().for_each(|e| {
         if let Expression::Reference(_, Reference::LocalVar(id, _name)) = e {
             if *id >= environment_size {
