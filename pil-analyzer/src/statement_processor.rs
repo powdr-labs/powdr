@@ -456,7 +456,7 @@ where
                     absolute_name: self
                         .driver
                         .resolve_namespaced_decl(&[&name, &variant.name])
-                        .to_string(),
+                        .to_relative_string(),
                     stage: None,
                     kind: SymbolKind::Other(),
                     length: None,
@@ -484,7 +484,7 @@ where
                     absolute_name: self
                         .driver
                         .resolve_namespaced_decl(&[&name, &function.name])
-                        .to_string(),
+                        .to_relative_string(),
                     stage: None,
                     kind: SymbolKind::Other(),
                     length: None,

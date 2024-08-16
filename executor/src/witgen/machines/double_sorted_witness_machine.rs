@@ -141,12 +141,12 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
             // Now, we check that they both have the same range constraint and use it to determine
             // the base of the two digits.
             let upper_poly_id =
-                fixed_data.try_column_by_name(&format!("{namespace}::{}", DIFF_COLUMNS[0]))?;
+                fixed_data.try_column_by_name(&format!("{namespace}.{}", DIFF_COLUMNS[0]))?;
             let upper_range_constraint = fixed_data.global_range_constraints().witness_constraints
                 [&upper_poly_id]
                 .as_ref()?;
             let lower_poly_id =
-                fixed_data.try_column_by_name(&format!("{namespace}::{}", DIFF_COLUMNS[1]))?;
+                fixed_data.try_column_by_name(&format!("{namespace}.{}", DIFF_COLUMNS[1]))?;
             let lower_range_constraint = fixed_data.global_range_constraints().witness_constraints
                 [&lower_poly_id]
                 .as_ref()?;

@@ -554,7 +554,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         once(None)
             .chain((1..).map(Some))
             .map(|cnt| format!("{name}{}", cnt.map(|c| format!("_{c}")).unwrap_or_default()))
-            .map(|name| self.namespace.with_part(&name).to_string())
+            .map(|name| self.namespace.with_part(&name).to_relative_string()) // TODO GZ: to_relative_string
             .find(|name| !self.symbols.contains_key(name) && !self.new_symbols.contains(name))
             .unwrap()
     }

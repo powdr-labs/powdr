@@ -22,16 +22,16 @@ namespace T(65536);
     col witness pc;
     col witness XInv;
     col witness XIsZero;
-    T.XIsZero = 1 - T.X * T.XInv;
-    T.XIsZero * T.X = 0;
-    T.XIsZero * (1 - T.XIsZero) = 0;
+    T::XIsZero = 1 - T::X * T::XInv;
+    T::XIsZero * T::X = 0;
+    T::XIsZero * (1 - T::XIsZero) = 0;
     col witness instr_jmpz;
     col witness instr_jmpz_param_l;
     col witness instr_jmp;
     col witness instr_jmp_param_l;
     col witness instr_dec_CNT;
     col witness instr_assert_zero;
-    T.instr_assert_zero * (T.XIsZero - 1) = 0;
+    T::instr_assert_zero * (T::XIsZero - 1) = 0;
     col witness X;
     col witness X_const;
     col witness X_read_free;
@@ -42,12 +42,12 @@ namespace T(65536);
     col witness reg_write_X_CNT;
     col witness read_X_pc;
     col witness reg_write_X_A;
-    T.X = T.read_X_A * T.A + T.read_X_CNT * T.CNT + T.X_const + T.X_read_free * T.X_free_value;
-    T.A' = T.first_step' * 0 + T.reg_write_X_A * T.X + (1 - (T.first_step' + T.reg_write_X_A)) * T.A;
+    T::X = T::read_X_A * T::A + T::read_X_CNT * T::CNT + T::X_const + T::X_read_free * T::X_free_value;
+    T::A' = T::first_step' * 0 + T::reg_write_X_A * T::X + (1 - (T::first_step' + T::reg_write_X_A)) * T::A;
     col witness X_free_value;
-    std::prelude::set_hint(T.X_free_value, (query |_| match std::prover::eval(T.pc) {
+    std::prelude::set_hint(T::X_free_value, (query |_| match std::prover::eval(T::pc) {
         0 => std::prelude::Query::Input(1),
-        3 => std::prelude::Query::Input(std::convert::int::<fe>(std::prover::eval(T.CNT) + 1)),
+        3 => std::prelude::Query::Input(std::convert::int::<fe>(std::prover::eval(T::CNT) + 1)),
         7 => std::prelude::Query::Input(0),
         _ => std::prelude::Query::None,
     }));
@@ -58,7 +58,7 @@ namespace T(65536);
     col fixed p_read_X_pc = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
     col fixed p_reg_write_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 0] + [0]*;
     col fixed p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
-    [T.pc, T.reg_write_X_A, T.reg_write_X_CNT] in 1 - T.first_step $ [T.line, T.p_reg_write_X_A, T.p_reg_write_X_CNT];
+    [T::pc, T::reg_write_X_A, T::reg_write_X_CNT] in 1 - T::first_step $ [T::line, T::p_reg_write_X_A, T::p_reg_write_X_CNT];
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(input, formatted);
