@@ -33,9 +33,9 @@ machine Main with degree: 16 {
     reg Y[<=];
     reg A;
 
-    instr identity X -> Y = sub::identity;
-    instr one -> Y = sub::one;
-    instr nothing = sub::nothing;
+    instr identity X -> Y = sub.identity;
+    instr one -> Y = sub.one;
+    instr nothing = sub.nothing;
 
     function main {
         start:
@@ -226,9 +226,9 @@ The diff for our example program is as follows:
 -       reg A;
 +       operation main<2>;
 // external instructions are removed and replaced with links, see down below
--       instr identity X -> Y = sub::identity;
--       instr one -> Y = sub::one;
--       instr nothing = sub::nothing;
+-       instr identity X -> Y = sub.identity;
+-       instr one -> Y = sub.one;
+-       instr nothing = sub.nothing;
 -
 -       function main {
 -               start:
