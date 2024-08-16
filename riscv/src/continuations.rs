@@ -7,7 +7,7 @@ use powdr_ast::{
     asm_analysis::AnalysisASMFile,
     parsed::{asm::parse_absolute_path, Expression, Number, PilStatement},
 };
-use powdr_executor::constant_evaluator::get_uniquely_sized;
+use powdr_executor::constant_evaluator::MAX_DEGREE_LOG;
 use powdr_number::FieldElement;
 use powdr_pipeline::Pipeline;
 use powdr_riscv_executor::{get_main_machine, Elem, ExecutionTrace, MemoryState, ProfilerOptions};
@@ -74,21 +74,19 @@ where
 {
     let num_chunks = bootloader_inputs.len();
 
+    // The size of the main machine is dynamic, so we need to chose a size.
+    // We chose a size 4x smaller than the maximum size, so that we can guarantee
+    // that the register memory does not run out of rows.
+    // TODO: After #1667 ("Support degree ranges") is merged, this can be set in ASM
+    //       and we can just use the maximum size here.
+    let length = 1 << (*MAX_DEGREE_LOG - 2);
+
     log::info!("Computing fixed columns...");
-    let fixed_cols = pipeline.compute_fixed_cols().unwrap();
+    pipeline.compute_fixed_cols().unwrap();
 
     // Advance the pipeline to the optimized PIL stage, so that it doesn't need to be computed
     // in every chunk.
     pipeline.compute_optimized_pil().unwrap();
-
-    // TODO hacky way to find the degree of the main machine, fix.
-    let length = get_uniquely_sized(&fixed_cols)
-        .unwrap()
-        .iter()
-        .find(|(col, _)| col == "main.STEP")
-        .unwrap()
-        .1
-        .len() as u64;
 
     bootloader_inputs
         .into_iter()
@@ -263,26 +261,10 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     let mut proven_trace = first_real_execution_row;
     let mut chunk_index = 0;
 
-    let length = program
-        .machines()
-        .fold(None, |acc, (_, m)| acc.or(m.degree.clone()))
-        .unwrap();
-
-    let length: usize = match length {
-        Expression::Number(
-            _,
-            Number {
-                value: length,
-                type_: None,
-            },
-        ) => length.try_into().unwrap(),
-        e => unimplemented!(
-            "degree {e} is not supported in continuations as we don't have an evaluator yet"
-        ),
-    };
+    let length = 1 << (*MAX_DEGREE_LOG - 2);
 
     loop {
-        log::info!("\nRunning chunk {}...", chunk_index);
+        log::info!("\nRunning chunk {} for {} steps...", chunk_index, length);
 
         log::info!("Building bootloader inputs for chunk {}...", chunk_index);
         let mut accessed_pages = BTreeSet::new();

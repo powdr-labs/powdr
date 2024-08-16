@@ -7,6 +7,7 @@ use std::convert::int;
 machine ByteShift with
     latch: latch,
     operation_id: operation_id,
+    degree: 65536
 {
     operation run<0> P_operation, P_A, P_B, P_ROW -> P_C;
 

@@ -167,6 +167,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
                 .unwrap();
             machines.push(KnownMachine::Vm(Generator::new(
                 name_with_type("Vm"),
+                fixed.common_degree(&machine_witnesses),
                 fixed,
                 &connecting_identities,
                 machine_identities,

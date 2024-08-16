@@ -66,8 +66,10 @@ pub struct VmProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
 }
 
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T, Q> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         machine_name: String,
+        degree: DegreeType,
         row_offset: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
         identities: &[&'a Identity<T>],
@@ -75,8 +77,6 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         data: FinalizableData<T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
     ) -> Self {
-        let degree = fixed_data.common_degree(witnesses);
-
         let (identities_with_next, identities_without_next): (Vec<_>, Vec<_>) = identities
             .iter()
             .partition(|identity| identity.contains_next_ref());
