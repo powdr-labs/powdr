@@ -192,7 +192,7 @@ impl Display for CallableRef {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "{}{}::{}({})",
+            "{}{}.{}({})",
             match &self.params.outputs[..] {
                 [] => "".to_string(),
                 [output] => format!("{output} = "),
@@ -743,7 +743,7 @@ impl Display for NamespacedPolynomialReference {
         if let Some(type_args) = &self.type_args {
             write!(f, "{}::{}", self.path, format_type_args(type_args))
         } else {
-            write!(f, "{}", self.path.to_dotted_string())
+            write!(f, "{}", self.path)
         }
     }
 }

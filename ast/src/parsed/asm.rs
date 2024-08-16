@@ -162,11 +162,6 @@ impl SymbolPath {
         self
     }
 
-    /// Formats the path using `::` as separator
-    pub fn to_dotted_string(&self) -> String {
-        self.parts.iter().format("::").to_string()
-    }
-
     pub fn try_to_identifier(&self) -> Option<&String> {
         match &self.parts[..] {
             [Part::Named(name)] => Some(name),
@@ -354,11 +349,6 @@ impl AbsoluteSymbolPath {
         let mut parts = self.parts.clone();
         parts.push(part.to_string());
         Self { parts }
-    }
-
-    /// Formats the path without leading `::` and uses `::` as separator
-    pub fn to_dotted_string(&self) -> String {
-        self.parts.join("::")
     }
 }
 

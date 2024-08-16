@@ -150,10 +150,7 @@ impl ReferencedSymbols for Expression {
 
 impl ReferencedSymbols for Type {
     fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
-        Box::new(
-            self.contained_named_types()
-                .map(|n| n.to_dotted_string().into()),
-        )
+        Box::new(self.contained_named_types().map(|n| n.to_string().into()))
     }
 }
 

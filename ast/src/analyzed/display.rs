@@ -452,13 +452,12 @@ impl Display for AlgebraicReference {
 
 impl Display for PolynomialReference {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}", self.name)?;
         if let Some(type_args) = &self.type_args {
             if !type_args.is_empty() {
-                write!(f, "{}::{}", self.name, format_type_args(type_args))?;
-                return Ok(());
+                write!(f, "::{}", format_type_args(type_args))?;
             }
         }
-        write!(f, "{}", self.name)?;
 
         Ok(())
     }

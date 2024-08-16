@@ -341,7 +341,7 @@ impl<'a> ASMPILConverter<'a> {
             .find(|o| o.name == callable)
             .unwrap_or_else(|| {
                 panic!(
-                    "function/operation not found: {}::{}",
+                    "function/operation not found: {}.{}",
                     &instance.name, callable
                 )
             });

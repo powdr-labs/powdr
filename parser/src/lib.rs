@@ -485,12 +485,12 @@ namespace N(2);
     fn parse_impl() {
         let input = r#"
     impl<T> Iterator<ArrayIterator<T>, T> {
-        next: |it| if it::pos >= 7 { (it, none) } else { some((increment(it), it::arr[it::pos])) },
+        next: |it| if it.pos >= 7 { (it, none) } else { some((increment(it), it.arr[it.pos])) },
     }"#;
 
         let expected = r#"
     impl<T> Iterator<ArrayIterator<T>, T> {
-        next: (|it| if it::pos >= 7 { (it, none) } else { some((increment(it), it::arr[it::pos])) }),
+        next: (|it| if it.pos >= 7 { (it, none) } else { some((increment(it), it.arr[it.pos])) }),
     }"#;
 
         let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
@@ -501,12 +501,12 @@ namespace N(2);
     fn parse_impl2() {
         let input = r#"
     impl<A, B> Iterator<ArrayIterator<A>, B> {
-        next: |it| if it::pos >= 7 { (it, it::pos) } else { (it, 0) },
+        next: |it| if it.pos >= 7 { (it, it.pos) } else { (it, 0) },
     }"#;
 
         let expected = r#"
     impl<A, B> Iterator<ArrayIterator<A>, B> {
-        next: (|it| if it::pos >= 7 { (it, it::pos) } else { (it, 0) }),
+        next: (|it| if it.pos >= 7 { (it, it.pos) } else { (it, 0) }),
     }"#;
 
         let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
