@@ -220,7 +220,7 @@ fn set_size<F: Clone>(pil: Arc<Analyzed<F>>, degree: DegreeType) -> Arc<Analyzed
         current_ranges.len() <= 1,
         "Expected at most one degree within a machine"
     );
-    // Clone the PIL and set the degree for all definitions
+    // Clone the PIL and set the degree for all polynomial definitions
     let pil = (*pil).clone();
     let definitions = pil
         .definitions
