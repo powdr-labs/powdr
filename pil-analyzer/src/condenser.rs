@@ -23,8 +23,8 @@ use powdr_ast::{
         display::format_type_scheme_around_name,
         types::{ArrayType, Type},
         visitor::{AllChildren, Children},
-        ArrayLiteral, BlockExpression, FunctionKind, LetStatementInsideBlock,
-        Number, Pattern, TypedExpression, UnaryOperation,
+        ArrayLiteral, BlockExpression, FunctionKind, LetStatementInsideBlock, Number, Pattern,
+        TypedExpression, UnaryOperation,
     },
 };
 use powdr_number::{BigUint, DegreeType, FieldElement};
@@ -712,8 +712,8 @@ fn closure_to_function<T: FieldElement>(
         )));
     }
 
-    let outer_var_refs =
-        outer_var_refs(environment.len() as u64, &lambda.body).collect::<HashMap<_, _>>();
+    let var_height = environment.len() as u64;
+    let outer_var_refs = outer_var_refs(var_height, &lambda.body).collect::<HashMap<_, _>>();
 
     let mut lambda = (*lambda).clone();
     lambda.kind = expected_kind;
@@ -721,7 +721,7 @@ fn closure_to_function<T: FieldElement>(
     compact_var_refs(
         &mut lambda.body,
         &outer_var_refs.keys().copied().collect(),
-        environment.len() as u64,
+        var_height,
     );
 
     let statements = outer_var_refs
