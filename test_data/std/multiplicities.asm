@@ -1,4 +1,3 @@
-use std::prover::Query;
 use std::convert::fe;
 use std::protocols::lookup_via_bus::lookup;
 use std::math::fp2::from_base;
