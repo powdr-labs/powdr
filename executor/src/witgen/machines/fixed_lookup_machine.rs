@@ -177,7 +177,6 @@ fn split_column_name(name: &str) -> (&str, &str) {
 }
 
 const MULTIPLICITY_LOOKUP_COLUMN: &str = "m_logup_multiplicity";
-const MAIN_MULTIPLICITY_TO_TRY: &str = "main.m_logup_multiplicity";
 
 /// Machine to perform a lookup in fixed columns only.
 pub struct FixedLookup<'a, T: FieldElement> {
@@ -187,10 +186,24 @@ pub struct FixedLookup<'a, T: FieldElement> {
     connecting_identities: BTreeMap<u64, &'a Identity<T>>,
     fixed_data: &'a FixedData<'a, T>,
     multiplicities: BTreeMap<u64, BTreeMap<usize, u64>>,
-    has_logup_multiplicity_column: bool
+    has_logup_multiplicity_column: bool,
+    namespace: String
 }
 
 impl<'a, T: FieldElement> FixedLookup<'a, T> {
+    fn namespaced(&self, name: &str) -> String {
+        format!("{}.{}", self.namespace, name)
+    }
+
+    pub fn multiplicity_columns(&self) -> HashSet<PolyID> {
+        self.fixed_data
+            .witness_cols
+            .values()
+            .filter(|col| split_column_name(&col.poly.name).1 == MULTIPLICITY_LOOKUP_COLUMN)
+            .map(|col| col.poly.poly_id)
+            .collect()
+    }
+
     pub fn new(
         global_constraints: GlobalConstraints<T>,
         all_identities: Vec<&'a Identity<T>>,
@@ -218,7 +231,8 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             .max()
             .unwrap_or(0) as u64;
 
-        println!("Degree: {:?}", degree);
+        // Splitting the column name to get the namespace
+        let (namespace, _) = split_column_name(&fixed_data.witness_cols.values().next().unwrap().poly.name);
         
         let has_logup_multiplicity_column = fixed_data
             .witness_cols
@@ -232,7 +246,8 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             connecting_identities,
             fixed_data,
             multiplicities: Default::default(),
-            has_logup_multiplicity_column
+            has_logup_multiplicity_column,
+            namespace: namespace.to_string()
         }
     }
 
@@ -301,15 +316,13 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             }
         };
 
-        // update multiplicities
+        // Update the multiplicities
         self.multiplicities
             .entry(identity_id)
             .or_insert_with(BTreeMap::new)
             .entry(row)
             .and_modify(|e| *e += 1)
             .or_insert(1);
-
-        println!("Multiplicities: {:?}", self.multiplicities);
 
         let output = output_columns
             .iter()
@@ -395,8 +408,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         &mut self,
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
-        // Clone the self.multiplcities by changing the type of the multiplicity from u64 to T by using T::from() 
-        // and adding the rows that are not present in the multiplicities for each identity
+        // Clones the self.multiplcities by changing the type of the multiplicity from u64 to T by using T::from() 
+        // and adds the rows that are not present in the multiplicities for each identity as T::zero()
         let multiplicities: BTreeMap<u64, BTreeMap<usize, T>> = self.multiplicities.clone()
             .into_iter()
             .map(|(identity_id, multiplicity)| {
@@ -413,22 +426,18 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
             })
             .collect();
 
-        // Collect all the rows of an identity as a Vec<T>
+        // Collects all the rows of an identity as a Vec<T>
         let mut witness_col_values = HashMap::new();
-        for (identity_id, multiplicity) in &multiplicities {
+        for (_, multiplicity) in &multiplicities {
             let mut values = vec![];
             for row in 0..self.degree as usize {
                 values.push(multiplicity[&row]);
             }
             if self.has_logup_multiplicity_column{
-                witness_col_values.insert(MAIN_MULTIPLICITY_TO_TRY.to_string(), values);
+                log::trace!("Detected LogUp Multiplicity Column");
+                witness_col_values.insert(self.namespaced(MULTIPLICITY_LOOKUP_COLUMN), values);
             }
         }
-
-        // Add namespace like main or arith to the column name
-
-        println!("Multiplicities: {:?}", multiplicities);
-        println!("Witness col values: {:?}", witness_col_values);
         witness_col_values
     }
 
