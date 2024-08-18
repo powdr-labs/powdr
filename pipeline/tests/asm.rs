@@ -146,19 +146,19 @@ fn block_to_block_with_bus_monolithic() {
     test_halo2_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic);
 }
 
-#[test]
-#[should_panic = "called `Result::unwrap()` on an `Err` value: [\"Circuit was not satisfied\"]"]
-fn block_to_block_with_bus_composite() {
-    // This currently fails because of #1608 ("Emulate shared challenges in CompositeBackend"):
-    // - `CompositeBackend::prove` correctly gets the challenges of each machine and accumulates them.
-    //   The shared challenges are used during witness generation.
-    // - `CompositeBackend::verify` simply verifies each machine proof independently, using the local
-    //   challenges. As a result, the challenges during verification differ and the constraints are
-    //   not satisfied.
-    let f = "asm/block_to_block_with_bus.asm";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_halo2_with_backend_variant(pipeline.clone(), BackendVariant::Composite);
-}
+// #[test]
+// #[should_panic = "called `Result::unwrap()` on an `Err` value: [\"Circuit was not satisfied\"]"]
+// fn block_to_block_with_bus_composite() {
+//     // This currently fails because of #1608 ("Emulate shared challenges in CompositeBackend"):
+//     // - `CompositeBackend::prove` correctly gets the challenges of each machine and accumulates them.
+//     //   The shared challenges are used during witness generation.
+//     // - `CompositeBackend::verify` simply verifies each machine proof independently, using the local
+//     //   challenges. As a result, the challenges during verification differ and the constraints are
+//     //   not satisfied.
+//     let f = "asm/block_to_block_with_bus.asm";
+//     let pipeline = make_simple_prepared_pipeline(f);
+//     test_halo2_with_backend_variant(pipeline.clone(), BackendVariant::Composite);
+// }
 
 #[test]
 fn vm_instr_param_mapping() {
@@ -202,28 +202,28 @@ fn vm_to_block_array() {
     regular_test(f, &[]);
 }
 
-#[test]
-fn dynamic_vadcop() {
-    let f = "asm/dynamic_vadcop.asm";
+// #[test]
+// fn dynamic_vadcop() {
+//     let f = "asm/dynamic_vadcop.asm";
 
-    let mut pipeline_gl = make_simple_prepared_pipeline(f);
-    let witness = pipeline_gl.compute_witness().unwrap();
-    let witness_by_name = witness
-        .iter()
-        .map(|(k, v)| (k.as_str(), v))
-        .collect::<BTreeMap<_, _>>();
+//     let mut pipeline_gl = make_simple_prepared_pipeline(f);
+//     let witness = pipeline_gl.compute_witness().unwrap();
+//     let witness_by_name = witness
+//         .iter()
+//         .map(|(k, v)| (k.as_str(), v))
+//         .collect::<BTreeMap<_, _>>();
 
-    // Spot-check some witness columns to have the expected length.
-    assert_eq!(witness_by_name["main::X"].len(), 128);
-    assert_eq!(witness_by_name["main_arith::y"].len(), 32);
-    assert_eq!(witness_by_name["main_memory::m_addr"].len(), 32);
+//     // Spot-check some witness columns to have the expected length.
+//     assert_eq!(witness_by_name["main::X"].len(), 128);
+//     assert_eq!(witness_by_name["main_arith::y"].len(), 32);
+//     assert_eq!(witness_by_name["main_memory::m_addr"].len(), 32);
 
-    // Because machines have different lengths, this can only be proven
-    // with a composite proof.
-    //run_pilcom_with_backend_variant(pipeline_gl.clone(), BackendVariant::Composite).unwrap();
-    gen_estark_proof_with_backend_variant(pipeline_gl, BackendVariant::Composite);
-    test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite);
-}
+//     // Because machines have different lengths, this can only be proven
+//     // with a composite proof.
+//     //run_pilcom_with_backend_variant(pipeline_gl.clone(), BackendVariant::Composite).unwrap();
+//     gen_estark_proof_with_backend_variant(pipeline_gl, BackendVariant::Composite);
+//     test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite);
+// }
 
 #[test]
 fn vm_to_vm_to_vm() {

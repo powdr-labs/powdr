@@ -90,7 +90,7 @@ fn first_step_fixup<F: FieldElement>(
         use starky::types::Reference;
         pil.nConstants += 1;
         pil.references.insert(
-            "main::first_step".to_string(),
+            "main.first_step".to_string(),
             Reference {
                 polType: None,
                 type_: "constP".to_string(),
@@ -106,7 +106,7 @@ fn first_step_fixup<F: FieldElement>(
             .iter()
             .cloned()
             .chain(once((
-                "main::first_step".to_string(),
+                "main.first_step".to_string(),
                 once(F::one())
                     .chain(repeat(F::zero()))
                     .take(degree as usize)
