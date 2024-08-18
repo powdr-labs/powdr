@@ -63,7 +63,7 @@ pub fn make_prepared_pipeline<T: FieldElement>(
 pub fn regular_test(file_name: &str, inputs: &[i32]) {
     let inputs_gl = inputs.iter().map(|x| GoldilocksField::from(*x)).collect();
     let pipeline_gl = make_prepared_pipeline(file_name, inputs_gl, vec![]);
-    //test_pilcom(pipeline_gl.clone());
+    test_pilcom(pipeline_gl.clone());
     gen_estark_proof(pipeline_gl);
 
     let inputs_bn = inputs.iter().map(|x| Bn254Field::from(*x)).collect();

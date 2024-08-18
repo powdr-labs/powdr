@@ -1,4 +1,4 @@
-//use std::collections::BTreeMap;
+use std::collections::BTreeMap;
 
 use powdr_backend::BackendType;
 use powdr_executor::constant_evaluator::get_uniquely_sized;
@@ -6,9 +6,9 @@ use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::{
     test_util::{
         asm_string_to_pil, gen_estark_proof_with_backend_variant, make_prepared_pipeline,
-        make_simple_prepared_pipeline, regular_test, resolve_test_file, test_halo2,
-        test_halo2_with_backend_variant, test_pilcom, test_plonky3_with_backend_variant,
-        BackendVariant,
+        make_simple_prepared_pipeline, regular_test, resolve_test_file,
+        run_pilcom_with_backend_variant, test_halo2, test_halo2_with_backend_variant, test_pilcom,
+        test_plonky3_with_backend_variant, BackendVariant,
     },
     util::{FixedPolySet, PolySet, WitnessPolySet},
     Pipeline,
@@ -129,7 +129,7 @@ fn vm_to_block_unique_interface() {
 #[test]
 fn vm_to_block_to_block() {
     let f = "asm/vm_to_block_to_block.asm";
-    //test_pilcom(make_simple_prepared_pipeline(f));
+    test_pilcom(make_simple_prepared_pipeline(f));
     test_halo2(make_simple_prepared_pipeline(f));
 }
 
@@ -202,28 +202,28 @@ fn vm_to_block_array() {
     regular_test(f, &[]);
 }
 
-// #[test]
-// fn dynamic_vadcop() {
-//     let f = "asm/dynamic_vadcop.asm";
+#[test]
+fn dynamic_vadcop() {
+    let f = "asm/dynamic_vadcop.asm";
 
-//     let mut pipeline_gl = make_simple_prepared_pipeline(f);
-//     let witness = pipeline_gl.compute_witness().unwrap();
-//     let witness_by_name = witness
-//         .iter()
-//         .map(|(k, v)| (k.as_str(), v))
-//         .collect::<BTreeMap<_, _>>();
+    let mut pipeline_gl = make_simple_prepared_pipeline(f);
+    let witness = pipeline_gl.compute_witness().unwrap();
+    let witness_by_name = witness
+        .iter()
+        .map(|(k, v)| (k.as_str(), v))
+        .collect::<BTreeMap<_, _>>();
 
-//     // Spot-check some witness columns to have the expected length.
-//     assert_eq!(witness_by_name["main::X"].len(), 128);
-//     assert_eq!(witness_by_name["main_arith::y"].len(), 32);
-//     assert_eq!(witness_by_name["main_memory::m_addr"].len(), 32);
+    // Spot-check some witness columns to have the expected length.
+    assert_eq!(witness_by_name["main::X"].len(), 128);
+    assert_eq!(witness_by_name["main_arith::y"].len(), 32);
+    assert_eq!(witness_by_name["main_memory::m_addr"].len(), 32);
 
-//     // Because machines have different lengths, this can only be proven
-//     // with a composite proof.
-//     //run_pilcom_with_backend_variant(pipeline_gl.clone(), BackendVariant::Composite).unwrap();
-//     gen_estark_proof_with_backend_variant(pipeline_gl, BackendVariant::Composite);
-//     test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite);
-// }
+    // Because machines have different lengths, this can only be proven
+    // with a composite proof.
+    run_pilcom_with_backend_variant(pipeline_gl.clone(), BackendVariant::Composite).unwrap();
+    gen_estark_proof_with_backend_variant(pipeline_gl, BackendVariant::Composite);
+    test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite);
+}
 
 #[test]
 fn vm_to_vm_to_vm() {
