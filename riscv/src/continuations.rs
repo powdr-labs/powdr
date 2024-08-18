@@ -121,7 +121,7 @@ where
                     .collect();
                 let pipeline = pipeline.add_external_witness_values(vec![
                     (
-                        "main_bootloader_inputs::value".to_string(),
+                        "main_bootloader_inputs.value".to_string(),
                         bootloader_inputs,
                     ),
                     (
