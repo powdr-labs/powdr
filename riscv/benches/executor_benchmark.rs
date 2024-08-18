@@ -43,7 +43,7 @@ fn executor_benchmark(c: &mut Criterion) {
     pipeline.compute_fixed_cols().unwrap();
 
     let pipeline = pipeline.add_external_witness_values(vec![(
-        "main_bootloader_inputs.value".to_string(),
+        "main_bootloader_inputs::value".to_string(),
         default_input(&[63, 64, 65])
             .into_iter()
             .map(|e| e.into_fe())
