@@ -786,7 +786,6 @@ impl<T: FieldElement> Pipeline<T> {
 
         self.log("Optimizing pil...");
         let optimized = powdr_pilopt::optimize(analyzed_pil);
-        println!("Optimized pil: {optimized}");
         self.maybe_write_pil(&optimized, "_opt")?;
         self.maybe_write_pil_object(&optimized, "_opt")?;
 
