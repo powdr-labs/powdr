@@ -125,7 +125,7 @@ where
                         bootloader_inputs,
                     ),
                     (
-                        "main::jump_to_shutdown_routine".to_string(),
+                        "main.jump_to_shutdown_routine".to_string(),
                         jump_to_shutdown_routine,
                     ),
                 ]);
@@ -396,7 +396,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         let register_iter = REGISTER_NAMES.iter().take(REGISTER_NAMES.len() - 1);
         register_values = register_iter
             .map(|reg| {
-                let reg = reg.strip_prefix("main::").unwrap();
+                let reg = reg.strip_prefix("main.").unwrap();
                 let id = Register::from(reg).addr();
                 *register_memory_snapshot.get(&(id as u32)).unwrap()
             })

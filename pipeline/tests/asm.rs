@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+//use std::collections::BTreeMap;
 
 use powdr_backend::BackendType;
 use powdr_executor::constant_evaluator::get_uniquely_sized;
@@ -6,9 +6,9 @@ use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::{
     test_util::{
         asm_string_to_pil, gen_estark_proof_with_backend_variant, make_prepared_pipeline,
-        make_simple_prepared_pipeline, regular_test, resolve_test_file,
-        run_pilcom_with_backend_variant, test_halo2, test_halo2_with_backend_variant, test_pilcom,
-        test_plonky3_with_backend_variant, BackendVariant,
+        make_simple_prepared_pipeline, regular_test, resolve_test_file, test_halo2,
+        test_halo2_with_backend_variant, test_pilcom, test_plonky3_with_backend_variant,
+        BackendVariant,
     },
     util::{FixedPolySet, PolySet, WitnessPolySet},
     Pipeline,
