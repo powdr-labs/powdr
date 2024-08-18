@@ -345,7 +345,7 @@ impl PILAnalyzer {
                                 Some(sub_name) => self
                                     .driver()
                                     .resolve_namespaced_decl(&[name, sub_name])
-                                    .to_relative_string(), //TODO GZ
+                                    .to_relative_string(),
                             },
                             symbol_category,
                         )

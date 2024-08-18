@@ -351,7 +351,7 @@ impl AbsoluteSymbolPath {
         Self { parts }
     }
 
-    // TODO GZ: Remove or document
+    // Returns the path as a string without the leading "::".
     pub fn to_relative_string(&self) -> String {
         self.parts.join("::")
     }
