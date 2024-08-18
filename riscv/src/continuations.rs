@@ -4,7 +4,7 @@ use std::{
 };
 
 use powdr_ast::{
-    asm_analysis::{AnalysisASMFile, MachineDegree},
+    asm_analysis::{AnalysisASMFile, Machine},
     parsed::{asm::parse_absolute_path, Expression, Number, PilStatement},
 };
 use powdr_number::FieldElement;
@@ -143,10 +143,7 @@ where
     Ok(())
 }
 
-fn sanity_check(program: &AnalysisASMFile) {
-    let main_machine = program.items[&parse_absolute_path("::Main")]
-        .try_to_machine()
-        .unwrap();
+fn sanity_check(main_machine: &Machine) {
     for expected_instruction in BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES {
         if !main_machine
             .instructions
@@ -217,7 +214,10 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     let mut register_values = default_register_values();
 
     let program = pipeline.compute_analyzed_asm().unwrap().clone();
-    sanity_check(&program);
+    let main_machine = program.items[&parse_absolute_path("::Main")]
+        .try_to_machine()
+        .unwrap();
+    sanity_check(main_machine);
 
     log::info!("Initializing memory merkle tree...");
 
@@ -267,41 +267,12 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     let mut proven_trace = first_real_execution_row;
     let mut chunk_index = 0;
 
-    let length =
-        program
-            .machines()
-            .fold(Default::default(), |MachineDegree { min, max }, (_, m)| {
-                MachineDegree {
-                    min: min.or(m.degree.min.clone()),
-                    max: max.or(m.degree.max.clone()),
-                }
-            });
-
-    let length: usize = match length {
-        MachineDegree {
-            min:
-                Some(Expression::Number(
-                    _,
-                    Number {
-                        value: min,
-                        type_: None,
-                    },
-                )),
-            max:
-                Some(Expression::Number(
-                    _,
-                    Number {
-                        value: max,
-                        type_: None,
-                    },
-                )),
-        } if min == max => min.try_into().unwrap(),
-        e => unimplemented!(
-            "degree range {e} is not supported in continuations as we don't have an evaluator yet"
-        ),
+    let length: usize = if let Expression::Number(_, n) = main_machine.degree.max.as_ref().unwrap()
+    {
+        n.value.clone().try_into().unwrap()
+    } else {
+        unimplemented!("Continuations rely on `Main` defining a max_degree in asm")
     };
-
-    let length = length / 4;
 
     loop {
         log::info!("\nRunning chunk {} for {} steps...", chunk_index, length);
