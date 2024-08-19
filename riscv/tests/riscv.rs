@@ -37,9 +37,9 @@ pub fn test_continuations(case: &str) {
     run_continuations_test(case, powdr_asm);
 
     // Test continuations from assembly files.
-    // let powdr_asm =
-    //     powdr_riscv::asm::compile::<GoldilocksField>(compiled.load_asm_files(), &runtime, true);
-    // run_continuations_test(case, powdr_asm);
+    let powdr_asm =
+        powdr_riscv::asm::compile::<GoldilocksField>(compiled.load_asm_files(), &runtime, true);
+    run_continuations_test(case, powdr_asm);
 }
 
 fn run_continuations_test(case: &str, powdr_asm: String) {
