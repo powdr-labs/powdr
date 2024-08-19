@@ -202,10 +202,18 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             .map(|col| col.poly.poly_id)
             .collect()
     }
-    
+
     fn get_namespace(&self) -> String {
-        let (namespace, _) =
-            split_column_name(&self.fixed_data.witness_cols.values().next().unwrap().poly.name);
+        let (namespace, _) = split_column_name(
+            &self
+                .fixed_data
+                .witness_cols
+                .values()
+                .next()
+                .unwrap()
+                .poly
+                .name,
+        );
         namespace.to_string()
     }
 
