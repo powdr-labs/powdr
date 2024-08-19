@@ -17,7 +17,7 @@ use p3_uni_stark::StarkConfig;
 
 use rand::{distributions::Standard, Rng, SeedableRng};
 
-use powdr_number::{BabyBearField, FieldElement};
+use powdr_number::{BabyBearField, FieldElement, LargeInt};
 
 pub trait Poseidon2Compatible {
     const D: u64;
@@ -26,6 +26,7 @@ pub trait Poseidon2Compatible {
     const PERM_WIDTH: usize;
     const RNG_SEED: u64 = 42;
 
+    type PermObject;
     type Poseidon2Perm;
 }
 
@@ -37,6 +38,7 @@ impl Poseidon2Compatible for BabyBearField {
     const ROUNDS_P: usize = 13;
     const PERM_WIDTH: usize = 16;
 
+    type PermObject = [BabyBear; Self::PERM_WIDTH];
     type Poseidon2Perm = Poseidon2<
         BabyBear,
         Poseidon2ExternalMatrixGeneral,
@@ -48,7 +50,7 @@ impl Poseidon2Compatible for BabyBearField {
 
 lazy_static! {
     static ref PERM_BB: <BabyBearField as Poseidon2Compatible>::Poseidon2Perm =
-        BabyBearField::Poseidon2Perm::new(
+        <BabyBearField as Poseidon2Compatible>::Poseidon2Perm::new(
             BabyBearField::ROUNDS_F,
             rand_chacha::ChaCha8Rng::seed_from_u64(BabyBearField::RNG_SEED)
                 .sample_iter(Standard)
@@ -67,6 +69,7 @@ lazy_static! {
 impl FieldElementMap for BabyBearField {
     type P3Field = BabyBear;
     type MdsMatrix = MdsMatrixBabyBear;
+    type PermObject = <BabyBearField as Poseidon2Compatible>::PermObject;
     type Perm = <BabyBearField as Poseidon2Compatible>::Poseidon2Perm;
 
     type Hash = PaddingFreeSponge<Self::Perm, { Self::WIDTH }, { Self::RATE }, { Self::OUT }>;
@@ -85,7 +88,7 @@ impl FieldElementMap for BabyBearField {
     type MyPcs = TwoAdicFriPcs<Self::P3Field, Self::Dft, Self::ValMmcs, Self::ChallengeMmcs>;
     type Config = StarkConfig<Self::MyPcs, Self::Challenge, Self::Challenger>;
 
-    const DEGREE: usize = 2;
+    const DEGREE: usize = 4;
     const WIDTH: usize = BabyBearField::PERM_WIDTH;
     const RATE: usize = 8;
     const OUT: usize = 8;

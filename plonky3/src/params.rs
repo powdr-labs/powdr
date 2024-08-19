@@ -1,9 +1,6 @@
-use p3_baby_bear::BabyBearParameters;
-use p3_field::{AbstractField, PrimeField};
-use p3_fri::{FriConfig, TwoAdicFriPcs};
-use p3_goldilocks::Goldilocks;
+use p3_field::PrimeField;
 use p3_symmetric::{CryptographicPermutation, Permutation};
-use p3_uni_stark::StarkConfig;
+use p3_uni_stark::StarkGenericConfig;
 use powdr_number::FieldElement;
 
 pub(crate) trait FieldElementMap: Clone + Send + Sync {
@@ -19,7 +16,7 @@ pub(crate) trait FieldElementMap: Clone + Send + Sync {
     type ValMmcs;
     type ChallengeMmcs;
     type MyPcs;
-    type Config;
+    type Config: StarkGenericConfig;
 
     const DEGREE: usize;
     const WIDTH: usize;

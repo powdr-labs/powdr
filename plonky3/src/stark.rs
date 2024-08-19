@@ -14,11 +14,9 @@ use powdr_executor::witgen::WitgenCallback;
 use p3_uni_stark::{
     prove_with_key, verify_with_key, Proof, StarkGenericConfig, StarkProvingKey, StarkVerifyingKey,
 };
-use powdr_number::{FieldElement, KnownField};
+use powdr_number::{BabyBearField, FieldElement, GoldilocksField, KnownField};
 
 use crate::{circuit_builder::PowdrCircuit, params::FieldElementMap};
-
-use crate::goldilocks::{get_challenger_goldilocks, get_config_goldilocks, Challenger, Config};
 
 pub struct Plonky3Prover<T: FieldElement, F: FieldElementMap> {
     /// The analyzed PIL

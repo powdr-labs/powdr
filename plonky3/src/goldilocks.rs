@@ -23,9 +23,10 @@ pub trait PoseidonCompatible {
     const HALF_NUM_FULL_ROUNDS: usize;
     const NUM_PARTIAL_ROUNDS: usize;
     const NUM_ROUNDS: usize = 2 * Self::HALF_NUM_FULL_ROUNDS + Self::NUM_PARTIAL_ROUNDS;
-    const NUM_CONSTANTS: usize = Self::WIDTH * Self::NUM_ROUNDS;
+    const NUM_CONSTANTS: usize = Self::PERM_WIDTH * Self::NUM_ROUNDS;
     const RNG_SEED: u64 = 42;
 
+    type PermObject;
     type PoseidonPerm;
 }
 
@@ -35,6 +36,7 @@ impl PoseidonCompatible for GoldilocksField {
     const HALF_NUM_FULL_ROUNDS: usize = 4;
     const NUM_PARTIAL_ROUNDS: usize = 22;
 
+    type PermObject = [Goldilocks; Self::PERM_WIDTH];
     type PoseidonPerm =
         Poseidon<Goldilocks, MdsMatrixGoldilocks, { Self::PERM_WIDTH }, { Self::ALPHA }>;
 }
@@ -55,6 +57,7 @@ lazy_static! {
 impl FieldElementMap for GoldilocksField {
     type P3Field = Goldilocks;
     type MdsMatrix = MdsMatrixGoldilocks;
+    type PermObject = <GoldilocksField as PoseidonCompatible>::PermObject;
     type Perm = <GoldilocksField as PoseidonCompatible>::PoseidonPerm;
 
     type Hash = PaddingFreeSponge<Self::Perm, { Self::WIDTH }, { Self::RATE }, { Self::OUT }>;
