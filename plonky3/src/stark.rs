@@ -26,9 +26,9 @@ pub struct Plonky3Prover<T: FieldElement, F: FieldElementMap> {
     /// The value of the fixed columns
     fixed: Arc<Vec<(String, Vec<T>)>>,
     /// Proving key
-    proving_key: Option<StarkProvingKey<Config<F>>>,
+    proving_key: Option<StarkProvingKey<F::Config>>,
     /// Verifying key
-    verifying_key: Option<StarkVerifyingKey<Config<F>>>,
+    verifying_key: Option<StarkVerifyingKey<F::Config>>,
 }
 
 pub enum VerificationKeyExportError {
@@ -43,7 +43,7 @@ impl fmt::Display for VerificationKeyExportError {
     }
 }
 
-impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T> {
+impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T, F> {
     pub fn new(analyzed: Arc<Analyzed<T>>, fixed: Arc<Vec<(String, Vec<T>)>>) -> Self {
         Self {
             analyzed,
@@ -89,11 +89,11 @@ impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T> {
                     .flat_map(|i| {
                         self.fixed
                             .iter()
-                            .map(move |(_, values)| values[i as usize].to_p3_field())
+                            .map(move |(_, values)| F::to_p3_field(values[i as usize]))
                             .chain(
                                 publics
                                     .iter()
-                                    .map(move |(_, values)| values[i as usize].to_p3_field()),
+                                    .map(move |(_, values)| F::to_p3_field(values[i as usize])),
                             )
                     })
                     .collect(),
@@ -103,7 +103,7 @@ impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T> {
     }
 }
 
-impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T> {
+impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T, F> {
     pub fn setup(&mut self) {
         // get fixed columns
         let fixed = &self.fixed;
@@ -141,7 +141,7 @@ impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T> {
                     fixed
                         .iter()
                         .chain(publics.iter())
-                        .map(move |(_, values)| values[i as usize].to_p3_field())
+                        .map(move |(_, values)| F::to_p3_field(values[i as usize]))
                 })
                 .collect(),
             self.fixed.len() + publics.len(),
@@ -223,7 +223,7 @@ impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T> {
         let publics = instances
             .iter()
             .flatten()
-            .map(|v| v.to_p3_field())
+            .map(|v| F::to_p3_field(v))
             .collect();
 
         let config = get_config_goldilocks();

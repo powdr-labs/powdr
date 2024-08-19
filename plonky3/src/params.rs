@@ -1,27 +1,25 @@
-// use lazy_static::lazy_static;
-
-use p3_challenger::DuplexChallenger;
-use p3_commit::ExtensionMmcs;
-use p3_dft::Radix2DitParallel;
-use p3_field::{extension::BinomialExtensionField, AbstractField, PrimeField};
+use p3_baby_bear::BabyBearParameters;
+use p3_field::{AbstractField, PrimeField};
 use p3_fri::{FriConfig, TwoAdicFriPcs};
-use p3_symmetric::{compression::TruncatedPermutation, CryptographicPermutation, Permutation};
+use p3_goldilocks::Goldilocks;
+use p3_symmetric::{CryptographicPermutation, Permutation};
 use p3_uni_stark::StarkConfig;
+use powdr_number::FieldElement;
 
-pub trait FieldElementMap: Clone + Send + Sync {
+pub(crate) trait FieldElementMap: Clone + Send + Sync {
     type P3Field: PrimeField;
     type MdsMatrix;
-    type Perm: Permutation<[AbstractField; WIDTH]>
-        + CryptographicPermutation<[AbstractField; WIDTH]>;
-
-    type Hash = PaddingFreeSponge<Perm, WIDTH, RATE, OUT>;
-    type Compress = TruncatedPermutation<Perm, N, CHUNK, WIDTH>;
-    type Challenge = BinomialExtensionField<P3Field, DEGREE>;
-    type Challenger = DuplexChallenger<P3Field, Perm>;
-    type ChallengeMmcs = ExtensionMmcs<P3Field, Challenge, ValMmcs>;
-    type Dft = Radix2DitParallel;
-    type MyPcs = TwoAdicFriPcs<P3Field, Dft, ValMmcs, ChallengeMmcs>;
-    type Config = StarkConfig<MyPcs, Challenge, Challenger>;
+    type PermObject: Clone;
+    type Perm: Permutation<Self::PermObject> + CryptographicPermutation<Self::PermObject>;
+    type Hash;
+    type Compress;
+    type Challenge;
+    type Challenger;
+    type Dft;
+    type ValMmcs;
+    type ChallengeMmcs;
+    type MyPcs;
+    type Config;
 
     const DEGREE: usize;
     const WIDTH: usize;
@@ -35,9 +33,9 @@ pub trait FieldElementMap: Clone + Send + Sync {
     const FRI_NUM_QUERIES: usize = 100;
     const FRI_PROOF_OF_WORK_BITS: usize = 16;
 
-    pub(crate) fn to_p3_field(&self) -> Self::P3Field;
+    fn to_p3_field<T: FieldElement>(elt: T) -> Self::P3Field;
 
-    pub(crate) fn get_challenger() -> Challenger;
+    fn get_challenger() -> Self::Challenger;
 
-    pub(crate) fn get_config() -> Config;
+    fn get_config() -> Self::Config;
 }
