@@ -187,12 +187,11 @@ pub struct FixedLookup<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     multiplicities: BTreeMap<u64, BTreeMap<usize, u64>>,
     has_logup_multiplicity_column: bool,
-    namespace: String,
 }
 
 impl<'a, T: FieldElement> FixedLookup<'a, T> {
     fn namespaced(&self, name: &str) -> String {
-        format!("{}.{}", self.namespace, name)
+        format!("{}.{}", self.get_namespace(), name)
     }
 
     pub fn multiplicity_columns(&self) -> HashSet<PolyID> {
@@ -202,6 +201,12 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             .filter(|col| split_column_name(&col.poly.name).1 == MULTIPLICITY_LOOKUP_COLUMN)
             .map(|col| col.poly.poly_id)
             .collect()
+    }
+    
+    fn get_namespace(&self) -> String {
+        let (namespace, _) =
+            split_column_name(&self.fixed_data.witness_cols.values().next().unwrap().poly.name);
+        namespace.to_string()
     }
 
     pub fn new(
@@ -232,8 +237,8 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             .unwrap_or(0) as u64;
 
         // Splitting the column name to get the namespace
-        let (namespace, _) =
-            split_column_name(&fixed_data.witness_cols.values().next().unwrap().poly.name);
+        //let (namespace, _) =
+        //    split_column_name(&fixed_data.witness_cols.values().next().unwrap().poly.name);
 
         let has_logup_multiplicity_column = fixed_data
             .witness_cols
@@ -248,7 +253,6 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             fixed_data,
             multiplicities: Default::default(),
             has_logup_multiplicity_column,
-            namespace: namespace.to_string(),
         }
     }
 

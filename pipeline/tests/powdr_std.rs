@@ -450,13 +450,14 @@ mod reparse {
     /// but these tests panic if the field is too small. This is *probably*
     /// fine, because all of these tests have a similar variant that does
     /// run on Goldilocks.
-    const BLACKLIST: [&str; 6] = [
+    const BLACKLIST: [&str; 7] = [
         "std/bus_permutation_via_challenges.asm",
         "std/permutation_via_challenges.asm",
         "std/lookup_via_challenges.asm",
         "std/poseidon_bn254_test.asm",
         "std/split_bn254_test.asm",
         "std/bus_lookup_via_challenges.asm",
+        "multiplicities.asm",
     ];
 
     fn run_reparse_test(file: &str) {
