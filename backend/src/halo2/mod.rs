@@ -74,7 +74,7 @@ where
 }
 
 impl<F: FieldElement> BackendFactory<F> for Halo2ProverFactory {
-    fn create<'a>(
+    fn create(
         &self,
         pil: Arc<Analyzed<F>>,
         fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
@@ -83,7 +83,7 @@ impl<F: FieldElement> BackendFactory<F> for Halo2ProverFactory {
         verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,
         options: BackendOptions,
-    ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
+    ) -> Result<Box<dyn crate::Backend<F>>, Error> {
         if pil.degrees().len() > 1 {
             return Err(Error::NoVariableDegreeAvailable);
         }
@@ -116,7 +116,7 @@ fn fe_slice_to_string<F: FieldElement>(fe: &[F]) -> Vec<String> {
     fe.iter().map(|x| x.to_string()).collect()
 }
 
-impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<T> {
+impl<T: FieldElement> Backend<T> for Halo2Prover<T> {
     fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
         let proof: Halo2Proof = bincode::deserialize(proof).unwrap();
         // TODO should do a verification refactoring making it a 1d vec
@@ -184,7 +184,7 @@ impl<'a, T: FieldElement> Backend<'a, T> for Halo2Prover<T> {
 pub(crate) struct Halo2MockFactory;
 
 impl<F: FieldElement> BackendFactory<F> for Halo2MockFactory {
-    fn create<'a>(
+    fn create(
         &self,
         pil: Arc<Analyzed<F>>,
         fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
@@ -193,7 +193,7 @@ impl<F: FieldElement> BackendFactory<F> for Halo2MockFactory {
         verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,
         _options: BackendOptions,
-    ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
+    ) -> Result<Box<dyn crate::Backend<F>>, Error> {
         if setup.is_some() {
             return Err(Error::NoSetupAvailable);
         }
@@ -217,7 +217,7 @@ pub struct Halo2Mock<F: FieldElement> {
     fixed: Arc<Vec<(String, Vec<F>)>>,
 }
 
-impl<'a, T: FieldElement> Backend<'a, T> for Halo2Mock<T> {
+impl<T: FieldElement> Backend<T> for Halo2Mock<T> {
     fn prove(
         &self,
         witness: &[(String, Vec<T>)],
