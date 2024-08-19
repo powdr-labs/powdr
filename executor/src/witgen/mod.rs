@@ -266,7 +266,6 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         let mut columns = mutable_state
             .machines
             .take_witness_col_values(mutable_state.query_callback);
-
         if let Some(mut generator) = generator {
             columns.extend(generator.take_witness_col_values(&mut mutable_state));
         }

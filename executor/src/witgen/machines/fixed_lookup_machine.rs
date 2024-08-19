@@ -244,10 +244,6 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             .max()
             .unwrap_or(0) as u64;
 
-        // Splitting the column name to get the namespace
-        //let (namespace, _) =
-        //    split_column_name(&fixed_data.witness_cols.values().next().unwrap().poly.name);
-
         let has_logup_multiplicity_column = fixed_data
             .witness_cols
             .values()
