@@ -1,37 +1,28 @@
 //! Infer assignment registers in asm statements
 
 use powdr_ast::{
-    asm_analysis::{AnalysisASMFile, Expression, FunctionStatement, Item, Machine},
+    asm_analysis::{AnalysisASMFile, Expression, FunctionStatement, Machine},
     parsed::asm::AssignmentRegister,
 };
 
-pub fn infer(file: AnalysisASMFile) -> Result<AnalysisASMFile, Vec<String>> {
+pub fn infer(mut file: AnalysisASMFile) -> Result<AnalysisASMFile, Vec<String>> {
     let mut errors = vec![];
 
-    let items = file
-        .items
-        .into_iter()
-        .filter_map(|(name, m)| match m {
-            Item::Machine(m) => match infer_machine(m) {
-                Ok(m) => Some((name, Item::Machine(m))),
-                Err(e) => {
-                    errors.extend(e);
-                    None
-                }
-            },
-            Item::Expression(e) => Some((name, Item::Expression(e))),
-            Item::TypeDeclaration(enum_decl) => Some((name, Item::TypeDeclaration(enum_decl))),
-            Item::TraitImplementation(trait_impl) => {
-                Some((name, Item::TraitImplementation(trait_impl)))
+    for (_, machine) in file.machines_mut() {
+        match infer_machine(std::mem::take(machine)) {
+            Ok(inferred_machine) => {
+                *machine = inferred_machine;
             }
-            Item::TraitDeclaration(trait_decl) => Some((name, Item::TraitDeclaration(trait_decl))),
-        })
-        .collect();
+            Err(e) => {
+                errors.extend(e);
+            }
+        }
+    }
 
     if !errors.is_empty() {
         Err(errors)
     } else {
-        Ok(AnalysisASMFile { items })
+        Ok(file)
     }
 }
 

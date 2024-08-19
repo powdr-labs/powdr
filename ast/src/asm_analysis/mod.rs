@@ -678,6 +678,7 @@ pub struct SubmachineDeclaration {
 /// imports and references have been resolved.
 #[derive(Clone, Debug)]
 pub enum Item {
+    Instance(MachineInstance),
     Machine(Machine),
     Expression(TypedExpression),
     TypeDeclaration(EnumDeclaration<Expression>),
@@ -689,12 +690,22 @@ impl Item {
     pub fn try_to_machine(&self) -> Option<&Machine> {
         match self {
             Item::Machine(m) => Some(m),
-            Item::Expression(_)
-            | Item::TypeDeclaration(_)
-            | Item::TraitImplementation(_)
-            | Item::TraitDeclaration(_) => None,
+            _ => None,
         }
     }
+}
+
+#[derive(Clone, Debug)]
+pub struct MachineInstance {
+    pub ty: AbsoluteSymbolPath,
+    pub value: MachineInstanceExpression,
+}
+
+#[derive(Clone, Debug)]
+pub enum MachineInstanceExpression {
+    Value(BTreeMap<String, Box<MachineInstance>>),
+    Member(Box<MachineInstance>, String),
+    Reference(AbsoluteSymbolPath),
 }
 
 #[derive(Clone, Default, Debug)]
@@ -815,19 +826,19 @@ impl AnalysisASMFile {
     pub fn machines(&self) -> impl Iterator<Item = (&AbsoluteSymbolPath, &Machine)> {
         self.items.iter().filter_map(|(n, m)| match m {
             Item::Machine(m) => Some((n, m)),
-            Item::Expression(_)
-            | Item::TypeDeclaration(_)
-            | Item::TraitDeclaration(_)
-            | Item::TraitImplementation(_) => None,
+            _ => None,
         })
     }
     pub fn machines_mut(&mut self) -> impl Iterator<Item = (&AbsoluteSymbolPath, &mut Machine)> {
         self.items.iter_mut().filter_map(|(n, m)| match m {
             Item::Machine(m) => Some((n, m)),
-            Item::Expression(_)
-            | Item::TypeDeclaration(_)
-            | Item::TraitDeclaration(_)
-            | Item::TraitImplementation(_) => None,
+            _ => None,
+        })
+    }
+    pub fn instances(&self) -> impl Iterator<Item = (&AbsoluteSymbolPath, &MachineInstance)> {
+        self.items.iter().filter_map(|(n, m)| match m {
+            Item::Instance(i) => Some((n, i)),
+            _ => None,
         })
     }
 }

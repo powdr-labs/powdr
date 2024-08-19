@@ -9,16 +9,22 @@ use crate::parsed::{
 
 mod display;
 
-#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Default)]
 pub struct Location {
     limbs: Vec<String>,
 }
 
+impl<S: Into<String>> From<S> for Location {
+    fn from(value: S) -> Self {
+        Self {
+            limbs: vec![value.into()],
+        }
+    }
+}
+
 impl Location {
     pub fn main() -> Self {
-        Self {
-            limbs: vec!["main".into()],
-        }
+        Self::from("main")
     }
 
     pub fn parent(&self) -> Option<Self> {

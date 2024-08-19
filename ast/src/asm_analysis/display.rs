@@ -20,9 +20,28 @@ use super::{
     AnalysisASMFile, AssignmentStatement, CallableSymbol, CallableSymbolDefinitionRef,
     DebugDirective, FunctionBody, FunctionStatement, FunctionStatements, Incompatible,
     IncompatibleSet, InstructionDefinitionStatement, InstructionStatement, Item, LabelStatement,
-    LinkDefinition, Machine, RegisterDeclarationStatement, RegisterTy, Return, Rom,
-    SubmachineDeclaration,
+    LinkDefinition, Machine, MachineInstance, MachineInstanceExpression,
+    RegisterDeclarationStatement, RegisterTy, Return, Rom, SubmachineDeclaration,
 };
+
+impl Display for MachineInstance {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let ty = &self.ty;
+
+        match &self.value {
+            MachineInstanceExpression::Value(v) => write!(
+                f,
+                "{ty} {{{}}}",
+                v.iter()
+                    .map(|(member, value)| format!("{member}: {value}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            MachineInstanceExpression::Member(instance, member) => write!(f, "{instance}.{member}"),
+            MachineInstanceExpression::Reference(r) => write!(f, "{r}"),
+        }
+    }
+}
 
 impl Display for AnalysisASMFile {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
@@ -46,6 +65,9 @@ impl Display for AnalysisASMFile {
             }
 
             match item {
+                Item::Instance(i) => {
+                    write_indented_by(f, format!("let {name} = {i};\n"), current_path.len())?
+                }
                 Item::Machine(machine) => {
                     write_indented_by(f, format!("machine {name}{machine}"), current_path.len())?;
                 }
