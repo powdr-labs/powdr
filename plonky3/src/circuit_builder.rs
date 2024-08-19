@@ -50,7 +50,7 @@ impl<'a, T: FieldElement + FieldElementMap + Sync> PowdrCircuit<'a, T> {
                         // witness values
                         witness.clone().map(move |(_, v)| v[i as usize])
                     })
-                    .map(|f| f.to_p3_field())
+                    .map(|f| T::to_p3_field(f))
                     .collect()
             }
             0 => {

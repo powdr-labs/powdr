@@ -11,22 +11,20 @@ use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
 
-use p3_uni_stark::{
-    prove_with_key, verify_with_key, Proof, StarkGenericConfig, StarkProvingKey, StarkVerifyingKey,
-};
+use p3_uni_stark::{prove_with_key, verify_with_key, Proof, StarkProvingKey, StarkVerifyingKey};
 use powdr_number::{BabyBearField, FieldElement, GoldilocksField, KnownField};
 
 use crate::{circuit_builder::PowdrCircuit, params::FieldElementMap};
 
-pub struct Plonky3Prover<T: FieldElement, F: FieldElementMap> {
+pub struct Plonky3Prover<T: FieldElement + FieldElementMap> {
     /// The analyzed PIL
     analyzed: Arc<Analyzed<T>>,
     /// The value of the fixed columns
     fixed: Arc<Vec<(String, Vec<T>)>>,
     /// Proving key
-    proving_key: Option<StarkProvingKey<F::Config>>,
+    proving_key: Option<StarkProvingKey<T::Config>>,
     /// Verifying key
-    verifying_key: Option<StarkVerifyingKey<F::Config>>,
+    verifying_key: Option<StarkVerifyingKey<T::Config>>,
 }
 
 pub enum VerificationKeyExportError {
@@ -41,7 +39,7 @@ impl fmt::Display for VerificationKeyExportError {
     }
 }
 
-impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T, F> {
+impl<T: FieldElement + FieldElementMap> Plonky3Prover<T> {
     pub fn new(analyzed: Arc<Analyzed<T>>, fixed: Arc<Vec<(String, Vec<T>)>>) -> Self {
         Self {
             analyzed,
@@ -66,7 +64,7 @@ impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T, F> {
 
     /// Returns preprocessed matrix based on the fixed inputs [`Plonky3Prover<T>`].
     /// This is used when running the setup phase
-    pub fn get_preprocessed_matrix(&self) -> RowMajorMatrix<F::P3Field> {
+    pub fn get_preprocessed_matrix(&self) -> RowMajorMatrix<T::P3Field> {
         let publics = self
             .analyzed
             .get_publics()
@@ -80,18 +78,18 @@ impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T, F> {
             .collect::<Vec<(String, Vec<T>)>>();
 
         match self.fixed.len() + publics.len() {
-            0 => RowMajorMatrix::new(Vec::<F::P3Field>::new(), 0),
+            0 => RowMajorMatrix::new(Vec::<T::P3Field>::new(), 0),
             _ => RowMajorMatrix::new(
                 // write fixed row by row
                 (0..self.analyzed.degree())
                     .flat_map(|i| {
                         self.fixed
                             .iter()
-                            .map(move |(_, values)| F::to_p3_field(values[i as usize]))
+                            .map(move |(_, values)| T::to_p3_field(values[i as usize]))
                             .chain(
                                 publics
                                     .iter()
-                                    .map(move |(_, values)| F::to_p3_field(values[i as usize])),
+                                    .map(move |(_, values)| T::to_p3_field(values[i as usize])),
                             )
                     })
                     .collect(),

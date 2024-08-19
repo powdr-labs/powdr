@@ -3,7 +3,7 @@ use p3_symmetric::{CryptographicPermutation, Permutation};
 use p3_uni_stark::StarkGenericConfig;
 use powdr_number::FieldElement;
 
-pub(crate) trait FieldElementMap: Clone + Send + Sync {
+pub(crate) trait FieldElementMap: FieldElement {
     type P3Field: PrimeField;
     type MdsMatrix;
     type PermObject: Clone;
@@ -30,7 +30,7 @@ pub(crate) trait FieldElementMap: Clone + Send + Sync {
     const FRI_NUM_QUERIES: usize = 100;
     const FRI_PROOF_OF_WORK_BITS: usize = 16;
 
-    fn to_p3_field<T: FieldElement>(elt: T) -> Self::P3Field;
+    fn to_p3_field(self) -> Self::P3Field;
 
     fn get_challenger() -> Self::Challenger;
 
