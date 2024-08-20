@@ -492,22 +492,16 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a> {
                 };
                 let impl_ = &impls[*index];
 
-                match impl_.function_by_name(&fn_name) {
-                    Some(func) => {
-                        let Expression::LambdaExpression(_, lambda) = func.body.as_ref() else {
-                            unreachable!()
-                        };
-                        let closure = Closure {
-                            lambda,
-                            environment: vec![],
-                            type_args: HashMap::new(),
-                        };
-                        Ok(Value::Closure(closure).into())
-                    }
-                    None => Err(EvalError::SymbolNotFound(format!(
-                        "Function {fn_name} not found in trait {trait_name}",
-                    )))?,
-                }
+                let func = impl_.function_by_name(&fn_name).unwrap();
+                let Expression::LambdaExpression(_, lambda) = func.body.as_ref() else {
+                    unreachable!()
+                };
+                let closure = Closure {
+                    lambda,
+                    environment: vec![],
+                    type_args: HashMap::new(),
+                };
+                Ok(Value::Closure(closure).into())
             }
             None => Self::lookup_with_symbols(self.0, &poly.name, type_args, self),
         }
