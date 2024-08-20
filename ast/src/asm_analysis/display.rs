@@ -31,13 +31,12 @@ impl Display for MachineInstance {
         match &self.value {
             MachineInstanceExpression::Value(v) => write!(
                 f,
-                "{ty} {{{}}}",
+                "{ty}({})",
                 v.iter()
-                    .map(|(member, value)| format!("{member}: {value}"))
+                    .map(|value| value.to_string())
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
-            MachineInstanceExpression::Member(instance, member) => write!(f, "{instance}.{member}"),
             MachineInstanceExpression::Reference(r) => write!(f, "{r}"),
         }
     }

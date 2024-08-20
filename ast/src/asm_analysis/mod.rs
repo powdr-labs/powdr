@@ -703,8 +703,7 @@ pub struct MachineInstance {
 
 #[derive(Clone, Debug)]
 pub enum MachineInstanceExpression {
-    Value(BTreeMap<String, Box<MachineInstance>>),
-    Member(Box<MachineInstance>, String),
+    Value(Vec<MachineInstance>),
     Reference(AbsoluteSymbolPath),
 }
 

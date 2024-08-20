@@ -11,7 +11,7 @@ use super::{
 
 impl Display for Location {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}", self.limbs.join("_"))
+        write!(f, "{}", self.limbs.join("::"))
     }
 }
 

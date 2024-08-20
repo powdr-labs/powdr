@@ -26,53 +26,99 @@ const MAIN_MACHINE: &str = "::Main";
 const MAIN_FUNCTION: &str = "main";
 
 #[derive(Default, Debug)]
+struct Instance {
+    ty: AbsoluteSymbolPath,
+    members: Vec<Location>,
+}
+
+#[derive(Default, Debug)]
 struct Instances {
-    abs_to_loc: BTreeMap<AbsoluteSymbolPath, Location>,
-    map: BTreeMap<Location, (AbsoluteSymbolPath, BTreeMap<String, Location>)>,
+    map: Vec<(Location, Instance)>,
 }
 
 impl Instances {
+    fn get(&self, l: &Location) -> Option<&Instance> {
+        self.map
+            .iter()
+            .find_map(|(location, value)| (l == location).then_some(value))
+    }
+
+    fn retain(&mut self, f: impl FnMut(&(Location, Instance)) -> bool) {
+        self.map.retain(f);
+    }
+
+    fn insert(&mut self, key: Location, value: Instance) {
+        self.map.push((key, value));
+    }
+
+    // iterate through instances so that any instance used as a member is visited first. in this implementation, it's based on source ordering but we should remove that requirement
+    fn iter(&self) -> impl Iterator<Item = (&Location, &Instance)> {
+        self.map.iter().map(|(l, v)| (l, v))
+    }
+}
+
+#[derive(Default, Debug)]
+struct SourceInstances {
+    abs_to_loc: BTreeMap<AbsoluteSymbolPath, Location>,
+    map: Instances,
+}
+
+impl SourceInstances {
     /// Trim to remove instances unreachable from a given Location
     /// Returns the instance map
     /// untested!
-    fn trim(
-        self,
-        from: &Location,
-    ) -> BTreeMap<Location, (AbsoluteSymbolPath, BTreeMap<String, Location>)> {
+    fn trim(self, from: &Location) -> Instances {
         let mut reached: BTreeSet<Location> = Default::default();
         let mut queue = vec![from];
         let mut map = self.map;
         while let Some(location) = queue.pop() {
             // `location` is reached
             reached.insert(location.clone());
-            let (_, params) = &map[location];
+            let instance = &map.get(location).unwrap();
             // visit all params
-            queue.extend(params.values());
+            queue.extend(&instance.members);
         }
         // remove all keys that aren't reached
-        map.retain(|l, _| reached.contains(l));
+        map.retain(|(l, _)| reached.contains(l));
         map
     }
 
-    fn fold_instance(&mut self, location: Location, instance: &MachineInstance) -> Location {
+    fn fold_instance(
+        &mut self,
+        file: &AnalysisASMFile,
+        location: Location,
+        instance: &MachineInstance,
+    ) -> Location {
         match &instance.value {
             MachineInstanceExpression::Value(v) => {
-                let params = v.iter().fold(
-                    BTreeMap::default(),
-                    |mut params, (member, instance)| {
-                        let new_loc = self.fold_instance(location.clone().join(member.clone()), instance);
-                        params.insert(member.clone(), new_loc);
-                        params
+                let ty = if let Item::Machine(ty) = &file.items[&instance.ty] {
+                    ty
+                } else {
+                    panic!()
+                };
+                assert_eq!(ty.params.0.len() + ty.submachines.len(), v.len());
+
+                let members = ty
+                    .params
+                    .0
+                    .iter()
+                    .map(|param| &param.name)
+                    .chain(ty.submachines.iter().map(|d| &d.name))
+                    .zip(v)
+                    .map(|(name, instance)| {
+                        let new_loc =
+                            self.fold_instance(file, location.clone().join(name.clone()), instance);
+                        new_loc
+                    })
+                    .collect();
+                self.map.insert(
+                    location.clone(),
+                    Instance {
+                        ty: instance.ty.clone(),
+                        members,
                     },
                 );
-                self
-                    .map
-                    .insert(location.clone(), (instance.ty.clone(), params));
                 location.clone()
-            }
-            MachineInstanceExpression::Member(instance, member) => {
-                let new_loc = self.fold_instance(location.clone().join(member.clone()), instance);
-                new_loc.join(member)
             }
             MachineInstanceExpression::Reference(r) => {
                 // do nothing, it's all in abs_to_loc
@@ -83,23 +129,64 @@ impl Instances {
 }
 
 /// Instantiate machine type at `ty_path` by instantiating all submachines recursively
-fn instantiate_naive(input: &AnalysisASMFile, ty_path: &AbsoluteSymbolPath) -> MachineInstance {
+fn instantiate(
+    input: &AnalysisASMFile,
+    instances: &mut Vec<(AbsoluteSymbolPath, MachineInstance)>,
+    path: AbsoluteSymbolPath,
+    ty_path: &AbsoluteSymbolPath,
+    args: &Vec<Expression>,
+) {
     let ty = if let Item::Machine(machine) = &input.items[ty_path] {
         machine
     } else {
         unreachable!()
     };
 
-    let submachines: BTreeMap<String, Box<MachineInstance>> = ty
-        .submachines
+    let submachines: Vec<MachineInstance> = ty
+        .params
+        .0
         .iter()
-        .map(|d| (d.name.clone(), Box::new(instantiate_naive(input, &d.ty))))
+        .zip(args)
+        .map(|(param, argument)| {
+            let ty = AbsoluteSymbolPath::default().join(param.ty.clone().unwrap());
+            match input.items.get(&ty) {
+                Some(Item::Machine(_)) => MachineInstance {
+                    ty,
+                    value: MachineInstanceExpression::Reference(parse_absolute_path(&format!(
+                        "{}_{}",
+                        path.to_string()
+                            .split('_')
+                            .rev()
+                            .skip(1)
+                            .collect::<Vec<_>>()
+                            .into_iter()
+                            .rev()
+                            .collect::<Vec<_>>()
+                            .join("_"),
+                        argument.try_to_identifier().unwrap().clone()
+                    ))),
+                },
+                _ => unimplemented!(),
+            }
+        })
+        .collect::<Vec<_>>()
+        .into_iter()
+        .chain(ty.submachines.iter().map(|d| {
+            let path = parse_absolute_path(&format!("{}_{}", path, d.name));
+            instantiate(input, instances, path.clone(), &d.ty, &d.args);
+            MachineInstance {
+                ty: d.ty.clone(),
+                value: MachineInstanceExpression::Reference(path),
+            }
+        }))
         .collect();
 
-    MachineInstance {
+    let instance = MachineInstance {
         ty: ty_path.clone(),
         value: MachineInstanceExpression::Value(submachines),
-    }
+    };
+
+    instances.push((path, instance));
 }
 
 pub fn compile(input: AnalysisASMFile) -> PILGraph {
@@ -111,7 +198,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
         .collect::<BTreeMap<_, _>>();
 
     // if no instances are defined, inject some automatically
-    if input.instances().count() == 0 {
+    let src_instances = if input.instances().count() == 0 {
         // get the main machine type
         let main_ty = match non_std_non_rom_machines.len() {
             // if there is a single machine, treat it as main
@@ -128,35 +215,50 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
         };
 
         // instantiate the main machine in the naive way (no reuse of submachines)
-        let instance = instantiate_naive(&input, &main_ty);
-        input.items.insert(
+        let mut instances = vec![];
+        instantiate(
+            &input,
+            &mut instances,
             parse_absolute_path(MAIN_MACHINE_INSTANCE),
-            Item::Instance(instance),
+            &main_ty,
+            &vec![],
         );
-    }
 
-    // generate the trimmed instance map
-    let instances =
+        instances
+    } else {
         input
             .instances()
-            .fold(Instances::default(), |mut instances, (path, instance)| {
+            .map(|(path, instance)| (path.clone(), instance.clone()))
+            .collect()
+    };
+
+    // generate the trimmed instance map
+    let instances = src_instances
+        .iter()
+        .fold(
+            SourceInstances::default(),
+            |mut instances, (path, instance)| {
                 assert_eq!(path.len(), 1);
                 let location = Location::default().join(path.parts().next().unwrap());
                 instances.abs_to_loc.insert(path.clone(), location.clone());
-                let new_location = instances.fold_instance(location.clone(), instance);
+                let new_location = instances.fold_instance(&input, location.clone(), instance);
                 assert_eq!(new_location, location);
                 instances
-            }).trim(&Location::main());
+            },
+        )
+        .trim(&Location::main());
 
     // count incoming permutations for each machine.
     let mut incoming_permutations = instances
-        .keys()
+        .iter()
+        .map(|(path, _)| path)
         .map(|location| (location.clone(), 0))
         .collect();
 
     // visit the tree compiling the machines
     let mut objects: BTreeMap<_, _> = instances
-        .keys()
+        .iter()
+        .map(|(path, _)| path)
         .map(|location| {
             let object = ASMPILConverter::convert_machine(
                 &instances,
@@ -189,13 +291,10 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
         }
     }
 
-    let Item::Instance(main_instance) = input
-        .items
-        .get(&parse_absolute_path(MAIN_MACHINE_INSTANCE))
-        .unwrap()
-    else {
-        panic!()
-    };
+    let (_, main_instance) = src_instances
+        .iter()
+        .find(|(l, _)| l == &parse_absolute_path(MAIN_MACHINE_INSTANCE))
+        .unwrap();
 
     let Item::Machine(main_ty) = input.items.get(&main_instance.ty).unwrap() else {
         panic!()
@@ -273,7 +372,7 @@ struct SubmachineRef {
 
 struct ASMPILConverter<'a> {
     /// Map of all machine instances to their type and passed arguments
-    instances: &'a BTreeMap<Location, (AbsoluteSymbolPath, BTreeMap<String, Location>)>,
+    instances: &'a Instances,
     /// Current machine instance
     location: &'a Location,
     /// Input definitions and machines.
@@ -288,7 +387,7 @@ struct ASMPILConverter<'a> {
 
 impl<'a> ASMPILConverter<'a> {
     fn new(
-        instances: &'a BTreeMap<Location, (AbsoluteSymbolPath, BTreeMap<String, Location>)>,
+        instances: &'a Instances,
         location: &'a Location,
         input: &'a AnalysisASMFile,
         incoming_permutations: &'a mut BTreeMap<Location, u64>,
@@ -308,7 +407,7 @@ impl<'a> ASMPILConverter<'a> {
     }
 
     fn convert_machine(
-        instances: &'a BTreeMap<Location, (AbsoluteSymbolPath, BTreeMap<String, Location>)>,
+        instances: &'a Instances,
         location: &'a Location,
         input: &'a AnalysisASMFile,
         incoming_permutations: &'a mut BTreeMap<Location, u64>,
@@ -317,21 +416,29 @@ impl<'a> ASMPILConverter<'a> {
     }
 
     fn convert_machine_inner(mut self) -> Object {
-        let (ty, _) = self.instances.get(self.location).as_ref().unwrap();
+        let instance = self.instances.get(self.location).unwrap();
         // TODO: This clone doubles the current memory usage
-        let Item::Machine(input) = self.items.get(ty).unwrap().clone() else {
+        let Item::Machine(input) = self.items.get(&instance.ty).unwrap().clone() else {
             panic!();
         };
 
         let degree = input.degree;
 
-        self.submachines = input
-            .submachines
-            .into_iter()
-            .map(|m| SubmachineRef {
-                location: self.location.clone().join(m.name.clone()),
-                name: m.name,
-                ty: m.ty,
+        self.submachines = instance
+            .members
+            .iter()
+            .zip(
+                input
+                    .params
+                    .0
+                    .iter()
+                    .map(|p| &p.name)
+                    .chain(input.submachines.iter().map(|d| &d.name)),
+            )
+            .map(|(location, name)| SubmachineRef {
+                location: location.clone(),
+                name: name.clone(),
+                ty: self.instances.get(location).unwrap().ty.clone(),
             })
             .collect();
 
@@ -396,7 +503,7 @@ impl<'a> ASMPILConverter<'a> {
             .iter()
             .find(|s| s.name == instance)
             .unwrap_or_else(|| {
-                let (ty, _) = self.instances.get(self.location).unwrap();
+                let ty = &self.instances.get(self.location).unwrap().ty;
                 panic!("could not find submachine named `{instance}` in machine `{ty}`");
             });
         // get the machine type from the machine map
@@ -650,15 +757,12 @@ mod tests {
                     ty: parse_absolute_path("::Foo"),
                     // pass bar
                     value: MachineInstanceExpression::Value(
-                        once((
-                            "bar".to_string(),
-                            Box::new(MachineInstance {
-                                ty: parse_absolute_path("::Bar"),
-                                value: MachineInstanceExpression::Reference(parse_absolute_path(
-                                    "::bar",
-                                )),
-                            }),
-                        ))
+                        once(MachineInstance {
+                            ty: parse_absolute_path("::Bar"),
+                            value: MachineInstanceExpression::Reference(parse_absolute_path(
+                                "::bar",
+                            )),
+                        })
                         .collect(),
                     ),
                 }),
@@ -707,15 +811,12 @@ mod tests {
                     ty: parse_absolute_path("::Foo"),
                     // pass bar
                     value: MachineInstanceExpression::Value(
-                        once((
-                            "bar".to_string(),
-                            Box::new(MachineInstance {
-                                ty: parse_absolute_path("::Bar"),
-                                value: MachineInstanceExpression::Reference(parse_absolute_path(
-                                    "::bar",
-                                )),
-                            }),
-                        ))
+                        once(MachineInstance {
+                            ty: parse_absolute_path("::Bar"),
+                            value: MachineInstanceExpression::Reference(parse_absolute_path(
+                                "::bar",
+                            )),
+                        })
                         .collect(),
                     ),
                 }),
@@ -726,24 +827,18 @@ mod tests {
                     ty: parse_absolute_path("::Baz"),
                     // pass bar
                     value: MachineInstanceExpression::Value(
-                        once((
-                            "foo".to_string(),
-                            Box::new(MachineInstance {
-                                ty: parse_absolute_path("::Foo"),
-                                value: MachineInstanceExpression::Reference(parse_absolute_path(
-                                    "::foo",
-                                )),
-                            }),
-                        ))
-                        .chain(once((
-                            "bar".to_string(),
-                            Box::new(MachineInstance {
-                                ty: parse_absolute_path("::Bar"),
-                                value: MachineInstanceExpression::Reference(parse_absolute_path(
-                                    "::bar",
-                                )),
-                            }),
-                        )))
+                        once(MachineInstance {
+                            ty: parse_absolute_path("::Foo"),
+                            value: MachineInstanceExpression::Reference(parse_absolute_path(
+                                "::foo",
+                            )),
+                        })
+                        .chain(once(MachineInstance {
+                            ty: parse_absolute_path("::Bar"),
+                            value: MachineInstanceExpression::Reference(parse_absolute_path(
+                                "::bar",
+                            )),
+                        }))
                         .collect(),
                     ),
                 }),
