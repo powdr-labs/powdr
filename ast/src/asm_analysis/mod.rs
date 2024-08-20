@@ -840,6 +840,13 @@ impl AnalysisASMFile {
             _ => None,
         })
     }
+    pub fn machine(&self, path: &AbsoluteSymbolPath) -> &Machine {
+        if let Item::Machine(m) = &self.items[path] {
+            m
+        } else {
+            panic!();
+        }
+    }
 }
 
 #[derive(Default, Debug, Clone)]

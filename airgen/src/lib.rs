@@ -6,7 +6,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use powdr_ast::{
     asm_analysis::{
-        combine_flags, AnalysisASMFile, Item, LinkDefinition, MachineInstance,
+        self, combine_flags, AnalysisASMFile, Item, LinkDefinition, MachineInstance,
         MachineInstanceExpression,
     },
     object::{Link, LinkFrom, LinkTo, Location, Object, Operation, PILGraph, TypeOrExpression},
@@ -33,41 +33,15 @@ struct Instance {
 
 #[derive(Default, Debug)]
 struct Instances {
-    map: Vec<(Location, Instance)>,
+    abs_to_loc: BTreeMap<AbsoluteSymbolPath, Location>,
+    map: BTreeMap<Location, Instance>,
 }
 
 impl Instances {
-    fn get(&self, l: &Location) -> Option<&Instance> {
-        self.map
-            .iter()
-            .find_map(|(location, value)| (l == location).then_some(value))
-    }
-
-    fn retain(&mut self, f: impl FnMut(&(Location, Instance)) -> bool) {
-        self.map.retain(f);
-    }
-
-    fn insert(&mut self, key: Location, value: Instance) {
-        self.map.push((key, value));
-    }
-
-    // iterate through instances so that any instance used as a member is visited first. in this implementation, it's based on source ordering but we should remove that requirement
-    fn iter(&self) -> impl Iterator<Item = (&Location, &Instance)> {
-        self.map.iter().map(|(l, v)| (l, v))
-    }
-}
-
-#[derive(Default, Debug)]
-struct SourceInstances {
-    abs_to_loc: BTreeMap<AbsoluteSymbolPath, Location>,
-    map: Instances,
-}
-
-impl SourceInstances {
     /// Trim to remove instances unreachable from a given Location
     /// Returns the instance map
     /// untested!
-    fn trim(self, from: &Location) -> Instances {
+    fn trim(self, from: &Location) -> BTreeMap<Location, Instance> {
         let mut reached: BTreeSet<Location> = Default::default();
         let mut queue = vec![from];
         let mut map = self.map;
@@ -79,7 +53,7 @@ impl SourceInstances {
             queue.extend(&instance.members);
         }
         // remove all keys that aren't reached
-        map.retain(|(l, _)| reached.contains(l));
+        map.retain(|l, _| reached.contains(l));
         map
     }
 
@@ -91,11 +65,7 @@ impl SourceInstances {
     ) -> Location {
         match &instance.value {
             MachineInstanceExpression::Value(v) => {
-                let ty = if let Item::Machine(ty) = &file.items[&instance.ty] {
-                    ty
-                } else {
-                    panic!()
-                };
+                let ty = file.machine(&instance.ty);
                 assert_eq!(ty.params.0.len() + ty.submachines.len(), v.len());
 
                 let members = ty
@@ -106,9 +76,7 @@ impl SourceInstances {
                     .chain(ty.submachines.iter().map(|d| &d.name))
                     .zip(v)
                     .map(|(name, instance)| {
-                        let new_loc =
-                            self.fold_instance(file, location.clone().join(name.clone()), instance);
-                        new_loc
+                        self.fold_instance(file, location.clone().join(name.clone()), instance)
                     })
                     .collect();
                 self.map.insert(
@@ -120,10 +88,7 @@ impl SourceInstances {
                 );
                 location.clone()
             }
-            MachineInstanceExpression::Reference(r) => {
-                // do nothing, it's all in abs_to_loc
-                self.abs_to_loc[r].clone()
-            }
+            MachineInstanceExpression::Reference(r) => self.abs_to_loc[r].clone(),
         }
     }
 }
@@ -132,15 +97,13 @@ impl SourceInstances {
 fn instantiate(
     input: &AnalysisASMFile,
     instances: &mut Vec<(AbsoluteSymbolPath, MachineInstance)>,
-    path: AbsoluteSymbolPath,
+    path: &AbsoluteSymbolPath,
     ty_path: &AbsoluteSymbolPath,
-    args: &Vec<Expression>,
+    args: &Vec<AbsoluteSymbolPath>,
 ) {
-    let ty = if let Item::Machine(machine) = &input.items[ty_path] {
-        machine
-    } else {
-        unreachable!()
-    };
+    let ty = input.machine(ty_path);
+
+    assert_eq!(ty.params.0.len(), args.len());
 
     let submachines: Vec<MachineInstance> = ty
         .params
@@ -152,19 +115,7 @@ fn instantiate(
             match input.items.get(&ty) {
                 Some(Item::Machine(_)) => MachineInstance {
                     ty,
-                    value: MachineInstanceExpression::Reference(parse_absolute_path(&format!(
-                        "{}_{}",
-                        path.to_string()
-                            .split('_')
-                            .rev()
-                            .skip(1)
-                            .collect::<Vec<_>>()
-                            .into_iter()
-                            .rev()
-                            .collect::<Vec<_>>()
-                            .join("_"),
-                        argument.try_to_identifier().unwrap().clone()
-                    ))),
+                    value: MachineInstanceExpression::Reference(argument.clone()),
                 },
                 _ => unimplemented!(),
             }
@@ -172,11 +123,16 @@ fn instantiate(
         .collect::<Vec<_>>()
         .into_iter()
         .chain(ty.submachines.iter().map(|d| {
-            let path = parse_absolute_path(&format!("{}_{}", path, d.name));
-            instantiate(input, instances, path.clone(), &d.ty, &d.args);
+            let sub_path = parse_absolute_path(&format!("{}_{}", path, d.name));
+            let arguments = d
+                .args
+                .iter()
+                .map(|e| resolve_submachine_arg(path, ty, args, e))
+                .collect();
+            instantiate(input, instances, &sub_path, &d.ty, &arguments);
             MachineInstance {
                 ty: d.ty.clone(),
-                value: MachineInstanceExpression::Reference(path),
+                value: MachineInstanceExpression::Reference(sub_path),
             }
         }))
         .collect();
@@ -186,7 +142,7 @@ fn instantiate(
         value: MachineInstanceExpression::Value(submachines),
     };
 
-    instances.push((path, instance));
+    instances.push((path.clone(), instance));
 }
 
 pub fn compile(input: AnalysisASMFile) -> PILGraph {
@@ -198,7 +154,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
         .collect::<BTreeMap<_, _>>();
 
     // if no instances are defined, inject some automatically
-    let src_instances = if input.instances().count() == 0 {
+    let instances = if input.instances().count() == 0 {
         // get the main machine type
         let main_ty = match non_std_non_rom_machines.len() {
             // if there is a single machine, treat it as main
@@ -219,46 +175,55 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
         instantiate(
             &input,
             &mut instances,
-            parse_absolute_path(MAIN_MACHINE_INSTANCE),
+            &parse_absolute_path(MAIN_MACHINE_INSTANCE),
             &main_ty,
             &vec![],
         );
 
         instances
     } else {
-        input
-            .instances()
-            .map(|(path, instance)| (path.clone(), instance.clone()))
-            .collect()
+        unimplemented!("machine instantiation is not exposed to the user yet");
     };
 
-    // generate the trimmed instance map
-    let instances = src_instances
+    // find the main instance
+    let (_, main_instance) = instances
         .iter()
-        .fold(
-            SourceInstances::default(),
-            |mut instances, (path, instance)| {
-                assert_eq!(path.len(), 1);
-                let location = Location::default().join(path.parts().next().unwrap());
-                instances.abs_to_loc.insert(path.clone(), location.clone());
-                let new_location = instances.fold_instance(&input, location.clone(), instance);
-                assert_eq!(new_location, location);
-                instances
-            },
-        )
-        .trim(&Location::main());
+        .find(|(l, _)| l == &parse_absolute_path(MAIN_MACHINE_INSTANCE))
+        .unwrap();
+
+    // get the type of main
+    let Item::Machine(main_ty) = input.items.get(&main_instance.ty).unwrap() else {
+        panic!()
+    };
+
+    let main_location = Location::main();
+
+    // generate the trimmed instance map
+    let instances = instances
+        .iter()
+        .fold(Instances::default(), |mut instances, (path, instance)| {
+            assert_eq!(
+                path.len(),
+                1,
+                "instances are only expected at the top-most module for now"
+            );
+            let location = Location::default().join(path.parts().next().unwrap());
+            instances.abs_to_loc.insert(path.clone(), location.clone());
+            let new_location = instances.fold_instance(&input, location.clone(), instance);
+            assert_eq!(new_location, location);
+            instances
+        })
+        .trim(&main_location);
 
     // count incoming permutations for each machine.
     let mut incoming_permutations = instances
-        .iter()
-        .map(|(path, _)| path)
+        .keys()
         .map(|location| (location.clone(), 0))
         .collect();
 
     // visit the tree compiling the machines
     let mut objects: BTreeMap<_, _> = instances
-        .iter()
-        .map(|(path, _)| path)
+        .keys()
         .map(|location| {
             let object = ASMPILConverter::convert_machine(
                 &instances,
@@ -291,19 +256,8 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
         }
     }
 
-    let (_, main_instance) = src_instances
-        .iter()
-        .find(|(l, _)| l == &parse_absolute_path(MAIN_MACHINE_INSTANCE))
-        .unwrap();
-
-    let Item::Machine(main_ty) = input.items.get(&main_instance.ty).unwrap() else {
-        panic!()
-    };
-
     let main = powdr_ast::object::Machine {
-        // TODO: this is only correct because Path "::main" happens to point to Location "main"
-        // clean up
-        location: Location::main(),
+        location: main_location,
         latch: main_ty.latch.clone(),
         operation_id: main_ty.operation_id.clone(),
         call_selectors: main_ty.call_selectors.clone(),
@@ -325,29 +279,29 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
     }
 }
 
-// // resolve argument in a submachine declaration to a machine instance location
-// fn resolve_submachine_arg(
-//     location: &Location,
-//     machine: &asm_analysis::Machine,
-//     args: &[Location],
-//     submachine_arg: &Expression,
-// ) -> Location {
-//     // We only support machine instances as arguments. This has already been checked before
-//     let id = submachine_arg.try_to_identifier().unwrap().clone();
-//     if let Some((_, arg)) = machine
-//         .params
-//         .0
-//         .iter()
-//         .zip(args.iter())
-//         .find(|(param, _)| param.name == id)
-//     {
-//         // argument is the name of a parameter, pass it forward
-//         arg.clone()
-//     } else {
-//         // argument is the name of another submachine, join with current location
-//         location.clone().join(id)
-//     }
-// }
+// resolve argument in a submachine declaration to a machine instance location
+fn resolve_submachine_arg(
+    location: &AbsoluteSymbolPath,
+    machine: &asm_analysis::Machine,
+    args: &[AbsoluteSymbolPath],
+    submachine_arg: &Expression,
+) -> AbsoluteSymbolPath {
+    // We only support machine instances as arguments. This has already been checked before
+    let id = submachine_arg.try_to_identifier().unwrap().clone();
+    if let Some((_, arg)) = machine
+        .params
+        .0
+        .iter()
+        .zip(args.iter())
+        .find(|(param, _)| param.name == id)
+    {
+        // argument is the name of a parameter, pass it forward
+        arg.clone()
+    } else {
+        // argument is the name of another submachine, join with current location
+        parse_absolute_path(&format!("{location}_{id}"))
+    }
+}
 
 fn utility_functions(asm_file: AnalysisASMFile) -> BTreeMap<AbsoluteSymbolPath, TypeOrExpression> {
     asm_file
@@ -372,7 +326,7 @@ struct SubmachineRef {
 
 struct ASMPILConverter<'a> {
     /// Map of all machine instances to their type and passed arguments
-    instances: &'a Instances,
+    instances: &'a BTreeMap<Location, Instance>,
     /// Current machine instance
     location: &'a Location,
     /// Input definitions and machines.
@@ -387,7 +341,7 @@ struct ASMPILConverter<'a> {
 
 impl<'a> ASMPILConverter<'a> {
     fn new(
-        instances: &'a Instances,
+        instances: &'a BTreeMap<Location, Instance>,
         location: &'a Location,
         input: &'a AnalysisASMFile,
         incoming_permutations: &'a mut BTreeMap<Location, u64>,
@@ -407,7 +361,7 @@ impl<'a> ASMPILConverter<'a> {
     }
 
     fn convert_machine(
-        instances: &'a Instances,
+        instances: &'a BTreeMap<Location, Instance>,
         location: &'a Location,
         input: &'a AnalysisASMFile,
         incoming_permutations: &'a mut BTreeMap<Location, u64>,
@@ -674,198 +628,5 @@ impl<'a> ASMPILConverter<'a> {
             });
         links.extend(merged_links);
         links
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::iter::once;
-
-    use pretty_assertions::assert_eq;
-
-    use powdr_analysis::convert_asm_to_pil;
-    use powdr_ast::{
-        asm_analysis::{AnalysisASMFile, Item, MachineInstance, MachineInstanceExpression},
-        object::{Location, Machine, Object, PILGraph},
-        parsed::asm::parse_absolute_path,
-    };
-    use powdr_number::{FieldElement, GoldilocksField};
-    use powdr_parser::parse_asm;
-
-    use crate::{compile, utility_functions};
-
-    fn parse_analyze_and_convert_file<T: FieldElement>(file: &str) -> AnalysisASMFile {
-        let contents = std::fs::read_to_string(file).unwrap();
-        let parsed = parse_asm(None, &contents).unwrap_or_else(|e| {
-            e.output_to_stderr();
-            panic!();
-        });
-        let resolved = powdr_importer::load_dependencies_and_resolve(None, parsed).unwrap();
-        convert_asm_to_pil::<T>(resolved).unwrap()
-    }
-
-    #[test]
-    fn single_instance() {
-        let asm = "test_data/program.asm";
-        let mut asm = parse_analyze_and_convert_file::<GoldilocksField>(asm);
-        // let main = Bar {};
-        asm.items.insert(
-            parse_absolute_path("::main"),
-            Item::Instance(MachineInstance {
-                ty: parse_absolute_path("::Bar"),
-                // no arguments
-                value: MachineInstanceExpression::Value(Default::default()),
-            }),
-        );
-        let definitions = utility_functions(asm.clone());
-        let compiled = compile(asm);
-        assert_eq!(
-            compiled.to_string(),
-            PILGraph {
-                main: Machine {
-                    location: Location::main(),
-                    latch: None,
-                    call_selectors: None,
-                    operation_id: None
-                },
-                entry_points: vec![],
-                objects: once((Location::main(), Object::default())).collect(),
-                definitions
-            }
-            .to_string()
-        );
-    }
-
-    #[test]
-    fn one_submachine() {
-        let asm = "test_data/program.asm";
-        let mut asm = parse_analyze_and_convert_file::<GoldilocksField>(asm);
-        // let bar = Bar {};
-        // let main = Foo { bar };
-        asm.items.extend([
-            (
-                parse_absolute_path("::bar"),
-                Item::Instance(MachineInstance {
-                    ty: parse_absolute_path("::Bar"),
-                    // no arguments
-                    value: MachineInstanceExpression::Value(Default::default()),
-                }),
-            ),
-            (
-                parse_absolute_path("::main"),
-                Item::Instance(MachineInstance {
-                    ty: parse_absolute_path("::Foo"),
-                    // pass bar
-                    value: MachineInstanceExpression::Value(
-                        once(MachineInstance {
-                            ty: parse_absolute_path("::Bar"),
-                            value: MachineInstanceExpression::Reference(parse_absolute_path(
-                                "::bar",
-                            )),
-                        })
-                        .collect(),
-                    ),
-                }),
-            ),
-        ]);
-        let definitions = utility_functions(asm.clone());
-        let compiled = compile(asm);
-        assert_eq!(
-            compiled.to_string(),
-            PILGraph {
-                main: Machine {
-                    location: Location::main(),
-                    latch: None,
-                    call_selectors: None,
-                    operation_id: None
-                },
-                entry_points: vec![],
-                objects: once((Location::from("main"), Object::default(),))
-                    .chain(once((Location::from("bar"), Object::default(),)))
-                    .collect(),
-                definitions
-            }
-            .to_string()
-        );
-    }
-
-    #[test]
-    fn share_submachine() {
-        let asm = "test_data/program.asm";
-        let mut asm = parse_analyze_and_convert_file::<GoldilocksField>(asm);
-        // let bar = Bar {};
-        // let foo = Foo { bar };
-        // let main = Baz { foo, bar };
-        asm.items.extend([
-            (
-                parse_absolute_path("::bar"),
-                Item::Instance(MachineInstance {
-                    ty: parse_absolute_path("::Bar"),
-                    // no arguments
-                    value: MachineInstanceExpression::Value(Default::default()),
-                }),
-            ),
-            (
-                parse_absolute_path("::foo"),
-                Item::Instance(MachineInstance {
-                    ty: parse_absolute_path("::Foo"),
-                    // pass bar
-                    value: MachineInstanceExpression::Value(
-                        once(MachineInstance {
-                            ty: parse_absolute_path("::Bar"),
-                            value: MachineInstanceExpression::Reference(parse_absolute_path(
-                                "::bar",
-                            )),
-                        })
-                        .collect(),
-                    ),
-                }),
-            ),
-            (
-                parse_absolute_path("::main"),
-                Item::Instance(MachineInstance {
-                    ty: parse_absolute_path("::Baz"),
-                    // pass bar
-                    value: MachineInstanceExpression::Value(
-                        once(MachineInstance {
-                            ty: parse_absolute_path("::Foo"),
-                            value: MachineInstanceExpression::Reference(parse_absolute_path(
-                                "::foo",
-                            )),
-                        })
-                        .chain(once(MachineInstance {
-                            ty: parse_absolute_path("::Bar"),
-                            value: MachineInstanceExpression::Reference(parse_absolute_path(
-                                "::bar",
-                            )),
-                        }))
-                        .collect(),
-                    ),
-                }),
-            ),
-        ]);
-        let definitions = utility_functions(asm.clone());
-        let compiled = compile(asm);
-        assert_eq!(
-            compiled.to_string(),
-            PILGraph {
-                main: Machine {
-                    location: Location::main(),
-                    latch: None,
-                    call_selectors: None,
-                    operation_id: None
-                },
-                entry_points: vec![],
-                objects: [
-                    (Location::from("main"), Object::default()),
-                    (Location::from("bar"), Object::default()),
-                    (Location::from("foo"), Object::default())
-                ]
-                .into_iter()
-                .collect(),
-                definitions
-            }
-            .to_string()
-        );
     }
 }
