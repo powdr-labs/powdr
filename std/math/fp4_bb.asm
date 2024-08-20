@@ -3,12 +3,12 @@ use std::check::panic;
 use std::convert::fe;
 use std::convert::int;
 use std::convert::expr;
+use std::math::ff::inv_field;
 use std::prover::eval;
+
 
 /// BETA = 11
 /// NBETA = 2013265910
-
-let BABYBEAR_PRIME = 0x78000001;
 
 /// An element of the extension field over the BabyBear Field
 /// relative to the irreducible polynomial X^4 + 11,
@@ -62,9 +62,6 @@ let<T: Add + FromLiteral + Mul> mul_ext: Fp4<T>, Fp4<T> -> Fp4<T> = |a, b| match
         a0 * b3 + a1 * b2 + a2 * b1 + a3 * b0
     )
 };
-
-/// Field inversion (defined on fe instead of int)
-let inv_field: fe -> fe = |x| fe(std::math::ff::inverse(int(x), BABYBEAR_PRIME));
 
 /// Inversion for an Fp4 element
 // The inverse of (a0, a1, a2, a3) is a point (b0, b1, b2, b3) such that:

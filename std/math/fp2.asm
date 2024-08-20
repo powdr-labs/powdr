@@ -5,9 +5,9 @@ use std::check::panic;
 use std::convert::fe;
 use std::convert::int;
 use std::convert::expr;
-use std::field::modulus;
 use std::field::known_field;
 use std::field::KnownField;
+use std::math::ff::inv_field;
 use std::prover::eval;
 
 /// An element of the extension field over the implied base field (which has to be either
@@ -68,9 +68,6 @@ let eq_ext: Fp2<fe>, Fp2<fe> -> bool = |a, b| match (a, b) {
 let constrain_eq_ext: Fp2<expr>, Fp2<expr> -> Constr[] = |a, b| match (a, b) {
     (Fp2::Fp2(a0, a1), Fp2::Fp2(b0, b1)) => [a0 = b0, a1 = b1]
 };
-
-/// Field inversion (defined on fe instead of int)
-let inv_field: fe -> fe = |x| fe(std::math::ff::inverse(int(x), modulus()));
 
 /// Extension field inversion
 let inv_ext: Fp2<fe> -> Fp2<fe> = |a| match a {
