@@ -492,19 +492,6 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a> {
                 };
                 let impl_ = &impls[*index];
 
-                // let local_type_args = poly
-                //     .type_args
-                //     .clone()
-                //     .map(|ta| {
-                //         ta.into_iter()
-                //             .filter_map(|ty| {
-                //                 let key = ty.to_string();
-                //                 self.type_args.get(&key).map(|value| (key, value.clone()))
-                //             })
-                //             .collect::<HashMap<_, _>>()
-                //     })
-                //     .unwrap();
-
                 match impl_.function_by_name(&fn_name) {
                     Some(func) => {
                         let Expression::LambdaExpression(_, lambda) = func.body.as_ref() else {
@@ -1783,11 +1770,11 @@ mod test {
             }
 
             trait Cast<T, U> {
-                cast: T -> U,
+                add: T -> U, // This name is wrong on purpose
             }
 
             impl Cast<int, fe> {
-                cast: |a| std::convert::fe(a),
+                add: |a| std::convert::fe(a), 
             }
 
             let x: int -> fe = |q| match Add::add(q, 2) {
@@ -1795,7 +1782,7 @@ mod test {
             };
 
             let y: int -> fe = |q| match Add::add(q, 4) {
-                    v => x(v) + Cast::cast(v),
+                    v => x(v) + Cast::add(v),
             };
 
             let r: fe = y(2);
