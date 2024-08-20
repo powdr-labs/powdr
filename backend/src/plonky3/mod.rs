@@ -6,7 +6,7 @@ use powdr_executor::{
     witgen::WitgenCallback,
 };
 use powdr_number::{FieldElement, GoldilocksField, LargeInt};
-use powdr_plonky3::Plonky3Prover;
+use powdr_plonky3::{FieldElementMap, Plonky3Prover};
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
@@ -53,7 +53,7 @@ impl<T: FieldElement> BackendFactory<T> for Factory {
     }
 }
 
-impl<T: FieldElement> Backend<T> for Plonky3Prover<T> {
+impl<T: FieldElementMap> Backend<T> for Plonky3Prover<T> {
     fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
         Ok(self.verify(proof, instances)?)
     }

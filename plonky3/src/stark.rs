@@ -1,5 +1,6 @@
 //! A plonky3 prover using FRI and Poseidon
 
+use p3_commit::Pcs;
 use p3_matrix::dense::RowMajorMatrix;
 
 use core::fmt;
@@ -10,21 +11,23 @@ use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
 
 use p3_uni_stark::{
-    prove_with_key, verify_with_key, Proof, StarkGenericConfig, StarkProvingKey, StarkVerifyingKey,
+    prove_with_key, verify_with_key, StarkGenericConfig, StarkProvingKey, StarkVerifyingKey,
 };
-use powdr_number::{BabyBearField, FieldElement, GoldilocksField, KnownField};
 
-use crate::{circuit_builder::PowdrCircuit, params::FieldElementMap};
+use crate::{
+    circuit_builder::PowdrCircuit,
+    params::{FieldElementMap, Plonky3Field},
+};
 
-pub struct Plonky3Prover<T: FieldElement, F: FieldElementMap> {
+pub struct Plonky3Prover<T: FieldElementMap> {
     /// The analyzed PIL
     analyzed: Arc<Analyzed<T>>,
     /// The value of the fixed columns
     fixed: Arc<Vec<(String, Vec<T>)>>,
     /// Proving key
-    proving_key: Option<StarkProvingKey<F::Config>>,
+    proving_key: Option<StarkProvingKey<T::Config>>,
     /// Verifying key
-    verifying_key: Option<StarkVerifyingKey<F::Config>>,
+    verifying_key: Option<StarkVerifyingKey<T::Config>>,
 }
 
 pub enum VerificationKeyExportError {
@@ -39,7 +42,7 @@ impl fmt::Display for VerificationKeyExportError {
     }
 }
 
-impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T, F> {
+impl<T: FieldElementMap> Plonky3Prover<T> {
     pub fn new(analyzed: Arc<Analyzed<T>>, fixed: Arc<Vec<(String, Vec<T>)>>) -> Self {
         Self {
             analyzed,
@@ -64,7 +67,7 @@ impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T, F> {
 
     /// Returns preprocessed matrix based on the fixed inputs [`Plonky3Prover<T>`].
     /// This is used when running the setup phase
-    pub fn get_preprocessed_matrix(&self) -> RowMajorMatrix<F::P3Field> {
+    pub fn get_preprocessed_matrix(&self) -> RowMajorMatrix<Plonky3Field<T>> {
         let publics = self
             .analyzed
             .get_publics()
@@ -78,18 +81,18 @@ impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T, F> {
             .collect::<Vec<(String, Vec<T>)>>();
 
         match self.fixed.len() + publics.len() {
-            0 => RowMajorMatrix::new(Vec::<F::P3Field>::new(), 0),
+            0 => RowMajorMatrix::new(vec![], 0),
             _ => RowMajorMatrix::new(
                 // write fixed row by row
                 (0..self.analyzed.degree())
                     .flat_map(|i| {
                         self.fixed
                             .iter()
-                            .map(move |(_, values)| F::to_p3_field(values[i as usize]))
+                            .map(move |(_, values)| values[i as usize].to_p3_field())
                             .chain(
                                 publics
                                     .iter()
-                                    .map(move |(_, values)| F::to_p3_field(values[i as usize])),
+                                    .map(move |(_, values)| values[i as usize].to_p3_field()),
                             )
                     })
                     .collect(),
@@ -99,7 +102,7 @@ impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T, F> {
     }
 }
 
-impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T, F> {
+impl<T: FieldElementMap> Plonky3Prover<T> {
     pub fn setup(&mut self) {
         // get fixed columns
         let fixed = &self.fixed;
@@ -122,14 +125,11 @@ impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T, F> {
         }
 
         // get the config
-        let config = F::get_config();
+        let config = T::get_config();
 
         // commit to the fixed columns
         let pcs = config.pcs();
-        let domain = <_ as p3_commit::Pcs<_, F::Challenger>>::natural_domain_for_degree(
-            pcs,
-            self.analyzed.degree() as usize,
-        );
+        let domain = pcs.natural_domain_for_degree(self.analyzed.degree() as usize);
         // write fixed into matrix row by row
         let matrix = RowMajorMatrix::new(
             (0..self.analyzed.degree())
@@ -137,7 +137,7 @@ impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T, F> {
                     fixed
                         .iter()
                         .chain(publics.iter())
-                        .map(move |(_, values)| F::to_p3_field(values[i as usize]))
+                        .map(move |(_, values)| values[i as usize].to_p3_field())
                 })
                 .collect(),
             self.fixed.len() + publics.len(),
@@ -146,11 +146,10 @@ impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T, F> {
         let evaluations = vec![(domain, matrix)];
 
         // commit to the evaluations
-        let (fixed_commit, fixed_data) =
-            <_ as p3_commit::Pcs<_, F::Challenger>>::commit(pcs, evaluations);
+        let (fixed_commit, fixed_data) = pcs.commit(evaluations);
 
         let proving_key = StarkProvingKey {
-            preprocessed_commit: fixed_commit,
+            preprocessed_commit: fixed_commit.clone(),
             preprocessed_data: fixed_data,
         };
         let verifying_key = StarkVerifyingKey {
@@ -166,12 +165,7 @@ impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T, F> {
         witness: &[(String, Vec<T>)],
         witgen_callback: WitgenCallback<T>,
     ) -> Result<Vec<u8>, String> {
-        assert!(
-            F::known_field() == Some(KnownField::GoldilocksField)
-                || F::known_field() == Some(KnownField::BabyBearField)
-        );
-
-        let circuit: PowdrCircuit<T, F> = PowdrCircuit::new(&self.analyzed)
+        let circuit = PowdrCircuit::new(&self.analyzed)
             .with_witgen_callback(witgen_callback)
             .with_witness(witness);
 
@@ -182,9 +176,9 @@ impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T, F> {
 
         let trace = circuit.generate_trace_rows();
 
-        let config = F::get_config();
+        let config = T::get_config();
 
-        let mut challenger = F::get_challenger();
+        let mut challenger = T::get_challenger();
 
         let proving_key = self.proving_key.as_ref();
 
@@ -197,7 +191,7 @@ impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T, F> {
             &publics,
         );
 
-        let mut challenger = F::get_challenger();
+        let mut challenger = T::get_challenger();
 
         let verifying_key = self.verifying_key.as_ref();
 
@@ -214,17 +208,17 @@ impl<T: FieldElement, F: FieldElementMap> Plonky3Prover<T, F> {
     }
 
     pub fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), String> {
-        let proof: Proof<_> =
+        let proof =
             bincode::deserialize(proof).map_err(|e| format!("Failed to deserialize proof: {e}"))?;
         let publics = instances
             .iter()
             .flatten()
-            .map(|v| F::to_p3_field(*v))
+            .map(|v| v.to_p3_field())
             .collect();
 
-        let config = F::get_config();
+        let config = T::get_config();
 
-        let mut challenger = F::get_challenger();
+        let mut challenger = T::get_challenger();
 
         let verifying_key = self.verifying_key.as_ref();
 
