@@ -20,15 +20,9 @@ pub(crate) trait FieldElementMap: FieldElement {
     type ChallengeMmcs;
     type MyPcs: Pcs<Self::Challenge, Self::Challenger>;
     type Config: StarkGenericConfig;
-    type Challenger: FieldChallenger<<
-        <<Self::MyPcs as p3_commit::Pcs<
-            Self::Challenge,
-            Self>::Challenger,
-        >>::Domain as p3_commit::PolynomialSpace>::Val>;
-
-        // FieldChallenger<Self::P3Field>
-    //     + CanObserve<<Self::MyPcs as Pcs<Self::Challenge, Self::Challenger>>::Commitment>
-    //     + CanSample<Self::Challenge>;
+    type Challenger: FieldChallenger<Self::P3Field>
+        + CanObserve<<Self::MyPcs as Pcs<Self::Challenge, Self::Challenger>>::Commitment>
+        + CanSample<Self::Challenge>;
     const DEGREE: usize;
     const WIDTH: usize;
     const RATE: usize;
