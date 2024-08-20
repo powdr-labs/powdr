@@ -15,7 +15,7 @@ use p3_poseidon::Poseidon;
 use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
 use p3_uni_stark::StarkConfig;
 use powdr_number::{FieldElement, GoldilocksField, LargeInt};
-use rand::distributions::Standard;
+use rand::{distributions::Standard, Rng, SeedableRng};
 
 pub trait PoseidonCompatible {
     const PERM_WIDTH: usize;
@@ -26,7 +26,6 @@ pub trait PoseidonCompatible {
     const NUM_CONSTANTS: usize = Self::PERM_WIDTH * Self::NUM_ROUNDS;
     const RNG_SEED: u64 = 42;
 
-    type PermObject;
     type PoseidonPerm;
 }
 
@@ -36,14 +35,13 @@ impl PoseidonCompatible for GoldilocksField {
     const HALF_NUM_FULL_ROUNDS: usize = 4;
     const NUM_PARTIAL_ROUNDS: usize = 22;
 
-    type PermObject = [Goldilocks; Self::PERM_WIDTH];
     type PoseidonPerm =
         Poseidon<Goldilocks, MdsMatrixGoldilocks, { Self::PERM_WIDTH }, { Self::ALPHA }>;
 }
 
 lazy_static! {
     static ref PERM_GL: <GoldilocksField as PoseidonCompatible>::PoseidonPerm =
-        GoldilocksField::PoseidonPerm::new(
+        <GoldilocksField as PoseidonCompatible>::PoseidonPerm::new(
             GoldilocksField::HALF_NUM_FULL_ROUNDS,
             GoldilocksField::NUM_PARTIAL_ROUNDS,
             rand_chacha::ChaCha8Rng::seed_from_u64(GoldilocksField::RNG_SEED)
@@ -57,8 +55,16 @@ lazy_static! {
 impl FieldElementMap for GoldilocksField {
     type P3Field = Goldilocks;
     type MdsMatrix = MdsMatrixGoldilocks;
-    type PermObject = <GoldilocksField as PoseidonCompatible>::PermObject;
+    type PermObject = [Goldilocks; Self::WIDTH];
     type Perm = <GoldilocksField as PoseidonCompatible>::PoseidonPerm;
+
+    const DEGREE: usize = 2;
+    const WIDTH: usize = GoldilocksField::PERM_WIDTH;
+    const RATE: usize = 4;
+    const OUT: usize = 4;
+    const N: usize = 2;
+    const CHUNK: usize = 4;
+    const DIGEST_ELEMS: usize = 4;
 
     type Hash = PaddingFreeSponge<Self::Perm, { Self::WIDTH }, { Self::RATE }, { Self::OUT }>;
     type Compress = TruncatedPermutation<Self::Perm, { Self::N }, { Self::CHUNK }, { Self::WIDTH }>;
@@ -76,14 +82,6 @@ impl FieldElementMap for GoldilocksField {
     type MyPcs = TwoAdicFriPcs<Self::P3Field, Self::Dft, Self::ValMmcs, Self::ChallengeMmcs>;
     type Config = StarkConfig<Self::MyPcs, Self::Challenge, Self::Challenger>;
 
-    const DEGREE: usize = 2;
-    const WIDTH: usize = GoldilocksField::PERM_WIDTH;
-    const RATE: usize = 4;
-    const OUT: usize = 4;
-    const N: usize = 2;
-    const CHUNK: usize = 4;
-    const DIGEST_ELEMS: usize = 4;
-
     fn to_p3_field<T: FieldElement>(elt: T) -> Self::P3Field {
         Goldilocks::from_canonical_u64(elt.to_integer().try_into_u64().unwrap())
     }
@@ -92,7 +90,7 @@ impl FieldElementMap for GoldilocksField {
         Self::Challenger::new(PERM_GL.clone())
     }
 
-    fn get_config() -> Self::Config {
+    fn get_config() -> StarkConfig<Self::MyPcs, Self::Challenge, Self::Challenger> {
         let hash = Self::Hash::new(PERM_GL.clone());
 
         let compress = Self::Compress::new(PERM_GL.clone());

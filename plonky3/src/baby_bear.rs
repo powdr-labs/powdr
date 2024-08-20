@@ -26,7 +26,6 @@ pub trait Poseidon2Compatible {
     const PERM_WIDTH: usize;
     const RNG_SEED: u64 = 42;
 
-    type PermObject;
     type Poseidon2Perm;
 }
 
@@ -38,7 +37,6 @@ impl Poseidon2Compatible for BabyBearField {
     const ROUNDS_P: usize = 13;
     const PERM_WIDTH: usize = 16;
 
-    type PermObject = [BabyBear; Self::PERM_WIDTH];
     type Poseidon2Perm = Poseidon2<
         BabyBear,
         Poseidon2ExternalMatrixGeneral,
@@ -69,8 +67,16 @@ lazy_static! {
 impl FieldElementMap for BabyBearField {
     type P3Field = BabyBear;
     type MdsMatrix = MdsMatrixBabyBear;
-    type PermObject = <BabyBearField as Poseidon2Compatible>::PermObject;
+    type PermObject = [BabyBear; Self::PERM_WIDTH];
     type Perm = <BabyBearField as Poseidon2Compatible>::Poseidon2Perm;
+
+    const DEGREE: usize = 4;
+    const WIDTH: usize = BabyBearField::PERM_WIDTH;
+    const RATE: usize = 8;
+    const OUT: usize = 8;
+    const N: usize = 2;
+    const CHUNK: usize = 8;
+    const DIGEST_ELEMS: usize = 8;
 
     type Hash = PaddingFreeSponge<Self::Perm, { Self::WIDTH }, { Self::RATE }, { Self::OUT }>;
     type Compress = TruncatedPermutation<Self::Perm, { Self::N }, { Self::CHUNK }, { Self::WIDTH }>;
@@ -88,14 +94,6 @@ impl FieldElementMap for BabyBearField {
     type MyPcs = TwoAdicFriPcs<Self::P3Field, Self::Dft, Self::ValMmcs, Self::ChallengeMmcs>;
     type Config = StarkConfig<Self::MyPcs, Self::Challenge, Self::Challenger>;
 
-    const DEGREE: usize = 4;
-    const WIDTH: usize = BabyBearField::PERM_WIDTH;
-    const RATE: usize = 8;
-    const OUT: usize = 8;
-    const N: usize = 2;
-    const CHUNK: usize = 8;
-    const DIGEST_ELEMS: usize = 8;
-
     fn to_p3_field<T: FieldElement>(elt: T) -> Self::P3Field {
         BabyBear::from_canonical_u32(elt.to_integer().try_into_u32().unwrap())
     }
@@ -104,7 +102,7 @@ impl FieldElementMap for BabyBearField {
         Self::Challenger::new(PERM_BB.clone())
     }
 
-    fn get_config() -> Self::Config {
+    fn get_config() -> StarkConfig<Self::MyPcs, Self::Challenge, Self::Challenger> {
         let hash = Self::Hash::new(PERM_BB.clone());
 
         let compress = Self::Compress::new(PERM_BB.clone());
