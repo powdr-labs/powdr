@@ -482,7 +482,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a> {
             Some(index) => {
                 let parts = poly.name.split("::").collect::<Vec<_>>();
                 let fn_name = parts.last().unwrap().to_string();
-                let trait_name = parts[..parts.len() - 1].join(".");
+                let trait_name = parts[..parts.len() - 1].join("."); // TODO GZ Replace '.' by '::' after we merge #1694
 
                 let impls = match self.1.get(&trait_name) {
                     Some(impls) => impls,
