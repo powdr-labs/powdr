@@ -26,7 +26,7 @@ use super::{create_stark_struct, first_step_fixup, ProofType};
 pub struct Factory;
 
 impl<F: FieldElement> BackendFactory<F> for Factory {
-    fn create<'a>(
+    fn create(
         &self,
         pil: Arc<Analyzed<F>>,
         fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
@@ -35,7 +35,7 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
         verification_key: Option<&mut dyn std::io::Read>,
         verification_app_key: Option<&mut dyn std::io::Read>,
         options: BackendOptions,
-    ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
+    ) -> Result<Box<dyn crate::Backend<F>>, Error> {
         if F::modulus().to_arbitrary_integer() != GoldilocksField::modulus().to_arbitrary_integer()
         {
             unimplemented!("eSTARK is only implemented for Goldilocks field");
@@ -191,7 +191,7 @@ impl<F: FieldElement> EStark<F> {
     }
 }
 
-impl<'a, F: FieldElement> Backend<'a, F> for EStark<F> {
+impl<F: FieldElement> Backend<F> for EStark<F> {
     fn verify(&self, proof: &[u8], instances: &[Vec<F>]) -> Result<(), Error> {
         match self.proof_type {
             ProofType::StarkGL => {
