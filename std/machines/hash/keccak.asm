@@ -5,11 +5,14 @@ use std::utils::force_bool;
 use std::convert::expr;
 
 machine Keccak with
-    latch: FIRSTBLOCK,
+    degree: 24,
+    latch: final_step,
     operation_id: operation_id,
-    // Allow this machine to be connected via a permutation
-    call_selectors: sel,
+    call_selectors: sel, // is this needed?
 {
+    // operation keccakf<0> preimage[0], preimage[1], ... -> a_prime_prime_prime[0, 0, 0], a_prime_prime_prime[0, 0, 1], ....
+    col witness operation_id;
+
     let NUM_ROUNDS: int = 24;
 
     // pub struct KeccakCols<T> {
@@ -198,15 +201,14 @@ machine Keccak with
     // }
 
     array::map(a_prime, |i| force_bool(i));
-    array::new(25, |i| {
-        let y = i / 5;
-        let x = i % 5;
-        let get_bit: int -> expr = |z| xor3(a_prime[i * 64 + z], c[x * 64 + z], c_prime[x * 64 + z]); // make sure that y and x can take values defined within array::new
-        array::new(4, |limb| {
-            let computed_limb: expr = utils::fold(16, |z| get_bit((limb + 1) * 16 - 1 - z), 0, |acc, e| (acc * 2 + e)); // should be an expr or int? 15->0, 31->16, 47->32, 63->48, where z is always 0->15 in utils::fold
-            computed_limb - a[i * 4 + limb] = 0
-        }) // need a semicolon if i'm returning the inner array of 4 constraints?
-    }); // does this nested pattern work? i want to return 5 * 5 * 4 constraints in total
+    array::new(100, |i| {
+        let y = i / 20;
+        let x = (i / 4) % 5;
+        let limb = i % 4;
+        let get_bit: int -> expr = |z| xor3(a_prime[y * 320 + x * 64 + z], c[x * 64 + z], c_prime[x * 64 + z]);
+        let computed_limb: expr = utils::fold(16, |z| get_bit((limb + 1) * 16 - 1 - z), 0, |acc, e| (acc * 2 + e)); // 15->0, 31->16, 47->32, 63->48, where z is always 0->15 in utils::fold
+        computed_limb - a[i] = 0
+    });
 
     // // xor_{i=0}^4 A'[x, i, z] = C'[x, z], so for each x, z,
     // // diff * (diff - 2) * (diff - 4) = 0, where
@@ -252,16 +254,16 @@ machine Keccak with
     let andn: expr, expr -> expr = |a, b| (1 - a) * b;
 
     // have similar questions for this chunk as the chunk above involving limbs
-    array::new(25, |i| {
-        let y = i / 5;
-        let x = i % 5;
+    array::new(100, |i| {
+        let y = i / 20;
+        let x = (i / 4) % 5;
+        let limb = i % 4;
+        
         let get_bit: int -> expr = |z| {
             xor(b(x, y, z), andn(b((x + 1) % 5, y, z), b((x + 2) % 5, y, z)))
         };
-        array::new(4, |limb| {
-            let computed_limb: expr = utils::fold(16, |z| get_bit((limb + 1) * 16 - 1 - z), 0, |acc, e| (acc * 2 + e));
-            computed_limb - a_prime_prime[i * 4 + limb] = 0
-        })
+        let computed_limb: expr = utils::fold(16, |z| get_bit((limb + 1) * 16 - 1 - z), 0, |acc, e| (acc * 2 + e));
+        computed_limb - a_prime_prime[i] = 0
     });
 
     // pub fn b(&self, x: usize, y: usize, z: usize) -> T {
