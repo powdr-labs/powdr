@@ -1,4 +1,4 @@
-use powdr_ast::analyzed::Analyzed;
+use powdr_ast::analyzed::{Analyzed, PolynomialReference};
 use powdr_backend::BackendType;
 use powdr_number::{buffered_write_file, BigInt, Bn254Field, FieldElement, GoldilocksField};
 use powdr_pil_analyzer::evaluator::{self, SymbolLookup};
@@ -332,7 +332,7 @@ pub fn std_analyzed<T: FieldElement>() -> Analyzed<T> {
 /// Evaluates a function call.
 pub fn evaluate_function<'a, T: FieldElement>(
     analyzed: &'a Analyzed<T>,
-    function: &'a str,
+    function: &'a PolynomialReference,
     arguments: Vec<Arc<evaluator::Value<'a, T>>>,
 ) -> evaluator::Value<'a, T> {
     let mut symbols = evaluator::Definitions(&analyzed.definitions, &analyzed.trait_impls);
@@ -353,7 +353,11 @@ pub fn evaluate_integer_function<T: FieldElement>(
         .into_iter()
         .map(|x| Arc::new(evaluator::Value::Integer(x)))
         .collect();
-    if let evaluator::Value::Integer(x) = evaluate_function(analyzed, function, arguments) {
+    if let evaluator::Value::Integer(x) = evaluate_function(
+        analyzed,
+        &PolynomialReference::new(function.to_string()),
+        arguments,
+    ) {
         x
     } else {
         panic!("Expected integer.");

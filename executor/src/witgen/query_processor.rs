@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
-use powdr_ast::analyzed::Challenge;
 use powdr_ast::analyzed::{AlgebraicReference, Expression, PolyID, PolynomialType};
+use powdr_ast::analyzed::{Challenge, PolynomialReference};
 use powdr_ast::parsed::types::Type;
 use powdr_number::{BigInt, DegreeType, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Definitions, EvalError, SymbolLookup, Value};
@@ -110,9 +110,10 @@ struct Symbols<'a, T: FieldElement> {
 impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
     fn lookup<'b>(
         &mut self,
-        name: &'a str,
+        poly: &'a PolynomialReference,
         type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
+        let name = poly.name.as_str();
         match self.fixed_data.analyzed.intermediate_columns.get(name) {
             // Intermediate polynomials (which includes challenges) are not inlined in hints,
             // so we need to look them up here.
@@ -173,17 +174,5 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
                 )
             });
         Ok(Value::FieldElement(challenge).into())
-    }
-
-    fn implementations(
-        &self,
-        trait_name: &str,
-    ) -> Result<&'a Vec<powdr_ast::parsed::TraitImplementation<Expression>>, EvalError> {
-        match self.fixed_data.analyzed.trait_impls.get(trait_name) {
-            Some(implementations) => Ok(implementations),
-            None => Err(EvalError::SymbolNotFound(format!(
-                "Trait {trait_name} not found."
-            ))),
-        }
     }
 }

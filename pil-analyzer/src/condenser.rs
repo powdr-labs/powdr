@@ -12,8 +12,9 @@ use std::{
 use powdr_ast::{
     analyzed::{
         self, AlgebraicExpression, AlgebraicReference, Analyzed, Expression,
-        FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialType, PublicDeclaration,
-        SelectedExpressions, StatementIdentifier, Symbol, SymbolKind,
+        FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialReference,
+        PolynomialType, PublicDeclaration, SelectedExpressions, StatementIdentifier, Symbol,
+        SymbolKind,
     },
     parsed::{
         self,
@@ -341,7 +342,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
 impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
     fn lookup(
         &mut self,
-        name: &'a str,
+        poly: &'a PolynomialReference,
         type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         // Cache already computed values.
@@ -349,14 +350,14 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         // we re-evaluate simple values, which users would not expect.
         if let Some(v) = self
             .symbol_values
-            .get(name)
+            .get(&poly.name)
             .and_then(|map| map.get(type_args))
         {
             return Ok(v.clone());
         }
-        let value = Definitions::lookup_with_symbols(self.symbols, name, type_args, self)?;
+        let value = Definitions::lookup_with_symbols(self.symbols, &poly.name, type_args, self)?;
         self.symbol_values
-            .entry(name.to_string())
+            .entry(poly.name.to_string())
             .or_default()
             .entry(type_args.clone())
             .or_insert_with(|| value.clone());
@@ -554,18 +555,6 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
                 .push(to_constraint(&constraints, source, &mut self.counters)),
         }
         Ok(())
-    }
-
-    fn implementations(
-        &self,
-        trait_name: &str,
-    ) -> Result<&'a Vec<TraitImplementation<Expression>>, EvalError> {
-        match self.trait_impls.get(trait_name) {
-            Some(impls) => Ok(impls),
-            None => Err(EvalError::SymbolNotFound(format!(
-                "Trait {trait_name} not found."
-            ))),
-        }
     }
 }
 

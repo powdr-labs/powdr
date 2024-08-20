@@ -1271,6 +1271,17 @@ pub struct PolynomialReference {
     pub resolved_impls: BTreeMap<Vec<Type>, usize>,
 }
 
+impl PolynomialReference {
+    pub fn new(name: String) -> Self {
+        Self {
+            name,
+            poly_id: None,
+            type_args: None,
+            resolved_impls: BTreeMap::new(),
+        }
+    }
+}
+
 #[derive(
     Debug, Copy, Clone, PartialOrd, Ord, PartialEq, Eq, Serialize, Deserialize, JsonSchema,
 )]

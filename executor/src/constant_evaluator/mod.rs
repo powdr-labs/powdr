@@ -8,14 +8,14 @@ pub use data_structures::{get_uniquely_sized, get_uniquely_sized_cloned, Variabl
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use powdr_ast::{
-    analyzed::{Analyzed, Expression, FunctionValueDefinition, Symbol, TypedExpression},
+    analyzed::{Analyzed, FunctionValueDefinition, PolynomialReference, Symbol, TypedExpression},
     parsed::{
         types::{ArrayType, Type},
-        IndexAccess, TraitImplementation,
+        IndexAccess,
     },
 };
 use powdr_number::{BigInt, BigUint, DegreeType, FieldElement};
-use powdr_pil_analyzer::evaluator::{self, Definitions, EvalError, SymbolLookup, Value};
+use powdr_pil_analyzer::evaluator::{self, Definitions, SymbolLookup, Value};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
 mod data_structures;
@@ -83,7 +83,6 @@ fn generate_values<T: FieldElement>(
 ) -> Vec<T> {
     let symbols = CachedSymbols {
         symbols: &analyzed.definitions,
-        trait_impls: &analyzed.trait_impls,
         cache: Arc::new(RwLock::new(Default::default())),
         degree,
     };
@@ -172,7 +171,6 @@ type SymbolCache<'a, T> = HashMap<String, BTreeMap<Option<Vec<Type>>, Arc<Value<
 #[derive(Clone)]
 pub struct CachedSymbols<'a, T> {
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
     cache: Arc<RwLock<SymbolCache<'a, T>>>,
     degree: DegreeType,
 }
@@ -180,9 +178,10 @@ pub struct CachedSymbols<'a, T> {
 impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
     fn lookup(
         &mut self,
-        name: &'a str,
+        poly: &'a PolynomialReference,
         type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
+        let name = poly.name.as_str();
         if let Some(v) = self
             .cache
             .read()
@@ -205,18 +204,6 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
 
     fn degree(&self) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
         Ok(Value::Integer(self.degree.into()).into())
-    }
-
-    fn implementations(
-        &self,
-        trait_name: &str,
-    ) -> Result<&'a Vec<TraitImplementation<Expression>>, EvalError> {
-        match self.trait_impls.get(trait_name) {
-            Some(impls) => Ok(impls),
-            None => Err(EvalError::SymbolNotFound(format!(
-                "Trait {trait_name} not found."
-            ))),
-        }
     }
 }
 

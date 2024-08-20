@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use powdr_ast::analyzed::PolynomialReference;
 use powdr_backend::BackendType;
 use powdr_executor::constant_evaluator::get_uniquely_sized;
 use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
@@ -570,9 +571,10 @@ fn keccak() {
     let padded_endianness_swapped_input = padded_input.iter().map(|x| x.swap_bytes()).collect();
 
     // Test keccakf_inner
+    let poly = &PolynomialReference::new("keccakf_inner".to_string());
     let keccakf_inner_result = evaluate_function(
         &analyzed,
-        "keccakf_inner",
+        poly,
         vec![Arc::new(array_argument(padded_endianness_swapped_input))],
     );
 
@@ -610,9 +612,10 @@ fn keccak() {
     );
 
     // Test keccakf
+    let poly = &PolynomialReference::new("keccakf".to_string());
     let keccakf_result = evaluate_function(
         &analyzed,
-        "keccakf",
+        poly,
         vec![Arc::new(array_argument(padded_input))],
     );
 
@@ -625,9 +628,10 @@ fn keccak() {
 
     // Helper for testing full keccak
     fn test_main(analyzed: &Analyzed<GoldilocksField>, input: Vec<u8>, expected: Vec<u8>) {
+        let poly = &PolynomialReference::new("main".to_string());
         let result = evaluate_function(
             analyzed,
-            "main",
+            poly,
             vec![
                 Arc::new(Value::Integer(BigInt::from(32))), // W = 32 (output bytes)
                 Arc::new(Value::Array(

@@ -11,7 +11,8 @@ use powdr_ast::{
     analyzed::{
         AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
         AlgebraicUnaryOperation, AlgebraicUnaryOperator, Challenge, Expression,
-        FunctionValueDefinition, Reference, Symbol, SymbolKind, TypedExpression,
+        FunctionValueDefinition, PolynomialReference, Reference, Symbol, SymbolKind,
+        TypedExpression,
     },
     parsed::{
         display::quote,
@@ -470,40 +471,72 @@ impl<'a> Definitions<'a> {
 impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a> {
     fn lookup(
         &mut self,
-        name: &str,
+        poly: &PolynomialReference,
         type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        Self::lookup_with_symbols(self.0, name, type_args, self)
+        let impl_pos = type_args
+            .as_ref()
+            .and_then(|type_args| poly.resolved_impls.get(type_args).as_ref().copied());
+
+        match impl_pos {
+            Some(index) => {
+                let parts = poly.name.split("::").collect::<Vec<_>>();
+                let fn_name = parts.last().unwrap().to_string();
+                let trait_name = parts[..parts.len() - 1].join(".");
+
+                let impls = match self.1.get(&trait_name) {
+                    Some(impls) => impls,
+                    None => Err(EvalError::SymbolNotFound(format!(
+                        "Trait {trait_name} not found."
+                    )))?,
+                };
+                let impl_ = &impls[*index];
+
+                // let local_type_args = poly
+                //     .type_args
+                //     .clone()
+                //     .map(|ta| {
+                //         ta.into_iter()
+                //             .filter_map(|ty| {
+                //                 let key = ty.to_string();
+                //                 self.type_args.get(&key).map(|value| (key, value.clone()))
+                //             })
+                //             .collect::<HashMap<_, _>>()
+                //     })
+                //     .unwrap();
+
+                match impl_.function_by_name(&fn_name) {
+                    Some(func) => {
+                        let Expression::LambdaExpression(_, lambda) = func.body.as_ref() else {
+                            unreachable!()
+                        };
+                        let closure = Closure {
+                            lambda,
+                            environment: vec![],
+                            type_args: HashMap::new(),
+                        };
+                        Ok(Value::Closure(closure).into())
+                    }
+                    None => Err(EvalError::SymbolNotFound(format!(
+                        "Function {fn_name} not found in trait {trait_name}",
+                    )))?,
+                }
+            }
+            None => Self::lookup_with_symbols(self.0, &poly.name, type_args, self),
+        }
     }
 
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
         Ok(Value::from(AlgebraicExpression::PublicReference(name.to_string())).into())
-    }
-
-    fn implementations(
-        &self,
-        trait_name: &str,
-    ) -> Result<&'a Vec<TraitImplementation<Expression>>, EvalError> {
-        match self.1.get(trait_name) {
-            Some(impls) => Ok(impls),
-            None => Err(EvalError::SymbolNotFound(format!(
-                "Trait {trait_name} not found."
-            ))),
-        }
     }
 }
 
 pub trait SymbolLookup<'a, T: FieldElement> {
     fn lookup(
         &mut self,
-        name: &'a str,
+        poly: &'a PolynomialReference,
         type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError>;
-
-    fn implementations(
-        &self,
-        trait_name: &str,
-    ) -> Result<&'a Vec<TraitImplementation<Expression>>, EvalError>;
 
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
         Err(EvalError::Unsupported(format!(
@@ -837,56 +870,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                         ta
                     });
 
-                    let impl_pos = type_args
-                        .as_ref()
-                        .and_then(|type_args| poly.resolved_impls.get(type_args).as_ref().copied());
-
-                    match impl_pos {
-                        Some(index) => {
-                            let local_type_args = poly
-                                .type_args
-                                .clone()
-                                .map(|ta| {
-                                    ta.into_iter()
-                                        .filter_map(|ty| {
-                                            let key = ty.to_string();
-                                            self.type_args
-                                                .get(&key)
-                                                .map(|value| (key, value.clone()))
-                                        })
-                                        .collect::<HashMap<_, _>>()
-                                })
-                                .unwrap();
-
-                            let poly_name = poly.name.clone().replace('.', "::");
-                            let parts = poly_name.split("::").collect::<Vec<_>>();
-                            let fn_name = parts.last().unwrap().to_string();
-                            let trait_name = parts[..parts.len() - 1].join(".");
-
-                            let impls = self.symbols.implementations(&trait_name)?;
-                            let impl_ = &impls[*index];
-
-                            match impl_.function_by_name(&fn_name) {
-                                Some(func) => {
-                                    let Expression::LambdaExpression(_, lambda) =
-                                        func.body.as_ref()
-                                    else {
-                                        unreachable!()
-                                    };
-                                    let closure = Closure {
-                                        lambda,
-                                        environment: vec![],
-                                        type_args: local_type_args,
-                                    };
-                                    Value::Closure(closure).into()
-                                }
-                                None => {
-                                    panic!("Function {fn_name} not found in trait {trait_name}")
-                                }
-                            }
-                        }
-                        None => self.symbols.lookup(&poly.name, &type_args)?,
-                    }
+                    self.symbols.lookup(poly, &type_args)?
                 }
             }
         })
@@ -1330,6 +1314,7 @@ pub fn evaluate_binary_operation_integer<'a, T>(
 
 #[cfg(test)]
 mod test {
+
     use crate::evaluator;
     use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;
@@ -1355,10 +1340,10 @@ mod test {
         .to_string()
     }
 
-    pub fn evaluate_function<T: FieldElement>(input: &str, function: &str) -> T {
+    pub fn evaluate_function<T: FieldElement>(input: &str, poly_fn: &PolynomialReference) -> T {
         let analyzed = analyze_string::<GoldilocksField>(input);
         let mut symbols = evaluator::Definitions(&analyzed.definitions, &analyzed.trait_impls);
-        let function = symbols.lookup(function, &None).unwrap();
+        let function = symbols.lookup(poly_fn, &None).unwrap();
         let result = evaluator::evaluate_function_call(function, vec![], &mut symbols)
             .unwrap()
             .as_ref()
@@ -1751,7 +1736,10 @@ mod test {
                 let test = query || std::prover::eval(2 * (1 + 1 + 1) + 1);
         "#;
         assert_eq!(
-            evaluate_function::<GoldilocksField>(src, "main.test"),
+            evaluate_function::<GoldilocksField>(
+                src,
+                &PolynomialReference::new("main.test".to_string()),
+            ),
             7u64.into()
         );
     }
