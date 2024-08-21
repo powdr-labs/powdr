@@ -62,7 +62,7 @@ impl<F: FieldElement, B: BackendFactory<F>> CompositeBackendFactory<F, B> {
 }
 
 impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBackendFactory<F, B> {
-    fn create<'a>(
+    fn create(
         &self,
         pil: Arc<Analyzed<F>>,
         fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
@@ -71,7 +71,7 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
         verification_key: Option<&mut dyn std::io::Read>,
         verification_app_key: Option<&mut dyn std::io::Read>,
         backend_options: BackendOptions,
-    ) -> Result<Box<dyn Backend<'a, F> + 'a>, Error> {
+    ) -> Result<Box<dyn Backend<F>>, Error> {
         if verification_app_key.is_some() {
             unimplemented!();
         }
@@ -192,19 +192,19 @@ fn log_machine_stats<T: FieldElement>(machine_name: &str, pil: &Analyzed<T>) {
     }
 }
 
-struct MachineData<'a, F> {
+struct MachineData<F> {
     pil: Arc<Analyzed<F>>,
     // Mutex is needed because Backend is not Sync, so during proof we need to
     // ensure the type system that each backend is only used by one thread at a
     // time.
-    backend: Mutex<Box<dyn Backend<'a, F> + 'a>>,
+    backend: Mutex<Box<dyn Backend<F>>>,
 }
 
-pub(crate) struct CompositeBackend<'a, F> {
+pub(crate) struct CompositeBackend<F> {
     /// Maps each machine name to the corresponding machine data
     /// Note that it is essential that we use BTreeMap here to ensure that the machines are
     /// deterministically ordered.
-    machine_data: BTreeMap<String, BTreeMap<DegreeType, MachineData<'a, F>>>,
+    machine_data: BTreeMap<String, BTreeMap<DegreeType, MachineData<F>>>,
 }
 
 /// Makes sure that all columns in the machine PIL have the provided degree, cloning
@@ -297,7 +297,7 @@ fn time_stage<'a, F: FieldElement>(
 // - Compute a proof for each machine separately
 // - Verify all the machine proofs
 // - Run additional checks on public values of the machine proofs
-impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
+impl<F: FieldElement> Backend<F> for CompositeBackend<F> {
     fn prove(
         &self,
         witness: &[(String, Vec<F>)],

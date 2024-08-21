@@ -222,7 +222,7 @@ impl<F: FieldElement> EStarkFilesCommon<F> {
 pub struct DumpFactory;
 
 impl<F: FieldElement> BackendFactory<F> for DumpFactory {
-    fn create<'a>(
+    fn create(
         &self,
         analyzed: Arc<Analyzed<F>>,
         fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
@@ -231,7 +231,7 @@ impl<F: FieldElement> BackendFactory<F> for DumpFactory {
         verification_key: Option<&mut dyn std::io::Read>,
         verification_app_key: Option<&mut dyn std::io::Read>,
         options: BackendOptions,
-    ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
+    ) -> Result<Box<dyn crate::Backend<F>>, Error> {
         let fixed = Arc::new(
             get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
         );
@@ -250,7 +250,7 @@ impl<F: FieldElement> BackendFactory<F> for DumpFactory {
 /// A backend that just dumps the files to the output directory.
 struct DumpBackend<F: FieldElement>(EStarkFilesCommon<F>);
 
-impl<'a, F: FieldElement> Backend<'a, F> for DumpBackend<F> {
+impl<F: FieldElement> Backend<F> for DumpBackend<F> {
     fn prove(
         &self,
         witness: &[(String, Vec<F>)],
