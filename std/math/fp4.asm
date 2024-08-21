@@ -128,7 +128,6 @@ mod test {
     use super::inv_ext;
     use super::eq_ext;
     use std::check::assert;
-    use std::convert::fe;
     use std::array::map;
 
     let add = || {
@@ -144,10 +143,10 @@ mod test {
         test_add(Fp4::Fp4(-1, -1, -1, -1), Fp4::Fp4(3, 4, 5, 6), Fp4::Fp4(2, 3, 4, 5));
 
         // Add to the modulo
-        test_add(Fp4::Fp4(-11, -11, -11, -11), Fp4::Fp4(0, 0, 0, 0), Fp4::Fp4(fe(std::field::modulus() - 11), fe(std::field::modulus() - 11), fe(std::field::modulus() - 11), fe(std::field::modulus() - 11)));
+        test_add(Fp4::Fp4(-11, -11, -11, -11), Fp4::Fp4(0, 0, 0, 0), Fp4::Fp4(-11, -11, -11, -11));
 
         // p - 1 + 1 = 0
-        test_add(Fp4::Fp4(fe(std::field::modulus() - 1), 0, 0, 0), Fp4::Fp4(1, 0, 0, 0), from_base(0));
+        test_add(Fp4::Fp4(-1, 0, 0, 0), Fp4::Fp4(1, 0, 0, 0), from_base(0));
     };
 
     let sub = || {
