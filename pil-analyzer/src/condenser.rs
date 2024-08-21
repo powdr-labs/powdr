@@ -23,8 +23,8 @@ use powdr_ast::{
         display::format_type_scheme_around_name,
         types::{ArrayType, Type},
         visitor::AllChildren,
-        ArrayLiteral, BlockExpression, FunctionKind, LetStatementInsideBlock, Number, Pattern,
-        TypedExpression, UnaryOperation,
+        ArrayLiteral, BlockExpression, FunctionKind, LambdaExpression, LetStatementInsideBlock,
+        Number, Pattern, TypedExpression, UnaryOperation,
     },
 };
 use powdr_number::{BigUint, DegreeType, FieldElement};
@@ -685,38 +685,43 @@ fn to_expr<T: Clone>(value: &Value<'_, T>) -> AlgebraicExpression<T> {
 /// and sets the expected function kind.
 /// Does allow some forms of captured variables.
 fn closure_to_function<T: FieldElement>(
-    source: &SourceRef,
+    _source: &SourceRef,
     value: &Value<'_, T>,
     expected_kind: FunctionKind,
 ) -> Result<FunctionValueDefinition, EvalError> {
-    let Value::Closure(evaluator::Closure {
-        lambda,
-        environment,
-        type_args,
-    }) = value
-    else {
-        return Err(EvalError::TypeError(format!(
-            "Expected lambda expressions but got {value}."
-        )));
-    };
+    let mut e = try_value_to_expression(value)?;
 
-    if !type_args.is_empty() {
+    // Set the lambda kind since this is used to detect hints in some cases.
+    // Can probably be removed onece we have prover sections.
+    if let Expression::LambdaExpression(_, LambdaExpression { kind, .. }) = &mut e {
+        if *kind != FunctionKind::Pure && *kind != expected_kind {
+            return Err(EvalError::TypeError(format!(
+                "Expected {expected_kind} lambda expression but got {kind}.",
+            )));
+        }
+        *kind = expected_kind;
+    }
+
+    Ok(FunctionValueDefinition::Expression(TypedExpression {
+        e,
+        type_scheme: None,
+    }))
+}
+
+fn try_closure_to_expression<T: FieldElement>(
+    closure: &evaluator::Closure<'_, T>,
+) -> Result<Expression, EvalError> {
+    if !closure.type_args.is_empty() {
         return Err(EvalError::TypeError(
             "Lambda expression must not have type arguments.".to_string(),
         ));
     }
-    if lambda.kind != FunctionKind::Pure && lambda.kind != expected_kind {
-        return Err(EvalError::TypeError(format!(
-            "Expected {expected_kind} lambda expression but got {}.",
-            lambda.kind
-        )));
-    }
 
-    let var_height = environment.len() as u64;
-    let outer_var_refs = outer_var_refs(var_height, &lambda.body).collect::<BTreeMap<_, _>>();
+    let var_height = closure.environment.len() as u64;
+    let outer_var_refs =
+        outer_var_refs(var_height, &closure.lambda.body).collect::<BTreeMap<_, _>>();
 
-    let mut lambda = (*lambda).clone();
-    lambda.kind = expected_kind;
+    let mut lambda = (*closure.lambda).clone();
 
     compact_var_refs(
         &mut lambda.body,
@@ -728,21 +733,21 @@ fn closure_to_function<T: FieldElement>(
         .into_iter()
         .map(|(v_id, name)| {
             let value = Some(try_value_to_expression(
-                environment[v_id as usize].as_ref(),
+                closure.environment[v_id as usize].as_ref(),
             )?);
-            // TODO Type?
 
             Ok(LetStatementInsideBlock {
                 pattern: Pattern::Variable(SourceRef::unknown(), name.clone()),
+                // We do not know the type.
                 ty: None,
                 value,
             }
             .into())
         })
         .collect::<Result<Vec<_>, _>>()?;
-    let e = Expression::LambdaExpression(source.clone(), lambda);
+    let e = Expression::LambdaExpression(SourceRef::unknown(), lambda);
 
-    let e = if statements.is_empty() {
+    Ok(if statements.is_empty() {
         e
     } else {
         BlockExpression {
@@ -750,12 +755,7 @@ fn closure_to_function<T: FieldElement>(
             expr: Some(Box::new(e)),
         }
         .into()
-    };
-
-    Ok(FunctionValueDefinition::Expression(TypedExpression {
-        e,
-        type_scheme: None,
-    }))
+    })
 }
 
 fn outer_var_refs(environment_size: u64, e: &Expression) -> impl Iterator<Item = (u64, &String)> {
@@ -833,19 +833,14 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
                 .collect::<Result<_, _>>()?,
         }
         .into(),
-        Value::Closure(c) => {
-            // TODO we could just do the same as in closure_to_function
-            return Err(EvalError::TypeError(format!(
-                "Closure as captured value not supported: {c}."
-            )));
-        }
+        Value::Closure(c) => try_closure_to_expression(c)?,
         Value::TypeConstructor(c) => {
             return Err(EvalError::TypeError(format!(
                 "Type constructor as captured value not supported: {c}."
             )))
         }
         Value::Enum(variant, _items) => {
-            // TODO the main problem is that we do not know the type of the enum.
+            // The main problem is that we do not know the type of the enum.
             return Err(EvalError::TypeError(format!(
                 "Enum as captured value not supported: {variant}."
             )));
@@ -857,7 +852,7 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
         }
         Value::Expression(_e) => {
             return Err(EvalError::TypeError(
-                "Expression as captured value not supported: {e}.".to_string(),
+                "Algebraic expression as captured value not supported: {e}.".to_string(),
             ))
         }
     })

@@ -505,7 +505,7 @@ namespace N(16);
     col witness x;
     std::prelude::set_hint(N.x, {
         let r = 9;
-        (query |i| N.y(1, i, (|| 9 + r)))
+        (|i| N.y(1, i, (|| 9 + r)))
     });
     let y: fe, int, (-> fe) -> std::prelude::Query = (|a, b, c| std::prelude::Query::Hint(a + c()));
 "#;
