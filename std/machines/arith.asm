@@ -177,7 +177,7 @@ machine Arith with
 
     col witness y1[16];
 
-    array::new(16, |i| set_hint(y1[i], query || hint_if_eq0(quotient_hint, i)));
+    let garbage = array::new(16, |i| set_hint(y1[i], |_| hint_if_eq0(quotient_hint, i)));
 
     col witness x2_0(i) query hint_if_eq0(remainder_hint, 0);
     col witness x2_1(i) query hint_if_eq0(remainder_hint, 1);

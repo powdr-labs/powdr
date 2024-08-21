@@ -1,0 +1,2192 @@
+Loading dependencies and resolving references
+Run analysis
+Run machine check analysis step
+Start asm analysis
+Run inference analysis step
+Run batch analysis step
+Batching complete for function main in machine ::Main with savings of 0% in execution trace lines
+End asm analysis
+Analysis done
+Run airgen
+Airgen done
+Run linker
+Writing ./arith_test.pil.
+Analyzing PIL and computing constraints...
+Writing ./arith_test_analyzed.pil.
+done.
+Optimizing pil...
+Determined fixed column main__rom.p_A0_read_free to be constant 0. Removing.
+Determined fixed column main__rom.p_A1_read_free to be constant 0. Removing.
+Determined fixed column main__rom.p_A2_read_free to be constant 0. Removing.
+Determined fixed column main__rom.p_A3_read_free to be constant 0. Removing.
+Determined fixed column main__rom.p_A4_read_free to be constant 0. Removing.
+Determined fixed column main__rom.p_A5_read_free to be constant 0. Removing.
+Determined fixed column main__rom.p_A6_read_free to be constant 0. Removing.
+Determined fixed column main__rom.p_A7_read_free to be constant 0. Removing.
+Determined fixed column main__rom.p_B0_read_free to be constant 0. Removing.
+Determined fixed column main__rom.p_B1_read_free to be constant 0. Removing.
+Determined fixed column main__rom.p_B2_read_free to be constant 0. Removing.
+Determined fixed column main__rom.p_B3_read_free to be constant 0. Removing.
+Determined fixed column main__rom.p_B4_read_free to be constant 0. Removing.
+Determined fixed column main__rom.p_B5_read_free to be constant 0. Removing.
+Determined fixed column main__rom.p_B6_read_free to be constant 0. Removing.
+Determined fixed column main__rom.p_B7_read_free to be constant 0. Removing.
+Determined fixed column main__rom.p_E6_const to be constant 0. Removing.
+Determined fixed column main__rom.p_F0_const to be constant 0. Removing.
+Determined fixed column main__rom.p_F1_const to be constant 0. Removing.
+Determined fixed column main__rom.p_F2_const to be constant 0. Removing.
+Determined fixed column main__rom.p_F3_const to be constant 0. Removing.
+Determined fixed column main__rom.p_F4_const to be constant 0. Removing.
+Determined fixed column main__rom.p_F5_const to be constant 0. Removing.
+Determined fixed column main__rom.p_F6_const to be constant 0. Removing.
+Determined fixed column main__rom.p_F7_const to be constant 0. Removing.
+Determined fixed column main__rom.p_instr_return to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A0_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A0_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A0_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A0_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A0_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A0_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A0_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A0_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A0_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A0_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A0_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A0_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A0_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A0_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A0_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A1_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A1_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A1_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A1_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A1_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A1_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A1_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A1_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A1_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A1_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A1_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A1_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A1_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A1_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A1_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A2_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A2_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A2_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A2_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A2_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A2_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A2_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A2_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A2_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A2_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A2_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A2_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A2_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A2_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A2_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A3_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A3_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A3_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A3_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A3_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A3_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A3_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A3_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A3_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A3_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A3_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A3_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A3_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A3_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A3_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A4_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A4_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A4_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A4_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A4_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A4_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A4_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A4_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A4_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A4_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A4_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A4_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A4_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A4_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A4_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A5_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A5_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A5_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A5_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A5_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A5_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A5_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A5_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A5_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A5_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A5_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A5_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A5_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A5_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A5_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A6_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A6_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A6_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A6_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A6_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A6_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A6_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A6_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A6_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A6_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A6_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A6_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A6_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A6_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A6_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A7_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A7_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A7_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A7_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A7_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A7_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A7_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A7_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A7_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A7_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A7_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A7_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A7_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A7_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_A7_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B0_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B0_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B0_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B0_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B0_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B0_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B0_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B0_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B0_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B0_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B0_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B0_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B0_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B0_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B0_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B0_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B0_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B1_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B1_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B1_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B1_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B1_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B1_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B1_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B1_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B1_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B1_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B1_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B1_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B1_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B1_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B1_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B1_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B1_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B2_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B2_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B2_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B2_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B2_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B2_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B2_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B2_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B2_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B2_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B2_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B2_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B2_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B2_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B2_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B2_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B2_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B3_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B3_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B3_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B3_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B3_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B3_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B3_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B3_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B3_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B3_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B3_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B3_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B3_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B3_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B3_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B3_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B3_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B4_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B4_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B4_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B4_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B4_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B4_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B4_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B4_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B4_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B4_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B4_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B4_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B4_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B4_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B4_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B4_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B4_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B5_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B5_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B5_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B5_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B5_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B5_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B5_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B5_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B5_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B5_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B5_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B5_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B5_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B5_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B5_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B5_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B5_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B6_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B6_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B6_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B6_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B6_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B6_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B6_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B6_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B6_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B6_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B6_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B6_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B6_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B6_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B6_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B6_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B6_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B7_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B7_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B7_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B7_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B7_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B7_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B7_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B7_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B7_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B7_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B7_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B7_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B7_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B7_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B7_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B7_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_B7_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C0_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C0_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C0_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C0_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C0_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C0_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C0_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C0_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C0_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C0_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C0_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C0_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C0_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C0_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C0_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C0_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C0_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C1_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C1_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C1_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C1_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C1_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C1_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C1_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C1_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C1_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C1_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C1_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C1_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C1_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C1_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C1_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C1_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C1_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C2_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C2_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C2_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C2_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C2_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C2_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C2_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C2_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C2_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C2_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C2_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C2_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C2_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C2_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C2_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C2_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C2_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C3_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C3_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C3_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C3_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C3_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C3_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C3_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C3_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C3_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C3_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C3_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C3_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C3_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C3_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C3_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C3_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C3_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C4_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C4_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C4_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C4_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C4_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C4_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C4_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C4_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C4_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C4_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C4_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C4_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C4_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C4_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C4_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C4_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C4_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C5_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C5_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C5_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C5_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C5_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C5_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C5_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C5_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C5_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C5_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C5_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C5_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C5_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C5_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C5_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C5_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C5_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C6_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C6_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C6_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C6_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C6_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C6_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C6_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C6_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C6_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C6_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C6_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C6_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C6_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C6_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C6_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C6_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C6_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C7_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C7_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C7_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C7_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C7_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C7_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C7_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C7_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C7_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C7_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C7_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C7_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C7_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C7_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C7_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C7_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_C7_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D0_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D0_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D0_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D0_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D0_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D0_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D0_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D0_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D0_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D0_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D0_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D0_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D0_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D0_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D0_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D0_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D0_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D1_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D1_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D1_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D1_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D1_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D1_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D1_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D1_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D1_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D1_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D1_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D1_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D1_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D1_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D1_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D1_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D1_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D2_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D2_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D2_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D2_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D2_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D2_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D2_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D2_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D2_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D2_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D2_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D2_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D2_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D2_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D2_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D2_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D2_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D3_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D3_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D3_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D3_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D3_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D3_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D3_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D3_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D3_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D3_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D3_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D3_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D3_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D3_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D3_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D3_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D3_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D4_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D4_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D4_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D4_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D4_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D4_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D4_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D4_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D4_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D4_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D4_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D4_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D4_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D4_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D4_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D4_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D4_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D5_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D5_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D5_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D5_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D5_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D5_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D5_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D5_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D5_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D5_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D5_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D5_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D5_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D5_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D5_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D5_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D5_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D6_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D6_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D6_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D6_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D6_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D6_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D6_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D6_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D6_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D6_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D6_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D6_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D6_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D6_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D6_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D6_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D6_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D7_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D7_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D7_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D7_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D7_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D7_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D7_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D7_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D7_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D7_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D7_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D7_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D7_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D7_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D7_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D7_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_D7_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E0_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E0_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E0_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E0_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E0_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E0_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E0_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E0_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E0_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E0_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E0_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E0_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E0_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E0_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E0_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E0_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E0_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E1_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E1_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E1_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E1_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E1_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E1_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E1_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E1_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E1_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E1_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E1_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E1_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E1_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E1_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E1_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E1_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E1_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E2_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E2_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E2_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E2_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E2_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E2_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E2_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E2_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E2_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E2_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E2_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E2_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E2_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E2_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E2_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E2_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E2_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E3_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E3_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E3_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E3_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E3_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E3_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E3_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E3_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E3_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E3_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E3_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E3_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E3_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E3_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E3_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E3_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E3_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E4_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E4_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E4_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E4_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E4_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E4_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E4_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E4_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E4_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E4_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E4_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E4_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E4_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E4_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E4_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E4_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E4_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E5_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E5_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E5_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E5_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E5_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E5_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E5_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E5_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E5_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E5_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E5_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E5_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E5_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E5_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E5_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E5_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E5_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E6_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E6_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E6_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E6_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E6_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E6_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E6_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E6_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E6_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E6_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E6_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E6_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E6_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E6_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E6_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E6_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E6_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E7_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E7_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E7_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E7_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E7_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E7_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E7_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E7_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E7_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E7_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E7_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E7_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E7_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E7_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E7_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E7_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_E7_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F0_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F0_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F0_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F0_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F0_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F0_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F0_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F0_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F0_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F0_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F0_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F0_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F0_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F0_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F0_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F0_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F0_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F1_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F1_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F1_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F1_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F1_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F1_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F1_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F1_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F1_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F1_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F1_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F1_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F1_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F1_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F1_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F1_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F1_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F2_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F2_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F2_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F2_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F2_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F2_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F2_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F2_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F2_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F2_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F2_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F2_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F2_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F2_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F2_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F2_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F2_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F3_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F3_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F3_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F3_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F3_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F3_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F3_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F3_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F3_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F3_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F3_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F3_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F3_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F3_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F3_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F3_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F3_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F4_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F4_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F4_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F4_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F4_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F4_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F4_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F4_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F4_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F4_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F4_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F4_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F4_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F4_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F4_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F4_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F4_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F5_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F5_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F5_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F5_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F5_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F5_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F5_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F5_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F5_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F5_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F5_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F5_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F5_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F5_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F5_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F5_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F5_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F6_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F6_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F6_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F6_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F6_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F6_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F6_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F6_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F6_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F6_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F6_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F6_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F6_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F6_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F6_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F6_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F6_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F7_pc to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F7_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F7_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F7_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F7_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F7_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F7_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F7_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F7_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F7_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F7_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F7_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F7_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F7_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F7_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F7_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_read_F7_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A0_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A0_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A0_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A0_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A0_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A0_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A0_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A0_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A0_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A0_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A0_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A0_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A0_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A0_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A0_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A0_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A1_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A1_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A1_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A1_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A1_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A1_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A1_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A1_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A1_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A1_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A1_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A1_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A1_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A1_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A1_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A1_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A2_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A2_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A2_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A2_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A2_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A2_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A2_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A2_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A2_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A2_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A2_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A2_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A2_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A2_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A2_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A2_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A3_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A3_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A3_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A3_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A3_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A3_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A3_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A3_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A3_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A3_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A3_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A3_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A3_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A3_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A3_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A3_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A4_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A4_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A4_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A4_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A4_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A4_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A4_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A4_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A4_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A4_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A4_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A4_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A4_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A4_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A4_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A4_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A5_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A5_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A5_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A5_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A5_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A5_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A5_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A5_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A5_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A5_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A5_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A5_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A5_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A5_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A5_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A5_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A6_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A6_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A6_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A6_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A6_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A6_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A6_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A6_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A6_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A6_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A6_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A6_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A6_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A6_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A6_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A6_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A7_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A7_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A7_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A7_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A7_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A7_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A7_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A7_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A7_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A7_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A7_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A7_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A7_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A7_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A7_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_A7_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B0_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B0_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B0_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B0_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B0_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B0_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B0_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B0_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B0_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B0_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B0_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B0_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B0_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B0_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B0_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B0_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B1_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B1_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B1_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B1_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B1_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B1_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B1_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B1_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B1_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B1_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B1_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B1_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B1_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B1_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B1_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B1_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B2_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B2_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B2_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B2_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B2_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B2_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B2_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B2_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B2_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B2_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B2_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B2_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B2_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B2_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B2_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B2_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B3_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B3_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B3_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B3_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B3_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B3_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B3_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B3_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B3_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B3_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B3_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B3_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B3_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B3_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B3_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B3_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B4_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B4_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B4_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B4_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B4_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B4_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B4_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B4_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B4_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B4_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B4_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B4_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B4_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B4_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B4_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B4_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B5_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B5_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B5_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B5_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B5_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B5_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B5_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B5_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B5_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B5_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B5_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B5_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B5_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B5_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B5_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B5_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B6_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B6_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B6_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B6_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B6_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B6_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B6_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B6_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B6_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B6_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B6_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B6_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B6_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B6_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B6_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B6_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B7_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B7_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B7_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B7_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B7_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B7_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B7_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B7_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B7_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B7_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B7_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B7_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B7_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B7_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B7_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_B7_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C0_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C0_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C0_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C0_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C0_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C0_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C0_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C0_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C0_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C0_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C0_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C0_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C0_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C0_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C0_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C1_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C1_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C1_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C1_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C1_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C1_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C1_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C1_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C1_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C1_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C1_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C1_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C1_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C1_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C1_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C2_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C2_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C2_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C2_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C2_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C2_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C2_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C2_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C2_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C2_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C2_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C2_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C2_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C2_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C2_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C3_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C3_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C3_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C3_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C3_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C3_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C3_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C3_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C3_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C3_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C3_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C3_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C3_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C3_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C3_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C4_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C4_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C4_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C4_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C4_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C4_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C4_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C4_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C4_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C4_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C4_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C4_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C4_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C4_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C4_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C5_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C5_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C5_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C5_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C5_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C5_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C5_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C5_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C5_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C5_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C5_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C5_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C5_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C5_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C5_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C6_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C6_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C6_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C6_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C6_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C6_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C6_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C6_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C6_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C6_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C6_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C6_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C6_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C6_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C6_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C7_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C7_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C7_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C7_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C7_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C7_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C7_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C7_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C7_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C7_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C7_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C7_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C7_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C7_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_C7_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D0_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D0_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D0_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D0_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D0_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D0_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D0_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D0_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D0_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D0_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D0_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D0_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D0_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D0_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D0_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D1_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D1_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D1_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D1_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D1_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D1_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D1_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D1_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D1_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D1_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D1_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D1_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D1_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D1_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D1_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D2_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D2_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D2_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D2_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D2_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D2_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D2_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D2_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D2_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D2_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D2_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D2_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D2_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D2_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D2_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D3_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D3_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D3_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D3_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D3_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D3_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D3_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D3_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D3_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D3_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D3_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D3_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D3_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D3_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D3_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D4_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D4_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D4_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D4_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D4_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D4_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D4_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D4_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D4_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D4_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D4_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D4_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D4_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D4_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D4_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D5_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D5_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D5_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D5_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D5_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D5_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D5_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D5_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D5_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D5_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D5_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D5_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D5_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D5_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D5_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D6_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D6_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D6_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D6_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D6_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D6_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D6_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D6_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D6_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D6_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D6_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D6_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D6_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D6_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D6_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D7_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D7_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D7_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D7_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D7_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D7_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D7_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D7_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D7_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D7_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D7_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D7_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D7_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D7_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_D7_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E0_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E0_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E0_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E0_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E0_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E0_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E0_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E0_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E0_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E0_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E0_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E0_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E0_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E0_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E1_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E1_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E1_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E1_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E1_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E1_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E1_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E1_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E1_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E1_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E1_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E1_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E1_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E1_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E2_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E2_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E2_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E2_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E2_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E2_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E2_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E2_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E2_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E2_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E2_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E2_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E2_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E2_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E3_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E3_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E3_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E3_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E3_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E3_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E3_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E3_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E3_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E3_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E3_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E3_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E3_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E3_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E4_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E4_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E4_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E4_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E4_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E4_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E4_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E4_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E4_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E4_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E4_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E4_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E4_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E4_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E5_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E5_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E5_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E5_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E5_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E5_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E5_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E5_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E5_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E5_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E5_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E5_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E5_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E5_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E6_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E6_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E6_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E6_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E6_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E6_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E6_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E6_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E6_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E6_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E6_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E6_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E6_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E6_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E7_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E7_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E7_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E7_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E7_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E7_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E7_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E7_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E7_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E7_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E7_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E7_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E7_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_E7_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F0_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F0_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F0_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F0_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F0_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F0_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F0_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F0_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F0_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F0_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F0_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F0_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F0_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F0_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F0_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F1_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F1_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F1_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F1_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F1_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F1_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F1_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F1_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F1_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F1_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F1_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F1_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F1_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F1_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F1_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F2_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F2_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F2_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F2_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F2_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F2_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F2_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F2_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F2_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F2_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F2_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F2_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F2_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F2_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F2_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F3_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F3_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F3_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F3_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F3_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F3_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F3_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F3_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F3_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F3_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F3_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F3_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F3_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F3_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F3_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F4_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F4_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F4_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F4_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F4_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F4_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F4_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F4_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F4_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F4_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F4_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F4_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F4_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F4_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F4_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F5_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F5_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F5_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F5_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F5_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F5_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F5_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F5_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F5_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F5_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F5_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F5_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F5_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F5_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F5_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F6_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F6_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F6_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F6_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F6_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F6_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F6_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F6_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F6_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F6_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F6_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F6_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F6_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F6_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F6_t_1_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F7_t_0_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F7_t_0_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F7_t_0_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F7_t_0_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F7_t_0_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F7_t_0_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F7_t_0_6 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F7_t_0_7 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F7_t_1_0 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F7_t_1_1 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F7_t_1_2 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F7_t_1_3 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F7_t_1_4 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F7_t_1_5 to be constant 0. Removing.
+Determined fixed column main__rom.p_reg_write_F7_t_1_6 to be constant 0. Removing.
+Determined fixed column main__rom.operation_id to be constant 0. Removing.
+Determined fixed column main__rom.latch to be constant 1. Removing.
+Determined fixed column main_arith_byte2.latch to be constant 1. Removing.
+Determined fixed column main_arith_byte2.operation_id to be constant 0. Removing.
+Removed 1570 witness and 1558 fixed columns. Total count now: 415 witness and 172 fixed columns.
+Writing ./arith_test_opt.pil.
+Evaluating fixed columns...
+Fixed column generation took 0.9783809s
+Writing ./constants.bin.
+Deducing witness columns...
+Determined the following global range constraints:
+  main.pc: [0, 511] & 0x1ff
+  main.reg_write_C0_t_0_0: [0, 1] & 0x1
+  main.reg_write_D0_t_0_0: [0, 1] & 0x1
+  main.reg_write_E0_t_0_0: [0, 1] & 0x1
+  main.reg_write_C1_t_0_1: [0, 1] & 0x1
+  main.reg_write_D1_t_0_1: [0, 1] & 0x1
+  main.reg_write_E1_t_0_1: [0, 1] & 0x1
+  main.reg_write_C2_t_0_2: [0, 1] & 0x1
+  main.reg_write_D2_t_0_2: [0, 1] & 0x1
+  main.reg_write_E2_t_0_2: [0, 1] & 0x1
+  main.reg_write_C3_t_0_3: [0, 1] & 0x1
+  main.reg_write_D3_t_0_3: [0, 1] & 0x1
+  main.reg_write_E3_t_0_3: [0, 1] & 0x1
+  main.reg_write_C4_t_0_4: [0, 1] & 0x1
+  main.reg_write_D4_t_0_4: [0, 1] & 0x1
+  main.reg_write_E4_t_0_4: [0, 1] & 0x1
+  main.reg_write_C5_t_0_5: [0, 1] & 0x1
+  main.reg_write_D5_t_0_5: [0, 1] & 0x1
+  main.reg_write_E5_t_0_5: [0, 1] & 0x1
+  main.reg_write_C6_t_0_6: [0, 1] & 0x1
+  main.reg_write_D6_t_0_6: [0, 1] & 0x1
+  main.reg_write_E6_t_0_6: [0, 1] & 0x1
+  main.reg_write_C7_t_0_7: [0, 1] & 0x1
+  main.reg_write_D7_t_0_7: [0, 1] & 0x1
+  main.reg_write_E7_t_0_7: [0, 1] & 0x1
+  main.reg_write_E0_t_1_0: [0, 1] & 0x1
+  main.reg_write_F0_t_1_0: [0, 1] & 0x1
+  main.reg_write_E1_t_1_1: [0, 1] & 0x1
+  main.reg_write_F1_t_1_1: [0, 1] & 0x1
+  main.reg_write_E2_t_1_2: [0, 1] & 0x1
+  main.reg_write_F2_t_1_2: [0, 1] & 0x1
+  main.reg_write_E3_t_1_3: [0, 1] & 0x1
+  main.reg_write_F3_t_1_3: [0, 1] & 0x1
+  main.reg_write_E4_t_1_4: [0, 1] & 0x1
+  main.reg_write_F4_t_1_4: [0, 1] & 0x1
+  main.reg_write_E5_t_1_5: [0, 1] & 0x1
+  main.reg_write_F5_t_1_5: [0, 1] & 0x1
+  main.reg_write_E6_t_1_6: [0, 1] & 0x1
+  main.reg_write_F6_t_1_6: [0, 1] & 0x1
+  main.reg_write_E7_t_1_7: [0, 1] & 0x1
+  main.reg_write_F7_t_1_7: [0, 1] & 0x1
+  main.instr_affine_256: [0, 1] & 0x1
+  main.instr_ec_add: [0, 1] & 0x1
+  main.instr_ec_double: [0, 1] & 0x1
+  main.instr_mod_256: [0, 1] & 0x1
+  main.instr_assert_eq: [0, 1] & 0x1
+  main.instr__jump_to_operation: [0, 1] & 0x1
+  main.instr__reset: [0, 1] & 0x1
+  main.instr__loop: [0, 1] & 0x1
+  main.A0_const: [0, 4294967295] & 0xffffffff
+  main.read_A0_t_0_0: [0, 1] & 0x1
+  main.read_A0_t_1_0: [0, 1] & 0x1
+  main.A1_const: [0, 4294967295] & 0xffffffff
+  main.read_A1_t_0_1: [0, 1] & 0x1
+  main.read_A1_t_1_1: [0, 1] & 0x1
+  main.A2_const: [0, 4294967295] & 0xffffffff
+  main.read_A2_t_0_2: [0, 1] & 0x1
+  main.read_A2_t_1_2: [0, 1] & 0x1
+  main.A3_const: [0, 4294967295] & 0xffffffff
+  main.read_A3_t_0_3: [0, 1] & 0x1
+  main.read_A3_t_1_3: [0, 1] & 0x1
+  main.A4_const: [0, 4294967295] & 0xffffffff
+  main.read_A4_t_0_4: [0, 1] & 0x1
+  main.read_A4_t_1_4: [0, 1] & 0x1
+  main.A5_const: [0, 4294967295] & 0xffffffff
+  main.read_A5_t_0_5: [0, 1] & 0x1
+  main.read_A5_t_1_5: [0, 1] & 0x1
+  main.A6_const: [0, 4294967295] & 0xffffffff
+  main.read_A6_t_0_6: [0, 1] & 0x1
+  main.read_A6_t_1_6: [0, 1] & 0x1
+  main.A7_const: [0, 4294967295] & 0xffffffff
+  main.read_A7_t_0_7: [0, 1] & 0x1
+  main.read_A7_t_1_7: [0, 1] & 0x1
+  main.B0_const: [0, 4294967295] & 0xffffffff
+  main.B1_const: [0, 4294967295] & 0xffffffff
+  main.B2_const: [0, 4294967295] & 0xffffffff
+  main.B3_const: [0, 4294967295] & 0xffffffff
+  main.B4_const: [0, 4294967295] & 0xffffffff
+  main.B5_const: [0, 4294967295] & 0xffffffff
+  main.B6_const: [0, 4294967295] & 0xffffffff
+  main.B7_const: [0, 4294967295] & 0xffffffff
+  main.C0_const: [0, 4294967295] & 0xffffffff
+  main.C0_read_free: [0, 1] & 0x1
+  main.C1_const: [0, 4294967295] & 0xffffffff
+  main.C1_read_free: [0, 1] & 0x1
+  main.C2_const: [0, 4294967295] & 0xffffffff
+  main.C2_read_free: [0, 1] & 0x1
+  main.C3_const: [0, 4294967295] & 0xffffffff
+  main.C3_read_free: [0, 1] & 0x1
+  main.C4_const: [0, 4294967295] & 0xffffffff
+  main.C4_read_free: [0, 1] & 0x1
+  main.C5_const: [0, 4294967295] & 0xffffffff
+  main.C5_read_free: [0, 1] & 0x1
+  main.C6_const: [0, 4294967295] & 0xffffffff
+  main.C6_read_free: [0, 1] & 0x1
+  main.C7_const: [0, 4294967295] & 0xffffffff
+  main.C7_read_free: [0, 1] & 0x1
+  main.D0_const: [0, 4294967295] & 0xffffffff
+  main.D0_read_free: [0, 1] & 0x1
+  main.D1_const: [0, 4294967295] & 0xffffffff
+  main.D1_read_free: [0, 1] & 0x1
+  main.D2_const: [0, 4294967295] & 0xffffffff
+  main.D2_read_free: [0, 1] & 0x1
+  main.D3_const: [0, 4294967295] & 0xffffffff
+  main.D3_read_free: [0, 1] & 0x1
+  main.D4_const: [0, 4294967295] & 0xffffffff
+  main.D4_read_free: [0, 1] & 0x1
+  main.D5_const: [0, 4294967295] & 0xffffffff
+  main.D5_read_free: [0, 1] & 0x1
+  main.D6_const: [0, 4294967295] & 0xffffffff
+  main.D6_read_free: [0, 1] & 0x1
+  main.D7_const: [0, 4294967295] & 0xffffffff
+  main.D7_read_free: [0, 1] & 0x1
+  main.E0_const: [0, 4294967295] & 0xffffffff
+  main.E0_read_free: [0, 1] & 0x1
+  main.E1_const: [0, 4008636142] & 0xeeeeeeee
+  main.E1_read_free: [0, 1] & 0x1
+  main.E2_const: [0, 3722304989] & 0xdddddddd
+  main.E2_read_free: [0, 1] & 0x1
+  main.E3_const: [0, 3435973836] & 0xcccccccc
+  main.E3_read_free: [0, 1] & 0x1
+  main.E4_const: [0, 3149642683] & 0xbbbbbbbb
+  main.E4_read_free: [0, 1] & 0x1
+  main.E5_const: [0, 2863311530] & 0xaaaaaaaa
+  main.E5_read_free: [0, 1] & 0x1
+  main.E6_read_free: [0, 1] & 0x1
+  main.E7_const: [0, 2576980377] & 0x99999999
+  main.E7_read_free: [0, 1] & 0x1
+  main.F0_read_free: [0, 1] & 0x1
+  main.F1_read_free: [0, 1] & 0x1
+  main.F2_read_free: [0, 1] & 0x1
+  main.F3_read_free: [0, 1] & 0x1
+  main.F4_read_free: [0, 1] & 0x1
+  main.F5_read_free: [0, 1] & 0x1
+  main.F6_read_free: [0, 1] & 0x1
+  main.F7_read_free: [0, 1] & 0x1
+  main_arith.operation_id: [0, 15] & 0xf
+  main_arith.selEq[0]: [0, 1] & 0x1
+  main_arith.selEq[1]: [0, 1] & 0x1
+  main_arith.selEq[2]: [0, 1] & 0x1
+  main_arith.selEq[3]: [0, 1] & 0x1
+  main_arith.carry_low[0]: [0, 65535] & 0xffff
+  main_arith.carry_low[1]: [0, 65535] & 0xffff
+  main_arith.carry_low[2]: [0, 65535] & 0xffff
+  main_arith.carry_high[0]: [0, 65535] & 0xffff
+  main_arith.carry_high[1]: [0, 65535] & 0xffff
+  main_arith.carry_high[2]: [0, 65535] & 0xffff
+  main_arith.sel[0]: [0, 1] & 0x1
+  main_arith.sel[1]: [0, 1] & 0x1
+  main_arith.sel[2]: [0, 1] & 0x1
+  main_arith.sel[3]: [0, 1] & 0x1
+Determined the following identities to be purely bit/range constraints:
+  main_arith.selEq[0] * (1 - main_arith.selEq[0]) = 0;
+  main_arith.selEq[1] * (1 - main_arith.selEq[1]) = 0;
+  main_arith.selEq[2] * (1 - main_arith.selEq[2]) = 0;
+  main_arith.selEq[3] * (1 - main_arith.selEq[3]) = 0;
+  main_arith.sel[0] * (1 - main_arith.sel[0]) = 0;
+  main_arith.sel[1] * (1 - main_arith.sel[1]) = 0;
+  main_arith.sel[2] * (1 - main_arith.sel[2]) = 0;
+  main_arith.sel[3] * (1 - main_arith.sel[3]) = 0;
+  [main_arith.carry_low[0]] in [main_arith_byte2.BYTE2];
+  [main_arith.carry_low[1]] in [main_arith_byte2.BYTE2];
+  [main_arith.carry_low[2]] in [main_arith_byte2.BYTE2];
+  [main_arith.carry_high[0]] in [main_arith_byte2.BYTE2];
+  [main_arith.carry_high[1]] in [main_arith_byte2.BYTE2];
+  [main_arith.carry_high[2]] in [main_arith_byte2.BYTE2];
+For variably-sized machine, the maximum degree is 2^22. You can set the environment variable MAX_DEGREE_LOG to change this value.
+Detected machine: Secondary machine 0: main_arith (BlockMachine) (block_size: 32, latch_row: 31)
+Running main machine for 65536 rows
+Found loop with period 1 starting at row 300
+Previous     main._operation_id = 2
+    main.pc = 286
+    main.t_0_0 = 249109167
+    main.t_0_1 = 2532012473
+    main.t_0_2 = 3856920189
+    main.t_0_3 = 2100301883
+    main.t_0_4 = 2718423804
+    main.t_0_5 = 1343958119
+    main.t_0_6 = 594887412
+    main.t_0_7 = 291089364
+    main.t_1_0 = 1780832518
+    main.t_1_1 = 2979488772
+    main.t_1_2 = 1010255828
+    main.t_1_3 = 3956602376
+    main.t_1_4 = 113064895
+    main.t_1_5 = 1087966283
+    main.t_1_6 = 598587133
+    main.t_1_7 = 3038339378
+    main.instr__loop = 1
+    main.pc_update = 286
+    main.A0 = 0
+    main.A1 = 0
+    main.A2 = 0
+    main.A3 = 0
+    main.A4 = 0
+    main.A5 = 0
+    main.A6 = 0
+    main.A7 = 0
+    main.B0 = 0
+    main.B1 = 0
+    main.B2 = 0
+    main.B3 = 0
+    main.B4 = 0
+    main.B5 = 0
+    main.B6 = 0
+    main.B7 = 0
+    main.C0 = 0
+    main.C1 = 0
+    main.C2 = 0
+    main.C3 = 0
+    main.C4 = 0
+    main.C5 = 0
+    main.C6 = 0
+    main.C7 = 0
+    main.D0 = 0
+    main.D1 = 0
+    main.D2 = 0
+    main.D3 = 0
+    main.D4 = 0
+    main.D5 = 0
+    main.D6 = 0
+    main.D7 = 0
+    main.E0 = 0
+    main.E1 = 0
+    main.E2 = 0
+    main.E3 = 0
+    main.E4 = 0
+    main.E5 = 0
+    main.E6 = 0
+    main.E7 = 0
+    main.F0 = 0
+    main.F1 = 0
+    main.F2 = 0
+    main.F3 = 0
+    main.F4 = 0
+    main.F5 = 0
+    main.F6 = 0
+    main.F7 = 0
+    main.reg_write_C0_t_0_0 = 0
+    main.reg_write_D0_t_0_0 = 0
+    main.reg_write_E0_t_0_0 = 0
+    main.reg_write_C1_t_0_1 = 0
+    main.reg_write_D1_t_0_1 = 0
+    main.reg_write_E1_t_0_1 = 0
+    main.reg_write_C2_t_0_2 = 0
+    main.reg_write_D2_t_0_2 = 0
+    main.reg_write_E2_t_0_2 = 0
+    main.reg_write_C3_t_0_3 = 0
+    main.reg_write_D3_t_0_3 = 0
+    main.reg_write_E3_t_0_3 = 0
+    main.reg_write_C4_t_0_4 = 0
+    main.reg_write_D4_t_0_4 = 0
+    main.reg_write_E4_t_0_4 = 0
+    main.reg_write_C5_t_0_5 = 0
+    main.reg_write_D5_t_0_5 = 0
+    main.reg_write_E5_t_0_5 = 0
+    main.reg_write_C6_t_0_6 = 0
+    main.reg_write_D6_t_0_6 = 0
+    main.reg_write_E6_t_0_6 = 0
+    main.reg_write_C7_t_0_7 = 0
+    main.reg_write_D7_t_0_7 = 0
+    main.reg_write_E7_t_0_7 = 0
+    main.reg_write_E0_t_1_0 = 0
+    main.reg_write_F0_t_1_0 = 0
+    main.reg_write_E1_t_1_1 = 0
+    main.reg_write_F1_t_1_1 = 0
+    main.reg_write_E2_t_1_2 = 0
+    main.reg_write_F2_t_1_2 = 0
+    main.reg_write_E3_t_1_3 = 0
+    main.reg_write_F3_t_1_3 = 0
+    main.reg_write_E4_t_1_4 = 0
+    main.reg_write_F4_t_1_4 = 0
+    main.reg_write_E5_t_1_5 = 0
+    main.reg_write_F5_t_1_5 = 0
+    main.reg_write_E6_t_1_6 = 0
+    main.reg_write_F6_t_1_6 = 0
+    main.reg_write_E7_t_1_7 = 0
+    main.reg_write_F7_t_1_7 = 0
+    main.instr_affine_256 = 0
+    main.instr_ec_add = 0
+    main.instr_ec_double = 0
+    main.instr_mod_256 = 0
+    main.instr_assert_eq = 0
+    main.instr__jump_to_operation = 0
+    main.instr__reset = 0
+    main.A0_const = 0
+    main.read_A0_t_0_0 = 0
+    main.read_A0_t_1_0 = 0
+    main.A1_const = 0
+    main.read_A1_t_0_1 = 0
+    main.read_A1_t_1_1 = 0
+    main.A2_const = 0
+    main.read_A2_t_0_2 = 0
+    main.read_A2_t_1_2 = 0
+    main.A3_const = 0
+    main.read_A3_t_0_3 = 0
+    main.read_A3_t_1_3 = 0
+    main.A4_const = 0
+    main.read_A4_t_0_4 = 0
+    main.read_A4_t_1_4 = 0
+    main.A5_const = 0
+    main.read_A5_t_0_5 = 0
+    main.read_A5_t_1_5 = 0
+    main.A6_const = 0
+    main.read_A6_t_0_6 = 0
+    main.read_A6_t_1_6 = 0
+    main.A7_const = 0
+    main.read_A7_t_0_7 = 0
+    main.read_A7_t_1_7 = 0
+    main.B0_const = 0
+    main.B1_const = 0
+    main.B2_const = 0
+    main.B3_const = 0
+    main.B4_const = 0
+    main.B5_const = 0
+    main.B6_const = 0
+    main.B7_const = 0
+    main.C0_const = 0
+    main.C0_read_free = 0
+    main.C1_const = 0
+    main.C1_read_free = 0
+    main.C2_const = 0
+    main.C2_read_free = 0
+    main.C3_const = 0
+    main.C3_read_free = 0
+    main.C4_const = 0
+    main.C4_read_free = 0
+    main.C5_const = 0
+    main.C5_read_free = 0
+    main.C6_const = 0
+    main.C6_read_free = 0
+    main.C7_const = 0
+    main.C7_read_free = 0
+    main.D0_const = 0
+    main.D0_read_free = 0
+    main.D1_const = 0
+    main.D1_read_free = 0
+    main.D2_const = 0
+    main.D2_read_free = 0
+    main.D3_const = 0
+    main.D3_read_free = 0
+    main.D4_const = 0
+    main.D4_read_free = 0
+    main.D5_const = 0
+    main.D5_read_free = 0
+    main.D6_const = 0
+    main.D6_read_free = 0
+    main.D7_const = 0
+    main.D7_read_free = 0
+    main.E0_const = 0
+    main.E0_read_free = 0
+    main.E1_const = 0
+    main.E1_read_free = 0
+    main.E2_const = 0
+    main.E2_read_free = 0
+    main.E3_const = 0
+    main.E3_read_free = 0
+    main.E4_const = 0
+    main.E4_read_free = 0
+    main.E5_const = 0
+    main.E5_read_free = 0
+    main.E6_read_free = 0
+    main.E7_const = 0
+    main.E7_read_free = 0
+    main.F0_read_free = 0
+    main.F1_read_free = 0
+    main.F2_read_free = 0
+    main.F3_read_free = 0
+    main.F4_read_free = 0
+    main.F5_read_free = 0
+    main.F6_read_free = 0
+    main.F7_read_free = 0
+    main.C0_free_value = ?
+    main.C1_free_value = ?
+    main.C2_free_value = ?
+    main.C3_free_value = ?
+    main.C4_free_value = ?
+    main.C5_free_value = ?
+    main.C6_free_value = ?
+    main.C7_free_value = ?
+    main.D0_free_value = ?
+    main.D1_free_value = ?
+    main.D2_free_value = ?
+    main.D3_free_value = ?
+    main.D4_free_value = ?
+    main.D5_free_value = ?
+    main.D6_free_value = ?
+    main.D7_free_value = ?
+    main.E0_free_value = ?
+    main.E1_free_value = ?
+    main.E2_free_value = ?
+    main.E3_free_value = ?
+    main.E4_free_value = ?
+    main.E5_free_value = ?
+    main.E6_free_value = ?
+    main.E7_free_value = ?
+    main.F0_free_value = ?
+    main.F1_free_value = ?
+    main.F2_free_value = ?
+    main.F3_free_value = ?
+    main.F4_free_value = ?
+    main.F5_free_value = ?
+    main.F6_free_value = ?
+    main.F7_free_value = ?
+    main_arith.operation_id = ?  (range constraint: [0, 15] & 0xf)
+    main_arith.x1[0] = ?
+    main_arith.x1[1] = ?
+    main_arith.x1[2] = ?
+    main_arith.x1[3] = ?
+    main_arith.x1[4] = ?
+    main_arith.x1[5] = ?
+    main_arith.x1[6] = ?
+    main_arith.x1[7] = ?
+    main_arith.x1[8] = ?
+    main_arith.x1[9] = ?
+    main_arith.x1[10] = ?
+    main_arith.x1[11] = ?
+    main_arith.x1[12] = ?
+    main_arith.x1[13] = ?
+    main_arith.x1[14] = ?
+    main_arith.x1[15] = ?
+    main_arith.y2[0] = ?
+    main_arith.y2[1] = ?
+    main_arith.y2[2] = ?
+    main_arith.y2[3] = ?
+    main_arith.y2[4] = ?
+    main_arith.y2[5] = ?
+    main_arith.y2[6] = ?
+    main_arith.y2[7] = ?
+    main_arith.y2[8] = ?
+    main_arith.y2[9] = ?
+    main_arith.y2[10] = ?
+    main_arith.y2[11] = ?
+    main_arith.y2[12] = ?
+    main_arith.y2[13] = ?
+    main_arith.y2[14] = ?
+    main_arith.y2[15] = ?
+    main_arith.x3[0] = ?
+    main_arith.x3[1] = ?
+    main_arith.x3[2] = ?
+    main_arith.x3[3] = ?
+    main_arith.x3[4] = ?
+    main_arith.x3[5] = ?
+    main_arith.x3[6] = ?
+    main_arith.x3[7] = ?
+    main_arith.x3[8] = ?
+    main_arith.x3[9] = ?
+    main_arith.x3[10] = ?
+    main_arith.x3[11] = ?
+    main_arith.x3[12] = ?
+    main_arith.x3[13] = ?
+    main_arith.x3[14] = ?
+    main_arith.x3[15] = ?
+    main_arith.y3[0] = ?
+    main_arith.y3[1] = ?
+    main_arith.y3[2] = ?
+    main_arith.y3[3] = ?
+    main_arith.y3[4] = ?
+    main_arith.y3[5] = ?
+    main_arith.y3[6] = ?
+    main_arith.y3[7] = ?
+    main_arith.y3[8] = ?
+    main_arith.y3[9] = ?
+    main_arith.y3[10] = ?
+    main_arith.y3[11] = ?
+    main_arith.y3[12] = ?
+    main_arith.y3[13] = ?
+    main_arith.y3[14] = ?
+    main_arith.y3[15] = ?
+    main_arith.y1[0] = ?
+    main_arith.y1[1] = ?
+    main_arith.y1[2] = ?
+    main_arith.y1[3] = ?
+    main_arith.y1[4] = ?
+    main_arith.y1[5] = ?
+    main_arith.y1[6] = ?
+    main_arith.y1[7] = ?
+    main_arith.y1[8] = ?
+    main_arith.y1[9] = ?
+    main_arith.y1[10] = ?
+    main_arith.y1[11] = ?
+    main_arith.y1[12] = ?
+    main_arith.y1[13] = ?
+    main_arith.y1[14] = ?
+    main_arith.y1[15] = ?
+    main_arith.x2_0 = ?
+    main_arith.x2_1 = ?
+    main_arith.x2_2 = ?
+    main_arith.x2_3 = ?
+    main_arith.x2_4 = ?
+    main_arith.x2_5 = ?
+    main_arith.x2_6 = ?
+    main_arith.x2_7 = ?
+    main_arith.x2_8 = ?
+    main_arith.x2_9 = ?
+    main_arith.x2_10 = ?
+    main_arith.x2_11 = ?
+    main_arith.x2_12 = ?
+    main_arith.x2_13 = ?
+    main_arith.x2_14 = ?
+    main_arith.x2_15 = ?
+    main_arith.s_0 = ?
+    main_arith.s_1 = ?
+    main_arith.s_2 = ?
+    main_arith.s_3 = ?
+    main_arith.s_4 = ?
+    main_arith.s_5 = ?
+    main_arith.s_6 = ?
+    main_arith.s_7 = ?
+    main_arith.s_8 = ?
+    main_arith.s_9 = ?
+    main_arith.s_10 = ?
+    main_arith.s_11 = ?
+    main_arith.s_12 = ?
+    main_arith.s_13 = ?
+    main_arith.s_14 = ?
+    main_arith.s_15 = ?
+    main_arith.q0_0 = ?
+    main_arith.q0_1 = ?
+    main_arith.q0_2 = ?
+    main_arith.q0_3 = ?
+    main_arith.q0_4 = ?
+    main_arith.q0_5 = ?
+    main_arith.q0_6 = ?
+    main_arith.q0_7 = ?
+    main_arith.q0_8 = ?
+    main_arith.q0_9 = ?
+    main_arith.q0_10 = ?
+    main_arith.q0_11 = ?
+    main_arith.q0_12 = ?
+    main_arith.q0_13 = ?
+    main_arith.q0_14 = ?
+    main_arith.q0_15 = ?
+    main_arith.q1_0 = ?
+    main_arith.q1_1 = ?
+    main_arith.q1_2 = ?
+    main_arith.q1_3 = ?
+    main_arith.q1_4 = ?
+    main_arith.q1_5 = ?
+    main_arith.q1_6 = ?
+    main_arith.q1_7 = ?
+    main_arith.q1_8 = ?
+    main_arith.q1_9 = ?
+    main_arith.q1_10 = ?
+    main_arith.q1_11 = ?
+    main_arith.q1_12 = ?
+    main_arith.q1_13 = ?
+    main_arith.q1_14 = ?
+    main_arith.q1_15 = ?
+    main_arith.q2_0 = ?
+    main_arith.q2_1 = ?
+    main_arith.q2_2 = ?
+    main_arith.q2_3 = ?
+    main_arith.q2_4 = ?
+    main_arith.q2_5 = ?
+    main_arith.q2_6 = ?
+    main_arith.q2_7 = ?
+    main_arith.q2_8 = ?
+    main_arith.q2_9 = ?
+    main_arith.q2_10 = ?
+    main_arith.q2_11 = ?
+    main_arith.q2_12 = ?
+    main_arith.q2_13 = ?
+    main_arith.q2_14 = ?
+    main_arith.q2_15 = ?
+    main_arith.q0_15_high = ?
+    main_arith.q0_15_low = ?
+    main_arith.q1_15_high = ?
+    main_arith.q1_15_low = ?
+    main_arith.q2_15_high = ?
+    main_arith.q2_15_low = ?
+    main_arith.selEq[0] = ?  (range constraint: [0, 1] & 0x1)
+    main_arith.selEq[1] = ?  (range constraint: [0, 1] & 0x1)
+    main_arith.selEq[2] = ?  (range constraint: [0, 1] & 0x1)
+    main_arith.selEq[3] = ?  (range constraint: [0, 1] & 0x1)
+    main_arith.carry_low[0] = ?  (range constraint: [0, 65535] & 0xffff)
+    main_arith.carry_low[1] = ?  (range constraint: [0, 65535] & 0xffff)
+    main_arith.carry_low[2] = ?  (range constraint: [0, 65535] & 0xffff)
+    main_arith.carry_high[0] = ?  (range constraint: [0, 65535] & 0xffff)
+    main_arith.carry_high[1] = ?  (range constraint: [0, 65535] & 0xffff)
+    main_arith.carry_high[2] = ?  (range constraint: [0, 65535] & 0xffff)
+    main_arith.sel[0] = ?  (range constraint: [0, 1] & 0x1)
+    main_arith.sel[1] = ?  (range constraint: [0, 1] & 0x1)
+    main_arith.sel[2] = ?  (range constraint: [0, 1] & 0x1)
+    main_arith.sel[3] = ?  (range constraint: [0, 1] & 0x1)
+Proposed "    main._operation_id = 2\n    main.pc = 286\n    main.t_0_0 = 249109167\n    main.t_0_1 = 2532012473\n    main.t_0_2 = 3856920189\n    main.t_0_3 = 2100301883\n    main.t_0_4 = 2718423804\n    main.t_0_5 = 1343958119\n    main.t_0_6 = 594887412\n    main.t_0_7 = 291089364\n    main.t_1_0 = 1780832518\n    main.t_1_1 = 2979488772\n    main.t_1_2 = 1010255828\n    main.t_1_3 = 3956602376\n    main.t_1_4 = 113064895\n    main.t_1_5 = 1087966283\n    main.t_1_6 = 598587133\n    main.t_1_7 = 3038339378\n    main.instr__loop = 1\n    main.pc_update = 286\n    main.A0 = 0\n    main.A1 = 0\n    main.A2 = 0\n    main.A3 = 0\n    main.A4 = 0\n    main.A5 = 0\n    main.A6 = 0\n    main.A7 = 0\n    main.B0 = 0\n    main.B1 = 0\n    main.B2 = 0\n    main.B3 = 0\n    main.B4 = 0\n    main.B5 = 0\n    main.B6 = 0\n    main.B7 = 0\n    main.C0 = 0\n    main.C1 = 0\n    main.C2 = 0\n    main.C3 = 0\n    main.C4 = 0\n    main.C5 = 0\n    main.C6 = 0\n    main.C7 = 0\n    main.D0 = 0\n    main.D1 = 0\n    main.D2 = 0\n    main.D3 = 0\n    main.D4 = 0\n    main.D5 = 0\n    main.D6 = 0\n    main.D7 = 0\n    main.E0 = 0\n    main.E1 = 0\n    main.E2 = 0\n    main.E3 = 0\n    main.E4 = 0\n    main.E5 = 0\n    main.E6 = 0\n    main.E7 = 0\n    main.F0 = 0\n    main.F1 = 0\n    main.F2 = 0\n    main.F3 = 0\n    main.F4 = 0\n    main.F5 = 0\n    main.F6 = 0\n    main.F7 = 0\n    main.reg_write_C0_t_0_0 = 0\n    main.reg_write_D0_t_0_0 = 0\n    main.reg_write_E0_t_0_0 = 0\n    main.reg_write_C1_t_0_1 = 0\n    main.reg_write_D1_t_0_1 = 0\n    main.reg_write_E1_t_0_1 = 0\n    main.reg_write_C2_t_0_2 = 0\n    main.reg_write_D2_t_0_2 = 0\n    main.reg_write_E2_t_0_2 = 0\n    main.reg_write_C3_t_0_3 = 0\n    main.reg_write_D3_t_0_3 = 0\n    main.reg_write_E3_t_0_3 = 0\n    main.reg_write_C4_t_0_4 = 0\n    main.reg_write_D4_t_0_4 = 0\n    main.reg_write_E4_t_0_4 = 0\n    main.reg_write_C5_t_0_5 = 0\n    main.reg_write_D5_t_0_5 = 0\n    main.reg_write_E5_t_0_5 = 0\n    main.reg_write_C6_t_0_6 = 0\n    main.reg_write_D6_t_0_6 = 0\n    main.reg_write_E6_t_0_6 = 0\n    main.reg_write_C7_t_0_7 = 0\n    main.reg_write_D7_t_0_7 = 0\n    main.reg_write_E7_t_0_7 = 0\n    main.reg_write_E0_t_1_0 = 0\n    main.reg_write_F0_t_1_0 = 0\n    main.reg_write_E1_t_1_1 = 0\n    main.reg_write_F1_t_1_1 = 0\n    main.reg_write_E2_t_1_2 = 0\n    main.reg_write_F2_t_1_2 = 0\n    main.reg_write_E3_t_1_3 = 0\n    main.reg_write_F3_t_1_3 = 0\n    main.reg_write_E4_t_1_4 = 0\n    main.reg_write_F4_t_1_4 = 0\n    main.reg_write_E5_t_1_5 = 0\n    main.reg_write_F5_t_1_5 = 0\n    main.reg_write_E6_t_1_6 = 0\n    main.reg_write_F6_t_1_6 = 0\n    main.reg_write_E7_t_1_7 = 0\n    main.reg_write_F7_t_1_7 = 0\n    main.instr_affine_256 = 0\n    main.instr_ec_add = 0\n    main.instr_ec_double = 0\n    main.instr_mod_256 = 0\n    main.instr_assert_eq = 0\n    main.instr__jump_to_operation = 0\n    main.instr__reset = 0\n    main.A0_const = 0\n    main.read_A0_t_0_0 = 0\n    main.read_A0_t_1_0 = 0\n    main.A1_const = 0\n    main.read_A1_t_0_1 = 0\n    main.read_A1_t_1_1 = 0\n    main.A2_const = 0\n    main.read_A2_t_0_2 = 0\n    main.read_A2_t_1_2 = 0\n    main.A3_const = 0\n    main.read_A3_t_0_3 = 0\n    main.read_A3_t_1_3 = 0\n    main.A4_const = 0\n    main.read_A4_t_0_4 = 0\n    main.read_A4_t_1_4 = 0\n    main.A5_const = 0\n    main.read_A5_t_0_5 = 0\n    main.read_A5_t_1_5 = 0\n    main.A6_const = 0\n    main.read_A6_t_0_6 = 0\n    main.read_A6_t_1_6 = 0\n    main.A7_const = 0\n    main.read_A7_t_0_7 = 0\n    main.read_A7_t_1_7 = 0\n    main.B0_const = 0\n    main.B1_const = 0\n    main.B2_const = 0\n    main.B3_const = 0\n    main.B4_const = 0\n    main.B5_const = 0\n    main.B6_const = 0\n    main.B7_const = 0\n    main.C0_const = 0\n    main.C0_read_free = 0\n    main.C1_const = 0\n    main.C1_read_free = 0\n    main.C2_const = 0\n    main.C2_read_free = 0\n    main.C3_const = 0\n    main.C3_read_free = 0\n    main.C4_const = 0\n    main.C4_read_free = 0\n    main.C5_const = 0\n    main.C5_read_free = 0\n    main.C6_const = 0\n    main.C6_read_free = 0\n    main.C7_const = 0\n    main.C7_read_free = 0\n    main.D0_const = 0\n    main.D0_read_free = 0\n    main.D1_const = 0\n    main.D1_read_free = 0\n    main.D2_const = 0\n    main.D2_read_free = 0\n    main.D3_const = 0\n    main.D3_read_free = 0\n    main.D4_const = 0\n    main.D4_read_free = 0\n    main.D5_const = 0\n    main.D5_read_free = 0\n    main.D6_const = 0\n    main.D6_read_free = 0\n    main.D7_const = 0\n    main.D7_read_free = 0\n    main.E0_const = 0\n    main.E0_read_free = 0\n    main.E1_const = 0\n    main.E1_read_free = 0\n    main.E2_const = 0\n    main.E2_read_free = 0\n    main.E3_const = 0\n    main.E3_read_free = 0\n    main.E4_const = 0\n    main.E4_read_free = 0\n    main.E5_const = 0\n    main.E5_read_free = 0\n    main.E6_read_free = 0\n    main.E7_const = 0\n    main.E7_read_free = 0\n    main.F0_read_free = 0\n    main.F1_read_free = 0\n    main.F2_read_free = 0\n    main.F3_read_free = 0\n    main.F4_read_free = 0\n    main.F5_read_free = 0\n    main.F6_read_free = 0\n    main.F7_read_free = 0\n    main.C0_free_value = ?\n    main.C1_free_value = ?\n    main.C2_free_value = ?\n    main.C3_free_value = ?\n    main.C4_free_value = ?\n    main.C5_free_value = ?\n    main.C6_free_value = ?\n    main.C7_free_value = ?\n    main.D0_free_value = ?\n    main.D1_free_value = ?\n    main.D2_free_value = ?\n    main.D3_free_value = ?\n    main.D4_free_value = ?\n    main.D5_free_value = ?\n    main.D6_free_value = ?\n    main.D7_free_value = ?\n    main.E0_free_value = ?\n    main.E1_free_value = ?\n    main.E2_free_value = ?\n    main.E3_free_value = ?\n    main.E4_free_value = ?\n    main.E5_free_value = ?\n    main.E6_free_value = ?\n    main.E7_free_value = ?\n    main.F0_free_value = ?\n    main.F1_free_value = ?\n    main.F2_free_value = ?\n    main.F3_free_value = ?\n    main.F4_free_value = ?\n    main.F5_free_value = ?\n    main.F6_free_value = ?\n    main.F7_free_value = ?\n    main_arith.operation_id = ?  (range constraint: [0, 15] & 0xf)\n    main_arith.x1[0] = ?\n    main_arith.x1[1] = ?\n    main_arith.x1[2] = ?\n    main_arith.x1[3] = ?\n    main_arith.x1[4] = ?\n    main_arith.x1[5] = ?\n    main_arith.x1[6] = ?\n    main_arith.x1[7] = ?\n    main_arith.x1[8] = ?\n    main_arith.x1[9] = ?\n    main_arith.x1[10] = ?\n    main_arith.x1[11] = ?\n    main_arith.x1[12] = ?\n    main_arith.x1[13] = ?\n    main_arith.x1[14] = ?\n    main_arith.x1[15] = ?\n    main_arith.y2[0] = ?\n    main_arith.y2[1] = ?\n    main_arith.y2[2] = ?\n    main_arith.y2[3] = ?\n    main_arith.y2[4] = ?\n    main_arith.y2[5] = ?\n    main_arith.y2[6] = ?\n    main_arith.y2[7] = ?\n    main_arith.y2[8] = ?\n    main_arith.y2[9] = ?\n    main_arith.y2[10] = ?\n    main_arith.y2[11] = ?\n    main_arith.y2[12] = ?\n    main_arith.y2[13] = ?\n    main_arith.y2[14] = ?\n    main_arith.y2[15] = ?\n    main_arith.x3[0] = ?\n    main_arith.x3[1] = ?\n    main_arith.x3[2] = ?\n    main_arith.x3[3] = ?\n    main_arith.x3[4] = ?\n    main_arith.x3[5] = ?\n    main_arith.x3[6] = ?\n    main_arith.x3[7] = ?\n    main_arith.x3[8] = ?\n    main_arith.x3[9] = ?\n    main_arith.x3[10] = ?\n    main_arith.x3[11] = ?\n    main_arith.x3[12] = ?\n    main_arith.x3[13] = ?\n    main_arith.x3[14] = ?\n    main_arith.x3[15] = ?\n    main_arith.y3[0] = ?\n    main_arith.y3[1] = ?\n    main_arith.y3[2] = ?\n    main_arith.y3[3] = ?\n    main_arith.y3[4] = ?\n    main_arith.y3[5] = ?\n    main_arith.y3[6] = ?\n    main_arith.y3[7] = ?\n    main_arith.y3[8] = ?\n    main_arith.y3[9] = ?\n    main_arith.y3[10] = ?\n    main_arith.y3[11] = ?\n    main_arith.y3[12] = ?\n    main_arith.y3[13] = ?\n    main_arith.y3[14] = ?\n    main_arith.y3[15] = ?\n    main_arith.y1[0] = ?\n    main_arith.y1[1] = ?\n    main_arith.y1[2] = ?\n    main_arith.y1[3] = ?\n    main_arith.y1[4] = ?\n    main_arith.y1[5] = ?\n    main_arith.y1[6] = ?\n    main_arith.y1[7] = ?\n    main_arith.y1[8] = ?\n    main_arith.y1[9] = ?\n    main_arith.y1[10] = ?\n    main_arith.y1[11] = ?\n    main_arith.y1[12] = ?\n    main_arith.y1[13] = ?\n    main_arith.y1[14] = ?\n    main_arith.y1[15] = ?\n    main_arith.x2_0 = ?\n    main_arith.x2_1 = ?\n    main_arith.x2_2 = ?\n    main_arith.x2_3 = ?\n    main_arith.x2_4 = ?\n    main_arith.x2_5 = ?\n    main_arith.x2_6 = ?\n    main_arith.x2_7 = ?\n    main_arith.x2_8 = ?\n    main_arith.x2_9 = ?\n    main_arith.x2_10 = ?\n    main_arith.x2_11 = ?\n    main_arith.x2_12 = ?\n    main_arith.x2_13 = ?\n    main_arith.x2_14 = ?\n    main_arith.x2_15 = ?\n    main_arith.s_0 = ?\n    main_arith.s_1 = ?\n    main_arith.s_2 = ?\n    main_arith.s_3 = ?\n    main_arith.s_4 = ?\n    main_arith.s_5 = ?\n    main_arith.s_6 = ?\n    main_arith.s_7 = ?\n    main_arith.s_8 = ?\n    main_arith.s_9 = ?\n    main_arith.s_10 = ?\n    main_arith.s_11 = ?\n    main_arith.s_12 = ?\n    main_arith.s_13 = ?\n    main_arith.s_14 = ?\n    main_arith.s_15 = ?\n    main_arith.q0_0 = ?\n    main_arith.q0_1 = ?\n    main_arith.q0_2 = ?\n    main_arith.q0_3 = ?\n    main_arith.q0_4 = ?\n    main_arith.q0_5 = ?\n    main_arith.q0_6 = ?\n    main_arith.q0_7 = ?\n    main_arith.q0_8 = ?\n    main_arith.q0_9 = ?\n    main_arith.q0_10 = ?\n    main_arith.q0_11 = ?\n    main_arith.q0_12 = ?\n    main_arith.q0_13 = ?\n    main_arith.q0_14 = ?\n    main_arith.q0_15 = ?\n    main_arith.q1_0 = ?\n    main_arith.q1_1 = ?\n    main_arith.q1_2 = ?\n    main_arith.q1_3 = ?\n    main_arith.q1_4 = ?\n    main_arith.q1_5 = ?\n    main_arith.q1_6 = ?\n    main_arith.q1_7 = ?\n    main_arith.q1_8 = ?\n    main_arith.q1_9 = ?\n    main_arith.q1_10 = ?\n    main_arith.q1_11 = ?\n    main_arith.q1_12 = ?\n    main_arith.q1_13 = ?\n    main_arith.q1_14 = ?\n    main_arith.q1_15 = ?\n    main_arith.q2_0 = ?\n    main_arith.q2_1 = ?\n    main_arith.q2_2 = ?\n    main_arith.q2_3 = ?\n    main_arith.q2_4 = ?\n    main_arith.q2_5 = ?\n    main_arith.q2_6 = ?\n    main_arith.q2_7 = ?\n    main_arith.q2_8 = ?\n    main_arith.q2_9 = ?\n    main_arith.q2_10 = ?\n    main_arith.q2_11 = ?\n    main_arith.q2_12 = ?\n    main_arith.q2_13 = ?\n    main_arith.q2_14 = ?\n    main_arith.q2_15 = ?\n    main_arith.q0_15_high = ?\n    main_arith.q0_15_low = ?\n    main_arith.q1_15_high = ?\n    main_arith.q1_15_low = ?\n    main_arith.q2_15_high = ?\n    main_arith.q2_15_low = ?\n    main_arith.selEq[0] = ?  (range constraint: [0, 1] & 0x1)\n    main_arith.selEq[1] = ?  (range constraint: [0, 1] & 0x1)\n    main_arith.selEq[2] = ?  (range constraint: [0, 1] & 0x1)\n    main_arith.selEq[3] = ?  (range constraint: [0, 1] & 0x1)\n    main_arith.carry_low[0] = ?  (range constraint: [0, 65535] & 0xffff)\n    main_arith.carry_low[1] = ?  (range constraint: [0, 65535] & 0xffff)\n    main_arith.carry_low[2] = ?  (range constraint: [0, 65535] & 0xffff)\n    main_arith.carry_high[0] = ?  (range constraint: [0, 65535] & 0xffff)\n    main_arith.carry_high[1] = ?  (range constraint: [0, 65535] & 0xffff)\n    main_arith.carry_high[2] = ?  (range constraint: [0, 65535] & 0xffff)\n    main_arith.sel[0] = ?  (range constraint: [0, 1] & 0x1)\n    main_arith.sel[1] = ?  (range constraint: [0, 1] & 0x1)\n    main_arith.sel[2] = ?  (range constraint: [0, 1] & 0x1)\n    main_arith.sel[3] = ?  (range constraint: [0, 1] & 0x1)"
+Failed on identity: main.pc' = (1 - main.first_step') * main.pc_update;
+Looping failed. Trying to generate regularly again. (Use RUST_LOG=debug to see whether this happens more often.) 65536 / 65537
+Transposing 3136 rows with 181 columns...
+Finalizing remaining rows...
+Needed to finalize 65 / 3136 rows.
+Done transposing.
+Finalizing VM: Main Machine
+Transposing 65536 rows with 234 columns...
+Finalizing remaining rows...
+Needed to finalize 5542 / 65536 rows.
+Done transposing.
+
+ == Witgen profile (214430 events)
+   77.8% (    4.8s): Secondary machine 0: main_arith (BlockMachine)
+    9.0% ( 559.5ms): Main Machine
+    8.7% ( 542.2ms): FixedLookup
+    4.4% ( 276.0ms): witgen (outer code)
+  ---------------------------
+    ==> Total: 6.205070583s
+
+
+Publics:
+Witness generation took 6.2138996s
+Writing ./commits.bin.
