@@ -155,7 +155,7 @@ machine Arith with
         _ => Query::None
     };
 
-    let y1: expr[] = array::new(16, |i| {
+    let y1: inter[] = array::new(16, |i| {
         let y1;
         std::prelude::set_hint(y1, |_| hint_if_eq0(quotient_hint, i));
         y1
