@@ -97,7 +97,7 @@ impl Instances {
 /// Instantiate machine type at `ty_path` by instantiating all submachines recursively
 fn instantiate(
     input: &AnalysisASMFile,
-    instances: &mut Vec<(AbsoluteSymbolPath, MachineInstance)>,
+    instances: &mut BTreeMap<AbsoluteSymbolPath, MachineInstance>,
     path: &AbsoluteSymbolPath,
     ty_path: &AbsoluteSymbolPath,
     args: &Vec<AbsoluteSymbolPath>,
@@ -105,35 +105,6 @@ fn instantiate(
     let ty = input.machine(ty_path);
 
     assert_eq!(ty.params.0.len(), args.len());
-
-    // instantiate all submachines in topological order
-    let mut topo_sort = TopoSort::new();
-    for d in &ty.submachines {
-        // submachines declarations depend on their arguments
-        topo_sort.insert(
-            d.name.clone(),
-            d.args
-                .iter()
-                .map(|a| a.try_to_identifier().unwrap().to_string()),
-        );
-    }
-
-    for d in topo_sort
-        .into_iter()
-        .map(|name| {
-            name.expect("submachine instantiation cycle detected in airgen")
-                .0
-        })
-        .map(|name| ty.submachines.iter().find(|d| d.name == name).unwrap())
-    {
-        let sub_path = parse_absolute_path(&format!("{}_{}", path, d.name));
-        let arguments = d
-            .args
-            .iter()
-            .map(|e| resolve_submachine_arg(path, ty, args, e))
-            .collect();
-        instantiate(input, instances, &sub_path, &d.ty, &arguments);
-    }
 
     let submachines: Vec<MachineInstance> = ty
         .params
@@ -154,6 +125,12 @@ fn instantiate(
         .into_iter()
         .chain(ty.submachines.iter().map(|d| {
             let sub_path = parse_absolute_path(&format!("{}_{}", path, d.name));
+            let arguments = d
+                .args
+                .iter()
+                .map(|e| resolve_submachine_arg(path, ty, args, e))
+                .collect();
+            instantiate(input, instances, &sub_path, &d.ty, &arguments);
             MachineInstance {
                 ty: d.ty.clone(),
                 value: MachineInstanceExpression::Reference(sub_path),
@@ -166,7 +143,7 @@ fn instantiate(
         value: MachineInstanceExpression::Value(submachines),
     };
 
-    instances.push((path.clone(), instance));
+    instances.insert(path.clone(), instance);
 }
 
 pub fn compile(input: AnalysisASMFile) -> PILGraph {
@@ -195,7 +172,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
         };
 
         // instantiate the main machine in the naive way (no reuse of submachines)
-        let mut instances = vec![];
+        let mut instances = Default::default();
         instantiate(
             &input,
             &mut instances,
@@ -210,10 +187,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
     };
 
     // find the main instance
-    let (_, main_instance) = instances
-        .iter()
-        .find(|(l, _)| l == &parse_absolute_path(MAIN_MACHINE_INSTANCE))
-        .unwrap();
+    let main_instance = &instances[&parse_absolute_path(MAIN_MACHINE_INSTANCE)];
 
     // get the type of main
     let Item::Machine(main_ty) = input.items.get(&main_instance.ty).unwrap() else {
@@ -222,9 +196,22 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
 
     let main_location = Location::main();
 
+    // iterate through all instantiations in topological order
+    let mut topo_sort = TopoSort::new();
+    for (path, instance) in &instances {
+        // submachines declarations depend on their arguments
+        topo_sort.insert(path, instance.references());
+    }
+
     // generate the trimmed instance map
-    let instances = instances
+    let instances = topo_sort
         .iter()
+        .map(|node| {
+            let path = node
+                .expect("unexpected cycle in submachine instantiations")
+                .0;
+            ((*path).clone(), &instances[path])
+        })
         .fold(Instances::default(), |mut instances, (path, instance)| {
             assert_eq!(
                 path.len(),

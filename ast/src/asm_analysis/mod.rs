@@ -701,6 +701,15 @@ pub struct MachineInstance {
     pub value: MachineInstanceExpression,
 }
 
+impl MachineInstance {
+    pub fn references(&self) -> Vec<&AbsoluteSymbolPath> {
+        match &self.value {
+            MachineInstanceExpression::Value(v) => v.iter().flat_map(|i| i.references()).collect(),
+            MachineInstanceExpression::Reference(r) => vec![r],
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum MachineInstanceExpression {
     Value(Vec<MachineInstance>),
