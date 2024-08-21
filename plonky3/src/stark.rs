@@ -152,7 +152,7 @@ impl<T: FieldElementMap> Plonky3Prover<T> {
             <_ as p3_commit::Pcs<_, Challenger<T>>>::commit(pcs, evaluations);
 
         let proving_key = StarkProvingKey {
-            preprocessed_commit: fixed_commit.clone(),
+            preprocessed_commit: fixed_commit,
             preprocessed_data: fixed_data,
         };
         let verifying_key = StarkVerifyingKey {

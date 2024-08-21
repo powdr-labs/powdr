@@ -6,7 +6,7 @@ use powdr_executor::{
     witgen::WitgenCallback,
 };
 use powdr_number::{FieldElement, GoldilocksField, LargeInt};
-use powdr_plonky3::Plonky3Prover;
+use powdr_plonky3::{FieldElementMap, Plonky3Prover};
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 

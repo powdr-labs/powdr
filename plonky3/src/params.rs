@@ -1,4 +1,5 @@
 use p3_commit::{Pcs, PolynomialSpace};
+use p3_symmetric::CompressionFunction;
 use p3_uni_stark::StarkGenericConfig;
 use powdr_number::FieldElement;
 
@@ -9,7 +10,7 @@ pub type Challenge<T> = <<T as FieldElementMap>::Config as StarkGenericConfig>::
 pub type Challenger<T> = <<T as FieldElementMap>::Config as StarkGenericConfig>::Challenger;
 
 pub trait FieldElementMap: FieldElement {
-    type Config: StarkGenericConfig + Sync;
+    type Config: StarkGenericConfig + Send;
 
     fn to_p3_field(&self) -> Plonky3Field<Self>;
 
