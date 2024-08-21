@@ -10,6 +10,7 @@ use std::convert::expr;
 use std::prover::eval;
 use std::prelude::Query;
 use std::machines::range::Byte2;
+use std::prelude::set_hint;
 
 // Arithmetic machine, ported mainly from Polygon: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/arith.pil
 // Currently only supports "Equation 0", i.e., 256-Bit addition and multiplication.
@@ -155,24 +156,28 @@ machine Arith with
         _ => Query::None
     };
 
-    col witness y1_0(i) query hint_if_eq0(quotient_hint, 0);
-    col witness y1_1(i) query hint_if_eq0(quotient_hint, 1);
-    col witness y1_2(i) query hint_if_eq0(quotient_hint, 2);
-    col witness y1_3(i) query hint_if_eq0(quotient_hint, 3);
-    col witness y1_4(i) query hint_if_eq0(quotient_hint, 4);
-    col witness y1_5(i) query hint_if_eq0(quotient_hint, 5);
-    col witness y1_6(i) query hint_if_eq0(quotient_hint, 6);
-    col witness y1_7(i) query hint_if_eq0(quotient_hint, 7);
-    col witness y1_8(i) query hint_if_eq0(quotient_hint, 8);
-    col witness y1_9(i) query hint_if_eq0(quotient_hint, 9);
-    col witness y1_10(i) query hint_if_eq0(quotient_hint, 10);
-    col witness y1_11(i) query hint_if_eq0(quotient_hint, 11);
-    col witness y1_12(i) query hint_if_eq0(quotient_hint, 12);
-    col witness y1_13(i) query hint_if_eq0(quotient_hint, 13);
-    col witness y1_14(i) query hint_if_eq0(quotient_hint, 14);
-    col witness y1_15(i) query hint_if_eq0(quotient_hint, 15);
+    // col witness y1_0(i) query hint_if_eq0(quotient_hint, 0);
+    // col witness y1_1(i) query hint_if_eq0(quotient_hint, 1);
+    // col witness y1_2(i) query hint_if_eq0(quotient_hint, 2);
+    // col witness y1_3(i) query hint_if_eq0(quotient_hint, 3);
+    // col witness y1_4(i) query hint_if_eq0(quotient_hint, 4);
+    // col witness y1_5(i) query hint_if_eq0(quotient_hint, 5);
+    // col witness y1_6(i) query hint_if_eq0(quotient_hint, 6);
+    // col witness y1_7(i) query hint_if_eq0(quotient_hint, 7);
+    // col witness y1_8(i) query hint_if_eq0(quotient_hint, 8);
+    // col witness y1_9(i) query hint_if_eq0(quotient_hint, 9);
+    // col witness y1_10(i) query hint_if_eq0(quotient_hint, 10);
+    // col witness y1_11(i) query hint_if_eq0(quotient_hint, 11);
+    // col witness y1_12(i) query hint_if_eq0(quotient_hint, 12);
+    // col witness y1_13(i) query hint_if_eq0(quotient_hint, 13);
+    // col witness y1_14(i) query hint_if_eq0(quotient_hint, 14);
+    // col witness y1_15(i) query hint_if_eq0(quotient_hint, 15);
 
-    let y1: expr[] = [y1_0, y1_1, y1_2, y1_3, y1_4, y1_5, y1_6, y1_7, y1_8, y1_9, y1_10, y1_11, y1_12, y1_13, y1_14, y1_15];
+    // let y1: expr[] = [y1_0, y1_1, y1_2, y1_3, y1_4, y1_5, y1_6, y1_7, y1_8, y1_9, y1_10, y1_11, y1_12, y1_13, y1_14, y1_15];
+
+    col witness y1[16];
+
+    array::new(16, |i| set_hint(y1[i], query || hint_if_eq0(quotient_hint, i)));
 
     col witness x2_0(i) query hint_if_eq0(remainder_hint, 0);
     col witness x2_1(i) query hint_if_eq0(remainder_hint, 1);
