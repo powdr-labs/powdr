@@ -12,11 +12,10 @@ use powdr_executor::witgen::WitgenCallback;
 use p3_uni_stark::{
     prove_with_key, verify_with_key, Proof, StarkGenericConfig, StarkProvingKey, StarkVerifyingKey,
 };
-use powdr_number::{BabyBearField, FieldElement, GoldilocksField, KnownField};
 
 use crate::{
     circuit_builder::PowdrCircuit,
-    params::{Challenge, Challenger, FieldElementMap, Plonky3Field},
+    params::{Challenger, FieldElementMap, Plonky3Field},
 };
 
 pub struct Plonky3Prover<T: FieldElementMap> {
@@ -243,7 +242,7 @@ mod tests {
     use std::sync::Arc;
 
     use powdr_executor::constant_evaluator::get_uniquely_sized_cloned;
-    use powdr_number::GoldilocksField;
+    use powdr_number::{BabyBearField, GoldilocksField};
     use powdr_pipeline::Pipeline;
     use test_log::test;
 
@@ -274,10 +273,47 @@ mod tests {
         }
     }
 
+    fn run_test_baby_bear(pil: &str) {
+        run_test_baby_bear_publics(pil, None)
+    }
+
+    fn run_test_baby_bear_publics(pil: &str, malicious_publics: Option<Vec<BabyBearField>>) {
+        let mut pipeline = Pipeline::<BabyBearField>::default().from_pil_string(pil.to_string());
+
+        let pil = pipeline.compute_optimized_pil().unwrap();
+        let witness_callback = pipeline.witgen_callback().unwrap();
+        let witness = pipeline.compute_witness().unwrap();
+        let fixed = pipeline.compute_fixed_cols().unwrap();
+        let fixed = Arc::new(get_uniquely_sized_cloned(&fixed).unwrap());
+
+        let mut prover = Plonky3Prover::new(pil, fixed);
+        prover.setup();
+        let proof = prover.prove(&witness, witness_callback);
+
+        assert!(proof.is_ok());
+
+        if let Some(publics) = malicious_publics {
+            prover.verify(&proof.unwrap(), &[publics]).unwrap()
+        }
+    }
+
+    #[test]
+    fn add_baby_bear() {
+        let content = r#"
+        namespace Add(8);
+            col witness x;
+            col witness y;
+            col witness z;
+            x + y = z;
+        "#;
+        run_test_baby_bear(content);
+    }
+
     #[test]
     fn public_values() {
         let content = "namespace Global(8); pol witness x; x * (x - 1) = 0; public out = x(7);";
         run_test_goldilocks(content);
+        run_test_baby_bear(content);
     }
 
     #[test]
@@ -292,6 +328,7 @@ mod tests {
             y = 1 + :oldstate;
         "#;
         run_test_goldilocks(content);
+        run_test_baby_bear(content);
     }
 
     #[test]
@@ -308,8 +345,11 @@ mod tests {
 
             public outz = z(7);
         "#;
-        let malicious_publics = Some(vec![GoldilocksField::from(0)]);
-        run_test_goldilocks_publics(content, malicious_publics);
+        let gl_malicious_publics = Some(vec![GoldilocksField::from(0)]);
+        run_test_goldilocks_publics(content, gl_malicious_publics);
+
+        let bb_malicious_publics = Some(vec![BabyBearField::from(0)]);
+        run_test_baby_bear_publics(content, bb_malicious_publics);
     }
 
     #[test]
@@ -317,6 +357,7 @@ mod tests {
     fn empty() {
         let content = "namespace Global(8);";
         run_test_goldilocks(content);
+        run_test_baby_bear(content);
     }
 
     #[test]
@@ -329,6 +370,7 @@ mod tests {
             x + y = z;
         "#;
         run_test_goldilocks(content);
+        run_test_baby_bear(content);
     }
 
     #[test]
@@ -340,6 +382,7 @@ mod tests {
             x * y = y;
         "#;
         run_test_goldilocks(content);
+        run_test_baby_bear(content);
     }
 
     #[test]
@@ -355,12 +398,14 @@ mod tests {
             x = y + beta;
         "#;
         run_test_goldilocks(content);
+        run_test_baby_bear(content);
     }
 
     #[test]
     fn polynomial_identity() {
         let content = "namespace Global(8); pol fixed z = [1, 2]*; pol witness a; a = z + 1;";
         run_test_goldilocks(content);
+        run_test_baby_bear(content);
     }
 
     #[test]
@@ -368,5 +413,6 @@ mod tests {
     fn lookup() {
         let content = "namespace Global(8); pol fixed z = [0, 1]*; pol witness a; [a] in [z];";
         run_test_goldilocks(content);
+        run_test_baby_bear(content);
     }
 }
