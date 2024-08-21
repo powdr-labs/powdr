@@ -10,6 +10,9 @@ machine Keccak with
     operation_id: operation_id,
     call_selectors: sel, // is this needed?
 {
+    // toy inputs
+    array::map(preimage, |i| first_step * i = 0);
+    
     // operation keccakf<0> preimage[0], preimage[1], ... -> a_prime_prime_prime[0, 0, 0], a_prime_prime_prime[0, 0, 1], ....
     col witness operation_id;
 
@@ -541,4 +544,22 @@ machine Keccak with
         let limb = i % 4;
         a_prime_prime_prime(y, x, limb)
     };
+
+    // hints
+
+    // // Populate C[x] = xor(A[x, 0], A[x, 1], A[x, 2], A[x, 3], A[x, 4]).
+    // for x in 0..5 {
+    //     for z in 0..64 {
+    //         let limb = z / BITS_PER_LIMB;
+    //         let bit_in_limb = z % BITS_PER_LIMB;
+    //         let a = (0..5).map(|y| {
+    //             let a_limb = row.a[y][x][limb].as_canonical_u64() as u16;
+    //             ((a_limb >> bit_in_limb) & 1) != 0
+    //         });
+    //         row.c[x][z] = F::from_bool(a.fold(false, |acc, x| acc ^ x));
+    //     }
+    // }
+
+    
+    
 }
