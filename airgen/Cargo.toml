@@ -13,6 +13,7 @@ powdr-number.workspace = true
 powdr-analysis.workspace = true
 log = "0.4.17"
 itertools = "0.13"
+topo_sort = "0.4.0"
 
 [dev-dependencies]
 powdr-parser.workspace = true

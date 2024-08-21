@@ -20,6 +20,7 @@ use itertools::Either;
 use itertools::Itertools;
 
 use powdr_analysis::utils::parse_pil_statement;
+use topo_sort::TopoSort;
 
 const MAIN_MACHINE_INSTANCE: &str = "::main";
 const MAIN_MACHINE: &str = "::Main";
@@ -105,6 +106,35 @@ fn instantiate(
 
     assert_eq!(ty.params.0.len(), args.len());
 
+    // instantiate all submachines in topological order
+    let mut topo_sort = TopoSort::new();
+    for d in &ty.submachines {
+        // submachines declarations depend on their arguments
+        topo_sort.insert(
+            d.name.clone(),
+            d.args
+                .iter()
+                .map(|a| a.try_to_identifier().unwrap().to_string()),
+        );
+    }
+
+    for d in topo_sort
+        .into_iter()
+        .map(|name| {
+            name.expect("submachine instantiation cycle detected in airgen")
+                .0
+        })
+        .map(|name| ty.submachines.iter().find(|d| d.name == name).unwrap())
+    {
+        let sub_path = parse_absolute_path(&format!("{}_{}", path, d.name));
+        let arguments = d
+            .args
+            .iter()
+            .map(|e| resolve_submachine_arg(path, ty, args, e))
+            .collect();
+        instantiate(input, instances, &sub_path, &d.ty, &arguments);
+    }
+
     let submachines: Vec<MachineInstance> = ty
         .params
         .0
@@ -124,12 +154,6 @@ fn instantiate(
         .into_iter()
         .chain(ty.submachines.iter().map(|d| {
             let sub_path = parse_absolute_path(&format!("{}_{}", path, d.name));
-            let arguments = d
-                .args
-                .iter()
-                .map(|e| resolve_submachine_arg(path, ty, args, e))
-                .collect();
-            instantiate(input, instances, &sub_path, &d.ty, &arguments);
             MachineInstance {
                 ty: d.ty.clone(),
                 value: MachineInstanceExpression::Reference(sub_path),
