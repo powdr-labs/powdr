@@ -53,7 +53,7 @@ impl<T: FieldElement> BackendFactory<T> for Factory {
     }
 }
 
-impl<T: FieldElement> Backend<T> for Plonky3Prover<T> {
+impl<T: FieldElementMap> Backend<T> for Plonky3Prover<T> {
     fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
         Ok(self.verify(proof, instances)?)
     }
