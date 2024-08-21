@@ -395,7 +395,7 @@ mod reparse {
         "std/poseidon_bn254_test.asm",
         "std/split_bn254_test.asm",
         "std/bus_lookup_via_challenges.asm",
-        "std/fp4_bb.asm",
+        "std/fp4.asm",
     ];
 
     fn run_reparse_test(file: &str) {
