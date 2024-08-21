@@ -410,6 +410,8 @@ impl<T: FieldElement> Pipeline<T> {
         Pipeline {
             artifact: Artifacts {
                 witness: Some(Arc::new(witness)),
+                // we're changing the witness, clear the current proof
+                proof: None,
                 ..self.artifact
             },
             ..self
@@ -426,6 +428,8 @@ impl<T: FieldElement> Pipeline<T> {
         Pipeline {
             artifact: Artifacts {
                 witness: Some(Arc::new(witness)),
+                // we're changing the witness, clear the current proof
+                proof: None,
                 ..self.artifact
             },
             ..self
@@ -853,6 +857,7 @@ impl<T: FieldElement> Pipeline<T> {
         self.maybe_write_witness(&fixed_cols, &witness)?;
 
         self.artifact.witness = Some(Arc::new(witness));
+        self.artifact.proof = None;
 
         Ok(self.artifact.witness.as_ref().unwrap().clone())
     }
