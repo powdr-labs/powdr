@@ -8,7 +8,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::params::FieldElementMap;
+use crate::params::{FieldElementMap, Plonky3Field};
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir, PairBuilder};
 // use p3_baby_bear::BabyBear;
 // use p3_field::{extension::ComplexExtendable, AbstractField, PrimeField};
@@ -21,9 +21,9 @@ use powdr_ast::analyzed::{
 };
 use powdr_executor::witgen::WitgenCallback;
 // use powdr_number::{BabyBearField, FieldElement, GoldilocksField, LargeInt};
-use powdr_number::FieldElement;
+// use powdr_number::FieldElement;
 
-pub(crate) struct PowdrCircuit<'a, T: FieldElement, F: FieldElementMap> {
+pub(crate) struct PowdrCircuit<'a, T: FieldElementMap> {
     /// The analyzed PIL
     analyzed: &'a Analyzed<T>,
     /// The value of the witness columns, if set
@@ -32,11 +32,11 @@ pub(crate) struct PowdrCircuit<'a, T: FieldElement, F: FieldElementMap> {
     _witgen_callback: Option<WitgenCallback<T>>,
     /// The matrix of preprocessed values, used in debug mode to check the constraints before proving
     #[cfg(debug_assertions)]
-    preprocessed: Option<RowMajorMatrix<F::P3Field>>,
+    preprocessed: Option<RowMajorMatrix<Plonky3Field<T>>>,
 }
 
-impl<'a, T: FieldElement + Sync, F: FieldElementMap + Sync> PowdrCircuit<'a, T, F> {
-    pub fn generate_trace_rows(&self) -> RowMajorMatrix<F::P3Field> {
+impl<'a, T: FieldElementMap + Sync> PowdrCircuit<'a, T> {
+    pub fn generate_trace_rows(&self) -> RowMajorMatrix<Plonky3Field<T>> {
         // an iterator over all columns, committed then fixed
         let witness = self.witness().iter();
         let degrees = self.analyzed.degrees();
@@ -50,7 +50,7 @@ impl<'a, T: FieldElement + Sync, F: FieldElementMap + Sync> PowdrCircuit<'a, T, 
                         // witness values
                         witness.clone().map(move |(_, v)| v[i as usize])
                     })
-                    .map(|f| F::to_p3_field(f))
+                    .map(|f| f.to_p3_field())
                     .collect()
             }
             0 => {
@@ -64,7 +64,7 @@ impl<'a, T: FieldElement + Sync, F: FieldElementMap + Sync> PowdrCircuit<'a, T, 
     }
 }
 
-impl<'a, T: FieldElement, F: FieldElementMap> PowdrCircuit<'a, T, F> {
+impl<'a, T: FieldElementMap> PowdrCircuit<'a, T> {
     pub(crate) fn new(analyzed: &'a Analyzed<T>) -> Self {
         if analyzed
             .definitions
@@ -88,7 +88,7 @@ impl<'a, T: FieldElement, F: FieldElementMap> PowdrCircuit<'a, T, F> {
     }
 
     /// Calculates public values from generated witness values.
-    pub(crate) fn get_public_values(&self) -> Vec<F::P3Field> {
+    pub(crate) fn get_public_values(&self) -> Vec<Plonky3Field<T>> {
         let witness = self
             .witness
             .as_ref()
@@ -102,7 +102,7 @@ impl<'a, T: FieldElement, F: FieldElementMap> PowdrCircuit<'a, T, F> {
             .iter()
             .map(|(col_name, _, idx)| {
                 let vals = *witness.get(&col_name).unwrap();
-                F::to_p3_field(vals[*idx])
+                vals[*idx].to_p3_field()
             })
             .collect()
     }
@@ -125,14 +125,14 @@ impl<'a, T: FieldElement, F: FieldElementMap> PowdrCircuit<'a, T, F> {
     #[cfg(debug_assertions)]
     pub(crate) fn with_preprocessed(
         mut self,
-        preprocessed_matrix: RowMajorMatrix<F::P3Field>,
+        preprocessed_matrix: RowMajorMatrix<Plonky3Field<T>>,
     ) -> Self {
         self.preprocessed = Some(preprocessed_matrix);
         self
     }
 
     /// Conversion to plonky3 expression
-    fn to_plonky3_expr<AB: AirBuilder<F = F::P3Field> + AirBuilderWithPublicValues>(
+    fn to_plonky3_expr<AB: AirBuilder<F = Plonky3Field<T>> + AirBuilderWithPublicValues>(
         &self,
         e: &AlgebraicExpression<T>,
         main: &AB::M,
@@ -169,7 +169,7 @@ impl<'a, T: FieldElement, F: FieldElementMap> PowdrCircuit<'a, T, F> {
                 .get(id)
                 .expect("Referenced public value does not exist"))
             .into(),
-            AlgebraicExpression::Number(n) => AB::Expr::from(F::to_p3_field(n.clone())),
+            AlgebraicExpression::Number(n) => AB::Expr::from(n.to_p3_field()),
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
                 let left = self.to_plonky3_expr::<AB>(left, main, fixed, publics);
                 let right = self.to_plonky3_expr::<AB>(right, main, fixed, publics);
@@ -201,7 +201,7 @@ impl<'a, T: FieldElement, F: FieldElementMap> PowdrCircuit<'a, T, F> {
 
 /// An extension of [Air] allowing access to the number of fixed columns
 
-impl<'a, T: FieldElement, F: FieldElementMap> BaseAir<F::P3Field> for PowdrCircuit<'a, T, F> {
+impl<'a, T: FieldElementMap> BaseAir<Plonky3Field<T>> for PowdrCircuit<'a, T> {
     fn width(&self) -> usize {
         self.analyzed.commitment_count()
     }
@@ -210,7 +210,7 @@ impl<'a, T: FieldElement, F: FieldElementMap> BaseAir<F::P3Field> for PowdrCircu
         self.analyzed.constant_count() + self.analyzed.publics_count()
     }
 
-    fn preprocessed_trace(&self) -> Option<RowMajorMatrix<F::P3Field>> {
+    fn preprocessed_trace(&self) -> Option<RowMajorMatrix<Plonky3Field<T>>> {
         #[cfg(debug_assertions)]
         {
             self.preprocessed.clone()
@@ -220,12 +220,8 @@ impl<'a, T: FieldElement, F: FieldElementMap> BaseAir<F::P3Field> for PowdrCircu
     }
 }
 
-impl<
-        'a,
-        T: FieldElement,
-        F: FieldElementMap,
-        AB: AirBuilderWithPublicValues<F = F::P3Field> + PairBuilder,
-    > Air<AB> for PowdrCircuit<'a, T, F>
+impl<'a, T: FieldElementMap, AB: AirBuilderWithPublicValues<F = Plonky3Field<T>> + PairBuilder>
+    Air<AB> for PowdrCircuit<'a, T>
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();

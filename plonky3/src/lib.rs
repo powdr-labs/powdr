@@ -1,6 +1,4 @@
-mod baby_bear;
 mod circuit_builder;
-mod goldilocks;
 mod params;
 mod stark;
 
