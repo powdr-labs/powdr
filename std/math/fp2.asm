@@ -10,8 +10,19 @@ use std::field::KnownField;
 use std::math::ff::inv_field;
 use std::prover::eval;
 
+/// Corresponding Sage code to test irreduciblity
+/// BabyBear = 2^27 * 15 + 1
+/// M31 = 2^31 - 1
+/// BN254 = 21888242871839275222246405745257275088548364400416034343698204186575808495617
+/// GL = 0xffffffff00000001
+/// F = GF(GL)
+/// R.<x> = PolynomialRing(F)
+/// f = x^2 - 7
+/// f.is_irreducible()
+
 /// An element of the extension field over the implied base field (which has to be either
 /// the Goldilocks or the BN254 field) relative to the irreducible polynomial X^2 - 7,
+/// (This irreducible polynomial also works for Mersenne31)
 /// where Fp2(a0, a1) is interpreted as a0 + a1 * X.
 /// T is assumed to either be fe, expr or any other object whose algebraic operations
 /// are compatible with fe.

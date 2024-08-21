@@ -6,12 +6,8 @@ use std::convert::expr;
 use std::math::ff::inv_field;
 use std::prover::eval;
 
-
-/// BETA = 11
-/// NBETA = 2013265910
-
-/// An element of the extension field over the BabyBear Field
-/// relative to the irreducible polynomial X^4 + 11,
+/// An element of the extension field over the fields (BabyBear, Goldilocks, and BN254)
+/// relative to the polynomial X^4 - 11, which is irreducible all of the above fields
 /// where Fp4(a0, a1, a2, a3) is interpreted as a0 + a1 * X + a2 * X^2 + a3 * X^3
 /// T is assumed to either be fe, expr or any other object whose algebraic operations
 /// are compatible with fe.
@@ -45,10 +41,10 @@ let<T: Sub> sub_ext: Fp4<T>, Fp4<T> -> Fp4<T> = |a, b| match (a, b) {
 /// Multiplication for the extension field:
 /// Multiply out the polynomial representations, and then reduce modulo
 /// `x^4 - B`, which means powers >= 4 get shifted back 4 and
-/// multiplied by `-beta`.
+/// multiplied by `beta`.
 ///
-/// Multiplication modulo the polynomial x^4 + 11. We'll use the fact
-/// that x^4 == -11 (mod x^4 + 11), so:
+/// Multiplication modulo the polynomial x^4 - 11. We'll use the fact
+/// that x^4 == 11 (mod x^4 + 11), so:
 /// (a0 + a1 * x + a2 * x^2 + a3 * x^3) * (b0 + b1 * x + b2 * x^2 + b3 * x^3) = 
 /// a0 * b0 + NBETA * (a1 * b3 + a2 * b2 + a3 * b1)
 /// + (a0 * b1 + a1 * b0 + NBETA * (a2 * b3 + a3 * b2)) * X
@@ -56,9 +52,9 @@ let<T: Sub> sub_ext: Fp4<T>, Fp4<T> -> Fp4<T> = |a, b| match (a, b) {
 /// + (a0 * b3 + a1 * b2 + a2 * b1 + a3 * b0) * X^3
 let<T: Add + FromLiteral + Mul> mul_ext: Fp4<T>, Fp4<T> -> Fp4<T> = |a, b| match (a, b) {
     (Fp4::Fp4(a0, a1, a2, a3), Fp4::Fp4(b0, b1, b2, b3)) => Fp4::Fp4(
-        a0 * b0 + 2013265910 * (a1 * b3 + a2 * b2 + a3 * b1),
-        a0 * b1 + a1 * b0 + 2013265910 * (a2 * b3 + a3 * b2),
-        a0 * b2 + a1 * b1 + a2 * b0 + 2013265910 * (a3 * b3),
+        a0 * b0 + 11 * (a1 * b3 + a2 * b2 + a3 * b1),
+        a0 * b1 + a1 * b0 + 11 * (a2 * b3 + a3 * b2),
+        a0 * b2 + a1 * b1 + a2 * b0 + 11 * (a3 * b3),
         a0 * b3 + a1 * b2 + a2 * b1 + a3 * b0
     )
 };
@@ -73,15 +69,15 @@ let<T: Add + FromLiteral + Mul> mul_ext: Fp4<T>, Fp4<T> -> Fp4<T> = |a, b| match
 /// + (a[1] * b2 - a[3] * b0) * X^3
 let inv_ext: Fp4<fe> -> Fp4<fe> = |a| match a {
     Fp4::Fp4(a0, a1, a2, a3) => {
-        let b0 = a0 * a0 + 11 * (a1 * (a3 + a3) - a2 * a2);
-        let b2 = a0 * (a2 + a2) - a1 * a1 + 11 * (a3 * a3);
-        let c = b0 * b0 + 11 * b2 * b2;
+        let b0 = a0 * a0 - 11 * (a1 * (a3 + a3) - a2 * a2);
+        let b2 = a0 * (a2 + a2) - a1 * a1 - 11 * (a3 * a3);
+        let c = b0 * b0 - 11 * b2 * b2;
         let ic = inv_field(c);
         let b_0 = b0 * ic;
         let b_2 = b2 * ic;
         Fp4::Fp4(
-            a0 * b_0 + 11 * a2 * b_2,
-            -1 * a1 * b_0 + 2013265910 * a3 * b_2,
+            a0 * b_0 - 11 * a2 * b_2,
+            -1 * a1 * b_0 + 11 * a3 * b_2,
             -1 * a0 * b_2 + a2 * b_0,
             a1 * b_2 - a3 * b_0
         )
@@ -132,6 +128,7 @@ mod test {
     use super::inv_ext;
     use super::eq_ext;
     use std::check::assert;
+    use std::convert::fe;
     use std::array::map;
 
     let add = || {
@@ -147,10 +144,10 @@ mod test {
         test_add(Fp4::Fp4(-1, -1, -1, -1), Fp4::Fp4(3, 4, 5, 6), Fp4::Fp4(2, 3, 4, 5));
 
         // Add to the modulo
-        test_add(Fp4::Fp4(-11, -11, -11, -11), Fp4::Fp4(0, 0, 0, 0), Fp4::Fp4(2013265910, 2013265910, 2013265910, 2013265910));
+        test_add(Fp4::Fp4(-11, -11, -11, -11), Fp4::Fp4(0, 0, 0, 0), Fp4::Fp4(fe(std::field::modulus() - 11), fe(std::field::modulus() - 11), fe(std::field::modulus() - 11), fe(std::field::modulus() - 11)));
 
         // p - 1 + 1 = 0
-        test_add(Fp4::Fp4(0x78000000, 0, 0, 0), Fp4::Fp4(1, 0, 0, 0), from_base(0));
+        test_add(Fp4::Fp4(fe(std::field::modulus() - 1), 0, 0, 0), Fp4::Fp4(1, 0, 0, 0), from_base(0));
     };
 
     let sub = || {
@@ -178,10 +175,11 @@ mod test {
         let _ = test_mul(from_base(0), Fp4::Fp4(123, 1234, 33, 200), from_base(0));
 
         // Multiply arbitrary elements
-        test_mul(Fp4::Fp4(1, 2, 3, 4), Fp4::Fp4(5, 6, 7, 8), Fp4::Fp4(2013265255, 2013265365, 2013265603, 60));
+        test_mul(Fp4::Fp4(1, 2, 3, 4), Fp4::Fp4(5, 6, 7, 8), Fp4::Fp4(676, 588, 386, 60));
 
         // Multiplication with field overflow
-        test_mul(Fp4::Fp4(-1, -2, -3, -4), Fp4::Fp4(-3, 4, 4, 5), Fp4::Fp4(421, 343, 217, -13));
+        //2013265921
+        test_mul(Fp4::Fp4(-1, -2, -3, -4), Fp4::Fp4(-3, 4, 4, 5), Fp4::Fp4(-415, -339, -223, -13));
     };
 
     let inverse = || {

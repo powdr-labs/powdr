@@ -1,4 +1,4 @@
-use std::math::fp4_bb::test;
+use std::math::fp4::test;
 
 machine Main {
     test::add();
