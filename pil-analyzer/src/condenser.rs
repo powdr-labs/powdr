@@ -787,17 +787,18 @@ fn compact_var_refs(e: &mut Expression, referenced_outer_vars: &[u64], environme
 fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expression, EvalError> {
     Ok(match value {
         Value::Integer(v) => {
-            let n = Number {
-                value: BigUint::try_from(v.abs()).unwrap(),
-                type_: Some(Type::Int),
-            };
             if v.is_negative() {
-                Expression::from(UnaryOperation {
+                UnaryOperation {
                     op: parsed::UnaryOperator::Minus,
-                    expr: Box::new(n.into()),
-                })
+                    expr: Box::new(try_value_to_expression(&Value::<T>::Integer(-v))?),
+                }
+                .into()
             } else {
-                n.into()
+                Number {
+                    value: BigUint::try_from(v).unwrap(),
+                    type_: Some(Type::Int),
+                }
+                .into()
             }
         }
         Value::FieldElement(v) => Number {

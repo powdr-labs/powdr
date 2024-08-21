@@ -511,3 +511,45 @@ namespace N(16);
 "#;
     assert_eq!(analyzed.to_string(), expected);
 }
+
+#[test]
+fn closure_complex() {
+    let input = r#"
+    namespace std::prover;
+        let eval = 8;
+    namespace std::convert;
+        let fe = 9;
+    namespace N(16);
+        col witness x;
+        let y = |a, b, c| Query::Hint(a + c());
+        {
+            let r = 9;
+            let k: int[] = [-2];
+            let q = "" != "";
+            let b = (|s| || "" == s)("");
+            set_hint(x, |i| {
+                y(1, i, || if b() && q { 9 + r } else { std::convert::fe(k[0]) })
+            });
+        };
+"#;
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    let expected = r#"namespace std::prover;
+    let eval = 8;
+namespace std::convert;
+    let fe = 9;
+namespace N(16);
+    col witness x;
+    std::prelude::set_hint(N.x, {
+        let r = 9;
+        let k = [-2];
+        let q = std::prelude::false;
+        let b = {
+            let s = "";
+            (|| "" == s)
+        };
+        (|i| { N.y(1, i, (|| if b() && q { 9 + r } else { std::convert::fe::<int>(k[0]) })) })
+    });
+    let y: fe, int, (-> fe) -> std::prelude::Query = (|a, b, c| std::prelude::Query::Hint(a + c()));
+"#;
+    assert_eq!(analyzed.to_string(), expected);
+}
