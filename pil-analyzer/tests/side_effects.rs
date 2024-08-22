@@ -151,3 +151,12 @@ fn set_hint_constr() {
     "#;
     analyze_string::<GoldilocksField>(input);
 }
+
+#[test]
+fn query_in_constr() {
+    let input = r#"namespace N(16);
+    query |i| { };
+    let f = constr || { query |i| { } };
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}
