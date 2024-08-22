@@ -231,6 +231,9 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                 base_witnesses: fixed.witness_cols.keys().collect::<HashSet<_>>(),
             }
         };
+
+        // TODO sort prover functions into machines depending on the witness columns they reference.
+
         let mut query_callback = self.query_callback;
         let mut mutable_state = MutableState {
             machines: Machines::from(machines.iter_mut()),

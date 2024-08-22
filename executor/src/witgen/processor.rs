@@ -189,6 +189,12 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             self.mutable_state.query_callback,
             self.size,
         );
+
+        // TODO Iterate over the relevant prover functions (that are relevant for this machine
+        // and that have not yet succeeded). And call query_processor.process_prover_function.
+        // It is similar to process_query, with the difference that the side-effects are used.
+        // this means the Symbols need to be mut and store the suggested values.
+
         let global_row_index = self.row_offset + row_index as u64;
         let row_pair = RowPair::new(
             &self.data[row_index],
