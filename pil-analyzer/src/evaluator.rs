@@ -461,8 +461,6 @@ impl<'a> Definitions<'a> {
                     let fn_name = poly.name.rsplit("::").next().unwrap().to_string();
 
                     let trait_name = poly.trait_name.as_ref().unwrap();
-                    println!("trait_name: {trait_name}");
-                    println!("poly_name: {}", poly.name.clone());
                     let impls = trait_impls.get(trait_name).unwrap();
                     let impl_ = &impls[*index];
 
