@@ -12,6 +12,7 @@ powdr-ast.workspace = true
 powdr-number.workspace = true
 powdr-parser.workspace = true
 powdr-parser-util.workspace = true
+powdr-utils.workspace = true
 lazy_static = "1.4.0"
 
 itertools = "0.13"

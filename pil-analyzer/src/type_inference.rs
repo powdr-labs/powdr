@@ -1,4 +1,4 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap, HashSet};
 
 use itertools::Itertools;
 use powdr_ast::{
@@ -6,7 +6,7 @@ use powdr_ast::{
     parsed::{
         display::format_type_scheme_around_name,
         types::{ArrayType, FunctionType, TupleType, Type, TypeBounds, TypeScheme},
-        visitor::ExpressionVisitable,
+        visitor::{AllChildren, ExpressionVisitable},
         ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall, FunctionKind, IndexAccess,
         LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number, Pattern,
         SourceReference, StatementInsideBlock, UnaryOperation,
@@ -14,8 +14,9 @@ use powdr_ast::{
 };
 use powdr_parser_util::{Error, SourceRef};
 
+use powdr_utils::topo_sort;
+
 use crate::{
-    call_graph::sort_called_first,
     type_builtins::{
         binary_operator_scheme, builtin_schemes, constr_function_statement_type,
         type_for_reference, unary_operator_scheme,
@@ -69,6 +70,38 @@ struct TypeChecker {
     lambda_kind: FunctionKind,
 }
 
+/// Returns a sorted list of symbols such that called symbols appear before the symbols that reference them.
+/// Circular dependencies appear in an arbitrary order.
+fn sort_called_first(
+    symbols: &HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
+) -> Vec<String> {
+    let dependencies: HashMap<&String, HashSet<&String>> = symbols
+        .iter()
+        .map(|(k, (_, e))| {
+            (
+                k,
+                e.as_ref()
+                    .map(|e| {
+                        e.all_children()
+                            .filter_map(|e| {
+                                if let Expression::Reference(_, Reference::Poly(r)) = e {
+                                    Some(&r.name)
+                                } else {
+                                    None
+                                }
+                            })
+                            .collect::<HashSet<_>>()
+                    })
+                    .unwrap_or_default(),
+            )
+        })
+        .collect();
+
+    let get_dependencies =
+        |name: &String| dependencies[name].iter().map(|s| (**s).clone()).collect();
+    topo_sort(symbols.keys(), get_dependencies)
+}
+
 impl TypeChecker {
     pub fn new() -> Self {
         Self {
@@ -117,11 +150,7 @@ impl TypeChecker {
         //   are instantiated once at the start and not anymore for the symbol lookup.
 
         // Sort the names such that called names occur first.
-        let names = sort_called_first(
-            definitions
-                .iter()
-                .map(|(n, (_, v))| (n.as_str(), v.as_deref())),
-        );
+        let names = sort_called_first(definitions);
 
         self.setup_declared_types(definitions);
 
