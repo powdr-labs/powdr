@@ -43,6 +43,8 @@ pub struct ExpectedType {
     pub allow_array: bool,
     /// If true, the empty tuple is also allowed.
     pub allow_empty: bool,
+    /// If "int -> ()" is allowed.
+    pub allow_int_to_empty_fun: bool,
 }
 
 impl From<Type> for ExpectedType {
@@ -51,6 +53,7 @@ impl From<Type> for ExpectedType {
             ty,
             allow_array: false,
             allow_empty: false,
+            allow_int_to_empty_fun: false,
         }
     }
 }
@@ -485,6 +488,13 @@ impl TypeChecker {
             })
         } else if expected_type.allow_empty && (ty == Type::empty_tuple()) {
             Type::empty_tuple()
+        } else if expected_type.allow_int_to_empty_fun
+            && matches!(ty, Type::Function(FunctionType { .. }))
+        {
+            Type::Function(FunctionType {
+                params: vec![Type::Int],
+                value: Box::new(Type::empty_tuple()),
+            })
         } else {
             expected_type.ty.clone()
         };

@@ -618,13 +618,13 @@ fn new_fixed_column_wrong_type() {
 #[test]
 fn prover_functions() {
     let input = "
-        let a;
-        let b;
+        let a = 9;
+        let b = [];
         query |i| if a == i {
-            b
+            b[0]
         } else {
-            b
+            b[0]
         };
     ";
-    type_check(input, &[("a", "", "int"), ("b", "", "()")]);
+    type_check(input, &[("a", "", "int"), ("b", "", "()[]")]);
 }

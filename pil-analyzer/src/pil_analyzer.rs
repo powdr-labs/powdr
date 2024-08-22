@@ -184,7 +184,7 @@ impl PILAnalyzer {
         for (name, (symbol, value)) in &self.definitions {
             let Some(value) = value else { continue };
             let context = match symbol.kind {
-                // Witness column value is query function
+                // Witness column value is query function TODO remove
                 SymbolKind::Poly(PolynomialType::Committed) => FunctionKind::Query,
                 // Fixed column value must be pure.
                 SymbolKind::Poly(PolynomialType::Constant) => FunctionKind::Pure,
@@ -219,6 +219,7 @@ impl PILAnalyzer {
     }
 
     pub fn type_check(&mut self) {
+        // TODO can be removed.
         let query_type: Type = parse_type("int -> std::prelude::Query").unwrap().into();
         let mut expressions = vec![];
         // Collect all definitions with their types and expressions.
@@ -238,6 +239,8 @@ impl PILAnalyzer {
             .flat_map(|(name, (symbol, value))| {
                 let (type_scheme, expr) = match (symbol.kind, value) {
                     (SymbolKind::Poly(PolynomialType::Committed), Some(value)) => {
+                        // TODO this can all be removed.
+
                         // Witness column, move its value (query function) into the expressions to be checked separately.
                         let type_scheme = type_from_definition(symbol, &None);
 

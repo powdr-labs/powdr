@@ -90,6 +90,7 @@ lazy_static! {
     .collect();
     static ref CONSTR_FUNCTION_STATEMENT_TYPE: ExpectedType = ExpectedType {
         ty: Type::NamedType(SymbolPath::from_str("std::prelude::Constr").unwrap(), None),
+        allow_int_to_empty_fun: true, // TODO this is getting weird, maybe need to refactor ExpectedType
         allow_array: true,
         allow_empty: true,
     };
