@@ -155,17 +155,43 @@ machine Arith with
         _ => Query::None
     };
 
-    let y1: inter[16] = array::new(16, |i| {
-        let y1;
-        std::prelude::set_hint(y1, |_| hint_if_eq0(quotient_hint, i));
-        y1
-    });
+    col witness y1_0(i) query hint_if_eq0(quotient_hint, 0);
+    col witness y1_1(i) query hint_if_eq0(quotient_hint, 1);
+    col witness y1_2(i) query hint_if_eq0(quotient_hint, 2);
+    col witness y1_3(i) query hint_if_eq0(quotient_hint, 3);
+    col witness y1_4(i) query hint_if_eq0(quotient_hint, 4);
+    col witness y1_5(i) query hint_if_eq0(quotient_hint, 5);
+    col witness y1_6(i) query hint_if_eq0(quotient_hint, 6);
+    col witness y1_7(i) query hint_if_eq0(quotient_hint, 7);
+    col witness y1_8(i) query hint_if_eq0(quotient_hint, 8);
+    col witness y1_9(i) query hint_if_eq0(quotient_hint, 9);
+    col witness y1_10(i) query hint_if_eq0(quotient_hint, 10);
+    col witness y1_11(i) query hint_if_eq0(quotient_hint, 11);
+    col witness y1_12(i) query hint_if_eq0(quotient_hint, 12);
+    col witness y1_13(i) query hint_if_eq0(quotient_hint, 13);
+    col witness y1_14(i) query hint_if_eq0(quotient_hint, 14);
+    col witness y1_15(i) query hint_if_eq0(quotient_hint, 15);
 
-    let x2: inter[16] = array::new(16, |i| {
-        let x2;
-        std::prelude::set_hint(x2, |_| hint_if_eq0(remainder_hint, i));
-        x2
-    });
+    let y1: expr[] = [y1_0, y1_1, y1_2, y1_3, y1_4, y1_5, y1_6, y1_7, y1_8, y1_9, y1_10, y1_11, y1_12, y1_13, y1_14, y1_15];
+
+    col witness x2_0(i) query hint_if_eq0(remainder_hint, 0);
+    col witness x2_1(i) query hint_if_eq0(remainder_hint, 1);
+    col witness x2_2(i) query hint_if_eq0(remainder_hint, 2);
+    col witness x2_3(i) query hint_if_eq0(remainder_hint, 3);
+    col witness x2_4(i) query hint_if_eq0(remainder_hint, 4);
+    col witness x2_5(i) query hint_if_eq0(remainder_hint, 5);
+    col witness x2_6(i) query hint_if_eq0(remainder_hint, 6);
+    col witness x2_7(i) query hint_if_eq0(remainder_hint, 7);
+    col witness x2_8(i) query hint_if_eq0(remainder_hint, 8);
+    col witness x2_9(i) query hint_if_eq0(remainder_hint, 9);
+    col witness x2_10(i) query hint_if_eq0(remainder_hint, 10);
+    col witness x2_11(i) query hint_if_eq0(remainder_hint, 11);
+    col witness x2_12(i) query hint_if_eq0(remainder_hint, 12);
+    col witness x2_13(i) query hint_if_eq0(remainder_hint, 13);
+    col witness x2_14(i) query hint_if_eq0(remainder_hint, 14);
+    col witness x2_15(i) query hint_if_eq0(remainder_hint, 15);
+
+    let x2: expr[] = [x2_0, x2_1, x2_2, x2_3, x2_4, x2_5, x2_6, x2_7, x2_8, x2_9, x2_10, x2_11, x2_12, x2_13, x2_14, x2_15];
 
     col witness s_0(i) query Query::Hint(fe(select_limb(s_hint(), 0)));
     col witness s_1(i) query Query::Hint(fe(select_limb(s_hint(), 1)));
