@@ -82,6 +82,54 @@ impl<T: FieldElement> Backend<T> for Plonky3Prover<T> {
     }
 }
 
+// Baby Bear
+
+pub(crate) struct FactoryBabyBear;
+
+impl<T: FieldElement> BackendFactory<T> for FactoryBabyBear {
+    fn create(
+        &self,
+        pil: Arc<Analyzed<T>>,
+        fixed: Arc<Vec<(String, VariablySizedColumn<T>)>>,
+        _output_dir: Option<PathBuf>,
+        setup: Option<&mut dyn io::Read>,
+        verification_key: Option<&mut dyn io::Read>,
+        verification_app_key: Option<&mut dyn io::Read>,
+        _: BackendOptions,
+    ) -> Result<Box<dyn crate::Backend<T>>, Error> {
+        if T::modulus().to_arbitrary_integer() != BabyBearField::modulus().to_arbitrary_integer()
+            || T::modulus().to_arbitrary_integer()
+                != BabyBearField::modulus().to_arbitrary_integer()
+        {
+            unimplemented!("plonky3 is only implemented for the Goldilocks and Baby Bear field");
+        }
+        if setup.is_some() {
+            return Err(Error::NoSetupAvailable);
+        }
+        if verification_app_key.is_some() {
+            return Err(Error::NoAggregationAvailable);
+        }
+        if pil.degrees().len() > 1 {
+            return Err(Error::NoVariableDegreeAvailable);
+        }
+
+        let fixed = Arc::new(
+            get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
+        );
+
+        let mut p3: Box<Plonky3ProverBabyBear<T>> =
+            Box::new(Plonky3ProverBabyBear::new(pil, fixed));
+
+        if let Some(verification_key) = verification_key {
+            p3.set_verifying_key(verification_key);
+        } else {
+            p3.setup();
+        }
+
+        Ok(p3)
+    }
+}
+
 impl<T: FieldElement> Backend<T> for Plonky3ProverBabyBear<T> {
     fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
         Ok(self.verify(proof, instances)?)
