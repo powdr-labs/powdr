@@ -10,7 +10,7 @@ pub type Challenge<T> = <<T as FieldElementMap>::Config as StarkGenericConfig>::
 pub type Challenger<T> = <<T as FieldElementMap>::Config as StarkGenericConfig>::Challenger;
 
 pub trait FieldElementMap: FieldElement {
-    type Config: StarkGenericConfig + Send;
+    type Config: StarkGenericConfig;
 
     fn to_p3_field(&self) -> Plonky3Field<Self>;
 

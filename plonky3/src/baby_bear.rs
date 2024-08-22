@@ -3,7 +3,6 @@
 
 use lazy_static::lazy_static;
 
-use crate::params::{Challenger, FieldElementMap, Plonky3Field};
 use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
 use p3_challenger::DuplexChallenger;
 use p3_commit::ExtensionMmcs;
@@ -17,93 +16,89 @@ use p3_uni_stark::StarkConfig;
 
 use rand::{distributions::Standard, Rng, SeedableRng};
 
-use powdr_number::{BabyBearField, FieldElement, LargeInt};
+use powdr_number::{FieldElement, LargeInt};
 
-const D: u64 = 7;
+const BB_D: u64 = 7;
 // params directly taken from plonky3's poseidon2_round_numbers_128 function
 // to guarentee 128-bit security.
-const ROUNDS_F: usize = 8;
-const ROUNDS_P: usize = 13;
-const WIDTH: usize = 16;
-type Perm = Poseidon2<BabyBear, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, WIDTH, D>;
+const BB_ROUNDS_F: usize = 8;
+const BB_ROUNDS_P: usize = 13;
+const BB_WIDTH: usize = 16;
+type BabyBearPerm =
+    Poseidon2<BabyBear, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, BB_WIDTH, BB_D>;
 
-const DEGREE: usize = 4;
-type FriChallenge = BinomialExtensionField<BabyBear, DEGREE>;
+const BB_DEGREE: usize = 4;
+pub type BabyBearChallenge = BinomialExtensionField<BabyBear, BB_DEGREE>;
 
-const RATE: usize = 8;
-const OUT: usize = 8;
-type FriChallenger = DuplexChallenger<BabyBear, Perm, WIDTH, RATE>;
-type Hash = PaddingFreeSponge<Perm, WIDTH, RATE, OUT>;
+const BB_RATE: usize = 8;
+const BB_OUT: usize = 8;
+pub type BabyBearChallenger = DuplexChallenger<BabyBear, BabyBearPerm, BB_WIDTH, BB_RATE>;
+type BabyBearHash = PaddingFreeSponge<BabyBearPerm, BB_WIDTH, BB_RATE, BB_OUT>;
 
-const N: usize = 2;
-const CHUNK: usize = 8;
-type Compress = TruncatedPermutation<Perm, N, CHUNK, WIDTH>;
-const DIGEST_ELEMS: usize = 8;
-type ValMmcs = FieldMerkleTreeMmcs<
+const BB_N: usize = 2;
+const BB_CHUNK: usize = 8;
+type BabyBearCompress = TruncatedPermutation<BabyBearPerm, BB_N, BB_CHUNK, BB_WIDTH>;
+const BB_DIGEST_ELEMS: usize = 8;
+type BabyBearValMmcs = FieldMerkleTreeMmcs<
     <BabyBear as Field>::Packing,
     <BabyBear as Field>::Packing,
-    Hash,
-    Compress,
-    DIGEST_ELEMS,
+    BabyBearHash,
+    BabyBearCompress,
+    BB_DIGEST_ELEMS,
 >;
 
-type ChallengeMmcs = ExtensionMmcs<BabyBear, FriChallenge, ValMmcs>;
+type BabyBearChallengeMmcs = ExtensionMmcs<BabyBear, BabyBearChallenge, BabyBearValMmcs>;
 type Dft = Radix2DitParallel;
-type MyPcs = TwoAdicFriPcs<BabyBear, Dft, ValMmcs, ChallengeMmcs>;
+type BabyBearMyPcs = TwoAdicFriPcs<BabyBear, Dft, BabyBearValMmcs, BabyBearChallengeMmcs>;
 
-const FRI_LOG_BLOWUP: usize = 1;
-const FRI_NUM_QUERIES: usize = 100;
-const FRI_PROOF_OF_WORK_BITS: usize = 16;
+const BB_FRI_LOG_BLOWUP: usize = 1;
+const BB_FRI_NUM_QUERIES: usize = 100;
+const BB_FRI_PROOF_OF_WORK_BITS: usize = 16;
 
-const RNG_SEED: u64 = 42;
+const BB_RNG_SEED: u64 = 42;
 
 lazy_static! {
-    static ref PERM_BB: Perm = Perm::new(
-        ROUNDS_F,
-        rand_chacha::ChaCha8Rng::seed_from_u64(RNG_SEED)
+    static ref PERM_BB: BabyBearPerm = BabyBearPerm::new(
+        BB_ROUNDS_F,
+        rand_chacha::ChaCha8Rng::seed_from_u64(BB_RNG_SEED)
             .sample_iter(Standard)
-            .take(ROUNDS_F)
-            .collect::<Vec<[BabyBear; WIDTH]>>(),
+            .take(BB_ROUNDS_F)
+            .collect::<Vec<[BabyBear; BB_WIDTH]>>(),
         Poseidon2ExternalMatrixGeneral,
-        ROUNDS_P,
-        rand_chacha::ChaCha8Rng::seed_from_u64(RNG_SEED)
+        BB_ROUNDS_P,
+        rand_chacha::ChaCha8Rng::seed_from_u64(BB_RNG_SEED)
             .sample_iter(Standard)
-            .take(ROUNDS_P)
+            .take(BB_ROUNDS_P)
             .collect(),
         DiffusionMatrixBabyBear::default()
     );
 }
 
-impl FieldElementMap for BabyBearField {
-    type Config = StarkConfig<MyPcs, FriChallenge, FriChallenger>;
-    fn to_p3_field(&self) -> Plonky3Field<Self> {
-        BabyBear::from_canonical_u32(self.to_integer().try_into_u32().unwrap())
-    }
+pub type BabyBearConfig = StarkConfig<BabyBearMyPcs, BabyBearChallenge, BabyBearChallenger>;
 
-    fn get_challenger() -> Challenger<Self> {
-        FriChallenger::new(PERM_BB.clone())
-    }
+pub fn baby_bear_get_challenger() -> BabyBearChallenger {
+    BabyBearChallenger::new(PERM_BB.clone())
+}
 
-    fn get_config() -> Self::Config {
-        let hash = Hash::new(PERM_BB.clone());
+pub fn baby_bear_get_config() -> BabyBearConfig {
+    let hash = BabyBearHash::new(PERM_BB.clone());
 
-        let compress = Compress::new(PERM_BB.clone());
+    let compress = BabyBearCompress::new(PERM_BB.clone());
 
-        let val_mmcs = ValMmcs::new(hash, compress);
+    let val_mmcs = BabyBearValMmcs::new(hash, compress);
 
-        let challenge_mmcs = ChallengeMmcs::new(val_mmcs.clone());
+    let challenge_mmcs = BabyBearChallengeMmcs::new(val_mmcs.clone());
 
-        let dft = Dft {};
+    let dft = Dft {};
 
-        let fri_config = FriConfig {
-            log_blowup: FRI_LOG_BLOWUP,
-            num_queries: FRI_NUM_QUERIES,
-            proof_of_work_bits: FRI_PROOF_OF_WORK_BITS,
-            mmcs: challenge_mmcs,
-        };
+    let fri_config = FriConfig {
+        log_blowup: BB_FRI_LOG_BLOWUP,
+        num_queries: BB_FRI_NUM_QUERIES,
+        proof_of_work_bits: BB_FRI_PROOF_OF_WORK_BITS,
+        mmcs: challenge_mmcs,
+    };
 
-        let pcs = MyPcs::new(dft, val_mmcs, fri_config);
+    let pcs = BabyBearMyPcs::new(dft, val_mmcs, fri_config);
 
-        Self::Config::new(pcs)
-    }
+    BabyBearConfig::new(pcs)
 }
