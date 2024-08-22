@@ -29,9 +29,15 @@ use powdr_parser_util::SourceRef;
 pub fn evaluate_expression<'a, T: FieldElement>(
     expr: &'a Expression,
     definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    implementations: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
+    trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
-    evaluate(expr, &mut Definitions(definitions, implementations))
+    evaluate(
+        expr,
+        &mut Definitions {
+            definitions,
+            trait_impls,
+        },
+    )
 }
 
 /// Evaluates an expression given a symbol lookup implementation
@@ -402,21 +408,22 @@ impl<'a, T> Closure<'a, T> {
     }
 }
 
-pub struct Definitions<'a>(
-    pub &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    pub &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
-);
+pub struct Definitions<'a> {
+    pub definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    pub trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
+}
 
 impl<'a> Definitions<'a> {
     /// Implementation of `lookup` that allows to provide a different implementation
     /// of SymbolLookup for the recursive call.
     pub fn lookup_with_symbols<T: FieldElement>(
         definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-        name: &str,
+        trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
+        poly: &PolynomialReference,
         type_args: &Option<Vec<Type>>,
         symbols: &mut impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        let name = name.to_string();
+        let name = poly.name.to_string();
 
         let (symbol, value) = definitions
             .get(&name)
@@ -445,24 +452,47 @@ impl<'a> Definitions<'a> {
                 .into()
             }
         } else {
-            match value {
-                Some(FunctionValueDefinition::Expression(TypedExpression {
-                    e: value,
-                    type_scheme,
-                })) => {
-                    let type_args = type_arg_mapping(type_scheme, type_args);
-                    evaluate_generic(value, &type_args, symbols)?
+            let impl_pos = type_args
+                .as_ref()
+                .and_then(|type_args| poly.resolved_impls.get(type_args).as_ref().copied());
+
+            match impl_pos {
+                Some(index) => {
+                    let fn_name = poly.name.rsplit("::").next().unwrap().to_string();
+
+                    let impls = trait_impls.get(&poly.trait_name.unwrap()).unwrap();
+                    let impl_ = &impls[*index];
+
+                    let func = impl_.function_by_name(&fn_name).unwrap();
+                    let Expression::LambdaExpression(_, lambda) = func.body.as_ref() else {
+                        unreachable!()
+                    };
+                    let closure = Closure {
+                        lambda: &lambda,
+                        environment: vec![],
+                        type_args: HashMap::new(),
+                    };
+                    Value::Closure(closure).into()
                 }
-                Some(FunctionValueDefinition::TypeConstructor(_type_name, variant)) => {
-                    if variant.fields.is_none() {
-                        Value::Enum(&variant.name, None).into()
-                    } else {
-                        Value::TypeConstructor(&variant.name).into()
+                None => match value {
+                    Some(FunctionValueDefinition::Expression(TypedExpression {
+                        e: value,
+                        type_scheme,
+                    })) => {
+                        let type_args = type_arg_mapping(type_scheme, type_args);
+                        evaluate_generic(value, &type_args, symbols)?
                     }
-                }
-                _ => Err(EvalError::Unsupported(
-                    "Cannot evaluate arrays and queries.".to_string(),
-                ))?,
+                    Some(FunctionValueDefinition::TypeConstructor(_type_name, variant)) => {
+                        if variant.fields.is_none() {
+                            Value::Enum(&variant.name, None).into()
+                        } else {
+                            Value::TypeConstructor(&variant.name).into()
+                        }
+                    }
+                    _ => Err(EvalError::Unsupported(
+                        "Cannot evaluate arrays and queries.".to_string(),
+                    ))?,
+                },
             }
         })
     }
@@ -474,37 +504,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a> {
         poly: &PolynomialReference,
         type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        let impl_pos = type_args
-            .as_ref()
-            .and_then(|type_args| poly.resolved_impls.get(type_args).as_ref().copied());
-
-        match impl_pos {
-            Some(index) => {
-                let parts = poly.name.split("::").collect::<Vec<_>>();
-                let fn_name = parts.last().unwrap().to_string();
-                let trait_name = parts[..parts.len() - 1].join("."); // TODO GZ Replace '.' by '::' after we merge #1694
-
-                let impls = match self.1.get(&trait_name) {
-                    Some(impls) => impls,
-                    None => Err(EvalError::SymbolNotFound(format!(
-                        "Trait {trait_name} not found."
-                    )))?,
-                };
-                let impl_ = &impls[*index];
-
-                let func = impl_.function_by_name(&fn_name).unwrap();
-                let Expression::LambdaExpression(_, lambda) = func.body.as_ref() else {
-                    unreachable!()
-                };
-                let closure = Closure {
-                    lambda,
-                    environment: vec![],
-                    type_args: HashMap::new(),
-                };
-                Ok(Value::Closure(closure).into())
-            }
-            None => Self::lookup_with_symbols(self.0, &poly.name, type_args, self),
-        }
+        Self::lookup_with_symbols(&self.definitions, &self.trait_impls, &poly, type_args, self)
     }
 
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
@@ -1315,16 +1315,23 @@ mod test {
         };
         evaluate::<GoldilocksField>(
             symbol,
-            &mut Definitions(&analyzed.definitions, &analyzed.trait_impls),
+            &mut Definitions {
+                definitions: &analyzed.definitions,
+                trait_impls: &analyzed.trait_impls,
+            },
         )
         .unwrap()
         .to_string()
     }
 
-    pub fn evaluate_function<T: FieldElement>(input: &str, poly_fn: &PolynomialReference) -> T {
+    pub fn evaluate_function<T: FieldElement>(input: &str, function: &str) -> T {
         let analyzed = analyze_string::<GoldilocksField>(input);
-        let mut symbols = evaluator::Definitions(&analyzed.definitions, &analyzed.trait_impls);
-        let function = symbols.lookup(poly_fn, &None).unwrap();
+        let mut symbols = evaluator::Definitions {
+            definitions: &analyzed.definitions,
+            trait_impls: &analyzed.trait_impls,
+        };
+        let fn_ref = PolynomialReference::new(function.to_string());
+        let function = symbols.lookup(&fn_ref, &None).unwrap();
         let result = evaluator::evaluate_function_call(function, vec![], &mut symbols)
             .unwrap()
             .as_ref()
@@ -1717,10 +1724,7 @@ mod test {
                 let test = query || std::prover::eval(2 * (1 + 1 + 1) + 1);
         "#;
         assert_eq!(
-            evaluate_function::<GoldilocksField>(
-                src,
-                &PolynomialReference::new("main.test".to_string()),
-            ),
+            evaluate_function::<GoldilocksField>(src, "main.test",),
             7u64.into()
         );
     }

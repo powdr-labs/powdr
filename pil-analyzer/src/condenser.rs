@@ -355,7 +355,13 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         {
             return Ok(v.clone());
         }
-        let value = Definitions::lookup_with_symbols(self.symbols, &poly.name, type_args, self)?;
+        let value = Definitions::lookup_with_symbols(
+            self.symbols,
+            &self.trait_impls,
+            &poly,
+            type_args,
+            self,
+        )?;
         self.symbol_values
             .entry(poly.name.to_string())
             .or_default()
@@ -365,7 +371,11 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
     }
 
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
-        Definitions(self.symbols, self.trait_impls).lookup_public_reference(name)
+        Definitions {
+            definitions: self.symbols,
+            trait_impls: self.trait_impls,
+        }
+        .lookup_public_reference(name)
     }
 
     fn degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {

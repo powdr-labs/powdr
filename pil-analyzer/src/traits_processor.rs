@@ -30,13 +30,13 @@ impl<'a> TraitsProcessor<'a> {
                 continue;
             };
 
-            let Some((trait_name, resolved_impl_pos)) =
+            let Some((full_name, resolved_impl_pos)) =
                 self.resolve_trait_function((name.to_string(), types), &traits_functions_defs)
             else {
                 continue;
             };
 
-            update_reference(&trait_name, r, &resolved_impl_pos);
+            update_reference(&full_name, r, &resolved_impl_pos, name);
         }
     }
 
@@ -66,7 +66,7 @@ impl<'a> TraitsProcessor<'a> {
         }
 
         Some((
-            format!("{}::{}", trait_decl.name.replace('.', "::"), trait_fn.name),
+            format!("{}::{}", trait_decl.name.replace('.', "::"), trait_fn.name), // TODO: Remove this after we merge #1694
             resolved_impl_pos,
         ))
     }
@@ -76,6 +76,7 @@ fn update_reference(
     ref_name: &str,
     c: &mut Reference,
     resolved_impl_pos: &BTreeMap<Vec<Type>, usize>,
+    trait_name: &str,
 ) {
     if let Reference::Poly(PolynomialReference {
         name,
@@ -90,6 +91,7 @@ fn update_reference(
                 type_args: current_type_args.clone(),
                 poly_id: *poly_id,
                 resolved_impls: resolved_impl_pos.clone(),
+                trait_name: Some(trait_name.to_string()),
             });
         }
     }

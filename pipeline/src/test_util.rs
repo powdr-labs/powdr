@@ -335,7 +335,10 @@ pub fn evaluate_function<'a, T: FieldElement>(
     function: &'a PolynomialReference,
     arguments: Vec<Arc<evaluator::Value<'a, T>>>,
 ) -> evaluator::Value<'a, T> {
-    let mut symbols = evaluator::Definitions(&analyzed.definitions, &analyzed.trait_impls);
+    let mut symbols = evaluator::Definitions {
+        definitions: &analyzed.definitions,
+        trait_impls: &analyzed.trait_impls,
+    };
     let function = symbols.lookup(function, &None).unwrap();
     evaluator::evaluate_function_call(function, arguments, &mut symbols)
         .unwrap()
