@@ -106,7 +106,7 @@ where
                     pipeline
                 };
 
-                // get the length of the columns in the machine we want to extend with external witness values
+                // get the length of the main machine
                 // quite hacky, is there a better way?
                 let length = pipeline
                     .optimized_pil()
@@ -267,11 +267,15 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     let mut proven_trace = first_real_execution_row;
     let mut chunk_index = 0;
 
-    let length: usize = if let Expression::Number(_, n) = main_machine.degree.max.as_ref().unwrap()
-    {
-        n.value.clone().try_into().unwrap()
-    } else {
-        unimplemented!("Continuations rely on `Main` defining a max_degree in asm")
+    let max_degree_expr = main_machine.degree.max.as_ref();
+
+    let length: usize = match max_degree_expr {
+        Some(Expression::Number(_, n)) => n.value.clone().try_into().unwrap(),
+        // if the max degree is not defined, it defaults to
+        None => unimplemented!("Continuations rely on `Main` defining a max degree"),
+        Some(e) => {
+            unimplemented!("Continuations rely on `Main` not using a complex expression as its max degree, found {e}")
+        }
     };
 
     loop {

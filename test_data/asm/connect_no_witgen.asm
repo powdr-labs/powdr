@@ -17,7 +17,7 @@ machine Empty with degree: 16 {
     let f: col = |i| i / 2;
     w = f;
 
-    std::check::assert(std::prover::min_degree() == 2**4, || "Degree is not 2**4");
+    std::check::assert(std::prover::degree() == 2**4, || "Degree is not 2**4");
     std::check::assert(omega ** (2**3) != 1, || "");
     std::check::assert(omega ** (2**4) == 1, || "");
 

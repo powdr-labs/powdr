@@ -18,11 +18,13 @@ use std::collections::BTreeMap;
 use itertools::Itertools;
 
 const MAIN_OPERATION_NAME: &str = "main";
+/// The log of the default minimum degree
 pub const MIN_DEGREE_LOG: usize = 5;
 lazy_static! {
     // The maximum degree can add a significant cost during setup, because
     // the fixed columns need to be committed to in all sizes up to the max degree.
     // This gives the user the possibility to overwrite the default value.
+    /// The log of the default maximum degree
     pub static ref MAX_DEGREE_LOG: usize = {
         let default_max_degree_log = 22;
 
