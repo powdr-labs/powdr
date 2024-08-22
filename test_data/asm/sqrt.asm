@@ -1,4 +1,4 @@
-use std::prover::Query;
+use std::prelude::Query;
 
 machine Sqrt with
     latch: latch,

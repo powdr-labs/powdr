@@ -1291,7 +1291,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 };
                 let variant = f
                     .to_string()
-                    .strip_prefix("std::prover::Query::")
+                    .strip_prefix("std::prelude::Query::")
                     .unwrap_or_else(|| panic!("Free input does not match pattern: {expr}"))
                     .to_string();
                 let values = arguments

@@ -8,7 +8,7 @@ use std::convert::int;
 use std::convert::fe;
 use std::convert::expr;
 use std::prover::eval;
-use std::prover::Query;
+use std::prelude::Query;
 use std::machines::range::Byte2;
 
 // Arithmetic machine, ported mainly from Polygon: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/arith.pil

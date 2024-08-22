@@ -1,4 +1,4 @@
-use std::prover::Query;
+use std::prelude::Query;
 use std::convert::fe;
 use std::protocols::lookup_via_bus::lookup;
 use std::protocols::lookup_via_bus::compute_next_z_send_lookup;

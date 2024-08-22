@@ -22,7 +22,7 @@ use self::sub_prover::RunStatus;
 mod split;
 
 /// Maps each size to the corresponding verification key.
-type VerificationKeyBySize = BTreeMap<usize, Vec<u8>>;
+type VerificationKeyBySize = BTreeMap<DegreeType, Vec<u8>>;
 
 /// A composite verification key that contains a verification key for each machine separately.
 #[derive(Serialize, Deserialize)]
@@ -35,7 +35,7 @@ struct CompositeVerificationKey {
 #[derive(Serialize, Deserialize)]
 struct MachineProof {
     /// The (dynamic) size of the machine.
-    size: usize,
+    size: DegreeType,
     /// The proof for the machine.
     proof: Vec<u8>,
 }
@@ -62,7 +62,7 @@ impl<F: FieldElement, B: BackendFactory<F>> CompositeBackendFactory<F, B> {
 }
 
 impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBackendFactory<F, B> {
-    fn create<'a>(
+    fn create(
         &self,
         pil: Arc<Analyzed<F>>,
         fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
@@ -71,7 +71,7 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
         verification_key: Option<&mut dyn std::io::Read>,
         verification_app_key: Option<&mut dyn std::io::Read>,
         backend_options: BackendOptions,
-    ) -> Result<Box<dyn Backend<'a, F> + 'a>, Error> {
+    ) -> Result<Box<dyn Backend<F>>, Error> {
         if verification_app_key.is_some() {
             unimplemented!();
         }
@@ -192,19 +192,19 @@ fn log_machine_stats<T: FieldElement>(machine_name: &str, pil: &Analyzed<T>) {
     }
 }
 
-struct MachineData<'a, F> {
+struct MachineData<F> {
     pil: Arc<Analyzed<F>>,
     // Mutex is needed because Backend is not Sync, so during proof we need to
     // ensure the type system that each backend is only used by one thread at a
     // time.
-    backend: Mutex<Box<dyn Backend<'a, F> + 'a>>,
+    backend: Mutex<Box<dyn Backend<F>>>,
 }
 
-pub(crate) struct CompositeBackend<'a, F> {
+pub(crate) struct CompositeBackend<F> {
     /// Maps each machine name to the corresponding machine data
     /// Note that it is essential that we use BTreeMap here to ensure that the machines are
     /// deterministically ordered.
-    machine_data: BTreeMap<String, BTreeMap<usize, MachineData<'a, F>>>,
+    machine_data: BTreeMap<String, BTreeMap<DegreeType, MachineData<F>>>,
 }
 
 /// Makes sure that all columns in the machine PIL have the provided degree, cloning
@@ -261,9 +261,9 @@ fn accumulate_challenges<F: FieldElement>(into: &mut BTreeMap<u64, F>, from: BTr
 
 fn process_witness_for_machine<F: FieldElement>(
     machine: &str,
-    machine_data: &BTreeMap<usize, MachineData<F>>,
+    machine_data: &BTreeMap<DegreeType, MachineData<F>>,
     witness: &[(String, Vec<F>)],
-) -> (Vec<(String, Vec<F>)>, usize) {
+) -> (Vec<(String, Vec<F>)>, DegreeType) {
     // Pick any available PIL; they all contain the same witness columns
     let any_pil = &machine_data.values().next().unwrap().pil;
     let witness = machine_witness_columns(witness, any_pil, machine);
@@ -274,12 +274,12 @@ fn process_witness_for_machine<F: FieldElement>(
         .exactly_one()
         .expect("All witness columns of a machine must have the same size");
 
-    (witness, size)
+    (witness, size as DegreeType)
 }
 
 fn time_stage<'a, F: FieldElement>(
     machine_name: &str,
-    size: usize,
+    size: DegreeType,
     stage: u8,
     stage_run: impl FnOnce() -> RunStatus<'a, F>,
 ) -> RunStatus<'a, F> {
@@ -297,7 +297,7 @@ fn time_stage<'a, F: FieldElement>(
 // - Compute a proof for each machine separately
 // - Verify all the machine proofs
 // - Run additional checks on public values of the machine proofs
-impl<'a, F: FieldElement> Backend<'a, F> for CompositeBackend<'a, F> {
+impl<F: FieldElement> Backend<F> for CompositeBackend<F> {
     fn prove(
         &self,
         witness: &[(String, Vec<F>)],

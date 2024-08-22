@@ -155,11 +155,11 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     // TODO should these be intermediate?
     let a = array::zip(state, C, |state, C| state + C);
 
-    // Compute S-Boxes (x^7)
-    let x2: inter[STATE_SIZE] = array::map(a, |a| a * a);
-    let x4: inter[STATE_SIZE] = array::map(x2, |x2| x2 * x2);
-    let x6: inter[STATE_SIZE] = array::zip(x4, x2, |x4, x2| x4 * x2);
-    let x7: inter[STATE_SIZE] = array::zip(x6, a, |x6, a| x6 * a);
+    // Compute S-Boxes (x^7) (using a degree bound of 3)
+    col witness x3[STATE_SIZE];
+    array::zip(x3, array::map(a, |a| a * a * a), |x3, expected| x3 = expected);
+    col witness x7[STATE_SIZE];
+    array::zip(x7, array::zip(x3, a, |x3, a| x3 * x3 * a), |x7, expected| x7 = expected);
 
     // Apply S-Boxes on the first element and otherwise if it is a full round.
     let b: expr[] = array::new(STATE_SIZE, |i| if i == 0 {
