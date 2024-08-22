@@ -404,7 +404,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         let mut witness_col_values = HashMap::new();
-        if self.logup_multiplicity_column != None {
+        if self.logup_multiplicity_column.is_some() {
             assert!(
                 self.multiplicities.len() <= 1,
                 "LogUp witness generation not yet supported for > 1 lookups"
