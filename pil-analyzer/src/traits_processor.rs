@@ -36,8 +36,12 @@ impl<'a> TraitsProcessor<'a> {
                 continue;
             };
 
-            let name = name.clone();
-            update_reference(&full_name, r, &resolved_impl_pos, name);
+            let trait_name = full_name
+                .rsplit_once("::")
+                .map(|(prefix, _)| prefix)
+                .unwrap_or(&full_name)
+                .replace("::", "."); // TODO: Remove replace after we merge #1694
+            update_reference(&full_name, r, &resolved_impl_pos, trait_name.to_string());
         }
     }
 
