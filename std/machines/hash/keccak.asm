@@ -3,7 +3,11 @@ use std::utils;
 use std::utils::unchanged_until;
 use std::utils::force_bool;
 use std::convert::expr;
+use std::convert::int;
+use std::convert::fe;
 use std::prelude::set_hint;
+use std::prelude::Query;
+use std::prover::eval;
 
 machine Keccak with
     degree: 24,
@@ -561,14 +565,14 @@ machine Keccak with
     //     }
     // }
 
-    let c: inter[] = array::new(320, |i| {
+    let c: inter[320] = array::new(320, |i| {
         let x = i / 64;
         let z = i % 64;
         let limb = z / 16;
         let bit_in_limb = z % 16;
 
         let c_i;
-        set_hint(c_i, |_| utils::fold(5, |y| (int(eval(a[y * 20 + x * 4 + limb])) >> bit_in_limb) & 1) != 0, 0, |acc, e| acc ^ e);
+        set_hint(c_i, |_| Query::Hint(fe(utils::fold(5, |y| (int(eval(a[y * 20 + x * 4 + limb])) >> bit_in_limb) & 0x1, 0, |acc, e| acc ^ e))));
         c_i
     });
 
