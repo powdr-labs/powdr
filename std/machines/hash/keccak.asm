@@ -3,6 +3,7 @@ use std::utils;
 use std::utils::unchanged_until;
 use std::utils::force_bool;
 use std::convert::expr;
+use std::prelude::set_hint;
 
 machine Keccak with
     degree: 24,
@@ -67,7 +68,7 @@ machine Keccak with
     pol commit export;
     pol commit preimage[100]; // 5 * 5 * 4
     pol commit a[100]; // 5 * 5 * 4
-    pol commit c[320]; // 5 * 64
+    // pol commit c[320]; // 5 * 64
     pol commit c_prime[320]; // 5 * 64
     pol commit a_prime[1600]; // 5 * 5 * 64
     pol commit a_prime_prime[100]; // 5 * 5 * 4 
@@ -560,6 +561,15 @@ machine Keccak with
     //     }
     // }
 
-    
-    
+    let c: inter[] = array::new(320, |i| {
+        let x = i / 64;
+        let z = i % 64;
+        let limb = z / 16;
+        let bit_in_limb = z % 16;
+
+        let c_i;
+        set_hint(c_i, |_| utils::fold(5, |y| (int(eval(a[y * 20 + x * 4 + limb])) >> bit_in_limb) & 1) != 0, 0, |acc, e| acc ^ e);
+        c_i
+    });
+
 }
