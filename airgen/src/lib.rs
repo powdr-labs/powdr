@@ -20,7 +20,6 @@ use itertools::Either;
 use itertools::Itertools;
 
 use powdr_analysis::utils::parse_pil_statement;
-use topo_sort::TopoSort;
 
 const MAIN_MACHINE_INSTANCE: &str = "::main";
 const MAIN_MACHINE: &str = "::Main";
@@ -197,21 +196,15 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
     let main_location = Location::main();
 
     // iterate through all instantiations in topological order
-    let mut topo_sort = TopoSort::new();
-    for (path, instance) in &instances {
-        // submachines declarations depend on their arguments
-        topo_sort.insert(path, instance.references());
-    }
+    let get_dependencies =
+        |key: &AbsoluteSymbolPath| instances[key].references().into_iter().cloned().collect();
+
+    let topo_sort = powdr_utils::topo_sort(instances.keys(), get_dependencies);
 
     // generate the trimmed instance map
     let instances = topo_sort
         .iter()
-        .map(|node| {
-            let path = node
-                .expect("unexpected cycle in submachine instantiations")
-                .0;
-            ((*path).clone(), &instances[path])
-        })
+        .map(|path| (path, instances.get(path).unwrap()))
         .fold(Instances::default(), |mut instances, (path, instance)| {
             assert_eq!(
                 path.len(),
