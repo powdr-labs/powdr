@@ -137,6 +137,9 @@ impl<T: Display> Display for Analyzed<T> {
                 StatementIdentifier::Identity(i) => {
                     writeln_indented(f, &self.identities[*i])?;
                 }
+                StatementIdentifier::ProverFunction(i) => {
+                    writeln_indented(f, &self.prover_functions[*i])?;
+                }
             }
         }
 

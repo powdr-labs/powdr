@@ -480,10 +480,44 @@ fn prover_functions() {
     namespace std::prover;
         let provide_value = 9;
     namespace N(16);
+        let x;
+        let y;
+        x = y;
+        query |i| {
+            std::prover::provide_value(x, i, std::convert::fe(i % 2));
+            std::prover::provide_value(y, i, std::convert::fe(i % 2));
+        };
+    ";
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    let expected = r#"namespace std::convert;
+    let fe = 8;
+namespace std::prover;
+    let provide_value = 9;
+namespace N(16);
+    col witness x;
+    col witness y;
+    N.x = N.y;
+    (query |i| {
+        std::prover::provide_value(N.x, i, std::convert::fe::<int>(i % 2));
+        std::prover::provide_value(N.y, i, std::convert::fe::<int>(i % 2));
+
+    })
+"#;
+    assert_eq!(analyzed.to_string(), expected);
+}
+
+#[test]
+fn prover_functions_dynamic() {
+    let input = "
+    namespace std::convert;
+        let fe = 8;
+    namespace std::prover;
+        let provide_value = 9;
+    namespace N(16);
         let gen = constr || {
             let x;
             let y;
-            x = y
+            x = y;
             query |i| {
                 std::prover::provide_value(x, i, std::convert::fe(i % 2));
                 std::prover::provide_value(y, i, std::convert::fe(i % 2));
@@ -492,9 +526,18 @@ fn prover_functions() {
         gen();
     ";
     let analyzed = analyze_string::<GoldilocksField>(input);
-    let expected = r#"namespace N(65536);
-    col witness x[5];
-    col inte[5] = [N.x[0], N.x[1], N.x[2], N.x[3], N.x[4]];
-"#;
+    let expected = r#"namespace std::convert;
+    let fe = 8;
+namespace std::prover;
+    let provide_value = 9;
+namespace N(16);
+    col witness x;
+    col witness y;
+    N.x = N.y;
+    (query |i| {
+        std::prover::provide_value(N.x, i, std::convert::fe::<int>(i % 2));
+        std::prover::provide_value(N.y, i, std::convert::fe::<int>(i % 2));
+
+    })"#;
     assert_eq!(analyzed.to_string(), expected);
 }

@@ -48,6 +48,7 @@ lazy_static! {
             ("", "expr, (int -> std::prelude::Query) -> ()")
         ),
         ("std::prover::eval", ("", "expr -> fe")),
+        ("std::prover::provide_value", ("", "expr, int, fe -> ()"))
     ]
     .into_iter()
     .map(|(name, (vars, ty))| { (name.to_string(), parse_type_scheme(vars, ty)) })

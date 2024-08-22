@@ -20,8 +20,8 @@ use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
-    self, ArrayExpression, ArrayLiteral, EnumDeclaration, EnumVariant, TraitDeclaration,
-    TraitFunction,
+    self, ArrayExpression, ArrayLiteral, EnumDeclaration, EnumVariant, LambdaExpression,
+    TraitDeclaration, TraitFunction,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -31,6 +31,8 @@ pub enum StatementIdentifier {
     PublicDeclaration(String),
     /// Index into the vector of identities.
     Identity(usize),
+    /// Index into the vector of prover functions.
+    ProverFunction(usize),
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
@@ -39,6 +41,7 @@ pub struct Analyzed<T> {
     pub public_declarations: HashMap<String, PublicDeclaration>,
     pub intermediate_columns: HashMap<String, (Symbol, Vec<AlgebraicExpression<T>>)>,
     pub identities: Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>>,
+    pub prover_functions: Vec<LambdaExpression<Expression>>,
     /// The order in which definitions and identities
     /// appear in the source.
     pub source_order: Vec<StatementIdentifier>,

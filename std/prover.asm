@@ -3,6 +3,11 @@
 /// valid in query functions.
 let eval: expr -> fe = [];
 
+/// A function that can be used to set a cell value.
+/// The parameters are column, row index and value.
+/// This function is only valid in query functions.
+let provide_value: expr, int, fe -> () = [];
+
 /// Constructs a challenge object.
 /// The arguments are the proof stage and the id of the challenge, in this order.
 let challenge: int, int -> expr = constr |st, id| std::prelude::challenge(st, id);

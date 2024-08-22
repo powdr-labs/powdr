@@ -589,7 +589,7 @@ enum Operation<'a, T> {
     SetEnvironment(Vec<Arc<Value<'a, T>>>, HashMap<String, Type>),
     /// Evaluate a let statement, adding matched pattern variables to the local variables.
     LetStatement(&'a LetStatementInsideBlock<Expression>),
-    /// Add a constraint to the constraint set.
+    /// Add a constraint to the constraint set. TODO rename?
     AddConstraint,
 }
 
