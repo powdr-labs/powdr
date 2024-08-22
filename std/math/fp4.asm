@@ -61,8 +61,8 @@ let<T: Add + FromLiteral + Mul> mul_ext: Fp4<T>, Fp4<T> -> Fp4<T> = |a, b| match
 
 /// Inversion for an Fp4 element
 // The inverse of (a0, a1, a2, a3) is a point (b0, b1, b2, b3) such that:
-/// (a0 + a1 * x + a2 * x^2 + a3 * x^3) (b0 + b1 * x + b2 * x^2 + b3 * x^3) = 1 (mod x^4 + 11)
-/// Multiplying out and plugging in x^4 = -11 yields the following result
+/// (a0 + a1 * x + a2 * x^2 + a3 * x^3) (b0 + b1 * x + b2 * x^2 + b3 * x^3) = 1 (mod x^4 - 11)
+/// Multiplying out and plugging in x^4 = 11 yields the following result
 /// a[0] * b0 + BETA * a[2] * b2
 /// + (-a[1] * b0 + NBETA * a[3] * b2) * X
 /// + (-a[0] * b2 + a[2] * b0) * X^2
