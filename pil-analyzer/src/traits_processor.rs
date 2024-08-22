@@ -36,6 +36,7 @@ impl<'a> TraitsProcessor<'a> {
                 continue;
             };
 
+            let name = name.clone();
             update_reference(&full_name, r, &resolved_impl_pos, name);
         }
     }
@@ -76,7 +77,7 @@ fn update_reference(
     ref_name: &str,
     c: &mut Reference,
     resolved_impl_pos: &BTreeMap<Vec<Type>, usize>,
-    trait_name: &str,
+    trait_name: String,
 ) {
     if let Reference::Poly(PolynomialReference {
         name,
@@ -91,7 +92,7 @@ fn update_reference(
                 type_args: current_type_args.clone(),
                 poly_id: *poly_id,
                 resolved_impls: resolved_impl_pos.clone(),
-                trait_name: Some(trait_name.to_string()),
+                trait_name: Some(trait_name),
             });
         }
     }

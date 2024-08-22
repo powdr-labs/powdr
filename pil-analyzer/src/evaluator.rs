@@ -460,7 +460,8 @@ impl<'a> Definitions<'a> {
                 Some(index) => {
                     let fn_name = poly.name.rsplit("::").next().unwrap().to_string();
 
-                    let impls = trait_impls.get(&poly.trait_name.unwrap()).unwrap();
+                    let trait_name = poly.trait_name.as_ref().unwrap();
+                    let impls = trait_impls.get(trait_name).unwrap();
                     let impl_ = &impls[*index];
 
                     let func = impl_.function_by_name(&fn_name).unwrap();
@@ -468,7 +469,7 @@ impl<'a> Definitions<'a> {
                         unreachable!()
                     };
                     let closure = Closure {
-                        lambda: &lambda,
+                        lambda,
                         environment: vec![],
                         type_args: HashMap::new(),
                     };
@@ -504,7 +505,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a> {
         poly: &PolynomialReference,
         type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        Self::lookup_with_symbols(&self.definitions, &self.trait_impls, &poly, type_args, self)
+        Self::lookup_with_symbols(self.definitions, self.trait_impls, poly, type_args, self)
     }
 
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {

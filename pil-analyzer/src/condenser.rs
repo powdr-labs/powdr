@@ -357,8 +357,8 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         }
         let value = Definitions::lookup_with_symbols(
             self.symbols,
-            &self.trait_impls,
-            &poly,
+            self.trait_impls,
+            poly,
             type_args,
             self,
         )?;

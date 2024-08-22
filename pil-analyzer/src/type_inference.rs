@@ -404,6 +404,7 @@ impl TypeChecker {
                     poly_id: _,
                     type_args,
                     resolved_impls: _,
+                    trait_name: _,
                 }),
             ) => {
                 for ty in type_args.as_mut().unwrap() {
@@ -512,6 +513,7 @@ impl TypeChecker {
                     poly_id: _,
                     type_args,
                     resolved_impls: _,
+                    trait_name: _,
                 }),
             ) => {
                 let (ty, args) = self

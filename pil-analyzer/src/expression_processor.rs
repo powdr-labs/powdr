@@ -385,6 +385,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             poly_id: None,
             type_args,
             resolved_impls: BTreeMap::new(),
+            trait_name: None,
         }
     }
 
