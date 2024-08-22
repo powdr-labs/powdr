@@ -186,14 +186,10 @@ pub struct FixedLookup<'a, T: FieldElement> {
     connecting_identities: BTreeMap<u64, &'a Identity<T>>,
     fixed_data: &'a FixedData<'a, T>,
     multiplicities: BTreeMap<u64, BTreeMap<usize, u64>>,
-    has_logup_multiplicity_column: bool,
+    logup_multiplicity_column: Option<PolyID>,
 }
 
 impl<'a, T: FieldElement> FixedLookup<'a, T> {
-    fn namespaced(&self, name: &str) -> String {
-        format!("{}.{}", self.get_namespace(), name)
-    }
-
     pub fn multiplicity_columns(&self) -> HashSet<PolyID> {
         self.fixed_data
             .witness_cols
@@ -201,20 +197,6 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             .filter(|col| split_column_name(&col.poly.name).1 == MULTIPLICITY_LOOKUP_COLUMN)
             .map(|col| col.poly.poly_id)
             .collect()
-    }
-
-    fn get_namespace(&self) -> String {
-        let (namespace, _) = split_column_name(
-            &self
-                .fixed_data
-                .witness_cols
-                .values()
-                .next()
-                .unwrap()
-                .poly
-                .name,
-        );
-        namespace.to_string()
     }
 
     pub fn new(
@@ -242,12 +224,16 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             .values()
             .map(|col| col.values_max_size().len())
             .max()
+            // No fixed column, so this FixedLookup instance does nothing
             .unwrap_or(0) as u64;
 
-        let has_logup_multiplicity_column = fixed_data
+        // This currenlty just takes one element with the correct name
+        // When we support more than one element, we need to have a vector of logup_multiplicity_columns: Vec<Option<PolyId>>
+        let logup_multiplicity_column: Option<PolyID> = fixed_data
             .witness_cols
             .values()
-            .any(|col| split_column_name(&col.poly.name).1 == MULTIPLICITY_LOOKUP_COLUMN);
+            .find(|col| split_column_name(&col.poly.name).1 == MULTIPLICITY_LOOKUP_COLUMN)
+            .map(|col| col.poly.poly_id);
 
         Self {
             degree,
@@ -256,7 +242,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             connecting_identities,
             fixed_data,
             multiplicities: Default::default(),
-            has_logup_multiplicity_column,
+            logup_multiplicity_column,
         }
     }
 
@@ -417,34 +403,24 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         &mut self,
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
-        // Clones the self.multiplcities by changing the type of the multiplicity from u64 to T by using T::from()
-        // and adds the rows that are not present in the multiplicities for each identity as T::zero()
-        let multiplicities: BTreeMap<u64, BTreeMap<usize, T>> = self
-            .multiplicities
-            .clone()
-            .into_iter()
-            .map(|(identity_id, multiplicity)| {
-                let mut multiplicity: BTreeMap<usize, T> = multiplicity
-                    .into_iter()
-                    .map(|(row, multiplicity)| (row, T::from(multiplicity)))
-                    .collect();
-                for row in 0..self.degree as usize {
-                    multiplicity.entry(row).or_insert_with(|| T::zero());
-                }
-                (identity_id, multiplicity)
-            })
-            .collect();
-
-        // Collects all the rows of an identity as a Vec<T>
         let mut witness_col_values = HashMap::new();
-        for multiplicity in multiplicities.values() {
-            let mut values = vec![];
-            for row in 0..self.degree as usize {
-                values.push(multiplicity[&row]);
-            }
-            if self.has_logup_multiplicity_column {
-                log::trace!("Detected LogUp Multiplicity Column");
-                witness_col_values.insert(self.namespaced(MULTIPLICITY_LOOKUP_COLUMN), values);
+        if self.logup_multiplicity_column != None {
+            assert!(
+                self.multiplicities.len() <= 1,
+                "LogUp witness generation not yet supported for > 1 lookups"
+            );
+            log::trace!("Detected LogUp Multiplicity Column");
+            for multiplicity in std::mem::take(&mut self.multiplicities).into_values() {
+                let mut values = vec![];
+                for row in 0..self.degree as usize {
+                    values.push(T::from(multiplicity.get(&row).cloned().unwrap_or_default()));
+                }
+                witness_col_values.insert(
+                    self.logup_multiplicity_column
+                        .map(|poly_id| self.fixed_data.column_name(&poly_id).to_string())
+                        .unwrap(),
+                    values,
+                );
             }
         }
         witness_col_values
