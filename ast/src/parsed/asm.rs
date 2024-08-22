@@ -350,11 +350,6 @@ impl AbsoluteSymbolPath {
         parts.push(part.to_string());
         Self { parts }
     }
-
-    // Returns the path as a string without the leading "::".
-    pub fn to_relative_string(&self) -> String {
-        self.parts.join("::")
-    }
 }
 
 impl Display for AbsoluteSymbolPath {
