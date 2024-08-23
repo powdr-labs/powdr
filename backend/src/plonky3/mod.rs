@@ -26,11 +26,11 @@ where
     ProverData<FInner>: Send,
     Commitment<FInner>: Send,
 {
+    // We ensure that FInner and FOuter are the same type, so we can even safely
+    // transmute between them.
     if TypeId::of::<FInner>() != TypeId::of::<FOuter>() {
         return None;
     }
-
-    // From now on, we know that FInner == FOuter, so we can even safely transmute between them.
 
     let pil = (pil as &dyn Any)
         .downcast_ref::<Arc<Analyzed<FInner>>>()
