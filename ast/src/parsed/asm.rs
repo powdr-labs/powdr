@@ -162,13 +162,6 @@ impl SymbolPath {
         self
     }
 
-    /// Formats the path and uses `.` as separator if
-    /// there are at most two components.
-    pub fn to_dotted_string(&self) -> String {
-        let separator = if self.parts.len() <= 2 { "." } else { "::" };
-        self.parts.iter().format(separator).to_string()
-    }
-
     pub fn try_to_identifier(&self) -> Option<&String> {
         match &self.parts[..] {
             [Part::Named(name)] => Some(name),
@@ -207,14 +200,10 @@ impl SymbolPath {
 impl FromStr for SymbolPath {
     type Err = String;
 
-    /// Parses a symbol path both in the "a.b" and the "a::b" notation.
+    /// Parses a symbol path using the "::" notation.
     fn from_str(s: &str) -> Result<Self, String> {
-        let (dots, double_colons) = (s.matches('.').count(), s.matches("::").count());
-        if dots != 0 && double_colons != 0 {
-            Err(format!("Path mixes \"::\" and \".\" separators: {s}"))?
-        }
         let parts = s
-            .split(if double_colons > 0 { "::" } else { "." })
+            .split("::")
             .map(|s| {
                 if s == "super" {
                     Part::Super
@@ -360,13 +349,6 @@ impl AbsoluteSymbolPath {
         let mut parts = self.parts.clone();
         parts.push(part.to_string());
         Self { parts }
-    }
-
-    /// Formats the path without leading `::` and uses `.` as separator if
-    /// there are at most two components.
-    pub fn to_dotted_string(&self) -> String {
-        let separator = if self.parts.len() <= 2 { "." } else { "::" };
-        self.parts.join(separator)
     }
 }
 

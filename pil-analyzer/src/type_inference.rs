@@ -845,7 +845,7 @@ impl TypeChecker {
                 // is not helpful because the type is obvious from the value.
                 let (ty, _generic_args) = self
                     .unifier
-                    .instantiate_scheme(self.declared_types[&name.to_dotted_string()].1.clone());
+                    .instantiate_scheme(self.declared_types[&name.to_string()].1.clone());
                 let ty = type_for_reference(&ty);
 
                 match data {
