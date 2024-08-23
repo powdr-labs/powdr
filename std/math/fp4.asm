@@ -44,7 +44,7 @@ let<T: Sub> sub_ext: Fp4<T>, Fp4<T> -> Fp4<T> = |a, b| match (a, b) {
 /// multiplied by `beta`.
 ///
 /// Multiplication modulo the polynomial x^4 - 11. We'll use the fact
-/// that x^4 == 11 (mod x^4 + 11), so:
+/// that x^4 == 11 (mod x^4 - 11), so:
 /// (a0 + a1 * x + a2 * x^2 + a3 * x^3) * (b0 + b1 * x + b2 * x^2 + b3 * x^3) = 
 /// a0 * b0 + NBETA * (a1 * b3 + a2 * b2 + a3 * b1)
 /// + (a0 * b1 + a1 * b0 + NBETA * (a2 * b3 + a3 * b2)) * X
