@@ -205,6 +205,12 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             self.size,
         );
         let mut updates = EvalValue::complete(vec![]);
+
+        for fun in &self.fixed_data.analyzed.prover_functions {
+            let r = query_processor.process_prover_function(&row_pair, fun)?;
+            updates.combine(r);
+        }
+
         for poly_id in &self.prover_query_witnesses {
             if let Some(r) = query_processor.process_query(&row_pair, poly_id) {
                 updates.combine(r?);

@@ -216,7 +216,7 @@ pub struct Condenser<'a, T> {
     /// The names of all new columns ever generated, to avoid duplicates.
     new_symbols: HashSet<String>,
     new_constraints: Vec<AnalyzedIdentity<T>>,
-    new_prover_functions: Vec<LambdaExpression<Expression>>,
+    new_prover_functions: Vec<Expression>,
 }
 
 impl<'a, T: FieldElement> Condenser<'a, T> {
@@ -301,7 +301,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     }
 
     /// TODO doc
-    pub fn extract_new_prover_functions(&mut self) -> Vec<LambdaExpression<Expression>> {
+    pub fn extract_new_prover_functions(&mut self) -> Vec<Expression> {
         std::mem::take(&mut self.new_prover_functions)
     }
 
@@ -565,14 +565,10 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             Value::Closure(..) => {
                 let e = closure_to_function(&source, constraints.as_ref(), FunctionKind::Query)?;
                 // TODO maybe we can simplify the return value.
-                let FunctionValueDefinition::Expression(TypedExpression {
-                    e: Expression::LambdaExpression(_, lambda),
-                    ..
-                }) = e
-                else {
+                let FunctionValueDefinition::Expression(TypedExpression { e, .. }) = e else {
                     unreachable!()
                 };
-                self.new_prover_functions.push(lambda);
+                self.new_prover_functions.push(e);
             }
             _ => self
                 .new_constraints

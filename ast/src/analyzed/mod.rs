@@ -41,7 +41,7 @@ pub struct Analyzed<T> {
     pub public_declarations: HashMap<String, PublicDeclaration>,
     pub intermediate_columns: HashMap<String, (Symbol, Vec<AlgebraicExpression<T>>)>,
     pub identities: Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>>,
-    pub prover_functions: Vec<LambdaExpression<Expression>>,
+    pub prover_functions: Vec<Expression>,
     /// The order in which definitions and identities
     /// appear in the source.
     pub source_order: Vec<StatementIdentifier>,

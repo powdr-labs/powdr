@@ -3,9 +3,11 @@ use std::sync::Arc;
 use powdr_ast::analyzed::Challenge;
 use powdr_ast::analyzed::{AlgebraicReference, Expression, PolyID, PolynomialType};
 use powdr_ast::parsed::types::Type;
+use powdr_ast::parsed::LambdaExpression;
 use powdr_number::{BigInt, DegreeType, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Definitions, EvalError, SymbolLookup, Value};
 
+use super::Constraints;
 use super::{rows::RowPair, Constraint, EvalResult, EvalValue, FixedData, IncompleteCause};
 
 /// Computes value updates that result from a query.
@@ -28,6 +30,32 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
             query_callback,
             size,
         }
+    }
+
+    pub fn process_prover_function<'c>(
+        &mut self,
+        rows: &'c RowPair<T>,
+        fun: &'a Expression,
+    ) -> EvalResult<'a, T> {
+        let arguments = vec![Arc::new(Value::Integer(BigInt::from(u64::from(
+            rows.current_row_index,
+        ))))];
+
+        let mut symbols = Symbols {
+            fixed_data: self.fixed_data,
+            rows,
+            size: self.size,
+        };
+        // TODO symbols need to take already provided values into account for eval()
+        // during the same evaluation run
+
+        // TODO errors
+        let fun = evaluator::evaluate(fun, &mut symbols).unwrap();
+        let res = evaluator::evaluate_function_call(fun, arguments, &mut symbols).unwrap();
+        assert!(matches!(res.as_ref(), Value::Tuple(items) if items.is_empty()));
+
+        // TODO use the status to mark the prover function to be run again or not.
+        Ok(EvalValue::complete(symbols.updates()))
     }
 
     /// Process the prover query of a witness column.
@@ -173,5 +201,12 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
                 )
             });
         Ok(Value::FieldElement(challenge).into())
+    }
+}
+
+impl<'a, T: FieldElement> Symbols<'a, T> {
+    fn updates(&self) -> Constraints<&'a AlgebraicReference, T> {
+        // TODO
+        vec![]
     }
 }
