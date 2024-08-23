@@ -33,7 +33,7 @@ pub fn return_instruction<'a>(
     pc_name: &'a str,
     write_register_names: impl Iterator<Item = &'a str>,
 ) -> Instruction {
-    parse_instruction(&dbg!(format!(
+    parse_instruction(&format!(
         "{} {{ {} }}",
         output_registers(output_count).join(", "),
         once(pc_name)
@@ -41,5 +41,5 @@ pub fn return_instruction<'a>(
             .map(|w| format!("{w}' = 0"))
             .collect::<Vec<_>>()
             .join(", ")
-    )))
+    ))
 }
