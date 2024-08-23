@@ -288,7 +288,6 @@ mod tests {
                 .replace('\t', "    "),
             r#"
 _start:
-// END BATCH Unimplemented
 _jump_to_operation;
 // END BATCH Label
 _sink:
@@ -325,7 +324,6 @@ _loop;
                 .replace('\t', "    "),
             r#"
 _start:
-// END BATCH Unimplemented
 _jump_to_operation;
 // END BATCH Label
 _identity:
@@ -383,7 +381,6 @@ _loop;
                 .replace('\t', "    "),
             r#"
 _start:
-// END BATCH Unimplemented
 _jump_to_operation;
 // END BATCH Label
 _f_add:
