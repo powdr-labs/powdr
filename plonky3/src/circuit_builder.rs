@@ -8,7 +8,7 @@
 
 use std::collections::BTreeMap;
 
-use crate::params::{FieldElementMap, Plonky3Field};
+use crate::params::{Commitment, FieldElementMap, Plonky3Field, ProverData};
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir, PairBuilder};
 // use p3_baby_bear::BabyBear;
 // use p3_field::{extension::ComplexExtendable, AbstractField, PrimeField};
@@ -23,7 +23,11 @@ use powdr_executor::witgen::WitgenCallback;
 // use powdr_number::{BabyBearField, FieldElement, GoldilocksField, LargeInt};
 // use powdr_number::FieldElement;
 
-pub(crate) struct PowdrCircuit<'a, T: FieldElementMap> {
+pub(crate) struct PowdrCircuit<'a, T: FieldElementMap>
+where
+    ProverData<T>: Send,
+    Commitment<T>: Send,
+{
     /// The analyzed PIL
     analyzed: &'a Analyzed<T>,
     /// The value of the witness columns, if set
@@ -35,7 +39,11 @@ pub(crate) struct PowdrCircuit<'a, T: FieldElementMap> {
     preprocessed: Option<RowMajorMatrix<Plonky3Field<T>>>,
 }
 
-impl<'a, T: FieldElementMap + Sync> PowdrCircuit<'a, T> {
+impl<'a, T: FieldElementMap> PowdrCircuit<'a, T>
+where
+    ProverData<T>: Send,
+    Commitment<T>: Send,
+{
     pub fn generate_trace_rows(&self) -> RowMajorMatrix<Plonky3Field<T>> {
         // an iterator over all columns, committed then fixed
         let witness = self.witness().iter();
@@ -64,7 +72,11 @@ impl<'a, T: FieldElementMap + Sync> PowdrCircuit<'a, T> {
     }
 }
 
-impl<'a, T: FieldElementMap> PowdrCircuit<'a, T> {
+impl<'a, T: FieldElementMap> PowdrCircuit<'a, T>
+where
+    ProverData<T>: Send,
+    Commitment<T>: Send,
+{
     pub(crate) fn new(analyzed: &'a Analyzed<T>) -> Self {
         if analyzed
             .definitions
@@ -201,7 +213,11 @@ impl<'a, T: FieldElementMap> PowdrCircuit<'a, T> {
 
 /// An extension of [Air] allowing access to the number of fixed columns
 
-impl<'a, T: FieldElementMap> BaseAir<Plonky3Field<T>> for PowdrCircuit<'a, T> {
+impl<'a, T: FieldElementMap> BaseAir<Plonky3Field<T>> for PowdrCircuit<'a, T>
+where
+    ProverData<T>: Send,
+    Commitment<T>: Send,
+{
     fn width(&self) -> usize {
         self.analyzed.commitment_count()
     }
@@ -222,6 +238,9 @@ impl<'a, T: FieldElementMap> BaseAir<Plonky3Field<T>> for PowdrCircuit<'a, T> {
 
 impl<'a, T: FieldElementMap, AB: AirBuilderWithPublicValues<F = Plonky3Field<T>> + PairBuilder>
     Air<AB> for PowdrCircuit<'a, T>
+where
+    ProverData<T>: Send,
+    Commitment<T>: Send,
 {
     fn eval(&self, builder: &mut AB) {
         let main = builder.main();

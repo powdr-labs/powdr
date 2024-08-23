@@ -15,10 +15,14 @@ use p3_uni_stark::{
 
 use crate::{
     circuit_builder::PowdrCircuit,
-    params::{Challenger, FieldElementMap, Plonky3Field},
+    params::{Challenger, Commitment, FieldElementMap, Plonky3Field, ProverData},
 };
 
-pub struct Plonky3Prover<T: FieldElementMap> {
+pub struct Plonky3Prover<T: FieldElementMap>
+where
+    ProverData<T>: Send,
+    Commitment<T>: Send,
+{
     /// The analyzed PIL
     analyzed: Arc<Analyzed<T>>,
     /// The value of the fixed columns
@@ -41,7 +45,11 @@ impl fmt::Display for VerificationKeyExportError {
     }
 }
 
-impl<T: FieldElementMap> Plonky3Prover<T> {
+impl<T: FieldElementMap> Plonky3Prover<T>
+where
+    ProverData<T>: Send,
+    Commitment<T>: Send,
+{
     pub fn new(analyzed: Arc<Analyzed<T>>, fixed: Arc<Vec<(String, Vec<T>)>>) -> Self {
         Self {
             analyzed,
@@ -101,7 +109,11 @@ impl<T: FieldElementMap> Plonky3Prover<T> {
     }
 }
 
-impl<T: FieldElementMap> Plonky3Prover<T> {
+impl<T: FieldElementMap> Plonky3Prover<T>
+where
+    ProverData<T>: Send,
+    Commitment<T>: Send,
+{
     pub fn setup(&mut self) {
         // get fixed columns
         let fixed = &self.fixed;
