@@ -1,10 +1,4 @@
-mod too {
-    mod ls {
-        let identity: expr -> expr = |expr| expr;
-    }
-}
-
-use too::ls::identity;
+let identity: expr -> expr = |expr| expr;
 
 machine Id {
     operation id<0> x, y;
