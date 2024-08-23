@@ -452,22 +452,12 @@ impl Display for AlgebraicReference {
 
 impl Display for PolynomialReference {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}", self.name)?;
         if let Some(type_args) = &self.type_args {
             if !type_args.is_empty() {
-                // We need to add a `::`-component, so the name should not contain a `.`.
-                // NOTE: This special handling can be removed once we remove
-                // the `to_dotted_string` function.
-                let name = if self.name.contains('.') {
-                    // Re-format the name with ``::`-separators.
-                    SymbolPath::from_str(&self.name).unwrap().to_string()
-                } else {
-                    self.name.clone()
-                };
-                write!(f, "{name}::{}", format_type_args(type_args))?;
-                return Ok(());
+                write!(f, "::{}", format_type_args(type_args))?;
             }
         }
-        write!(f, "{}", self.name)?;
 
         Ok(())
     }
