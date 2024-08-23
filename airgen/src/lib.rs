@@ -212,7 +212,9 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
                 "instances are only expected at the top-most module for now"
             );
             let location = Location::default().join(path.parts().next().unwrap());
-            instances.abs_to_loc.insert((*path).clone(), location.clone());
+            instances
+                .abs_to_loc
+                .insert((*path).clone(), location.clone());
             let new_location = instances.fold_instance(&input, location.clone(), instance);
             assert_eq!(new_location, location);
             instances
