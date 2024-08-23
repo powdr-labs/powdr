@@ -685,19 +685,7 @@ where
             .resolve_ref(&trait_impl.name, SymbolCategory::TraitDeclaration);
 
         TraitImplementation {
-            name: SymbolPath::from_parts(
-                // TODO GZ: Should be a better way to do this.
-                resolved_name
-                    .split('.')
-                    .map(|p| {
-                        if p == "super" {
-                            Part::Super
-                        } else {
-                            Part::Named(p.to_string())
-                        }
-                    })
-                    .collect::<Vec<_>>(),
-            ),
+            name: SymbolPath::from_str(resolved_name),
             source_ref: trait_impl.source_ref,
             type_scheme: TypeScheme {
                 vars: trait_impl.type_scheme.vars,
