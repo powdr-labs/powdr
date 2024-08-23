@@ -60,13 +60,29 @@ let<T: Add + FromLiteral + Mul> mul_ext: Fp4<T>, Fp4<T> -> Fp4<T> = |a, b| match
 };
 
 /// Inversion for an Fp4 element
-// The inverse of (a0, a1, a2, a3) is a point (b0, b1, b2, b3) such that:
+/// The inverse of (a0, a1, a2, a3) is a point (b0, b1, b2, b3) such that:
 /// (a0 + a1 * x + a2 * x^2 + a3 * x^3) (b0 + b1 * x + b2 * x^2 + b3 * x^3) = 1 (mod x^4 - 11)
-/// Multiplying out and plugging in x^4 = 11 yields the following result
-/// a[0] * b0 + BETA * a[2] * b2
-/// + (-a[1] * b0 + NBETA * a[3] * b2) * X
-/// + (-a[0] * b2 + a[2] * b0) * X^2
-/// + (a[1] * b2 - a[3] * b0) * X^3
+/// Calculating inverse of z as following
+/// a * z = 1, where z is the inverse of a
+/// z = 1 / a
+/// Multiply each side with a' where a' = a0 - a1 * x + a2 * x^2 - a3 * x^3
+/// z = a' / (a * a')
+/// Substitute (a * a') = b after multipliying (a * a')
+/// b = b0 + b * x^2 (Since the multiplication of a * a' doesn't result x and x^3 parts)
+/// By substituting x^4 = 11, we have
+/// b0 = a0 * a0 - 11 * (a1 * (a3 + a3) - a2 * a2);
+/// b2 = a0 * (a2 + a2) - a1 * a1 - 11 * (a3 * a3);
+/// z = a' / b
+/// Multiply each side with b' where b' = b0 - b0 * x^2
+/// z = (a' * b') / (b * b')
+/// Multiplying (b * b') results c = b0^2 * b2^2 * 11
+/// z = (a' * b') / c
+/// z = (a' * b') * ('inverse' of c)
+/// z = a' * (b0^2 * ic - 11 b2^2 * ic)
+/// z = (a0 * b0 - 11 * a2 * b2) * 1
+///   + (-1 * a1 * b0 + 11 * a3 * b2) * x
+///   + (-1 * a0 * b2 + a2 * b0) * x^2
+///   + (a1 * b2 - a3 * b0) * x^3
 let inv_ext: Fp4<fe> -> Fp4<fe> = |a| match a {
     Fp4::Fp4(a0, a1, a2, a3) => {
         let b0 = a0 * a0 - 11 * (a1 * (a3 + a3) - a2 * a2);
