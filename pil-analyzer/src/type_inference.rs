@@ -98,8 +98,8 @@ fn sort_called_first(
         .collect();
 
     let get_dependencies =
-        |name: &String| dependencies[name].iter().map(|s| (**s).clone()).collect();
-    topo_sort(symbols.keys(), get_dependencies)
+        |name: &String| dependencies[name].iter().copied().collect();
+    topo_sort(symbols.keys(), get_dependencies).into_iter().map(Into::into).collect()
 }
 
 impl TypeChecker {

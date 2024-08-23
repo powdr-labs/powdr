@@ -197,7 +197,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
 
     // iterate through all instantiations in topological order
     let get_dependencies =
-        |key: &AbsoluteSymbolPath| instances[key].references().into_iter().cloned().collect();
+        |key: &AbsoluteSymbolPath| instances[key].references().into_iter().collect();
 
     let topo_sort = powdr_utils::topo_sort(instances.keys(), get_dependencies);
 
@@ -212,7 +212,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
                 "instances are only expected at the top-most module for now"
             );
             let location = Location::default().join(path.parts().next().unwrap());
-            instances.abs_to_loc.insert(path.clone(), location.clone());
+            instances.abs_to_loc.insert((*path).clone(), location.clone());
             let new_location = instances.fold_instance(&input, location.clone(), instance);
             assert_eq!(new_location, location);
             instances
