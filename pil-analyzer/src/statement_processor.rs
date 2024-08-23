@@ -5,7 +5,7 @@ use std::sync::Arc;
 use itertools::Itertools;
 
 use powdr_ast::analyzed::TypedExpression;
-use powdr_ast::parsed::asm::{Part, SymbolPath};
+use powdr_ast::parsed::asm::SymbolPath;
 use powdr_ast::parsed::types::TupleType;
 use powdr_ast::parsed::{
     self,
@@ -14,9 +14,9 @@ use powdr_ast::parsed::{
     PilStatement, PolynomialName, SelectedExpressions, TraitDeclaration, TraitFunction,
 };
 use powdr_ast::parsed::{NamedExpression, SymbolCategory, TraitImplementation};
-
 use powdr_number::DegreeType;
 use powdr_parser_util::SourceRef;
+use std::str::FromStr;
 
 use powdr_ast::analyzed::{
     Expression, FunctionValueDefinition, Identity, IdentityKind, PolynomialType, PublicDeclaration,
@@ -685,7 +685,7 @@ where
             .resolve_ref(&trait_impl.name, SymbolCategory::TraitDeclaration);
 
         TraitImplementation {
-            name: SymbolPath::from_str(resolved_name),
+            name: SymbolPath::from_str(&resolved_name).unwrap(),
             source_ref: trait_impl.source_ref,
             type_scheme: TypeScheme {
                 vars: trait_impl.type_scheme.vars,

@@ -462,9 +462,8 @@ impl<'a> Definitions<'a> {
 
                     let trait_name = poly.trait_name.as_ref().unwrap();
                     let impls = trait_impls.get(trait_name).unwrap();
-                    let impl_ = &impls[*index];
+                    let func = &impls[*index].function_by_name(&fn_name).unwrap();
 
-                    let func = impl_.function_by_name(&fn_name).unwrap();
                     let Expression::LambdaExpression(_, lambda) = func.body.as_ref() else {
                         unreachable!()
                     };
