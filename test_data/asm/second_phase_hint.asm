@@ -1,4 +1,4 @@
-use std::prover::Query;
+use std::prelude::Query;
 use std::prover::eval;
 use std::prover::challenge;
 

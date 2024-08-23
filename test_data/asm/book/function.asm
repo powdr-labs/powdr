@@ -1,6 +1,6 @@
 /* ANCHOR: all */
 
-machine Machine with degree: 256 {
+machine Machine with degree: 16 {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];

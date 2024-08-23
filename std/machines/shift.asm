@@ -7,6 +7,7 @@ use std::convert::int;
 machine ByteShift with
     latch: latch,
     operation_id: operation_id,
+    degree: 65536
 {
     operation run<0> P_operation, P_A, P_B, P_ROW -> P_C;
 
@@ -33,14 +34,12 @@ machine ByteShift with
     };
 }
 
-machine Shift with
+machine Shift(byte_shift: ByteShift) with
     latch: latch,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
-    ByteShift byte_shift;
-
     operation shl<0> A, B -> C;
 
     operation shr<1> A, B -> C;

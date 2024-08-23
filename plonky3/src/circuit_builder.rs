@@ -5,6 +5,11 @@
 //! of witness column x, a corresponding fixed selector column s which is 0
 //! everywhere save for at row j is constructed to constrain s * (pub - x) on
 //! every row.
+//! Supports public inputs with the use of fixed columns.
+//! Namely, given public value pub corresponding to a witness value in row j
+//! of witness column x, a corresponding fixed selector column s which is 0
+//! everywhere save for at row j is constructed to constrain s * (pub - x) on
+//! every row.
 
 use std::{any::TypeId, cmp::max, collections::BTreeMap};
 
@@ -83,6 +88,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                     .flat_map(move |i| {
                         // witness values
                         witness.clone().map(move |(_, v)| v[i as usize])
+                        witness.clone().map(move |(_, v)| v[i as usize])
                     })
                     .map(cast_to_goldilocks)
                     .collect()
@@ -132,8 +138,12 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         self.analyzed
             .get_publics()
             .iter()
+        self.analyzed
+            .get_publics()
+            .iter()
             .map(|(col_name, _, idx)| {
                 let vals = *witness.get(&col_name).unwrap();
+                cast_to_goldilocks(vals[*idx])
                 cast_to_goldilocks(vals[*idx])
             })
             .collect()
@@ -192,6 +202,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         main: &AB::M,
         fixed: &AB::M,
         publics: &BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>,
+        publics: &BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>,
     ) -> AB::Expr {
         let res = match e {
             AlgebraicExpression::Reference(r) => {
@@ -224,8 +235,14 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                 .get(id)
                 .expect("Referenced public value does not exist"))
             .into(),
+            AlgebraicExpression::PublicReference(id) => (*publics
+                .get(id)
+                .expect("Referenced public value does not exist"))
+            .into(),
             AlgebraicExpression::Number(n) => AB::Expr::from(cast_to_goldilocks(*n)),
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+                let left = self.to_plonky3_expr::<AB>(left, main, fixed, publics);
+                let right = self.to_plonky3_expr::<AB>(right, main, fixed, publics);
                 let left = self.to_plonky3_expr::<AB>(left, main, fixed, publics);
                 let right = self.to_plonky3_expr::<AB>(right, main, fixed, publics);
 
@@ -239,6 +256,8 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                 }
             }
             AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
+                let expr: <AB as AirBuilder>::Expr =
+                    self.to_plonky3_expr::<AB>(expr, main, fixed, publics);
                 let expr: <AB as AirBuilder>::Expr =
                     self.to_plonky3_expr::<AB>(expr, main, fixed, publics);
 
@@ -382,6 +401,7 @@ impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
 
     fn preprocessed_width(&self) -> usize {
         self.analyzed.constant_count() + self.analyzed.publics_count()
+        self.analyzed.constant_count() + self.analyzed.publics_count()
     }
 
     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<Val>> {
@@ -442,7 +462,10 @@ impl<'a, T: FieldElement, AB: PowdrAirBuilder> Air<AB> for PowdrCircuit<'a, T> {
 
         let pi = builder.public_values();
         let publics = self.analyzed.get_publics();
+        let publics = self.analyzed.get_publics();
         assert_eq!(publics.len(), pi.len());
+
+        let local = main.row_slice(0);
 
         let public_vals_by_id = publics
             .iter()

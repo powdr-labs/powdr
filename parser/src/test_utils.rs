@@ -60,22 +60,26 @@ impl ClearSourceRefs for MachineStatement {
 
 impl ClearSourceRefs for ModuleStatement {
     fn clear_source_refs(&mut self) {
-        let ModuleStatement::SymbolDefinition(SymbolDefinition { value, .. }) = self;
-        match value {
-            SymbolValue::Machine(Machine { statements, .. }) => statements
-                .iter_mut()
-                .for_each(ClearSourceRefs::clear_source_refs),
-            SymbolValue::Module(Module::Local(ASMModule { statements })) => {
-                statements
+        match self {
+            ModuleStatement::SymbolDefinition(SymbolDefinition { value, .. }) => match value {
+                SymbolValue::Machine(Machine { statements, .. }) => statements
                     .iter_mut()
-                    .for_each(ClearSourceRefs::clear_source_refs);
-            }
-            SymbolValue::Module(Module::External(_)) | SymbolValue::Import(_) => {}
-            SymbolValue::Expression(e) => e.e.clear_source_refs(),
-            SymbolValue::TypeDeclaration(decl) => decl
-                .children_mut()
-                .for_each(ClearSourceRefs::clear_source_refs),
-            SymbolValue::TraitDeclaration(trait_decl) => trait_decl
+                    .for_each(ClearSourceRefs::clear_source_refs),
+                SymbolValue::Module(Module::Local(ASMModule { statements })) => {
+                    statements
+                        .iter_mut()
+                        .for_each(ClearSourceRefs::clear_source_refs);
+                }
+                SymbolValue::Module(Module::External(_)) | SymbolValue::Import(_) => {}
+                SymbolValue::Expression(e) => e.e.clear_source_refs(),
+                SymbolValue::TypeDeclaration(decl) => decl
+                    .children_mut()
+                    .for_each(ClearSourceRefs::clear_source_refs),
+                SymbolValue::TraitDeclaration(trait_decl) => trait_decl
+                    .children_mut()
+                    .for_each(ClearSourceRefs::clear_source_refs),
+            },
+            ModuleStatement::TraitImplementation(trait_impl) => trait_impl
                 .children_mut()
                 .for_each(ClearSourceRefs::clear_source_refs),
         }
@@ -109,7 +113,8 @@ impl ClearSourceRefs for PilStatement {
             | PilStatement::ConnectIdentity(s, _, _)
             | PilStatement::Expression(s, _)
             | PilStatement::EnumDeclaration(s, _)
-            | PilStatement::TraitDeclaration(s, _) => *s = SourceRef::unknown(),
+            | PilStatement::TraitDeclaration(s, _)
+            | PilStatement::TraitImplementation(s, _) => *s = SourceRef::unknown(),
         }
     }
 }

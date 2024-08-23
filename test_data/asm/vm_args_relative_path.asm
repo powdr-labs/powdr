@@ -1,4 +1,9 @@
-machine Main with degree: 1024 {
+// we cannot have `N` at the top level because of how short paths are displayed with `.` instead of `::`
+mod size {
+    let N: int = 16;
+}
+
+machine Main with degree: size::N {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
@@ -30,7 +35,7 @@ machine Main with degree: 1024 {
 
 // check that relative paths work in machine parameters
 mod a {
-    machine WithArg(arith: super::b::Arith) {
+    machine WithArg(arith: super::b::Arith) with degree: ::size::N {
         reg pc[@pc];
         reg X[<=];
         reg Y[<=];
@@ -53,7 +58,7 @@ mod a {
 }
 
 mod b {
-    machine Arith {
+    machine Arith with degree: ::size::N {
         reg pc[@pc];
         reg X[<=];
         reg A;

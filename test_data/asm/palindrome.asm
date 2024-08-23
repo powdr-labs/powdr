@@ -1,10 +1,10 @@
 // Verfies that the input is a palindrome.
 // Input: length, x_1, x_2, ..., x_length
 
-use std::prover::Query;
+use std::prelude::Query;
 use std::convert::int;
 
-machine Palindrome with degree: 1024 {
+machine Palindrome with degree: 32 {
     reg pc[@pc];
     reg X[<=];
     reg A;

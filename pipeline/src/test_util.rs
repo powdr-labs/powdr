@@ -2,8 +2,8 @@ use powdr_ast::analyzed::Analyzed;
 use powdr_backend::BackendType;
 use powdr_number::{buffered_write_file, BigInt, Bn254Field, FieldElement, GoldilocksField};
 use powdr_pil_analyzer::evaluator::{self, SymbolLookup};
-use std::fs;
 use std::path::PathBuf;
+use std::{env, fs};
 
 use std::sync::Arc;
 
@@ -30,6 +30,17 @@ pub fn execute_test_file(
         .map(|_| ())
 }
 
+/// Makes a new pipeline for the given file. All steps until witness generation are
+/// already computed, so that the test can branch off from there, without having to re-compute
+/// these steps.
+pub fn make_simple_prepared_pipeline<T: FieldElement>(file_name: &str) -> Pipeline<T> {
+    let mut pipeline = Pipeline::default()
+        .with_tmp_output()
+        .from_file(resolve_test_file(file_name));
+    pipeline.compute_witness().unwrap();
+    pipeline
+}
+
 /// Makes a new pipeline for the given file and inputs. All steps until witness generation are
 /// already computed, so that the test can branch off from there, without having to re-compute
 /// these steps.
@@ -47,36 +58,29 @@ pub fn make_prepared_pipeline<T: FieldElement>(
     pipeline
 }
 
-pub fn run_pilcom_test_file(
-    file_name: &str,
-    inputs: Vec<GoldilocksField>,
-    external_witness_values: Vec<(String, Vec<GoldilocksField>)>,
-) -> Result<(), String> {
-    let pipeline = make_prepared_pipeline(file_name, inputs, external_witness_values);
-    run_pilcom_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic)?;
-    run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite)?;
-    Ok(())
+/// Tests witness generation, pilcom, halo2 and estark.
+/// Does NOT test plonky3.
+pub fn regular_test(file_name: &str, inputs: &[i32]) {
+    let inputs_gl = inputs.iter().map(|x| GoldilocksField::from(*x)).collect();
+    let pipeline_gl = make_prepared_pipeline(file_name, inputs_gl, vec![]);
+    test_pilcom(pipeline_gl.clone());
+    gen_estark_proof(pipeline_gl);
+
+    let inputs_bn = inputs.iter().map(|x| Bn254Field::from(*x)).collect();
+    let pipeline_bn = make_prepared_pipeline(file_name, inputs_bn, vec![]);
+    test_halo2(pipeline_bn);
 }
 
-pub fn run_pilcom_asm_string<S: serde::Serialize + Send + Sync + 'static>(
-    file_name: &str,
-    contents: &str,
-    inputs: Vec<GoldilocksField>,
-    external_witness_values: Vec<(String, Vec<GoldilocksField>)>,
-    data: Option<Vec<(u32, S)>>,
-) {
-    let mut pipeline = Pipeline::default()
-        .from_asm_string(contents.to_string(), Some(PathBuf::from(file_name)))
-        .with_prover_inputs(inputs)
-        .add_external_witness_values(external_witness_values);
-
-    if let Some(data) = data {
-        pipeline = pipeline.add_data_vec(&data);
-    }
-    pipeline.compute_witness().unwrap();
-
+pub fn test_pilcom(pipeline: Pipeline<GoldilocksField>) {
     run_pilcom_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic).unwrap();
     run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).unwrap();
+}
+
+pub fn asm_string_to_pil<T: FieldElement>(contents: &str) -> Arc<Analyzed<T>> {
+    Pipeline::default()
+        .from_asm_string(contents.to_string(), None)
+        .compute_optimized_pil()
+        .unwrap()
 }
 
 pub fn run_pilcom_with_backend_variant(
@@ -112,10 +116,22 @@ pub fn run_pilcom_with_backend_variant(
     }
 }
 
-pub fn gen_estark_proof(file_name: &str, inputs: Vec<GoldilocksField>) {
-    let pipeline = make_prepared_pipeline(file_name, inputs, Vec::new());
-    gen_estark_proof_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic);
-    gen_estark_proof_with_backend_variant(pipeline, BackendVariant::Composite);
+fn should_generate_proofs() -> bool {
+    match env::var("POWDR_GENERATE_PROOFS") {
+        Ok(value) => match value.as_str() {
+            "true" => true,
+            "false" => false,
+            _ => panic!("Invalid value for environment variable POWDR_GENERATE_PROOFS: {value}. Set it either to \"true\" or to \"false\"."),
+        },
+        Err(_) => false,
+    }
+}
+
+pub fn gen_estark_proof(pipeline: Pipeline<GoldilocksField>) {
+    if should_generate_proofs() {
+        gen_estark_proof_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic);
+        gen_estark_proof_with_backend_variant(pipeline, BackendVariant::Composite);
+    }
 }
 
 pub fn gen_estark_proof_with_backend_variant(
@@ -156,8 +172,7 @@ pub fn gen_estark_proof_with_backend_variant(
     pipeline.verify(&proof, &[publics]).unwrap();
 }
 
-pub fn test_halo2(file_name: &str, inputs: Vec<Bn254Field>) {
-    let pipeline = make_prepared_pipeline(file_name, inputs, Vec::new());
+pub fn test_halo2(pipeline: Pipeline<Bn254Field>) {
     test_halo2_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic);
     test_halo2_with_backend_variant(pipeline, BackendVariant::Composite);
 }
@@ -173,8 +188,6 @@ pub fn test_halo2_with_backend_variant(
     pipeline: Pipeline<Bn254Field>,
     backend_variant: BackendVariant,
 ) {
-    use std::env;
-
     let backend = match backend_variant {
         BackendVariant::Monolithic => BackendType::Halo2Mock,
         BackendVariant::Composite => BackendType::Halo2MockComposite,
@@ -192,7 +205,8 @@ pub fn test_halo2_with_backend_variant(
     let is_nightly_test = env::var("IS_NIGHTLY_TEST")
         .map(|v| v == "true")
         .unwrap_or(false);
-    if is_nightly_test {
+
+    if is_nightly_test && should_generate_proofs() {
         gen_halo2_proof(pipeline, backend_variant);
     }
 }
@@ -200,7 +214,7 @@ pub fn test_halo2_with_backend_variant(
 #[cfg(not(feature = "halo2"))]
 pub fn test_halo2_with_backend_variant(
     _pipeline: Pipeline<Bn254Field>,
-    backend_variant: BackendVariant,
+    _backend_variant: BackendVariant,
 ) {
 }
 
@@ -322,7 +336,7 @@ pub fn evaluate_function<'a, T: FieldElement>(
     arguments: Vec<Arc<evaluator::Value<'a, T>>>,
 ) -> evaluator::Value<'a, T> {
     let mut symbols = evaluator::Definitions(&analyzed.definitions);
-    let function = symbols.lookup(function, None).unwrap();
+    let function = symbols.lookup(function, &None).unwrap();
     evaluator::evaluate_function_call(function, arguments, &mut symbols)
         .unwrap()
         .as_ref()

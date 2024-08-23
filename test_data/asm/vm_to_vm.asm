@@ -1,4 +1,6 @@
-machine Main with degree: 256 {
+let N: int = 16;
+
+machine Main with degree: N {
 
     VM vm;
 
@@ -21,7 +23,7 @@ machine Main with degree: 256 {
     }
 }
 
-machine VM {
+machine VM with degree: N {
 
     reg pc[@pc];
     reg X[<=];

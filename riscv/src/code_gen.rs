@@ -132,14 +132,11 @@ pub fn translate_program<F: FieldElement>(
     with_bootloader: bool,
 ) -> String {
     // Do this in a separate function to avoid most of the code being generic on F.
-    let (initial_mem, instructions, degree) =
-        translate_program_impl(program, runtime, with_bootloader);
+    let (initial_mem, instructions) = translate_program_impl(program, runtime, with_bootloader);
 
-    let degree_log = degree.ilog2();
     riscv_machine(
         runtime,
-        degree,
-        &preamble::<F>(runtime, degree_log.into(), with_bootloader),
+        &preamble::<F>(runtime, with_bootloader),
         initial_mem,
         instructions,
     )
@@ -149,7 +146,7 @@ fn translate_program_impl(
     mut program: impl RiscVProgram,
     runtime: &Runtime,
     with_bootloader: bool,
-) -> (Vec<String>, Vec<String>, u64) {
+) -> (Vec<String>, Vec<String>) {
     let mut initial_mem = Vec::new();
     let mut data_code = Vec::new();
     for MemEntry { label, addr, value } in program.take_initial_mem() {
@@ -291,28 +288,11 @@ fn translate_program_impl(
     }
     statements.extend(runtime.ecall_handler());
 
-    // The program ROM needs to fit the degree, so we use the next power of 2.
-    let degree = statements.len().ilog2() + 1;
-    let degree = std::cmp::max(degree, 18);
-    log::info!("Inferred degree 2^{degree}");
-
-    // In practice, these are the lengths of single proofs that we want to support.
-    // Reasoning:
-    // - 18: is the lower bound for the Binary and Shift machines.
-    // - 20: revm's ROM does not fit in 2^19.
-    // - >20: may be needed in the future.
-    // This is an assert for now, but could be a compiler warning or error.
-    // TODO note that if the degree is higher than 18 we might need mux machines for Binary and
-    // Shift.
-    assert!((18..=20).contains(&degree));
-    let degree = 1 << degree;
-
-    (initial_mem, statements, degree)
+    (initial_mem, statements)
 }
 
 fn riscv_machine(
     runtime: &Runtime,
-    degree: u64,
     preamble: &str,
     initial_memory: Vec<String>,
     program: Vec<String>,
@@ -320,7 +300,7 @@ fn riscv_machine(
     format!(
         r#"
 {}
-machine Main with degree: {degree} {{
+machine Main {{
 {}
 
 {}
@@ -346,14 +326,25 @@ let initial_memory: (fe, fe)[] = [
     )
 }
 
-fn preamble<T: FieldElement>(runtime: &Runtime, degree: u64, with_bootloader: bool) -> String {
+fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String {
     let bootloader_preamble_if_included = if with_bootloader {
         bootloader_preamble()
     } else {
         "".to_string()
     };
 
-    for machine in ["binary", "shift", "bit2", "bit6", "bit7", "byte"] {
+    for machine in [
+        "binary",
+        "shift",
+        "bit2",
+        "bit6",
+        "bit7",
+        "byte",
+        "byte2",
+        "byte_binary",
+        "byte_shift",
+        "byte_compare",
+    ] {
         assert!(
             runtime.has_submachine(machine),
             "RISC-V machine requires the `{machine}` submachine"
@@ -380,8 +371,7 @@ fn preamble<T: FieldElement>(runtime: &Runtime, degree: u64, with_bootloader: bo
         + &memory(with_bootloader)
         + r#"
     // =============== Register memory =======================
-"# + format!("std::machines::memory::Memory_{} regs;", degree + 2)
-        .as_str()
+"# + "std::machines::memory::Memory regs(byte2);"
         + r#"
     // Get the value in register Y.
     instr get_reg Y -> X link ~> X = regs.mload(Y, STEP);
@@ -667,7 +657,7 @@ fn mul_instruction<T: FieldElement>(runtime: &Runtime) -> &'static str {
         link ~> tmp1_col = regs.mload(X, STEP)
         link ~> tmp2_col = regs.mload(Y, STEP + 1)
         link ~> regs.mstore(Z, STEP + 2, tmp3_col)
-        link ~> regs.mstore(W, STEP + 3, tmp4_col);
+        link ~> regs.mstore(W, STEP + 3, tmp4_col)
     {
         tmp1_col * tmp2_col = tmp3_col + tmp4_col * 2**32,
         tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
@@ -693,13 +683,14 @@ fn mul_instruction<T: FieldElement>(runtime: &Runtime) -> &'static str {
         link ~> regs.mstore(W, STEP + 3, tmp4_col);
 "#
         }
+        KnownField::BabyBearField => todo!(),
     }
 }
 
 fn memory(with_bootloader: bool) -> String {
     let memory_machine = if with_bootloader {
         r#"
-    std::machines::memory_with_bootloader_write::MemoryWithBootloaderWrite memory;
+    std::machines::memory_with_bootloader_write::MemoryWithBootloaderWrite memory(byte2);
 
     // Stores val(W) at address (V = val(X) - val(Z) + Y) % 2**32.
     // V can be between 0 and 2**33.
@@ -714,7 +705,7 @@ fn memory(with_bootloader: bool) -> String {
 "#
     } else {
         r#"
-    std::machines::memory::Memory memory;
+    std::machines::memory::Memory memory(byte2);
 "#
     };
 

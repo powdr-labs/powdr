@@ -58,7 +58,7 @@ impl ParserContext {
 lazy_static::lazy_static! {
     static ref PIL_FILE_PARSER: powdr::PILFileParser = powdr::PILFileParser::new();
     static ref ASM_MODULE_PARSER: powdr::ASMModuleParser = powdr::ASMModuleParser::new();
-    static ref TYPE_PARSER: powdr::TypeParser = powdr::TypeParser::new();
+    static ref TYPE_PARSER: powdr::TypeExprParser = powdr::TypeExprParser::new();
     static ref TYPE_VAR_BOUNDS_PARSER: powdr::TypeVarBoundsParser = powdr::TypeVarBoundsParser::new();
 }
 
@@ -477,6 +477,38 @@ namespace N(2);
     let<T: Ord> max: T, T -> T = (|a, b| if a < b { b } else { a });
     let seven = max::<int>(3, 7);
 "#;
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn parse_impl() {
+        let input = r#"
+    impl<T> Iterator<ArrayIterator<T>, T> {
+        next_max: |it, max| if pos(it) >= max { None } else { Some(increment(it)) },
+    }"#;
+
+        let expected = r#"
+    impl<T> Iterator<ArrayIterator<T>, T> {
+        next_max: (|it, max| if pos(it) >= max { None } else { Some(increment(it)) }),
+    }"#;
+
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn parse_impl2() {
+        let input = r#"
+    impl<A, B> Iterator<ArrayIterator<A>, B> {
+        next: |it, pm| if pos(it) >= val(pm) { (it, pos(it)) } else { (it, 0) },
+    }"#;
+
+        let expected = r#"
+    impl<A, B> Iterator<ArrayIterator<A>, B> {
+        next: (|it, pm| if pos(it) >= val(pm) { (it, pos(it)) } else { (it, 0) }),
+    }"#;
+
         let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
         assert_eq!(expected.trim(), printed.trim());
     }

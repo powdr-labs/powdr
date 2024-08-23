@@ -17,7 +17,6 @@ use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_number::FieldElement;
 
 pub struct ExtractionOutput<'a, T: FieldElement> {
-    pub fixed_lookup: FixedLookup<T>,
     pub machines: Vec<KnownMachine<'a, T>>,
     pub base_identities: Vec<&'a Identity<T>>,
     pub base_witnesses: HashSet<PolyID>,
@@ -30,8 +29,6 @@ pub fn split_out_machines<'a, T: FieldElement>(
     fixed: &'a FixedData<'a, T>,
     identities: Vec<&'a Identity<T>>,
 ) -> ExtractionOutput<'a, T> {
-    let fixed_lookup = FixedLookup::new(fixed.global_range_constraints().clone());
-
     let mut machines: Vec<KnownMachine<T>> = vec![];
 
     let all_witnesses = fixed.witness_cols.keys().collect::<HashSet<_>>();
@@ -103,7 +100,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
         let first_witness = machine_witnesses.iter().next().unwrap();
         let first_witness_name = fixed.column_name(first_witness);
         let namespace = first_witness_name
-            .rfind('.')
+            .rfind("::")
             .map(|idx| &first_witness_name[..idx]);
 
         // For machines compiled using Powdr ASM we'll always have a namespace, but as a last
@@ -170,6 +167,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
                 .unwrap();
             machines.push(KnownMachine::Vm(Generator::new(
                 name_with_type("Vm"),
+                fixed.common_degree(&machine_witnesses),
                 fixed,
                 &connecting_identities,
                 machine_identities,
@@ -178,8 +176,19 @@ pub fn split_out_machines<'a, T: FieldElement>(
             )));
         }
     }
+
+    // Always add a fixed lookup machine.
+    // Note that this machine comes last, because some machines do a fixed lookup
+    // in their take_witness_col_values() implementation.
+    // TODO: We should also split this up and have several instances instead.
+    let fixed_lookup = FixedLookup::new(
+        fixed.global_range_constraints().clone(),
+        identities.clone(),
+        fixed,
+    );
+    machines.push(KnownMachine::FixedLookup(fixed_lookup));
+
     ExtractionOutput {
-        fixed_lookup,
         machines,
         base_identities,
         base_witnesses: remaining_witnesses,

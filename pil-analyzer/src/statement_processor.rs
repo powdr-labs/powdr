@@ -124,15 +124,17 @@ where
             PilStatement::Namespace(_, _, _) => {
                 panic!("Namespaces must be handled outside the statement processor.")
             }
-            PilStatement::PolynomialDefinition(source, name, value) => self
-                .handle_symbol_definition(
+            PilStatement::PolynomialDefinition(source, name, value) => {
+                let (name, ty) = self.name_and_type_from_polynomial_name(name, Type::Inter);
+                self.handle_symbol_definition(
                     source,
                     name,
                     SymbolKind::Poly(PolynomialType::Intermediate),
                     None,
-                    Some(Type::Expr.into()),
+                    ty,
                     Some(FunctionDefinition::Expression(value)),
-                ),
+                )
+            }
             PilStatement::PublicDeclaration(source, name, polynomial, array_index, index) => {
                 self.handle_public_declaration(source, name, polynomial, array_index, index)
             }
@@ -167,14 +169,14 @@ where
             ) => {
                 assert!(polynomials.len() == 1);
                 let (name, ty) =
-                    self.name_and_type_from_polynomial_name(polynomials.pop().unwrap());
+                    self.name_and_type_from_polynomial_name(polynomials.pop().unwrap(), Type::Col);
 
                 self.handle_symbol_definition(
                     source,
                     name,
                     SymbolKind::Poly(PolynomialType::Committed),
                     stage,
-                    ty.map(Into::into),
+                    ty,
                     Some(definition),
                 )
             }
@@ -207,9 +209,10 @@ where
     fn name_and_type_from_polynomial_name(
         &mut self,
         PolynomialName { name, array_size }: PolynomialName,
-    ) -> (String, Option<Type>) {
+        base_type: Type,
+    ) -> (String, Option<TypeScheme>) {
         let ty = Some(match array_size {
-            None => Type::Col,
+            None => base_type.into(),
             Some(len) => {
                 let length = untyped_evaluator::evaluate_expression_to_int(self.driver, len)
                     .map(|length| {
@@ -222,9 +225,10 @@ where
                     })
                     .ok();
                 Type::Array(ArrayType {
-                    base: Box::new(Type::Col),
+                    base: Box::new(base_type),
                     length,
                 })
+                .into()
             }
         });
         (name, ty)
@@ -313,13 +317,13 @@ where
             return SymbolKind::Other();
         }
         match &ts.ty {
-            Type::Expr => SymbolKind::Poly(PolynomialType::Intermediate),
+            Type::Inter => SymbolKind::Poly(PolynomialType::Intermediate),
             Type::Col => SymbolKind::Poly(PolynomialType::Constant),
             Type::Array(ArrayType { base, length: _ }) if base.as_ref() == &Type::Col => {
                 // Array of fixed columns
                 SymbolKind::Poly(PolynomialType::Constant)
             }
-            Type::Array(ArrayType { base, length: _ }) if base.as_ref() == &Type::Expr => {
+            Type::Array(ArrayType { base, length: _ }) if base.as_ref() == &Type::Inter => {
                 SymbolKind::Poly(PolynomialType::Intermediate)
             }
             // Otherwise, treat it as "generic definition"
@@ -390,13 +394,13 @@ where
         polynomials
             .into_iter()
             .flat_map(|poly_name| {
-                let (name, ty) = self.name_and_type_from_polynomial_name(poly_name);
+                let (name, ty) = self.name_and_type_from_polynomial_name(poly_name, Type::Col);
                 self.handle_symbol_definition(
                     source.clone(),
                     name,
                     SymbolKind::Poly(polynomial_type),
                     stage,
-                    ty.map(Into::into),
+                    ty,
                     None,
                 )
             })
@@ -452,7 +456,8 @@ where
                     absolute_name: self
                         .driver
                         .resolve_namespaced_decl(&[&name, &variant.name])
-                        .to_dotted_string(),
+                        .relative_to(&Default::default())
+                        .to_string(),
                     stage: None,
                     kind: SymbolKind::Other(),
                     length: None,
@@ -480,7 +485,8 @@ where
                     absolute_name: self
                         .driver
                         .resolve_namespaced_decl(&[&name, &function.name])
-                        .to_dotted_string(),
+                        .relative_to(&Default::default())
+                        .to_string(),
                     stage: None,
                     kind: SymbolKind::Other(),
                     length: None,
@@ -530,14 +536,9 @@ where
                 })
             }
             FunctionDefinition::Array(value) => {
-                let size = value.solve(self.degree.unwrap());
                 let expression = self
                     .expression_processor(&Default::default())
-                    .process_array_expression(value, size);
-                assert_eq!(
-                    expression.iter().map(|e| e.size()).sum::<DegreeType>(),
-                    self.degree.unwrap()
-                );
+                    .process_array_expression(value);
                 assert!(type_scheme.is_none() || type_scheme == Some(Type::Col.into()));
                 FunctionValueDefinition::Array(expression)
             }

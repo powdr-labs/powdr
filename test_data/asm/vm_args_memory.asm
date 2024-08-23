@@ -1,13 +1,19 @@
 use std::machines::memory::Memory;
 
-machine Main with degree: 1024 {
+mod test_util;
+use test_util::FakeByte2 as Byte2;
+
+let N: int = 256;
+
+machine Main with degree: N {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
     reg A;
 
     col fixed STEP(i) { i };
-    Memory memory;
+    Byte2 byte2;
+    Memory memory(byte2);
     WithArg sub(memory);
 
     instr mload X -> Y link ~> Y = memory.mload(X, STEP);
@@ -51,7 +57,7 @@ machine Main with degree: 1024 {
     }
 }
 
-machine WithArg(mem: Memory) {
+machine WithArg(mem: Memory) with degree: N {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];

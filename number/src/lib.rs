@@ -4,6 +4,7 @@
 
 #[macro_use]
 mod macros;
+mod baby_bear;
 mod bn254;
 mod goldilocks;
 mod serialize;
@@ -12,6 +13,7 @@ pub use serialize::{
     buffered_write_file, read_polys_csv_file, write_polys_csv_file, CsvRenderMode, ReadWrite,
 };
 
+pub use baby_bear::BabyBearField;
 pub use bn254::Bn254Field;
 pub use goldilocks::GoldilocksField;
 pub use traits::KnownField;

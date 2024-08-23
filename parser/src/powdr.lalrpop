@@ -33,6 +33,7 @@ ModuleStatement: ModuleStatement = {
             name: <>.name.clone(),
             value: SymbolValue::TypeDeclaration(<>),
         }),
+    <TraitImplementation> => ModuleStatement::TraitImplementation(<>),
     <TraitDeclaration> => ModuleStatement::SymbolDefinition(SymbolDefinition {
             name: <>.name.clone(),
             value: SymbolValue::TraitDeclaration(<>),
@@ -72,7 +73,7 @@ Part: Part = {
 // Same as SymbolPath plus we allow "::<...>" at the end.
 GenericSymbolPath: (SymbolPath, Option<Vec<Type<Expression>>>) = {
     // If we "inline" SymbolPath here, we get an ambiguity error.
-    <abs:"::"?> <parts:( <Part> "::" )*> <end:Part> <types:("::" "<" <TypeTermList> ">")?>  => (
+    <abs:"::"?> <parts:( <Part> "::" )*> <end:Part> <types:("::" "<" <TypeTermList<Expression>> ">")?>  => (
         SymbolPath::from_parts([
             abs.map(|_| vec![Part::Named(String::new())]).unwrap_or_default(),
             parts,
@@ -118,6 +119,7 @@ pub PilStatement = {
     PolynomialConstantDefinition,
     PolynomialCommitDeclaration,
     <start:@L> <decl:EnumDeclaration> <end:@R> => PilStatement::EnumDeclaration(ctx.source_ref(start, end), decl),
+    <start:@L> <impl_:TraitImplementation> <end:@R> => PilStatement::TraitImplementation(ctx.source_ref(start, end), impl_),
     <start:@L> <decl:TraitDeclaration> <end:@R> => PilStatement::TraitDeclaration(ctx.source_ref(start, end), decl),
     PlookupIdentityStatement,
     PermutationIdentityStatement,
@@ -140,7 +142,7 @@ LetStatement: PilStatement = {
 }
 
 PolynomialDefinition: PilStatement = {
-    <start:@L> PolCol <id:Identifier> "=" <expr:Expression> <end:@R> ";" => PilStatement::PolynomialDefinition(ctx.source_ref(start, end), id, expr)
+    <start:@L> PolCol <name:PolynomialName> "=" <expr:Expression> <end:@R> ";" => PilStatement::PolynomialDefinition(ctx.source_ref(start, end), name, expr)
 }
 
 PublicDeclaration: PilStatement = {
@@ -262,7 +264,7 @@ ConstantFixed = {
 
 GenericTypedName: (String, Option<TypeScheme<Expression>>) = {
     <name:Identifier> => (name, None),
-    <vars:("<" <TypeVarBounds> ">")?> <name:Identifier> <ty:(":" <Type>)> =>
+    <vars:("<" <TypeVarBounds> ">")?> <name:Identifier> <ty:(":" <Type<Expression>>)> =>
         (name, Some(TypeScheme{ vars: vars.unwrap_or_default(), ty }))
 }
 
@@ -646,7 +648,7 @@ BlockExpression: Box<Expression> = {
 }
 
 StatementInsideBlock: StatementInsideBlock = {
-    "let" <pattern:Pattern> <value:("=" <Expression>)?> ";" => StatementInsideBlock::LetStatement(LetStatementInsideBlock{<>}),
+    "let" <pattern:Pattern> <ty:(":" <Type<ArrayLengthNumber>>)?> <value:("=" <Expression>)?> ";" => StatementInsideBlock::LetStatement(LetStatementInsideBlock{<>}),
     <Expression> ";" => StatementInsideBlock::Expression(<>),
 }
 
@@ -708,7 +710,25 @@ TraitFunctions: Vec<TraitFunction<Expression>> = {
 }
 
 TraitFunction: TraitFunction<Expression> = {
-    <name:Identifier> ":" <params:TypeTermList> "->" <value:TypeTermBox> => TraitFunction { name, ty: Type::Function(FunctionType{params, value}) }
+    <name:Identifier> ":" <params:TypeTermList<Expression>> "->" <value:TypeTermBox<Expression>> => TraitFunction { name, ty: Type::Function(FunctionType{params, value}) }
+}
+
+TraitImplementation: TraitImplementation<Expression> = {
+    "impl" <type_scheme: GenericTraitName> "{" <functions:NamedExpressions> "}" => TraitImplementation { name: type_scheme.0, type_scheme: type_scheme.1, functions }
+}
+
+NamedExpressions: Vec<NamedExpression<Expression>> = {
+    => vec![],
+    <mut list:( <NamedExpression> "," )*> <end:NamedExpression> ","?  => { list.push(end); list }
+}
+
+NamedExpression: NamedExpression<Expression> = {
+    <name:Identifier> ":" <body:BoxedExpression> => NamedExpression { name, body }
+}
+
+GenericTraitName: (SymbolPath, TypeScheme) = {
+    <vars:("<" <TypeVarBounds> ">")> <name:SymbolPath> <items:("<" <TypeTermList<ArrayLengthNumber>> ">")> =>
+        (name, TypeScheme{ vars, ty: Type::Tuple(TupleType{items}) })
 }
 
 
@@ -725,40 +745,52 @@ EnumVariants: Vec<EnumVariant<Expression>> = {
 }
 
 EnumVariant: EnumVariant<Expression> = {
-    <name:Identifier> <fields:("(" <TypeTermList> ")")?> => EnumVariant{<>}
+    <name:Identifier> <fields:("(" <TypeTermList<Expression>> ")")?> => EnumVariant{<>}
 }
 
 // ---------------------------- Type Names -----------------------------
 
-pub Type: Type<Expression> = {
-    <params:TypeTermList> "->" <value:TypeTermBox> => Type::Function(FunctionType{<>}),
-    TypeTerm
+pub TypeExpr = Type<Expression>;
+pub TypeNumber = Type<Number>;
+
+Type<ArrayLength>: Type<ArrayLength> = {
+    <params:TypeTermList<ArrayLength>> "->" <value:TypeTermBox<ArrayLength>> => Type::Function(FunctionType{<>}),
+    TypeTerm<ArrayLength>
 }
 
-TypeTermList: Vec<Type<Expression>> = {
+TypeTermList<ArrayLength>: Vec<Type<ArrayLength>> = {
     => vec![],
-    <mut list:( <TypeTerm> "," )*> <end:TypeTerm>  => { list.push(end); list }
+    <mut list:( <TypeTerm<ArrayLength>> "," )*> <end:TypeTerm<ArrayLength>>  => { list.push(end); list }
 }
 
-TypeTermBox: Box<Type<Expression>> = {
-    TypeTerm => Box::new(<>)
+TypeTermBox<ArrayLength>: Box<Type<ArrayLength>> = {
+    TypeTerm<ArrayLength> => Box::new(<>)
 }
 
-TypeTerm: Type<Expression> = {
+TypeTerm<ArrayLength>: Type<ArrayLength> = {
     // The parser parses all identifiers as NamedTypes, some are translated
     // to TypeVars later.
-    TypeSymbolPath ("<" <TypeTermList> ">")? => Type::NamedType(<>),
+    TypeSymbolPath ("<" <TypeTermList<ArrayLength>> ">")? => Type::NamedType(<>),
     "!" => Type::Bottom,
     "bool" => Type::Bool,
     "int" => Type::Int,
     "fe" => Type::Fe,
     "string" => Type::String,
     "col" => Type::Col,
+    "inter" => Type::Inter,
     "expr" => Type::Expr,
-    <base:TypeTerm> "[" <length:Expression?> "]" => Type::Array(ArrayType{base: Box::new(base), length}),
-    "(" <mut items:( <TypeTerm> "," )+> <end:TypeTerm> ")" => { items.push(end); Type::Tuple(TupleType{items}) },
+    <base:TypeTerm<ArrayLength>> "[" <length:ArrayLength?> "]" => Type::Array(ArrayType{base: Box::new(base), length}),
+    "(" <mut items:( <TypeTerm<ArrayLength>> "," )+> <end:TypeTerm<ArrayLength>> ")" => { items.push(end); Type::Tuple(TupleType{items}) },
     "(" ")" => Type::Tuple(TupleType{items: vec![]}),
-    "(" <Type> ")",
+    "(" <Type<ArrayLength>> ")",
+}
+
+ArrayLengthExpr: Expression = {
+    Expression
+}
+
+ArrayLengthNumber: u64 = {
+    Number => u64::try_from(<>).unwrap()
 }
 
 TypeVar: String = {
@@ -780,6 +812,7 @@ TypeBoundsList: BTreeSet<String> = {
     => Default::default(),
     ":" <list:( <Identifier> "+" )*> <end:Identifier>  => list.into_iter().chain(std::iter::once(end)).collect(),
 }
+
 
 
 // ---------------------------- Terminals -----------------------------
@@ -813,6 +846,7 @@ SpecialIdentifier: &'input str = {
     "loc",
     "insn",
     "int",
+    "inter",
     "fe",
     "expr",
     "bool",

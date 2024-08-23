@@ -1,14 +1,12 @@
-use std::prover::Query;
+use std::prelude::Query;
 use super::ByteCompare;
 
 // Splits an arbitrary field element into 8 u32s (in little endian order), on the BN254 field.
-machine SplitBN254 with
+machine SplitBN254(byte_compare: ByteCompare) with
     latch: RESET,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
-    ByteCompare byte_compare;
-
     operation split in_acc -> o1, o2, o3, o4, o5, o6, o7, o8;
 
     // Latch and operation ID
