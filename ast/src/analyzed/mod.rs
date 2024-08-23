@@ -1267,7 +1267,7 @@ pub struct PolynomialReference {
     /// The type arguments if the symbol is generic.
     /// Guaranteed to be Some(_) after type checking is completed.
     pub type_args: Option<Vec<Type>>,
-    /// Keep track of valid implementations for this reference, indexed by their type arguments.
+    /// Store implementations for this reference (if it is a trait function), for each type it has been referenced somewhere in the code.
     pub resolved_impls: BTreeMap<Vec<Type>, usize>,
     /// If resolved implementation is matched with this reference, this is the name of the implemented trait.
     pub trait_name: Option<String>,
