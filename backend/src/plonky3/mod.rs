@@ -6,13 +6,17 @@ use powdr_executor::{
     witgen::WitgenCallback,
 };
 use powdr_number::{FieldElement, GoldilocksField, LargeInt};
-use powdr_plonky3::Plonky3Prover;
+use powdr_plonky3::{Commitment, FieldElementMap, Plonky3Prover, ProverData};
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
 pub(crate) struct Factory;
 
-impl<T: FieldElement> BackendFactory<T> for Factory {
+impl<T: FieldElementMap> BackendFactory<T> for Factory
+where
+    ProverData<T>: Send,
+    Commitment<T>: Send,
+{
     fn create(
         &self,
         pil: Arc<Analyzed<T>>,
@@ -53,7 +57,11 @@ impl<T: FieldElement> BackendFactory<T> for Factory {
     }
 }
 
-impl<T: FieldElementMap> Backend<T> for Plonky3Prover<T> {
+impl<T: FieldElementMap> Backend<T> for Plonky3Prover<T>
+where
+    ProverData<T>: Send,
+    Commitment<T>: Send,
+{
     fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
         Ok(self.verify(proof, instances)?)
     }
