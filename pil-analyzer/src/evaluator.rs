@@ -458,9 +458,9 @@ impl<'a> Definitions<'a> {
 
             match impl_pos {
                 Some(index) => {
-                    let fn_name = poly.name.rsplit("::").next().unwrap().to_string();
-
-                    let trait_name = poly.trait_name.as_ref().unwrap();
+                    //let fn_name = poly.name.rsplit("::").next().unwrap().to_string();
+                    //let trait_name = poly.trait_name.as_ref().unwrap();
+                    let (trait_name, fn_name) = poly.name.rsplit_once("::").unwrap();
                     let impls = trait_impls.get(trait_name).unwrap();
                     let func = &impls[*index].function_by_name(&fn_name).unwrap();
 
@@ -1786,7 +1786,7 @@ mod test {
             let r: fe = y(2);
         ";
 
-        assert_eq!(parse_and_evaluate_symbol(input, "F.r"), "14".to_string());
+        assert_eq!(parse_and_evaluate_symbol(input, "F::r"), "14".to_string());
     }
 
     #[test]
@@ -1822,6 +1822,6 @@ mod test {
             let r: fe = y(2);
         ";
 
-        assert_eq!(parse_and_evaluate_symbol(input, "F.r"), "5".to_string());
+        assert_eq!(parse_and_evaluate_symbol(input, "F::r"), "5".to_string());
     }
 }

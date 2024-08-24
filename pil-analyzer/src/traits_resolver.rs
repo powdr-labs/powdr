@@ -101,7 +101,7 @@ impl<'a> TraitsResolver<'a> {
     ) {
         let mut resolved_impl_pos: BTreeMap<Vec<Type>, usize> = BTreeMap::new();
 
-        let (trait_decl_name, trait_fn_name) = name.split_once("::").unwrap(); // TODO improve this
+        let (trait_decl_name, trait_fn_name) = name.rsplit_once("::").unwrap();
         if let Some(impls) = trait_impls.get(trait_decl_name) {
             for (index, impl_) in impls.iter().enumerate() {
                 if impl_.function_by_name(trait_fn_name).is_some() {
