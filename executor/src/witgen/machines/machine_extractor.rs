@@ -100,7 +100,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
         let first_witness = machine_witnesses.iter().next().unwrap();
         let first_witness_name = fixed.column_name(first_witness);
         let namespace = first_witness_name
-            .rfind('.')
+            .rfind("::")
             .map(|idx| &first_witness_name[..idx]);
 
         // For machines compiled using Powdr ASM we'll always have a namespace, but as a last
@@ -167,6 +167,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
                 .unwrap();
             machines.push(KnownMachine::Vm(Generator::new(
                 name_with_type("Vm"),
+                fixed.common_degree(&machine_witnesses),
                 fixed,
                 &connecting_identities,
                 machine_identities,

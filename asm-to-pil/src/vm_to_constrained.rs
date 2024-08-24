@@ -1032,7 +1032,7 @@ impl<T: FieldElement> VMConverter<T> {
                     let mut prover_query_arms = prover_query_arms;
                     prover_query_arms.push(MatchArm {
                         pattern: Pattern::CatchAll(SourceRef::unknown()),
-                        value: absolute_reference("::std::prover::Query::None"),
+                        value: absolute_reference("::std::prelude::Query::None"),
                     });
 
                     let scrutinee = Box::new(

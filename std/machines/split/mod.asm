@@ -4,7 +4,11 @@ mod split_gl;
 use std::utils::cross_product;
 
 // Byte comparison block machine
-machine ByteCompare with latch: latch, operation_id: operation_id {
+machine ByteCompare with
+        latch: latch,
+        operation_id: operation_id,
+        degree: 65536
+    {
     let inputs = cross_product([256, 256]);
     let a: int -> int = inputs[0];
     let b: int -> int = inputs[1];

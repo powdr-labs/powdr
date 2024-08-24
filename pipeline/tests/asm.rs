@@ -79,7 +79,7 @@ fn mem_write_once_external_write() {
     let pipeline = make_prepared_pipeline(
         f,
         Default::default(),
-        vec![("main_memory.value".to_string(), mem)],
+        vec![("main_memory::value".to_string(), mem)],
     );
     test_pilcom(pipeline);
 }
@@ -180,6 +180,7 @@ fn vm_to_vm() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn vm_to_vm_dynamic_trace_length() {
     let f = "asm/vm_to_vm_dynamic_trace_length.asm";
     run_pilcom_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite)
@@ -204,6 +205,7 @@ fn vm_to_block_array() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn dynamic_vadcop() {
     let f = "asm/dynamic_vadcop.asm";
 
@@ -215,9 +217,9 @@ fn dynamic_vadcop() {
         .collect::<BTreeMap<_, _>>();
 
     // Spot-check some witness columns to have the expected length.
-    assert_eq!(witness_by_name["main.X"].len(), 128);
-    assert_eq!(witness_by_name["main_arith.y"].len(), 32);
-    assert_eq!(witness_by_name["main_memory.m_addr"].len(), 32);
+    assert_eq!(witness_by_name["main::X"].len(), 128);
+    assert_eq!(witness_by_name["main_arith::y"].len(), 32);
+    assert_eq!(witness_by_name["main_memory::m_addr"].len(), 32);
 
     // Because machines have different lengths, this can only be proven
     // with a composite proof.

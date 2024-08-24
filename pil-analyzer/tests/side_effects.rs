@@ -61,7 +61,7 @@ fn call_eval_in_query() {
 }
 
 #[test]
-#[should_panic = "Referenced a constr function inside a query context: N.new_wit"]
+#[should_panic = "Referenced a constr function inside a query context: N::new_wit"]
 fn call_constr_in_query() {
     let input = r#"
     namespace std::prover(16);
@@ -105,11 +105,10 @@ fn fixed_with_constr_type() {
 fn set_hint() {
     let input = r#"
     namespace std::prover;
-        let set_hint = 8;
         enum Query { Hint(fe), None, }
     namespace N(16);
         let x;
-        std::prover::set_hint(x, query |i| std::prover::Query::Hint(1));
+        std::prelude::set_hint(x, query |i| std::prelude::Query::Hint(1));
     "#;
     analyze_string::<GoldilocksField>(input);
 }
@@ -118,13 +117,12 @@ fn set_hint() {
 fn set_hint_can_use_query() {
     let input = r#"
     namespace std::prover;
-        let set_hint = 8;
         let eval = 7;
         enum Query { Hint(fe), None, }
     namespace N(16);
         let x;
         let y;
-        std::prover::set_hint(x, query |_| std::prover::Query::Hint(std::prover::eval(y)));
+        std::prelude::set_hint(x, query |_| std::prelude::Query::Hint(std::prover::eval(y)));
     "#;
     analyze_string::<GoldilocksField>(input);
 }
@@ -133,11 +131,10 @@ fn set_hint_can_use_query() {
 fn set_hint_pure() {
     let input = r#"
     namespace std::prover;
-        let set_hint = 8;
         enum Query { Hint(fe), None, }
     namespace N(16);
         let x;
-        std::prover::set_hint(x, |i| std::prover::Query::Hint(1));
+        std::prelude::set_hint(x, |i| std::prelude::Query::Hint(1));
     "#;
     analyze_string::<GoldilocksField>(input);
 }
@@ -147,11 +144,10 @@ fn set_hint_pure() {
 fn set_hint_constr() {
     let input = r#"
     namespace std::prover;
-        let set_hint = 8;
         enum Query { Hint(fe), None, }
     namespace N(16);
         let x;
-        std::prover::set_hint(x, constr |i| std::prover::Query::Hint(1));
+        std::prelude::set_hint(x, constr |i| std::prelude::Query::Hint(1));
     "#;
     analyze_string::<GoldilocksField>(input);
 }

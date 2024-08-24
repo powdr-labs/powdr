@@ -8,7 +8,8 @@ use std::iter::once;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Expression, FunctionValueDefinition,
-    IdentityKind, PolyID, PolynomialReference, Reference, SymbolKind, TypedExpression,
+    IdentityKind, PolyID, PolynomialReference, PolynomialType, Reference, SymbolKind,
+    TypedExpression,
 };
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
@@ -45,10 +46,18 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
     let mut required_names = collect_required_names(pil_file, &poly_id_to_definition_name);
     let mut to_process = required_names.iter().cloned().collect::<Vec<_>>();
     while let Some(n) = to_process.pop() {
-        let symbols: Box<dyn Iterator<Item = Cow<'_, str>>> = if let Some((_, value)) =
+        let symbols: Box<dyn Iterator<Item = Cow<'_, str>>> = if let Some((sym, value)) =
             pil_file.definitions.get(n.as_ref())
         {
-            Box::new(value.iter().flat_map(|v| v.symbols()))
+            let set_hint = (sym.kind == SymbolKind::Poly(PolynomialType::Committed)
+                && value.is_some())
+            .then_some(Cow::from("std::prelude::set_hint"));
+            Box::new(
+                value
+                    .iter()
+                    .flat_map(|v| v.symbols())
+                    .chain(set_hint.into_iter()),
+            )
         } else if let Some((_, value)) = pil_file.intermediate_columns.get(n.as_ref()) {
             Box::new(value.iter().flat_map(|v| {
                 v.all_children().flat_map(|e| {
@@ -143,10 +152,7 @@ impl ReferencedSymbols for Expression {
 
 impl ReferencedSymbols for Type {
     fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
-        Box::new(
-            self.contained_named_types()
-                .map(|n| n.to_dotted_string().into()),
-        )
+        Box::new(self.contained_named_types().map(|n| n.to_string().into()))
     }
 }
 
@@ -582,8 +588,8 @@ mod test {
         let expectation = r#"namespace N(65536);
     col witness X;
     col witness Y;
-    N.X = N.Y;
-    N.Y = 7 * N.X;
+    N::X = N::Y;
+    N::Y = 7 * N::X;
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
@@ -611,13 +617,13 @@ mod test {
     col witness Y;
     col witness Z;
     col witness A;
-    1 - N.A $ [N.A] in [N.cnt];
-    [N.Y] in 1 + N.A $ [N.cnt];
-    (1 - N.A) * N.X = 0;
-    (1 - N.A) * N.Y = 1;
-    N.Z = (1 + N.A) * 2;
-    N.A = 1 + N.A;
-    N.Z = 1 + N.A;
+    1 - N::A $ [N::A] in [N::cnt];
+    [N::Y] in 1 + N::A $ [N::cnt];
+    (1 - N::A) * N::X = 0;
+    (1 - N::A) * N::Y = 1;
+    N::Z = (1 + N::A) * 2;
+    N::A = 1 + N::A;
+    N::Z = 1 + N::A;
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
@@ -632,8 +638,8 @@ mod test {
     "#;
         let expectation = r#"namespace N(65536);
     col witness x;
-    col intermediate = N.x;
-    N.intermediate = N.intermediate;
+    col intermediate = N::x;
+    N::intermediate = N::intermediate;
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
@@ -655,8 +661,8 @@ mod test {
 namespace N(65536);
     col witness x[1];
     col witness y[0];
-    col fixed t(i) { std::array::len::<expr>(N.y) };
-    N.x[0] = N.t;
+    col fixed t(i) { std::array::len::<expr>(N::y) };
+    N::x[0] = N::t;
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
@@ -682,10 +688,10 @@ namespace N(65536);
         let expectation = r#"namespace N(65536);
     col witness x;
     col fixed cnt(i) { i };
-    N.x * (N.x - 1) = 0;
-    [N.x] in [N.cnt];
-    [N.x + 1] in [N.cnt];
-    [N.x] in [N.cnt + 1];
+    N::x * (N::x - 1) = 0;
+    [N::x] in [N::cnt];
+    [N::x + 1] in [N::cnt];
+    [N::x] in [N::cnt + 1];
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
@@ -709,9 +715,9 @@ namespace N(65536);
     "#;
         let expectation = r#"namespace N(65536);
     col witness x;
-    col fixed cnt(i) { N.inc(i) };
+    col fixed cnt(i) { N::inc(i) };
     let inc: int -> int = (|x| x + 1);
-    [N.x] in [N.cnt];
+    [N::x] in [N::cnt];
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
@@ -726,8 +732,8 @@ namespace N(65536);
     "#;
         let expectation = r#"namespace N(65536);
     col witness x[5];
-    col inte[5] = [N.x[0], N.x[1], N.x[2], N.x[3], N.x[4]];
-    N.x[2] = N.inte[4];
+    col inte[5] = [N::x[0], N::x[1], N::x[2], N::x[3], N::x[4]];
+    N::x[2] = N::inte[4];
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input));
         assert_eq!(optimized.intermediate_count(), 5);
@@ -762,9 +768,9 @@ namespace N(65536);
         T,
     }
     let t: N::X[] -> int = (|r| 1);
-    col fixed f(i) { if i == 0 { N.t([]) } else { (|x| 1)(N::Y::F([])) } };
+    col fixed f(i) { if i == 0 { N::t([]) } else { (|x| 1)(N::Y::F([])) } };
     col witness x;
-    N.x = N.f;
+    N::x = N::f;
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
