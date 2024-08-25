@@ -49,6 +49,7 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         let symbols: Box<dyn Iterator<Item = Cow<'_, str>>> = if let Some((sym, value)) =
             pil_file.definitions.get(n.as_ref())
         {
+            // TODO remove this.
             let set_hint = (sym.kind == SymbolKind::Poly(PolynomialType::Committed)
                 && value.is_some())
             .then_some(Cow::from("std::prelude::set_hint"));
@@ -190,6 +191,14 @@ fn collect_required_names<'a, T: FieldElement>(
             .values()
             .map(|p| poly_id_to_definition_name[&p.polynomial.poly_id.unwrap()].into()),
     );
+    for fun in &pil_file.prover_functions {
+        for e in fun.all_children() {
+            if let Expression::Reference(_, Reference::Poly(PolynomialReference { name, .. })) = e {
+                // TODO avoid clone
+                required_names.insert(name.clone().into());
+            }
+        }
+    }
     for id in &pil_file.identities {
         id.pre_visit_expressions(&mut |e: &AlgebraicExpression<T>| {
             if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = e {
