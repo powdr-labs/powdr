@@ -7,7 +7,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use powdr_ast::{
     asm_analysis::{
         self, combine_flags, AnalysisASMFile, Item, LinkDefinition, MachineInstance,
-        MachineInstanceExpression,
+        MachineInstanceExpression, MachineInstanceValue,
     },
     object::{Link, LinkFrom, LinkTo, Location, Object, Operation, PILGraph, TypeOrExpression},
     parsed::{
@@ -27,6 +27,7 @@ const MAIN_FUNCTION: &str = "main";
 
 #[derive(Default, Debug)]
 struct Instance {
+    degree: Option<Expression>,
     ty: AbsoluteSymbolPath,
     members: Vec<Location>,
 }
@@ -66,7 +67,12 @@ impl Instances {
         match &instance.value {
             MachineInstanceExpression::Value(v) => {
                 let ty = file.machine(&instance.ty);
-                assert_eq!(ty.params.0.len() + ty.submachines.len(), v.len());
+                assert_eq!(
+                    ty.params.0.len() + ty.submachines.len(),
+                    v.submachines.len()
+                );
+
+                let degree = v.degree.clone();
 
                 let members = ty
                     .params
@@ -74,7 +80,7 @@ impl Instances {
                     .iter()
                     .map(|param| &param.name)
                     .chain(ty.submachines.iter().map(|d| &d.name))
-                    .zip(v)
+                    .zip(&v.submachines)
                     .map(|(name, instance)| {
                         self.fold_instance(file, location.clone().join(name.clone()), instance)
                     })
@@ -82,6 +88,7 @@ impl Instances {
                 self.map.insert(
                     location.clone(),
                     Instance {
+                        degree,
                         ty: instance.ty.clone(),
                         members,
                     },
@@ -102,6 +109,8 @@ fn instantiate(
     args: &Vec<AbsoluteSymbolPath>,
 ) {
     let ty = input.machine(ty_path);
+
+    let degree = ty.degree.clone();
 
     assert_eq!(ty.params.0.len(), args.len());
 
@@ -139,7 +148,10 @@ fn instantiate(
 
     let instance = MachineInstance {
         ty: ty_path.clone(),
-        value: MachineInstanceExpression::Value(submachines),
+        value: MachineInstanceExpression::Value(MachineInstanceValue {
+            submachines,
+            degree,
+        }),
     };
 
     instances.insert(path.clone(), instance);
@@ -231,7 +243,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
     let mut objects: BTreeMap<_, _> = instances
         .keys()
         .map(|location| {
-            let object = ASMPILConverter::convert_machine(
+            let object = ASMPILConverter::convert_instance(
                 &instances,
                 location,
                 &input,
@@ -366,7 +378,7 @@ impl<'a> ASMPILConverter<'a> {
         self.pil.push(statement);
     }
 
-    fn convert_machine(
+    fn convert_instance(
         instances: &'a BTreeMap<Location, Instance>,
         location: &'a Location,
         input: &'a AnalysisASMFile,
@@ -382,7 +394,7 @@ impl<'a> ASMPILConverter<'a> {
             panic!();
         };
 
-        let degree = input.degree;
+        let degree = instance.degree.clone();
 
         self.submachines = instance
             .members

@@ -32,8 +32,10 @@ impl Display for MachineInstance {
             MachineInstanceExpression::Value(v) => write!(
                 f,
                 "{ty}({})",
-                v.iter()
-                    .map(|value| value.to_string())
+                v.degree
+                    .iter()
+                    .map(|d| d.to_string())
+                    .chain(v.submachines.iter().map(|value| value.to_string()))
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
