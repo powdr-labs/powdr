@@ -1,7 +1,11 @@
 use std::collections::{BTreeMap, HashSet};
 
-use powdr_ast::analyzed::PolynomialType;
-use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
+use itertools::Itertools;
+use powdr_ast::analyzed::{
+    AlgebraicExpression as Expression, AlgebraicReference, PolyID, Reference,
+};
+use powdr_ast::analyzed::{PolynomialReference, PolynomialType};
+use powdr_ast::parsed::{self, visitor::AllChildren};
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
@@ -80,6 +84,7 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     is_relevant_witness: WitnessColumnMap<bool>,
     /// Relevant witness columns that have a prover query function attached.
     prover_query_witnesses: Vec<PolyID>,
+    prover_functions: Vec<&'a parsed::Expression<Reference>>,
     /// The outer query, if any. If there is none, processing an outer query will fail.
     outer_query: Option<OuterQuery<'a, 'c, T>>,
     inputs: Vec<(PolyID, T)>,
@@ -109,6 +114,25 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             .filter(|(poly_id, col)| witness_cols.contains(poly_id) && col.query.is_some())
             .map(|(poly_id, _)| poly_id)
             .collect();
+        // TODO we should create an error if a prover function cannot be mapped
+        // to any processor. So we should probably do this in the machine xtractor.
+        let prover_functions: Vec<_> = fixed_data
+            .analyzed
+            .prover_functions
+            .iter()
+            .filter_map(|f| {
+                f.all_children()
+                    .filter_map(|e| match e {
+                        parsed::Expression::Reference(
+                            _,
+                            Reference::Poly(PolynomialReference { name, .. }),
+                        ) => fixed_data.column_by_name.get(name),
+                        _ => None,
+                    })
+                    .any(|poly_id| witness_cols.contains(&poly_id))
+                    .then_some(f)
+            })
+            .collect();
 
         Self {
             row_offset,
@@ -118,6 +142,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             witness_cols,
             is_relevant_witness,
             prover_query_witnesses,
+            prover_functions,
             outer_query: None,
             inputs: Vec::new(),
             previously_set_inputs: BTreeMap::new(),
@@ -206,7 +231,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         );
         let mut updates = EvalValue::complete(vec![]);
 
-        for fun in &self.fixed_data.analyzed.prover_functions {
+        for fun in &self.prover_functions {
+            println!("Running prover func {fun}");
             let r = query_processor.process_prover_function(&row_pair, fun)?;
             updates.combine(r);
         }

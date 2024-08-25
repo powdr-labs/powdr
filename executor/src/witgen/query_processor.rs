@@ -202,6 +202,16 @@ impl<'a, 'b, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, 'b, T> {
             });
         Ok(Value::FieldElement(challenge).into())
     }
+
+    fn provide_value(
+        &mut self,
+        _col: Arc<Value<'a, T>>,
+        _row: Arc<Value<'a, T>>,
+        _value: Arc<Value<'a, T>>,
+    ) -> Result<(), EvalError> {
+        println!("Providing value {} for {} in row {}", _value, _col, _row);
+        Ok(())
+    }
 }
 
 impl<'a, 'b, T: FieldElement> Symbols<'a, 'b, T> {

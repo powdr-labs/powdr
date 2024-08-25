@@ -20,8 +20,8 @@ use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
-    self, ArrayExpression, ArrayLiteral, EnumDeclaration, EnumVariant,
-    TraitDeclaration, TraitFunction,
+    self, ArrayExpression, ArrayLiteral, EnumDeclaration, EnumVariant, TraitDeclaration,
+    TraitFunction,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -1259,12 +1259,11 @@ impl<T> From<T> for AlgebraicExpression<T> {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PolynomialReference {
-    /// Name of the polynomial - just for informational purposes.
-    /// Comparisons are based on polynomial ID.
+    /// Name of the polynomial or reference.
     pub name: String,
     /// Identifier for a polynomial reference.
     /// Optional because it is filled in in a second stage of analysis.
-    /// TODO make this non-optional
+    /// TODO remove this.
     pub poly_id: Option<PolyID>,
     /// The type arguments if the symbol is generic.
     /// Guaranteed to be Some(_) after type checking is completed.
