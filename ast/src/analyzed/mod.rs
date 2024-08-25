@@ -20,7 +20,7 @@ use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
-    self, ArrayExpression, ArrayLiteral, EnumDeclaration, EnumVariant, LambdaExpression,
+    self, ArrayExpression, ArrayLiteral, EnumDeclaration, EnumVariant,
     TraitDeclaration, TraitFunction,
 };
 

@@ -3,7 +3,7 @@ use std::sync::Arc;
 use powdr_ast::analyzed::Challenge;
 use powdr_ast::analyzed::{AlgebraicReference, Expression, PolyID, PolynomialType};
 use powdr_ast::parsed::types::Type;
-use powdr_ast::parsed::LambdaExpression;
+
 use powdr_number::{BigInt, DegreeType, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Definitions, EvalError, SymbolLookup, Value};
 
@@ -33,8 +33,8 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
     }
 
     pub fn process_prover_function<'c>(
-        &mut self,
-        rows: &'c RowPair<T>,
+        &'c mut self,
+        rows: &'c RowPair<'c, 'a, T>,
         fun: &'a Expression,
     ) -> EvalResult<'a, T> {
         let arguments = vec![Arc::new(Value::Integer(BigInt::from(u64::from(
@@ -129,14 +129,14 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
 }
 
 #[derive(Clone)]
-struct Symbols<'a, T: FieldElement> {
+struct Symbols<'a, 'b, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
-    rows: &'a RowPair<'a, 'a, T>,
+    rows: &'b RowPair<'b, 'a, T>,
     size: DegreeType,
 }
 
-impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
-    fn lookup<'b>(
+impl<'a, 'b, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, 'b, T> {
+    fn lookup(
         &mut self,
         name: &'a str,
         type_args: &Option<Vec<Type>>,
@@ -204,7 +204,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement> Symbols<'a, T> {
+impl<'a, 'b, T: FieldElement> Symbols<'a, 'b, T> {
     fn updates(&self) -> Constraints<&'a AlgebraicReference, T> {
         // TODO
         vec![]

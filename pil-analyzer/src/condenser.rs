@@ -20,7 +20,7 @@ use powdr_ast::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         display::format_type_scheme_around_name,
         types::{ArrayType, Type},
-        FunctionKind, LambdaExpression, TypedExpression,
+        FunctionKind, TypedExpression,
     },
 };
 use powdr_number::{DegreeType, FieldElement};
