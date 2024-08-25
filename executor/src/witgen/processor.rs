@@ -232,7 +232,6 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         let mut updates = EvalValue::complete(vec![]);
 
         for fun in &self.prover_functions {
-            println!("Running prover func {fun}");
             let r = query_processor.process_prover_function(&row_pair, fun)?;
             updates.combine(r);
         }

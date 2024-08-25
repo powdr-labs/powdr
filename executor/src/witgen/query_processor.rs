@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use powdr_ast::analyzed::Challenge;
+use powdr_ast::analyzed::{AlgebraicExpression, Challenge};
 use powdr_ast::analyzed::{AlgebraicReference, Expression, PolyID, PolynomialType};
 use powdr_ast::parsed::types::Type;
 
@@ -45,13 +45,29 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
             fixed_data: self.fixed_data,
             rows,
             size: self.size,
+            updates: Constraints::new(),
         };
         // TODO symbols need to take already provided values into account for eval()
         // during the same evaluation run
 
-        // TODO errors
-        let fun = evaluator::evaluate(fun, &mut symbols).unwrap();
-        let res = evaluator::evaluate_function_call(fun, arguments, &mut symbols).unwrap();
+        let res = match evaluator::evaluate(fun, &mut symbols)
+            .and_then(|fun| evaluator::evaluate_function_call(fun, arguments, &mut symbols))
+        {
+            Ok(res) => res,
+            Err(e) => {
+                return match e {
+                    EvalError::DataNotAvailable => {
+                        Ok(EvalValue::incomplete(IncompleteCause::DataNotYetAvailable))
+                    }
+                    // All other errors are non-recoverable
+                    e => Err(super::EvalError::ProverQueryError(format!(
+                        "Error occurred when evaluating prover function {fun} on {}:\n{e:?}",
+                        rows.current_row_index
+                    ))),
+                };
+            }
+        };
+
         assert!(matches!(res.as_ref(), Value::Tuple(items) if items.is_empty()));
 
         // TODO use the status to mark the prover function to be run again or not.
@@ -122,6 +138,7 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
             fixed_data: self.fixed_data,
             rows,
             size: self.size,
+            updates: Constraints::new(),
         };
         let fun = evaluator::evaluate(query, &mut symbols)?;
         evaluator::evaluate_function_call(fun, arguments, &mut symbols).map(|v| v.to_string())
@@ -133,6 +150,7 @@ struct Symbols<'a, 'b, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     rows: &'b RowPair<'b, 'a, T>,
     size: DegreeType,
+    updates: Constraints<&'a AlgebraicReference, T>,
 }
 
 impl<'a, 'b, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, 'b, T> {
@@ -205,18 +223,49 @@ impl<'a, 'b, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, 'b, T> {
 
     fn provide_value(
         &mut self,
-        _col: Arc<Value<'a, T>>,
-        _row: Arc<Value<'a, T>>,
-        _value: Arc<Value<'a, T>>,
+        col: Arc<Value<'a, T>>,
+        row: Arc<Value<'a, T>>,
+        value: Arc<Value<'a, T>>,
     ) -> Result<(), EvalError> {
-        println!("Providing value {} for {} in row {}", _value, _col, _row);
+        let Value::Expression(AlgebraicExpression::Reference(AlgebraicReference {
+            poly_id,
+            next: false,
+            ..
+        })) = col.as_ref()
+        else {
+            return Err(EvalError::TypeError(
+                "Expected direct column for first argument of std::prover::provide_value"
+                    .to_string(),
+            ));
+        };
+        let Value::Integer(row) = row.as_ref() else {
+            return Err(EvalError::TypeError(
+                "Expected integer for second argument of std::prover::provide_value".to_string(),
+            ));
+        };
+        let row = i64::try_from(row).unwrap();
+        let Value::FieldElement(value) = value.as_ref() else {
+            return Err(EvalError::TypeError(
+                "Expected field element for third argument of std::prover::provide_value"
+                    .to_string(),
+            ));
+        };
+        // TODO check that the row is the same and handle underflow.
+        // TODO handle multiple updates to the same value ond alread known values.
+        // TODO take updates into account in eval() calls.
+        let col = &self.fixed_data.witness_cols[poly_id].poly;
+        // TODO instead of this, avoid repeated calls to the prover function.
+        if self.rows.get_value(col).is_none() {
+            // TODO if this stay,s check that the value is at least the same if it is already known.
+            self.updates.push((col, Constraint::Assignment(*value)));
+        }
+
         Ok(())
     }
 }
 
 impl<'a, 'b, T: FieldElement> Symbols<'a, 'b, T> {
-    fn updates(&self) -> Constraints<&'a AlgebraicReference, T> {
-        // TODO
-        vec![]
+    fn updates(self) -> Constraints<&'a AlgebraicReference, T> {
+        self.updates
     }
 }
