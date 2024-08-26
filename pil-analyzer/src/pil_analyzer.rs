@@ -22,7 +22,7 @@ use powdr_ast::analyzed::{
 };
 use powdr_parser::{parse, parse_module, parse_type};
 
-use crate::traits_processor::validate_trait_implementations;
+use crate::traits_resolver::traits_unification;
 use crate::type_builtins::constr_function_statement_type;
 use crate::type_inference::infer_types;
 use crate::{side_effect_checker, AnalysisDriver};
@@ -224,7 +224,7 @@ impl PILAnalyzer {
     }
 
     pub fn check_traits_overlap(&mut self) {
-        validate_trait_implementations(&mut self.implementations, &self.definitions);
+        traits_unification(&self.definitions, &mut self.implementations);
     }
 
     pub fn type_check(&mut self) {
