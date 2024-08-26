@@ -2,7 +2,7 @@
 #![deny(clippy::print_stdout)]
 
 use std::borrow::Cow;
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::iter::once;
 
 use powdr_ast::analyzed::{
@@ -458,11 +458,11 @@ fn substitute_polynomial_references<T: FieldElement>(
     let substitutions_by_id = substitutions
         .iter()
         .map(|(_, id, value)| (*id, value.clone()))
-        .collect::<BTreeMap<PolyID, _>>();
+        .collect::<HashMap<PolyID, _>>();
     let substitutions_by_name = substitutions
         .into_iter()
         .map(|(name, _, value)| (name, value))
-        .collect::<BTreeMap<String, _>>();
+        .collect::<HashMap<String, _>>();
     pil_file.post_visit_expressions_in_definitions_mut(&mut |e: &mut Expression| {
         if let Expression::Reference(
             _,
@@ -472,7 +472,7 @@ fn substitute_polynomial_references<T: FieldElement>(
             if let Some(value) = substitutions_by_name.get(name) {
                 *e = Number {
                     value: (*value).clone(),
-                    type_: Some(Type::Fe),
+                    type_: Some(Type::Expr),
                 }
                 .into();
             }
