@@ -3,8 +3,8 @@ use std::{env, path::PathBuf};
 use powdr_ast::parsed::{
     asm::{
         non_unique::{
-            ASMModule, ASMProgram, Import, Module, NonUniqueSymbols, Part,
-            SymbolDefinition, SymbolPath, SymbolValue,
+            ASMModule, ASMProgram, Import, Module, NonUniqueSymbols, Part, SymbolDefinition,
+            SymbolPath, SymbolValue,
         },
         Symbols,
     },

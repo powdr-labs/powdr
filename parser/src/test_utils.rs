@@ -34,7 +34,8 @@ impl<S: Symbols> ClearSourceRefs for ASMModule<S> {
 
 impl<R> ClearSourceRefs for TraitImplementation<Expression<R>> {
     fn clear_source_refs(&mut self) {
-        self.children_mut().for_each(ClearSourceRefs::clear_source_refs)
+        self.children_mut()
+            .for_each(ClearSourceRefs::clear_source_refs)
     }
 }
 

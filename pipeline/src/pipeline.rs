@@ -17,10 +17,7 @@ use powdr_ast::{
     asm_analysis::AnalysisASMFile,
     object::PILGraph,
     parsed::{
-        asm::{
-            non_unique,
-            unique,
-        },
+        asm::{non_unique, unique},
         PILFile,
     },
 };
@@ -636,7 +633,9 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.parsed_asm_file.as_ref().unwrap())
     }
 
-    pub fn parsed_asm_file(&self) -> Result<&(Option<PathBuf>, non_unique::ASMProgram), Vec<String>> {
+    pub fn parsed_asm_file(
+        &self,
+    ) -> Result<&(Option<PathBuf>, non_unique::ASMProgram), Vec<String>> {
         Ok(self.artifact.parsed_asm_file.as_ref().unwrap())
     }
 
