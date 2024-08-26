@@ -725,13 +725,8 @@ impl TypeChecker {
             }
             Expression::StructExpression(sr, struct_expr) => {
                 for named_expr in struct_expr.fields.iter_mut() {
-                    let field_name = if struct_expr.name.contains('.') {
-                        format!("{}::{}", struct_expr.name, named_expr.name).replace('.', "::")
-                    } else {
-                        format!("{}.{}", struct_expr.name, named_expr.name)
-                    };
-                    let expr_ty = self.declared_types[&field_name].1.ty.clone();
-                    self.expect_type(&expr_ty, named_expr.expr.as_mut())?;
+                    let expr_ty = self.declared_types[&struct_expr.name].1.ty.clone();
+                    self.expect_type(&expr_ty, named_expr.body.as_mut())?;
                 }
 
                 match SymbolPath::from_str(&struct_expr.name.replace('.', "::")) {

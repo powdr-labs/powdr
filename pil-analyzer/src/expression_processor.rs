@@ -201,7 +201,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                             .into_iter()
                             .map(|named_expr| NamedExpression {
                                 name: named_expr.name,
-                                expr: Box::new(self.process_expression(*named_expr.expr)),
+                                body: Box::new(self.process_expression(*named_expr.body)),
                             })
                             .collect(),
                     },
