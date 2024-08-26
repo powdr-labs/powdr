@@ -36,7 +36,7 @@ type AnalyzedIdentity<T> = Identity<SelectedExpressions<AlgebraicExpression<T>>>
 
 pub fn condense<T: FieldElement>(
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    mut public_declarations: HashMap<String, PublicDeclaration>,
+    public_declarations: HashMap<String, PublicDeclaration>,
     identities: &[ParsedIdentity],
     source_order: Vec<StatementIdentifier>,
     auto_added_symbols: HashSet<String>,
@@ -162,16 +162,6 @@ pub fn condense<T: FieldElement>(
         }
     }
 
-    for decl in public_declarations.values_mut() {
-        let symbol = &definitions
-            .get(&decl.polynomial.name)
-            .unwrap_or_else(|| panic!("Symbol {} not found.", decl.polynomial))
-            .0;
-        let reference = &mut decl.polynomial;
-        // TODO this is the only point we still assign poly_id,
-        // maybe move it into PublicDeclaration.
-        reference.poly_id = Some(symbol.into());
-    }
     Analyzed {
         definitions,
         public_declarations,
