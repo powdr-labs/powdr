@@ -11,8 +11,7 @@ use powdr_ast::{
     analyzed::{
         AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
         AlgebraicUnaryOperation, AlgebraicUnaryOperator, Challenge, Expression,
-        FunctionValueDefinition, PolynomialReference, Reference, Symbol, SymbolKind,
-        TypedExpression,
+        FunctionValueDefinition, Reference, Symbol, SymbolKind, TypedExpression,
     },
     parsed::{
         display::quote,
@@ -419,14 +418,12 @@ impl<'a> Definitions<'a> {
     pub fn lookup_with_symbols<T: FieldElement>(
         definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
         solved_impls: &'a HashMap<String, Expression>,
-        poly: &PolynomialReference,
+        name: &str,
         type_args: &Option<Vec<Type>>,
         symbols: &mut impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        let name = poly.name.to_string();
-
         let (symbol, value) = definitions
-            .get(&name)
+            .get(name)
             .ok_or_else(|| EvalError::SymbolNotFound(format!("Symbol {name} not found.")))?;
 
         Ok(if matches!(symbol.kind, SymbolKind::Poly(_)) {
@@ -445,14 +442,14 @@ impl<'a> Definitions<'a> {
                 Value::Array(items).into()
             } else {
                 Value::from(AlgebraicExpression::Reference(AlgebraicReference {
-                    name,
+                    name: name.to_string(),
                     poly_id: symbol.into(),
                     next: false,
                 }))
                 .into()
             }
         } else {
-            let impl_ = solved_impls.get(&name);
+            let impl_ = solved_impls.get(name);
             match impl_ {
                 Some(expr) => {
                     let Expression::LambdaExpression(_, lambda) = expr else {
@@ -492,10 +489,10 @@ impl<'a> Definitions<'a> {
 impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a> {
     fn lookup(
         &mut self,
-        poly: &PolynomialReference,
+        name: &str,
         type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        Self::lookup_with_symbols(self.definitions, self.solved_impls, poly, type_args, self)
+        Self::lookup_with_symbols(self.definitions, self.solved_impls, name, type_args, self)
     }
 
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
@@ -506,7 +503,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a> {
 pub trait SymbolLookup<'a, T: FieldElement> {
     fn lookup(
         &mut self,
-        poly: &'a PolynomialReference,
+        poly: &'a str,
         type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError>;
 
@@ -842,7 +839,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                         ta
                     });
 
-                    self.symbols.lookup(poly, &type_args)?
+                    self.symbols.lookup(&poly.name, &type_args)?
                 }
             }
         })
@@ -1321,8 +1318,7 @@ mod test {
             definitions: &analyzed.definitions,
             solved_impls: &analyzed.solved_impls,
         };
-        let fn_ref = PolynomialReference::new(function.to_string());
-        let function = symbols.lookup(&fn_ref, &None).unwrap();
+        let function = symbols.lookup(function, &None).unwrap();
         let result = evaluator::evaluate_function_call(function, vec![], &mut symbols)
             .unwrap()
             .as_ref()

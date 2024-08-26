@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use powdr_ast::analyzed::PolynomialReference;
 use powdr_number::{BigInt, Bn254Field, GoldilocksField};
 
 use powdr_pil_analyzer::evaluator::Value;
@@ -318,48 +317,16 @@ fn ff_inv_big() {
 #[test]
 fn fp2() {
     let analyzed = std_analyzed::<GoldilocksField>();
-    evaluate_function(
-        &analyzed,
-        &PolynomialReference::new("std::math::fp2::test::add".to_string()),
-        vec![],
-    );
-    evaluate_function(
-        &analyzed,
-        &PolynomialReference::new("std::math::fp2::test::sub".to_string()),
-        vec![],
-    );
-    evaluate_function(
-        &analyzed,
-        &PolynomialReference::new("std::math::fp2::test::mul".to_string()),
-        vec![],
-    );
-    evaluate_function(
-        &analyzed,
-        &PolynomialReference::new("std::math::fp2::test::inverse".to_string()),
-        vec![],
-    );
+    evaluate_function(&analyzed, "std::math::fp2::test::add", vec![]);
+    evaluate_function(&analyzed, "std::math::fp2::test::sub", vec![]);
+    evaluate_function(&analyzed, "std::math::fp2::test::mul", vec![]);
+    evaluate_function(&analyzed, "std::math::fp2::test::inverse", vec![]);
 
     let analyzed = std_analyzed::<Bn254Field>();
-    evaluate_function(
-        &analyzed,
-        &PolynomialReference::new("std::math::fp2::test::add".to_string()),
-        vec![],
-    );
-    evaluate_function(
-        &analyzed,
-        &PolynomialReference::new("std::math::fp2::test::sub".to_string()),
-        vec![],
-    );
-    evaluate_function(
-        &analyzed,
-        &PolynomialReference::new("std::math::fp2::test::mul".to_string()),
-        vec![],
-    );
-    evaluate_function(
-        &analyzed,
-        &PolynomialReference::new("std::math::fp2::test::inverse".to_string()),
-        vec![],
-    );
+    evaluate_function(&analyzed, "std::math::fp2::test::add", vec![]);
+    evaluate_function(&analyzed, "std::math::fp2::test::sub", vec![]);
+    evaluate_function(&analyzed, "std::math::fp2::test::mul", vec![]);
+    evaluate_function(&analyzed, "std::math::fp2::test::inverse", vec![]);
 }
 
 #[test]
@@ -383,10 +350,9 @@ fn sort() {
     for input in test_inputs {
         let mut input_sorted = input.clone();
         input_sorted.sort();
-        let poly = &PolynomialReference::new("test_sort".to_string());
         let result = evaluate_function(
             &analyzed,
-            poly,
+            "test_sort",
             vec![Arc::new(Value::Array(
                 input
                     .into_iter()

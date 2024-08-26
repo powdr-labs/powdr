@@ -12,9 +12,8 @@ use std::{
 use powdr_ast::{
     analyzed::{
         self, AlgebraicExpression, AlgebraicReference, Analyzed, Expression,
-        FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialReference,
-        PolynomialType, PublicDeclaration, SelectedExpressions, StatementIdentifier, Symbol,
-        SymbolKind,
+        FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialType, PublicDeclaration,
+        SelectedExpressions, StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
         self,
@@ -342,7 +341,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
 impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
     fn lookup(
         &mut self,
-        poly: &'a PolynomialReference,
+        name: &'a str,
         type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         // Cache already computed values.
@@ -350,7 +349,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         // we re-evaluate simple values, which users would not expect.
         if let Some(v) = self
             .symbol_values
-            .get(&poly.name)
+            .get(name)
             .and_then(|map| map.get(type_args))
         {
             return Ok(v.clone());
@@ -358,12 +357,12 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         let value = Definitions::lookup_with_symbols(
             self.symbols,
             self.solved_impls,
-            poly,
+            name,
             type_args,
             self,
         )?;
         self.symbol_values
-            .entry(poly.name.to_string())
+            .entry(name.to_string())
             .or_default()
             .entry(type_args.clone())
             .or_insert_with(|| value.clone());

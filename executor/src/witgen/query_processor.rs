@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
+use powdr_ast::analyzed::Challenge;
 use powdr_ast::analyzed::{AlgebraicReference, Expression, PolyID, PolynomialType};
-use powdr_ast::analyzed::{Challenge, PolynomialReference};
 use powdr_ast::parsed::types::Type;
 use powdr_number::{BigInt, DegreeType, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Definitions, EvalError, SymbolLookup, Value};
@@ -110,10 +110,9 @@ struct Symbols<'a, T: FieldElement> {
 impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
     fn lookup<'b>(
         &mut self,
-        poly: &'a PolynomialReference,
+        name: &'a str,
         type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        let name = poly.name.as_str();
         match self.fixed_data.analyzed.intermediate_columns.get(name) {
             // Intermediate polynomials (which includes challenges) are not inlined in hints,
             // so we need to look them up here.
@@ -138,7 +137,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
             None => Definitions::lookup_with_symbols(
                 &self.fixed_data.analyzed.definitions,
                 &self.fixed_data.analyzed.solved_impls,
-                poly,
+                name,
                 type_args,
                 self,
             ),

@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use ::powdr_pipeline::Pipeline;
-use powdr_ast::analyzed::{Analyzed, PolynomialReference};
+use powdr_ast::analyzed::Analyzed;
 use powdr_number::{BigInt, GoldilocksField};
 use powdr_pil_analyzer::evaluator::Value;
 
@@ -106,11 +106,7 @@ fn evaluator_benchmark(c: &mut Criterion) {
         ));
         group.bench_with_input(format!("sort_{l}"), &input, |b, x| {
             b.iter(|| {
-                evaluate_function(
-                    &sort_analyzed,
-                    &PolynomialReference::new("sort_int".to_string()),
-                    vec![x.clone()],
-                );
+                evaluate_function(&sort_analyzed, "sort_int", vec![x.clone()]);
             });
         });
     }

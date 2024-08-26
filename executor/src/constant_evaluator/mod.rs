@@ -8,9 +8,7 @@ pub use data_structures::{get_uniquely_sized, get_uniquely_sized_cloned, Variabl
 use itertools::Itertools;
 use lazy_static::lazy_static;
 use powdr_ast::{
-    analyzed::{
-        Analyzed, Expression, FunctionValueDefinition, PolynomialReference, Symbol, TypedExpression,
-    },
+    analyzed::{Analyzed, Expression, FunctionValueDefinition, Symbol, TypedExpression},
     parsed::{
         types::{ArrayType, Type},
         IndexAccess,
@@ -182,10 +180,9 @@ pub struct CachedSymbols<'a, T> {
 impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
     fn lookup(
         &mut self,
-        poly: &'a PolynomialReference,
+        name: &'a str,
         type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
-        let name = poly.name.as_str();
         if let Some(v) = self
             .cache
             .read()
@@ -198,7 +195,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
         let result = Definitions::lookup_with_symbols(
             self.symbols,
             self.solved_impls,
-            poly,
+            name,
             type_args,
             self,
         )?;
