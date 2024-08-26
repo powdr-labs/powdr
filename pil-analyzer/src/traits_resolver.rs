@@ -110,7 +110,7 @@ impl<'a> TraitsResolver<'a> {
             }
         }
 
-        let full_name = format!("{}::{}", trait_decl_name, trait_fn_name);
+        let full_name = format!("{trait_decl_name}::{trait_fn_name}");
         Self::update_reference(&full_name, reference, &resolved_impl_pos, name);
     }
 
