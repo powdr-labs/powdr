@@ -90,7 +90,7 @@ impl<'a> TraitsResolver<'a> {
         trait_impls: &HashMap<String, Vec<TraitImplementation<Expression>>>,
     ) -> Option<(String, Expression)> {
         let name = reference.name.clone();
-        let (trait_decl_name, trait_fn_name) = name.rsplit_once("::").unwrap();
+        let (trait_decl_name, trait_fn_name) = name.rsplit_once("::")?;
         if let Some(impls) = trait_impls.get(trait_decl_name) {
             for impl_ in impls.iter() {
                 let types = impl_.type_scheme.ty.clone();
