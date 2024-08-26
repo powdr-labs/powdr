@@ -11,10 +11,10 @@ use powdr_ast::{
     },
     parsed::{
         self,
-        asm::{
-            self, ASMModule, ASMProgram, AbsoluteSymbolPath, AssignmentRegister, FunctionStatement,
-            Instruction, LinkDeclaration, MachineProperties, MachineStatement, ModuleStatement,
-            RegisterFlag, SymbolDefinition,
+        asm::unique::{
+            self as asm, ASMModule, ASMProgram, AbsoluteSymbolPath, AssignmentRegister,
+            FunctionStatement, Instruction, LinkDeclaration, MachineProperties, MachineStatement,
+            RegisterFlag,
         },
     },
 };
@@ -293,62 +293,61 @@ impl TypeChecker {
 
         let mut res: BTreeMap<AbsoluteSymbolPath, Item> = BTreeMap::default();
 
-        for m in module.statements {
-            match m {
-                ModuleStatement::SymbolDefinition(SymbolDefinition { name, value }) => {
-                    match value {
-                        asm::SymbolValue::Machine(m) => {
-                            match self.check_machine_type(m, &ctx.with_part(&name)) {
-                                Err(e) => {
-                                    errors.extend(e);
-                                }
-                                Ok(machine) => {
-                                    res.insert(ctx.with_part(&name), Item::Machine(machine));
-                                }
-                            };
-                        }
-                        asm::SymbolValue::Import(_) => {
-                            unreachable!("Imports should have been removed")
-                        }
-                        asm::SymbolValue::Module(m) => {
-                            // add the name of this module to the context
-                            let ctx = ctx.with_part(&name);
+        for d in module.symbols.into_iter() {
+            let name = d.name;
 
-                            let m = match m {
-                                asm::Module::External(_) => unreachable!(),
-                                asm::Module::Local(m) => m,
-                            };
-
-                            match self.check_module(m, &ctx) {
-                                Err(err) => {
-                                    errors.extend(err);
-                                }
-                                Ok(m) => {
-                                    res.extend(m);
-                                }
-                            };
+            match d.value {
+                asm::SymbolValue::Machine(m) => {
+                    match self.check_machine_type(m, &ctx.with_part(&name)) {
+                        Err(e) => {
+                            errors.extend(e);
                         }
-                        asm::SymbolValue::Expression(e) => {
-                            res.insert(ctx.clone().with_part(&name), Item::Expression(e));
+                        Ok(machine) => {
+                            res.insert(ctx.with_part(&name), Item::Machine(machine));
                         }
-                        asm::SymbolValue::TypeDeclaration(enum_decl) => {
-                            res.insert(
-                                ctx.clone().with_part(&name),
-                                Item::TypeDeclaration(enum_decl),
-                            );
-                        }
-                        asm::SymbolValue::TraitDeclaration(trait_decl) => {
-                            res.insert(
-                                ctx.clone().with_part(&name),
-                                Item::TraitDeclaration(trait_decl),
-                            );
-                        }
-                    }
+                    };
                 }
-                ModuleStatement::TraitImplementation(trait_impl) => {
-                    res.insert(ctx.clone(), Item::TraitImplementation(trait_impl));
+                asm::SymbolValue::Import(_) => {
+                    unreachable!("Imports should have been removed")
+                }
+                asm::SymbolValue::Module(m) => {
+                    // add the name of this module to the context
+                    let ctx = ctx.with_part(&name);
+
+                    let m = match m {
+                        asm::Module::External(_) => unreachable!(),
+                        asm::Module::Local(m) => m,
+                    };
+
+                    match self.check_module(m, &ctx) {
+                        Err(err) => {
+                            errors.extend(err);
+                        }
+                        Ok(m) => {
+                            res.extend(m);
+                        }
+                    };
+                }
+                asm::SymbolValue::Expression(e) => {
+                    res.insert(ctx.clone().with_part(&name), Item::Expression(e));
+                }
+                asm::SymbolValue::TypeDeclaration(enum_decl) => {
+                    res.insert(
+                        ctx.clone().with_part(&name),
+                        Item::TypeDeclaration(enum_decl),
+                    );
+                }
+                asm::SymbolValue::TraitDeclaration(trait_decl) => {
+                    res.insert(
+                        ctx.clone().with_part(&name),
+                        Item::TraitDeclaration(trait_decl),
+                    );
                 }
             }
+        }
+
+        for trait_impl in module.implementations {
+            res.insert(ctx.clone(), Item::TraitImplementation(trait_impl));
         }
 
         if !errors.is_empty() {

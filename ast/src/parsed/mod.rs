@@ -23,7 +23,7 @@ use powdr_parser_util::SourceRef;
 use crate::analyzed::Reference;
 
 use self::{
-    asm::{Part, SymbolPath},
+    asm::non_unique::{Part, SymbolPath},
     types::{FunctionType, Type, TypeBounds, TypeScheme},
     visitor::{Children, ExpressionVisitable},
 };

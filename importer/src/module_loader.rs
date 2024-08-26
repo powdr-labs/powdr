@@ -1,13 +1,19 @@
 use std::path::PathBuf;
 
 use powdr_ast::parsed::{
-    asm::{ASMProgram, Module},
+    asm::{
+        non_unique::{self, NonUniqueSymbols},
+        Module,
+    },
     folder::Folder,
 };
 static ASM_EXTENSION: &str = "asm";
 static FOLDER_MODULE_NAME: &str = "mod";
 
-pub fn load_module_files(path: Option<PathBuf>, program: ASMProgram) -> Result<ASMProgram, String> {
+pub fn load_module_files(
+    path: Option<PathBuf>,
+    program: non_unique::ASMProgram,
+) -> Result<non_unique::ASMProgram, String> {
     Loader { path }.fold_program(program)
 }
 
@@ -17,10 +23,10 @@ struct Loader {
 
 type Error = String;
 
-impl Folder for Loader {
+impl Folder<NonUniqueSymbols, NonUniqueSymbols> for Loader {
     type Error = Error;
 
-    fn fold_module(&mut self, m: Module) -> Result<Module, Self::Error> {
+    fn fold_module(&mut self, m: non_unique::Module) -> Result<non_unique::Module, Self::Error> {
         match m {
             Module::External(name) => self
                 .path

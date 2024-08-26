@@ -261,7 +261,8 @@ mod tests {
         src: &str,
     ) -> BTreeMap<AbsoluteSymbolPath, (Machine, Option<Rom>)> {
         let parsed = powdr_parser::parse_asm(None, src).unwrap();
-        let checked = powdr_analysis::machine_check::check(parsed).unwrap();
+        let resolved = powdr_importer::load_dependencies_and_resolve(None, parsed).unwrap();
+        let checked = powdr_analysis::machine_check::check(resolved).unwrap();
         checked
             .items
             .into_iter()

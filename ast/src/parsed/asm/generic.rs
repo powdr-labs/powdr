@@ -14,59 +14,82 @@ use serde::{Deserialize, Serialize};
 
 use crate::parsed::{BinaryOperation, BinaryOperator};
 
-use super::{
+use crate::parsed::{
     visitor::Children, EnumDeclaration, EnumVariant, Expression, PilStatement, SourceReference,
     TraitDeclaration, TraitImplementation, TypedExpression,
 };
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
-pub struct ASMProgram {
-    pub main: ASMModule,
+pub struct ASMProgram<S> {
+    pub main: ASMModule<S>,
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
-pub struct ASMModule {
-    pub statements: Vec<ModuleStatement>,
+pub struct ASMModule<S> {
+    pub symbols: S,
+    pub implementations: Vec<TraitImplementation<Expression>>,
 }
 
-impl ASMModule {
-    pub fn symbol_definitions(&self) -> impl Iterator<Item = &SymbolDefinition> {
-        self.statements.iter().filter_map(|s| match s {
-            ModuleStatement::SymbolDefinition(d) => Some(d),
-            ModuleStatement::TraitImplementation(_) => None,
-        })
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, From)]
-pub enum ModuleStatement {
-    SymbolDefinition(SymbolDefinition),
-    TraitImplementation(TraitImplementation<Expression>),
-}
-
-impl ModuleStatement {
-    pub fn defined_names(&self) -> Option<&String> {
-        match self {
-            ModuleStatement::SymbolDefinition(d) => Some(&d.name),
-            ModuleStatement::TraitImplementation(_) => None,
+impl<S: Symbols> ASMModule<S> {
+    pub fn new(statements: Vec<ModuleStatement<S>>) -> Self {
+        let (symbols, implementations) = statements.into_iter().partition_map(|s| match s {
+            ModuleStatement::SymbolDefinition(d) => itertools::Either::Left(d),
+            ModuleStatement::TraitImplementation(i) => itertools::Either::Right(i),
+        });
+        Self {
+            symbols,
+            implementations,
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SymbolDefinition {
+pub struct SymbolDefinition<S> {
     pub name: String,
-    pub value: SymbolValue,
+    pub value: SymbolValue<S>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct SymbolDefinitionRef<'a, S> {
+    pub name: &'a str,
+    pub value: &'a SymbolValue<S>,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct SymbolDefinitionMut<'a, S> {
+    pub name: &'a str,
+    pub value: &'a mut SymbolValue<S>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, From)]
-pub enum SymbolValue {
+pub enum ModuleStatement<S> {
+    SymbolDefinition(SymbolDefinition<S>),
+    TraitImplementation(TraitImplementation<Expression>),
+}
+
+pub trait Symbols:
+    std::fmt::Debug
+    + PartialEq
+    + Eq
+    + Default
+    + Clone
+    + IntoIterator<Item = SymbolDefinition<Self>>
+    + FromIterator<SymbolDefinition<Self>>
+    + Sized
+    + Extend<SymbolDefinition<Self>>
+{
+    fn iter_mut(&mut self) -> impl Iterator<Item = SymbolDefinitionMut<Self>>;
+    fn iter(&self) -> impl Iterator<Item = SymbolDefinitionRef<Self>>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, From)]
+pub enum SymbolValue<S> {
     /// A machine definition
     Machine(Machine),
     /// An import of a symbol from another module
     Import(Import),
     /// A module definition
-    Module(Module),
+    Module(Module<S>),
     /// A generic symbol / function.
     Expression(TypedExpression),
     /// A type declaration (currently only enums)
@@ -75,8 +98,8 @@ pub enum SymbolValue {
     TraitDeclaration(TraitDeclaration<Expression>),
 }
 
-impl SymbolValue {
-    pub fn as_ref(&self) -> SymbolValueRef {
+impl<S> SymbolValue<S> {
+    pub fn as_ref(&self) -> SymbolValueRef<S> {
         match self {
             SymbolValue::Machine(machine) => SymbolValueRef::Machine(machine),
             SymbolValue::Import(i) => SymbolValueRef::Import(i),
@@ -89,13 +112,13 @@ impl SymbolValue {
 }
 
 #[derive(Debug, PartialEq, Eq, From)]
-pub enum SymbolValueRef<'a> {
+pub enum SymbolValueRef<'a, S> {
     /// A machine definition
     Machine(&'a Machine),
     /// An import of a symbol from another module
     Import(&'a Import),
     /// A module definition
-    Module(ModuleRef<'a>),
+    Module(ModuleRef<'a, S>),
     /// A generic symbol / function.
     Expression(&'a TypedExpression),
     /// A type declaration (currently only enums)
@@ -107,13 +130,13 @@ pub enum SymbolValueRef<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, From)]
-pub enum Module {
+pub enum Module<S> {
     External(String),
-    Local(ASMModule),
+    Local(ASMModule<S>),
 }
 
-impl Module {
-    fn as_ref(&self) -> ModuleRef {
+impl<S> Module<S> {
+    fn as_ref(&self) -> ModuleRef<S> {
         match self {
             Module::External(n) => ModuleRef::External(n),
             Module::Local(m) => ModuleRef::Local(m),
@@ -122,9 +145,9 @@ impl Module {
 }
 
 #[derive(Debug, PartialEq, Eq, From)]
-pub enum ModuleRef<'a> {
+pub enum ModuleRef<'a, S> {
     External(&'a str),
-    Local(&'a ASMModule),
+    Local(&'a ASMModule<S>),
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]

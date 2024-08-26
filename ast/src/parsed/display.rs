@@ -18,28 +18,19 @@ impl Display for PILFile {
     }
 }
 
-impl Display for ASMProgram {
+impl<S: Symbols> Display for ASMProgram<S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}", self.main)
     }
 }
 
-impl Display for ASMModule {
+impl<S: Symbols> Display for ASMModule<S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write_items(f, &self.statements)
+        write_items(f, self.symbols.clone())
     }
 }
 
-impl Display for ModuleStatement {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            ModuleStatement::SymbolDefinition(symbol_def) => write!(f, "{symbol_def}"),
-            ModuleStatement::TraitImplementation(trait_impl) => write!(f, "{trait_impl}"),
-        }
-    }
-}
-
-impl Display for SymbolDefinition {
+impl<S: Symbols> Display for SymbolDefinition<S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let SymbolDefinition { name, value } = self;
         match value {
@@ -68,13 +59,13 @@ impl Display for SymbolDefinition {
     }
 }
 
-impl Display for Module {
+impl<S: Symbols> Display for Module<S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             Module::External(name) => write!(f, "{name};"),
             Module::Local(module) => {
                 writeln!(f, "{{")?;
-                write_items_indented(f, &module.statements)?;
+                write_items_indented(f, module.symbols.clone().into_iter())?;
                 write!(f, "}}")
             }
         }

@@ -1,11 +1,11 @@
 use powdr_ast::parsed::asm::{
     ASMModule, ASMProgram, FunctionStatement, Instruction, Machine, MachineStatement, Module,
-    ModuleStatement, SymbolDefinition, SymbolValue,
+    SymbolValue, Symbols,
 };
 use powdr_ast::parsed::visitor::Children;
 use powdr_ast::parsed::{
     BlockExpression, Expression, LambdaExpression, LetStatementInsideBlock, MatchExpression,
-    PILFile, Pattern, PilStatement, SourceReference, StatementInsideBlock,
+    PILFile, Pattern, PilStatement, SourceReference, StatementInsideBlock, TraitImplementation,
 };
 use powdr_parser_util::SourceRef;
 
@@ -14,12 +14,27 @@ pub trait ClearSourceRefs {
     fn clear_source_refs(&mut self);
 }
 
-impl ClearSourceRefs for ASMProgram {
+impl<S: Symbols> ClearSourceRefs for ASMProgram<S> {
     fn clear_source_refs(&mut self) {
-        self.main
-            .statements
+        self.main.clear_source_refs();
+    }
+}
+
+impl<S: Symbols> ClearSourceRefs for ASMModule<S> {
+    fn clear_source_refs(&mut self) {
+        self.symbols
+            .iter_mut()
+            .map(|d| d.value)
+            .for_each(ClearSourceRefs::clear_source_refs);
+        self.implementations
             .iter_mut()
             .for_each(ClearSourceRefs::clear_source_refs);
+    }
+}
+
+impl<E> ClearSourceRefs for TraitImplementation<E> {
+    fn clear_source_refs(&mut self) {
+        todo!()
     }
 }
 
@@ -58,28 +73,21 @@ impl ClearSourceRefs for MachineStatement {
     }
 }
 
-impl ClearSourceRefs for ModuleStatement {
+impl<S: Symbols> ClearSourceRefs for SymbolValue<S> {
     fn clear_source_refs(&mut self) {
         match self {
-            ModuleStatement::SymbolDefinition(SymbolDefinition { value, .. }) => match value {
-                SymbolValue::Machine(Machine { statements, .. }) => statements
-                    .iter_mut()
-                    .for_each(ClearSourceRefs::clear_source_refs),
-                SymbolValue::Module(Module::Local(ASMModule { statements })) => {
-                    statements
-                        .iter_mut()
-                        .for_each(ClearSourceRefs::clear_source_refs);
-                }
-                SymbolValue::Module(Module::External(_)) | SymbolValue::Import(_) => {}
-                SymbolValue::Expression(e) => e.e.clear_source_refs(),
-                SymbolValue::TypeDeclaration(decl) => decl
-                    .children_mut()
-                    .for_each(ClearSourceRefs::clear_source_refs),
-                SymbolValue::TraitDeclaration(trait_decl) => trait_decl
-                    .children_mut()
-                    .for_each(ClearSourceRefs::clear_source_refs),
-            },
-            ModuleStatement::TraitImplementation(trait_impl) => trait_impl
+            SymbolValue::Machine(Machine { statements, .. }) => statements
+                .iter_mut()
+                .for_each(ClearSourceRefs::clear_source_refs),
+            SymbolValue::Module(Module::Local(m)) => {
+                m.clear_source_refs();
+            }
+            SymbolValue::Module(Module::External(_)) | SymbolValue::Import(_) => {}
+            SymbolValue::Expression(e) => e.e.clear_source_refs(),
+            SymbolValue::TypeDeclaration(decl) => decl
+                .children_mut()
+                .for_each(ClearSourceRefs::clear_source_refs),
+            SymbolValue::TraitDeclaration(trait_decl) => trait_decl
                 .children_mut()
                 .for_each(ClearSourceRefs::clear_source_refs),
         }

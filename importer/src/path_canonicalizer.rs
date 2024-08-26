@@ -7,9 +7,11 @@ use std::{
 
 use powdr_ast::parsed::{
     asm::{
-        parse_absolute_path, ASMModule, ASMProgram, AbsoluteSymbolPath, Import, Machine,
-        MachineStatement, Module, ModuleRef, ModuleStatement, SymbolDefinition, SymbolPath,
-        SymbolValue, SymbolValueRef,
+        non_unique::{self, NonUniqueSymbols},
+        parse_absolute_path,
+        unique::{self, UniqueSymbols},
+        ASMModule, AbsoluteSymbolPath, Import, Machine, MachineStatement, Module, ModuleRef,
+        SymbolDefinition, SymbolDefinitionRef, SymbolPath, SymbolValue, SymbolValueRef, Symbols,
     },
     folder::Folder,
     types::{Type, TypeScheme},
@@ -23,7 +25,7 @@ use powdr_parser_util::{Error, SourceRef};
 
 /// Changes all symbol references (symbol paths) from relative paths
 /// to absolute paths, and removes all import statements.
-pub fn canonicalize_paths(program: ASMProgram) -> Result<ASMProgram, Error> {
+pub fn canonicalize_paths(program: non_unique::ASMProgram) -> Result<unique::ASMProgram, Error> {
     let paths = &generate_path_map(&program)?;
 
     let mut canonicalizer = Canonicalizer {
@@ -45,84 +47,94 @@ struct Canonicalizer<'a> {
     paths: &'a PathMap,
 }
 
-impl<'a> Folder for Canonicalizer<'a> {
+impl<'a> Folder<NonUniqueSymbols, UniqueSymbols> for Canonicalizer<'a> {
     // once the paths are resolved, canonicalization cannot fail
     type Error = Infallible;
 
     /// replace references to symbols with absolute paths. This removes the import statements.
     /// This always succeeds if the symbol table was generated correctly.
-    fn fold_module_value(&mut self, module: ASMModule) -> Result<ASMModule, Self::Error> {
+    fn fold_module_value(
+        &mut self,
+        module: non_unique::ASMModule,
+    ) -> Result<unique::ASMModule, Self::Error> {
         Ok(ASMModule {
-            statements: module
-                .statements
+            symbols: module
+                .symbols
                 .into_iter()
-                .filter_map(|statement| match statement {
-                    ModuleStatement::SymbolDefinition(SymbolDefinition { name, value }) => {
-                        match value {
-                            SymbolValue::Machine(m) => {
-                                // canonicalize the machine based on the same path, so we can reuse the same instance
-                                self.fold_machine(m).map(From::from).map(Some).transpose()
+                .filter_map(|d| {
+                    match d.value {
+                        SymbolValue::Machine(m) => {
+                            // canonicalize the machine based on the same path, so we can reuse the same instance
+                            self.fold_machine(m).map(From::from).map(Some).transpose()
+                        }
+                        SymbolValue::Import(_) => None,
+                        SymbolValue::Module(m) => match m {
+                            Module::External(_) => {
+                                unreachable!("external modules should have been removed")
                             }
-                            SymbolValue::Import(_) => None,
-                            SymbolValue::Module(m) => match m {
-                                Module::External(_) => {
-                                    unreachable!("external modules should have been removed")
-                                }
-                                // Continue canonicalizing inside the module with a new instance pointed at the module path
-                                Module::Local(module) => Canonicalizer {
-                                    path: self.path.with_part(&name),
-                                    paths: self.paths,
-                                }
-                                .fold_module_value(module)
-                                .map(Module::Local)
-                                .map(SymbolValue::from)
-                                .map(Some)
-                                .transpose(),
-                            },
-                            SymbolValue::Expression(mut exp) => {
-                                if let Some(type_scheme) = &mut exp.type_scheme {
-                                    canonicalize_inside_type_scheme(
-                                        type_scheme,
-                                        &self.path,
-                                        self.paths,
-                                    );
-                                }
-                                canonicalize_inside_expression(&mut exp.e, &self.path, self.paths);
-                                Some(Ok(SymbolValue::Expression(exp)))
+                            // Continue canonicalizing inside the module with a new instance pointed at the module path
+                            Module::Local(module) => Canonicalizer {
+                                path: self.path.with_part(&d.name),
+                                paths: self.paths,
                             }
-                            SymbolValue::TypeDeclaration(mut enum_decl) => {
-                                let type_vars = enum_decl.type_vars.vars().collect();
-                                for variant in &mut enum_decl.variants {
-                                    if let Some(fields) = &mut variant.fields {
-                                        for field in fields {
-                                            canonicalize_inside_type(
-                                                field, &type_vars, &self.path, self.paths,
-                                            );
-                                        }
+                            .fold_module_value(module)
+                            .map(Module::Local)
+                            .map(SymbolValue::from)
+                            .map(Some)
+                            .transpose(),
+                        },
+                        SymbolValue::Expression(mut exp) => {
+                            if let Some(type_scheme) = &mut exp.type_scheme {
+                                canonicalize_inside_type_scheme(
+                                    type_scheme,
+                                    &self.path,
+                                    self.paths,
+                                );
+                            }
+                            canonicalize_inside_expression(&mut exp.e, &self.path, self.paths);
+                            Some(Ok(SymbolValue::Expression(exp)))
+                        }
+                        SymbolValue::TypeDeclaration(mut enum_decl) => {
+                            let type_vars = enum_decl.type_vars.vars().collect();
+                            for variant in &mut enum_decl.variants {
+                                if let Some(fields) = &mut variant.fields {
+                                    for field in fields {
+                                        canonicalize_inside_type(
+                                            field, &type_vars, &self.path, self.paths,
+                                        );
                                     }
                                 }
-                                Some(Ok(SymbolValue::TypeDeclaration(enum_decl)))
                             }
-                            SymbolValue::TraitDeclaration(mut trait_decl) => {
-                                let type_vars = trait_decl.type_vars.iter().collect();
-                                for f in &mut trait_decl.functions {
-                                    canonicalize_inside_type(
-                                        &mut f.ty, &type_vars, &self.path, self.paths,
-                                    );
-                                }
-                                Some(Ok(SymbolValue::TraitDeclaration(trait_decl)))
+                            Some(Ok(SymbolValue::TypeDeclaration(enum_decl)))
+                        }
+                        SymbolValue::TraitDeclaration(mut trait_decl) => {
+                            let type_vars = trait_decl.type_vars.iter().collect();
+                            for f in &mut trait_decl.functions {
+                                canonicalize_inside_type(
+                                    &mut f.ty, &type_vars, &self.path, self.paths,
+                                );
                             }
+                            Some(Ok(SymbolValue::TraitDeclaration(trait_decl)))
                         }
-                        .map(|value| value.map(|value| SymbolDefinition { name, value }.into()))
                     }
-                    ModuleStatement::TraitImplementation(mut trait_impl) => {
-                        for f in &mut trait_impl.functions {
-                            canonicalize_inside_expression(&mut f.body, &self.path, self.paths)
-                        }
-                        Some(Ok(ModuleStatement::TraitImplementation(trait_impl)))
-                    }
+                    .map(|value| {
+                        value.map(|value| SymbolDefinition {
+                            name: d.name,
+                            value,
+                        })
+                    })
                 })
                 .collect::<Result<_, _>>()?,
+            implementations: module
+                .implementations
+                .into_iter()
+                .map(|mut trait_impl| {
+                    for f in &mut trait_impl.functions {
+                        canonicalize_inside_expression(&mut f.body, &self.path, self.paths)
+                    }
+                    trait_impl
+                })
+                .collect(),
         })
     }
 
@@ -364,7 +376,7 @@ fn canonicalize_inside_type(
 #[derive(PartialEq, Debug)]
 pub struct State<'a> {
     /// The root module of this program, so that we can visit any import encountered: if we are at absolute path `a` and see relative import `r`, we want to go to `a.join(r)` starting from `root`. It does not change as we visit the tree.
-    root: &'a ASMModule,
+    root: &'a non_unique::ASMModule,
     /// For each relative path at an absolute path, the absolute path of the canonical symbol it points to. It gets populated as we visit the tree.
     pub paths: PathMap,
 }
@@ -448,7 +460,14 @@ fn check_path_internal<'a>(
     state: &mut State<'a>,
     // the locations visited so far
     mut chain: PathDependencyChain,
-) -> Result<(AbsoluteSymbolPath, SymbolValueRef<'a>, PathDependencyChain), String> {
+) -> Result<
+    (
+        AbsoluteSymbolPath,
+        non_unique::SymbolValueRef<'a>,
+        PathDependencyChain,
+    ),
+    String,
+> {
     let root = state.root;
 
     chain.push(path.clone())?;
@@ -472,8 +491,9 @@ fn check_path_internal<'a>(
                     }
                     // modules expose symbols
                     SymbolValueRef::Module(ModuleRef::Local(module)) => module
-                        .symbol_definitions()
-                        .find_map(|SymbolDefinition { name, value }| {
+                        .symbols
+                        .iter()
+                        .find_map(|SymbolDefinitionRef { name, value }| {
                             (name == member).then_some(value)
                         })
                         .ok_or_else(|| format!("symbol not found in `{location}`: `{member}`"))
@@ -539,7 +559,7 @@ fn check_import(
     check_path(location.join(imported.path), state)
 }
 
-fn generate_path_map(program: &ASMProgram) -> Result<PathMap, Error> {
+fn generate_path_map(program: &non_unique::ASMProgram) -> Result<PathMap, Error> {
     // an empty state starting from this module
     let mut state = State {
         root: &program.main,
@@ -561,23 +581,24 @@ fn generate_path_map(program: &ASMProgram) -> Result<PathMap, Error> {
 /// This function will return an error if a name is not unique, or if any path in this module does not resolve to anything
 fn check_module(
     location: AbsoluteSymbolPath,
-    module: &ASMModule,
+    module: &non_unique::ASMModule,
     state: &mut State<'_>,
 ) -> Result<(), Error> {
     module
-        .symbol_definitions()
+        .symbols
+        .iter()
         .try_fold(
             BTreeSet::default(),
-            |mut acc, SymbolDefinition { name, .. }| {
+            |mut acc, SymbolDefinitionRef { name, .. }| {
                 // TODO we should store source refs in symbol definitions.
-                acc.insert(name.clone())
+                acc.insert(name)
                     .then_some(acc)
                     .ok_or(format!("Duplicate name `{name}` in module `{location}`"))
             },
         )
         .map_err(|e| SourceRef::default().with_error(e))?;
 
-    for SymbolDefinition { name, value } in module.symbol_definitions() {
+    for SymbolDefinitionRef { name, value } in module.symbols.iter() {
         // start with the initial state
         // update the state
         match value {

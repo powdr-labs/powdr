@@ -16,7 +16,13 @@ use powdr_ast::{
     analyzed::Analyzed,
     asm_analysis::AnalysisASMFile,
     object::PILGraph,
-    parsed::{asm::ASMProgram, PILFile},
+    parsed::{
+        asm::{
+            non_unique::{self, ASMProgram},
+            unique,
+        },
+        PILFile,
+    },
 };
 use powdr_backend::{Backend, BackendOptions, BackendType, Proof};
 use powdr_executor::{
@@ -46,10 +52,10 @@ pub struct Artifacts<T: FieldElement> {
     /// The contents of a single .asm file, with an optional Path (for imports).
     asm_string: Option<(Option<PathBuf>, String)>,
     /// A parsed .asm file, with an optional Path (for imports).
-    parsed_asm_file: Option<(Option<PathBuf>, ASMProgram)>,
+    parsed_asm_file: Option<(Option<PathBuf>, non_unique::ASMProgram)>,
     /// A tree of .asm modules (with all dependencies potentially imported
     /// from other files) with all references resolved to absolute symbol paths.
-    resolved_module_tree: Option<ASMProgram>,
+    resolved_module_tree: Option<unique::ASMProgram>,
     /// The analyzed .asm file: Assignment registers are inferred, instructions
     /// are batched and some properties are checked.
     analyzed_asm: Option<AnalysisASMFile>,
@@ -634,7 +640,7 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.parsed_asm_file.as_ref().unwrap())
     }
 
-    pub fn compute_resolved_module_tree(&mut self) -> Result<&ASMProgram, Vec<String>> {
+    pub fn compute_resolved_module_tree(&mut self) -> Result<&unique::ASMProgram, Vec<String>> {
         if self.artifact.resolved_module_tree.is_none() {
             self.artifact.resolved_module_tree = Some({
                 self.compute_parsed_asm_file()?;
@@ -652,7 +658,7 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.resolved_module_tree.as_ref().unwrap())
     }
 
-    pub fn resolved_module_tree(&self) -> Result<&ASMProgram, Vec<String>> {
+    pub fn resolved_module_tree(&self) -> Result<&unique::ASMProgram, Vec<String>> {
         Ok(self.artifact.resolved_module_tree.as_ref().unwrap())
     }
 

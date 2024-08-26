@@ -3,7 +3,7 @@
 pub mod machine_check;
 mod vm;
 
-use powdr_ast::{asm_analysis::AnalysisASMFile, parsed::asm::ASMProgram};
+use powdr_ast::{asm_analysis::AnalysisASMFile, parsed::asm::unique::ASMProgram};
 use powdr_number::FieldElement;
 
 pub fn convert_asm_to_pil<T: FieldElement>(

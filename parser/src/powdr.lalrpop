@@ -1,6 +1,6 @@
 use std::str::FromStr;
 use std::collections::BTreeSet;
-use powdr_ast::parsed::{*, asm::*, types::*};
+use powdr_ast::parsed::{*, asm::non_unique::*, types::*};
 use powdr_number::{BigInt, BigUint};
 use crate::{ParserContext, unescape_string};
 use powdr_parser_util::Error;
@@ -23,7 +23,7 @@ pub PILFile: PILFile = {
 };
 
 pub ASMModule: ASMModule = {
-    (<ModuleStatement>)* => ASMModule { statements: <> }
+    (<ModuleStatement>)* => ASMModule::new(<>)
 };
 
 ModuleStatement: ModuleStatement = {
