@@ -1017,6 +1017,7 @@ mod tests {
     use std::path::PathBuf;
 
     use super::*;
+    use powdr_parser::test_utils::ClearSourceRefs;
     use pretty_assertions::assert_eq;
 
     fn expect(path: &str, expected: Result<(), &str>) {
@@ -1026,13 +1027,23 @@ mod tests {
         let input_str = std::fs::read_to_string(input_path).unwrap();
         let parsed = powdr_parser::parse_asm(None, &input_str).unwrap();
 
-        let res = canonicalize_paths(parsed).map(|res| res.to_string().replace('\t', "    "));
+        let res = canonicalize_paths(parsed).map(|mut p| {
+            p.clear_source_refs();
+            p
+        });
         let expected = expected
             .map(|_| {
                 let expected_input_path = PathBuf::from("./test_data/")
                     .join(path)
                     .with_extension("expected.asm");
-                std::fs::read_to_string(expected_input_path).unwrap()
+                let parsed = powdr_parser::parse_asm(
+                    None,
+                    &std::fs::read_to_string(expected_input_path).unwrap(),
+                )
+                .unwrap();
+                let mut resolved = canonicalize_paths(parsed).unwrap();
+                resolved.clear_source_refs();
+                resolved
             })
             .map_err(|s| s.to_string());
 

@@ -4,5 +4,5 @@ mod std {
     }
 }
 mod module {
-    let y = std::prelude::x;
+    let y = ::std::prelude::x;
 }
