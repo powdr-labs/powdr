@@ -2,7 +2,7 @@
 
 #![deny(clippy::print_stdout)]
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use powdr_ast::{
     asm_analysis::{
@@ -38,25 +38,6 @@ struct Instances {
 }
 
 impl Instances {
-    /// Trim to remove instances unreachable from a given Location
-    /// Returns the instance map
-    /// untested!
-    fn trim(self, from: &Location) -> BTreeMap<Location, Instance> {
-        let mut reached: BTreeSet<Location> = Default::default();
-        let mut queue = vec![from];
-        let mut map = self.map;
-        while let Some(location) = queue.pop() {
-            // `location` is reached
-            reached.insert(location.clone());
-            let instance = &map.get(location).unwrap();
-            // visit all params
-            queue.extend(&instance.members);
-        }
-        // remove all keys that aren't reached
-        map.retain(|l, _| reached.contains(l));
-        map
-    }
-
     fn fold_instance(
         &mut self,
         file: &AnalysisASMFile,
@@ -201,7 +182,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
 
     let topo_sort = powdr_utils::topo_sort(instances.keys(), get_dependencies);
 
-    // generate the trimmed instance map
+    // generate the instance map
     let instances = topo_sort
         .iter()
         .map(|path| (path, instances.get(path).unwrap()))
@@ -219,7 +200,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
             assert_eq!(new_location, location);
             instances
         })
-        .trim(&main_location);
+        .map;
 
     // count incoming permutations for each machine.
     let mut incoming_permutations = instances
