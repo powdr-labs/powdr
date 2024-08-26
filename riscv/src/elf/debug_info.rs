@@ -1,6 +1,6 @@
 use std::{
     borrow::Cow,
-    collections::{BTreeMap, BTreeSet, HashMap},
+    collections::{BTreeSet, HashMap},
     path::Path,
 };
 
@@ -35,9 +35,7 @@ pub struct DebugInfo {
     pub file_list: Vec<(String, String)>,
     /// Relates addresses to source locations.
     pub source_locations: Vec<SourceLocationInfo>,
-    /// Maps (addresses, disambiguator) to symbol names. The disambiguator is
-    /// used to distinguish between multiple symbols at the same address. (i.e.
-    /// turns BTreeMap into a multimap.)
+    /// Maps addresses to symbol names.
     pub symbols: SymbolTable,
     /// Human readable notes about an address
     pub notes: HashMap<u32, String>,
@@ -99,12 +97,11 @@ impl DebugInfo {
         dedup_names(&mut symbols);
 
         // Index by address, not by name.
-        let mut map_disambiguator = 0u32..;
         let symbols = SymbolTable(
             symbols
                 .into_iter()
-                .map(|(name, address)| ((address, map_disambiguator.next().unwrap()), name))
-                .collect(),
+                .map(|(name, address)| (address, name))
+                .into_group_map(),
         );
 
         Ok(DebugInfo {
@@ -428,7 +425,7 @@ fn find_first_idx(slice: &[SourceLocationInfo], addr: u32) -> usize {
 
 /// Index the symbols by their addresses.
 #[derive(Default)]
-pub struct SymbolTable(BTreeMap<(u32, u32), String>);
+pub struct SymbolTable(HashMap<u32, Vec<String>>);
 
 impl SymbolTable {
     pub fn new(elf: &Elf) -> SymbolTable {
@@ -436,20 +433,12 @@ impl SymbolTable {
 
         dedup_names(&mut symbols);
 
-        let mut disambiguator = 0..;
         SymbolTable(
             symbols
                 .into_iter()
-                .map(|(name, addr)| ((addr, disambiguator.next().unwrap()), name.to_string()))
-                .collect(),
+                .map(|(name, addr)| (addr, name.to_string()))
+                .into_group_map(),
         )
-    }
-
-    /// Returns an iterator over all symbols of a given address.
-    fn all_iter(&self, addr: u32) -> impl Iterator<Item = &str> {
-        self.0
-            .range((addr, 0)..=(addr, u32::MAX))
-            .map(|(_, name)| name.as_ref())
     }
 
     fn default_label(addr: u32) -> Cow<'static, str> {
@@ -458,7 +447,9 @@ impl SymbolTable {
 
     /// Get a symbol, if the address has one.
     pub fn try_get_one(&self, addr: u32) -> Option<&str> {
-        self.all_iter(addr).next()
+        self.0
+            .get(&addr)
+            .and_then(|v| v.first().map(|s| s.as_str()))
     }
 
     /// Get a symbol, or a default label formed from the address value.
@@ -471,13 +462,17 @@ impl SymbolTable {
 
     /// Get all symbol, or a default label formed from the address value.
     pub fn get_all(&self, addr: u32) -> impl Iterator<Item = Cow<str>> {
-        let mut iter = self.all_iter(addr).peekable();
-        let default = if iter.peek().is_none() {
+        static EMPTY: Vec<String> = Vec::new();
+        let elems = self.0.get(&addr).unwrap_or(&EMPTY);
+        let default = if elems.is_empty() {
             Some(Self::default_label(addr))
         } else {
             None
         };
-        iter.map(Cow::Borrowed).chain(default)
+        elems
+            .iter()
+            .map(|s| Cow::Borrowed(s.as_str()))
+            .chain(default)
     }
 }
 

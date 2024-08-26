@@ -327,7 +327,7 @@ fn enum_is_not_constr() {
 }
 
 #[test]
-#[should_panic = "Expected type int -> std::prover::Query"]
+#[should_panic = "Expected type int -> std::prelude::Query"]
 fn query_with_wrong_type() {
     let input = "col witness w(i) query i;";
     type_check(input, &[]);
@@ -631,7 +631,7 @@ fn type_vars_in_block_let() {
 }
 
 #[test]
-#[should_panic = "Expected type: int -> T, T\\nInferred type: int\\n"]
+#[should_panic = "Expected type: int -> T\\nInferred type: int\\n"]
 fn new_fixed_column_wrong_value_type() {
     let input = r#"namespace N(16);
         let f = constr |j| {

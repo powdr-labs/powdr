@@ -74,7 +74,7 @@ type Fixed<F> = Vec<(String, Vec<F>)>;
 
 /// eStark provers require a fixed column with the equivalent semantics to
 /// Polygon zkEVM's `L1` column. Powdr generated PIL will always have
-/// `main.first_step`, but directly given PIL may not have it. This is a fixup
+/// `main::first_step`, but directly given PIL may not have it. This is a fixup
 /// to inject such column if it doesn't exist.
 ///
 /// TODO Improve how this is done.
@@ -86,7 +86,7 @@ fn first_step_fixup<F: FieldElement>(
 
     let mut pil: PIL = json_exporter::export(pil);
 
-    let patched_constants = if !fixed.iter().any(|(k, _)| k == "main.first_step") {
+    let patched_constants = if !fixed.iter().any(|(k, _)| k == "main::first_step") {
         use starky::types::Reference;
         pil.nConstants += 1;
         pil.references.insert(
@@ -125,7 +125,7 @@ struct EStarkFilesCommon<F: FieldElement> {
     degree: DegreeType,
     pil: PIL,
     /// If this field is present, it means the constants were patched with
-    /// "main.first_step" column and must be written again to a file.
+    /// "main::first_step" column and must be written again to a file.
     constants: Arc<Fixed<F>>,
     output_dir: Option<PathBuf>,
     proof_type: ProofType,
@@ -222,7 +222,7 @@ impl<F: FieldElement> EStarkFilesCommon<F> {
 pub struct DumpFactory;
 
 impl<F: FieldElement> BackendFactory<F> for DumpFactory {
-    fn create<'a>(
+    fn create(
         &self,
         analyzed: Arc<Analyzed<F>>,
         fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
@@ -231,7 +231,7 @@ impl<F: FieldElement> BackendFactory<F> for DumpFactory {
         verification_key: Option<&mut dyn std::io::Read>,
         verification_app_key: Option<&mut dyn std::io::Read>,
         options: BackendOptions,
-    ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
+    ) -> Result<Box<dyn crate::Backend<F>>, Error> {
         let fixed = Arc::new(
             get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
         );
@@ -250,7 +250,7 @@ impl<F: FieldElement> BackendFactory<F> for DumpFactory {
 /// A backend that just dumps the files to the output directory.
 struct DumpBackend<F: FieldElement>(EStarkFilesCommon<F>);
 
-impl<'a, F: FieldElement> Backend<'a, F> for DumpBackend<F> {
+impl<F: FieldElement> Backend<F> for DumpBackend<F> {
     fn prove(
         &self,
         witness: &[(String, Vec<F>)],

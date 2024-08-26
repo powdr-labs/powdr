@@ -23,6 +23,6 @@ namespace Main(N);
     wit[0] + wit[1] + wit[2] + wit[3] = 1;
 
     // intermediate poly array
-    let inter: expr[4] = make_array(4, |i| wit[i] + 10);
+    let inter: inter[4] = make_array(4, |i| wit[i] + 10);
 
     make_array(4, |k| inter[k] = clocks[k] + 10);

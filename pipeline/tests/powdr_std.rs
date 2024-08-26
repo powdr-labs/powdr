@@ -104,7 +104,7 @@ fn permutation_via_challenges_bn() {
 }
 
 #[test]
-#[should_panic = "Error reducing expression to constraint:\nExpression: std::protocols::permutation::permutation(main.is_first, [main.z], main.alpha, main.beta, main.permutation_constraint)\nError: FailedAssertion(\"The field is too small and needs to move to the extension field. Pass two elements instead!\")"]
+#[should_panic = "Error reducing expression to constraint:\nExpression: std::protocols::permutation::permutation(main::is_first, [main::z], main::alpha, main::beta, main::permutation_constraint)\nError: FailedAssertion(\"The field is too small and needs to move to the extension field. Pass two elements instead!\")"]
 fn permutation_via_challenges_gl() {
     let f = "std/permutation_via_challenges.asm";
     make_simple_prepared_pipeline::<GoldilocksField>(f);
@@ -153,6 +153,18 @@ fn bus_permutation_via_challenges_bn() {
 #[test]
 fn bus_permutation_via_challenges_ext_bn() {
     let f = "std/bus_permutation_via_challenges_ext.asm";
+    test_halo2(make_simple_prepared_pipeline(f));
+}
+
+#[test]
+fn bus_lookup_via_challenges_bn() {
+    let f = "std/bus_lookup_via_challenges.asm";
+    test_halo2(make_simple_prepared_pipeline(f));
+}
+
+#[test]
+fn bus_lookup_via_challenges_ext_bn() {
+    let f = "std/bus_lookup_via_challenges_ext.asm";
     test_halo2(make_simple_prepared_pipeline(f));
 }
 
@@ -376,12 +388,13 @@ mod reparse {
     /// but these tests panic if the field is too small. This is *probably*
     /// fine, because all of these tests have a similar variant that does
     /// run on Goldilocks.
-    const BLACKLIST: [&str; 5] = [
+    const BLACKLIST: [&str; 6] = [
         "std/bus_permutation_via_challenges.asm",
         "std/permutation_via_challenges.asm",
         "std/lookup_via_challenges.asm",
         "std/poseidon_bn254_test.asm",
         "std/split_bn254_test.asm",
+        "std/bus_lookup_via_challenges.asm",
     ];
 
     fn run_reparse_test(file: &str) {

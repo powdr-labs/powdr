@@ -41,8 +41,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Compiles (no-std) rust code to riscv assembly.
-    /// Needs `rustup target add riscv32imac-unknown-none-elf`.
+    /// Compiles rust code to Powdr assembly.
+    /// Needs `rustup component add rust-src --toolchain nightly-2024-08-01`.
     Compile {
         /// input rust code, points to a crate dir or its Cargo.toml file
         file: String,
@@ -327,8 +327,13 @@ fn compile_rust<F: FieldElement>(
         None => powdr_riscv::Runtime::base(),
     };
 
-    if continuations && !runtime.has_submachine("poseidon_gl") {
-        runtime = runtime.with_poseidon();
+    if continuations {
+        if runtime.has_submachine("poseidon_gl") {
+            return Err(vec![
+                "Poseidon continuations mode is chosen automatically and incompatible with the chosen standard Poseidon coprocessor".to_string(),
+            ]);
+        }
+        runtime = runtime.with_poseidon_for_continuations();
     }
 
     powdr_riscv::compile_rust::<F>(
@@ -338,6 +343,7 @@ fn compile_rust<F: FieldElement>(
         &runtime,
         via_elf,
         continuations,
+        None,
     )
     .ok_or_else(|| vec!["could not compile rust".to_string()])?;
 

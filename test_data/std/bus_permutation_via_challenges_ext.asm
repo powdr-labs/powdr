@@ -1,4 +1,4 @@
-use std::prover::Query;
+use std::prelude::Query;
 use std::convert::fe;
 use std::protocols::permutation_via_bus::permutation;
 use std::protocols::permutation_via_bus::compute_next_z_send_permutation;
