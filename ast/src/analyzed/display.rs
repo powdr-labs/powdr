@@ -62,9 +62,14 @@ impl<T: Display> Display for Analyzed<T> {
                         }
                         let (name, _) = update_namespace(name, symbol.degree, f)?;
                         match symbol.kind {
-                            SymbolKind::Poly(_) => {
-                                writeln_indented(f, format_poly(&name, symbol, definition))?;
+                            SymbolKind::Poly(PolynomialType::Constant) => {
+                                writeln_indented(f, format_fixed_column(&name, symbol, definition))?
                             }
+                            SymbolKind::Poly(PolynomialType::Committed) => writeln_indented(
+                                f,
+                                format_witness_column(&name, symbol, definition),
+                            )?,
+                            SymbolKind::Poly(PolynomialType::Intermediate) => unreachable!(),
                             SymbolKind::Other() => {
                                 assert!(symbol.stage.is_none());
                                 match definition {
@@ -111,7 +116,7 @@ impl<T: Display> Display for Analyzed<T> {
                             writeln_indented(
                                 f,
                                 format!(
-                                    "let {name}: expr[{length}] = [{}];",
+                                    "col {name}[{length}] = [{}];",
                                     definition.iter().format(", ")
                                 ),
                             )?;
@@ -142,58 +147,64 @@ impl<T: Display> Display for Analyzed<T> {
     }
 }
 
-fn format_poly(
+fn format_fixed_column(
     name: &str,
     symbol: &Symbol,
     definition: &Option<FunctionValueDefinition>,
 ) -> String {
-    let SymbolKind::Poly(poly_type) = symbol.kind else {
-        panic!()
-    };
-    let kind = match &poly_type {
-        PolynomialType::Committed => "witness ",
-        PolynomialType::Constant => "fixed ",
-        PolynomialType::Intermediate => panic!(),
-    };
+    assert_eq!(symbol.kind, SymbolKind::Poly(PolynomialType::Constant));
+    let stage = symbol
+        .stage
+        .map(|s| format!("stage({s}) "))
+        .unwrap_or_default();
+    if let Some(TypedExpression { type_scheme, e }) = try_to_simple_expression(definition) {
+        assert!(symbol.stage.is_none());
+        if symbol.length.is_some() {
+            assert!(matches!(
+                type_scheme,
+                Some(TypeScheme {
+                    vars: _,
+                    ty: Type::Array(_)
+                })
+            ));
+        }
+        format!(
+            "let{} = {e};",
+            format_type_scheme_around_name(&name, type_scheme)
+        )
+    } else {
+        assert!(symbol.length.is_none());
+        let value = definition
+            .as_ref()
+            .map(ToString::to_string)
+            .unwrap_or_default();
+        format!("col fixed {stage}{name}{value};",)
+    }
+}
+
+fn format_witness_column(
+    name: &str,
+    symbol: &Symbol,
+    definition: &Option<FunctionValueDefinition>,
+) -> String {
+    assert_eq!(symbol.kind, SymbolKind::Poly(PolynomialType::Committed));
     let stage = symbol
         .stage
         .map(|s| format!("stage({s}) "))
         .unwrap_or_default();
     let length = symbol
         .length
-        .and_then(|length| {
-            if let PolynomialType::Committed = poly_type {
-                assert!(definition.is_none());
-                Some(format!("[{length}]"))
-            } else {
-                // Do not print an array size, because we will do it as part of the type.
-                assert!(matches!(
-                    definition,
-                    None | Some(FunctionValueDefinition::Expression(TypedExpression {
-                        e: _,
-                        type_scheme: Some(_)
-                    }))
-                ));
-                None
-            }
-        })
+        .map(|length| format!("[{length}]"))
         .unwrap_or_default();
-    if let Some(TypedExpression { type_scheme, e }) =
-        try_to_simple_expression(poly_type, definition)
-    {
-        assert!(symbol.stage.is_none());
-        assert!(length.is_empty());
-        format!(
-            "let{} = {e};",
-            format_type_scheme_around_name(&name, type_scheme)
-        )
-    } else {
-        let value = definition
-            .as_ref()
-            .map(ToString::to_string)
-            .unwrap_or_default();
-        format!("col {kind}{stage}{name}{length}{value};",)
+    let mut result = format!("col witness {stage}{name}{length};");
+    if let Some(value) = definition {
+        assert!(symbol.length.is_none());
+        let FunctionValueDefinition::Expression(TypedExpression { e, .. }) = value else {
+            panic!()
+        };
+        result += &format!("\nstd::prelude::set_hint({}, {e});", symbol.absolute_name);
     }
+    result
 }
 
 fn format_public_declaration(name: &str, decl: &PublicDeclaration) -> String {
@@ -210,8 +221,8 @@ fn format_public_declaration(name: &str, decl: &PublicDeclaration) -> String {
 impl Display for FunctionValueDefinition {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            FunctionValueDefinition::Array(items) => {
-                write!(f, " = {}", items.iter().format(" + "))
+            FunctionValueDefinition::Array(e) => {
+                write!(f, " = {e}")
             }
             FunctionValueDefinition::Expression(TypedExpression {
                 e,
@@ -239,12 +250,8 @@ impl Display for FunctionValueDefinition {
 }
 
 fn try_to_simple_expression(
-    poly_type: PolynomialType,
     definition: &Option<FunctionValueDefinition>,
 ) -> Option<&TypedExpression<Reference, u64>> {
-    if !matches!(poly_type, PolynomialType::Constant) {
-        return None;
-    }
     match definition.as_ref()? {
         FunctionValueDefinition::Array(_) => None,
         FunctionValueDefinition::Expression(TypedExpression {
@@ -284,19 +291,6 @@ fn format_outer_function(e: &Expression, f: &mut Formatter<'_>) -> Result {
             )
         }
         _ => write!(f, " = {e}"),
-    }
-}
-
-impl Display for RepeatedArray {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        if self.is_empty() {
-            return Ok(());
-        }
-        write!(f, "[{}]", self.pattern.iter().format(", "))?;
-        if self.is_repeated() {
-            write!(f, "*")?;
-        }
-        Ok(())
     }
 }
 
@@ -461,22 +455,12 @@ impl Display for AlgebraicReference {
 
 impl Display for PolynomialReference {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}", self.name)?;
         if let Some(type_args) = &self.type_args {
             if !type_args.is_empty() {
-                // We need to add a `::`-component, so the name should not contain a `.`.
-                // NOTE: This special handling can be removed once we remove
-                // the `to_dotted_string` function.
-                let name = if self.name.contains('.') {
-                    // Re-format the name with ``::`-separators.
-                    SymbolPath::from_str(&self.name).unwrap().to_string()
-                } else {
-                    self.name.clone()
-                };
-                write!(f, "{name}::{}", format_type_args(type_args))?;
-                return Ok(());
+                write!(f, "::{}", format_type_args(type_args))?;
             }
         }
-        write!(f, "{}", self.name)?;
 
         Ok(())
     }
@@ -522,7 +506,8 @@ mod test {
 
     #[test]
     fn exp_assoc() {
-        // we test this separately from other expressions, since although `x ** y ** z` is allowed in `AlgebraicExpression`, it is not produced by the analyzer due to type system restrictions
+        // We test this separately from other expressions, since although `x ** y ** z` is allowed in
+        // `AlgebraicExpression`, it is not produced by the analyzer due to type system restrictions
 
         let x = AlgebraicExpression::Reference(super::AlgebraicReference {
             name: "x".into(),

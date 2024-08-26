@@ -37,6 +37,7 @@ ModuleStatement: ModuleStatement = {
             name: <>.name.clone(),
             value: <>.into(),
         }),
+    <TraitImplementation> => ModuleStatement::TraitImplementation(<>),
     <TraitDeclaration> => ModuleStatement::SymbolDefinition(SymbolDefinition {
             name: <>.name.clone(),
             value: SymbolValue::TraitDeclaration(<>),
@@ -123,6 +124,7 @@ pub PilStatement = {
     PolynomialCommitDeclaration,
     <start:@L> <decl:EnumDeclaration> <end:@R> => PilStatement::EnumDeclaration(ctx.source_ref(start, end), decl),
     <start:@L> <decl:StructDeclaration> <end:@R> => PilStatement::StructDeclaration(ctx.source_ref(start, end), decl),
+    <start:@L> <impl_:TraitImplementation> <end:@R> => PilStatement::TraitImplementation(ctx.source_ref(start, end), impl_),
     <start:@L> <decl:TraitDeclaration> <end:@R> => PilStatement::TraitDeclaration(ctx.source_ref(start, end), decl),
     PlookupIdentityStatement,
     PermutationIdentityStatement,
@@ -145,7 +147,7 @@ LetStatement: PilStatement = {
 }
 
 PolynomialDefinition: PilStatement = {
-    <start:@L> PolCol <id:Identifier> "=" <expr:Expression> <end:@R> ";" => PilStatement::PolynomialDefinition(ctx.source_ref(start, end), id, expr)
+    <start:@L> PolCol <name:PolynomialName> "=" <expr:Expression> <end:@R> ";" => PilStatement::PolynomialDefinition(ctx.source_ref(start, end), name, expr)
 }
 
 PublicDeclaration: PilStatement = {
@@ -734,6 +736,24 @@ TraitFunction: TraitFunction<Expression> = {
     <name:Identifier> ":" <params:TypeTermList<Expression>> "->" <value:TypeTermBox<Expression>> => TraitFunction { name, ty: Type::Function(FunctionType{params, value}) }
 }
 
+TraitImplementation: TraitImplementation<Expression> = {
+    "impl" <type_scheme: GenericTraitName> "{" <functions:NamedExpressions> "}" => TraitImplementation { name: type_scheme.0, type_scheme: type_scheme.1, functions }
+}
+
+NamedExpressions: Vec<NamedExpression<Expression>> = {
+    => vec![],
+    <mut list:( <NamedExpression> "," )*> <end:NamedExpression> ","?  => { list.push(end); list }
+}
+
+NamedExpression: NamedExpression<Expression> = {
+    <name:Identifier> ":" <body:BoxedExpression> => NamedExpression { name, body }
+}
+
+GenericTraitName: (SymbolPath, TypeScheme) = {
+    <vars:("<" <TypeVarBounds> ">")> <name:SymbolPath> <items:("<" <TypeTermList<ArrayLengthNumber>> ">")> =>
+        (name, TypeScheme{ vars, ty: Type::Tuple(TupleType{items}) })
+}
+
 
 // ---------------------------- Type Declarations -----------------------------
 
@@ -797,6 +817,7 @@ TypeTerm<ArrayLength>: Type<ArrayLength> = {
     "fe" => Type::Fe,
     "string" => Type::String,
     "col" => Type::Col,
+    "inter" => Type::Inter,
     "expr" => Type::Expr,
     <base:TypeTerm<ArrayLength>> "[" <length:ArrayLength?> "]" => Type::Array(ArrayType{base: Box::new(base), length}),
     "(" <mut items:( <TypeTerm<ArrayLength>> "," )+> <end:TypeTerm<ArrayLength>> ")" => { items.push(end); Type::Tuple(TupleType{items}) },
@@ -833,6 +854,7 @@ TypeBoundsList: BTreeSet<String> = {
 }
 
 
+
 // ---------------------------- Terminals -----------------------------
 
 
@@ -864,6 +886,7 @@ SpecialIdentifier: &'input str = {
     "loc",
     "insn",
     "int",
+    "inter",
     "fe",
     "expr",
     "bool",

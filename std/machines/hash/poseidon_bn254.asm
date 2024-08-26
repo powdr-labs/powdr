@@ -60,15 +60,15 @@ machine PoseidonBN254 with
     pol commit output[OUTPUT_SIZE];
 
     // Add round constants
-    let a: expr[STATE_SIZE] = array::zip(state, C, |state, C| state + C);
+    let a = array::zip(state, C, |state, C| state + C);
 
     // Compute S-Boxes (x^5)
-    let x2: expr[STATE_SIZE] = array::map(a, |a| a * a);
-    let x4: expr[STATE_SIZE] = array::map(x2, |x2| x2 * x2);
-    let x5: expr[STATE_SIZE] = array::zip(x4, a, |x4, a| x4 * a);
+    let x2: inter[STATE_SIZE] = array::map(a, |a| a * a);
+    let x4: inter[STATE_SIZE] = array::map(x2, |x2| x2 * x2);
+    let x5: inter[STATE_SIZE] = array::zip(x4, a, |x4, a| x4 * a);
 
     // Apply S-Boxes on the first element and otherwise if it is a full round.
-    let b: expr[STATE_SIZE] = array::new(STATE_SIZE, |i| if i == 0 {
+    let b = array::new(STATE_SIZE, |i| if i == 0 {
         x5[i]
     } else {
         PARTIAL * (a[i] - x5[i]) + x5[i]
@@ -83,7 +83,7 @@ machine PoseidonBN254 with
 
     // Multiply with MDS Matrix
     let dot_product = |v1, v2| array::sum(array::zip(v1, v2, |v1_i, v2_i| v1_i * v2_i));
-    let c: expr[STATE_SIZE] = array::map(M, |M_row_i| dot_product(M_row_i, b));
+    let c = array::map(M, |M_row_i| dot_product(M_row_i, b));
 
     // Copy c to state in the next row
     array::zip(state, c, |state, c| (state' - c) * (1-LAST) = 0);
