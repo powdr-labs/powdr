@@ -13,13 +13,12 @@ use powdr_number::FieldElement;
 
 /// Runs a prover until it either completes or challenges the caller, in
 /// which case the execution can be resumed from the returned `SubProver`.
-pub fn run<'s, 'env, 'outer, F: FieldElement>(
+pub fn run<'s, 'env, F: FieldElement>(
     scope: &'s Scope<'s, 'env>,
-    prover: &'env Mutex<Box<dyn Backend<'outer, F> + 'outer>>,
+    prover: &'env Mutex<Box<dyn Backend<F>>>,
     witness: Vec<(String, Vec<F>)>,
 ) -> RunStatus<'s, F>
 where
-    'outer: 'env,
 {
     let (challenge_sender, challenge_receiver) = std::sync::mpsc::sync_channel(0);
     let (response_sender, response_receiver) = std::sync::mpsc::sync_channel(0);

@@ -15,7 +15,7 @@ use test_log::test;
 #[test]
 fn invalid_witness() {
     let f = "pil/trivial.pil";
-    let witness = vec![("main.w".to_string(), vec![0; 4])];
+    let witness = vec![("main::w".to_string(), vec![0; 4])];
     assert_proofs_fail_for_invalid_witnesses(f, &witness);
 }
 
@@ -34,7 +34,7 @@ fn lookup_with_selector() {
         Pipeline::default()
             .from_file(resolve_test_file(f))
             .set_witness(vec![(
-                "main.w".to_string(),
+                "main::w".to_string(),
                 witness.iter().cloned().map(Bn254Field::from).collect(),
             )])
             .with_backend(powdr_backend::BackendType::Halo2Mock, None)
@@ -43,7 +43,7 @@ fn lookup_with_selector() {
     }
 
     // Invalid witness: 0 is not in the set {2, 4}
-    let witness = vec![("main.w".to_string(), vec![0, 42, 4, 17])];
+    let witness = vec![("main::w".to_string(), vec![0, 42, 4, 17])];
     assert_proofs_fail_for_invalid_witnesses_halo2(f, &witness);
     assert_proofs_fail_for_invalid_witnesses_pilcom(f, &witness);
     // Unfortunately, eStark panics in this case. That's why the test is marked
@@ -66,7 +66,7 @@ fn permutation_with_selector() {
         Pipeline::default()
             .from_file(resolve_test_file(f))
             .set_witness(vec![(
-                "main.w".to_string(),
+                "main::w".to_string(),
                 witness.iter().cloned().map(Bn254Field::from).collect(),
             )])
             .with_backend(powdr_backend::BackendType::Halo2Mock, None)
@@ -75,7 +75,7 @@ fn permutation_with_selector() {
     }
 
     // Invalid witness: 0 is not in the set {2, 4}
-    let witness = vec![("main.w".to_string(), vec![0, 42, 4, 17])];
+    let witness = vec![("main::w".to_string(), vec![0, 42, 4, 17])];
     assert_proofs_fail_for_invalid_witnesses_halo2(f, &witness);
     assert_proofs_fail_for_invalid_witnesses_pilcom(f, &witness);
     // Unfortunately, eStark panics in this case. That's why the test is marked
@@ -98,8 +98,8 @@ fn fibonacci_invalid_witness() {
     // The following constraint should fail in row 1:
     //     (1-ISLAST) * (x' - y) = 0;
     let witness = vec![
-        ("Fibonacci.x".to_string(), vec![1, 1, 10, 3]),
-        ("Fibonacci.y".to_string(), vec![1, 2, 3, 13]),
+        ("Fibonacci::x".to_string(), vec![1, 1, 10, 3]),
+        ("Fibonacci::y".to_string(), vec![1, 2, 3, 13]),
     ];
     assert_proofs_fail_for_invalid_witnesses(f, &witness);
 
@@ -107,8 +107,8 @@ fn fibonacci_invalid_witness() {
     // The following constraint should fail in row 3:
     //     ISLAST * (y' - 1) = 0;
     let witness = vec![
-        ("Fibonacci.x".to_string(), vec![1, 2, 3, 5]),
-        ("Fibonacci.y".to_string(), vec![2, 3, 5, 8]),
+        ("Fibonacci::x".to_string(), vec![1, 2, 3, 5]),
+        ("Fibonacci::y".to_string(), vec![2, 3, 5, 8]),
     ];
     assert_proofs_fail_for_invalid_witnesses(f, &witness);
 }
@@ -136,7 +136,7 @@ fn external_witgen_fails_if_none_provided() {
 #[test]
 fn external_witgen_a_provided() {
     let f = "pil/external_witgen.pil";
-    let external_witness = vec![("main.a".to_string(), vec![GoldilocksField::from(3); 16])];
+    let external_witness = vec![("main::a".to_string(), vec![GoldilocksField::from(3); 16])];
     let pipeline = make_prepared_pipeline(f, Default::default(), external_witness);
     test_pilcom(pipeline);
 }
@@ -144,7 +144,7 @@ fn external_witgen_a_provided() {
 #[test]
 fn external_witgen_b_provided() {
     let f = "pil/external_witgen.pil";
-    let external_witness = vec![("main.b".to_string(), vec![GoldilocksField::from(4); 16])];
+    let external_witness = vec![("main::b".to_string(), vec![GoldilocksField::from(4); 16])];
     let pipeline = make_prepared_pipeline(f, Default::default(), external_witness);
     test_pilcom(pipeline);
 }
@@ -153,8 +153,8 @@ fn external_witgen_b_provided() {
 fn external_witgen_both_provided() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![
-        ("main.a".to_string(), vec![GoldilocksField::from(3); 16]),
-        ("main.b".to_string(), vec![GoldilocksField::from(4); 16]),
+        ("main::a".to_string(), vec![GoldilocksField::from(3); 16]),
+        ("main::b".to_string(), vec![GoldilocksField::from(4); 16]),
     ];
     let pipeline = make_prepared_pipeline(f, Default::default(), external_witness);
     test_pilcom(pipeline);
@@ -165,9 +165,9 @@ fn external_witgen_both_provided() {
 fn external_witgen_fails_on_conflicting_external_witness() {
     let f = "pil/external_witgen.pil";
     let external_witness = vec![
-        ("main.a".to_string(), vec![GoldilocksField::from(3); 16]),
+        ("main::a".to_string(), vec![GoldilocksField::from(3); 16]),
         // Does not satisfy b = a + 1
-        ("main.b".to_string(), vec![GoldilocksField::from(3); 16]),
+        ("main::b".to_string(), vec![GoldilocksField::from(3); 16]),
     ];
     let pipeline = make_prepared_pipeline(f, Default::default(), external_witness);
     test_pilcom(pipeline);

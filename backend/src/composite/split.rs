@@ -63,7 +63,7 @@ pub(crate) fn machine_witness_columns<F: FieldElement>(
                 panic!("Machine {machine_name} has witness columns of different sizes")
             }
         });
-    let dummy_column_name = format!("{machine_name}.{DUMMY_COLUMN_NAME}");
+    let dummy_column_name = format!("{machine_name}::{DUMMY_COLUMN_NAME}");
     let dummy_column = vec![F::zero(); size];
     iter::once((dummy_column_name, dummy_column))
         .chain(machine_columns.into_iter().cloned())

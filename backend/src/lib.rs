@@ -131,7 +131,7 @@ pub type Proof = Vec<u8>;
 pub trait BackendFactory<F: FieldElement> {
     /// Create a new backend object.
     #[allow(clippy::too_many_arguments)]
-    fn create<'a>(
+    fn create(
         &self,
         pil: Arc<Analyzed<F>>,
         fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
@@ -140,7 +140,7 @@ pub trait BackendFactory<F: FieldElement> {
         verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,
         backend_options: BackendOptions,
-    ) -> Result<Box<dyn Backend<'a, F> + 'a>, Error>;
+    ) -> Result<Box<dyn Backend<F>>, Error>;
 
     /// Generate a new setup.
     fn generate_setup(&self, _size: DegreeType, _output: &mut dyn io::Write) -> Result<(), Error> {
@@ -149,7 +149,7 @@ pub trait BackendFactory<F: FieldElement> {
 }
 
 /// Dynamic interface for a backend.
-pub trait Backend<'a, F: FieldElement>: Send {
+pub trait Backend<F: FieldElement>: Send {
     /// Perform the proving.
     ///
     /// The backend uses the BackendOptions provided at creation time
