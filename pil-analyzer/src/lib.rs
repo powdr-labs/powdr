@@ -20,7 +20,7 @@ use powdr_ast::{
     analyzed::{Expression, FunctionValueDefinition, Symbol},
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
-        SymbolCategory, TraitImplementation,
+        SymbolCategory,
     },
 };
 
@@ -53,5 +53,5 @@ pub trait AnalysisDriver: Clone + Copy {
     /// Turns a reference to a name with an optional namespace into an absolute name.
     fn try_resolve_ref(&self, path: &SymbolPath) -> Option<(String, SymbolCategory)>;
     fn definitions(&self) -> &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>;
-    fn implementations(&self) -> &HashMap<String, Vec<TraitImplementation<Expression>>>;
+    fn solved_impls(&self) -> &HashMap<String, Expression>;
 }

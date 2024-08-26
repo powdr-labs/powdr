@@ -75,6 +75,8 @@ struct PILAnalyzer {
     auto_added_symbols: HashSet<String>,
     /// Implementations found, organized according to their associated trait name.
     implementations: HashMap<String, Vec<TraitImplementation<Expression>>>,
+    /// A map between the name of the caller reference and the expression to be called.
+    solved_impls: HashMap<String, Expression>,
 }
 
 /// Reads and parses the given path and all its imports.
@@ -322,17 +324,14 @@ impl PILAnalyzer {
     }
 
     fn resolve_trait_impls(&mut self) {
-        traits_resolution(
-            &mut self.definitions,
-            &mut self.identities,
-            &self.implementations,
-        );
+        self.solved_impls =
+            traits_resolution(&self.definitions, &self.identities, &self.implementations);
     }
 
     pub fn condense<T: FieldElement>(self) -> Analyzed<T> {
         condenser::condense(
             self.definitions,
-            self.implementations,
+            self.solved_impls,
             self.public_declarations,
             &self.identities,
             self.source_order,
@@ -437,7 +436,7 @@ impl PILAnalyzer {
                     evaluator::evaluate_expression::<GoldilocksField>(
                         &degree,
                         &self.definitions,
-                        &self.implementations,
+                        &self.solved_impls,
                     )
                     .unwrap()
                     .try_to_integer()
@@ -486,7 +485,7 @@ impl<'a> AnalysisDriver for Driver<'a> {
         &self.0.definitions
     }
 
-    fn implementations(&self) -> &HashMap<String, Vec<TraitImplementation<Expression>>> {
-        &self.0.implementations
+    fn solved_impls(&self) -> &HashMap<String, Expression> {
+        &self.0.solved_impls
     }
 }

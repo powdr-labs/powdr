@@ -19,7 +19,7 @@ pub fn evaluate_expression_to_int(
     evaluator::evaluate_expression::<GoldilocksField>(
         &ExpressionProcessor::new(driver, &Default::default()).process_expression(expr),
         driver.definitions(),
-        driver.implementations(),
+        driver.solved_impls(),
     )?
     .try_to_integer()
 }

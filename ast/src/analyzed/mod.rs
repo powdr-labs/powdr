@@ -21,7 +21,7 @@ pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
     self, ArrayExpression, ArrayLiteral, EnumDeclaration, EnumVariant, TraitDeclaration,
-    TraitFunction, TraitImplementation,
+    TraitFunction,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -36,7 +36,7 @@ pub enum StatementIdentifier {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct Analyzed<T> {
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    pub trait_impls: HashMap<String, Vec<TraitImplementation<Expression>>>,
+    pub solved_impls: HashMap<String, Expression>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
     pub intermediate_columns: HashMap<String, (Symbol, Vec<AlgebraicExpression<T>>)>,
     pub identities: Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>>,
@@ -1267,10 +1267,6 @@ pub struct PolynomialReference {
     /// The type arguments if the symbol is generic.
     /// Guaranteed to be Some(_) after type checking is completed.
     pub type_args: Option<Vec<Type>>,
-    /// Store implementations for this reference (if it is a trait function), for each type it has been referenced somewhere in the code.
-    pub resolved_impls: BTreeMap<Vec<Type>, usize>,
-    /// If resolved implementation is matched with this reference, this is the name of the implemented trait.
-    pub trait_name: Option<String>,
 }
 
 impl PolynomialReference {
@@ -1279,8 +1275,6 @@ impl PolynomialReference {
             name,
             poly_id: None,
             type_args: None,
-            resolved_impls: BTreeMap::new(),
-            trait_name: None,
         }
     }
 }

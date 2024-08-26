@@ -21,7 +21,7 @@ use powdr_ast::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         display::format_type_scheme_around_name,
         types::{ArrayType, Type},
-        FunctionKind, TraitImplementation, TypedExpression,
+        FunctionKind, TypedExpression,
     },
 };
 use powdr_number::{DegreeType, FieldElement};
@@ -37,13 +37,13 @@ type AnalyzedIdentity<T> = Identity<SelectedExpressions<AlgebraicExpression<T>>>
 
 pub fn condense<T: FieldElement>(
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    trait_impls: HashMap<String, Vec<TraitImplementation<Expression>>>,
+    solved_impls: HashMap<String, Expression>,
     mut public_declarations: HashMap<String, PublicDeclaration>,
     identities: &[ParsedIdentity],
     source_order: Vec<StatementIdentifier>,
     auto_added_symbols: HashSet<String>,
 ) -> Analyzed<T> {
-    let mut condenser = Condenser::new(&definitions, &trait_impls);
+    let mut condenser = Condenser::new(&definitions, &solved_impls);
 
     let mut condensed_identities = vec![];
     let mut intermediate_columns = HashMap::new();
@@ -176,7 +176,7 @@ pub fn condense<T: FieldElement>(
     }
     Analyzed {
         definitions,
-        trait_impls,
+        solved_impls,
         public_declarations,
         intermediate_columns,
         identities: condensed_identities,
@@ -192,7 +192,7 @@ pub struct Condenser<'a, T> {
     /// All the definitions from the PIL file.
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     /// All the trait implementations from the PIL file.
-    trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
+    solved_impls: &'a HashMap<String, Expression>,
     /// Evaluation cache.
     symbol_values: SymbolCache<'a, T>,
     /// Current namespace (for names of generated columns).
@@ -213,7 +213,7 @@ pub struct Condenser<'a, T> {
 impl<'a, T: FieldElement> Condenser<'a, T> {
     pub fn new(
         symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-        trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
+        solved_impls: &'a HashMap<String, Expression>,
     ) -> Self {
         let counters = Counters::with_existing(symbols.values().map(|(sym, _)| sym), None, None);
         Self {
@@ -227,7 +227,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             new_intermediate_column_values: Default::default(),
             new_symbols: HashSet::new(),
             new_constraints: vec![],
-            trait_impls,
+            solved_impls,
         }
     }
 
@@ -357,7 +357,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         }
         let value = Definitions::lookup_with_symbols(
             self.symbols,
-            self.trait_impls,
+            self.solved_impls,
             poly,
             type_args,
             self,
@@ -373,7 +373,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
         Definitions {
             definitions: self.symbols,
-            trait_impls: self.trait_impls,
+            solved_impls: self.solved_impls,
         }
         .lookup_public_reference(name)
     }

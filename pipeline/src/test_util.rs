@@ -337,7 +337,7 @@ pub fn evaluate_function<'a, T: FieldElement>(
 ) -> evaluator::Value<'a, T> {
     let mut symbols = evaluator::Definitions {
         definitions: &analyzed.definitions,
-        trait_impls: &analyzed.trait_impls,
+        solved_impls: &analyzed.solved_impls,
     };
     let function = symbols.lookup(function, &None).unwrap();
     evaluator::evaluate_function_call(function, arguments, &mut symbols)

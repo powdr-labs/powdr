@@ -19,7 +19,7 @@ use powdr_ast::{
         types::{ArrayType, Type, TypeScheme},
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
         IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number,
-        Pattern, StatementInsideBlock, TraitImplementation, UnaryOperation, UnaryOperator,
+        Pattern, StatementInsideBlock, UnaryOperation, UnaryOperator,
     },
 };
 use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
@@ -29,13 +29,13 @@ use powdr_parser_util::SourceRef;
 pub fn evaluate_expression<'a, T: FieldElement>(
     expr: &'a Expression,
     definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
+    solved_impls: &'a HashMap<String, Expression>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
     evaluate(
         expr,
         &mut Definitions {
             definitions,
-            trait_impls,
+            solved_impls,
         },
     )
 }
@@ -410,7 +410,7 @@ impl<'a, T> Closure<'a, T> {
 
 pub struct Definitions<'a> {
     pub definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    pub trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
+    pub solved_impls: &'a HashMap<String, Expression>,
 }
 
 impl<'a> Definitions<'a> {
@@ -418,7 +418,7 @@ impl<'a> Definitions<'a> {
     /// of SymbolLookup for the recursive call.
     pub fn lookup_with_symbols<T: FieldElement>(
         definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-        trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
+        solved_impls: &'a HashMap<String, Expression>,
         poly: &PolynomialReference,
         type_args: &Option<Vec<Type>>,
         symbols: &mut impl SymbolLookup<'a, T>,
@@ -452,19 +452,10 @@ impl<'a> Definitions<'a> {
                 .into()
             }
         } else {
-            let impl_pos = type_args
-                .as_ref()
-                .and_then(|type_args| poly.resolved_impls.get(type_args).as_ref().copied());
-
-            match impl_pos {
-                Some(index) => {
-                    //let fn_name = poly.name.rsplit("::").next().unwrap().to_string();
-                    //let trait_name = poly.trait_name.as_ref().unwrap();
-                    let (trait_name, fn_name) = poly.name.rsplit_once("::").unwrap();
-                    let impls = trait_impls.get(trait_name).unwrap();
-                    let func = &impls[*index].function_by_name(&fn_name).unwrap();
-
-                    let Expression::LambdaExpression(_, lambda) = func.body.as_ref() else {
+            let impl_ = solved_impls.get(&name);
+            match impl_ {
+                Some(expr) => {
+                    let Expression::LambdaExpression(_, lambda) = expr else {
                         unreachable!()
                     };
                     let closure = Closure {
@@ -504,7 +495,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a> {
         poly: &PolynomialReference,
         type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        Self::lookup_with_symbols(self.definitions, self.trait_impls, poly, type_args, self)
+        Self::lookup_with_symbols(self.definitions, self.solved_impls, poly, type_args, self)
     }
 
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
@@ -1317,7 +1308,7 @@ mod test {
             symbol,
             &mut Definitions {
                 definitions: &analyzed.definitions,
-                trait_impls: &analyzed.trait_impls,
+                solved_impls: &analyzed.solved_impls,
             },
         )
         .unwrap()
@@ -1328,7 +1319,7 @@ mod test {
         let analyzed = analyze_string::<GoldilocksField>(input);
         let mut symbols = evaluator::Definitions {
             definitions: &analyzed.definitions,
-            trait_impls: &analyzed.trait_impls,
+            solved_impls: &analyzed.solved_impls,
         };
         let fn_ref = PolynomialReference::new(function.to_string());
         let function = symbols.lookup(&fn_ref, &None).unwrap();

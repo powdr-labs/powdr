@@ -13,7 +13,7 @@ use powdr_ast::{
     },
     parsed::{
         types::{ArrayType, Type},
-        IndexAccess, TraitImplementation,
+        IndexAccess,
     },
 };
 use powdr_number::{BigInt, BigUint, DegreeType, FieldElement};
@@ -85,7 +85,7 @@ fn generate_values<T: FieldElement>(
 ) -> Vec<T> {
     let symbols = CachedSymbols {
         symbols: &analyzed.definitions,
-        trait_impls: &analyzed.trait_impls,
+        solved_impls: &analyzed.solved_impls,
         cache: Arc::new(RwLock::new(Default::default())),
         degree,
     };
@@ -174,7 +174,7 @@ type SymbolCache<'a, T> = HashMap<String, BTreeMap<Option<Vec<Type>>, Arc<Value<
 #[derive(Clone)]
 pub struct CachedSymbols<'a, T> {
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
+    solved_impls: &'a HashMap<String, Expression>,
     cache: Arc<RwLock<SymbolCache<'a, T>>>,
     degree: DegreeType,
 }
@@ -197,7 +197,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
         }
         let result = Definitions::lookup_with_symbols(
             self.symbols,
-            self.trait_impls,
+            self.solved_impls,
             poly,
             type_args,
             self,

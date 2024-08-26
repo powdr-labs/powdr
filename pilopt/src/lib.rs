@@ -133,8 +133,6 @@ impl ReferencedSymbols for Expression {
                             name,
                             type_args,
                             poly_id: _,
-                            resolved_impls: _,
-                            trait_name: _,
                         }),
                     ) => Some(
                         type_args
@@ -465,8 +463,6 @@ fn substitute_polynomial_references<T: FieldElement>(
                 name: _,
                 poly_id: Some(poly_id),
                 type_args: _,
-                resolved_impls: _,
-                trait_name: _,
             }),
         ) = e
         {
