@@ -36,9 +36,9 @@ pub fn check(file: ASMProgram) -> Result<AnalysisASMFile, Vec<String>> {
 
 struct TypeChecker {
     /// The parsed AST as a single [SymbolValue::Module]
-    parsed: SymbolValue,
+    ast: SymbolValue,
     /// The already checked paths
-    checked: RefCell<HashSet<AbsoluteSymbolPath>>,
+    checked_paths: RefCell<HashSet<AbsoluteSymbolPath>>,
     /// The checked items
     /// We use [RefCell] because we want to mutate this while borrowing from `parsed`
     analyzed: RefCell<BTreeMap<AbsoluteSymbolPath, Item>>,
@@ -47,19 +47,19 @@ struct TypeChecker {
 impl TypeChecker {
     fn new(root: ASMModule) -> Self {
         Self {
-            parsed: SymbolValue::Module(Module::Local(root)),
-            checked: Default::default(),
+            ast: SymbolValue::Module(Module::Local(root)),
+            checked_paths: Default::default(),
             analyzed: Default::default(),
         }
     }
 
     fn check_path(&self, ctx: &AbsoluteSymbolPath) -> Result<(), Vec<String>> {
         // check if the path is already checked
-        if self.checked.borrow().contains(ctx) {
+        if self.checked_paths.borrow().contains(ctx) {
             return Ok(());
         }
 
-        let symbol = ctx.parts().fold(&self.parsed, |acc, part| match acc {
+        let symbol = ctx.parts().fold(&self.ast, |acc, part| match acc {
             SymbolValue::Module(Module::Local(m)) => m
                 .statements
                 .iter()
@@ -80,7 +80,7 @@ impl TypeChecker {
             _ => unreachable!(),
         };
 
-        self.checked.borrow_mut().insert(ctx.clone());
+        self.checked_paths.borrow_mut().insert(ctx.clone());
 
         res
     }
@@ -433,13 +433,13 @@ impl TypeChecker {
     }
 
     /// Get the type of a path. If required, check the path first.
-    fn type_of(&self, ty: &AbsoluteSymbolPath) -> Result<Type, Vec<String>> {
-        self.check_path(ty)?;
+    fn type_of(&self, path: &AbsoluteSymbolPath) -> Result<Type, Vec<String>> {
+        self.check_path(path)?;
 
         Ok(self
             .analyzed
             .borrow()
-            .get(ty)
+            .get(path)
             .map(|item| match item {
                 Item::Machine(_) => Type::Machine,
                 Item::Expression(_) => Type::Expression,
