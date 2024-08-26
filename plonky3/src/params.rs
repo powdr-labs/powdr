@@ -1,16 +1,22 @@
-use p3_commit::{Pcs, PolynomialSpace};
-use p3_symmetric::CompressionFunction;
+use p3_commit::PolynomialSpace;
 use p3_uni_stark::StarkGenericConfig;
 use powdr_number::FieldElement;
 
 pub type Plonky3Field<T> =
-    <<MyPcs<T> as Pcs<Challenge<T>, Challenger<T>>>::Domain as PolynomialSpace>::Val;
-pub type MyPcs<T> = <<T as FieldElementMap>::Config as StarkGenericConfig>::Pcs;
+    <<Pcs<T> as p3_commit::Pcs<Challenge<T>, Challenger<T>>>::Domain as PolynomialSpace>::Val;
+pub type Pcs<T> = <<T as FieldElementMap>::Config as StarkGenericConfig>::Pcs;
 pub type Challenge<T> = <<T as FieldElementMap>::Config as StarkGenericConfig>::Challenge;
 pub type Challenger<T> = <<T as FieldElementMap>::Config as StarkGenericConfig>::Challenger;
 
-pub trait FieldElementMap: FieldElement {
-    type Config: StarkGenericConfig + Send;
+pub type ProverData<F> = <Pcs<F> as p3_commit::Pcs<Challenge<F>, Challenger<F>>>::ProverData;
+pub type Commitment<F> = <Pcs<F> as p3_commit::Pcs<Challenge<F>, Challenger<F>>>::Commitment;
+
+pub trait FieldElementMap: FieldElement
+where
+    ProverData<Self>: Send,
+    Commitment<Self>: Send,
+{
+    type Config: StarkGenericConfig;
 
     fn to_p3_field(&self) -> Plonky3Field<Self>;
 
