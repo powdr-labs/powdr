@@ -12,6 +12,7 @@ use core::{alloc::Layout, arch::asm, slice};
 use powdr_riscv_syscalls::Syscall;
 
 use crate::io::write_slice;
+use getrandom::{register_custom_getrandom, Error};
 
 #[no_mangle]
 extern "C" fn sys_rand(buf: *mut u32, words: usize) {
@@ -25,6 +26,17 @@ extern "C" fn sys_rand(buf: *mut u32, words: usize) {
         *v = VALUE;
     }
 }
+
+fn powdr_getrandom(s: &mut [u8]) -> Result<(), Error> {
+    // TODO: getrandom expects this u8 slice as input, so we're not using sys_rand.
+    // Both should probably be fixed/unified later once we have a proper RNG.
+    const VALUE: u8 = 3;
+    s.iter_mut().for_each(|v| *v = VALUE);
+
+    Ok(())
+}
+
+register_custom_getrandom!(powdr_getrandom);
 
 #[no_mangle]
 extern "C" fn sys_panic(msg_ptr: *const u8, len: usize) -> ! {

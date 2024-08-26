@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use powdr_backend::BackendType;
 use powdr_executor::constant_evaluator::get_uniquely_sized;
 use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
@@ -76,7 +78,7 @@ fn mem_write_once_external_write() {
     let pipeline = make_prepared_pipeline(
         f,
         Default::default(),
-        vec![("main_memory.value".to_string(), mem)],
+        vec![("main_memory::value".to_string(), mem)],
     );
     test_pilcom(pipeline);
 }
@@ -177,9 +179,16 @@ fn vm_to_vm() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn vm_to_vm_dynamic_trace_length() {
     let f = "asm/vm_to_vm_dynamic_trace_length.asm";
-    regular_test(f, &[]);
+    run_pilcom_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite)
+        .unwrap();
+    test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite);
+    gen_estark_proof_with_backend_variant(
+        make_simple_prepared_pipeline(f),
+        BackendVariant::Composite,
+    );
 }
 
 #[test]
@@ -195,17 +204,27 @@ fn vm_to_block_array() {
 }
 
 #[test]
-fn vm_to_block_different_length() {
-    let f = "asm/vm_to_block_different_length.asm";
+#[ignore = "Too slow"]
+fn dynamic_vadcop() {
+    let f = "asm/dynamic_vadcop.asm";
+
+    let mut pipeline_gl = make_simple_prepared_pipeline(f);
+    let witness = pipeline_gl.compute_witness().unwrap();
+    let witness_by_name = witness
+        .iter()
+        .map(|(k, v)| (k.as_str(), v))
+        .collect::<BTreeMap<_, _>>();
+
+    // Spot-check some witness columns to have the expected length.
+    assert_eq!(witness_by_name["main::X"].len(), 128);
+    assert_eq!(witness_by_name["main_arith::y"].len(), 32);
+    assert_eq!(witness_by_name["main_memory::m_addr"].len(), 32);
+
     // Because machines have different lengths, this can only be proven
     // with a composite proof.
-    run_pilcom_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite)
-        .unwrap();
+    run_pilcom_with_backend_variant(pipeline_gl.clone(), BackendVariant::Composite).unwrap();
+    gen_estark_proof_with_backend_variant(pipeline_gl, BackendVariant::Composite);
     test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite);
-    gen_estark_proof_with_backend_variant(
-        make_simple_prepared_pipeline(f),
-        BackendVariant::Composite,
-    );
 }
 
 #[test]

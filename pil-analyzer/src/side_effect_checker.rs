@@ -88,7 +88,7 @@ impl<'a> SideEffectChecker<'a> {
                     function,
                     arguments,
                 },
-            ) if matches!(function.as_ref(), Expression::Reference(_, Reference::Poly(r)) if r.name == "std::prover::set_hint") =>
+            ) if matches!(function.as_ref(), Expression::Reference(_, Reference::Poly(r)) if r.name == "std::prelude::set_hint") =>
             {
                 // The function "set_hint" is special: It expects a "query" function as
                 // second argument, so we switch context when descending into the second argument.
@@ -146,7 +146,7 @@ lazy_static! {
         ("std::field::modulus", FunctionKind::Pure),
         ("std::prelude::challenge", FunctionKind::Constr), // strictly, only new_challenge would need "constr"
         ("std::prover::degree", FunctionKind::Pure),
-        ("std::prover::set_hint", FunctionKind::Constr),
+        ("std::prelude::set_hint", FunctionKind::Constr),
         ("std::prover::eval", FunctionKind::Query),
     ]
     .into_iter()

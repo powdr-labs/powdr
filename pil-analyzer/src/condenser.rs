@@ -489,20 +489,20 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             })) => {
                 if poly_id.ptype != PolynomialType::Committed {
                     return Err(EvalError::TypeError(format!(
-                        "Expected reference to witness column as first argument for std::prover::set_hint, but got {} column {name}.",
+                        "Expected reference to witness column as first argument for std::prelude::set_hint, but got {} column {name}.",
                         poly_id.ptype
                     )));
                 }
                 if name.contains('[') {
                     return Err(EvalError::TypeError(format!(
-                        "Array elements are not supported for std::prover::set_hint (called on {name})."
+                        "Array elements are not supported for std::prelude::set_hint (called on {name})."
                     )));
                 }
                 name.clone()
             }
             col => {
                 return Err(EvalError::TypeError(format!(
-                    "Expected reference to witness column as first argument for std::prover::set_hint, but got {col}: {}",
+                    "Expected reference to witness column as first argument for std::prelude::set_hint, but got {col}: {}",
                     col.type_formatted()
                 )));
             }
@@ -554,7 +554,12 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         once(None)
             .chain((1..).map(Some))
             .map(|cnt| format!("{name}{}", cnt.map(|c| format!("_{c}")).unwrap_or_default()))
-            .map(|name| self.namespace.with_part(&name).to_dotted_string())
+            .map(|name| {
+                self.namespace
+                    .with_part(&name)
+                    .relative_to(&Default::default())
+                    .to_string()
+            })
             .find(|name| !self.symbols.contains_key(name) && !self.new_symbols.contains(name))
             .unwrap()
     }

@@ -44,8 +44,8 @@ lazy_static! {
         ("std::prelude::challenge", ("", "int, int -> expr")),
         ("std::prover::degree", ("", "-> int")),
         (
-            "std::prover::set_hint",
-            ("", "expr, (int -> std::prover::Query) -> ()")
+            "std::prelude::set_hint",
+            ("", "expr, (int -> std::prelude::Query) -> ()")
         ),
         ("std::prover::eval", ("", "expr -> fe")),
     ]

@@ -1,7 +1,9 @@
 use std::machines::shift::Shift;
 use std::machines::shift::ByteShift;
 
-machine Main with degree: 65536 {
+let N: int = 65536;
+
+machine Main with degree: N {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
@@ -35,7 +37,7 @@ machine Main with degree: 65536 {
     }
 }
 
-machine WithArg(shift: Shift) {
+machine WithArg(shift: Shift) with degree: N {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];

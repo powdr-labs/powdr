@@ -9,7 +9,7 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [features]
-default = [] # complex-tests is disabled by default
+default = []                                       # complex-tests is disabled by default
 complex-tests = []
 estark-polygon = ["powdr-pipeline/estark-polygon"]
 
@@ -36,10 +36,11 @@ raki = "0.1.4"
 # This is only here to work around https://github.com/lalrpop/lalrpop/issues/750
 # It should be removed once that workaround is no longer needed.
 regex-syntax = { version = "0.6", default_features = false, features = [
-    "unicode",
+  "unicode",
 ] }
 serde_json = "1.0"
 thiserror = "1.0"
+static_assertions = "1.1.0"
 
 [build-dependencies]
 lalrpop = "^0.19"
@@ -53,7 +54,11 @@ env_logger = "0.10.0"
 hex = "0.4.3"
 criterion = { version = "0.4", features = ["html_reports"] }
 
-serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }
+serde = { version = "1.0", default-features = false, features = [
+  "alloc",
+  "derive",
+  "rc",
+] }
 
 [package.metadata.cargo-udeps.ignore]
 development = ["env_logger"]
