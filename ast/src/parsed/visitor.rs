@@ -18,6 +18,10 @@ pub trait AllChildren<O> {
     /// Returns an iterator over all direct and indirect children of kind O in this object.
     /// Pre-order visitor.
     fn all_children(&self) -> Box<dyn Iterator<Item = &O> + '_>;
+
+    /// Returns an iterator over all direct and indirect children of kind Q in this object.
+    /// Post-order visitor.
+    fn all_children_mut(&mut self) -> Box<dyn Iterator<Item = &mut O> + '_>;
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -187,10 +191,23 @@ impl<Ref> AllChildren<Expression<Ref>> for Expression<Ref> {
     fn all_children(&self) -> Box<dyn Iterator<Item = &Expression<Ref>> + '_> {
         Box::new(iter::once(self).chain(self.children().flat_map(|e| e.all_children())))
     }
+
+    fn all_children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<Ref>> + '_> {
+        let self_iter = iter::once(self as *mut _);
+        let children_iter = self
+            .children_mut()
+            .flat_map(|child| child.all_children_mut());
+        let self_iter = self_iter.map(|ptr| unsafe { &mut *ptr }); // TODO GZ: remove unsafe
+        Box::new(self_iter.chain(children_iter))
+    }
 }
 
 impl<Expr: AllChildren<Expr>, C: Children<Expr>> AllChildren<Expr> for C {
     fn all_children(&self) -> Box<dyn Iterator<Item = &Expr> + '_> {
         Box::new(self.children().flat_map(|e| e.all_children()))
+    }
+
+    fn all_children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expr> + '_> {
+        Box::new(self.children_mut().flat_map(|e| e.all_children_mut()))
     }
 }
