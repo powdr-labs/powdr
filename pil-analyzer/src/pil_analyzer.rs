@@ -5,7 +5,7 @@ use std::iter::once;
 use std::path::{Path, PathBuf};
 
 use itertools::Itertools;
-use powdr_ast::parsed::asm::{parse_absolute_path, AbsoluteSymbolPath, SymbolPath};
+use powdr_ast::parsed::asm::{parse_absolute_path, AbsoluteSymbolPath, SymbolPath, Symbols};
 use powdr_ast::parsed::types::{ArrayType, Type};
 use powdr_ast::parsed::visitor::Children;
 use powdr_ast::parsed::{
@@ -165,12 +165,8 @@ impl PILAnalyzer {
             let module = parse_module(None, prelude).unwrap();
             let missing_symbols = module
                 .symbols
-                .into_iter()
-                .filter_map(|s| {
-                    missing_symbols
-                        .contains(&s.name.as_str())
-                        .then_some(format!("{s}"))
-                })
+                .iter()
+                .filter_map(|s| missing_symbols.contains(&s.name).then_some(format!("{s}")))
                 .join("\n");
             parse(None, &format!("namespace std::prelude;\n{missing_symbols}")).unwrap()
         })

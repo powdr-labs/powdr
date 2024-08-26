@@ -4,7 +4,7 @@
 
 use lalrpop_util::*;
 use powdr_ast::parsed::{
-    asm::ASMProgram,
+    asm::{non_unique, ASMProgram},
     types::{Type, TypeBounds, TypeScheme},
     Expression, SourceReference,
 };
@@ -72,14 +72,14 @@ pub fn parse(file_name: Option<&str>, input: &str) -> Result<powdr_ast::parsed::
 pub fn parse_asm(
     file_name: Option<&str>,
     input: &str,
-) -> Result<powdr_ast::parsed::asm::non_unique::ASMProgram, Error> {
+) -> Result<non_unique::ASMProgram, Error> {
     parse_module(file_name, input).map(|main| ASMProgram { main })
 }
 
 pub fn parse_module(
     file_name: Option<&str>,
     input: &str,
-) -> Result<powdr_ast::parsed::asm::non_unique::ASMModule, Error> {
+) -> Result<non_unique::ASMModule, Error> {
     let ctx = ParserContext::new(file_name, input);
     ASM_MODULE_PARSER
         .parse(&ctx, input)

@@ -80,6 +80,9 @@ pub trait Symbols:
 {
     fn iter_mut(&mut self) -> impl Iterator<Item = SymbolDefinitionMut<Self>>;
     fn iter(&self) -> impl Iterator<Item = SymbolDefinitionRef<Self>>;
+    fn insert(&mut self, d: SymbolDefinition<Self>) {
+        self.extend(once(d))
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, From)]

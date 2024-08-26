@@ -32,9 +32,9 @@ impl<S: Symbols> ClearSourceRefs for ASMModule<S> {
     }
 }
 
-impl<E> ClearSourceRefs for TraitImplementation<E> {
+impl<R> ClearSourceRefs for TraitImplementation<Expression<R>> {
     fn clear_source_refs(&mut self) {
-        todo!()
+        self.children_mut().for_each(ClearSourceRefs::clear_source_refs)
     }
 }
 

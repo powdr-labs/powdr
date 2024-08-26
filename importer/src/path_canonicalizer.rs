@@ -61,8 +61,8 @@ impl<'a> Folder<NonUniqueSymbols, UniqueSymbols> for Canonicalizer<'a> {
             symbols: module
                 .symbols
                 .into_iter()
-                .filter_map(|d| {
-                    match d.value {
+                .filter_map(|SymbolDefinition { name, value }| {
+                    match value {
                         SymbolValue::Machine(m) => {
                             // canonicalize the machine based on the same path, so we can reuse the same instance
                             self.fold_machine(m).map(From::from).map(Some).transpose()
@@ -74,7 +74,7 @@ impl<'a> Folder<NonUniqueSymbols, UniqueSymbols> for Canonicalizer<'a> {
                             }
                             // Continue canonicalizing inside the module with a new instance pointed at the module path
                             Module::Local(module) => Canonicalizer {
-                                path: self.path.with_part(&d.name),
+                                path: self.path.with_part(&name),
                                 paths: self.paths,
                             }
                             .fold_module_value(module)
@@ -117,12 +117,7 @@ impl<'a> Folder<NonUniqueSymbols, UniqueSymbols> for Canonicalizer<'a> {
                             Some(Ok(SymbolValue::TraitDeclaration(trait_decl)))
                         }
                     }
-                    .map(|value| {
-                        value.map(|value| SymbolDefinition {
-                            name: d.name,
-                            value,
-                        })
-                    })
+                    .map(|value| value.map(|value| SymbolDefinition { name, value }))
                 })
                 .collect::<Result<_, _>>()?,
             implementations: module

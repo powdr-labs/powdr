@@ -1,9 +1,12 @@
-use std::{env, iter::once, path::PathBuf};
+use std::{env, path::PathBuf};
 
 use powdr_ast::parsed::{
     asm::{
-        non_unique::{self, NonUniqueSymbols},
-        ASMProgram, Import, Module, Part, SymbolDefinition, SymbolPath, SymbolValue, Symbols,
+        non_unique::{
+            ASMModule, ASMProgram, Import, Module, NonUniqueSymbols, Part,
+            SymbolDefinition, SymbolPath, SymbolValue,
+        },
+        Symbols,
     },
     folder::{fold_module_value, Folder},
 };
@@ -19,7 +22,7 @@ static MOD_FILE: &str = "mod.asm";
 ///
 /// # Panics
 /// If there is an error loading the standard library
-fn load_std() -> non_unique::ASMModule {
+fn load_std() -> ASMModule {
     let default_std_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
@@ -50,7 +53,7 @@ fn load_std() -> non_unique::ASMModule {
     }
 }
 
-pub fn add_std(program: non_unique::ASMProgram) -> Result<non_unique::ASMProgram, String> {
+pub fn add_std(program: ASMProgram) -> Result<ASMProgram, String> {
     StdAdder().fold_program(program)
 }
 
@@ -61,26 +64,20 @@ type Error = String;
 impl Folder<NonUniqueSymbols, NonUniqueSymbols> for StdAdder {
     type Error = Error;
 
-    fn fold_program(
-        &mut self,
-        p: non_unique::ASMProgram,
-    ) -> Result<non_unique::ASMProgram, Self::Error> {
+    fn fold_program(&mut self, p: ASMProgram) -> Result<ASMProgram, Self::Error> {
         // Add `std` to the main module
         let mut main = p.main;
-        main.symbols.extend(once(SymbolDefinition {
+        main.symbols.insert(SymbolDefinition {
             name: "std".to_string(),
             value: SymbolValue::Module(Module::Local(load_std())),
-        }));
+        });
 
         // Recurse
         let main = self.fold_module_value(main)?;
         Ok(ASMProgram { main })
     }
 
-    fn fold_module_value(
-        &mut self,
-        module: non_unique::ASMModule,
-    ) -> Result<non_unique::ASMModule, Self::Error> {
+    fn fold_module_value(&mut self, module: ASMModule) -> Result<ASMModule, Self::Error> {
         let mut module = fold_module_value(self, module)?;
 
         // Check whether the module already has a definition for `std`
@@ -91,12 +88,12 @@ impl Folder<NonUniqueSymbols, NonUniqueSymbols> for StdAdder {
             // If not, add `use super::std;`
             let std_import_path =
                 SymbolPath::from_parts([Part::Super, Part::Named("std".to_string())]);
-            module.symbols.extend(once(SymbolDefinition {
+            module.symbols.insert(SymbolDefinition {
                 name: "std".to_string(),
                 value: SymbolValue::Import(Import {
                     path: std_import_path,
                 }),
-            }));
+            });
         }
 
         Ok(module)

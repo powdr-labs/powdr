@@ -26,13 +26,13 @@ impl<S: Symbols> Display for ASMProgram<S> {
 
 impl<S: Symbols> Display for ASMModule<S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write_items(f, self.symbols.clone())
+        write_items(f, self.symbols.iter())
     }
 }
 
-impl<S: Symbols> Display for SymbolDefinition<S> {
+impl<'a, S: Symbols> Display for SymbolDefinitionRef<'a, S> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        let SymbolDefinition { name, value } = self;
+        let SymbolDefinitionRef { name, value } = self;
         match value {
             SymbolValue::Machine(m) => {
                 write!(f, "machine {name}{m}")
@@ -65,7 +65,8 @@ impl<S: Symbols> Display for Module<S> {
             Module::External(name) => write!(f, "{name};"),
             Module::Local(module) => {
                 writeln!(f, "{{")?;
-                write_items_indented(f, module.symbols.clone().into_iter())?;
+                write_items_indented(f, module.symbols.iter())?;
+                write_items_indented(f, &module.implementations)?;
                 write!(f, "}}")
             }
         }
