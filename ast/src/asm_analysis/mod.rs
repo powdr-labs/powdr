@@ -705,6 +705,7 @@ pub struct MachineDegree {
 
 impl MachineDegree {
     pub fn is_static(&self) -> bool {
+        // we use expression equality here, so `2 + 2 != 4`
         matches!((&self.min, &self.max), (Some(min), Some(max)) if min == max)
     }
 }
