@@ -113,7 +113,7 @@ where
                     .unwrap()
                     .definitions
                     .iter()
-                    .find_map(|(name, (s, _))| match (name.starts_with("main."), s) {
+                    .find_map(|(name, (s, _))| match (name.starts_with("main::"), s) {
                         (true, s) => s.degree.map(|d| d.max),
                         _ => None,
                     })
