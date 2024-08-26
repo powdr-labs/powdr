@@ -649,21 +649,7 @@ IfExpression: Box<Expression> = {
 }
 
 StructExpression: Box<Expression> = {
-    <start:@L> <name:Identifier> "with" "{" <fields:StructExpressionList> "}" <end:@R> => ctx.to_expr_with_source_ref(StructExpression{name, fields}, start, end),
-}
-
-
-
-StructExpressionList: Vec<NamedExpression<Expression>> = {
-    => Vec::new(),
-    <mut fields:(<NamedExpression> ",")*> <end:NamedExpression> ","? => {
-        fields.push(end);
-        fields
-    }
-}
-
-NamedExpression: NamedExpression<Expression> = {
-    <name:Identifier> ":" <expr:BoxedExpression> => NamedExpression { name, expr }
+    <start:@L> <name:Identifier> "with" "{" <fields:NamedExpressions> "}" <end:@R> => ctx.to_expr_with_source_ref(StructExpression{name, fields}, start, end),
 }
 
 BlockExpression: Box<Expression> = {

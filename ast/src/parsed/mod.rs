@@ -289,15 +289,15 @@ impl<R> Children<Expression<R>> for StructDeclaration<u64> {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct NamedExpression<Expression> {
     pub name: String,
-    pub expr: Box<Expression>,
+    pub body: Box<Expression>,
 }
 
 impl<R> Children<Expression<R>> for NamedExpression<Expression<R>> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
-        Box::new(once(self.expr.as_ref()))
+        Box::new(once(self.body.as_ref()))
     }
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
-        Box::new(once(self.expr.as_mut()))
+        Box::new(once(self.body.as_mut()))
     }
 }
 
@@ -401,12 +401,6 @@ impl<R> Children<Expression<R>> for TraitImplementation<Expression<R>> {
                 .flat_map(|m| m.body.children_mut()),
         )
     }
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct NamedExpression<Expr> {
-    pub name: String,
-    pub body: Box<Expr>,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]

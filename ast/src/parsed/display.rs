@@ -703,12 +703,6 @@ impl<Expr: Display> Display for SelectedExpressions<Expr> {
     }
 }
 
-impl<E: Display> Display for NamedExpression<E> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}: {}", self.name, self.body)
-    }
-}
-
 impl<E: Display> Display for EnumVariant<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}", self.name)?;
@@ -768,7 +762,7 @@ impl<E: Display> Display for StructExpression<E> {
 
 impl<E: Display> Display for NamedExpression<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}: {}", self.name, self.expr)
+        write!(f, "{}: {}", self.name, self.body)
     }
 }
 

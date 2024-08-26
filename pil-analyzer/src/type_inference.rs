@@ -725,16 +725,11 @@ impl TypeChecker {
             }
             Expression::StructExpression(sr, struct_expr) => {
                 for named_expr in struct_expr.fields.iter_mut() {
-                    let field_name = if struct_expr.name.contains('.') {
-                        format!("{}::{}", struct_expr.name, named_expr.name).replace('.', "::")
-                    } else {
-                        format!("{}.{}", struct_expr.name, named_expr.name)
-                    };
-                    let expr_ty = self.declared_types[&field_name].1.ty.clone();
-                    self.expect_type(&expr_ty, named_expr.expr.as_mut())?;
+                    let expr_ty = self.declared_types[&struct_expr.name].1.ty.clone();
+                    self.expect_type(&expr_ty, named_expr.body.as_mut())?;
                 }
 
-                match SymbolPath::from_str(&struct_expr.name.replace('.', "::")) {
+                match SymbolPath::from_str(&struct_expr.name) {
                     Ok(named_type) => Ok(Type::NamedType(named_type, None)),
                     Err(err) => Err(sr.with_error(err))?,
                 }?
@@ -923,13 +918,14 @@ impl TypeChecker {
                                     let fname = format!("{name}.{field_name}");
 
                                     let (ty, _generic_args) = self
+                                        .unifier
                                         .instantiate_scheme(self.declared_types[&fname].1.clone());
                                     let ty = type_for_reference(&ty);
 
                                     self.expect_type_of_pattern(&ty, &f.1)?;
                                 }
                                 None => {
-                                    let ty = self.new_type_var();
+                                    let ty = self.unifier.new_type_var();
                                     self.expect_type_of_pattern(&ty, &f.1)?;
                                     self.local_var_types.push(ty.clone());
                                 }

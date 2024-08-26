@@ -810,8 +810,8 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             ))?,
             Expression::StructExpression(_, StructExpression { name, fields }) => {
                 let mut exp_fields = Vec::new();
-                for NamedExpression { name, expr } in fields.iter() {
-                    self.expand(expr)?;
+                for NamedExpression { name, body } in fields.iter() {
+                    self.expand(body)?;
 
                     let value = self.value_stack.pop().ok_or(EvalError::SymbolNotFound(
                         "Symbol {name} not found".to_string(),

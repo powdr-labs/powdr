@@ -673,7 +673,7 @@ impl Children<Expression> for FunctionValueDefinition {
                 enum_declaration.children_mut()
             }
             FunctionValueDefinition::TypeConstructor(type_constructor) => {
-                type_constructor.children()
+                type_constructor.children_mut()
             }
             FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children_mut(),
             FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children_mut(),

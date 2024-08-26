@@ -8,8 +8,8 @@ use std::iter::once;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Expression, FunctionValueDefinition,
-    IdentityKind, IdentityKind, PolyID, PolynomialReference, PolynomialType, Reference, SymbolKind,
-    TypeConstructor, TypeDeclaration, TypedExpression, TypedExpression,
+    IdentityKind, PolyID, PolynomialReference, PolynomialType, Reference, SymbolKind,
+    TypeConstructor, TypeDeclaration, TypedExpression,
 };
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
