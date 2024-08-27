@@ -456,6 +456,7 @@ ExpressionList: Vec<Expression> = {
     <mut list:( <Expression<TermWithStruct>> "," )*> <end:Expression<TermWithStruct>>  => { list.push(end); list }
 }
 
+
 Expression<StructOption>: Expression = {
     BoxedExpression<StructOption> => *<>,
 }
@@ -615,10 +616,10 @@ TermCommon<StructOption>: Box<Expression> = {
     IfExpression,
     BlockExpression,
     <start:@L> "[" <items:ExpressionList> "]" <end:@R> => ctx.to_expr_with_source_ref(ArrayLiteral{items}, start, end),
-    <start:@L> "(" <head:Expression<StructOption>> "," <tail:ExpressionList> ")" <end:@R> => { let mut list = vec![head]; list.extend(tail); Box::new(Expression::Tuple(ctx.source_ref(start, end), list)) },
+    <start:@L> "(" <head:Expression<<TermWithStruct>>> "," <tail:ExpressionList> ")" <end:@R> => { let mut list = vec![head]; list.extend(tail); Box::new(Expression::Tuple(ctx.source_ref(start, end), list)) },
     <start:@L> "(" ")" <end:@R> => Box::new(Expression::Tuple(ctx.source_ref(start, end), vec![])),
-    "(" <BoxedExpression<StructOption>> ")",
-    <start:@L> "${" <b:BoxedExpression<StructOption>> "}" <end:@R> => Box::new(Expression::FreeInput(ctx.source_ref(start, end), b))
+    "(" <BoxedExpression<<TermWithStruct>>> ")",
+    <start:@L> "${" <b:BoxedExpression<<TermWithStruct>>> "}" <end:@R> => Box::new(Expression::FreeInput(ctx.source_ref(start, end), b))
 }
 
 IndexAccess<StructOption>: IndexAccess = {
@@ -672,19 +673,7 @@ StatementInsideBlock: StatementInsideBlock = {
 
 // This rules are placeholder to test the parser. Structs are not implemented yet.
 StructExpression: Box<Expression> = {
-    <start:@L> <name:Identifier> "{" <fields:StructExpressionList> "}" <end:@R> => Box::new(Expression::Tuple(ctx.source_ref(start, end), vec![])),
-}
-
-StructExpressionList: Vec<Box<Expression>> = { //Vec<NamedExpression<Expression>> = {
-    => Vec::new(),
-    <mut fields:(<NamedExpression> ",")*> <end:NamedExpression> ","? => {
-        fields.push(end);
-        fields
-    }
-}
-
-NamedExpression: Box<Expression> = { //NamedExpression<Expression> = {
-    <name:Identifier> ":" <expr:BoxedExpression<TermWithStruct>> => expr //NamedExpression { name, expr }
+    <start:@L> <name:Identifier> "{" <fields:NamedExpressions> "}" <end:@R> => Box::new(Expression::Tuple(ctx.source_ref(start, end), vec![])),
 }
 
 // ---------------------------- Pattern -----------------------------
@@ -758,7 +747,7 @@ NamedExpressions: Vec<NamedExpression<Expression>> = {
 }
 
 NamedExpression: NamedExpression<Expression> = {
-    <name:Identifier> ":" <body:BoxedExpression> => NamedExpression { name, body }
+    <name:Identifier> ":" <body:BoxedExpression<TermWithStruct>> => NamedExpression { name, body }
 }
 
 GenericTraitName: (SymbolPath, TypeScheme) = {
