@@ -691,7 +691,7 @@ fn impl_type_resolution() {
 
         let r: int = Add::add(3, 4);
     ";
-    type_check(input, &[("F.r", "", "int")]);
+    type_check(input, &[("F::r", "", "int")]);
 }
 
 #[test]
