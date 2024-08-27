@@ -115,6 +115,12 @@ impl<'a> Folder for Canonicalizer<'a> {
                         }
                         .map(|value| value.map(|value| SymbolDefinition { name, value }.into()))
                     }
+                    ModuleStatement::TraitImplementation(mut trait_impl) => {
+                        for f in &mut trait_impl.functions {
+                            canonicalize_inside_expression(&mut f.body, &self.path, self.paths)
+                        }
+                        Some(Ok(ModuleStatement::TraitImplementation(trait_impl)))
+                    }
                 })
                 .collect::<Result<_, _>>()?,
         })
@@ -170,6 +176,10 @@ impl<'a> Folder for Canonicalizer<'a> {
         for param in &mut machine.params.0 {
             let p = self.path.clone().join(param.ty.clone().unwrap());
             param.ty = Some(self.paths.get(&p).cloned().unwrap().into());
+        }
+        // canonicalize machine degree
+        if let Some(degree) = machine.properties.degree.as_mut() {
+            canonicalize_inside_expression(degree, &self.path, self.paths);
         }
 
         Ok(machine)
@@ -631,6 +641,15 @@ fn check_machine(
         check_path(module_location.clone().join(path), state)
             .map_err(|e| SourceRef::default().with_error(e))?
     }
+    if let Some(degree) = &m.properties.degree {
+        check_expression(
+            &module_location,
+            degree,
+            state,
+            &Default::default(),
+            &local_variables,
+        )?;
+    }
     for statement in &m.statements {
         match statement {
             MachineStatement::Submachine(source_ref, path, _, args) => {
@@ -660,13 +679,13 @@ fn check_machine(
                     )
                 })?,
             MachineStatement::Pil(_, statement) => {
-                let type_vars;
-                if let PilStatement::LetStatement(_, _, Some(type_scheme), _) = statement {
-                    check_type_scheme(&module_location, type_scheme, state, &local_variables)?;
-                    type_vars = type_scheme.vars.vars().collect();
-                } else {
-                    type_vars = Default::default();
-                };
+                let type_vars =
+                    if let PilStatement::LetStatement(_, _, Some(type_scheme), _) = statement {
+                        check_type_scheme(&module_location, type_scheme, state, &local_variables)?;
+                        type_scheme.vars.vars().collect()
+                    } else {
+                        Default::default()
+                    };
                 statement.children().try_for_each(|e| {
                     check_expression(&module_location, e, state, &type_vars, &local_variables)
                 })?
@@ -1128,5 +1147,10 @@ mod tests {
     #[test]
     fn instruction() {
         expect("instruction", Ok(()))
+    }
+
+    #[test]
+    fn degree_not_found() {
+        expect("degree_not_found", Err("symbol not found in `::`: `N`"))
     }
 }

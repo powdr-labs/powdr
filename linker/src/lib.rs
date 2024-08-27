@@ -16,11 +16,9 @@ use powdr_parser_util::SourceRef;
 
 use itertools::Itertools;
 
-const DEFAULT_DEGREE: u32 = 1024;
 const MAIN_OPERATION_NAME: &str = "main";
 
-/// a monolithic linker which outputs a single AIR
-/// It sets the degree of submachines to the degree of the main machine, and errors out if a submachine has an explicit degree which doesn't match the main one
+/// The optional degree of the namespace is set to that of the object if it's set, to that of the main object otherwise.
 pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
     let main_machine = graph.main;
     let main_degree = graph
@@ -28,8 +26,7 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
         .get(&main_machine.location)
         .unwrap()
         .degree
-        .clone()
-        .unwrap_or_else(|| DEFAULT_DEGREE.into());
+        .clone();
 
     let mut pil = process_definitions(graph.definitions);
 
@@ -38,7 +35,7 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
         pil.push(PilStatement::Namespace(
             SourceRef::unknown(),
             SymbolPath::from_identifier(location.to_string()),
-            Some(object.degree.unwrap_or(main_degree.clone())),
+            object.degree.or(main_degree.clone()),
         ));
 
         pil.extend(object.pil);
@@ -58,7 +55,7 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
                         let linker_first_step = "_linker_first_step";
                         pil.extend([
                             parse_pil_statement(&format!(
-                                "col fixed {linker_first_step} = [1] + [0]*;"
+                                "col fixed {linker_first_step}(i) {{ if i == 0 {{ 1 }} else {{ 0 }} }};"
                             )),
                             parse_pil_statement(&format!(
                                 "{linker_first_step} * ({operation_id} - {main_operation_id}) = 0;"
@@ -271,7 +268,7 @@ mod test {
     #[test]
     fn compile_empty_vm() {
         let expectation = r#"namespace main(4 + 4);
-    pol commit _operation_id(i) query std::prover::Query::Hint(2);
+    pol commit _operation_id(i) query std::prelude::Query::Hint(2);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
     _operation_id_no_change * (_operation_id' - _operation_id) = 0;
@@ -284,7 +281,7 @@ mod test {
     pol commit pc_update;
     pc_update = instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1);
     pc' = (1 - first_step') * pc_update;
-    1 $ [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return] in main__rom.latch $ [main__rom.operation_id, main__rom.p_line, main__rom.p_instr__jump_to_operation, main__rom.p_instr__reset, main__rom.p_instr__loop, main__rom.p_instr_return];
+    1 $ [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return] in main__rom::latch $ [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return];
 namespace main__rom(4 + 4);
     pol constant p_line = [0, 1, 2] + [2]*;
     pol constant p_instr__jump_to_operation = [0, 1, 0] + [0]*;
@@ -306,7 +303,7 @@ namespace main__rom(4 + 4);
 
     #[test]
     fn compile_really_empty_vm() {
-        let expectation = r#"namespace main(1024);
+        let expectation = r#"namespace main;
 "#;
 
         let graph = parse_analyze_and_compile::<GoldilocksField>("");
@@ -325,7 +322,7 @@ namespace main__rom(4 + 4);
     #[test]
     fn compile_different_signatures() {
         let expectation = r#"namespace main(16);
-    pol commit _operation_id(i) query std::prover::Query::Hint(4);
+    pol commit _operation_id(i) query std::prelude::Query::Hint(4);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
     _operation_id_no_change * (_operation_id' - _operation_id) = 0;
@@ -359,11 +356,11 @@ namespace main__rom(4 + 4);
     pc' = (1 - first_step') * pc_update;
     pol commit X_free_value;
     pol commit Y_free_value;
-    1 $ [0, pc, reg_write_X_A, reg_write_Y_A, instr_identity, instr_one, instr_nothing, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_pc] in main__rom.latch $ [main__rom.operation_id, main__rom.p_line, main__rom.p_reg_write_X_A, main__rom.p_reg_write_Y_A, main__rom.p_instr_identity, main__rom.p_instr_one, main__rom.p_instr_nothing, main__rom.p_instr__jump_to_operation, main__rom.p_instr__reset, main__rom.p_instr__loop, main__rom.p_instr_return, main__rom.p_X_const, main__rom.p_X_read_free, main__rom.p_read_X_A, main__rom.p_read_X_pc, main__rom.p_Y_const, main__rom.p_Y_read_free, main__rom.p_read_Y_A, main__rom.p_read_Y_pc];
-    instr_identity $ [2, X, Y] in main_sub.instr_return $ [main_sub._operation_id, main_sub._input_0, main_sub._output_0];
-    instr_nothing $ [3] in main_sub.instr_return $ [main_sub._operation_id];
-    instr_one $ [4, Y] in main_sub.instr_return $ [main_sub._operation_id, main_sub._output_0];
-    pol constant _linker_first_step = [1] + [0]*;
+    1 $ [0, pc, reg_write_X_A, reg_write_Y_A, instr_identity, instr_one, instr_nothing, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_pc] in main__rom::latch $ [main__rom::operation_id, main__rom::p_line, main__rom::p_reg_write_X_A, main__rom::p_reg_write_Y_A, main__rom::p_instr_identity, main__rom::p_instr_one, main__rom::p_instr_nothing, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return, main__rom::p_X_const, main__rom::p_X_read_free, main__rom::p_read_X_A, main__rom::p_read_X_pc, main__rom::p_Y_const, main__rom::p_Y_read_free, main__rom::p_read_Y_A, main__rom::p_read_Y_pc];
+    instr_identity $ [2, X, Y] in main_sub::instr_return $ [main_sub::_operation_id, main_sub::_input_0, main_sub::_output_0];
+    instr_nothing $ [3] in main_sub::instr_return $ [main_sub::_operation_id];
+    instr_one $ [4, Y] in main_sub::instr_return $ [main_sub::_operation_id, main_sub::_output_0];
+    pol constant _linker_first_step(i) { if i == 0 { 1 } else { 0 } };
     _linker_first_step * (_operation_id - 2) = 0;
 namespace main__rom(16);
     pol constant p_line = [0, 1, 2, 3, 4] + [4]*;
@@ -387,7 +384,7 @@ namespace main__rom(16);
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
 namespace main_sub(16);
-    pol commit _operation_id(i) query std::prover::Query::Hint(5);
+    pol commit _operation_id(i) query std::prelude::Query::Hint(5);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
     _operation_id_no_change * (_operation_id' - _operation_id) = 0;
@@ -409,8 +406,8 @@ namespace main_sub(16);
     pc_update = instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1);
     pc' = (1 - first_step') * pc_update;
     pol commit _output_0_free_value;
-    1 $ [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return, _output_0_const, _output_0_read_free, read__output_0_pc, read__output_0__input_0] in main_sub__rom.latch $ [main_sub__rom.operation_id, main_sub__rom.p_line, main_sub__rom.p_instr__jump_to_operation, main_sub__rom.p_instr__reset, main_sub__rom.p_instr__loop, main_sub__rom.p_instr_return, main_sub__rom.p__output_0_const, main_sub__rom.p__output_0_read_free, main_sub__rom.p_read__output_0_pc, main_sub__rom.p_read__output_0__input_0];
-namespace main_sub__rom(16);
+    1 $ [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return, _output_0_const, _output_0_read_free, read__output_0_pc, read__output_0__input_0] in main_sub__rom::latch $ [main_sub__rom::operation_id, main_sub__rom::p_line, main_sub__rom::p_instr__jump_to_operation, main_sub__rom::p_instr__reset, main_sub__rom::p_instr__loop, main_sub__rom::p_instr_return, main_sub__rom::p__output_0_const, main_sub__rom::p__output_0_read_free, main_sub__rom::p_read__output_0_pc, main_sub__rom::p_read__output_0__input_0];
+namespace main_sub__rom(8);
     pol constant p_line = [0, 1, 2, 3, 4, 5] + [5]*;
     pol constant p__output_0_const = [0, 0, 0, 0, 1, 0] + [0]*;
     pol constant p__output_0_read_free = [0]*;
@@ -440,7 +437,7 @@ namespace main_sub__rom(16);
     XIsZero = 1 - X * XInv;
     XIsZero * X = 0;
     XIsZero * (1 - XIsZero) = 0;
-    pol commit _operation_id(i) query std::prover::Query::Hint(10);
+    pol commit _operation_id(i) query std::prelude::Query::Hint(10);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
     _operation_id_no_change * (_operation_id' - _operation_id) = 0;
@@ -476,13 +473,13 @@ namespace main_sub__rom(16);
     pc_update = instr_jmpz * (instr_jmpz_pc_update + instr_jmpz_pc_update_1) + instr_jmp * instr_jmp_param_l + instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr_jmpz + instr_jmp + instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1);
     pc' = (1 - first_step') * pc_update;
     pol commit X_free_value(__i) query match std::prover::eval(pc) {
-        2 => std::prover::Query::Input(1),
-        4 => std::prover::Query::Input(std::convert::int(std::prover::eval(CNT) + 1)),
-        7 => std::prover::Query::Input(0),
-        _ => std::prover::Query::None,
+        2 => std::prelude::Query::Input(1),
+        4 => std::prelude::Query::Input(std::convert::int(std::prover::eval(CNT) + 1)),
+        7 => std::prelude::Query::Input(0),
+        _ => std::prelude::Query::None,
     };
-    1 $ [0, pc, reg_write_X_A, reg_write_X_CNT, instr_jmpz, instr_jmpz_param_l, instr_jmp, instr_jmp_param_l, instr_dec_CNT, instr_assert_zero, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_CNT, read_X_pc] in main__rom.latch $ [main__rom.operation_id, main__rom.p_line, main__rom.p_reg_write_X_A, main__rom.p_reg_write_X_CNT, main__rom.p_instr_jmpz, main__rom.p_instr_jmpz_param_l, main__rom.p_instr_jmp, main__rom.p_instr_jmp_param_l, main__rom.p_instr_dec_CNT, main__rom.p_instr_assert_zero, main__rom.p_instr__jump_to_operation, main__rom.p_instr__reset, main__rom.p_instr__loop, main__rom.p_instr_return, main__rom.p_X_const, main__rom.p_X_read_free, main__rom.p_read_X_A, main__rom.p_read_X_CNT, main__rom.p_read_X_pc];
-    pol constant _linker_first_step = [1] + [0]*;
+    1 $ [0, pc, reg_write_X_A, reg_write_X_CNT, instr_jmpz, instr_jmpz_param_l, instr_jmp, instr_jmp_param_l, instr_dec_CNT, instr_assert_zero, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_CNT, read_X_pc] in main__rom::latch $ [main__rom::operation_id, main__rom::p_line, main__rom::p_reg_write_X_A, main__rom::p_reg_write_X_CNT, main__rom::p_instr_jmpz, main__rom::p_instr_jmpz_param_l, main__rom::p_instr_jmp, main__rom::p_instr_jmp_param_l, main__rom::p_instr_dec_CNT, main__rom::p_instr_assert_zero, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return, main__rom::p_X_const, main__rom::p_X_read_free, main__rom::p_read_X_A, main__rom::p_read_X_CNT, main__rom::p_read_X_pc];
+    pol constant _linker_first_step(i) { if i == 0 { 1 } else { 0 } };
     _linker_first_step * (_operation_id - 2) = 0;
 namespace main__rom(16);
     pol constant p_line = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10] + [10]*;
@@ -532,8 +529,8 @@ machine Machine {
     }
 }
 "#;
-        let expectation = r#"namespace main(1024);
-    pol commit _operation_id(i) query std::prover::Query::Hint(4);
+        let expectation = r#"namespace main;
+    pol commit _operation_id(i) query std::prelude::Query::Hint(4);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
     _operation_id_no_change * (_operation_id' - _operation_id) = 0;
@@ -553,10 +550,10 @@ machine Machine {
     pol commit pc_update;
     pc_update = instr_adjust_fp * instr_adjust_fp_param_t + instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr_adjust_fp + instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1);
     pc' = (1 - first_step') * pc_update;
-    1 $ [0, pc, instr_inc_fp, instr_inc_fp_param_amount, instr_adjust_fp, instr_adjust_fp_param_amount, instr_adjust_fp_param_t, instr__jump_to_operation, instr__reset, instr__loop, instr_return] in main__rom.latch $ [main__rom.operation_id, main__rom.p_line, main__rom.p_instr_inc_fp, main__rom.p_instr_inc_fp_param_amount, main__rom.p_instr_adjust_fp, main__rom.p_instr_adjust_fp_param_amount, main__rom.p_instr_adjust_fp_param_t, main__rom.p_instr__jump_to_operation, main__rom.p_instr__reset, main__rom.p_instr__loop, main__rom.p_instr_return];
-    pol constant _linker_first_step = [1] + [0]*;
+    1 $ [0, pc, instr_inc_fp, instr_inc_fp_param_amount, instr_adjust_fp, instr_adjust_fp_param_amount, instr_adjust_fp_param_t, instr__jump_to_operation, instr__reset, instr__loop, instr_return] in main__rom::latch $ [main__rom::operation_id, main__rom::p_line, main__rom::p_instr_inc_fp, main__rom::p_instr_inc_fp_param_amount, main__rom::p_instr_adjust_fp, main__rom::p_instr_adjust_fp_param_amount, main__rom::p_instr_adjust_fp_param_t, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return];
+    pol constant _linker_first_step(i) { if i == 0 { 1 } else { 0 } };
     _linker_first_step * (_operation_id - 2) = 0;
-namespace main__rom(1024);
+namespace main__rom(8);
     pol constant p_line = [0, 1, 2, 3, 4] + [4]*;
     pol constant p_instr__jump_to_operation = [0, 1, 0, 0, 0] + [0]*;
     pol constant p_instr__loop = [0, 0, 0, 0, 1] + [1]*;
@@ -623,8 +620,8 @@ machine Main {
     }
 }
 ";
-        let expected = r#"namespace main(1024);
-    pol commit _operation_id(i) query std::prover::Query::Hint(3);
+        let expected = r#"namespace main;
+    pol commit _operation_id(i) query std::prelude::Query::Hint(3);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
     _operation_id_no_change * (_operation_id' - _operation_id) = 0;
@@ -648,11 +645,11 @@ machine Main {
     pc_update = instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1);
     pc' = (1 - first_step') * pc_update;
     pol commit X_free_value;
-    instr_add5_into_A $ [0, X, A'] in main_vm.latch $ [main_vm.operation_id, main_vm.x, main_vm.y];
-    1 $ [0, pc, reg_write_X_A, instr_add5_into_A, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc] in main__rom.latch $ [main__rom.operation_id, main__rom.p_line, main__rom.p_reg_write_X_A, main__rom.p_instr_add5_into_A, main__rom.p_instr__jump_to_operation, main__rom.p_instr__reset, main__rom.p_instr__loop, main__rom.p_instr_return, main__rom.p_X_const, main__rom.p_X_read_free, main__rom.p_read_X_A, main__rom.p_read_X_pc];
-    pol constant _linker_first_step = [1] + [0]*;
+    instr_add5_into_A $ [0, X, A'] in main_vm::latch $ [main_vm::operation_id, main_vm::x, main_vm::y];
+    1 $ [0, pc, reg_write_X_A, instr_add5_into_A, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc] in main__rom::latch $ [main__rom::operation_id, main__rom::p_line, main__rom::p_reg_write_X_A, main__rom::p_instr_add5_into_A, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return, main__rom::p_X_const, main__rom::p_X_read_free, main__rom::p_read_X_A, main__rom::p_read_X_pc];
+    pol constant _linker_first_step(i) { if i == 0 { 1 } else { 0 } };
     _linker_first_step * (_operation_id - 2) = 0;
-namespace main__rom(1024);
+namespace main__rom(4);
     pol constant p_line = [0, 1, 2, 3] + [3]*;
     pol constant p_X_const = [0, 0, 10, 0] + [0]*;
     pol constant p_X_read_free = [0]*;
@@ -666,7 +663,7 @@ namespace main__rom(1024);
     pol constant p_reg_write_X_A = [0]*;
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
-namespace main_vm(1024);
+namespace main_vm;
     pol commit operation_id;
     pol constant latch = [1]*;
     pol commit x;
@@ -681,7 +678,7 @@ namespace main_vm(1024);
     #[test]
     fn permutation_instructions() {
         let expected = r#"namespace main(128);
-    pol commit _operation_id(i) query std::prover::Query::Hint(13);
+    pol commit _operation_id(i) query std::prelude::Query::Hint(13);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
     _operation_id_no_change * (_operation_id' - _operation_id) = 0;
@@ -732,10 +729,10 @@ namespace main_vm(1024);
     pol commit X_free_value;
     pol commit Y_free_value;
     pol commit Z_free_value;
-    instr_or_into_B $ [0, X, Y, B'] is main_bin.latch * main_bin.sel[0] $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];
-    1 $ [0, pc, reg_write_X_A, reg_write_Y_A, reg_write_Z_A, reg_write_X_B, reg_write_Y_B, reg_write_Z_B, instr_or, instr_or_into_B, instr_assert_eq, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_B, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_B, read_Y_pc, Z_const, Z_read_free, read_Z_A, read_Z_B, read_Z_pc] in main__rom.latch $ [main__rom.operation_id, main__rom.p_line, main__rom.p_reg_write_X_A, main__rom.p_reg_write_Y_A, main__rom.p_reg_write_Z_A, main__rom.p_reg_write_X_B, main__rom.p_reg_write_Y_B, main__rom.p_reg_write_Z_B, main__rom.p_instr_or, main__rom.p_instr_or_into_B, main__rom.p_instr_assert_eq, main__rom.p_instr__jump_to_operation, main__rom.p_instr__reset, main__rom.p_instr__loop, main__rom.p_instr_return, main__rom.p_X_const, main__rom.p_X_read_free, main__rom.p_read_X_A, main__rom.p_read_X_B, main__rom.p_read_X_pc, main__rom.p_Y_const, main__rom.p_Y_read_free, main__rom.p_read_Y_A, main__rom.p_read_Y_B, main__rom.p_read_Y_pc, main__rom.p_Z_const, main__rom.p_Z_read_free, main__rom.p_read_Z_A, main__rom.p_read_Z_B, main__rom.p_read_Z_pc];
-    instr_or $ [0, X, Y, Z] is main_bin.latch * main_bin.sel[1] $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];
-    pol constant _linker_first_step = [1] + [0]*;
+    instr_or_into_B $ [0, X, Y, B'] is main_bin::latch * main_bin::sel[0] $ [main_bin::operation_id, main_bin::A, main_bin::B, main_bin::C];
+    1 $ [0, pc, reg_write_X_A, reg_write_Y_A, reg_write_Z_A, reg_write_X_B, reg_write_Y_B, reg_write_Z_B, instr_or, instr_or_into_B, instr_assert_eq, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_B, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_B, read_Y_pc, Z_const, Z_read_free, read_Z_A, read_Z_B, read_Z_pc] in main__rom::latch $ [main__rom::operation_id, main__rom::p_line, main__rom::p_reg_write_X_A, main__rom::p_reg_write_Y_A, main__rom::p_reg_write_Z_A, main__rom::p_reg_write_X_B, main__rom::p_reg_write_Y_B, main__rom::p_reg_write_Z_B, main__rom::p_instr_or, main__rom::p_instr_or_into_B, main__rom::p_instr_assert_eq, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return, main__rom::p_X_const, main__rom::p_X_read_free, main__rom::p_read_X_A, main__rom::p_read_X_B, main__rom::p_read_X_pc, main__rom::p_Y_const, main__rom::p_Y_read_free, main__rom::p_read_Y_A, main__rom::p_read_Y_B, main__rom::p_read_Y_pc, main__rom::p_Z_const, main__rom::p_Z_read_free, main__rom::p_read_Z_A, main__rom::p_read_Z_B, main__rom::p_read_Z_pc];
+    instr_or $ [0, X, Y, Z] is main_bin::latch * main_bin::sel[1] $ [main_bin::operation_id, main_bin::A, main_bin::B, main_bin::C];
+    pol constant _linker_first_step(i) { if i == 0 { 1 } else { 0 } };
     _linker_first_step * (_operation_id - 2) = 0;
 namespace main__rom(128);
     pol constant p_line = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13] + [13]*;
@@ -805,7 +802,7 @@ namespace main_bin(128);
     fn link_merging() {
         let expected = r#"namespace main(32);
     pol commit tmp;
-    pol commit _operation_id(i) query std::prover::Query::Hint(18);
+    pol commit _operation_id(i) query std::prelude::Query::Hint(18);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
     _operation_id_no_change * (_operation_id' - _operation_id) = 0;
@@ -882,13 +879,13 @@ namespace main_bin(128);
     pol commit Y_free_value;
     pol commit Z_free_value;
     pol commit W_free_value;
-    instr_add_to_A $ [0, X, Y, A'] in main_submachine.latch $ [main_submachine.operation_id, main_submachine.x, main_submachine.y, main_submachine.z];
-    instr_add_BC_to_A $ [0, B, C, A'] in main_submachine.latch $ [main_submachine.operation_id, main_submachine.x, main_submachine.y, main_submachine.z];
-    1 $ [0, pc, reg_write_X_A, reg_write_Y_A, reg_write_Z_A, reg_write_W_A, reg_write_X_B, reg_write_Y_B, reg_write_Z_B, reg_write_W_B, reg_write_X_C, reg_write_Y_C, reg_write_Z_C, reg_write_W_C, instr_add, instr_sub_with_add, instr_addAB, instr_add3, instr_add_to_A, instr_add_BC_to_A, instr_sub, instr_add_with_sub, instr_assert_eq, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_B, read_X_C, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_B, read_Y_C, read_Y_pc, Z_const, Z_read_free, read_Z_A, read_Z_B, read_Z_C, read_Z_pc, W_const, W_read_free, read_W_A, read_W_B, read_W_C, read_W_pc] in main__rom.latch $ [main__rom.operation_id, main__rom.p_line, main__rom.p_reg_write_X_A, main__rom.p_reg_write_Y_A, main__rom.p_reg_write_Z_A, main__rom.p_reg_write_W_A, main__rom.p_reg_write_X_B, main__rom.p_reg_write_Y_B, main__rom.p_reg_write_Z_B, main__rom.p_reg_write_W_B, main__rom.p_reg_write_X_C, main__rom.p_reg_write_Y_C, main__rom.p_reg_write_Z_C, main__rom.p_reg_write_W_C, main__rom.p_instr_add, main__rom.p_instr_sub_with_add, main__rom.p_instr_addAB, main__rom.p_instr_add3, main__rom.p_instr_add_to_A, main__rom.p_instr_add_BC_to_A, main__rom.p_instr_sub, main__rom.p_instr_add_with_sub, main__rom.p_instr_assert_eq, main__rom.p_instr__jump_to_operation, main__rom.p_instr__reset, main__rom.p_instr__loop, main__rom.p_instr_return, main__rom.p_X_const, main__rom.p_X_read_free, main__rom.p_read_X_A, main__rom.p_read_X_B, main__rom.p_read_X_C, main__rom.p_read_X_pc, main__rom.p_Y_const, main__rom.p_Y_read_free, main__rom.p_read_Y_A, main__rom.p_read_Y_B, main__rom.p_read_Y_C, main__rom.p_read_Y_pc, main__rom.p_Z_const, main__rom.p_Z_read_free, main__rom.p_read_Z_A, main__rom.p_read_Z_B, main__rom.p_read_Z_C, main__rom.p_read_Z_pc, main__rom.p_W_const, main__rom.p_W_read_free, main__rom.p_read_W_A, main__rom.p_read_W_B, main__rom.p_read_W_C, main__rom.p_read_W_pc];
-    instr_add + instr_add3 + instr_addAB + instr_sub_with_add $ [0, X * instr_add + X * instr_add3 + A * instr_addAB + Y * instr_sub_with_add, Y * instr_add + Y * instr_add3 + B * instr_addAB + Z * instr_sub_with_add, Z * instr_add + tmp * instr_add3 + X * instr_addAB + X * instr_sub_with_add] in main_submachine.latch $ [main_submachine.operation_id, main_submachine.x, main_submachine.y, main_submachine.z];
-    instr_add3 $ [0, tmp, Z, W] in main_submachine.latch $ [main_submachine.operation_id, main_submachine.x, main_submachine.y, main_submachine.z];
-    instr_add_with_sub + instr_sub $ [1, Z * instr_add_with_sub + X * instr_sub, X * instr_add_with_sub + Y * instr_sub, Y * instr_add_with_sub + Z * instr_sub] in main_submachine.latch $ [main_submachine.operation_id, main_submachine.z, main_submachine.x, main_submachine.y];
-    pol constant _linker_first_step = [1] + [0]*;
+    instr_add_to_A $ [0, X, Y, A'] in main_submachine::latch $ [main_submachine::operation_id, main_submachine::x, main_submachine::y, main_submachine::z];
+    instr_add_BC_to_A $ [0, B, C, A'] in main_submachine::latch $ [main_submachine::operation_id, main_submachine::x, main_submachine::y, main_submachine::z];
+    1 $ [0, pc, reg_write_X_A, reg_write_Y_A, reg_write_Z_A, reg_write_W_A, reg_write_X_B, reg_write_Y_B, reg_write_Z_B, reg_write_W_B, reg_write_X_C, reg_write_Y_C, reg_write_Z_C, reg_write_W_C, instr_add, instr_sub_with_add, instr_addAB, instr_add3, instr_add_to_A, instr_add_BC_to_A, instr_sub, instr_add_with_sub, instr_assert_eq, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_B, read_X_C, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_B, read_Y_C, read_Y_pc, Z_const, Z_read_free, read_Z_A, read_Z_B, read_Z_C, read_Z_pc, W_const, W_read_free, read_W_A, read_W_B, read_W_C, read_W_pc] in main__rom::latch $ [main__rom::operation_id, main__rom::p_line, main__rom::p_reg_write_X_A, main__rom::p_reg_write_Y_A, main__rom::p_reg_write_Z_A, main__rom::p_reg_write_W_A, main__rom::p_reg_write_X_B, main__rom::p_reg_write_Y_B, main__rom::p_reg_write_Z_B, main__rom::p_reg_write_W_B, main__rom::p_reg_write_X_C, main__rom::p_reg_write_Y_C, main__rom::p_reg_write_Z_C, main__rom::p_reg_write_W_C, main__rom::p_instr_add, main__rom::p_instr_sub_with_add, main__rom::p_instr_addAB, main__rom::p_instr_add3, main__rom::p_instr_add_to_A, main__rom::p_instr_add_BC_to_A, main__rom::p_instr_sub, main__rom::p_instr_add_with_sub, main__rom::p_instr_assert_eq, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return, main__rom::p_X_const, main__rom::p_X_read_free, main__rom::p_read_X_A, main__rom::p_read_X_B, main__rom::p_read_X_C, main__rom::p_read_X_pc, main__rom::p_Y_const, main__rom::p_Y_read_free, main__rom::p_read_Y_A, main__rom::p_read_Y_B, main__rom::p_read_Y_C, main__rom::p_read_Y_pc, main__rom::p_Z_const, main__rom::p_Z_read_free, main__rom::p_read_Z_A, main__rom::p_read_Z_B, main__rom::p_read_Z_C, main__rom::p_read_Z_pc, main__rom::p_W_const, main__rom::p_W_read_free, main__rom::p_read_W_A, main__rom::p_read_W_B, main__rom::p_read_W_C, main__rom::p_read_W_pc];
+    instr_add + instr_add3 + instr_addAB + instr_sub_with_add $ [0, X * instr_add + X * instr_add3 + A * instr_addAB + Y * instr_sub_with_add, Y * instr_add + Y * instr_add3 + B * instr_addAB + Z * instr_sub_with_add, Z * instr_add + tmp * instr_add3 + X * instr_addAB + X * instr_sub_with_add] in main_submachine::latch $ [main_submachine::operation_id, main_submachine::x, main_submachine::y, main_submachine::z];
+    instr_add3 $ [0, tmp, Z, W] in main_submachine::latch $ [main_submachine::operation_id, main_submachine::x, main_submachine::y, main_submachine::z];
+    instr_add_with_sub + instr_sub $ [1, Z * instr_add_with_sub + X * instr_sub, X * instr_add_with_sub + Y * instr_sub, Y * instr_add_with_sub + Z * instr_sub] in main_submachine::latch $ [main_submachine::operation_id, main_submachine::z, main_submachine::x, main_submachine::y];
+    pol constant _linker_first_step(i) { if i == 0 { 1 } else { 0 } };
     _linker_first_step * (_operation_id - 2) = 0;
 namespace main__rom(32);
     pol constant p_line = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18] + [18]*;

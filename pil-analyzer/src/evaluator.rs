@@ -15,7 +15,7 @@ use powdr_ast::{
     },
     parsed::{
         display::quote,
-        types::{Type, TypeScheme},
+        types::{ArrayType, Type, TypeScheme},
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
         IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number,
         Pattern, StatementInsideBlock, UnaryOperation, UnaryOperator,
@@ -63,7 +63,7 @@ pub fn evaluate_function_call<'a, T: FieldElement>(
 /// from type name to type.
 pub fn type_arg_mapping(
     type_scheme: &Option<TypeScheme>,
-    args: Option<Vec<Type>>,
+    args: &Option<Vec<Type>>,
 ) -> HashMap<String, Type> {
     let Some(type_scheme) = type_scheme else {
         return Default::default();
@@ -308,7 +308,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
     }
 }
 
-const BUILTINS: [(&str, BuiltinFunction); 10] = [
+const BUILTINS: [(&str, BuiltinFunction); 11] = [
     ("std::array::len", BuiltinFunction::ArrayLen),
     ("std::check::panic", BuiltinFunction::Panic),
     ("std::convert::expr", BuiltinFunction::ToExpr),
@@ -317,6 +317,7 @@ const BUILTINS: [(&str, BuiltinFunction); 10] = [
     ("std::debug::print", BuiltinFunction::Print),
     ("std::field::modulus", BuiltinFunction::Modulus),
     ("std::prelude::challenge", BuiltinFunction::Challenge),
+    ("std::prelude::set_hint", BuiltinFunction::SetHint),
     ("std::prover::degree", BuiltinFunction::Degree),
     ("std::prover::eval", BuiltinFunction::Eval),
 ];
@@ -341,6 +342,8 @@ pub enum BuiltinFunction {
     ToFe,
     /// std::prover::challenge: int, int -> expr, constructs a challenge with a given stage and ID.
     Challenge,
+    /// std::prelude::set_hint: expr, (int -> std::prelude::Query) -> (), adds a hint to a witness column.
+    SetHint,
     /// std::prover::degree: -> int, returns the current column length / degree.
     Degree,
     /// std::prover::eval: expr -> fe, evaluates an expression on the current row
@@ -405,7 +408,7 @@ impl<'a> Definitions<'a> {
     pub fn lookup_with_symbols<T: FieldElement>(
         definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
         name: &str,
-        type_args: Option<Vec<Type>>,
+        type_args: &Option<Vec<Type>>,
         symbols: &mut impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         let name = name.to_string();
@@ -464,7 +467,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a> {
     fn lookup(
         &mut self,
         name: &str,
-        type_args: Option<Vec<Type>>,
+        type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Self::lookup_with_symbols(self.0, name, type_args, self)
     }
@@ -484,7 +487,7 @@ pub trait SymbolLookup<'a, T: FieldElement> {
     fn lookup(
         &mut self,
         name: &'a str,
-        type_args: Option<Vec<Type>>,
+        type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError>;
 
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
@@ -543,12 +546,23 @@ pub trait SymbolLookup<'a, T: FieldElement> {
     fn new_column(
         &mut self,
         name: &str,
+        _type: Option<&Type>,
         _value: Option<Arc<Value<'a, T>>>,
         _source: SourceRef,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Err(EvalError::Unsupported(format!(
             "Tried to create column outside of statement context: {name}"
         )))
+    }
+
+    fn set_hint(
+        &mut self,
+        _col: Arc<Value<'a, T>>,
+        _expr: Arc<Value<'a, T>>,
+    ) -> Result<(), EvalError> {
+        Err(EvalError::Unsupported(
+            "Tried to add hint to column outside of statement context.".to_string(),
+        ))
     }
 
     fn add_constraints(
@@ -635,27 +649,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     self.local_vars = new_locals;
                     self.type_args = new_type_args;
                 }
-                Operation::LetStatement(s) => {
-                    let value = match (&s.ty, &s.value.as_ref()) {
-                        (Some(Type::Col), value) | (None, value @ None) => {
-                            let Pattern::Variable(_, name) = &s.pattern else {
-                                unreachable!()
-                            };
-                            self.symbols.new_column(
-                                name,
-                                value.map(|_| self.value_stack.pop().unwrap()),
-                                SourceRef::unknown(),
-                            )?
-                        }
-                        (_, Some(_)) => self.value_stack.pop().unwrap(),
-                        _ => unreachable!(),
-                    };
-                    self.local_vars.extend(
-                        Value::try_match_pattern(&value, &s.pattern).unwrap_or_else(|| {
-                            panic!("Irrefutable pattern did not match: {} = {value}", s.pattern)
-                        }),
-                    );
-                }
+                Operation::LetStatement(s) => self.evaluate_let_statement(s)?,
                 Operation::AddConstraint => {
                     let result = self.value_stack.pop().unwrap();
                     match result.as_ref() {
@@ -784,6 +778,33 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
         Ok(())
     }
 
+    fn evaluate_let_statement(
+        &mut self,
+        s: &'a LetStatementInsideBlock<Expression>,
+    ) -> Result<(), EvalError> {
+        let value = if s.value.is_none()
+            || matches!(&s.ty, Some(Type::Col) | Some(Type::Inter))
+            || matches!(&s.ty, Some(Type::Array(ArrayType { base, .. })) if matches!(base.as_ref(), Type::Col | Type::Inter))
+        {
+            // Dynamic column creation
+            let Pattern::Variable(_, name) = &s.pattern else {
+                unreachable!()
+            };
+            let value = s.value.as_ref().map(|_| self.value_stack.pop().unwrap());
+            self.symbols
+                .new_column(name, s.ty.as_ref(), value, SourceRef::unknown())?
+        } else {
+            // Regular local variable declaration.
+            self.value_stack.pop().unwrap()
+        };
+        self.local_vars.extend(
+            Value::try_match_pattern(&value, &s.pattern).unwrap_or_else(|| {
+                panic!("Irrefutable pattern did not match: {} = {value}", s.pattern)
+            }),
+        );
+        Ok(())
+    }
+
     fn evaluate_reference(
         &mut self,
         reference: &'a Reference,
@@ -800,7 +821,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                         }
                         ta
                     });
-                    self.symbols.lookup(&poly.name, type_args)?
+                    self.symbols.lookup(&poly.name, &type_args)?
                 }
             }
         })
@@ -1105,6 +1126,7 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
         BuiltinFunction::ToFe => 1,
         BuiltinFunction::ToInt => 1,
         BuiltinFunction::Challenge => 2,
+        BuiltinFunction::SetHint => 2,
         BuiltinFunction::Degree => 0,
         BuiltinFunction::Eval => 1,
     };
@@ -1140,7 +1162,7 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
             } else {
                 print!("{msg}");
             }
-            Value::Array(Default::default()).into()
+            Value::Tuple(vec![]).into()
         }
         BuiltinFunction::ToExpr => {
             let arg = arguments.pop().unwrap();
@@ -1172,6 +1194,12 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
                 stage: u32::try_from(stage).unwrap(),
             }))
             .into()
+        }
+        BuiltinFunction::SetHint => {
+            let expr = arguments.pop().unwrap();
+            let col = arguments.pop().unwrap();
+            symbols.set_hint(col, expr)?;
+            Value::Tuple(vec![]).into()
         }
         BuiltinFunction::Degree => symbols.degree()?,
         BuiltinFunction::Eval => {
@@ -1262,7 +1290,7 @@ mod test {
     pub fn evaluate_function<T: FieldElement>(input: &str, function: &str) -> T {
         let analyzed = analyze_string::<GoldilocksField>(input);
         let mut symbols = evaluator::Definitions(&analyzed.definitions);
-        let function = symbols.lookup(function, None).unwrap();
+        let function = symbols.lookup(function, &None).unwrap();
         let result = evaluator::evaluate_function_call(function, vec![], &mut symbols)
             .unwrap()
             .as_ref()
@@ -1278,7 +1306,7 @@ mod test {
         let src = r#"namespace Main(16);
             let x: int = 1 + 20;
         "#;
-        let result = parse_and_evaluate_symbol(src, "Main.x");
+        let result = parse_and_evaluate_symbol(src, "Main::x");
         assert_eq!(result, r#"21"#);
     }
 
@@ -1288,7 +1316,7 @@ mod test {
             let x: int -> int = |i| match i { 0 => 0, _ => x(i - 1) + 1 };
             let y = x(4);
         "#;
-        let result = parse_and_evaluate_symbol(src, "Main.y");
+        let result = parse_and_evaluate_symbol(src, "Main::y");
         assert_eq!(result, r#"4"#);
     }
 
@@ -1306,7 +1334,7 @@ mod test {
             let map_array = |arr, f| [f(arr[0]), f(arr[1]), f(arr[2]), f(arr[3])];
             let translated = map_array(words, translate);
         "#;
-        let result = parse_and_evaluate_symbol(src, "Main.translated");
+        let result = parse_and_evaluate_symbol(src, "Main::translated");
         assert_eq!(result, r#"["franz", "jagt", "mit", "dem"]"#);
     }
 
@@ -1321,7 +1349,7 @@ mod test {
             let result = fib(20);
         "#;
         assert_eq!(
-            parse_and_evaluate_symbol(src, "Main.result"),
+            parse_and_evaluate_symbol(src, "Main::result"),
             "6765".to_string()
         );
     }
@@ -1335,7 +1363,7 @@ mod test {
         // If the lambda function returned by the expression f(99, ...) does not
         // properly capture the value of n in a closure, then f(1, ...) would return 1.
         assert_eq!(
-            parse_and_evaluate_symbol(src, "Main.result"),
+            parse_and_evaluate_symbol(src, "Main::result"),
             "99".to_string()
         );
     }
@@ -1351,8 +1379,8 @@ mod test {
             let empty: int[] = [];
             let y = std::array::len(empty);
         "#;
-        assert_eq!(parse_and_evaluate_symbol(src, "F.x"), "3".to_string());
-        assert_eq!(parse_and_evaluate_symbol(src, "F.y"), "0".to_string());
+        assert_eq!(parse_and_evaluate_symbol(src, "F::x"), "3".to_string());
+        assert_eq!(parse_and_evaluate_symbol(src, "F::y"), "0".to_string());
     }
 
     #[test]
@@ -1367,7 +1395,7 @@ mod test {
             let arg: int = 1;
             let x: int[] = (|i| if i == 1 { std::check::panic(concat("this ", "text")) } else { [9] })(arg);
         "#;
-        parse_and_evaluate_symbol(src, "F.x");
+        parse_and_evaluate_symbol(src, "F::x");
     }
 
     #[test]
@@ -1380,7 +1408,7 @@ mod test {
             namespace F(N);
             let x: int = std::check::panic("text");
         "#;
-        parse_and_evaluate_symbol(src, "F.x");
+        parse_and_evaluate_symbol(src, "F::x");
     }
 
     #[test]
@@ -1655,7 +1683,7 @@ mod test {
                 let test = query || std::prover::eval(2 * (1 + 1 + 1) + 1);
         "#;
         assert_eq!(
-            evaluate_function::<GoldilocksField>(src, "main.test"),
+            evaluate_function::<GoldilocksField>(src, "main::test"),
             7u64.into()
         );
     }

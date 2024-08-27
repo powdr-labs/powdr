@@ -1,7 +1,7 @@
 use std::machines::binary::ByteBinary;
 use std::machines::binary::Binary;
 
-machine Main with degree: 196608 {
+machine Main with degree: 262144 {
     reg pc[@pc];
     reg X0[<=];
     reg X1[<=];
