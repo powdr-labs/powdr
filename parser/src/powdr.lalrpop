@@ -73,7 +73,7 @@ Part: Part = {
 // Same as SymbolPath plus we allow "::<...>" at the end.
 GenericSymbolPath: (SymbolPath, Option<Vec<Type<Expression>>>) = {
     // If we "inline" SymbolPath here, we get an ambiguity error.
-    <abs:"::"?> <parts:( <Part> "::" )*> <end:Part> <types:("::" "<" <TypeTermList<Expression<TermWithStruct>>> ">")?>  => (
+    <abs:"::"?> <parts:( <Part> "::" )*> <end:Part> <types:("::" "<" <TypeTermList<Expression>> ">")?>  => (
         SymbolPath::from_parts([
             abs.map(|_| vec![Part::Named(String::new())]).unwrap_or_default(),
             parts,
@@ -100,7 +100,7 @@ TypeSymbolPathPart: Part = {
 }
 
 LetStatementAtModuleLevel: SymbolDefinition = {
-    "let" <name:GenericTypedName>  "=" <value:Expression<TermWithStruct>> ";" =>
+    "let" <name:GenericTypedName>  "=" <value:Expression> ";" =>
         SymbolDefinition {
             name: name.0,
             value: SymbolValue::Expression(TypedExpression{ e: value, type_scheme: name.1 })
@@ -132,24 +132,24 @@ Include: PilStatement = {
 };
 
 Namespace: PilStatement = {
-    <start:@L> "namespace" <name:(SymbolPath)?> <pol_degree:("(" <Expression<TermWithStruct>> ")")?> <end:@R> ";"
+    <start:@L> "namespace" <name:(SymbolPath)?> <pol_degree:("(" <Expression> ")")?> <end:@R> ";"
         => PilStatement::Namespace(ctx.source_ref(start, end), name.unwrap_or_default(), pol_degree)
 }
 
 LetStatement: PilStatement = {
-    <start:@L> "let" <name:GenericTypedName> <expr:( "=" <Expression<TermWithStruct>> )?> <end:@R> ";" =>
+    <start:@L> "let" <name:GenericTypedName> <expr:( "=" <Expression> )?> <end:@R> ";" =>
         PilStatement::LetStatement(ctx.source_ref(start, end), name.0, name.1, expr)
 }
 
 PolynomialDefinition: PilStatement = {
-    <start:@L> PolCol <name:PolynomialName> "=" <expr:Expression<TermWithStruct>> <end:@R> ";" => PilStatement::PolynomialDefinition(ctx.source_ref(start, end), name, expr)
+    <start:@L> PolCol <name:PolynomialName> "=" <expr:Expression> <end:@R> ";" => PilStatement::PolynomialDefinition(ctx.source_ref(start, end), name, expr)
 }
 
 PublicDeclaration: PilStatement = {
     <start:@L> "public" <id:Identifier> "="
         <poly:NamespacedPolynomialReference>
-        <expr1:("[" <Expression<TermWithStruct>> "]")?>
-        "(" <expr2:Expression<TermWithStruct>> ")" <end:@R> ";" => PilStatement::PublicDeclaration(ctx.source_ref(start, end), id, poly, expr1, expr2)
+        <expr1:("[" <Expression> "]")?>
+        "(" <expr2:Expression> ")" <end:@R> ";" => PilStatement::PublicDeclaration(ctx.source_ref(start, end), id, poly, expr1, expr2)
 }
 
 PolynomialConstantDeclaration: PilStatement = {
@@ -188,7 +188,7 @@ ArrayLiteralTerm: ArrayExpression = {
 
 PolynomialCommitDeclaration: PilStatement = {
     <start:@L> PolCol CommitWitness <stage:Stage?> <list:PolynomialNameList> <end:@R> ";" => PilStatement::PolynomialCommitDeclaration(ctx.source_ref(start, end), stage, list, None),
-    <start:@L> PolCol CommitWitness <stage:Stage?> <name:PolynomialName> "(" <params:ParameterList> ")" "query" <body:BoxedExpression<TermWithStruct>> <end:@R> ";"
+    <start:@L> PolCol CommitWitness <stage:Stage?> <name:PolynomialName> "(" <params:ParameterList> ")" "query" <body:BoxedExpression> <end:@R> ";"
      => PilStatement::PolynomialCommitDeclaration(
         ctx.source_ref(start, end),
         stage,
@@ -211,7 +211,7 @@ PolynomialNameList: Vec<PolynomialName> = {
 }
 
 PolynomialName: PolynomialName = {
-    <name:Identifier> <array_size:( "[" <Expression<TermWithStruct>> "]" )?> => PolynomialName{<>}
+    <name:Identifier> <array_size:( "[" <Expression> "]" )?> => PolynomialName{<>}
 }
 
 PlookupIdentityStatement: PilStatement = {
@@ -223,7 +223,7 @@ PlookupIdentity: PilStatement = {
 }
 
 SelectedExpressions: SelectedExpressions<Expression> = {
-    <selector:(<Expression<TermWithStruct>> "$")?> <expr:Expression<TermWithStruct>> => SelectedExpressions{selector, expressions: Box::new(expr)},
+    <selector:(<Expression> "$")?> <expr:Expression> => SelectedExpressions{selector, expressions: Box::new(expr)},
 }
 
 PermutationIdentityStatement: PilStatement = {
@@ -247,7 +247,7 @@ ExpressionStatement: PilStatement = {
 }
 
 ExpressionStatementWithoutSemicolon: PilStatement = {
-    <start:@L> <expr:Expression<TermWithStruct>> <end:@R> => PilStatement::Expression(ctx.source_ref(start, end), expr)
+    <start:@L> <expr:Expression> <end:@R> => PilStatement::Expression(ctx.source_ref(start, end), expr)
 }
 
 PolCol = {
@@ -264,7 +264,7 @@ ConstantFixed = {
 
 GenericTypedName: (String, Option<TypeScheme<Expression>>) = {
     <name:Identifier> => (name, None),
-    <vars:("<" <TypeVarBounds> ">")?> <name:Identifier> <ty:(":" <Type<Expression<TermWithStruct>>>)> =>
+    <vars:("<" <TypeVarBounds> ">")?> <name:Identifier> <ty:(":" <Type<Expression>>)> =>
         (name, Some(TypeScheme{ vars: vars.unwrap_or_default(), ty }))
 }
 
@@ -283,7 +283,7 @@ MachineProperties: MachineProperties = {
 }
 
 MachineProperty: (String, Expression) = {
-    <name:Identifier> ":" <value:Expression<TermWithoutStruct>> => (name, value),
+    <name:Identifier> ":" <value:RestrictedExpression> => (name, value),
 }
 
 MachineParams: MachineParams = {
@@ -339,12 +339,12 @@ pub LinkDeclarationStatement: MachineStatement = {
 }
 
 pub LinkDeclaration: LinkDeclaration = {
-    "link" <flag:LinkFlag> "=>" <link:Expression<TermWithoutStruct>> =>? Ok(LinkDeclaration { flag, link: link.try_into()?, is_permutation: false, }),
-    "link" <flag:LinkFlag> "~>" <link:Expression<TermWithoutStruct>> =>? Ok(LinkDeclaration { flag, link: link.try_into()?, is_permutation: true, }),
+    "link" <flag:LinkFlag> "=>" <link:RestrictedExpression> =>? Ok(LinkDeclaration { flag, link: link.try_into()?, is_permutation: false, }),
+    "link" <flag:LinkFlag> "~>" <link:RestrictedExpression> =>? Ok(LinkDeclaration { flag, link: link.try_into()?, is_permutation: true, }),
 }
 
 pub LinkFlag: Expression = {
-    "if" <Expression<TermWithStruct>>,
+    "if" <Expression>,
     => 1.into(),
 }
 
@@ -401,7 +401,7 @@ pub FunctionStatement: FunctionStatement = {
 }
 
 AssignmentStatement: FunctionStatement = {
-    <start:@L> <ids:IdentifierList> <op:AssignOperator> <expr:BoxedExpression<TermWithStruct>> <end:@R> ";" => FunctionStatement::Assignment(ctx.source_ref(start, end), ids, op, expr)
+    <start:@L> <ids:IdentifierList> <op:AssignOperator> <expr:BoxedExpression> <end:@R> ";" => FunctionStatement::Assignment(ctx.source_ref(start, end), ids, op, expr)
 }
 
 IdentifierList: Vec<String> = {
@@ -448,27 +448,33 @@ LabelStatement: FunctionStatement = {
 // ---------------------------- Expressions -----------------------------
 // Expressions are parameterized with StructOption because in some cases, we want to disallow the parsing of struct expressions.
 // This allow us to use expression in two diferrent ways:
-//  Expression<TermWithStruct> allows structs
-//  Expression<TermWithoutStruct> does not allow structs
+//  Expression<TermWithStruct> allows structs (renamed as Expression)
+//  Expression<TermWithoutStruct> does not allow structs (renamed as RestrictedExpression).
+//  Same for BoxedExpression.
 
 ExpressionList: Vec<Expression> = {
     => vec![],
-    <mut list:( <Expression<TermWithStruct>> "," )*> <end:Expression<TermWithStruct>>  => { list.push(end); list }
+    <mut list:( <Expression> "," )*> <end:Expression>  => { list.push(end); list }
 }
 
+pub Expression = MacroExpression<TermWithStruct>;
+pub RestrictedExpression = MacroExpression<TermWithoutStruct>;
 
-Expression<StructOption>: Expression = {
-    BoxedExpression<StructOption> => *<>,
+pub BoxedExpression = MacroBoxedExpression<TermWithStruct>;
+pub RestrictedBoxedExpression = MacroBoxedExpression<TermWithoutStruct>;
+
+MacroExpression<StructOption>: Expression = {
+    MacroBoxedExpression<StructOption> => *<>,
 }
 
-BoxedExpression<StructOption>: Box<Expression> = {
+MacroBoxedExpression<StructOption>: Box<Expression> = {
     LambdaExpression<StructOption>,
 }
 
 LambdaExpression<StructOption>: Box<Expression> = {
-    <start:@L> <kind:FunctionKind> "||" <body:BoxedExpression<StructOption>> <end:@R>
+    <start:@L> <kind:FunctionKind> "||" <body:MacroBoxedExpression<StructOption>> <end:@R>
         => ctx.to_expr_with_source_ref(LambdaExpression{kind, params: vec![], body, outer_var_references: Default::default()}, start, end),
-    <start:@L> <kind:FunctionKind> "|" <params:ParameterList> "|" <body:BoxedExpression<StructOption>> <end:@R>
+    <start:@L> <kind:FunctionKind> "|" <params:ParameterList> "|" <body:MacroBoxedExpression<StructOption>> <end:@R>
         => ctx.to_expr_with_source_ref(LambdaExpression{kind, params, body, outer_var_references: Default::default()}, start, end),
     LogicalOr<StructOption>
 }
@@ -616,14 +622,14 @@ TermCommon<StructOption>: Box<Expression> = {
     IfExpression,
     BlockExpression,
     <start:@L> "[" <items:ExpressionList> "]" <end:@R> => ctx.to_expr_with_source_ref(ArrayLiteral{items}, start, end),
-    <start:@L> "(" <head:Expression<<TermWithStruct>>> "," <tail:ExpressionList> ")" <end:@R> => { let mut list = vec![head]; list.extend(tail); Box::new(Expression::Tuple(ctx.source_ref(start, end), list)) },
+    <start:@L> "(" <head:Expression> "," <tail:ExpressionList> ")" <end:@R> => { let mut list = vec![head]; list.extend(tail); Box::new(Expression::Tuple(ctx.source_ref(start, end), list)) },
     <start:@L> "(" ")" <end:@R> => Box::new(Expression::Tuple(ctx.source_ref(start, end), vec![])),
-    "(" <BoxedExpression<<TermWithStruct>>> ")",
-    <start:@L> "${" <b:BoxedExpression<<TermWithStruct>>> "}" <end:@R> => Box::new(Expression::FreeInput(ctx.source_ref(start, end), b))
+    "(" <BoxedExpression> ")",
+    <start:@L> "${" <b:BoxedExpression> "}" <end:@R> => Box::new(Expression::FreeInput(ctx.source_ref(start, end), b))
 }
 
 IndexAccess<StructOption>: IndexAccess = {
-    <array:Term<StructOption>> "[" <index:BoxedExpression<TermWithStruct>> "]" => IndexAccess{<>},
+    <array:Term<StructOption>> "[" <index:BoxedExpression> "]" => IndexAccess{<>},
 }
 
 FunctionCall<StructOption>: FunctionCall = {
@@ -641,7 +647,7 @@ GenericReference: NamespacedPolynomialReference = {
 }
 
 MatchExpression: Box<Expression> = {
-    <start:@L> "match" <scrutinee:BoxedExpression<TermWithoutStruct>> "{" <arms:MatchArms> "}" <end:@R> => ctx.to_expr_with_source_ref(MatchExpression{scrutinee, arms}, start, end),
+    <start:@L> "match" <scrutinee:RestrictedBoxedExpression> "{" <arms:MatchArms> "}" <end:@R> => ctx.to_expr_with_source_ref(MatchExpression{scrutinee, arms}, start, end),
 }
 
 MatchArms: Vec<MatchArm> = {
@@ -650,11 +656,11 @@ MatchArms: Vec<MatchArm> = {
 }
 
 MatchArm: MatchArm = {
-    <pattern:Pattern> "=>" <value: Expression<TermWithoutStruct>> => MatchArm{pattern, value},
+    <pattern:Pattern> "=>" <value: RestrictedExpression> => MatchArm{pattern, value},
 }
 
 IfExpression: Box<Expression> = {
-    <start:@L> "if" <condition:BoxedExpression<TermWithoutStruct>>
+    <start:@L> "if" <condition:RestrictedBoxedExpression>
         <body:BlockExpression>
         "else"
         <else_body:BlockExpression>
@@ -662,12 +668,12 @@ IfExpression: Box<Expression> = {
 }
 
 BlockExpression: Box<Expression> = {
-    <start:@L> "{" <statements:StatementInsideBlock *> <expr:BoxedExpression<TermWithStruct>?> "}" <end:@R> => ctx.to_expr_with_source_ref(BlockExpression{statements, expr}, start, end),
+    <start:@L> "{" <statements:StatementInsideBlock *> <expr:BoxedExpression?> "}" <end:@R> => ctx.to_expr_with_source_ref(BlockExpression{statements, expr}, start, end),
 }
 
 StatementInsideBlock: StatementInsideBlock = {
-    "let" <pattern:Pattern> <ty:(":" <Type<ArrayLengthNumber>>)?> <value:("=" <Expression<TermWithStruct>>)?> ";" => StatementInsideBlock::LetStatement(LetStatementInsideBlock{<>}),
-    <Expression<TermWithStruct>> ";" => StatementInsideBlock::Expression(<>),
+    "let" <pattern:Pattern> <ty:(":" <Type<ArrayLengthNumber>>)?> <value:("=" <Expression>)?> ";" => StatementInsideBlock::LetStatement(LetStatementInsideBlock{<>}),
+    <Expression> ";" => StatementInsideBlock::Expression(<>),
 }
 
 
@@ -734,7 +740,7 @@ TraitFunctions: Vec<TraitFunction<Expression>> = {
 }
 
 TraitFunction: TraitFunction<Expression> = {
-    <name:Identifier> ":" <params:TypeTermList<Expression<TermWithStruct>>> "->" <value:TypeTermBox<Expression<TermWithStruct>>> => TraitFunction { name, ty: Type::Function(FunctionType{params, value}) }
+    <name:Identifier> ":" <params:TypeTermList<Expression>> "->" <value:TypeTermBox<Expression>> => TraitFunction { name, ty: Type::Function(FunctionType{params, value}) }
 }
 
 TraitImplementation: TraitImplementation<Expression> = {
@@ -747,7 +753,7 @@ NamedExpressions: Vec<NamedExpression<Expression>> = {
 }
 
 NamedExpression: NamedExpression<Expression> = {
-    <name:Identifier> ":" <body:BoxedExpression<TermWithStruct>> => NamedExpression { name, body }
+    <name:Identifier> ":" <body:BoxedExpression> => NamedExpression { name, body }
 }
 
 GenericTraitName: (SymbolPath, TypeScheme) = {
@@ -769,12 +775,12 @@ EnumVariants: Vec<EnumVariant<Expression>> = {
 }
 
 EnumVariant: EnumVariant<Expression> = {
-    <name:Identifier> <fields:("(" <TypeTermList<Expression<TermWithStruct>>> ")")?> => EnumVariant{<>}
+    <name:Identifier> <fields:("(" <TypeTermList<Expression>> ")")?> => EnumVariant{<>}
 }
 
 // ---------------------------- Type Names -----------------------------
 
-pub TypeExpr = Type<Expression<TermWithStruct>>;
+pub TypeExpr = Type<Expression>;
 pub TypeNumber = Type<Number>;
 
 Type<ArrayLength>: Type<ArrayLength> = {
@@ -810,7 +816,7 @@ TypeTerm<ArrayLength>: Type<ArrayLength> = {
 }
 
 ArrayLengthExpr: Expression = {
-    Expression<TermWithStruct>
+    Expression
 }
 
 ArrayLengthNumber: u64 = {
