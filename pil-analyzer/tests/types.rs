@@ -613,7 +613,7 @@ fn impl_combined_test() {
         let res: fe = x(5);
     ";
 
-    type_check(input, &[("F.res", "", "fe")]);
+    type_check(input, &[("F::res", "", "fe")]);
 }
 
 #[test]
