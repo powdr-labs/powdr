@@ -70,14 +70,14 @@ machine Keccak with
     // }
 
     pol commit export;
-    pol commit preimage[100]; // 5 * 5 * 4
-    pol commit a[100]; // 5 * 5 * 4
+    pol commit preimage[5 * 5 * 4];
+    pol commit a[5 * 5 * 4];
     // pol commit c[320]; // 5 * 64
-    pol commit c_prime[320]; // 5 * 64
-    pol commit a_prime[1600]; // 5 * 5 * 64
-    pol commit a_prime_prime[100]; // 5 * 5 * 4 
-    pol commit a_prime_prime_0_0_bits[64]; // 64
-    pol commit a_prime_prime_prime_0_0_limbs[4]; // 4
+    // pol commit c_prime[320]; // 5 * 64
+    // pol commit a_prime[1600]; // 5 * 5 * 64
+    // pol commit a_prime_prime[100]; // 5 * 5 * 4 
+    // pol commit a_prime_prime_0_0_bits[64]; // 64
+    // pol commit a_prime_prime_prime_0_0_limbs[4]; // 4
 
     // eval_round_flags(builder);
 
@@ -105,9 +105,9 @@ machine Keccak with
     // let final_step = local.step_flags[NUM_ROUNDS - 1];
     // let not_final_step = AB::Expr::one() - final_step;
 
-    pol constant first_step(i) { if i % NUM_ROUNDS == 0 { 1 } else { 0 } }; // same as step_flags[0]
-    pol constant final_step(i) { if i % NUM_ROUNDS == NUM_ROUNDS - 1 { 1 } else { 0 } }; // same as step_flags[NUM_ROUNDS - 1]
-    pol constant not_final_step(i) { if i % NUM_ROUNDS == NUM_ROUNDS - 1 { 0 } else { 1 } };
+    let first_step: expr = step_flags[0]; // aliasing instead of defining a new fixed column
+    let final_step: expr = step_flags[NUM_ROUNDS - 1];
+    let not_final_step = 1 - final_step;
 
     // // If this is the first step, the input A must match the preimage.
     // for y in 0..5 {
@@ -120,7 +120,7 @@ machine Keccak with
     //     }
     // }
 
-    array::new(100, |i| first_step * (preimage[i] - a[i]) = 0);
+    array::zip(preimage, a, |p_i, a_i| first_step * (p_i - a_i) = 0);
 
     // // The export flag must be 0 or 1.
     // builder.assert_bool(local.export);
@@ -197,7 +197,7 @@ machine Keccak with
 
     //         for limb in 0..U64_LIMBS {
     //             let a_limb = local.a[y][x][limb];
-    //             let computed_limb = (limb * BITS_PER_LIMB..(limb + 1) * BITS_PER_LIMB)
+    //             let computed_limb = (limb * BITS_PER_LIMB..(limb + 1) * BITS_PER_LIMB) // bigger address correspond to more significant bit
     //                 .rev()
     //                 .fold(AB::Expr::zero(), |acc, z| {
     //                     builder.assert_bool(local.a_prime[y][x][z]);
@@ -565,15 +565,141 @@ machine Keccak with
     //     }
     // }
 
+    let query_c: int, int, int -> int = query |x, limb, bit_in_limb| utils::fold(5, |y| (int(eval(a[y * 20 + x * 4 + limb])) >> bit_in_limb) & 0x1, 0, |acc, e| acc ^ e);
+
     let c: inter[320] = array::new(320, |i| {
         let x = i / 64;
         let z = i % 64;
         let limb = z / 16;
         let bit_in_limb = z % 16;
 
-        let c_i;
-        set_hint(c_i, |_| Query::Hint(fe(utils::fold(5, |y| (int(eval(a[y * 20 + x * 4 + limb])) >> bit_in_limb) & 0x1, 0, |acc, e| acc ^ e))));
-        c_i
+        let c;
+        set_hint(c, |_| Query::Hint(fe(query_c(x, limb, bit_in_limb))));
+        c
     });
 
+    // // Populate C'[x, z] = xor(C[x, z], C[x - 1, z], C[x + 1, z - 1]).
+    // for x in 0..5 {
+    //     for z in 0..64 {
+    //         row.c_prime[x][z] = xor([
+    //             row.c[x][z],
+    //             row.c[(x + 4) % 5][z],
+    //             row.c[(x + 1) % 5][(z + 63) % 64],
+    //         ]);
+    //     }
+    // }
+
+    let query_c_prime: int, int -> int = query |x, z| int(eval(c[x * 64 + z])) ^ int(eval(c[((x + 4) % 5) * 64 + z])) ^ int(eval(c[((x + 1) % 5) * 64 + (z + 63) % 64]));
+
+    let c_prime: inter[320] = array::new(320, |i| {
+        let x = i / 64;
+        let z = i % 64;
+        
+        let c_prime;
+        set_hint(c_prime, |_| Query::Hint(fe(query_c_prime(x, z))));
+        c_prime
+    });
+
+    // // Populate A'. To avoid shifting indices, we rewrite
+    // //     A'[x, y, z] = xor(A[x, y, z], C[x - 1, z], C[x + 1, z - 1])
+    // // as
+    // //     A'[x, y, z] = xor(A[x, y, z], C[x, z], C'[x, z]).
+    // for x in 0..5 {
+    //     for y in 0..5 {
+    //         for z in 0..64 {
+    //             let limb = z / BITS_PER_LIMB;
+    //             let bit_in_limb = z % BITS_PER_LIMB;
+    //             let a_limb = row.a[y][x][limb].as_canonical_u64() as u16;
+    //             let a_bit = F::from_bool(((a_limb >> bit_in_limb) & 1) != 0);
+    //             row.a_prime[y][x][z] = xor([a_bit, row.c[x][z], row.c_prime[x][z]]);
+    //         }
+    //     }
+    // }
+
+    let query_a_prime: int, int, int, int, int -> int = query |x, y, z, limb, bit_in_limb| ((int(eval(a[y * 320 + x * 64 + limb])) >> bit_in_limb) & 0x1) ^ int(eval(c[x * 64 + z])) ^ int(eval(c_prime[x * 64 + z]));
+
+    let a_prime: inter[1600] = array::new(1600, |i| {
+        let x = i / 320;
+        let y = (i / 64) % 5;
+        let z = i % 64;
+        let limb = z / 16;
+        let bit_in_limb = z % 16;
+
+        let a_prime;
+        set_hint(a_prime, |_| Query::Hint(fe(query_a_prime(x, y, z, limb, bit_in_limb))));
+        a_prime
+    });
+
+    // // Populate A''.
+    // // A''[x, y] = xor(B[x, y], andn(B[x + 1, y], B[x + 2, y])).
+    // for y in 0..5 {
+    //     for x in 0..5 {
+    //         for limb in 0..U64_LIMBS {
+    //             row.a_prime_prime[y][x][limb] = (limb * BITS_PER_LIMB..(limb + 1) * BITS_PER_LIMB)
+    //                 .rev()
+    //                 .fold(F::zero(), |acc, z| {
+    //                     let bit = xor([
+    //                         row.b(x, y, z),
+    //                         andn(row.b((x + 1) % 5, y, z), row.b((x + 2) % 5, y, z)),
+    //                     ]);
+    //                     acc.double() + bit
+    //                 });
+    //         }
+    //     }
+    // }
+
+    let query_a_prime_prime: int, int, int -> int = query |x, y, limb| utils::fold(16, |z| int(eval(b(x, y, (limb + 1) * 16 - 1 - z))) ^ int(eval(andn(b((x + 1) % 5, y, (limb + 1) * 16 - 1 - z), b((x + 2) % 5, y, (limb + 1) * 16 - 1 - z)))), 0, |acc, e| acc * 2 + e);
+
+    let a_prime_prime: inter[100] = array::new(100, |i| {
+        let y = i / 20;
+        let x = (i / 4) % 5;
+        let limb = i % 4;
+
+        let a_prime_prime;
+        set_hint(a_prime_prime, |_| Query::Hint(fe(query_a_prime_prime(x, y, limb))));
+        a_prime_prime
+    });
+
+    // // For the XOR, we split A''[0, 0] to bits.
+    // let mut val = 0; // smaller address correspond to less significant limb
+    // for limb in 0..U64_LIMBS {
+    //     let val_limb = row.a_prime_prime[0][0][limb].as_canonical_u64();
+    //     val |= val_limb << (limb * BITS_PER_LIMB);
+    // }
+    // let val_bits: Vec<bool> = (0..64) // smaller address correspond to less significant bit
+    //     .scan(val, |acc, _| {
+    //         let bit = (*acc & 1) != 0;
+    //         *acc >>= 1;
+    //         Some(bit)
+    //     })
+    //     .collect();
+    // for (i, bit) in row.a_prime_prime_0_0_bits.iter_mut().enumerate() {
+    //     *bit = F::from_bool(val_bits[i]);
+    // }
+
+    let query_a_prime_prime_0_0_bits: int, int -> int = query |limb, bit_in_limb| (int(eval(a_prime_prime[limb])) >> bit_in_limb) & 0x1;
+
+    let a_prime_prime_0_0_bits: inter[64] = array::new(64, |i| {
+        let limb = i / 16;
+        let bit_in_limb = i % 16;
+
+        let a_prime_prime_0_0_bits;
+        set_hint(a_prime_prime_0_0_bits, |_| Query::Hint(fe(query_a_prime_prime_0_0_bits(limb, bit_in_limb))));
+        a_prime_prime_0_0_bits
+    });
+
+    // // A''[0, 0] is additionally xor'd with RC.
+    // for limb in 0..U64_LIMBS {
+    //     let rc_lo = rc_value_limb(round, limb);
+    //     row.a_prime_prime_prime_0_0_limbs[limb] =
+    //         F::from_canonical_u16(row.a_prime_prime[0][0][limb].as_canonical_u64() as u16 ^ rc_lo);
+    // }
+
+    let query_a_prime_prime_prime_0_0_limbs: int -> int = query |limb| int(eval(a_prime_prime[limb])) ^ ((int(eval(utils::sum(NUM_ROUNDS, |r| expr(RC[r]) * step_flags[r]))) >> (limb * 16)) & 0xffff);
+
+    let a_prime_prime_prime_0_0_limbs: inter[4] = array::new(4, |limb| {
+        let a_prime_prime_prime_0_0_limbs;
+        set_hint(a_prime_prime_prime_0_0_limbs, |_| Query::Hint(fe(query_a_prime_prime_prime_0_0_limbs(limb))));
+        a_prime_prime_prime_0_0_limbs
+    });
 }
