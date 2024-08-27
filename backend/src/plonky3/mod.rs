@@ -97,7 +97,7 @@ impl<T: FieldElement> BackendFactory<T> for FactoryBabyBear {
         verification_app_key: Option<&mut dyn io::Read>,
         _: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<T>>, Error> {
-        if T::modulus().to_arbitrary_integer() != BabyBearField::modulus().to_arbitrary_integer()
+        if T::modulus().to_arbitrary_integer() != GoldilocksField::modulus().to_arbitrary_integer()
             || T::modulus().to_arbitrary_integer()
                 != BabyBearField::modulus().to_arbitrary_integer()
         {
