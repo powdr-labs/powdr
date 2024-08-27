@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 
+use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
         Expression, FunctionValueDefinition, Identity, PolynomialReference, Reference, Symbol,
@@ -101,7 +102,8 @@ impl<'a> TraitsResolver<'a> {
 
                 if type_args == items {
                     let expr = impl_.function_by_name(trait_fn_name).unwrap();
-                    return Some((name.clone(), expr.body.as_ref().clone()));
+                    let key = format!("{name}<{}>", type_args.iter().join(", "));
+                    return Some((key.clone(), expr.body.as_ref().clone()));
                 }
             }
         }

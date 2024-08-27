@@ -449,7 +449,8 @@ impl<'a> Definitions<'a> {
                 .into()
             }
         } else {
-            let impl_ = solved_impls.get(name);
+            let key = format!("{name}<{}>", type_args.as_ref().unwrap().iter().join(", "));
+            let impl_ = solved_impls.get(key.as_str());
             match impl_ {
                 Some(expr) => {
                     let Expression::LambdaExpression(_, lambda) = expr else {
