@@ -11,6 +11,7 @@ on:
 env:
   CARGO_TERM_COLOR: always
   POWDR_GENERATE_PROOFS: "true"
+  MAX_DEGREE_LOG: "20"
 
 jobs:
   build:
@@ -84,11 +85,9 @@ jobs:
     - name: Install Rust toolchain 1.77 (with clippy and rustfmt)
       run: rustup toolchain install 1.77-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.77-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.77-x86_64-unknown-linux-gnu
     - name: Install nightly
-      run: rustup toolchain install nightly-2024-02-01-x86_64-unknown-linux-gnu
-    - name: Install riscv target
-      run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-02-01-x86_64-unknown-linux-gnu
+      run: rustup toolchain install nightly-2024-08-01-x86_64-unknown-linux-gnu
     - name: Install stdlib
-      run: rustup component add rust-src --toolchain nightly-2024-02-01-x86_64-unknown-linux-gnu
+      run: rustup component add rust-src --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
     - name: Install pilcom
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - uses: taiki-e/install-action@nextest
@@ -142,11 +141,9 @@ jobs:
     - name: Install Rust toolchain 1.77 (with clippy and rustfmt)
       run: rustup toolchain install 1.77-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.77-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.77-x86_64-unknown-linux-gnu
     - name: Install nightly
-      run: rustup toolchain install nightly-2024-02-01-x86_64-unknown-linux-gnu
-    - name: Install riscv target
-      run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-02-01-x86_64-unknown-linux-gnu
+      run: rustup toolchain install nightly-2024-08-01-x86_64-unknown-linux-gnu
     - name: Install stdlib
-      run: rustup component add rust-src --toolchain nightly-2024-02-01-x86_64-unknown-linux-gnu
+      run: rustup component add rust-src --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
     - name: Install pilcom
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - name: Install EStarkPolygon prover system dependency
@@ -193,11 +190,9 @@ jobs:
     - name: Install test dependencies
       run: sudo apt-get install -y binutils-riscv64-unknown-elf lld
     - name: Install nightly
-      run: rustup toolchain install nightly-2024-02-01-x86_64-unknown-linux-gnu
-    - name: Install riscv target
-      run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-02-01-x86_64-unknown-linux-gnu
+      run: rustup toolchain install nightly-2024-08-01-x86_64-unknown-linux-gnu
     - name: Install stdlib
-      run: rustup component add rust-src --toolchain nightly-2024-02-01-x86_64-unknown-linux-gnu
+      run: rustup component add rust-src --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
     - name: Install pilcom
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - uses: taiki-e/install-action@nextest

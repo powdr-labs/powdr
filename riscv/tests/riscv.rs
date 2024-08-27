@@ -2,6 +2,7 @@ mod common;
 
 use common::{verify_riscv_asm_file, verify_riscv_asm_string};
 use mktemp::Temp;
+use powdr_number::Bn254Field;
 use powdr_number::GoldilocksField;
 use powdr_pipeline::{
     test_util::{run_pilcom_with_backend_variant, BackendVariant},
@@ -18,12 +19,13 @@ use powdr_riscv::{
 /// Compiles and runs a rust program with continuations, runs the full
 /// witness generation & verifies it using Pilcom.
 pub fn test_continuations(case: &str) {
-    let runtime = Runtime::base().with_poseidon();
+    let runtime = Runtime::base().with_poseidon_for_continuations();
     let temp_dir = Temp::new_dir().unwrap();
 
     let compiled = powdr_riscv::compile_rust_crate_to_riscv(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
+        None,
     );
 
     // Test continuations from ELF file.
@@ -59,8 +61,58 @@ fn run_continuations_test(case: &str, powdr_asm: String) {
 
 #[test]
 #[ignore = "Too slow"]
+// TODO: this a temporary test so we at least go through the bn254 code path.
+// Once we fully support it, the whole test suite here should probably be modified to take a generic field, and this can be removed.
+fn bn254_sanity_check() {
+    let case = "trivial";
+
+    let temp_dir = Temp::new_dir().unwrap();
+    let compiled = powdr_riscv::compile_rust_crate_to_riscv(
+        &format!("tests/riscv_data/{case}/Cargo.toml"),
+        &temp_dir,
+        None,
+    );
+
+    log::info!("Verifying {case} converted from ELF file");
+    let runtime = Runtime::base();
+    let from_elf = powdr_riscv::elf::translate::<Bn254Field>(
+        compiled.executable.as_ref().unwrap(),
+        &runtime,
+        false,
+    );
+
+    let temp_dir = mktemp::Temp::new_dir().unwrap().release();
+
+    let file_name = format!("{case}_from_elf.asm");
+    let mut pipeline = Pipeline::default()
+        .with_output(temp_dir.to_path_buf(), false)
+        .from_asm_string(from_elf, Some(PathBuf::from(file_name)));
+
+    let analyzed = pipeline.compute_analyzed_asm().unwrap().clone();
+    powdr_riscv_executor::execute_ast(
+        &analyzed,
+        Default::default(),
+        pipeline.data_callback().unwrap(),
+        // Assume the RISC-V program was compiled without a bootloader, otherwise this will fail.
+        &[],
+        usize::MAX,
+        powdr_riscv_executor::ExecMode::Fast,
+        Default::default(),
+    );
+    run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).unwrap();
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn trivial() {
     let case = "trivial";
+    verify_riscv_crate(case, Default::default(), &Runtime::base())
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn halt() {
+    let case = "halt";
     verify_riscv_crate(case, Default::default(), &Runtime::base())
 }
 
@@ -75,7 +127,11 @@ fn zero_with_values() {
 #[ignore = "Too slow"]
 fn runtime_poseidon_gl() {
     let case = "poseidon_gl_via_coprocessor";
-    verify_riscv_crate(case, Default::default(), &Runtime::base().with_poseidon());
+    verify_riscv_crate(
+        case,
+        Default::default(),
+        &Runtime::base().with_poseidon_no_continuations(),
+    );
 }
 
 #[test]
@@ -178,6 +234,14 @@ fn password() {
 
 #[test]
 #[ignore = "Too slow"]
+fn std_hello_world() {
+    let case = "std_hello_world";
+    // We only test via ELF because std is not supported via assembly.
+    verify_riscv_crate_impl::<()>(case, vec![], &Runtime::base(), true, false, None);
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn function_pointer() {
     let case = "function_pointer";
     verify_riscv_crate(
@@ -249,6 +313,7 @@ fn sum_serde() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn read_slice() {
     let case = "read_slice";
     let runtime = Runtime::base();
@@ -256,6 +321,7 @@ fn read_slice() {
     let riscv_asm = powdr_riscv::compile_rust_crate_to_riscv_asm(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
+        None,
     );
     let powdr_asm = powdr_riscv::asm::compile::<GoldilocksField>(riscv_asm, &runtime, false);
 
@@ -321,25 +387,100 @@ fn dispatch_table_static_relocation() {
 
 #[test]
 #[ignore = "Too slow"]
-#[should_panic(
-    expected = "called `Result::unwrap()` on an `Err` value: \"Error accessing prover inputs: Index 0 out of bounds 0\""
-)]
+#[should_panic(expected = "reached a fail instruction")]
 fn print() {
     let case = "print";
-    verify_riscv_crate(case, Default::default(), &Runtime::base());
+    verify_riscv_crate(case, vec![0.into()], &Runtime::base());
 }
 
 #[test]
+#[ignore = "Too slow"]
+// Test compiling a program with features.
+// If no features are enabled, the expected input is 0.
+// The test program has two features, "add_two" and "add_three".
+// Enabling these features adds 2 and 3 to the expected input, respectively.
+fn features() {
+    let case = "features";
+
+    let temp_dir = Temp::new_dir().unwrap();
+
+    // no features
+    let expected = 0;
+    let compiled = powdr_riscv::compile_rust_crate_to_riscv(
+        &format!("tests/riscv_data/{case}/Cargo.toml"),
+        &temp_dir,
+        None,
+    );
+
+    log::info!("Verifying {case} converted from ELF file");
+    let from_elf = powdr_riscv::elf::translate::<GoldilocksField>(
+        compiled.executable.as_ref().unwrap(),
+        &Runtime::base(),
+        false,
+    );
+    verify_riscv_asm_string::<usize>(
+        &format!("{case}_from_elf.asm"),
+        &from_elf,
+        &[expected.into()],
+        None,
+    );
+
+    // "add_two"
+    let expected = 2;
+    let compiled = powdr_riscv::compile_rust_crate_to_riscv(
+        &format!("tests/riscv_data/{case}/Cargo.toml"),
+        &temp_dir,
+        Some(vec!["add_two".to_string()]),
+    );
+
+    log::info!("Verifying {case} converted from ELF file");
+    let from_elf = powdr_riscv::elf::translate::<GoldilocksField>(
+        compiled.executable.as_ref().unwrap(),
+        &Runtime::base(),
+        false,
+    );
+    verify_riscv_asm_string::<usize>(
+        &format!("{case}_from_elf.asm"),
+        &from_elf,
+        &[expected.into()],
+        None,
+    );
+
+    // "add_two" and "add_three"
+    let expected = 5;
+    let compiled = powdr_riscv::compile_rust_crate_to_riscv(
+        &format!("tests/riscv_data/{case}/Cargo.toml"),
+        &temp_dir,
+        Some(vec!["add_two".to_string(), "add_three".to_string()]),
+    );
+
+    log::info!("Verifying {case} converted from ELF file");
+    let from_elf = powdr_riscv::elf::translate::<GoldilocksField>(
+        compiled.executable.as_ref().unwrap(),
+        &Runtime::base(),
+        false,
+    );
+    verify_riscv_asm_string::<usize>(
+        &format!("{case}_from_elf.asm"),
+        &from_elf,
+        &[expected.into()],
+        None,
+    );
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn many_chunks_dry() {
     // Compiles and runs the many_chunks example with continuations, just computing
     // and validating the bootloader inputs.
     // Doesn't do a full witness generation, verification, or proving.
     let case = "many_chunks";
-    let runtime = Runtime::base().with_poseidon();
+    let runtime = Runtime::base().with_poseidon_for_continuations();
     let temp_dir = Temp::new_dir().unwrap();
     let riscv_asm = powdr_riscv::compile_rust_crate_to_riscv_asm(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
+        None,
     );
     let powdr_asm = powdr_riscv::asm::compile::<GoldilocksField>(riscv_asm, &runtime, true);
 
@@ -358,6 +499,7 @@ struct Point {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn output_syscall() {
     let case = "output";
     let runtime = Runtime::base();
@@ -365,6 +507,7 @@ fn output_syscall() {
     let riscv_asm = powdr_riscv::compile_rust_crate_to_riscv_asm(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
+        None,
     );
     let powdr_asm = powdr_riscv::asm::compile::<GoldilocksField>(riscv_asm, &runtime, false);
 
@@ -404,7 +547,7 @@ fn many_chunks_memory() {
 }
 
 fn verify_riscv_crate(case: &str, inputs: Vec<GoldilocksField>, runtime: &Runtime) {
-    verify_riscv_crate_from_both_paths::<()>(case, inputs, runtime, None)
+    verify_riscv_crate_impl::<()>(case, inputs, runtime, true, true, None)
 }
 
 fn verify_riscv_crate_with_data<S: serde::Serialize + Send + Sync + 'static>(
@@ -413,41 +556,48 @@ fn verify_riscv_crate_with_data<S: serde::Serialize + Send + Sync + 'static>(
     runtime: &Runtime,
     data: Vec<(u32, S)>,
 ) {
-    verify_riscv_crate_from_both_paths(case, inputs, runtime, Some(data))
+    verify_riscv_crate_impl(case, inputs, runtime, true, true, Some(data))
 }
 
-fn verify_riscv_crate_from_both_paths<S: serde::Serialize + Send + Sync + 'static>(
+fn verify_riscv_crate_impl<S: serde::Serialize + Send + Sync + 'static>(
     case: &str,
     inputs: Vec<GoldilocksField>,
     runtime: &Runtime,
+    via_elf: bool,
+    via_asm: bool,
     data: Option<Vec<(u32, S)>>,
 ) {
     let temp_dir = Temp::new_dir().unwrap();
     let compiled = powdr_riscv::compile_rust_crate_to_riscv(
         &format!("tests/riscv_data/{case}/Cargo.toml"),
         &temp_dir,
+        None,
     );
 
-    log::info!("Verifying {case} converted from ELF file");
-    let from_elf = powdr_riscv::elf::translate::<GoldilocksField>(
-        compiled.executable.as_ref().unwrap(),
-        runtime,
-        false,
-    );
-    verify_riscv_asm_string(
-        &format!("{case}_from_elf.asm"),
-        &from_elf,
-        &inputs,
-        data.as_deref(),
-    );
+    if via_elf {
+        log::info!("Verifying {case} converted from ELF file");
+        let from_elf = powdr_riscv::elf::translate::<GoldilocksField>(
+            compiled.executable.as_ref().unwrap(),
+            runtime,
+            false,
+        );
+        verify_riscv_asm_string(
+            &format!("{case}_from_elf.asm"),
+            &from_elf,
+            &inputs,
+            data.as_deref(),
+        );
+    }
 
-    log::info!("Verifying {case} converted from assembly files");
-    let from_asm =
-        powdr_riscv::asm::compile::<GoldilocksField>(compiled.load_asm_files(), runtime, false);
-    verify_riscv_asm_string(
-        &format!("{case}_from_asm.asm"),
-        &from_asm,
-        &inputs,
-        data.as_deref(),
-    );
+    if via_asm {
+        log::info!("Verifying {case} converted from assembly files");
+        let from_asm =
+            powdr_riscv::asm::compile::<GoldilocksField>(compiled.load_asm_files(), runtime, false);
+        verify_riscv_asm_string(
+            &format!("{case}_from_asm.asm"),
+            &from_asm,
+            &inputs,
+            data.as_deref(),
+        );
+    }
 }

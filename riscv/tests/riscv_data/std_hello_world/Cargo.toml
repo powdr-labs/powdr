@@ -1,0 +1,10 @@
+[package]
+name = "std_hello_world"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+powdr-riscv-syscalls = { path = "../../../../riscv-syscalls" }
+powdr-riscv-runtime = { path = "../../../../riscv-runtime", features = ["std"]}
+
+[workspace]

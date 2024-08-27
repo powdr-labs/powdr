@@ -25,4 +25,5 @@ SECTIONS
 }
 
 # Specify the entry point function provided by powdr-riscv-runtime:
+ASSERT(DEFINED(__runtime_start), "Error: __runtime_start is not defined. Try adding the line `extern crate powdr_riscv_runtime;` in your `main.rs`.")
 ENTRY(__runtime_start)

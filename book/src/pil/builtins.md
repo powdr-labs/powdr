@@ -131,7 +131,7 @@ machine Sqrt {
     };
 
     col witness x;
-    col witness y(i) query std::prover::Query::Hint(sqrt_hint(std::prover::eval(x)));
+    col witness y(i) query std::prelude::Query::Hint(sqrt_hint(std::prover::eval(x)));
 
     y * y = x;
 
@@ -160,6 +160,19 @@ let std::prover::degree: -> int
 
 Returns the current number of rows / the length of the witness columns, also
 known as the degree.
+
+### Hints
+
+```rust
+let std::prelude::set_hint: expr, (int -> std::prelude::Query) -> ()
+```
+
+This function can be used to set a "query function" for a witness column.
+Query functions are used during witness generation and allow witness column cells
+to receive a value even though they are not uniquely constrained by the constraints.
+
+The first argument must be a witness column and the function can only be called
+once per witness column.
 
 ## Types
 

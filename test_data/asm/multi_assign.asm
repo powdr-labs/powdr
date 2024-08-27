@@ -13,7 +13,7 @@ machine MultiAssign with degree: 8 {
     instr assert_zero X { XIsZero = 1 }
 
     function main {
-        A <=X= ${ std::prover::Query::Input(0) };
+        A <=X= ${ std::prelude::Query::Input(0) };
         A <=Y= A - 7;
         assert_zero A;
         return;

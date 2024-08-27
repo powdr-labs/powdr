@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::iter::{self, once};
 
-use super::{EvalResult, FixedData, FixedLookup};
+use super::{EvalResult, FixedData};
 
 use crate::constant_evaluator::MIN_DEGREE_LOG;
 use crate::witgen::block_processor::BlockProcessor;
@@ -281,10 +281,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         self.connecting_identities.keys().copied().collect()
     }
 
-    fn degree(&self) -> DegreeType {
-        self.degree
-    }
-
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
@@ -308,8 +304,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        fixed_lookup: &'b mut FixedLookup<T>,
-        query_callback: &'b mut Q,
+        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         if self.data.len() < 2 * self.block_size {
             log::warn!(
@@ -346,15 +341,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
 
             // Instantiate a processor
             let row_offset = RowIndex::from_i64(-1, self.degree);
-            let mut mutable_state = MutableState {
-                fixed_lookup,
-                machines: vec![].into_iter().into(),
-                query_callback,
-            };
             let mut processor = Processor::new(
                 row_offset,
                 dummy_block,
-                &mut mutable_state,
+                mutable_state,
                 self.fixed_data,
                 &self.witness_cols,
                 self.degree,
