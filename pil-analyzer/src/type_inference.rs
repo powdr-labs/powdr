@@ -725,7 +725,8 @@ impl TypeChecker {
             }
             Expression::StructExpression(sr, struct_expr) => {
                 for named_expr in struct_expr.fields.iter_mut() {
-                    let expr_ty = self.declared_types[&struct_expr.name].1.ty.clone();
+                    let name = format!("{}::{}", struct_expr.name, named_expr.name);
+                    let expr_ty = self.declared_types[&name].1.ty.clone();
                     self.expect_type(&expr_ty, named_expr.body.as_mut())?;
                 }
 
@@ -915,7 +916,7 @@ impl TypeChecker {
 
                             match &f.0 {
                                 Some(field_name) => {
-                                    let fname = format!("{name}.{field_name}");
+                                    let fname = format!("{name}::{field_name}");
 
                                     let (ty, _generic_args) = self
                                         .unifier
