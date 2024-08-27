@@ -449,7 +449,10 @@ impl<'a> Definitions<'a> {
                 .into()
             }
         } else {
-            let key = format!("{name}<{}>", type_args.as_ref().unwrap().iter().join(", "));
+            let key = type_args.as_ref().map_or_else(
+                || name.to_string(),
+                |args| format!("{name}<{}>", args.iter().join(", ")),
+            );
             let impl_ = solved_impls.get(key.as_str());
             match impl_ {
                 Some(expr) => {
