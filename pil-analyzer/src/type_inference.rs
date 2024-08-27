@@ -725,11 +725,12 @@ impl TypeChecker {
             }
             Expression::StructExpression(sr, struct_expr) => {
                 for named_expr in struct_expr.fields.iter_mut() {
-                    let expr_ty = self.declared_types[&struct_expr.name].1.ty.clone();
+                    let name = format!("{}::{}", struct_expr.name, named_expr.name);
+                    let expr_ty = self.declared_types[&name].1.ty.clone();
                     self.expect_type(&expr_ty, named_expr.body.as_mut())?;
                 }
 
-                match SymbolPath::from_str(&struct_expr.name.replace('.', "::")) {
+                match SymbolPath::from_str(&struct_expr.name) {
                     Ok(named_type) => Ok(Type::NamedType(named_type, None)),
                     Err(err) => Err(sr.with_error(err))?,
                 }?
