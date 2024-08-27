@@ -1711,7 +1711,7 @@ mod test {
                 let test = query || std::prover::eval(2 * (1 + 1 + 1) + 1);
         "#;
         assert_eq!(
-            evaluate_function::<GoldilocksField>(src, "main.test"),
+            evaluate_function::<GoldilocksField>(src, "main::test"),
             7u64.into()
         );
     }
