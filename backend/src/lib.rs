@@ -45,7 +45,7 @@ pub enum BackendType {
     #[cfg(feature = "plonky3")]
     #[strum(serialize = "plonky3")]
     Plonky3,
-    #[cfg(feature = "plonky3-baby-bear")]
+    #[cfg(feature = "plonky3")]
     #[strum(serialize = "plonky3-baby-bear")]
     Plonky3BabyBear,
     #[cfg(feature = "plonky3")]
@@ -89,7 +89,7 @@ impl BackendType {
             }
             #[cfg(feature = "plonky3")]
             BackendType::Plonky3 => Box::new(plonky3::Factory),
-            #[cfg(feature = "plonky3-baby-bear")]
+            #[cfg(feature = "plonky3")]
             BackendType::Plonky3BabyBear => Box::new(plonky3::FactoryBabyBear),
             #[cfg(feature = "plonky3")]
             BackendType::Plonky3Composite => {

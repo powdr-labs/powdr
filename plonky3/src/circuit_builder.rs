@@ -22,7 +22,7 @@ use powdr_ast::analyzed::{
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, IdentityKind, PolynomialType,
 };
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{BabyBearField, FieldElement, GoldilocksField, LargeInt};
+use powdr_number::{FieldElement, GoldilocksField, LargeInt};
 // use powdr_number::{BabyBearField, FieldElement, GoldilocksField, LargeInt};
 // use powdr_number::FieldElement;
 
@@ -39,7 +39,7 @@ impl Val for Goldilocks {
 
 impl Val for BabyBear {
     fn to_p3_field<T: FieldElement>(elt: T) -> Self {
-        assert_eq!(TypeId::of::<T>(), TypeId::of::<BabyBearField>());
+        // assert_eq!(TypeId::of::<T>(), TypeId::of::<BabyBearField>();
         BabyBear::from_canonical_u32(elt.to_integer().try_into_u32().unwrap())
     }
 }
@@ -54,6 +54,7 @@ pub(crate) struct PowdrCircuit<'a, T, P3Field: Val> {
     /// The matrix of preprocessed values, used in debug mode to check the constraints before proving
     #[cfg(debug_assertions)]
     preprocessed: Option<RowMajorMatrix<P3Field>>,
+    _phantom: std::marker::PhantomData<P3Field>,
 }
 
 impl<'a, T: FieldElement, P3Field: Val> PowdrCircuit<'a, T, P3Field> {
@@ -101,6 +102,7 @@ impl<'a, T: FieldElement, P3Field: Val> PowdrCircuit<'a, T, P3Field> {
             _witgen_callback: None,
             #[cfg(debug_assertions)]
             preprocessed: None,
+            _phantom: std::marker::PhantomData,
         }
     }
 

@@ -172,7 +172,7 @@ impl<T: FieldElement> Plonky3ProverBabyBear<T> {
         witness: &[(String, Vec<T>)],
         witgen_callback: WitgenCallback<T>,
     ) -> Result<Vec<u8>, String> {
-        let circuit: PowdrCircuit<T, BabyBear> = PowdrCircuit::new(&self.analyzed)
+        let circuit: PowdrCircuit<T, BabyBear> = PowdrCircuit::<T, BabyBear>::new(&self.analyzed)
             .with_witgen_callback(witgen_callback)
             .with_witness(witness);
 
@@ -232,7 +232,7 @@ impl<T: FieldElement> Plonky3ProverBabyBear<T> {
         verify_with_key(
             &config,
             verifying_key,
-            &PowdrCircuit::new(&self.analyzed),
+            &PowdrCircuit::<T, BabyBear>::new(&self.analyzed),
             &mut challenger,
             &proof,
             &publics,

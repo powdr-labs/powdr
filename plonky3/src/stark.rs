@@ -168,9 +168,10 @@ impl<T: FieldElement> Plonky3Prover<T> {
         witness: &[(String, Vec<T>)],
         witgen_callback: WitgenCallback<T>,
     ) -> Result<Vec<u8>, String> {
-        let circuit: PowdrCircuit<T, Goldilocks> = PowdrCircuit::new(&self.analyzed)
-            .with_witgen_callback(witgen_callback)
-            .with_witness(witness);
+        let circuit: PowdrCircuit<T, Goldilocks> =
+            PowdrCircuit::<T, Goldilocks>::new(&self.analyzed)
+                .with_witgen_callback(witgen_callback)
+                .with_witness(witness);
 
         #[cfg(debug_assertions)]
         let circuit = circuit.with_preprocessed(self.get_preprocessed_matrix());
@@ -228,7 +229,7 @@ impl<T: FieldElement> Plonky3Prover<T> {
         verify_with_key(
             &config,
             verifying_key,
-            &PowdrCircuit::new(&self.analyzed),
+            &PowdrCircuit::<T, Goldilocks>::new(&self.analyzed),
             &mut challenger,
             &proof,
             &publics,

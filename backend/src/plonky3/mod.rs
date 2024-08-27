@@ -24,7 +24,7 @@ impl<T: FieldElement> BackendFactory<T> for Factory {
         _: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<T>>, Error> {
         if T::modulus().to_arbitrary_integer() != GoldilocksField::modulus().to_arbitrary_integer()
-            || T::modulus().to_arbitrary_integer()
+            && T::modulus().to_arbitrary_integer()
                 != BabyBearField::modulus().to_arbitrary_integer()
         {
             unimplemented!("plonky3 is only implemented for the Goldilocks and Baby Bear field");
@@ -98,7 +98,7 @@ impl<T: FieldElement> BackendFactory<T> for FactoryBabyBear {
         _: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<T>>, Error> {
         if T::modulus().to_arbitrary_integer() != GoldilocksField::modulus().to_arbitrary_integer()
-            || T::modulus().to_arbitrary_integer()
+            && T::modulus().to_arbitrary_integer()
                 != BabyBearField::modulus().to_arbitrary_integer()
         {
             unimplemented!("plonky3 is only implemented for the Goldilocks and Baby Bear field");
