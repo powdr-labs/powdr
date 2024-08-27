@@ -1,6 +1,8 @@
 use powdr_ast::analyzed::Analyzed;
 use powdr_backend::BackendType;
-use powdr_number::{buffered_write_file, BigInt, Bn254Field, FieldElement, GoldilocksField};
+use powdr_number::{
+    buffered_write_file, BabyBearField, BigInt, Bn254Field, FieldElement, GoldilocksField,
+};
 use powdr_pil_analyzer::evaluator::{self, SymbolLookup};
 use std::path::PathBuf;
 use std::{env, fs};
@@ -291,7 +293,54 @@ pub fn test_plonky3_with_backend_variant(
     // Generate a proof
     let proof = pipeline.compute_proof().cloned().unwrap();
 
+    // let publics: Vec<GoldilocksField> = pipeline
     let publics: Vec<GoldilocksField> = pipeline
+        .publics()
+        .clone()
+        .unwrap()
+        .iter()
+        .map(|(_name, v)| *v)
+        .collect();
+
+    pipeline.verify(&proof, &[publics.clone()]).unwrap();
+
+    if pipeline.optimized_pil().unwrap().constant_count() > 0 {
+        // Export verification Key
+        let output_dir = pipeline.output_dir().as_ref().unwrap();
+        let vkey_file_path = output_dir.join("verification_key.bin");
+        buffered_write_file(&vkey_file_path, |writer| {
+            pipeline.export_verification_key(writer).unwrap()
+        })
+        .unwrap();
+
+        let mut pipeline = pipeline.with_vkey_file(Some(vkey_file_path));
+
+        // Verify the proof again
+        pipeline.verify(&proof, &[publics]).unwrap();
+    }
+}
+
+#[cfg(feature = "plonky3")]
+pub fn test_plonky3_with_backend_variant_baby_bear(
+    file_name: &str,
+    inputs: Vec<BabyBearField>,
+    backend: BackendVariant,
+) {
+    let backend = match backend {
+        BackendVariant::Monolithic => powdr_backend::BackendType::Plonky3BabyBear,
+        BackendVariant::Composite => powdr_backend::BackendType::Plonky3Composite,
+    };
+    let mut pipeline = Pipeline::default()
+        .with_tmp_output()
+        .from_file(resolve_test_file(file_name))
+        .with_prover_inputs(inputs)
+        .with_backend(backend, None);
+
+    // Generate a proof
+    let proof = pipeline.compute_proof().cloned().unwrap();
+
+    // let publics: Vec<GoldilocksField> = pipeline
+    let publics: Vec<BabyBearField> = pipeline
         .publics()
         .clone()
         .unwrap()
@@ -319,6 +368,14 @@ pub fn test_plonky3_with_backend_variant(
 
 #[cfg(not(feature = "plonky3"))]
 pub fn test_plonky3_with_backend_variant(_: &str, _: Vec<GoldilocksField>, _: BackendVariant) {}
+
+#[cfg(not(feature = "plonky3"))]
+pub fn test_plonky3_with_backend_variant_baby_bear(
+    _: &str,
+    _: Vec<BabyBearField>,
+    _: BackendVariant,
+) {
+}
 
 #[cfg(not(feature = "plonky3"))]
 pub fn gen_plonky3_proof(_: &str, _: Vec<GoldilocksField>) {}

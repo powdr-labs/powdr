@@ -7,7 +7,8 @@ use powdr_pipeline::test_util::{
     assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof,
     gen_estark_proof_with_backend_variant, make_prepared_pipeline, make_simple_prepared_pipeline,
     regular_test, run_pilcom_with_backend_variant, test_halo2, test_halo2_with_backend_variant,
-    test_pilcom, test_plonky3_with_backend_variant, BackendVariant,
+    test_pilcom, test_plonky3_with_backend_variant, test_plonky3_with_backend_variant_baby_bear,
+    BackendVariant,
 };
 
 use test_log::test;
@@ -88,6 +89,7 @@ fn fibonacci() {
     let f = "pil/fibonacci.pil";
     regular_test(f, Default::default());
     test_plonky3_with_backend_variant(f, Default::default(), BackendVariant::Monolithic);
+    // test_plonky3_with_backend_variant_baby_bear(f, Default::default(), BackendVariant::Monolithic);
 }
 
 #[test]
@@ -242,6 +244,7 @@ fn halo_without_lookup() {
 fn add() {
     let f = "pil/add.pil";
     test_plonky3_with_backend_variant(f, Default::default(), BackendVariant::Monolithic);
+    test_plonky3_with_backend_variant_baby_bear(f, Default::default(), BackendVariant::Monolithic);
 }
 
 #[test]
