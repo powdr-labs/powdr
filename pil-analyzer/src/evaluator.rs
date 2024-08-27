@@ -1794,16 +1794,19 @@ mod test {
                 cast: |a| std::convert::fe(a),
             }
 
-            let x: fe -> fe = |q| match Do::sub(q, q) {
-                    v => {
-                        let one: int = 1;
-                        let two: int = 2;
-                        v + Do::add(one, two)
-                    },
+            let x: int -> fe = |q| match Do::sub(q, q) {
+                v => {
+                    let one: int = 1;
+                    let two: int = 2;
+                    v + Do::add(one, two)
+                },
             };
 
             let y: int -> fe = |q| match Do::cast(q) {
-                    v => x(v) + v,
+                v => { 
+                    let two: int = 2;
+                    x(two) + v
+                },
             };
 
             let r: fe = y(2);
