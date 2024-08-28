@@ -583,7 +583,7 @@ namespace N(16);
         std::prover::provide_value(N::x, i, std::convert::fe::<int>(i % 2));
         std::prover::provide_value(N::y, i, std::convert::fe::<int>(i % 2));
 
-    })
+    });
 "#;
     assert_eq!(analyzed.to_string(), expected);
 }
@@ -635,7 +635,7 @@ namespace N(16);
             std::prover::provide_value(y, i, std::convert::fe::<int>(i % 2));
 
         })
-    }
+    };
 "#;
     assert_eq!(analyzed.to_string(), expected);
 }
