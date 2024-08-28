@@ -11,9 +11,14 @@ use crate::witgen::generator::Generator;
 use crate::witgen::machines::write_once_memory::WriteOnceMemory;
 use crate::Identity;
 use itertools::Itertools;
-use powdr_ast::analyzed::SelectedExpressions;
-use powdr_ast::analyzed::{AlgebraicExpression as Expression, IdentityKind, PolyID};
-use powdr_ast::parsed::visitor::ExpressionVisitable;
+use powdr_ast::analyzed::{
+    AlgebraicExpression as Expression, IdentityKind, PolyID, PolynomialReference, Reference,
+    SelectedExpressions,
+};
+use powdr_ast::parsed::{
+    self,
+    visitor::{AllChildren, Children},
+};
 use powdr_number::FieldElement;
 
 pub struct ExtractionOutput<'a, T: FieldElement> {
@@ -77,24 +82,43 @@ pub fn split_out_machines<'a, T: FieldElement>(
             .collect::<BTreeMap<_, _>>();
         assert!(connecting_identities.contains_key(&id.id));
 
+        let prover_functions = fixed
+            .analyzed
+            .prover_functions
+            .iter()
+            .enumerate()
+            .filter(|(i, pf)| {
+                // This only discovers direct references in the lambda expression
+                // and ignores e.g. called functions, but it will work for now.
+                refs_in_parsed_expression(*pf)
+                    .collect::<HashSet<_>>()
+                    .intersection(&machine_witnesses)
+                    .next()
+                    .is_some()
+            })
+            .collect::<Vec<_>>();
+
+        // TODO check that prover functions are unique to a machine.
+        // Also check that all prover functions are assigned to a machine.
+
         log::trace!(
-            "\nExtracted a machine with the following witnesses:\n{} \n and identities:\n{} \n and connecting identities:\n{}",
+            "\nExtracted a machine with the following witnesses:\n{}\n identities:\n{}\n connecting identities:\n{} and prover functions:\n{}",
             machine_witnesses
                 .iter()
                 .map(|s| fixed.column_name(s))
                 .sorted()
-                .collect::<Vec<_>>()
-                .join(", "),
+                .format(", "),
             machine_identities
                 .iter()
-                .map(|id| id.to_string())
-                .collect::<Vec<_>>()
-                .join("\n"),
+                .format("\n"),
             connecting_identities
                 .values()
                 .map(|id| id.to_string())
-                .collect::<Vec<_>>()
-                .join("\n"),
+                .format("\n"),
+            prover_functions
+                .iter()
+                .map(|(_, pf)| format!("{pf}"))
+                .format("\n")
         );
 
         let first_witness = machine_witnesses.iter().next().unwrap();
@@ -115,6 +139,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             machine_witnesses,
             machine_identities,
             connecting_identities,
+            prover_functions,
             name_with_type,
         ));
     }
@@ -142,6 +167,7 @@ fn build_machine<'a, T: FieldElement>(
     machine_witnesses: HashSet<PolyID>,
     machine_identities: Vec<&'a Identity<T>>,
     connecting_identities: BTreeMap<u64, &'a Identity<T>>,
+    prover_functions: Vec<(usize, &parsed::Expression<Reference>)>,
     name_with_type: impl Fn(&str) -> String,
 ) -> KnownMachine<'a, T> {
     if let Some(machine) = SortedWitnesses::try_new(
@@ -250,30 +276,37 @@ fn all_row_connected_witnesses<T>(
 }
 
 /// Extracts all references to names from an identity.
-pub fn refs_in_identity<T>(identity: &Identity<T>) -> HashSet<PolyID> {
-    let mut refs: HashSet<PolyID> = Default::default();
-    identity.pre_visit_expressions(&mut |expr| {
-        ref_of_expression(expr).map(|id| refs.insert(id));
-    });
-    refs
+fn refs_in_identity<T>(identity: &Identity<T>) -> HashSet<PolyID> {
+    identity
+        .children()
+        .flat_map(|e| refs_in_expression(e))
+        .collect()
 }
 
 /// Extracts all references to names from selected expressions.
-pub fn refs_in_selected_expressions<T>(
+fn refs_in_selected_expressions<T>(
     sel_expr: &SelectedExpressions<Expression<T>>,
 ) -> HashSet<PolyID> {
-    let mut refs: HashSet<PolyID> = Default::default();
-    sel_expr.pre_visit_expressions(&mut |expr| {
-        ref_of_expression(expr).map(|id| refs.insert(id));
-    });
-    refs
+    sel_expr
+        .children()
+        .flat_map(|e| refs_in_expression(e))
+        .collect()
 }
 
-/// Extracts all references to names from an expression,
-/// NON-recursively.
-pub fn ref_of_expression<T>(expr: &Expression<T>) -> Option<PolyID> {
-    match expr {
+fn refs_in_expression<T>(expr: &Expression<T>) -> impl Iterator<Item = PolyID> + '_ {
+    expr.all_children().filter_map(|e| match e {
         Expression::Reference(p) => Some(p.poly_id),
         _ => None,
-    }
+    })
+}
+
+fn refs_in_parsed_expression(
+    expr: &parsed::Expression<Reference>,
+) -> impl Iterator<Item = PolyID> + '_ {
+    expr.all_children().filter_map(|e| match e {
+        parsed::Expression::Reference(_, Reference::Poly(PolynomialReference { poly_id, .. })) => {
+            poly_id.clone()
+        }
+        _ => None,
+    })
 }
