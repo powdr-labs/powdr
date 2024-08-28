@@ -245,6 +245,6 @@ mod tests {
                 (1-ISLAST) * (y' - (x + y)) = 0;
         "#;
 
-        solve_and_assert::<GoldilocksField>(src, &[(7, "Fibonacci.y", 34)]);
+        solve_and_assert::<GoldilocksField>(src, &[(7, "Fibonacci::y", 34)]);
     }
 }

@@ -242,7 +242,7 @@ mod test {
         let constants = generate(&analyzed);
         assert_eq!(
             constants,
-            vec![("F.LAST".to_string(), convert(vec![0, 0, 0, 0, 0, 0, 0, 1]))]
+            vec![("F::LAST".to_string(), convert(vec![0, 0, 0, 0, 0, 0, 0, 1]))]
         );
     }
 
@@ -259,7 +259,7 @@ mod test {
         assert_eq!(
             constants,
             vec![(
-                "F.EVEN".to_string(),
+                "F::EVEN".to_string(),
                 convert(vec![2, 4, 6, 8, 10, 12, 14, 16])
             )]
         );
@@ -278,7 +278,7 @@ mod test {
         assert_eq!(
             constants,
             vec![(
-                "F.X".to_string(),
+                "F::X".to_string(),
                 convert((0..8).map(|i| i ^ (i + 17) | 3).collect())
             )]
         );
@@ -301,7 +301,7 @@ mod test {
         let constants = generate(&analyzed);
         assert_eq!(
             constants,
-            vec![("F.X".to_string(), convert(vec![8, 5, 5, 10, 5, 3, 5, 5]))]
+            vec![("F::X".to_string(), convert(vec![8, 5, 5, 10, 5, 3, 5, 5]))]
         );
     }
 
@@ -317,7 +317,7 @@ mod test {
         let constants = generate(&analyzed);
         assert_eq!(
             constants,
-            vec![("F.X".to_string(), convert(vec![7, 7, 7, 9, 9, 9, 9, 9]))]
+            vec![("F::X".to_string(), convert(vec![7, 7, 7, 9, 9, 9, 9, 9]))]
         );
     }
 
@@ -335,7 +335,7 @@ mod test {
         assert_eq!(
             constants,
             vec![(
-                "F.EVEN".to_string(),
+                "F::EVEN".to_string(),
                 convert(vec![0, 2, 4, 6, 8, 10, 12, 14])
             )]
         );
@@ -361,26 +361,29 @@ mod test {
         assert_eq!(constants.len(), 4);
         assert_eq!(
             constants[0],
-            ("F.seq".to_string(), convert((0..=9i32).collect::<Vec<_>>()))
+            (
+                "F::seq".to_string(),
+                convert((0..=9i32).collect::<Vec<_>>())
+            )
         );
         assert_eq!(
             constants[1],
             (
-                "F.double_plus_one".to_string(),
+                "F::double_plus_one".to_string(),
                 convert([1i32, 3, 5, 7, 9, 1, 3, 5, 7, 9].to_vec())
             )
         );
         assert_eq!(
             constants[2],
             (
-                "F.half_nibble".to_string(),
+                "F::half_nibble".to_string(),
                 convert([0i32, 1, 2, 3, 4, 5, 6, 7, 0, 1].to_vec())
             )
         );
         assert_eq!(
             constants[3],
             (
-                "F.doubled_half_nibble".to_string(),
+                "F::doubled_half_nibble".to_string(),
                 convert([0i32, 0, 1, 1, 2, 2, 3, 3, 4, 4].to_vec())
             )
         );
@@ -404,18 +407,18 @@ mod test {
         assert_eq!(
             constants[0],
             (
-                "F.alt".to_string(),
+                "F::alt".to_string(),
                 convert([0i32, 1, 0, 1, 0, 1, 0, 0, 0, 0].to_vec())
             )
         );
         assert_eq!(
             constants[1],
-            ("F.empty".to_string(), convert([0i32; 10].to_vec()))
+            ("F::empty".to_string(), convert([0i32; 10].to_vec()))
         );
         assert_eq!(
             constants[2],
             (
-                "F.ref_other".to_string(),
+                "F::ref_other".to_string(),
                 convert([9i32, 21, 8, 0, 0, 0, 0, 0, 0, 0].to_vec())
             )
         );
@@ -435,7 +438,7 @@ mod test {
         assert_eq!(
             constants[0],
             (
-                "F.arr".to_string(),
+                "F::arr".to_string(),
                 convert([0i32, 1, 2, 0, 1, 2, 0, 1, 2, 7].to_vec())
             )
         );
@@ -468,53 +471,56 @@ mod test {
         let constants = generate(&analyzed);
         assert_eq!(
             constants[0],
-            ("F.or".to_string(), convert([0, 1, 1, 1, 1, 1].to_vec()))
+            ("F::or".to_string(), convert([0, 1, 1, 1, 1, 1].to_vec()))
         );
         assert_eq!(
             constants[1],
-            ("F.and".to_string(), convert([0, 0, 0, 1, 0, 1].to_vec()))
+            ("F::and".to_string(), convert([0, 0, 0, 1, 0, 1].to_vec()))
         );
         assert_eq!(
             constants[2],
-            ("F.not".to_string(), convert([1, 0, 1, 0, 0, 0].to_vec()))
+            ("F::not".to_string(), convert([1, 0, 1, 0, 0, 0].to_vec()))
         );
         assert_eq!(
             constants[3],
-            ("F.less".to_string(), convert([1, 1, 1, 0, 0, 0].to_vec()))
+            ("F::less".to_string(), convert([1, 1, 1, 0, 0, 0].to_vec()))
         );
         assert_eq!(
             constants[4],
             (
-                "F.less_eq".to_string(),
+                "F::less_eq".to_string(),
                 convert([1, 1, 1, 1, 0, 0].to_vec())
             )
         );
         assert_eq!(
             constants[5],
-            ("F.eq".to_string(), convert([0, 0, 0, 1, 0, 0].to_vec()))
+            ("F::eq".to_string(), convert([0, 0, 0, 1, 0, 0].to_vec()))
         );
         assert_eq!(
             constants[6],
-            ("F.not_eq".to_string(), convert([1, 1, 1, 0, 1, 1].to_vec()))
+            (
+                "F::not_eq".to_string(),
+                convert([1, 1, 1, 0, 1, 1].to_vec())
+            )
         );
         assert_eq!(
             constants[7],
             (
-                "F.greater".to_string(),
+                "F::greater".to_string(),
                 convert([0, 0, 0, 0, 1, 1].to_vec())
             )
         );
         assert_eq!(
             constants[8],
             (
-                "F.greater_eq".to_string(),
+                "F::greater_eq".to_string(),
                 convert([0, 0, 0, 1, 1, 1].to_vec())
             )
         );
     }
 
     #[test]
-    #[should_panic = "got `expr` when calling function F.w"]
+    #[should_panic = "got `expr` when calling function F::w"]
     fn calling_witness() {
         let src = r#"
             let N: int = 10;
@@ -541,7 +547,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic = "got `expr` when calling function F.y"]
+    #[should_panic = "got `expr` when calling function F::y"]
     fn forward_reference_to_array() {
         let src = r#"
             let N: int = 10;
@@ -569,11 +575,11 @@ mod test {
         let constants = generate(&analyzed);
         assert_eq!(
             constants[0],
-            ("F.X".to_string(), convert([21, 22, 23, 24].to_vec()))
+            ("F::X".to_string(), convert([21, 22, 23, 24].to_vec()))
         );
         assert_eq!(
             constants[1],
-            ("F.Y".to_string(), convert([20, 21, 22, 23].to_vec()))
+            ("F::Y".to_string(), convert([20, 21, 22, 23].to_vec()))
         );
     }
 
@@ -592,7 +598,7 @@ mod test {
         let constants = generate(&analyzed);
         assert_eq!(
             constants[0],
-            ("F.x".to_string(), convert([1, 2, 4, 8].to_vec()))
+            ("F::x".to_string(), convert([1, 2, 4, 8].to_vec()))
         );
     }
 
@@ -614,7 +620,7 @@ mod test {
         // sgn(p) * |p| % |q|
         assert_eq!(
             constants[0],
-            ("F.x".to_string(), convert([103, 97, 103, 97].to_vec()))
+            ("F::x".to_string(), convert([103, 97, 103, 97].to_vec()))
         );
     }
 
@@ -632,11 +638,11 @@ mod test {
         let constants = generate(&analyzed);
         assert_eq!(
             constants[0],
-            ("F.y[0]".to_string(), convert([0, 1, 2, 3].to_vec()))
+            ("F::y[0]".to_string(), convert([0, 1, 2, 3].to_vec()))
         );
         assert_eq!(
             constants[1],
-            ("F.y[1]".to_string(), convert([1, 2, 3, 4].to_vec()))
+            ("F::y[1]".to_string(), convert([1, 2, 3, 4].to_vec()))
         );
     }
 
@@ -656,7 +662,7 @@ mod test {
         let constants = generate(&analyzed);
         assert_eq!(
             constants[0],
-            ("F.a".to_string(), convert([14, 15, 16, 17].to_vec()))
+            ("F::a".to_string(), convert([14, 15, 16, 17].to_vec()))
         );
     }
 
@@ -676,7 +682,7 @@ mod test {
         let constants = generate(&analyzed);
         assert_eq!(
             constants[0],
-            ("N.g".to_string(), convert([0, 1, 2, 3].to_vec()))
+            ("N::g".to_string(), convert([0, 1, 2, 3].to_vec()))
         );
     }
 }

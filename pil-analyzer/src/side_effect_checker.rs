@@ -50,7 +50,6 @@ impl<'a> SideEffectChecker<'a> {
                     kind,
                     params: _,
                     body,
-                    outer_var_references: _,
                 },
             ) => {
                 let new_context;

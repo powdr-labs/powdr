@@ -1330,7 +1330,7 @@ mod test {
         let src = r#"namespace Main(16);
             let x: int = 1 + 20;
         "#;
-        let result = parse_and_evaluate_symbol(src, "Main.x");
+        let result = parse_and_evaluate_symbol(src, "Main::x");
         assert_eq!(result, r#"21"#);
     }
 
@@ -1340,7 +1340,7 @@ mod test {
             let x: int -> int = |i| match i { 0 => 0, _ => x(i - 1) + 1 };
             let y = x(4);
         "#;
-        let result = parse_and_evaluate_symbol(src, "Main.y");
+        let result = parse_and_evaluate_symbol(src, "Main::y");
         assert_eq!(result, r#"4"#);
     }
 
@@ -1358,7 +1358,7 @@ mod test {
             let map_array = |arr, f| [f(arr[0]), f(arr[1]), f(arr[2]), f(arr[3])];
             let translated = map_array(words, translate);
         "#;
-        let result = parse_and_evaluate_symbol(src, "Main.translated");
+        let result = parse_and_evaluate_symbol(src, "Main::translated");
         assert_eq!(result, r#"["franz", "jagt", "mit", "dem"]"#);
     }
 
@@ -1373,7 +1373,7 @@ mod test {
             let result = fib(20);
         "#;
         assert_eq!(
-            parse_and_evaluate_symbol(src, "Main.result"),
+            parse_and_evaluate_symbol(src, "Main::result"),
             "6765".to_string()
         );
     }
@@ -1387,7 +1387,7 @@ mod test {
         // If the lambda function returned by the expression f(99, ...) does not
         // properly capture the value of n in a closure, then f(1, ...) would return 1.
         assert_eq!(
-            parse_and_evaluate_symbol(src, "Main.result"),
+            parse_and_evaluate_symbol(src, "Main::result"),
             "99".to_string()
         );
     }
@@ -1403,8 +1403,8 @@ mod test {
             let empty: int[] = [];
             let y = std::array::len(empty);
         "#;
-        assert_eq!(parse_and_evaluate_symbol(src, "F.x"), "3".to_string());
-        assert_eq!(parse_and_evaluate_symbol(src, "F.y"), "0".to_string());
+        assert_eq!(parse_and_evaluate_symbol(src, "F::x"), "3".to_string());
+        assert_eq!(parse_and_evaluate_symbol(src, "F::y"), "0".to_string());
     }
 
     #[test]
@@ -1419,7 +1419,7 @@ mod test {
             let arg: int = 1;
             let x: int[] = (|i| if i == 1 { std::check::panic(concat("this ", "text")) } else { [9] })(arg);
         "#;
-        parse_and_evaluate_symbol(src, "F.x");
+        parse_and_evaluate_symbol(src, "F::x");
     }
 
     #[test]
@@ -1432,7 +1432,7 @@ mod test {
             namespace F(N);
             let x: int = std::check::panic("text");
         "#;
-        parse_and_evaluate_symbol(src, "F.x");
+        parse_and_evaluate_symbol(src, "F::x");
     }
 
     #[test]
@@ -1707,7 +1707,7 @@ mod test {
                 let test = query || std::prover::eval(2 * (1 + 1 + 1) + 1);
         "#;
         assert_eq!(
-            evaluate_function::<GoldilocksField>(src, "main.test"),
+            evaluate_function::<GoldilocksField>(src, "main::test"),
             7u64.into()
         );
     }

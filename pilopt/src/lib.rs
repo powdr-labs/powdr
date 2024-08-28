@@ -151,10 +151,7 @@ impl ReferencedSymbols for Expression {
 
 impl ReferencedSymbols for Type {
     fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
-        Box::new(
-            self.contained_named_types()
-                .map(|n| n.to_dotted_string().into()),
-        )
+        Box::new(self.contained_named_types().map(|n| n.to_string().into()))
     }
 }
 
@@ -596,8 +593,8 @@ mod test {
         let expectation = r#"namespace N(65536);
     col witness X;
     col witness Y;
-    N.X = N.Y;
-    N.Y = 7 * N.X;
+    N::X = N::Y;
+    N::Y = 7 * N::X;
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
@@ -625,13 +622,13 @@ mod test {
     col witness Y;
     col witness Z;
     col witness A;
-    1 - N.A $ [N.A] in [N.cnt];
-    [N.Y] in 1 + N.A $ [N.cnt];
-    (1 - N.A) * N.X = 0;
-    (1 - N.A) * N.Y = 1;
-    N.Z = (1 + N.A) * 2;
-    N.A = 1 + N.A;
-    N.Z = 1 + N.A;
+    1 - N::A $ [N::A] in [N::cnt];
+    [N::Y] in 1 + N::A $ [N::cnt];
+    (1 - N::A) * N::X = 0;
+    (1 - N::A) * N::Y = 1;
+    N::Z = (1 + N::A) * 2;
+    N::A = 1 + N::A;
+    N::Z = 1 + N::A;
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
@@ -646,8 +643,8 @@ mod test {
     "#;
         let expectation = r#"namespace N(65536);
     col witness x;
-    col intermediate = N.x;
-    N.intermediate = N.intermediate;
+    col intermediate = N::x;
+    N::intermediate = N::intermediate;
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
@@ -669,8 +666,8 @@ mod test {
 namespace N(65536);
     col witness x[1];
     col witness y[0];
-    col fixed t(i) { std::array::len::<expr>(N.y) };
-    N.x[0] = N.t;
+    col fixed t(i) { std::array::len::<expr>(N::y) };
+    N::x[0] = N::t;
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
@@ -696,10 +693,10 @@ namespace N(65536);
         let expectation = r#"namespace N(65536);
     col witness x;
     col fixed cnt(i) { i };
-    N.x * (N.x - 1) = 0;
-    [N.x] in [N.cnt];
-    [N.x + 1] in [N.cnt];
-    [N.x] in [N.cnt + 1];
+    N::x * (N::x - 1) = 0;
+    [N::x] in [N::cnt];
+    [N::x + 1] in [N::cnt];
+    [N::x] in [N::cnt + 1];
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
@@ -723,9 +720,9 @@ namespace N(65536);
     "#;
         let expectation = r#"namespace N(65536);
     col witness x;
-    col fixed cnt(i) { N.inc(i) };
+    col fixed cnt(i) { N::inc(i) };
     let inc: int -> int = (|x| x + 1);
-    [N.x] in [N.cnt];
+    [N::x] in [N::cnt];
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);
@@ -740,8 +737,8 @@ namespace N(65536);
     "#;
         let expectation = r#"namespace N(65536);
     col witness x[5];
-    col inte[5] = [N.x[0], N.x[1], N.x[2], N.x[3], N.x[4]];
-    N.x[2] = N.inte[4];
+    col inte[5] = [N::x[0], N::x[1], N::x[2], N::x[3], N::x[4]];
+    N::x[2] = N::inte[4];
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input));
         assert_eq!(optimized.intermediate_count(), 5);
@@ -776,9 +773,9 @@ namespace N(65536);
         T,
     }
     let t: N::X[] -> int = (|r| 1);
-    col fixed f(i) { if i == 0 { N.t([]) } else { (|x| 1)(N::Y::F([])) } };
+    col fixed f(i) { if i == 0 { N::t([]) } else { (|x| 1)(N::Y::F([])) } };
     col witness x;
-    N.x = N.f;
+    N::x = N::f;
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
         assert_eq!(optimized, expectation);

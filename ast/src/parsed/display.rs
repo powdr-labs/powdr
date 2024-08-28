@@ -743,7 +743,7 @@ impl Display for NamespacedPolynomialReference {
         if let Some(type_args) = &self.type_args {
             write!(f, "{}::{}", self.path, format_type_args(type_args))
         } else {
-            write!(f, "{}", self.path.to_dotted_string())
+            write!(f, "{}", self.path)
         }
     }
 }
@@ -1216,12 +1216,12 @@ mod tests {
                 "a | b * (c << d + e) & (f ^ g) = h * (i + g);",
             ),
             (
-                "instr_or $ [0, X, Y, Z] is (main_bin.latch * main_bin.sel[0]) $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];",
-                "instr_or $ [0, X, Y, Z] is main_bin.latch * main_bin.sel[0] $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];",
+                "instr_or $ [0, X, Y, Z] is (main_bin::latch * main_bin::sel[0]) $ [main_bin::operation_id, main_bin::A, main_bin::B, main_bin::C];",
+                "instr_or $ [0, X, Y, Z] is main_bin::latch * main_bin::sel[0] $ [main_bin::operation_id, main_bin::A, main_bin::B, main_bin::C];",
             ),
             (
-                "instr_or $ [0, X, Y, Z] is main_bin.latch * main_bin.sel[0] $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];",
-                "instr_or $ [0, X, Y, Z] is main_bin.latch * main_bin.sel[0] $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];",
+                "instr_or $ [0, X, Y, Z] is main_bin::latch * main_bin::sel[0] $ [main_bin::operation_id, main_bin::A, main_bin::B, main_bin::C];",
+                "instr_or $ [0, X, Y, Z] is main_bin::latch * main_bin::sel[0] $ [main_bin::operation_id, main_bin::A, main_bin::B, main_bin::C];",
             ),
             (
                 "pc' = (1 - first_step') * ((((instr__jump_to_operation * _operation_id) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((instr__jump_to_operation + instr__loop) + instr_return)) * (pc + 1)));",
