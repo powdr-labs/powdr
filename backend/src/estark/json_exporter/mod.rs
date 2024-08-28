@@ -68,7 +68,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                 let symbol = &analyzed.definitions[&pub_def.polynomial.name].0;
                 let (_, poly) = symbol
                     .array_elements()
-                    .nth(pub_def.array_index.unwrap_or_default() as usize)
+                    .nth(pub_def.array_index.unwrap_or_default())
                     .unwrap();
                 let (_, expr) = exporter.polynomial_reference_to_json(poly, false);
                 let id = publics.len();
