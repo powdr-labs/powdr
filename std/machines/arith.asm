@@ -154,6 +154,7 @@ machine Arith with
         }
     };
 
+    // TODO also modify the ones below and combine everything into a single prover function.
 
     col witness s_0(i) query Query::Hint(fe(select_limb(s_hint(), 0)));
     col witness s_1(i) query Query::Hint(fe(select_limb(s_hint(), 1)));

@@ -87,10 +87,12 @@ pub fn split_out_machines<'a, T: FieldElement>(
             .prover_functions
             .iter()
             .enumerate()
-            .filter(|(i, pf)| {
+            .filter(|(_, pf)| {
                 // This only discovers direct references in the lambda expression
                 // and ignores e.g. called functions, but it will work for now.
                 refs_in_parsed_expression(*pf)
+                    .unique()
+                    .filter_map(|n| fixed.column_by_name.get(n).cloned())
                     .collect::<HashSet<_>>()
                     .intersection(&machine_witnesses)
                     .next()
@@ -102,7 +104,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
         // Also check that all prover functions are assigned to a machine.
 
         log::trace!(
-            "\nExtracted a machine with the following witnesses:\n{}\n identities:\n{}\n connecting identities:\n{} and prover functions:\n{}",
+            "\nExtracted a machine with the following witnesses:\n{}\n identities:\n{}\n connecting identities:\n{}\n and prover functions:\n{}",
             machine_witnesses
                 .iter()
                 .map(|s| fixed.column_name(s))
@@ -302,10 +304,10 @@ fn refs_in_expression<T>(expr: &Expression<T>) -> impl Iterator<Item = PolyID> +
 
 fn refs_in_parsed_expression(
     expr: &parsed::Expression<Reference>,
-) -> impl Iterator<Item = PolyID> + '_ {
+) -> impl Iterator<Item = &String> + '_ {
     expr.all_children().filter_map(|e| match e {
-        parsed::Expression::Reference(_, Reference::Poly(PolynomialReference { poly_id, .. })) => {
-            poly_id.clone()
+        parsed::Expression::Reference(_, Reference::Poly(PolynomialReference { name, .. })) => {
+            Some(name)
         }
         _ => None,
     })
