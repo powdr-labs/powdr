@@ -25,19 +25,68 @@ const MAIN_MACHINE_INSTANCE: &str = "::main";
 const MAIN_MACHINE: &str = "::Main";
 const MAIN_FUNCTION: &str = "main";
 
+/// A machine instance in the machine instance DAG
 #[derive(Default, Debug)]
 struct Instance {
+    /// the path of the type of this machine instance
     ty: AbsoluteSymbolPath,
+    /// the location in the machine instance DAG of the instances used for the machine parameters and submachines
     members: Vec<Location>,
 }
 
 #[derive(Default, Debug)]
-struct Instances {
+struct InstanceDAGBuilder {
+    /// bindings of variables to machine instances, for example when doing `let foo = Foo();`, `foo` maps to the `Location` at which `Foo` is instantiated
     abs_to_loc: BTreeMap<AbsoluteSymbolPath, Location>,
-    map: BTreeMap<Location, Instance>,
+    /// the machine instance DAG
+    dag: BTreeMap<Location, Instance>,
 }
 
-impl Instances {
+impl InstanceDAGBuilder {
+    /// Given a program `input` and a set of instantiations, returns a DAG of instances
+    /// For example, for the instantiations:
+    /// 
+    /// let a = A();
+    /// let b = a;
+    /// let c = B(a, C());
+    /// let d = C(b);
+    /// 
+    /// Returns a DAG such as
+    /// 
+    /// c_1 => C()
+    /// a => A()
+    /// c => B(a, c_1)
+    /// d => C(a)
+    /// 
+    fn build_dag(input: &AnalysisASMFile, instances: BTreeMap<AbsoluteSymbolPath, MachineInstance>) -> BTreeMap<Location, Instance> {
+        // iterate through all instantiations in topological order
+        let get_dependencies =
+            |key: &AbsoluteSymbolPath| instances[key].references();
+
+        let topo_sort = powdr_utils::topo_sort(instances.keys(), get_dependencies);
+
+        // generate the instance DAG
+        topo_sort
+            .iter()
+            .map(|path| (path, &instances[path]))
+            .fold(Self::default(), |mut instances, (path, instance)| {
+                assert_eq!(
+                    path.len(),
+                    1,
+                    "instances are only expected at the top-most module for now"
+                );
+                let location = Location::default().join(path.parts().next().unwrap());
+                instances
+                    .abs_to_loc
+                    .insert((*path).clone(), location.clone());
+                let new_location = instances.fold_instance(input, location.clone(), instance);
+                assert_eq!(new_location, location);
+                instances
+            })
+            .dag
+    }
+
+    /// Add a new instance to the instance DAG
     fn fold_instance(
         &mut self,
         file: &AnalysisASMFile,
@@ -45,7 +94,8 @@ impl Instances {
         instance: &MachineInstance,
     ) -> Location {
         match &instance.value {
-            MachineInstanceExpression::Value(v) => {
+            // if the expression is a constructor call, we create a new instance in the DAG
+            MachineInstanceExpression::ConstructorCall(v) => {
                 let ty = file.machine(&instance.ty);
                 assert_eq!(ty.params.0.len() + ty.submachines.len(), v.len());
 
@@ -60,7 +110,7 @@ impl Instances {
                         self.fold_instance(file, location.clone().join(name.clone()), instance)
                     })
                     .collect();
-                self.map.insert(
+                self.dag.insert(
                     location.clone(),
                     Instance {
                         ty: instance.ty.clone(),
@@ -69,6 +119,7 @@ impl Instances {
                 );
                 location.clone()
             }
+            // If the expression is a reference, we already have the instance
             MachineInstanceExpression::Reference(r) => self.abs_to_loc[r].clone(),
         }
     }
@@ -93,12 +144,9 @@ fn instantiate(
         .zip(args)
         .map(|(param, argument)| {
             let ty = AbsoluteSymbolPath::default().join(param.ty.clone().unwrap());
-            match input.items.get(&ty) {
-                Some(Item::Machine(_)) => MachineInstance {
-                    ty,
-                    value: MachineInstanceExpression::Reference(argument.clone()),
-                },
-                _ => unimplemented!(),
+            MachineInstance {
+                ty,
+                value: MachineInstanceExpression::Reference(argument.clone()),
             }
         })
         .collect::<Vec<_>>()
@@ -120,7 +168,7 @@ fn instantiate(
 
     let instance = MachineInstance {
         ty: ty_path.clone(),
-        value: MachineInstanceExpression::Value(submachines),
+        value: MachineInstanceExpression::ConstructorCall(submachines),
     };
 
     instances.insert(path.clone(), instance);
@@ -176,31 +224,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
 
     let main_location = Location::main();
 
-    // iterate through all instantiations in topological order
-    let get_dependencies =
-        |key: &AbsoluteSymbolPath| instances[key].references().into_iter().collect();
-
-    let topo_sort = powdr_utils::topo_sort(instances.keys(), get_dependencies);
-
-    // generate the instance map
-    let instances = topo_sort
-        .iter()
-        .map(|path| (path, instances.get(path).unwrap()))
-        .fold(Instances::default(), |mut instances, (path, instance)| {
-            assert_eq!(
-                path.len(),
-                1,
-                "instances are only expected at the top-most module for now"
-            );
-            let location = Location::default().join(path.parts().next().unwrap());
-            instances
-                .abs_to_loc
-                .insert((*path).clone(), location.clone());
-            let new_location = instances.fold_instance(&input, location.clone(), instance);
-            assert_eq!(new_location, location);
-            instances
-        })
-        .map;
+    let instances = InstanceDAGBuilder::build_dag(&input, instances);
 
     // count incoming permutations for each machine.
     let mut incoming_permutations = instances

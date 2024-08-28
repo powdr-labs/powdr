@@ -5,13 +5,14 @@ use std::{
 
 /// Take a set of nodes and a function returning the dependencies of any node and return a topological order where any node always comes after its dependencies
 /// Circular dependencies are returned in an arbitrary order
-pub fn topo_sort<'a, E, F, I>(nodes: I, get_dependencies: F) -> Vec<&'a E>
+pub fn topo_sort<'a, E, D, F, I>(nodes: I, get_dependencies: F) -> Vec<&'a E>
 where
-    F: Fn(&E) -> HashSet<&'a E>,
+    D: IntoIterator<Item = &'a E>,
+    F: Fn(&E) -> D,
     E: Eq + Hash,
     I: Iterator<Item = &'a E>,
 {
-    let graph: HashMap<&'a E, HashSet<&'a E>> = nodes.map(|e| (e, get_dependencies(e))).collect();
+    let graph: HashMap<&'a E, HashSet<&'a E>> = nodes.map(|e| (e, get_dependencies(e).into_iter().collect())).collect();
     let mut visited = HashSet::new();
     let mut result = Vec::new();
 
@@ -61,7 +62,6 @@ mod tests {
                 _ => unreachable!(),
             }
             .into_iter()
-            .collect()
         };
         assert_eq!(
             topo_sort(nodes.iter(), get_dependencies),
@@ -80,7 +80,6 @@ mod tests {
                 _ => unreachable!(),
             }
             .into_iter()
-            .collect()
         };
         assert_eq!(
             topo_sort(nodes.iter(), get_dependencies)

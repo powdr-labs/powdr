@@ -704,7 +704,7 @@ pub struct MachineInstance {
 impl MachineInstance {
     pub fn references(&self) -> Vec<&AbsoluteSymbolPath> {
         match &self.value {
-            MachineInstanceExpression::Value(v) => v.iter().flat_map(|i| i.references()).collect(),
+            MachineInstanceExpression::ConstructorCall(v) => v.iter().flat_map(|i| i.references()).collect(),
             MachineInstanceExpression::Reference(r) => vec![r],
         }
     }
@@ -712,7 +712,8 @@ impl MachineInstance {
 
 #[derive(Clone, Debug)]
 pub enum MachineInstanceExpression {
-    Value(Vec<MachineInstance>),
+    // for a machine type `Foo { Bar bar; Baz baz }`, an expression of the form `Foo(bar, Baz())`, obtained by calling the constructor of `Foo`
+    ConstructorCall(Vec<MachineInstance>),
     Reference(AbsoluteSymbolPath),
 }
 

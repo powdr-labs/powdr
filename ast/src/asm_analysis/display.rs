@@ -29,7 +29,7 @@ impl Display for MachineInstance {
         let ty = &self.ty;
 
         match &self.value {
-            MachineInstanceExpression::Value(v) => write!(
+            MachineInstanceExpression::ConstructorCall(v) => write!(
                 f,
                 "{ty}({})",
                 v.iter()

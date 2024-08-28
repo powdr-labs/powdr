@@ -97,7 +97,7 @@ fn sort_called_first(
         })
         .collect();
 
-    let get_dependencies = |name: &String| dependencies[name].iter().copied().collect();
+    let get_dependencies = |name: &String| dependencies[name].iter().copied();
     topo_sort(symbols.keys(), get_dependencies)
         .into_iter()
         .map(Into::into)
