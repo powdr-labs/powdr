@@ -16,7 +16,6 @@ pub mod fmt;
 pub mod hash;
 pub mod io;
 
-#[cfg(feature = "entropy_source")]
 mod entropy_source;
 #[cfg(feature = "getrandom")]
 mod getrandom;
