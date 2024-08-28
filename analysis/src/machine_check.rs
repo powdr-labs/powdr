@@ -1,9 +1,6 @@
 #![deny(clippy::print_stdout)]
 
-use std::{
-    cell::RefCell,
-    collections::{BTreeMap, HashSet},
-};
+use std::{cell::RefCell, collections::BTreeMap};
 
 use powdr_ast::{
     asm_analysis::{
@@ -30,34 +27,48 @@ pub fn check(file: ASMProgram) -> Result<AnalysisASMFile, Vec<String>> {
     let checker = TypeChecker::new(file.main);
     checker.check_path(&ctx)?;
     Ok(AnalysisASMFile {
-        items: checker.analyzed.into_inner(),
+        items: checker
+            .analyzed
+            .into_inner()
+            .into_iter()
+            .filter_map(|(k, v)| match v {
+                Some(ItemOrModule::Item(i)) => Some((k, i)),
+                Some(ItemOrModule::Module) => None,
+                None => unreachable!(),
+            })
+            .collect(),
     })
+}
+
+enum ItemOrModule {
+    Item(Item),
+    Module,
 }
 
 struct TypeChecker {
     /// The parsed AST as a single [SymbolValue::Module]
     ast: SymbolValue,
-    /// The already checked paths
-    checked_paths: RefCell<HashSet<AbsoluteSymbolPath>>,
     /// The checked items
     /// We use [RefCell] because we want to mutate this while borrowing from `parsed`
-    analyzed: RefCell<BTreeMap<AbsoluteSymbolPath, Item>>,
+    analyzed: RefCell<BTreeMap<AbsoluteSymbolPath, Option<ItemOrModule>>>,
 }
 
 impl TypeChecker {
     fn new(root: ASMModule) -> Self {
         Self {
             ast: SymbolValue::Module(Module::Local(root)),
-            checked_paths: Default::default(),
             analyzed: Default::default(),
         }
     }
 
     fn check_path(&self, ctx: &AbsoluteSymbolPath) -> Result<(), Vec<String>> {
         // check if the path is already checked
-        if self.checked_paths.borrow().contains(ctx) {
+        if self.analyzed.borrow().contains_key(ctx) {
             return Ok(());
         }
+
+        // insert `None` in the map to keep track of circular dependencies
+        self.analyzed.borrow_mut().entry(ctx.clone()).or_default();
 
         let symbol = ctx.parts().fold(&self.ast, |acc, part| match acc {
             SymbolValue::Module(Module::Local(m)) => m
@@ -71,18 +82,14 @@ impl TypeChecker {
             s => s,
         });
 
-        let res = match symbol {
+        match symbol {
             SymbolValue::Module(Module::Local(module)) => self.check_module(module, ctx),
             SymbolValue::Machine(machine) => self.check_machine_type(machine.clone(), ctx),
             SymbolValue::Expression(e) => self.check_expression(e.clone(), ctx),
             SymbolValue::TypeDeclaration(d) => self.check_type_declaration(d.clone(), ctx),
             SymbolValue::TraitDeclaration(d) => self.check_trait_declaration(d.clone(), ctx),
             _ => unreachable!(),
-        };
-
-        self.checked_paths.borrow_mut().insert(ctx.clone());
-
-        res
+        }
     }
 
     fn check_machine_type(
@@ -361,6 +368,8 @@ impl TypeChecker {
             }
         }
 
+        self.insert_module(ctx);
+
         if !errors.is_empty() {
             Err(errors)
         } else {
@@ -436,20 +445,24 @@ impl TypeChecker {
     fn type_of(&self, path: &AbsoluteSymbolPath) -> Result<Type, Vec<String>> {
         self.check_path(path)?;
 
-        Ok(self
-            .analyzed
-            .borrow()
-            .get(path)
+        let item = &self.analyzed.borrow()[path];
+
+        item.as_ref()
             .map(|item| match item {
-                Item::Machine(_) => Type::Machine,
-                Item::Expression(_) => Type::Expression,
-                Item::TypeDeclaration(_) => Type::Ty,
-                Item::TraitImplementation(_) => unreachable!(),
-                Item::TraitDeclaration(_) => Type::Trait,
+                ItemOrModule::Item(item) => match item {
+                    Item::Machine(_) => Type::Machine,
+                    Item::Expression(_) => Type::Expression,
+                    Item::TypeDeclaration(_) => Type::Ty,
+                    Item::TraitImplementation(_) => unreachable!(),
+                    Item::TraitDeclaration(_) => Type::Trait,
+                },
+                ItemOrModule::Module => Type::Module,
             })
-            // if a path isn't found in the output, it must have been a module
-            // this could be cleaner
-            .unwrap_or(Type::Module))
+            .ok_or_else(|| {
+                vec![format!(
+                    "Cyclic dependency detected in the definition of {path}"
+                )]
+            })
     }
 
     fn assert_type(&self, path: &AbsoluteSymbolPath, expected: Type) -> Result<(), Vec<String>> {
@@ -463,11 +476,21 @@ impl TypeChecker {
         }
     }
 
+    fn insert_module(&self, path: &AbsoluteSymbolPath) {
+        assert!(self
+            .analyzed
+            .borrow_mut()
+            .insert(path.clone(), Some(ItemOrModule::Module))
+            .unwrap()
+            .is_none());
+    }
+
     fn insert_item(&self, path: &AbsoluteSymbolPath, item: Item) {
         assert!(self
             .analyzed
             .borrow_mut()
-            .insert(path.clone(), item)
+            .insert(path.clone(), Some(ItemOrModule::Item(item)))
+            .unwrap()
             .is_none());
     }
 }

@@ -138,6 +138,13 @@ fn block_to_block() {
 }
 
 #[test]
+#[should_panic = "Cyclic dependency detected in the definition of ::Main"]
+fn recursive_machine() {
+    let f = "asm/recursive_machine.asm";
+    regular_test(f, &[]);
+}
+
+#[test]
 fn block_to_block_with_bus_monolithic() {
     let f = "asm/block_to_block_with_bus.asm";
     let pipeline = make_simple_prepared_pipeline(f);
@@ -437,11 +444,12 @@ mod reparse {
     use test_log::test;
 
     /// Files that we don't expect to parse, analyze, and optimize without error.
-    const BLACKLIST: [&str; 4] = [
+    const BLACKLIST: [&str; 5] = [
         "asm/failing_assertion.asm",
         "asm/multi_return_wrong_assignment_register_length.asm",
         "asm/multi_return_wrong_assignment_registers.asm",
         "asm/permutations/incoming_needs_selector.asm",
+        "asm/recursive_machine.asm",
     ];
 
     fn run_reparse_test(file: &str) {
