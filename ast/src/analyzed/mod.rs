@@ -473,11 +473,7 @@ pub fn type_from_definition(
                 struct_decl,
                 field,
             )) => {
-                //let name = SymbolPath::from_identifier(struct_decl.name.clone());
                 let vars = struct_decl.type_vars.clone();
-
-                //let named_type = Type::NamedType(name, None);
-
                 Some(TypeScheme {
                     vars,
                     ty: field.1.clone(),
