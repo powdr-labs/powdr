@@ -93,13 +93,12 @@ impl<'a> TraitsResolver<'a> {
         let (trait_decl_name, trait_fn_name) = name.rsplit_once("::")?;
         if let Some(impls) = trait_impls.get(trait_decl_name) {
             for impl_ in impls.iter() {
-                let types = impl_.type_scheme.ty.clone();
-                let Type::Tuple(TupleType { items }) = types else {
+                let Type::Tuple(TupleType { ref items }) = impl_.type_scheme.ty else {
                     unreachable!()
                 };
                 let type_args = reference.type_args.as_ref().unwrap().to_vec();
 
-                if type_args == items {
+                if type_args == *items {
                     let expr = impl_.function_by_name(trait_fn_name).unwrap();
                     return Some(((name, type_args), expr.body.as_ref().clone()));
                 }
