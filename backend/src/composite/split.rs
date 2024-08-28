@@ -16,7 +16,7 @@ use powdr_ast::{
     },
 };
 use powdr_executor::constant_evaluator::{VariablySizedColumn, MAX_DEGREE_LOG, MIN_DEGREE_LOG};
-use powdr_number::FieldElement;
+use powdr_number::{DegreeType, FieldElement};
 
 const DUMMY_COLUMN_NAME: &str = "__dummy";
 
@@ -63,7 +63,7 @@ pub(crate) fn machine_witness_columns<F: FieldElement>(
                 panic!("Machine {machine_name} has witness columns of different sizes")
             }
         });
-    let dummy_column_name = format!("{machine_name}.{DUMMY_COLUMN_NAME}");
+    let dummy_column_name = format!("{machine_name}::{DUMMY_COLUMN_NAME}");
     let dummy_column = vec![F::zero(); size];
     iter::once((dummy_column_name, dummy_column))
         .chain(machine_columns.into_iter().cloned())
@@ -74,7 +74,7 @@ pub(crate) fn machine_witness_columns<F: FieldElement>(
 pub(crate) fn machine_fixed_columns<F: FieldElement>(
     all_fixed_columns: &[(String, VariablySizedColumn<F>)],
     machine_pil: &Analyzed<F>,
-) -> BTreeMap<usize, Vec<(String, VariablySizedColumn<F>)>> {
+) -> BTreeMap<DegreeType, Vec<(String, VariablySizedColumn<F>)>> {
     let machine_columns = select_machine_columns(
         all_fixed_columns,
         machine_pil.constant_polys_in_source_order(),
@@ -98,9 +98,9 @@ pub(crate) fn machine_fixed_columns<F: FieldElement>(
             "All fixed columns of a machine must have the same sizes"
         );
         match machine_degrees.iter().next() {
-            Some(&degree) => iter::once(degree as usize).collect(),
-            None => (MIN_DEGREE_LOG..=MAX_DEGREE_LOG)
-                .map(|log_size| 1 << log_size)
+            Some(&degree) => iter::once(degree).collect(),
+            None => (MIN_DEGREE_LOG..=*MAX_DEGREE_LOG)
+                .map(|log_size| (1 << log_size) as DegreeType)
                 .collect(),
         }
     });

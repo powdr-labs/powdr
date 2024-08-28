@@ -13,7 +13,7 @@ use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 pub(crate) struct Factory;
 
 impl<T: FieldElement> BackendFactory<T> for Factory {
-    fn create<'a>(
+    fn create(
         &self,
         pil: Arc<Analyzed<T>>,
         fixed: Arc<Vec<(String, VariablySizedColumn<T>)>>,
@@ -22,7 +22,7 @@ impl<T: FieldElement> BackendFactory<T> for Factory {
         verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,
         _: BackendOptions,
-    ) -> Result<Box<dyn crate::Backend<'a, T> + 'a>, Error> {
+    ) -> Result<Box<dyn crate::Backend<T>>, Error> {
         if T::modulus().to_arbitrary_integer() != GoldilocksField::modulus().to_arbitrary_integer()
         {
             unimplemented!("plonky3 is only implemented for the Goldilocks field");
@@ -53,7 +53,7 @@ impl<T: FieldElement> BackendFactory<T> for Factory {
     }
 }
 
-impl<'a, T: FieldElement> Backend<'a, T> for Plonky3Prover<T> {
+impl<T: FieldElement> Backend<T> for Plonky3Prover<T> {
     fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
         Ok(self.verify(proof, instances)?)
     }

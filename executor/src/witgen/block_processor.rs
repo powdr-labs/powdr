@@ -133,7 +133,6 @@ mod tests {
         witgen::{
             data_structures::finalizable_data::FinalizableData,
             identity_processor::Machines,
-            machines::FixedLookup,
             rows::{Row, RowIndex},
             sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator},
             unused_query_callback, FixedData, MutableState, QueryCallback,
@@ -164,7 +163,6 @@ mod tests {
         let fixed_data = FixedData::new(&analyzed, &constants, &[], Default::default(), 0);
 
         // No submachines
-        let mut fixed_lookup = FixedLookup::new(fixed_data.global_range_constraints().clone());
         let mut machines = [];
 
         let degree = fixed_data.analyzed.degree();
@@ -181,7 +179,6 @@ mod tests {
         );
 
         let mut mutable_state = MutableState {
-            fixed_lookup: &mut fixed_lookup,
             machines: Machines::from(machines.iter_mut()),
             query_callback: &mut query_callback,
         };
@@ -248,6 +245,6 @@ mod tests {
                 (1-ISLAST) * (y' - (x + y)) = 0;
         "#;
 
-        solve_and_assert::<GoldilocksField>(src, &[(7, "Fibonacci.y", 34)]);
+        solve_and_assert::<GoldilocksField>(src, &[(7, "Fibonacci::y", 34)]);
     }
 }

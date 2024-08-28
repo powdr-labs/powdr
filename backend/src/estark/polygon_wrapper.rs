@@ -14,7 +14,7 @@ use super::EStarkFilesCommon;
 pub struct Factory;
 
 impl<F: FieldElement> BackendFactory<F> for Factory {
-    fn create<'a>(
+    fn create(
         &self,
         analyzed: Arc<Analyzed<F>>,
         fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
@@ -23,7 +23,7 @@ impl<F: FieldElement> BackendFactory<F> for Factory {
         verification_key: Option<&mut dyn std::io::Read>,
         verification_app_key: Option<&mut dyn std::io::Read>,
         options: BackendOptions,
-    ) -> Result<Box<dyn crate::Backend<'a, F> + 'a>, Error> {
+    ) -> Result<Box<dyn crate::Backend<F>>, Error> {
         let fixed = Arc::new(
             get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
         );
@@ -43,7 +43,7 @@ struct PolygonBackend<F: FieldElement>(EStarkFilesCommon<F>);
 
 // TODO: make both eStark backends interchangeable, from user perspective.
 // TODO: implement the other Backend trait methods.
-impl<'a, F: FieldElement> Backend<'a, F> for PolygonBackend<F> {
+impl<F: FieldElement> Backend<F> for PolygonBackend<F> {
     fn prove(
         &self,
         witness: &[(String, Vec<F>)],

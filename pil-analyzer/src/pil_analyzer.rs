@@ -155,7 +155,7 @@ impl PILAnalyzer {
     fn core_types_if_not_present(&self) -> Option<PILFile> {
         // We are extracting some specific symbols from the prelude file.
         let prelude = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../std/prelude.asm"));
-        let missing_symbols = ["Constr", "Option", "challenge"]
+        let missing_symbols = ["Constr", "Option", "challenge", "set_hint", "Query"]
             .into_iter()
             .filter(|symbol| {
                 !self
@@ -219,7 +219,7 @@ impl PILAnalyzer {
     }
 
     pub fn type_check(&mut self) {
-        let query_type: Type = parse_type("int -> std::prover::Query").unwrap().into();
+        let query_type: Type = parse_type("int -> std::prelude::Query").unwrap().into();
         let mut expressions = vec![];
         // Collect all definitions with their types and expressions.
         // We filter out enum type declarations (the constructor functions have been added
@@ -345,7 +345,8 @@ impl PILAnalyzer {
                                 Some(sub_name) => self
                                     .driver()
                                     .resolve_namespaced_decl(&[name, sub_name])
-                                    .to_dotted_string(),
+                                    .relative_to(&Default::default())
+                                    .to_string(),
                             },
                             symbol_category,
                         )
@@ -451,7 +452,10 @@ impl<'a> AnalysisDriver for Driver<'a> {
             .iter_to_root()
             .chain(once(parse_absolute_path("::std::prelude")))
             .find_map(|prefix| {
-                let path = prefix.join(path.clone()).to_dotted_string();
+                let path = prefix
+                    .join(path.clone())
+                    .relative_to(&Default::default())
+                    .to_string();
                 self.0.known_symbols.get(&path).map(|cat| (path, *cat))
             })
     }

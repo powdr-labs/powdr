@@ -3,7 +3,6 @@ use std::{
     fmt::Display,
     fs,
     io::{self, BufReader},
-    marker::Send,
     path::{Path, PathBuf},
     rc::Rc,
     sync::Arc,
@@ -19,7 +18,7 @@ use powdr_ast::{
     object::PILGraph,
     parsed::{asm::ASMProgram, PILFile},
 };
-use powdr_backend::{BackendOptions, BackendType, Proof};
+use powdr_backend::{Backend, BackendOptions, BackendType, Proof};
 use powdr_executor::{
     constant_evaluator::{self, get_uniquely_sized_cloned, VariablySizedColumn},
     witgen::{
@@ -40,7 +39,7 @@ use std::collections::BTreeMap;
 type Columns<T> = Vec<(String, Vec<T>)>;
 type VariablySizedColumns<T> = Vec<(String, VariablySizedColumn<T>)>;
 
-#[derive(Default, Clone)]
+#[derive(Default)]
 pub struct Artifacts<T: FieldElement> {
     /// The path to a single .asm file.
     asm_file_path: Option<PathBuf>,
@@ -73,6 +72,8 @@ pub struct Artifacts<T: FieldElement> {
     fixed_cols: Option<Arc<VariablySizedColumns<T>>>,
     /// Generated witnesses.
     witness: Option<Arc<Columns<T>>>,
+    /// Instantiated backend.
+    backend: Option<Box<dyn Backend<T>>>,
     /// The proof (if successful).
     proof: Option<Proof>,
 }
@@ -137,6 +138,30 @@ pub struct Pipeline<T: FieldElement> {
     arguments: Arguments<T>,
     /// The context for the host.
     host_context: HostContext,
+}
+
+impl<T: FieldElement> Clone for Artifacts<T> {
+    fn clone(&self) -> Self {
+        Artifacts {
+            asm_file_path: self.asm_file_path.clone(),
+            asm_string: self.asm_string.clone(),
+            parsed_asm_file: self.parsed_asm_file.clone(),
+            resolved_module_tree: self.resolved_module_tree.clone(),
+            analyzed_asm: self.analyzed_asm.clone(),
+            constrained_machine_collection: self.constrained_machine_collection.clone(),
+            linked_machine_graph: self.linked_machine_graph.clone(),
+            parsed_pil_file: self.parsed_pil_file.clone(),
+            pil_file_path: self.pil_file_path.clone(),
+            pil_string: self.pil_string.clone(),
+            analyzed_pil: self.analyzed_pil.clone(),
+            optimized_pil: self.optimized_pil.clone(),
+            fixed_cols: self.fixed_cols.clone(),
+            witness: self.witness.clone(),
+            proof: self.proof.clone(),
+            // Backend is not cloneable, so we clear it instead
+            backend: None,
+        }
+    }
 }
 
 use super::HostContext;
@@ -260,18 +285,12 @@ impl<T: FieldElement> Pipeline<T> {
         self
     }
 
-    pub fn add_data<S: serde::Serialize + Send + Sync + 'static>(
-        self,
-        channel: u32,
-        data: &S,
-    ) -> Self {
-        self.add_query_callback(Arc::new(serde_data_to_query_callback(channel, data)))
+    pub fn add_data<S: serde::Serialize + 'static>(self, channel: u32, data: &S) -> Self {
+        let bytes = serde_cbor::to_vec(&data).unwrap();
+        self.add_query_callback(Arc::new(serde_data_to_query_callback(channel, bytes)))
     }
 
-    pub fn add_data_vec<S: serde::Serialize + Send + Sync + 'static>(
-        self,
-        data: &[(u32, S)],
-    ) -> Self {
+    pub fn add_data_vec<S: serde::Serialize + 'static>(self, data: &[(u32, S)]) -> Self {
         data.iter()
             .fold(self, |pipeline, data| pipeline.add_data(data.0, &data.1))
     }
@@ -287,21 +306,25 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn with_backend(mut self, backend: BackendType, options: Option<BackendOptions>) -> Self {
         self.arguments.backend = Some(backend);
         self.arguments.backend_options = options.unwrap_or_default();
+        self.artifact.backend = None;
         self
     }
 
     pub fn with_setup_file(mut self, setup_file: Option<PathBuf>) -> Self {
         self.arguments.setup_file = setup_file;
+        self.artifact.backend = None;
         self
     }
 
     pub fn with_vkey_file(mut self, vkey_file: Option<PathBuf>) -> Self {
         self.arguments.vkey_file = vkey_file;
+        self.artifact.backend = None;
         self
     }
 
     pub fn with_vkey_app_file(mut self, vkey_app_file: Option<PathBuf>) -> Self {
         self.arguments.vkey_app_file = vkey_app_file;
+        self.artifact.backend = None;
         self
     }
 
@@ -417,6 +440,8 @@ impl<T: FieldElement> Pipeline<T> {
         Pipeline {
             artifact: Artifacts {
                 witness: Some(Arc::new(witness)),
+                // we're changing the witness, clear the current proof
+                proof: None,
                 ..self.artifact
             },
             ..self
@@ -433,6 +458,8 @@ impl<T: FieldElement> Pipeline<T> {
         Pipeline {
             artifact: Artifacts {
                 witness: Some(Arc::new(witness)),
+                // we're changing the witness, clear the current proof
+                proof: None,
                 ..self.artifact
             },
             ..self
@@ -860,6 +887,7 @@ impl<T: FieldElement> Pipeline<T> {
         self.maybe_write_witness(&fixed_cols, &witness)?;
 
         self.artifact.witness = Some(Arc::new(witness));
+        self.artifact.proof = None;
 
         Ok(self.artifact.witness.as_ref().unwrap().clone())
     }
@@ -887,20 +915,18 @@ impl<T: FieldElement> Pipeline<T> {
         )))
     }
 
-    pub fn compute_proof(&mut self) -> Result<&Proof, Vec<String>> {
-        if self.artifact.proof.is_some() {
-            return Ok(self.artifact.proof.as_ref().unwrap());
-        }
+    pub fn backend(&mut self) -> Result<&mut dyn Backend<T>, Vec<String>> {
+        Ok(self.artifact.backend.as_deref_mut().unwrap())
+    }
 
+    pub fn setup_backend(&mut self) -> Result<&mut dyn Backend<T>, Vec<String>> {
+        if self.artifact.backend.is_some() {
+            return Ok(self.artifact.backend.as_deref_mut().unwrap());
+        }
         let pil = self.compute_optimized_pil()?;
         let fixed_cols = self.compute_fixed_cols()?;
-        let witness = self.compute_witness()?;
-        let witgen_callback = self.witgen_callback()?;
 
-        let backend = self
-            .arguments
-            .backend
-            .expect("backend must be set before calling proving!");
+        let backend = self.arguments.backend.expect("no backend selected!");
         let factory = backend.factory::<T>();
 
         // Opens the setup file, if set.
@@ -924,7 +950,9 @@ impl<T: FieldElement> Pipeline<T> {
             .as_ref()
             .map(|path| BufReader::new(fs::File::open(path).unwrap()));
 
-        /* Create the backend */
+        // Create the backend
+        let start = Instant::now();
+        self.log(&format!("Backend setup for {backend}..."));
         let backend = factory
             .create(
                 pil.clone(),
@@ -936,6 +964,19 @@ impl<T: FieldElement> Pipeline<T> {
                 self.arguments.backend_options.clone(),
             )
             .unwrap();
+        self.log(&format!("Setup took {}s", start.elapsed().as_secs_f32()));
+
+        self.artifact.backend = Some(backend);
+        Ok(self.artifact.backend.as_deref_mut().unwrap())
+    }
+
+    pub fn compute_proof(&mut self) -> Result<&Proof, Vec<String>> {
+        if self.artifact.proof.is_some() {
+            return Ok(self.artifact.proof.as_ref().unwrap());
+        }
+
+        let witness = self.compute_witness()?;
+        let witgen_callback = self.witgen_callback()?;
 
         // Reads the existing proof file, if set.
         let existing_proof = self
@@ -944,21 +985,24 @@ impl<T: FieldElement> Pipeline<T> {
             .as_ref()
             .map(|path| fs::read(path).unwrap());
 
+        self.setup_backend()?;
+
         let start = Instant::now();
-        let proof = match backend.prove(&witness, existing_proof, witgen_callback) {
-            Ok(proof) => proof,
-            Err(powdr_backend::Error::BackendError(e)) => {
-                return Err(vec![e.to_string()]);
+        let proof = {
+            let backend = self.backend()?;
+            match backend.prove(&witness, existing_proof, witgen_callback) {
+                Ok(proof) => proof,
+                Err(powdr_backend::Error::BackendError(e)) => {
+                    return Err(vec![e.to_string()]);
+                }
+                Err(e) => panic!("{}", e),
             }
-            Err(e) => panic!("{}", e),
         };
         self.log(&format!(
             "Proof generation took {}s",
             start.elapsed().as_secs_f32()
         ));
         self.log(&format!("Proof size: {} bytes", proof.len()));
-
-        drop(backend);
 
         self.maybe_write_proof(&proof)?;
 
@@ -991,44 +1035,7 @@ impl<T: FieldElement> Pipeline<T> {
         &mut self,
         mut writer: W,
     ) -> Result<(), Vec<String>> {
-        let backend = self
-            .arguments
-            .backend
-            .expect("backend must be set before generating verification key!");
-        let factory = backend.factory::<T>();
-
-        let mut setup_file = self
-            .arguments
-            .setup_file
-            .as_ref()
-            .map(|path| BufReader::new(fs::File::open(path).unwrap()));
-
-        // An aggregation verification key needs the app vkey to be set
-        let mut vkey_app_file = self
-            .arguments
-            .vkey_app_file
-            .as_ref()
-            .map(|path| BufReader::new(fs::File::open(path).unwrap()));
-
-        let pil = self.compute_optimized_pil()?;
-        let fixed_cols = self.compute_fixed_cols()?;
-
-        let backend = factory
-            .create(
-                pil.clone(),
-                fixed_cols.clone(),
-                self.output_dir.clone(),
-                setup_file
-                    .as_mut()
-                    .map(|file| file as &mut dyn std::io::Read),
-                None,
-                vkey_app_file
-                    .as_mut()
-                    .map(|file| file as &mut dyn std::io::Read),
-                self.arguments.backend_options.clone(),
-            )
-            .unwrap();
-
+        let backend = self.setup_backend()?;
         match backend.export_verification_key(&mut writer) {
             Ok(()) => Ok(()),
             Err(powdr_backend::Error::BackendError(e)) => Err(vec![e]),
@@ -1040,46 +1047,7 @@ impl<T: FieldElement> Pipeline<T> {
         &mut self,
         mut writer: W,
     ) -> Result<(), Vec<String>> {
-        let backend = self
-            .arguments
-            .backend
-            .expect("backend must be set before generating verifier!");
-        let factory = backend.factory::<T>();
-
-        let mut setup_file = self
-            .arguments
-            .setup_file
-            .as_ref()
-            .map(|path| BufReader::new(fs::File::open(path).unwrap()));
-
-        let mut vkey = self
-            .arguments
-            .vkey_file
-            .as_ref()
-            .map(|path| BufReader::new(fs::File::open(path).unwrap()));
-
-        let mut vkey_app = self
-            .arguments
-            .vkey_app_file
-            .as_ref()
-            .map(|path| BufReader::new(fs::File::open(path).unwrap()));
-
-        let pil = self.compute_optimized_pil()?;
-        let fixed_cols = self.compute_fixed_cols()?;
-
-        let backend = factory
-            .create(
-                pil.clone(),
-                fixed_cols.clone(),
-                self.output_dir.clone(),
-                setup_file
-                    .as_mut()
-                    .map(|file| file as &mut dyn std::io::Read),
-                vkey.as_io_read(),
-                vkey_app.as_io_read(),
-                self.arguments.backend_options.clone(),
-            )
-            .unwrap();
+        let backend = self.setup_backend()?;
 
         match backend.export_ethereum_verifier(&mut writer) {
             Ok(()) => Ok(()),
@@ -1092,45 +1060,7 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     pub fn verify(&mut self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Vec<String>> {
-        let backend = self
-            .arguments
-            .backend
-            .expect("backend must be set before generating verification key!");
-        let factory = backend.factory::<T>();
-
-        let mut setup_file = self
-            .arguments
-            .setup_file
-            .as_ref()
-            .map(|path| BufReader::new(fs::File::open(path).unwrap()));
-
-        let mut vkey_file = self
-            .arguments
-            .vkey_file
-            .as_ref()
-            .map(fs::File::open)
-            .map(Result::unwrap)
-            .map(BufReader::new);
-
-        let pil = self.compute_optimized_pil()?;
-        let fixed_cols = self.compute_fixed_cols()?;
-
-        let backend = factory
-            .create(
-                pil.clone(),
-                fixed_cols.clone(),
-                self.output_dir.clone(),
-                setup_file
-                    .as_mut()
-                    .map(|file| file as &mut dyn std::io::Read),
-                vkey_file
-                    .as_mut()
-                    .map(|file| file as &mut dyn std::io::Read),
-                // We shouldn't need the app verification key for this
-                None,
-                self.arguments.backend_options.clone(),
-            )
-            .unwrap();
+        let backend = self.setup_backend()?;
 
         let start = Instant::now();
         match backend.verify(proof, instances) {

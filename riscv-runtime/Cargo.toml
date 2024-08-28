@@ -11,9 +11,10 @@ repository = "https://github.com/powdr-labs/powdr"
 serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }
 serde_cbor = { version = "0.11.2", default-features = false, features = ["alloc"] }
 powdr-riscv-syscalls = { path = "../riscv-syscalls", version = "0.1.0-alpha.2" }
+getrandom = { version = "0.2", features = ["custom"], optional = true }
 
 [features]
-std = ["serde/std", "serde_cbor/std"]
+std = ["serde/std", "serde_cbor/std", "getrandom"]
 
 [workspace]
 

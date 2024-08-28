@@ -15,11 +15,11 @@ namespace Sum(N);
 
     col witness input(i) query match i {
         // A non-exhaustive match statement is the only way to return "None"
-        0 => std::prover::Query::Input(0),
-        1 => std::prover::Query::Input(1),
-        2 => std::prover::Query::Input(2),
+        0 => std::prelude::Query::Input(0),
+        1 => std::prelude::Query::Input(1),
+        2 => std::prelude::Query::Input(2),
         // No response in the case of i == 3
-        _ => std::prover::Query::None,
+        _ => std::prelude::Query::None,
     };
     col witness sum;
 

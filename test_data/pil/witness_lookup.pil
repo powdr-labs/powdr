@@ -12,7 +12,7 @@ namespace Quad(N);
     col fixed id(i) { i };
     col fixed double(i) { i * 2 };
 
-    col witness input(i) query std::prover::Query::Input(i);
+    col witness input(i) query std::prelude::Query::Input(i);
     col witness wdouble;
     col witness quadruple;
 

@@ -194,10 +194,8 @@ fn polynomial_reference_type_to_type(t: &str) -> &'static str {
 /// Makes names compatible with estark, which sometimes require that
 /// there is exactly one `.` in the name.
 fn fixup_name(name: &str) -> String {
-    if name.contains('.') {
-        name.to_string()
-    } else if let Some(last) = name.rfind("::") {
-        format!("{}.{}", &name[..last], &name[last + 1..])
+    if let Some(last) = name.rfind("::") {
+        format!("{}.{}", &name[..last], &name[last + 2..])
     } else {
         panic!("Witness or intermediate column is not inside a namespace: {name}");
     }
