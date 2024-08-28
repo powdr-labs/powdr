@@ -210,9 +210,9 @@ fn remove_constant_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 "Determined fixed column {} to be constant {value}. Removing.",
                 poly.absolute_name
             );
-            Some((poly.absolute_name.clone(), poly.into(), value))
+            Some(((poly.absolute_name.clone(), poly.into()), value))
         })
-        .collect::<Vec<(String, PolyID, _)>>();
+        .collect::<Vec<((String, PolyID), _)>>();
 
     substitute_polynomial_references(pil_file, constant_polys);
 }
@@ -437,7 +437,7 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         .filter(|&id| (id.kind == IdentityKind::Polynomial))
         .map(|id| id.expression_for_poly_id())
         .filter_map(constrained_to_constant)
-        .collect::<Vec<(String, PolyID, _)>>();
+        .collect::<Vec<((String, PolyID), _)>>();
     // We cannot remove arrays or array elements, so filter them out.
     let columns = pil_file
         .committed_polys_in_source_order()
@@ -445,7 +445,7 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         .filter(|&(s, _)| (!s.is_array()))
         .map(|(s, _)| s.into())
         .collect::<HashSet<PolyID>>();
-    constant_polys.retain(|(_, id, _)| columns.contains(id));
+    constant_polys.retain(|((_, id), _)| columns.contains(id));
 
     substitute_polynomial_references(pil_file, constant_polys);
 }
@@ -453,15 +453,15 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
 /// Substitutes all references to certain polynomials by the given field elements.
 fn substitute_polynomial_references<T: FieldElement>(
     pil_file: &mut Analyzed<T>,
-    substitutions: Vec<(String, PolyID, BigUint)>,
+    substitutions: Vec<((String, PolyID), BigUint)>,
 ) {
     let substitutions_by_id = substitutions
         .iter()
-        .map(|(_, id, value)| (*id, value.clone()))
+        .map(|((_, id), value)| (*id, value.clone()))
         .collect::<HashMap<PolyID, _>>();
     let substitutions_by_name = substitutions
         .into_iter()
-        .map(|(name, _, value)| (name, value))
+        .map(|((name, _), value)| (name, value))
         .collect::<HashMap<String, _>>();
     pil_file.post_visit_expressions_in_definitions_mut(&mut |e: &mut Expression| {
         if let Expression::Reference(
@@ -489,7 +489,7 @@ fn substitute_polynomial_references<T: FieldElement>(
 
 fn constrained_to_constant<T: FieldElement>(
     expr: &AlgebraicExpression<T>,
-) -> Option<(String, PolyID, BigUint)> {
+) -> Option<((String, PolyID), BigUint)> {
     match expr {
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
             left,
@@ -501,7 +501,7 @@ fn constrained_to_constant<T: FieldElement>(
                 | (AlgebraicExpression::Reference(poly), AlgebraicExpression::Number(n)) => {
                     if poly.is_witness() {
                         // This also works if "next" is true.
-                        return Some((poly.name.clone(), poly.poly_id, n.to_arbitrary_integer()));
+                        return Some(((poly.name.clone(), poly.poly_id), n.to_arbitrary_integer()));
                     }
                 }
                 _ => {}
@@ -509,7 +509,7 @@ fn constrained_to_constant<T: FieldElement>(
         }
         AlgebraicExpression::Reference(poly) => {
             if poly.is_witness() {
-                return Some((poly.name.clone(), poly.poly_id, 0u32.into()));
+                return Some(((poly.name.clone(), poly.poly_id), 0u32.into()));
             }
         }
         _ => {}
