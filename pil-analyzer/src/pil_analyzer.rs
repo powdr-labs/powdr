@@ -3,6 +3,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::iter::once;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use itertools::Itertools;
 use powdr_ast::parsed::asm::{
@@ -74,11 +75,11 @@ struct PILAnalyzer {
     /// Symbols from the core that were added automatically but will not be printed.
     auto_added_symbols: HashSet<String>,
     /// Implementations found, organized according to their associated trait name.
-    implementations: HashMap<String, Vec<TraitImplementation<Expression>>>,
+    implementations: HashMap<String, Vec<Rc<TraitImplementation<Expression>>>>,
     /// A map between the name and type_Args of the caller reference
     /// and the expression to be called.
     /// Empty until resolve_trait_impls() is called.
-    solved_impls: HashMap<(String, Vec<Type>), Expression>,
+    solved_impls: HashMap<(String, Vec<Type>), Rc<TraitImplementation<Expression>>>,
 }
 
 /// Reads and parses the given path and all its imports.
@@ -418,7 +419,7 @@ impl PILAnalyzer {
                             .implementations
                             .entry(trait_impl.name.to_string())
                             .or_default()
-                            .push(trait_impl),
+                            .push(Rc::new(trait_impl)),
                     }
                 }
             }
@@ -487,7 +488,7 @@ impl<'a> AnalysisDriver for Driver<'a> {
         &self.0.definitions
     }
 
-    fn solved_impls(&self) -> &HashMap<(String, Vec<Type>), Expression> {
+    fn solved_impls(&self) -> &HashMap<(String, Vec<Type>), Rc<TraitImplementation<Expression>>> {
         &self.0.solved_impls
     }
 }

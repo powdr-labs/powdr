@@ -342,8 +342,11 @@ pub struct TraitImplementation<Expr> {
 }
 
 impl<R> TraitImplementation<Expression<R>> {
-    pub fn function_by_name(&self, name: &str) -> Option<&NamedExpression<Expression<R>>> {
-        self.functions.iter().find(|f| f.name == name)
+    pub fn function_by_name(&self, name: &str) -> Option<&Expression<R>> {
+        self.functions
+            .iter()
+            .find(|f| f.name == name)
+            .map(|f| f.body.as_ref())
     }
 }
 

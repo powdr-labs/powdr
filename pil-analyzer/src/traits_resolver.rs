@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use powdr_ast::{
     analyzed::{
         Expression, FunctionValueDefinition, Identity, PolynomialReference, Reference, Symbol,
@@ -11,7 +9,10 @@ use powdr_ast::{
         SelectedExpressions, TraitImplementation,
     },
 };
+use std::collections::HashMap;
+use std::rc::Rc;
 
+type SolvedImpl = ((String, Vec<Type>), Rc<TraitImplementation<Expression>>);
 pub struct TraitsResolver<'a> {
     definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     identities: &'a Vec<Identity<SelectedExpressions<Expression>>>,
@@ -30,8 +31,8 @@ impl<'a> TraitsResolver<'a> {
 
     pub fn resolve_traits(
         &'a self,
-        trait_impls: &HashMap<String, Vec<TraitImplementation<Expression>>>,
-    ) -> HashMap<(String, Vec<Type>), Expression> {
+        trait_impls: &HashMap<String, Vec<Rc<TraitImplementation<Expression>>>>,
+    ) -> HashMap<(String, Vec<Type>), Rc<TraitImplementation<Expression>>> {
         let mut result = HashMap::new();
 
         let resolve_references = |expr: &Expression| {
@@ -87,10 +88,10 @@ impl<'a> TraitsResolver<'a> {
     fn resolve_reference_trait(
         &self,
         reference: &PolynomialReference,
-        trait_impls: &HashMap<String, Vec<TraitImplementation<Expression>>>,
-    ) -> Option<((String, Vec<Type>), Expression)> {
+        trait_impls: &HashMap<String, Vec<Rc<TraitImplementation<Expression>>>>,
+    ) -> Option<SolvedImpl> {
         let name = reference.name.clone();
-        let (trait_decl_name, trait_fn_name) = name.rsplit_once("::")?;
+        let (trait_decl_name, _) = name.rsplit_once("::")?;
         if let Some(impls) = trait_impls.get(trait_decl_name) {
             for impl_ in impls.iter() {
                 let Type::Tuple(TupleType { ref items }) = impl_.type_scheme.ty else {
@@ -99,8 +100,7 @@ impl<'a> TraitsResolver<'a> {
                 let type_args = reference.type_args.as_ref().unwrap().to_vec();
 
                 if type_args == *items {
-                    let expr = impl_.function_by_name(trait_fn_name).unwrap();
-                    return Some(((name, type_args), expr.body.as_ref().clone()));
+                    return Some(((name, type_args), Rc::clone(impl_)));
                 }
             }
         }
@@ -112,7 +112,7 @@ impl<'a> TraitsResolver<'a> {
 pub fn traits_resolution(
     definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     identities: &Vec<Identity<SelectedExpressions<Expression>>>,
-    trait_impls: &HashMap<String, Vec<TraitImplementation<Expression>>>,
-) -> HashMap<(String, Vec<Type>), Expression> {
+    trait_impls: &HashMap<String, Vec<Rc<TraitImplementation<Expression>>>>,
+) -> HashMap<(String, Vec<Type>), Rc<TraitImplementation<Expression>>> {
     TraitsResolver::new(definitions, identities).resolve_traits(trait_impls)
 }
