@@ -613,13 +613,29 @@ fn prover_functions_dynamic() {
 namespace std::prover;
     let provide_value = 9;
 namespace N(16);
+    let gen: -> () = (constr || {
+        let x: col;
+        let y: col;
+        x = y;
+        (query |i| {
+            std::prover::provide_value(x, i, std::convert::fe::<int>(i % 2));
+            std::prover::provide_value(y, i, std::convert::fe::<int>(i % 2));
+
+        });
+
+    });
     col witness x;
     col witness y;
     N::x = N::y;
-    (query |i| {
-        std::prover::provide_value(N::x, i, std::convert::fe::<int>(i % 2));
-        std::prover::provide_value(N::y, i, std::convert::fe::<int>(i % 2));
+    {
+        let x = N::x;
+        let y = N::y;
+        (query |i| {
+            std::prover::provide_value(x, i, std::convert::fe::<int>(i % 2));
+            std::prover::provide_value(y, i, std::convert::fe::<int>(i % 2));
 
-    })"#;
+        })
+    }
+"#;
     assert_eq!(analyzed.to_string(), expected);
 }
