@@ -940,8 +940,6 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 }
             }
             Expression::FieldAccess(_, FieldAccess { object: _, field }) => {
-                // TODO: Check this (expand/combine object?)
-                //self.op_stack.push(Operation::Combine(object));
                 let object = self.value_stack.pop().unwrap();
                 match object.as_ref() {
                     Value::Struct(_, fields) => fields
