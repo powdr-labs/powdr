@@ -50,7 +50,6 @@ pub fn analyze_string<T: FieldElement>(contents: &str) -> Analyzed<T> {
 
 fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
     let mut analyzer = PILAnalyzer::new();
-
     analyzer.process(files);
     analyzer.side_effect_check();
     analyzer.check_traits_overlap();
