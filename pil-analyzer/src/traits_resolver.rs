@@ -1,6 +1,5 @@
 use std::collections::HashMap;
 
-use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
         Expression, FunctionValueDefinition, Identity, PolynomialReference, Reference, Symbol,
@@ -32,7 +31,7 @@ impl<'a> TraitsResolver<'a> {
     pub fn resolve_traits(
         &'a self,
         trait_impls: &HashMap<String, Vec<TraitImplementation<Expression>>>,
-    ) -> HashMap<String, Expression> {
+    ) -> HashMap<(String, Vec<Type>), Expression> {
         let mut result = HashMap::new();
 
         let resolve_references = |expr: &Expression| {
@@ -89,7 +88,7 @@ impl<'a> TraitsResolver<'a> {
         &self,
         reference: &PolynomialReference,
         trait_impls: &HashMap<String, Vec<TraitImplementation<Expression>>>,
-    ) -> Option<(String, Expression)> {
+    ) -> Option<((String, Vec<Type>), Expression)> {
         let name = reference.name.clone();
         let (trait_decl_name, trait_fn_name) = name.rsplit_once("::")?;
         if let Some(impls) = trait_impls.get(trait_decl_name) {
@@ -102,8 +101,7 @@ impl<'a> TraitsResolver<'a> {
 
                 if type_args == items {
                     let expr = impl_.function_by_name(trait_fn_name).unwrap();
-                    let key = format!("{name}<{}>", type_args.iter().join(", "));
-                    return Some((key.clone(), expr.body.as_ref().clone()));
+                    return Some(((name, type_args), expr.body.as_ref().clone()));
                 }
             }
         }
@@ -116,6 +114,6 @@ pub fn traits_resolution(
     definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     identities: &Vec<Identity<SelectedExpressions<Expression>>>,
     trait_impls: &HashMap<String, Vec<TraitImplementation<Expression>>>,
-) -> HashMap<String, Expression> {
+) -> HashMap<(String, Vec<Type>), Expression> {
     TraitsResolver::new(definitions, identities).resolve_traits(trait_impls)
 }

@@ -75,10 +75,10 @@ struct PILAnalyzer {
     auto_added_symbols: HashSet<String>,
     /// Implementations found, organized according to their associated trait name.
     implementations: HashMap<String, Vec<TraitImplementation<Expression>>>,
-    /// A map between the name of the caller reference
-    /// composed with his type_args (name<type_args>) and the expression to be called.
+    /// A map between the name and type_Args of the caller reference
+    /// and the expression to be called.
     /// Empty until resolve_trait_impls() is called.
-    solved_impls: HashMap<String, Expression>,
+    solved_impls: HashMap<(String, Vec<Type>), Expression>,
 }
 
 /// Reads and parses the given path and all its imports.
@@ -487,7 +487,7 @@ impl<'a> AnalysisDriver for Driver<'a> {
         &self.0.definitions
     }
 
-    fn solved_impls(&self) -> &HashMap<String, Expression> {
+    fn solved_impls(&self) -> &HashMap<(String, Vec<Type>), Expression> {
         &self.0.solved_impls
     }
 }

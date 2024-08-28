@@ -36,7 +36,7 @@ pub enum StatementIdentifier {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct Analyzed<T> {
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    pub solved_impls: HashMap<String, Expression>,
+    pub solved_impls: HashMap<(String, Vec<Type>), Expression>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
     pub intermediate_columns: HashMap<String, (Symbol, Vec<AlgebraicExpression<T>>)>,
     pub identities: Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>>,
@@ -1267,16 +1267,6 @@ pub struct PolynomialReference {
     /// The type arguments if the symbol is generic.
     /// Guaranteed to be Some(_) after type checking is completed.
     pub type_args: Option<Vec<Type>>,
-}
-
-impl PolynomialReference {
-    pub fn new(name: String) -> Self {
-        Self {
-            name,
-            poly_id: None,
-            type_args: None,
-        }
-    }
 }
 
 #[derive(
