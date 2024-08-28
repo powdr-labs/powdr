@@ -6,7 +6,13 @@
 /// entropy source.
 ///
 /// TODO: figure how to be truly random
+#[cfg(feature = "allow_fake_rand")]
 pub(crate) fn getrandom(s: &mut [u8]) {
     const VALUE: u8 = 3;
     s.iter_mut().for_each(|v| *v = VALUE);
+}
+
+#[cfg(not(feature = "allow_fake_rand"))]
+pub(crate) fn getrandom(_: &mut [u8]) {
+    panic!("there is no real entropy source in Powdr");
 }
