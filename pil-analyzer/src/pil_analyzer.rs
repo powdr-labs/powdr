@@ -75,7 +75,9 @@ struct PILAnalyzer {
     auto_added_symbols: HashSet<String>,
     /// Implementations found, organized according to their associated trait name.
     implementations: HashMap<String, Vec<TraitImplementation<Expression>>>,
-    /// A map between the name of the caller reference and the expression to be called.
+    /// A map between the name of the caller reference
+    /// composed with his type_args (name<type_args>) and the expression to be called.
+    /// Empty until resolve_trait_impls() is called.
     solved_impls: HashMap<String, Expression>,
 }
 

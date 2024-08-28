@@ -422,8 +422,9 @@ impl<'a> Definitions<'a> {
         type_args: &Option<Vec<Type>>,
         symbols: &mut impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
+        let name = name.to_string();
         let (symbol, value) = definitions
-            .get(name)
+            .get(&name)
             .ok_or_else(|| EvalError::SymbolNotFound(format!("Symbol {name} not found.")))?;
 
         Ok(if matches!(symbol.kind, SymbolKind::Poly(_)) {
@@ -442,7 +443,7 @@ impl<'a> Definitions<'a> {
                 Value::Array(items).into()
             } else {
                 Value::from(AlgebraicExpression::Reference(AlgebraicReference {
-                    name: name.to_string(),
+                    name,
                     poly_id: symbol.into(),
                     next: false,
                 }))
@@ -450,7 +451,7 @@ impl<'a> Definitions<'a> {
             }
         } else {
             let key = type_args.as_ref().map_or_else(
-                || name.to_string(),
+                || name.clone(),
                 |args| format!("{name}<{}>", args.iter().join(", ")),
             );
             let impl_ = solved_impls.get(key.as_str());
@@ -507,7 +508,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a> {
 pub trait SymbolLookup<'a, T: FieldElement> {
     fn lookup(
         &mut self,
-        poly: &'a str,
+        name: &'a str,
         type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError>;
 
@@ -842,7 +843,6 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                         }
                         ta
                     });
-
                     self.symbols.lookup(&poly.name, &type_args)?
                 }
             }
@@ -1287,7 +1287,6 @@ pub fn evaluate_binary_operation_integer<'a, T>(
 
 #[cfg(test)]
 mod test {
-
     use crate::evaluator;
     use powdr_number::GoldilocksField;
     use pretty_assertions::assert_eq;

@@ -649,7 +649,6 @@ impl TypeChecker {
                 FunctionCall {
                     function,
                     arguments,
-                    ..
                 },
             ) => {
                 let ft = self.infer_type_of_expression(function)?;
@@ -766,7 +765,6 @@ impl TypeChecker {
         for (arg, param) in arguments.into_iter().zip(params) {
             self.expect_type(&param, arg)?;
         }
-
         Ok(result_type)
     }
 
