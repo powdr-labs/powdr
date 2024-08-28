@@ -885,10 +885,24 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
                 "Builtin function as captured value not supported.".to_string(),
             ))
         }
-        Value::Expression(_e) => {
-            return Err(EvalError::TypeError(
-                "Algebraic expression as captured value not supported: {e}.".to_string(),
-            ))
-        }
+        Value::Expression(e) => match e {
+            AlgebraicExpression::Reference(AlgebraicReference {
+                name,
+                poly_id,
+                next: false,
+            }) => Expression::Reference(
+                SourceRef::unknown(),
+                Reference::Poly(PolynomialReference {
+                    name: name.clone(),
+                    poly_id: Some(*poly_id),
+                    type_args: None,
+                }),
+            ),
+            _ => {
+                return Err(EvalError::TypeError(format!(
+                    "Algebraic expression as captured value not supported: {e}."
+                )))
+            }
+        },
     })
 }
