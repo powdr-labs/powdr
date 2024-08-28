@@ -12,7 +12,6 @@ use core::{alloc::Layout, arch::asm, slice};
 use powdr_riscv_syscalls::Syscall;
 
 use crate::io::write_slice;
-use getrandom::{register_custom_getrandom, Error};
 
 /// The std interface to random number generation.
 #[no_mangle]
@@ -20,28 +19,8 @@ extern "C" fn sys_rand(buf: *mut u32, words: usize) {
     let buf = buf as *mut u8;
     unsafe {
         let slice = slice::from_raw_parts_mut(buf, words * 4);
-        powdr_getrandom_impl(slice);
+        crate::entropy_source::getrandom(slice);
     }
-}
-
-/// The de-factor standard rust interface to low level random number generation.
-fn powdr_getrandom(buf: &mut [u8]) -> Result<(), Error> {
-    powdr_getrandom_impl(buf);
-    Ok(())
-}
-register_custom_getrandom!(powdr_getrandom);
-
-/// This is a placeholder to pretend to provide a random number generator, for
-/// places like the hash function of HashMap who needs something.
-///
-/// This could be improved by using the rand_chacha crate, but I think it is
-/// worse, as it will just mask the fact that we are not providing a real
-/// entropy source.
-///
-/// TODO: figure how to be truly random
-fn powdr_getrandom_impl(s: &mut [u8]) {
-    const VALUE: u8 = 3;
-    s.iter_mut().for_each(|v| *v = VALUE);
 }
 
 #[no_mangle]
@@ -50,9 +29,11 @@ extern "C" fn sys_panic(msg_ptr: *const u8, len: usize) -> ! {
     unsafe {
         write_slice(out, "Panic: ".as_bytes());
         write_slice(out, slice::from_raw_parts(msg_ptr, len));
-        write_slice(out, &[b'\n']);
+        write_slice(out, b"\n");
 
         asm!("unimp");
+
+        #[allow(clippy::empty_loop)]
         loop {}
     }
 }

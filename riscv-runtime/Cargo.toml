@@ -14,7 +14,9 @@ powdr-riscv-syscalls = { path = "../riscv-syscalls", version = "0.1.0-alpha.2" }
 getrandom = { version = "0.2", features = ["custom"], optional = true }
 
 [features]
-std = ["serde/std", "serde_cbor/std", "getrandom"]
+std = ["serde/std", "serde_cbor/std", "entropy_source"]
+getrandom = ["dep:getrandom", "entropy_source"]
+entropy_source = []
 
 [workspace]
 

@@ -16,6 +16,10 @@ pub mod fmt;
 pub mod hash;
 pub mod io;
 
+#[cfg(feature = "entropy_source")]
+mod entropy_source;
+#[cfg(feature = "getrandom")]
+mod getrandom;
 #[cfg(not(feature = "std"))]
 mod no_std_support;
 #[cfg(feature = "std")]
@@ -25,6 +29,7 @@ pub fn halt() -> ! {
     unsafe {
         asm!("ecall", in("t0") u32::from(Syscall::Halt));
     }
+    #[allow(clippy::empty_loop)]
     loop {}
 }
 
