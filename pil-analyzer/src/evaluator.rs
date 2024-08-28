@@ -470,9 +470,7 @@ impl<'a> Definitions<'a> {
                 Some(FunctionValueDefinition::TypeConstructor(TypeConstructor::Struct(
                     struct_decl,
                     _fields,
-                ))) => {
-                    Value::TypeConstructor(&struct_decl.name).into() // TODO Check this
-                }
+                ))) => Value::TypeConstructor(&struct_decl.name).into(),
                 _ => Err(EvalError::Unsupported(
                     "Cannot evaluate arrays and queries.".to_string(),
                 ))?,
