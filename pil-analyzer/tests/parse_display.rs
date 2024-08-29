@@ -878,7 +878,7 @@ fn simple_struct() {
         x: int,
         y: int,
     }
-    let f: int -> Point = (|i| Point with { x: 0, y: i });
+    let f: int -> Point = (|i| Point{ x: 0, y: i });
     let x: Point = f(0);
 ";
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
@@ -892,9 +892,9 @@ fn struct_constr_var_typed() {
         y: int,
     }
     let v: int -> X = (|i| match i {
-        1 => X with { x: 1, y: 0 },
-        2 => X with { x: 2, y: 2 },
-        _ => X with { x: 0, y: 1 },
+        1 => X{ x: 1, y: 0 },
+        2 => X{ x: 2, y: 2 },
+        _ => X{ x: 0, y: 1 },
     });
     let x: X = v(1);
 ";
