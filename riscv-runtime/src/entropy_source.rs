@@ -14,5 +14,10 @@ pub(crate) fn getrandom(s: &mut [u8]) {
 
 #[cfg(not(feature = "allow_fake_rand"))]
 pub(crate) fn getrandom(_: &mut [u8]) {
-    panic!("there is no real entropy source in Powdr");
+    panic!(
+        r#"There is no real entropy source in Powdr.
+You may enable, at your own risk, the "allow_fake_rand" feature of
+"powdr-riscv-runtime" crate to get a deterministic value instead
+of this panic."#
+    );
 }
