@@ -1,13 +1,8 @@
 use std::fmt::{Display, Formatter, Result};
 
-use crate::{
-    asm_analysis::combine_flags,
-    parsed::{display::format_type_scheme_around_name, TypedExpression},
-};
+use crate::asm_analysis::combine_flags;
 
-use super::{
-    Link, LinkFrom, LinkTo, Location, Machine, Object, Operation, PILGraph, TypeOrExpression,
-};
+use super::{Link, LinkFrom, LinkTo, Location, Machine, Object, Operation, PILGraph};
 
 impl Display for Location {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
@@ -18,19 +13,8 @@ impl Display for Location {
 impl Display for PILGraph {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         writeln!(f, "// Utilities")?;
-        for (name, utility) in &self.definitions {
-            match utility {
-                TypeOrExpression::Expression(TypedExpression { e, type_scheme }) => {
-                    writeln!(
-                        f,
-                        "let{} = {e};",
-                        format_type_scheme_around_name(&name.to_string(), type_scheme)
-                    )?;
-                }
-                TypeOrExpression::Type(enum_decl) => {
-                    writeln!(f, "{enum_decl}",)?;
-                }
-            }
+        for _s in &self.definitions {
+            writeln!(f, "module ... definitions")?;
         }
         for (location, object) in &self.objects {
             writeln!(f, "// Object {location}")?;

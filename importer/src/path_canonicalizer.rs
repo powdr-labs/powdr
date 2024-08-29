@@ -17,7 +17,7 @@ use powdr_ast::parsed::{
     ArrayLiteral, BinaryOperation, BlockExpression, EnumDeclaration, EnumVariant, Expression,
     FunctionCall, IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm,
     MatchExpression, Pattern, PilStatement, StatementInsideBlock, TraitDeclaration, TraitFunction,
-    TypedExpression, UnaryOperation,
+    UnaryOperation,
 };
 use powdr_parser_util::{Error, SourceRef};
 
@@ -79,47 +79,16 @@ impl<'a> Folder for Canonicalizer<'a> {
                                 .map(Some)
                                 .transpose(),
                             },
-                            SymbolValue::Expression(mut exp) => {
-                                if let Some(type_scheme) = &mut exp.type_scheme {
-                                    canonicalize_inside_type_scheme(
-                                        type_scheme,
-                                        &self.path,
-                                        self.paths,
-                                    );
-                                }
-                                canonicalize_inside_expression(&mut exp.e, &self.path, self.paths);
-                                Some(Ok(SymbolValue::Expression(exp)))
-                            }
-                            SymbolValue::TypeDeclaration(mut enum_decl) => {
-                                let type_vars = enum_decl.type_vars.vars().collect();
-                                for variant in &mut enum_decl.variants {
-                                    if let Some(fields) = &mut variant.fields {
-                                        for field in fields {
-                                            canonicalize_inside_type(
-                                                field, &type_vars, &self.path, self.paths,
-                                            );
-                                        }
-                                    }
-                                }
-                                Some(Ok(SymbolValue::TypeDeclaration(enum_decl)))
-                            }
-                            SymbolValue::TraitDeclaration(mut trait_decl) => {
-                                let type_vars = trait_decl.type_vars.iter().collect();
-                                for f in &mut trait_decl.functions {
-                                    canonicalize_inside_type(
-                                        &mut f.ty, &type_vars, &self.path, self.paths,
-                                    );
-                                }
-                                Some(Ok(SymbolValue::TraitDeclaration(trait_decl)))
-                            }
                         }
                         .map(|value| value.map(|value| SymbolDefinition { name, value }.into()))
                     }
-                    ModuleStatement::TraitImplementation(mut trait_impl) => {
-                        for f in &mut trait_impl.functions {
-                            canonicalize_inside_expression(&mut f.body, &self.path, self.paths)
-                        }
-                        Some(Ok(ModuleStatement::TraitImplementation(trait_impl)))
+                    ModuleStatement::PilStatement(mut pil_statement) => {
+                        canonicalize_inside_pil_statement(
+                            &mut pil_statement,
+                            &self.path,
+                            self.paths,
+                        );
+                        Some(Ok(ModuleStatement::PilStatement(pil_statement)))
                     }
                 })
                 .collect::<Result<_, _>>()?,
@@ -260,6 +229,45 @@ fn free_inputs_in_expression_mut<'a>(
         Expression::MatchExpression(_, _) => todo!(),
         Expression::IfExpression(_, _) => todo!(),
         Expression::BlockExpression(_, _) => todo!(),
+    }
+}
+
+fn canonicalize_inside_pil_statement(
+    statement: &mut PilStatement,
+    path: &AbsoluteSymbolPath,
+    paths: &'_ PathMap,
+) {
+    match statement {
+        PilStatement::LetStatement(_, _, type_scheme, e) => {
+            if let Some(type_scheme) = type_scheme {
+                canonicalize_inside_type_scheme(type_scheme, path, paths);
+            }
+            if let Some(e) = e {
+                canonicalize_inside_expression(e, path, paths);
+            }
+        }
+        PilStatement::EnumDeclaration(_, enum_decl) => {
+            let type_vars = enum_decl.type_vars.vars().collect();
+            for variant in &mut enum_decl.variants {
+                if let Some(fields) = &mut variant.fields {
+                    for field in fields {
+                        canonicalize_inside_type(field, &type_vars, path, paths);
+                    }
+                }
+            }
+        }
+        PilStatement::TraitImplementation(_, trait_impl) => {
+            for f in &mut trait_impl.functions {
+                canonicalize_inside_expression(&mut f.body, path, paths)
+            }
+        }
+        PilStatement::TraitDeclaration(_, trait_decl) => {
+            let type_vars = trait_decl.type_vars.iter().collect();
+            for f in &mut trait_decl.functions {
+                canonicalize_inside_type(&mut f.ty, &type_vars, path, paths);
+            }
+        }
+        _ => unreachable!("unexpected at module level, make this enum more strict"),
     }
 }
 
@@ -465,27 +473,42 @@ fn check_path_internal<'a>(
                 match value {
                     // machines, expressions and enum variants do not expose symbols
                     SymbolValueRef::Machine(_)
-                    | SymbolValueRef::Expression(_)
+                    | SymbolValueRef::Expression(_, _)
                     | SymbolValueRef::TypeConstructor(_)
                     | SymbolValueRef::TraitDeclaration(_) => {
                         Err(format!("symbol not found in `{location}`: `{member}`"))
                     }
                     // modules expose symbols
                     SymbolValueRef::Module(ModuleRef::Local(module)) => module
-                        .symbol_definitions()
-                        .find_map(|SymbolDefinition { name, value }| {
-                            (name == member).then_some(value)
+                        .statements
+                        .iter()
+                        .find_map(|s| match s {
+                            ModuleStatement::SymbolDefinition(SymbolDefinition { name, value }) => {
+                                (name == member).then_some(value.as_ref())
+                            }
+                            // some pil statements introduce names
+                            ModuleStatement::PilStatement(s) => match s {
+                                PilStatement::EnumDeclaration(_, d) => {
+                                    (d.name == member).then_some(SymbolValueRef::TypeDeclaration(d))
+                                }
+                                PilStatement::LetStatement(_, name, type_scheme, e) => (name
+                                    == member)
+                                    .then_some(SymbolValueRef::Expression(e, type_scheme)),
+                                PilStatement::TraitDeclaration(_, d) => (d.name == member)
+                                    .then_some(SymbolValueRef::TraitDeclaration(d)),
+                                _s => None,
+                            },
                         })
                         .ok_or_else(|| format!("symbol not found in `{location}`: `{member}`"))
                         .and_then(|symbol| {
                             match symbol {
-                                SymbolValue::Import(p) => {
+                                SymbolValueRef::Import(p) => {
                                     // if we found an import, check it and continue from there
                                     check_path_internal(location.join(p.path.clone()), state, chain)
                                 }
                                 symbol => {
                                     // if we found any other symbol, continue from there
-                                    Ok((location.with_part(member), symbol.as_ref(), chain))
+                                    Ok((location.with_part(member), symbol, chain))
                                 }
                             }
                         }),
@@ -565,53 +588,71 @@ fn check_module(
     state: &mut State<'_>,
 ) -> Result<(), Error> {
     module
-        .symbol_definitions()
-        .try_fold(
-            BTreeSet::default(),
-            |mut acc, SymbolDefinition { name, .. }| {
-                // TODO we should store source refs in symbol definitions.
-                acc.insert(name.clone())
-                    .then_some(acc)
-                    .ok_or(format!("Duplicate name `{name}` in module `{location}`"))
-            },
-        )
+        .statements
+        .iter()
+        .flat_map(|s| s.defined_names())
+        .try_fold(BTreeSet::default(), |mut acc, name| {
+            // TODO we should store source refs in symbol definitions.
+            acc.insert(name.clone())
+                .then_some(acc)
+                .ok_or(format!("Duplicate name `{name}` in module `{location}`"))
+        })
         .map_err(|e| SourceRef::default().with_error(e))?;
 
-    for SymbolDefinition { name, value } in module.symbol_definitions() {
+    for statement in &module.statements {
         // start with the initial state
         // update the state
-        match value {
-            SymbolValue::Machine(machine) => {
-                check_machine(location.with_part(name), machine, state)?;
+        match statement {
+            ModuleStatement::PilStatement(p) => {
+                check_pil_statement_inside_module(location.clone(), p, state)?;
             }
-            SymbolValue::Module(module) => {
-                let m = match module {
-                    Module::External(_) => unreachable!(),
-                    Module::Local(m) => m,
-                };
-                check_module(location.with_part(name), m, state)?;
-            }
-            SymbolValue::Import(s) => check_import(location.clone(), s.clone(), state)
-                .map_err(|e| SourceRef::default().with_error(e))?,
-            SymbolValue::Expression(TypedExpression { e, type_scheme }) => {
-                if let Some(type_scheme) = type_scheme {
-                    check_type_scheme(&location, type_scheme, state, &Default::default())?;
+            ModuleStatement::SymbolDefinition(SymbolDefinition { name, value }) => match value {
+                SymbolValue::Machine(machine) => {
+                    check_machine(location.with_part(name), machine, state)?;
                 }
-                let type_vars = type_scheme
-                    .as_ref()
-                    .map(|ts| ts.vars.vars().collect())
-                    .unwrap_or_default();
-                check_expression(&location, e, state, &type_vars, &HashSet::default())?
-            }
-            SymbolValue::TypeDeclaration(enum_decl) => {
-                check_type_declaration(&location, enum_decl, state)?
-            }
-            SymbolValue::TraitDeclaration(trait_decl) => {
-                check_trait_declaration(&location, trait_decl, state)?
-            }
+                SymbolValue::Module(module) => {
+                    let m = match module {
+                        Module::External(_) => unreachable!(),
+                        Module::Local(m) => m,
+                    };
+                    check_module(location.with_part(name), m, state)?;
+                }
+                SymbolValue::Import(s) => check_import(location.clone(), s.clone(), state)
+                    .map_err(|e| SourceRef::default().with_error(e))?,
+            },
         }
     }
     Ok(())
+}
+
+fn check_pil_statement_inside_module(
+    location: AbsoluteSymbolPath,
+    s: &PilStatement,
+    state: &mut State<'_>,
+) -> Result<(), Error> {
+    match s {
+        PilStatement::LetStatement(_, _, type_scheme, e) => {
+            if let Some(type_scheme) = type_scheme {
+                check_type_scheme(&location, type_scheme, state, &Default::default())?;
+            }
+            let type_vars = type_scheme
+                .as_ref()
+                .map(|ts| ts.vars.vars().collect())
+                .unwrap_or_default();
+            if let Some(e) = e {
+                check_expression(&location, e, state, &type_vars, &HashSet::default())?;
+            }
+            Ok(())
+        }
+        PilStatement::EnumDeclaration(_, enum_decl) => {
+            check_type_declaration(&location, enum_decl, state)
+        }
+        PilStatement::TraitImplementation(_, _trait_impl) => todo!(),
+        PilStatement::TraitDeclaration(_, trait_decl) => {
+            check_trait_declaration(&location, trait_decl, state)
+        }
+        _ => unreachable!("make enum stricter"),
+    }
 }
 
 /// Checks a machine, checking the paths it contains, in particular paths to the types of submachines

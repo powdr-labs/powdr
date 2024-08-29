@@ -3,8 +3,7 @@
 use itertools::Itertools;
 use powdr_ast::{
     asm_analysis::{
-        AnalysisASMFile, BatchMetadata, FunctionStatement, Incompatible, IncompatibleSet, Item,
-        Machine,
+        AnalysisASMFile, BatchMetadata, FunctionStatement, Incompatible, IncompatibleSet, Machine,
     },
     parsed::asm::AbsoluteSymbolPath,
 };
@@ -132,14 +131,8 @@ impl RomBatcher {
     }
 
     pub fn batch(&mut self, mut asm_file: AnalysisASMFile) -> AnalysisASMFile {
-        for (name, machine) in asm_file.items.iter_mut().filter_map(|(n, m)| match m {
-            Item::Machine(m) => Some((n, m)),
-            Item::Expression(_)
-            | Item::TypeDeclaration(_)
-            | Item::TraitDeclaration(_)
-            | Item::TraitImplementation(_) => None,
-        }) {
-            self.extract_batches(name, machine);
+        for (name, machine) in asm_file.machines_mut() {
+            self.extract_batches(&name, machine);
         }
 
         asm_file

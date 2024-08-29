@@ -138,9 +138,7 @@ where
 }
 
 fn sanity_check(program: &AnalysisASMFile) {
-    let main_machine = program.items[&parse_absolute_path("::Main")]
-        .try_to_machine()
-        .unwrap();
+    let main_machine = &program.get_machine(&parse_absolute_path("::Main")).unwrap();
     for expected_instruction in BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES {
         if !main_machine
             .instructions

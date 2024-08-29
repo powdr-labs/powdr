@@ -1,20 +1,18 @@
 #![deny(clippy::print_stdout)]
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, iter::once};
 
 use powdr_analysis::utils::parse_pil_statement;
 use powdr_ast::{
     asm_analysis::combine_flags,
-    object::{Link, Location, PILGraph, TypeOrExpression},
+    object::{Link, Location, PILGraph},
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         build::{index_access, namespaced_reference},
-        ArrayLiteral, PILFile, PilStatement, SelectedExpressions, TypedExpression,
+        ArrayLiteral, PILFile, PilStatement, SelectedExpressions,
     },
 };
 use powdr_parser_util::SourceRef;
-
-use itertools::Itertools;
 
 const MAIN_OPERATION_NAME: &str = "main";
 
@@ -74,49 +72,19 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
 
 // Extract the utilities and sort them into namespaces where possible.
 fn process_definitions(
-    definitions: BTreeMap<AbsoluteSymbolPath, TypeOrExpression>,
+    definitions: BTreeMap<AbsoluteSymbolPath, Vec<PilStatement>>,
 ) -> Vec<PilStatement> {
-    let mut current_namespace = Default::default();
     definitions
         .into_iter()
-        .sorted_by_cached_key(|(namespace, _)| {
-            let mut namespace = namespace.clone();
-            let name = namespace.pop();
-            // Group by namespace and then sort by name.
-            (namespace, name)
+        .flat_map(|(module_path, statements)| {
+            once(PilStatement::Namespace(
+                SourceRef::unknown(),
+                module_path.relative_to(&Default::default()),
+                None,
+            ))
+            .chain(statements)
         })
-        .flat_map(|(mut namespace, type_or_expr)| {
-            let name = namespace.pop().unwrap();
-            let statement = match type_or_expr {
-                TypeOrExpression::Expression(TypedExpression { e, type_scheme }) => {
-                    PilStatement::LetStatement(
-                        SourceRef::unknown(),
-                        name.to_string(),
-                        type_scheme,
-                        Some(e),
-                    )
-                }
-                TypeOrExpression::Type(enum_decl) => {
-                    PilStatement::EnumDeclaration(SourceRef::unknown(), enum_decl)
-                }
-            };
-
-            // If there is a namespace change, insert a namespace statement.
-            if current_namespace != namespace {
-                current_namespace = namespace.clone();
-                vec![
-                    PilStatement::Namespace(
-                        SourceRef::unknown(),
-                        namespace.relative_to(&AbsoluteSymbolPath::default()),
-                        None,
-                    ),
-                    statement,
-                ]
-            } else {
-                vec![statement]
-            }
-        })
-        .collect::<Vec<_>>()
+        .collect()
 }
 
 fn process_link(link: Link) -> PilStatement {
@@ -313,7 +281,7 @@ namespace main__rom(4 + 4);
 
     #[test]
     fn compile_pil_without_machine() {
-        let input = "    let even = std::array::new(5, (|i| 2 * i));";
+        let input = "let even = std::array::new(5, (|i| 2 * i));";
         let graph = parse_analyze_and_compile::<GoldilocksField>(input);
         let pil = link(graph).unwrap().to_string();
         assert_eq!(&pil[0..input.len()], input);
