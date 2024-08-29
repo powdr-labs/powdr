@@ -451,12 +451,11 @@ impl<'a> Definitions<'a> {
             }
         } else {
             let impl_ = match type_args {
-                Some(type_args) => solved_impls.get(&(name, type_args.to_vec())),
+                Some(type_args) => solved_impls.get(&(name.clone(), type_args.to_vec())),
                 None => None,
             };
             match impl_ {
                 Some(trait_impl) => {
-                    let name = trait_impl.name.to_string();
                     let (_, trait_fn_name) = name.rsplit_once("::").unwrap();
                     let expr = trait_impl.function_by_name(trait_fn_name).unwrap();
                     let Expression::LambdaExpression(_, lambda) = expr else {
