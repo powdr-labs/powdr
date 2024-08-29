@@ -696,7 +696,7 @@ mod test {
                     a: int,
                     b: int,
                 }
-                let s: S = S with { a: 1, b: 2 };
+                let s: S = S{ a: 1, b: 2 };
                 let x: col = |i| std::convert::fe(s->a) + std::convert::fe(i);
         "#;
         let analyzed = analyze_string::<GoldilocksField>(input);
