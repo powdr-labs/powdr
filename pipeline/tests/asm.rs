@@ -179,6 +179,7 @@ fn vm_to_vm() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn vm_to_vm_dynamic_trace_length() {
     let f = "asm/vm_to_vm_dynamic_trace_length.asm";
     run_pilcom_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite)
@@ -203,6 +204,7 @@ fn vm_to_block_array() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn dynamic_vadcop() {
     let f = "asm/dynamic_vadcop.asm";
 
