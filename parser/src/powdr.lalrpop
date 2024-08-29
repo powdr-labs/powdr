@@ -617,7 +617,7 @@ TermWithoutStruct: Box<Expression> = {
 
 TermCommon<StructOption>: Box<Expression> = {
     <start:@L> <i:IndexAccess<StructOption>> <end:@R> => ctx.to_expr_with_source_ref(i, start, end),
-    <start:@L> <fa:FieldAccess> <end:@R> => ctx.to_expr_with_source_ref(fa, start, end),
+    <start:@L> <fa:FieldAccess<StructOption>> <end:@R> => ctx.to_expr_with_source_ref(fa, start, end),
     <start:@L> <f:FunctionCall<StructOption>> <end:@R> => ctx.to_expr_with_source_ref(f, start, end),
     <start:@L> <i:ConstantIdentifier> <end:@R> => ctx.to_expr_with_source_ref(NamespacedPolynomialReference::from_identifier(i), start, end),
     <start:@L> <g:GenericReference> <end:@R> => ctx.to_expr_with_source_ref(g, start, end),
@@ -638,11 +638,11 @@ IndexAccess<StructOption>: IndexAccess = {
     <array:Term<StructOption>> "[" <index:BoxedExpression> "]" => IndexAccess{<>},
 }
 
-FieldAccess: FieldAccess = {
+FieldAccess<StructOption>: FieldAccess = {
     <object:Term<StructOption>> "->" <field:Identifier> => FieldAccess{object, field},
 }
 
-FunctionCall: FunctionCall = {
+FunctionCall<StructOption>: FunctionCall = {
     <function:Term<StructOption>> "(" <arguments:ExpressionList> ")" => FunctionCall {<>},
 }
 
@@ -666,7 +666,7 @@ MatchArms: Vec<MatchArm> = {
 }
 
 MatchArm: MatchArm = {
-    <pattern:Pattern> "=>" <value: RestrictedExpression> => MatchArm{pattern, value},
+    <pattern:Pattern> "=>" <value: Expression> => MatchArm{pattern, value},
 }
 
 IfExpression: Box<Expression> = {
