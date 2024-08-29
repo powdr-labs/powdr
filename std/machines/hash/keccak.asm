@@ -630,7 +630,7 @@ machine Keccak with
         a_prime
     });
 
-    // // Populate A''.
+    // // Populate A''.P
     // // A''[x, y] = xor(B[x, y], andn(B[x + 1, y], B[x + 2, y])).
     // for y in 0..5 {
     //     for x in 0..5 {
