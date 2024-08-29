@@ -743,7 +743,7 @@ impl<E: Display> Display for StructExpression<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
-            "{} with {}",
+            "{}{}",
             self.name,
             if self.fields.is_empty() {
                 "".to_string()

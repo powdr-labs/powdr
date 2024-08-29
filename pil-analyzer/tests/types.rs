@@ -565,7 +565,7 @@ fn empty_conditional() {
 fn simple_struct() {
     let input = "
     struct Dot { x: int, y: int }
-    let f: int -> Dot = |i| Dot with {x: 0, y: i};
+    let f: int -> Dot = |i| Dot{x: 0, y: i};
 
     let x: Dot = f(0);
         ";
@@ -591,9 +591,9 @@ fn struct_constr_var_typed() {
     let input = "
     struct X {x: int, y: int}
     let v: int -> X = |i| match i {
-        1 => X with {x: 1, y: 0},
-        2 => X with {x: 2, y: 2},
-        _ => X with {x: 0, y: 1},
+        1 => X{x: 1, y: 0},
+        2 => X{x: 2, y: 2},
+        _ => X{x: 0, y: 1},
     };
 
     let x: X = v(1);
@@ -612,7 +612,7 @@ fn struct_as_pattern() {
         _ => 0,
     };
 
-    let x: int = v(X with {x: 1, y: 0});
+    let x: int = v(X{x: 1, y: 0});
     ";
 
     type_check(input, &[])

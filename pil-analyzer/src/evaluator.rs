@@ -1707,7 +1707,7 @@ mod test {
                 S3{ a, b, c } => a + b + c,
             };
 
-            let t = [f(S3 with { a: 1, b: 2, c: 3 }), f(S3 with { a: 1, b: 4, c: 4 }), f(S3 with { a: 1, b: 3, c: 5 })];
+            let t = [f(S3{ a: 1, b: 2, c: 3 }), f(S3{ a: 1, b: 4, c: 4 }), f(S3{ a: 1, b: 3, c: 5 })];
         "#;
         assert_eq!(parse_and_evaluate_symbol(src, "t"), "[1, 6, 9]".to_string());
     }
