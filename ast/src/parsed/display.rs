@@ -748,18 +748,22 @@ impl Display for NamespacedPolynomialReference {
     }
 }
 
-impl<E: Display> Display for LambdaExpression<E> {
+impl<E> Display for LambdaExpression<E>
+where
+    E: Display + Precedence,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "({}|{}| {})",
-            match self.kind {
-                FunctionKind::Pure => "".into(),
-                _ => format!("{} ", &self.kind),
-            },
-            format_list(&self.params),
-            self.body
-        )
+        let prefix = match self.kind {
+            FunctionKind::Pure => "".into(),
+            _ => format!("{} ", &self.kind),
+        };
+        let params = format_list(&self.params);
+
+        if self.body.precedence() < self.precedence() {
+            write!(f, "{}|{}| {}", prefix, params, self.body)
+        } else {
+            write!(f, "{}|{}| ({})", prefix, params, self.body)
+        }
     }
 }
 
@@ -910,8 +914,9 @@ impl<E: Display> Display for BlockExpression<E> {
             write_items_indented(f, &self.statements)?;
             if let Some(expr) = &self.expr {
                 write_indented_by(f, expr, 1)?;
+                writeln!(f)?;
             }
-            write!(f, "\n}}")
+            write!(f, "}}")
         }
     }
 }
@@ -1195,6 +1200,10 @@ mod tests {
                 ("let x = (1 + (|i| i + 2));", "let x = 1 + (|i| i + 2);"),
                 // Index access
                 ("(|i| i)[j];", "(|i| i)[j];"),
+                // Lambda expression
+                ("|i| (|x| x) + i;", "|i| (|x| x) + i;"),
+                ("|i| (|x| x + i);", "|i| (|x| x + i);"),
+                ("|i| |x| x + i;", "|i| (|x| x + i);"),
             ];
 
             for test_case in test_cases {
@@ -1229,7 +1238,7 @@ mod tests {
             ),
             (
                 "let root_of_unity_for_log_degree: int -> fe = |n| root_of_unity ** (2**(32 - n));",
-                "let root_of_unity_for_log_degree: int -> fe = (|n| root_of_unity ** (2 ** (32 - n)));",
+                "let root_of_unity_for_log_degree: int -> fe = |n| root_of_unity ** (2 ** (32 - n));",
             ),
         ];
 

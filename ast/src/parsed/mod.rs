@@ -1003,11 +1003,18 @@ impl Precedence for BinaryOperator {
     }
 }
 
+impl<E> Precedence for LambdaExpression<E> {
+    fn precedence(&self) -> Option<ExpressionPrecedence> {
+        Some(13)
+    }
+}
+
 impl<E> Precedence for Expression<E> {
     fn precedence(&self) -> Option<ExpressionPrecedence> {
         match self {
             Expression::UnaryOperation(_, operation) => operation.op.precedence(),
             Expression::BinaryOperation(_, operation) => operation.op.precedence(),
+            Expression::LambdaExpression(_, lambda) => lambda.precedence(),
             _ => None,
         }
     }
