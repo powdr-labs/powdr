@@ -1,7 +1,6 @@
 use std::{
     collections::HashMap,
     fmt::{self, Display},
-    rc::Rc,
     sync::Arc,
 };
 
@@ -29,7 +28,7 @@ use powdr_parser_util::SourceRef;
 pub fn evaluate_expression<'a, T: FieldElement>(
     expr: &'a Expression,
     definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    solved_impls: &'a HashMap<(String, Vec<Type>), Rc<TraitImplementation<Expression>>>,
+    solved_impls: &'a HashMap<(String, Vec<Type>), Arc<TraitImplementation<Expression>>>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
     evaluate(
         expr,
@@ -410,7 +409,7 @@ impl<'a, T> Closure<'a, T> {
 
 pub struct Definitions<'a> {
     pub definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    pub solved_impls: &'a HashMap<(String, Vec<Type>), Rc<TraitImplementation<Expression>>>,
+    pub solved_impls: &'a HashMap<(String, Vec<Type>), Arc<TraitImplementation<Expression>>>,
 }
 
 impl<'a> Definitions<'a> {
@@ -418,7 +417,7 @@ impl<'a> Definitions<'a> {
     /// of SymbolLookup for the recursive call.
     pub fn lookup_with_symbols<T: FieldElement>(
         definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-        solved_impls: &'a HashMap<(String, Vec<Type>), Rc<TraitImplementation<Expression>>>,
+        solved_impls: &'a HashMap<(String, Vec<Type>), Arc<TraitImplementation<Expression>>>,
         name: &str,
         type_args: &Option<Vec<Type>>,
         symbols: &mut impl SymbolLookup<'a, T>,

@@ -11,7 +11,7 @@ use powdr_ast::{
     analyzed::{Analyzed, Expression, FunctionValueDefinition, Symbol, TypedExpression},
     parsed::{
         types::{ArrayType, Type},
-        IndexAccess,
+        IndexAccess, TraitImplementation,
     },
 };
 use powdr_number::{BigInt, BigUint, DegreeType, FieldElement};
@@ -172,7 +172,7 @@ type SymbolCache<'a, T> = HashMap<String, BTreeMap<Option<Vec<Type>>, Arc<Value<
 #[derive(Clone)]
 pub struct CachedSymbols<'a, T> {
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    solved_impls: &'a HashMap<(String, Vec<Type>), Expression>,
+    solved_impls: &'a HashMap<(String, Vec<Type>), Arc<TraitImplementation<Expression>>>,
     cache: Arc<RwLock<SymbolCache<'a, T>>>,
     degree: DegreeType,
 }

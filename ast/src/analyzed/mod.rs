@@ -7,7 +7,6 @@ use std::fmt::Display;
 use std::hash::{Hash, Hasher};
 use std::iter::{self, empty};
 use std::ops::{self, ControlFlow};
-use std::rc::Rc;
 use std::sync::Arc;
 
 use itertools::Itertools;
@@ -37,7 +36,7 @@ pub enum StatementIdentifier {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct Analyzed<T> {
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    pub solved_impls: HashMap<(String, Vec<Type>), Rc<TraitImplementation<Expression>>>,
+    pub solved_impls: HashMap<(String, Vec<Type>), Arc<TraitImplementation<Expression>>>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
     pub intermediate_columns: HashMap<String, (Symbol, Vec<AlgebraicExpression<T>>)>,
     pub identities: Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>>,

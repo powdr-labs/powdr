@@ -5,7 +5,6 @@ use std::{
     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
     fmt::Display,
     iter::once,
-    rc::Rc,
     str::FromStr,
     sync::Arc,
 };
@@ -37,7 +36,7 @@ type AnalyzedIdentity<T> = Identity<SelectedExpressions<AlgebraicExpression<T>>>
 
 pub fn condense<T: FieldElement>(
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    solved_impls: HashMap<(String, Vec<Type>), Rc<TraitImplementation<Expression>>>,
+    solved_impls: HashMap<(String, Vec<Type>), Arc<TraitImplementation<Expression>>>,
     mut public_declarations: HashMap<String, PublicDeclaration>,
     identities: &[ParsedIdentity],
     source_order: Vec<StatementIdentifier>,
@@ -192,7 +191,7 @@ pub struct Condenser<'a, T> {
     /// All the definitions from the PIL file.
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     /// All the trait implementations from the PIL file.
-    solved_impls: &'a HashMap<(String, Vec<Type>), Rc<TraitImplementation<Expression>>>,
+    solved_impls: &'a HashMap<(String, Vec<Type>), Arc<TraitImplementation<Expression>>>,
     /// Evaluation cache.
     symbol_values: SymbolCache<'a, T>,
     /// Current namespace (for names of generated columns).
@@ -213,7 +212,7 @@ pub struct Condenser<'a, T> {
 impl<'a, T: FieldElement> Condenser<'a, T> {
     pub fn new(
         symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-        solved_impls: &'a HashMap<(String, Vec<Type>), Rc<TraitImplementation<Expression>>>,
+        solved_impls: &'a HashMap<(String, Vec<Type>), Arc<TraitImplementation<Expression>>>,
     ) -> Self {
         let counters = Counters::with_existing(symbols.values().map(|(sym, _)| sym), None, None);
         Self {
