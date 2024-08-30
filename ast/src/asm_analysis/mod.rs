@@ -818,7 +818,6 @@ impl AnalysisASMFile {
     }
 
     pub fn get_machine(&self, ty: &AbsoluteSymbolPath) -> Option<&Machine> {
-        // this clone can be avoided by having path references
         let mut path = ty.clone();
         let name = path.pop().unwrap();
         self.modules[&path].machines.get(&name)

@@ -41,7 +41,6 @@ pub struct PILGraph {
     pub main: Machine,
     pub entry_points: Vec<Operation>,
     pub objects: BTreeMap<Location, Object>,
-    // for each module, the util statements inside that module
     pub definitions: BTreeMap<AbsoluteSymbolPath, Vec<PilStatement>>,
 }
 

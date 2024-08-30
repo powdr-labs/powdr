@@ -51,7 +51,11 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
         // if there is a single machine, treat it as main
         1 => (*non_std_non_rom_machines.keys().next().unwrap()).clone(),
         // otherwise, use the machine called `MAIN`
-        _ => parse_absolute_path(MAIN_MACHINE),
+        _ => {
+            let p = parse_absolute_path(MAIN_MACHINE);
+            assert!(input.get_machine(&p).is_some());
+            p
+        }
     };
 
     // get a list of all machines to instantiate and their arguments. The order does not matter.

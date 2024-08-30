@@ -9,10 +9,8 @@ pub fn infer(mut file: AnalysisASMFile) -> Result<AnalysisASMFile, Vec<String>> 
     let mut errors = vec![];
 
     file.machines_mut()
-        .for_each(|(_, m)| match infer_machine(std::mem::take(m)) {
-            Ok(new_m) => {
-                *m = new_m;
-            }
+        .for_each(|(_, m)| match infer_machine(m) {
+            Ok(()) => {}
             Err(e) => {
                 errors.extend(e);
             }
@@ -25,7 +23,7 @@ pub fn infer(mut file: AnalysisASMFile) -> Result<AnalysisASMFile, Vec<String>> 
     }
 }
 
-fn infer_machine(mut machine: Machine) -> Result<Machine, Vec<String>> {
+fn infer_machine(machine: &mut Machine) -> Result<(), Vec<String>> {
     let mut errors = vec![];
 
     for f in machine.callable.functions_mut() {
@@ -86,7 +84,7 @@ fn infer_machine(mut machine: Machine) -> Result<Machine, Vec<String>> {
     if !errors.is_empty() {
         Err(errors)
     } else {
-        Ok(machine)
+        Ok(())
     }
 }
 

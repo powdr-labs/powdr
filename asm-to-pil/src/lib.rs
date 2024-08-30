@@ -1,6 +1,8 @@
 #![deny(clippy::print_stdout)]
 
-use powdr_ast::asm_analysis::{AnalysisASMFile, Module, SubmachineDeclaration};
+use std::collections::BTreeMap;
+
+use powdr_ast::asm_analysis::{AnalysisASMFile, StatementReference, SubmachineDeclaration};
 use powdr_number::FieldElement;
 use romgen::generate_machine_rom;
 use vm_to_constrained::ROM_SUBMACHINE_NAME;
@@ -10,50 +12,53 @@ mod vm_to_constrained;
 
 pub const ROM_SUFFIX: &str = "ROM";
 
-/// Remove all ASM from the machine tree. Takes a tree of virtual or constrained machines and returns a tree of constrained machines
-pub fn compile<T: FieldElement>(file: AnalysisASMFile) -> AnalysisASMFile {
-    AnalysisASMFile {
-        modules: file
-            .modules
+/// Remove all ASM from the machine tree, leabing only constrained machines
+pub fn compile<T: FieldElement>(mut file: AnalysisASMFile) -> AnalysisASMFile {
+    for (path, module) in &mut file.modules {
+        let mut new_machines = BTreeMap::default();
+        module.ordering = module
+            .ordering
+            .clone()
             .into_iter()
-            .map(|(path, module)| {
-                let module = Module {
-                    machines: module
-                        .machines
-                        .into_iter()
-                        .flat_map(|(name, m)| {
-                            let (m, rom) = generate_machine_rom::<T>(m);
-                            let (mut m, rom_machine) =
-                                vm_to_constrained::convert_machine::<T>(m, rom);
+            .flat_map(|r| {
+                match r {
+                    StatementReference::MachineDeclaration(name) => {
+                        let m = module.machines.remove(&name).unwrap();
+                        let (m, rom) = generate_machine_rom::<T>(m);
+                        let (mut m, rom_machine) = vm_to_constrained::convert_machine::<T>(m, rom);
 
-                            match rom_machine {
-                                // in the absence of ROM, simply return the machine
-                                None => vec![(name, m)],
-                                Some(rom_machine) => {
-                                    // introduce a new name for the ROM machine, based on the original name
-                                    let rom_name = format!("{name}{ROM_SUFFIX}");
-                                    let mut ty = path.clone();
-                                    ty.push(rom_name.clone());
+                        match rom_machine {
+                            // in the absence of ROM, simply return the machine
+                            None => vec![name],
+                            Some(rom_machine) => {
+                                // introduce a new name for the ROM machine, based on the original name
+                                let rom_name = format!("{name}{ROM_SUFFIX}");
+                                let mut ty = path.clone();
+                                ty.push(rom_name.clone());
 
-                                    // add the ROM as a submachine
-                                    m.submachines.push(SubmachineDeclaration {
-                                        name: ROM_SUBMACHINE_NAME.into(),
-                                        ty,
-                                        args: vec![],
-                                    });
+                                // add the ROM as a submachine
+                                m.submachines.push(SubmachineDeclaration {
+                                    name: ROM_SUBMACHINE_NAME.into(),
+                                    ty,
+                                    args: vec![],
+                                });
 
-                                    // return both the machine and the rom
-                                    vec![(name, m), (rom_name, rom_machine)]
-                                }
+                                new_machines.insert(rom_name.clone(), rom_machine);
+
+                                // return both the machine and the rom
+                                vec![name, rom_name]
                             }
-                        })
-                        .collect(),
-                    ..module
-                };
-                (path, module)
+                        }
+                        .into_iter()
+                        .map(StatementReference::MachineDeclaration)
+                        .collect()
+                    }
+                    r => vec![r],
+                }
             })
-            .collect(),
+            .collect();
     }
+    file
 }
 
 pub mod utils {

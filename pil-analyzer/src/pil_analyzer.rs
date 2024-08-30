@@ -172,6 +172,7 @@ impl PILAnalyzer {
                     ModuleStatement::SymbolDefinition(s) => missing_symbols
                         .contains(&s.name.as_str())
                         .then_some(format!("{s}")),
+                    // should this also get symbols inside pil statements?
                     ModuleStatement::PilStatement(_) => None,
                 })
                 .join("\n");

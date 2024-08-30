@@ -290,7 +290,7 @@ impl TypeChecker {
     ) -> Result<BTreeMap<AbsoluteSymbolPath, Module>, Vec<String>> {
         let mut errors = vec![];
 
-        let mut this = Module::default();
+        let mut checked_module = Module::default();
         let mut res = BTreeMap::default();
 
         for m in module.statements {
@@ -303,8 +303,9 @@ impl TypeChecker {
                                     errors.extend(e);
                                 }
                                 Ok(machine) => {
-                                    this.machines.insert(name.clone(), machine);
-                                    this.ordering
+                                    checked_module.machines.insert(name.clone(), machine);
+                                    checked_module
+                                        .ordering
                                         .push(StatementReference::MachineDeclaration(name));
                                 }
                             };
@@ -321,7 +322,9 @@ impl TypeChecker {
                                 asm::Module::Local(m) => m,
                             };
 
-                            this.ordering.push(StatementReference::Module(name));
+                            checked_module
+                                .ordering
+                                .push(StatementReference::Module(name));
 
                             match self.check_module(m, &ctx) {
                                 Err(err) => {
@@ -335,13 +338,14 @@ impl TypeChecker {
                     }
                 }
                 ModuleStatement::PilStatement(s) => {
-                    this.statements.push(s);
-                    this.ordering.push(StatementReference::Pil);
+                    checked_module.statements.push(s);
+                    checked_module.ordering.push(StatementReference::Pil);
                 }
             }
         }
 
-        res.insert(ctx.clone(), this);
+        // add this module to the map of modules found inside it
+        res.insert(ctx.clone(), checked_module);
 
         if !errors.is_empty() {
             Err(errors)
