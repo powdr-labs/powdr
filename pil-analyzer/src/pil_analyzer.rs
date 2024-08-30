@@ -79,7 +79,7 @@ struct PILAnalyzer {
     /// A map between the name and type_Args of the caller reference
     /// and the expression to be called.
     /// Empty until resolve_trait_impls() is called.
-    solved_impls: HashMap<(String, Vec<Type>), Arc<Expression>>,
+    solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
 }
 
 /// Reads and parses the given path and all its imports.
@@ -488,7 +488,7 @@ impl<'a> AnalysisDriver for Driver<'a> {
         &self.0.definitions
     }
 
-    fn solved_impls(&self) -> &HashMap<(String, Vec<Type>), Arc<Expression>> {
+    fn solved_impls(&self) -> &HashMap<String, HashMap<Vec<Type>, Arc<Expression>>> {
         &self.0.solved_impls
     }
 }

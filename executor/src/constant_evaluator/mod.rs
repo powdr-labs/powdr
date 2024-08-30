@@ -172,7 +172,7 @@ type SymbolCache<'a, T> = HashMap<String, BTreeMap<Option<Vec<Type>>, Arc<Value<
 #[derive(Clone)]
 pub struct CachedSymbols<'a, T> {
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    solved_impls: &'a HashMap<(String, Vec<Type>), Arc<Expression>>,
+    solved_impls: &'a HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
     cache: Arc<RwLock<SymbolCache<'a, T>>>,
     degree: DegreeType,
 }

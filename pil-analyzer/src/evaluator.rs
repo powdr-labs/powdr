@@ -28,7 +28,7 @@ use powdr_parser_util::SourceRef;
 pub fn evaluate_expression<'a, T: FieldElement>(
     expr: &'a Expression,
     definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    solved_impls: &'a HashMap<(String, Vec<Type>), Arc<Expression>>,
+    solved_impls: &'a HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
     evaluate(
         expr,
@@ -409,7 +409,7 @@ impl<'a, T> Closure<'a, T> {
 
 pub struct Definitions<'a> {
     pub definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    pub solved_impls: &'a HashMap<(String, Vec<Type>), Arc<Expression>>,
+    pub solved_impls: &'a HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
 }
 
 impl<'a> Definitions<'a> {
@@ -417,7 +417,7 @@ impl<'a> Definitions<'a> {
     /// of SymbolLookup for the recursive call.
     pub fn lookup_with_symbols<T: FieldElement>(
         definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-        solved_impls: &'a HashMap<(String, Vec<Type>), Arc<Expression>>,
+        solved_impls: &'a HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
         name: &str,
         type_args: &Option<Vec<Type>>,
         symbols: &mut impl SymbolLookup<'a, T>,
@@ -451,7 +451,9 @@ impl<'a> Definitions<'a> {
             }
         } else {
             let impl_ = match type_args {
-                Some(type_args) => solved_impls.get(&(name.clone(), type_args.to_vec())),
+                Some(type_args) => solved_impls
+                    .get(&name)
+                    .and_then(|inner_map| inner_map.get(type_args)),
                 None => None,
             };
             match impl_ {

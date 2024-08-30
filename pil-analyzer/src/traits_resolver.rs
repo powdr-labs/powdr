@@ -32,8 +32,8 @@ impl<'a> TraitsResolver<'a> {
     pub fn resolve_traits(
         &'a self,
         trait_impls: &HashMap<String, Vec<TraitImplementation<Expression>>>,
-    ) -> HashMap<(String, Vec<Type>), Arc<Expression>> {
-        let mut result = HashMap::new();
+    ) -> HashMap<String, HashMap<Vec<Type>, Arc<Expression>>> {
+        let mut result: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>> = HashMap::new();
 
         let resolve_references = |expr: &Expression| {
             expr.all_children()
@@ -59,7 +59,10 @@ impl<'a> TraitsResolver<'a> {
             if let Some(FunctionValueDefinition::Expression(TypedExpression { e: expr, .. })) = def
             {
                 for (key, value) in resolve_references(expr) {
-                    result.entry(key).or_insert(value);
+                    result
+                        .entry(key.0)
+                        .or_insert_with(HashMap::new)
+                        .insert(key.1, value);
                 }
             }
         }
@@ -72,14 +75,23 @@ impl<'a> TraitsResolver<'a> {
                 .chain(identity.right.selector.iter())
             {
                 for (key, value) in resolve_references(selector) {
-                    result.entry(key).or_insert(value);
+                    result
+                        .entry(key.0)
+                        .or_insert_with(HashMap::new)
+                        .insert(key.1, value);
                 }
             }
             for (key, value) in resolve_references(identity.left.expressions.as_ref()) {
-                result.entry(key).or_insert(value);
+                result
+                    .entry(key.0)
+                    .or_insert_with(HashMap::new)
+                    .insert(key.1, value);
             }
             for (key, value) in resolve_references(identity.right.expressions.as_ref()) {
-                result.entry(key).or_insert(value);
+                result
+                    .entry(key.0)
+                    .or_insert_with(HashMap::new)
+                    .insert(key.1, value);
             }
         }
 
@@ -114,6 +126,6 @@ pub fn traits_resolution(
     definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     identities: &Vec<Identity<SelectedExpressions<Expression>>>,
     trait_impls: &HashMap<String, Vec<TraitImplementation<Expression>>>,
-) -> HashMap<(String, Vec<Type>), Arc<Expression>> {
+) -> HashMap<String, HashMap<Vec<Type>, Arc<Expression>>> {
     TraitsResolver::new(definitions, identities).resolve_traits(trait_impls)
 }

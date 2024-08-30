@@ -54,5 +54,5 @@ pub trait AnalysisDriver: Clone + Copy {
     /// Turns a reference to a name with an optional namespace into an absolute name.
     fn try_resolve_ref(&self, path: &SymbolPath) -> Option<(String, SymbolCategory)>;
     fn definitions(&self) -> &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>;
-    fn solved_impls(&self) -> &HashMap<(String, Vec<Type>), Arc<Expression>>;
+    fn solved_impls(&self) -> &HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>;
 }
