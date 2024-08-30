@@ -688,7 +688,7 @@ NamedExpressions: Vec<NamedExpression<Expression>> = {
     <mut list:( <NamedExpression> "," )*> <end:NamedExpression> ","?  => { list.push(end); list }
 }
 
-NamedExpression: NamedExpression<Arc<Expression>> = {
+NamedExpression: NamedExpression<Expression> = {
     <name:Identifier> ":" <body:Expression> => NamedExpression { name, body }
 }
 
@@ -764,7 +764,7 @@ NamedArcExpressions: Vec<NamedExpression<Arc<Expression>>> = {
 }
 
 NamedArcExpression: NamedExpression<Arc<Expression>> = {
-    <name:Identifier> ":" <body:Expression> => NamedExpression { name, body: Arc::new(body) }
+    <name:Identifier> ":" <body:Expression> => NamedExpression { name, body: body.into() }
 }
 
 GenericTraitName: (SymbolPath, TypeScheme) = {
