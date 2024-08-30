@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, PolyID, Reference,
+    self, AlgebraicExpression as Expression, AlgebraicReference, PolyID, Reference,
 };
 use powdr_ast::analyzed::{PolynomialReference, PolynomialType};
 use powdr_ast::parsed::{self, visitor::AllChildren};
@@ -84,7 +84,7 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     is_relevant_witness: WitnessColumnMap<bool>,
     /// Relevant witness columns that have a prover query function attached.
     prover_query_witnesses: Vec<PolyID>,
-    prover_functions: Vec<&'a parsed::Expression<Reference>>,
+    prover_functions: Vec<&'a analyzed::Expression>,
     /// The outer query, if any. If there is none, processing an outer query will fail.
     outer_query: Option<OuterQuery<'a, 'c, T>>,
     inputs: Vec<(PolyID, T)>,

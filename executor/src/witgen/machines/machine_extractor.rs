@@ -11,6 +11,7 @@ use crate::witgen::generator::Generator;
 use crate::witgen::machines::write_once_memory::WriteOnceMemory;
 use crate::Identity;
 use itertools::Itertools;
+use powdr_ast::analyzed;
 use powdr_ast::analyzed::{
     AlgebraicExpression as Expression, IdentityKind, PolyID, PolynomialReference, Reference,
     SelectedExpressions,
@@ -176,6 +177,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             }
         });
 
+    // TODO also return the base prover functions here?
     ExtractionOutput {
         machines,
         base_identities,
@@ -188,7 +190,7 @@ fn build_machine<'a, T: FieldElement>(
     machine_witnesses: HashSet<PolyID>,
     machine_identities: Vec<&'a Identity<T>>,
     connecting_identities: BTreeMap<u64, &'a Identity<T>>,
-    prover_functions: Vec<(usize, &parsed::Expression<Reference>)>,
+    prover_functions: Vec<(usize, &analyzed::Expression)>,
     name_with_type: impl Fn(&str) -> String,
 ) -> KnownMachine<'a, T> {
     if let Some(machine) = SortedWitnesses::try_new(
@@ -197,6 +199,7 @@ fn build_machine<'a, T: FieldElement>(
         &connecting_identities,
         &machine_identities,
         &machine_witnesses,
+        &prover_functions,
     ) {
         log::debug!("Detected machine: sorted witnesses / write-once memory");
         KnownMachine::SortedWitnesses(machine)
@@ -205,6 +208,7 @@ fn build_machine<'a, T: FieldElement>(
         fixed,
         &connecting_identities,
         &machine_witnesses,
+        &prover_functions,
     ) {
         log::debug!("Detected machine: memory");
         KnownMachine::DoubleSortedWitnesses(machine)
@@ -213,6 +217,7 @@ fn build_machine<'a, T: FieldElement>(
         fixed,
         &connecting_identities,
         &machine_identities,
+        &prover_functions,
     ) {
         log::debug!("Detected machine: write-once memory");
         KnownMachine::WriteOnceMemory(machine)
@@ -222,6 +227,7 @@ fn build_machine<'a, T: FieldElement>(
         &connecting_identities,
         &machine_identities,
         &machine_witnesses,
+        &prover_functions,
     ) {
         log::debug!("Detected machine: {machine}");
         KnownMachine::BlockMachine(machine)
@@ -253,6 +259,7 @@ fn build_machine<'a, T: FieldElement>(
             &connecting_identities,
             machine_identities,
             machine_witnesses,
+            &prover_functions,
             Some(latch),
         ))
     }
@@ -321,9 +328,7 @@ fn refs_in_expression<T>(expr: &Expression<T>) -> impl Iterator<Item = PolyID> +
     })
 }
 
-fn refs_in_parsed_expression(
-    expr: &parsed::Expression<Reference>,
-) -> impl Iterator<Item = &String> + '_ {
+fn refs_in_parsed_expression(expr: &analyzed::Expression) -> impl Iterator<Item = &String> + '_ {
     expr.all_children().filter_map(|e| match e {
         parsed::Expression::Reference(_, Reference::Poly(PolynomialReference { name, .. })) => {
             Some(name)
