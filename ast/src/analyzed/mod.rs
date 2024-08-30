@@ -278,24 +278,12 @@ impl<T> Analyzed<T> {
                 let poly_id = PolyID::from(poly as &Symbol);
                 poly.id = replacements[&poly_id].id;
             });
-        let visitor = &mut |expr: &mut Expression| {
-            if let Expression::Reference(_, Reference::Poly(poly)) = expr {
-                poly.poly_id = poly.poly_id.map(|poly_id| replacements[&poly_id]);
-            }
-        };
-        self.post_visit_expressions_in_definitions_mut(visitor);
         let algebraic_visitor = &mut |expr: &mut AlgebraicExpression<_>| {
             if let AlgebraicExpression::Reference(poly) = expr {
                 poly.poly_id = replacements[&poly.poly_id];
             }
         };
         self.post_visit_expressions_in_identities_mut(algebraic_visitor);
-        self.public_declarations
-            .values_mut()
-            .for_each(|public_decl| {
-                let poly_id = public_decl.polynomial.poly_id.unwrap();
-                public_decl.polynomial.poly_id = Some(replacements[&poly_id]);
-            });
     }
 
     pub fn post_visit_expressions_in_identities_mut<F>(&mut self, f: &mut F)
@@ -333,14 +321,14 @@ impl<T> Analyzed<T> {
             .map(|public_declaration| {
                 let column_name = public_declaration.referenced_poly_name();
                 let column_idx = {
-                    let base = public_declaration.polynomial.poly_id.unwrap().id as usize;
+                    let base = self.definitions[&public_declaration.polynomial.name].0.id;
                     match public_declaration.array_index {
-                        Some(array_idx) => base + array_idx,
+                        Some(array_idx) => base + array_idx as u64,
                         None => base,
                     }
                 };
                 let row_offset = public_declaration.index as usize;
-                (column_name, column_idx, row_offset)
+                (column_name, column_idx as usize, row_offset)
             })
             .collect::<Vec<_>>();
 
@@ -1255,15 +1243,13 @@ impl<T> From<T> for AlgebraicExpression<T> {
     }
 }
 
+/// Reference to a symbol with optional type arguments.
+/// Named `PolynomialReference` for historical reasons, it can reference
+/// any symbol.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PolynomialReference {
-    /// Name of the polynomial - just for informational purposes.
-    /// Comparisons are based on polynomial ID.
+    /// Absolute name of the symbol.
     pub name: String,
-    /// Identifier for a polynomial reference.
-    /// Optional because it is filled in in a second stage of analysis.
-    /// TODO make this non-optional
-    pub poly_id: Option<PolyID>,
     /// The type arguments if the symbol is generic.
     /// Guaranteed to be Some(_) after type checking is completed.
     pub type_args: Option<Vec<Type>>,
