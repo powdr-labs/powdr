@@ -39,6 +39,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
     let all_witnesses = fixed.witness_cols.keys().collect::<HashSet<_>>();
     let mut remaining_witnesses = all_witnesses.clone();
     let mut base_identities = identities.clone();
+    let mut extracted_prover_functions = HashSet::new();
     let mut id_counter = 0;
     for id in &identities {
         // Extract all witness columns in the RHS of the lookup.
@@ -100,9 +101,6 @@ pub fn split_out_machines<'a, T: FieldElement>(
             })
             .collect::<Vec<_>>();
 
-        // TODO check that prover functions are unique to a machine.
-        // Also check that all prover functions are assigned to a machine.
-
         log::trace!(
             "\nExtracted a machine with the following witnesses:\n{}\n identities:\n{}\n connecting identities:\n{}\n and prover functions:\n{}",
             machine_witnesses
@@ -122,6 +120,12 @@ pub fn split_out_machines<'a, T: FieldElement>(
                 .map(|(_, pf)| format!("{pf}"))
                 .format("\n")
         );
+
+        for (i, pf) in &prover_functions {
+            if extracted_prover_functions.insert(*i) {
+                log::warn!("Prover function was assigned to multiple machines:\n{pf}");
+            }
+        }
 
         let first_witness = machine_witnesses.iter().next().unwrap();
         let first_witness_name = fixed.column_name(first_witness);
@@ -156,6 +160,21 @@ pub fn split_out_machines<'a, T: FieldElement>(
         fixed,
     );
     machines.push(KnownMachine::FixedLookup(fixed_lookup));
+
+    fixed
+        .analyzed
+        .prover_functions
+        .iter()
+        .enumerate()
+        .for_each(|(i, pf)| {
+            if extracted_prover_functions.insert(i) {
+                log::warn!(
+                    "Prover function was not assigned to any machine:\n\
+                     Please add a direct reference to a witness column \
+                     (\"let _ = col_name;\") to the prover function.\n{pf}"
+                );
+            }
+        });
 
     ExtractionOutput {
         machines,
