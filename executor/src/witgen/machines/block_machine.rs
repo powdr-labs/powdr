@@ -18,7 +18,8 @@ use crate::witgen::{MutableState, QueryCallback};
 use crate::Identity;
 use itertools::Itertools;
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, IdentityKind, PolyID, PolynomialType,
+    self, AlgebraicExpression as Expression, AlgebraicReference, IdentityKind, PolyID,
+    PolynomialType,
 };
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_number::{DegreeType, FieldElement};
@@ -110,6 +111,8 @@ pub struct BlockMachine<'a, T: FieldElement> {
     first_in_progress_row: usize,
     /// The set of witness columns that are actually part of this machine.
     witness_cols: HashSet<PolyID>,
+    /// The prover functions associated with this machine.
+    prover_functions: Vec<&'a analyzed::Expression>,
     /// Cache that states the order in which to evaluate identities
     /// to make progress most quickly.
     processing_sequence_cache: ProcessingSequenceCache,
@@ -124,6 +127,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
         identities: &[&'a Identity<T>],
         witness_cols: &HashSet<PolyID>,
+        prover_functions: &[&'a analyzed::Expression],
     ) -> Option<Self> {
         let degree = fixed_data.common_degree(witness_cols);
 
@@ -165,6 +169,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             data,
             first_in_progress_row: block_size,
             witness_cols: witness_cols.clone(),
+            prover_functions: prover_functions.to_vec(),
             processing_sequence_cache: ProcessingSequenceCache::new(
                 block_size,
                 latch_row,
@@ -347,6 +352,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 mutable_state,
                 self.fixed_data,
                 &self.witness_cols,
+                &self.prover_functions,
                 self.degree,
             );
 
@@ -563,6 +569,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             &self.identities,
             self.fixed_data,
             &self.witness_cols,
+            &self.prover_functions,
             self.degree,
         )
         .with_outer_query(outer_query);

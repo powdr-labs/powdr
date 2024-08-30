@@ -1,6 +1,6 @@
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicReference, IdentityKind, PolyID};
+use powdr_ast::analyzed::{self, AlgebraicReference, IdentityKind, PolyID};
 use powdr_ast::indent;
 use powdr_number::{DegreeType, FieldElement};
 use std::cmp::max;
@@ -74,6 +74,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         fixed_data: &'a FixedData<'a, T>,
         identities: &[&'a Identity<T>],
         witnesses: &'c HashSet<PolyID>,
+        prover_functions: &'c [&'a analyzed::Expression],
         data: FinalizableData<T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
     ) -> Self {
@@ -86,6 +87,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             mutable_state,
             fixed_data,
             witnesses,
+            prover_functions,
             degree,
         );
 

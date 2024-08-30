@@ -1,4 +1,4 @@
-use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
+use powdr_ast::analyzed::{self, AlgebraicExpression as Expression, AlgebraicReference, PolyID};
 use powdr_number::{DegreeType, FieldElement};
 use std::collections::{BTreeMap, HashMap, HashSet};
 
@@ -25,6 +25,7 @@ pub struct Generator<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     identities: Vec<&'a Identity<T>>,
     witnesses: HashSet<PolyID>,
+    prover_functions: Vec<&'a analyzed::Expression>,
     data: FinalizableData<T>,
     latch: Option<Expression<T>>,
     name: String,
@@ -103,6 +104,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
         identities: Vec<&'a Identity<T>>,
         witnesses: HashSet<PolyID>,
+        prover_functions: Vec<&'a analyzed::Expression>,
         latch: Option<Expression<T>>,
     ) -> Self {
         let data = FinalizableData::new(&witnesses);
@@ -114,6 +116,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             fixed_data,
             identities,
             witnesses,
+            prover_functions,
             data,
             latch,
         }
@@ -186,6 +189,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             &identities_with_next_reference,
             self.fixed_data,
             &self.witnesses,
+            &self.prover_functions,
             self.degree,
         );
         let mut sequence_iterator = ProcessingSequenceIterator::Default(
@@ -220,6 +224,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             self.fixed_data,
             &self.identities,
             &self.witnesses,
+            &self.prover_functions,
             data,
             mutable_state,
         );

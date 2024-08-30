@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use itertools::Itertools;
-use powdr_ast::{analyzed, parsed};
+use powdr_ast::analyzed;
 
 use super::super::affine_expression::AffineExpression;
 use super::Machine;
@@ -14,7 +14,7 @@ use crate::witgen::{
 use crate::witgen::{EvalValue, IncompleteCause, MutableState, QueryCallback};
 use crate::Identity;
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, IdentityKind, PolyID, Reference,
+    AlgebraicExpression as Expression, AlgebraicReference, IdentityKind, PolyID,
 };
 use powdr_number::{DegreeType, FieldElement};
 
@@ -44,7 +44,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
         connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
         identities: &[&Identity<T>],
         witnesses: &HashSet<PolyID>,
-        prover_functions: &[(usize, &'a analyzed::Expression)],
+        prover_functions: &[&'a analyzed::Expression],
     ) -> Option<Self> {
         let degree = fixed_data.common_degree(witnesses);
 
@@ -88,7 +88,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                 log::warn!(
                     "SortedWitness machine does not support prover functions.\
                     The following prover functions are ignored:\n{}",
-                    prover_functions.iter().map(|(_, e)| e).join("\n")
+                    prover_functions.iter().format("\n")
                 );
             }
 

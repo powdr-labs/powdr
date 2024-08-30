@@ -26,6 +26,7 @@ pub struct ExtractionOutput<'a, T: FieldElement> {
     pub machines: Vec<KnownMachine<'a, T>>,
     pub base_identities: Vec<&'a Identity<T>>,
     pub base_witnesses: HashSet<PolyID>,
+    pub base_prover_functions: Vec<&'a analyzed::Expression>,
 }
 
 /// Finds machines in the witness columns and identities
@@ -127,6 +128,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
                 log::warn!("Prover function was assigned to multiple machines:\n{pf}");
             }
         }
+        let prover_functions = prover_functions.iter().map(|(_, pf)| *pf).collect();
 
         let first_witness = machine_witnesses.iter().next().unwrap();
         let first_witness_name = fixed.column_name(first_witness);
@@ -162,26 +164,20 @@ pub fn split_out_machines<'a, T: FieldElement>(
     );
     machines.push(KnownMachine::FixedLookup(fixed_lookup));
 
-    fixed
+    let base_prover_functions = fixed
         .analyzed
         .prover_functions
         .iter()
         .enumerate()
-        .for_each(|(i, pf)| {
-            if extracted_prover_functions.insert(i) {
-                log::warn!(
-                    "Prover function was not assigned to any machine:\n\
-                     Please add a direct reference to a witness column \
-                     (\"let _ = col_name;\") to the prover function.\n{pf}"
-                );
-            }
-        });
+        .filter_map(|(i, pf)| (!extracted_prover_functions.contains(&i)).then_some(pf))
+        .collect();
 
     // TODO also return the base prover functions here?
     ExtractionOutput {
         machines,
         base_identities,
         base_witnesses: remaining_witnesses,
+        base_prover_functions,
     }
 }
 
@@ -190,7 +186,7 @@ fn build_machine<'a, T: FieldElement>(
     machine_witnesses: HashSet<PolyID>,
     machine_identities: Vec<&'a Identity<T>>,
     connecting_identities: BTreeMap<u64, &'a Identity<T>>,
-    prover_functions: Vec<(usize, &analyzed::Expression)>,
+    prover_functions: Vec<&'a analyzed::Expression>,
     name_with_type: impl Fn(&str) -> String,
 ) -> KnownMachine<'a, T> {
     if let Some(machine) = SortedWitnesses::try_new(
@@ -259,7 +255,7 @@ fn build_machine<'a, T: FieldElement>(
             &connecting_identities,
             machine_identities,
             machine_witnesses,
-            &prover_functions,
+            prover_functions,
             Some(latch),
         ))
     }

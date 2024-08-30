@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use itertools::{Either, Itertools};
 
-use powdr_ast::analyzed::{IdentityKind, PolyID, PolynomialType};
+use powdr_ast::analyzed::{self, IdentityKind, PolyID, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::{
@@ -48,6 +48,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         fixed_data: &'a FixedData<'a, T>,
         connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
         identities: &[&Identity<T>],
+        prover_functions: &[&'a analyzed::Expression],
     ) -> Option<Self> {
         if !identities.is_empty() {
             return None;
@@ -112,6 +113,14 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
                 // Duplicate keys, can't be a write-once memory
                 return None;
             }
+        }
+
+        if !prover_functions.is_empty() {
+            log::warn!(
+                "WriteOnceMemory machine does not support prover functions.\
+                The following prover functions are ignored:\n{}",
+                prover_functions.iter().format("\n")
+            );
         }
 
         Some(Self {

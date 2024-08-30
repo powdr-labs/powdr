@@ -213,6 +213,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             mut machines,
             base_identities,
             base_witnesses,
+            base_prover_functions,
         } = if self.stage == 0 {
             machines::machine_extractor::split_out_machines(&fixed, retained_identities)
         } else {
@@ -229,6 +230,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                 machines: Vec::new(),
                 base_identities: polynomial_identities,
                 base_witnesses: fixed.witness_cols.keys().collect::<HashSet<_>>(),
+                base_prover_functions: fixed.analyzed.prover_functions.iter().collect(),
             }
         };
 
@@ -256,6 +258,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                 &BTreeMap::new(), // No connecting identities
                 base_identities,
                 base_witnesses,
+                base_prover_functions,
                 // We could set the latch of the main VM here, but then we would have to detect it.
                 // Instead, the main VM will be computed in one block, directly continuing into the
                 // infinite loop after the first return.

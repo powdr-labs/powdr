@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use powdr_ast::analyzed::{AlgebraicReference, PolyID};
+use powdr_ast::analyzed::{self, AlgebraicReference, PolyID};
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::Identity;
@@ -33,6 +33,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         identities: &'c [&'a Identity<T>],
         fixed_data: &'a FixedData<'a, T>,
         witness_cols: &'c HashSet<PolyID>,
+        prover_functions: &'c [&'a analyzed::Expression],
         size: DegreeType,
     ) -> Self {
         let processor = Processor::new(
@@ -41,6 +42,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
             mutable_state,
             fixed_data,
             witness_cols,
+            prover_functions,
             size,
         );
         Self {
@@ -185,6 +187,7 @@ mod tests {
         let row_offset = RowIndex::from_degree(0, degree);
         let identities = analyzed.identities.iter().collect::<Vec<_>>();
         let witness_cols = fixed_data.witness_cols.keys().collect();
+        let prover_functions = analyzed.prover_functions.iter().collect::<Vec<_>>();
 
         let processor = BlockProcessor::new(
             row_offset,
@@ -193,6 +196,7 @@ mod tests {
             &identities,
             &fixed_data,
             &witness_cols,
+            &prover_functions,
             degree,
         );
 

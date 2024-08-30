@@ -12,7 +12,7 @@ use crate::witgen::{EvalValue, IncompleteCause};
 use crate::Identity;
 use powdr_number::{DegreeType, FieldElement};
 
-use powdr_ast::analyzed::{IdentityKind, PolyID};
+use powdr_ast::analyzed::{self, IdentityKind, PolyID};
 
 /// If all witnesses of a machine have a name in this list (disregarding the namespace),
 /// we'll consider it to be a double-sorted machine.
@@ -87,6 +87,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
         fixed_data: &'a FixedData<T>,
         connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
         witness_cols: &HashSet<PolyID>,
+        prover_functions: &[&'a analyzed::Expression],
     ) -> Option<Self> {
         let degree = fixed_data.common_degree(witness_cols);
 
@@ -161,6 +162,15 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
         } else {
             None
         };
+
+        if !prover_functions.is_empty() {
+            log::warn!(
+                "DoubleSortedWitness machine does not support prover functions.\
+                The following prover functions are ignored:\n{}",
+                prover_functions.iter().format("\n")
+            );
+        }
+
         Some(Self {
             name,
             witness_cols: witness_cols.clone(),

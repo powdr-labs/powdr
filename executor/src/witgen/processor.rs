@@ -83,8 +83,10 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     /// Whether a given witness column is relevant for this machine (faster than doing a contains check on witness_cols)
     is_relevant_witness: WitnessColumnMap<bool>,
     /// Relevant witness columns that have a prover query function attached.
+    // TODO remove
     prover_query_witnesses: Vec<PolyID>,
-    prover_functions: Vec<&'a analyzed::Expression>,
+    /// Prover functions that are relevant for this machine.
+    prover_functions: &'c [&'a analyzed::Expression],
     /// The outer query, if any. If there is none, processing an outer query will fail.
     outer_query: Option<OuterQuery<'a, 'c, T>>,
     inputs: Vec<(PolyID, T)>,
@@ -100,6 +102,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
         fixed_data: &'a FixedData<'a, T>,
         witness_cols: &'c HashSet<PolyID>,
+        prover_functions: &'c [&'a analyzed::Expression],
         size: DegreeType,
     ) -> Self {
         let is_relevant_witness = WitnessColumnMap::from(
@@ -113,25 +116,6 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             .iter()
             .filter(|(poly_id, col)| witness_cols.contains(poly_id) && col.query.is_some())
             .map(|(poly_id, _)| poly_id)
-            .collect();
-        // TODO we should create an error if a prover function cannot be mapped
-        // to any processor. So we should probably do this in the machine xtractor.
-        let prover_functions: Vec<_> = fixed_data
-            .analyzed
-            .prover_functions
-            .iter()
-            .filter_map(|f| {
-                f.all_children()
-                    .filter_map(|e| match e {
-                        parsed::Expression::Reference(
-                            _,
-                            Reference::Poly(PolynomialReference { name, .. }),
-                        ) => fixed_data.column_by_name.get(name),
-                        _ => None,
-                    })
-                    .any(|poly_id| witness_cols.contains(&poly_id))
-                    .then_some(f)
-            })
             .collect();
 
         Self {
@@ -231,8 +215,9 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         );
         let mut updates = EvalValue::complete(vec![]);
 
-        for fun in &self.prover_functions {
+        for fun in self.prover_functions {
             let r = query_processor.process_prover_function(&row_pair, fun)?;
+            // TODO now mark this function as succeeded for this row.
             updates.combine(r);
         }
 
