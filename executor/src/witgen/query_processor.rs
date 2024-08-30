@@ -11,6 +11,7 @@ use super::Constraints;
 use super::{rows::RowPair, Constraint, EvalResult, EvalValue, FixedData, IncompleteCause};
 
 /// Computes value updates that result from a query.
+/// TODO rename?
 pub struct QueryProcessor<'a, 'b, T: FieldElement, QueryCallback: Send + Sync> {
     fixed_data: &'a FixedData<'a, T>,
     query_callback: &'b mut QueryCallback,
@@ -70,7 +71,6 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
 
         assert!(matches!(res.as_ref(), Value::Tuple(items) if items.is_empty()));
 
-        // TODO use the status to mark the prover function to be run again or not.
         Ok(EvalValue::complete(symbols.updates()))
     }
 
@@ -193,10 +193,18 @@ impl<'a, 'b, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, 'b, T> {
         poly_ref: &AlgebraicReference,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Ok(Value::FieldElement(match poly_ref.poly_id.ptype {
-            PolynomialType::Committed | PolynomialType::Intermediate => self
-                .rows
-                .get_value(poly_ref)
-                .ok_or(EvalError::DataNotAvailable)?,
+            PolynomialType::Committed | PolynomialType::Intermediate => {
+                if let Some((_, update)) = self.updates.iter().find(|(p, _)| p == &poly_ref) {
+                    let Constraint::Assignment(value) = update else {
+                        unreachable!()
+                    };
+                    *value
+                } else {
+                    self.rows
+                        .get_value(poly_ref)
+                        .ok_or(EvalError::DataNotAvailable)?
+                }
+            }
             PolynomialType::Constant => {
                 let values = self.fixed_data.fixed_cols[&poly_ref.poly_id].values(self.size);
                 let row = self.rows.current_row_index + if poly_ref.next { 1 } else { 0 };
@@ -227,6 +235,7 @@ impl<'a, 'b, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, 'b, T> {
         row: Arc<Value<'a, T>>,
         value: Arc<Value<'a, T>>,
     ) -> Result<(), EvalError> {
+        // TODO allow "next: true" in the future.
         let Value::Expression(AlgebraicExpression::Reference(AlgebraicReference {
             poly_id,
             next: false,
@@ -243,20 +252,25 @@ impl<'a, 'b, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, 'b, T> {
                 "Expected integer for second argument of std::prover::provide_value".to_string(),
             ));
         };
-        let row = i64::try_from(row).unwrap();
+        let row = DegreeType::try_from(row).unwrap();
         let Value::FieldElement(value) = value.as_ref() else {
             return Err(EvalError::TypeError(
                 "Expected field element for third argument of std::prover::provide_value"
                     .to_string(),
             ));
         };
-        // TODO check that the row is the same and handle underflow.
-        // TODO handle multiple updates to the same value ond alread known values.
-        // TODO take updates into account in eval() calls.
+        if row != DegreeType::from(self.rows.current_row_index) {
+            // TODO we should be more flexible with this is the future.
+            return Err(EvalError::TypeError(
+                "Row index does not match current row index".to_string(),
+            ));
+        }
         let col = &self.fixed_data.witness_cols[poly_id].poly;
-        // TODO instead of this, avoid repeated calls to the prover function.
-        if self.rows.get_value(col).is_none() {
-            // TODO if this stay,s check that the value is at least the same if it is already known.
+        if self.eval_reference(col).is_ok() {
+            return Err(EvalError::TypeError(
+                "Column already has a value".to_string(),
+            ));
+        } else {
             self.updates.push((col, Constraint::Assignment(*value)));
         }
 

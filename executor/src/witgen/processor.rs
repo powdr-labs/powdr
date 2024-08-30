@@ -1,11 +1,8 @@
 use std::collections::{BTreeMap, HashSet};
 
-use itertools::Itertools;
-use powdr_ast::analyzed::{
-    self, AlgebraicExpression as Expression, AlgebraicReference, PolyID, Reference,
-};
-use powdr_ast::analyzed::{PolynomialReference, PolynomialType};
-use powdr_ast::parsed::{self, visitor::AllChildren};
+use powdr_ast::analyzed::PolynomialType;
+use powdr_ast::analyzed::{self, AlgebraicExpression as Expression, AlgebraicReference, PolyID};
+
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
@@ -87,6 +84,8 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     prover_query_witnesses: Vec<PolyID>,
     /// Prover functions that are relevant for this machine.
     prover_functions: &'c [&'a analyzed::Expression],
+    /// Which prover functions were successfully executed on which row.
+    processed_prover_functions: ProcessedProverFunctions,
     /// The outer query, if any. If there is none, processing an outer query will fail.
     outer_query: Option<OuterQuery<'a, 'c, T>>,
     inputs: Vec<(PolyID, T)>,
@@ -127,6 +126,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             is_relevant_witness,
             prover_query_witnesses,
             prover_functions,
+            processed_prover_functions: ProcessedProverFunctions::new(prover_functions.len()),
             outer_query: None,
             inputs: Vec::new(),
             previously_set_inputs: BTreeMap::new(),
@@ -199,11 +199,6 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             self.size,
         );
 
-        // TODO Iterate over the relevant prover functions (that are relevant for this machine
-        // and that have not yet succeeded). And call query_processor.process_prover_function.
-        // It is similar to process_query, with the difference that the side-effects are used.
-        // this means the Symbols need to be mut and store the suggested values.
-
         let global_row_index = self.row_offset + row_index as u64;
         let row_pair = RowPair::new(
             &self.data[row_index],
@@ -215,10 +210,11 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         );
         let mut updates = EvalValue::complete(vec![]);
 
-        for fun in self.prover_functions {
-            let r = query_processor.process_prover_function(&row_pair, fun)?;
-            // TODO now mark this function as succeeded for this row.
-            updates.combine(r);
+        for (i, fun) in self.prover_functions.iter().enumerate() {
+            if !self.processed_prover_functions.has_run(row_index, i) {
+                updates.combine(query_processor.process_prover_function(&row_pair, fun)?);
+                self.processed_prover_functions.mark_as_run(row_index, i);
+            }
         }
 
         for poly_id in &self.prover_query_witnesses {
@@ -572,5 +568,39 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             return false;
         }
         true
+    }
+}
+
+struct ProcessedProverFunctions {
+    data: Vec<u8>,
+    function_count: usize,
+}
+
+impl ProcessedProverFunctions {
+    pub fn new(prover_function_count: usize) -> Self {
+        Self {
+            data: vec![],
+            function_count: prover_function_count,
+        }
+    }
+
+    pub fn has_run(&self, row_index: usize, function_index: usize) -> bool {
+        let (el, bit) = self.index_for(row_index, function_index);
+        self.data
+            .get(el)
+            .map_or(false, |byte| byte & (1 << bit) != 0)
+    }
+
+    pub fn mark_as_run(&mut self, row_index: usize, function_index: usize) {
+        let (el, bit) = self.index_for(row_index, function_index);
+        if el >= self.data.len() {
+            self.data.resize(el + 1, 0);
+        }
+        self.data[el] |= 1 << bit;
+    }
+
+    fn index_for(&self, row_index: usize, function_index: usize) -> (usize, usize) {
+        let index = row_index * self.function_count + function_index;
+        (index / 8, index % 8)
     }
 }

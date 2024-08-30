@@ -93,7 +93,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             .filter(|(_, pf)| {
                 // This only discovers direct references in the lambda expression
                 // and ignores e.g. called functions, but it will work for now.
-                refs_in_parsed_expression(*pf)
+                refs_in_parsed_expression(pf)
                     .unique()
                     .filter_map(|n| fixed.column_by_name.get(n).cloned())
                     .collect::<HashSet<_>>()
@@ -172,7 +172,6 @@ pub fn split_out_machines<'a, T: FieldElement>(
         .filter_map(|(i, pf)| (!extracted_prover_functions.contains(&i)).then_some(pf))
         .collect();
 
-    // TODO also return the base prover functions here?
     ExtractionOutput {
         machines,
         base_identities,
