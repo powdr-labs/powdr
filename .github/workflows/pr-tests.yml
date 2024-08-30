@@ -13,6 +13,11 @@ env:
   POWDR_GENERATE_PROOFS: "true"
   MAX_DEGREE_LOG: "20"
 
+# cancel old build workflows for the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 jobs:
   build:
     runs-on: self-hosted
