@@ -683,6 +683,15 @@ StructExpression: Box<Expression> = {
     <start:@L> <name:Identifier> "{" <fields:NamedExpressions> "}" <end:@R> => Box::new(Expression::Tuple(ctx.source_ref(start, end), vec![])),
 }
 
+NamedExpressions: Vec<NamedExpression<Expression>> = {
+    => vec![],
+    <mut list:( <NamedExpression> "," )*> <end:NamedExpression> ","?  => { list.push(end); list }
+}
+
+NamedExpression: NamedExpression<Arc<Expression>> = {
+    <name:Identifier> ":" <body:Expression> => NamedExpression { name, body }
+}
+
 // ---------------------------- Pattern -----------------------------
 
 Pattern: Pattern = {
