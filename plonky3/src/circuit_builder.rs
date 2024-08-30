@@ -412,21 +412,20 @@ impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
         #[cfg(not(debug_assertions))]
         unimplemented!()
     }
-
     
-    // fn multi_stage_width(&self, stage: u32) -> usize {
-    //     let mut width = 0;
-    //     for identity in &self
-    //         .analyzed
-    //         .definitions_in_source_order(PolynomialType::Committed)
-    //     {
-    //         let symbol = identity.0;
-    //         if Some(stage) == symbol[stage] {
-    //             width += 1;
-    //         };
-    //     }
-    //     width as usize
-    // }
+    fn multi_stage_width(&self, stage: u32) -> usize {
+        let mut width = 0;
+        for identity in &self
+            .analyzed
+            .definitions_in_source_order(PolynomialType::Committed)
+        {
+            let symbol = identity.0;
+            if Some(stage) == symbol[stage] {
+                width += 1;
+            };
+        }
+        width as usize
+    }
 }
 
 pub trait PowdrAirBuilder:
