@@ -48,9 +48,6 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
             size: self.size,
             updates: Constraints::new(),
         };
-        // TODO symbols need to take already provided values into account for eval()
-        // during the same evaluation run
-
         let res = match evaluator::evaluate(fun, &mut symbols)
             .and_then(|fun| evaluator::evaluate_function_call(fun, arguments, &mut symbols))
         {
