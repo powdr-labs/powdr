@@ -1206,28 +1206,54 @@ mod tests {
                 test_paren(&test_case);
             }
         }
-
         #[test]
         fn lambda_parentheses() {
             let test_cases: Vec<TestCase> = vec![
+                // Nested lambdas
+                ("|x| (|y| y) + x;", "|x| (|y| y) + x;"),
+                ("|x| (|y| y + x);", "|x| (|y| y + x);"),
+                ("|x| |y| y + x;", "|x| (|y| y + x);"),
+                ("|x| |y| (y + x);", "|x| (|y| y + x);"),
+                ("|x| (|y| |z| z + y) + x;", "|x| (|y| (|z| z + y)) + x;"),
+                ("|x| |y| (|z| z) + y + x;", "|x| (|y| (|z| z) + y + x);"),
+                ("|x| |y| |z| x + y + z;", "|x| (|y| (|z| x + y + z));"),
+                // Lambda application
                 ("1 + (|x| x)(2);", "1 + (|x| x)(2);"),
-                ("|i| (|x| x) + i;", "|i| (|x| x) + i;"),
-                ("|i| (|x| x + i);", "|i| (|x| x + i);"),
-                ("|i| |x| x + i;", "|i| (|x| x + i);"),
-                ("(|i| i) + (|x| x);", "(|i| i) + (|x| x);"),
-                ("|i| (|x| |y| y + x) + i;", "|i| (|x| (|y| y + x)) + i;"),
-                ("(|i| |x| x + i)(5);", "(|i| (|x| x + i))(5);"),
-                ("|i| (|x| x)(i) + 1;", "|i| (|x| x)(i) + 1;"),
-                ("|i| |x| x(i) + 1;", "|i| (|x| x(i) + 1);"),
-                ("|i| i + (|x| |y| y + x);", "|i| i + (|x| (|y| y + x));"),
-                ("|i| |x| x + (|y| y + i);", "|i| (|x| x + (|y| y + i));"),
+                // Lambda application with nested lambdas
+                ("(|x| |y| y + x)(5);", "(|x| (|y| y + x))(5);"),
+                ("|x| (|y| y)(x) + 1;", "|x| (|y| y)(x) + 1;"),
+                ("|x| (|y| x + y)(5);", "|x| (|y| x + y)(5);"),
+                ("|x| |y| y(x) + 1;", "|x| (|y| y(x) + 1);"),
+                ("(|x| |y| x * y)(2)(3);", "(|x| (|y| x * y))(2)(3);"),
+                ("(|x| x + 1)(|y| y * 2);", "(|x| x + 1)(|y| y * 2);"),
+                (
+                    "(|x| |y| x + y)(|z| z * 2);",
+                    "(|x| (|y| x + y))(|z| z * 2);",
+                ),
+                // Binary operations between lambdas
+                ("(|x| x) + (|y| y);", "(|x| x) + (|y| y);"),
+                ("|x| x * (|y| y);", "|x| x * (|y| y);"),
+                ("|x| x + 1 * (|y| y - 2);", "|x| x + 1 * (|y| y - 2);"),
+                ("(|x| x + 1) - (|y| y) * -1;", "(|x| x + 1) - (|y| y) * -1;"),
+                (
+                    "|x| (|y| y)(x) + (|z| z)(x);",
+                    "|x| (|y| y)(x) + (|z| z)(x);",
+                ),
+                ("|x| |y| y(x) + (|z| z)(x);", "|x| (|y| y(x) + (|z| z)(x));"),
+                (
+                    "|x| (|y| y(x) + (|z| z))(x);",
+                    "|x| (|y| y(x) + (|z| z))(x);",
+                ),
+                (
+                    "(|x| |y| x + y) + (|z| z * 2);",
+                    "(|x| (|y| x + y)) + (|z| z * 2);",
+                ),
             ];
 
             for test_case in test_cases {
                 test_paren(&test_case);
             }
         }
-
         #[test]
         fn complex() {
             let test_cases: Vec<TestCase> = vec![
