@@ -11,7 +11,8 @@ use powdr_ast::{
 };
 use std::{collections::HashMap, sync::Arc};
 
-type SolvedImpl = ((String, Vec<Type>), Arc<TraitImplementation<Expression>>);
+type SolvedImpl = ((String, Vec<Type>), Arc<Expression>);
+
 pub struct TraitsResolver<'a> {
     definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     identities: &'a Vec<Identity<SelectedExpressions<Expression>>>,
@@ -30,8 +31,8 @@ impl<'a> TraitsResolver<'a> {
 
     pub fn resolve_traits(
         &'a self,
-        trait_impls: &HashMap<String, Vec<Arc<TraitImplementation<Expression>>>>,
-    ) -> HashMap<(String, Vec<Type>), Arc<TraitImplementation<Expression>>> {
+        trait_impls: &HashMap<String, Vec<TraitImplementation<Expression>>>,
+    ) -> HashMap<(String, Vec<Type>), Arc<Expression>> {
         let mut result = HashMap::new();
 
         let resolve_references = |expr: &Expression| {
@@ -87,10 +88,10 @@ impl<'a> TraitsResolver<'a> {
     fn resolve_reference_trait(
         &self,
         reference: &PolynomialReference,
-        trait_impls: &HashMap<String, Vec<Arc<TraitImplementation<Expression>>>>,
+        trait_impls: &HashMap<String, Vec<TraitImplementation<Expression>>>,
     ) -> Option<SolvedImpl> {
         let name = reference.name.clone();
-        let (trait_decl_name, _) = name.rsplit_once("::")?;
+        let (trait_decl_name, trait_fn_name) = name.rsplit_once("::")?;
         if let Some(impls) = trait_impls.get(trait_decl_name) {
             for impl_ in impls.iter() {
                 let Type::Tuple(TupleType { ref items }) = impl_.type_scheme.ty else {
@@ -98,8 +99,9 @@ impl<'a> TraitsResolver<'a> {
                 };
                 let type_args = reference.type_args.as_ref().unwrap().to_vec();
 
+                let expr = impl_.function_by_name(trait_fn_name).unwrap();
                 if type_args == *items {
-                    return Some(((name, type_args), Arc::clone(impl_)));
+                    return Some(((name, type_args), Arc::clone(&expr.body)));
                 }
             }
         }
@@ -111,7 +113,7 @@ impl<'a> TraitsResolver<'a> {
 pub fn traits_resolution(
     definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     identities: &Vec<Identity<SelectedExpressions<Expression>>>,
-    trait_impls: &HashMap<String, Vec<Arc<TraitImplementation<Expression>>>>,
-) -> HashMap<(String, Vec<Type>), Arc<TraitImplementation<Expression>>> {
+    trait_impls: &HashMap<String, Vec<TraitImplementation<Expression>>>,
+) -> HashMap<(String, Vec<Type>), Arc<Expression>> {
     TraitsResolver::new(definitions, identities).resolve_traits(trait_impls)
 }

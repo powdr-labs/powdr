@@ -21,7 +21,7 @@ pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
     self, ArrayExpression, ArrayLiteral, EnumDeclaration, EnumVariant, TraitDeclaration,
-    TraitFunction, TraitImplementation,
+    TraitFunction,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -36,7 +36,7 @@ pub enum StatementIdentifier {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct Analyzed<T> {
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    pub solved_impls: HashMap<(String, Vec<Type>), Arc<TraitImplementation<Expression>>>,
+    pub solved_impls: HashMap<(String, Vec<Type>), Arc<Expression>>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
     pub intermediate_columns: HashMap<String, (Symbol, Vec<AlgebraicExpression<T>>)>,
     pub identities: Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>>,

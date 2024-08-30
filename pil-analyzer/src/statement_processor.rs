@@ -663,7 +663,7 @@ where
             .into_iter()
             .map(|named| NamedExpression {
                 name: named.name,
-                body: Box::new(
+                body: Arc::new(
                     self.expression_processor(&type_vars)
                         .process_expression(named.body.as_ref().clone()),
                 ),

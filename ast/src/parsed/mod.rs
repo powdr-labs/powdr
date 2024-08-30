@@ -9,7 +9,9 @@ use std::{
     collections::BTreeSet,
     iter::{empty, once},
     ops,
+    slice::IterMut,
     str::FromStr,
+    sync::Arc,
 };
 
 use auto_enums::auto_enum;
@@ -338,15 +340,32 @@ pub struct TraitImplementation<Expr> {
     pub name: SymbolPath,
     pub source_ref: SourceRef,
     pub type_scheme: TypeScheme,
-    pub functions: Vec<NamedExpression<Expr>>,
+    pub functions: Vec<NamedExpression<Arc<Expr>>>,
 }
 
 impl<R> TraitImplementation<Expression<R>> {
-    pub fn function_by_name(&self, name: &str) -> Option<&Expression<R>> {
+    pub fn function_by_name(&self, name: &str) -> Option<&NamedExpression<Arc<Expression<R>>>> {
+        self.functions.iter().find(|f| f.name == name)
+    }
+
+    pub fn function_bodies_mut(&mut self) -> TraitBodyIterMut<R> {
+        TraitBodyIterMut {
+            functions: self.functions.iter_mut(),
+        }
+    }
+}
+
+pub struct TraitBodyIterMut<'a, R> {
+    functions: IterMut<'a, NamedExpression<Arc<Expression<R>>>>,
+}
+
+impl<'a, R> Iterator for TraitBodyIterMut<'a, R> {
+    type Item = &'a mut Expression<R>;
+
+    fn next(&mut self) -> Option<Self::Item> {
         self.functions
-            .iter()
-            .find(|f| f.name == name)
-            .map(|f| f.body.as_ref())
+            .next()
+            .map(|named_expr| Arc::get_mut(&mut named_expr.body).unwrap())
     }
 }
 
@@ -356,9 +375,8 @@ impl<R> Children<Expression<R>> for TraitImplementation<Expression<R>> {
     }
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
         Box::new(
-            self.functions
-                .iter_mut()
-                .flat_map(|m| m.body.children_mut()),
+            self.function_bodies_mut()
+                .flat_map(|body| body.children_mut()),
         )
     }
 }
@@ -366,7 +384,7 @@ impl<R> Children<Expression<R>> for TraitImplementation<Expression<R>> {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct NamedExpression<Expr> {
     pub name: String,
-    pub body: Box<Expr>,
+    pub body: Expr,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]

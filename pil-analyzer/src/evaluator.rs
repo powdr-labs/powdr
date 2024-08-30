@@ -18,7 +18,7 @@ use powdr_ast::{
         types::{ArrayType, Type, TypeScheme},
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
         IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number,
-        Pattern, StatementInsideBlock, TraitImplementation, UnaryOperation, UnaryOperator,
+        Pattern, StatementInsideBlock, UnaryOperation, UnaryOperator,
     },
 };
 use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
@@ -28,7 +28,7 @@ use powdr_parser_util::SourceRef;
 pub fn evaluate_expression<'a, T: FieldElement>(
     expr: &'a Expression,
     definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    solved_impls: &'a HashMap<(String, Vec<Type>), Arc<TraitImplementation<Expression>>>,
+    solved_impls: &'a HashMap<(String, Vec<Type>), Arc<Expression>>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
     evaluate(
         expr,
@@ -409,7 +409,7 @@ impl<'a, T> Closure<'a, T> {
 
 pub struct Definitions<'a> {
     pub definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    pub solved_impls: &'a HashMap<(String, Vec<Type>), Arc<TraitImplementation<Expression>>>,
+    pub solved_impls: &'a HashMap<(String, Vec<Type>), Arc<Expression>>,
 }
 
 impl<'a> Definitions<'a> {
@@ -417,7 +417,7 @@ impl<'a> Definitions<'a> {
     /// of SymbolLookup for the recursive call.
     pub fn lookup_with_symbols<T: FieldElement>(
         definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-        solved_impls: &'a HashMap<(String, Vec<Type>), Arc<TraitImplementation<Expression>>>,
+        solved_impls: &'a HashMap<(String, Vec<Type>), Arc<Expression>>,
         name: &str,
         type_args: &Option<Vec<Type>>,
         symbols: &mut impl SymbolLookup<'a, T>,
@@ -455,10 +455,8 @@ impl<'a> Definitions<'a> {
                 None => None,
             };
             match impl_ {
-                Some(trait_impl) => {
-                    let (_, trait_fn_name) = name.rsplit_once("::").unwrap();
-                    let expr = trait_impl.function_by_name(trait_fn_name).unwrap();
-                    let Expression::LambdaExpression(_, lambda) = expr else {
+                Some(expr) => {
+                    let Expression::LambdaExpression(_, lambda) = expr.as_ref() else {
                         unreachable!()
                     };
                     let closure = Closure {

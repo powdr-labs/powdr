@@ -4,6 +4,7 @@ use powdr_ast::parsed::{*, asm::*, types::*};
 use powdr_number::{BigInt, BigUint};
 use crate::{ParserContext, unescape_string};
 use powdr_parser_util::Error;
+use std::sync::Arc;
 
 grammar(ctx: &ParserContext);
 
@@ -714,16 +715,17 @@ TraitFunction: TraitFunction<Expression> = {
 }
 
 TraitImplementation: TraitImplementation<Expression> = {
-    <start:@L> "impl" <type_scheme: GenericTraitName> "{" <functions:NamedExpressions> "}" <end:@L> => TraitImplementation { name: type_scheme.0, source_ref: ctx.source_ref(start, end), type_scheme: type_scheme.1, functions }
+    <start:@L> "impl" <type_scheme: GenericTraitName> "{" <functions:NamedArcExpressions> "}" <end:@L> => TraitImplementation { name: type_scheme.0, source_ref: ctx.source_ref(start, end), type_scheme: type_scheme.1, functions }
 }
 
-NamedExpressions: Vec<NamedExpression<Expression>> = {
+
+NamedArcExpressions: Vec<NamedExpression<Arc<Expression>>> = {
     => vec![],
-    <mut list:( <NamedExpression> "," )*> <end:NamedExpression> ","?  => { list.push(end); list }
+    <mut list:( <NamedArcExpression> "," )*> <end:NamedArcExpression> ","?  => { list.push(end); list }
 }
 
-NamedExpression: NamedExpression<Expression> = {
-    <name:Identifier> ":" <body:BoxedExpression> => NamedExpression { name, body }
+NamedArcExpression: NamedExpression<Arc<Expression>> = {
+    <name:Identifier> ":" <body:Expression> => NamedExpression { name, body: Arc::new(body) }
 }
 
 GenericTraitName: (SymbolPath, TypeScheme) = {
