@@ -212,8 +212,11 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
 
         for (i, fun) in self.prover_functions.iter().enumerate() {
             if !self.processed_prover_functions.has_run(row_index, i) {
-                updates.combine(query_processor.process_prover_function(&row_pair, fun)?);
-                self.processed_prover_functions.mark_as_run(row_index, i);
+                let r = query_processor.process_prover_function(&row_pair, fun)?;
+                if r.is_complete() {
+                    updates.combine(r);
+                    self.processed_prover_functions.mark_as_run(row_index, i);
+                }
             }
         }
 
