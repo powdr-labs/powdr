@@ -1200,10 +1200,27 @@ mod tests {
                 ("let x = (1 + (|i| i + 2));", "let x = 1 + (|i| i + 2);"),
                 // Index access
                 ("(|i| i)[j];", "(|i| i)[j];"),
-                // Lambda expression
+            ];
+
+            for test_case in test_cases {
+                test_paren(&test_case);
+            }
+        }
+
+        #[test]
+        fn lambda_parentheses() {
+            let test_cases: Vec<TestCase> = vec![
+                ("1 + (|x| x)(2);", "1 + (|x| x)(2);"),
                 ("|i| (|x| x) + i;", "|i| (|x| x) + i;"),
                 ("|i| (|x| x + i);", "|i| (|x| x + i);"),
                 ("|i| |x| x + i;", "|i| (|x| x + i);"),
+                ("(|i| i) + (|x| x);", "(|i| i) + (|x| x);"),
+                ("|i| (|x| |y| y + x) + i;", "|i| (|x| (|y| y + x)) + i;"),
+                ("(|i| |x| x + i)(5);", "(|i| (|x| x + i))(5);"),
+                ("|i| (|x| x)(i) + 1;", "|i| (|x| x)(i) + 1;"),
+                ("|i| |x| x(i) + 1;", "|i| (|x| x(i) + 1);"),
+                ("|i| i + (|x| |y| y + x);", "|i| i + (|x| (|y| y + x));"),
+                ("|i| |x| x + (|y| y + i);", "|i| (|x| x + (|y| y + i));"),
             ];
 
             for test_case in test_cases {
