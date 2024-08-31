@@ -168,13 +168,18 @@ impl PILAnalyzer {
             let missing_symbols = module
                 .statements
                 .into_iter()
-                .filter_map(|s| match s {
-                    ModuleStatement::SymbolDefinition(s) => missing_symbols
-                        .contains(&s.name.as_str())
-                        .then_some(format!("{s}")),
-                    // should this also get symbols inside pil statements?
-                    ModuleStatement::PilStatement(_) => None,
+                .filter_map(|s| {
+                    match &s {
+                        ModuleStatement::SymbolDefinition(s) => {
+                            missing_symbols.contains(&s.name.as_str())
+                        }
+                        ModuleStatement::PilStatement(s) => s
+                            .symbol_definition_names()
+                            .any(|(name, _)| missing_symbols.contains(&name.as_str())),
+                    }
+                    .then_some(vec![format!("{s}")])
                 })
+                .flatten()
                 .join("\n");
             parse(None, &format!("namespace std::prelude;\n{missing_symbols}")).unwrap()
         })
