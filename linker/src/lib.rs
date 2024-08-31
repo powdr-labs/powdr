@@ -72,18 +72,25 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
 
 // Extract the utilities and sort them into namespaces where possible.
 fn process_definitions(
-    definitions: BTreeMap<AbsoluteSymbolPath, Vec<PilStatement>>,
+    mut definitions: BTreeMap<AbsoluteSymbolPath, Vec<PilStatement>>,
 ) -> Vec<PilStatement> {
-    definitions
-        .into_iter()
-        .flat_map(|(module_path, statements)| {
-            once(PilStatement::Namespace(
-                SourceRef::unknown(),
-                module_path.relative_to(&Default::default()),
-                None,
-            ))
-            .chain(statements)
-        })
+    // definitions at the root do not require a namespace statement, so we put them first
+    let root = definitions.remove(&Default::default());
+
+    root.into_iter()
+        .flatten()
+        .chain(
+            definitions
+                .into_iter()
+                .flat_map(|(module_path, statements)| {
+                    once(PilStatement::Namespace(
+                        SourceRef::unknown(),
+                        module_path.relative_to(&Default::default()),
+                        None,
+                    ))
+                    .chain(statements)
+                }),
+        )
         .collect()
 }
 
@@ -281,7 +288,7 @@ namespace main__rom(4 + 4);
 
     #[test]
     fn compile_pil_without_machine() {
-        let input = "let even = std::array::new(5, (|i| 2 * i));";
+        let input = "    let even = std::array::new(5, (|i| 2 * i));";
         let graph = parse_analyze_and_compile::<GoldilocksField>(input);
         let pil = link(graph).unwrap().to_string();
         assert_eq!(&pil[0..input.len()], input);
