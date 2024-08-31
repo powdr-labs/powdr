@@ -833,9 +833,48 @@ pub enum StatementReference {
 
 #[derive(Default, Clone, Debug)]
 pub struct Module {
-    pub machines: BTreeMap<String, Machine>,
-    pub statements: Vec<PilStatement>,
-    pub ordering: Vec<StatementReference>,
+    machines: BTreeMap<String, Machine>,
+    statements: Vec<PilStatement>,
+    ordering: Vec<StatementReference>,
+}
+
+impl Module {
+    pub fn new(
+        machines: BTreeMap<String, Machine>,
+        statements: Vec<PilStatement>,
+        ordering: Vec<StatementReference>,
+    ) -> Self {
+        Self {
+            machines,
+            statements,
+            ordering,
+        }
+    }
+
+    pub fn push_machine(&mut self, name: String, machine: Machine) {
+        self.machines.insert(name.clone(), machine);
+        self.ordering
+            .push(StatementReference::MachineDeclaration(name));
+    }
+
+    pub fn push_pil_statement(&mut self, s: PilStatement) {
+        self.statements.push(s);
+        self.ordering.push(StatementReference::Pil);
+    }
+
+    pub fn push_module(&mut self, name: String) {
+        self.ordering.push(StatementReference::Module(name));
+    }
+
+    pub fn into_inner(
+        self,
+    ) -> (
+        BTreeMap<String, Machine>,
+        Vec<PilStatement>,
+        Vec<StatementReference>,
+    ) {
+        (self.machines, self.statements, self.ordering)
+    }
 }
 
 #[derive(Default, Debug, Clone)]

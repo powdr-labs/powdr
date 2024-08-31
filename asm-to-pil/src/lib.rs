@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use powdr_ast::asm_analysis::{AnalysisASMFile, StatementReference, SubmachineDeclaration};
+use powdr_ast::asm_analysis::{AnalysisASMFile, Module, StatementReference, SubmachineDeclaration};
 use powdr_number::FieldElement;
 use romgen::generate_machine_rom;
 use vm_to_constrained::ROM_SUBMACHINE_NAME;
@@ -16,20 +16,22 @@ pub const ROM_SUFFIX: &str = "ROM";
 pub fn compile<T: FieldElement>(mut file: AnalysisASMFile) -> AnalysisASMFile {
     for (path, module) in &mut file.modules {
         let mut new_machines = BTreeMap::default();
-        module.ordering = module
-            .ordering
-            .clone()
+        let (mut machines, statements, ordering) = std::mem::take(module).into_inner();
+        let ordering = ordering
             .into_iter()
             .flat_map(|r| {
                 match r {
                     StatementReference::MachineDeclaration(name) => {
-                        let m = module.machines.remove(&name).unwrap();
+                        let m = machines.remove(&name).unwrap();
                         let (m, rom) = generate_machine_rom::<T>(m);
                         let (mut m, rom_machine) = vm_to_constrained::convert_machine::<T>(m, rom);
 
                         match rom_machine {
                             // in the absence of ROM, simply return the machine
-                            None => vec![name],
+                            None => {
+                                new_machines.insert(name.clone(), m);
+                                vec![name]
+                            }
                             Some(rom_machine) => {
                                 // introduce a new name for the ROM machine, based on the original name
                                 let rom_name = format!("{name}{ROM_SUFFIX}");
@@ -43,6 +45,7 @@ pub fn compile<T: FieldElement>(mut file: AnalysisASMFile) -> AnalysisASMFile {
                                     args: vec![],
                                 });
 
+                                new_machines.insert(name.clone(), m);
                                 new_machines.insert(rom_name.clone(), rom_machine);
 
                                 // return both the machine and the rom
@@ -57,6 +60,8 @@ pub fn compile<T: FieldElement>(mut file: AnalysisASMFile) -> AnalysisASMFile {
                 }
             })
             .collect();
+        machines.extend(new_machines);
+        *module = Module::new(machines, statements, ordering);
     }
     file
 }

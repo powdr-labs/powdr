@@ -182,7 +182,8 @@ fn utility_functions(asm_file: AnalysisASMFile) -> BTreeMap<AbsoluteSymbolPath, 
             (
                 module_path,
                 module
-                    .statements
+                    .into_inner()
+                    .1
                     .into_iter()
                     .filter(|s| {
                         matches!(

@@ -9,7 +9,7 @@ use crate::{
     asm_analysis::combine_flags,
     indent,
     parsed::asm::{AbsoluteSymbolPath, SymbolPath},
-    write_indented_by, write_items_indented,
+    write_indented_by, write_items_indented, writeln_indented_by,
 };
 
 use super::{
@@ -43,15 +43,15 @@ fn write_module(
                 indentation,
             ),
             StatementReference::Pil => {
-                write_indented_by(f, format!("{}", pil.next().unwrap()), indentation)
+                writeln_indented_by(f, format!("{}", pil.next().unwrap()), indentation)
             }
             StatementReference::Module(name) => {
                 let path = module_path
                     .clone()
                     .join(SymbolPath::from_identifier(name.to_string()));
-                write_indented_by(f, format!("mod {name} {{\n"), indentation)?;
+                writeln_indented_by(f, format!("mod {name} {{"), indentation)?;
                 write_module(f, file, &path, indentation + 1)?;
-                write_indented_by(f, "}\n", indentation)
+                writeln_indented_by(f, "}", indentation)
             }
         }?;
     }

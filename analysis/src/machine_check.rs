@@ -7,8 +7,7 @@ use powdr_ast::{
         AnalysisASMFile, AssignmentStatement, CallableSymbolDefinitions, DebugDirective,
         FunctionBody, FunctionStatements, FunctionSymbol, InstructionDefinitionStatement,
         InstructionStatement, LabelStatement, LinkDefinition, Machine, Module, OperationSymbol,
-        RegisterDeclarationStatement, RegisterTy, Return, StatementReference,
-        SubmachineDeclaration,
+        RegisterDeclarationStatement, RegisterTy, Return, SubmachineDeclaration,
     },
     parsed::{
         self,
@@ -303,10 +302,7 @@ impl TypeChecker {
                                     errors.extend(e);
                                 }
                                 Ok(machine) => {
-                                    checked_module.machines.insert(name.clone(), machine);
-                                    checked_module
-                                        .ordering
-                                        .push(StatementReference::MachineDeclaration(name));
+                                    checked_module.push_machine(name, machine);
                                 }
                             };
                         }
@@ -322,9 +318,7 @@ impl TypeChecker {
                                 asm::Module::Local(m) => m,
                             };
 
-                            checked_module
-                                .ordering
-                                .push(StatementReference::Module(name));
+                            checked_module.push_module(name);
 
                             match self.check_module(m, &ctx) {
                                 Err(err) => {
@@ -338,8 +332,7 @@ impl TypeChecker {
                     }
                 }
                 ModuleStatement::PilStatement(s) => {
-                    checked_module.statements.push(s);
-                    checked_module.ordering.push(StatementReference::Pil);
+                    checked_module.push_pil_statement(s);
                 }
             }
         }
