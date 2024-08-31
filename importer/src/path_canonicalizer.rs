@@ -651,7 +651,7 @@ fn check_pil_statement_inside_module(
         PilStatement::TraitDeclaration(_, trait_decl) => {
             check_trait_declaration(&location, trait_decl, state)
         }
-        _ => unreachable!("make enum stricter"),
+        s => unreachable!("the parser should not produce statement {s} inside a module"),
     }
 }
 
