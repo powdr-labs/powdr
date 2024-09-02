@@ -1813,35 +1813,4 @@ mod test {
 
         assert_eq!(parse_and_evaluate_symbol(input, "F::r"), "5".to_string());
     }
-
-    // #[test]
-    // fn traits_generic_function() {
-    //     let input = "
-    //     namespace std::convert(4);
-    //         let fe = || fe();
-    //     namespace F(4);
-    //         trait Add<T> {
-    //             add: T, T -> T,
-    //         }
-
-    //         impl Add<int> {
-    //             add: |a, b| a + b,
-    //         }
-
-    //         impl Add<fe> {
-    //             add: |a, b| a + b,
-    //         }
-
-    //         let<T> generic_add: T, T -> T = |a, b| Add::add(a, b);
-
-    //         let r1: int = generic_add(3, 4);
-
-    //         let six: int = 6;
-    //         let five: int = 5;
-    //         let r2: fe = generic_add(std::convert::fe(five), std::convert::fe(six));
-    //     ";
-
-    //     assert_eq!(parse_and_evaluate_symbol(input, "F::r1"), "7".to_string());
-    //     assert_eq!(parse_and_evaluate_symbol(input, "F::r2"), "11".to_string());
-    // }
 }

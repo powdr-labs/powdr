@@ -364,7 +364,7 @@ impl PILAnalyzer {
             for e in &errors {
                 eprintln!("  {e}");
             }
-            Err(errors.pop()).unwrap()
+            panic!("{:?}", errors.pop())
         }
     }
 
