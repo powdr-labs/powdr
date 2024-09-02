@@ -325,7 +325,6 @@ impl PILAnalyzer {
 
     fn resolve_trait_impls(&mut self) -> HashMap<String, HashMap<Vec<Type>, Arc<Expression>>> {
         let mut trait_solver = TraitsResolver::new(&self.implementations);
-        let mut errors = Vec::new();
 
         let mut resolve_references = |expr: &Expression| {
             expr.all_children().for_each(|expr| {
@@ -338,12 +337,11 @@ impl PILAnalyzer {
                     ),
                 ) = expr
                 {
-                    if let Err(err) = trait_solver.resolve_trait(reference) {
-                        errors.push(err);
-                    }
+                    let _ = trait_solver.resolve_trait(reference);
                 }
             });
         };
+
         for (_, (_, def)) in self.definitions.iter() {
             if let Some(FunctionValueDefinition::Expression(TypedExpression { e: expr, .. })) = def
             {
@@ -357,15 +355,7 @@ impl PILAnalyzer {
             }
         }
 
-        if errors.is_empty() {
-            trait_solver.solved_impls()
-        } else {
-            eprintln!("\nError during trait resolution:");
-            for e in &errors {
-                eprintln!("  {e}");
-            }
-            panic!("{:?}", errors.pop())
-        }
+        trait_solver.solved_impls()
     }
 
     pub fn condense<T: FieldElement>(

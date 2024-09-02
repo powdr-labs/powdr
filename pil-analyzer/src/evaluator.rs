@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{BTreeSet, HashMap},
     fmt::{self, Display},
     sync::Arc,
 };
@@ -15,7 +15,7 @@ use powdr_ast::{
     },
     parsed::{
         display::quote,
-        types::{ArrayType, Type, TypeScheme},
+        types::{ArrayType, Type, TypeBounds, TypeScheme},
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
         IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number,
         Pattern, StatementInsideBlock, UnaryOperation, UnaryOperator,
@@ -465,7 +465,15 @@ impl<'a> Definitions<'a> {
                         Value::TypeConstructor(&variant.name).into()
                     }
                 }
-                Some(FunctionValueDefinition::TraitFunction(_, _)) => {
+                Some(FunctionValueDefinition::TraitFunction(trait_decl, trait_fn)) => {
+                    let bound = TypeBounds::new(
+                        trait_decl
+                            .type_vars
+                            .iter()
+                            .map(|var| (var.clone(), BTreeSet::new())),
+                    );
+                    let m_type_args =
+                        type_arg_mapping(&Some(trait_fn.type_scheme(bound)), type_args);
                     let type_arg = type_args.clone().unwrap();
                     let Expression::LambdaExpression(_, lambda) =
                         solved_impls[&name][&type_arg].as_ref()

@@ -33,7 +33,7 @@ impl TraitsResolver {
                     .insert(type_args, expr);
                 Ok(())
             }
-            None => Err("Impl not found for {ref_poly}".to_string()),
+            None => Err(format!("Impl not found for {ref_poly}")),
         }
     }
 

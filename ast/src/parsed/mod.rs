@@ -395,6 +395,15 @@ pub struct TraitFunction<E = u64> {
     pub ty: Type<E>,
 }
 
+impl TraitFunction<u64> {
+    pub fn type_scheme(&self, vars: TypeBounds) -> TypeScheme<u64> {
+        TypeScheme {
+            vars,
+            ty: self.ty.clone(),
+        }
+    }
+}
+
 impl<R> Children<Expression<R>> for TraitFunction<Expression<R>> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
         self.ty.children()
