@@ -245,17 +245,12 @@ impl<'a, 'b, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, 'b, T> {
             ));
         };
         let Value::Integer(row) = row.as_ref() else {
-            return Err(EvalError::TypeError(
-                "Expected integer for second argument of std::prover::provide_value".to_string(),
-            ));
+            unreachable!()
+        };
+        let Value::FieldElement(value) = value.as_ref() else {
+            unreachable!()
         };
         let row = DegreeType::try_from(row).unwrap();
-        let Value::FieldElement(value) = value.as_ref() else {
-            return Err(EvalError::TypeError(
-                "Expected field element for third argument of std::prover::provide_value"
-                    .to_string(),
-            ));
-        };
         if row != DegreeType::from(self.rows.current_row_index) {
             // TODO we should be more flexible with this is the future.
             return Err(EvalError::TypeError(
@@ -263,12 +258,21 @@ impl<'a, 'b, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, 'b, T> {
             ));
         }
         let col = &self.fixed_data.witness_cols[poly_id].poly;
-        if self.eval_reference(col).is_ok() {
-            return Err(EvalError::TypeError(
-                "Column already has a value".to_string(),
-            ));
-        } else {
-            self.updates.push((col, Constraint::Assignment(*value)));
+        match self.eval_reference(col) {
+            Ok(v) => {
+                let Value::FieldElement(v) = v.as_ref() else {
+                    unreachable!()
+                };
+                if v != value {
+                    return Err(EvalError::ProverError(format!(
+                        "Tried to set {col} in row {row} to {value}, but it already has a different value {v}"
+                    )));
+                }
+            }
+            Err(EvalError::DataNotAvailable) => {
+                self.updates.push((col, Constraint::Assignment(*value)));
+            }
+            Err(e) => return Err(e),
         }
 
         Ok(())
