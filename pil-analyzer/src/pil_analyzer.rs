@@ -24,7 +24,7 @@ use powdr_ast::analyzed::{
 };
 use powdr_parser::{parse, parse_module, parse_type};
 
-use crate::traits_resolver::traits_resolution;
+use crate::traits_resolver::TraitsResolver;
 use crate::type_builtins::constr_function_statement_type;
 use crate::type_inference::infer_types;
 use crate::{side_effect_checker, AnalysisDriver};
@@ -324,42 +324,37 @@ impl PILAnalyzer {
     }
 
     fn resolve_trait_impls(&mut self) -> HashMap<String, HashMap<Vec<Type>, Arc<Expression>>> {
-        let mut references = Vec::new();
+        let mut trait_solver = TraitsResolver::new(&self.implementations);
 
-        let resolve_references = |expr: &Expression| {
-            expr.all_children()
-                .filter_map(|expr| {
-                    if let Expression::Reference(
-                        _,
-                        Reference::Poly(
-                            reference @ PolynomialReference {
-                                type_args: Some(_), ..
-                            },
-                        ),
-                    ) = expr
-                    {
-                        Some(reference.clone())
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>()
+        let mut resolve_references = |expr: &Expression| {
+            expr.all_children().for_each(|expr| {
+                if let Expression::Reference(
+                    _,
+                    Reference::Poly(
+                        reference @ PolynomialReference {
+                            type_args: Some(_), ..
+                        },
+                    ),
+                ) = expr
+                {
+                    trait_solver.resolve_trait(reference.clone());
+                }
+            });
         };
-
         for (_, (_, def)) in self.definitions.iter() {
             if let Some(FunctionValueDefinition::Expression(TypedExpression { e: expr, .. })) = def
             {
-                references.extend(resolve_references(expr));
+                resolve_references(expr);
             }
         }
 
         for identity in self.identities.iter() {
             for expr in identity.all_children() {
-                references.extend(resolve_references(expr));
+                resolve_references(expr);
             }
         }
 
-        traits_resolution(references, &self.implementations)
+        trait_solver.solved_impls()
     }
 
     pub fn condense<T: FieldElement>(

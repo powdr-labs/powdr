@@ -450,43 +450,58 @@ impl<'a> Definitions<'a> {
                 .into()
             }
         } else {
-            let impl_ = match type_args {
-                Some(type_args) => solved_impls
-                    .get(&name)
-                    .and_then(|inner_map| inner_map.get(type_args)),
-                None => None,
-            };
-            match impl_ {
-                Some(expr) => {
-                    let Expression::LambdaExpression(_, lambda) = expr.as_ref() else {
-                        unreachable!()
-                    };
-                    let closure = Closure {
-                        lambda,
-                        environment: vec![],
-                        type_args: HashMap::new(),
-                    };
-                    Value::Closure(closure).into()
+            match value {
+                Some(FunctionValueDefinition::Expression(TypedExpression {
+                    e: value,
+                    type_scheme,
+                })) => {
+                    let type_args = type_arg_mapping(type_scheme, type_args);
+                    evaluate_generic(value, &type_args, symbols)?
                 }
-                None => match value {
-                    Some(FunctionValueDefinition::Expression(TypedExpression {
-                        e: value,
-                        type_scheme,
-                    })) => {
-                        let type_args = type_arg_mapping(type_scheme, type_args);
-                        evaluate_generic(value, &type_args, symbols)?
+                Some(FunctionValueDefinition::TypeConstructor(_type_name, variant)) => {
+                    if variant.fields.is_none() {
+                        Value::Enum(&variant.name, None).into()
+                    } else {
+                        Value::TypeConstructor(&variant.name).into()
                     }
-                    Some(FunctionValueDefinition::TypeConstructor(_type_name, variant)) => {
-                        if variant.fields.is_none() {
-                            Value::Enum(&variant.name, None).into()
-                        } else {
-                            Value::TypeConstructor(&variant.name).into()
+                }
+                Some(FunctionValueDefinition::TraitFunction(trait_decl, _)) => {
+                    let impl_ = match type_args {
+                        Some(type_arg) => {
+                            let type_vars: Vec<Type> = trait_decl
+                                .type_vars
+                                .iter()
+                                .map(|s| Type::TypeVar(s.clone()))
+                                .collect();
+
+                            solved_impls.get(&name).and_then(|inner_map| {
+                                inner_map
+                                    .get(type_arg)
+                                    .or_else(|| inner_map.get(&type_vars)) // TODO: this is a hack since I don't have a type_scheme
+                            })
                         }
+                        None => None,
+                    };
+                    match impl_ {
+                        Some(expr) => {
+                            let Expression::LambdaExpression(_, lambda) = expr.as_ref() else {
+                                unreachable!()
+                            };
+                            let closure = Closure {
+                                lambda,
+                                environment: vec![],
+                                type_args: HashMap::new(),
+                            };
+                            Value::Closure(closure).into()
+                        }
+                        None => Err(EvalError::Unsupported(format!(
+                            "Cannot evaluate trait functions: {name}"
+                        )))?,
                     }
-                    _ => Err(EvalError::Unsupported(
-                        "Cannot evaluate arrays and queries.".to_string(),
-                    ))?,
-                },
+                }
+                _ => Err(EvalError::Unsupported(
+                    "Cannot evaluate arrays and queries.".to_string(),
+                ))?,
             }
         })
     }
@@ -1817,5 +1832,36 @@ mod test {
         ";
 
         assert_eq!(parse_and_evaluate_symbol(input, "F::r"), "5".to_string());
+    }
+
+    #[test]
+    fn traits_generic_function() {
+        let input = "
+        namespace std::convert(4);
+            let fe = || fe();
+        namespace F(4);
+            trait Add<T> {
+                add: T, T -> T,
+            }
+
+            impl Add<int> {
+                add: |a, b| a + b,
+            }
+
+            impl Add<fe> {
+                add: |a, b| a + b,
+            }
+
+            let<T> generic_add: T, T -> T = |a, b| Add::add(a, b);
+
+            let r1: int = generic_add(3, 4);
+            
+            let six: int = 6;
+            let five: int = 5;
+            let r2: fe = generic_add(std::convert::fe(five), std::convert::fe(six));
+        ";
+
+        assert_eq!(parse_and_evaluate_symbol(input, "F::r1"), "7".to_string());
+        assert_eq!(parse_and_evaluate_symbol(input, "F::r2"), "11".to_string());
     }
 }
