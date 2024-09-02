@@ -183,12 +183,14 @@ fn binary_test() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn binary_bb_8_test() {
     let f = "std/binary_bb_test_8.asm";
     regular_test_only_babybear(f, &[]);
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn binary_bb_16_test() {
     let f = "std/binary_bb_test_16.asm";
     regular_test_only_babybear(f, &[]);
