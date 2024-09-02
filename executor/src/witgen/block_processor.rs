@@ -1,8 +1,4 @@
-
-
-use powdr_ast::{
-    analyzed::{AlgebraicReference},
-};
+use powdr_ast::analyzed::AlgebraicReference;
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::Identity;
