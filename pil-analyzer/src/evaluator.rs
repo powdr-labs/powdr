@@ -466,28 +466,18 @@ impl<'a> Definitions<'a> {
                     }
                 }
                 Some(FunctionValueDefinition::TraitFunction(_, _)) => {
-                    let impl_ = match type_args {
-                        Some(type_arg) => solved_impls
-                            .get(&name)
-                            .and_then(|inner_map| inner_map.get(type_arg)),
-                        None => None,
+                    let type_arg = type_args.clone().unwrap();
+                    let Expression::LambdaExpression(_, lambda) =
+                        solved_impls[&name][&type_arg].as_ref()
+                    else {
+                        unreachable!()
                     };
-                    match impl_ {
-                        Some(expr) => {
-                            let Expression::LambdaExpression(_, lambda) = expr.as_ref() else {
-                                unreachable!()
-                            };
-                            let closure = Closure {
-                                lambda,
-                                environment: vec![],
-                                type_args: HashMap::new(),
-                            };
-                            Value::Closure(closure).into()
-                        }
-                        None => Err(EvalError::Unsupported(format!(
-                            "Cannot evaluate trait functions: {name}"
-                        )))?,
-                    }
+                    let closure = Closure {
+                        lambda,
+                        environment: vec![],
+                        type_args: HashMap::new(),
+                    };
+                    Value::Closure(closure).into()
                 }
                 _ => Err(EvalError::Unsupported(
                     "Cannot evaluate arrays and queries.".to_string(),
