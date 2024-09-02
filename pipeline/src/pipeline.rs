@@ -557,10 +557,8 @@ impl<T: FieldElement> Pipeline<T> {
                         let namespace = name.split("::").next().unwrap();
                         (namespace, values.len() as u64)
                     })
-                    .fold(Default::default(), |mut map, (name, size)| {
-                        map.entry(name).or_insert(size);
-                        map
-                    });
+                    .collect();
+
                 // choose the fixed column of the correct size. This assumes any namespace with no witness columns has a unique size
                 let fixed = fixed.iter().map(|(name, columns)| {
                     let namespace = name.split("::").next().unwrap();
