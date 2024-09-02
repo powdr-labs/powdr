@@ -465,7 +465,7 @@ impl<'a> Definitions<'a> {
                         Value::TypeConstructor(&variant.name).into()
                     }
                 }
-                Some(FunctionValueDefinition::TraitFunction(trait_decl, _)) => {
+                Some(FunctionValueDefinition::TraitFunction(_, _)) => {
                     let impl_ = match type_args {
                         Some(type_arg) => solved_impls
                             .get(&name)

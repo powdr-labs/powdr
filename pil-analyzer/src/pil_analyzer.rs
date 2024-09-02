@@ -325,6 +325,7 @@ impl PILAnalyzer {
 
     fn resolve_trait_impls(&mut self) -> HashMap<String, HashMap<Vec<Type>, Arc<Expression>>> {
         let mut trait_solver = TraitsResolver::new(&self.implementations);
+        let mut errors = Vec::new();
 
         let mut resolve_references = |expr: &Expression| {
             expr.all_children().for_each(|expr| {
@@ -337,7 +338,12 @@ impl PILAnalyzer {
                     ),
                 ) = expr
                 {
-                    let _ = trait_solver.resolve_trait(reference);
+                    match trait_solver.resolve_trait(reference) {
+                        Err(err) => {
+                            errors.push(err);
+                        }
+                        Ok(_) => {}
+                    }
                 }
             });
         };

@@ -67,9 +67,7 @@ impl TraitsResolver {
                         let expr = impl_.function_by_name(trait_fn_name).unwrap();
                         return Some(((reference.name.clone(), type_args), Arc::clone(&expr.body)));
                     }
-                    Err(e) => {
-                        panic!("{e}")
-                    }
+                    Err(_) => {}
                 }
             }
         }
