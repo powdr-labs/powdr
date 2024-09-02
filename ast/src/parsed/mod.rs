@@ -9,7 +9,6 @@ use std::{
     collections::BTreeSet,
     iter::{empty, once},
     ops,
-    slice::IterMut,
     str::FromStr,
     sync::Arc,
 };
@@ -347,26 +346,6 @@ impl<R> TraitImplementation<Expression<R>> {
     pub fn function_by_name(&self, name: &str) -> Option<&NamedExpression<Arc<Expression<R>>>> {
         self.functions.iter().find(|f| f.name == name)
     }
-
-    pub fn function_bodies_mut(&mut self) -> TraitBodyIterMut<R> {
-        TraitBodyIterMut {
-            functions: self.functions.iter_mut(),
-        }
-    }
-}
-
-pub struct TraitBodyIterMut<'a, R> {
-    functions: IterMut<'a, NamedExpression<Arc<Expression<R>>>>,
-}
-
-impl<'a, R> Iterator for TraitBodyIterMut<'a, R> {
-    type Item = &'a mut Expression<R>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.functions
-            .next()
-            .map(|named_expr| Arc::get_mut(&mut named_expr.body).unwrap())
-    }
 }
 
 impl<R> Children<Expression<R>> for TraitImplementation<Expression<R>> {
@@ -375,8 +354,9 @@ impl<R> Children<Expression<R>> for TraitImplementation<Expression<R>> {
     }
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
         Box::new(
-            self.function_bodies_mut()
-                .flat_map(|body| body.children_mut()),
+            self.functions
+                .iter_mut()
+                .map(|named_expr| Arc::get_mut(&mut named_expr.body).unwrap()),
         )
     }
 }

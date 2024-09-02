@@ -10,7 +10,7 @@ use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, ModuleStatement, SymbolPath,
 };
 use powdr_ast::parsed::types::{ArrayType, Type};
-use powdr_ast::parsed::visitor::Children;
+use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_ast::parsed::{
     self, FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions,
     SymbolCategory, TraitImplementation,
@@ -19,7 +19,8 @@ use powdr_number::{DegreeType, FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
     type_from_definition, Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind,
-    PolynomialType, PublicDeclaration, StatementIdentifier, Symbol, SymbolKind, TypedExpression,
+    PolynomialReference, PolynomialType, PublicDeclaration, Reference, StatementIdentifier, Symbol,
+    SymbolKind, TypedExpression,
 };
 use powdr_parser::{parse, parse_module, parse_type};
 
@@ -54,8 +55,8 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
     analyzer.process(files);
     analyzer.side_effect_check();
     analyzer.type_check();
-    analyzer.resolve_trait_impls();
-    analyzer.condense()
+    let solved_impls = analyzer.resolve_trait_impls();
+    analyzer.condense(solved_impls)
 }
 
 #[derive(Default)]
@@ -76,10 +77,6 @@ struct PILAnalyzer {
     auto_added_symbols: HashSet<String>,
     /// Implementations found, organized according to their associated trait name.
     implementations: HashMap<String, Vec<TraitImplementation<Expression>>>,
-    /// A map between the name and type_Args of the caller reference
-    /// and the expression to be called.
-    /// Empty until resolve_trait_impls() is called.
-    solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
 }
 
 /// Reads and parses the given path and all its imports.
@@ -326,15 +323,52 @@ impl PILAnalyzer {
         }
     }
 
-    fn resolve_trait_impls(&mut self) {
-        self.solved_impls =
-            traits_resolution(&self.definitions, &self.identities, &self.implementations);
+    fn resolve_trait_impls(&mut self) -> HashMap<String, HashMap<Vec<Type>, Arc<Expression>>> {
+        let mut references = Vec::new();
+
+        let resolve_references = |expr: &Expression| {
+            expr.all_children()
+                .filter_map(|expr| {
+                    if let Expression::Reference(
+                        _,
+                        Reference::Poly(
+                            reference @ PolynomialReference {
+                                type_args: Some(_), ..
+                            },
+                        ),
+                    ) = expr
+                    {
+                        Some(reference.clone())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+        };
+
+        for (_, (_, def)) in self.definitions.iter() {
+            if let Some(FunctionValueDefinition::Expression(TypedExpression { e: expr, .. })) = def
+            {
+                references.extend(resolve_references(expr));
+            }
+        }
+
+        for identity in self.identities.iter() {
+            for expr in identity.all_children() {
+                references.extend(resolve_references(expr));
+            }
+        }
+
+        traits_resolution(references, &self.implementations)
     }
 
-    pub fn condense<T: FieldElement>(self) -> Analyzed<T> {
+    pub fn condense<T: FieldElement>(
+        self,
+        solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
+    ) -> Analyzed<T> {
         condenser::condense(
             self.definitions,
-            self.solved_impls,
+            solved_impls,
             self.public_declarations,
             &self.identities,
             self.source_order,
@@ -439,7 +473,7 @@ impl PILAnalyzer {
                     evaluator::evaluate_expression::<GoldilocksField>(
                         &degree,
                         &self.definitions,
-                        &self.solved_impls,
+                        &Default::default(),
                     )
                     .unwrap()
                     .try_to_integer()
@@ -486,9 +520,5 @@ impl<'a> AnalysisDriver for Driver<'a> {
 
     fn definitions(&self) -> &HashMap<String, (Symbol, Option<FunctionValueDefinition>)> {
         &self.0.definitions
-    }
-
-    fn solved_impls(&self) -> &HashMap<String, HashMap<Vec<Type>, Arc<Expression>>> {
-        &self.0.solved_impls
     }
 }

@@ -1,131 +1,85 @@
 use powdr_ast::{
-    analyzed::{
-        Expression, FunctionValueDefinition, Identity, PolynomialReference, Reference, Symbol,
-        TypedExpression,
-    },
+    analyzed::{Expression, PolynomialReference},
     parsed::{
         types::{TupleType, Type},
-        visitor::AllChildren,
-        SelectedExpressions, TraitImplementation,
+        TraitImplementation,
     },
 };
 use std::{collections::HashMap, sync::Arc};
 
-type SolvedImpl = ((String, Vec<Type>), Arc<Expression>);
+use crate::type_unifier::Unifier;
 
-pub struct TraitsResolver<'a> {
-    definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    identities: &'a Vec<Identity<SelectedExpressions<Expression>>>,
+/// Resolves trait implementations for all definitions and identities.
+/// Checks references for calls to trait implementations
+/// and unifies them using their type args.
+///
+/// Returns a nested map of trait name to a map of type args to the expression.
+pub fn traits_resolution(
+    references: Vec<PolynomialReference>,
+    trait_impls: &HashMap<String, Vec<TraitImplementation<Expression>>>,
+) -> HashMap<String, HashMap<Vec<Type>, Arc<Expression>>> {
+    TraitsResolver::new().resolve_traits(references, trait_impls)
 }
 
-impl<'a> TraitsResolver<'a> {
-    pub fn new(
-        definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-        identities: &'a Vec<Identity<SelectedExpressions<Expression>>>,
-    ) -> Self {
-        Self {
-            definitions,
-            identities,
-        }
+type SolvedImpl = ((String, Vec<Type>), Arc<Expression>);
+
+struct TraitsResolver {}
+
+impl TraitsResolver {
+    pub fn new() -> Self {
+        Self {}
     }
 
     pub fn resolve_traits(
-        &'a self,
+        &self,
+        references: Vec<PolynomialReference>,
         trait_impls: &HashMap<String, Vec<TraitImplementation<Expression>>>,
     ) -> HashMap<String, HashMap<Vec<Type>, Arc<Expression>>> {
-        let mut result: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>> = HashMap::new();
+        let mut solved_impls = HashMap::new();
 
-        let resolve_references = |expr: &Expression| {
-            expr.all_children()
-                .filter_map(|expr| {
-                    if let Expression::Reference(
-                        _,
-                        Reference::Poly(
-                            reference @ PolynomialReference {
-                                type_args: Some(_), ..
-                            },
-                        ),
-                    ) = expr
-                    {
-                        self.resolve_reference_trait(reference, trait_impls)
-                    } else {
-                        None
-                    }
-                })
-                .collect::<Vec<_>>()
-        };
-
-        for (_, (_, def)) in self.definitions.iter() {
-            if let Some(FunctionValueDefinition::Expression(TypedExpression { e: expr, .. })) = def
-            {
-                for (key, value) in resolve_references(expr) {
-                    result
-                        .entry(key.0)
-                        .or_insert_with(HashMap::new)
-                        .insert(key.1, value);
-                }
+        for ref_poly in references {
+            if let Some(solved) = self.resolve_trait_function_reference(&ref_poly, trait_impls) {
+                let (key, type_args) = solved.0;
+                solved_impls
+                    .entry(key)
+                    .or_insert_with(HashMap::new)
+                    .insert(type_args, solved.1);
             }
         }
 
-        for identity in self.identities.iter() {
-            for selector in identity
-                .left
-                .selector
-                .iter()
-                .chain(identity.right.selector.iter())
-            {
-                for (key, value) in resolve_references(selector) {
-                    result
-                        .entry(key.0)
-                        .or_insert_with(HashMap::new)
-                        .insert(key.1, value);
-                }
-            }
-            for (key, value) in resolve_references(identity.left.expressions.as_ref()) {
-                result
-                    .entry(key.0)
-                    .or_insert_with(HashMap::new)
-                    .insert(key.1, value);
-            }
-            for (key, value) in resolve_references(identity.right.expressions.as_ref()) {
-                result
-                    .entry(key.0)
-                    .or_insert_with(HashMap::new)
-                    .insert(key.1, value);
-            }
-        }
-
-        result
+        solved_impls
     }
-    fn resolve_reference_trait(
+
+    fn resolve_trait_function_reference(
         &self,
         reference: &PolynomialReference,
         trait_impls: &HashMap<String, Vec<TraitImplementation<Expression>>>,
     ) -> Option<SolvedImpl> {
-        let name = reference.name.clone();
-        let (trait_decl_name, trait_fn_name) = name.rsplit_once("::")?;
+        let (trait_decl_name, trait_fn_name) = reference.name.rsplit_once("::")?;
         if let Some(impls) = trait_impls.get(trait_decl_name) {
+            let type_args = reference.type_args.as_ref().unwrap().to_vec();
             for impl_ in impls.iter() {
-                let Type::Tuple(TupleType { ref items }) = impl_.type_scheme.ty else {
+                let Type::Tuple(TupleType { items: _ }) = impl_.type_scheme.ty else {
                     unreachable!()
                 };
-                let type_args = reference.type_args.as_ref().unwrap().to_vec();
+
+                let tuple_args = Type::Tuple(TupleType {
+                    items: type_args.clone(),
+                });
 
                 let expr = impl_.function_by_name(trait_fn_name).unwrap();
-                if type_args == *items {
-                    return Some(((name, type_args), Arc::clone(&expr.body)));
+                let mut unifier: Unifier = Default::default();
+
+                let res = unifier.unify_types(tuple_args.clone(), impl_.type_scheme.ty.clone());
+                match res {
+                    Ok(()) => {
+                        return Some(((reference.name.clone(), type_args), Arc::clone(&expr.body)))
+                    }
+                    Err(_) => {}
                 }
             }
         }
 
         None
     }
-}
-
-pub fn traits_resolution(
-    definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    identities: &Vec<Identity<SelectedExpressions<Expression>>>,
-    trait_impls: &HashMap<String, Vec<TraitImplementation<Expression>>>,
-) -> HashMap<String, HashMap<Vec<Type>, Arc<Expression>>> {
-    TraitsResolver::new(definitions, identities).resolve_traits(trait_impls)
 }

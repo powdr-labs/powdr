@@ -14,13 +14,12 @@ mod type_processor;
 mod type_unifier;
 mod untyped_evaluator;
 
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 
 use powdr_ast::{
-    analyzed::{Expression, FunctionValueDefinition, Symbol},
+    analyzed::{FunctionValueDefinition, Symbol},
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
-        types::Type,
         SymbolCategory,
     },
 };
@@ -54,5 +53,4 @@ pub trait AnalysisDriver: Clone + Copy {
     /// Turns a reference to a name with an optional namespace into an absolute name.
     fn try_resolve_ref(&self, path: &SymbolPath) -> Option<(String, SymbolCategory)>;
     fn definitions(&self) -> &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>;
-    fn solved_impls(&self) -> &HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>;
 }
