@@ -65,15 +65,12 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
             }
             StatementIdentifier::PublicDeclaration(name) => {
                 let pub_def = &analyzed.public_declarations[name];
-                let pub_ref = &pub_def.polynomial;
-                let poly_id = pub_ref.poly_id.unwrap();
-                let (_, expr) = exporter.polynomial_reference_to_json(
-                    PolyID {
-                        id: poly_id.id + pub_def.array_index.unwrap_or_default() as u64,
-                        ..poly_id
-                    },
-                    false,
-                );
+                let symbol = &analyzed.definitions[&pub_def.polynomial.name].0;
+                let (_, poly) = symbol
+                    .array_elements()
+                    .nth(pub_def.array_index.unwrap_or_default())
+                    .unwrap();
+                let (_, expr) = exporter.polynomial_reference_to_json(poly, false);
                 let id = publics.len();
                 publics.push(starky::types::Public {
                     polType: polynomial_reference_type_to_type(&expr.op).to_string(),

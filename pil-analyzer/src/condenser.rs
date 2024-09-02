@@ -40,7 +40,7 @@ type AnalyzedIdentity<T> = Identity<SelectedExpressions<AlgebraicExpression<T>>>
 
 pub fn condense<T: FieldElement>(
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    mut public_declarations: HashMap<String, PublicDeclaration>,
+    public_declarations: HashMap<String, PublicDeclaration>,
     identities: &[ParsedIdentity],
     source_order: Vec<StatementIdentifier>,
     auto_added_symbols: HashSet<String>,
@@ -178,16 +178,6 @@ pub fn condense<T: FieldElement>(
         }
     }
 
-    for decl in public_declarations.values_mut() {
-        let symbol = &definitions
-            .get(&decl.polynomial.name)
-            .unwrap_or_else(|| panic!("Symbol {} not found.", decl.polynomial))
-            .0;
-        let reference = &mut decl.polynomial;
-        // TODO this is the only point we still assign poly_id,
-        // maybe move it into PublicDeclaration.
-        reference.poly_id = Some(symbol.into());
-    }
     Analyzed {
         definitions,
         public_declarations,
@@ -850,7 +840,6 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
                     "std::prelude::false"
                 }
                 .to_string(),
-                poly_id: None,
                 type_args: None,
             }),
         ),
@@ -888,13 +877,12 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
         Value::Expression(e) => match e {
             AlgebraicExpression::Reference(AlgebraicReference {
                 name,
-                poly_id,
+                poly_id: _,
                 next: false,
             }) => Expression::Reference(
                 SourceRef::unknown(),
                 Reference::Poly(PolynomialReference {
                     name: name.clone(),
-                    poly_id: Some(*poly_id),
                     type_args: None,
                 }),
             ),

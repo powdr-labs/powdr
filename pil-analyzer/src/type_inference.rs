@@ -402,11 +402,7 @@ impl TypeChecker {
             },
             Expression::Reference(
                 source_ref,
-                Reference::Poly(PolynomialReference {
-                    name,
-                    poly_id: _,
-                    type_args,
-                }),
+                Reference::Poly(PolynomialReference { name, type_args }),
             ) => {
                 for ty in type_args.as_mut().unwrap() {
                     if !self.update_local_type(ty, type_var_mapping) {
@@ -516,11 +512,7 @@ impl TypeChecker {
             Expression::Reference(_, Reference::LocalVar(id, _name)) => self.local_var_type(*id),
             Expression::Reference(
                 source_ref,
-                Reference::Poly(PolynomialReference {
-                    name,
-                    poly_id: _,
-                    type_args,
-                }),
+                Reference::Poly(PolynomialReference { name, type_args }),
             ) => {
                 let (ty, args) = self
                     .unifier
