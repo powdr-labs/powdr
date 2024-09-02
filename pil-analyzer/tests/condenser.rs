@@ -20,14 +20,14 @@ fn new_witness_column() {
     "#;
     let expected = r#"namespace N(16);
     col fixed even(i) { i * 2 };
-    let new_wit: -> expr = (constr || {
+    let new_wit: -> expr = constr || {
         let x: col;
         x
-    });
-    let new_wit_arr: -> expr[] = (constr || {
+    };
+    let new_wit_arr: -> expr[] = constr || {
         let x: col;
         [x, x]
-    });
+    };
     col witness x;
     col witness y;
     let z: expr = N::new_wit();
@@ -49,10 +49,10 @@ fn new_witness_column_name_clash() {
     new_wit() = new_wit() + new_wit();
     "#;
     let expected = r#"namespace N(16);
-    let new_wit: -> expr = (constr || {
+    let new_wit: -> expr = constr || {
         let x: col;
         x
-    });
+    };
     col witness x;
     col witness x_1;
     col witness x_2;
@@ -81,20 +81,20 @@ fn create_constraints() {
     y = x_is_zero + 2;
     "#;
     let expected = r#"namespace N(16);
-    let force_bool: expr -> std::prelude::Constr = (|c| c * (1 - c) = 0);
-    let new_bool: -> expr = (constr || {
+    let force_bool: expr -> std::prelude::Constr = |c| c * (1 - c) = 0;
+    let new_bool: -> expr = constr || {
         let x: col;
         N::force_bool(x);
         x
-    });
-    let is_zero: expr -> expr = (constr |x| {
+    };
+    let is_zero: expr -> expr = constr |x| {
         let x_is_zero: col;
         N::force_bool(x_is_zero);
         let x_inv: col;
         x_is_zero = 1 - x * x_inv;
         x_is_zero * x = 0;
         x_is_zero
-    });
+    };
     col witness x;
     let x_is_zero: expr = N::is_zero(N::x);
     col witness y;
@@ -231,10 +231,10 @@ fn new_fixed_column() {
     "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     let expected = r#"namespace N(16);
-    let f: -> expr = (constr || {
-        let even: col = (|i| i * 2);
+    let f: -> expr = constr || {
+        let even: col = |i| i * 2;
         even
-    });
+    };
     let ev: expr = N::f();
     col witness x;
     col fixed even(i) { i * 2 };
@@ -244,7 +244,7 @@ fn new_fixed_column() {
 }
 
 #[test]
-#[should_panic = "Error creating fixed column N::fi: Lambda expression must not reference outer variables: (|i| (i + j) * 2)"]
+#[should_panic = "Error creating fixed column N::fi: Lambda expression must not reference outer variables: |i| (i + j) * 2"]
 fn new_fixed_column_as_closure() {
     let input = r#"namespace N(16);
         let f = constr |j| {
@@ -282,9 +282,9 @@ fn set_hint() {
 namespace N(16);
     col witness x;
     col witness y;
-    std::prelude::set_hint(N::y, (query |i| std::prelude::Query::Hint(std::prover::eval(N::x))));
+    std::prelude::set_hint(N::y, query |i| std::prelude::Query::Hint(std::prover::eval(N::x)));
     col witness z;
-    std::prelude::set_hint(N::z, (query |_| std::prelude::Query::Hint(1)));
+    std::prelude::set_hint(N::z, query |_| std::prelude::Query::Hint(1));
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, expected);
@@ -398,20 +398,19 @@ fn set_hint_outside() {
     }
 namespace N(16);
     col witness x;
-    std::prelude::set_hint(N::x, (query |_| std::prelude::Query::Hint(8)));
+    std::prelude::set_hint(N::x, query |_| std::prelude::Query::Hint(8));
     col witness y;
-    std::prelude::set_hint(N::y, (query |_| std::prelude::Query::Hint(8)));
-    let create_wit: -> expr = (constr || {
+    std::prelude::set_hint(N::y, query |_| std::prelude::Query::Hint(8));
+    let create_wit: -> expr = constr || {
         let w: col;
         w
-    });
+    };
     let z: expr = N::create_wit();
-    let set_hint: expr -> () = (constr |c| {
-        std::prelude::set_hint(c, (query |_| std::prelude::Query::Hint(8)));
-
-    });
+    let set_hint: expr -> () = constr |c| {
+        std::prelude::set_hint(c, query |_| std::prelude::Query::Hint(8));
+    };
     col witness w;
-    std::prelude::set_hint(N::w, (query |_| std::prelude::Query::Hint(8)));
+    std::prelude::set_hint(N::w, query |_| std::prelude::Query::Hint(8));
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, expected);

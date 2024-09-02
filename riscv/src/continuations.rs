@@ -66,11 +66,12 @@ fn render_hash<F: FieldElement>(hash: &[Elem<F>]) -> String {
 pub fn rust_continuations<F: FieldElement, PipelineCallback, E>(
     mut pipeline: Pipeline<F>,
     pipeline_callback: PipelineCallback,
-    bootloader_inputs: Vec<(Vec<F>, u64)>,
+    dry_run_result: DryRunResult<F>,
 ) -> Result<(), E>
 where
     PipelineCallback: Fn(Pipeline<F>) -> Result<(), E>,
 {
+    let bootloader_inputs = dry_run_result.bootloader_inputs;
     let num_chunks = bootloader_inputs.len();
 
     log::info!("Computing fixed columns...");
@@ -200,13 +201,19 @@ pub fn load_initial_memory(program: &AnalysisASMFile) -> MemoryState {
         .collect()
 }
 
+pub struct DryRunResult<F: FieldElement> {
+    pub bootloader_inputs: Vec<(Vec<F>, u64)>,
+    // full execution trace length (i.e., length of main::pc)
+    pub trace_len: usize,
+}
+
 /// Runs the entire execution using the RISC-V executor. For each chunk, it collects:
 /// - The inputs to the bootloader, needed to restore the correct state.
 /// - The number of rows after which the prover should jump to the shutdown routine.
 pub fn rust_continuations_dry_run<F: FieldElement>(
     pipeline: &mut Pipeline<F>,
     profiler_opt: Option<ProfilerOptions>,
-) -> Vec<(Vec<F>, u64)> {
+) -> DryRunResult<F> {
     // All inputs for all chunks.
     let mut bootloader_inputs_and_num_rows = vec![];
 
@@ -503,5 +510,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
 
         chunk_index += 1;
     }
-    bootloader_inputs_and_num_rows
+    DryRunResult {
+        bootloader_inputs: bootloader_inputs_and_num_rows,
+        trace_len: full_trace_length,
+    }
 }

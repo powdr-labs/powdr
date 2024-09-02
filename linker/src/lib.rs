@@ -354,7 +354,7 @@ namespace main__rom(4 + 4);
 
     #[test]
     fn compile_pil_without_machine() {
-        let input = "    let even = std::array::new(5, (|i| 2 * i));";
+        let input = "    let even = std::array::new(5, |i| 2 * i);";
         let graph = parse_analyze_and_compile::<GoldilocksField>(input);
         let pil = link(graph).unwrap().to_string();
         assert_eq!(&pil[0..input.len()], input);
@@ -812,9 +812,9 @@ namespace main_bin(128);
     pol constant latch(i) { if i % 8 == 7 { 1 } else { 0 } };
     let sum_sel = std::array::sum(sel);
     pol constant FACTOR(i) { 1 << (i + 1) % 8 * 4 };
-    let a = (|i| i % 16);
+    let a = |i| i % 16;
     pol constant P_A(i) { a(i) };
-    let b = (|i| (i >> 4) % 16);
+    let b = |i| (i >> 4) % 16;
     pol constant P_B(i) { b(i) };
     pol constant P_C(i) { (a(i) | b(i)) & 15 };
     pol commit A_byte;
