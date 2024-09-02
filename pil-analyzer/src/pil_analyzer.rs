@@ -337,7 +337,7 @@ impl PILAnalyzer {
                     ),
                 ) = expr
                 {
-                    trait_solver.resolve_trait(reference.clone());
+                    let _ = trait_solver.resolve_trait(reference);
                 }
             });
         };

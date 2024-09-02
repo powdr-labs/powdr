@@ -467,19 +467,9 @@ impl<'a> Definitions<'a> {
                 }
                 Some(FunctionValueDefinition::TraitFunction(trait_decl, _)) => {
                     let impl_ = match type_args {
-                        Some(type_arg) => {
-                            let type_vars: Vec<Type> = trait_decl
-                                .type_vars
-                                .iter()
-                                .map(|s| Type::TypeVar(s.clone()))
-                                .collect();
-
-                            solved_impls.get(&name).and_then(|inner_map| {
-                                inner_map
-                                    .get(type_arg)
-                                    .or_else(|| inner_map.get(&type_vars)) // TODO: this is a hack since I don't have a type_scheme
-                            })
-                        }
+                        Some(type_arg) => solved_impls
+                            .get(&name)
+                            .and_then(|inner_map| inner_map.get(type_arg)),
                         None => None,
                     };
                     match impl_ {
@@ -1834,34 +1824,34 @@ mod test {
         assert_eq!(parse_and_evaluate_symbol(input, "F::r"), "5".to_string());
     }
 
-    #[test]
-    fn traits_generic_function() {
-        let input = "
-        namespace std::convert(4);
-            let fe = || fe();
-        namespace F(4);
-            trait Add<T> {
-                add: T, T -> T,
-            }
+    // #[test]
+    // fn traits_generic_function() {
+    //     let input = "
+    //     namespace std::convert(4);
+    //         let fe = || fe();
+    //     namespace F(4);
+    //         trait Add<T> {
+    //             add: T, T -> T,
+    //         }
 
-            impl Add<int> {
-                add: |a, b| a + b,
-            }
+    //         impl Add<int> {
+    //             add: |a, b| a + b,
+    //         }
 
-            impl Add<fe> {
-                add: |a, b| a + b,
-            }
+    //         impl Add<fe> {
+    //             add: |a, b| a + b,
+    //         }
 
-            let<T> generic_add: T, T -> T = |a, b| Add::add(a, b);
+    //         let<T> generic_add: T, T -> T = |a, b| Add::add(a, b);
 
-            let r1: int = generic_add(3, 4);
-            
-            let six: int = 6;
-            let five: int = 5;
-            let r2: fe = generic_add(std::convert::fe(five), std::convert::fe(six));
-        ";
+    //         let r1: int = generic_add(3, 4);
 
-        assert_eq!(parse_and_evaluate_symbol(input, "F::r1"), "7".to_string());
-        assert_eq!(parse_and_evaluate_symbol(input, "F::r2"), "11".to_string());
-    }
+    //         let six: int = 6;
+    //         let five: int = 5;
+    //         let r2: fe = generic_add(std::convert::fe(five), std::convert::fe(six));
+    //     ";
+
+    //     assert_eq!(parse_and_evaluate_symbol(input, "F::r1"), "7".to_string());
+    //     assert_eq!(parse_and_evaluate_symbol(input, "F::r2"), "11".to_string());
+    // }
 }

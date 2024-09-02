@@ -24,12 +24,16 @@ impl TraitsResolver {
         }
     }
 
-    pub fn resolve_trait(&mut self, ref_poly: PolynomialReference) {
-        if let Some(((key, type_args), expr)) = self.resolve_trait_function_reference(&ref_poly) {
-            self.solved_impls
-                .entry(key)
-                .or_insert_with(HashMap::new)
-                .insert(type_args, expr);
+    pub fn resolve_trait(&mut self, ref_poly: &PolynomialReference) -> Result<(), String> {
+        match self.resolve_trait_function_reference(ref_poly) {
+            Some(((key, type_args), expr)) => {
+                self.solved_impls
+                    .entry(key)
+                    .or_insert_with(HashMap::new)
+                    .insert(type_args, expr);
+                Ok(())
+            }
+            None => Err("Impl not found for {ref_poly}".to_string()),
         }
     }
 
@@ -53,6 +57,8 @@ impl TraitsResolver {
                     items: type_args.clone(),
                 });
 
+                assert!(tuple_args.is_concrete_type());
+
                 let mut unifier: Unifier = Default::default();
 
                 let res = unifier.unify_types(tuple_args.clone(), impl_.type_scheme.ty.clone());
@@ -61,7 +67,9 @@ impl TraitsResolver {
                         let expr = impl_.function_by_name(trait_fn_name).unwrap();
                         return Some(((reference.name.clone(), type_args), Arc::clone(&expr.body)));
                     }
-                    Err(_) => {}
+                    Err(e) => {
+                        panic!("{e}")
+                    }
                 }
             }
         }
