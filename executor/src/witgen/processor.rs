@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap};
 
 use powdr_ast::analyzed::PolynomialType;
 use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
@@ -7,6 +7,7 @@ use powdr_number::{DegreeType, FieldElement};
 use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
 use crate::Identity;
 
+use super::machines::MachineParts;
 use super::{
     affine_expression::AffineExpression,
     data_structures::{
@@ -15,7 +16,7 @@ use super::{
     },
     identity_processor::IdentityProcessor,
     rows::{Row, RowIndex, RowPair, RowUpdater, UnknownStrategy},
-    Constraints, EvalError, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
+    Constraints, EvalError, EvalValue, IncompleteCause, MutableState, QueryCallback,
 };
 
 type Left<'a, T> = Vec<AffineExpression<&'a AlgebraicReference, T>>;
@@ -72,10 +73,8 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     data: FinalizableData<T>,
     /// The mutable state
     mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
-    /// The fixed data (containing information about all columns)
-    fixed_data: &'a FixedData<'a, T>,
-    /// The set of witness columns that are actually part of this machine.
-    witness_cols: &'c HashSet<PolyID>,
+    /// The machine parts (witness columns, identities, fixed data)
+    parts: &'c MachineParts<'a, T>,
     /// Whether a given witness column is relevant for this machine (faster than doing a contains check on witness_cols)
     is_relevant_witness: WitnessColumnMap<bool>,
     /// Relevant witness columns that have a prover query function attached.
@@ -93,20 +92,21 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         row_offset: RowIndex,
         data: FinalizableData<T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
-        fixed_data: &'a FixedData<'a, T>,
-        witness_cols: &'c HashSet<PolyID>,
+        parts: &'c MachineParts<'a, T>,
         size: DegreeType,
     ) -> Self {
         let is_relevant_witness = WitnessColumnMap::from(
-            fixed_data
+            parts
+                .fixed_data
                 .witness_cols
                 .keys()
-                .map(|poly_id| witness_cols.contains(&poly_id)),
+                .map(|poly_id| parts.witnesses.contains(&poly_id)),
         );
-        let prover_query_witnesses = fixed_data
+        let prover_query_witnesses = parts
+            .fixed_data
             .witness_cols
             .iter()
-            .filter(|(poly_id, col)| witness_cols.contains(poly_id) && col.query.is_some())
+            .filter(|(poly_id, col)| parts.witnesses.contains(poly_id) && col.query.is_some())
             .map(|(poly_id, _)| poly_id)
             .collect();
 
@@ -114,8 +114,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             row_offset,
             data,
             mutable_state,
-            fixed_data,
-            witness_cols,
+            parts,
             is_relevant_witness,
             prover_query_witnesses,
             outer_query: None,
@@ -171,7 +170,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         let row_pair = RowPair::from_single_row(
             &self.data[row_index],
             self.row_offset + row_index as u64,
-            self.fixed_data,
+            self.parts.fixed_data,
             UnknownStrategy::Unknown,
             self.size,
         );
@@ -185,7 +184,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
 
     pub fn process_queries(&mut self, row_index: usize) -> Result<bool, EvalError<T>> {
         let mut query_processor = QueryProcessor::new(
-            self.fixed_data,
+            self.parts.fixed_data,
             self.mutable_state.query_callback,
             self.size,
         );
@@ -194,7 +193,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             &self.data[row_index],
             &self.data[row_index + 1],
             global_row_index,
-            self.fixed_data,
+            self.parts.fixed_data,
             UnknownStrategy::Unknown,
             self.size,
         );
@@ -221,7 +220,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             &self.data[row_index],
             &self.data[row_index + 1],
             global_row_index,
-            self.fixed_data,
+            self.parts.fixed_data,
             unknown_strategy,
             self.size,
         );
@@ -236,22 +235,14 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
 Known values in current row (local: {row_index}, global {global_row_index}):
 {}
 ",
-                    self.data[row_index].render_values(
-                        false,
-                        Some(self.witness_cols),
-                        self.fixed_data,
-                    )
+                    self.data[row_index].render_values(false, self.parts)
                 );
                 if identity.contains_next_ref() {
                     error += &format!(
                         "Known values in next row (local: {}, global {}):\n{}\n",
                         row_index + 1,
                         global_row_index + 1,
-                        self.data[row_index + 1].render_values(
-                            false,
-                            Some(self.witness_cols),
-                            self.fixed_data,
-                        )
+                        self.data[row_index + 1].render_values(false, self.parts)
                     );
                 }
                 error += &format!("   => Error: {e}");
@@ -297,7 +288,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             &self.data[row_index],
             &self.data[row_index + 1],
             self.row_offset + row_index as u64,
-            self.fixed_data,
+            self.parts.fixed_data,
             UnknownStrategy::Unknown,
             self.size,
         );
@@ -341,7 +332,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         for (poly_id, value) in self.inputs.iter() {
             if !self.data[row_index].value_is_known(poly_id) {
                 input_updates.combine(EvalValue::complete(vec![(
-                    &self.fixed_data.witness_cols[poly_id].poly,
+                    &self.parts.fixed_data.witness_cols[poly_id].poly,
                     Constraint::Assignment(*value),
                 )]));
             }
@@ -352,7 +343,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             if let Some(start_row) = self.previously_set_inputs.remove(poly_id) {
                 log::trace!(
                     "    Resetting previously set inputs for column: {}",
-                    self.fixed_data.column_name(poly_id)
+                    self.parts.column_name(poly_id)
                 );
                 for row_index in start_row..row_index {
                     self.data[row_index].set_cell_unknown(poly_id);
@@ -377,7 +368,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             &self.data[row_index],
             &self.data[row_index + 1],
             self.row_offset + row_index as u64,
-            self.fixed_data,
+            self.parts.fixed_data,
             UnknownStrategy::Unknown,
             self.size,
         );
@@ -402,7 +393,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
 
         let mut progress = false;
         for (poly, c) in &updates.constraints {
-            if self.witness_cols.contains(&poly.poly_id) {
+            if self.parts.witnesses.contains(&poly.poly_id) {
                 // Build RowUpdater
                 // (a bit complicated, because we need two mutable
                 // references to elements of the same vector)
@@ -451,14 +442,14 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                         "Copy constraints to fixed columns are not yet supported (#1335)!"
                     );
                 }
-                let expression = &self.fixed_data.witness_cols[&other_poly].expr;
+                let expression = &self.parts.fixed_data.witness_cols[&other_poly].expr;
                 let local_index = other_row.to_local(&self.row_offset);
                 self.set_value(local_index, expression, *v, || {
                     format!(
                         "Copy constraint: {} (Row {}) -> {} (Row {})",
-                        self.fixed_data.column_name(&poly.poly_id),
+                        self.parts.column_name(&poly.poly_id),
                         row,
-                        self.fixed_data.column_name(&other_poly),
+                        self.parts.column_name(&other_poly),
                         other_row
                     )
                 })
@@ -516,7 +507,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                     &self.data[row_index - 1],
                     proposed_row,
                     self.row_offset + (row_index - 1) as DegreeType,
-                    self.fixed_data,
+                    self.parts.fixed_data,
                     UnknownStrategy::Zero,
                     self.size,
                 )
@@ -527,7 +518,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             false => RowPair::from_single_row(
                 proposed_row,
                 self.row_offset + row_index as DegreeType,
-                self.fixed_data,
+                self.parts.fixed_data,
                 UnknownStrategy::Zero,
                 self.size,
             ),
@@ -539,11 +530,11 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         {
             log::debug!(
                 "Previous {}",
-                self.data[row_index - 1].render_values(true, None, self.fixed_data)
+                self.data[row_index - 1].render_values(true, self.parts)
             );
             log::debug!(
                 "Proposed {:?}",
-                proposed_row.render_values(true, None, self.fixed_data)
+                proposed_row.render_values(true, self.parts)
             );
             log::debug!("Failed on identity: {}", identity);
 

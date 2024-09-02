@@ -1,21 +1,21 @@
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap, HashSet};
 
+use powdr_ast::analyzed::PolyID;
+use powdr_number::DegreeType;
 use powdr_number::FieldElement;
+
+use crate::Identity;
 
 use self::block_machine::BlockMachine;
 use self::double_sorted_witness_machine::DoubleSortedWitnesses;
 pub use self::fixed_lookup_machine::FixedLookup;
-use self::profiling::record_end;
-use self::profiling::record_start;
+use self::profiling::{record_end, record_start};
 use self::sorted_witness_machine::SortedWitnesses;
 use self::write_once_memory::WriteOnceMemory;
 
 use super::generator::Generator;
 use super::rows::RowPair;
-use super::EvalResult;
-use super::FixedData;
-use super::MutableState;
-use super::QueryCallback;
+use super::{EvalResult, FixedData, MutableState, QueryCallback};
 
 mod block_machine;
 mod double_sorted_witness_machine;
@@ -60,7 +60,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>>;
 
-    /// Returns the identity IDs that this machine is responsible for.
+    /// Returns the identity IDs of the connecting identities that this machine is responsible for.
     fn identity_ids(&self) -> Vec<u64>;
 }
 
@@ -137,5 +137,42 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
             KnownMachine::Vm(m) => m.identity_ids(),
             KnownMachine::FixedLookup(m) => m.identity_ids(),
         }
+    }
+}
+
+/// The parts of Analyzed that are assigned to a machine.
+/// Also includes FixedData for convenience.
+#[derive(Clone)]
+pub struct MachineParts<'a, T: FieldElement> {
+    pub fixed_data: &'a FixedData<'a, T>,
+    /// Connecting identities, indexed by their ID.
+    /// These are the identities that connect another machine to this one,
+    /// where this one is on the RHS of a lookup.
+    pub connecting_identities: BTreeMap<u64, &'a Identity<T>>,
+    /// Identities relevant to this machine and only this machine.
+    pub identities: Vec<&'a Identity<T>>,
+    /// Witness columns relevant to this machine.
+    pub witnesses: HashSet<PolyID>,
+}
+
+impl<'a, T: FieldElement> MachineParts<'a, T> {
+    /// Returns the common degree of the witness columns.
+    pub fn common_degree(&self) -> DegreeType {
+        self.fixed_data.common_degree(&self.witnesses)
+    }
+
+    /// Returns the IDs of the connecting identities.
+    pub fn identity_ids(&self) -> Vec<u64> {
+        self.connecting_identities.keys().cloned().collect()
+    }
+
+    /// Returns true if the degrees of the witness columns of this machine differ.
+    pub fn is_variable_degree(&self) -> bool {
+        self.fixed_data.common_set_degree(&self.witnesses).is_none()
+    }
+
+    /// Returns the name of a column.
+    pub fn column_name(&self, poly_id: &PolyID) -> &str {
+        self.fixed_data.column_name(poly_id)
     }
 }
