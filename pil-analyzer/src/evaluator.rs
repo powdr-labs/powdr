@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::HashMap,
     fmt::{self, Display},
     sync::Arc,
 };
@@ -15,7 +15,7 @@ use powdr_ast::{
     },
     parsed::{
         display::quote,
-        types::{ArrayType, Type, TypeBounds, TypeScheme},
+        types::{ArrayType, Type, TypeScheme},
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
         IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number,
         Pattern, StatementInsideBlock, UnaryOperation, UnaryOperator,
@@ -465,15 +465,7 @@ impl<'a> Definitions<'a> {
                         Value::TypeConstructor(&variant.name).into()
                     }
                 }
-                Some(FunctionValueDefinition::TraitFunction(trait_decl, trait_fn)) => {
-                    let bound = TypeBounds::new(
-                        trait_decl
-                            .type_vars
-                            .iter()
-                            .map(|var| (var.clone(), BTreeSet::new())),
-                    );
-                    let m_type_args =
-                        type_arg_mapping(&Some(trait_fn.type_scheme(bound)), type_args);
+                Some(FunctionValueDefinition::TraitFunction(_, _)) => {
                     let type_arg = type_args.clone().unwrap();
                     let Expression::LambdaExpression(_, lambda) =
                         solved_impls[&name][&type_arg].as_ref()
@@ -1820,5 +1812,32 @@ mod test {
         ";
 
         assert_eq!(parse_and_evaluate_symbol(input, "F::r"), "5".to_string());
+    }
+
+    #[test]
+    fn traits_generic_function() {
+        let input = "
+        namespace std::convert(4);
+            let fe = || fe();
+        namespace F(4);
+            trait Add<T> {
+                add: T, T -> T,
+            }
+            impl Add<int> {
+                add: |a, b| a + b,
+            }
+            impl Add<fe> {
+                add: |a, b| a + b,
+            }
+            let<T> generic_add: T, T -> T = |a, b| Add::add(a, b);
+            let r1: int = generic_add(3, 4);
+            
+            let six: int = 6;
+            let five: int = 5;
+            let r2: fe = generic_add(std::convert::fe(five), std::convert::fe(six));
+        ";
+
+        assert_eq!(parse_and_evaluate_symbol(input, "F::r1"), "7".to_string());
+        assert_eq!(parse_and_evaluate_symbol(input, "F::r2"), "11".to_string());
     }
 }
