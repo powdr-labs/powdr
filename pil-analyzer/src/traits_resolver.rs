@@ -29,7 +29,7 @@ impl TraitsResolver {
             Some(((key, type_args), expr)) => {
                 self.solved_impls
                     .entry(key)
-                    .or_insert_with(HashMap::new)
+                    .or_default()
                     .insert(type_args, expr);
                 Ok(())
             }
@@ -62,12 +62,9 @@ impl TraitsResolver {
                 let mut unifier: Unifier = Default::default();
 
                 let res = unifier.unify_types(tuple_args.clone(), impl_.type_scheme.ty.clone());
-                match res {
-                    Ok(()) => {
-                        let expr = impl_.function_by_name(trait_fn_name).unwrap();
-                        return Some(((reference.name.clone(), type_args), Arc::clone(&expr.body)));
-                    }
-                    Err(_) => {}
+                if let Ok(()) = res {
+                    let expr = impl_.function_by_name(trait_fn_name).unwrap();
+                    return Some(((reference.name.clone(), type_args), Arc::clone(&expr.body)));
                 }
             }
         }

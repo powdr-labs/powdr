@@ -338,11 +338,8 @@ impl PILAnalyzer {
                     ),
                 ) = expr
                 {
-                    match trait_solver.resolve_trait(reference) {
-                        Err(err) => {
-                            errors.push(err);
-                        }
-                        Ok(_) => {}
+                    if let Err(err) = trait_solver.resolve_trait(reference) {
+                        errors.push(err);
                     }
                 }
             });
@@ -360,7 +357,15 @@ impl PILAnalyzer {
             }
         }
 
-        trait_solver.solved_impls()
+        if errors.is_empty() {
+            trait_solver.solved_impls()
+        } else {
+            eprintln!("\nError during trait resolution:");
+            for e in &errors {
+                eprintln!("  {e}");
+            }
+            Err(errors.pop()).unwrap()
+        }
     }
 
     pub fn condense<T: FieldElement>(
