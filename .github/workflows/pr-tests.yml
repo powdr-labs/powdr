@@ -8,6 +8,11 @@ on:
     branches:
       - main
 
+# cancel any previous running workflows for the same branch
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
 env:
   CARGO_TERM_COLOR: always
   POWDR_GENERATE_PROOFS: "true"

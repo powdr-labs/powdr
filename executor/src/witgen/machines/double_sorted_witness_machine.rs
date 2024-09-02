@@ -136,7 +136,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
         let has_diff_columns = DIFF_COLUMNS.iter().all(|c| columns.contains(c));
         let has_bootloader_write_column = columns.contains(&BOOTLOADER_WRITE_COLUMN);
 
-        if has_diff_columns {
+        let diff_columns_base = if has_diff_columns {
             // We have the `m_diff_upper` and `m_diff_lower` columns.
             // Now, we check that they both have the same range constraint and use it to determine
             // the base of the two digits.
@@ -154,40 +154,27 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
             let (min, max) = upper_range_constraint.range();
 
             if upper_range_constraint == lower_range_constraint && min == T::zero() {
-                let diff_columns_base = Some(max.to_degree() + 1);
-                Some(Self {
-                    name,
-                    witness_cols: witness_cols.clone(),
-                    namespace,
-                    fixed: fixed_data,
-                    degree,
-                    diff_columns_base,
-                    has_bootloader_write_column,
-                    trace: Default::default(),
-                    data: Default::default(),
-                    is_initialized: Default::default(),
-                    selector_ids,
-                    connecting_identities: connecting_identities.clone(),
-                })
+                Some(max.to_degree() + 1)
             } else {
-                None
+                return None;
             }
         } else {
-            Some(Self {
-                name,
-                witness_cols: witness_cols.clone(),
-                namespace,
-                fixed: fixed_data,
-                degree,
-                diff_columns_base: None,
-                has_bootloader_write_column,
-                trace: Default::default(),
-                data: Default::default(),
-                is_initialized: Default::default(),
-                selector_ids,
-                connecting_identities: connecting_identities.clone(),
-            })
-        }
+            None
+        };
+        Some(Self {
+            name,
+            witness_cols: witness_cols.clone(),
+            namespace,
+            fixed: fixed_data,
+            degree,
+            diff_columns_base,
+            has_bootloader_write_column,
+            trace: Default::default(),
+            data: Default::default(),
+            is_initialized: Default::default(),
+            selector_ids,
+            connecting_identities: connecting_identities.clone(),
+        })
     }
 }
 

@@ -35,13 +35,6 @@ use p3_field::{AbstractField, Field, PrimeField32};
 pub struct BabyBearField(BabyBear);
 
 const P: u32 = 0x78000001;
-const MONTY_BITS: u32 = 32;
-const MONTY_ZERO: u32 = to_monty(0);
-const MONTY_ONE: u32 = to_monty(1);
-
-const fn to_monty(x: u32) -> u32 {
-    (((x as u64) << MONTY_BITS) % P as u64) as u32
-}
 
 impl BabyBearField {
     const ORDER: u32 = P;
@@ -169,8 +162,7 @@ impl From<BBLargeInt> for BabyBearField {
 }
 
 impl ConstZero for BabyBearField {
-    // TODO This is a hack because BabyBear::new() is private.
-    const ZERO: Self = unsafe { Self(std::mem::transmute(MONTY_ZERO)) };
+    const ZERO: Self = BabyBearField(BabyBear::new(0));
 }
 
 impl Zero for BabyBearField {
@@ -184,8 +176,7 @@ impl Zero for BabyBearField {
 }
 
 impl ConstOne for BabyBearField {
-    // TODO This is a hack because BabyBear::new() is private.
-    const ONE: Self = unsafe { Self(std::mem::transmute(MONTY_ONE)) };
+    const ONE: Self = BabyBearField(BabyBear::new(1));
 }
 
 impl One for BabyBearField {
