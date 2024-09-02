@@ -647,7 +647,10 @@ fn check_pil_statement_inside_module(
         PilStatement::EnumDeclaration(_, enum_decl) => {
             check_type_declaration(&location, enum_decl, state)
         }
-        PilStatement::TraitImplementation(_, _trait_impl) => todo!(),
+        PilStatement::TraitImplementation(_, _) => {
+            // trait implementations do not define symbols
+            Ok(())
+        }
         PilStatement::TraitDeclaration(_, trait_decl) => {
             check_trait_declaration(&location, trait_decl, state)
         }

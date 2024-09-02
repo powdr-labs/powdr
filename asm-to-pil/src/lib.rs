@@ -12,7 +12,7 @@ mod vm_to_constrained;
 
 pub const ROM_SUFFIX: &str = "ROM";
 
-/// Remove all ASM from the machine tree, leabing only constrained machines
+/// Remove all ASM from the machine tree, leaving only constrained machines
 pub fn compile<T: FieldElement>(mut file: AnalysisASMFile) -> AnalysisASMFile {
     for (path, module) in &mut file.modules {
         let mut new_machines = BTreeMap::default();
