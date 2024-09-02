@@ -1,16 +1,15 @@
-use std::collections::HashSet;
-
-use powdr_ast::analyzed::{self, AlgebraicReference, PolyID};
+use powdr_ast::analyzed::AlgebraicReference;
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::Identity;
 
 use super::{
     data_structures::finalizable_data::FinalizableData,
+    machines::MachineParts,
     processor::{OuterQuery, Processor},
     rows::{RowIndex, UnknownStrategy},
     sequence_iterator::{Action, ProcessingSequenceIterator, SequenceStep},
-    EvalError, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
+    EvalError, EvalValue, IncompleteCause, MutableState, QueryCallback,
 };
 
 /// A basic processor that knows how to determine a unique satisfying witness
@@ -30,24 +29,13 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         row_offset: RowIndex,
         data: FinalizableData<T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
-        identities: &'c [&'a Identity<T>],
-        fixed_data: &'a FixedData<'a, T>,
-        witness_cols: &'c HashSet<PolyID>,
-        prover_functions: &'c [&'a analyzed::Expression],
+        parts: &'c MachineParts<'a, T>,
         size: DegreeType,
     ) -> Self {
-        let processor = Processor::new(
-            row_offset,
-            data,
-            mutable_state,
-            fixed_data,
-            witness_cols,
-            prover_functions,
-            size,
-        );
+        let processor = Processor::new(row_offset, data, mutable_state, parts, size);
         Self {
             processor,
-            identities,
+            identities: &parts.identities,
         }
     }
 
@@ -135,6 +123,7 @@ mod tests {
         witgen::{
             data_structures::finalizable_data::FinalizableData,
             identity_processor::Machines,
+            machines::MachineParts,
             rows::{Row, RowIndex},
             sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator},
             unused_query_callback, FixedData, MutableState, QueryCallback,
@@ -186,25 +175,23 @@ mod tests {
         };
         let row_offset = RowIndex::from_degree(0, degree);
         let identities = analyzed.identities.iter().collect::<Vec<_>>();
-        let witness_cols = fixed_data.witness_cols.keys().collect();
-        let prover_functions = analyzed.prover_functions.iter().collect::<Vec<_>>();
+        let identity_count = identities.len();
+        let machine_parts = MachineParts {
+            fixed_data: &fixed_data,
+            connecting_identities: Default::default(),
+            identities,
+            witnesses: fixed_data.witness_cols.keys().collect(),
+            prover_functions: Default::default(),
+        };
 
-        let processor = BlockProcessor::new(
-            row_offset,
-            data,
-            &mut mutable_state,
-            &identities,
-            &fixed_data,
-            &witness_cols,
-            &prover_functions,
-            degree,
-        );
+        let processor =
+            BlockProcessor::new(row_offset, data, &mut mutable_state, &machine_parts, degree);
 
         f(
             processor,
             name_to_poly_id(&fixed_data),
             degree,
-            identities.len(),
+            identity_count,
         )
     }
 

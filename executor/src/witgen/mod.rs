@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 use itertools::Itertools;
+use machines::MachineParts;
 use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
     IdentityKind, PolyID, PolynomialType, SymbolKind, TypedExpression,
@@ -211,9 +212,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             global_constraints::set_global_constraints(fixed, &identities);
         let ExtractionOutput {
             mut machines,
-            base_identities,
-            base_witnesses,
-            base_prover_functions,
+            base_parts,
         } = if self.stage == 0 {
             machines::machine_extractor::split_out_machines(&fixed, retained_identities)
         } else {
@@ -228,9 +227,13 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                 .collect::<Vec<_>>();
             ExtractionOutput {
                 machines: Vec::new(),
-                base_identities: polynomial_identities,
-                base_witnesses: fixed.witness_cols.keys().collect::<HashSet<_>>(),
-                base_prover_functions: fixed.analyzed.prover_functions.iter().collect(),
+                base_parts: MachineParts {
+                    fixed_data: &fixed,
+                    connecting_identities: Default::default(),
+                    identities: polynomial_identities,
+                    witnesses: fixed.witness_cols.keys().collect::<HashSet<_>>(),
+                    prover_functions: fixed.analyzed.prover_functions.iter().collect(),
+                },
             }
         };
 
@@ -240,9 +243,9 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             query_callback: &mut query_callback,
         };
 
-        let generator = (!base_witnesses.is_empty()).then(|| {
+        let generator = (!base_parts.witnesses.is_empty()).then(|| {
             let main_size = fixed
-                .common_set_degree(&base_witnesses)
+                .common_set_degree(&base_parts.witnesses)
                 // In the dynamic VADCOP setting, we assume that some machines
                 // (e.g. register memory) may take up to 4x the number of rows
                 // of the main machine. By running the main machine only 1/4 of
@@ -252,11 +255,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             let mut generator = Generator::new(
                 "Main Machine".to_string(),
                 main_size,
-                &fixed,
-                &BTreeMap::new(), // No connecting identities
-                base_identities,
-                base_witnesses,
-                base_prover_functions,
+                base_parts,
                 // We could set the latch of the main VM here, but then we would have to detect it.
                 // Instead, the main VM will be computed in one block, directly continuing into the
                 // infinite loop after the first return.
@@ -364,10 +363,6 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
 
     fn common_degree<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> DegreeType {
         self.common_set_degree(ids).unwrap_or(1 << *MAX_DEGREE_LOG)
-    }
-
-    fn is_variable_size<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> bool {
-        self.common_set_degree(ids).is_none()
     }
 
     pub fn new(

@@ -1,5 +1,6 @@
-use std::collections::BTreeMap;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
+
+use itertools::Itertools;
 
 use super::block_machine::BlockMachine;
 use super::double_sorted_witness_machine::DoubleSortedWitnesses;
@@ -7,13 +8,16 @@ use super::fixed_lookup_machine::FixedLookup;
 use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::KnownMachine;
-use crate::witgen::generator::Generator;
-use crate::witgen::machines::write_once_memory::WriteOnceMemory;
-use crate::Identity;
-use itertools::Itertools;
-use powdr_ast::analyzed;
+use crate::{
+    witgen::{
+        generator::Generator,
+        machines::{write_once_memory::WriteOnceMemory, MachineParts},
+    },
+    Identity,
+};
+
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, IdentityKind, PolyID, PolynomialReference, Reference,
+    self, AlgebraicExpression as Expression, IdentityKind, PolyID, PolynomialReference, Reference,
     SelectedExpressions,
 };
 use powdr_ast::parsed::{
@@ -24,9 +28,7 @@ use powdr_number::FieldElement;
 
 pub struct ExtractionOutput<'a, T: FieldElement> {
     pub machines: Vec<KnownMachine<'a, T>>,
-    pub base_identities: Vec<&'a Identity<T>>,
-    pub base_witnesses: HashSet<PolyID>,
-    pub base_prover_functions: Vec<&'a analyzed::Expression>,
+    pub base_parts: MachineParts<'a, T>,
 }
 
 /// Finds machines in the witness columns and identities
@@ -143,14 +145,15 @@ pub fn split_out_machines<'a, T: FieldElement>(
         id_counter += 1;
         let name_with_type = |t: &str| format!("Secondary machine {id}: {name} ({t})");
 
-        machines.push(build_machine(
-            fixed,
-            machine_witnesses,
-            machine_identities,
+        let machine_parts = MachineParts {
+            fixed_data: fixed,
             connecting_identities,
             prover_functions,
-            name_with_type,
-        ));
+            identities: machine_identities,
+            witnesses: machine_witnesses,
+        };
+
+        machines.push(build_machine(machine_parts, name_with_type));
     }
 
     // Always add a fixed lookup machine.
@@ -174,61 +177,42 @@ pub fn split_out_machines<'a, T: FieldElement>(
 
     ExtractionOutput {
         machines,
-        base_identities,
-        base_witnesses: remaining_witnesses,
-        base_prover_functions,
+        base_parts: MachineParts {
+            fixed_data: fixed,
+            connecting_identities: Default::default(),
+            identities: base_identities,
+            witnesses: remaining_witnesses,
+            prover_functions: base_prover_functions,
+        },
     }
 }
 
-fn build_machine<'a, T: FieldElement>(
-    fixed: &'a FixedData<'a, T>,
-    machine_witnesses: HashSet<PolyID>,
-    machine_identities: Vec<&'a Identity<T>>,
-    connecting_identities: BTreeMap<u64, &'a Identity<T>>,
-    prover_functions: Vec<&'a analyzed::Expression>,
+fn build_machine<T: FieldElement>(
+    machine_parts: MachineParts<'_, T>,
     name_with_type: impl Fn(&str) -> String,
-) -> KnownMachine<'a, T> {
-    if let Some(machine) = SortedWitnesses::try_new(
-        name_with_type("SortedWitness"),
-        fixed,
-        &connecting_identities,
-        &machine_identities,
-        &machine_witnesses,
-        &prover_functions,
-    ) {
+) -> KnownMachine<'_, T> {
+    if let Some(machine) = SortedWitnesses::try_new(name_with_type("SortedWitness"), &machine_parts)
+    {
         log::debug!("Detected machine: sorted witnesses / write-once memory");
         KnownMachine::SortedWitnesses(machine)
-    } else if let Some(machine) = DoubleSortedWitnesses::try_new(
-        name_with_type("DoubleSortedWitnesses"),
-        fixed,
-        &connecting_identities,
-        &machine_witnesses,
-        &prover_functions,
-    ) {
+    } else if let Some(machine) =
+        DoubleSortedWitnesses::try_new(name_with_type("DoubleSortedWitnesses"), &machine_parts)
+    {
         log::debug!("Detected machine: memory");
         KnownMachine::DoubleSortedWitnesses(machine)
-    } else if let Some(machine) = WriteOnceMemory::try_new(
-        name_with_type("WriteOnceMemory"),
-        fixed,
-        &connecting_identities,
-        &machine_identities,
-        &prover_functions,
-    ) {
+    } else if let Some(machine) =
+        WriteOnceMemory::try_new(name_with_type("WriteOnceMemory"), &machine_parts)
+    {
         log::debug!("Detected machine: write-once memory");
         KnownMachine::WriteOnceMemory(machine)
-    } else if let Some(machine) = BlockMachine::try_new(
-        name_with_type("BlockMachine"),
-        fixed,
-        &connecting_identities,
-        &machine_identities,
-        &machine_witnesses,
-        &prover_functions,
-    ) {
+    } else if let Some(machine) =
+        BlockMachine::try_new(name_with_type("BlockMachine"), &machine_parts)
+    {
         log::debug!("Detected machine: {machine}");
         KnownMachine::BlockMachine(machine)
     } else {
         log::debug!("Detected machine: VM.");
-        let latch = connecting_identities
+        let latch = machine_parts.connecting_identities
             .values()
             .fold(None, |existing_latch, identity| {
                 let current_latch = identity
@@ -249,12 +233,8 @@ fn build_machine<'a, T: FieldElement>(
             .unwrap();
         KnownMachine::Vm(Generator::new(
             name_with_type("Vm"),
-            fixed.common_degree(&machine_witnesses),
-            fixed,
-            &connecting_identities,
-            machine_identities,
-            machine_witnesses,
-            prover_functions,
+            machine_parts.common_degree(),
+            machine_parts.clone(),
             Some(latch),
         ))
     }
