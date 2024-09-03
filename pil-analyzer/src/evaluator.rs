@@ -472,8 +472,6 @@ impl<'a> Definitions<'a> {
                     }
                 }
                 Some(FunctionValueDefinition::TraitFunction(_, _)) => {
-                    println!("solved impls: {solved_impls:?}");
-                    println!("name y type args: {name} {type_args:?}");
                     let type_arg = type_args.as_ref().unwrap();
                     let Expression::LambdaExpression(_, lambda) =
                         solved_impls[&name][type_arg].as_ref()
