@@ -45,7 +45,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
                 main,
                 entry_points: Default::default(),
                 objects: [(main_location, Default::default())].into(),
-                definitions: utility_functions(input),
+                statements: utility_functions(input),
             };
         }
         // if there is a single machine, treat it as main
@@ -146,7 +146,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
         main,
         entry_points,
         objects,
-        definitions: utility_functions(input),
+        statements: utility_functions(input),
     }
 }
 
@@ -185,11 +185,21 @@ fn utility_functions(asm_file: AnalysisASMFile) -> BTreeMap<AbsoluteSymbolPath, 
                     .into_inner()
                     .1
                     .into_iter()
-                    .filter(|s| {
-                        matches!(
-                            s,
-                            PilStatement::EnumDeclaration(..) | PilStatement::LetStatement(..)
-                        )
+                    .filter(|s| match s {
+                        PilStatement::EnumDeclaration(..) | PilStatement::LetStatement(..) => true,
+                        PilStatement::Include(..) => false,
+                        PilStatement::Namespace(..) => false,
+                        PilStatement::PolynomialDefinition(..) => false,
+                        PilStatement::PublicDeclaration(..) => false,
+                        PilStatement::PolynomialConstantDeclaration(..) => false,
+                        PilStatement::PolynomialConstantDefinition(..) => false,
+                        PilStatement::PolynomialCommitDeclaration(..) => false,
+                        PilStatement::PlookupIdentity(..) => false,
+                        PilStatement::PermutationIdentity(..) => false,
+                        PilStatement::ConnectIdentity(..) => false,
+                        PilStatement::TraitImplementation(..) => false,
+                        PilStatement::TraitDeclaration(..) => false,
+                        PilStatement::Expression(..) => false,
                     })
                     .collect(),
             )

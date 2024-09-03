@@ -57,7 +57,7 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
         .degree
         .clone();
 
-    let mut pil = process_definitions(graph.definitions);
+    let mut pil = process_definitions(graph.statements);
 
     for (location, object) in graph.objects.into_iter() {
         // create a namespace for this object
