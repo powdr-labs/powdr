@@ -171,7 +171,7 @@ impl<'a, T: FieldElement> MachineParts<'a, T> {
     }
 
     /// Returns a copy of the machine parts but only containing identities that
-    /// have a "next" reference. Also removes all connecting identities.
+    /// have a "next" reference.
     pub fn restricted_to_identities_with_next_references(&self) -> MachineParts<'a, T> {
         let identities_with_next_reference = self
             .identities
@@ -179,10 +179,8 @@ impl<'a, T: FieldElement> MachineParts<'a, T> {
             .filter_map(|identity| identity.contains_next_ref().then_some(*identity))
             .collect::<Vec<_>>();
         MachineParts {
-            fixed_data: self.fixed_data,
-            connecting_identities: Default::default(),
             identities: identities_with_next_reference,
-            witnesses: self.witnesses.clone(),
+            ..self.clone()
         }
     }
 

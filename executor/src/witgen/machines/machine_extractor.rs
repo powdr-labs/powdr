@@ -110,12 +110,12 @@ pub fn split_out_machines<'a, T: FieldElement>(
         id_counter += 1;
         let name_with_type = |t: &str| format!("Secondary machine {id}: {name} ({t})");
 
-        let machine_parts = MachineParts {
-            fixed_data: fixed,
+        let machine_parts = MachineParts::new(
+            fixed,
             connecting_identities,
-            identities: machine_identities,
-            witnesses: machine_witnesses,
-        };
+            machine_identities,
+            machine_witnesses,
+        );
 
         machines.push(build_machine(fixed, machine_parts, name_with_type));
     }
@@ -133,12 +133,12 @@ pub fn split_out_machines<'a, T: FieldElement>(
 
     ExtractionOutput {
         machines,
-        base_parts: MachineParts {
-            fixed_data: fixed,
-            connecting_identities: Default::default(),
-            identities: base_identities,
-            witnesses: remaining_witnesses,
-        },
+        base_parts: MachineParts::new(
+            fixed,
+            Default::default(),
+            base_identities,
+            remaining_witnesses,
+        ),
     }
 }
 
