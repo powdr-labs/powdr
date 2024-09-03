@@ -176,7 +176,6 @@ mod tests {
         };
         let row_offset = RowIndex::from_degree(0, degree);
         let identities = analyzed.identities.iter().collect::<Vec<_>>();
-        let identity_count = identities.len();
         let machine_parts = MachineParts::new(
             &fixed_data,
             Default::default(),
@@ -197,7 +196,7 @@ mod tests {
             processor,
             name_to_poly_id(&fixed_data),
             degree,
-            identity_count,
+            machine_parts.identities.len(),
         )
     }
 

@@ -7,7 +7,7 @@ use super::{Machine, MachineParts};
 use crate::constant_evaluator::{MAX_DEGREE_LOG, MIN_DEGREE_LOG};
 use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
-use crate::witgen::{EvalError, EvalResult, MutableState, QueryCallback};
+use crate::witgen::{EvalError, EvalResult, FixedData, MutableState, QueryCallback};
 use crate::witgen::{EvalValue, IncompleteCause};
 
 use powdr_number::{DegreeType, FieldElement};
@@ -79,7 +79,11 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
         format!("{}::{}", self.namespace, name)
     }
 
-    pub fn try_new(name: String, parts: &MachineParts<'a, T>) -> Option<Self> {
+    pub fn try_new(
+        name: String,
+        fixed_data: &'a FixedData<'a, T>,
+        parts: &MachineParts<'a, T>,
+    ) -> Option<Self> {
         let degree = parts.common_degree();
 
         // get the namespaces and column names
@@ -135,21 +139,15 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
             // We have the `m_diff_upper` and `m_diff_lower` columns.
             // Now, we check that they both have the same range constraint and use it to determine
             // the base of the two digits.
-            let upper_poly_id = parts
-                .fixed_data
-                .try_column_by_name(&format!("{namespace}::{}", DIFF_COLUMNS[0]))?;
-            let upper_range_constraint = parts
-                .fixed_data
-                .global_range_constraints()
-                .witness_constraints[&upper_poly_id]
+            let upper_poly_id =
+                fixed_data.try_column_by_name(&format!("{namespace}::{}", DIFF_COLUMNS[0]))?;
+            let upper_range_constraint = fixed_data.global_range_constraints().witness_constraints
+                [&upper_poly_id]
                 .as_ref()?;
-            let lower_poly_id = parts
-                .fixed_data
-                .try_column_by_name(&format!("{namespace}::{}", DIFF_COLUMNS[1]))?;
-            let lower_range_constraint = parts
-                .fixed_data
-                .global_range_constraints()
-                .witness_constraints[&lower_poly_id]
+            let lower_poly_id =
+                fixed_data.try_column_by_name(&format!("{namespace}::{}", DIFF_COLUMNS[1]))?;
+            let lower_range_constraint = fixed_data.global_range_constraints().witness_constraints
+                [&lower_poly_id]
                 .as_ref()?;
 
             let (min, max) = upper_range_constraint.range();

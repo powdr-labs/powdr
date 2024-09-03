@@ -152,9 +152,11 @@ fn build_machine<'a, T: FieldElement>(
     {
         log::debug!("Detected machine: sorted witnesses / write-once memory");
         KnownMachine::SortedWitnesses(machine)
-    } else if let Some(machine) =
-        DoubleSortedWitnesses::try_new(name_with_type("DoubleSortedWitnesses"), &machine_parts)
-    {
+    } else if let Some(machine) = DoubleSortedWitnesses::try_new(
+        name_with_type("DoubleSortedWitnesses"),
+        fixed_data,
+        &machine_parts,
+    ) {
         log::debug!("Detected machine: memory");
         KnownMachine::DoubleSortedWitnesses(machine)
     } else if let Some(machine) = WriteOnceMemory::try_new(
