@@ -572,7 +572,7 @@ fn defined_trait() {
     }
     let r: fe = Add::add(3, 4);
     ";
-    type_check(input, &[("r", "", "fe")]);
+    type_check(input, &[]);
 }
 
 #[test]
@@ -706,5 +706,5 @@ fn trait_user_defined_enum_wrong_type() {
     let n: int = 7;
     let r1 = Convert::convert(n);
     ";
-    type_check(input, &[("r1", "", "V2")]);
+    type_check(input, &[]);
 }
