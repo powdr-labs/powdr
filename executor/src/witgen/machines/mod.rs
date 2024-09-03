@@ -144,7 +144,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
 /// Also includes FixedData for convenience.
 #[derive(Clone)]
 pub struct MachineParts<'a, T: FieldElement> {
-    pub fixed_data: &'a FixedData<'a, T>,
+    fixed_data: &'a FixedData<'a, T>,
     /// Connecting identities, indexed by their ID.
     /// These are the identities that connect another machine to this one,
     /// where this one is on the RHS of a lookup.
@@ -156,6 +156,36 @@ pub struct MachineParts<'a, T: FieldElement> {
 }
 
 impl<'a, T: FieldElement> MachineParts<'a, T> {
+    pub fn new(
+        fixed_data: &'a FixedData<'a, T>,
+        connecting_identities: BTreeMap<u64, &'a Identity<T>>,
+        identities: Vec<&'a Identity<T>>,
+        witnesses: HashSet<PolyID>,
+    ) -> Self {
+        Self {
+            fixed_data,
+            connecting_identities,
+            identities,
+            witnesses,
+        }
+    }
+
+    /// Returns a copy of the machine parts but only containing identities that
+    /// have a "next" reference. Also removes all connecting identities.
+    pub fn restricted_to_identities_with_next_references(&self) -> MachineParts<'a, T> {
+        let identities_with_next_reference = self
+            .identities
+            .iter()
+            .filter_map(|identity| identity.contains_next_ref().then_some(*identity))
+            .collect::<Vec<_>>();
+        MachineParts {
+            fixed_data: self.fixed_data,
+            connecting_identities: Default::default(),
+            identities: identities_with_next_reference,
+            witnesses: self.witnesses.clone(),
+        }
+    }
+
     /// Returns the common degree of the witness columns.
     pub fn common_degree(&self) -> DegreeType {
         self.fixed_data.common_degree(&self.witnesses)

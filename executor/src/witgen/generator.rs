@@ -167,16 +167,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         // are irrelevant.
         // Also, they can lead to problems in the case where some witness columns are provided
         // externally, e.g. if the last row happens to call into a stateful machine like memory.
-        let identities_with_next_reference = self
-            .parts
-            .identities
-            .iter()
-            .filter_map(|identity| identity.contains_next_ref().then_some(*identity))
-            .collect::<Vec<_>>();
-        let next_parts = MachineParts {
-            identities: identities_with_next_reference.clone(),
-            ..self.parts.clone()
-        };
+        let next_parts = self.parts.restricted_to_identities_with_next_references();
         let mut processor = BlockProcessor::new(
             RowIndex::from_i64(-1, self.degree),
             data,
@@ -186,7 +177,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             self.degree,
         );
         let mut sequence_iterator = ProcessingSequenceIterator::Default(
-            DefaultSequenceIterator::new(0, identities_with_next_reference.len(), None),
+            DefaultSequenceIterator::new(0, next_parts.identities.len(), None),
         );
         processor.solve(&mut sequence_iterator).unwrap();
 

@@ -100,14 +100,12 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         size: DegreeType,
     ) -> Self {
         let is_relevant_witness = WitnessColumnMap::from(
-            parts
-                .fixed_data
+            fixed_data
                 .witness_cols
                 .keys()
                 .map(|poly_id| parts.witnesses.contains(&poly_id)),
         );
-        let prover_query_witnesses = parts
-            .fixed_data
+        let prover_query_witnesses = fixed_data
             .witness_cols
             .iter()
             .filter(|(poly_id, col)| parts.witnesses.contains(poly_id) && col.query.is_some())

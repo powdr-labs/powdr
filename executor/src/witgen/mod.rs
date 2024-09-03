@@ -227,12 +227,12 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                 .collect::<Vec<_>>();
             ExtractionOutput {
                 machines: Vec::new(),
-                base_parts: MachineParts {
-                    fixed_data: &fixed,
-                    connecting_identities: Default::default(),
-                    identities: polynomial_identities,
-                    witnesses: fixed.witness_cols.keys().collect::<HashSet<_>>(),
-                },
+                base_parts: MachineParts::new(
+                    &fixed,
+                    Default::default(),
+                    polynomial_identities,
+                    fixed.witness_cols.keys().collect::<HashSet<_>>(),
+                ),
             }
         };
         let mut query_callback = self.query_callback;

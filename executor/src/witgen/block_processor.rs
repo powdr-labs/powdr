@@ -177,12 +177,12 @@ mod tests {
         let row_offset = RowIndex::from_degree(0, degree);
         let identities = analyzed.identities.iter().collect::<Vec<_>>();
         let identity_count = identities.len();
-        let machine_parts = MachineParts {
-            fixed_data: &fixed_data,
-            connecting_identities: Default::default(),
+        let machine_parts = MachineParts::new(
+            &fixed_data,
+            Default::default(),
             identities,
-            witnesses: fixed_data.witness_cols.keys().collect(),
-        };
+            fixed_data.witness_cols.keys().collect(),
+        );
 
         let processor = BlockProcessor::new(
             row_offset,
