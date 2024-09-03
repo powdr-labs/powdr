@@ -257,6 +257,7 @@ fn canonicalize_inside_pil_statement(
             }
         }
         PilStatement::TraitImplementation(_, trait_impl) => {
+            canonicalize_inside_type_scheme(&mut trait_impl.type_scheme, path, paths);
             for f in &mut trait_impl.functions {
                 canonicalize_inside_expression(&mut f.body, path, paths)
             }
