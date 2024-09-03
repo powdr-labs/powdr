@@ -351,7 +351,7 @@ impl PILAnalyzer {
             }
         }
 
-        for identity in self.identities.iter() {
+        for identity in &self.identities {
             for expr in identity.all_children() {
                 resolve_references(expr);
             }
