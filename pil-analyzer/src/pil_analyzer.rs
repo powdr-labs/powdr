@@ -342,7 +342,7 @@ impl PILAnalyzer {
             });
         };
 
-        for (_, (_, def)) in self.definitions.iter() {
+        for (_, def) in self.definitions.values() {
             if let Some(FunctionValueDefinition::Expression(TypedExpression { e: expr, .. })) = def
             {
                 resolve_references(expr);
