@@ -145,15 +145,15 @@ pub fn split_out_machines<'a, T: FieldElement>(
         id_counter += 1;
         let name_with_type = |t: &str| format!("Secondary machine {id}: {name} ({t})");
 
-        let machine_parts = MachineParts {
-            fixed_data: fixed,
+        let machine_parts = MachineParts::new(
+            fixed,
             connecting_identities,
+            machine_identities,
+            machine_witnesses,
             prover_functions,
-            identities: machine_identities,
-            witnesses: machine_witnesses,
-        };
+        );
 
-        machines.push(build_machine(machine_parts, name_with_type));
+        machines.push(build_machine(fixed, machine_parts, name_with_type));
     }
 
     // Always add a fixed lookup machine.
@@ -177,36 +177,42 @@ pub fn split_out_machines<'a, T: FieldElement>(
 
     ExtractionOutput {
         machines,
-        base_parts: MachineParts {
-            fixed_data: fixed,
-            connecting_identities: Default::default(),
-            identities: base_identities,
-            witnesses: remaining_witnesses,
-            prover_functions: base_prover_functions,
-        },
+        base_parts: MachineParts::new(
+            fixed,
+            Default::default(),
+            base_identities,
+            remaining_witnesses,
+            base_prover_functions,
+        ),
     }
 }
 
-fn build_machine<T: FieldElement>(
-    machine_parts: MachineParts<'_, T>,
+fn build_machine<'a, T: FieldElement>(
+    fixed_data: &'a FixedData<'a, T>,
+    machine_parts: MachineParts<'a, T>,
     name_with_type: impl Fn(&str) -> String,
-) -> KnownMachine<'_, T> {
-    if let Some(machine) = SortedWitnesses::try_new(name_with_type("SortedWitness"), &machine_parts)
+) -> KnownMachine<'a, T> {
+    if let Some(machine) =
+        SortedWitnesses::try_new(name_with_type("SortedWitness"), fixed_data, &machine_parts)
     {
         log::debug!("Detected machine: sorted witnesses / write-once memory");
         KnownMachine::SortedWitnesses(machine)
-    } else if let Some(machine) =
-        DoubleSortedWitnesses::try_new(name_with_type("DoubleSortedWitnesses"), &machine_parts)
-    {
+    } else if let Some(machine) = DoubleSortedWitnesses::try_new(
+        name_with_type("DoubleSortedWitnesses"),
+        fixed_data,
+        &machine_parts,
+    ) {
         log::debug!("Detected machine: memory");
         KnownMachine::DoubleSortedWitnesses(machine)
-    } else if let Some(machine) =
-        WriteOnceMemory::try_new(name_with_type("WriteOnceMemory"), &machine_parts)
-    {
+    } else if let Some(machine) = WriteOnceMemory::try_new(
+        name_with_type("WriteOnceMemory"),
+        fixed_data,
+        &machine_parts,
+    ) {
         log::debug!("Detected machine: write-once memory");
         KnownMachine::WriteOnceMemory(machine)
     } else if let Some(machine) =
-        BlockMachine::try_new(name_with_type("BlockMachine"), &machine_parts)
+        BlockMachine::try_new(name_with_type("BlockMachine"), fixed_data, &machine_parts)
     {
         log::debug!("Detected machine: {machine}");
         KnownMachine::BlockMachine(machine)
@@ -233,7 +239,7 @@ fn build_machine<T: FieldElement>(
             .unwrap();
         KnownMachine::Vm(Generator::new(
             name_with_type("Vm"),
-            machine_parts.common_degree(),
+            fixed_data,
             machine_parts.clone(),
             Some(latch),
         ))

@@ -12,7 +12,7 @@ use super::machines::{Machine, MachineParts};
 use super::rows::{Row, RowIndex, RowPair};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use super::vm_processor::VmProcessor;
-use super::{EvalResult, MutableState, QueryCallback};
+use super::{EvalResult, FixedData, MutableState, QueryCallback};
 
 struct ProcessResult<'a, T: FieldElement> {
     eval_value: EvalValue<&'a AlgebraicReference, T>,
@@ -20,6 +20,7 @@ struct ProcessResult<'a, T: FieldElement> {
 }
 
 pub struct Generator<'a, T: FieldElement> {
+    fixed_data: &'a FixedData<'a, T>,
     parts: MachineParts<'a, T>,
     data: FinalizableData<T>,
     latch: Option<Expression<T>>,
@@ -86,7 +87,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
 
         self.data
             .take_transposed()
-            .map(|(id, (values, _))| (self.parts.column_name(&id).to_string(), values))
+            .map(|(id, (values, _))| (self.fixed_data.column_name(&id).to_string(), values))
             .collect()
     }
 }
@@ -94,15 +95,16 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
 impl<'a, T: FieldElement> Generator<'a, T> {
     pub fn new(
         name: String,
-        degree: DegreeType,
+        fixed_data: &'a FixedData<'a, T>,
         parts: MachineParts<'a, T>,
         latch: Option<Expression<T>>,
     ) -> Self {
         let data = FinalizableData::new(&parts.witnesses);
 
         Self {
-            degree,
+            degree: parts.common_degree_range().max,
             name,
+            fixed_data,
             parts,
             data,
             latch,
@@ -154,8 +156,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         let data = FinalizableData::with_initial_rows_in_progress(
             &self.parts.witnesses,
             [
-                Row::fresh(self.parts.fixed_data, RowIndex::from_i64(-1, self.degree)),
-                Row::fresh(self.parts.fixed_data, RowIndex::from_i64(0, self.degree)),
+                Row::fresh(self.fixed_data, RowIndex::from_i64(-1, self.degree)),
+                Row::fresh(self.fixed_data, RowIndex::from_i64(0, self.degree)),
             ]
             .into_iter(),
         );
@@ -164,25 +166,17 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         // are irrelevant.
         // Also, they can lead to problems in the case where some witness columns are provided
         // externally, e.g. if the last row happens to call into a stateful machine like memory.
-        let identities_with_next_reference = self
-            .parts
-            .identities
-            .iter()
-            .filter_map(|identity| identity.contains_next_ref().then_some(*identity))
-            .collect::<Vec<_>>();
-        let next_parts = MachineParts {
-            identities: identities_with_next_reference.clone(),
-            ..self.parts.clone()
-        };
+        let next_parts = self.parts.restricted_to_identities_with_next_references();
         let mut processor = BlockProcessor::new(
             RowIndex::from_i64(-1, self.degree),
             data,
             mutable_state,
+            self.fixed_data,
             &next_parts,
             self.degree,
         );
         let mut sequence_iterator = ProcessingSequenceIterator::Default(
-            DefaultSequenceIterator::new(0, identities_with_next_reference.len(), None),
+            DefaultSequenceIterator::new(0, next_parts.identities.len(), None),
         );
         processor.solve(&mut sequence_iterator).unwrap();
 
@@ -208,8 +202,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
 
         let mut processor = VmProcessor::new(
             self.name().to_string(),
-            self.degree,
             RowIndex::from_degree(row_offset, self.degree),
+            self.fixed_data,
             &self.parts,
             data,
             mutable_state,

@@ -9,7 +9,7 @@ use super::{
     processor::{OuterQuery, Processor},
     rows::{RowIndex, UnknownStrategy},
     sequence_iterator::{Action, ProcessingSequenceIterator, SequenceStep},
-    EvalError, EvalValue, IncompleteCause, MutableState, QueryCallback,
+    EvalError, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
 };
 
 /// A basic processor that knows how to determine a unique satisfying witness
@@ -29,10 +29,11 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         row_offset: RowIndex,
         data: FinalizableData<T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
+        fixed_data: &'a FixedData<'a, T>,
         parts: &'c MachineParts<'a, T>,
         size: DegreeType,
     ) -> Self {
-        let processor = Processor::new(row_offset, data, mutable_state, parts, size);
+        let processor = Processor::new(row_offset, data, mutable_state, fixed_data, parts, size);
         Self {
             processor,
             identities: &parts.identities,
@@ -175,23 +176,28 @@ mod tests {
         };
         let row_offset = RowIndex::from_degree(0, degree);
         let identities = analyzed.identities.iter().collect::<Vec<_>>();
-        let identity_count = identities.len();
-        let machine_parts = MachineParts {
-            fixed_data: &fixed_data,
-            connecting_identities: Default::default(),
+        let machine_parts = MachineParts::new(
+            &fixed_data,
+            Default::default(),
             identities,
-            witnesses: fixed_data.witness_cols.keys().collect(),
-            prover_functions: Default::default(),
-        };
+            fixed_data.witness_cols.keys().collect(),
+            Default::default(),
+        );
 
-        let processor =
-            BlockProcessor::new(row_offset, data, &mut mutable_state, &machine_parts, degree);
+        let processor = BlockProcessor::new(
+            row_offset,
+            data,
+            &mut mutable_state,
+            &fixed_data,
+            &machine_parts,
+            degree,
+        );
 
         f(
             processor,
             name_to_poly_id(&fixed_data),
             degree,
-            identity_count,
+            machine_parts.identities.len(),
         )
     }
 

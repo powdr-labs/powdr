@@ -1,7 +1,10 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
-use powdr_ast::analyzed::{self, PolyID};
-use powdr_number::{DegreeType, FieldElement};
+use powdr_ast::analyzed;
+use powdr_ast::analyzed::DegreeRange;
+use powdr_ast::analyzed::PolyID;
+
+use powdr_number::FieldElement;
 
 use crate::Identity;
 
@@ -143,7 +146,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
 /// Also includes FixedData for convenience.
 #[derive(Clone)]
 pub struct MachineParts<'a, T: FieldElement> {
-    pub fixed_data: &'a FixedData<'a, T>,
+    fixed_data: &'a FixedData<'a, T>,
     /// Connecting identities, indexed by their ID.
     /// These are the identities that connect another machine to this one,
     /// where this one is on the RHS of a lookup.
@@ -157,19 +160,44 @@ pub struct MachineParts<'a, T: FieldElement> {
 }
 
 impl<'a, T: FieldElement> MachineParts<'a, T> {
+    pub fn new(
+        fixed_data: &'a FixedData<'a, T>,
+        connecting_identities: BTreeMap<u64, &'a Identity<T>>,
+        identities: Vec<&'a Identity<T>>,
+        witnesses: HashSet<PolyID>,
+        prover_functions: Vec<&'a analyzed::Expression>,
+    ) -> Self {
+        Self {
+            fixed_data,
+            connecting_identities,
+            identities,
+            witnesses,
+            prover_functions,
+        }
+    }
+
+    /// Returns a copy of the machine parts but only containing identities that
+    /// have a "next" reference.
+    pub fn restricted_to_identities_with_next_references(&self) -> MachineParts<'a, T> {
+        let identities_with_next_reference = self
+            .identities
+            .iter()
+            .filter_map(|identity| identity.contains_next_ref().then_some(*identity))
+            .collect::<Vec<_>>();
+        Self {
+            identities: identities_with_next_reference,
+            ..self.clone()
+        }
+    }
+
     /// Returns the common degree of the witness columns.
-    pub fn common_degree(&self) -> DegreeType {
-        self.fixed_data.common_degree(&self.witnesses)
+    pub fn common_degree_range(&self) -> DegreeRange {
+        self.fixed_data.common_degree_range(&self.witnesses)
     }
 
     /// Returns the IDs of the connecting identities.
     pub fn identity_ids(&self) -> Vec<u64> {
         self.connecting_identities.keys().cloned().collect()
-    }
-
-    /// Returns true if the degrees of the witness columns of this machine differ.
-    pub fn is_variable_degree(&self) -> bool {
-        self.fixed_data.common_set_degree(&self.witnesses).is_none()
     }
 
     /// Returns the name of a column.

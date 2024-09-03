@@ -311,7 +311,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
     }
 }
 
-const BUILTINS: [(&str, BuiltinFunction); 13] = [
+const BUILTINS: [(&str, BuiltinFunction); 15] = [
     ("std::array::len", BuiltinFunction::ArrayLen),
     ("std::check::panic", BuiltinFunction::Panic),
     ("std::convert::expr", BuiltinFunction::ToExpr),
@@ -322,6 +322,8 @@ const BUILTINS: [(&str, BuiltinFunction); 13] = [
     ("std::prelude::challenge", BuiltinFunction::Challenge),
     ("std::prover::provide_value", BuiltinFunction::ProvideValue),
     ("std::prelude::set_hint", BuiltinFunction::SetHint),
+    ("std::prover::min_degree", BuiltinFunction::MinDegree),
+    ("std::prover::max_degree", BuiltinFunction::MaxDegree),
     ("std::prover::degree", BuiltinFunction::Degree),
     ("std::prover::eval", BuiltinFunction::Eval),
     ("std::prover::try_eval", BuiltinFunction::TryEval),
@@ -351,7 +353,11 @@ pub enum BuiltinFunction {
     ProvideValue,
     /// std::prelude::set_hint: expr, (int -> std::prelude::Query) -> (), adds a hint to a witness column.
     SetHint,
-    /// std::prover::degree: -> int, returns the current column length / degree.
+    /// std::prover::min_degree: -> int, returns the minimum column length / degree.
+    MinDegree,
+    /// std::prover::max_degree: -> int, returns the maximum column length / degree.
+    MaxDegree,
+    /// std::prover::degree: -> int, returns the column length / degree, if the minimum and maximum are equal.
     Degree,
     /// std::prover::eval: expr -> fe, evaluates an expression on the current row
     Eval,
@@ -544,6 +550,18 @@ pub trait SymbolLookup<'a, T: FieldElement> {
         _reference: &AlgebraicReference,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Err(EvalError::DataNotAvailable)
+    }
+
+    fn min_degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Err(EvalError::Unsupported(
+            "Cannot evaluate min degree.".to_string(),
+        ))
+    }
+
+    fn max_degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Err(EvalError::Unsupported(
+            "Cannot evaluate max degree.".to_string(),
+        ))
     }
 
     fn degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
@@ -1150,6 +1168,8 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
         BuiltinFunction::Challenge => 2,
         BuiltinFunction::ProvideValue => 3,
         BuiltinFunction::SetHint => 2,
+        BuiltinFunction::MinDegree => 0,
+        BuiltinFunction::MaxDegree => 0,
         BuiltinFunction::Degree => 0,
         BuiltinFunction::Eval => 1,
         BuiltinFunction::TryEval => 1,
@@ -1232,6 +1252,8 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
             symbols.set_hint(col, expr)?;
             Value::Tuple(vec![]).into()
         }
+        BuiltinFunction::MaxDegree => symbols.max_degree()?,
+        BuiltinFunction::MinDegree => symbols.min_degree()?,
         BuiltinFunction::Degree => symbols.degree()?,
         BuiltinFunction::Eval => {
             let arg = arguments.pop().unwrap();
