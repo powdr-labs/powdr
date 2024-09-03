@@ -34,14 +34,12 @@ impl<'a> TraitsResolver<'a> {
         ref_poly: &PolynomialReference,
     ) -> Result<(), String> {
         if ref_poly.type_args.is_none() {
-            // not a trait function reference
             return Ok(());
         }
+        let type_args = ref_poly.type_args.as_ref().unwrap();
         if let Some(inner_map) = self.solved_impls.get(&ref_poly.name) {
-            match &ref_poly.type_args {
-                None => return Ok(()),
-                Some(t_args) if inner_map.contains_key(t_args) => return Ok(()),
-                _ => {}
+            if inner_map.contains_key(type_args) {
+                return Ok(());
             }
         }
 
