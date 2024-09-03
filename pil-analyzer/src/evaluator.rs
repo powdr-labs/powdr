@@ -472,9 +472,9 @@ impl<'a> Definitions<'a> {
                     }
                 }
                 Some(FunctionValueDefinition::TraitFunction(_, _)) => {
-                    let type_arg = type_args.clone().unwrap();
+                    let type_arg = type_args.as_ref().unwrap();
                     let Expression::LambdaExpression(_, lambda) =
-                        solved_impls[&name][&type_arg].as_ref()
+                        solved_impls[&name][type_arg].as_ref()
                     else {
                         unreachable!()
                     };
