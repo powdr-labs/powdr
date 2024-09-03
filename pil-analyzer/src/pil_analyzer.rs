@@ -19,8 +19,8 @@ use powdr_number::{FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
     type_from_definition, Analyzed, DegreeRange, Expression, FunctionValueDefinition, Identity,
-    IdentityKind, PolynomialReference, PolynomialType, PublicDeclaration, StatementIdentifier,
-    Symbol, SymbolKind, TypedExpression,
+    IdentityKind, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
+    StatementIdentifier, Symbol, SymbolKind, TypedExpression,
 };
 use powdr_parser::{parse, parse_module, parse_type};
 
@@ -461,10 +461,14 @@ impl PILAnalyzer {
             let e =
                 ExpressionProcessor::new(self.driver(), &Default::default()).process_expression(e);
             u64::try_from(
-                evaluator::evaluate_expression::<GoldilocksField>(&e, &self.definitions)
-                    .unwrap()
-                    .try_to_integer()
-                    .unwrap(),
+                evaluator::evaluate_expression::<GoldilocksField>(
+                    &e,
+                    &self.definitions,
+                    &Default::default(),
+                )
+                .unwrap()
+                .try_to_integer()
+                .unwrap(),
             )
             .unwrap()
         };

@@ -19,7 +19,7 @@ pub struct TraitsResolver<'a> {
 impl<'a> TraitsResolver<'a> {
     pub fn new(trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>) -> Self {
         Self {
-            trait_impls: trait_impls,
+            trait_impls,
             solved_impls: HashMap::new(),
         }
     }
