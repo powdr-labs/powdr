@@ -15,6 +15,8 @@ powdr-parser-util.workspace = true
 
 pretty_assertions = "1.4.0"
 itertools = "0.13"
+lazy_static = "1.4.0"
+log = "0.4.22"
 
 [dev-dependencies]
 powdr-airgen.workspace = true

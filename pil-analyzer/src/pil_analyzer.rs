@@ -15,12 +15,12 @@ use powdr_ast::parsed::{
     self, FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions,
     SymbolCategory, TraitImplementation,
 };
-use powdr_number::{DegreeType, FieldElement, GoldilocksField};
+use powdr_number::{FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
-    type_from_definition, Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind,
-    PolynomialReference, PolynomialType, PublicDeclaration, Reference, StatementIdentifier, Symbol,
-    SymbolKind, TypedExpression,
+    type_from_definition, Analyzed, DegreeRange, Expression, FunctionValueDefinition, Identity,
+    IdentityKind, PolynomialReference, PolynomialType, PublicDeclaration, StatementIdentifier,
+    Symbol, SymbolKind, TypedExpression,
 };
 use powdr_parser::{parse, parse_module, parse_type};
 
@@ -64,7 +64,7 @@ struct PILAnalyzer {
     /// Known symbols by name and category, determined in the first step.
     known_symbols: HashMap<String, SymbolCategory>,
     current_namespace: AbsoluteSymbolPath,
-    polynomial_degree: Option<DegreeType>,
+    polynomial_degree: Option<DegreeRange>,
     /// Map of definitions, gradually being built up here.
     definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     public_declarations: HashMap<String, PublicDeclaration>,
@@ -456,27 +456,23 @@ impl PILAnalyzer {
         }
     }
 
-    fn handle_namespace(&mut self, name: SymbolPath, degree: Option<parsed::Expression>) {
-        self.polynomial_degree = degree
-            .map(|degree| {
-                ExpressionProcessor::new(self.driver(), &Default::default())
-                    .process_expression(degree)
-            })
-            // TODO we should maybe implement a separate evaluator that is able to run before type checking
-            // and is field-independent (only uses integers)?
-            .map(|degree| {
-                u64::try_from(
-                    evaluator::evaluate_expression::<GoldilocksField>(
-                        &degree,
-                        &self.definitions,
-                        &Default::default(),
-                    )
+    fn handle_namespace(&mut self, name: SymbolPath, degree: Option<parsed::NamespaceDegree>) {
+        let evaluate_degree_bound = |e| {
+            let e =
+                ExpressionProcessor::new(self.driver(), &Default::default()).process_expression(e);
+            u64::try_from(
+                evaluator::evaluate_expression::<GoldilocksField>(&e, &self.definitions)
                     .unwrap()
                     .try_to_integer()
                     .unwrap(),
-                )
-                .unwrap()
-            });
+            )
+            .unwrap()
+        };
+
+        self.polynomial_degree = degree.map(|degree| DegreeRange {
+            min: evaluate_degree_bound(degree.min),
+            max: evaluate_degree_bound(degree.max),
+        });
         self.current_namespace = AbsoluteSymbolPath::default().join(name);
     }
 

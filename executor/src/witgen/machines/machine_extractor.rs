@@ -201,7 +201,6 @@ fn build_machine<'a, T: FieldElement>(
             .unwrap();
         KnownMachine::Vm(Generator::new(
             name_with_type("Vm"),
-            fixed.common_degree(&machine_witnesses),
             fixed,
             &connecting_identities,
             machine_identities,
