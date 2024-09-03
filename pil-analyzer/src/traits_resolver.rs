@@ -33,6 +33,10 @@ impl<'a> TraitsResolver<'a> {
         &mut self,
         ref_poly: &PolynomialReference,
     ) -> Result<(), String> {
+        if ref_poly.type_args.is_none() {
+            // not a trait function reference
+            return Ok(());
+        }
         if let Some(inner_map) = self.solved_impls.get(&ref_poly.name) {
             match &ref_poly.type_args {
                 None => return Ok(()),
