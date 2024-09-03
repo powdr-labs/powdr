@@ -59,6 +59,15 @@ impl<T> Analyzed<T> {
             .unique()
             .exactly_one()
             .unwrap()
+            .try_into_unique()
+            .unwrap()
+    }
+
+    pub fn degree_ranges(&self) -> HashSet<DegreeRange> {
+        self.definitions
+            .values()
+            .filter_map(|(symbol, _)| symbol.degree)
+            .collect::<HashSet<_>>()
     }
 
     /// Returns the set of all explicit degrees in this [`Analyzed<T>`].
@@ -66,6 +75,7 @@ impl<T> Analyzed<T> {
         self.definitions
             .values()
             .filter_map(|(symbol, _)| symbol.degree)
+            .map(|d| d.try_into_unique().unwrap())
             .collect::<HashSet<_>>()
     }
 
@@ -495,6 +505,44 @@ pub fn type_from_definition(
     }
 }
 
+#[derive(PartialEq, Eq, Hash, Debug, Clone, Serialize, Deserialize, JsonSchema, Copy)]
+pub struct DegreeRange {
+    pub min: DegreeType,
+    pub max: DegreeType,
+}
+
+impl From<DegreeType> for DegreeRange {
+    fn from(value: DegreeType) -> Self {
+        Self {
+            min: value,
+            max: value,
+        }
+    }
+}
+
+impl DegreeRange {
+    pub fn try_into_unique(self) -> Option<DegreeType> {
+        (self.min == self.max).then_some(self.min)
+    }
+
+    /// Iterate through powers of two in this range
+    pub fn iter(&self) -> impl Iterator<Item = DegreeType> {
+        let min_ceil = self.min.next_power_of_two();
+        let max_ceil = self.max.next_power_of_two();
+        let min_log = usize::BITS - min_ceil.leading_zeros() - 1;
+        let max_log = usize::BITS - max_ceil.leading_zeros() - 1;
+        (min_log..=max_log).map(|exponent| 1 << exponent)
+    }
+
+    /// Fit a degree to this range:
+    /// - returns the smallest value in the range which is larger or equal to `new_degree`
+    /// - panics if no such value exists
+    pub fn fit(&self, new_degree: u64) -> u64 {
+        assert!(new_degree <= self.max);
+        self.min.max(new_degree)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Symbol {
     pub id: u64,
@@ -502,8 +550,8 @@ pub struct Symbol {
     pub absolute_name: String,
     pub stage: Option<u32>,
     pub kind: SymbolKind,
-    pub length: Option<DegreeType>,
-    pub degree: Option<DegreeType>,
+    pub length: Option<u64>,
+    pub degree: Option<DegreeRange>,
 }
 
 impl Symbol {
@@ -1306,9 +1354,10 @@ impl Display for PolynomialType {
 
 #[cfg(test)]
 mod tests {
+    use powdr_number::DegreeType;
     use powdr_parser_util::SourceRef;
 
-    use crate::analyzed::{AlgebraicReference, PolyID, PolynomialType};
+    use crate::analyzed::{AlgebraicReference, DegreeRange, PolyID, PolynomialType};
 
     use super::{AlgebraicExpression, Analyzed};
 
@@ -1379,5 +1428,27 @@ mod tests {
 
         let expr = column.clone() * column.clone() * column.clone();
         assert_eq!(expr.degree(), 3);
+    }
+
+    #[test]
+    fn degree_range() {
+        assert_eq!(
+            DegreeRange { min: 4, max: 4 }.iter().collect::<Vec<_>>(),
+            vec![4]
+        );
+        assert_eq!(
+            DegreeRange { min: 4, max: 16 }.iter().collect::<Vec<_>>(),
+            vec![4, 8, 16]
+        );
+        assert_eq!(
+            DegreeRange { min: 3, max: 15 }.iter().collect::<Vec<_>>(),
+            vec![4, 8, 16]
+        );
+        assert_eq!(
+            DegreeRange { min: 15, max: 3 }
+                .iter()
+                .collect::<Vec<DegreeType>>(),
+            Vec::<DegreeType>::new()
+        );
     }
 }

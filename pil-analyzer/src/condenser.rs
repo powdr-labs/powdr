@@ -11,7 +11,7 @@ use std::{
 
 use powdr_ast::{
     analyzed::{
-        self, AlgebraicExpression, AlgebraicReference, Analyzed, Expression,
+        self, AlgebraicExpression, AlgebraicReference, Analyzed, DegreeRange, Expression,
         FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialType, PublicDeclaration,
         SelectedExpressions, StatementIdentifier, Symbol, SymbolKind,
     },
@@ -23,7 +23,7 @@ use powdr_ast::{
         FunctionKind, TypedExpression,
     },
 };
-use powdr_number::{DegreeType, FieldElement};
+use powdr_number::FieldElement;
 use powdr_parser_util::SourceRef;
 
 use crate::{
@@ -175,7 +175,7 @@ pub fn condense<T: FieldElement>(
 type SymbolCache<'a, T> = HashMap<String, BTreeMap<Option<Vec<Type>>, Arc<Value<'a, T>>>>;
 
 pub struct Condenser<'a, T> {
-    degree: Option<DegreeType>,
+    degree: Option<DegreeRange>,
     /// All the definitions from the PIL file.
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     /// Evaluation cache.
@@ -246,7 +246,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     pub fn set_namespace_and_degree(
         &mut self,
         namespace: AbsoluteSymbolPath,
-        degree: Option<DegreeType>,
+        degree: Option<DegreeRange>,
     ) {
         self.namespace = namespace;
         self.degree = degree;
@@ -349,9 +349,23 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         Definitions(self.symbols).lookup_public_reference(name)
     }
 
+    fn min_degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
+        let degree = self.degree.ok_or(EvalError::DataNotAvailable)?;
+        Ok(Value::Integer(degree.min.into()).into())
+    }
+
+    fn max_degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
+        let degree = self.degree.ok_or(EvalError::DataNotAvailable)?;
+        Ok(Value::Integer(degree.max.into()).into())
+    }
+
     fn degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
         let degree = self.degree.ok_or(EvalError::DataNotAvailable)?;
-        Ok(Value::Integer(degree.into()).into())
+        if degree.min == degree.max {
+            Ok(Value::Integer(degree.min.into()).into())
+        } else {
+            Err(EvalError::DataNotAvailable)
+        }
     }
 
     fn new_column(
