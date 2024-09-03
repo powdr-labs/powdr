@@ -253,6 +253,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             let mut generator = Generator::new(
                 "Main Machine".to_string(),
                 main_size,
+                &fixed,
                 base_parts,
                 // We could set the latch of the main VM here, but then we would have to detect it.
                 // Instead, the main VM will be computed in one block, directly continuing into the

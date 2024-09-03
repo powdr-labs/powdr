@@ -43,7 +43,11 @@ pub struct WriteOnceMemory<'a, T: FieldElement> {
 }
 
 impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
-    pub fn try_new(name: String, parts: &MachineParts<'a, T>) -> Option<Self> {
+    pub fn try_new(
+        name: String,
+        fixed_data: &'a FixedData<'a, T>,
+        parts: &MachineParts<'a, T>,
+    ) -> Option<Self> {
         if !parts.identities.is_empty() {
             return None;
         }
@@ -105,7 +109,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         for row in 0..degree {
             let key = key_polys
                 .iter()
-                .map(|k| parts.fixed_data.fixed_cols[k].values(degree)[row as usize])
+                .map(|k| fixed_data.fixed_cols[k].values(degree)[row as usize])
                 .collect::<Vec<_>>();
             if key_to_index.insert(key, row).is_some() {
                 // Duplicate keys, can't be a write-once memory
@@ -117,7 +121,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             degree,
             connecting_identities: parts.connecting_identities.clone(),
             name,
-            fixed_data: parts.fixed_data,
+            fixed_data,
             value_polys,
             key_to_index,
             data: BTreeMap::new(),

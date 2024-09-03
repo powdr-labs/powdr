@@ -17,7 +17,7 @@ use super::machines::MachineParts;
 use super::processor::{OuterQuery, Processor};
 
 use super::rows::{Row, RowIndex, UnknownStrategy};
-use super::{Constraints, EvalError, EvalValue, MutableState, QueryCallback};
+use super::{Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCallback};
 
 /// Maximal period checked during loop detection.
 const MAX_PERIOD: usize = 4;
@@ -51,6 +51,9 @@ pub struct VmProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     degree: DegreeType,
     /// The global index of the first row of [VmProcessor::data].
     row_offset: DegreeType,
+    /// The fixed data (containing information about all columns)
+    fixed_data: &'a FixedData<'a, T>,
+    /// The machine parts (identities, connecting identities, etc.)
     parts: &'c MachineParts<'a, T>,
     /// The subset of identities that contains a reference to the next row
     /// (precomputed once for performance reasons)
@@ -70,6 +73,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         machine_name: String,
         degree: DegreeType,
         row_offset: RowIndex,
+        fixed_data: &'a FixedData<'a, T>,
         parts: &'c MachineParts<'a, T>,
         data: FinalizableData<T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
@@ -78,7 +82,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             .identities
             .iter()
             .partition(|identity| identity.contains_next_ref());
-        let processor = Processor::new(row_offset, data, mutable_state, parts, degree);
+        let processor = Processor::new(row_offset, data, mutable_state, fixed_data, parts, degree);
 
         let progress_bar = ProgressBar::new(degree);
         progress_bar.set_style(
@@ -92,6 +96,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             machine_name,
             degree,
             row_offset: row_offset.into(),
+            fixed_data,
             parts,
             identities_with_next_ref: identities_with_next,
             identities_without_next_ref: identities_without_next,
@@ -258,7 +263,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             self.processor.set_row(
                 self.processor.len(),
                 Row::fresh(
-                    self.parts.fixed_data,
+                    self.fixed_data,
                     RowIndex::from_degree(row_index, self.degree) + 1,
                 ),
             );

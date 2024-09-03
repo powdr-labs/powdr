@@ -8,6 +8,7 @@ use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, C
 use crate::Identity;
 
 use super::machines::MachineParts;
+use super::FixedData;
 use super::{
     affine_expression::AffineExpression,
     data_structures::{
@@ -73,6 +74,8 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     data: FinalizableData<T>,
     /// The mutable state
     mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
+    /// The fixed data (containing information about all columns)
+    fixed_data: &'a FixedData<'a, T>,
     /// The machine parts (witness columns, identities, fixed data)
     parts: &'c MachineParts<'a, T>,
     /// Whether a given witness column is relevant for this machine (faster than doing a contains check on witness_cols)
@@ -92,6 +95,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         row_offset: RowIndex,
         data: FinalizableData<T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
+        fixed_data: &'a FixedData<'a, T>,
         parts: &'c MachineParts<'a, T>,
         size: DegreeType,
     ) -> Self {
@@ -114,6 +118,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             row_offset,
             data,
             mutable_state,
+            fixed_data,
             parts,
             is_relevant_witness,
             prover_query_witnesses,
@@ -170,7 +175,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         let row_pair = RowPair::from_single_row(
             &self.data[row_index],
             self.row_offset + row_index as u64,
-            self.parts.fixed_data,
+            self.fixed_data,
             UnknownStrategy::Unknown,
             self.size,
         );
@@ -184,7 +189,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
 
     pub fn process_queries(&mut self, row_index: usize) -> Result<bool, EvalError<T>> {
         let mut query_processor = QueryProcessor::new(
-            self.parts.fixed_data,
+            self.fixed_data,
             self.mutable_state.query_callback,
             self.size,
         );
@@ -193,7 +198,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             &self.data[row_index],
             &self.data[row_index + 1],
             global_row_index,
-            self.parts.fixed_data,
+            self.fixed_data,
             UnknownStrategy::Unknown,
             self.size,
         );
@@ -220,7 +225,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             &self.data[row_index],
             &self.data[row_index + 1],
             global_row_index,
-            self.parts.fixed_data,
+            self.fixed_data,
             unknown_strategy,
             self.size,
         );
@@ -288,7 +293,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             &self.data[row_index],
             &self.data[row_index + 1],
             self.row_offset + row_index as u64,
-            self.parts.fixed_data,
+            self.fixed_data,
             UnknownStrategy::Unknown,
             self.size,
         );
@@ -332,7 +337,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         for (poly_id, value) in self.inputs.iter() {
             if !self.data[row_index].value_is_known(poly_id) {
                 input_updates.combine(EvalValue::complete(vec![(
-                    &self.parts.fixed_data.witness_cols[poly_id].poly,
+                    &self.fixed_data.witness_cols[poly_id].poly,
                     Constraint::Assignment(*value),
                 )]));
             }
@@ -343,7 +348,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             if let Some(start_row) = self.previously_set_inputs.remove(poly_id) {
                 log::trace!(
                     "    Resetting previously set inputs for column: {}",
-                    self.parts.column_name(poly_id)
+                    self.fixed_data.column_name(poly_id)
                 );
                 for row_index in start_row..row_index {
                     self.data[row_index].set_cell_unknown(poly_id);
@@ -368,7 +373,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             &self.data[row_index],
             &self.data[row_index + 1],
             self.row_offset + row_index as u64,
-            self.parts.fixed_data,
+            self.fixed_data,
             UnknownStrategy::Unknown,
             self.size,
         );
@@ -442,14 +447,14 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                         "Copy constraints to fixed columns are not yet supported (#1335)!"
                     );
                 }
-                let expression = &self.parts.fixed_data.witness_cols[&other_poly].expr;
+                let expression = &self.fixed_data.witness_cols[&other_poly].expr;
                 let local_index = other_row.to_local(&self.row_offset);
                 self.set_value(local_index, expression, *v, || {
                     format!(
                         "Copy constraint: {} (Row {}) -> {} (Row {})",
-                        self.parts.column_name(&poly.poly_id),
+                        self.fixed_data.column_name(&poly.poly_id),
                         row,
-                        self.parts.column_name(&other_poly),
+                        self.fixed_data.column_name(&other_poly),
                         other_row
                     )
                 })
@@ -507,7 +512,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                     &self.data[row_index - 1],
                     proposed_row,
                     self.row_offset + (row_index - 1) as DegreeType,
-                    self.parts.fixed_data,
+                    self.fixed_data,
                     UnknownStrategy::Zero,
                     self.size,
                 )
@@ -518,7 +523,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             false => RowPair::from_single_row(
                 proposed_row,
                 self.row_offset + row_index as DegreeType,
-                self.parts.fixed_data,
+                self.fixed_data,
                 UnknownStrategy::Zero,
                 self.size,
             ),

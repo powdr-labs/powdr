@@ -97,6 +97,7 @@ pub struct BlockMachine<'a, T: FieldElement> {
     block_size: usize,
     /// The row index (within the block) of the latch row
     latch_row: usize,
+    fixed_data: &'a FixedData<'a, T>,
     /// The parts of the machine (identities, witness columns, etc.)
     parts: MachineParts<'a, T>,
     /// The type of constraint used to connect this machine to its caller.
@@ -113,11 +114,15 @@ pub struct BlockMachine<'a, T: FieldElement> {
 }
 
 impl<'a, T: FieldElement> BlockMachine<'a, T> {
-    pub fn try_new(name: String, parts: &MachineParts<'a, T>) -> Option<Self> {
+    pub fn try_new(
+        name: String,
+        fixed_data: &'a FixedData<'a, T>,
+        parts: &MachineParts<'a, T>,
+    ) -> Option<Self> {
         let degree = parts.common_degree();
 
         let (is_permutation, block_size, latch_row) =
-            detect_connection_type_and_block_size(parts.fixed_data, &parts.connecting_identities)?;
+            detect_connection_type_and_block_size(fixed_data, &parts.connecting_identities)?;
 
         for id in parts.connecting_identities.values() {
             for r in id.right.expressions.iter() {
@@ -141,13 +146,14 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let start_index = RowIndex::from_i64(-(block_size as i64), degree);
         let data = FinalizableData::with_initial_rows_in_progress(
             &parts.witnesses,
-            (0..block_size).map(|i| Row::fresh(parts.fixed_data, start_index + i)),
+            (0..block_size).map(|i| Row::fresh(fixed_data, start_index + i)),
         );
         Some(BlockMachine {
             name,
             degree,
             block_size,
             latch_row,
+            fixed_data,
             parts: parts.clone(),
             connection_type: is_permutation,
             data,
@@ -331,6 +337,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 row_offset,
                 dummy_block,
                 mutable_state,
+                self.fixed_data,
                 &self.parts,
                 self.degree,
             );
@@ -419,7 +426,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             .collect();
         self.handle_last_row(&mut data);
         data.into_iter()
-            .map(|(id, values)| (self.parts.column_name(&id).to_string(), values))
+            .map(|(id, values)| (self.fixed_data.column_name(&id).to_string(), values))
             .collect()
     }
 }
@@ -541,11 +548,17 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // and the first row of the next block.
         let block = FinalizableData::with_initial_rows_in_progress(
             &self.parts.witnesses,
-            (0..(self.block_size + 2)).map(|i| Row::fresh(self.parts.fixed_data, row_offset + i)),
+            (0..(self.block_size + 2)).map(|i| Row::fresh(self.fixed_data, row_offset + i)),
         );
-        let mut processor =
-            BlockProcessor::new(row_offset, block, mutable_state, &self.parts, self.degree)
-                .with_outer_query(outer_query);
+        let mut processor = BlockProcessor::new(
+            row_offset,
+            block,
+            mutable_state,
+            self.fixed_data,
+            &self.parts,
+            self.degree,
+        )
+        .with_outer_query(outer_query);
 
         let outer_assignments = processor.solve(sequence_iterator)?;
         let new_block = processor.finish();

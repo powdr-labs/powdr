@@ -37,60 +37,62 @@ pub struct SortedWitnesses<'a, T: FieldElement> {
 }
 
 impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
-    pub fn try_new(name: String, parts: &MachineParts<'a, T>) -> Option<Self> {
+    pub fn try_new(
+        name: String,
+        fixed_data: &'a FixedData<'a, T>,
+        parts: &MachineParts<'a, T>,
+    ) -> Option<Self> {
         let degree = parts.common_degree();
 
         if parts.identities.len() != 1 {
             return None;
         }
 
-        check_identity(parts.fixed_data, parts.identities.first().unwrap(), degree).and_then(
-            |key_col| {
-                let witness_positions = parts
-                    .witnesses
-                    .iter()
-                    .filter(|&w| *w != key_col)
-                    .sorted()
-                    .enumerate()
-                    .map(|(i, &x)| (x, i))
-                    .collect();
+        check_identity(fixed_data, parts.identities.first().unwrap(), degree).and_then(|key_col| {
+            let witness_positions = parts
+                .witnesses
+                .iter()
+                .filter(|&w| *w != key_col)
+                .sorted()
+                .enumerate()
+                .map(|(i, &x)| (x, i))
+                .collect();
 
-                let rhs_references = parts
-                    .connecting_identities
-                    .values()
-                    .filter_map(|&id| {
-                        let rhs_expressions = id
-                            .right
-                            .expressions
-                            .iter()
-                            .map(|expr| match expr {
-                                // Expect all RHS expressions to be references without a next operator applied.
-                                Expression::Reference(p) => (!p.next).then_some(p),
-                                _ => None,
-                            })
-                            .collect::<Option<Vec<_>>>()?;
+            let rhs_references = parts
+                .connecting_identities
+                .values()
+                .filter_map(|&id| {
+                    let rhs_expressions = id
+                        .right
+                        .expressions
+                        .iter()
+                        .map(|expr| match expr {
+                            // Expect all RHS expressions to be references without a next operator applied.
+                            Expression::Reference(p) => (!p.next).then_some(p),
+                            _ => None,
+                        })
+                        .collect::<Option<Vec<_>>>()?;
 
-                        Some((id.id, rhs_expressions))
-                    })
-                    .collect::<BTreeMap<_, _>>();
-
-                if rhs_references.len() != parts.connecting_identities.len() {
-                    // Not all connected identities meet the criteria above, so this is not a DoubleSortedWitnesses machine.
-                    return None;
-                }
-
-                Some(SortedWitnesses {
-                    degree,
-                    rhs_references,
-                    connecting_identities: parts.connecting_identities.clone(),
-                    name,
-                    key_col,
-                    witness_positions,
-                    data: Default::default(),
-                    fixed_data: parts.fixed_data,
+                    Some((id.id, rhs_expressions))
                 })
-            },
-        )
+                .collect::<BTreeMap<_, _>>();
+
+            if rhs_references.len() != parts.connecting_identities.len() {
+                // Not all connected identities meet the criteria above, so this is not a DoubleSortedWitnesses machine.
+                return None;
+            }
+
+            Some(SortedWitnesses {
+                degree,
+                rhs_references,
+                connecting_identities: parts.connecting_identities.clone(),
+                name,
+                key_col,
+                witness_positions,
+                data: Default::default(),
+                fixed_data,
+            })
+        })
     }
 }
 

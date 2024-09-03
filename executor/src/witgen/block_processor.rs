@@ -9,7 +9,7 @@ use super::{
     processor::{OuterQuery, Processor},
     rows::{RowIndex, UnknownStrategy},
     sequence_iterator::{Action, ProcessingSequenceIterator, SequenceStep},
-    EvalError, EvalValue, IncompleteCause, MutableState, QueryCallback,
+    EvalError, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
 };
 
 /// A basic processor that knows how to determine a unique satisfying witness
@@ -29,10 +29,11 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         row_offset: RowIndex,
         data: FinalizableData<T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
+        fixed_data: &'a FixedData<'a, T>,
         parts: &'c MachineParts<'a, T>,
         size: DegreeType,
     ) -> Self {
-        let processor = Processor::new(row_offset, data, mutable_state, parts, size);
+        let processor = Processor::new(row_offset, data, mutable_state, fixed_data, parts, size);
         Self {
             processor,
             identities: &parts.identities,
@@ -183,8 +184,14 @@ mod tests {
             witnesses: fixed_data.witness_cols.keys().collect(),
         };
 
-        let processor =
-            BlockProcessor::new(row_offset, data, &mut mutable_state, &machine_parts, degree);
+        let processor = BlockProcessor::new(
+            row_offset,
+            data,
+            &mut mutable_state,
+            &fixed_data,
+            &machine_parts,
+            degree,
+        );
 
         f(
             processor,

@@ -12,7 +12,7 @@ use super::machines::{Machine, MachineParts};
 use super::rows::{Row, RowIndex, RowPair};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use super::vm_processor::VmProcessor;
-use super::{EvalResult, MutableState, QueryCallback};
+use super::{EvalResult, FixedData, MutableState, QueryCallback};
 
 struct ProcessResult<'a, T: FieldElement> {
     eval_value: EvalValue<&'a AlgebraicReference, T>,
@@ -20,6 +20,7 @@ struct ProcessResult<'a, T: FieldElement> {
 }
 
 pub struct Generator<'a, T: FieldElement> {
+    fixed_data: &'a FixedData<'a, T>,
     parts: MachineParts<'a, T>,
     data: FinalizableData<T>,
     latch: Option<Expression<T>>,
@@ -86,7 +87,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
 
         self.data
             .take_transposed()
-            .map(|(id, (values, _))| (self.parts.column_name(&id).to_string(), values))
+            .map(|(id, (values, _))| (self.fixed_data.column_name(&id).to_string(), values))
             .collect()
     }
 }
@@ -95,6 +96,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     pub fn new(
         name: String,
         degree: DegreeType,
+        fixed_data: &'a FixedData<'a, T>,
         parts: MachineParts<'a, T>,
         latch: Option<Expression<T>>,
     ) -> Self {
@@ -103,6 +105,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         Self {
             degree,
             name,
+            fixed_data,
             parts,
             data,
             latch,
@@ -154,8 +157,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         let data = FinalizableData::with_initial_rows_in_progress(
             &self.parts.witnesses,
             [
-                Row::fresh(self.parts.fixed_data, RowIndex::from_i64(-1, self.degree)),
-                Row::fresh(self.parts.fixed_data, RowIndex::from_i64(0, self.degree)),
+                Row::fresh(self.fixed_data, RowIndex::from_i64(-1, self.degree)),
+                Row::fresh(self.fixed_data, RowIndex::from_i64(0, self.degree)),
             ]
             .into_iter(),
         );
@@ -178,6 +181,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             RowIndex::from_i64(-1, self.degree),
             data,
             mutable_state,
+            self.fixed_data,
             &next_parts,
             self.degree,
         );
@@ -210,6 +214,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             self.name().to_string(),
             self.degree,
             RowIndex::from_degree(row_offset, self.degree),
+            self.fixed_data,
             &self.parts,
             data,
             mutable_state,
