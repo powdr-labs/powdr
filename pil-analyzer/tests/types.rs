@@ -691,3 +691,26 @@ fn trait_with_user_defined_enum2() {
     ";
     type_check(input, &[("r1", "", "V2"), ("r2", "", "V1")]);
 }
+
+#[test]
+#[should_panic = "Value symbol not found: false"]
+fn trait_user_defined_enum_wrong_type() {
+    let input = "
+    enum V1 { A1, B1 }
+    enum V2 { A2, B2 }
+
+    trait Convert<T, U> {
+        convert: T -> U,
+    }
+
+    impl Convert<V1, V2> {
+        convert: |x| match x {
+            V1::A1 => V2::A2,
+            V1::B1 => V2::B2,
+        },
+    }
+
+    let r1 = Convert::convert(false);
+    ";
+    type_check(input, &[]);
+}
