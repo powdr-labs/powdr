@@ -350,7 +350,7 @@ impl PILAnalyzer {
                     resolve_references(e);
                 }
                 Some(FunctionValueDefinition::Array(items)) => {
-                    items.children().for_each(|e| resolve_references(e));
+                    items.children().for_each(&mut resolve_references);
                 }
                 _ => {}
             }
