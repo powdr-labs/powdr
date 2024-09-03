@@ -154,6 +154,7 @@ lazy_static! {
         ("std::prover::degree", FunctionKind::Pure),
         ("std::prelude::set_hint", FunctionKind::Constr),
         ("std::prover::eval", FunctionKind::Query),
+        ("std::prover::try_eval", FunctionKind::Query),
     ]
     .into_iter()
     .collect();

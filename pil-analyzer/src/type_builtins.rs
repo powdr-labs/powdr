@@ -48,6 +48,7 @@ lazy_static! {
             ("", "expr, (int -> std::prelude::Query) -> ()")
         ),
         ("std::prover::eval", ("", "expr -> fe")),
+        ("std::prover::try_eval", ("", "expr -> std::prelude::Option<fe>")),
         ("std::prover::provide_value", ("", "expr, int, fe -> ()"))
     ]
     .into_iter()

@@ -3,8 +3,14 @@
 /// valid in query functions.
 let eval: expr -> fe = [];
 
+/// Returns the value of the algebraic expression on the current row if it is
+/// known, otherwise returns None.
+/// This function is only valid in query functions.
+let try_eval: expr -> Option<fe> = [];
+
 /// A function that can be used to set a cell value.
 /// The parameters are column, row index and value.
+/// It is an error to provide a value that is different to one already provided or determined.
 /// This function is only valid in query functions.
 let provide_value: expr, int, fe -> () = [];
 

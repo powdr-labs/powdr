@@ -311,7 +311,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
     }
 }
 
-const BUILTINS: [(&str, BuiltinFunction); 12] = [
+const BUILTINS: [(&str, BuiltinFunction); 13] = [
     ("std::array::len", BuiltinFunction::ArrayLen),
     ("std::check::panic", BuiltinFunction::Panic),
     ("std::convert::expr", BuiltinFunction::ToExpr),
@@ -324,6 +324,7 @@ const BUILTINS: [(&str, BuiltinFunction); 12] = [
     ("std::prelude::set_hint", BuiltinFunction::SetHint),
     ("std::prover::degree", BuiltinFunction::Degree),
     ("std::prover::eval", BuiltinFunction::Eval),
+    ("std::prover::try_eval", BuiltinFunction::TryEval),
 ];
 
 #[derive(Clone, Copy, Debug)]
@@ -354,6 +355,8 @@ pub enum BuiltinFunction {
     Degree,
     /// std::prover::eval: expr -> fe, evaluates an expression on the current row
     Eval,
+    /// std::prover::try_eval: expr -> std::prelude::Option<fe>, evaluates an expression on the current row
+    TryEval,
 }
 
 impl<'a, T: Display> Display for Value<'a, T> {
@@ -1149,6 +1152,7 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
         BuiltinFunction::SetHint => 2,
         BuiltinFunction::Degree => 0,
         BuiltinFunction::Eval => 1,
+        BuiltinFunction::TryEval => 1,
     };
 
     if arguments.len() != params {
@@ -1238,6 +1242,22 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
                     v.type_formatted()
                 ),
             }
+        }
+        BuiltinFunction::TryEval => {
+            let arg = arguments.pop().unwrap();
+            let result = match arg.as_ref() {
+                Value::Expression(e) => symbols.eval_expr(e),
+                v => panic!(
+                    "Expected expression for std::prover::eval, but got {v}: {}",
+                    v.type_formatted()
+                ),
+            };
+            match result {
+                Ok(v) => Value::Enum("Some", Some(vec![v])),
+                Err(EvalError::DataNotAvailable) => Value::Enum("None", None),
+                Err(e) => return Err(e),
+            }
+            .into()
         }
     })
 }

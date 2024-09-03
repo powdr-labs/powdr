@@ -137,18 +137,27 @@ machine Arith with
     query |i| {
         match is_ec_operation() {
             0 => {
-                let y2 = y2_int();
-                let y3 = y3_int();
-                let x1 = x1_int();
-                let dividend = (y2 << 256) + y3;
-                let quotient = dividend / x1;
-                let remainder = dividend % x1;
-                let _ = array::map_enumerated(y1, |j, y1_limb|
-                    std::prover::provide_value(y1_limb, i, fe(select_limb(quotient, j)))
-                );
-                let _ = array::map_enumerated(x2, |j, x2_limb|
-                    std::prover::provide_value(x2_limb, i, fe(select_limb(remainder, j)))
-                );
+                match std::prover::try_eval(y1[0]) {
+                    Option::Some(_) => {
+                        // y1 is an input, in this case we do not need a hint.
+                    },
+                    Option::None => {
+                        // y1 is not an input, which means we are probably computing
+                        // division or modulo.
+                        let y2 = y2_int();
+                        let y3 = y3_int();
+                        let x1 = x1_int();
+                        let dividend = (y2 << 256) + y3;
+                        let quotient = dividend / x1;
+                        let remainder = dividend % x1;
+                        let _ = array::map_enumerated(y1, |j, y1_limb|
+                            std::prover::provide_value(y1_limb, i, fe(select_limb(quotient, j)))
+                        );
+                        let _ = array::map_enumerated(x2, |j, x2_limb|
+                            std::prover::provide_value(x2_limb, i, fe(select_limb(remainder, j)))
+                        );
+                    }
+                }
             },
             _ => ()
         }
