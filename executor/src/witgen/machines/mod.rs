@@ -1,7 +1,8 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use powdr_ast::analyzed::DegreeRange;
 use powdr_ast::analyzed::PolyID;
-use powdr_number::DegreeType;
+
 use powdr_number::FieldElement;
 
 use crate::Identity;
@@ -185,18 +186,13 @@ impl<'a, T: FieldElement> MachineParts<'a, T> {
     }
 
     /// Returns the common degree of the witness columns.
-    pub fn common_degree(&self) -> DegreeType {
-        self.fixed_data.common_degree(&self.witnesses)
+    pub fn common_degree_range(&self) -> DegreeRange {
+        self.fixed_data.common_degree_range(&self.witnesses)
     }
 
     /// Returns the IDs of the connecting identities.
     pub fn identity_ids(&self) -> Vec<u64> {
         self.connecting_identities.keys().cloned().collect()
-    }
-
-    /// Returns true if the degrees of the witness columns of this machine differ.
-    pub fn is_variable_degree(&self) -> bool {
-        self.fixed_data.common_set_degree(&self.witnesses).is_none()
     }
 
     /// Returns the name of a column.

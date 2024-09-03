@@ -101,7 +101,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             }
         });
 
-        let degree = parts.common_degree();
+        let degree = parts.common_degree_range().max;
 
         let mut key_to_index = BTreeMap::new();
         for row in 0..degree {

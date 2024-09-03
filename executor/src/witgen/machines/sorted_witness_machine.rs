@@ -42,11 +42,11 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
         fixed_data: &'a FixedData<'a, T>,
         parts: &MachineParts<'a, T>,
     ) -> Option<Self> {
-        let degree = parts.common_degree();
-
         if parts.identities.len() != 1 {
             return None;
         }
+
+        let degree = parts.common_degree_range().max;
 
         check_identity(fixed_data, parts.identities.first().unwrap(), degree).and_then(|key_col| {
             let witness_positions = parts

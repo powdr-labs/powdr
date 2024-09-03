@@ -155,11 +155,13 @@ If you want two challenges to be different, you have to choose different IDs.
 ### Degree
 
 ```rust
+let std::prover::min_degree: -> int
+let std::prover::max_degree: -> int
 let std::prover::degree: -> int
 ```
 
-Returns the current number of rows / the length of the witness columns, also
-known as the degree.
+Returns the number of rows / the length of the witness columns, also
+known as the degree. Outside of fixed column definitions, `degree` fails if `min_degree` and `max_degree` are different.
 
 ### Hints
 

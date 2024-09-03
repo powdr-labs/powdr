@@ -4,7 +4,6 @@ use std::iter::once;
 use itertools::Itertools;
 
 use super::{Machine, MachineParts};
-use crate::constant_evaluator::{MAX_DEGREE_LOG, MIN_DEGREE_LOG};
 use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{EvalError, EvalResult, FixedData, MutableState, QueryCallback};
@@ -12,7 +11,7 @@ use crate::witgen::{EvalValue, IncompleteCause};
 
 use powdr_number::{DegreeType, FieldElement};
 
-use powdr_ast::analyzed::{IdentityKind, PolyID};
+use powdr_ast::analyzed::{DegreeRange, IdentityKind, PolyID};
 
 /// If all witnesses of a machine have a name in this list (disregarding the namespace),
 /// we'll consider it to be a double-sorted machine.
@@ -45,6 +44,7 @@ fn split_column_name(name: &str) -> (&str, &str) {
 /// TODO make this generic
 
 pub struct DoubleSortedWitnesses<'a, T: FieldElement> {
+    degree_range: DegreeRange,
     degree: DegreeType,
     //key_col: String,
     /// Position of the witness columns in the data.
@@ -84,7 +84,9 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
         fixed_data: &'a FixedData<'a, T>,
         parts: &MachineParts<'a, T>,
     ) -> Option<Self> {
-        let degree = parts.common_degree();
+        let degree_range = parts.common_degree_range();
+
+        let degree = degree_range.max;
 
         // get the namespaces and column names
         let (mut namespaces, columns): (HashSet<_>, HashSet<_>) = parts
@@ -162,8 +164,9 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
         };
         Some(Self {
             name,
+            degree_range,
             namespace,
-            parts: parts.clone(),
+            parts: parts.clone(), // TODO is this really unused?
             degree,
             diff_columns_base,
             has_bootloader_write_column,
@@ -254,20 +257,17 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
             set_selector(None);
         }
 
-        if self.parts.is_variable_degree() {
-            let current_size = addr.len();
-            assert!(current_size <= 1 << *MAX_DEGREE_LOG);
-            let new_size = current_size.next_power_of_two() as DegreeType;
-            let new_size = new_size.max(1 << MIN_DEGREE_LOG);
-            log::info!(
-                "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
-                self.name,
-                self.degree,
-                new_size,
-                current_size
-            );
-            self.degree = new_size;
-        }
+        let current_size = addr.len();
+        let new_size = current_size.next_power_of_two() as DegreeType;
+        let new_size = self.degree_range.fit(new_size);
+        log::info!(
+            "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
+            self.name,
+            self.degree,
+            new_size,
+            current_size
+        );
+        self.degree = new_size;
 
         while addr.len() < self.degree as usize {
             addr.push(*addr.last().unwrap());

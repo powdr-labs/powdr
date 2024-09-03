@@ -1,13 +1,12 @@
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicReference, IdentityKind};
+use powdr_ast::analyzed::{AlgebraicReference, DegreeRange, IdentityKind};
 use powdr_ast::indent;
 use powdr_number::{DegreeType, FieldElement};
 use std::cmp::max;
 
 use std::time::Instant;
 
-use crate::constant_evaluator::MIN_DEGREE_LOG;
 use crate::witgen::identity_processor::{self};
 use crate::witgen::IncompleteCause;
 use crate::Identity;
@@ -47,7 +46,9 @@ impl<'a, T: FieldElement> CompletableIdentities<'a, T> {
 pub struct VmProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     /// The name of the machine being run
     machine_name: String,
-    /// The common degree of all referenced columns
+    /// The common degree range of all referenced columns
+    degree_range: DegreeRange,
+    /// The current degree of all referenced columns
     degree: DegreeType,
     /// The global index of the first row of [VmProcessor::data].
     row_offset: DegreeType,
@@ -71,13 +72,16 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
     #[allow(clippy::too_many_arguments)]
     pub fn new(
         machine_name: String,
-        degree: DegreeType,
         row_offset: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
         parts: &'c MachineParts<'a, T>,
         data: FinalizableData<T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
     ) -> Self {
+        let degree_range = parts.common_degree_range();
+
+        let degree = degree_range.max;
+
         let (identities_with_next, identities_without_next): (Vec<_>, Vec<_>) = parts
             .identities
             .iter()
@@ -94,6 +98,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
 
         VmProcessor {
             machine_name,
+            degree_range,
             degree,
             row_offset: row_offset.into(),
             fixed_data,
@@ -174,19 +179,17 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                         "Found loop with period {p} starting at row {row_index}"
                     );
 
-                    if self.parts.is_variable_degree() {
-                        let new_degree = self.processor.len().next_power_of_two() as DegreeType;
-                        let new_degree = new_degree.max(1 << MIN_DEGREE_LOG);
-                        log::info!(
-                            "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
-                            self.machine_name,
-                            self.degree,
-                            new_degree,
-                            self.processor.len()
-                        );
-                        self.degree = new_degree;
-                        self.processor.set_size(new_degree);
-                    }
+                    let new_degree = self.processor.len().next_power_of_two() as DegreeType;
+                    let new_degree = self.degree_range.fit(new_degree);
+                    log::info!(
+                        "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
+                        self.machine_name,
+                        self.degree,
+                        new_degree,
+                        self.processor.len()
+                    );
+                    self.degree = new_degree;
+                    self.processor.set_size(new_degree);
                 }
             }
             if let Some(period) = looping_period {

@@ -194,7 +194,6 @@ fn build_machine<'a, T: FieldElement>(
             .unwrap();
         KnownMachine::Vm(Generator::new(
             name_with_type("Vm"),
-            machine_parts.common_degree(),
             fixed_data,
             machine_parts.clone(),
             Some(latch),
