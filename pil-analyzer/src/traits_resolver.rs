@@ -12,8 +12,8 @@ use crate::type_unifier::Unifier;
 type SolvedImpl = ((String, Vec<Type>), Arc<Expression>);
 
 /// TraitsResolver implements a trait resolver for polynomial references.
-/// It manages trait implementations and provides functionality to resolve
-/// trait function references based on given polynomial references.
+/// For each reference to a trait function with type arguments, it finds the corresponding
+/// trait implementation and stores this association in a map that is returned.
 pub struct TraitsResolver<'a> {
     trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
     solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
