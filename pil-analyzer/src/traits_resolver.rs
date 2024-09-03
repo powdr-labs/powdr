@@ -11,20 +11,28 @@ use crate::type_unifier::Unifier;
 
 type SolvedImpl = ((String, Vec<Type>), Arc<Expression>);
 
-pub struct TraitsResolver {
-    trait_impls: HashMap<String, Vec<TraitImplementation<Expression>>>,
+pub struct TraitsResolver<'a> {
+    trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
     solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
 }
 
-impl TraitsResolver {
-    pub fn new(trait_impls: &HashMap<String, Vec<TraitImplementation<Expression>>>) -> Self {
+impl<'a> TraitsResolver<'a> {
+    pub fn new(trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>) -> Self {
         Self {
-            trait_impls: trait_impls.clone(),
+            trait_impls: trait_impls,
             solved_impls: HashMap::new(),
         }
     }
 
     pub fn resolve_trait(&mut self, ref_poly: &PolynomialReference) -> Result<(), String> {
+        if let Some(inner_map) = self.solved_impls.get(&ref_poly.name) {
+            if let Some(type_args) = &ref_poly.type_args {
+                if inner_map.contains_key(type_args) {
+                    return Ok(());
+                }
+            }
+        }
+
         match self.resolve_trait_function_reference(ref_poly) {
             Some(((key, type_args), expr)) => {
                 self.solved_impls
