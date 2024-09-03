@@ -58,8 +58,6 @@ impl<'a> TraitsResolver<'a> {
         self.solved_impls
     }
 
-    /// Attempts to resolve a trait implementation for a given polynomial reference.
-    /// It uses type unification to find a matching implementation.
     fn resolve_trait(&self, reference: &PolynomialReference) -> Option<SolvedImpl> {
         let (trait_decl_name, trait_fn_name) = reference.name.rsplit_once("::")?;
         if let Some(impls) = self.trait_impls.get(trait_decl_name) {
