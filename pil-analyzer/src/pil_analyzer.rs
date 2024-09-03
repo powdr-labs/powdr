@@ -75,7 +75,7 @@ struct PILAnalyzer {
     symbol_counters: Option<Counters>,
     /// Symbols from the core that were added automatically but will not be printed.
     auto_added_symbols: HashSet<String>,
-    /// Implementations found, organized according to their associated trait name.
+    /// All trait implementations found, organized according to their associated trait name.
     implementations: HashMap<String, Vec<TraitImplementation<Expression>>>,
 }
 
