@@ -101,9 +101,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             }
         });
 
-        let degree = parts
-            .fixed_data
-            .common_degree(key_polys.iter().chain(value_polys.iter()));
+        let degree = parts.common_degree();
 
         let mut key_to_index = BTreeMap::new();
         for row in 0..degree {
