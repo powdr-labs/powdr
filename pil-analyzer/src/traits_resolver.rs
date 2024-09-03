@@ -28,7 +28,7 @@ impl<'a> TraitsResolver<'a> {
     }
 
     /// Resolves a trait function reference for a given polynomial reference.
-    /// If successful, it caches the resolved implementation for future use.
+    /// If successful, it stores the resolved implementation to be returned via `solved_impls()`.
     pub fn resolve_trait_function_reference(
         &mut self,
         ref_poly: &PolynomialReference,
