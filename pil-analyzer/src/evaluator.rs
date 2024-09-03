@@ -472,6 +472,8 @@ impl<'a> Definitions<'a> {
                     }
                 }
                 Some(FunctionValueDefinition::TraitFunction(_, _)) => {
+                    println!("solved impls: {solved_impls:?}");
+                    println!("name y type args: {name} {type_args:?}");
                     let type_arg = type_args.as_ref().unwrap();
                     let Expression::LambdaExpression(_, lambda) =
                         solved_impls[&name][type_arg].as_ref()
@@ -1834,5 +1836,57 @@ mod test {
         ";
 
         assert_eq!(parse_and_evaluate_symbol(input, "F::r"), "5".to_string());
+    }
+
+    #[test]
+    fn traits_multiple_impls() {
+        let input = "
+        namespace std::convert(4);
+            let fe = || fe();
+        namespace F(4);
+            trait Do<T, Q> {
+                add: T, T -> Q,
+                sub: T, T -> Q,
+                cast: T -> Q,
+            }
+
+            impl Do<int, fe> {
+                add: |a, b| std::convert::fe(a + b),
+                sub: |a, b| std::convert::fe(a - b),
+                cast: |a| std::convert::fe(a),
+            }
+
+            impl Do<int, int> {
+                add: |a, b| a + b + 1,
+                sub: |a, b| a - b + 1,
+            }
+
+            impl Do<fe, fe> {
+                add: |a, b| a + b + std::convert::fe(6),
+                sub: |a, b| a - b - std::convert::fe(1),
+            }
+
+            let x: int -> fe = |q| match Do::sub::<int, int>(q, q) {
+                v => {
+                    let p1: fe = 3;
+                    let p2: fe = 2 * 1;
+                    Do::add(p1, p2)
+                },
+            };
+
+            let y: int -> int = |q| match q {
+                v => {
+                    let p1: int = 5 - v;
+                    let p2: int = 2 * 1;
+                    Do::add(p1, p2)
+                },
+            };
+
+            let z: int = y(2);
+            let r: fe = x(2);
+            ";
+
+        assert_eq!(parse_and_evaluate_symbol(input, "F::r"), "11".to_string());
+        assert_eq!(parse_and_evaluate_symbol(input, "F::z"), "6".to_string());
     }
 }
