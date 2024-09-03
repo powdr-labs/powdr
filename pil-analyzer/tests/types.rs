@@ -693,7 +693,7 @@ fn trait_with_user_defined_enum2() {
 }
 
 #[test]
-#[should_panic = "Value symbol not found: false"]
+#[should_panic = "Could not derive a concrete type for symbol r1."]
 fn trait_user_defined_enum_wrong_type() {
     let input = "
     enum V1 { A1, B1 }
@@ -703,14 +703,8 @@ fn trait_user_defined_enum_wrong_type() {
         convert: T -> U,
     }
 
-    impl Convert<V1, V2> {
-        convert: |x| match x {
-            V1::A1 => V2::A2,
-            V1::B1 => V2::B2,
-        },
-    }
-
-    let r1 = Convert::convert(false);
+    let n: int = 7;
+    let r1 = Convert::convert(n);
     ";
-    type_check(input, &[]);
+    type_check(input, &[("r1", "", "V2")]);
 }
