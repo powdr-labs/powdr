@@ -1,4 +1,4 @@
-let identity: expr -> expr = (|expr| expr);
+let identity: expr -> expr = |expr| expr;
 machine Id {
     operation id<0> x, y;
     pol commit x;

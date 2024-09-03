@@ -44,7 +44,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
         identities: &[&Identity<T>],
         witnesses: &HashSet<PolyID>,
     ) -> Option<Self> {
-        let degree = fixed_data.common_degree(witnesses);
+        let degree = fixed_data.common_degree_range(witnesses).max;
 
         if identities.len() != 1 {
             return None;

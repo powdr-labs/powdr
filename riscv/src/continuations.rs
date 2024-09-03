@@ -4,10 +4,9 @@ use std::{
 };
 
 use powdr_ast::{
-    asm_analysis::AnalysisASMFile,
+    asm_analysis::{AnalysisASMFile, Machine},
     parsed::{asm::parse_absolute_path, Expression, Number, PilStatement},
 };
-use powdr_executor::constant_evaluator::MAX_DEGREE_LOG;
 use powdr_number::FieldElement;
 use powdr_pipeline::Pipeline;
 use powdr_riscv_executor::{get_main_machine, Elem, ExecutionTrace, MemoryState, ProfilerOptions};
@@ -75,13 +74,6 @@ where
     let bootloader_inputs = dry_run_result.bootloader_inputs;
     let num_chunks = bootloader_inputs.len();
 
-    // The size of the main machine is dynamic, so we need to chose a size.
-    // We chose a size 4x smaller than the maximum size, so that we can guarantee
-    // that the register memory does not run out of rows.
-    // TODO: After #1667 ("Support degree ranges") is merged, this can be set in ASM
-    //       and we can just use the maximum size here.
-    let length = 1 << (*MAX_DEGREE_LOG - 2);
-
     log::info!("Computing fixed columns...");
     pipeline.compute_fixed_cols().unwrap();
 
@@ -114,6 +106,20 @@ where
                 } else {
                     pipeline
                 };
+
+                // get the length of the main machine
+                // quite hacky, is there a better way?
+                let length = pipeline
+                    .optimized_pil()
+                    .unwrap()
+                    .definitions
+                    .iter()
+                    .find_map(|(name, (s, _))| match (name.starts_with("main::"), s) {
+                        (true, s) => s.degree.map(|d| d.max),
+                        _ => None,
+                    })
+                    .unwrap();
+
                 // The `jump_to_shutdown_routine` column indicates when the execution should jump to the shutdown routine.
                 // In that row, the normal PC update is ignored and the PC is set to the address of the shutdown routine.
                 // In other words, it should be a one-hot encoding of `start_of_shutdown_routine`.
@@ -138,8 +144,7 @@ where
     Ok(())
 }
 
-fn sanity_check(program: &AnalysisASMFile) {
-    let main_machine = &program.get_machine(&parse_absolute_path("::Main")).unwrap();
+fn sanity_check(main_machine: &Machine) {
     for expected_instruction in BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES {
         if !main_machine
             .instructions
@@ -216,7 +221,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     let mut register_values = default_register_values();
 
     let program = pipeline.compute_analyzed_asm().unwrap().clone();
-    sanity_check(&program);
+    let main_machine = program.get_machine(&parse_absolute_path("::Main")).unwrap();
+    sanity_check(main_machine);
 
     log::info!("Initializing memory merkle tree...");
 
@@ -266,7 +272,16 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     let mut proven_trace = first_real_execution_row;
     let mut chunk_index = 0;
 
-    let length = 1 << (*MAX_DEGREE_LOG - 2);
+    let max_degree_expr = main_machine.degree.max.as_ref();
+
+    let length: usize = match max_degree_expr {
+        Some(Expression::Number(_, n)) => n.value.clone().try_into().unwrap(),
+        // if the max degree is not defined, it defaults to `1 << MAX_DEGREE_LOG` which is too large
+        None => unimplemented!("Continuations rely on `Main` defining a max degree"),
+        Some(e) => {
+            unimplemented!("Continuations rely on `Main` not using a complex expression as its max degree, found {e}")
+        }
+    };
 
     loop {
         log::info!("\nRunning chunk {} for {} steps...", chunk_index, length);

@@ -6,7 +6,7 @@ use std::{
 use itertools::Itertools;
 
 use crate::{
-    asm_analysis::combine_flags,
+    asm_analysis::{combine_flags, Module, StatementReference},
     indent,
     parsed::asm::{AbsoluteSymbolPath, SymbolPath},
     write_indented_by, write_items_indented, writeln_indented_by,
@@ -16,8 +16,8 @@ use super::{
     AnalysisASMFile, AssignmentStatement, CallableSymbol, CallableSymbolDefinitionRef,
     DebugDirective, FunctionBody, FunctionStatement, FunctionStatements, Incompatible,
     IncompatibleSet, InstructionDefinitionStatement, InstructionStatement, LabelStatement,
-    LinkDefinition, Machine, Module, RegisterDeclarationStatement, RegisterTy, Return, Rom,
-    StatementReference, SubmachineDeclaration,
+    LinkDefinition, Machine, MachineDegree, RegisterDeclarationStatement, RegisterTy, Return, Rom,
+    SubmachineDeclaration,
 };
 
 impl Display for AnalysisASMFile {
@@ -61,13 +61,30 @@ fn write_module(
     Ok(())
 }
 
+impl Display for MachineDegree {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match (&self.min, &self.max) {
+            (Some(min), Some(max)) if min == max => write!(f, "degree: {min}"),
+            (min, max) => write!(
+                f,
+                "{}",
+                min.iter()
+                    .map(|min_degree| format!("min_degree: {min_degree}"))
+                    .chain(
+                        max.iter()
+                            .map(|max_degree| format!("max_degree: {max_degree}")),
+                    )
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        }
+    }
+}
+
 impl Display for Machine {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        let props = self
-            .degree
-            .as_ref()
-            .map(|s| format!("degree: {s}"))
-            .into_iter()
+        let props = std::iter::once(&self.degree)
+            .map(|d| format!("{d}"))
             .chain(self.latch.as_ref().map(|s| format!("latch: {s}")))
             .chain(
                 self.operation_id

@@ -712,7 +712,7 @@ namespace N(65536);
         let expectation = r#"namespace N(65536);
     col witness x;
     col fixed cnt(i) { N::inc(i) };
-    let inc: int -> int = (|x| x + 1);
+    let inc: int -> int = |x| x + 1;
     [N::x] in [N::cnt];
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
@@ -763,7 +763,7 @@ namespace N(65536);
     enum R {
         T,
     }
-    let t: N::X[] -> int = (|r| 1);
+    let t: N::X[] -> int = |r| 1;
     col fixed f(i) { if i == 0 { N::t([]) } else { (|x| 1)(N::Y::F([])) } };
     col witness x;
     N::x = N::f;

@@ -121,8 +121,13 @@ Include: PilStatement = {
     <start:@L> "include" <file:StringLiteral> <end:@R> ";" => PilStatement::Include(ctx.source_ref(start, end), file)
 };
 
+NamespaceDegree: NamespaceDegree = {
+    <min:Expression> ".." <max:Expression> => NamespaceDegree {min, max},
+    <degree:Expression> => NamespaceDegree { min: degree.clone(), max: degree }
+}
+
 Namespace: PilStatement = {
-    <start:@L> "namespace" <name:(SymbolPath)?> <pol_degree:("(" <Expression> ")")?> <end:@R> ";"
+    <start:@L> "namespace" <name:(SymbolPath)?> <pol_degree:("(" <NamespaceDegree> ")")?> <end:@R> ";"
         => PilStatement::Namespace(ctx.source_ref(start, end), name.unwrap_or_default(), pol_degree)
 }
 

@@ -6,8 +6,8 @@ use powdr_ast::{
     asm_analysis::{
         AnalysisASMFile, AssignmentStatement, CallableSymbolDefinitions, DebugDirective,
         FunctionBody, FunctionStatements, FunctionSymbol, InstructionDefinitionStatement,
-        InstructionStatement, LabelStatement, LinkDefinition, Machine, Module, OperationSymbol,
-        RegisterDeclarationStatement, RegisterTy, Return, SubmachineDeclaration,
+        InstructionStatement, LabelStatement, LinkDefinition, Machine, MachineDegree, Module,
+        OperationSymbol, RegisterDeclarationStatement, RegisterTy, Return, SubmachineDeclaration,
     },
     parsed::{
         self,
@@ -170,10 +170,34 @@ impl TypeChecker {
 
         let MachineProperties {
             degree,
+            min_degree,
+            max_degree,
             latch,
             operation_id,
             call_selectors,
         } = machine.properties;
+
+        let degree = match (degree, min_degree, max_degree) {
+            (Some(d), None, None) => MachineDegree {
+                min: Some(d.clone()),
+                max: Some(d),
+            },
+            (Some(d), Some(_), _) => {
+                errors.push("Machine {ctx} should not have a min_degree if it has a degree".into());
+                MachineDegree {
+                    min: Some(d.clone()),
+                    max: Some(d),
+                }
+            }
+            (Some(d), _, Some(_)) => {
+                errors.push("Machine {ctx} should not have a max_degree if it has a degree".into());
+                MachineDegree {
+                    min: Some(d.clone()),
+                    max: Some(d),
+                }
+            }
+            (None, min, max) => MachineDegree { min, max },
+        };
 
         if !registers.iter().any(|r| r.ty.is_pc()) {
             let operation_count = callable.operation_definitions().count();
