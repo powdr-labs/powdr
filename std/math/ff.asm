@@ -1,3 +1,6 @@
+use std::convert::fe;
+use std::convert::int;
+
 /// Inverts `x` in the finite field with modulus `modulus`.
 /// Assumes that `modulus` is prime, but does not check it.
 let inverse = |x, modulus|
@@ -11,6 +14,9 @@ let inverse = |x, modulus|
         let (r, _) = extended_gcd(x, modulus);
         reduce(r, modulus)
     };
+
+/// Field inversion (defined on fe instead of int)
+let inv_field: fe -> fe = |x| fe(inverse(int(x), std::field::modulus()));
 
 /// Computes `x + y` modulo the modulus.
 let add = |x, y, modulus| reduce(x + y, modulus);
