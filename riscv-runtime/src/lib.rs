@@ -7,9 +7,7 @@
 )]
 
 use core::arch::{asm, global_asm};
-use core::panic::PanicInfo;
-
-use crate::fmt::print_str;
+use powdr_riscv_syscalls::Syscall;
 
 mod allocator;
 pub mod arith;
@@ -18,19 +16,19 @@ pub mod fmt;
 pub mod hash;
 pub mod io;
 
-#[panic_handler]
-unsafe fn panic(panic: &PanicInfo<'_>) -> ! {
-    static mut IS_PANICKING: bool = false;
+mod entropy_source;
+#[cfg(feature = "getrandom")]
+mod getrandom;
+#[cfg(not(feature = "std"))]
+mod no_std_support;
+#[cfg(feature = "std")]
+mod std_support;
 
-    if !IS_PANICKING {
-        IS_PANICKING = true;
-
-        print!("{panic}\n");
-    } else {
-        print_str("Panic handler has panicked! Things are very dire indeed...\n");
+pub fn halt() -> ! {
+    unsafe {
+        asm!("ecall", in("t0") u32::from(Syscall::Halt));
     }
-
-    asm!("unimp");
+    #[allow(clippy::empty_loop)]
     loop {}
 }
 

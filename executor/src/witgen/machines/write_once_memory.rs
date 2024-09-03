@@ -13,7 +13,7 @@ use crate::{
     Identity,
 };
 
-use super::{FixedLookup, Machine};
+use super::Machine;
 
 /// A memory machine with a fixed address space, and each address can only have one
 /// value during the lifetime of the program.
@@ -106,7 +106,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         for row in 0..degree {
             let key = key_polys
                 .iter()
-                .map(|k| fixed_data.fixed_cols[k].values[row as usize])
+                .map(|k| fixed_data.fixed_cols[k].values(degree)[row as usize])
                 .collect::<Vec<_>>();
             if key_to_index.insert(key, row).is_some() {
                 // Duplicate keys, can't be a write-once memory
@@ -233,10 +233,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
         &self.name
     }
 
-    fn degree(&self) -> DegreeType {
-        self.degree
-    }
-
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
@@ -248,8 +244,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        _fixed_lookup: &'b mut FixedLookup<T>,
-        _query_callback: &'b mut Q,
+        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         self.value_polys
             .iter()

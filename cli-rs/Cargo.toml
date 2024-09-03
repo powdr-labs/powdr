@@ -7,6 +7,12 @@ license = { workspace = true }
 homepage = { workspace = true }
 repository = { workspace = true }
 
+[features]
+default = []
+halo2 = ["powdr-pipeline/halo2"]
+plonky3 = ["powdr-pipeline/plonky3"]
+estark-polygon = ["powdr-pipeline/estark-polygon", "powdr-riscv/estark-polygon"]
+
 [dependencies]
 powdr-number.workspace = true
 powdr-riscv.workspace = true

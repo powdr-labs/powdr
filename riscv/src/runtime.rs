@@ -39,6 +39,8 @@ struct SubMachine {
     alias: Option<String>,
     /// Instance declaration name,
     instance_name: String,
+    /// Arguments
+    arguments: Vec<String>,
     /// Instruction declarations
     instructions: Vec<MachineStatement>,
     /// Number of registers needed by this machine's instruction declarations if > 4.
@@ -59,7 +61,12 @@ impl SubMachine {
 
     fn declaration(&self) -> String {
         let ty = self.alias.as_deref().unwrap_or(self.path.name());
-        format!("{} {};", ty, self.instance_name)
+        let args = if self.arguments.is_empty() {
+            "".to_string()
+        } else {
+            format!("({})", self.arguments.join(", "))
+        };
+        format!("{} {}{};", ty, self.instance_name, args)
     }
 }
 
@@ -88,22 +95,23 @@ impl Runtime {
             "std::machines::binary::Binary",
             None,
             "binary",
+            vec!["byte_binary"],
             [
                 r#"instr and X, Y, Z, W
-                    link ~> val1_col = regs.mload(X, STEP)
-                    link ~> val2_col = regs.mload(Y, STEP + 1)
-                    link ~> val3_col = binary.and(val1_col, val2_col + Z)
-                    link ~> regs.mstore(W, STEP + 3, val3_col);"#,
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
+                    link ~> tmp3_col = binary.and(tmp1_col, tmp2_col + Z)
+                    link ~> regs.mstore(W, STEP + 3, tmp3_col);"#,
                 r#"instr or X, Y, Z, W
-                    link ~> val1_col = regs.mload(X, STEP)
-                    link ~> val2_col = regs.mload(Y, STEP + 1)
-                    link ~> val3_col = binary.or(val1_col, val2_col + Z)
-                    link ~> regs.mstore(W, STEP + 3, val3_col);"#,
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
+                    link ~> tmp3_col = binary.or(tmp1_col, tmp2_col + Z)
+                    link ~> regs.mstore(W, STEP + 3, tmp3_col);"#,
                 r#"instr xor X, Y, Z, W
-                    link ~> val1_col = regs.mload(X, STEP)
-                    link ~> val2_col = regs.mload(Y, STEP + 1)
-                    link ~> val3_col = binary.xor(val1_col, val2_col + Z)
-                    link ~> regs.mstore(W, STEP + 3, val3_col);"#,
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
+                    link ~> tmp3_col = binary.xor(tmp1_col, tmp2_col + Z)
+                    link ~> regs.mstore(W, STEP + 3, tmp3_col);"#,
             ],
             0,
             ["and 0, 0, 0, 0;"],
@@ -113,17 +121,18 @@ impl Runtime {
             "std::machines::shift::Shift",
             None,
             "shift",
+            vec!["byte_shift"],
             [
                 r#"instr shl X, Y, Z, W
-                    link ~> val1_col = regs.mload(X, STEP)
-                    link ~> val2_col = regs.mload(Y, STEP + 1)
-                    link ~> val3_col = shift.shl(val1_col, val2_col + Z)
-                    link ~> regs.mstore(W, STEP + 3, val3_col);"#,
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
+                    link ~> tmp3_col = shift.shl(tmp1_col, tmp2_col + Z)
+                    link ~> regs.mstore(W, STEP + 3, tmp3_col);"#,
                 r#"instr shr X, Y, Z, W
-                    link ~> val1_col = regs.mload(X, STEP)
-                    link ~> val2_col = regs.mload(Y, STEP + 1)
-                    link ~> val3_col = shift.shr(val1_col, val2_col + Z)
-                    link ~> regs.mstore(W, STEP + 3, val3_col);"#,
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
+                    link ~> tmp3_col = shift.shr(tmp1_col, tmp2_col + Z)
+                    link ~> regs.mstore(W, STEP + 3, tmp3_col);"#,
             ],
             0,
             ["shl 0, 0, 0, 0;"],
@@ -133,22 +142,95 @@ impl Runtime {
             "std::machines::split::split_gl::SplitGL",
             None,
             "split_gl",
+            vec!["byte_compare"],
             [r#"instr split_gl X, Z, W
-                    link ~> val1_col = regs.mload(X, STEP)
-                    link ~> (val3_col, val4_col) = split_gl.split(val1_col)
-                    link ~> regs.mstore(Z, STEP + 2, val3_col)
-                    link ~> regs.mstore(W, STEP + 3, val4_col);"#],
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> (tmp3_col, tmp4_col) = split_gl.split(tmp1_col)
+                    link ~> regs.mstore(Z, STEP + 2, tmp3_col)
+                    link ~> regs.mstore(W, STEP + 3, tmp4_col);"#],
             0,
             ["split_gl 0, 0, 0;"],
         );
 
-        r.add_submachine::<&str, _, _>("std::machines::range::Bit2", None, "bit2", [], 0, []);
+        r.add_submachine::<&str, _, _>(
+            "std::machines::range::Bit2",
+            None,
+            "bit2",
+            vec![],
+            [],
+            0,
+            [],
+        );
 
-        r.add_submachine::<&str, _, _>("std::machines::range::Bit6", None, "bit6", [], 0, []);
+        r.add_submachine::<&str, _, _>(
+            "std::machines::range::Bit6",
+            None,
+            "bit6",
+            vec![],
+            [],
+            0,
+            [],
+        );
 
-        r.add_submachine::<&str, _, _>("std::machines::range::Bit7", None, "bit7", [], 0, []);
+        r.add_submachine::<&str, _, _>(
+            "std::machines::range::Bit7",
+            None,
+            "bit7",
+            vec![],
+            [],
+            0,
+            [],
+        );
 
-        r.add_submachine::<&str, _, _>("std::machines::range::Byte", None, "byte", [], 0, []);
+        r.add_submachine::<&str, _, _>(
+            "std::machines::range::Byte",
+            None,
+            "byte",
+            vec![],
+            [],
+            0,
+            [],
+        );
+
+        r.add_submachine::<&str, _, _>(
+            "std::machines::range::Byte2",
+            None,
+            "byte2",
+            vec![],
+            [],
+            0,
+            [],
+        );
+
+        r.add_submachine::<&str, _, _>(
+            "std::machines::binary::ByteBinary",
+            None,
+            "byte_binary",
+            vec![],
+            [],
+            0,
+            [],
+        );
+
+        r.add_submachine::<&str, _, _>(
+            "std::machines::shift::ByteShift",
+            None,
+            "byte_shift",
+            vec![],
+            [],
+            0,
+            [],
+        );
+
+        r.add_submachine::<&str, _, _>(
+            "std::machines::split::ByteCompare",
+            None,
+            "byte_compare",
+            vec![],
+            [],
+            0,
+            [],
+        );
 
         // Base syscalls
         r.add_syscall(
@@ -157,7 +239,7 @@ impl Runtime {
                 // TODO this is a quite inefficient way of getting prover inputs.
                 // We need to be able to access the register memory within PIL functions.
                 "query_arg_1 <== get_reg(10);",
-                "set_reg 10, ${ std::prover::Query::Input(std::convert::int(std::prover::eval(query_arg_1))) };",
+                "set_reg 10, ${ std::prelude::Query::Input(std::convert::int(std::prover::eval(query_arg_1))) };",
             ],
         );
 
@@ -166,7 +248,7 @@ impl Runtime {
             [
                 "query_arg_1 <== get_reg(10);",
                 "query_arg_2 <== get_reg(11);",
-                "set_reg 10, ${ std::prover::Query::DataIdentifier(std::convert::int(std::prover::eval(query_arg_2)), std::convert::int(std::prover::eval(query_arg_1))) };",
+                "set_reg 10, ${ std::prelude::Query::DataIdentifier(std::convert::int(std::prover::eval(query_arg_2)), std::convert::int(std::prover::eval(query_arg_1))) };",
             ]
         );
 
@@ -177,9 +259,11 @@ impl Runtime {
             [
                 "query_arg_1 <== get_reg(10);",
                 "query_arg_2 <== get_reg(11);",
-                "set_reg 0, ${ std::prover::Query::Output(std::convert::int(std::prover::eval(query_arg_1)), std::convert::int(std::prover::eval(query_arg_2))) };"
+                "set_reg 0, ${ std::prelude::Query::Output(std::convert::int(std::prover::eval(query_arg_1)), std::convert::int(std::prover::eval(query_arg_2))) };"
             ]
         );
+
+        r.add_syscall(Syscall::Halt, ["return;"]);
 
         r
     }
@@ -192,43 +276,118 @@ impl Runtime {
         self.syscalls.contains_key(&s)
     }
 
-    pub fn with_poseidon(mut self) -> Self {
+    pub fn with_keccak(mut self) -> Self {
         self.add_submachine(
-            "std::machines::hash::poseidon_gl::PoseidonGL",
+            "std::machines::hash::keccakf::KeccakF",
+            None,
+            "keccakf",
+            vec!["memory"],
+            [r#"instr keccakf X, Y
+                    link ~> tmp1_col = regs.mload(X, STEP),
+                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
+                    link ~> keccakf.keccakf(tmp1_col, tmp2_col, STEP)
+                {
+                    // make sure tmp1_col and tmp2_col are aligned memory addresses
+                    tmp3_col * 4 = tmp1_col,
+                    tmp4_col * 4 = tmp2_col,
+                    // make sure the factors fit in 32 bits
+                    tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
+                    tmp4_col = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
+                }
+            "#
+            .to_string()],
+            0,
+            std::iter::once("set_reg 10, 0x100;".to_string()) // filler value for input pointer
+                .chain(std::iter::once("set_reg 11, 0x300;".to_string())) // filler value for output pointer (at least 200 bytes away)
+                .chain(std::iter::once("keccakf 10, 11;".to_string())) // must be called at least once
+                .chain((0..50).flat_map(|i| store_word(11, i as u32 * 4, "x0"))), // zero out 200 bytes following output pointer
+        );
+
+        // The keccakf syscall has a two arguments passed on x10 and x11,
+        // the memory address of the 25 field element input array
+        // and the memory address of the 25 field element output array to store results to.
+        let implementation = std::iter::once("keccakf 10, 11;".to_string());
+
+        self.add_syscall(Syscall::KeccakF, implementation);
+        self
+    }
+
+    fn with_poseidon(mut self, continuations: bool) -> Self {
+        let init_call = if continuations {
+            vec![
+                "mstore_bootloader 0, 0, 0, 0;",
+                "mstore_bootloader 0, 0, 4, 0;",
+                "mstore_bootloader 0, 0, 8, 0;",
+                "mstore_bootloader 0, 0, 12, 0;",
+                "mstore_bootloader 0, 0, 16, 0;",
+                "mstore_bootloader 0, 0, 20, 0;",
+                "mstore_bootloader 0, 0, 24, 0;",
+                "mstore_bootloader 0, 0, 28, 0;",
+                "mstore_bootloader 0, 0, 32, 0;",
+                "mstore_bootloader 0, 0, 36, 0;",
+                "mstore_bootloader 0, 0, 40, 0;",
+                "mstore_bootloader 0, 0, 44, 0;",
+                "mstore_bootloader 0, 0, 48, 0;",
+                "mstore_bootloader 0, 0, 52, 0;",
+                "mstore_bootloader 0, 0, 56, 0;",
+                "mstore_bootloader 0, 0, 60, 0;",
+                "mstore_bootloader 0, 0, 64, 0;",
+                "mstore_bootloader 0, 0, 68, 0;",
+                "mstore_bootloader 0, 0, 72, 0;",
+                "mstore_bootloader 0, 0, 76, 0;",
+                "mstore_bootloader 0, 0, 80, 0;",
+                "mstore_bootloader 0, 0, 84, 0;",
+                "mstore_bootloader 0, 0, 88, 0;",
+                "mstore_bootloader 0, 0, 92, 0;",
+                "poseidon_gl 0, 0;",
+            ]
+        } else {
+            vec!["poseidon_gl 0, 0;"]
+        };
+        self.add_submachine(
+            "std::machines::hash::poseidon_gl_memory::PoseidonGLMemory",
             None,
             "poseidon_gl",
-            [format!(
-                "instr poseidon_gl link ~> {};",
-                instr_link("poseidon_gl.poseidon_permutation", 12, 4)
-            )],
-            12,
-            // init call
-            std::iter::once("poseidon_gl;".to_string())
-                // zero out output registers
-                .chain((0..4).map(|i| format!("{} <== get_reg(0);", reg(i)))),
+            vec!["memory", "split_gl"],
+            [r#"instr poseidon_gl X, Y
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
+                    link ~> poseidon_gl.poseidon_permutation(tmp1_col, tmp2_col, STEP)
+                {
+                    // make sure tmp1_col and tmp2_col are aligned memory addresses
+                    tmp3_col * 4 = tmp1_col,
+                    tmp4_col * 4 = tmp2_col,
+                    // make sure the factors fit in 32 bits
+                    tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
+                    tmp4_col = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
+                }
+            "#],
+            0,
+            init_call,
         );
 
         // The poseidon syscall has a single argument passed on x10, the
         // memory address of the 12 field element input array. Since the memory
         // offset is chosen by LLVM, we assume it's properly aligned.
-        let implementation =
-            // The poseidon syscall uses x10 for input, we store it in tmp3 and
-            // reuse x10 as input to the poseidon machine instruction.
-            // The poseidon instruction uses registers 0..12 as input/output.
-            // The memory field elements are loaded into these registers before calling the instruction.
-            (0..12).flat_map(|i| load_gl_fe(10, i as u32 * 8, &reg(i)))
-            .chain(std::iter::once("poseidon_gl;".to_string()))
-            .chain((0..4).flat_map(|i| store_gl_fe(10, i as u32 * 8, &reg(i))));
+        let implementation = std::iter::once("poseidon_gl 10, 10;".to_string());
 
         self.add_syscall(Syscall::PoseidonGL, implementation);
         self
     }
 
+    pub fn with_poseidon_no_continuations(self) -> Self {
+        self.with_poseidon(false)
+    }
+
+    pub fn with_poseidon_for_continuations(self) -> Self {
+        self.with_poseidon(true)
+    }
     pub fn with_arith(mut self) -> Self {
         self.add_submachine(
             "std::machines::arith::Arith",
             None,
             "arith",
+            vec![],
             [
                 format!(
                     "instr affine_256 link ~> {};",
@@ -356,11 +515,13 @@ impl Runtime {
         self
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn add_submachine<S: AsRef<str>, I1: IntoIterator<Item = S>, I2: IntoIterator<Item = S>>(
         &mut self,
         path: &str,
         alias: Option<&str>,
         instance_name: &str,
+        arguments: Vec<&str>,
         instructions: I1,
         extra_registers: u8,
         init_call: I2,
@@ -369,6 +530,7 @@ impl Runtime {
             path: str::parse(path).expect("invalid submachine path"),
             alias: alias.map(|s| s.to_string()),
             instance_name: instance_name.to_string(),
+            arguments: arguments.into_iter().map(|s| s.to_string()).collect(),
             instructions: instructions
                 .into_iter()
                 .map(|s| parse_instruction_declaration(s.as_ref()))
@@ -451,10 +613,12 @@ impl Runtime {
         ]
         .into_iter();
 
-        let jump_table = self
-            .syscalls
-            .keys()
-            .map(|s| format!("branch_if_zero 5, 0, {}, __ecall_handler_{};", *s as u32, s));
+        let jump_table = self.syscalls.keys().map(|s| {
+            format!(
+                "branch_if_diff_equal 5, 0, {}, __ecall_handler_{};",
+                *s as u32, s
+            )
+        });
 
         let invalid_handler = ["__invalid_syscall:".to_string(), "fail;".to_string()].into_iter();
 
@@ -487,7 +651,8 @@ impl TryFrom<&[&str]> for Runtime {
                 continue;
             }
             match *name {
-                "poseidon_gl" => runtime = runtime.with_poseidon(),
+                "poseidon_gl" => runtime = runtime.with_poseidon_no_continuations(),
+                "keccakf" => runtime = runtime.with_keccak(),
                 "arith" => runtime = runtime.with_arith(),
                 _ => return Err(format!("Invalid co-processor specified: {name}")),
             }
@@ -516,50 +681,6 @@ fn instr_link(call: &str, inputs: usize, outputs: usize) -> String {
         call,
         (0..inputs).map(reg).join(", ")
     )
-}
-
-/// Load gl field element from addr+offset into register
-fn load_gl_fe(addr_reg_id: u32, offset: u32, reg: &str) -> [String; 5] {
-    let lo = offset;
-    let hi = offset + 4;
-    let tmp1 = Register::from("tmp1");
-    let tmp2 = Register::from("tmp2");
-    let tmp3 = Register::from("tmp3");
-    let tmp4 = Register::from("tmp4");
-    [
-        format!(
-            "mload {addr_reg_id}, {lo}, {}, {};",
-            tmp1.addr(),
-            tmp2.addr()
-        ),
-        format!(
-            "mload {addr_reg_id}, {hi}, {}, {};",
-            tmp3.addr(),
-            tmp4.addr()
-        ),
-        format!("query_arg_1 <== get_reg({});", tmp1.addr()),
-        format!("query_arg_2 <== get_reg({});", tmp3.addr()),
-        format!("{reg} <=X= query_arg_1 + query_arg_2 * 2**32;"),
-    ]
-}
-
-/// Store gl field element from register into addr+offset
-fn store_gl_fe(addr_reg_id: u32, offset: u32, reg: &str) -> [String; 4] {
-    let lo = offset;
-    let hi = offset + 4;
-    let tmp1 = Register::from("tmp1");
-    let tmp2 = Register::from("tmp2");
-    [
-        format!("set_reg {}, {reg};", tmp1.addr()),
-        format!(
-            "split_gl {}, {}, {};",
-            tmp1.addr(),
-            tmp1.addr(),
-            tmp2.addr()
-        ),
-        format!("mstore {addr_reg_id}, 0, {lo}, {};", tmp1.addr()),
-        format!("mstore {addr_reg_id}, 0, {hi}, {};", tmp2.addr()),
-    ]
 }
 
 /// Load word from addr+offset into register

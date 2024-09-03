@@ -118,7 +118,7 @@ pub fn set_global_constraints<'a, T: FieldElement>(
     // It allows us to completely remove some lookups.
     let mut full_span = BTreeSet::new();
     for (poly_id, col) in fixed_data.fixed_cols.iter() {
-        if let Some((cons, full)) = process_fixed_column(col.values) {
+        if let Some((cons, full)) = process_fixed_column(col.values_max_size()) {
             assert!(known_constraints.insert(poly_id, cons).is_none());
             if full {
                 full_span.insert(poly_id);
@@ -353,7 +353,7 @@ fn smallest_period_candidate<T: FieldElement>(fixed: &[T]) -> Option<u64> {
     if fixed.first() != Some(&0.into()) {
         return None;
     }
-    (1..63).find(|bit| fixed.get(1usize << bit) == Some(&0.into()))
+    (1..63).find(|bit| fixed.last() == Some(&((1u64 << bit) - 1).into()))
 }
 
 #[cfg(test)]
@@ -380,7 +380,7 @@ mod test {
 
     #[test]
     fn zero_one() {
-        let fixed = [0, 1, 0, 1, 0].map(|v| v.into());
+        let fixed = [0, 1, 0, 1].map(|v| v.into());
         assert_eq!(
             process_fixed_column::<GoldilocksField>(&fixed),
             Some((RangeConstraint::from_mask(1_u32), true))
@@ -389,7 +389,7 @@ mod test {
 
     #[test]
     fn zero_one_two_three() {
-        let fixed = [0, 1, 2, 3, 0].map(|v| v.into());
+        let fixed = [0, 1, 2, 3].map(|v| v.into());
         assert_eq!(
             process_fixed_column::<GoldilocksField>(&fixed),
             Some((RangeConstraint::from_mask(3_u32), true))

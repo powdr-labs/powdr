@@ -20,7 +20,8 @@ use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
-    self, ArrayLiteral, EnumDeclaration, EnumVariant, TraitDeclaration, TraitFunction,
+    self, ArrayExpression, ArrayLiteral, EnumDeclaration, EnumVariant, TraitDeclaration,
+    TraitFunction,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -276,24 +277,12 @@ impl<T> Analyzed<T> {
                 let poly_id = PolyID::from(poly as &Symbol);
                 poly.id = replacements[&poly_id].id;
             });
-        let visitor = &mut |expr: &mut Expression| {
-            if let Expression::Reference(_, Reference::Poly(poly)) = expr {
-                poly.poly_id = poly.poly_id.map(|poly_id| replacements[&poly_id]);
-            }
-        };
-        self.post_visit_expressions_in_definitions_mut(visitor);
         let algebraic_visitor = &mut |expr: &mut AlgebraicExpression<_>| {
             if let AlgebraicExpression::Reference(poly) = expr {
                 poly.poly_id = replacements[&poly.poly_id];
             }
         };
         self.post_visit_expressions_in_identities_mut(algebraic_visitor);
-        self.public_declarations
-            .values_mut()
-            .for_each(|public_decl| {
-                let poly_id = public_decl.polynomial.poly_id.unwrap();
-                public_decl.polynomial.poly_id = Some(replacements[&poly_id]);
-            });
     }
 
     pub fn post_visit_expressions_in_identities_mut<F>(&mut self, f: &mut F)
@@ -321,6 +310,30 @@ impl<T> Analyzed<T> {
             .values_mut()
             .filter_map(|(_poly, definition)| definition.as_mut())
             .for_each(|definition| definition.post_visit_expressions_mut(f))
+    }
+
+    /// Retrieves (col_name, col_idx, offset) of each public witness in the trace.
+    pub fn get_publics(&self) -> Vec<(String, usize, usize)> {
+        let mut publics = self
+            .public_declarations
+            .values()
+            .map(|public_declaration| {
+                let column_name = public_declaration.referenced_poly_name();
+                let column_idx = {
+                    let base = self.definitions[&public_declaration.polynomial.name].0.id;
+                    match public_declaration.array_index {
+                        Some(array_idx) => base + array_idx as u64,
+                        None => base,
+                    }
+                };
+                let row_offset = public_declaration.index as usize;
+                (column_name, column_idx as usize, row_offset)
+            })
+            .collect::<Vec<_>>();
+
+        // Sort, so that the order is deterministic
+        publics.sort();
+        publics
     }
 }
 
@@ -554,7 +567,7 @@ pub enum SymbolKind {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum FunctionValueDefinition {
-    Array(Vec<RepeatedArray>),
+    Array(ArrayExpression<Reference>),
     Expression(TypedExpression),
     TypeDeclaration(EnumDeclaration),
     TypeConstructor(Arc<EnumDeclaration>, EnumVariant),
@@ -568,9 +581,7 @@ impl Children<Expression> for FunctionValueDefinition {
             FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ }) => {
                 Box::new(iter::once(e))
             }
-            FunctionValueDefinition::Array(array) => {
-                Box::new(array.iter().flat_map(|i| i.children()))
-            }
+            FunctionValueDefinition::Array(e) => e.children(),
             FunctionValueDefinition::TypeDeclaration(enum_declaration) => {
                 enum_declaration.children()
             }
@@ -585,9 +596,7 @@ impl Children<Expression> for FunctionValueDefinition {
             FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ }) => {
                 Box::new(iter::once(e))
             }
-            FunctionValueDefinition::Array(array) => {
-                Box::new(array.iter_mut().flat_map(|i| i.children_mut()))
-            }
+            FunctionValueDefinition::Array(e) => e.children_mut(),
             FunctionValueDefinition::TypeDeclaration(enum_declaration) => {
                 enum_declaration.children_mut()
             }
@@ -613,62 +622,6 @@ impl Children<Expression> for TraitFunction {
     }
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
         Box::new(empty())
-    }
-}
-
-/// An array of elements that might be repeated.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct RepeatedArray {
-    /// The pattern to be repeated
-    pattern: Vec<Expression>,
-    /// The number of values to be filled by repeating the pattern, possibly truncating it at the end
-    size: DegreeType,
-}
-
-impl RepeatedArray {
-    pub fn new(pattern: Vec<Expression>, size: DegreeType) -> Self {
-        if pattern.is_empty() {
-            assert!(
-                size == 0,
-                "impossible to fill {size} values with an empty pattern"
-            )
-        }
-        Self { pattern, size }
-    }
-
-    /// Returns the number of elements in this array (including repetitions).
-    pub fn size(&self) -> DegreeType {
-        self.size
-    }
-
-    /// Returns the pattern to be repeated
-    pub fn pattern(&self) -> &[Expression] {
-        &self.pattern
-    }
-
-    /// Returns the pattern to be repeated
-    pub fn pattern_mut(&mut self) -> &mut [Expression] {
-        &mut self.pattern
-    }
-
-    /// Returns true iff this array is empty.
-    pub fn is_empty(&self) -> bool {
-        self.size == 0
-    }
-
-    /// Returns whether pattern needs to be repeated (or truncated) in order to match the size.
-    pub fn is_repeated(&self) -> bool {
-        self.size != self.pattern.len() as DegreeType
-    }
-}
-
-impl Children<Expression> for RepeatedArray {
-    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
-        Box::new(self.pattern.iter())
-    }
-
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
-        Box::new(self.pattern.iter_mut())
     }
 }
 
@@ -1289,15 +1242,13 @@ impl<T> From<T> for AlgebraicExpression<T> {
     }
 }
 
+/// Reference to a symbol with optional type arguments.
+/// Named `PolynomialReference` for historical reasons, it can reference
+/// any symbol.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PolynomialReference {
-    /// Name of the polynomial - just for informational purposes.
-    /// Comparisons are based on polynomial ID.
+    /// Absolute name of the symbol.
     pub name: String,
-    /// Identifier for a polynomial reference.
-    /// Optional because it is filled in in a second stage of analysis.
-    /// TODO make this non-optional
-    pub poly_id: Option<PolyID>,
     /// The type arguments if the symbol is generic.
     /// Guaranteed to be Some(_) after type checking is completed.
     pub type_args: Option<Vec<Type>>,

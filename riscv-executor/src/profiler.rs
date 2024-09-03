@@ -192,15 +192,19 @@ impl<'a> Profiler<'a> {
         self.function_begin
             .range(..=pc)
             .last()
-            .and_then(|(_, function)| {
-                self.location_begin
+            .map(|(_, function)| {
+                let (file, line) = self
+                    .location_begin
                     .range(..=pc)
                     .last()
-                    .map(|(_, (file, line))| Loc {
-                        function,
-                        file: *file,
-                        line: *line,
-                    })
+                    .map(|(_, (file, line))| (*file, *line))
+                    // for labels with no .loc above them, just point to main file
+                    .unwrap_or((1, 0));
+                Loc {
+                    function,
+                    file,
+                    line,
+                }
             })
     }
 
@@ -265,9 +269,10 @@ impl<'a> Profiler<'a> {
                 // we start profiling on the initial call to "__runtime_start"
                 if target.function == "__runtime_start" {
                     let call = Call {
+                        // __runtime_start does not have a proper ".debug loc", just point to main file
                         from: Loc {
                             function: "",
-                            file: 0,
+                            file: 1,
                             line: 0,
                         },
                         target,

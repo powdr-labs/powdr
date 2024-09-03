@@ -1,20 +1,17 @@
 use std::{
     borrow::Cow,
+    cell::Cell,
     cmp::Ordering,
-    collections::{btree_map::Entry, BTreeMap, BTreeSet, HashMap},
+    collections::{btree_map::Entry, BTreeMap, BTreeSet},
     fs,
     path::Path,
 };
 
-use goblin::{
-    elf::sym::STT_OBJECT,
-    elf::{
-        header::{EI_CLASS, EI_DATA, ELFCLASS32, ELFDATA2LSB, EM_RISCV, ET_DYN},
-        program_header::PT_LOAD,
-        reloc::{R_RISCV_32, R_RISCV_HI20, R_RISCV_RELATIVE},
-        sym::STT_FUNC,
-        Elf, ProgramHeader,
-    },
+use goblin::elf::{
+    header::{EI_CLASS, EI_DATA, ELFCLASS32, ELFDATA2LSB, EM_RISCV, ET_DYN},
+    program_header::PT_LOAD,
+    reloc::{R_RISCV_32, R_RISCV_HI20, R_RISCV_RELATIVE},
+    Elf, ProgramHeader,
 };
 use itertools::{Either, Itertools};
 use powdr_asm_utils::data_storage::SingleDataValue;
@@ -27,8 +24,13 @@ use raki::{
 
 use crate::{
     code_gen::{self, InstructionArgs, MemEntry, Register, RiscVProgram, Statement},
+    elf::debug_info::SymbolTable,
     Runtime,
 };
+
+use self::debug_info::DebugInfo;
+
+mod debug_info;
 
 /// Generates a Powdr Assembly program from a RISC-V 32 executable ELF file.
 pub fn translate<F: FieldElement>(
@@ -41,7 +43,7 @@ pub fn translate<F: FieldElement>(
 }
 
 struct ElfProgram {
-    symbol_table: SymbolTable,
+    dbg: DebugInfo,
     data_map: BTreeMap<u32, Data>,
     text_labels: BTreeSet<u32>,
     instructions: Vec<HighLevelInsn>,
@@ -151,16 +153,44 @@ fn load_elf(file_name: &Path) -> ElfProgram {
     }
 
     // Sort text sections by address and flatten them.
-    lifted_text_sections.sort_by_key(|insns| insns[0].original_address);
+    lifted_text_sections.sort_by_key(|insns| insns[0].loc.address);
     let lifted_text_sections = lifted_text_sections
         .into_iter()
         .flatten()
         .collect::<Vec<_>>();
 
-    let symbol_table = SymbolTable::new(&elf);
+    // Try loading the debug information.
+    let debug_info = match debug_info::DebugInfo::new(
+        &elf,
+        &file_buffer,
+        &address_map,
+        &|key| data_map.contains_key(&key),
+        &referenced_text_addrs,
+    ) {
+        Ok(debug_info) => {
+            log::info!("Debug information loaded successfully.");
+            debug_info
+        }
+        Err(err) => {
+            match err {
+                debug_info::Error::NoDebugInfo => {
+                    log::info!("No DWARF debug information found.")
+                }
+                err => {
+                    log::warn!("Error reading DWARF debug information: {}", err)
+                }
+            }
+            log::info!("Falling back to using ELF symbol table.");
+
+            DebugInfo {
+                symbols: SymbolTable::new(&elf),
+                ..Default::default()
+            }
+        }
+    };
 
     ElfProgram {
-        symbol_table,
+        dbg: debug_info,
         data_map,
         text_labels: referenced_text_addrs,
         instructions: lifted_text_sections,
@@ -235,60 +265,39 @@ fn static_relocate_data_sections(
     }
 }
 
-/// Index the symbols by their addresses.
-struct SymbolTable(HashMap<u32, String>);
-
-impl SymbolTable {
-    fn new(elf: &Elf) -> SymbolTable {
-        let mut deduplicator = HashMap::new();
-        for sym in elf.syms.iter() {
-            // We only care about global symbols that have string names, and are
-            // either functions or variables.
-            if sym.st_name == 0 || (sym.st_type() != STT_OBJECT && sym.st_type() != STT_FUNC) {
-                continue;
-            }
-            deduplicator.insert(elf.strtab[sym.st_name].to_string(), sym.st_value as u32);
-        }
-
-        Self(
-            deduplicator
-                .into_iter()
-                .map(|(name, addr)| (addr, name))
-                .collect(),
-        )
-    }
-
-    /// Get the symbol if the address had one.
-    fn try_get(&self, addr: u32) -> Option<&str> {
-        self.0.get(&addr).map(|name| name.as_str())
-    }
-
-    /// Get the symbol or a default label formed from the address value.
-    fn get(&self, addr: u32) -> Cow<str> {
-        self.0
-            .get(&addr)
-            .map(|name| Cow::Borrowed(name.as_str()))
-            .unwrap_or_else(|| Cow::Owned(format!("L{addr:08x}")))
-    }
-}
-
 impl RiscVProgram for ElfProgram {
     fn take_source_files_info(&mut self) -> impl Iterator<Item = crate::code_gen::SourceFileInfo> {
-        // TODO: read the source files from the debug information.
-        std::iter::empty()
+        self.dbg
+            .file_list
+            .iter()
+            .enumerate()
+            .map(|(id, (dir, file))| crate::code_gen::SourceFileInfo {
+                // +1 because files are indexed from 1
+                id: id as u32 + 1,
+                file,
+                dir,
+            })
     }
 
     fn take_initial_mem(&mut self) -> impl Iterator<Item = crate::code_gen::MemEntry> {
         self.data_map.iter().map(|(addr, data)| {
             let value = match data {
                 Data::TextLabel(label) => {
-                    SingleDataValue::LabelReference(self.symbol_table.get(*label).into())
+                    SingleDataValue::LabelReference(self.dbg.symbols.get_one(*label).into())
                 }
                 Data::Value(value) => SingleDataValue::Value(*value),
             };
 
+            let label = self
+                .dbg
+                .notes
+                .get(addr)
+                .map(|note| note.as_str())
+                .or_else(|| self.dbg.symbols.try_get_one(*addr))
+                .map(|s| s.to_string());
+
             MemEntry {
-                label: self.symbol_table.try_get(*addr).map(|s| s.to_string()),
+                label,
                 addr: *addr,
                 value,
             }
@@ -298,31 +307,71 @@ impl RiscVProgram for ElfProgram {
     fn take_executable_statements(
         &mut self,
     ) -> impl Iterator<Item = crate::code_gen::Statement<impl AsRef<str>, WrappedArgs>> {
-        let labels = self.text_labels.iter();
-        let instructions = self.instructions.iter();
+        // In the output, the precedence is labels, locations, and then instructions.
+        // We merge the 3 iterators with this operations: merge(labels, merge(locs, instructions)), where each is sorted by address.
 
-        labels
-            .merge_join_by(instructions, |&&next_label, next_insn| {
-                match next_label.cmp(&next_insn.original_address) {
-                    Ordering::Less => panic!("Label {next_label:08x} doesn't match exact address!"),
-                    Ordering::Equal => true,
-                    Ordering::Greater => false,
+        // First the inner merge: locs and instructions.
+        let locs = self.dbg.source_locations.iter();
+        let instructions = self.instructions.iter();
+        let locs_and_instructions = locs
+            .map(|loc| (Cell::new(0), loc))
+            .merge_join_by(instructions, |next_loc, next_insn| {
+                assert!(
+                    next_loc.1.address >= next_insn.loc.address,
+                    "Debug location {:08x} doesn't match instruction address!",
+                    next_loc.1.address
+                );
+                if next_loc.1.address < next_insn.loc.address + next_insn.loc.size {
+                    next_loc.0.set(next_insn.loc.address);
+                    true
+                } else {
+                    false
                 }
             })
             .map(|result| match result {
-                Either::Left(label) => Statement::Label(self.symbol_table.get(*label)),
-                Either::Right(insn) => Statement::Instruction {
-                    op: insn.op,
-                    args: WrappedArgs {
-                        args: &insn.args,
-                        symbol_table: &self.symbol_table,
-                    },
+                // Extract the address from the Either, for easier comparison in the next step.
+                Either::Left((address, loc)) => (address.get(), Either::Left(loc)),
+                Either::Right(insn) => (insn.loc.address, Either::Right(insn)),
+            });
+
+        // Now the outer merge: labels and locs_and_instructions.
+        let labels = self.text_labels.iter();
+        labels
+            .merge_join_by(
+                locs_and_instructions,
+                |&label_addr, (right_addr, _)| match label_addr.cmp(right_addr) {
+                    Ordering::Less => panic!("Label {label_addr:08x} doesn't match exact address!"),
+                    Ordering::Equal => true,
+                    Ordering::Greater => false,
                 },
+            )
+            .flat_map(|result| -> Box<dyn Iterator<Item = _>> {
+                match result {
+                    Either::Left(label) => {
+                        Box::new(self.dbg.symbols.get_all(*label).map(Statement::Label))
+                    }
+                    Either::Right((_, Either::Left(loc))) => {
+                        Box::new(std::iter::once(Statement::DebugLoc {
+                            file: loc.file,
+                            line: loc.line,
+                            col: loc.col,
+                        }))
+                    }
+                    Either::Right((_, Either::Right(insn))) => {
+                        Box::new(std::iter::once(Statement::Instruction {
+                            op: insn.op,
+                            args: WrappedArgs {
+                                args: &insn.args,
+                                symbol_table: &self.dbg.symbols,
+                            },
+                        }))
+                    }
+                }
             })
     }
 
     fn start_function(&self) -> Cow<str> {
-        self.symbol_table.get(self.entry_point)
+        self.dbg.symbols.get_one(self.entry_point)
     }
 }
 
@@ -343,7 +392,7 @@ impl<'a> InstructionArgs for WrappedArgs<'a> {
                 rd: None,
                 rs1: None,
                 rs2: None,
-            } => Ok(self.symbol_table.get(*addr).into()),
+            } => Ok(self.symbol_table.get_one(*addr).into()),
             _ => Err(format!("Expected: label, got {:?}", self.args)),
         }
     }
@@ -442,7 +491,7 @@ impl<'a> InstructionArgs for WrappedArgs<'a> {
             } => Ok((
                 Register::new(*rs1 as u8),
                 Register::new(*rs2 as u8),
-                self.symbol_table.get(*addr).into(),
+                self.symbol_table.get_one(*addr).into(),
             )),
             _ => Err(format!("Expected: rs1, rs2, label, got {:?}", self.args)),
         }
@@ -457,7 +506,7 @@ impl<'a> InstructionArgs for WrappedArgs<'a> {
                 rs2: None,
             } => Ok((
                 Register::new(*rs1 as u8),
-                self.symbol_table.get(*addr).into(),
+                self.symbol_table.get_one(*addr).into(),
             )),
             HighLevelArgs {
                 imm: HighLevelImmediate::CodeLabel(addr),
@@ -466,7 +515,7 @@ impl<'a> InstructionArgs for WrappedArgs<'a> {
                 rs2: None,
             } => Ok((
                 Register::new(*rd as u8),
-                self.symbol_table.get(*addr).into(),
+                self.symbol_table.get_one(*addr).into(),
             )),
             _ => Err(format!("Expected: {{rs1|rd}}, label, got {:?}", self.args)),
         }
@@ -569,9 +618,28 @@ fn load_data_section(mut addr: u32, data: &[u8], data_map: &mut BTreeMap<u32, Da
     }
 }
 
+enum UnimpOrInstruction {
+    Unimp16,
+    Unimp32,
+    Instruction(Ins),
+}
+
+impl UnimpOrInstruction {
+    fn len(&self) -> u32 {
+        match self {
+            UnimpOrInstruction::Unimp16 => 2,
+            UnimpOrInstruction::Unimp32 => 4,
+            UnimpOrInstruction::Instruction(ins) => match ins.extension {
+                Extensions::C => 2,
+                _ => 4,
+            },
+        }
+    }
+}
+
 struct MaybeInstruction {
     address: u32,
-    insn: Option<Ins>,
+    insn: UnimpOrInstruction,
 }
 
 #[derive(Debug)]
@@ -601,8 +669,15 @@ impl Default for HighLevelArgs {
     }
 }
 
+#[derive(Debug)]
+struct Location {
+    address: u32,
+    size: u32,
+}
+
+#[derive(Debug)]
 struct HighLevelInsn {
-    original_address: u32,
+    loc: Location,
     op: &'static str,
     args: HighLevelArgs,
 }
@@ -674,9 +749,14 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
         insn1: &MaybeInstruction,
         insn2: &MaybeInstruction,
     ) -> Option<HighLevelInsn> {
-        let original_address = insn1.address;
+        use UnimpOrInstruction::Instruction as I;
+
+        let loc = Location {
+            address: insn1.address,
+            size: insn1.insn.len() + insn2.insn.len(),
+        };
         let insn2_addr = insn2.address;
-        let (Some(insn1), Some(insn2)) = (&insn1.insn, &insn2.insn) else {
+        let (I(insn1), I(insn2)) = (&insn1.insn, &insn2.insn) else {
             return None;
         };
 
@@ -701,15 +781,11 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                 // to load an address into a register. We must check if this is
                 // the case, and if the address points to a text section, we
                 // must load it from a label.
-                let is_address = self.rellocs_set.contains(&original_address);
+                let is_address = self.rellocs_set.contains(&loc.address);
                 let (op, args) =
                     self.composed_immediate(*hi, *lo, *rd_lui, *rd_addi, insn2_addr, is_address)?;
 
-                HighLevelInsn {
-                    op,
-                    args,
-                    original_address,
-                }
+                HighLevelInsn { op, args, loc }
             }
             (
                 // All other double instructions we can lift start with auipc.
@@ -721,7 +797,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                 },
                 insn2,
             ) => {
-                let hi = hi.wrapping_add(original_address as i32);
+                let hi = hi.wrapping_add(loc.address as i32);
                 match insn2 {
                     // la rd, symbol
                     Ins {
@@ -737,11 +813,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                             hi, *lo, *rd_auipc, *rd_addi, insn2_addr, IS_ADDRESS,
                         )?;
 
-                        HighLevelInsn {
-                            op,
-                            args,
-                            original_address,
-                        }
+                        HighLevelInsn { op, args, loc }
                     }
                     // l{b|h|w} rd, symbol
                     Ins {
@@ -768,7 +840,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                                 imm: HighLevelImmediate::Value(addr),
                                 ..Default::default()
                             },
-                            original_address,
+                            loc,
                         }
                     }
                     // s{b|h|w} rd, symbol, rt
@@ -804,7 +876,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                             imm: HighLevelImmediate::CodeLabel(hi.wrapping_add(*lo) as u32),
                             ..Default::default()
                         },
-                        original_address,
+                        loc,
                     },
                     // tail offset
                     Ins {
@@ -820,11 +892,12 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                             imm: HighLevelImmediate::CodeLabel(hi.wrapping_add(*lo) as u32),
                             ..Default::default()
                         },
-                        original_address,
+                        loc,
                     },
                     _ => {
                         panic!(
-                            "Unexpected instruction after AUIPC: {insn2:?} at {original_address:08x}"
+                            "Unexpected instruction after AUIPC: {insn2:?} at {:08x}",
+                            loc.address
                         );
                     }
                 }
@@ -844,19 +917,22 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
     }
 
     fn map_one(&mut self, insn: MaybeInstruction) -> HighLevelInsn {
-        let original_address = insn.address;
-        let Some(insn) = insn.insn else {
+        let loc = Location {
+            address: insn.address,
+            size: insn.insn.len(),
+        };
+        let UnimpOrInstruction::Instruction(insn) = insn.insn else {
             return HighLevelInsn {
                 op: "unimp",
                 args: Default::default(),
-                original_address,
+                loc,
             };
         };
 
         let mut imm = match insn.opc {
             // All jump instructions that have an address as immediate
             Op::JAL | Op::BEQ | Op::BNE | Op::BLT | Op::BGE | Op::BLTU | Op::BGEU => {
-                let addr = (insn.imm.unwrap() + original_address as i32) as u32;
+                let addr = (insn.imm.unwrap() + loc.address as i32) as u32;
                 if let ReadOrWrite::Write(refs) = &mut self.referenced_text_addrs {
                     refs.insert(addr);
                 }
@@ -884,11 +960,11 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                     args: HighLevelArgs {
                         rd: insn.rd.map(|x| x as u32),
                         imm: HighLevelImmediate::Value(
-                            insn.imm.unwrap().wrapping_add(original_address as i32),
+                            insn.imm.unwrap().wrapping_add(loc.address as i32),
                         ),
                         ..Default::default()
                     },
-                    original_address,
+                    loc,
                 };
             }
             // All other instructions, which have the immediate as a value
@@ -917,7 +993,7 @@ impl TwoOrOneMapper<MaybeInstruction, HighLevelInsn> for InstructionLifter<'_> {
                 rs2: insn.rs2.map(|x| x as u32),
                 imm,
             },
-            original_address,
+            loc,
         }
     }
 }
@@ -1007,9 +1083,20 @@ impl Iterator for RiscVInstructionIterator<'_> {
                 )
             });
 
+            // When C extension is disabled, both LLVM and GNU binutils uses the
+            // privileged instruction CSRRW to represent the `unimp` mnemonic.
+            // https://groups.google.com/a/groups.riscv.org/g/sw-dev/c/Xu6UmcIAKIk/m/piJEHdBlAAAJ
+            //
+            // We must handle this case here.
+            let insn = if matches!(insn.opc, Op::CSRRW) {
+                UnimpOrInstruction::Unimp32
+            } else {
+                UnimpOrInstruction::Instruction(insn)
+            };
+
             maybe_insn = MaybeInstruction {
                 address: self.curr_address,
-                insn: Some(insn),
+                insn,
             };
         } else {
             // 16 bits
@@ -1022,7 +1109,7 @@ impl Iterator for RiscVInstructionIterator<'_> {
             maybe_insn = MaybeInstruction {
                 address: self.curr_address,
                 insn: match bin_instruction.decode(Isa::Rv32) {
-                    Ok(c_insn) => Some(to_32bit_equivalent(c_insn)),
+                    Ok(c_insn) => UnimpOrInstruction::Instruction(to_32bit_equivalent(c_insn)),
                     Err(raki::decode::DecodingError::IllegalInstruction) => {
                         // Although not a real RISC-V instruction, sometimes 0x0000
                         // is used on purpose as an illegal instruction (it even has
@@ -1036,7 +1123,7 @@ impl Iterator for RiscVInstructionIterator<'_> {
                             "Failed to decode 16-bit instruction at {:08x}",
                             self.curr_address
                         );
-                        None
+                        UnimpOrInstruction::Unimp16
                     }
                     Err(err) => panic!(
                         "Unexpected decoding error at {:08x}: {err:?}",

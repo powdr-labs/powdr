@@ -62,10 +62,12 @@ pub const ROM_SUBMACHINE_NAME: &str = "_rom";
 const ROM_ENTRY_POINT: &str = "get_line";
 
 fn rom_machine<'a>(
+    degree: Expression,
     mut pil: Vec<PilStatement>,
     mut line_lookup: impl Iterator<Item = &'a str>,
 ) -> Machine {
     Machine {
+        degree: Some(degree),
         operation_id: Some(ROM_OPERATION_ID.into()),
         latch: Some(ROM_LATCH.into()),
         pil: {
@@ -201,12 +203,18 @@ impl<T: FieldElement> VMConverter<T> {
                                 // introduce an intermediate witness polynomial to keep the degree of polynomial identities at 2
                                 // this may not be optimal for backends which support higher degree constraints
                                 let pc_update_name = format!("{name}_update");
-
                                 vec![
-                                    PilStatement::PolynomialDefinition(
+                                    witness_column(
                                         SourceRef::unknown(),
-                                        pc_update_name.to_string(),
-                                        rhs,
+                                        pc_update_name.clone(),
+                                        None,
+                                    ),
+                                    PilStatement::Expression(
+                                        SourceRef::unknown(),
+                                        build::identity(
+                                            direct_reference(pc_update_name.clone()),
+                                            rhs,
+                                        ),
                                     ),
                                     PilStatement::Expression(
                                         SourceRef::unknown(),
@@ -272,9 +280,18 @@ impl<T: FieldElement> VMConverter<T> {
             input.pil.extend(self.pil);
         }
 
+        // This is hacky: in the absence of proof objects, we want to support both monolithic proofs and composite proofs.
+        // In the monolithic case, all degrees must be the same, so we align the degree of the rom to that of the vm.
+        // In the composite case, we set the minimum degree for the rom, which is the number of lines in the code.
+        let rom_degree = input
+            .degree
+            .clone()
+            .unwrap_or_else(|| Expression::from(self.code_lines.len().next_power_of_two() as u32));
+
         (
             input,
             Some(rom_machine(
+                rom_degree,
                 self.rom_pil,
                 self.line_lookup.iter().map(|(_, x)| x.as_ref()),
             )),
@@ -1015,7 +1032,7 @@ impl<T: FieldElement> VMConverter<T> {
                     let mut prover_query_arms = prover_query_arms;
                     prover_query_arms.push(MatchArm {
                         pattern: Pattern::CatchAll(SourceRef::unknown()),
-                        value: absolute_reference("::std::prover::Query::None"),
+                        value: absolute_reference("::std::prelude::Query::None"),
                     });
 
                     let scrutinee = Box::new(
@@ -1163,7 +1180,7 @@ impl<T: FieldElement> VMConverter<T> {
                     );
                     self.pil.push(PilStatement::PolynomialDefinition(
                         SourceRef::unknown(),
-                        intermediate_name.to_string(),
+                        intermediate_name.clone().into(),
                         left * right,
                     ));
                     (counter + 1, direct_reference(intermediate_name))

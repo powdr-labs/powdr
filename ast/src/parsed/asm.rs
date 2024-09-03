@@ -16,7 +16,7 @@ use crate::parsed::{BinaryOperation, BinaryOperator};
 
 use super::{
     visitor::Children, EnumDeclaration, EnumVariant, Expression, PilStatement, SourceReference,
-    TraitDeclaration, TypedExpression,
+    TraitDeclaration, TraitImplementation, TypedExpression,
 };
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
@@ -31,8 +31,9 @@ pub struct ASMModule {
 
 impl ASMModule {
     pub fn symbol_definitions(&self) -> impl Iterator<Item = &SymbolDefinition> {
-        self.statements.iter().map(|s| match s {
-            ModuleStatement::SymbolDefinition(d) => d,
+        self.statements.iter().filter_map(|s| match s {
+            ModuleStatement::SymbolDefinition(d) => Some(d),
+            ModuleStatement::TraitImplementation(_) => None,
         })
     }
 }
@@ -40,6 +41,16 @@ impl ASMModule {
 #[derive(Debug, Clone, PartialEq, Eq, From)]
 pub enum ModuleStatement {
     SymbolDefinition(SymbolDefinition),
+    TraitImplementation(TraitImplementation<Expression>),
+}
+
+impl ModuleStatement {
+    pub fn defined_names(&self) -> Option<&String> {
+        match self {
+            ModuleStatement::SymbolDefinition(d) => Some(&d.name),
+            ModuleStatement::TraitImplementation(_) => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -126,7 +137,7 @@ pub struct Import {
 /// It can contain the special word `super`, which goes up a level.
 /// If it does not start with `::`, it is relative.
 #[derive(
-    Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+    Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
 )]
 pub struct SymbolPath {
     /// The parts between each `::`.
@@ -149,13 +160,6 @@ impl SymbolPath {
     pub fn join<P: Into<Self>>(mut self, other: P) -> Self {
         self.parts.extend(other.into().parts);
         self
-    }
-
-    /// Formats the path and uses `.` as separator if
-    /// there are at most two components.
-    pub fn to_dotted_string(&self) -> String {
-        let separator = if self.parts.len() <= 2 { "." } else { "::" };
-        self.parts.iter().format(separator).to_string()
     }
 
     pub fn try_to_identifier(&self) -> Option<&String> {
@@ -196,14 +200,10 @@ impl SymbolPath {
 impl FromStr for SymbolPath {
     type Err = String;
 
-    /// Parses a symbol path both in the "a.b" and the "a::b" notation.
+    /// Parses a symbol path using the "::" notation.
     fn from_str(s: &str) -> Result<Self, String> {
-        let (dots, double_colons) = (s.matches('.').count(), s.matches("::").count());
-        if dots != 0 && double_colons != 0 {
-            Err(format!("Path mixes \"::\" and \".\" separators: {s}"))?
-        }
         let parts = s
-            .split(if double_colons > 0 { "::" } else { "." })
+            .split("::")
             .map(|s| {
                 if s == "super" {
                     Part::Super
@@ -350,13 +350,6 @@ impl AbsoluteSymbolPath {
         parts.push(part.to_string());
         Self { parts }
     }
-
-    /// Formats the path without leading `::` and uses `.` as separator if
-    /// there are at most two components.
-    pub fn to_dotted_string(&self) -> String {
-        let separator = if self.parts.len() <= 2 { "." } else { "::" };
-        self.parts.join(separator)
-    }
 }
 
 impl Display for AbsoluteSymbolPath {
@@ -365,7 +358,9 @@ impl Display for AbsoluteSymbolPath {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
 pub enum Part {
     Super,
     Named(String),

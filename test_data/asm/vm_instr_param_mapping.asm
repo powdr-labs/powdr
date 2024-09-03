@@ -1,4 +1,6 @@
-machine SubVM {
+let N: int = 64;
+
+machine SubVM with degree: N {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
@@ -15,6 +17,7 @@ machine SubVM {
 }
 
 machine AddVM with
+    degree: N,
     latch: latch,
     operation_id: operation_id
 {
@@ -30,7 +33,7 @@ machine AddVM with
     z = y + x;
 }
 
-machine Main with degree: 256 {
+machine Main with degree: N {
     SubVM subvm;
     AddVM addvm;
 

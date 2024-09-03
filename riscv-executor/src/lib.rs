@@ -236,7 +236,6 @@ impl<F: FieldElement> Display for Elem<F> {
 }
 
 pub type MemoryState = HashMap<u32, u32>;
-pub type RegisterMemoryState<F> = HashMap<u32, Elem<F>>;
 
 #[derive(Debug)]
 pub enum MemOperationKind {
@@ -425,6 +424,12 @@ impl<'a, F: FieldElement> TraceReplay<'a, F> {
     }
 }
 
+#[derive(Default)]
+pub struct RegisterMemory<F: FieldElement> {
+    pub last: HashMap<u32, Elem<F>>,
+    pub second_last: HashMap<u32, Elem<F>>,
+}
+
 mod builder {
     use std::{cmp, collections::HashMap};
 
@@ -433,7 +438,7 @@ mod builder {
 
     use crate::{
         BinaryMachine, Elem, ExecMode, ExecutionTrace, MemOperation, MemOperationKind,
-        MemoryMachine, MemoryState, RegWrite, RegisterMemoryState, ShiftMachine, SplitGlMachine,
+        MemoryMachine, MemoryState, RegWrite, RegisterMemory, ShiftMachine, SplitGlMachine,
         Submachine, SubmachineBoxed, PC_INITIAL_VAL,
     };
 
@@ -480,8 +485,8 @@ mod builder {
         /// Current memory.
         mem: HashMap<u32, u32>,
 
-        /// Separate register memory.
-        reg_mem: HashMap<u32, Elem<F>>,
+        /// Separate register memory, last and second last.
+        reg_mem: RegisterMemory<F>,
 
         /// The execution mode we running.
         /// Fast: do not save the register's trace and memory accesses.
@@ -503,7 +508,7 @@ mod builder {
             max_rows_len: usize,
             mode: ExecMode,
             fixed_len: u32,
-        ) -> Result<Self, Box<(ExecutionTrace<F>, MemoryState, RegisterMemoryState<F>)>> {
+        ) -> Result<Self, Box<(ExecutionTrace<F>, MemoryState, RegisterMemory<F>)>> {
             let reg_map = register_names(main)
                 .into_iter()
                 .enumerate()
@@ -717,7 +722,7 @@ mod builder {
 
         pub(crate) fn set_reg_mem(&mut self, addr: u32, val: Elem<F>) {
             if addr != 0 {
-                self.reg_mem.insert(addr, val);
+                self.reg_mem.last.insert(addr, val);
             }
         }
 
@@ -726,14 +731,18 @@ mod builder {
             if addr == 0 {
                 zero
             } else {
-                *self.reg_mem.get(&addr).unwrap_or(&zero)
+                *self.reg_mem.last.get(&addr).unwrap_or(&zero)
             }
+        }
+
+        pub(crate) fn backup_reg_mem(&mut self) {
+            self.reg_mem.second_last = self.reg_mem.last.clone();
         }
 
         pub fn finish(
             mut self,
             fixed_len: u32,
-        ) -> (ExecutionTrace<F>, MemoryState, RegisterMemoryState<F>) {
+        ) -> (ExecutionTrace<F>, MemoryState, RegisterMemory<F>) {
             // TODO: remove when VADCOP
             // let mut max_degree = self
             //     .submachines
@@ -782,7 +791,6 @@ mod builder {
             for (col_name, col) in self.memory_machine.take_cols(mem_degree) {
                 assert!(self.trace.cols.insert(col_name, col).is_none());
             }
-
             (self.trace, self.mem, self.reg_mem)
         }
 
@@ -1129,6 +1137,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             .map(|expr| self.eval_expression(expr)[0])
             .collect::<Vec<_>>();
 
+        self.proc.backup_reg_mem();
+
         self.proc.push_row();
         let pc = self.proc.get_pc().u();
         self.set_program_columns(pc);
@@ -1207,7 +1217,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 vec![val]
             }
-            "move_reg" => {
+            "affine" => {
                 let read_reg = args[0].u();
                 let val1 = self.proc.get_reg_mem(read_reg);
                 reg_read!(0, read_reg, val1.u(), 0);
@@ -1352,7 +1362,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let factor = args[2].bin();
                 let offset = args[3].bin();
 
-                let actual_val = self.bootloader_inputs[(addr.bin() * factor + offset) as usize];
+                let addr = (addr.bin() * factor + offset) as usize;
+                let actual_val = self.bootloader_inputs[addr];
 
                 assert_eq!(val, actual_val);
 
@@ -1431,6 +1442,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 reg_read!(0, read_reg1, val1.u(), 0);
                 let val2 = self.proc.get_reg_mem(read_reg2);
                 reg_read!(1, read_reg2, val2.u(), 1);
+
                 let val: Elem<F> = val1.sub(&val2);
                 let label = args[2];
                 if !val.is_zero() {
@@ -1454,7 +1466,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-            "branch_if_zero" => {
+            "branch_if_diff_equal" => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
                 let val1 = self.proc.get_reg_mem(read_reg1);
@@ -1462,8 +1474,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let val2 = self.proc.get_reg_mem(read_reg2);
                 reg_read!(1, read_reg2, val2.u(), 1);
                 let offset = args[2];
-                let val: Elem<F> = val1.sub(&val2.add(&offset));
+                let val: Elem<F> = val1.sub(&val2).sub(&offset);
                 let label = args[3];
+
                 if val.is_zero() {
                     self.proc.set_pc(label);
                 }
@@ -1486,7 +1499,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-            "skip_if_zero" => {
+            "skip_if_equal" => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
                 let val1 = self.proc.get_reg_mem(read_reg1);
@@ -1516,7 +1529,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-            "branch_if_positive" => {
+            "branch_if_diff_greater_than" => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
                 // We can't call u() because input registers may have come from
@@ -1526,8 +1539,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let val2 = self.proc.get_reg_mem(read_reg2);
                 reg_read!(1, read_reg2, val2.bin() as u32, 1);
                 let offset = args[2];
-                let val: Elem<F> = val1.sub(&val2).add(&offset);
+                let val: Elem<F> = val1.sub(&val2).sub(&offset);
                 let label = args[3];
+
                 if val.bin() > 0 {
                     self.proc.set_pc(label);
                 }
@@ -1560,7 +1574,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-            "is_positive" => {
+            "is_diff_greater_than" => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
                 let val1 = self.proc.get_reg_mem(read_reg1);
@@ -1570,7 +1584,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 let offset = args[2];
                 let write_reg = args[3].u();
-                let val = val1.sub(&val2).add(&offset);
+                let val = val1.sub(&val2).sub(&offset);
 
                 let r = if val.bin() > 0 { 1 } else { 0 };
                 self.proc.set_reg_mem(write_reg, r.into());
@@ -1659,6 +1673,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 reg_read!(1, read_reg2, val2.u(), 1);
                 let offset = args[2];
                 let write_reg = args[3].u();
+
                 let val = val1.add(&val2).add(&offset);
                 // don't use .u() here: we are deliberately discarding the
                 // higher bits
@@ -2106,14 +2121,32 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 Vec::new()
             }
             "poseidon_gl" => {
-                assert!(args.is_empty());
-                let inputs = (0..12)
-                    .map(|i| self.proc.get_reg(&register_by_idx(i)).into_fe())
+                let input_ptr = self.proc.get_reg_mem(args[0].u()).u();
+                assert_eq!(input_ptr % 4, 0);
+
+                let inputs = (0..24)
+                    .map(|i| self.proc.get_mem(input_ptr + i * 4))
+                    .chunks(2)
+                    .into_iter()
+                    .map(|mut chunk| {
+                        let low = chunk.next().unwrap() as u64;
+                        let high = chunk.next().unwrap() as u64;
+                        F::from((high << 32) | low)
+                    })
                     .collect::<Vec<_>>();
-                let result = poseidon_gl::poseidon_gl(&inputs);
-                (0..4).for_each(|i| {
-                    self.proc
-                        .set_reg(&register_by_idx(i), Elem::Field(result[i]))
+
+                let result = poseidon_gl::poseidon_gl(&inputs)
+                    .into_iter()
+                    .flat_map(|v| {
+                        let v = v.to_integer().try_into_u64().unwrap();
+                        vec![(v & 0xffffffff) as u32, (v >> 32) as u32]
+                    })
+                    .collect::<Vec<_>>();
+
+                let output_ptr = self.proc.get_reg_mem(args[1].u()).u();
+                assert_eq!(output_ptr % 4, 0);
+                result.iter().enumerate().for_each(|(i, &v)| {
+                    self.proc.set_mem(output_ptr + i as u32 * 4, v);
                 });
 
                 vec![]
@@ -2395,7 +2428,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 };
                 let variant = f
                     .to_string()
-                    .strip_prefix("std::prover::Query::")
+                    .strip_prefix("std::prelude::Query::")
                     .unwrap_or_else(|| panic!("Free input does not match pattern: {expr}"))
                     .to_string();
                 let values = arguments
@@ -2440,7 +2473,7 @@ pub fn execute_ast<T: FieldElement>(
     max_steps_to_execute: usize,
     mode: ExecMode,
     profiling: Option<ProfilerOptions>,
-) -> (ExecutionTrace<T>, MemoryState, RegisterMemoryState<T>) {
+) -> (ExecutionTrace<T>, MemoryState, RegisterMemory<T>) {
     let main_machine = get_main_machine(program);
 
     let PreprocessedMain {
@@ -2711,7 +2744,7 @@ pub fn execute<F: FieldElement>(
     bootloader_inputs: &[Elem<F>],
     mode: ExecMode,
     profiling: Option<ProfilerOptions>,
-) -> (ExecutionTrace<F>, MemoryState, RegisterMemoryState<F>) {
+) -> (ExecutionTrace<F>, MemoryState, RegisterMemory<F>) {
     log::info!("Parsing...");
     let parsed = powdr_parser::parse_asm(None, asm_source).unwrap();
     log::info!("Resolving imports...");

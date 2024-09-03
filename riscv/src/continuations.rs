@@ -7,7 +7,7 @@ use powdr_ast::{
     asm_analysis::AnalysisASMFile,
     parsed::{asm::parse_absolute_path, Expression, Number, PilStatement},
 };
-use powdr_executor::constant_evaluator::get_uniquely_sized;
+use powdr_executor::constant_evaluator::MAX_DEGREE_LOG;
 use powdr_number::FieldElement;
 use powdr_pipeline::Pipeline;
 use powdr_riscv_executor::{get_main_machine, Elem, ExecutionTrace, MemoryState, ProfilerOptions};
@@ -15,6 +15,7 @@ use powdr_riscv_executor::{get_main_machine, Elem, ExecutionTrace, MemoryState, 
 pub mod bootloader;
 mod memory_merkle_tree;
 
+use bootloader::split_fe_as_elem;
 use bootloader::{default_input, PAGE_SIZE_BYTES_LOG, PC_INDEX, REGISTER_NAMES};
 use memory_merkle_tree::MerkleTree;
 
@@ -43,13 +44,16 @@ pub fn transposed_trace<F: FieldElement>(
 
     reg_values
         .into_iter()
-        .map(|(n, c)| (format!("main.{n}"), c))
+        .map(|(n, c)| (format!("main::{n}"), c))
         .collect()
 }
 
 fn render_hash<F: FieldElement>(hash: &[Elem<F>]) -> String {
     hash.iter()
-        .map(|&f| format!("{:016x}", f.fe().to_arbitrary_integer()))
+        .map(|&f| match f {
+            Elem::Field(_) => panic!(),
+            Elem::Binary(b) => format!("{b:08x}"),
+        })
         .collect::<Vec<_>>()
         .join("")
 }
@@ -65,28 +69,27 @@ fn render_hash<F: FieldElement>(hash: &[Elem<F>]) -> String {
 pub fn rust_continuations<F: FieldElement, PipelineCallback, E>(
     mut pipeline: Pipeline<F>,
     pipeline_callback: PipelineCallback,
-    bootloader_inputs: Vec<(Vec<F>, u64)>,
+    dry_run_result: DryRunResult<F>,
 ) -> Result<(), E>
 where
     PipelineCallback: Fn(Pipeline<F>) -> Result<(), E>,
 {
+    let bootloader_inputs = dry_run_result.bootloader_inputs;
     let num_chunks = bootloader_inputs.len();
 
+    // The size of the main machine is dynamic, so we need to chose a size.
+    // We chose a size 4x smaller than the maximum size, so that we can guarantee
+    // that the register memory does not run out of rows.
+    // TODO: After #1667 ("Support degree ranges") is merged, this can be set in ASM
+    //       and we can just use the maximum size here.
+    let length = 1 << (*MAX_DEGREE_LOG - 2);
+
     log::info!("Computing fixed columns...");
-    let fixed_cols = pipeline.compute_fixed_cols().unwrap();
+    pipeline.compute_fixed_cols().unwrap();
 
     // Advance the pipeline to the optimized PIL stage, so that it doesn't need to be computed
     // in every chunk.
     pipeline.compute_optimized_pil().unwrap();
-
-    // TODO hacky way to find the degree of the main machine, fix.
-    let length = get_uniquely_sized(&fixed_cols)
-        .unwrap()
-        .iter()
-        .find(|(col, _)| col == "main.STEP")
-        .unwrap()
-        .1
-        .len() as u64;
 
     bootloader_inputs
         .into_iter()
@@ -121,11 +124,11 @@ where
                     .collect();
                 let pipeline = pipeline.add_external_witness_values(vec![
                     (
-                        "main_bootloader_inputs.value".to_string(),
+                        "main_bootloader_inputs::value".to_string(),
                         bootloader_inputs,
                     ),
                     (
-                        "main.jump_to_shutdown_routine".to_string(),
+                        "main::jump_to_shutdown_routine".to_string(),
                         jump_to_shutdown_routine,
                     ),
                 ]);
@@ -197,13 +200,19 @@ pub fn load_initial_memory(program: &AnalysisASMFile) -> MemoryState {
         .collect()
 }
 
+pub struct DryRunResult<F: FieldElement> {
+    pub bootloader_inputs: Vec<(Vec<F>, u64)>,
+    // full execution trace length (i.e., length of main::pc)
+    pub trace_len: usize,
+}
+
 /// Runs the entire execution using the RISC-V executor. For each chunk, it collects:
 /// - The inputs to the bootloader, needed to restore the correct state.
 /// - The number of rows after which the prover should jump to the shutdown routine.
 pub fn rust_continuations_dry_run<F: FieldElement>(
     pipeline: &mut Pipeline<F>,
     profiler_opt: Option<ProfilerOptions>,
-) -> Vec<(Vec<F>, u64)> {
+) -> DryRunResult<F> {
     // All inputs for all chunks.
     let mut bootloader_inputs_and_num_rows = vec![];
 
@@ -246,10 +255,10 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         (transposed_trace::<F>(&trace), trace.mem_ops)
     };
 
-    let full_trace_length = full_trace["main.pc"].len();
+    let full_trace_length = full_trace["main::pc"].len();
     log::info!("Total trace length: {}", full_trace_length);
 
-    let (first_real_execution_row, _) = full_trace["main.pc"]
+    let (first_real_execution_row, _) = full_trace["main::pc"]
         .iter()
         .enumerate()
         .find(|(_, &pc)| pc.bin() as u64 == DEFAULT_PC)
@@ -262,30 +271,15 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     let mut proven_trace = first_real_execution_row;
     let mut chunk_index = 0;
 
-    let length = program
-        .machines()
-        .fold(None, |acc, (_, m)| acc.or(m.degree.clone()))
-        .unwrap();
-
-    let length: usize = match length {
-        Expression::Number(
-            _,
-            Number {
-                value: length,
-                type_: None,
-            },
-        ) => length.try_into().unwrap(),
-        e => unimplemented!(
-            "degree {e} is not supported in continuations as we don't have an evaluator yet"
-        ),
-    };
+    let length = 1 << (*MAX_DEGREE_LOG - 2);
 
     loop {
-        log::info!("\nRunning chunk {}...", chunk_index);
+        log::info!("\nRunning chunk {} for {} steps...", chunk_index, length);
 
         log::info!("Building bootloader inputs for chunk {}...", chunk_index);
         let mut accessed_pages = BTreeSet::new();
         let mut accessed_addresses = BTreeSet::new();
+
         let start_idx = memory_accesses
             .binary_search_by_key(&proven_trace, |a| a.row)
             .unwrap_or_else(|v| v);
@@ -331,6 +325,10 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         );
 
         log::info!("Bootloader inputs length: {}", bootloader_inputs.len());
+        log::info!(
+            "Initial memory root hash: {}",
+            render_hash(&bootloader_inputs[MEMORY_HASH_START_INDEX..MEMORY_HASH_START_INDEX + 8])
+        );
 
         log::info!("Simulating chunk execution...");
         let (chunk_trace, memory_snapshot_update, register_memory_snapshot) = {
@@ -349,9 +347,10 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             (
                 transposed_trace(&trace),
                 memory_snapshot_update,
-                register_memory_snapshot,
+                register_memory_snapshot.second_last,
             )
         };
+
         let mut memory_updates_by_page =
             merkle_tree.organize_updates_by_page(memory_snapshot_update.into_iter());
         for (i, &page_index) in accessed_pages.iter().enumerate() {
@@ -360,10 +359,15 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
 
             // Replace the proof
             let proof_start_index =
-                PAGE_INPUTS_OFFSET + BOOTLOADER_INPUTS_PER_PAGE * i + 1 + WORDS_PER_PAGE + 4;
+                PAGE_INPUTS_OFFSET + BOOTLOADER_INPUTS_PER_PAGE * i + 1 + WORDS_PER_PAGE + 8;
             for (j, sibling) in proof.into_iter().enumerate() {
-                bootloader_inputs[proof_start_index + j * 4..proof_start_index + j * 4 + 4]
-                    .copy_from_slice(&sibling.map(Elem::Field));
+                bootloader_inputs[proof_start_index + j * 8..proof_start_index + j * 8 + 8]
+                    .copy_from_slice(
+                        &sibling
+                            .iter()
+                            .flat_map(|e| split_fe_as_elem(*e))
+                            .collect::<Vec<_>>(),
+                    );
             }
 
             // Update one child of the Merkle tree
@@ -379,16 +383,24 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             // Assert the proof hasn't changed (because we didn't update any page except the current).
             for (j, sibling) in proof.into_iter().enumerate() {
                 assert_eq!(
-                    &bootloader_inputs[proof_start_index + j * 4..proof_start_index + j * 4 + 4],
-                    sibling.map(Elem::Field)
+                    &bootloader_inputs[proof_start_index + j * 8..proof_start_index + j * 8 + 8],
+                    sibling
+                        .iter()
+                        .flat_map(|e| split_fe_as_elem(*e))
+                        .collect::<Vec<_>>()
                 );
             }
 
             // Replace the page hash
             let updated_page_hash_index =
                 PAGE_INPUTS_OFFSET + BOOTLOADER_INPUTS_PER_PAGE * i + 1 + WORDS_PER_PAGE;
-            bootloader_inputs[updated_page_hash_index..updated_page_hash_index + 4]
-                .copy_from_slice(&page_hash.map(Elem::Field));
+            bootloader_inputs[updated_page_hash_index..updated_page_hash_index + 8]
+                .copy_from_slice(
+                    &page_hash
+                        .iter()
+                        .flat_map(|e| split_fe_as_elem(*e))
+                        .collect::<Vec<_>>(),
+                );
         }
 
         // Go over all registers except the PC
@@ -401,37 +413,43 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             })
             .collect::<Vec<_>>();
 
-        register_values.push(*chunk_trace["main.pc"].last().unwrap());
+        register_values.push(*chunk_trace["main::pc"].last().unwrap());
 
         // Replace final register values of the current chunk
         bootloader_inputs[REGISTER_NAMES.len()..2 * REGISTER_NAMES.len()]
             .copy_from_slice(&register_values);
 
         // Replace the updated root hash
-        let updated_root_hash_index = MEMORY_HASH_START_INDEX + 4;
-        bootloader_inputs[updated_root_hash_index..updated_root_hash_index + 4]
-            .copy_from_slice(&merkle_tree.root_hash().map(Elem::Field));
+        let updated_root_hash_index = MEMORY_HASH_START_INDEX + 8;
+        bootloader_inputs[updated_root_hash_index..updated_root_hash_index + 8].copy_from_slice(
+            &merkle_tree
+                .root_hash()
+                .iter()
+                .flat_map(|e| split_fe_as_elem(*e))
+                .collect::<Vec<_>>(),
+        );
 
         log::info!(
             "Initial memory root hash: {}",
-            render_hash(&bootloader_inputs[MEMORY_HASH_START_INDEX..MEMORY_HASH_START_INDEX + 4])
+            render_hash(&bootloader_inputs[MEMORY_HASH_START_INDEX..MEMORY_HASH_START_INDEX + 8])
         );
         log::info!(
             "Final memory root hash: {}",
             render_hash(
-                &bootloader_inputs[MEMORY_HASH_START_INDEX + 4..MEMORY_HASH_START_INDEX + 8]
+                &bootloader_inputs[MEMORY_HASH_START_INDEX + 8..MEMORY_HASH_START_INDEX + 16]
             )
         );
 
-        let actual_num_rows = chunk_trace["main.pc"].len();
+        let actual_num_rows = chunk_trace["main::pc"].len();
         bootloader_inputs_and_num_rows.push((
             bootloader_inputs.iter().map(|e| e.into_fe()).collect(),
             actual_num_rows as u64,
         ));
 
-        log::info!("Chunk trace length: {}", chunk_trace["main.pc"].len());
+        log::info!("Chunk trace length: {}", chunk_trace["main::pc"].len());
         log::info!("Validating chunk...");
-        let (start, _) = chunk_trace["main.pc"]
+        log::info!("Looking for pc = {}...", bootloader_inputs[PC_INDEX]);
+        let (start, _) = chunk_trace["main::pc"]
             .iter()
             .enumerate()
             .find(|(_, &pc)| pc == bootloader_inputs[PC_INDEX])
@@ -443,8 +461,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             length,
             (length - start - shutdown_routine_rows) * 100 / length
         );
-        for i in 0..(chunk_trace["main.pc"].len() - start) {
-            for &reg in ["main.pc", "main.query_arg_1", "main.query_arg_1"].iter() {
+        for i in 0..(chunk_trace["main::pc"].len() - start) {
+            for &reg in ["main::pc", "main::query_arg_1", "main::query_arg_2"].iter() {
                 let chunk_i = i + start;
                 let full_i = i + proven_trace;
                 if chunk_trace[reg][chunk_i] != full_trace[reg][full_i] {
@@ -454,8 +472,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
                     );
                     log::error!(
                         "The PCs are {} and {}.",
-                        chunk_trace["main.pc"][chunk_i],
-                        full_trace["main.pc"][full_i]
+                        chunk_trace["main::pc"][chunk_i],
+                        full_trace["main::pc"][full_i]
                     );
                     log::error!(
                         "The first difference is in register {}: {} != {} ",
@@ -468,10 +486,11 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             }
         }
 
-        if chunk_trace["main.pc"].len() < num_rows {
+        if chunk_trace["main::pc"].len() < num_rows {
             log::info!("Done!");
             break;
         }
+        assert_eq!(chunk_trace["main::pc"].len(), num_rows);
 
         // Minus one, because the last row will have to be repeated in the next chunk.
         let new_rows = num_rows - start - 1;
@@ -480,5 +499,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
 
         chunk_index += 1;
     }
-    bootloader_inputs_and_num_rows
+    DryRunResult {
+        bootloader_inputs: bootloader_inputs_and_num_rows,
+        trace_len: full_trace_length,
+    }
 }

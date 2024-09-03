@@ -34,6 +34,7 @@ impl Display for ModuleStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             ModuleStatement::SymbolDefinition(symbol_def) => write!(f, "{symbol_def}"),
+            ModuleStatement::TraitImplementation(trait_impl) => write!(f, "{trait_impl}"),
         }
     }
 }
@@ -419,6 +420,9 @@ impl<E: Display> Display for StatementInsideBlock<E> {
 impl<E: Display> Display for LetStatementInsideBlock<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "let {}", self.pattern)?;
+        if let Some(ty) = &self.ty {
+            write!(f, ": {ty}")?;
+        }
         if let Some(v) = &self.value {
             write!(f, " = {v};")
         } else {
@@ -529,12 +533,13 @@ impl Display for PilStatement {
             ),
             PilStatement::Expression(_, e) => write_indented_by(f, format!("{e};"), 1),
             PilStatement::EnumDeclaration(_, enum_decl) => write_indented_by(f, enum_decl, 1),
+            PilStatement::TraitImplementation(_, trait_impl) => write_indented_by(f, trait_impl, 1),
             PilStatement::TraitDeclaration(_, trait_decl) => write_indented_by(f, trait_decl, 1),
         }
     }
 }
 
-impl Display for ArrayExpression {
+impl<Ref: Display> Display for ArrayExpression<Ref> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             ArrayExpression::Value(expressions) => {
@@ -621,6 +626,36 @@ impl<E: Display> EnumDeclaration<E> {
     }
 }
 
+impl<E: Display> Display for TraitImplementation<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let type_vars = if self.type_scheme.vars.is_empty() {
+            Default::default()
+        } else {
+            format!("<{}>", self.type_scheme.vars)
+        };
+
+        let Type::Tuple(TupleType { items }) = &self.type_scheme.ty else {
+            panic!("Type from trait scheme is not a tuple.")
+        };
+
+        let trait_vars = if items.is_empty() {
+            Default::default()
+        } else {
+            format!("<{}>", items.iter().format(", "))
+        };
+
+        write!(
+            f,
+            "impl{type_vars} {trait_name}{trait_vars} {{\n{methods}}}",
+            trait_name = self.name,
+            methods = indent(
+                self.functions.iter().map(|m| format!("{m},\n")).format(""),
+                1
+            )
+        )
+    }
+}
+
 impl<Expr: Display> Display for SelectedExpressions<Expr> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
@@ -632,6 +667,12 @@ impl<Expr: Display> Display for SelectedExpressions<Expr> {
                 .unwrap_or_default(),
             self.expressions
         )
+    }
+}
+
+impl<E: Display> Display for NamedExpression<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}: {}", self.name, self.body)
     }
 }
 
@@ -702,23 +743,27 @@ impl Display for NamespacedPolynomialReference {
         if let Some(type_args) = &self.type_args {
             write!(f, "{}::{}", self.path, format_type_args(type_args))
         } else {
-            write!(f, "{}", self.path.to_dotted_string())
+            write!(f, "{}", self.path)
         }
     }
 }
 
-impl<E: Display> Display for LambdaExpression<E> {
+impl<E> Display for LambdaExpression<E>
+where
+    E: Display + Precedence,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "({}|{}| {})",
-            match self.kind {
-                FunctionKind::Pure => "".into(),
-                _ => format!("{} ", &self.kind),
-            },
-            format_list(&self.params),
-            self.body
-        )
+        let prefix = match self.kind {
+            FunctionKind::Pure => "".into(),
+            _ => format!("{} ", &self.kind),
+        };
+        let params = format_list(&self.params);
+
+        if self.body.precedence() < self.precedence() {
+            write!(f, "{}|{}| {}", prefix, params, self.body)
+        } else {
+            write!(f, "{}|{}| ({})", prefix, params, self.body)
+        }
     }
 }
 
@@ -869,8 +914,9 @@ impl<E: Display> Display for BlockExpression<E> {
             write_items_indented(f, &self.statements)?;
             if let Some(expr) = &self.expr {
                 write_indented_by(f, expr, 1)?;
+                writeln!(f)?;
             }
-            write!(f, "\n}}")
+            write!(f, "}}")
         }
     }
 }
@@ -884,6 +930,7 @@ impl<E: Display> Display for Type<E> {
             Type::Fe => write!(f, "fe"),
             Type::String => write!(f, "string"),
             Type::Col => write!(f, "col"),
+            Type::Inter => write!(f, "inter"),
             Type::Expr => write!(f, "expr"),
             Type::Array(array) => write!(f, "{array}"),
             Type::Tuple(tuple) => write!(f, "{tuple}"),
@@ -978,17 +1025,13 @@ pub fn format_type_scheme_around_name<E: Display, N: Display>(
 
 impl Display for TypeBounds {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        fn format_var((var, bounds): (&String, &BTreeSet<String>)) -> String {
-            format!(
-                "{var}{}",
-                if bounds.is_empty() {
-                    String::new()
-                } else {
-                    format!(": {}", bounds.iter().join(" + "))
-                }
-            )
-        }
-        write!(f, "{}", self.bounds().map(format_var).format(", "))
+        write!(
+            f,
+            "{}",
+            self.bounds()
+                .map(|(var, bounds)| TypeBounds::format_var_bound(var, bounds))
+                .format(", ")
+        )
     }
 }
 
@@ -1163,7 +1206,54 @@ mod tests {
                 test_paren(&test_case);
             }
         }
+        #[test]
+        fn lambda_parentheses() {
+            let test_cases: Vec<TestCase> = vec![
+                // Nested lambdas
+                ("|x| (|y| y) + x;", "|x| (|y| y) + x;"),
+                ("|x| (|y| y + x);", "|x| (|y| y + x);"),
+                ("|x| |y| y + x;", "|x| (|y| y + x);"),
+                ("|x| |y| (y + x);", "|x| (|y| y + x);"),
+                ("|x| (|y| |z| z + y) + x;", "|x| (|y| (|z| z + y)) + x;"),
+                ("|x| |y| (|z| z) + y + x;", "|x| (|y| (|z| z) + y + x);"),
+                ("|x| |y| |z| x + y + z;", "|x| (|y| (|z| x + y + z));"),
+                // Lambda application
+                ("1 + (|x| x)(2);", "1 + (|x| x)(2);"),
+                // Lambda application with nested lambdas
+                ("(|x| |y| y + x)(5);", "(|x| (|y| y + x))(5);"),
+                ("|x| (|y| y)(x) + 1;", "|x| (|y| y)(x) + 1;"),
+                ("|x| (|y| x + y)(5);", "|x| (|y| x + y)(5);"),
+                ("|x| |y| y(x) + 1;", "|x| (|y| y(x) + 1);"),
+                ("(|x| |y| x * y)(2)(3);", "(|x| (|y| x * y))(2)(3);"),
+                ("(|x| x + 1)(|y| y * 2);", "(|x| x + 1)(|y| y * 2);"),
+                (
+                    "(|x| |y| x + y)(|z| z * 2);",
+                    "(|x| (|y| x + y))(|z| z * 2);",
+                ),
+                // Binary operations between lambdas
+                ("(|x| x) + (|y| y);", "(|x| x) + (|y| y);"),
+                ("|x| x * (|y| y);", "|x| x * (|y| y);"),
+                ("|x| x + 1 * (|y| y - 2);", "|x| x + 1 * (|y| y - 2);"),
+                ("(|x| x + 1) - (|y| y) * -1;", "(|x| x + 1) - (|y| y) * -1;"),
+                (
+                    "|x| (|y| y)(x) + (|z| z)(x);",
+                    "|x| (|y| y)(x) + (|z| z)(x);",
+                ),
+                ("|x| |y| y(x) + (|z| z)(x);", "|x| (|y| y(x) + (|z| z)(x));"),
+                (
+                    "|x| (|y| y(x) + (|z| z))(x);",
+                    "|x| (|y| y(x) + (|z| z))(x);",
+                ),
+                (
+                    "(|x| |y| x + y) + (|z| z * 2);",
+                    "(|x| (|y| x + y)) + (|z| z * 2);",
+                ),
+            ];
 
+            for test_case in test_cases {
+                test_paren(&test_case);
+            }
+        }
         #[test]
         fn complex() {
             let test_cases: Vec<TestCase> = vec![
@@ -1178,12 +1268,12 @@ mod tests {
                 "a | b * (c << d + e) & (f ^ g) = h * (i + g);",
             ),
             (
-                "instr_or $ [0, X, Y, Z] is (main_bin.latch * main_bin.sel[0]) $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];",
-                "instr_or $ [0, X, Y, Z] is main_bin.latch * main_bin.sel[0] $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];",
+                "instr_or $ [0, X, Y, Z] is (main_bin::latch * main_bin::sel[0]) $ [main_bin::operation_id, main_bin::A, main_bin::B, main_bin::C];",
+                "instr_or $ [0, X, Y, Z] is main_bin::latch * main_bin::sel[0] $ [main_bin::operation_id, main_bin::A, main_bin::B, main_bin::C];",
             ),
             (
-                "instr_or $ [0, X, Y, Z] is main_bin.latch * main_bin.sel[0] $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];",
-                "instr_or $ [0, X, Y, Z] is main_bin.latch * main_bin.sel[0] $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];",
+                "instr_or $ [0, X, Y, Z] is main_bin::latch * main_bin::sel[0] $ [main_bin::operation_id, main_bin::A, main_bin::B, main_bin::C];",
+                "instr_or $ [0, X, Y, Z] is main_bin::latch * main_bin::sel[0] $ [main_bin::operation_id, main_bin::A, main_bin::B, main_bin::C];",
             ),
             (
                 "pc' = (1 - first_step') * ((((instr__jump_to_operation * _operation_id) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((instr__jump_to_operation + instr__loop) + instr_return)) * (pc + 1)));",
@@ -1191,7 +1281,7 @@ mod tests {
             ),
             (
                 "let root_of_unity_for_log_degree: int -> fe = |n| root_of_unity ** (2**(32 - n));",
-                "let root_of_unity_for_log_degree: int -> fe = (|n| root_of_unity ** (2 ** (32 - n)));",
+                "let root_of_unity_for_log_degree: int -> fe = |n| root_of_unity ** (2 ** (32 - n));",
             ),
         ];
 

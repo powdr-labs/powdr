@@ -1,4 +1,6 @@
-machine Main with degree: 256 {
+let N: int = 64;
+
+machine Main with degree: N {
     Pythagoras pythagoras;
 
     reg pc[@pc];
@@ -25,7 +27,7 @@ machine Main with degree: 256 {
 }
 
 
-machine Pythagoras {
+machine Pythagoras with degree: N {
 
     Arith arith;
 

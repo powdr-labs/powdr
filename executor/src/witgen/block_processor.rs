@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
 use powdr_ast::analyzed::{AlgebraicReference, PolyID};
-use powdr_number::FieldElement;
+use powdr_number::{DegreeType, FieldElement};
 
 use crate::Identity;
 
@@ -33,8 +33,16 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         identities: &'c [&'a Identity<T>],
         fixed_data: &'a FixedData<'a, T>,
         witness_cols: &'c HashSet<PolyID>,
+        size: DegreeType,
     ) -> Self {
-        let processor = Processor::new(row_offset, data, mutable_state, fixed_data, witness_cols);
+        let processor = Processor::new(
+            row_offset,
+            data,
+            mutable_state,
+            fixed_data,
+            witness_cols,
+            size,
+        );
         Self {
             processor,
             identities,
@@ -121,11 +129,10 @@ mod tests {
     use powdr_pil_analyzer::analyze_string;
 
     use crate::{
-        constant_evaluator::{generate, get_uniquely_sized},
+        constant_evaluator::generate,
         witgen::{
             data_structures::finalizable_data::FinalizableData,
             identity_processor::Machines,
-            machines::FixedLookup,
             rows::{Row, RowIndex},
             sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator},
             unused_query_callback, FixedData, MutableState, QueryCallback,
@@ -153,11 +160,9 @@ mod tests {
     ) -> R {
         let analyzed = analyze_string(src);
         let constants = generate(&analyzed);
-        let constants = get_uniquely_sized(&constants).unwrap();
         let fixed_data = FixedData::new(&analyzed, &constants, &[], Default::default(), 0);
 
         // No submachines
-        let mut fixed_lookup = FixedLookup::new(fixed_data.global_range_constraints().clone());
         let mut machines = [];
 
         let degree = fixed_data.analyzed.degree();
@@ -174,7 +179,6 @@ mod tests {
         );
 
         let mut mutable_state = MutableState {
-            fixed_lookup: &mut fixed_lookup,
             machines: Machines::from(machines.iter_mut()),
             query_callback: &mut query_callback,
         };
@@ -189,6 +193,7 @@ mod tests {
             &identities,
             &fixed_data,
             &witness_cols,
+            degree,
         );
 
         f(
@@ -240,6 +245,6 @@ mod tests {
                 (1-ISLAST) * (y' - (x + y)) = 0;
         "#;
 
-        solve_and_assert::<GoldilocksField>(src, &[(7, "Fibonacci.y", 34)]);
+        solve_and_assert::<GoldilocksField>(src, &[(7, "Fibonacci::y", 34)]);
     }
 }

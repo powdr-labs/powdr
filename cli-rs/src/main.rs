@@ -44,8 +44,8 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Compiles (no-std) rust code to riscv assembly.
-    /// Needs `rustup target add riscv32imac-unknown-none-elf`.
+    /// Compiles rust code to Powdr assembly.
+    /// Needs `rustup component add rust-src --toolchain nightly-2024-08-01`.
     Compile {
         /// input rust code, points to a crate dir or its Cargo.toml file
         file: String,
@@ -65,10 +65,10 @@ enum Commands {
         #[arg(long)]
         coprocessors: Option<String>,
 
-        /// Convert from the executable ELF file instead of the assembly.
+        /// Convert from the assembly files instead of the ELF executable.
         #[arg(short, long)]
         #[arg(default_value_t = false)]
-        elf: bool,
+        asm: bool,
 
         /// Run a long execution in chunks (Experimental and not sound!)
         #[arg(short, long)]
@@ -232,14 +232,14 @@ fn run_command(command: Commands) {
             field,
             output_directory,
             coprocessors,
-            elf,
+            asm,
             continuations,
         } => {
             call_with_field!(compile_rust::<field>(
                 &file,
                 Path::new(&output_directory),
                 coprocessors,
-                elf,
+                !asm,
                 continuations
             ))
         }
@@ -337,8 +337,13 @@ fn compile_rust<F: FieldElement>(
         None => powdr_riscv::Runtime::base(),
     };
 
-    if continuations && !runtime.has_submachine("poseidon_gl") {
-        runtime = runtime.with_poseidon();
+    if continuations {
+        if runtime.has_submachine("poseidon_gl") {
+            return Err(vec![
+                "Poseidon continuations mode is chosen automatically and incompatible with the chosen standard Poseidon coprocessor".to_string(),
+            ]);
+        }
+        runtime = runtime.with_poseidon_for_continuations();
     }
 
     powdr_riscv::compile_rust::<F>(
@@ -348,6 +353,7 @@ fn compile_rust<F: FieldElement>(
         &runtime,
         via_elf,
         continuations,
+        None,
     )
     .ok_or_else(|| vec!["could not compile rust".to_string()])?;
 
@@ -425,14 +431,8 @@ fn execute<F: FieldElement>(
 ) -> Result<(), Vec<String>> {
     let mut pipeline = Pipeline::<F>::default()
         .from_file(file_name.to_path_buf())
+        .with_prover_inputs(inputs)
         .with_output(output_dir.into(), true);
-
-    let bootloader_inputs = if continuations {
-        pipeline = pipeline.with_prover_inputs(inputs.clone());
-        powdr_riscv::continuations::rust_continuations_dry_run(&mut pipeline, profiling.clone())
-    } else {
-        vec![]
-    };
 
     let generate_witness = |mut pipeline: Pipeline<F>| -> Result<(), Vec<String>> {
         pipeline.compute_witness().unwrap();
@@ -441,10 +441,9 @@ fn execute<F: FieldElement>(
 
     match (witness, continuations, executor) {
         (false, true, _) => {
-            // Already ran when computing bootloader inputs, nothing else to do.
+            powdr_riscv::continuations::rust_continuations_dry_run(&mut pipeline, profiling);
         }
         (false, false, _) => {
-            let mut pipeline = pipeline.with_prover_inputs(inputs);
             let program = pipeline.compute_asm_string().unwrap().clone();
 
             log::info!("Running executor before witgen...");
@@ -466,19 +465,14 @@ fn execute<F: FieldElement>(
             log::info!("Execution trace length: {}", trace.len);
         }
         (true, true, _) => {
-            continuations::rust_continuations(pipeline, generate_witness, bootloader_inputs)?;
+            let dry_run =
+                powdr_riscv::continuations::rust_continuations_dry_run(&mut pipeline, profiling);
+            powdr_riscv::continuations::rust_continuations(pipeline, generate_witness, dry_run)?;
         }
         (true, false, false) => {
-            log::info!("Running witgen...");
-            let start = Instant::now();
-
             generate_witness(pipeline)?;
-
-            let duration = start.elapsed();
-            log::info!("Witgen done in: {:?}", duration);
         }
         (true, false, true) => {
-            let mut pipeline = pipeline.with_prover_inputs(inputs);
             let program = pipeline.compute_asm_string().unwrap().clone();
 
             let fixed = pipeline.compute_fixed_cols().unwrap().clone();

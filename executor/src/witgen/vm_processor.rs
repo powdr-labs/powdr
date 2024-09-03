@@ -7,6 +7,7 @@ use std::cmp::max;
 use std::collections::HashSet;
 use std::time::Instant;
 
+use crate::constant_evaluator::MIN_DEGREE_LOG;
 use crate::witgen::identity_processor::{self};
 use crate::witgen::IncompleteCause;
 use crate::Identity;
@@ -43,6 +44,8 @@ impl<'a, T: FieldElement> CompletableIdentities<'a, T> {
 }
 
 pub struct VmProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
+    /// The name of the machine being run
+    machine_name: String,
     /// The common degree of all referenced columns
     degree: DegreeType,
     /// The global index of the first row of [VmProcessor::data].
@@ -63,7 +66,10 @@ pub struct VmProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
 }
 
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T, Q> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
+        machine_name: String,
+        degree: DegreeType,
         row_offset: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
         identities: &[&'a Identity<T>],
@@ -71,12 +77,17 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         data: FinalizableData<T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
     ) -> Self {
-        let degree = fixed_data.common_degree(witnesses);
-
         let (identities_with_next, identities_without_next): (Vec<_>, Vec<_>) = identities
             .iter()
             .partition(|identity| identity.contains_next_ref());
-        let processor = Processor::new(row_offset, data, mutable_state, fixed_data, witnesses);
+        let processor = Processor::new(
+            row_offset,
+            data,
+            mutable_state,
+            fixed_data,
+            witnesses,
+            degree,
+        );
 
         let progress_bar = ProgressBar::new(degree);
         progress_bar.set_style(
@@ -87,6 +98,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         );
 
         VmProcessor {
+            machine_name,
             degree,
             row_offset: row_offset.into(),
             witnesses: witnesses.clone(),
@@ -105,8 +117,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         Self { processor, ..self }
     }
 
-    pub fn finish(self) -> FinalizableData<T> {
-        self.processor.finish()
+    pub fn finish(self) -> (FinalizableData<T>, DegreeType) {
+        (self.processor.finish(), self.degree)
     }
 
     /// Starting out with a single row (at a given offset), iteratively append rows
@@ -130,9 +142,16 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         } else {
             log::Level::Debug
         };
-        let rows_left = self.degree - self.row_offset + 1;
         let mut finalize_start = 1;
-        for row_index in 0..rows_left {
+
+        for row_index in 0.. {
+            // The total number of rows to run for. Note that `self.degree` might change during
+            // the computation, so we need to recompute this value in each iteration.
+            let rows_to_run = self.degree - self.row_offset + 1;
+            if row_index >= rows_to_run {
+                break;
+            }
+
             if is_main_run {
                 self.maybe_log_performance(row_index);
             }
@@ -145,7 +164,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                 finalize_start = finalize_end;
             }
 
-            if row_index >= rows_left - 2 {
+            if row_index >= rows_to_run - 2 {
                 // On th last few rows, it is quite normal for the constraints to be different,
                 // so we reduce the log level for loop detection.
                 loop_detection_log_level = log::Level::Debug;
@@ -159,6 +178,20 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                         loop_detection_log_level,
                         "Found loop with period {p} starting at row {row_index}"
                     );
+
+                    if self.fixed_data.is_variable_size(&self.witnesses) {
+                        let new_degree = self.processor.len().next_power_of_two() as DegreeType;
+                        let new_degree = new_degree.max(1 << MIN_DEGREE_LOG);
+                        log::info!(
+                            "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
+                            self.machine_name,
+                            self.degree,
+                            new_degree,
+                            self.processor.len()
+                        );
+                        self.degree = new_degree;
+                        self.processor.set_size(new_degree);
+                    }
                 }
             }
             if let Some(period) = looping_period {
@@ -166,7 +199,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                 if !self.try_proposed_row(row_index, proposed_row) {
                     log::log!(
                         loop_detection_log_level,
-                        "Looping failed. Trying to generate regularly again. (Use RUST_LOG=debug to see whether this happens more often.) {row_index} {rows_left}"
+                        "Looping failed. Trying to generate regularly again. (Use RUST_LOG=debug to see whether this happens more often.) {row_index} / {rows_to_run}"
                     );
                     looping_period = None;
                     // For some programs, loop detection will often find loops and then fail.
@@ -177,7 +210,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             // Note that we exit one iteration early in the non-loop case,
             // because ensure_has_next_row() + compute_row() will already
             // add and compute some values for the next row as well.
-            if looping_period.is_none() && row_index != rows_left - 1 {
+            if looping_period.is_none() && row_index != rows_to_run - 1 {
                 self.ensure_has_next_row(row_index);
                 outer_assignments.extend(self.compute_row(row_index).into_iter());
 

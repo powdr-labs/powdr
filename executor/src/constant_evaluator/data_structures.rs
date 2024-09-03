@@ -1,9 +1,10 @@
+use powdr_number::DegreeType;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Serialize, Deserialize)]
 pub struct VariablySizedColumn<F> {
-    column_by_size: BTreeMap<usize, Vec<F>>,
+    column_by_size: BTreeMap<DegreeType, Vec<F>>,
 }
 
 #[derive(Debug)]
@@ -19,16 +20,15 @@ impl<F> VariablySizedColumn<F> {
     }
 
     /// Returns the set of available sizes.
-    pub fn available_sizes(&self) -> BTreeSet<usize> {
+    pub fn available_sizes(&self) -> BTreeSet<DegreeType> {
         self.column_by_size.keys().cloned().collect()
     }
 
     /// Clones and returns the column with the given size.
-    pub fn get_by_size_cloned(&self, size: usize) -> Option<Vec<F>>
-    where
-        F: Clone,
-    {
-        self.column_by_size.get(&size).cloned()
+    pub fn get_by_size(&self, size: DegreeType) -> Option<&[F]> {
+        self.column_by_size
+            .get(&size)
+            .map(|column| column.as_slice())
     }
 }
 
@@ -39,17 +39,6 @@ pub fn get_uniquely_sized<F>(
     column
         .iter()
         .map(|(name, column)| Ok((name.clone(), column.get_uniquely_sized()?)))
-        .collect()
-}
-
-/// Returns all columns with their maximum sizes.
-pub fn get_max_sized<F>(column: &[(String, VariablySizedColumn<F>)]) -> Vec<(String, &Vec<F>)> {
-    column
-        .iter()
-        .map(|(name, column)| {
-            let max_size = column.column_by_size.keys().max().unwrap();
-            (name.clone(), &column.column_by_size[max_size])
-        })
         .collect()
 }
 
@@ -67,7 +56,7 @@ pub fn get_uniquely_sized_cloned<F: Clone>(
 impl<F> From<Vec<F>> for VariablySizedColumn<F> {
     fn from(column: Vec<F>) -> Self {
         VariablySizedColumn {
-            column_by_size: [(column.len(), column)].into_iter().collect(),
+            column_by_size: [(column.len() as DegreeType, column)].into_iter().collect(),
         }
     }
 }
@@ -77,7 +66,7 @@ impl<F> From<Vec<Vec<F>>> for VariablySizedColumn<F> {
         VariablySizedColumn {
             column_by_size: columns
                 .into_iter()
-                .map(|column| (column.len(), column))
+                .map(|column| (column.len() as DegreeType, column))
                 .collect(),
         }
     }

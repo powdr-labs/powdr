@@ -10,7 +10,9 @@ use serde::{Deserialize, Serialize};
 
 use super::{asm::SymbolPath, visitor::Children, Expression, Number};
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize, Deserialize, JsonSchema,
+)]
 pub enum Type<E = u64> {
     /// The bottom type `!`, which cannot have a value but is
     /// compatible with all other types.
@@ -25,6 +27,8 @@ pub enum Type<E = u64> {
     String,
     /// Column
     Col,
+    /// Intermediate column
+    Inter,
     /// Algebraic expression
     Expr,
     Array(ArrayType<E>),
@@ -48,6 +52,7 @@ impl<E> Type<E> {
             | Type::Fe
             | Type::String
             | Type::Col
+            | Type::Inter
             | Type::Expr => true,
             Type::Array(_)
             | Type::Tuple(_)
@@ -146,11 +151,6 @@ impl<E: Clone> Type<E> {
                 .for_each(|t| t.substitute_type_vars(substitutions)),
         }
     }
-
-    pub fn substitute_type_vars_to(mut self, substitutions: &HashMap<String, Type<E>>) -> Self {
-        self.substitute_type_vars(substitutions);
-        self
-    }
 }
 
 impl<E> Type<E> {
@@ -229,6 +229,16 @@ impl<R> Children<Expression<R>> for Type<Expression<R>> {
     }
 }
 
+impl<R> Children<Expression<R>> for Type<u64> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        Box::new(empty())
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        Box::new(empty())
+    }
+}
+
 impl<R: Display> From<Type<Expression<R>>> for Type<u64> {
     fn from(value: Type<Expression<R>>) -> Self {
         match value {
@@ -238,6 +248,7 @@ impl<R: Display> From<Type<Expression<R>>> for Type<u64> {
             Type::Fe => Type::Fe,
             Type::String => Type::String,
             Type::Col => Type::Col,
+            Type::Inter => Type::Inter,
             Type::Expr => Type::Expr,
             Type::Array(a) => Type::Array(a.into()),
             Type::Tuple(t) => Type::Tuple(t.into()),
@@ -251,7 +262,9 @@ impl<R: Display> From<Type<Expression<R>>> for Type<u64> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize, Deserialize, JsonSchema,
+)]
 pub struct ArrayType<E = u64> {
     pub base: Box<Type<E>>,
     pub length: Option<E>,
@@ -286,7 +299,9 @@ impl<R> Children<Expression<R>> for ArrayType<Expression<R>> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize, Deserialize, JsonSchema,
+)]
 pub struct TupleType<E = u64> {
     pub items: Vec<Type<E>>,
 }
@@ -308,7 +323,9 @@ impl<R: Display> From<TupleType<Expression<R>>> for TupleType<u64> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize, Deserialize, JsonSchema,
+)]
 pub struct FunctionType<E = u64> {
     pub params: Vec<Type<E>>,
     pub value: Box<Type<E>>,
@@ -430,5 +447,21 @@ impl TypeBounds {
 
     pub fn bounds(&self) -> impl Iterator<Item = (&String, &BTreeSet<String>)> {
         self.0.iter().map(|(n, x)| (n, x))
+    }
+
+    pub fn format_vars_with_nonempty_bounds(&self) -> String {
+        self.0
+            .iter()
+            .filter(|(_, b)| !b.is_empty())
+            .map(|(var, b)| Self::format_var_bound(var, b))
+            .join(", ")
+    }
+
+    pub fn format_var_bound(var: &String, bounds: &BTreeSet<String>) -> String {
+        if bounds.is_empty() {
+            var.clone()
+        } else {
+            format!("{var}: {}", bounds.iter().join(" + "))
+        }
     }
 }

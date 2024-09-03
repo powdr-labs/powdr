@@ -5,17 +5,24 @@
 
 use std::machines::memory::Memory;
 
+mod test_util;
+use test_util::FakeByte2 as Byte2;
+
+let N: int = 256;
+
 machine MemoryProxy with
     latch: latch,
     operation_id: operation_id,
     call_selectors: sel,
+    degree: N
 {
     operation mstore<0> addr, step, value ->;
 
     col witness operation_id;
     col fixed latch = [1]*;
 
-    Memory mem;
+    Byte2 byte2;
+    Memory mem(byte2);
 
     col witness addr, step, value;
     
@@ -26,7 +33,7 @@ machine MemoryProxy with
     link if used ~> mem.mstore(addr, step, value);
 }
 
-machine Main with degree: 1024 {
+machine Main with degree: N {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];

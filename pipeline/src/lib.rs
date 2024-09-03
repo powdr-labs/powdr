@@ -2,8 +2,6 @@
 
 #![deny(clippy::print_stdout)]
 
-use std::marker::{Send, Sync};
-
 pub mod pipeline;
 pub mod test_util;
 pub mod util;
@@ -112,11 +110,10 @@ pub fn access_element<T: FieldElement>(
     }
 }
 
-pub fn serde_data_to_query_callback<T: FieldElement, S: serde::Serialize + Send + Sync>(
+pub fn serde_data_to_query_callback<T: FieldElement>(
     channel: u32,
-    data: &S,
+    bytes: Vec<u8>,
 ) -> impl QueryCallback<T> {
-    let bytes = serde_cbor::to_vec(&data).unwrap();
     move |query: &str| -> Result<Option<T>, String> {
         let (id, data) = parse_query(query)?;
         match id {
@@ -163,15 +160,13 @@ pub fn dict_data_to_query_callback<T: FieldElement>(
                     .parse::<u32>()
                     .map_err(|e| format!("Error parsing callback data channel: {e})"))?;
 
-                if !dict.contains_key(&cb_channel) {
+                let Some(bytes) = dict.get(&cb_channel) else {
                     return Err("Callback channel mismatch".to_string());
-                }
+                };
 
                 let index = index
                     .parse::<usize>()
                     .map_err(|e| format!("Error parsing index: {e})"))?;
-
-                let bytes = dict.get(&cb_channel).unwrap();
 
                 // query index 0 means the length
                 Ok(Some(match index {
