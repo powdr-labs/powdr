@@ -11,6 +11,9 @@ use crate::type_unifier::Unifier;
 
 type SolvedImpl = ((String, Vec<Type>), Arc<Expression>);
 
+/// TraitsResolver implements a trait resolver for polynomial references.
+/// It manages trait implementations and provides functionality to resolve
+/// trait function references based on given polynomial references.
 pub struct TraitsResolver<'a> {
     trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
     solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
@@ -24,16 +27,21 @@ impl<'a> TraitsResolver<'a> {
         }
     }
 
-    pub fn resolve_trait(&mut self, ref_poly: &PolynomialReference) -> Result<(), String> {
+    /// Resolves a trait function reference for a given polynomial reference.
+    /// If successful, it caches the resolved implementation for future use.
+    pub fn resolve_trait_function_reference(
+        &mut self,
+        ref_poly: &PolynomialReference,
+    ) -> Result<(), String> {
         if let Some(inner_map) = self.solved_impls.get(&ref_poly.name) {
-            if let Some(type_args) = &ref_poly.type_args {
-                if inner_map.contains_key(type_args) {
-                    return Ok(());
-                }
+            match &ref_poly.type_args {
+                None => return Ok(()),
+                Some(t_args) if inner_map.contains_key(t_args) => return Ok(()),
+                _ => {}
             }
         }
 
-        match self.resolve_trait_function_reference(ref_poly) {
+        match self.resolve_trait(ref_poly) {
             Some(((key, type_args), expr)) => {
                 self.solved_impls
                     .entry(key)
@@ -45,32 +53,27 @@ impl<'a> TraitsResolver<'a> {
         }
     }
 
+    /// Returns the solved implementations.
     pub fn solved_impls(self) -> HashMap<String, HashMap<Vec<Type>, Arc<Expression>>> {
         self.solved_impls
     }
 
-    fn resolve_trait_function_reference(
-        &self,
-        reference: &PolynomialReference,
-    ) -> Option<SolvedImpl> {
+    /// Attempts to resolve a trait implementation for a given polynomial reference.
+    /// It uses type unification to find a matching implementation.
+    fn resolve_trait(&self, reference: &PolynomialReference) -> Option<SolvedImpl> {
         let (trait_decl_name, trait_fn_name) = reference.name.rsplit_once("::")?;
         if let Some(impls) = self.trait_impls.get(trait_decl_name) {
             let type_args = reference.type_args.as_ref().unwrap().to_vec();
+            let tuple_args = Type::Tuple(TupleType {
+                items: type_args.clone(),
+            });
             for impl_ in impls.iter() {
-                let Type::Tuple(TupleType { items: _ }) = impl_.type_scheme.ty else {
-                    unreachable!()
-                };
-
-                let tuple_args = Type::Tuple(TupleType {
-                    items: type_args.clone(),
-                });
-
                 assert!(tuple_args.is_concrete_type());
 
                 let mut unifier: Unifier = Default::default();
 
                 let res = unifier.unify_types(tuple_args.clone(), impl_.type_scheme.ty.clone());
-                if let Ok(()) = res {
+                if res.is_ok() {
                     let expr = impl_.function_by_name(trait_fn_name).unwrap();
                     return Some(((reference.name.clone(), type_args), Arc::clone(&expr.body)));
                 }

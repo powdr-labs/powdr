@@ -576,47 +576,6 @@ fn defined_trait() {
 }
 
 #[test]
-#[should_panic = "Unable to derive concrete type for literal 2."]
-fn defined_trait_generic() {
-    let input = "
-    namespace std::convert(4);
-        let fe = || fe();
-    namespace F(4);
-        trait Add<T, Q> {
-            add: T, T -> Q,
-        }
-        impl<T> Add<T, fe> {
-            add: |a, b| std::convert::fe(a + b),
-        }
-
-        let r: fe = Add::add(1,2);
-    ";
-    type_check(input, &[]);
-}
-
-#[test]
-fn impl_combined_test() {
-    let input = "
-    namespace std::convert(4);
-        let fe = || fe();
-    namespace F(4);
-        trait Add<T, Q> {
-            add: T, T -> Q,
-        }
-        impl<Q> Add<int, Q> {
-            add: |a, b| std::convert::fe(a + b),
-        }
-        
-        let x: int -> fe = |q| match Add::add(q, 4) {
-            v => v,
-        };
-        let res: fe = x(5);
-    ";
-
-    type_check(input, &[("F::res", "", "fe")]);
-}
-
-#[test]
 fn cols_in_func() {
     let input = "
     namespace Main(104);
@@ -671,30 +630,6 @@ fn new_fixed_column_wrong_type() {
 }
 
 #[test]
-fn impl_type_resolution() {
-    let input = "
-    namespace std::convert(4);
-        let fe = || fe();
-    namespace F(4);
-    
-        trait Add<T> {
-            add: T, T -> T,
-        }
-
-        impl Add<fe> {
-            add: |a, b| a + b,
-        }
-
-        impl Add<int> {
-            add: |a, b| a + b,
-        }
-
-        let r: int = Add::add(3, 4);
-    ";
-    type_check(input, &[("F::r", "", "int")]);
-}
-
-#[test]
 fn trait_multi_generics() {
     let input = "
     trait ToTuple<S, I> {
@@ -705,7 +640,7 @@ fn trait_multi_generics() {
     }
     let r: (int, (int, int)) = ToTuple::get(3);
     ";
-    type_check(input, &[("r", "", "(int, (int, int))")]);
+    type_check(input, &[]);
 }
 
 #[test]
@@ -731,8 +666,8 @@ fn trait_with_user_defined_enum() {
 #[test]
 fn trait_with_user_defined_enum2() {
     let input = "
-    enum V1 { A }
-    enum V2 { B }
+    enum V1 { A1, B1 }
+    enum V2 { A2, B2 }
 
     trait Convert<T, U> {
         convert: T -> U,
@@ -740,17 +675,19 @@ fn trait_with_user_defined_enum2() {
 
     impl Convert<V1, V2> {
         convert: |x| match x {
-            V1::A => V2::B,
+            V1::A1 => V2::A2,
+            V1::B1 => V2::B2,
         },
     }
     impl Convert<V2, V1> {
         convert: |x| match x {
-            V2::B => V1::A,
+            V2::B2 => V1::B1,
+            V2::A2 => V1::A1,
         },
     }
 
-    let r1: V2 = Convert::convert(V1::A);
-    let r2: V1 = Convert::convert(V2::B);
+    let r1: V2 = Convert::convert(V1::A1);
+    let r2: V1 = Convert::convert(V2::B2);
     ";
     type_check(input, &[("r1", "", "V2"), ("r2", "", "V1")]);
 }

@@ -339,15 +339,20 @@ impl PILAnalyzer {
                     ),
                 ) = expr
                 {
-                    let _ = trait_solver.resolve_trait(reference);
+                    let _ = trait_solver.resolve_trait_function_reference(reference);
                 }
             });
         };
 
         for (_, def) in self.definitions.values() {
-            if let Some(FunctionValueDefinition::Expression(TypedExpression { e: expr, .. })) = def
-            {
-                resolve_references(expr);
+            match def {
+                Some(FunctionValueDefinition::Expression(TypedExpression { e, .. })) => {
+                    resolve_references(e);
+                }
+                Some(FunctionValueDefinition::Array(items)) => {
+                    items.children().for_each(|e| resolve_references(e));
+                }
+                _ => {}
             }
         }
 

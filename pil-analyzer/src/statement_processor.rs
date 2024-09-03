@@ -656,7 +656,10 @@ where
         &self,
         trait_impl: parsed::TraitImplementation<parsed::Expression>,
     ) -> TraitImplementation<Expression> {
-        let type_vars = trait_impl.type_scheme.vars.vars().collect();
+        let type_vars: HashSet<_> = trait_impl.type_scheme.vars.vars().collect();
+        if !type_vars.is_empty() {
+            unimplemented!("Generic impls are not supported yet.");
+        }
         let functions = trait_impl
             .functions
             .into_iter()
