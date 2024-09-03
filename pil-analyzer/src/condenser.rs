@@ -180,7 +180,7 @@ pub struct Condenser<'a, T> {
     degree: Option<DegreeRange>,
     /// All the definitions from the PIL file.
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    /// All the trait implementations from the PIL file.
+    /// Pointers to expressions for all referenced trait implementations and the concrete types.
     solved_impls: &'a HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
     /// Evaluation cache.
     symbol_values: SymbolCache<'a, T>,
