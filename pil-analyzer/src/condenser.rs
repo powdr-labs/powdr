@@ -420,14 +420,12 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             self.new_intermediate_column_values
                 .insert(name.clone(), expr);
         } else if let Some(value) = value {
-            let value =
-                closure_to_function(&source, value.as_ref(), FunctionKind::Pure).map_err(|e| {
-                    match e {
-                        EvalError::TypeError(e) => {
-                            EvalError::TypeError(format!("Error creating fixed column {name}: {e}"))
-                        }
-                        _ => e,
+            let value = try_to_function_value_definition(value.as_ref(), FunctionKind::Pure)
+                .map_err(|e| match e {
+                    EvalError::TypeError(e) => {
+                        EvalError::TypeError(format!("Error creating fixed column {name}: {e}"))
                     }
+                    _ => e,
                 })?;
 
             self.new_column_values.insert(name.clone(), value);
@@ -502,12 +500,14 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             }
         };
 
-        let value = closure_to_function(&SourceRef::unknown(), expr.as_ref(), FunctionKind::Query)
-            .map_err(|e| match e {
-                EvalError::TypeError(e) => {
-                    EvalError::TypeError(format!("Error setting hint for column {col}: {e}"))
+        let value =
+            try_to_function_value_definition(expr.as_ref(), FunctionKind::Query).map_err(|e| {
+                match e {
+                    EvalError::TypeError(e) => {
+                        EvalError::TypeError(format!("Error setting hint for column {col}: {e}"))
+                    }
+                    _ => e,
                 }
-                _ => e,
             })?;
         match self.new_column_values.entry(name) {
             Entry::Vacant(entry) => entry.insert(value),
@@ -676,18 +676,17 @@ fn to_expr<T: Clone>(value: &Value<'_, T>) -> AlgebraicExpression<T> {
     }
 }
 
-/// Turns a value of function type (i.e. a closure) into a FunctionValueDefinition
-/// and sets the expected function kind.
+/// Turns a runtime value (usually a closure) into a FunctionValueDefinition
+/// (i.e. an expression) and sets the expected function kind.
 /// Does allow some forms of captured variables.
-fn closure_to_function<T: FieldElement>(
-    _source: &SourceRef,
+fn try_to_function_value_definition<T: FieldElement>(
     value: &Value<'_, T>,
     expected_kind: FunctionKind,
 ) -> Result<FunctionValueDefinition, EvalError> {
     let mut e = try_value_to_expression(value)?;
 
     // Set the lambda kind since this is used to detect hints in some cases.
-    // Can probably be removed onece we have prover sections.
+    // Can probably be removed once we have prover functions.
     if let Expression::LambdaExpression(_, LambdaExpression { kind, .. }) = &mut e {
         if *kind != FunctionKind::Pure && *kind != expected_kind {
             return Err(EvalError::TypeError(format!(
@@ -766,9 +765,9 @@ fn outer_var_refs(environment_size: u64, e: &Expression) -> impl Iterator<Item =
 /// Updates local variable IDs to be compact.
 fn compact_var_refs(e: &mut Expression, referenced_outer_vars: &[u64], environment_size: u64) {
     e.children_mut().for_each(|e| {
-        if let Expression::Reference(_, Reference::LocalVar(id, _name)) = e {
+        if let Expression::Reference(_, Reference::LocalVar(id, _)) = e {
             if *id >= environment_size {
-                // Local variable.
+                // Parameter of the current function.
                 *id -= environment_size - referenced_outer_vars.len() as u64;
             } else {
                 let pos = referenced_outer_vars.binary_search(id).unwrap();
