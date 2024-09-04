@@ -3,12 +3,12 @@ use std::iter::once;
 
 use itertools::Itertools;
 
-use super::Machine;
+use super::{Machine, MachineParts};
 use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{EvalError, EvalResult, FixedData, MutableState, QueryCallback};
 use crate::witgen::{EvalValue, IncompleteCause};
-use crate::Identity;
+
 use powdr_number::{DegreeType, FieldElement};
 
 use powdr_ast::analyzed::{DegreeRange, IdentityKind, PolyID};
@@ -44,7 +44,6 @@ fn split_column_name(name: &str) -> (&str, &str) {
 /// TODO make this generic
 
 pub struct DoubleSortedWitnesses<'a, T: FieldElement> {
-    fixed: &'a FixedData<'a, T>,
     degree_range: DegreeRange,
     degree: DegreeType,
     //key_col: String,
@@ -58,6 +57,7 @@ pub struct DoubleSortedWitnesses<'a, T: FieldElement> {
     is_initialized: BTreeMap<T, bool>,
     namespace: String,
     name: String,
+    parts: MachineParts<'a, T>,
     /// If the machine has the `m_diff_upper` and `m_diff_lower` columns, this is the base of the
     /// two digits.
     diff_columns_base: Option<u64>,
@@ -65,7 +65,6 @@ pub struct DoubleSortedWitnesses<'a, T: FieldElement> {
     has_bootloader_write_column: bool,
     /// All selector IDs that are used on the right-hand side connecting identities.
     selector_ids: BTreeMap<u64, PolyID>,
-    connecting_identities: BTreeMap<u64, &'a Identity<T>>,
 }
 
 struct Operation<T> {
@@ -82,18 +81,18 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
 
     pub fn try_new(
         name: String,
-        fixed_data: &'a FixedData<T>,
-        connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
-        witness_cols: &HashSet<PolyID>,
+        fixed_data: &'a FixedData<'a, T>,
+        parts: &MachineParts<'a, T>,
     ) -> Option<Self> {
-        let degree_range = fixed_data.common_degree_range(witness_cols);
+        let degree_range = parts.common_degree_range();
 
         let degree = degree_range.max;
 
         // get the namespaces and column names
-        let (mut namespaces, columns): (HashSet<_>, HashSet<_>) = witness_cols
+        let (mut namespaces, columns): (HashSet<_>, HashSet<_>) = parts
+            .witnesses
             .iter()
-            .map(|r| split_column_name(fixed_data.column_name(r)))
+            .map(|r| split_column_name(parts.column_name(r)))
             .unzip();
 
         if namespaces.len() > 1 {
@@ -101,14 +100,16 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
             return None;
         }
 
-        if !connecting_identities
+        if !parts
+            .connecting_identities
             .values()
             .all(|i| i.kind == IdentityKind::Permutation)
         {
             return None;
         }
 
-        let selector_ids = connecting_identities
+        let selector_ids = parts
+            .connecting_identities
             .values()
             .map(|i| {
                 i.right
@@ -124,7 +125,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
         // TODO check the identities.
         let selector_names = selector_ids
             .values()
-            .map(|s| split_column_name(fixed_data.column_name(s)).1);
+            .map(|s| split_column_name(parts.column_name(s)).1);
         let allowed_witnesses: HashSet<_> = ALLOWED_WITNESSES
             .into_iter()
             .chain(selector_names)
@@ -165,7 +166,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
             name,
             degree_range,
             namespace,
-            fixed: fixed_data,
+            parts: parts.clone(), // TODO is this really unused?
             degree,
             diff_columns_base,
             has_bootloader_write_column,
@@ -173,7 +174,6 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
             data: Default::default(),
             is_initialized: Default::default(),
             selector_ids,
-            connecting_identities: connecting_identities.clone(),
         })
     }
 }
@@ -326,7 +326,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
 
         let selector_columns = selectors
             .into_iter()
-            .map(|(id, v)| (self.fixed.column_name(id).to_string(), v))
+            .map(|(id, v)| (self.parts.column_name(id).to_string(), v))
             .collect::<Vec<_>>();
 
         [
@@ -357,7 +357,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
         // - operation_id == 1: Write
         // - operation_id == 2: Bootloader write
 
-        let args = self.connecting_identities[&identity_id]
+        let args = self.parts.connecting_identities[&identity_id]
             .left
             .expressions
             .iter()
