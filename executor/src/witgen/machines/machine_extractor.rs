@@ -126,7 +126,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
         );
 
         for (i, pf) in &prover_functions {
-            if extracted_prover_functions.insert(*i) {
+            if !extracted_prover_functions.insert(*i) {
                 log::warn!("Prover function was assigned to multiple machines:\n{pf}");
             }
         }
