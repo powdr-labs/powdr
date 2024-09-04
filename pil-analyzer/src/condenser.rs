@@ -764,14 +764,16 @@ fn outer_var_refs(environment_size: u64, e: &Expression) -> impl Iterator<Item =
 
 /// Updates local variable IDs to be compact.
 fn compact_var_refs(e: &mut Expression, referenced_outer_vars: &[u64], environment_size: u64) {
+    println!("Compacting {e}");
     e.children_mut().for_each(|e| {
-        if let Expression::Reference(_, Reference::LocalVar(id, _)) = e {
+        if let Expression::Reference(_, Reference::LocalVar(id, name)) = e {
             if *id >= environment_size {
                 // Parameter of the current function.
                 *id -= environment_size - referenced_outer_vars.len() as u64;
             } else {
                 let pos = referenced_outer_vars.binary_search(id).unwrap();
-                *id -= pos as u64;
+                println!("  {name} [{id}] -> {pos}");
+                *id = pos as u64;
             }
         }
     });
