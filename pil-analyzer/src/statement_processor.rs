@@ -667,7 +667,7 @@ where
                 name: named.name,
                 body: Arc::new(
                     self.expression_processor(&type_vars)
-                        .process_expression(named.body.as_ref().clone()),
+                        .process_expression(Arc::try_unwrap(named.body).unwrap()),
                 ),
             })
             .collect();

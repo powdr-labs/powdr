@@ -1887,4 +1887,59 @@ mod test {
         assert_eq!(parse_and_evaluate_symbol(input, "F::r"), "11".to_string());
         assert_eq!(parse_and_evaluate_symbol(input, "F::z"), "6".to_string());
     }
+
+    #[test]
+    fn test_trait_function_call_in_impl() {
+        let input = "
+        namespace std::convert(4);
+            let fe = || fe();
+        namespace F(4);
+            trait Do<T, Q> {
+                op1: T, T -> Q,
+                cast: T -> Q,
+            }
+            impl Do<int, fe> {
+                op1: |a, b| Do::cast(a + b),
+                cast: |a| std::convert::fe(a),
+            }
+
+            let one: int = 1;
+            let two: int = 2;
+            let r: fe = Do::op1(one, two);
+
+        ";
+
+        assert_eq!(parse_and_evaluate_symbol(input, "F::r"), "3".to_string());
+    }
+
+    #[test]
+    fn test_trait_function_call_cross_impl() {
+        let input = "
+        namespace std::convert(4);
+            let fe = || fe();
+        namespace F(4);
+            trait Do1<T, Q> {
+                op1: T, T -> Q,
+            }
+
+            trait Cast<T, Q> {
+                cast: T -> Q,
+            }
+
+            impl Do1<int, fe> {
+                op1: |a, b| Cast::cast(a + b),
+            }
+
+            impl Cast<int, fe> {
+                cast: |a| std::convert::fe(a),
+            }
+
+            let four: int = 4;
+            let two: int = 2;
+            let r: fe = Do1::op1(four, two);
+
+        ";
+
+        assert_eq!(parse_and_evaluate_symbol(input, "F::r"), "6".to_string());
+    }
 }

@@ -1,3 +1,4 @@
+use core::panic;
 use std::collections::{HashMap, HashSet};
 
 use std::fs;
@@ -9,11 +10,11 @@ use itertools::Itertools;
 use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, ModuleStatement, SymbolPath,
 };
-use powdr_ast::parsed::types::{ArrayType, Type};
+use powdr_ast::parsed::types::{ArrayType, FunctionType, TupleType, Type};
 use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_ast::parsed::{
-    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions,
-    SymbolCategory, TraitImplementation,
+    self, FunctionKind, LambdaExpression, NamedExpression, PILFile, PilStatement,
+    SelectedExpressions, SymbolCategory, TraitImplementation,
 };
 use powdr_number::{FieldElement, GoldilocksField};
 
@@ -231,6 +232,19 @@ impl PILAnalyzer {
         // We filter out enum type declarations (the constructor functions have been added
         // by the statement processor already).
         // For Arrays, we also collect the inner expressions and expect them to be field elements.
+
+        for (name, trait_impls) in self.implementations.iter_mut() {
+            let (_, def) = self.definitions.get(name).unwrap();
+            for impl_ in trait_impls {
+                for named_expr in impl_.functions.iter_mut() {
+                    let specialized_type =
+                        Self::specialize_trait_type(def, &impl_.type_scheme.ty, named_expr);
+                    expressions
+                        .push((Arc::make_mut(&mut named_expr.body), specialized_type.into()));
+                }
+            }
+        }
+
         let definitions = self
             .definitions
             .iter_mut()
@@ -301,6 +315,7 @@ impl PILAnalyzer {
                 }
             }
         }
+
         let inferred_types = infer_types(definitions, &mut expressions)
             .map_err(|mut errors| {
                 eprintln!("\nError during type inference:");
@@ -321,6 +336,58 @@ impl PILAnalyzer {
             };
             *ts = Some(ty.into());
         }
+    }
+
+    fn specialize_trait_type<T>(
+        def: &Option<FunctionValueDefinition>,
+        trait_type: &Type,
+        named_expr: &mut NamedExpression<Arc<T>>,
+    ) -> Type {
+        let Some(FunctionValueDefinition::TraitDeclaration(trait_decl)) = def else {
+            panic!("Expected trait declaration");
+        };
+
+        let trait_vars = trait_decl.type_vars.clone();
+        let Type::Tuple(TupleType { items }) = trait_type.clone() else {
+            panic!("Expected tuple type for trait implementation");
+        };
+
+        let type_var_mapping: HashMap<String, Type> =
+            trait_vars.into_iter().zip(items.into_iter()).collect();
+
+        let trait_fn = trait_decl
+            .function_by_name(named_expr.name.as_str())
+            .unwrap();
+
+        fn replace_type_vars(ty: &Type, type_var_mapping: &HashMap<String, Type>) -> Type {
+            match ty {
+                Type::TypeVar(var) => type_var_mapping
+                    .get(var)
+                    .cloned()
+                    .unwrap_or_else(|| panic!("TypeVar '{}' not found in mapping", var)),
+                Type::Function(FunctionType { params, value }) => {
+                    let new_params = params
+                        .into_iter()
+                        .map(|p| replace_type_vars(p, type_var_mapping))
+                        .collect();
+                    let new_value = Box::new(replace_type_vars(value, type_var_mapping));
+                    Type::Function(FunctionType {
+                        params: new_params,
+                        value: new_value,
+                    })
+                }
+                Type::Tuple(TupleType { items }) => {
+                    let new_items = items
+                        .into_iter()
+                        .map(|item| replace_type_vars(item, type_var_mapping))
+                        .collect();
+                    Type::Tuple(TupleType { items: new_items })
+                }
+                _ => ty.clone(),
+            }
+        }
+
+        replace_type_vars(&trait_fn.ty, &type_var_mapping)
     }
 
     /// Creates and returns a map for every referenced trait and every concrete type to the
@@ -350,7 +417,7 @@ impl PILAnalyzer {
                     resolve_references(e);
                 }
                 Some(FunctionValueDefinition::Array(items)) => {
-                    items.children().for_each(&mut resolve_references);
+                    items.all_children().for_each(&mut resolve_references);
                 }
                 _ => {}
             }
@@ -359,6 +426,12 @@ impl PILAnalyzer {
         for identity in &self.identities {
             for expr in identity.all_children() {
                 resolve_references(expr);
+            }
+        }
+
+        for impls in self.implementations.values() {
+            for impl_ in impls {
+                impl_.all_children().for_each(&mut resolve_references);
             }
         }
 
