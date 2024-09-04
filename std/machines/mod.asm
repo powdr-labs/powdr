@@ -1,5 +1,6 @@
 mod arith;
 mod binary;
+mod binary_bb;
 mod range;
 mod hash;
 mod memory;

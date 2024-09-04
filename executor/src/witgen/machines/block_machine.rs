@@ -4,7 +4,6 @@ use std::iter::{self, once};
 
 use super::{EvalResult, FixedData};
 
-use crate::constant_evaluator::MIN_DEGREE_LOG;
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::processor::{OuterQuery, Processor};
@@ -18,7 +17,8 @@ use crate::witgen::{MutableState, QueryCallback};
 use crate::Identity;
 use itertools::Itertools;
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, IdentityKind, PolyID, PolynomialType,
+    AlgebraicExpression as Expression, AlgebraicReference, DegreeRange, IdentityKind, PolyID,
+    PolynomialType,
 };
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_number::{DegreeType, FieldElement};
@@ -91,7 +91,9 @@ impl<'a, T: FieldElement> Display for BlockMachine<'a, T> {
 /// TODO we do not actually "detect" the machine yet, we just check if
 /// the lookup has a binary selector that is 1 every k rows for some k
 pub struct BlockMachine<'a, T: FieldElement> {
-    /// The unique degree of all columns in this machine
+    /// The degree range of all columns in this machine
+    degree_range: DegreeRange,
+    /// The current degree of all columns in this machine
     degree: DegreeType,
     /// Block size, the period of the selector.
     block_size: usize,
@@ -125,7 +127,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         identities: &[&'a Identity<T>],
         witness_cols: &HashSet<PolyID>,
     ) -> Option<Self> {
-        let degree = fixed_data.common_degree(witness_cols);
+        let degree_range = fixed_data.common_degree_range(witness_cols);
+
+        // start from the max degree
+        let degree = degree_range.max;
 
         let (is_permutation, block_size, latch_row) =
             detect_connection_type_and_block_size(fixed_data, connecting_identities)?;
@@ -156,6 +161,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         );
         Some(BlockMachine {
             name,
+            degree_range,
             degree,
             block_size,
             latch_row,
@@ -248,7 +254,7 @@ fn try_to_period<T: FieldElement>(
                 return None;
             }
 
-            let degree = fixed_data.common_degree(once(&poly.poly_id));
+            let degree = fixed_data.common_degree_range(once(&poly.poly_id)).max;
 
             let values = fixed_data.fixed_cols[&poly.poly_id].values(degree);
 
@@ -313,18 +319,16 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             );
         }
 
-        if self.fixed_data.is_variable_size(&self.witness_cols) {
-            let new_degree = self.data.len().next_power_of_two() as DegreeType;
-            let new_degree = new_degree.max(1 << MIN_DEGREE_LOG);
-            log::info!(
-                "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
-                self.name,
-                self.degree,
-                new_degree,
-                self.data.len()
-            );
-            self.degree = new_degree;
-        }
+        let new_degree = self.data.len().next_power_of_two() as DegreeType;
+        let new_degree = self.degree_range.fit(new_degree);
+        log::info!(
+            "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
+            self.name,
+            self.degree,
+            new_degree,
+            self.data.len()
+        );
+        self.degree = new_degree;
 
         if matches!(self.connection_type, ConnectionType::Permutation) {
             // We have to make sure that *all* selectors are 0 in the dummy block,
