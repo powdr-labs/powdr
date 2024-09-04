@@ -234,9 +234,12 @@ impl PILAnalyzer {
         // For Arrays, we also collect the inner expressions and expect them to be field elements.
 
         for (name, trait_impls) in self.implementations.iter_mut() {
-            let (_, def) = self.definitions.get(name).unwrap();
+            let (_, def) = self
+                .definitions
+                .get(name)
+                .expect("Trait definition not found");
             for impl_ in trait_impls {
-                for named_expr in impl_.functions.iter_mut() {
+                for named_expr in &mut impl_.functions {
                     let specialized_type =
                         Self::specialize_trait_type(def, &impl_.type_scheme.ty, named_expr);
                     expressions
@@ -347,47 +350,50 @@ impl PILAnalyzer {
             panic!("Expected trait declaration");
         };
 
-        let trait_vars = trait_decl.type_vars.clone();
-        let Type::Tuple(TupleType { items }) = trait_type.clone() else {
+        let Type::Tuple(TupleType { items }) = trait_type else {
             panic!("Expected tuple type for trait implementation");
         };
 
-        let type_var_mapping: HashMap<String, Type> =
-            trait_vars.into_iter().zip(items.into_iter()).collect();
+        let type_var_mapping: HashMap<String, Type> = trait_decl
+            .type_vars
+            .iter()
+            .cloned()
+            .zip(items.iter().cloned())
+            .collect();
 
         let trait_fn = trait_decl
-            .function_by_name(named_expr.name.as_str())
-            .unwrap();
+            .function_by_name(&named_expr.name)
+            .expect("Function not found in trait declaration");
 
-        fn replace_type_vars(ty: &Type, type_var_mapping: &HashMap<String, Type>) -> Type {
-            match ty {
-                Type::TypeVar(var) => type_var_mapping
-                    .get(var)
-                    .cloned()
-                    .unwrap_or_else(|| panic!("TypeVar '{}' not found in mapping", var)),
-                Type::Function(FunctionType { params, value }) => {
-                    let new_params = params
-                        .into_iter()
-                        .map(|p| replace_type_vars(p, type_var_mapping))
-                        .collect();
-                    let new_value = Box::new(replace_type_vars(value, type_var_mapping));
-                    Type::Function(FunctionType {
-                        params: new_params,
-                        value: new_value,
-                    })
-                }
-                Type::Tuple(TupleType { items }) => {
-                    let new_items = items
-                        .into_iter()
-                        .map(|item| replace_type_vars(item, type_var_mapping))
-                        .collect();
-                    Type::Tuple(TupleType { items: new_items })
-                }
-                _ => ty.clone(),
+        Self::replace_type_vars(&trait_fn.ty, &type_var_mapping)
+    }
+
+    fn replace_type_vars(ty: &Type, type_var_mapping: &HashMap<String, Type>) -> Type {
+        match ty {
+            Type::TypeVar(var) => type_var_mapping
+                .get(var)
+                .cloned()
+                .unwrap_or_else(|| panic!("TypeVar '{}' not found in mapping", var)),
+            Type::Function(FunctionType { params, value }) => {
+                let new_params = params
+                    .iter()
+                    .map(|p| Self::replace_type_vars(p, type_var_mapping))
+                    .collect();
+                let new_value = Box::new(Self::replace_type_vars(value, type_var_mapping));
+                Type::Function(FunctionType {
+                    params: new_params,
+                    value: new_value,
+                })
             }
+            Type::Tuple(TupleType { items }) => {
+                let new_items = items
+                    .iter()
+                    .map(|item| Self::replace_type_vars(item, type_var_mapping))
+                    .collect();
+                Type::Tuple(TupleType { items: new_items })
+            }
+            _ => ty.clone(),
         }
-
-        replace_type_vars(&trait_fn.ty, &type_var_mapping)
     }
 
     /// Creates and returns a map for every referenced trait and every concrete type to the
