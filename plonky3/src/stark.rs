@@ -4,6 +4,7 @@ use p3_goldilocks::Goldilocks;
 use p3_matrix::dense::RowMajorMatrix;
 
 use core::fmt;
+use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use crate::params::Challenger;
@@ -12,7 +13,7 @@ use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
 
 use p3_uni_stark::{
-    main_trace_commit, prove_with_key, verify_with_key, CommittedData, Proof, StarkGenericConfig,
+    prove_with_key, verify_with_key, NextStageTraceCallback, Proof, StarkGenericConfig,
     StarkProvingKey, StarkVerifyingKey,
 };
 use powdr_number::{FieldElement, KnownField};
@@ -166,34 +167,22 @@ impl<T: FieldElement> Plonky3Prover<T> {
         self.verifying_key = Some(verifying_key);
     }
 
-    pub fn next_stage_trace_callback(
-        &self,
-        trace_stage: u32,
-        challenges: Vec<SC::Challenge>,
-    ) -> RowMajorMatrix<Goldilocks> {
-        circuit.next_stage_witness(trace_stage, challenge_values); // next-stage trace filled in
-        circuit.generate_trace_rows(trace_stage)
-    }
-
     pub fn prove(
         &self,
         witness: &[(String, Vec<T>)],
-        witgen_callback: WitgenCallback<T>,
+        _witgen_callback: WitgenCallback<T>,
     ) -> Result<Vec<u8>, String> {
         assert_eq!(T::known_field(), Some(KnownField::GoldilocksField));
 
-        let circuit = PowdrCircuit::new(&self.analyzed)
-            .with_witgen_callback(witgen_callback)
-            .with_witness(witness);
+        // TODO: avoid cloning here?
+        let circuit = PowdrCircuit::new(&self.analyzed).with_phase_0_witness(witness.to_vec());
 
         #[cfg(debug_assertions)]
         let circuit = circuit.with_preprocessed(self.get_preprocessed_matrix());
 
-        let publics = circuit.get_public_values();
+        let stage_0_publics = circuit.public_values_so_far();
 
-        let trace = circuit.generate_trace_rows(0);
-
-        let challenges = circuit.get_challenges();
+        let stage_0_trace = circuit.generate_trace_rows(0);
 
         let config = get_config();
 
@@ -201,15 +190,29 @@ impl<T: FieldElement> Plonky3Prover<T> {
 
         let proving_key = self.proving_key.as_ref();
 
+        // TODO: actually call witgen and convert to matrix here
+        #[derive(Clone)]
+        struct Panic;
+
+        impl NextStageTraceCallback<Config> for Panic {
+            fn get_next_stage_trace(
+                &self,
+                _: u32,
+                _: &BTreeMap<u64, Goldilocks>,
+            ) -> RowMajorMatrix<Goldilocks> {
+                panic!()
+            }
+        }
+
         let proof = prove_with_key(
             &config,
             proving_key,
             &circuit,
             &mut challenger,
-            trace,
-            multi_stage_trace,
-            &publics,
-        ); // generates a committment to the main data, and then
+            stage_0_trace,
+            Some(&Panic),
+            &stage_0_publics,
+        );
 
         let mut challenger = get_challenger();
 
@@ -221,7 +224,7 @@ impl<T: FieldElement> Plonky3Prover<T> {
             &circuit,
             &mut challenger,
             &proof,
-            &publics,
+            vec![&stage_0_publics],
         )
         .unwrap();
         Ok(bincode::serialize(&proof).unwrap())
@@ -248,7 +251,7 @@ impl<T: FieldElement> Plonky3Prover<T> {
             &PowdrCircuit::new(&self.analyzed),
             &mut challenger,
             &proof,
-            &publics,
+            vec![&publics],
         )
         .map_err(|e| format!("Failed to verify proof: {e:?}"))
     }
