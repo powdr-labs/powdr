@@ -1860,8 +1860,8 @@ mod test {
             }
 
             impl Do<fe, fe> {
-                add: |a, b| a + b + std::convert::fe(6),
-                sub: |a, b| a - b - std::convert::fe(1),
+                add: |a, b| a + b,
+                sub: |a, b| a - b,
             }
 
             let x: int -> fe = |q| match Do::sub::<int, int>(q, q) {
@@ -1880,11 +1880,11 @@ mod test {
                 },
             };
 
-            let z: int = y(2);
+            let z: int = y(2); 
             let r: fe = x(2);
             ";
 
-        assert_eq!(parse_and_evaluate_symbol(input, "F::r"), "11".to_string());
+        assert_eq!(parse_and_evaluate_symbol(input, "F::r"), "5".to_string());
         assert_eq!(parse_and_evaluate_symbol(input, "F::z"), "6".to_string());
     }
 
