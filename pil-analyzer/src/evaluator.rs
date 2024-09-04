@@ -349,7 +349,7 @@ pub enum BuiltinFunction {
     ToFe,
     /// std::prover::challenge: int, int -> expr, constructs a challenge with a given stage and ID.
     Challenge,
-    // TODO document
+    /// std::prover::provide_value: expr, int, fe -> (), provides a value for a witness column at a given row.
     ProvideValue,
     /// std::prelude::set_hint: expr, (int -> std::prelude::Query) -> (), adds a hint to a witness column.
     SetHint,
@@ -612,8 +612,6 @@ pub trait SymbolLookup<'a, T: FieldElement> {
             "Tried to provide value outside of prover function.".to_string(),
         ))
     }
-
-    // TODO input and output
 }
 
 /// Operations to be performed by the evaluator.
@@ -629,7 +627,7 @@ enum Operation<'a, T> {
     SetEnvironment(Vec<Arc<Value<'a, T>>>, HashMap<String, Type>),
     /// Evaluate a let statement, adding matched pattern variables to the local variables.
     LetStatement(&'a LetStatementInsideBlock<Expression>),
-    /// Add a constraint to the constraint set. TODO rename?
+    /// Add a constraint to the constraint set.
     AddConstraint,
 }
 

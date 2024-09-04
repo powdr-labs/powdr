@@ -50,7 +50,10 @@ lazy_static! {
             ("", "expr, (int -> std::prelude::Query) -> ()")
         ),
         ("std::prover::eval", ("", "expr -> fe")),
-        ("std::prover::try_eval", ("", "expr -> std::prelude::Option<fe>")),
+        (
+            "std::prover::try_eval",
+            ("", "expr -> std::prelude::Option<fe>")
+        ),
         ("std::prover::provide_value", ("", "expr, int, fe -> ()"))
     ]
     .into_iter()
@@ -94,7 +97,7 @@ lazy_static! {
     .collect();
     static ref CONSTR_FUNCTION_STATEMENT_TYPE: ExpectedType = ExpectedType {
         ty: Type::NamedType(SymbolPath::from_str("std::prelude::Constr").unwrap(), None),
-        allow_int_to_empty_fun: true, // TODO this is getting weird, maybe need to refactor ExpectedType
+        allow_int_to_empty_fun: true,
         allow_array: true,
         allow_empty: true,
     };

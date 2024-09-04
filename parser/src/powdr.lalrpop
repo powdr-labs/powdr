@@ -192,7 +192,6 @@ ArrayLiteralTerm: ArrayExpression = {
 
 PolynomialCommitDeclaration: PilStatement = {
     <start:@L> PolCol CommitWitness <stage:Stage?> <list:PolynomialNameList> <end:@R> ";" => PilStatement::PolynomialCommitDeclaration(ctx.source_ref(start, end), stage, list, None),
-    // TODO remove the query part.
     <start:@L> PolCol CommitWitness <stage:Stage?> <name:PolynomialName> "(" <params:ParameterList> ")" "query" <body:BoxedExpression> <end:@R> ";"
      => PilStatement::PolynomialCommitDeclaration(
         ctx.source_ref(start, end),
@@ -485,8 +484,6 @@ LambdaExpression<StructOption>: Box<Expression> = {
 
 FunctionKind: FunctionKind = {
     => FunctionKind::Pure,
-    // TODO just rename this "prover" everywhere.
-    // One problem is that prover will become a keyword.
     "query" => FunctionKind::Query,
     "constr" => FunctionKind::Constr,
 }

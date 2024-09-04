@@ -187,8 +187,7 @@ fn collect_required_names<'a, T: FieldElement>(
     for fun in &pil_file.prover_functions {
         for e in fun.all_children() {
             if let Expression::Reference(_, Reference::Poly(PolynomialReference { name, .. })) = e {
-                // TODO avoid clone
-                required_names.insert(name.clone().into());
+                required_names.insert(Cow::from(name));
             }
         }
     }

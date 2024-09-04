@@ -82,7 +82,6 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     /// Whether a given witness column is relevant for this machine (faster than doing a contains check on witness_cols)
     is_relevant_witness: WitnessColumnMap<bool>,
     /// Relevant witness columns that have a prover query function attached.
-    // TODO remove
     prover_query_witnesses: Vec<PolyID>,
     /// Which prover functions were successfully executed on which row.
     processed_prover_functions: ProcessedProverFunctions,

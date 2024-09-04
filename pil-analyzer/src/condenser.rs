@@ -294,7 +294,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         std::mem::take(&mut self.new_constraints)
     }
 
-    /// TODO doc
+    /// Returns the new prover functions generated since the last call to this function.
     pub fn extract_new_prover_functions(&mut self) -> Vec<Expression> {
         std::mem::take(&mut self.new_prover_functions)
     }
@@ -554,7 +554,6 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         Ok(())
     }
 
-    // TODO maybe rename?
     fn add_constraints(
         &mut self,
         constraints: Arc<Value<'a, T>>,
