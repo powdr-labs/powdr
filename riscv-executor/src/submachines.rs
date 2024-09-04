@@ -85,7 +85,7 @@ impl<F: FieldElement, M: SubmachineKind> Submachine<F> for SubmachineImpl<F, M> 
     fn take_cols(&mut self) -> Vec<(String, Vec<Elem<F>>)> {
         self.trace
             .take_cols()
-            .map(|(k, v)| (format!("{}.{}", self.name, k), v))
+            .map(|(k, v)| (format!("{}::{}", self.name, k), v))
             .collect()
     }
 }

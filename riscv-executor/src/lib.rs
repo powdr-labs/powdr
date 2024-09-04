@@ -283,83 +283,83 @@ impl<F: FieldElement> ExecutionTrace<F> {
     pub fn new(reg_map: HashMap<String, u16>, reg_writes: Vec<RegWrite<F>>, pc: usize) -> Self {
         let f0 = Elem::Field(F::zero());
         let cols: HashMap<String, _> = vec![
-            "main.reg_write_X_query_arg_1",
-            "main.reg_write_X_query_arg_2",
-            "main.read_Y_query_arg_1",
-            "main.X_b1",
-            "main.X_b2",
-            "main.X_b3",
-            "main.X_b4",
-            "main.wrap_bit",
-            "main.X",
-            "main.X_const",
-            "main.X_read_free",
-            "main.X_free_value",
-            "main.Y_b5",
-            "main.Y_b6",
-            "main.Y_b7",
-            "main.Y_b8",
-            "main.Y_7bit",
-            "main.Y",
-            "main.Y_const",
-            "main.Y_read_free",
-            "main.Y_free_value",
-            "main.Z",
-            "main.Z_const",
-            "main.W",
-            "main.W_const",
-            "main.val1_col",
-            "main.val2_col",
-            "main.val3_col",
-            "main.val4_col",
-            "main.XX",
-            "main.XXIsZero",
-            "main.XX_inv",
-            "main.REM_b1",
-            "main.REM_b2",
-            "main.REM_b3",
-            "main.REM_b4",
-            "main._operation_id",
-            "main.instr_set_reg",
-            "main.instr_get_reg",
-            "main.instr_affine",
-            "main.instr_mload",
-            "main.instr_mstore",
-            "main.instr_load_label",
-            "main.instr_load_label_param_l",
-            "main.instr_jump",
-            "main.instr_jump_param_l",
-            "main.instr_jump_dyn",
-            "main.instr_branch_if_diff_nonzero",
-            "main.instr_branch_if_diff_nonzero_param_l",
-            "main.instr_branch_if_diff_equal",
-            "main.instr_branch_if_diff_equal_param_l",
-            "main.instr_skip_if_equal",
-            "main.instr_branch_if_diff_greater_than",
-            "main.instr_branch_if_diff_greater_than_param_l",
-            "main.instr_is_diff_greater_than",
-            "main.instr_is_greater_than",
-            "main.instr_is_equal_zero",
-            "main.instr_is_not_equal",
-            "main.instr_and",
-            "main.instr_or",
-            "main.instr_xor",
-            "main.instr_shl",
-            "main.instr_shr",
-            "main.instr_split_gl",
-            "main.instr_wrap16",
-            "main.instr_divremu",
-            "main.instr_add_wrap",
-            "main.instr_sub_wrap_with_offset",
-            "main.instr_sign_extend_byte",
-            "main.instr_sign_extend_16_bits",
-            "main.instr_to_signed",
-            "main.instr_mul",
-            "main.instr__jump_to_operation",
-            "main.instr__reset",
-            "main.instr__loop",
-            "main.instr_return",
-            "main.instr_fail",
+            "main::reg_write_X_query_arg_1",
+            "main::reg_write_X_query_arg_2",
+            "main::read_Y_query_arg_1",
+            "main::X_b1",
+            "main::X_b2",
+            "main::X_b3",
+            "main::X_b4",
+            "main::wrap_bit",
+            "main::X",
+            "main::X_const",
+            "main::X_read_free",
+            "main::X_free_value",
+            "main::Y_b5",
+            "main::Y_b6",
+            "main::Y_b7",
+            "main::Y_b8",
+            "main::Y_7bit",
+            "main::Y",
+            "main::Y_const",
+            "main::Y_read_free",
+            "main::Y_free_value",
+            "main::Z",
+            "main::Z_const",
+            "main::W",
+            "main::W_const",
+            "main::val1_col",
+            "main::val2_col",
+            "main::val3_col",
+            "main::val4_col",
+            "main::XX",
+            "main::XXIsZero",
+            "main::XX_inv",
+            "main::REM_b1",
+            "main::REM_b2",
+            "main::REM_b3",
+            "main::REM_b4",
+            "main::_operation_id",
+            "main::instr_set_reg",
+            "main::instr_get_reg",
+            "main::instr_affine",
+            "main::instr_mload",
+            "main::instr_mstore",
+            "main::instr_load_label",
+            "main::instr_load_label_param_l",
+            "main::instr_jump",
+            "main::instr_jump_param_l",
+            "main::instr_jump_dyn",
+            "main::instr_branch_if_diff_nonzero",
+            "main::instr_branch_if_diff_nonzero_param_l",
+            "main::instr_branch_if_diff_equal",
+            "main::instr_branch_if_diff_equal_param_l",
+            "main::instr_skip_if_equal",
+            "main::instr_branch_if_diff_greater_than",
+            "main::instr_branch_if_diff_greater_than_param_l",
+            "main::instr_is_diff_greater_than",
+            "main::instr_is_greater_than",
+            "main::instr_is_equal_zero",
+            "main::instr_is_not_equal",
+            "main::instr_and",
+            "main::instr_or",
+            "main::instr_xor",
+            "main::instr_shl",
+            "main::instr_shr",
+            "main::instr_split_gl",
+            "main::instr_wrap16",
+            "main::instr_divremu",
+            "main::instr_add_wrap",
+            "main::instr_sub_wrap_with_offset",
+            "main::instr_sign_extend_byte",
+            "main::instr_sign_extend_16_bits",
+            "main::instr_to_signed",
+            "main::instr_mul",
+            "main::instr__jump_to_operation",
+            "main::instr__reset",
+            "main::instr__loop",
+            "main::instr_return",
+            "main::instr_fail",
         ]
         .iter()
         .map(|n| (n.to_string(), vec![f0, f0]))
@@ -508,7 +508,6 @@ mod builder {
             batch_to_line_map: &'b [u32],
             max_rows_len: usize,
             mode: ExecMode,
-            fixed_len: u32,
         ) -> Result<Self, Box<(ExecutionTrace<F>, MemoryState, RegisterMemory<F>)>> {
             let reg_map = register_names(main)
                 .into_iter()
@@ -569,7 +568,7 @@ mod builder {
             };
 
             if ret.has_enough_rows() || ret.set_next_pc().is_none() {
-                Err(Box::new(ret.finish(fixed_len)))
+                Err(Box::new(ret.finish()))
             } else {
                 Ok(ret)
             }
@@ -755,23 +754,7 @@ mod builder {
             self.reg_mem.second_last = self.reg_mem.last.clone();
         }
 
-        pub fn finish(
-            mut self,
-            fixed_len: u32,
-        ) -> (ExecutionTrace<F>, MemoryState, RegisterMemory<F>) {
-            // TODO: remove when VADCOP
-            // let mut max_degree = self
-            //     .submachines
-            //     .values()
-            //     .map(|m| m.len())
-            //     .chain(Some(fixed_len))
-            //     .chain(Some(self.len()))
-            //     .chain(Some(self.regs_machine.len()))
-            //     .chain(Some(self.memory_machine.len()))
-            //     .max()
-            //     .unwrap();
-            // max_degree = max_degree.next_power_of_two();
-
+        pub fn finish(mut self) -> (ExecutionTrace<F>, MemoryState, RegisterMemory<F>) {
             // fill machine rows up to the next power of two
             let main_degree = self.len().next_power_of_two();
 
@@ -964,42 +947,42 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         for i in 0..2 {
             let jump_to_op = Elem::Field(
                 *self
-                    .get_fixed("main__rom.p_instr__jump_to_operation")
+                    .get_fixed("main__rom::p_instr__jump_to_operation")
                     .unwrap_or(&Vec::new())
                     .get(i)
                     .unwrap_or(&F::zero()),
             );
             self.proc
-                .set_col_idx("main.instr__jump_to_operation", i, jump_to_op);
+                .set_col_idx("main::instr__jump_to_operation", i, jump_to_op);
 
             let reset = Elem::Field(
                 *self
-                    .get_fixed("main__rom.p_instr__reset")
+                    .get_fixed("main__rom::p_instr__reset")
                     .unwrap_or(&Vec::new())
                     .get(i)
                     .unwrap_or(&F::zero()),
             );
-            self.proc.set_col_idx("main.instr__reset", i, reset);
+            self.proc.set_col_idx("main::instr__reset", i, reset);
 
             let end_loop = Elem::Field(
                 *self
-                    .get_fixed("main__rom.p_instr__loop")
+                    .get_fixed("main__rom::p_instr__loop")
                     .unwrap_or(&Vec::new())
                     .get(i)
                     .unwrap_or(&F::zero()),
             );
-            self.proc.set_col_idx("main.instr__loop", i, end_loop);
+            self.proc.set_col_idx("main::instr__loop", i, end_loop);
 
             let ret = Elem::Field(
                 *self
-                    .get_fixed("main__rom.p_instr_return")
+                    .get_fixed("main__rom::p_instr_return")
                     .unwrap_or(&Vec::new())
                     .get(i)
                     .unwrap_or(&F::zero()),
             );
-            self.proc.set_col_idx("main.instr_return", i, ret);
+            self.proc.set_col_idx("main::instr_return", i, ret);
 
-            self.proc.set_col_idx("main._operation_id", i, 2.into());
+            self.proc.set_col_idx("main::_operation_id", i, 2.into());
         }
     }
 
@@ -1007,13 +990,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         self.fixed
             .iter()
             .find(|(n, _)| n == name)
+            // ROM is uniquely sized, which for now is all we looking at
             .map(|(_, v)| v.get_uniquely_sized().expect("not uniquely sized!"))
     }
 
     fn sink_id(&self) -> u32 {
-        // get the sink_id by looking at the p_instr__loop column
+        // get the sink_id by taking the len of the ROM
         for (i, &val) in self
-            .get_fixed("main__rom.p_instr__loop")
+            .get_fixed("main__rom::p_line")
             .unwrap()
             .iter()
             .enumerate()
@@ -1028,28 +1012,28 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
     fn set_program_columns(&mut self, pc: u32) {
         let x_const = Elem::Field(
             *self
-                .get_fixed("main__rom.p_X_const")
+                .get_fixed("main__rom::p_X_const")
                 .unwrap_or(&Vec::new())
                 .get(pc as usize)
                 .unwrap_or(&F::zero()),
         );
         let y_const = Elem::Field(
             *self
-                .get_fixed("main__rom.p_Y_const")
+                .get_fixed("main__rom::p_Y_const")
                 .unwrap_or(&Vec::new())
                 .get(pc as usize)
                 .unwrap_or(&F::zero()),
         );
         let z_const = Elem::Field(
             *self
-                .get_fixed("main__rom.p_Z_const")
+                .get_fixed("main__rom::p_Z_const")
                 .unwrap_or(&Vec::new())
                 .get(pc as usize)
                 .unwrap_or(&F::zero()),
         );
         let w_const = Elem::Field(
             *self
-                .get_fixed("main__rom.p_W_const")
+                .get_fixed("main__rom::p_W_const")
                 .unwrap_or(&Vec::new())
                 .get(pc as usize)
                 .unwrap_or(&F::zero()),
@@ -1057,28 +1041,28 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
         let jump_to_op = Elem::Field(
             *self
-                .get_fixed("main__rom.p_instr__jump_to_operation")
+                .get_fixed("main__rom::p_instr__jump_to_operation")
                 .unwrap_or(&Vec::new())
                 .get(pc as usize)
                 .unwrap_or(&F::zero()),
         );
         let reset = Elem::Field(
             *self
-                .get_fixed("main__rom.p_instr__reset")
+                .get_fixed("main__rom::p_instr__reset")
                 .unwrap_or(&Vec::new())
                 .get(pc as usize)
                 .unwrap_or(&F::zero()),
         );
         let end_loop = Elem::Field(
             *self
-                .get_fixed("main__rom.p_instr__loop")
+                .get_fixed("main__rom::p_instr__loop")
                 .unwrap_or(&Vec::new())
                 .get(pc as usize)
                 .unwrap_or(&F::zero()),
         );
         let ret = Elem::Field(
             *self
-                .get_fixed("main__rom.p_instr_return")
+                .get_fixed("main__rom::p_instr_return")
                 .unwrap_or(&Vec::new())
                 .get(pc as usize)
                 .unwrap_or(&F::zero()),
@@ -1086,7 +1070,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
         let read_y_val1 = Elem::Field(
             *self
-                .get_fixed("main__rom.p_read_Y_query_arg_1")
+                .get_fixed("main__rom::p_read_Y_query_arg_1")
                 .unwrap_or(&Vec::new())
                 .get(pc as usize)
                 .unwrap_or(&F::zero()),
@@ -1094,7 +1078,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
         let reg_write_x_val1 = Elem::Field(
             *self
-                .get_fixed("main__rom.p_reg_write_X_query_arg_1")
+                .get_fixed("main__rom::p_reg_write_X_query_arg_1")
                 .unwrap_or(&Vec::new())
                 .get(pc as usize)
                 .unwrap_or(&F::zero()),
@@ -1102,7 +1086,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
         let reg_write_x_val2 = Elem::Field(
             *self
-                .get_fixed("main__rom.p_reg_write_X_query_arg_2")
+                .get_fixed("main__rom::p_reg_write_X_query_arg_2")
                 .unwrap_or(&Vec::new())
                 .get(pc as usize)
                 .unwrap_or(&F::zero()),
@@ -1110,7 +1094,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
         let y_read_free = Elem::Field(
             *self
-                .get_fixed("main__rom.p_Y_read_free")
+                .get_fixed("main__rom::p_Y_read_free")
                 .unwrap_or(&Vec::new())
                 .get(pc as usize)
                 .unwrap_or(&F::zero()),
@@ -1120,31 +1104,31 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         // it in Assignment handling.
         let x_read_free = Elem::Field(
             *self
-                .get_fixed("main__rom.p_X_read_free")
+                .get_fixed("main__rom::p_X_read_free")
                 .unwrap_or(&Vec::new())
                 .get(pc as usize)
                 .unwrap_or(&F::zero()),
         );
 
-        self.proc.set_col("main.X_const", x_const);
-        self.proc.set_col("main.Y_const", y_const);
-        self.proc.set_col("main.Z_const", z_const);
-        self.proc.set_col("main.W_const", w_const);
+        self.proc.set_col("main::X_const", x_const);
+        self.proc.set_col("main::Y_const", y_const);
+        self.proc.set_col("main::Z_const", z_const);
+        self.proc.set_col("main::W_const", w_const);
         self.proc
-            .set_col("main.reg_write_X_query_arg_1", reg_write_x_val1);
+            .set_col("main::reg_write_X_query_arg_1", reg_write_x_val1);
         self.proc
-            .set_col("main.reg_write_X_query_arg_2", reg_write_x_val2);
-        self.proc.set_col("main.read_Y_query_arg_1", read_y_val1);
-        self.proc.set_col("main.Y_read_free", y_read_free);
+            .set_col("main::reg_write_X_query_arg_2", reg_write_x_val2);
+        self.proc.set_col("main::read_Y_query_arg_1", read_y_val1);
+        self.proc.set_col("main::Y_read_free", y_read_free);
         self.proc
-            .set_col("main.instr__jump_to_operation", jump_to_op);
-        self.proc.set_col("main.instr__reset", reset);
-        self.proc.set_col("main.instr__loop", end_loop);
-        self.proc.set_col("main.instr_return", ret);
-        self.proc.set_col("main.X_read_free", x_read_free);
+            .set_col("main::instr__jump_to_operation", jump_to_op);
+        self.proc.set_col("main::instr__reset", reset);
+        self.proc.set_col("main::instr__loop", end_loop);
+        self.proc.set_col("main::instr_return", ret);
+        self.proc.set_col("main::X_read_free", x_read_free);
 
         // always 2 because we only have constrainted submachines
-        self.proc.set_col("main._operation_id", 2.into());
+        self.proc.set_col("main::_operation_id", 2.into());
     }
 
     fn exec_instruction(&mut self, name: &str, args: &[Expression]) -> Vec<Elem<F>> {
@@ -1187,7 +1171,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         let mut tmp_y_b7 = Elem::Field(F::zero());
         let mut tmp_y_b8 = Elem::Field(F::zero());
 
-        let mut tmp_y = self.proc.get_col("main.Y_const");
+        let mut tmp_y = self.proc.get_col("main::Y_const");
 
         // macros to read and write to self.proc.regs_machine
         macro_rules! reg_read {
@@ -1393,7 +1377,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 tmp_val1_col = label;
 
-                self.proc.set_col("main.instr_load_label_param_l", label);
+                self.proc.set_col("main::instr_load_label_param_l", label);
 
                 //self.proc.set_reg("X", write_reg);
                 //self.proc.set_reg("Y", 0);
@@ -1414,7 +1398,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 tmp_val3_col = Elem::from_u32_as_fe(next_pc);
 
-                self.proc.set_col("main.instr_jump_param_l", label);
+                self.proc.set_col("main::instr_jump_param_l", label);
                 //self.proc.set_reg("X", 0);
                 //self.proc.set_reg("Y", 0);
                 //self.proc.set_reg("Z", 0);
@@ -1474,7 +1458,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 }
 
                 self.proc
-                    .set_col("main.instr_branch_if_diff_nonzero_param_l", label);
+                    .set_col("main::instr_branch_if_diff_nonzero_param_l", label);
                 //self.proc.set_reg("X", read_reg1);
                 //self.proc.set_reg("Y", read_reg2);
                 //self.proc.set_reg("Z", 0);
@@ -1506,7 +1490,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 }
 
                 self.proc
-                    .set_col("main.instr_branch_if_diff_equal_param_l", label);
+                    .set_col("main::instr_branch_if_diff_equal_param_l", label);
 
                 //self.proc.set_reg("X", read_reg1);
                 //self.proc.set_reg("Y", read_reg2);
@@ -1566,7 +1550,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 tmp_val2_col = val2;
 
                 self.proc
-                    .set_col("main.instr_branch_if_diff_greater_than_param_l", label);
+                    .set_col("main::instr_branch_if_diff_greater_than_param_l", label);
 
                 let p = Elem::from_i64_as_fe((2 << 32) - 1);
                 let val_p = val.add(&p);
@@ -2267,42 +2251,42 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             }
         };
 
-        self.proc.set_col("main.X_b1", tmp_x_b1);
-        self.proc.set_col("main.X_b2", tmp_x_b2);
-        self.proc.set_col("main.X_b3", tmp_x_b3);
-        self.proc.set_col("main.X_b4", tmp_x_b4);
-        self.proc.set_col("main.Y_b5", tmp_y_b5);
-        self.proc.set_col("main.Y_b6", tmp_y_b6);
-        self.proc.set_col("main.Y_b7", tmp_y_b7);
-        self.proc.set_col("main.Y_b8", tmp_y_b8);
-        self.proc.set_col("main.wrap_bit", tmp_wrap_bit);
+        self.proc.set_col("main::X_b1", tmp_x_b1);
+        self.proc.set_col("main::X_b2", tmp_x_b2);
+        self.proc.set_col("main::X_b3", tmp_x_b3);
+        self.proc.set_col("main::X_b4", tmp_x_b4);
+        self.proc.set_col("main::Y_b5", tmp_y_b5);
+        self.proc.set_col("main::Y_b6", tmp_y_b6);
+        self.proc.set_col("main::Y_b7", tmp_y_b7);
+        self.proc.set_col("main::Y_b8", tmp_y_b8);
+        self.proc.set_col("main::wrap_bit", tmp_wrap_bit);
 
-        self.proc.set_col("main.Y_7bit", tmp_y_7bit);
+        self.proc.set_col("main::Y_7bit", tmp_y_7bit);
 
         self.proc
-            .set_col("main.X", self.proc.get_col("main.X_const"));
+            .set_col("main::X", self.proc.get_col("main::X_const"));
 
-        self.proc.set_col("main.Y", tmp_y);
+        self.proc.set_col("main::Y", tmp_y);
         self.proc
-            .set_col("main.Z", self.proc.get_col("main.Z_const"));
+            .set_col("main::Z", self.proc.get_col("main::Z_const"));
         self.proc
-            .set_col("main.W", self.proc.get_col("main.W_const"));
+            .set_col("main::W", self.proc.get_col("main::W_const"));
 
-        self.proc.set_col("main.REM_b1", tmp_rem_b1);
-        self.proc.set_col("main.REM_b2", tmp_rem_b2);
-        self.proc.set_col("main.REM_b3", tmp_rem_b3);
-        self.proc.set_col("main.REM_b4", tmp_rem_b4);
+        self.proc.set_col("main::REM_b1", tmp_rem_b1);
+        self.proc.set_col("main::REM_b2", tmp_rem_b2);
+        self.proc.set_col("main::REM_b3", tmp_rem_b3);
+        self.proc.set_col("main::REM_b4", tmp_rem_b4);
 
-        self.proc.set_col("main.val1_col", tmp_val1_col);
-        self.proc.set_col("main.val2_col", tmp_val2_col);
-        self.proc.set_col("main.val3_col", tmp_val3_col);
-        self.proc.set_col("main.val4_col", tmp_val4_col);
+        self.proc.set_col("main::val1_col", tmp_val1_col);
+        self.proc.set_col("main::val2_col", tmp_val2_col);
+        self.proc.set_col("main::val3_col", tmp_val3_col);
+        self.proc.set_col("main::val4_col", tmp_val4_col);
 
-        self.proc.set_col("main.XX", tmp_xx);
-        self.proc.set_col("main.XXIsZero", tmp_xx_iszero);
-        self.proc.set_col("main.XX_inv", tmp_xx_inv);
+        self.proc.set_col("main::XX", tmp_xx);
+        self.proc.set_col("main::XXIsZero", tmp_xx_iszero);
+        self.proc.set_col("main::XX_inv", tmp_xx_inv);
 
-        let instr_col = format!("main.instr_{name}");
+        let instr_col = format!("main::instr_{name}");
         self.proc.set_col(&instr_col, Elem::from_u32_as_fe(1));
 
         r
@@ -2501,27 +2485,12 @@ pub fn execute_ast<T: FieldElement>(
         location_starts,
     } = preprocess_main_function(main_machine);
 
-    let fixed_len = fixed
-        .as_ref()
-        .and_then(|f| {
-            f.as_ref()
-                .iter()
-                .map(|(_n, c)| {
-                    c.get_uniquely_sized()
-                        .expect("multiple fixed column sizes")
-                        .len()
-                })
-                .max()
-        })
-        .unwrap_or(0) as u32;
-
     let proc = match TraceBuilder::<'_, T>::new(
         main_machine,
         initial_memory,
         &batch_to_line_map,
         max_steps_to_execute,
         mode,
-        fixed_len,
     ) {
         Ok(proc) => proc,
         Err(ret) => return *ret,
@@ -2574,7 +2543,7 @@ pub fn execute_ast<T: FieldElement>(
                 if let AssignmentRegister::Register(x) = asgn_reg {
                     assert_eq!(x, "X");
 
-                    let x_const = e.proc.get_col("main.X_const");
+                    let x_const = e.proc.get_col("main::X_const");
                     assert!(x_const.is_zero());
 
                     match a.rhs.as_ref() {
@@ -2590,23 +2559,23 @@ pub fn execute_ast<T: FieldElement>(
                             e.proc.push_row();
                             e.set_program_columns(pc_before as u32);
                             // TODO assert X_const = 0
-                            e.proc.set_col("main.X", results[0]);
-                            e.proc.set_col("main.X_free_value", results[0]);
+                            e.proc.set_col("main::X", results[0]);
+                            e.proc.set_col("main::X_free_value", results[0]);
                         }
                         _ => {
                             // If it's not a free input it's an instruction that returns through X.
                             // - We need to use the result of the instruction to set X.
                             // - Currently the only instruction that does this is `get_reg`.
                             // - exec_instruction already called push_row.
-                            // - After `exec_instruction`, main.X has main.X_const.
+                            // - After `exec_instruction`, main::X has main::X_const.
                             // - We need to:
-                            // - Set main.X to the result of the instruction.
+                            // - Set main::X to the result of the instruction.
                             // - Set X_read_free to whatever is in the fixed column.
                             // - Solve for X_free_value.
                             let x = results[0];
-                            e.proc.set_col("main.X", x);
+                            e.proc.set_col("main::X", x);
 
-                            let x_read_free = e.proc.get_col("main.X_read_free");
+                            let x_read_free = e.proc.get_col("main::X_read_free");
 
                             // We need to solve for X_free_value:
                             // X = X_const + X_read_free * X_free_value
@@ -2617,7 +2586,7 @@ pub fn execute_ast<T: FieldElement>(
                             } else {
                                 x.sub(&x_const).div(&x_read_free)
                             };
-                            e.proc.set_col("main.X_free_value", x_free_value);
+                            e.proc.set_col("main::X_free_value", x_free_value);
                         }
                     }
                 } else {
@@ -2722,7 +2691,7 @@ pub fn execute_ast<T: FieldElement>(
     assert!(e.proc.advance().is_none());
     e.proc.push_row();
     e.set_program_columns(0);
-    e.proc.set_col("main._operation_id", sink_id.into());
+    e.proc.set_col("main::_operation_id", sink_id.into());
 
     // jump_to_operation
     e.proc.set_pc(1.into());
@@ -2731,16 +2700,16 @@ pub fn execute_ast<T: FieldElement>(
     assert!(e.proc.advance().is_none());
     e.proc.push_row();
     e.set_program_columns(1);
-    e.proc.set_col("main._operation_id", sink_id.into());
+    e.proc.set_col("main::_operation_id", sink_id.into());
 
     // loop
     e.proc.set_pc(sink_id.into());
     assert!(e.proc.advance().is_none());
     e.proc.push_row();
     e.set_program_columns(sink_id);
-    e.proc.set_col("main._operation_id", sink_id.into());
+    e.proc.set_col("main::_operation_id", sink_id.into());
 
-    e.proc.finish(fixed_len)
+    e.proc.finish()
 }
 
 pub enum ExecMode {

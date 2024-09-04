@@ -59,7 +59,7 @@ impl MemoryMachine {
             "trying to take less rows than memory ops"
         );
 
-        // order here matters. we use this to index into the columns
+        // order here matters! we use this to index into the columns
         #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
         #[repr(usize)]
         enum Cols {
@@ -76,37 +76,37 @@ impl MemoryMachine {
 
         let mut cols = vec![
             (
-                format!("{}.m_addr", self.name),
+                format!("{}::m_addr", self.name),
                 Vec::with_capacity(len as usize),
             ),
             (
-                format!("{}.m_step", self.name),
+                format!("{}::m_step", self.name),
                 Vec::with_capacity(len as usize),
             ),
             (
-                format!("{}.m_change", self.name),
+                format!("{}::m_change", self.name),
                 Vec::with_capacity(len as usize),
             ),
             (
-                format!("{}.m_value", self.name),
+                format!("{}::m_value", self.name),
                 Vec::with_capacity(len as usize),
             ),
             (
-                format!("{}.m_is_write", self.name),
+                format!("{}::m_is_write", self.name),
                 Vec::with_capacity(len as usize),
             ),
             (
-                format!("{}.m_diff_lower", self.name),
+                format!("{}::m_diff_lower", self.name),
                 Vec::with_capacity(len as usize),
             ),
             (
-                format!("{}.m_diff_upper", self.name),
+                format!("{}::m_diff_upper", self.name),
                 Vec::with_capacity(len as usize),
             ),
         ];
         for i in 0..self.selector_count as u32 {
             cols.push((
-                format!("{}.selectors[{}]", self.name, i),
+                format!("{}::selectors[{}]", self.name, i),
                 Vec::with_capacity(len as usize),
             ));
         }

@@ -525,14 +525,14 @@ fn execute<F: FieldElement>(
                 .chain(cols.into_iter())
                 .filter(|(a, _)| witness_cols.contains(a))
                 // Uncomment the code below to test a specific column (for debugging).
-                .filter(|(a, _)| {
-                    [
-                        // "main.reg_write_X_query_arg_1",
-                        // "main.reg_write_X_query_arg_2",
-                        // "main.read_Y_query_arg_1",
-                    ]
-                    .contains(&a.as_str())
-                })
+                // .filter(|(a, _)| {
+                //     [
+                //         // "main.reg_write_X_query_arg_1",
+                //         // "main.reg_write_X_query_arg_2",
+                //         // "main.read_Y_query_arg_1",
+                //     ]
+                //     .contains(&a.as_str())
+                // })
                 .map(|(a, b)| (a, b.into_iter().map(|e| e.into_fe()).collect::<Vec<_>>()))
                 .collect();
 
@@ -549,16 +549,9 @@ fn execute<F: FieldElement>(
             // println!("Columns from the executor: {:?}", full_trace);
 
             let len = full_trace.get(0).map(|(_, c)| c.len()).unwrap_or_default();
-            println!("executor columns:");
+            println!("executor columns and lengths:");
             full_trace.iter().for_each(|(name, v)| {
                 println!("\t{name}: {}", v.len());
-                if v.len() != len {
-                    // println!(
-                    //     "Column {n} has different lengths (expected: {len}, got: {})",
-                    //     v.len()
-                    // );
-                    //panic!();
-                }
             });
 
             pipeline = pipeline.add_external_witness_values(full_trace);
