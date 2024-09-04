@@ -1,3 +1,8 @@
+use itertools::Itertools;
+use powdr_ast::{
+    analyzed::{Expression, Reference},
+    parsed::visitor::AllChildren,
+};
 use powdr_number::GoldilocksField;
 use powdr_pil_analyzer::analyze_string;
 use test_log::test;
@@ -538,6 +543,7 @@ fn closure_complex() {
         {
             let r = 9;
             let k: int[] = [-2];
+            let v: int = 9; // not captured
             let q = "" != "";
             let b = (|s| || "" == s)("");
             set_hint(x, |i| {
@@ -565,6 +571,26 @@ namespace N(16);
     let y: fe, int, (-> fe) -> std::prelude::Query = |a, b, c| std::prelude::Query::Hint(a + c());
 "#;
     assert_eq!(analyzed.to_string(), expected);
+    // Check that the LocalVar ref IDs are assigned correctly. This cannot be tested by printing
+    // since the IDs are ignored. Another way to test would be to execute, but it is difficult
+    // to execute code where values are turned into expressions like that.
+    let refs = analyzed
+        .definitions
+        .get("N::x")
+        .as_ref()
+        .unwrap()
+        .1
+        .as_ref()
+        .unwrap()
+        .all_children()
+        .filter_map(|e| match e {
+            Expression::Reference(_, Reference::LocalVar(id, name)) => Some((id, name)),
+            _ => None,
+        })
+        .map(|(id, name)| format!("{name}: {id}"))
+        .format(", ")
+        .to_string();
+    assert_eq!(refs, "s: 3, i: 5, b: 4, q: 3, r: 0, k: 1");
 }
 
 #[test]

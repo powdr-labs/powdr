@@ -31,7 +31,7 @@ use powdr_number::{BigUint, FieldElement};
 use powdr_parser_util::SourceRef;
 
 use crate::{
-    evaluator::{self, Definitions, EvalError, SymbolLookup, Value},
+    evaluator::{self, Closure, Definitions, EvalError, SymbolLookup, Value},
     statement_processor::Counters,
 };
 
@@ -454,14 +454,12 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             self.new_intermediate_column_values
                 .insert(name.clone(), expr);
         } else if let Some(value) = value {
-            let value =
-                closure_to_function(&source, value.as_ref(), FunctionKind::Pure).map_err(|e| {
-                    match e {
-                        EvalError::TypeError(e) => {
-                            EvalError::TypeError(format!("Error creating fixed column {name}: {e}"))
-                        }
-                        _ => e,
+            let value = try_to_function_value_definition(value.as_ref(), FunctionKind::Pure)
+                .map_err(|e| match e {
+                    EvalError::TypeError(e) => {
+                        EvalError::TypeError(format!("Error creating fixed column {name}: {e}"))
                     }
+                    _ => e,
                 })?;
 
             self.new_column_values.insert(name.clone(), value);
@@ -536,12 +534,14 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             }
         };
 
-        let value = closure_to_function(&SourceRef::unknown(), expr.as_ref(), FunctionKind::Query)
-            .map_err(|e| match e {
-                EvalError::TypeError(e) => {
-                    EvalError::TypeError(format!("Error setting hint for column {col}: {e}"))
+        let value =
+            try_to_function_value_definition(expr.as_ref(), FunctionKind::Query).map_err(|e| {
+                match e {
+                    EvalError::TypeError(e) => {
+                        EvalError::TypeError(format!("Error setting hint for column {col}: {e}"))
+                    }
+                    _ => e,
                 }
-                _ => e,
             })?;
         match self.new_column_values.entry(name) {
             Entry::Vacant(entry) => entry.insert(value),
@@ -570,11 +570,10 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
                 }
             }
             Value::Closure(..) => {
-                let e = closure_to_function(&source, constraints.as_ref(), FunctionKind::Query)?;
-                // TODO maybe we can simplify the return value.
-                let FunctionValueDefinition::Expression(TypedExpression { e, .. }) = e else {
-                    unreachable!()
-                };
+                let e = try_value_to_expression(constraints.as_ref(), 0).map_err(|e| {
+                    EvalError::TypeError(format!("Error adding prover function: {e}"))
+                })?;
+
                 self.new_prover_functions.push(e);
             }
             _ => self
@@ -718,18 +717,18 @@ fn to_expr<T: Clone>(value: &Value<'_, T>) -> AlgebraicExpression<T> {
     }
 }
 
-/// Turns a value of function type (i.e. a closure) into a FunctionValueDefinition
-/// and sets the expected function kind.
-/// Does allow some forms of captured variables.
-fn closure_to_function<T: FieldElement>(
-    _source: &SourceRef,
+/// Turns a runtime value (usually a closure) into a FunctionValueDefinition
+/// (i.e. an expression) and sets the expected function kind.
+/// Does allow some forms of captured variables by prefixing them
+/// via let statements.
+fn try_to_function_value_definition<T: FieldElement>(
     value: &Value<'_, T>,
     expected_kind: FunctionKind,
 ) -> Result<FunctionValueDefinition, EvalError> {
-    let mut e = try_value_to_expression(value)?;
+    let mut e = try_value_to_expression(value, 0)?;
 
     // Set the lambda kind since this is used to detect hints in some cases.
-    // Can probably be removed onece we have prover sections.
+    // Can probably be removed once we have prover functions.
     if let Expression::LambdaExpression(_, LambdaExpression { kind, .. }) = &mut e {
         if *kind != FunctionKind::Pure && *kind != expected_kind {
             return Err(EvalError::TypeError(format!(
@@ -745,8 +744,13 @@ fn closure_to_function<T: FieldElement>(
     }))
 }
 
+/// Turns a closure back into a (source) expression by prefixing
+/// potentially captured variables as let statements.
+/// The `outer_var_height` is the number of variable declarations
+/// that have already been prefixed.
 fn try_closure_to_expression<T: FieldElement>(
     closure: &evaluator::Closure<'_, T>,
+    outer_var_height: u64,
 ) -> Result<Expression, EvalError> {
     if !closure.type_args.is_empty() {
         return Err(EvalError::TypeError(
@@ -754,23 +758,25 @@ fn try_closure_to_expression<T: FieldElement>(
         ));
     }
 
-    let var_height = closure.environment.len() as u64;
-    let outer_var_refs =
-        outer_var_refs(var_height, &closure.lambda.body).collect::<BTreeMap<_, _>>();
+    let outer_var_refs = outer_var_refs(closure).collect::<BTreeMap<_, _>>();
 
     let mut lambda = (*closure.lambda).clone();
 
+    let old_var_height = closure.environment.len() as u64;
     compact_var_refs(
         &mut lambda.body,
         &outer_var_refs.keys().copied().collect::<Vec<_>>(),
-        var_height,
+        old_var_height,
+        outer_var_height,
     );
 
     let statements = outer_var_refs
         .into_iter()
-        .map(|(v_id, name)| {
+        .enumerate()
+        .map(|(height, (v_id, name))| {
             let value = Some(try_value_to_expression(
                 closure.environment[v_id as usize].as_ref(),
+                height as u64 + outer_var_height,
             )?);
 
             Ok(LetStatementInsideBlock {
@@ -795,8 +801,12 @@ fn try_closure_to_expression<T: FieldElement>(
     })
 }
 
-fn outer_var_refs(environment_size: u64, e: &Expression) -> impl Iterator<Item = (u64, &String)> {
-    e.all_children().filter_map(move |e| {
+/// Returns an iterator over all references to variables declared outside the closure,
+/// i.e. the captured variables.
+/// This does not include references to module-level variables.
+fn outer_var_refs<'a, T>(closure: &'a Closure<'_, T>) -> impl Iterator<Item = (u64, &'a String)> {
+    let environment_size = closure.environment.len() as u64;
+    closure.lambda.all_children().filter_map(move |e| {
         if let Expression::Reference(_, Reference::LocalVar(id, name)) = e {
             (*id < environment_size).then_some((*id, name))
         } else {
@@ -805,29 +815,47 @@ fn outer_var_refs(environment_size: u64, e: &Expression) -> impl Iterator<Item =
     })
 }
 
-/// Updates local variable IDs to be compact.
-fn compact_var_refs(e: &mut Expression, referenced_outer_vars: &[u64], environment_size: u64) {
+/// Re-assigns local variable IDs inside `e` (the body of a lambda expression) to be
+/// compact so that variable declarations created from captured variables and
+/// references to those match up.
+/// The `referenced_outer_vars` are the sorted IDs of the captured variables inside e,
+/// `environment_size` is the original variable height before the lambda expression
+/// and `var_height_offset` is the number of variable declarations that have already
+/// been prefixed.
+fn compact_var_refs(
+    e: &mut Expression,
+    referenced_outer_vars: &[u64],
+    environment_size: u64,
+    var_height_offset: u64,
+) {
     e.children_mut().for_each(|e| {
-        if let Expression::Reference(_, Reference::LocalVar(id, _name)) = e {
-            if *id >= environment_size {
-                // Local variable.
-                *id -= environment_size - referenced_outer_vars.len() as u64;
-            } else {
-                let pos = referenced_outer_vars.binary_search(id).unwrap();
-                *id -= pos as u64;
-            }
+        if let Expression::Reference(_, Reference::LocalVar(id, _)) = e {
+            *id = var_height_offset
+                + if *id >= environment_size {
+                    // This is a parameter of the function or a local variable
+                    // defined inside the function.
+                    *id - environment_size + referenced_outer_vars.len() as u64
+                } else {
+                    referenced_outer_vars.binary_search(id).unwrap() as u64
+                }
         }
     });
 }
 
 /// Tries to convert an evaluator value to an expression with the same value.
-fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expression, EvalError> {
+fn try_value_to_expression<T: FieldElement>(
+    value: &Value<'_, T>,
+    var_height: u64,
+) -> Result<Expression, EvalError> {
     Ok(match value {
         Value::Integer(v) => {
             if v.is_negative() {
                 UnaryOperation {
                     op: parsed::UnaryOperator::Minus,
-                    expr: Box::new(try_value_to_expression(&Value::<T>::Integer(-v))?),
+                    expr: Box::new(try_value_to_expression(
+                        &Value::<T>::Integer(-v),
+                        var_height,
+                    )?),
                 }
                 .into()
             } else {
@@ -860,17 +888,17 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
             SourceRef::unknown(),
             items
                 .iter()
-                .map(|i| try_value_to_expression(i))
+                .map(|i| try_value_to_expression(i, var_height))
                 .collect::<Result<_, _>>()?,
         ),
         Value::Array(items) => ArrayLiteral {
             items: items
                 .iter()
-                .map(|i| try_value_to_expression(i))
+                .map(|i| try_value_to_expression(i, var_height))
                 .collect::<Result<_, _>>()?,
         }
         .into(),
-        Value::Closure(c) => try_closure_to_expression(c)?,
+        Value::Closure(c) => try_closure_to_expression(c, var_height)?,
         Value::TypeConstructor(c) => {
             return Err(EvalError::TypeError(format!(
                 "Type constructor as captured value not supported: {c}."
