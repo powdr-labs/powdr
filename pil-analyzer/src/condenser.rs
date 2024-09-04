@@ -12,7 +12,7 @@ use num_traits::sign::Signed;
 
 use powdr_ast::{
     analyzed::{
-        self, AlgebraicExpression, AlgebraicReference, Analyzed, Expression,
+        self, AlgebraicExpression, AlgebraicReference, Analyzed, DegreeRange, Expression,
         FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialReference,
         PolynomialType, PublicDeclaration, Reference, SelectedExpressions, StatementIdentifier,
         Symbol, SymbolKind,
@@ -27,11 +27,11 @@ use powdr_ast::{
         Number, Pattern, TypedExpression, UnaryOperation,
     },
 };
-use powdr_number::{BigUint, DegreeType, FieldElement};
+use powdr_number::{BigUint, FieldElement};
 use powdr_parser_util::SourceRef;
 
 use crate::{
-    evaluator::{self, Definitions, EvalError, SymbolLookup, Value},
+    evaluator::{self, Closure, Definitions, EvalError, SymbolLookup, Value},
     statement_processor::Counters,
 };
 
@@ -179,7 +179,7 @@ pub fn condense<T: FieldElement>(
 type SymbolCache<'a, T> = HashMap<String, BTreeMap<Option<Vec<Type>>, Arc<Value<'a, T>>>>;
 
 pub struct Condenser<'a, T> {
-    degree: Option<DegreeType>,
+    degree: Option<DegreeRange>,
     /// All the definitions from the PIL file.
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     /// Evaluation cache.
@@ -250,7 +250,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     pub fn set_namespace_and_degree(
         &mut self,
         namespace: AbsoluteSymbolPath,
-        degree: Option<DegreeType>,
+        degree: Option<DegreeRange>,
     ) {
         self.namespace = namespace;
         self.degree = degree;
@@ -353,9 +353,23 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         Definitions(self.symbols).lookup_public_reference(name)
     }
 
+    fn min_degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
+        let degree = self.degree.ok_or(EvalError::DataNotAvailable)?;
+        Ok(Value::Integer(degree.min.into()).into())
+    }
+
+    fn max_degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
+        let degree = self.degree.ok_or(EvalError::DataNotAvailable)?;
+        Ok(Value::Integer(degree.max.into()).into())
+    }
+
     fn degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
         let degree = self.degree.ok_or(EvalError::DataNotAvailable)?;
-        Ok(Value::Integer(degree.into()).into())
+        if degree.min == degree.max {
+            Ok(Value::Integer(degree.min.into()).into())
+        } else {
+            Err(EvalError::DataNotAvailable)
+        }
     }
 
     fn new_column(
@@ -717,12 +731,11 @@ fn try_closure_to_expression<T: FieldElement>(
         ));
     }
 
-    let old_var_height = closure.environment.len() as u64;
-    let outer_var_refs =
-        outer_var_refs(old_var_height, &closure.lambda.body).collect::<BTreeMap<_, _>>();
+    let outer_var_refs = outer_var_refs(closure).collect::<BTreeMap<_, _>>();
 
     let mut lambda = (*closure.lambda).clone();
 
+    let old_var_height = closure.environment.len() as u64;
     compact_var_refs(
         &mut lambda.body,
         &outer_var_refs.keys().copied().collect::<Vec<_>>(),
@@ -761,8 +774,12 @@ fn try_closure_to_expression<T: FieldElement>(
     })
 }
 
-fn outer_var_refs(environment_size: u64, e: &Expression) -> impl Iterator<Item = (u64, &String)> {
-    e.all_children().filter_map(move |e| {
+/// Returns an iterator over all references to variables declared outside the closure,
+/// i.e. the captured variables.
+/// This does not include references to module-level variables.
+fn outer_var_refs<'a, T>(closure: &'a Closure<'_, T>) -> impl Iterator<Item = (u64, &'a String)> {
+    let environment_size = closure.environment.len() as u64;
+    closure.lambda.all_children().filter_map(move |e| {
         if let Expression::Reference(_, Reference::LocalVar(id, name)) = e {
             (*id < environment_size).then_some((*id, name))
         } else {
@@ -785,7 +802,7 @@ fn compact_var_refs(
     var_height_offset: u64,
 ) {
     e.children_mut().for_each(|e| {
-        if let Expression::Reference(_, Reference::LocalVar(id, name)) = e {
+        if let Expression::Reference(_, Reference::LocalVar(id, _)) = e {
             *id = var_height_offset
                 + if *id >= environment_size {
                     // This is a parameter of the function or a local variable
