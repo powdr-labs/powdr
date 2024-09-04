@@ -678,12 +678,13 @@ fn to_expr<T: Clone>(value: &Value<'_, T>) -> AlgebraicExpression<T> {
 
 /// Turns a runtime value (usually a closure) into a FunctionValueDefinition
 /// (i.e. an expression) and sets the expected function kind.
-/// Does allow some forms of captured variables.
+/// Does allow some forms of captured variables by prefixing them
+/// via let statements.
 fn try_to_function_value_definition<T: FieldElement>(
     value: &Value<'_, T>,
     expected_kind: FunctionKind,
 ) -> Result<FunctionValueDefinition, EvalError> {
-    let mut e = try_value_to_expression(value)?;
+    let mut e = try_value_to_expression(value, 0)?;
 
     // Set the lambda kind since this is used to detect hints in some cases.
     // Can probably be removed once we have prover functions.
@@ -702,8 +703,13 @@ fn try_to_function_value_definition<T: FieldElement>(
     }))
 }
 
+/// Turns a closure back into a (source) expression by prefixing
+/// potentially captured variables as let statements.
+/// The `outer_var_height` is the number of variable declarations
+/// that have already been prefixed.
 fn try_closure_to_expression<T: FieldElement>(
     closure: &evaluator::Closure<'_, T>,
+    outer_var_height: u64,
 ) -> Result<Expression, EvalError> {
     if !closure.type_args.is_empty() {
         return Err(EvalError::TypeError(
@@ -711,23 +717,26 @@ fn try_closure_to_expression<T: FieldElement>(
         ));
     }
 
-    let var_height = closure.environment.len() as u64;
+    let old_var_height = closure.environment.len() as u64;
     let outer_var_refs =
-        outer_var_refs(var_height, &closure.lambda.body).collect::<BTreeMap<_, _>>();
+        outer_var_refs(old_var_height, &closure.lambda.body).collect::<BTreeMap<_, _>>();
 
     let mut lambda = (*closure.lambda).clone();
 
     compact_var_refs(
         &mut lambda.body,
         &outer_var_refs.keys().copied().collect::<Vec<_>>(),
-        var_height,
+        old_var_height,
+        outer_var_height,
     );
 
     let statements = outer_var_refs
         .into_iter()
-        .map(|(v_id, name)| {
+        .enumerate()
+        .map(|(height, (v_id, name))| {
             let value = Some(try_value_to_expression(
                 closure.environment[v_id as usize].as_ref(),
+                height as u64 + outer_var_height,
             )?);
 
             Ok(LetStatementInsideBlock {
@@ -762,31 +771,47 @@ fn outer_var_refs(environment_size: u64, e: &Expression) -> impl Iterator<Item =
     })
 }
 
-/// Updates local variable IDs to be compact.
-fn compact_var_refs(e: &mut Expression, referenced_outer_vars: &[u64], environment_size: u64) {
-    println!("Compacting {e}");
+/// Re-assigns local variable IDs inside `e` (the body of a lambda expression) to be
+/// compact so that variable declarations created from captured variables and
+/// references to those match up.
+/// The `referenced_outer_vars` are the sorted IDs of the captured variables inside e,
+/// `environment_size` is the original variable height before the lambda expression
+/// and `var_height_offset` is the number of variable declarations that have already
+/// been prefixed.
+fn compact_var_refs(
+    e: &mut Expression,
+    referenced_outer_vars: &[u64],
+    environment_size: u64,
+    var_height_offset: u64,
+) {
     e.children_mut().for_each(|e| {
         if let Expression::Reference(_, Reference::LocalVar(id, name)) = e {
-            if *id >= environment_size {
-                // Parameter of the current function.
-                *id -= environment_size - referenced_outer_vars.len() as u64;
-            } else {
-                let pos = referenced_outer_vars.binary_search(id).unwrap();
-                println!("  {name} [{id}] -> {pos}");
-                *id = pos as u64;
-            }
+            *id = var_height_offset
+                + if *id >= environment_size {
+                    // This is a parameter of the function or a local variable
+                    // defined inside the function.
+                    *id - environment_size + referenced_outer_vars.len() as u64
+                } else {
+                    referenced_outer_vars.binary_search(id).unwrap() as u64
+                }
         }
     });
 }
 
 /// Tries to convert an evaluator value to an expression with the same value.
-fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expression, EvalError> {
+fn try_value_to_expression<T: FieldElement>(
+    value: &Value<'_, T>,
+    var_height: u64,
+) -> Result<Expression, EvalError> {
     Ok(match value {
         Value::Integer(v) => {
             if v.is_negative() {
                 UnaryOperation {
                     op: parsed::UnaryOperator::Minus,
-                    expr: Box::new(try_value_to_expression(&Value::<T>::Integer(-v))?),
+                    expr: Box::new(try_value_to_expression(
+                        &Value::<T>::Integer(-v),
+                        var_height,
+                    )?),
                 }
                 .into()
             } else {
@@ -819,17 +844,17 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
             SourceRef::unknown(),
             items
                 .iter()
-                .map(|i| try_value_to_expression(i))
+                .map(|i| try_value_to_expression(i, var_height))
                 .collect::<Result<_, _>>()?,
         ),
         Value::Array(items) => ArrayLiteral {
             items: items
                 .iter()
-                .map(|i| try_value_to_expression(i))
+                .map(|i| try_value_to_expression(i, var_height))
                 .collect::<Result<_, _>>()?,
         }
         .into(),
-        Value::Closure(c) => try_closure_to_expression(c)?,
+        Value::Closure(c) => try_closure_to_expression(c, var_height)?,
         Value::TypeConstructor(c) => {
             return Err(EvalError::TypeError(format!(
                 "Type constructor as captured value not supported: {c}."

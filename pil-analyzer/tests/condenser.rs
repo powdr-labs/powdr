@@ -1,6 +1,6 @@
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{Expression, FunctionValueDefinition, Reference},
+    analyzed::{Expression, Reference},
     parsed::visitor::AllChildren,
 };
 use powdr_number::GoldilocksField;
@@ -576,5 +576,5 @@ namespace N(16);
         .map(|(id, name)| format!("{name}: {id}"))
         .format(", ")
         .to_string();
-    assert_eq!(refs, "s: 4, i: 5, b: 4, q: 3, r: 0, k: 1");
+    assert_eq!(refs, "s: 3, i: 5, b: 4, q: 3, r: 0, k: 1");
 }
