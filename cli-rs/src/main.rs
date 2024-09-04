@@ -446,12 +446,14 @@ fn execute<F: FieldElement>(
         (false, false, _) => {
             let program = pipeline.compute_asm_string().unwrap().clone();
 
+            let fixed = pipeline.compute_fixed_cols().unwrap().clone();
+
             log::info!("Running executor before witgen...");
             let start = Instant::now();
 
             let (trace, _mem, _reg_mem) = powdr_riscv_executor::execute::<F>(
                 &program.1,
-                None,
+                Some(fixed),
                 powdr_riscv_executor::MemoryState::new(),
                 pipeline.data_callback().unwrap(),
                 &[],
@@ -463,6 +465,9 @@ fn execute<F: FieldElement>(
             log::info!("Executor done in: {:?}", duration);
 
             log::info!("Execution trace length: {}", trace.len);
+        }
+        (true, true, true) => {
+            panic!("executor does not support continuations");
         }
         (true, true, _) => {
             let dry_run =

@@ -322,7 +322,7 @@ impl<F: FieldElement> ExecutionTrace<F> {
             "main._operation_id",
             "main.instr_set_reg",
             "main.instr_get_reg",
-            "main.instr_move_reg",
+            "main.instr_affine",
             "main.instr_mload",
             "main.instr_mstore",
             "main.instr_load_label",
@@ -332,14 +332,15 @@ impl<F: FieldElement> ExecutionTrace<F> {
             "main.instr_jump_dyn",
             "main.instr_branch_if_diff_nonzero",
             "main.instr_branch_if_diff_nonzero_param_l",
-            "main.instr_branch_if_zero",
-            "main.instr_branch_if_zero_param_l",
-            "main.instr_branch_if_positive",
-            "main.instr_branch_if_positive_param_l",
-            "main.instr_skip_if_zero",
-            "main.instr_is_positive",
+            "main.instr_branch_if_diff_equal",
+            "main.instr_branch_if_diff_equal_param_l",
+            "main.instr_skip_if_equal",
+            "main.instr_branch_if_diff_greater_than",
+            "main.instr_branch_if_diff_greater_than_param_l",
+            "main.instr_is_diff_greater_than",
+            "main.instr_is_greater_than",
             "main.instr_is_equal_zero",
-            "main.instr_is_not_equal_zero",
+            "main.instr_is_not_equal",
             "main.instr_and",
             "main.instr_or",
             "main.instr_xor",
@@ -643,15 +644,30 @@ mod builder {
         }
 
         pub fn set_col_idx(&mut self, name: &str, idx: usize, value: Elem<F>) {
-            *self.trace.cols.get_mut(name).unwrap().get_mut(idx).unwrap() = value;
+            let col = self
+                .trace
+                .cols
+                .get_mut(name)
+                .unwrap_or_else(|| panic!("col not found: {}", name));
+            *col.get_mut(idx).unwrap() = value;
         }
 
         pub fn set_col(&mut self, name: &str, value: Elem<F>) {
-            *self.trace.cols.get_mut(name).unwrap().last_mut().unwrap() = value;
+            let col = self
+                .trace
+                .cols
+                .get_mut(name)
+                .unwrap_or_else(|| panic!("col not found: {}", name));
+            *col.last_mut().unwrap() = value;
         }
 
         pub fn get_col(&self, name: &str) -> Elem<F> {
-            *self.trace.cols.get(name).unwrap().last().unwrap()
+            let col = self
+                .trace
+                .cols
+                .get(name)
+                .unwrap_or_else(|| panic!("col not found: {}", name));
+            *col.last().unwrap()
         }
 
         pub fn push_row(&mut self) {
@@ -1490,7 +1506,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 }
 
                 self.proc
-                    .set_col("main.instr_branch_if_zero_param_l", label);
+                    .set_col("main.instr_branch_if_diff_equal_param_l", label);
 
                 //self.proc.set_reg("X", read_reg1);
                 //self.proc.set_reg("Y", read_reg2);
@@ -1550,7 +1566,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 tmp_val2_col = val2;
 
                 self.proc
-                    .set_col("main.instr_branch_if_positive_param_l", label);
+                    .set_col("main.instr_branch_if_diff_greater_than_param_l", label);
 
                 let p = Elem::from_i64_as_fe((2 << 32) - 1);
                 let val_p = val.add(&p);
