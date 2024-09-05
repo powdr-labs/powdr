@@ -1296,7 +1296,7 @@ mod test {
     use super::*;
 
     fn parse_and_evaluate_symbol(input: &str, symbol: &str) -> String {
-        let analyzed = analyze_string::<GoldilocksField>(input);
+        let analyzed = analyze_string::<GoldilocksField>(input).unwrap();
         let Some(FunctionValueDefinition::Expression(TypedExpression {
             e: symbol,
             type_scheme: _,
@@ -1310,7 +1310,7 @@ mod test {
     }
 
     pub fn evaluate_function<T: FieldElement>(input: &str, function: &str) -> T {
-        let analyzed = analyze_string::<GoldilocksField>(input);
+        let analyzed = analyze_string::<GoldilocksField>(input).unwrap();
         let mut symbols = evaluator::Definitions(&analyzed.definitions);
         let function = symbols.lookup(function, &None).unwrap();
         let result = evaluator::evaluate_function_call(function, vec![], &mut symbols)

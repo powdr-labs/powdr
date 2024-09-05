@@ -1,8 +1,23 @@
+use itertools::Itertools;
+use powdr_ast::analyzed::Analyzed;
 use powdr_number::GoldilocksField;
-use powdr_pil_analyzer::analyze_string;
 use test_log::test;
 
 use pretty_assertions::assert_eq;
+
+fn analyze_string(input: &str) -> Analyzed<GoldilocksField> {
+    powdr_pil_analyzer::analyze_string(input)
+        .map_err(|errors| {
+            errors
+                .into_iter()
+                .map(|e| {
+                    e.output_to_stderr();
+                    e.to_string()
+                })
+                .format("\n")
+        })
+        .unwrap()
+}
 
 #[test]
 fn new_witness_column() {
@@ -38,7 +53,7 @@ fn new_witness_column() {
     col witness x_2;
     N::x_2 = N::x_2;
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
 }
 
@@ -58,7 +73,7 @@ fn new_witness_column_name_clash() {
     col witness x_2;
     N::x = N::x_1 + N::x_2;
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
 }
 
@@ -105,7 +120,7 @@ fn create_constraints() {
     N::x_is_zero_1 * N::x = 0;
     N::y = N::x_is_zero_1 + 2;
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
 }
 
@@ -128,7 +143,7 @@ pub fn degree() {
             col witness w;
             w = 8;
     "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     let expected = r#"namespace std::convert;
     let expr = [];
 namespace std::prover;
@@ -161,7 +176,7 @@ pub fn degree_unset() {
             let w;
             w = std::convert::expr(d);
     "#;
-    analyze_string::<GoldilocksField>(input);
+    analyze_string(input);
 }
 
 #[test]
@@ -176,7 +191,7 @@ pub fn constructed_constraints() {
             Constr::Permutation((Option::None, Option::Some(x)), [(x, y), (3, z)]);
             Constr::Connection([(x, z), (y, 3)]);
     "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     let expected = r#"namespace Main(1024);
     col witness x;
     col witness y;
@@ -197,7 +212,7 @@ fn next() {
         x * y = 1';
         x * y = (1 + x)';
     "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     let expected = r#"namespace N(16);
     col witness x;
     col witness y;
@@ -215,7 +230,7 @@ fn double_next() {
         col witness y;
         x * y = (1 + x')';
     "#;
-    analyze_string::<GoldilocksField>(input).to_string();
+    analyze_string(input).to_string();
 }
 
 #[test]
@@ -229,7 +244,7 @@ fn new_fixed_column() {
         let x;
         x = ev;
     "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     let expected = r#"namespace N(16);
     let f: -> expr = constr || {
         let even: col = |i| i * 2;
@@ -255,7 +270,7 @@ fn new_fixed_column_as_closure() {
         let x;
         x = ev;
     "#;
-    analyze_string::<GoldilocksField>(input);
+    analyze_string(input);
 }
 
 #[test]
@@ -286,7 +301,7 @@ namespace N(16);
     col witness z;
     std::prelude::set_hint(N::z, query |_| std::prelude::Query::Hint(1));
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
 }
 
@@ -301,7 +316,7 @@ fn set_hint_invalid_function() {
         let x;
         std::prelude::set_hint(x, query |_, _| std::prelude::Query::Hint(1));
     "#;
-    analyze_string::<GoldilocksField>(input);
+    analyze_string(input);
 }
 
 #[test]
@@ -325,7 +340,7 @@ namespace N(16);
     col witness x(_) query std::prelude::Query::Hint(1);
     col witness y(i) query std::prelude::Query::Hint(std::prover::eval(N::x));
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
 }
 
@@ -340,7 +355,7 @@ fn set_hint_no_col() {
         let y: inter = x;
         std::prelude::set_hint(y, query |_| std::prelude::Query::Hint(1));
     "#;
-    analyze_string::<GoldilocksField>(input);
+    analyze_string(input);
 }
 
 #[test]
@@ -354,7 +369,7 @@ fn set_hint_twice() {
         std::prelude::set_hint(x, query |_| std::prelude::Query::Hint(1));
         std::prelude::set_hint(x, query |_| std::prelude::Query::Hint(2));
     "#;
-    analyze_string::<GoldilocksField>(input);
+    analyze_string(input);
 }
 
 #[test]
@@ -371,7 +386,7 @@ fn set_hint_twice_in_constr() {
             std::prelude::set_hint(x, query |_| std::prelude::Query::Hint(2));
         };
     "#;
-    analyze_string::<GoldilocksField>(input);
+    analyze_string(input);
 }
 
 #[test]
@@ -412,7 +427,7 @@ namespace N(16);
     col witness w;
     std::prelude::set_hint(N::w, query |_| std::prelude::Query::Hint(8));
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
 }
 
@@ -423,7 +438,7 @@ fn intermediate_syntax() {
     let inter: inter = x[2];
     let inter_arr: inter[5] = x;
 "#;
-    let analyzed = analyze_string::<GoldilocksField>(input);
+    let analyzed = analyze_string(input);
     assert_eq!(analyzed.intermediate_count(), 6);
     let expected = r#"namespace N(65536);
     col witness x[5];
@@ -444,7 +459,7 @@ fn intermediate_dynamic() {
         inter_arr[3] = 9;
     };
 "#;
-    let analyzed = analyze_string::<GoldilocksField>(input);
+    let analyzed = analyze_string(input);
     assert_eq!(analyzed.intermediate_count(), 6);
     let expected = r#"namespace N(65536);
     col witness x[5];
@@ -464,7 +479,7 @@ fn intermediate_arr_no_length() {
         let inte: inter[] = x;
     };
 "#;
-    let analyzed = analyze_string::<GoldilocksField>(input);
+    let analyzed = analyze_string(input);
     assert_eq!(analyzed.intermediate_count(), 5);
     let expected = r#"namespace N(65536);
     col witness x[5];
@@ -482,5 +497,5 @@ fn intermediate_arr_wrong_length() {
         let inte: inter[6] = x;
     };
 "#;
-    analyze_string::<GoldilocksField>(input);
+    analyze_string(input);
 }

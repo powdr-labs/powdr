@@ -39,7 +39,7 @@ fn determine_outer_var_refs() {
         let k: int, int -> (int -> (int, int)) = |k, i| |j| (f(i, j), g(i, j));
         ";
 
-    let analyzed = analyze_string::<GoldilocksField>(input);
+    let analyzed = analyze_string::<GoldilocksField>(input).unwrap();
     assert!(outer_vars_of_lambda(extract_expression(&analyzed, "f")).is_empty());
     assert!(outer_vars_of_lambda(extract_expression(&analyzed, "g")).is_empty());
     let h = extract_expression(&analyzed, "h");

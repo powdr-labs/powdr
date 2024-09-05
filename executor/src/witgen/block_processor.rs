@@ -150,7 +150,14 @@ mod tests {
         mut query_callback: Q,
         f: impl Fn(BlockProcessor<T, Q>, BTreeMap<String, PolyID>, u64, usize) -> R,
     ) -> R {
-        let analyzed = analyze_string(src);
+        let analyzed = analyze_string(src)
+            .map_err(|errors| {
+                for e in errors {
+                    e.output_to_stderr();
+                }
+                panic!("Failed to analyze test input.");
+            })
+            .unwrap();
         let constants = generate(&analyzed);
         let fixed_data = FixedData::new(&analyzed, &constants, &[], Default::default(), 0);
 

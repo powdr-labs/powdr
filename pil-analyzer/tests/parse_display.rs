@@ -1,8 +1,26 @@
+use itertools::Itertools;
+use powdr_ast::analyzed::Analyzed;
 use powdr_number::GoldilocksField;
-use powdr_pil_analyzer::analyze_string;
 use test_log::test;
 
 use pretty_assertions::assert_eq;
+
+fn analyze_string(input: &str) -> Analyzed<GoldilocksField> {
+    powdr_pil_analyzer::analyze_string(input)
+        .map_err(|errors| {
+            panic!(
+                "Failed to analyze test input: {}",
+                errors
+                    .into_iter()
+                    .map(|e| {
+                        e.output_to_stderr();
+                        e.to_string()
+                    })
+                    .format("\n")
+            );
+        })
+        .unwrap()
+}
 
 #[test]
 fn parse_print_analyzed() {
@@ -60,7 +78,7 @@ namespace T(65536);
     col fixed p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
     [T::pc, T::reg_write_X_A, T::reg_write_X_CNT] in 1 - T::first_step $ [T::line, T::p_reg_write_X_A, T::p_reg_write_X_CNT];
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(input, formatted);
 }
 
@@ -76,7 +94,7 @@ fn intermediate() {
     col intermediate = N::x;
     N::intermediate = N::intermediate;
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
 }
 
@@ -96,7 +114,7 @@ fn intermediate_array() {
     N::intermediate[1] = N::intermediate[1];
     N::intermediate[2] = N::intermediate[2];
 "#;
-    let analyzed = analyze_string::<GoldilocksField>(input);
+    let analyzed = analyze_string(input);
     assert_eq!(analyzed.intermediate_count(), 3);
     let formatted = analyzed.to_string();
     assert_eq!(formatted, expected);
@@ -118,7 +136,7 @@ fn intermediate_nested() {
     col int3 = N::int2 + N::intermediate;
     N::int3 = 2 * N::x;
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
 }
 
@@ -140,7 +158,7 @@ namespace N(65536);
     let other: int[] = [1, N::z];
     let other_fun: int, fe -> (int, (int -> int)) = |i, j| (i + 7, |k| k - i);
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
 }
 
@@ -152,7 +170,7 @@ namespace N(16);
     N::y[1] - 2 = 0;
     N::y[2]' - 2 = 0;
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, input);
 }
 
@@ -163,7 +181,7 @@ fn no_direct_array_references() {
     col witness y[3];
     (N::y - 2) = 0;
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, input);
 }
 
@@ -174,7 +192,7 @@ fn no_out_of_bounds() {
     col witness y[3];
     (N::y[3] - 2) = 0;
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, input);
 }
 
@@ -190,7 +208,7 @@ fn namespaced_call() {
     let C: int -> int = |i| Assembly::A(i + 2) + 3;
     let D: int -> int = |i| Assembly::C(i + 3);
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
 }
 
@@ -206,7 +224,7 @@ fn if_expr() {
     let c: int -> int = |i| if i < 3 { i } else { i + 9 };
     col fixed D(i) { if Assembly::c(i) != 0 { 3 } else { 2 } };
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
 }
 
@@ -232,7 +250,7 @@ fn symbolic_functions() {
     (1 - N::ISLAST) * (N::x' - N::y) = 0;
     (1 - N::ISLAST) * (N::y' - (N::x + N::y)) = 0;
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
 }
 
@@ -250,7 +268,7 @@ fn next_op_on_param() {
     let next_is_seven: expr -> expr = |t| t' - 7;
     N::y' - 7 = 0;
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
 }
 
@@ -272,7 +290,7 @@ fn fixed_symbolic() {
     col witness y;
     N::x - N::ISLAST = 0;
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
 }
 
@@ -286,7 +304,7 @@ fn parentheses_lambda() {
     let w: -> fe = || 2;
     let x: fe = (|i| (|| N::w()))(N::w())();
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
 }
 
@@ -298,7 +316,7 @@ fn simple_type_resolution() {
     let expected = r#"namespace N(16);
     col witness w[7];
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
 }
 
@@ -316,7 +334,7 @@ fn complex_type_resolution() {
     col witness y[14];
     let z: (((int -> int), int -> int)[], expr) = ([N::x, N::x, N::x, N::x, N::x, N::x, N::x, N::x], N::y[0]);
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
 }
 
@@ -327,7 +345,7 @@ fn function_type_display() {
     let g: (int -> int) -> int = |f| f(0);
     let h: int -> (int -> int) = |x| (|i| x + i);
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, input);
 }
 
@@ -349,7 +367,7 @@ fn expr_and_identity() {
     N::x = N::y;
     N::x = 0;
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
 }
 
@@ -360,7 +378,7 @@ fn expression_but_expected_constraint() {
     col witness y;
     (N::y - 2);
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, input);
 }
 
@@ -371,7 +389,7 @@ fn constraint_but_expected_expression() {
     col witness y;
     [ (N::y - 2) = 0 ] in [ N::y ];
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, input);
 }
 
@@ -379,7 +397,7 @@ fn constraint_but_expected_expression() {
 #[should_panic = "Type symbol not found: T"]
 fn used_undeclared_type_var() {
     let input = r#"let x: T = 8;"#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, input);
 }
 
@@ -387,7 +405,7 @@ fn used_undeclared_type_var() {
 #[should_panic = "Unused type variable(s) in declaration: T"]
 fn declared_unused_type_var() {
     let input = r#"let<T> x: int = 8;"#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, input);
 }
 
@@ -395,7 +413,7 @@ fn declared_unused_type_var() {
 #[should_panic = "Type symbol not found: T"]
 fn double_used_undeclared_type_var() {
     let input = r#"let<K> x: T = 8;"#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, input);
 }
 
@@ -409,7 +427,7 @@ fn to_expr() {
         col witness y;
         y = y * std::convert::expr(mul_two(7));
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     let expected = r#"namespace std::convert(16);
     let expr = [];
 namespace N(16);
@@ -434,7 +452,7 @@ fn col_array_is_array() {
         let r: int = std::array::len(x2);
         x1[0] * std::convert::expr(t) = x2[0] * std::convert::expr(r);
     ";
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     let expected = r#"namespace std::convert(16);
     let expr = [];
 namespace std::array(16);
@@ -459,7 +477,7 @@ namespace Main(8);
     Main::x = Main::y;
     Main::z[0] = Main::x;
 ";
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, input);
 }
 
@@ -475,7 +493,7 @@ fn challenges() {
         x' = (x + 1) * (1 - first);
         y' = (x + a) * (1 - first);
     ";
-    let analyzed = analyze_string::<GoldilocksField>(input);
+    let analyzed = analyze_string(input);
     assert_eq!(analyzed.intermediate_count(), 0);
     let formatted = analyzed.to_string();
     let expected = r#"namespace Main(8);
@@ -504,7 +522,7 @@ fn let_inside_block() {
             z = 9
         };
     ";
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     let expected = "namespace Main(8);
     col witness w;
     let t: int -> expr = constr |i| match i {
@@ -538,7 +556,7 @@ fn let_inside_block_complex_type() {
         [y]
     };
     ";
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     // Type inference should add the correct concrete
     // type for y and w.
     let expected = "    enum O<X> {
@@ -566,7 +584,7 @@ fn let_inside_block_redefine() {
             t
         };
     ";
-    analyze_string::<GoldilocksField>(input).to_string();
+    analyze_string(input).to_string();
 }
 
 #[test]
@@ -586,7 +604,7 @@ fn let_inside_block_scoping_separate() {
             t + r
         };
     ";
-    analyze_string::<GoldilocksField>(input).to_string();
+    analyze_string(input).to_string();
 }
 
 #[test]
@@ -603,7 +621,7 @@ fn let_inside_block_scoping_limited() {
             w
         };
     ";
-    analyze_string::<GoldilocksField>(input).to_string();
+    analyze_string(input).to_string();
 }
 
 #[test]
@@ -613,7 +631,7 @@ fn refutable_function_param() {
     namespace Main(8);
         let t = |[x, y], z| x;
     ";
-    analyze_string::<GoldilocksField>(input).to_string();
+    analyze_string(input).to_string();
 }
 
 #[test]
@@ -626,7 +644,7 @@ fn refutable_let() {
             x
         };
     ";
-    analyze_string::<GoldilocksField>(input).to_string();
+    analyze_string(input).to_string();
 }
 
 #[test]
@@ -639,7 +657,7 @@ fn patterns() {
         (_, [2]) => 7,
     };
 ";
-    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+    assert_eq!(input, analyze_string(input).to_string());
 }
 
 #[test]
@@ -650,7 +668,7 @@ fn patterns_shadowing() {
         (x, x) => x,
     };
     ";
-    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+    assert_eq!(input, analyze_string(input).to_string());
 }
 
 #[test]
@@ -663,7 +681,7 @@ fn block_shadowing() {
         x
     };
     ";
-    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+    assert_eq!(input, analyze_string(input).to_string());
 }
 
 #[test]
@@ -677,7 +695,7 @@ fn sub_block_shadowing() {
         }
     });
 ";
-    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+    assert_eq!(input, analyze_string(input).to_string());
 }
 
 #[test]
@@ -693,7 +711,7 @@ fn disjoint_block_shadowing() {
         }
     };
 ";
-    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+    assert_eq!(input, analyze_string(input).to_string());
 }
 
 #[test]
@@ -701,7 +719,7 @@ fn disjoint_block_shadowing() {
 fn sub_function_shadowing() {
     let input = "    let t: int -> int = (|x| (|x| x)(2));
 ";
-    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+    assert_eq!(input, analyze_string(input).to_string());
 }
 
 #[test]
@@ -709,7 +727,7 @@ fn sub_function_shadowing() {
 fn function_param_shadowing() {
     let input = "    let t: int, int -> int = (|x, x| (x + x));
 ";
-    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+    assert_eq!(input, analyze_string(input).to_string());
 }
 
 #[test]
@@ -719,7 +737,7 @@ fn match_shadowing() {
         (x, _) => 3,
     };
 ";
-    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+    assert_eq!(input, analyze_string(input).to_string());
 }
 
 #[test]
@@ -732,7 +750,7 @@ fn single_ellipsis() {
         _ => -1,
     };
 ";
-    assert_eq!(input, analyze_string::<GoldilocksField>(input).to_string());
+    assert_eq!(input, analyze_string(input).to_string());
 }
 
 #[test]
@@ -747,7 +765,7 @@ namespace T(8);
 namespace T(8);
     let k: int = X::y;
 ";
-    let analyzed = analyze_string::<GoldilocksField>(input);
+    let analyzed = analyze_string(input);
     assert_eq!(expected, analyzed.to_string());
 }
 
@@ -763,7 +781,7 @@ namespace T(8);
 namespace T(8);
     let k: int = std::prelude::y;
 ";
-    let analyzed = analyze_string::<GoldilocksField>(input);
+    let analyzed = analyze_string(input);
     assert_eq!(expected, analyzed.to_string());
 }
 
@@ -779,7 +797,7 @@ fn trait_def() {
     }
 ";
 
-    let analyzed = analyze_string::<GoldilocksField>(input);
+    let analyzed = analyze_string(input);
     assert_eq!(expected, analyzed.to_string())
 }
 
@@ -795,7 +813,7 @@ fn array_type_trait() {
     }
 ";
 
-    let analyzed = analyze_string::<GoldilocksField>(input);
+    let analyzed = analyze_string(input);
     assert_eq!(expected, analyzed.to_string())
 }
 
@@ -809,7 +827,7 @@ fn trait_enum_collisions() {
         X
     }";
 
-    let _ = analyze_string::<GoldilocksField>(input);
+    let _ = analyze_string(input);
 }
 
 #[test]
@@ -820,7 +838,7 @@ namespace N(16);
     let x: int = 7;
     let y: int = X::inc::<int>(N::x);
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, input);
 }
 
@@ -830,7 +848,7 @@ fn reparse_non_function_fixed_cols() {
     let A: int -> int = |i| i;
     let B: col = X::A;
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, input);
 }
 
@@ -843,7 +861,7 @@ namespace Main(16);
     let nth_clock: int -> (int -> int) = |k| (|i| if i % std::array::len::<expr>(Main::clocks) == k { 1 } else { 0 });
     let clocks: col[4] = Main::make_array::<(int -> int)>(4, Main::nth_clock);
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, input);
 }
 
@@ -853,7 +871,7 @@ fn reparse_array_typed_intermediate_col() {
     col witness w;
     col clocks[4] = [Main::w, Main::w, Main::w, Main::w];
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, input);
 }
 
@@ -867,7 +885,7 @@ fn reparse_type_args_generic_enum() {
     let<T> consume: T -> () = |_| { };
     let p: int -> () = |i| X::consume::<(X::Option<int>)>(X::Option::Some::<int>(i));
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, input);
 }
 
@@ -887,7 +905,7 @@ fn intermediate_syntax() {
     col c = X::w;
     col d[1] = [X::w];
 "#;
-    let analyzed = analyze_string::<GoldilocksField>(input);
+    let analyzed = analyze_string(input);
     assert_eq!(analyzed.intermediate_count(), 4);
     assert_eq!(analyzed.to_string(), expected);
 }

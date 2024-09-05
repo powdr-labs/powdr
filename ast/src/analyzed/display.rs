@@ -504,7 +504,7 @@ mod test {
         };
 
         let (input, expected) = &(&wrap(input), &wrap(expected));
-        let analyzed = analyze_string::<GoldilocksField>(input);
+        let analyzed = analyze_string::<GoldilocksField>(input).unwrap();
         let printed = analyzed.to_string();
 
         assert_eq!(expected.trim(), printed.trim());

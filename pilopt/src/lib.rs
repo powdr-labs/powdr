@@ -587,7 +587,7 @@ mod test {
     N::X = N::Y;
     N::Y = 7 * N::X;
 "#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
         assert_eq!(optimized, expectation);
     }
 
@@ -621,7 +621,7 @@ mod test {
     N::A = 1 + N::A;
     N::Z = 1 + N::A;
 "#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
         assert_eq!(optimized, expectation);
     }
 
@@ -637,7 +637,7 @@ mod test {
     col intermediate = N::x;
     N::intermediate = N::intermediate;
 "#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
         assert_eq!(optimized, expectation);
     }
 
@@ -660,7 +660,7 @@ namespace N(65536);
     col fixed t(i) { std::array::len::<expr>(N::y) };
     N::x[0] = N::t;
 "#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
         assert_eq!(optimized, expectation);
     }
 
@@ -689,7 +689,7 @@ namespace N(65536);
     [N::x + 1] in [N::cnt];
     [N::x] in [N::cnt + 1];
 "#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
         assert_eq!(optimized, expectation);
     }
 
@@ -715,7 +715,7 @@ namespace N(65536);
     let inc: int -> int = |x| x + 1;
     [N::x] in [N::cnt];
 "#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
         assert_eq!(optimized, expectation);
     }
 
@@ -731,7 +731,7 @@ namespace N(65536);
     col inte[5] = [N::x[0], N::x[1], N::x[2], N::x[3], N::x[4]];
     N::x[2] = N::inte[4];
 "#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input));
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap());
         assert_eq!(optimized.intermediate_count(), 5);
         assert_eq!(optimized.to_string(), expectation);
     }
@@ -768,7 +768,7 @@ namespace N(65536);
     col witness x;
     N::x = N::f;
 "#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
         assert_eq!(optimized, expectation);
     }
 }
