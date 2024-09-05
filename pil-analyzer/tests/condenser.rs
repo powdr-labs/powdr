@@ -545,7 +545,7 @@ fn closure_complex() {
             let k: int[] = [-2];
             let v: int = 9; // not captured
             let q = "" != "";
-            let b = (|s| || "" == s)("");
+            let b = (|a, s, t| || "" == s)("a", "", "t");
             set_hint(x, |i| {
                 y(1, i, || if b() && q { 9 + r } else { std::convert::fe(k[0]) })
             });
@@ -571,24 +571,29 @@ namespace N(16);
     let y: fe, int, (-> fe) -> std::prelude::Query = |a, b, c| std::prelude::Query::Hint(a + c());
 "#;
     assert_eq!(analyzed.to_string(), expected);
+
+    let expected_analyzed = analyze_string::<GoldilocksField>(expected);
     // Check that the LocalVar ref IDs are assigned correctly. This cannot be tested by printing
     // since the IDs are ignored. Another way to test would be to execute, but it is difficult
     // to execute code where values are turned into expressions like that.
-    let refs = analyzed
-        .definitions
-        .get("N::x")
-        .as_ref()
-        .unwrap()
-        .1
-        .as_ref()
-        .unwrap()
-        .all_children()
-        .filter_map(|e| match e {
-            Expression::Reference(_, Reference::LocalVar(id, name)) => Some((id, name)),
-            _ => None,
+    // We extract the IDs of the analized and the re-parsed expected PIL.
+    // They should both match.
+    let refs = [analyzed, expected_analyzed]
+        .into_iter()
+        .map(|a| {
+            let def = a.definitions.get("N::x").as_ref().unwrap().1.as_ref();
+            def.unwrap()
+                .all_children()
+                .filter_map(|e| match e {
+                    Expression::Reference(_, Reference::LocalVar(id, name)) => Some((id, name)),
+                    _ => None,
+                })
+                .map(|(id, name)| format!("{name}: {id}"))
+                .format(", ")
+                .to_string()
         })
-        .map(|(id, name)| format!("{name}: {id}"))
-        .format(", ")
+        .format("\n")
         .to_string();
-    assert_eq!(refs, "s: 3, i: 5, b: 4, q: 3, r: 0, k: 1");
+    let expected_ids = "s: 3, i: 4, b: 3, q: 2, r: 0, k: 1";
+    assert_eq!(refs, format!("{expected_ids}\n{expected_ids}"));
 }
