@@ -236,13 +236,17 @@ impl PILAnalyzer {
         for (name, trait_impls) in self.implementations.iter_mut() {
             let (_, def) = self
                 .definitions
-                .get_mut(name)
+                .get(name)
                 .expect("Trait definition not found");
+
+            let Some(FunctionValueDefinition::TraitDeclaration(trait_decl)) = def else {
+                continue;
+            };
             for impl_ in trait_impls {
                 let specialized_types: Vec<_> = impl_
                     .functions
                     .iter()
-                    .map(|named_expr| impl_.specialize_trait_type(def, &named_expr.name))
+                    .map(|named_expr| impl_.specialize_trait_type(&trait_decl, &named_expr.name))
                     .collect();
 
                 for (named_expr, specialized_type) in

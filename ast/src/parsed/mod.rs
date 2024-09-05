@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 
 use powdr_parser_util::SourceRef;
 
-use crate::analyzed::{FunctionValueDefinition, Reference};
+use crate::analyzed::Reference;
 
 use self::{
     asm::{Part, SymbolPath},
@@ -362,15 +362,7 @@ impl<R> TraitImplementation<Expression<R>> {
         self.functions.iter().find(|f| f.name == name)
     }
 
-    pub fn specialize_trait_type(
-        &self,
-        def: &mut Option<FunctionValueDefinition>,
-        expr_name: &str,
-    ) -> Type {
-        let Some(FunctionValueDefinition::TraitDeclaration(trait_decl)) = def else {
-            panic!("Expected trait declaration");
-        };
-
+    pub fn specialize_trait_type(&self, trait_decl: &TraitDeclaration, fn_name: &str) -> Type {
         let Type::Tuple(TupleType { items }) = &self.type_scheme.ty else {
             panic!("Expected tuple type for trait implementation");
         };
@@ -383,7 +375,7 @@ impl<R> TraitImplementation<Expression<R>> {
             .collect();
 
         let trait_fn = trait_decl
-            .function_by_name_mut(expr_name)
+            .function_by_name(fn_name)
             .expect("Function not found in trait declaration");
 
         let mut trait_type = trait_fn.ty.clone();
