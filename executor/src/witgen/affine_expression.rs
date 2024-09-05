@@ -20,9 +20,14 @@ pub enum AffineExpression<K, T> {
     ManyVars(Vec<(K, T)>, T),
 }
 
+/// A variable in an affine expression.
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Copy)]
 pub enum AlgebraicVariable<'a> {
+    /// Reference to a (witness) column
     Column(&'a AlgebraicReference),
+    /// Reference to a public value
+    // TODO: This should be using the ID instead of the name, but we
+    //       currently store the name in AlgebraicExpression::PublicReference.
     Public(&'a str),
 }
 
@@ -31,6 +36,16 @@ impl Display for AlgebraicVariable<'_> {
         match self {
             AlgebraicVariable::Column(r) => write!(f, "{r}"),
             AlgebraicVariable::Public(p) => write!(f, "{p}"),
+        }
+    }
+}
+
+impl AlgebraicVariable<'_> {
+    /// Returns the column reference if the variable is a column, otherwise panics.
+    pub fn column(&self) -> &AlgebraicReference {
+        match self {
+            AlgebraicVariable::Column(r) => r,
+            _ => panic!("Expected a column"),
         }
     }
 }

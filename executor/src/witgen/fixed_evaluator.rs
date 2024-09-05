@@ -38,7 +38,7 @@ impl<'a, T: FieldElement> SymbolicVariables<T> for FixedEvaluator<'a, T> {
                 };
                 Ok(col_data[row].into())
             }
-            _ => todo!(),
+            _ => panic!("A fixed column should not depend on a public!"),
         }
     }
 }

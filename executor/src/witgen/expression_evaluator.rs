@@ -13,8 +13,8 @@ use super::{
 };
 
 pub trait SymbolicVariables<T> {
-    /// Value of a polynomial (fixed or witness).
-    fn value<'a>(&self, poly: AlgebraicVariable<'a>) -> AffineResult<AlgebraicVariable<'a>, T>;
+    /// Value of a polynomial (fixed or witness) or public.
+    fn value<'a>(&self, var: AlgebraicVariable<'a>) -> AffineResult<AlgebraicVariable<'a>, T>;
 
     /// Value of a challenge.
     fn challenge<'a>(&self, _challenge: &'a Challenge) -> AffineResult<AlgebraicVariable<'a>, T> {
@@ -39,9 +39,9 @@ where
             marker: PhantomData,
         }
     }
-    /// Tries to evaluate the expression to an expression affine in the witness polynomials,
-    /// taking current values of polynomials into account.
-    /// @returns an expression affine in the witness polynomials
+    /// Tries to evaluate the expression to an affine expression in the witness polynomials
+    /// or publics, taking their current values into account.
+    /// @returns an expression affine in the witness polynomials or publics.
     pub fn evaluate<'a>(&self, expr: &'a Expression<T>) -> AffineResult<AlgebraicVariable<'a>, T> {
         // @TODO if we iterate on processing the constraints in the same row,
         // we could store the simplified values.

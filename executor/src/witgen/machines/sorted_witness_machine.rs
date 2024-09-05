@@ -143,11 +143,11 @@ fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<PolyI
     let mut coeff = sort_constraint.nonzero_coefficients();
     let first = match coeff.next()? {
         (AlgebraicVariable::Column(r), v) => (r, v),
-        _ => todo!(),
+        _ => return None,
     };
     let second = match coeff.next()? {
         (AlgebraicVariable::Column(r), v) => (r, v),
-        _ => todo!(),
+        _ => return None,
     };
     if coeff.next().is_some() {
         return None;

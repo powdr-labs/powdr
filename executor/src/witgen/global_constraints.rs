@@ -307,18 +307,15 @@ fn is_binary_constraint<T: FieldElement>(expr: &Expression<T>) -> Option<PolyID>
         if let ([(id1, Constraint::Assignment(value1))], [(id2, Constraint::Assignment(value2))]) =
             (&left_root.constraints[..], &right_root.constraints[..])
         {
-            match (id1, id2) {
-                (AlgebraicVariable::Column(id1), AlgebraicVariable::Column(id2)) => {
-                    if id1 != id2 || !id2.is_witness() {
-                        return None;
-                    }
-                    if (value1.is_zero() && value2.is_one())
-                        || (value1.is_one() && value2.is_zero())
-                    {
-                        return Some(id1.poly_id);
-                    }
+            // We expect range constraints only on columns, because the verifier could easily
+            // check range constraints on publics themselves.
+            if let (AlgebraicVariable::Column(id1), AlgebraicVariable::Column(id2)) = (id1, id2) {
+                if id1 != id2 || !id2.is_witness() {
+                    return None;
                 }
-                _ => todo!(),
+                if (value1.is_zero() && value2.is_one()) || (value1.is_one() && value2.is_zero()) {
+                    return Some(id1.poly_id);
+                }
             }
         }
     }
