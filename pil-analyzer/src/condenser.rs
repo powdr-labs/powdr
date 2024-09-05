@@ -719,8 +719,6 @@ fn try_to_function_value_definition<T: FieldElement>(
 
 /// Turns a closure back into a (source) expression by prefixing
 /// potentially captured variables as let statements.
-/// The `outer_var_height` is the number of variable declarations
-/// that have already been prefixed.
 fn try_closure_to_expression<T: FieldElement>(
     closure: &evaluator::Closure<'_, T>,
 ) -> Result<Expression, EvalError> {
@@ -730,33 +728,46 @@ fn try_closure_to_expression<T: FieldElement>(
         ));
     }
 
-    let outer_var_refs = outer_var_refs(closure).collect::<BTreeMap<_, _>>();
+    // A closure essentially consists of a lambda expression (i.e. source code)
+    // and an environment, which is a stack of runtime values. Some of these
+    // values are captured, but not all of them.
+    // If no values are captured, we can just return the lambda expression.
+    // Otherwise, we will convert the captured values to expressions (using
+    // try_value_to_expression) and introduce them as variables using let statements.
 
-    let mut lambda = (*closure.lambda).clone();
+    let captured_var_refs = captured_var_refs(closure).collect::<BTreeMap<_, _>>();
 
-    let old_var_height = closure.environment.len() as u64;
-    compact_var_refs(
-        &mut lambda.body,
-        &outer_var_refs.keys().copied().collect::<Vec<_>>(),
-        old_var_height,
-    );
+    // Now create the let statements for the captured variables.
+    // Since we return a new expression we essentiall start with an empty environment,
+    // and thus the new IDs of the captured variables start with 0.
+    // If we add more let statements further up in the call chain, they might be modified again.
+    let mut statements = vec![];
+    for (&old_id, &name) in &captured_var_refs {
+        let mut expr = try_value_to_expression(closure.environment[old_id as usize].as_ref())?;
+        // The call to try_value_to_expression assumed a fresh environment,
+        // but we already have `new_id` let statements at this point,
+        // so we adjust the local variable references inside `expr` accordingly.
+        shift_local_var_refs(&mut expr, statements.len() as u64);
 
-    let statements = outer_var_refs
-        .into_iter()
-        .enumerate()
-        .map(|(height, (v_id, name))| {
-            let mut expr = try_value_to_expression(closure.environment[v_id as usize].as_ref())?;
-            shift_local_var_refs(&mut expr, height as u64);
-
-            Ok(LetStatementInsideBlock {
+        statements.push(
+            LetStatementInsideBlock {
                 pattern: Pattern::Variable(SourceRef::unknown(), name.clone()),
                 // We do not know the type.
                 ty: None,
                 value: Some(expr),
             }
-            .into())
-        })
-        .collect::<Result<Vec<_>, _>>()?;
+            .into(),
+        )
+    }
+
+    // Now we adjust the variable references inside the lambda expression.
+    let old_var_height = closure.environment.len() as u64;
+    let mut lambda = (*closure.lambda).clone();
+    compact_var_refs(
+        &mut lambda.body,
+        &captured_var_refs.keys().copied().collect::<Vec<_>>(),
+        old_var_height,
+    );
     let e = Expression::LambdaExpression(SourceRef::unknown(), lambda);
 
     Ok(if statements.is_empty() {
@@ -773,7 +784,9 @@ fn try_closure_to_expression<T: FieldElement>(
 /// Returns an iterator over all references to variables declared outside the closure,
 /// i.e. the captured variables.
 /// This does not include references to module-level variables.
-fn outer_var_refs<'a, T>(closure: &'a Closure<'_, T>) -> impl Iterator<Item = (u64, &'a String)> {
+fn captured_var_refs<'a, T>(
+    closure: &'a Closure<'_, T>,
+) -> impl Iterator<Item = (u64, &'a String)> {
     let environment_size = closure.environment.len() as u64;
     closure.lambda.all_children().filter_map(move |e| {
         if let Expression::Reference(_, Reference::LocalVar(id, name)) = e {
@@ -789,19 +802,22 @@ fn outer_var_refs<'a, T>(closure: &'a Closure<'_, T>) -> impl Iterator<Item = (u
 /// references to those match up.
 /// The `referenced_outer_vars` are the sorted IDs of the captured variables inside `e``, and
 /// `environment_size` is the original variable height before the lambda expression.
-fn compact_var_refs(e: &mut Expression, referenced_outer_vars: &[u64], environment_size: u64) {
+fn compact_var_refs(e: &mut Expression, referenced_outer_vars: &[u64], old_environment_size: u64) {
     if let Expression::Reference(_, Reference::LocalVar(id, _)) = e {
-        if *id >= environment_size {
+        if *id >= old_environment_size {
             // This is a parameter of the function or a local variable
             // defined inside the function.
-            *id -= environment_size - referenced_outer_vars.len() as u64
+            // We keep the ID but shift it to match the new environment size.
+            *id = *id - old_environment_size + referenced_outer_vars.len() as u64
         } else {
+            // A captured variable, we set the new ID according to its position in the
+            // new environment.
             *id = referenced_outer_vars.binary_search(id).unwrap() as u64
         }
     }
 
     e.children_mut()
-        .for_each(|e| compact_var_refs(e, referenced_outer_vars, environment_size));
+        .for_each(|e| compact_var_refs(e, referenced_outer_vars, old_environment_size));
 }
 
 /// Increments all local variable reference IDs in `e` by `shift`,
