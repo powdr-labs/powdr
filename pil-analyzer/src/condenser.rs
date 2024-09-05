@@ -801,17 +801,24 @@ fn compact_var_refs(
     environment_size: u64,
     var_height_offset: u64,
 ) {
+    if let Expression::Reference(_, Reference::LocalVar(id, _)) = e {
+        *id = var_height_offset
+            + if *id >= environment_size {
+                // This is a parameter of the function or a local variable
+                // defined inside the function.
+                *id - environment_size + referenced_outer_vars.len() as u64
+            } else {
+                referenced_outer_vars.binary_search(id).unwrap() as u64
+            }
+    }
+
     e.children_mut().for_each(|e| {
-        if let Expression::Reference(_, Reference::LocalVar(id, _)) = e {
-            *id = var_height_offset
-                + if *id >= environment_size {
-                    // This is a parameter of the function or a local variable
-                    // defined inside the function.
-                    *id - environment_size + referenced_outer_vars.len() as u64
-                } else {
-                    referenced_outer_vars.binary_search(id).unwrap() as u64
-                }
-        }
+        compact_var_refs(
+            e,
+            referenced_outer_vars,
+            environment_size,
+            var_height_offset,
+        )
     });
 }
 
