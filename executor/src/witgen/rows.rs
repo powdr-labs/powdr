@@ -456,7 +456,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
 
     pub fn get_value(&self, poly: AlgebraicVariable) -> Option<T> {
         match poly {
-            AlgebraicVariable::Reference(poly) => {
+            AlgebraicVariable::Column(poly) => {
                 let row = self.get_row(poly.next);
                 if self.unknown_strategy == UnknownStrategy::Zero {
                     Some(row.value_or_zero(&poly.poly_id))
@@ -494,7 +494,7 @@ impl<T: FieldElement> WitnessColumnEvaluator<T> for RowPair<'_, '_, T> {
 impl<'a, T: FieldElement> RangeConstraintSet<AlgebraicVariable<'a>, T> for RowPair<'_, '_, T> {
     fn range_constraint(&self, poly: AlgebraicVariable<'a>) -> Option<RangeConstraint<T>> {
         match poly {
-            AlgebraicVariable::Reference(poly) => {
+            AlgebraicVariable::Column(poly) => {
                 self.get_row(poly.next).range_constraint(&poly.poly_id)
             }
             _ => todo!(),

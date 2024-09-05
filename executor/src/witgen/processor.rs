@@ -319,7 +319,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             .filter(|(var, update)| match update {
                 Constraint::Assignment(_) => {
                     let poly = match var {
-                        AlgebraicVariable::Reference(poly) => poly,
+                        AlgebraicVariable::Column(poly) => poly,
                         _ => unimplemented!(),
                     };
                     !self.is_relevant_witness[&poly.poly_id]
@@ -342,7 +342,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         for (poly_id, value) in self.inputs.iter() {
             if !self.data[row_index].value_is_known(poly_id) {
                 input_updates.combine(EvalValue::complete(vec![(
-                    AlgebraicVariable::Reference(&self.fixed_data.witness_cols[poly_id].poly),
+                    AlgebraicVariable::Column(&self.fixed_data.witness_cols[poly_id].poly),
                     Constraint::Assignment(*value),
                 )]));
             }
@@ -350,7 +350,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
 
         for (var, _) in &input_updates.constraints {
             let poly = match var {
-                AlgebraicVariable::Reference(poly) => poly,
+                AlgebraicVariable::Column(poly) => poly,
                 _ => unimplemented!(),
             };
             let poly_id = &poly.poly_id;
@@ -366,7 +366,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         }
         for (var, _) in &input_updates.constraints {
             let poly = match var {
-                AlgebraicVariable::Reference(poly) => poly,
+                AlgebraicVariable::Column(poly) => poly,
                 _ => unimplemented!(),
             };
             self.previously_set_inputs.insert(poly.poly_id, row_index);
@@ -412,7 +412,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         let mut progress = false;
         for (var, c) in &updates.constraints {
             let poly = match var {
-                AlgebraicVariable::Reference(poly) => poly,
+                AlgebraicVariable::Column(poly) => poly,
                 _ => unimplemented!(),
             };
             if self.parts.witnesses.contains(&poly.poly_id) {

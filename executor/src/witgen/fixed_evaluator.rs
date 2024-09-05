@@ -24,7 +24,7 @@ impl<'a, T: FieldElement> SymbolicVariables<T> for FixedEvaluator<'a, T> {
     fn value<'b>(&self, poly: AlgebraicVariable<'b>) -> AffineResult<AlgebraicVariable<'b>, T> {
         // TODO arrays
         match poly {
-            AlgebraicVariable::Reference(poly) => {
+            AlgebraicVariable::Column(poly) => {
                 assert!(
                     poly.is_fixed(),
                     "Can only access fixed columns in the fixed evaluator."

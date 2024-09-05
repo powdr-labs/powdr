@@ -34,7 +34,7 @@ impl<'a, T: FieldElement> RangeConstraintSet<AlgebraicVariable<'a>, T>
 {
     fn range_constraint(&self, id: AlgebraicVariable<'a>) -> Option<RangeConstraint<T>> {
         match id {
-            AlgebraicVariable::Reference(id) => {
+            AlgebraicVariable::Column(id) => {
                 assert!(!id.next);
                 self.range_constraints.get(&id.poly_id).cloned()
             }
@@ -308,7 +308,7 @@ fn is_binary_constraint<T: FieldElement>(expr: &Expression<T>) -> Option<PolyID>
             (&left_root.constraints[..], &right_root.constraints[..])
         {
             match (id1, id2) {
-                (AlgebraicVariable::Reference(id1), AlgebraicVariable::Reference(id2)) => {
+                (AlgebraicVariable::Column(id1), AlgebraicVariable::Column(id2)) => {
                     if id1 != id2 || !id2.is_witness() {
                         return None;
                     }
@@ -352,7 +352,7 @@ fn try_transfer_constraints<T: FieldElement>(
         .constraints
         .into_iter()
         .flat_map(|(poly, cons)| match poly {
-            AlgebraicVariable::Reference(poly) => {
+            AlgebraicVariable::Column(poly) => {
                 if let Constraint::RangeConstraint(cons) = cons {
                     assert!(!poly.next);
                     Some((poly.poly_id, cons))

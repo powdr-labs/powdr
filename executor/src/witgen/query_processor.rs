@@ -74,7 +74,7 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
                 (self.query_callback)(&query_str).map_err(super::EvalError::ProverQueryError)?
             {
                 EvalValue::complete(vec![(
-                    AlgebraicVariable::Reference(poly),
+                    AlgebraicVariable::Column(poly),
                     Constraint::Assignment(value),
                 )])
             } else {
@@ -153,7 +153,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
         Ok(Value::FieldElement(match poly_ref.poly_id.ptype {
             PolynomialType::Committed | PolynomialType::Intermediate => self
                 .rows
-                .get_value(AlgebraicVariable::Reference(poly_ref))
+                .get_value(AlgebraicVariable::Column(poly_ref))
                 .ok_or(EvalError::DataNotAvailable)?,
             PolynomialType::Constant => {
                 let values = self.fixed_data.fixed_cols[&poly_ref.poly_id].values(self.size);

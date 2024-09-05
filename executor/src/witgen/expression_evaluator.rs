@@ -46,7 +46,7 @@ where
         // @TODO if we iterate on processing the constraints in the same row,
         // we could store the simplified values.
         match expr {
-            Expression::Reference(poly) => self.variables.value(AlgebraicVariable::Reference(poly)),
+            Expression::Reference(poly) => self.variables.value(AlgebraicVariable::Column(poly)),
             Expression::Number(n) => Ok((*n).into()),
             Expression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
                 self.evaluate_binary_operation(left, op, right)

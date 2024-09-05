@@ -52,7 +52,7 @@ where
 {
     fn value<'b>(&self, var: AlgebraicVariable<'b>) -> AffineResult<AlgebraicVariable<'b>, T> {
         match var {
-            AlgebraicVariable::Reference(poly) => {
+            AlgebraicVariable::Column(poly) => {
                 // TODO arrays
                 if poly.is_witness() {
                     self.witness_access.value(var)

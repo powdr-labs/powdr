@@ -219,7 +219,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             return self.process_range_check(
                 rows,
                 left.first().unwrap(),
-                AlgebraicVariable::Reference(right.peek().unwrap()),
+                AlgebraicVariable::Column(right.peek().unwrap()),
             );
         }
 
@@ -314,7 +314,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
                 .constraints
                 .into_iter()
                 .filter(|(poly, _)| match poly {
-                    AlgebraicVariable::Reference(poly) => {
+                    AlgebraicVariable::Column(poly) => {
                         poly.poly_id.ptype == PolynomialType::Committed
                     }
                     _ => unimplemented!(),
@@ -376,7 +376,7 @@ impl<'a, T: FieldElement> RangeConstraintSet<AlgebraicVariable<'a>, T>
 {
     fn range_constraint(&self, var: AlgebraicVariable<'a>) -> Option<RangeConstraint<T>> {
         let poly = match var {
-            AlgebraicVariable::Reference(poly) => poly,
+            AlgebraicVariable::Column(poly) => poly,
             _ => unimplemented!(),
         };
         match poly.poly_id.ptype {

@@ -22,14 +22,14 @@ pub enum AffineExpression<K, T> {
 
 #[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Copy)]
 pub enum AlgebraicVariable<'a> {
-    Reference(&'a AlgebraicReference),
+    Column(&'a AlgebraicReference),
     Public(&'a str),
 }
 
 impl Display for AlgebraicVariable<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            AlgebraicVariable::Reference(r) => write!(f, "{r}"),
+            AlgebraicVariable::Column(r) => write!(f, "{r}"),
             AlgebraicVariable::Public(p) => write!(f, "{p}"),
         }
     }

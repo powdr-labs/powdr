@@ -142,11 +142,11 @@ fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<PolyI
     };
     let mut coeff = sort_constraint.nonzero_coefficients();
     let first = match coeff.next()? {
-        (AlgebraicVariable::Reference(r), v) => (r, v),
+        (AlgebraicVariable::Column(r), v) => (r, v),
         _ => todo!(),
     };
     let second = match coeff.next()? {
-        (AlgebraicVariable::Reference(r), v) => (r, v),
+        (AlgebraicVariable::Column(r), v) => (r, v),
         _ => todo!(),
     };
     if coeff.next().is_some() {
@@ -163,8 +163,8 @@ fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<PolyI
         next: true,
         ..key_column_id.clone()
     };
-    let pattern = AffineExpression::from_variable_id(AlgebraicVariable::Reference(&poly_next))
-        - AffineExpression::from_variable_id(AlgebraicVariable::Reference(key_column_id));
+    let pattern = AffineExpression::from_variable_id(AlgebraicVariable::Column(&poly_next))
+        - AffineExpression::from_variable_id(AlgebraicVariable::Column(key_column_id));
     if sort_constraint != pattern {
         return None;
     }
