@@ -4,6 +4,7 @@ use powdr_ast::analyzed::PolynomialType;
 use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
 use powdr_number::{DegreeType, FieldElement};
 
+use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
 use crate::Identity;
 
@@ -20,7 +21,7 @@ use super::{
     Constraints, EvalError, EvalValue, IncompleteCause, MutableState, QueryCallback,
 };
 
-type Left<'a, T> = Vec<AffineExpression<&'a AlgebraicReference, T>>;
+type Left<'a, T> = Vec<AffineExpression<AlgebraicVariable<'a>, T>>;
 
 /// Data needed to handle an outer query.
 #[derive(Clone)]
@@ -271,7 +272,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
     pub fn process_outer_query(
         &mut self,
         row_index: usize,
-    ) -> Result<(bool, Constraints<&'a AlgebraicReference, T>), EvalError<T>> {
+    ) -> Result<(bool, Constraints<AlgebraicVariable<'a>, T>), EvalError<T>> {
         let mut progress = false;
         let right = &self.outer_query.as_ref().unwrap().connecting_identity.right;
         if let Some(selector) = right.selector.as_ref() {
@@ -315,8 +316,14 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         let outer_assignments = updates
             .constraints
             .into_iter()
-            .filter(|(poly, update)| match update {
-                Constraint::Assignment(_) => !self.is_relevant_witness[&poly.poly_id],
+            .filter(|(var, update)| match update {
+                Constraint::Assignment(_) => {
+                    let poly = match var {
+                        AlgebraicVariable::Reference(poly) => poly,
+                        _ => unimplemented!(),
+                    };
+                    !self.is_relevant_witness[&poly.poly_id]
+                }
                 // Range constraints are currently not communicated between callee and caller.
                 Constraint::RangeConstraint(_) => false,
             })
@@ -335,13 +342,17 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         for (poly_id, value) in self.inputs.iter() {
             if !self.data[row_index].value_is_known(poly_id) {
                 input_updates.combine(EvalValue::complete(vec![(
-                    &self.fixed_data.witness_cols[poly_id].poly,
+                    AlgebraicVariable::Reference(&self.fixed_data.witness_cols[poly_id].poly),
                     Constraint::Assignment(*value),
                 )]));
             }
         }
 
-        for (poly, _) in &input_updates.constraints {
+        for (var, _) in &input_updates.constraints {
+            let poly = match var {
+                AlgebraicVariable::Reference(poly) => poly,
+                _ => unimplemented!(),
+            };
             let poly_id = &poly.poly_id;
             if let Some(start_row) = self.previously_set_inputs.remove(poly_id) {
                 log::trace!(
@@ -353,7 +364,11 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                 }
             }
         }
-        for (poly, _) in &input_updates.constraints {
+        for (var, _) in &input_updates.constraints {
+            let poly = match var {
+                AlgebraicVariable::Reference(poly) => poly,
+                _ => unimplemented!(),
+            };
             self.previously_set_inputs.insert(poly.poly_id, row_index);
         }
         self.apply_updates(row_index, &input_updates, || "inputs".to_string())
@@ -366,7 +381,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         expression: &'a Expression<T>,
         value: T,
         name: impl Fn() -> String,
-    ) -> Result<bool, IncompleteCause<&'a AlgebraicReference>> {
+    ) -> Result<bool, IncompleteCause<AlgebraicVariable<'a>>> {
         let row_pair = RowPair::new(
             &self.data[row_index],
             &self.data[row_index + 1],
@@ -385,7 +400,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
     fn apply_updates(
         &mut self,
         row_index: usize,
-        updates: &EvalValue<&'a AlgebraicReference, T>,
+        updates: &EvalValue<AlgebraicVariable<'a>, T>,
         source_name: impl Fn() -> String,
     ) -> bool {
         if updates.constraints.is_empty() {
@@ -395,7 +410,11 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         log::trace!("    Updates from: {}", source_name());
 
         let mut progress = false;
-        for (poly, c) in &updates.constraints {
+        for (var, c) in &updates.constraints {
+            let poly = match var {
+                AlgebraicVariable::Reference(poly) => poly,
+                _ => unimplemented!(),
+            };
             if self.parts.witnesses.contains(&poly.poly_id) {
                 // Build RowUpdater
                 // (a bit complicated, because we need two mutable
@@ -410,7 +429,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                 let left = &mut self.outer_query.as_mut().unwrap().left;
                 log::trace!("      => {} (outer) = {}", poly, v);
                 for l in left.iter_mut() {
-                    l.assign(poly, *v);
+                    l.assign(*var, *v);
                 }
                 progress = true;
             };

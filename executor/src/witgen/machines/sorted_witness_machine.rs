@@ -1,10 +1,9 @@
 use std::collections::{BTreeMap, HashMap};
 
-use itertools::Itertools;
-
 use super::super::affine_expression::AffineExpression;
 use super::{EvalResult, FixedData};
 use super::{Machine, MachineParts};
+use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::rows::RowPair;
 use crate::witgen::{
     expression_evaluator::ExpressionEvaluator, fixed_evaluator::FixedEvaluator,
@@ -12,6 +11,7 @@ use crate::witgen::{
 };
 use crate::witgen::{EvalValue, IncompleteCause, MutableState, QueryCallback};
 use crate::Identity;
+use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, IdentityKind, PolyID,
 };
@@ -141,8 +141,14 @@ fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<PolyI
         Err(_) => return None,
     };
     let mut coeff = sort_constraint.nonzero_coefficients();
-    let first = coeff.next()?;
-    let second = coeff.next()?;
+    let first = match coeff.next()? {
+        (AlgebraicVariable::Reference(r), v) => (r, v),
+        _ => todo!(),
+    };
+    let second = match coeff.next()? {
+        (AlgebraicVariable::Reference(r), v) => (r, v),
+        _ => todo!(),
+    };
     if coeff.next().is_some() {
         return None;
     }
@@ -157,8 +163,8 @@ fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<PolyI
         next: true,
         ..key_column_id.clone()
     };
-    let pattern = AffineExpression::from_variable_id(&poly_next)
-        - AffineExpression::from_variable_id(key_column_id);
+    let pattern = AffineExpression::from_variable_id(AlgebraicVariable::Reference(&poly_next))
+        - AffineExpression::from_variable_id(AlgebraicVariable::Reference(key_column_id));
     if sort_constraint != pattern {
         return None;
     }

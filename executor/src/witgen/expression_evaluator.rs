@@ -2,19 +2,22 @@ use std::marker::PhantomData;
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Challenge,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Challenge,
 };
 
 use powdr_number::FieldElement;
 
-use super::{affine_expression::AffineResult, IncompleteCause};
+use super::{
+    affine_expression::{AffineResult, AlgebraicVariable},
+    IncompleteCause,
+};
 
 pub trait SymbolicVariables<T> {
     /// Value of a polynomial (fixed or witness).
-    fn value<'a>(&self, poly: &'a AlgebraicReference) -> AffineResult<&'a AlgebraicReference, T>;
+    fn value<'a>(&self, poly: AlgebraicVariable<'a>) -> AffineResult<AlgebraicVariable<'a>, T>;
 
     /// Value of a challenge.
-    fn challenge<'a>(&self, _challenge: &'a Challenge) -> AffineResult<&'a AlgebraicReference, T> {
+    fn challenge<'a>(&self, _challenge: &'a Challenge) -> AffineResult<AlgebraicVariable<'a>, T> {
         // Only needed for evaluating identities, so we leave this unimplemented by default.
         unimplemented!()
     }
@@ -39,11 +42,11 @@ where
     /// Tries to evaluate the expression to an expression affine in the witness polynomials,
     /// taking current values of polynomials into account.
     /// @returns an expression affine in the witness polynomials
-    pub fn evaluate<'a>(&self, expr: &'a Expression<T>) -> AffineResult<&'a AlgebraicReference, T> {
+    pub fn evaluate<'a>(&self, expr: &'a Expression<T>) -> AffineResult<AlgebraicVariable<'a>, T> {
         // @TODO if we iterate on processing the constraints in the same row,
         // we could store the simplified values.
         match expr {
-            Expression::Reference(poly) => self.variables.value(poly),
+            Expression::Reference(poly) => self.variables.value(AlgebraicVariable::Reference(poly)),
             Expression::Number(n) => Ok((*n).into()),
             Expression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
                 self.evaluate_binary_operation(left, op, right)
@@ -61,7 +64,7 @@ where
         left: &'a Expression<T>,
         op: &AlgebraicBinaryOperator,
         right: &'a Expression<T>,
-    ) -> AffineResult<&'a AlgebraicReference, T> {
+    ) -> AffineResult<AlgebraicVariable<'a>, T> {
         match op {
             AlgebraicBinaryOperator::Add => {
                 let left_expr = self.evaluate(left)?;
@@ -127,7 +130,7 @@ where
         &self,
         op: &AlgebraicUnaryOperator,
         expr: &'a Expression<T>,
-    ) -> AffineResult<&'a AlgebraicReference, T> {
+    ) -> AffineResult<AlgebraicVariable<'a>, T> {
         self.evaluate(expr).map(|v| match op {
             AlgebraicUnaryOperator::Minus => -v,
         })
