@@ -382,10 +382,8 @@ impl<R> TraitImplementation<Expression<R>> {
             .zip(items.iter().cloned())
             .collect();
 
-        println!("type_var_mapping: {type_var_mapping:?}");
-
         let trait_fn = trait_decl
-            .function_by_name_mut(&expr_name)
+            .function_by_name_mut(expr_name)
             .expect("Function not found in trait declaration");
 
         let mut trait_type = trait_fn.ty.clone();
