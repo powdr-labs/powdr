@@ -484,7 +484,7 @@ fn execute<F: FieldElement>(
 
             log::info!("Running executor before witgen...");
             let start = Instant::now();
-            let (mut reg_trace, cols, _memory_snapshot_update, _register_memory_snapshot) = {
+            let (reg_trace, cols, _memory_snapshot_update, _register_memory_snapshot) = {
                 let (trace, memory_snapshot_update, register_memory_snapshot) =
                     powdr_riscv_executor::execute::<F>(
                         &program.1,
@@ -511,14 +511,6 @@ fn execute<F: FieldElement>(
                 .iter()
                 .flat_map(|(s, _)| s.array_elements().map(|(name, _)| name))
                 .collect();
-
-            // extend reg_trace to the degree of the other columns
-            let degree = cols.first().map(|(_, col)| col.len()).unwrap();
-            reg_trace.iter_mut().for_each(|(_name, col)| {
-                assert!(col.len() <= degree);
-                let elem = col.last().cloned().unwrap();
-                col.resize(degree, elem);
-            });
 
             let full_trace: Vec<_> = reg_trace
                 .into_iter()
@@ -548,7 +540,6 @@ fn execute<F: FieldElement>(
             log::info!("Missing these columns: {:?}", missing_cols);
             // println!("Columns from the executor: {:?}", full_trace);
 
-            let len = full_trace.get(0).map(|(_, c)| c.len()).unwrap_or_default();
             println!("executor columns and lengths:");
             full_trace.iter().for_each(|(name, v)| {
                 println!("\t{name}: {}", v.len());
