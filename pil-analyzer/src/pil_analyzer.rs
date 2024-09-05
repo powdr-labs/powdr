@@ -212,7 +212,19 @@ impl PILAnalyzer {
             value
                 .children()
                 .try_for_each(|e| side_effect_checker::check(&self.definitions, context, e))
-                .unwrap_or_else(|err| panic!("Error checking side-effects of {name}: {err}"))
+                .unwrap_or_else(|err| panic!("Error checking side-effects of {name}: {err}"));
+
+            let Some(impls) = self.implementations.get(name) else {
+                continue;
+            };
+            for impl_ in impls {
+                impl_
+                    .children()
+                    .try_for_each(|e| side_effect_checker::check(&self.definitions, context, e))
+                    .unwrap_or_else(|err| {
+                        panic!("Error checking side-effects for implementation of {name}: {err}")
+                    });
+            }
         }
 
         // for all identities, check that they call pure or constr functions
@@ -246,7 +258,7 @@ impl PILAnalyzer {
                 let specialized_types: Vec<_> = impl_
                     .functions
                     .iter()
-                    .map(|named_expr| impl_.specialize_trait_type(&trait_decl, &named_expr.name))
+                    .map(|named_expr| impl_.specialize_trait_type(trait_decl, &named_expr.name))
                     .collect();
 
                 for (named_expr, specialized_type) in
