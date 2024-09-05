@@ -698,7 +698,7 @@ fn try_to_function_value_definition<T: FieldElement>(
     value: &Value<'_, T>,
     expected_kind: FunctionKind,
 ) -> Result<FunctionValueDefinition, EvalError> {
-    let mut e = try_value_to_expression(value, 0)?;
+    let mut e = try_value_to_expression(value)?;
 
     // Set the lambda kind since this is used to detect hints in some cases.
     // Can probably be removed once we have prover functions.
@@ -723,7 +723,6 @@ fn try_to_function_value_definition<T: FieldElement>(
 /// that have already been prefixed.
 fn try_closure_to_expression<T: FieldElement>(
     closure: &evaluator::Closure<'_, T>,
-    outer_var_height: u64,
 ) -> Result<Expression, EvalError> {
     if !closure.type_args.is_empty() {
         return Err(EvalError::TypeError(
@@ -740,23 +739,20 @@ fn try_closure_to_expression<T: FieldElement>(
         &mut lambda.body,
         &outer_var_refs.keys().copied().collect::<Vec<_>>(),
         old_var_height,
-        outer_var_height,
     );
 
     let statements = outer_var_refs
         .into_iter()
         .enumerate()
         .map(|(height, (v_id, name))| {
-            let value = Some(try_value_to_expression(
-                closure.environment[v_id as usize].as_ref(),
-                height as u64 + outer_var_height,
-            )?);
+            let mut expr = try_value_to_expression(closure.environment[v_id as usize].as_ref())?;
+            shift_local_var_refs(&mut expr, height as u64);
 
             Ok(LetStatementInsideBlock {
                 pattern: Pattern::Variable(SourceRef::unknown(), name.clone()),
                 // We do not know the type.
                 ty: None,
-                value,
+                value: Some(expr),
             }
             .into())
         })
@@ -791,51 +787,42 @@ fn outer_var_refs<'a, T>(closure: &'a Closure<'_, T>) -> impl Iterator<Item = (u
 /// Re-assigns local variable IDs inside `e` (the body of a lambda expression) to be
 /// compact so that variable declarations created from captured variables and
 /// references to those match up.
-/// The `referenced_outer_vars` are the sorted IDs of the captured variables inside e,
-/// `environment_size` is the original variable height before the lambda expression
-/// and `var_height_offset` is the number of variable declarations that have already
-/// been prefixed.
-fn compact_var_refs(
-    e: &mut Expression,
-    referenced_outer_vars: &[u64],
-    environment_size: u64,
-    var_height_offset: u64,
-) {
+/// The `referenced_outer_vars` are the sorted IDs of the captured variables inside `e``, and
+/// `environment_size` is the original variable height before the lambda expression.
+fn compact_var_refs(e: &mut Expression, referenced_outer_vars: &[u64], environment_size: u64) {
     if let Expression::Reference(_, Reference::LocalVar(id, _)) = e {
-        *id = var_height_offset
-            + if *id >= environment_size {
-                // This is a parameter of the function or a local variable
-                // defined inside the function.
-                *id - environment_size + referenced_outer_vars.len() as u64
-            } else {
-                referenced_outer_vars.binary_search(id).unwrap() as u64
-            }
+        if *id >= environment_size {
+            // This is a parameter of the function or a local variable
+            // defined inside the function.
+            *id -= environment_size - referenced_outer_vars.len() as u64
+        } else {
+            *id = referenced_outer_vars.binary_search(id).unwrap() as u64
+        }
     }
 
-    e.children_mut().for_each(|e| {
-        compact_var_refs(
-            e,
-            referenced_outer_vars,
-            environment_size,
-            var_height_offset,
-        )
-    });
+    e.children_mut()
+        .for_each(|e| compact_var_refs(e, referenced_outer_vars, environment_size));
+}
+
+/// Increments all local variable reference IDs in `e` by `shift`,
+/// to counter the effect of adding new variable declarations.
+fn shift_local_var_refs(e: &mut Expression, shift: u64) {
+    if let Expression::Reference(_, Reference::LocalVar(id, _)) = e {
+        *id += shift;
+    }
+
+    e.children_mut()
+        .for_each(|e| shift_local_var_refs(e, shift));
 }
 
 /// Tries to convert an evaluator value to an expression with the same value.
-fn try_value_to_expression<T: FieldElement>(
-    value: &Value<'_, T>,
-    var_height: u64,
-) -> Result<Expression, EvalError> {
+fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expression, EvalError> {
     Ok(match value {
         Value::Integer(v) => {
             if v.is_negative() {
                 UnaryOperation {
                     op: parsed::UnaryOperator::Minus,
-                    expr: Box::new(try_value_to_expression(
-                        &Value::<T>::Integer(-v),
-                        var_height,
-                    )?),
+                    expr: Box::new(try_value_to_expression(&Value::<T>::Integer(-v))?),
                 }
                 .into()
             } else {
@@ -868,17 +855,17 @@ fn try_value_to_expression<T: FieldElement>(
             SourceRef::unknown(),
             items
                 .iter()
-                .map(|i| try_value_to_expression(i, var_height))
+                .map(|i| try_value_to_expression(i))
                 .collect::<Result<_, _>>()?,
         ),
         Value::Array(items) => ArrayLiteral {
             items: items
                 .iter()
-                .map(|i| try_value_to_expression(i, var_height))
+                .map(|i| try_value_to_expression(i))
                 .collect::<Result<_, _>>()?,
         }
         .into(),
-        Value::Closure(c) => try_closure_to_expression(c, var_height)?,
+        Value::Closure(c) => try_closure_to_expression(c)?,
         Value::TypeConstructor(c) => {
             return Err(EvalError::TypeError(format!(
                 "Type constructor as captured value not supported: {c}."
