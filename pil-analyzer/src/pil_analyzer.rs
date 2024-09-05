@@ -185,7 +185,7 @@ impl PILAnalyzer {
     /// Check that query and constr functions are used in the correct contexts.
     pub fn side_effect_check(&self) -> Result<(), Vec<Error>> {
         let mut errors = vec![];
-        for (_, (symbol, value)) in &self.definitions {
+        for (symbol, value) in self.definitions.values() {
             let Some(value) = value else { continue };
             let context = match symbol.kind {
                 // Witness column value is query function
