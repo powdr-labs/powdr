@@ -220,7 +220,9 @@ impl PILAnalyzer {
             for impl_ in impls {
                 impl_
                     .children()
-                    .try_for_each(|e| side_effect_checker::check(&self.definitions, context, e))
+                    .try_for_each(|e| {
+                        side_effect_checker::check(&self.definitions, FunctionKind::Pure, e)
+                    })
                     .unwrap_or_else(|err| {
                         panic!("Error checking side-effects for implementation of {name}: {err}")
                     });
