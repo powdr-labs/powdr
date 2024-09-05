@@ -72,7 +72,7 @@ impl<T: FieldElement> Plonky3Prover<T> {
         let publics = self
             .analyzed
             .get_publics()
-            .into_iter()
+            .into_values()
             .map(|(name, _, row_id)| {
                 let selector = (0..self.analyzed.degree())
                     .map(move |i| T::from(i == row_id as u64))
@@ -112,7 +112,7 @@ impl<T: FieldElement> Plonky3Prover<T> {
         let publics = self
             .analyzed
             .get_publics()
-            .into_iter()
+            .into_values()
             .map(|(name, _, row_id)| {
                 let selector = (0..self.analyzed.degree())
                     .map(move |i| T::from(i == row_id as u64))

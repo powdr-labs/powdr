@@ -30,7 +30,7 @@ pub type Val = p3_goldilocks::Goldilocks;
 /// here for performance reasons.
 struct ConstraintSystem<T> {
     identities: Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>>,
-    publics: Vec<(String, usize, usize)>,
+    publics: BTreeMap<u64, (String, usize, usize)>,
     commitment_count: usize,
     constant_count: usize,
     degrees: HashSet<DegreeType>,
@@ -135,7 +135,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
 
         self.constraint_system
             .publics
-            .iter()
+            .values()
             .map(|(col_name, _, idx)| {
                 let vals = *witness.get(&col_name).unwrap();
                 cast_to_goldilocks(vals[*idx])
@@ -173,7 +173,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         e: &AlgebraicExpression<T>,
         main: &AB::M,
         fixed: &AB::M,
-        publics: &BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>,
+        publics: &BTreeMap<u64, <AB as AirBuilderWithPublicValues>::PublicVar>,
     ) -> AB::Expr {
         let res = match e {
             AlgebraicExpression::Reference(r) => {
@@ -271,16 +271,16 @@ impl<'a, T: FieldElement, AB: AirBuilderWithPublicValues<F = Val> + PairBuilder>
         let public_vals_by_id = self
             .constraint_system
             .publics
-            .iter()
+            .keys()
+            .cloned()
             .zip(pi.to_vec())
-            .map(|((id, _, _), val)| (id, val))
-            .collect::<BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>>();
+            .collect::<BTreeMap<u64, <AB as AirBuilderWithPublicValues>::PublicVar>>();
 
         let fixed_local = fixed.row_slice(0);
         let public_offset = self.constraint_system.constant_count;
 
         self.constraint_system.publics.iter().enumerate().for_each(
-            |(index, (pub_id, col_id, _))| {
+            |(index, (pub_id, (_, col_id, _)))| {
                 let selector = fixed_local[public_offset + index];
                 let witness_col = local[*col_id];
                 let public_value = public_vals_by_id[pub_id];

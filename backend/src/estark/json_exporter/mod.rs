@@ -291,12 +291,12 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
             Expression::Reference(reference) => {
                 self.polynomial_reference_to_json(reference.poly_id, reference.next)
             }
-            Expression::PublicReference(name) => (
+            Expression::PublicReference(public_id) => (
                 0,
                 StarkyExpr {
                     op: "public".to_string(),
                     deg: 0,
-                    id: Some(self.analyzed.public_declarations[name].id as usize),
+                    id: Some(*public_id as usize),
                     ..DEFAULT_EXPR
                 },
             ),

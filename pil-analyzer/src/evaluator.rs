@@ -479,7 +479,10 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a> {
     }
 
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
-        Ok(Value::from(AlgebraicExpression::PublicReference(name.to_string())).into())
+        let (symbol, _) = self.0.get(name).ok_or_else(|| {
+            EvalError::SymbolNotFound(format!("Public reference {name} not found."))
+        })?;
+        Ok(Value::from(AlgebraicExpression::PublicReference(symbol.id)).into())
     }
 }
 

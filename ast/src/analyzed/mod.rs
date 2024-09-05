@@ -322,13 +322,13 @@ impl<T> Analyzed<T> {
             .for_each(|definition| definition.post_visit_expressions_mut(f))
     }
 
-    /// Retrieves (col_name, col_idx, offset) of each public witness in the trace.
-    pub fn get_publics(&self) -> Vec<(String, usize, usize)> {
-        let mut publics = self
-            .public_declarations
+    /// Retrieves a map public_id -> (public_name, col_idx, offset) of publics.
+    pub fn get_publics(&self) -> BTreeMap<u64, (String, usize, usize)> {
+        self.public_declarations
             .values()
             .map(|public_declaration| {
-                let column_name = public_declaration.referenced_poly_name();
+                let public_id = public_declaration.id;
+                let public_name = public_declaration.referenced_poly_name();
                 let column_idx = {
                     let base = self.definitions[&public_declaration.polynomial.name].0.id;
                     match public_declaration.array_index {
@@ -337,13 +337,9 @@ impl<T> Analyzed<T> {
                     }
                 };
                 let row_offset = public_declaration.index as usize;
-                (column_name, column_idx as usize, row_offset)
+                (public_id, (public_name, column_idx as usize, row_offset))
             })
-            .collect::<Vec<_>>();
-
-        // Sort, so that the order is deterministic
-        publics.sort();
-        publics
+            .collect()
     }
 }
 
@@ -943,7 +939,7 @@ impl Hash for AlgebraicReference {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum AlgebraicExpression<T> {
     Reference(AlgebraicReference),
-    PublicReference(String),
+    PublicReference(u64),
     Challenge(Challenge),
     Number(T),
     BinaryOperation(AlgebraicBinaryOperation<T>),
