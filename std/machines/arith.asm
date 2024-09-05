@@ -50,7 +50,9 @@ machine Arith with
     let mul = |x, y| ff::mul(x, y, secp_modulus);
     let div = |x, y| ff::div(x, y, secp_modulus);
 
-    pol commit x1[16], y2[16], x3[16], y3[16];
+    pol commit x1[16], x2[16], x3[16];
+    pol commit y1[16], y2[16], y3[16];
+    pol commit s[16], q0[16], q1[16], q2[16];
 
     // Selects the ith limb of x (little endian)
     // Note that the most significant limb can be up to 32 bits; all others are 16 bits.
@@ -60,22 +62,6 @@ machine Arith with
         0
     };
 
-    let s_for_eq1 = |x1, y1, x2, y2| div(sub(y2, y1), sub(x2, x1));
-    let s_for_eq2 = |x1, y1| div(mul(3, mul(x1, x1)), mul(2, y1));
-
-    // Adding secp_modulus to make sure that that all numbers are positive when % is applied to it.
-    let compute_x3_int = |x1, x2, s| (s * s - x1 - x2 + 2 * secp_modulus) % secp_modulus;
-    let compute_y3_int = |x1, y1, x3, s| (s * ((x1 - x3) + secp_modulus) - y1 + secp_modulus) % secp_modulus;
-
-    // Compute quotients for the various equations.
-    // Note that we add 2**258 to it, to move it from the (-2**258, 2**258) to the (0, 2**259) range, so it can
-    // be represented as an unsigned 272-bit integer.
-    // See the comment for `product_with_p` below.
-    let compute_q0_for_eq1 = |x1, y1, x2, y2, s| (-(s * x2 - s * x1 - y2 + y1) / secp_modulus + (1 << 258));
-    let compute_q0_for_eq2 = |x1, y1, s| (-(2 * s * y1 - 3 * x1 * x1) / secp_modulus + (1 << 258));
-    let compute_q1 = |x1, x2, x3, s| (-(s * s - x1 - x2 - x3) / secp_modulus + (1 << 258));
-    let compute_q2 = |x1, y1, x3, y3, s| (-(s * x1 - s * x3 - y1 - y3) / secp_modulus + (1 << 258));
- 
     let limbs_to_int: expr[] -> int = query |limbs| array::sum(array::map_enumerated(limbs, |i, limb| int(eval(limb)) << (i * 16)));
 
     let x1_int = query || limbs_to_int(x1);
@@ -86,57 +72,21 @@ machine Arith with
     let y3_int = query || limbs_to_int(y3);
     let s_int = query || limbs_to_int(s);
 
-    let eq1_active = query || eval(selEq[1]) == 1;
     let get_operation = query || match eval(operation_id) {
         1 => "affine_256",
         10 => "ec_add",
         12 => "ec_double",
         _ => panic("Unknown operation")
     };
-    let is_ec_operation: -> int = query || match get_operation() {
-        "affine_256" => 0,
-        "ec_add" => 1,
-        "ec_double" => 1,
-    };
 
-    let s_hint = query || match get_operation() {
-        "affine_256" => 0,
-        "ec_add" => s_for_eq1(x1_int(), y1_int(), x2_int(), y2_int()),
-        "ec_double" => s_for_eq2(x1_int(), y1_int()),
-    };
 
-    let q0_hint = query || match get_operation() {
-        "affine_256" => 0,
-        "ec_add" => compute_q0_for_eq1(x1_int(), y1_int(), x2_int(), y2_int(), s_int()),
-        "ec_double" => compute_q0_for_eq2(x1_int(), y1_int(), s_int()),
+    let provide_values = query |column_arr, row, value| {
+        let _ = array::map_enumerated(column_arr, |j, column| std::prover::provide_value(column, row, fe(select_limb(value, j))));
     };
-
-    let q1_hint = query || if is_ec_operation() == 1 {
-        let x1 = x1_int();
-        let x2 = x2_int();
-        let s = s_int();
-        compute_q1(x1, x2, compute_x3_int(x1, x2, s), s)
-    } else {
-        0
-    };
-
-    let q2_hint = query || if is_ec_operation() == 1 {
-        let x1 = x1_int();
-        let x2 = x2_int();
-        let y1 = y1_int();
-        let s = s_int();
-        let x3 = compute_x3_int(x1, x2, s);
-        let y3 = compute_y3_int(x1, y1, x3, s);
-        compute_q2(x1, y1, x3, y3, s)
-    } else {
-        0
-    };
-
-    col witness y1[16];
-    col witness x2[16];
     query |i| {
-        match is_ec_operation() {
-            0 => {
+        let op = get_operation();
+        match op {
+            "affine_256" =>  {
                 match std::prover::try_eval(y1[0]) {
                     Option::Some(_) => {
                         // y1 is an input, in this case we do not need a hint.
@@ -148,98 +98,45 @@ machine Arith with
                         let y3 = y3_int();
                         let x1 = x1_int();
                         let dividend = (y2 << 256) + y3;
-                        let quotient = dividend / x1;
-                        let remainder = dividend % x1;
-                        let _ = array::map_enumerated(y1, |j, y1_limb|
-                            std::prover::provide_value(y1_limb, i, fe(select_limb(quotient, j)))
-                        );
-                        let _ = array::map_enumerated(x2, |j, x2_limb|
-                            std::prover::provide_value(x2_limb, i, fe(select_limb(remainder, j)))
-                        );
+                        provide_values(y1, i, dividend / x1);
+                        provide_values(x2, i, dividend % x1);
                     }
                 }
+                // hint for s is `0`, do we need to set it?    
             },
-            _ => ()
-        }
+            _ => {
+                let y1 = y1_int();
+                let y2 = if op == "ec_add" { y2_int() } else { 0 };
+                let x1 = x1_int();
+                let x2 = x2_int();
+                let s_val = if op == "ec_add" {
+                    div(sub(y2, y1), sub(x2, x1))
+                } else {
+                    div(mul(3, mul(x1, x1)), mul(2, y1))
+                };
+                provide_values(s, i, s_val);
+                // Compute quotients.
+                // Note that we add 2**258 to it, to move it from the (-2**258, 2**258) to the (0, 2**259) range, so it can
+                // be represented as an unsigned 272-bit integer.
+                // See the comment for `product_with_p` below.
+                let q0_val = if op == "ec_add" {
+                    -(s_val * x2 - s_val * x1 - y2 + y1) / secp_modulus + (1 << 258)
+                } else {
+                    -(2 * s_val * y1 - 3 * x1 * x1) / secp_modulus + (1 << 258)
+                };
+                provide_values(q0, i, q0_val);
+
+                // Adding secp_modulus to make sure that that all numbers are positive when % is applied to it.
+                let x3_val = (s_val * s_val - x1 - x2 + 2 * secp_modulus) % secp_modulus;
+                provide_values(x3, i, x3_val);
+                let y3_val = (s_val * ((x1 - x3_val) + secp_modulus) - y1 + secp_modulus) % secp_modulus;
+                provide_values(y3, i, y3_val);
+
+                provide_values(q1, i, -(s_val * s_val - x1 - x2 - x3_val) / secp_modulus + (1 << 258));
+                provide_values(q2, i, -(s_val * x1 - s_val * x3_val - y1 - y3_val) / secp_modulus + (1 << 258));
+            },
+        };
     };
-
-    // TODO also modify the ones below and combine everything into a single prover function.
-
-    col witness s_0(i) query Query::Hint(fe(select_limb(s_hint(), 0)));
-    col witness s_1(i) query Query::Hint(fe(select_limb(s_hint(), 1)));
-    col witness s_2(i) query Query::Hint(fe(select_limb(s_hint(), 2)));
-    col witness s_3(i) query Query::Hint(fe(select_limb(s_hint(), 3)));
-    col witness s_4(i) query Query::Hint(fe(select_limb(s_hint(), 4)));
-    col witness s_5(i) query Query::Hint(fe(select_limb(s_hint(), 5)));
-    col witness s_6(i) query Query::Hint(fe(select_limb(s_hint(), 6)));
-    col witness s_7(i) query Query::Hint(fe(select_limb(s_hint(), 7)));
-    col witness s_8(i) query Query::Hint(fe(select_limb(s_hint(), 8)));
-    col witness s_9(i) query Query::Hint(fe(select_limb(s_hint(), 9)));
-    col witness s_10(i) query Query::Hint(fe(select_limb(s_hint(), 10)));
-    col witness s_11(i) query Query::Hint(fe(select_limb(s_hint(), 11)));
-    col witness s_12(i) query Query::Hint(fe(select_limb(s_hint(), 12)));
-    col witness s_13(i) query Query::Hint(fe(select_limb(s_hint(), 13)));
-    col witness s_14(i) query Query::Hint(fe(select_limb(s_hint(), 14)));
-    col witness s_15(i) query Query::Hint(fe(select_limb(s_hint(), 15)));
-
-    let s: expr[] = [s_0, s_1, s_2, s_3, s_4, s_5, s_6, s_7, s_8, s_9, s_10, s_11, s_12, s_13, s_14, s_15];
-
-    col witness q0_0(i) query Query::Hint(fe(select_limb(q0_hint(), 0)));
-    col witness q0_1(i) query Query::Hint(fe(select_limb(q0_hint(), 1)));
-    col witness q0_2(i) query Query::Hint(fe(select_limb(q0_hint(), 2)));
-    col witness q0_3(i) query Query::Hint(fe(select_limb(q0_hint(), 3)));
-    col witness q0_4(i) query Query::Hint(fe(select_limb(q0_hint(), 4)));
-    col witness q0_5(i) query Query::Hint(fe(select_limb(q0_hint(), 5)));
-    col witness q0_6(i) query Query::Hint(fe(select_limb(q0_hint(), 6)));
-    col witness q0_7(i) query Query::Hint(fe(select_limb(q0_hint(), 7)));
-    col witness q0_8(i) query Query::Hint(fe(select_limb(q0_hint(), 8)));
-    col witness q0_9(i) query Query::Hint(fe(select_limb(q0_hint(), 9)));
-    col witness q0_10(i) query Query::Hint(fe(select_limb(q0_hint(), 10)));
-    col witness q0_11(i) query Query::Hint(fe(select_limb(q0_hint(), 11)));
-    col witness q0_12(i) query Query::Hint(fe(select_limb(q0_hint(), 12)));
-    col witness q0_13(i) query Query::Hint(fe(select_limb(q0_hint(), 13)));
-    col witness q0_14(i) query Query::Hint(fe(select_limb(q0_hint(), 14)));
-    col witness q0_15(i) query Query::Hint(fe(select_limb(q0_hint(), 15)));
-
-    let q0: expr[] = [q0_0, q0_1, q0_2, q0_3, q0_4, q0_5, q0_6, q0_7, q0_8, q0_9, q0_10, q0_11, q0_12, q0_13, q0_14, q0_15];
-
-    col witness q1_0(i) query Query::Hint(fe(select_limb(q1_hint(), 0)));
-    col witness q1_1(i) query Query::Hint(fe(select_limb(q1_hint(), 1)));
-    col witness q1_2(i) query Query::Hint(fe(select_limb(q1_hint(), 2)));
-    col witness q1_3(i) query Query::Hint(fe(select_limb(q1_hint(), 3)));
-    col witness q1_4(i) query Query::Hint(fe(select_limb(q1_hint(), 4)));
-    col witness q1_5(i) query Query::Hint(fe(select_limb(q1_hint(), 5)));
-    col witness q1_6(i) query Query::Hint(fe(select_limb(q1_hint(), 6)));
-    col witness q1_7(i) query Query::Hint(fe(select_limb(q1_hint(), 7)));
-    col witness q1_8(i) query Query::Hint(fe(select_limb(q1_hint(), 8)));
-    col witness q1_9(i) query Query::Hint(fe(select_limb(q1_hint(), 9)));
-    col witness q1_10(i) query Query::Hint(fe(select_limb(q1_hint(), 10)));
-    col witness q1_11(i) query Query::Hint(fe(select_limb(q1_hint(), 11)));
-    col witness q1_12(i) query Query::Hint(fe(select_limb(q1_hint(), 12)));
-    col witness q1_13(i) query Query::Hint(fe(select_limb(q1_hint(), 13)));
-    col witness q1_14(i) query Query::Hint(fe(select_limb(q1_hint(), 14)));
-    col witness q1_15(i) query Query::Hint(fe(select_limb(q1_hint(), 15)));
-
-    let q1: expr[] = [q1_0, q1_1, q1_2, q1_3, q1_4, q1_5, q1_6, q1_7, q1_8, q1_9, q1_10, q1_11, q1_12, q1_13, q1_14, q1_15];
-
-    col witness q2_0(i) query Query::Hint(fe(select_limb(q2_hint(), 0)));
-    col witness q2_1(i) query Query::Hint(fe(select_limb(q2_hint(), 1)));
-    col witness q2_2(i) query Query::Hint(fe(select_limb(q2_hint(), 2)));
-    col witness q2_3(i) query Query::Hint(fe(select_limb(q2_hint(), 3)));
-    col witness q2_4(i) query Query::Hint(fe(select_limb(q2_hint(), 4)));
-    col witness q2_5(i) query Query::Hint(fe(select_limb(q2_hint(), 5)));
-    col witness q2_6(i) query Query::Hint(fe(select_limb(q2_hint(), 6)));
-    col witness q2_7(i) query Query::Hint(fe(select_limb(q2_hint(), 7)));
-    col witness q2_8(i) query Query::Hint(fe(select_limb(q2_hint(), 8)));
-    col witness q2_9(i) query Query::Hint(fe(select_limb(q2_hint(), 9)));
-    col witness q2_10(i) query Query::Hint(fe(select_limb(q2_hint(), 10)));
-    col witness q2_11(i) query Query::Hint(fe(select_limb(q2_hint(), 11)));
-    col witness q2_12(i) query Query::Hint(fe(select_limb(q2_hint(), 12)));
-    col witness q2_13(i) query Query::Hint(fe(select_limb(q2_hint(), 13)));
-    col witness q2_14(i) query Query::Hint(fe(select_limb(q2_hint(), 14)));
-    col witness q2_15(i) query Query::Hint(fe(select_limb(q2_hint(), 15)));
-
-    let q2: expr[] = [q2_0, q2_1, q2_2, q2_3, q2_4, q2_5, q2_6, q2_7, q2_8, q2_9, q2_10, q2_11, q2_12, q2_13, q2_14, q2_15];
 
     let combine: expr[] -> expr[] = |x| array::new(array::len(x) / 2, |i| x[2 * i + 1] * 2**16 + x[2 * i]);
     // Intermediate polynomials, arrays of 8 columns, 32 bit per column.
