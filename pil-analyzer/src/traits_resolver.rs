@@ -1,8 +1,8 @@
 use powdr_ast::{
-    analyzed::{Expression, PolynomialReference},
+    analyzed::{Expression, FunctionValueDefinition, PolynomialReference},
     parsed::{
         types::{TupleType, Type},
-        TraitImplementation,
+        NamedExpression, TraitFunction, TraitImplementation,
     },
 };
 use std::{collections::HashMap, sync::Arc};
@@ -82,4 +82,33 @@ impl<'a> TraitsResolver<'a> {
 
         None
     }
+}
+
+pub fn specialize_trait_type<T>(
+    def: &mut Option<FunctionValueDefinition>,
+    trait_type: &Type,
+    named_expr: &mut NamedExpression<Arc<T>>,
+) -> Type {
+    let Some(FunctionValueDefinition::TraitDeclaration(trait_decl)) = def else {
+        panic!("Expected trait declaration");
+    };
+
+    let Type::Tuple(TupleType { items }) = trait_type else {
+        panic!("Expected tuple type for trait implementation");
+    };
+
+    let type_var_mapping: HashMap<String, Type> = trait_decl
+        .type_vars
+        .iter()
+        .cloned()
+        .zip(items.iter().cloned())
+        .collect();
+
+    let trait_fn: &mut TraitFunction = trait_decl
+        .function_by_name_mut(&named_expr.name)
+        .expect("Function not found in trait declaration");
+
+    trait_fn.ty.substitute_type_vars(&type_var_mapping);
+
+    trait_fn.ty.clone()
 }

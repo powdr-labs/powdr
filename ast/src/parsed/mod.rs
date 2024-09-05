@@ -391,6 +391,10 @@ impl TraitDeclaration<u64> {
     pub fn function_by_name(&self, name: &str) -> Option<&TraitFunction> {
         self.functions.iter().find(|f| f.name == name)
     }
+
+    pub fn function_by_name_mut(&mut self, name: &str) -> Option<&mut TraitFunction> {
+        self.functions.iter_mut().find(|f| f.name == name)
+    }
 }
 
 impl<R> Children<Expression<R>> for TraitDeclaration<Expression<R>> {

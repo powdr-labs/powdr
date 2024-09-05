@@ -10,11 +10,11 @@ use itertools::Itertools;
 use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, ModuleStatement, SymbolPath,
 };
-use powdr_ast::parsed::types::{ArrayType, FunctionType, TupleType, Type};
+use powdr_ast::parsed::types::{ArrayType, Type};
 use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_ast::parsed::{
-    self, FunctionKind, LambdaExpression, NamedExpression, PILFile, PilStatement,
-    SelectedExpressions, SymbolCategory, TraitImplementation,
+    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions,
+    SymbolCategory, TraitImplementation,
 };
 use powdr_number::{FieldElement, GoldilocksField};
 
@@ -25,7 +25,7 @@ use powdr_ast::analyzed::{
 };
 use powdr_parser::{parse, parse_module, parse_type};
 
-use crate::traits_resolver::TraitsResolver;
+use crate::traits_resolver::{specialize_trait_type, TraitsResolver};
 use crate::type_builtins::constr_function_statement_type;
 use crate::type_inference::infer_types;
 use crate::{side_effect_checker, AnalysisDriver};
@@ -228,7 +228,7 @@ impl PILAnalyzer {
     pub fn type_check(&mut self) {
         let query_type: Type = parse_type("int -> std::prelude::Query").unwrap().into();
         let mut expressions = vec![];
-        // Collect all definitions with their types and expressions.
+        // Collect all definitions and traits implementations with their types and expressions.
         // We filter out enum type declarations (the constructor functions have been added
         // by the statement processor already).
         // For Arrays, we also collect the inner expressions and expect them to be field elements.
@@ -236,14 +236,16 @@ impl PILAnalyzer {
         for (name, trait_impls) in self.implementations.iter_mut() {
             let (_, def) = self
                 .definitions
-                .get(name)
+                .get_mut(name)
                 .expect("Trait definition not found");
             for impl_ in trait_impls {
                 for named_expr in &mut impl_.functions {
                     let specialized_type =
-                        Self::specialize_trait_type(def, &impl_.type_scheme.ty, named_expr);
-                    expressions
-                        .push((Arc::make_mut(&mut named_expr.body), specialized_type.into()));
+                        specialize_trait_type(def, &impl_.type_scheme.ty, named_expr);
+                    expressions.push((
+                        Arc::get_mut(&mut named_expr.body).unwrap(),
+                        specialized_type.into(),
+                    ));
                 }
             }
         }
@@ -338,61 +340,6 @@ impl PILAnalyzer {
                 panic!()
             };
             *ts = Some(ty.into());
-        }
-    }
-
-    fn specialize_trait_type<T>(
-        def: &Option<FunctionValueDefinition>,
-        trait_type: &Type,
-        named_expr: &mut NamedExpression<Arc<T>>,
-    ) -> Type {
-        let Some(FunctionValueDefinition::TraitDeclaration(trait_decl)) = def else {
-            panic!("Expected trait declaration");
-        };
-
-        let Type::Tuple(TupleType { items }) = trait_type else {
-            panic!("Expected tuple type for trait implementation");
-        };
-
-        let type_var_mapping: HashMap<String, Type> = trait_decl
-            .type_vars
-            .iter()
-            .cloned()
-            .zip(items.iter().cloned())
-            .collect();
-
-        let trait_fn = trait_decl
-            .function_by_name(&named_expr.name)
-            .expect("Function not found in trait declaration");
-
-        Self::replace_type_vars(&trait_fn.ty, &type_var_mapping)
-    }
-
-    fn replace_type_vars(ty: &Type, type_var_mapping: &HashMap<String, Type>) -> Type {
-        match ty {
-            Type::TypeVar(var) => type_var_mapping
-                .get(var)
-                .cloned()
-                .unwrap_or_else(|| panic!("TypeVar '{}' not found in mapping", var)),
-            Type::Function(FunctionType { params, value }) => {
-                let new_params = params
-                    .iter()
-                    .map(|p| Self::replace_type_vars(p, type_var_mapping))
-                    .collect();
-                let new_value = Box::new(Self::replace_type_vars(value, type_var_mapping));
-                Type::Function(FunctionType {
-                    params: new_params,
-                    value: new_value,
-                })
-            }
-            Type::Tuple(TupleType { items }) => {
-                let new_items = items
-                    .iter()
-                    .map(|item| Self::replace_type_vars(item, type_var_mapping))
-                    .collect();
-                Type::Tuple(TupleType { items: new_items })
-            }
-            _ => ty.clone(),
         }
     }
 
