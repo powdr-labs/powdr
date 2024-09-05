@@ -25,7 +25,7 @@ use powdr_ast::analyzed::{
 };
 use powdr_parser::{parse, parse_module, parse_type};
 
-use crate::traits_resolver::{specialize_trait_type, TraitsResolver};
+use crate::traits_resolver::TraitsResolver;
 use crate::type_builtins::constr_function_statement_type;
 use crate::type_inference::infer_types;
 use crate::{side_effect_checker, AnalysisDriver};
@@ -239,9 +239,15 @@ impl PILAnalyzer {
                 .get_mut(name)
                 .expect("Trait definition not found");
             for impl_ in trait_impls {
-                for named_expr in &mut impl_.functions {
-                    let specialized_type =
-                        specialize_trait_type(def, &impl_.type_scheme.ty, named_expr);
+                let specialized_types: Vec<_> = impl_
+                    .functions
+                    .iter()
+                    .map(|named_expr| impl_.specialize_trait_type(def, &named_expr.name))
+                    .collect();
+
+                for (named_expr, specialized_type) in
+                    impl_.functions.iter_mut().zip(specialized_types)
+                {
                     expressions.push((
                         Arc::get_mut(&mut named_expr.body).unwrap(),
                         specialized_type.into(),

@@ -6,7 +6,7 @@ pub mod types;
 pub mod visitor;
 
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeSet, HashMap},
     iter::{empty, once},
     ops,
     str::FromStr,
@@ -21,13 +21,15 @@ use serde::{Deserialize, Serialize};
 
 use powdr_parser_util::SourceRef;
 
-use crate::analyzed::Reference;
+use crate::analyzed::{FunctionValueDefinition, Reference};
 
 use self::{
     asm::{Part, SymbolPath},
     types::{FunctionType, Type, TypeBounds, TypeScheme},
     visitor::{Children, ExpressionVisitable},
 };
+
+use crate::parsed::types::TupleType;
 
 #[derive(Display, Clone, Copy, PartialEq, Eq)]
 pub enum SymbolCategory {
@@ -358,6 +360,37 @@ pub struct TraitImplementation<Expr> {
 impl<R> TraitImplementation<Expression<R>> {
     pub fn function_by_name(&self, name: &str) -> Option<&NamedExpression<Arc<Expression<R>>>> {
         self.functions.iter().find(|f| f.name == name)
+    }
+
+    pub fn specialize_trait_type(
+        &self,
+        def: &mut Option<FunctionValueDefinition>,
+        expr_name: &str,
+    ) -> Type {
+        let Some(FunctionValueDefinition::TraitDeclaration(trait_decl)) = def else {
+            panic!("Expected trait declaration");
+        };
+
+        let Type::Tuple(TupleType { items }) = &self.type_scheme.ty else {
+            panic!("Expected tuple type for trait implementation");
+        };
+
+        let type_var_mapping: HashMap<String, Type> = trait_decl
+            .type_vars
+            .iter()
+            .cloned()
+            .zip(items.iter().cloned())
+            .collect();
+
+        println!("type_var_mapping: {type_var_mapping:?}");
+
+        let trait_fn = trait_decl
+            .function_by_name_mut(&expr_name)
+            .expect("Function not found in trait declaration");
+
+        let mut trait_type = trait_fn.ty.clone();
+        trait_type.substitute_type_vars(&type_var_mapping);
+        trait_type
     }
 }
 
