@@ -21,7 +21,7 @@ where
 {
     type Config: StarkGenericConfig;
 
-    fn to_p3_field(&self) -> Plonky3Field<Self>;
+    fn into_p3_field(self) -> Plonky3Field<Self>;
 
     fn get_challenger() -> Challenger<Self>;
 

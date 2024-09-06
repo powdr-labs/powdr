@@ -10,11 +10,7 @@ use std::collections::{BTreeMap, HashSet};
 
 use crate::params::{Commitment, FieldElementMap, Plonky3Field, ProverData};
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir, PairBuilder};
-// use p3_baby_bear::BabyBear;
-// use p3_field::{extension::ComplexExtendable, AbstractField, PrimeField};
-// use p3_goldilocks::Goldilocks;
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
-// use p3_mds::MdsPermutation;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Identity, IdentityKind,
@@ -86,7 +82,7 @@ where
                         // witness values
                         witness.clone().map(move |(_, v)| v[i as usize])
                     })
-                    .map(|f| f.to_p3_field())
+                    .map(|f| f.into_p3_field())
                     .collect()
             }
             0 => {
@@ -142,7 +138,7 @@ where
             .iter()
             .map(|(col_name, _, idx)| {
                 let vals = *witness.get(&col_name).unwrap();
-                vals[*idx].to_p3_field()
+                vals[*idx].into_p3_field()
             })
             .collect()
     }
@@ -209,7 +205,7 @@ where
                 .get(id)
                 .expect("Referenced public value does not exist"))
             .into(),
-            AlgebraicExpression::Number(n) => AB::Expr::from(n.to_p3_field()),
+            AlgebraicExpression::Number(n) => AB::Expr::from(n.into_p3_field()),
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
                 let left = self.to_plonky3_expr::<AB>(left, main, fixed, publics);
                 let right = self.to_plonky3_expr::<AB>(right, main, fixed, publics);
