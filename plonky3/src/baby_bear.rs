@@ -77,7 +77,7 @@ lazy_static! {
 impl FieldElementMap for BabyBearField {
     type Config = StarkConfig<MyPcs, FriChallenge, FriChallenger>;
     fn into_p3_field(self) -> Plonky3Field<Self> {
-        self.0
+        self.into_inner()
     }
 
     fn get_challenger() -> Challenger<Self> {

@@ -32,7 +32,7 @@ use p3_field::{AbstractField, Field, PrimeField32};
     Deserialize,
     derive_more::Display,
 )]
-pub struct BabyBearField(pub BabyBear);
+pub struct BabyBearField(BabyBear);
 
 const P: u32 = 0x78000001;
 
@@ -47,6 +47,10 @@ impl BabyBearField {
     #[inline]
     fn to_canonical_u32(self) -> u32 {
         self.0.as_canonical_u32()
+    }
+
+    pub fn into_inner(self) -> BabyBear {
+        self.0
     }
 }
 
