@@ -37,6 +37,7 @@ pub struct ExtractionOutput<'a, T: FieldElement> {
 pub fn split_out_machines<'a, T: FieldElement>(
     fixed: &'a FixedData<'a, T>,
     identities: Vec<&'a Identity<T>>,
+    stage: u8,
 ) -> ExtractionOutput<'a, T> {
     let mut machines: Vec<KnownMachine<T>> = vec![];
 
@@ -93,8 +94,6 @@ pub fn split_out_machines<'a, T: FieldElement>(
             .iter()
             .enumerate()
             .filter(|(_, pf)| {
-                // This only discovers direct references in the lambda expression
-                // and ignores e.g. called functions, but it will work for now.
                 refs_in_parsed_expression(pf)
                     .unique()
                     .filter_map(|n| fixed.column_by_name.get(n).cloned())
@@ -167,12 +166,26 @@ pub fn split_out_machines<'a, T: FieldElement>(
     );
     machines.push(KnownMachine::FixedLookup(fixed_lookup));
 
+    // Use the remaining prover functions as base prover functions,
+    // but remove those that reference higher-stage witness columns.
     let base_prover_functions = fixed
         .analyzed
         .prover_functions
         .iter()
         .enumerate()
         .filter_map(|(i, pf)| (!extracted_prover_functions.contains(&i)).then_some(pf))
+        .filter(|pf| {
+            refs_in_parsed_expression(pf).unique().all(|n| {
+                fixed
+                    .analyzed
+                    .definitions
+                    .get(n)
+                    .map(|(s, _)| s.stage)
+                    .flatten()
+                    .unwrap_or_default()
+                    <= stage as u32
+            })
+        })
         .collect();
 
     ExtractionOutput {
@@ -309,6 +322,8 @@ fn refs_in_expression<T>(expr: &Expression<T>) -> impl Iterator<Item = PolyID> +
     })
 }
 
+// This only discovers direct references in the expression
+// and ignores e.g. called functions, but it will work for now.
 fn refs_in_parsed_expression(expr: &analyzed::Expression) -> impl Iterator<Item = &String> + '_ {
     expr.all_children().filter_map(|e| match e {
         parsed::Expression::Reference(_, Reference::Poly(PolynomialReference { name, .. })) => {
