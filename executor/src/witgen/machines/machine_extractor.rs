@@ -185,7 +185,20 @@ pub fn split_out_machines<'a, T: FieldElement>(
                     <= stage as u32
             })
         })
-        .collect();
+        .collect::<Vec<_>>();
+
+    log::trace!(
+        "\nThe base machine contains the following witnesses:\n{}\n identities:\n{}\n and prover functions:\n{}",
+        remaining_witnesses
+            .iter()
+            .map(|s| fixed.column_name(s))
+            .sorted()
+            .format(", "),
+        base_identities
+            .iter()
+            .format("\n"),
+        base_prover_functions.iter().format("\n")
+    );
 
     ExtractionOutput {
         machines,
