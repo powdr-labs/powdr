@@ -22,7 +22,7 @@ use powdr_ast::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         display::format_type_scheme_around_name,
         types::{ArrayType, Type},
-        visitor::AllChildren,
+        visitor::{AllChildren, ExpressionVisitable},
         ArrayLiteral, BlockExpression, FunctionKind, LambdaExpression, LetStatementInsideBlock,
         Number, Pattern, TypedExpression, UnaryOperation,
     },
@@ -735,40 +735,47 @@ fn try_closure_to_expression<T: FieldElement>(
     // Otherwise, we will convert the captured values to expressions (using
     // try_value_to_expression) and introduce them as variables using let statements.
 
+    // Create a map from old id to (new id, name, value) for all captured variables.
     let captured_var_refs = captured_var_refs(closure).collect::<BTreeMap<_, _>>();
+    let env_map: BTreeMap<_, _> = closure
+        .environment
+        .iter()
+        .enumerate()
+        .filter_map(|(old_id, value)| {
+            captured_var_refs
+                .get(&(old_id as u64))
+                .map(|name| (old_id as u64, (name, value)))
+        })
+        .enumerate()
+        // Since we return a new expression we essentially start with an empty environment,
+        // and thus the new IDs of the captured variables start with 0.
+        // If we add more let statements further up in the call chain, they might be modified again.
+        .map(|(new_id, (old_id, (&name, value)))| (old_id, (new_id as u64, name, value)))
+        .collect();
 
-    // Now create the let statements for the captured variables.
-    // Since we return a new expression we essentially start with an empty environment,
-    // and thus the new IDs of the captured variables start with 0.
-    // If we add more let statements further up in the call chain, they might be modified again.
-    let mut statements = vec![];
-    for (&old_id, &name) in &captured_var_refs {
-        let mut expr = try_value_to_expression(closure.environment[old_id as usize].as_ref())?;
-        // The call to try_value_to_expression assumed a fresh environment,
-        // but we already have `new_id` let statements at this point,
-        // so we adjust the local variable references inside `expr` accordingly.
-        shift_local_var_refs(&mut expr, statements.len() as u64);
+    // Create the let statements for the captured variables.
+    let statements = env_map
+        .values()
+        .map(|(new_id, name, value)| {
+            let mut expr = try_value_to_expression(value.as_ref())?;
+            // The call to try_value_to_expression assumed a fresh environment,
+            // but we already have `new_id` let statements at this point,
+            // so we adjust the local variable references inside `expr` accordingly.
+            shift_local_var_refs(&mut expr, *new_id);
 
-        statements.push(
-            LetStatementInsideBlock {
-                pattern: Pattern::Variable(SourceRef::unknown(), name.clone()),
+            Ok(LetStatementInsideBlock {
+                pattern: Pattern::Variable(SourceRef::unknown(), (*name).clone()),
                 // We do not know the type.
                 ty: None,
                 value: Some(expr),
             }
-            .into(),
-        )
-    }
+            .into())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
 
-    // Now we adjust the variable references inside the lambda expression.
-    let old_var_height = closure.environment.len() as u64;
-    let mut lambda = (*closure.lambda).clone();
-    compact_var_refs(
-        &mut lambda.body,
-        &captured_var_refs.keys().copied().collect::<Vec<_>>(),
-        old_var_height,
-    );
-    let e = Expression::LambdaExpression(SourceRef::unknown(), lambda);
+    // Adjust the variable references inside the lambda expression
+    // to the new environment.
+    let e = convert_closure_body(closure, env_map).into();
 
     Ok(if statements.is_empty() {
         e
@@ -797,28 +804,31 @@ fn captured_var_refs<'a, T>(
     })
 }
 
-/// Re-assigns local variable IDs inside `e` (the body of a lambda expression) to be
-/// compact so that variable declarations created from captured variables and
-/// references to those match up.
-/// The `referenced_outer_vars` are the sorted IDs of the captured variables inside `e`, and
-/// `environment_size` is the original variable height before the lambda expression.
-fn compact_var_refs(e: &mut Expression, referenced_outer_vars: &[u64], old_environment_size: u64) {
-    let new_environment_size = referenced_outer_vars.len() as u64;
-    if let Expression::Reference(_, Reference::LocalVar(id, _)) = e {
-        if *id >= old_environment_size {
-            // This is a parameter of the function or a local variable
-            // defined inside the function.
-            // We keep the ID but shift it to match the new environment size.
-            *id = *id - old_environment_size + new_environment_size;
-        } else {
-            // A captured variable, we set the new ID according to its position in the
-            // new environment.
-            *id = referenced_outer_vars.binary_search(id).unwrap() as u64
-        }
-    }
+/// Convert the IDs of local variable references in the body of the closure to match the new environment
+/// and return the new LambdaExpression.
+fn convert_closure_body<T: FieldElement, V>(
+    closure: &Closure<'_, T>,
+    env_map: BTreeMap<u64, (u64, &String, V)>,
+) -> LambdaExpression<analyzed::Expression> {
+    let mut lambda = closure.lambda.clone();
 
-    e.children_mut()
-        .for_each(|e| compact_var_refs(e, referenced_outer_vars, old_environment_size));
+    let old_environment_size = closure.environment.len() as u64;
+    let new_environment_size = env_map.len() as u64;
+    lambda.pre_visit_expressions_mut(&mut |e| {
+        if let Expression::Reference(_, Reference::LocalVar(id, _)) = e {
+            if *id >= old_environment_size {
+                // This is a parameter of the function or a local variable
+                // defined inside the function, i.e. not a variable referencing
+                // a captured value.
+                // We keep the ID but shift it to match the new environment size.
+                *id = *id - old_environment_size + new_environment_size;
+            } else {
+                // Assign the new ID from the environment map.
+                *id = env_map[id].0;
+            }
+        }
+    });
+    lambda
 }
 
 /// Increments all local variable reference IDs in `e` by `shift`,
