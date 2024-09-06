@@ -1,3 +1,8 @@
+use itertools::Itertools;
+use powdr_ast::{
+    analyzed::{Expression, Reference},
+    parsed::visitor::AllChildren,
+};
 use powdr_number::GoldilocksField;
 use powdr_pil_analyzer::analyze_string;
 use test_log::test;
@@ -244,7 +249,6 @@ fn new_fixed_column() {
 }
 
 #[test]
-#[should_panic = "Error creating fixed column N::fi: Lambda expression must not reference outer variables: |i| (i + j) * 2"]
 fn new_fixed_column_as_closure() {
     let input = r#"namespace N(16);
         let f = constr |j| {
@@ -255,7 +259,21 @@ fn new_fixed_column_as_closure() {
         let x;
         x = ev;
     "#;
-    analyze_string::<GoldilocksField>(input);
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let expected = r#"namespace N(16);
+    let f: int -> expr = constr |j| {
+        let fi: col = |i| (i + j) * 2;
+        fi
+    };
+    let ev: expr = N::f(2);
+    col witness x;
+    let fi = {
+        let j = 2;
+        |i| (i + j) * 2
+    };
+    N::x = N::fi;
+"#;
+    assert_eq!(formatted, expected);
 }
 
 #[test]
@@ -483,4 +501,99 @@ fn intermediate_arr_wrong_length() {
     };
 "#;
     analyze_string::<GoldilocksField>(input);
+}
+
+#[test]
+fn closure() {
+    let input = r#"
+    namespace std::prover;
+        let eval = 8;
+    namespace N(16);
+        col witness x;
+        let y = |a, b, c| Query::Hint(a + c());
+        {
+            let r = 9;
+            set_hint(x, |i| y(1, i, || 9 + r));
+        };
+"#;
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    let expected = r#"namespace std::prover;
+    let eval = 8;
+namespace N(16);
+    col witness x;
+    std::prelude::set_hint(N::x, {
+        let r = 9;
+        |i| N::y(1, i, || 9 + r)
+    });
+    let y: fe, int, (-> fe) -> std::prelude::Query = |a, b, c| std::prelude::Query::Hint(a + c());
+"#;
+    assert_eq!(analyzed.to_string(), expected);
+}
+
+#[test]
+fn closure_complex() {
+    let input = r#"
+    namespace std::prover;
+        let eval = 8;
+    namespace std::convert;
+        let fe = 9;
+    namespace N(16);
+        col witness x;
+        let y = |a, b, c| Query::Hint(a + c());
+        {
+            let r = 9;
+            let k: int[] = [-2];
+            let v: int = 9; // not captured
+            let q = "" != "";
+            let b = (|a, s, t| || "" == s)("a", "", "t");
+            set_hint(x, |i| {
+                y(1, i, || if b() && q { 9 + r } else { std::convert::fe(k[0]) })
+            });
+        };
+"#;
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    let expected = r#"namespace std::prover;
+    let eval = 8;
+namespace std::convert;
+    let fe = 9;
+namespace N(16);
+    col witness x;
+    std::prelude::set_hint(N::x, {
+        let r = 9;
+        let k = [-2];
+        let q = std::prelude::false;
+        let b = {
+            let s = "";
+            || "" == s
+        };
+        |i| { N::y(1, i, || if b() && q { 9 + r } else { std::convert::fe::<int>(k[0]) }) }
+    });
+    let y: fe, int, (-> fe) -> std::prelude::Query = |a, b, c| std::prelude::Query::Hint(a + c());
+"#;
+    assert_eq!(analyzed.to_string(), expected);
+
+    let expected_analyzed = analyze_string::<GoldilocksField>(expected);
+    // Check that the LocalVar ref IDs are assigned correctly. This cannot be tested by printing
+    // since the IDs are ignored. Another way to test would be to execute, but it is difficult
+    // to execute code where values are turned into expressions like that.
+    // We extract the IDs of the analized and the re-parsed expected PIL.
+    // They should both match.
+    let refs = [analyzed, expected_analyzed]
+        .into_iter()
+        .map(|a| {
+            let def = a.definitions.get("N::x").as_ref().unwrap().1.as_ref();
+            def.unwrap()
+                .all_children()
+                .filter_map(|e| match e {
+                    Expression::Reference(_, Reference::LocalVar(id, name)) => Some((id, name)),
+                    _ => None,
+                })
+                .map(|(id, name)| format!("{name}: {id}"))
+                .format(", ")
+                .to_string()
+        })
+        .format("\n")
+        .to_string();
+    let expected_ids = "s: 3, i: 4, b: 3, q: 2, r: 0, k: 1";
+    assert_eq!(refs, format!("{expected_ids}\n{expected_ids}"));
 }
