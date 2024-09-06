@@ -39,7 +39,11 @@ fn simple_sum_asm() {
     let f = "asm/simple_sum.asm";
     let i = [16, 4, 1, 2, 8, 5];
     regular_test(f, &i);
-    test_plonky3_with_backend_variant(f, slice_to_vec(&i), BackendVariant::Composite);
+    test_plonky3_with_backend_variant::<GoldilocksField>(
+        f,
+        slice_to_vec(&i),
+        BackendVariant::Composite,
+    );
 }
 
 #[test]
