@@ -74,19 +74,23 @@ impl<'a, T: FieldElement> NextStageTraceCallback<Config> for PowdrCircuit<'a, T>
             .collect();
 
         // to call the witgen callback, we need to pass the witness for all stages so far
-        let binding = &self.witness_so_far.lock().unwrap();
-        let current_witness = binding.borrow();
-        let next_trace = self.witgen_callback.as_ref().unwrap().next_stage_witness(
-            &current_witness,
-            challenge_map,
-            trace_stage as u8,
-        );
+        let next_trace = {
+            let binding = &self.witness_so_far.lock().unwrap();
+            let current_witness = binding.borrow();
+            self.witgen_callback.as_ref().unwrap().next_stage_witness(
+                &current_witness,
+                challenge_map,
+                trace_stage as u8,
+            )
+        };
+
         // generate the next trace in the format p3 expects
         let res = generate_matrix(
             next_trace
                 .iter()
                 .map(|(name, values)| (name, values.as_ref())),
         );
+
         // append the witness to the full witness
         self.witness_so_far
             .lock()
@@ -225,7 +229,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                             .definitions_in_source_order(PolynomialType::Committed)
                             .iter()
                             .find_map(|(s, _)| {
-                                let symbol_stage = s.stage.unwrap();
+                                let symbol_stage = s.stage.unwrap_or_default();
                                 s.array_elements()
                                     .any(|(_, id)| id == poly_id)
                                     .then_some(symbol_stage)
@@ -236,7 +240,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                             .analyzed
                             .definitions_in_source_order(PolynomialType::Committed)
                             .iter()
-                            .filter(|&(s, _)| (s.stage.unwrap() == stage))
+                            .filter(|&(s, _)| (s.stage.unwrap_or_default() == stage))
                             .flat_map(|(s, _)| s.array_elements())
                             .position(|(_, pid)| pid == poly_id)
                             .unwrap();
@@ -323,7 +327,7 @@ impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
             .definitions_in_source_order(PolynomialType::Committed)
             .iter()
             .filter_map(|(s, _)| {
-                let symbol_stage = s.stage.unwrap();
+                let symbol_stage = s.stage.unwrap_or_default();
                 (stage == symbol_stage).then(|| s.array_elements().count())
             })
             .sum()
