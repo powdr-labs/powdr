@@ -800,7 +800,7 @@ fn captured_var_refs<'a, T>(
 /// Re-assigns local variable IDs inside `e` (the body of a lambda expression) to be
 /// compact so that variable declarations created from captured variables and
 /// references to those match up.
-/// The `referenced_outer_vars` are the sorted IDs of the captured variables inside `e``, and
+/// The `referenced_outer_vars` are the sorted IDs of the captured variables inside `e`, and
 /// `environment_size` is the original variable height before the lambda expression.
 fn compact_var_refs(e: &mut Expression, referenced_outer_vars: &[u64], old_environment_size: u64) {
     if let Expression::Reference(_, Reference::LocalVar(id, _)) = e {
