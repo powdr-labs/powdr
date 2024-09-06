@@ -45,19 +45,18 @@ machine Main with degree: 8 {
     col witness stage(1) z1_next;
     col witness stage(1) z2_next;
     query |i| {
-        // TODO can we move this into the `permutation` function?
         let hint_send = compute_next_z_send_permutation(is_first, 1, z, alpha, beta, permutation_constraint);
         std::prover::provide_value(z1_next, i, hint_send[0]);
         std::prover::provide_value(z2_next, i, hint_send[1]);
     };
-     
+
     z1' = z1_next;
     z2' = z2_next;
 
     col witness stage(1) u1_next;
     col witness stage(1) u2_next;
     query |i| {
-        let hint_receive = compute_next_z_receive_permutation(is_first, 1, z, alpha, beta, permutation_constraint);
+        let hint_receive = compute_next_z_receive_permutation(is_first, 1, u, alpha, beta, permutation_constraint);
         std::prover::provide_value(u1_next, i, hint_receive[0]);
         std::prover::provide_value(u2_next, i, hint_receive[1]);
     };
