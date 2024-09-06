@@ -1143,7 +1143,7 @@ impl<T> AlgebraicExpression<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize, Deserialize, JsonSchema)]
 pub struct Challenge {
     /// Challenge ID
     pub id: u64,
