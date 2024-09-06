@@ -180,8 +180,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
                     .analyzed
                     .definitions
                     .get(n)
-                    .map(|(s, _)| s.stage)
-                    .flatten()
+                    .and_then(|(s, _)| s.stage)
                     .unwrap_or_default()
                     <= stage as u32
             })
