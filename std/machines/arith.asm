@@ -102,10 +102,10 @@ machine Arith with
                         provide_values(x2, i, dividend % x1);
                     }
                 }
-                // hint for s is `0`, do we need to set it?    
             },
             _ => {
                 let y1 = y1_int();
+                // y2 is unused for ec_double
                 let y2 = if op == "ec_add" { y2_int() } else { 0 };
                 let x1 = x1_int();
                 let x2 = x2_int();
