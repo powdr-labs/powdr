@@ -738,7 +738,7 @@ fn try_closure_to_expression<T: FieldElement>(
     let captured_var_refs = captured_var_refs(closure).collect::<BTreeMap<_, _>>();
 
     // Now create the let statements for the captured variables.
-    // Since we return a new expression we essentiall start with an empty environment,
+    // Since we return a new expression we essentially start with an empty environment,
     // and thus the new IDs of the captured variables start with 0.
     // If we add more let statements further up in the call chain, they might be modified again.
     let mut statements = vec![];
