@@ -47,10 +47,14 @@ machine Main with degree: 8 {
     let is_first: col = std::well_known::is_first;
     permutation(is_first, 1, [z1,z2], [u1, u2], alpha, beta, permutation_constraint);
 
-    let hint_send = query |i| Query::Hint(compute_next_z_send_permutation(is_first, 1, z, alpha, beta, permutation_constraint)[i]);
-    col witness stage(1) z1_next(i) query hint_send(0);
-    col witness stage(1) z2_next(i) query hint_send(1);
-
+    col witness stage(1) z1_next;
+    col witness stage(1) z2_next;
+    query |i| {
+        let hint_send = compute_next_z_send_permutation(is_first, 1, z, alpha, beta, permutation_constraint);
+        std::prover::provide_value(z1_next, i, hint_send[0]);
+        std::prover::provide_value(z2_next, i, hint_send[1]);
+    };
+     
     z1' = z1_next;
     z2' = z2_next;
 
