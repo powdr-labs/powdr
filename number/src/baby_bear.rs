@@ -32,7 +32,7 @@ use p3_field::{AbstractField, Field, PrimeField32};
     Deserialize,
     derive_more::Display,
 )]
-pub struct BabyBearField(BabyBear);
+pub struct BabyBearField(pub BabyBear);
 
 const P: u32 = 0x78000001;
 
