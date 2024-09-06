@@ -20,11 +20,20 @@ use self::parsed::{
 
 use super::*;
 
+impl Display for DegreeRange {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match (self.min, self.max) {
+            (min, max) if min == max => write!(f, "{min}"),
+            (min, max) => write!(f, "{min}..{max}"),
+        }
+    }
+}
+
 impl<T: Display> Display for Analyzed<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let (mut current_namespace, mut current_degree) = (AbsoluteSymbolPath::default(), None);
         let mut update_namespace =
-            |name: &str, degree: Option<DegreeType>, f: &mut Formatter<'_>| {
+            |name: &str, degree: Option<DegreeRange>, f: &mut Formatter<'_>| {
                 let mut namespace =
                     AbsoluteSymbolPath::default().join(SymbolPath::from_str(name).unwrap());
                 let name = namespace.pop().unwrap();
@@ -452,22 +461,12 @@ impl Display for AlgebraicReference {
 
 impl Display for PolynomialReference {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}", self.name)?;
         if let Some(type_args) = &self.type_args {
             if !type_args.is_empty() {
-                // We need to add a `::`-component, so the name should not contain a `.`.
-                // NOTE: This special handling can be removed once we remove
-                // the `to_dotted_string` function.
-                let name = if self.name.contains('.') {
-                    // Re-format the name with ``::`-separators.
-                    SymbolPath::from_str(&self.name).unwrap().to_string()
-                } else {
-                    self.name.clone()
-                };
-                write!(f, "{name}::{}", format_type_args(type_args))?;
-                return Ok(());
+                write!(f, "::{}", format_type_args(type_args))?;
             }
         }
-        write!(f, "{}", self.name)?;
 
         Ok(())
     }

@@ -15,7 +15,7 @@ use powdr_ast::{
         visitor::{ExpressionVisitable, VisitOrder},
     },
 };
-use powdr_executor::constant_evaluator::{VariablySizedColumn, MAX_DEGREE_LOG, MIN_DEGREE_LOG};
+use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_number::{DegreeType, FieldElement};
 
 const DUMMY_COLUMN_NAME: &str = "__dummy";
@@ -63,7 +63,7 @@ pub(crate) fn machine_witness_columns<F: FieldElement>(
                 panic!("Machine {machine_name} has witness columns of different sizes")
             }
         });
-    let dummy_column_name = format!("{machine_name}.{DUMMY_COLUMN_NAME}");
+    let dummy_column_name = format!("{machine_name}::{DUMMY_COLUMN_NAME}");
     let dummy_column = vec![F::zero(); size];
     iter::once((dummy_column_name, dummy_column))
         .chain(machine_columns.into_iter().cloned())
@@ -90,19 +90,13 @@ pub(crate) fn machine_fixed_columns<F: FieldElement>(
     );
 
     let sizes = sizes.into_iter().next().unwrap_or_else(|| {
-        // There is no fixed column with a set size. So either the PIL has a degree, or we
-        // assume all possible degrees.
-        let machine_degrees = machine_pil.degrees();
+        let machine_degree_ranges = machine_pil.degree_ranges();
         assert!(
-            machine_degrees.len() <= 1,
-            "All fixed columns of a machine must have the same sizes"
+            machine_degree_ranges.len() <= 1,
+            "All fixed columns of a machine must have the same size range"
         );
-        match machine_degrees.iter().next() {
-            Some(&degree) => iter::once(degree).collect(),
-            None => (MIN_DEGREE_LOG..=*MAX_DEGREE_LOG)
-                .map(|log_size| (1 << log_size) as DegreeType)
-                .collect(),
-        }
+        let range = machine_degree_ranges.iter().next().unwrap();
+        range.iter().collect()
     });
 
     sizes
