@@ -41,6 +41,19 @@ pub fn split_out_machines<'a, T: FieldElement>(
 ) -> ExtractionOutput<'a, T> {
     let mut machines: Vec<KnownMachine<T>> = vec![];
 
+    // Ignore prover functions that reference columns of later stages.
+    let prover_functions = fixed
+        .analyzed
+        .prover_functions
+        .iter()
+        .filter(|pf| {
+            refs_in_parsed_expression(pf).unique().all(|n| {
+                let def = fixed.analyzed.definitions.get(n);
+                def.and_then(|(s, _)| s.stage).unwrap_or_default() <= stage as u32
+            })
+        })
+        .collect::<Vec<&analyzed::Expression>>();
+
     let all_witnesses = fixed.witness_cols.keys().collect::<HashSet<_>>();
     let mut remaining_witnesses = all_witnesses.clone();
     let mut base_identities = identities.clone();
@@ -88,21 +101,18 @@ pub fn split_out_machines<'a, T: FieldElement>(
             .collect::<BTreeMap<_, _>>();
         assert!(connecting_identities.contains_key(&id.id));
 
-        let prover_functions = fixed
-            .analyzed
-            .prover_functions
+        let prover_functions = prover_functions
             .iter()
+            .copied()
             .enumerate()
             .filter(|(_, pf)| {
-                refs_in_parsed_expression(pf)
+                let refs = refs_in_parsed_expression(pf)
                     .unique()
                     .filter_map(|n| fixed.column_by_name.get(n).cloned())
-                    .collect::<HashSet<_>>()
-                    .intersection(&machine_witnesses)
-                    .next()
-                    .is_some()
+                    .collect::<HashSet<_>>();
+                refs.intersection(&machine_witnesses).next().is_some()
             })
-            .collect::<Vec<_>>();
+            .collect::<Vec<(_, &analyzed::Expression)>>();
 
         log::trace!(
             "\nExtracted a machine with the following witnesses:\n{}\n identities:\n{}\n connecting identities:\n{}\n and prover functions:\n{}",
@@ -129,7 +139,6 @@ pub fn split_out_machines<'a, T: FieldElement>(
                 log::warn!("Prover function was assigned to multiple machines:\n{pf}");
             }
         }
-        let prover_functions = prover_functions.iter().map(|(_, pf)| *pf).collect();
 
         let first_witness = machine_witnesses.iter().next().unwrap();
         let first_witness_name = fixed.column_name(first_witness);
@@ -149,7 +158,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             connecting_identities,
             machine_identities,
             machine_witnesses,
-            prover_functions,
+            prover_functions.iter().map(|&(_, pf)| pf).collect(),
         );
 
         machines.push(build_machine(fixed, machine_parts, name_with_type));
@@ -166,25 +175,11 @@ pub fn split_out_machines<'a, T: FieldElement>(
     );
     machines.push(KnownMachine::FixedLookup(fixed_lookup));
 
-    // Use the remaining prover functions as base prover functions,
-    // but remove those that reference higher-stage witness columns.
-    let base_prover_functions = fixed
-        .analyzed
-        .prover_functions
+    // Use the remaining prover functions as base prover functions.
+    let base_prover_functions = prover_functions
         .iter()
         .enumerate()
-        .filter_map(|(i, pf)| (!extracted_prover_functions.contains(&i)).then_some(pf))
-        .filter(|pf| {
-            refs_in_parsed_expression(pf).unique().all(|n| {
-                fixed
-                    .analyzed
-                    .definitions
-                    .get(n)
-                    .and_then(|(s, _)| s.stage)
-                    .unwrap_or_default()
-                    <= stage as u32
-            })
-        })
+        .filter_map(|(i, &pf)| (!extracted_prover_functions.contains(&i)).then_some(pf))
         .collect::<Vec<_>>();
 
     log::trace!(
