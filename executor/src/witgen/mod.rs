@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 use itertools::Itertools;
+use machines::MachineParts;
 use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, Analyzed, DegreeRange, Expression,
     FunctionValueDefinition, IdentityKind, PolyID, PolynomialType, SymbolKind, TypedExpression,
@@ -211,8 +212,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             global_constraints::set_global_constraints(fixed, &identities);
         let ExtractionOutput {
             mut machines,
-            base_identities,
-            base_witnesses,
+            base_parts,
         } = if self.stage == 0 {
             machines::machine_extractor::split_out_machines(&fixed, retained_identities)
         } else {
@@ -227,8 +227,12 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                 .collect::<Vec<_>>();
             ExtractionOutput {
                 machines: Vec::new(),
-                base_identities: polynomial_identities,
-                base_witnesses: fixed.witness_cols.keys().collect::<HashSet<_>>(),
+                base_parts: MachineParts::new(
+                    &fixed,
+                    Default::default(),
+                    polynomial_identities,
+                    fixed.witness_cols.keys().collect::<HashSet<_>>(),
+                ),
             }
         };
         let mut query_callback = self.query_callback;
@@ -237,13 +241,11 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             query_callback: &mut query_callback,
         };
 
-        let generator = (!base_witnesses.is_empty()).then(|| {
+        let generator = (!base_parts.witnesses.is_empty()).then(|| {
             let mut generator = Generator::new(
                 "Main Machine".to_string(),
                 &fixed,
-                &BTreeMap::new(), // No connecting identities
-                base_identities,
-                base_witnesses,
+                base_parts,
                 // We could set the latch of the main VM here, but then we would have to detect it.
                 // Instead, the main VM will be computed in one block, directly continuing into the
                 // infinite loop after the first return.

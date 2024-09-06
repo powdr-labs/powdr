@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use powdr_number::{BigInt, Bn254Field, GoldilocksField};
+use powdr_number::{BabyBearField, BigInt, Bn254Field, GoldilocksField};
 
 use powdr_pil_analyzer::evaluator::Value;
 use powdr_pipeline::{
@@ -341,6 +341,27 @@ fn fp2() {
     evaluate_function(&analyzed, "std::math::fp2::test::sub", vec![]);
     evaluate_function(&analyzed, "std::math::fp2::test::mul", vec![]);
     evaluate_function(&analyzed, "std::math::fp2::test::inverse", vec![]);
+}
+
+#[test]
+fn fp4() {
+    let analyzed = std_analyzed::<GoldilocksField>();
+    evaluate_function(&analyzed, "std::math::fp4::test::add", vec![]);
+    evaluate_function(&analyzed, "std::math::fp4::test::sub", vec![]);
+    evaluate_function(&analyzed, "std::math::fp4::test::mul", vec![]);
+    evaluate_function(&analyzed, "std::math::fp4::test::inverse", vec![]);
+
+    let analyzed = std_analyzed::<Bn254Field>();
+    evaluate_function(&analyzed, "std::math::fp4::test::add", vec![]);
+    evaluate_function(&analyzed, "std::math::fp4::test::sub", vec![]);
+    evaluate_function(&analyzed, "std::math::fp4::test::mul", vec![]);
+    evaluate_function(&analyzed, "std::math::fp4::test::inverse", vec![]);
+
+    let analyzed = std_analyzed::<BabyBearField>();
+    evaluate_function(&analyzed, "std::math::fp4::test::add", vec![]);
+    evaluate_function(&analyzed, "std::math::fp4::test::sub", vec![]);
+    evaluate_function(&analyzed, "std::math::fp4::test::mul", vec![]);
+    evaluate_function(&analyzed, "std::math::fp4::test::inverse", vec![]);
 }
 
 #[test]
