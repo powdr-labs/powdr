@@ -215,13 +215,14 @@ impl<'a, 'b, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, 'b, T> {
             .fixed_data
             .challenges
             .get(&challenge.id)
-            .unwrap_or_else(|| {
-                panic!(
+            .ok_or_else(|| {
+                EvalError::ProverError(format!(
                     "Challenge {} not found! Available challenges: {:?}",
                     challenge.id,
-                    self.fixed_data.challenges.keys()
-                )
-            });
+                    self.fixed_data.challenges.keys(),
+                ))
+            })?;
+
         Ok(Value::FieldElement(challenge).into())
     }
 
