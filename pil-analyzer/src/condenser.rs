@@ -803,12 +803,13 @@ fn captured_var_refs<'a, T>(
 /// The `referenced_outer_vars` are the sorted IDs of the captured variables inside `e`, and
 /// `environment_size` is the original variable height before the lambda expression.
 fn compact_var_refs(e: &mut Expression, referenced_outer_vars: &[u64], old_environment_size: u64) {
+    let new_environment_size = referenced_outer_vars.len() as u64;
     if let Expression::Reference(_, Reference::LocalVar(id, _)) = e {
         if *id >= old_environment_size {
             // This is a parameter of the function or a local variable
             // defined inside the function.
             // We keep the ID but shift it to match the new environment size.
-            *id = *id - old_environment_size + referenced_outer_vars.len() as u64
+            *id = *id - old_environment_size + new_environment_size;
         } else {
             // A captured variable, we set the new ID according to its position in the
             // new environment.
