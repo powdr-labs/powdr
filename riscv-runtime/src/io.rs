@@ -60,7 +60,7 @@ pub fn read<T: DeserializeOwned>(fd: u32) -> T {
     // TODO this extra conversion can be removed if we change everything to be u8
     let data: Vec<u8> = data.into_iter().map(|x| x as u8).collect();
 
-    serde_cbor::from_slice(data.as_slice()).unwrap()
+    serde_cbor::from_slice(&data.as_slice()).unwrap()
 }
 
 /// Serializes and writes a value of type T to the file descriptor fd.

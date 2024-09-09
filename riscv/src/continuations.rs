@@ -4,9 +4,10 @@ use std::{
 };
 
 use powdr_ast::{
-    asm_analysis::{AnalysisASMFile, Machine},
+    asm_analysis::AnalysisASMFile,
     parsed::{asm::parse_absolute_path, Expression, Number, PilStatement},
 };
+use powdr_executor::constant_evaluator::MAX_DEGREE_LOG;
 use powdr_number::FieldElement;
 use powdr_pipeline::Pipeline;
 use powdr_riscv_executor::{get_main_machine, Elem, ExecutionTrace, MemoryState, ProfilerOptions};
@@ -41,7 +42,7 @@ fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace<F>) -> HashMap<Strin
 
     reg_values
         .into_iter()
-        .map(|(n, c)| (format!("main::{n}"), c))
+        .map(|(n, c)| (format!("main.{n}"), c))
         .collect()
 }
 
@@ -66,13 +67,19 @@ fn render_hash<F: FieldElement>(hash: &[Elem<F>]) -> String {
 pub fn rust_continuations<F: FieldElement, PipelineCallback, E>(
     mut pipeline: Pipeline<F>,
     pipeline_callback: PipelineCallback,
-    dry_run_result: DryRunResult<F>,
+    bootloader_inputs: Vec<(Vec<F>, u64)>,
 ) -> Result<(), E>
 where
     PipelineCallback: Fn(Pipeline<F>) -> Result<(), E>,
 {
-    let bootloader_inputs = dry_run_result.bootloader_inputs;
     let num_chunks = bootloader_inputs.len();
+
+    // The size of the main machine is dynamic, so we need to chose a size.
+    // We chose a size 4x smaller than the maximum size, so that we can guarantee
+    // that the register memory does not run out of rows.
+    // TODO: After #1667 ("Support degree ranges") is merged, this can be set in ASM
+    //       and we can just use the maximum size here.
+    let length = 1 << (*MAX_DEGREE_LOG - 2);
 
     log::info!("Computing fixed columns...");
     pipeline.compute_fixed_cols().unwrap();
@@ -106,20 +113,6 @@ where
                 } else {
                     pipeline
                 };
-
-                // get the length of the main machine
-                // quite hacky, is there a better way?
-                let length = pipeline
-                    .optimized_pil()
-                    .unwrap()
-                    .definitions
-                    .iter()
-                    .find_map(|(name, (s, _))| match (name.starts_with("main::"), s) {
-                        (true, s) => s.degree.map(|d| d.max),
-                        _ => None,
-                    })
-                    .unwrap();
-
                 // The `jump_to_shutdown_routine` column indicates when the execution should jump to the shutdown routine.
                 // In that row, the normal PC update is ignored and the PC is set to the address of the shutdown routine.
                 // In other words, it should be a one-hot encoding of `start_of_shutdown_routine`.
@@ -128,11 +121,11 @@ where
                     .collect();
                 let pipeline = pipeline.add_external_witness_values(vec![
                     (
-                        "main_bootloader_inputs::value".to_string(),
+                        "main_bootloader_inputs.value".to_string(),
                         bootloader_inputs,
                     ),
                     (
-                        "main::jump_to_shutdown_routine".to_string(),
+                        "main.jump_to_shutdown_routine".to_string(),
                         jump_to_shutdown_routine,
                     ),
                 ]);
@@ -144,7 +137,10 @@ where
     Ok(())
 }
 
-fn sanity_check(main_machine: &Machine) {
+fn sanity_check(program: &AnalysisASMFile) {
+    let main_machine = program.items[&parse_absolute_path("::Main")]
+        .try_to_machine()
+        .unwrap();
     for expected_instruction in BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES {
         if !main_machine
             .instructions
@@ -201,19 +197,13 @@ pub fn load_initial_memory(program: &AnalysisASMFile) -> MemoryState {
         .collect()
 }
 
-pub struct DryRunResult<F: FieldElement> {
-    pub bootloader_inputs: Vec<(Vec<F>, u64)>,
-    // full execution trace length (i.e., length of main::pc)
-    pub trace_len: usize,
-}
-
 /// Runs the entire execution using the RISC-V executor. For each chunk, it collects:
 /// - The inputs to the bootloader, needed to restore the correct state.
 /// - The number of rows after which the prover should jump to the shutdown routine.
 pub fn rust_continuations_dry_run<F: FieldElement>(
     pipeline: &mut Pipeline<F>,
     profiler_opt: Option<ProfilerOptions>,
-) -> DryRunResult<F> {
+) -> Vec<(Vec<F>, u64)> {
     // All inputs for all chunks.
     let mut bootloader_inputs_and_num_rows = vec![];
 
@@ -221,10 +211,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     let mut register_values = default_register_values();
 
     let program = pipeline.compute_analyzed_asm().unwrap().clone();
-    let main_machine = program.items[&parse_absolute_path("::Main")]
-        .try_to_machine()
-        .unwrap();
-    sanity_check(main_machine);
+    sanity_check(&program);
 
     log::info!("Initializing memory merkle tree...");
 
@@ -258,10 +245,10 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         (transposed_trace::<F>(&trace), trace.mem_ops)
     };
 
-    let full_trace_length = full_trace["main::pc"].len();
+    let full_trace_length = full_trace["main.pc"].len();
     log::info!("Total trace length: {}", full_trace_length);
 
-    let (first_real_execution_row, _) = full_trace["main::pc"]
+    let (first_real_execution_row, _) = full_trace["main.pc"]
         .iter()
         .enumerate()
         .find(|(_, &pc)| pc.bin() as u64 == DEFAULT_PC)
@@ -274,16 +261,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     let mut proven_trace = first_real_execution_row;
     let mut chunk_index = 0;
 
-    let max_degree_expr = main_machine.degree.max.as_ref();
-
-    let length: usize = match max_degree_expr {
-        Some(Expression::Number(_, n)) => n.value.clone().try_into().unwrap(),
-        // if the max degree is not defined, it defaults to `1 << MAX_DEGREE_LOG` which is too large
-        None => unimplemented!("Continuations rely on `Main` defining a max degree"),
-        Some(e) => {
-            unimplemented!("Continuations rely on `Main` not using a complex expression as its max degree, found {e}")
-        }
-    };
+    let length = 1 << (*MAX_DEGREE_LOG - 2);
 
     loop {
         log::info!("\nRunning chunk {} for {} steps...", chunk_index, length);
@@ -424,7 +402,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             })
             .collect::<Vec<_>>();
 
-        register_values.push(*chunk_trace["main::pc"].last().unwrap());
+        register_values.push(*chunk_trace["main.pc"].last().unwrap());
 
         // Replace final register values of the current chunk
         bootloader_inputs[REGISTER_NAMES.len()..2 * REGISTER_NAMES.len()]
@@ -451,16 +429,16 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             )
         );
 
-        let actual_num_rows = chunk_trace["main::pc"].len();
+        let actual_num_rows = chunk_trace["main.pc"].len();
         bootloader_inputs_and_num_rows.push((
             bootloader_inputs.iter().map(|e| e.into_fe()).collect(),
             actual_num_rows as u64,
         ));
 
-        log::info!("Chunk trace length: {}", chunk_trace["main::pc"].len());
+        log::info!("Chunk trace length: {}", chunk_trace["main.pc"].len());
         log::info!("Validating chunk...");
         log::info!("Looking for pc = {}...", bootloader_inputs[PC_INDEX]);
-        let (start, _) = chunk_trace["main::pc"]
+        let (start, _) = chunk_trace["main.pc"]
             .iter()
             .enumerate()
             .find(|(_, &pc)| pc == bootloader_inputs[PC_INDEX])
@@ -472,8 +450,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             length,
             (length - start - shutdown_routine_rows) * 100 / length
         );
-        for i in 0..(chunk_trace["main::pc"].len() - start) {
-            for &reg in ["main::pc", "main::query_arg_1", "main::query_arg_2"].iter() {
+        for i in 0..(chunk_trace["main.pc"].len() - start) {
+            for &reg in ["main.pc", "main.query_arg_1", "main.query_arg_2"].iter() {
                 let chunk_i = i + start;
                 let full_i = i + proven_trace;
                 if chunk_trace[reg][chunk_i] != full_trace[reg][full_i] {
@@ -483,8 +461,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
                     );
                     log::error!(
                         "The PCs are {} and {}.",
-                        chunk_trace["main::pc"][chunk_i],
-                        full_trace["main::pc"][full_i]
+                        chunk_trace["main.pc"][chunk_i],
+                        full_trace["main.pc"][full_i]
                     );
                     log::error!(
                         "The first difference is in register {}: {} != {} ",
@@ -497,11 +475,11 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             }
         }
 
-        if chunk_trace["main::pc"].len() < num_rows {
+        if chunk_trace["main.pc"].len() < num_rows {
             log::info!("Done!");
             break;
         }
-        assert_eq!(chunk_trace["main::pc"].len(), num_rows);
+        assert_eq!(chunk_trace["main.pc"].len(), num_rows);
 
         // Minus one, because the last row will have to be repeated in the next chunk.
         let new_rows = num_rows - start - 1;
@@ -510,8 +488,5 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
 
         chunk_index += 1;
     }
-    DryRunResult {
-        bootloader_inputs: bootloader_inputs_and_num_rows,
-        trace_len: full_trace_length,
-    }
+    bootloader_inputs_and_num_rows
 }

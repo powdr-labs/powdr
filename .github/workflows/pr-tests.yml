@@ -8,11 +8,6 @@ on:
     branches:
       - main
 
-# cancel any previous running workflows for the same branch
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
-
 env:
   CARGO_TERM_COLOR: always
   POWDR_GENERATE_PROOFS: "true"
@@ -20,7 +15,7 @@ env:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v3
@@ -97,7 +92,7 @@ jobs:
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - uses: taiki-e/install-action@nextest
     - name: Run default tests
-      run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/2
+      run: cargo nextest run --archive-file tests.tar.zst --verbose --partition count:"${{ matrix.test }}"/2
       env:
         PILCOM: ${{ github.workspace }}/pilcom/
 
@@ -157,7 +152,7 @@ jobs:
     - name: Unpack EStarkPolygon built dependencies
       run: tar --zstd -xf pil-stark-prover-deps.tar.zst
     - name: Run EStark Polygon test
-      run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only --no-capture -E "test(=vec_median_estark_polygon)"
+      run: cargo nextest run --archive-file tests.tar.zst --verbose --run-ignored=ignored-only --no-capture -E "test(=vec_median_estark_polygon)"
       env:
         PILCOM: ${{ github.workspace }}/pilcom/
 
@@ -205,7 +200,7 @@ jobs:
       # Number threads is set to 2 because the runner does not have enough memory for more.
       run: |
         NIGHTLY_TESTS=$(cat .github/workflows/nightly_tests_list.txt)
-        cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only -E "!($NIGHTLY_TESTS)" --test-threads 2 --partition hash:"${{ matrix.test }}"/8
+        cargo nextest run --archive-file tests.tar.zst --verbose --run-ignored=ignored-only -E "!($NIGHTLY_TESTS)" --test-threads 2 --partition hash:"${{ matrix.test }}"/8
       shell: bash
       env:
         PILCOM: ${{ github.workspace }}/pilcom/

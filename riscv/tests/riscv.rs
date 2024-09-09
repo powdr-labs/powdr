@@ -313,7 +313,6 @@ fn sum_serde() {
 }
 
 #[test]
-#[ignore = "Too slow"]
 fn read_slice() {
     let case = "read_slice";
     let runtime = Runtime::base();
@@ -469,7 +468,6 @@ fn features() {
 }
 
 #[test]
-#[ignore = "Too slow"]
 fn many_chunks_dry() {
     // Compiles and runs the many_chunks example with continuations, just computing
     // and validating the bootloader inputs.
@@ -499,7 +497,6 @@ struct Point {
 }
 
 #[test]
-#[ignore = "Too slow"]
 fn output_syscall() {
     let case = "output";
     let runtime = Runtime::base();

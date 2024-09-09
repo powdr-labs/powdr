@@ -19,6 +19,6 @@ namespace Main(2 * N);
     col fixed CALL = [1, 0]*;
     (1 - CALL) * c = 0;
 
-    CALL $ [a, b, c] in [Add::a, Add::b, Add::c];
+    CALL $ [a, b, c] in [Add.a, Add.b, Add.c];
 
 

@@ -29,14 +29,14 @@ const ROW_NAME: &str = "Row";
 pub fn write_polys_csv_file<T: FieldElement>(
     file: impl Write,
     render_mode: CsvRenderMode,
-    polys: &[(&String, &[T])],
+    polys: &[&(String, Vec<T>)],
 ) {
     let mut writer = Writer::from_writer(file);
 
     // Write headers, adding a "Row" column
     let mut headers = vec![ROW_NAME];
     headers.extend(polys.iter().map(|(name, _)| {
-        assert!(*name != ROW_NAME);
+        assert!(name != ROW_NAME);
         name.as_str()
     }));
     writer.write_record(&headers).unwrap();
@@ -172,10 +172,7 @@ mod tests {
             .into_iter()
             .map(|(name, values)| (name.to_string(), values))
             .collect::<Vec<_>>();
-        let polys_ref = polys
-            .iter()
-            .map(|(name, values)| (name, values.as_slice()))
-            .collect::<Vec<_>>();
+        let polys_ref = polys.iter().collect::<Vec<_>>();
 
         for render_mode in &[
             CsvRenderMode::SignedBase10,

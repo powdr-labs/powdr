@@ -13,7 +13,7 @@ use crate::{
     Identity,
 };
 
-use super::{Machine, MachineParts};
+use super::Machine;
 
 /// A memory machine with a fixed address space, and each address can only have one
 /// value during the lifetime of the program.
@@ -46,14 +46,14 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
     pub fn try_new(
         name: String,
         fixed_data: &'a FixedData<'a, T>,
-        parts: &MachineParts<'a, T>,
+        connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
+        identities: &[&Identity<T>],
     ) -> Option<Self> {
-        if !parts.identities.is_empty() {
+        if !identities.is_empty() {
             return None;
         }
 
-        if !parts
-            .connecting_identities
+        if !connecting_identities
             .values()
             .all(|i| i.kind == IdentityKind::Plookup)
         {
@@ -61,7 +61,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         }
 
         // All connecting identities should have no selector or a selector of 1
-        if parts.connecting_identities.values().any(|i| {
+        if connecting_identities.values().any(|i| {
             i.right
                 .selector
                 .as_ref()
@@ -72,8 +72,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         }
 
         // All RHS expressions should be the same
-        let rhs_exprs = parts
-            .connecting_identities
+        let rhs_exprs = connecting_identities
             .values()
             .map(|i| &i.right.expressions)
             .collect_vec();
@@ -101,7 +100,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             }
         });
 
-        let degree = parts.common_degree_range().max;
+        let degree = fixed_data.common_degree(key_polys.iter().chain(value_polys.iter()));
 
         let mut key_to_index = BTreeMap::new();
         for row in 0..degree {
@@ -115,17 +114,9 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             }
         }
 
-        if !parts.prover_functions.is_empty() {
-            log::warn!(
-                "WriteOnceMemory machine does not support prover functions.\
-                The following prover functions are ignored:\n{}",
-                parts.prover_functions.iter().format("\n")
-            );
-        }
-
         Some(Self {
             degree,
-            connecting_identities: parts.connecting_identities.clone(),
+            connecting_identities: connecting_identities.clone(),
             name,
             fixed_data,
             value_polys,
