@@ -866,7 +866,11 @@ impl<T: FieldElement> VMConverter<T> {
                 | BinaryOperator::Identity
                 | BinaryOperator::NotEqual
                 | BinaryOperator::GreaterEqual
-                | BinaryOperator::Greater => {
+                | BinaryOperator::Greater
+                | BinaryOperator::Is
+                | BinaryOperator::In
+                | BinaryOperator::Select
+                | BinaryOperator::Connect => {
                     panic!("Invalid operation in expression {left} {op} {right}")
                 }
             },
