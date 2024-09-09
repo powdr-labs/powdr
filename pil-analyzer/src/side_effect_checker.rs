@@ -50,6 +50,7 @@ impl<'a> SideEffectChecker<'a> {
                     kind,
                     params: _,
                     body,
+                    outer_var_references: _,
                 },
             ) => {
                 if *kind != FunctionKind::Pure && *kind != self.context {
