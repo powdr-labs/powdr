@@ -5,7 +5,7 @@ mod util;
 use clap::{CommandFactory, Parser, Subcommand};
 use env_logger::fmt::Color;
 use env_logger::{Builder, Target};
-use log::{max_level, LevelFilter};
+use log::LevelFilter;
 use powdr_backend::BackendType;
 use powdr_number::{buffered_write_file, read_polys_csv_file, CsvRenderMode};
 use powdr_number::{BabyBearField, BigUint, Bn254Field, FieldElement, GoldilocksField};
@@ -14,9 +14,6 @@ use std::io;
 use std::path::PathBuf;
 use std::{fs, io::Write, path::Path};
 use strum::{Display, EnumString, EnumVariantNames};
-use tracing_forest::ForestLayer;
-use tracing_subscriber::layer::SubscriberExt;
-use tracing_subscriber::{EnvFilter, Registry};
 
 /// Transforms a pipeline into a pipeline that binds CLI arguments like
 /// the output directory and the CSV export settings to the pipeline.
@@ -389,16 +386,6 @@ fn main() -> Result<(), io::Error> {
             writeln!(buf, "{}", style.value(msg))
         })
         .init();
-
-    if max_level() >= LevelFilter::Debug {
-        // If the log level is debug or higher, also log the profiling information
-        // for creates that have been instrumented with the `tracing` crate (e.g. Plonky3).
-        let env_filter = EnvFilter::builder().parse("info").unwrap();
-        let forest_layer = ForestLayer::default();
-        let subscriber = Registry::default().with(env_filter).with(forest_layer);
-        tracing::subscriber::set_global_default(subscriber)
-            .expect("Unable to set global tracing subscriber");
-    }
 
     if args.markdown_help {
         clap_markdown::print_help_markdown::<Cli>();

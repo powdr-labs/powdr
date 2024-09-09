@@ -14,5 +14,5 @@ namespace Main(N);
 	col fixed b(i) { (i * 17 + 3) & 0xff };
 	col witness c;
 
-	[a, b, c] in [Main::A, Main::B, Main::C];
-	[b, a, c] in [Main::A, Main::B, Main::C];
+	[a, b, c] in [Main.A, Main.B, Main.C];
+	[b, a, c] in [Main.A, Main.B, Main.C];

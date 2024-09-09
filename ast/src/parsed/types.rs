@@ -10,9 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use super::{asm::SymbolPath, visitor::Children, Expression, Number};
 
-#[derive(
-    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize, Deserialize, JsonSchema,
-)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum Type<E = u64> {
     /// The bottom type `!`, which cannot have a value but is
     /// compatible with all other types.
@@ -262,9 +260,7 @@ impl<R: Display> From<Type<Expression<R>>> for Type<u64> {
     }
 }
 
-#[derive(
-    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize, Deserialize, JsonSchema,
-)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ArrayType<E = u64> {
     pub base: Box<Type<E>>,
     pub length: Option<E>,
@@ -299,9 +295,7 @@ impl<R> Children<Expression<R>> for ArrayType<Expression<R>> {
     }
 }
 
-#[derive(
-    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize, Deserialize, JsonSchema,
-)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct TupleType<E = u64> {
     pub items: Vec<Type<E>>,
 }
@@ -323,9 +317,7 @@ impl<R: Display> From<TupleType<Expression<R>>> for TupleType<u64> {
     }
 }
 
-#[derive(
-    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize, Deserialize, JsonSchema,
-)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct FunctionType<E = u64> {
     pub params: Vec<Type<E>>,
     pub value: Box<Type<E>>,

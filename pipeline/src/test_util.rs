@@ -1,8 +1,6 @@
 use powdr_ast::analyzed::Analyzed;
 use powdr_backend::BackendType;
-use powdr_number::{
-    buffered_write_file, BabyBearField, BigInt, Bn254Field, FieldElement, GoldilocksField,
-};
+use powdr_number::{buffered_write_file, BigInt, Bn254Field, FieldElement, GoldilocksField};
 use powdr_pil_analyzer::evaluator::{self, SymbolLookup};
 use std::path::PathBuf;
 use std::{env, fs};
@@ -63,21 +61,6 @@ pub fn make_prepared_pipeline<T: FieldElement>(
 /// Tests witness generation, pilcom, halo2 and estark.
 /// Does NOT test plonky3.
 pub fn regular_test(file_name: &str, inputs: &[i32]) {
-    let inputs_gl = inputs.iter().map(|x| GoldilocksField::from(*x)).collect();
-    let pipeline_gl = make_prepared_pipeline(file_name, inputs_gl, vec![]);
-    test_pilcom(pipeline_gl.clone());
-    gen_estark_proof(pipeline_gl);
-
-    let inputs_bn = inputs.iter().map(|x| Bn254Field::from(*x)).collect();
-    let pipeline_bn = make_prepared_pipeline(file_name, inputs_bn, vec![]);
-    test_halo2(pipeline_bn);
-
-    let inputs_bb = inputs.iter().map(|x| BabyBearField::from(*x)).collect();
-    let mut pipeline_bb = make_prepared_pipeline(file_name, inputs_bb, vec![]);
-    pipeline_bb.compute_witness().unwrap();
-}
-
-pub fn regular_test_without_babybear(file_name: &str, inputs: &[i32]) {
     let inputs_gl = inputs.iter().map(|x| GoldilocksField::from(*x)).collect();
     let pipeline_gl = make_prepared_pipeline(file_name, inputs_gl, vec![]);
     test_pilcom(pipeline_gl.clone());
@@ -290,9 +273,9 @@ pub fn gen_halo2_proof(pipeline: Pipeline<Bn254Field>, backend: BackendVariant) 
 pub fn gen_halo2_proof(_pipeline: Pipeline<Bn254Field>, _backend: BackendVariant) {}
 
 #[cfg(feature = "plonky3")]
-pub fn test_plonky3_with_backend_variant<T: FieldElement>(
+pub fn test_plonky3_with_backend_variant(
     file_name: &str,
-    inputs: Vec<T>,
+    inputs: Vec<GoldilocksField>,
     backend: BackendVariant,
 ) {
     let backend = match backend {
@@ -308,7 +291,7 @@ pub fn test_plonky3_with_backend_variant<T: FieldElement>(
     // Generate a proof
     let proof = pipeline.compute_proof().cloned().unwrap();
 
-    let publics: Vec<T> = pipeline
+    let publics: Vec<GoldilocksField> = pipeline
         .publics()
         .clone()
         .unwrap()
@@ -335,10 +318,10 @@ pub fn test_plonky3_with_backend_variant<T: FieldElement>(
 }
 
 #[cfg(not(feature = "plonky3"))]
-pub fn test_plonky3_with_backend_variant<T: FieldElement>(_: &str, _: Vec<T>, _: BackendVariant) {}
+pub fn test_plonky3_with_backend_variant(_: &str, _: Vec<GoldilocksField>, _: BackendVariant) {}
 
 #[cfg(not(feature = "plonky3"))]
-pub fn gen_plonky3_proof<T: FieldElement>(_: &str, _: Vec<T>) {}
+pub fn gen_plonky3_proof(_: &str, _: Vec<GoldilocksField>) {}
 
 /// Returns the analyzed PIL containing only the std library.
 pub fn std_analyzed<T: FieldElement>() -> Analyzed<T> {

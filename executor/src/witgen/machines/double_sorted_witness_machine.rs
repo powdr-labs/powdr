@@ -3,15 +3,16 @@ use std::iter::once;
 
 use itertools::Itertools;
 
-use super::{Machine, MachineParts};
+use super::Machine;
+use crate::constant_evaluator::{MAX_DEGREE_LOG, MIN_DEGREE_LOG};
 use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{EvalError, EvalResult, FixedData, MutableState, QueryCallback};
 use crate::witgen::{EvalValue, IncompleteCause};
-
+use crate::Identity;
 use powdr_number::{DegreeType, FieldElement};
 
-use powdr_ast::analyzed::{DegreeRange, IdentityKind, PolyID};
+use powdr_ast::analyzed::{IdentityKind, PolyID};
 
 /// If all witnesses of a machine have a name in this list (disregarding the namespace),
 /// we'll consider it to be a double-sorted machine.
@@ -35,7 +36,7 @@ const OPERATION_ID_WRITE: u64 = 1;
 const OPERATION_ID_BOOTLOADER_WRITE: u64 = 2;
 
 fn split_column_name(name: &str) -> (&str, &str) {
-    let mut limbs = name.split("::");
+    let mut limbs = name.split('.');
     let namespace = limbs.next().unwrap();
     let col = limbs.next().unwrap();
     (namespace, col)
@@ -44,7 +45,7 @@ fn split_column_name(name: &str) -> (&str, &str) {
 /// TODO make this generic
 
 pub struct DoubleSortedWitnesses<'a, T: FieldElement> {
-    degree_range: DegreeRange,
+    fixed: &'a FixedData<'a, T>,
     degree: DegreeType,
     //key_col: String,
     /// Position of the witness columns in the data.
@@ -57,7 +58,8 @@ pub struct DoubleSortedWitnesses<'a, T: FieldElement> {
     is_initialized: BTreeMap<T, bool>,
     namespace: String,
     name: String,
-    parts: MachineParts<'a, T>,
+    /// The set of witness columns that are actually part of this machine.
+    witness_cols: HashSet<PolyID>,
     /// If the machine has the `m_diff_upper` and `m_diff_lower` columns, this is the base of the
     /// two digits.
     diff_columns_base: Option<u64>,
@@ -65,6 +67,7 @@ pub struct DoubleSortedWitnesses<'a, T: FieldElement> {
     has_bootloader_write_column: bool,
     /// All selector IDs that are used on the right-hand side connecting identities.
     selector_ids: BTreeMap<u64, PolyID>,
+    connecting_identities: BTreeMap<u64, &'a Identity<T>>,
 }
 
 struct Operation<T> {
@@ -76,23 +79,21 @@ struct Operation<T> {
 
 impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
     fn namespaced(&self, name: &str) -> String {
-        format!("{}::{}", self.namespace, name)
+        format!("{}.{}", self.namespace, name)
     }
 
     pub fn try_new(
         name: String,
-        fixed_data: &'a FixedData<'a, T>,
-        parts: &MachineParts<'a, T>,
+        fixed_data: &'a FixedData<T>,
+        connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
+        witness_cols: &HashSet<PolyID>,
     ) -> Option<Self> {
-        let degree_range = parts.common_degree_range();
-
-        let degree = degree_range.max;
+        let degree = fixed_data.common_degree(witness_cols);
 
         // get the namespaces and column names
-        let (mut namespaces, columns): (HashSet<_>, HashSet<_>) = parts
-            .witnesses
+        let (mut namespaces, columns): (HashSet<_>, HashSet<_>) = witness_cols
             .iter()
-            .map(|r| split_column_name(parts.column_name(r)))
+            .map(|r| split_column_name(fixed_data.column_name(r)))
             .unzip();
 
         if namespaces.len() > 1 {
@@ -100,16 +101,14 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
             return None;
         }
 
-        if !parts
-            .connecting_identities
+        if !connecting_identities
             .values()
             .all(|i| i.kind == IdentityKind::Permutation)
         {
             return None;
         }
 
-        let selector_ids = parts
-            .connecting_identities
+        let selector_ids = connecting_identities
             .values()
             .map(|i| {
                 i.right
@@ -125,7 +124,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
         // TODO check the identities.
         let selector_names = selector_ids
             .values()
-            .map(|s| split_column_name(parts.column_name(s)).1);
+            .map(|s| split_column_name(fixed_data.column_name(s)).1);
         let allowed_witnesses: HashSet<_> = ALLOWED_WITNESSES
             .into_iter()
             .chain(selector_names)
@@ -137,17 +136,17 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
         let has_diff_columns = DIFF_COLUMNS.iter().all(|c| columns.contains(c));
         let has_bootloader_write_column = columns.contains(&BOOTLOADER_WRITE_COLUMN);
 
-        let diff_columns_base = if has_diff_columns {
+        if has_diff_columns {
             // We have the `m_diff_upper` and `m_diff_lower` columns.
             // Now, we check that they both have the same range constraint and use it to determine
             // the base of the two digits.
             let upper_poly_id =
-                fixed_data.try_column_by_name(&format!("{namespace}::{}", DIFF_COLUMNS[0]))?;
+                fixed_data.try_column_by_name(&format!("{namespace}.{}", DIFF_COLUMNS[0]))?;
             let upper_range_constraint = fixed_data.global_range_constraints().witness_constraints
                 [&upper_poly_id]
                 .as_ref()?;
             let lower_poly_id =
-                fixed_data.try_column_by_name(&format!("{namespace}::{}", DIFF_COLUMNS[1]))?;
+                fixed_data.try_column_by_name(&format!("{namespace}.{}", DIFF_COLUMNS[1]))?;
             let lower_range_constraint = fixed_data.global_range_constraints().witness_constraints
                 [&lower_poly_id]
                 .as_ref()?;
@@ -155,35 +154,40 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
             let (min, max) = upper_range_constraint.range();
 
             if upper_range_constraint == lower_range_constraint && min == T::zero() {
-                Some(max.to_degree() + 1)
+                let diff_columns_base = Some(max.to_degree() + 1);
+                Some(Self {
+                    name,
+                    witness_cols: witness_cols.clone(),
+                    namespace,
+                    fixed: fixed_data,
+                    degree,
+                    diff_columns_base,
+                    has_bootloader_write_column,
+                    trace: Default::default(),
+                    data: Default::default(),
+                    is_initialized: Default::default(),
+                    selector_ids,
+                    connecting_identities: connecting_identities.clone(),
+                })
             } else {
-                return None;
+                None
             }
         } else {
-            None
-        };
-
-        if !parts.prover_functions.is_empty() {
-            log::warn!(
-                "DoubleSortedWitness machine does not support prover functions.\
-                The following prover functions are ignored:\n{}",
-                parts.prover_functions.iter().format("\n")
-            );
+            Some(Self {
+                name,
+                witness_cols: witness_cols.clone(),
+                namespace,
+                fixed: fixed_data,
+                degree,
+                diff_columns_base: None,
+                has_bootloader_write_column,
+                trace: Default::default(),
+                data: Default::default(),
+                is_initialized: Default::default(),
+                selector_ids,
+                connecting_identities: connecting_identities.clone(),
+            })
         }
-
-        Some(Self {
-            name,
-            degree_range,
-            namespace,
-            parts: parts.clone(), // TODO is this really unused?
-            degree,
-            diff_columns_base,
-            has_bootloader_write_column,
-            trace: Default::default(),
-            data: Default::default(),
-            is_initialized: Default::default(),
-            selector_ids,
-        })
     }
 }
 
@@ -266,17 +270,20 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
             set_selector(None);
         }
 
-        let current_size = addr.len();
-        let new_size = current_size.next_power_of_two() as DegreeType;
-        let new_size = self.degree_range.fit(new_size);
-        log::info!(
-            "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
-            self.name,
-            self.degree,
-            new_size,
-            current_size
-        );
-        self.degree = new_size;
+        if self.fixed.is_variable_size(&self.witness_cols) {
+            let current_size = addr.len();
+            assert!(current_size <= 1 << *MAX_DEGREE_LOG);
+            let new_size = current_size.next_power_of_two() as DegreeType;
+            let new_size = new_size.max(1 << MIN_DEGREE_LOG);
+            log::info!(
+                "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
+                self.name,
+                self.degree,
+                new_size,
+                current_size
+            );
+            self.degree = new_size;
+        }
 
         while addr.len() < self.degree as usize {
             addr.push(*addr.last().unwrap());
@@ -335,7 +342,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
 
         let selector_columns = selectors
             .into_iter()
-            .map(|(id, v)| (self.parts.column_name(id).to_string(), v))
+            .map(|(id, v)| (self.fixed.column_name(id).to_string(), v))
             .collect::<Vec<_>>();
 
         [
@@ -366,7 +373,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
         // - operation_id == 1: Write
         // - operation_id == 2: Bootloader write
 
-        let args = self.parts.connecting_identities[&identity_id]
+        let args = self.connecting_identities[&identity_id]
             .left
             .expressions
             .iter()

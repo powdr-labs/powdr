@@ -1,9 +1,10 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::iter::{self, once};
 
-use super::{EvalResult, FixedData, MachineParts};
+use super::{EvalResult, FixedData};
 
+use crate::constant_evaluator::MIN_DEGREE_LOG;
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::processor::{OuterQuery, Processor};
@@ -17,8 +18,7 @@ use crate::witgen::{MutableState, QueryCallback};
 use crate::Identity;
 use itertools::Itertools;
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, DegreeRange, IdentityKind, PolyID,
-    PolynomialType,
+    AlgebraicExpression as Expression, AlgebraicReference, IdentityKind, PolyID, PolynomialType,
 };
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_number::{DegreeType, FieldElement};
@@ -91,27 +91,29 @@ impl<'a, T: FieldElement> Display for BlockMachine<'a, T> {
 /// TODO we do not actually "detect" the machine yet, we just check if
 /// the lookup has a binary selector that is 1 every k rows for some k
 pub struct BlockMachine<'a, T: FieldElement> {
-    /// The degree range of all columns in this machine
-    degree_range: DegreeRange,
-    /// The current degree of all columns in this machine
+    /// The unique degree of all columns in this machine
     degree: DegreeType,
     /// Block size, the period of the selector.
     block_size: usize,
     /// The row index (within the block) of the latch row
     latch_row: usize,
-    fixed_data: &'a FixedData<'a, T>,
-    /// The parts of the machine (identities, witness columns, etc.)
-    parts: MachineParts<'a, T>,
+    /// Connecting identities, indexed by their ID.
+    connecting_identities: BTreeMap<u64, &'a Identity<T>>,
     /// The type of constraint used to connect this machine to its caller.
     connection_type: ConnectionType,
+    /// The internal identities
+    identities: Vec<&'a Identity<T>>,
     /// The data of the machine.
     data: FinalizableData<T>,
     /// The index of the first row that has not been finalized yet.
     /// At all times, all rows in the range [block_size..first_in_progress_row) are finalized.
     first_in_progress_row: usize,
+    /// The set of witness columns that are actually part of this machine.
+    witness_cols: HashSet<PolyID>,
     /// Cache that states the order in which to evaluate identities
     /// to make progress most quickly.
     processing_sequence_cache: ProcessingSequenceCache,
+    fixed_data: &'a FixedData<'a, T>,
     name: String,
 }
 
@@ -119,17 +121,16 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     pub fn try_new(
         name: String,
         fixed_data: &'a FixedData<'a, T>,
-        parts: &MachineParts<'a, T>,
+        connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
+        identities: &[&'a Identity<T>],
+        witness_cols: &HashSet<PolyID>,
     ) -> Option<Self> {
-        let degree_range = parts.common_degree_range();
-
-        // start from the max degree
-        let degree = degree_range.max;
+        let degree = fixed_data.common_degree(witness_cols);
 
         let (is_permutation, block_size, latch_row) =
-            detect_connection_type_and_block_size(fixed_data, &parts.connecting_identities)?;
+            detect_connection_type_and_block_size(fixed_data, connecting_identities)?;
 
-        for id in parts.connecting_identities.values() {
+        for id in connecting_identities.values() {
             for r in id.right.expressions.iter() {
                 if let Some(poly) = try_to_simple_poly(r) {
                     if poly.poly_id.ptype == PolynomialType::Constant {
@@ -150,25 +151,26 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // construct the "default" block used to fill up unused rows.
         let start_index = RowIndex::from_i64(-(block_size as i64), degree);
         let data = FinalizableData::with_initial_rows_in_progress(
-            &parts.witnesses,
+            witness_cols,
             (0..block_size).map(|i| Row::fresh(fixed_data, start_index + i)),
         );
         Some(BlockMachine {
             name,
-            degree_range,
             degree,
             block_size,
             latch_row,
-            fixed_data,
-            parts: parts.clone(),
+            connecting_identities: connecting_identities.clone(),
             connection_type: is_permutation,
+            identities: identities.to_vec(),
             data,
             first_in_progress_row: block_size,
+            witness_cols: witness_cols.clone(),
             processing_sequence_cache: ProcessingSequenceCache::new(
                 block_size,
                 latch_row,
-                parts.identities.len(),
+                identities.len(),
             ),
+            fixed_data,
         })
     }
 }
@@ -246,7 +248,7 @@ fn try_to_period<T: FieldElement>(
                 return None;
             }
 
-            let degree = fixed_data.common_degree_range(once(&poly.poly_id)).max;
+            let degree = fixed_data.common_degree(once(&poly.poly_id));
 
             let values = fixed_data.fixed_cols[&poly.poly_id].values(degree);
 
@@ -276,7 +278,7 @@ fn try_to_period<T: FieldElement>(
 
 impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
-        self.parts.connecting_identities.keys().copied().collect()
+        self.connecting_identities.keys().copied().collect()
     }
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
@@ -311,16 +313,18 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             );
         }
 
-        let new_degree = self.data.len().next_power_of_two() as DegreeType;
-        let new_degree = self.degree_range.fit(new_degree);
-        log::info!(
-            "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
-            self.name,
-            self.degree,
-            new_degree,
-            self.data.len()
-        );
-        self.degree = new_degree;
+        if self.fixed_data.is_variable_size(&self.witness_cols) {
+            let new_degree = self.data.len().next_power_of_two() as DegreeType;
+            let new_degree = new_degree.max(1 << MIN_DEGREE_LOG);
+            log::info!(
+                "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
+                self.name,
+                self.degree,
+                new_degree,
+                self.data.len()
+            );
+            self.degree = new_degree;
+        }
 
         if matches!(self.connection_type, ConnectionType::Permutation) {
             // We have to make sure that *all* selectors are 0 in the dummy block,
@@ -328,7 +332,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
 
             // Collect dummy block with rows before and after
             let dummy_block = FinalizableData::with_initial_rows_in_progress(
-                &self.parts.witnesses,
+                &self.witness_cols,
                 iter::once(self.block_size - 1)
                     .chain(0..self.block_size)
                     .chain(iter::once(0))
@@ -342,12 +346,12 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 dummy_block,
                 mutable_state,
                 self.fixed_data,
-                &self.parts,
+                &self.witness_cols,
                 self.degree,
             );
 
             // Set all selectors to 0
-            for id in self.parts.connecting_identities.values() {
+            for id in self.connecting_identities.values() {
                 processor
                     .set_value(
                         self.latch_row + 1,
@@ -359,9 +363,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             }
 
             // Run BlockProcessor (to potentially propagate selector values)
-            let mut processor = BlockProcessor::from_processor(processor, &self.parts.identities);
+            let mut processor = BlockProcessor::from_processor(processor, &self.identities);
             let mut sequence_iterator = ProcessingSequenceIterator::Default(
-                DefaultSequenceIterator::new(self.block_size, self.parts.identities.len(), None),
+                DefaultSequenceIterator::new(self.block_size, self.identities.len(), None),
             );
             processor.solve(&mut sequence_iterator).unwrap();
             let mut dummy_block = processor.finish();
@@ -448,7 +452,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     fn handle_last_row(&self, data: &mut HashMap<PolyID, Vec<T>>) {
         for (poly_id, col) in data.iter_mut() {
             if self
-                .parts
                 .fixed_data
                 .column_name(poly_id)
                 .ends_with("_operation_id_no_change")
@@ -481,8 +484,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let outer_query =
-            OuterQuery::new(caller_rows, self.parts.connecting_identities[&identity_id]);
+        let outer_query = OuterQuery::new(caller_rows, self.connecting_identities[&identity_id]);
 
         log::trace!("Start processing block machine '{}'", self.name());
         log::trace!("Left values of lookup:");
@@ -551,15 +553,16 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // Make the block two rows larger than the block size, it includes the last row of the previous block
         // and the first row of the next block.
         let block = FinalizableData::with_initial_rows_in_progress(
-            &self.parts.witnesses,
+            &self.witness_cols,
             (0..(self.block_size + 2)).map(|i| Row::fresh(self.fixed_data, row_offset + i)),
         );
         let mut processor = BlockProcessor::new(
             row_offset,
             block,
             mutable_state,
+            &self.identities,
             self.fixed_data,
-            &self.parts,
+            &self.witness_cols,
             self.degree,
         )
         .with_outer_query(outer_query);

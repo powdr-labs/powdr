@@ -137,7 +137,7 @@ pub struct Import {
 /// It can contain the special word `super`, which goes up a level.
 /// If it does not start with `::`, it is relative.
 #[derive(
-    Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+    Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
 )]
 pub struct SymbolPath {
     /// The parts between each `::`.
@@ -160,6 +160,13 @@ impl SymbolPath {
     pub fn join<P: Into<Self>>(mut self, other: P) -> Self {
         self.parts.extend(other.into().parts);
         self
+    }
+
+    /// Formats the path and uses `.` as separator if
+    /// there are at most two components.
+    pub fn to_dotted_string(&self) -> String {
+        let separator = if self.parts.len() <= 2 { "." } else { "::" };
+        self.parts.iter().format(separator).to_string()
     }
 
     pub fn try_to_identifier(&self) -> Option<&String> {
@@ -200,10 +207,14 @@ impl SymbolPath {
 impl FromStr for SymbolPath {
     type Err = String;
 
-    /// Parses a symbol path using the "::" notation.
+    /// Parses a symbol path both in the "a.b" and the "a::b" notation.
     fn from_str(s: &str) -> Result<Self, String> {
+        let (dots, double_colons) = (s.matches('.').count(), s.matches("::").count());
+        if dots != 0 && double_colons != 0 {
+            Err(format!("Path mixes \"::\" and \".\" separators: {s}"))?
+        }
         let parts = s
-            .split("::")
+            .split(if double_colons > 0 { "::" } else { "." })
             .map(|s| {
                 if s == "super" {
                     Part::Super
@@ -350,6 +361,13 @@ impl AbsoluteSymbolPath {
         parts.push(part.to_string());
         Self { parts }
     }
+
+    /// Formats the path without leading `::` and uses `.` as separator if
+    /// there are at most two components.
+    pub fn to_dotted_string(&self) -> String {
+        let separator = if self.parts.len() <= 2 { "." } else { "::" };
+        self.parts.join(separator)
+    }
 }
 
 impl Display for AbsoluteSymbolPath {
@@ -358,9 +376,7 @@ impl Display for AbsoluteSymbolPath {
     }
 }
 
-#[derive(
-    Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
-)]
+#[derive(Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
 pub enum Part {
     Super,
     Named(String),
@@ -440,8 +456,6 @@ impl MachineParams {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
 pub struct MachineProperties {
     pub degree: Option<Expression>,
-    pub min_degree: Option<Expression>,
-    pub max_degree: Option<Expression>,
     pub latch: Option<String>,
     pub operation_id: Option<String>,
     pub call_selectors: Option<String>,
@@ -462,16 +476,6 @@ impl MachineProperties {
             match name.as_str() {
                 "degree" => {
                     if props.degree.replace(value).is_some() {
-                        already_defined = true;
-                    }
-                }
-                "min_degree" => {
-                    if props.min_degree.replace(value).is_some() {
-                        already_defined = true;
-                    }
-                }
-                "max_degree" => {
-                    if props.max_degree.replace(value).is_some() {
                         already_defined = true;
                     }
                 }

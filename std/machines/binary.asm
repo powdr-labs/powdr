@@ -15,7 +15,7 @@ machine ByteBinary with
 
     let bit_counts = [256, 256, 3];
     let min_degree = std::array::product(bit_counts);
-    std::check::assert(std::prover::min_degree() >= std::array::product(bit_counts), || "The binary machine needs at least 196608 rows to work.");
+    std::check::assert(std::prover::degree() >= std::array::product(bit_counts), || "The binary machine needs at least 196608 rows to work.");
     // TODO would be nice with destructuring assignment for arrays.
     let inputs: (int -> int)[] = cross_product(bit_counts);
     let a = inputs[0];

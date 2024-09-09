@@ -43,8 +43,6 @@ pub struct ExpectedType {
     pub allow_array: bool,
     /// If true, the empty tuple is also allowed.
     pub allow_empty: bool,
-    /// If "int -> ()" is allowed.
-    pub allow_int_to_empty_fun: bool,
 }
 
 impl From<Type> for ExpectedType {
@@ -53,7 +51,6 @@ impl From<Type> for ExpectedType {
             ty,
             allow_array: false,
             allow_empty: false,
-            allow_int_to_empty_fun: false,
         }
     }
 }
@@ -402,7 +399,11 @@ impl TypeChecker {
             },
             Expression::Reference(
                 source_ref,
-                Reference::Poly(PolynomialReference { name, type_args }),
+                Reference::Poly(PolynomialReference {
+                    name,
+                    poly_id: _,
+                    type_args,
+                }),
             ) => {
                 for ty in type_args.as_mut().unwrap() {
                     if !self.update_local_type(ty, type_var_mapping) {
@@ -484,13 +485,6 @@ impl TypeChecker {
             })
         } else if expected_type.allow_empty && (ty == Type::empty_tuple()) {
             Type::empty_tuple()
-        } else if expected_type.allow_int_to_empty_fun
-            && matches!(ty, Type::Function(FunctionType { .. }))
-        {
-            Type::Function(FunctionType {
-                params: vec![Type::Int],
-                value: Box::new(Type::empty_tuple()),
-            })
         } else {
             expected_type.ty.clone()
         };
@@ -512,7 +506,11 @@ impl TypeChecker {
             Expression::Reference(_, Reference::LocalVar(id, _name)) => self.local_var_type(*id),
             Expression::Reference(
                 source_ref,
-                Reference::Poly(PolynomialReference { name, type_args }),
+                Reference::Poly(PolynomialReference {
+                    name,
+                    poly_id: _,
+                    type_args,
+                }),
             ) => {
                 let (ty, args) = self
                     .unifier
@@ -847,7 +845,7 @@ impl TypeChecker {
                 // is not helpful because the type is obvious from the value.
                 let (ty, _generic_args) = self
                     .unifier
-                    .instantiate_scheme(self.declared_types[&name.to_string()].1.clone());
+                    .instantiate_scheme(self.declared_types[&name.to_dotted_string()].1.clone());
                 let ty = type_for_reference(&ty);
 
                 match data {

@@ -42,5 +42,5 @@ namespace Main(N);
 	col witness c;
 	col fixed NTH(i) { if i % 32 == 0 { 1 } else { 0 } };
 
-	NTH $ [a, b, c] in Or::RESET $ [Or::A, Or::B, Or::C];
+	NTH $ [a, b, c] in Or.RESET $ [Or.A, Or.B, Or.C];
 

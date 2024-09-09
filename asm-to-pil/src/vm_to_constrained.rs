@@ -9,8 +9,8 @@ use powdr_ast::{
     asm_analysis::{
         combine_flags, AssignmentStatement, Batch, CallableSymbol, CallableSymbolDefinitions,
         DebugDirective, FunctionStatement, InstructionDefinitionStatement, InstructionStatement,
-        LabelStatement, LinkDefinition, Machine, MachineDegree, OperationSymbol,
-        RegisterDeclarationStatement, RegisterTy, Rom,
+        LabelStatement, LinkDefinition, Machine, OperationSymbol, RegisterDeclarationStatement,
+        RegisterTy, Rom,
     },
     parsed::{
         self,
@@ -62,12 +62,12 @@ pub const ROM_SUBMACHINE_NAME: &str = "_rom";
 const ROM_ENTRY_POINT: &str = "get_line";
 
 fn rom_machine<'a>(
-    degree: MachineDegree,
+    degree: Expression,
     mut pil: Vec<PilStatement>,
     mut line_lookup: impl Iterator<Item = &'a str>,
 ) -> Machine {
     Machine {
-        degree,
+        degree: Some(degree),
         operation_id: Some(ROM_OPERATION_ID.into()),
         latch: Some(ROM_LATCH.into()),
         pil: {
@@ -283,11 +283,10 @@ impl<T: FieldElement> VMConverter<T> {
         // This is hacky: in the absence of proof objects, we want to support both monolithic proofs and composite proofs.
         // In the monolithic case, all degrees must be the same, so we align the degree of the rom to that of the vm.
         // In the composite case, we set the minimum degree for the rom, which is the number of lines in the code.
-        // this can lead to false negatives as we apply expression equality here, so `4` and `2 + 2` would be considered different.
-        let rom_degree = match input.degree.is_static() {
-            true => input.degree.clone(),
-            false => Expression::from(self.code_lines.len().next_power_of_two() as u32).into(),
-        };
+        let rom_degree = input
+            .degree
+            .clone()
+            .unwrap_or_else(|| Expression::from(self.code_lines.len().next_power_of_two() as u32));
 
         (
             input,

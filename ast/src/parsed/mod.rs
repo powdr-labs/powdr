@@ -59,27 +59,11 @@ impl SymbolCategory {
 pub struct PILFile(pub Vec<PilStatement>);
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub struct NamespaceDegree {
-    pub min: Expression,
-    pub max: Expression,
-}
-
-impl Children<Expression> for NamespaceDegree {
-    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
-        Box::new(once(&self.min).chain(once(&self.max)))
-    }
-
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
-        Box::new(once(&mut self.min).chain(once(&mut self.max)))
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum PilStatement {
     /// File name
     Include(SourceRef, String),
     /// Name of namespace and optional polynomial degree (constant)
-    Namespace(SourceRef, SymbolPath, Option<NamespaceDegree>),
+    Namespace(SourceRef, SymbolPath, Option<Expression>),
     LetStatement(
         SourceRef,
         String,
@@ -200,8 +184,9 @@ impl Children<Expression> for PilStatement {
             PilStatement::ConnectIdentity(_start, left, right) => {
                 Box::new(left.iter().chain(right.iter()))
             }
-            PilStatement::Expression(_, e) => Box::new(once(e)),
-            PilStatement::Namespace(_, _, Some(d)) => d.children(),
+            PilStatement::Expression(_, e) | PilStatement::Namespace(_, _, Some(e)) => {
+                Box::new(once(e))
+            }
             PilStatement::PolynomialDefinition(_, PolynomialName { array_size, .. }, e) => {
                 Box::new(array_size.iter().chain(once(e)))
             }
@@ -238,8 +223,10 @@ impl Children<Expression> for PilStatement {
             PilStatement::ConnectIdentity(_start, left, right) => {
                 Box::new(left.iter_mut().chain(right.iter_mut()))
             }
-            PilStatement::Expression(_, e) => Box::new(once(e)),
-            PilStatement::Namespace(_, _, Some(d)) => d.children_mut(),
+            PilStatement::Expression(_, e) | PilStatement::Namespace(_, _, Some(e)) => {
+                Box::new(once(e))
+            }
+
             PilStatement::PolynomialDefinition(_, PolynomialName { array_size, .. }, e) => {
                 Box::new(array_size.iter_mut().chain(once(e)))
             }
@@ -1016,18 +1003,11 @@ impl Precedence for BinaryOperator {
     }
 }
 
-impl<E> Precedence for LambdaExpression<E> {
-    fn precedence(&self) -> Option<ExpressionPrecedence> {
-        Some(13)
-    }
-}
-
 impl<E> Precedence for Expression<E> {
     fn precedence(&self) -> Option<ExpressionPrecedence> {
         match self {
             Expression::UnaryOperation(_, operation) => operation.op.precedence(),
             Expression::BinaryOperation(_, operation) => operation.op.precedence(),
-            Expression::LambdaExpression(_, lambda) => lambda.precedence(),
             _ => None,
         }
     }

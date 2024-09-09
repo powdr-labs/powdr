@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     fmt::Display,
     ops::{Add, Sub},
 };
@@ -14,7 +15,6 @@ use super::{
     data_structures::{column_map::WitnessColumnMap, finalizable_data::FinalizedRow},
     expression_evaluator::ExpressionEvaluator,
     global_constraints::RangeConstraintSet,
-    machines::MachineParts,
     range_constraints::RangeConstraint,
     symbolic_witness_evaluator::{SymbolicWitnessEvaluator, WitnessColumnEvaluator},
     FixedData,
@@ -280,22 +280,28 @@ impl<T: FieldElement> Row<T> {
         &self,
         title: &str,
         include_unknown: bool,
-        parts: &MachineParts<'_, T>,
+        cols: &HashSet<PolyID>,
+        fixed_data: &FixedData<'_, T>,
     ) -> String {
         format!(
             "{}:\n{}\n---------------------",
             title,
-            self.render_values(include_unknown, parts)
+            self.render_values(include_unknown, Some(cols), fixed_data)
         )
     }
 
     /// Builds a string listing all values, one by row. Nonzero entries are
     /// first, then zero, then unknown (if `include_unknown == true`).
-    pub fn render_values(&self, include_unknown: bool, parts: &MachineParts<'_, T>) -> String {
+    pub fn render_values(
+        &self,
+        include_unknown: bool,
+        cols: Option<&HashSet<PolyID>>,
+        fixed_data: &FixedData<'_, T>,
+    ) -> String {
         self.values
             .iter()
             .filter(|(_, cell)| cell.is_known() || include_unknown)
-            .filter(|(col, _)| parts.witnesses.contains(col))
+            .filter(|(col, _)| cols.map(|cols| cols.contains(col)).unwrap_or(true))
             // Nonzero first, then zero, then unknown
             .sorted_by_key(|(i, cell)| {
                 (
@@ -307,7 +313,7 @@ impl<T: FieldElement> Row<T> {
                     *i,
                 )
             })
-            .map(|(poly_id, cell)| format!("    {} = {cell}", parts.column_name(&poly_id)))
+            .map(|(poly_id, cell)| format!("    {} = {cell}", fixed_data.column_name(&poly_id)))
             .join("\n")
     }
 }

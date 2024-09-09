@@ -42,19 +42,12 @@ lazy_static! {
         ("std::debug::print", ("T: ToString", "T -> ()")),
         ("std::field::modulus", ("", "-> int")),
         ("std::prelude::challenge", ("", "int, int -> expr")),
-        ("std::prover::min_degree", ("", "-> int")),
-        ("std::prover::max_degree", ("", "-> int")),
         ("std::prover::degree", ("", "-> int")),
         (
             "std::prelude::set_hint",
             ("", "expr, (int -> std::prelude::Query) -> ()")
         ),
         ("std::prover::eval", ("", "expr -> fe")),
-        (
-            "std::prover::try_eval",
-            ("", "expr -> std::prelude::Option<fe>")
-        ),
-        ("std::prover::provide_value", ("", "expr, int, fe -> ()"))
     ]
     .into_iter()
     .map(|(name, (vars, ty))| { (name.to_string(), parse_type_scheme(vars, ty)) })
@@ -97,7 +90,6 @@ lazy_static! {
     .collect();
     static ref CONSTR_FUNCTION_STATEMENT_TYPE: ExpectedType = ExpectedType {
         ty: Type::NamedType(SymbolPath::from_str("std::prelude::Constr").unwrap(), None),
-        allow_int_to_empty_fun: true,
         allow_array: true,
         allow_empty: true,
     };

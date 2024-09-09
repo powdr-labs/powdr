@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use itertools::Itertools;
 
-use powdr_ast::analyzed::{DegreeRange, TypedExpression};
+use powdr_ast::analyzed::TypedExpression;
 use powdr_ast::parsed::{
     self,
     types::{ArrayType, Type, TypeScheme},
@@ -12,6 +12,7 @@ use powdr_ast::parsed::{
     PilStatement, PolynomialName, SelectedExpressions, TraitDeclaration, TraitFunction,
 };
 
+use powdr_number::DegreeType;
 use powdr_parser_util::SourceRef;
 
 use powdr_ast::analyzed::{
@@ -100,14 +101,14 @@ impl Counters {
 pub struct StatementProcessor<'a, D> {
     driver: D,
     counters: &'a mut Counters,
-    degree: Option<DegreeRange>,
+    degree: Option<DegreeType>,
 }
 
 impl<'a, D> StatementProcessor<'a, D>
 where
     D: AnalysisDriver,
 {
-    pub fn new(driver: D, counters: &'a mut Counters, degree: Option<DegreeRange>) -> Self {
+    pub fn new(driver: D, counters: &'a mut Counters, degree: Option<DegreeType>) -> Self {
         StatementProcessor {
             driver,
             counters,
@@ -455,8 +456,7 @@ where
                     absolute_name: self
                         .driver
                         .resolve_namespaced_decl(&[&name, &variant.name])
-                        .relative_to(&Default::default())
-                        .to_string(),
+                        .to_dotted_string(),
                     stage: None,
                     kind: SymbolKind::Other(),
                     length: None,
@@ -484,8 +484,7 @@ where
                     absolute_name: self
                         .driver
                         .resolve_namespaced_decl(&[&name, &function.name])
-                        .relative_to(&Default::default())
-                        .to_string(),
+                        .to_dotted_string(),
                     stage: None,
                     kind: SymbolKind::Other(),
                     length: None,
