@@ -228,11 +228,11 @@ impl PILAnalyzer {
                 impl_
                     .children()
                     .try_for_each(|e| {
-                        side_effect_checker::check(&self.definitions, FunctionKind::Constr, e)
+                        side_effect_checker::check(&self.definitions, FunctionKind::Pure, e)
                     })
                     .unwrap_or_else(|err| {
                         panic!(
-                            "Error checking side-effects for implementation of {} : {err}",
+                            "Error checking side-effects for implementation of {}: {err}",
                             impl_.name
                         )
                     });
