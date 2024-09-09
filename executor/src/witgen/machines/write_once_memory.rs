@@ -13,7 +13,7 @@ use crate::{
     Identity,
 };
 
-use super::Machine;
+use super::{Machine, MachineParts};
 
 /// A memory machine with a fixed address space, and each address can only have one
 /// value during the lifetime of the program.
@@ -46,14 +46,14 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
     pub fn try_new(
         name: String,
         fixed_data: &'a FixedData<'a, T>,
-        connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
-        identities: &[&Identity<T>],
+        parts: &MachineParts<'a, T>,
     ) -> Option<Self> {
-        if !identities.is_empty() {
+        if !parts.identities.is_empty() {
             return None;
         }
 
-        if !connecting_identities
+        if !parts
+            .connecting_identities
             .values()
             .all(|i| i.kind == IdentityKind::Plookup)
         {
@@ -61,7 +61,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         }
 
         // All connecting identities should have no selector or a selector of 1
-        if connecting_identities.values().any(|i| {
+        if parts.connecting_identities.values().any(|i| {
             i.right
                 .selector
                 .as_ref()
@@ -72,7 +72,8 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         }
 
         // All RHS expressions should be the same
-        let rhs_exprs = connecting_identities
+        let rhs_exprs = parts
+            .connecting_identities
             .values()
             .map(|i| &i.right.expressions)
             .collect_vec();
@@ -100,7 +101,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             }
         });
 
-        let degree = fixed_data.common_degree(key_polys.iter().chain(value_polys.iter()));
+        let degree = parts.common_degree_range().max;
 
         let mut key_to_index = BTreeMap::new();
         for row in 0..degree {
@@ -116,7 +117,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
 
         Some(Self {
             degree,
-            connecting_identities: connecting_identities.clone(),
+            connecting_identities: parts.connecting_identities.clone(),
             name,
             fixed_data,
             value_polys,

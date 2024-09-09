@@ -453,6 +453,16 @@ pub fn quote(input: &str) -> String {
     format!("\"{}\"", input.escape_default())
 }
 
+impl Display for NamespaceDegree {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        if self.min == self.max {
+            write!(f, "{}", self.min)
+        } else {
+            write!(f, "{}..{}", self.min, self.max)
+        }
+    }
+}
+
 impl Display for PilStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {

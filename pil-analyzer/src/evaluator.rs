@@ -28,8 +28,15 @@ use powdr_parser_util::SourceRef;
 pub fn evaluate_expression<'a, T: FieldElement>(
     expr: &'a Expression,
     definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    solved_impls: &'a HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
-    evaluate(expr, &mut Definitions(definitions))
+    evaluate(
+        expr,
+        &mut Definitions {
+            definitions,
+            solved_impls,
+        },
+    )
 }
 
 /// Evaluates an expression given a symbol lookup implementation
@@ -308,7 +315,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
     }
 }
 
-const BUILTINS: [(&str, BuiltinFunction); 11] = [
+const BUILTINS: [(&str, BuiltinFunction); 13] = [
     ("std::array::len", BuiltinFunction::ArrayLen),
     ("std::check::panic", BuiltinFunction::Panic),
     ("std::convert::expr", BuiltinFunction::ToExpr),
@@ -318,6 +325,8 @@ const BUILTINS: [(&str, BuiltinFunction); 11] = [
     ("std::field::modulus", BuiltinFunction::Modulus),
     ("std::prelude::challenge", BuiltinFunction::Challenge),
     ("std::prelude::set_hint", BuiltinFunction::SetHint),
+    ("std::prover::min_degree", BuiltinFunction::MinDegree),
+    ("std::prover::max_degree", BuiltinFunction::MaxDegree),
     ("std::prover::degree", BuiltinFunction::Degree),
     ("std::prover::eval", BuiltinFunction::Eval),
 ];
@@ -344,7 +353,11 @@ pub enum BuiltinFunction {
     Challenge,
     /// std::prelude::set_hint: expr, (int -> std::prelude::Query) -> (), adds a hint to a witness column.
     SetHint,
-    /// std::prover::degree: -> int, returns the current column length / degree.
+    /// std::prover::min_degree: -> int, returns the minimum column length / degree.
+    MinDegree,
+    /// std::prover::max_degree: -> int, returns the maximum column length / degree.
+    MaxDegree,
+    /// std::prover::degree: -> int, returns the column length / degree, if the minimum and maximum are equal.
     Degree,
     /// std::prover::eval: expr -> fe, evaluates an expression on the current row
     Eval,
@@ -400,19 +413,22 @@ impl<'a, T> Closure<'a, T> {
     }
 }
 
-pub struct Definitions<'a>(pub &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>);
+pub struct Definitions<'a> {
+    pub definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    pub solved_impls: &'a HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
+}
 
 impl<'a> Definitions<'a> {
     /// Implementation of `lookup` that allows to provide a different implementation
     /// of SymbolLookup for the recursive call.
     pub fn lookup_with_symbols<T: FieldElement>(
         definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+        solved_impls: &'a HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
         name: &str,
         type_args: &Option<Vec<Type>>,
         symbols: &mut impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         let name = name.to_string();
-
         let (symbol, value) = definitions
             .get(&name)
             .ok_or_else(|| EvalError::SymbolNotFound(format!("Symbol {name} not found.")))?;
@@ -455,6 +471,20 @@ impl<'a> Definitions<'a> {
                         Value::TypeConstructor(&variant.name).into()
                     }
                 }
+                Some(FunctionValueDefinition::TraitFunction(_, _)) => {
+                    let type_arg = type_args.as_ref().unwrap();
+                    let Expression::LambdaExpression(_, lambda) =
+                        solved_impls[&name][type_arg].as_ref()
+                    else {
+                        unreachable!()
+                    };
+                    let closure = Closure {
+                        lambda,
+                        environment: vec![],
+                        type_args: HashMap::new(),
+                    };
+                    Value::Closure(closure).into()
+                }
                 _ => Err(EvalError::Unsupported(
                     "Cannot evaluate arrays and queries.".to_string(),
                 ))?,
@@ -469,17 +499,11 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a> {
         name: &str,
         type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        Self::lookup_with_symbols(self.0, name, type_args, self)
+        Self::lookup_with_symbols(self.definitions, self.solved_impls, name, type_args, self)
     }
 
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
         Ok(Value::from(AlgebraicExpression::PublicReference(name.to_string())).into())
-    }
-}
-
-impl<'a> From<&'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>> for Definitions<'a> {
-    fn from(value: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>) -> Self {
-        Definitions(value)
     }
 }
 
@@ -535,6 +559,18 @@ pub trait SymbolLookup<'a, T: FieldElement> {
         _reference: &AlgebraicReference,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Err(EvalError::DataNotAvailable)
+    }
+
+    fn min_degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Err(EvalError::Unsupported(
+            "Cannot evaluate min degree.".to_string(),
+        ))
+    }
+
+    fn max_degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Err(EvalError::Unsupported(
+            "Cannot evaluate max degree.".to_string(),
+        ))
     }
 
     fn degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
@@ -1127,6 +1163,8 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
         BuiltinFunction::ToInt => 1,
         BuiltinFunction::Challenge => 2,
         BuiltinFunction::SetHint => 2,
+        BuiltinFunction::MinDegree => 0,
+        BuiltinFunction::MaxDegree => 0,
         BuiltinFunction::Degree => 0,
         BuiltinFunction::Eval => 1,
     };
@@ -1201,6 +1239,8 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
             symbols.set_hint(col, expr)?;
             Value::Tuple(vec![]).into()
         }
+        BuiltinFunction::MaxDegree => symbols.max_degree()?,
+        BuiltinFunction::MinDegree => symbols.min_degree()?,
         BuiltinFunction::Degree => symbols.degree()?,
         BuiltinFunction::Eval => {
             let arg = arguments.pop().unwrap();
@@ -1282,14 +1322,23 @@ mod test {
         else {
             panic!()
         };
-        evaluate::<GoldilocksField>(symbol, &mut Definitions(&analyzed.definitions))
-            .unwrap()
-            .to_string()
+        evaluate::<GoldilocksField>(
+            symbol,
+            &mut Definitions {
+                definitions: &analyzed.definitions,
+                solved_impls: &analyzed.solved_impls,
+            },
+        )
+        .unwrap()
+        .to_string()
     }
 
     pub fn evaluate_function<T: FieldElement>(input: &str, function: &str) -> T {
         let analyzed = analyze_string::<GoldilocksField>(input);
-        let mut symbols = evaluator::Definitions(&analyzed.definitions);
+        let mut symbols = evaluator::Definitions {
+            definitions: &analyzed.definitions,
+            solved_impls: &analyzed.solved_impls,
+        };
         let function = symbols.lookup(function, &None).unwrap();
         let result = evaluator::evaluate_function_call(function, vec![], &mut symbols)
             .unwrap()
@@ -1710,5 +1759,187 @@ mod test {
     ";
 
         assert_eq!(parse_and_evaluate_symbol(input, "g"), "7".to_string());
+    }
+
+    #[test]
+    fn traits_and_refs() {
+        let input = "
+        namespace std::convert(4);
+            let fe = || fe();
+        namespace F(4);
+            trait Add<T> {
+                add: T, T -> T,
+            }
+
+            impl Add<int> {
+                add: |a, b| a + b,
+            }
+
+            trait Cast<T, U> {
+                add: T -> U, // This name is wrong on purpose
+            }
+
+            impl Cast<int, fe> {
+                add: |a| std::convert::fe(a), 
+            }
+
+            let x: int -> fe = |q| match Add::add(q, 2) {
+                     v => std::convert::fe(v),
+            };
+
+            let y: int -> fe = |q| match Add::add(q, 4) {
+                    v => x(v) + Cast::add(v),
+            };
+
+            let r: fe = y(2);
+        ";
+
+        assert_eq!(parse_and_evaluate_symbol(input, "F::r"), "14".to_string());
+    }
+
+    #[test]
+    fn traits_multiple_fns() {
+        let input = "
+        namespace std::convert(4);
+            let fe = || fe();
+        namespace F(4);
+            trait Do<T, Q> {
+                add: T, T -> Q,
+                sub: T, T -> Q,
+                cast: T -> Q,
+            }
+
+            impl Do<int, fe> {
+                add: |a, b| std::convert::fe(a + b),
+                sub: |a, b| std::convert::fe(a - b),
+                cast: |a| std::convert::fe(a),
+            }
+
+            let x: int -> fe = |q| match Do::sub(q, q) {
+                v => {
+                    let one: int = 1;
+                    let two: int = 2 * 1;
+                    v + Do::add(one, two)
+                },
+            };
+
+            let y: int -> fe = |q| match Do::cast(q) {
+                v => { 
+                    let two: int = 2;
+                    x(two) + v
+                },
+            };
+
+            let r: fe = y(2);
+        ";
+
+        assert_eq!(parse_and_evaluate_symbol(input, "F::r"), "5".to_string());
+    }
+
+    #[test]
+    fn traits_multiple_impls() {
+        let input = "
+        namespace std::convert(4);
+            let fe = || fe();
+        namespace F(4);
+            trait Do<T, Q> {
+                add: T, T -> Q,
+                sub: T, T -> Q,
+                cast: T -> Q,
+            }
+
+            impl Do<int, fe> {
+                add: |a, b| std::convert::fe(a + b),
+                sub: |a, b| std::convert::fe(a - b),
+                cast: |a| std::convert::fe(a),
+            }
+
+            impl Do<int, int> {
+                add: |a, b| a + b + 1,
+                sub: |a, b| a - b + 1,
+            }
+
+            impl Do<fe, fe> {
+                add: |a, b| a + b,
+                sub: |a, b| a - b,
+            }
+
+            let x: int -> fe = |q| match Do::sub::<int, int>(q, q) {
+                v => {
+                    let p1: fe = 3;
+                    let p2: fe = 2 * 1;
+                    Do::add(p1, p2)
+                },
+            };
+
+            let y: int -> int = |q| match q {
+                v => {
+                    let p1: int = 5 - v;
+                    let p2: int = 2 * 1;
+                    Do::add(p1, p2)
+                },
+            };
+
+            let z: int = y(2); 
+            let r: fe = x(2);
+            ";
+
+        assert_eq!(parse_and_evaluate_symbol(input, "F::r"), "5".to_string());
+        assert_eq!(parse_and_evaluate_symbol(input, "F::z"), "6".to_string());
+    }
+
+    #[test]
+    fn test_trait_function_call_in_impl() {
+        let input = "
+        namespace std::convert(4);
+            let fe = || fe();
+        namespace F(4);
+            trait Do<T, Q> {
+                op1: T, T -> Q,
+                cast: T -> Q,
+            }
+            impl Do<int, fe> {
+                op1: |a, b| Do::cast(a + b),
+                cast: |a| std::convert::fe(a),
+            }
+
+            let one: int = 1;
+            let two: int = 2;
+            let r: fe = Do::op1(one, two);
+
+        ";
+
+        assert_eq!(parse_and_evaluate_symbol(input, "F::r"), "3".to_string());
+    }
+
+    #[test]
+    fn test_trait_function_call_cross_impl() {
+        let input = "
+        namespace std::convert(4);
+            let fe = || fe();
+        namespace F(4);
+            trait Do1<T, Q> {
+                op1: T, T -> Q,
+            }
+
+            trait Cast<T, Q> {
+                cast: T -> Q,
+            }
+
+            impl Do1<int, fe> {
+                op1: |a, b| Cast::cast(a + b),
+            }
+
+            impl Cast<int, fe> {
+                cast: |a| std::convert::fe(a),
+            }
+
+            let four: int = 4;
+            let two: int = 2;
+            let r: fe = Do1::op1(four, two);
+
+        ";
+
+        assert_eq!(parse_and_evaluate_symbol(input, "F::r"), "6".to_string());
     }
 }

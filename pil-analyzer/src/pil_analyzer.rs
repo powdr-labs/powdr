@@ -1,27 +1,31 @@
+use core::panic;
 use std::collections::{HashMap, HashSet};
 
 use std::fs;
 use std::iter::once;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use itertools::Itertools;
 use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, ModuleStatement, SymbolPath,
 };
 use powdr_ast::parsed::types::{ArrayType, Type};
-use powdr_ast::parsed::visitor::Children;
+use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_ast::parsed::{
     self, FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions,
-    SymbolCategory,
+    SymbolCategory, TraitImplementation,
 };
-use powdr_number::{DegreeType, FieldElement, GoldilocksField};
+use powdr_number::{FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
-    type_from_definition, Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind,
-    PolynomialType, PublicDeclaration, StatementIdentifier, Symbol, SymbolKind, TypedExpression,
+    type_from_definition, Analyzed, DegreeRange, Expression, FunctionValueDefinition, Identity,
+    IdentityKind, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
+    StatementIdentifier, Symbol, SymbolKind, TypedExpression,
 };
 use powdr_parser::{parse, parse_module, parse_type};
 
+use crate::traits_resolver::TraitsResolver;
 use crate::type_builtins::constr_function_statement_type;
 use crate::type_inference::infer_types;
 use crate::{side_effect_checker, AnalysisDriver};
@@ -52,7 +56,8 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
     analyzer.process(files);
     analyzer.side_effect_check();
     analyzer.type_check();
-    analyzer.condense()
+    let solved_impls = analyzer.resolve_trait_impls();
+    analyzer.condense(solved_impls)
 }
 
 #[derive(Default)]
@@ -60,7 +65,7 @@ struct PILAnalyzer {
     /// Known symbols by name and category, determined in the first step.
     known_symbols: HashMap<String, SymbolCategory>,
     current_namespace: AbsoluteSymbolPath,
-    polynomial_degree: Option<DegreeType>,
+    polynomial_degree: Option<DegreeRange>,
     /// Map of definitions, gradually being built up here.
     definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     public_declarations: HashMap<String, PublicDeclaration>,
@@ -71,6 +76,8 @@ struct PILAnalyzer {
     symbol_counters: Option<Counters>,
     /// Symbols from the core that were added automatically but will not be printed.
     auto_added_symbols: HashSet<String>,
+    /// All trait implementations found, organized according to their associated trait name.
+    implementations: HashMap<String, Vec<TraitImplementation<Expression>>>,
 }
 
 /// Reads and parses the given path and all its imports.
@@ -155,14 +162,22 @@ impl PILAnalyzer {
     fn core_types_if_not_present(&self) -> Option<PILFile> {
         // We are extracting some specific symbols from the prelude file.
         let prelude = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../std/prelude.asm"));
-        let missing_symbols = ["Constr", "Option", "challenge", "set_hint", "Query"]
-            .into_iter()
-            .filter(|symbol| {
-                !self
-                    .known_symbols
-                    .contains_key(&format!("std::prelude::{symbol}"))
-            })
-            .collect::<Vec<_>>();
+        let missing_symbols = [
+            "Constr",
+            "Option",
+            "challenge",
+            "set_hint",
+            "Query",
+            "true",
+            "false",
+        ]
+        .into_iter()
+        .filter(|symbol| {
+            !self
+                .known_symbols
+                .contains_key(&format!("std::prelude::{symbol}"))
+        })
+        .collect::<Vec<_>>();
         (!missing_symbols.is_empty()).then(|| {
             let module = parse_module(None, prelude).unwrap();
             let missing_symbols = module
@@ -205,7 +220,23 @@ impl PILAnalyzer {
             value
                 .children()
                 .try_for_each(|e| side_effect_checker::check(&self.definitions, context, e))
-                .unwrap_or_else(|err| panic!("Error checking side-effects of {name}: {err}"))
+                .unwrap_or_else(|err| panic!("Error checking side-effects of {name}: {err}"));
+        }
+
+        for v in self.implementations.values() {
+            for impl_ in v {
+                impl_
+                    .children()
+                    .try_for_each(|e| {
+                        side_effect_checker::check(&self.definitions, FunctionKind::Pure, e)
+                    })
+                    .unwrap_or_else(|err| {
+                        panic!(
+                            "Error checking side-effects for implementation of {}: {err}",
+                            impl_.name
+                        )
+                    });
+            }
         }
 
         // for all identities, check that they call pure or constr functions
@@ -221,10 +252,38 @@ impl PILAnalyzer {
     pub fn type_check(&mut self) {
         let query_type: Type = parse_type("int -> std::prelude::Query").unwrap().into();
         let mut expressions = vec![];
-        // Collect all definitions with their types and expressions.
+        // Collect all definitions and traits implementations with their types and expressions.
         // We filter out enum type declarations (the constructor functions have been added
         // by the statement processor already).
         // For Arrays, we also collect the inner expressions and expect them to be field elements.
+
+        for (name, trait_impls) in self.implementations.iter_mut() {
+            let (_, def) = self
+                .definitions
+                .get(name)
+                .expect("Trait definition not found");
+
+            let Some(FunctionValueDefinition::TraitDeclaration(trait_decl)) = def else {
+                continue;
+            };
+            for impl_ in trait_impls {
+                let specialized_types: Vec<_> = impl_
+                    .functions
+                    .iter()
+                    .map(|named_expr| impl_.type_of_function(trait_decl, &named_expr.name))
+                    .collect();
+
+                for (named_expr, specialized_type) in
+                    impl_.functions.iter_mut().zip(specialized_types)
+                {
+                    expressions.push((
+                        Arc::get_mut(&mut named_expr.body).unwrap(),
+                        specialized_type.into(),
+                    ));
+                }
+            }
+        }
+
         let definitions = self
             .definitions
             .iter_mut()
@@ -295,6 +354,7 @@ impl PILAnalyzer {
                 }
             }
         }
+
         let inferred_types = infer_types(definitions, &mut expressions)
             .map_err(|mut errors| {
                 eprintln!("\nError during type inference:");
@@ -317,9 +377,61 @@ impl PILAnalyzer {
         }
     }
 
-    pub fn condense<T: FieldElement>(self) -> Analyzed<T> {
+    /// Creates and returns a map for every referenced trait and every concrete type to the
+    /// corresponding trait implementation function.
+    fn resolve_trait_impls(&mut self) -> HashMap<String, HashMap<Vec<Type>, Arc<Expression>>> {
+        let mut trait_solver = TraitsResolver::new(&self.implementations);
+
+        let mut resolve_references = |expr: &Expression| {
+            expr.all_children().for_each(|expr| {
+                if let Expression::Reference(
+                    _,
+                    Reference::Poly(
+                        reference @ PolynomialReference {
+                            type_args: Some(_), ..
+                        },
+                    ),
+                ) = expr
+                {
+                    let _ = trait_solver.resolve_trait_function_reference(reference);
+                }
+            });
+        };
+
+        for (_, def) in self.definitions.values() {
+            match def {
+                Some(FunctionValueDefinition::Expression(TypedExpression { e, .. })) => {
+                    resolve_references(e);
+                }
+                Some(FunctionValueDefinition::Array(items)) => {
+                    items.all_children().for_each(&mut resolve_references);
+                }
+                _ => {}
+            }
+        }
+
+        for identity in &self.identities {
+            for expr in identity.all_children() {
+                resolve_references(expr);
+            }
+        }
+
+        for impls in self.implementations.values() {
+            for impl_ in impls {
+                impl_.all_children().for_each(&mut resolve_references);
+            }
+        }
+
+        trait_solver.solved_impls()
+    }
+
+    pub fn condense<T: FieldElement>(
+        self,
+        solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
+    ) -> Analyzed<T> {
         condenser::condense(
             self.definitions,
+            solved_impls,
             self.public_declarations,
             &self.identities,
             self.source_order,
@@ -400,29 +512,38 @@ impl PILAnalyzer {
                             self.source_order.push(StatementIdentifier::Identity(index));
                             self.identities.push(identity)
                         }
+                        PILItem::TraitImplementation(trait_impl) => self
+                            .implementations
+                            .entry(trait_impl.name.to_string())
+                            .or_default()
+                            .push(trait_impl),
                     }
                 }
             }
         }
     }
 
-    fn handle_namespace(&mut self, name: SymbolPath, degree: Option<parsed::Expression>) {
-        self.polynomial_degree = degree
-            .map(|degree| {
-                ExpressionProcessor::new(self.driver(), &Default::default())
-                    .process_expression(degree)
-            })
-            // TODO we should maybe implement a separate evaluator that is able to run before type checking
-            // and is field-independent (only uses integers)?
-            .map(|degree| {
-                u64::try_from(
-                    evaluator::evaluate_expression::<GoldilocksField>(&degree, &self.definitions)
-                        .unwrap()
-                        .try_to_integer()
-                        .unwrap(),
+    fn handle_namespace(&mut self, name: SymbolPath, degree: Option<parsed::NamespaceDegree>) {
+        let evaluate_degree_bound = |e| {
+            let e =
+                ExpressionProcessor::new(self.driver(), &Default::default()).process_expression(e);
+            u64::try_from(
+                evaluator::evaluate_expression::<GoldilocksField>(
+                    &e,
+                    &self.definitions,
+                    &Default::default(),
                 )
                 .unwrap()
-            });
+                .try_to_integer()
+                .unwrap(),
+            )
+            .unwrap()
+        };
+
+        self.polynomial_degree = degree.map(|degree| DegreeRange {
+            min: evaluate_degree_bound(degree.min),
+            max: evaluate_degree_bound(degree.max),
+        });
         self.current_namespace = AbsoluteSymbolPath::default().join(name);
     }
 

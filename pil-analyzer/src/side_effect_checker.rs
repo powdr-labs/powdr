@@ -50,7 +50,6 @@ impl<'a> SideEffectChecker<'a> {
                     kind,
                     params: _,
                     body,
-                    outer_var_references: _,
                 },
             ) => {
                 if *kind != FunctionKind::Pure && *kind != self.context {
@@ -145,6 +144,8 @@ lazy_static! {
         ("std::debug::print", FunctionKind::Pure),
         ("std::field::modulus", FunctionKind::Pure),
         ("std::prelude::challenge", FunctionKind::Constr), // strictly, only new_challenge would need "constr"
+        ("std::prover::min_degree", FunctionKind::Pure),
+        ("std::prover::max_degree", FunctionKind::Pure),
         ("std::prover::degree", FunctionKind::Pure),
         ("std::prelude::set_hint", FunctionKind::Constr),
         ("std::prover::eval", FunctionKind::Query),

@@ -562,6 +562,20 @@ fn empty_conditional() {
 }
 
 #[test]
+fn defined_trait() {
+    let input = "
+    trait Add<T> {
+        add: T, T -> T,
+    }
+    impl Add<fe> {
+        add: |a, b| a + b,
+    }
+    let r: fe = Add::add(3, 4);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
 fn cols_in_func() {
     let input = "
     namespace Main(104);
@@ -612,5 +626,85 @@ fn new_fixed_column_wrong_type() {
         };
         f();
     "#;
+    type_check(input, &[]);
+}
+
+#[test]
+fn trait_multi_generics() {
+    let input = "
+    trait ToTuple<S, I> {
+        get: S -> (S, I),
+    }
+    impl ToTuple<int, (int, int)> {
+        get: |n| (n, (1, n+2)),
+    }
+    let r: (int, (int, int)) = ToTuple::get(3);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn trait_with_user_defined_enum() {
+    let input = "
+    enum Bool { True, False }
+    
+    trait Not<T> {
+        not: T -> T,
+    }
+    
+    impl Not<Bool> {
+        not: |b| match b {
+            Bool::True => Bool::False,
+            Bool::False => Bool::True,
+        },
+    }
+    let b = Not::not(Bool::True);
+    ";
+    type_check(input, &[("b", "", "Bool")]);
+}
+
+#[test]
+fn trait_with_user_defined_enum2() {
+    let input = "
+    enum V1 { A1, B1 }
+    enum V2 { A2, B2 }
+
+    trait Convert<T, U> {
+        convert: T -> U,
+    }
+
+    impl Convert<V1, V2> {
+        convert: |x| match x {
+            V1::A1 => V2::A2,
+            V1::B1 => V2::B2,
+        },
+    }
+    impl Convert<V2, V1> {
+        convert: |x| match x {
+            V2::B2 => V1::B1,
+            V2::A2 => V1::A1,
+        },
+    }
+
+    let r1: V2 = Convert::convert(V1::A1);
+    let r2: V1 = Convert::convert(V2::B2);
+    ";
+    type_check(input, &[("r1", "", "V2"), ("r2", "", "V1")]);
+}
+
+#[test]
+#[should_panic = "Could not derive a concrete type for symbol r1."]
+fn trait_user_defined_enum_wrong_type() {
+    let input = "
+    enum V1 { A1, B1 }
+    enum V2 { A2, B2 }
+
+    trait Convert<T, U> {
+        convert: T -> U,
+    }
+
+    let n: int = 7;
+    let r1 = Convert::convert(n);
+    ";
     type_check(input, &[]);
 }
