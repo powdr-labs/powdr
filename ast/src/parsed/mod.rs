@@ -6,7 +6,6 @@ pub mod types;
 pub mod visitor;
 
 use std::{
-    collections::BTreeSet,
     iter::{empty, once},
     ops,
     str::FromStr,
@@ -59,11 +58,27 @@ impl SymbolCategory {
 pub struct PILFile(pub Vec<PilStatement>);
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub struct NamespaceDegree {
+    pub min: Expression,
+    pub max: Expression,
+}
+
+impl Children<Expression> for NamespaceDegree {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(once(&self.min).chain(once(&self.max)))
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(once(&mut self.min).chain(once(&mut self.max)))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum PilStatement {
     /// File name
     Include(SourceRef, String),
     /// Name of namespace and optional polynomial degree (constant)
-    Namespace(SourceRef, SymbolPath, Option<Expression>),
+    Namespace(SourceRef, SymbolPath, Option<NamespaceDegree>),
     LetStatement(
         SourceRef,
         String,
@@ -184,9 +199,8 @@ impl Children<Expression> for PilStatement {
             PilStatement::ConnectIdentity(_start, left, right) => {
                 Box::new(left.iter().chain(right.iter()))
             }
-            PilStatement::Expression(_, e) | PilStatement::Namespace(_, _, Some(e)) => {
-                Box::new(once(e))
-            }
+            PilStatement::Expression(_, e) => Box::new(once(e)),
+            PilStatement::Namespace(_, _, Some(d)) => d.children(),
             PilStatement::PolynomialDefinition(_, PolynomialName { array_size, .. }, e) => {
                 Box::new(array_size.iter().chain(once(e)))
             }
@@ -223,10 +237,8 @@ impl Children<Expression> for PilStatement {
             PilStatement::ConnectIdentity(_start, left, right) => {
                 Box::new(left.iter_mut().chain(right.iter_mut()))
             }
-            PilStatement::Expression(_, e) | PilStatement::Namespace(_, _, Some(e)) => {
-                Box::new(once(e))
-            }
-
+            PilStatement::Expression(_, e) => Box::new(once(e)),
+            PilStatement::Namespace(_, _, Some(d)) => d.children_mut(),
             PilStatement::PolynomialDefinition(_, PolynomialName { array_size, .. }, e) => {
                 Box::new(array_size.iter_mut().chain(once(e)))
             }
@@ -848,11 +860,6 @@ pub struct LambdaExpression<E = Expression<NamespacedPolynomialReference>> {
     pub kind: FunctionKind,
     pub params: Vec<Pattern>,
     pub body: Box<E>,
-    /// The IDs of the variables outside the functions that are referenced,
-    /// i.e. the environment that is captured by the closure.
-    /// This is filled in by the expression processor.
-    #[schemars(skip)]
-    pub outer_var_references: BTreeSet<u64>,
 }
 
 impl<Ref> From<LambdaExpression<Expression<Ref>>> for Expression<Ref> {
@@ -1004,11 +1011,18 @@ impl Precedence for BinaryOperator {
     }
 }
 
+impl<E> Precedence for LambdaExpression<E> {
+    fn precedence(&self) -> Option<ExpressionPrecedence> {
+        Some(13)
+    }
+}
+
 impl<E> Precedence for Expression<E> {
     fn precedence(&self) -> Option<ExpressionPrecedence> {
         match self {
             Expression::UnaryOperation(_, operation) => operation.op.precedence(),
             Expression::BinaryOperation(_, operation) => operation.op.precedence(),
+            Expression::LambdaExpression(_, lambda) => lambda.precedence(),
             _ => None,
         }
     }
@@ -1159,6 +1173,12 @@ impl<E> Children<E> for LetStatementInsideBlock<E> {
 
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut E> + '_> {
         Box::new(self.value.iter_mut())
+    }
+}
+
+impl<E> From<LetStatementInsideBlock<E>> for StatementInsideBlock<E> {
+    fn from(let_statement: LetStatementInsideBlock<E>) -> Self {
+        StatementInsideBlock::LetStatement(let_statement)
     }
 }
 

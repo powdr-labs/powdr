@@ -420,14 +420,8 @@ fn execute<F: FieldElement>(
 ) -> Result<(), Vec<String>> {
     let mut pipeline = Pipeline::<F>::default()
         .from_file(file_name.to_path_buf())
+        .with_prover_inputs(inputs)
         .with_output(output_dir.into(), true);
-
-    let bootloader_inputs = if continuations {
-        pipeline = pipeline.with_prover_inputs(inputs.clone());
-        powdr_riscv::continuations::rust_continuations_dry_run(&mut pipeline, profiling.clone())
-    } else {
-        vec![]
-    };
 
     let generate_witness = |mut pipeline: Pipeline<F>| -> Result<(), Vec<String>> {
         pipeline.compute_witness().unwrap();
@@ -436,10 +430,9 @@ fn execute<F: FieldElement>(
 
     match (witness, continuations) {
         (false, true) => {
-            // Already ran when computing bootloader inputs, nothing else to do.
+            powdr_riscv::continuations::rust_continuations_dry_run(&mut pipeline, profiling);
         }
         (false, false) => {
-            let mut pipeline = pipeline.with_prover_inputs(inputs);
             let program = pipeline.compute_asm_string().unwrap().clone();
             let (trace, _mem, _reg_mem) = powdr_riscv_executor::execute::<F>(
                 &program.1,
@@ -452,11 +445,9 @@ fn execute<F: FieldElement>(
             log::info!("Execution trace length: {}", trace.len);
         }
         (true, true) => {
-            powdr_riscv::continuations::rust_continuations(
-                pipeline,
-                generate_witness,
-                bootloader_inputs,
-            )?;
+            let dry_run =
+                powdr_riscv::continuations::rust_continuations_dry_run(&mut pipeline, profiling);
+            powdr_riscv::continuations::rust_continuations(pipeline, generate_witness, dry_run)?;
         }
         (true, false) => {
             generate_witness(pipeline)?;

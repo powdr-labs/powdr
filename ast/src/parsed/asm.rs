@@ -137,7 +137,7 @@ pub struct Import {
 /// It can contain the special word `super`, which goes up a level.
 /// If it does not start with `::`, it is relative.
 #[derive(
-    Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+    Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
 )]
 pub struct SymbolPath {
     /// The parts between each `::`.
@@ -358,7 +358,9 @@ impl Display for AbsoluteSymbolPath {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
 pub enum Part {
     Super,
     Named(String),
@@ -438,6 +440,8 @@ impl MachineParams {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
 pub struct MachineProperties {
     pub degree: Option<Expression>,
+    pub min_degree: Option<Expression>,
+    pub max_degree: Option<Expression>,
     pub latch: Option<String>,
     pub operation_id: Option<String>,
     pub call_selectors: Option<String>,
@@ -458,6 +462,16 @@ impl MachineProperties {
             match name.as_str() {
                 "degree" => {
                     if props.degree.replace(value).is_some() {
+                        already_defined = true;
+                    }
+                }
+                "min_degree" => {
+                    if props.min_degree.replace(value).is_some() {
+                        already_defined = true;
+                    }
+                }
+                "max_degree" => {
+                    if props.max_degree.replace(value).is_some() {
                         already_defined = true;
                     }
                 }

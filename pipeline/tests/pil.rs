@@ -87,7 +87,11 @@ fn permutation_with_selector() {
 fn fibonacci() {
     let f = "pil/fibonacci.pil";
     regular_test(f, Default::default());
-    test_plonky3_with_backend_variant(f, Default::default(), BackendVariant::Monolithic);
+    test_plonky3_with_backend_variant::<GoldilocksField>(
+        f,
+        Default::default(),
+        BackendVariant::Monolithic,
+    );
 }
 
 #[test]
@@ -241,7 +245,11 @@ fn halo_without_lookup() {
 #[test]
 fn add() {
     let f = "pil/add.pil";
-    test_plonky3_with_backend_variant(f, Default::default(), BackendVariant::Monolithic);
+    test_plonky3_with_backend_variant::<GoldilocksField>(
+        f,
+        Default::default(),
+        BackendVariant::Monolithic,
+    );
 }
 
 #[test]

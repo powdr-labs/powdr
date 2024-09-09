@@ -3,31 +3,35 @@
 
 use std::{
     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
-    fmt::Display,
     iter::once,
     str::FromStr,
     sync::Arc,
 };
 
+use num_traits::sign::Signed;
+
 use powdr_ast::{
     analyzed::{
-        self, AlgebraicExpression, AlgebraicReference, Analyzed, Expression,
-        FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialType, PublicDeclaration,
-        SelectedExpressions, StatementIdentifier, Symbol, SymbolKind,
+        self, AlgebraicExpression, AlgebraicReference, Analyzed, DegreeRange, Expression,
+        FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialReference,
+        PolynomialType, PublicDeclaration, Reference, SelectedExpressions, StatementIdentifier,
+        Symbol, SymbolKind,
     },
     parsed::{
         self,
         asm::{AbsoluteSymbolPath, SymbolPath},
         display::format_type_scheme_around_name,
         types::{ArrayType, Type},
-        FunctionKind, TypedExpression,
+        visitor::{AllChildren, ExpressionVisitable},
+        ArrayLiteral, BlockExpression, FunctionKind, LambdaExpression, LetStatementInsideBlock,
+        Number, Pattern, TypedExpression, UnaryOperation,
     },
 };
-use powdr_number::{DegreeType, FieldElement};
+use powdr_number::{BigUint, FieldElement};
 use powdr_parser_util::SourceRef;
 
 use crate::{
-    evaluator::{self, Definitions, EvalError, SymbolLookup, Value},
+    evaluator::{self, Closure, Definitions, EvalError, SymbolLookup, Value},
     statement_processor::Counters,
 };
 
@@ -36,7 +40,7 @@ type AnalyzedIdentity<T> = Identity<SelectedExpressions<AlgebraicExpression<T>>>
 
 pub fn condense<T: FieldElement>(
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    mut public_declarations: HashMap<String, PublicDeclaration>,
+    public_declarations: HashMap<String, PublicDeclaration>,
     identities: &[ParsedIdentity],
     source_order: Vec<StatementIdentifier>,
     auto_added_symbols: HashSet<String>,
@@ -162,16 +166,6 @@ pub fn condense<T: FieldElement>(
         }
     }
 
-    for decl in public_declarations.values_mut() {
-        let symbol = &definitions
-            .get(&decl.polynomial.name)
-            .unwrap_or_else(|| panic!("Symbol {} not found.", decl.polynomial))
-            .0;
-        let reference = &mut decl.polynomial;
-        // TODO this is the only point we still assign poly_id,
-        // maybe move it into PublicDeclaration.
-        reference.poly_id = Some(symbol.into());
-    }
     Analyzed {
         definitions,
         public_declarations,
@@ -185,7 +179,7 @@ pub fn condense<T: FieldElement>(
 type SymbolCache<'a, T> = HashMap<String, BTreeMap<Option<Vec<Type>>, Arc<Value<'a, T>>>>;
 
 pub struct Condenser<'a, T> {
-    degree: Option<DegreeType>,
+    degree: Option<DegreeRange>,
     /// All the definitions from the PIL file.
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     /// Evaluation cache.
@@ -256,7 +250,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     pub fn set_namespace_and_degree(
         &mut self,
         namespace: AbsoluteSymbolPath,
-        degree: Option<DegreeType>,
+        degree: Option<DegreeRange>,
     ) {
         self.namespace = namespace;
         self.degree = degree;
@@ -359,9 +353,23 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         Definitions(self.symbols).lookup_public_reference(name)
     }
 
+    fn min_degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
+        let degree = self.degree.ok_or(EvalError::DataNotAvailable)?;
+        Ok(Value::Integer(degree.min.into()).into())
+    }
+
+    fn max_degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
+        let degree = self.degree.ok_or(EvalError::DataNotAvailable)?;
+        Ok(Value::Integer(degree.max.into()).into())
+    }
+
     fn degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
         let degree = self.degree.ok_or(EvalError::DataNotAvailable)?;
-        Ok(Value::Integer(degree.into()).into())
+        if degree.min == degree.max {
+            Ok(Value::Integer(degree.min.into()).into())
+        } else {
+            Err(EvalError::DataNotAvailable)
+        }
     }
 
     fn new_column(
@@ -426,14 +434,12 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             self.new_intermediate_column_values
                 .insert(name.clone(), expr);
         } else if let Some(value) = value {
-            let value =
-                closure_to_function(&source, value.as_ref(), FunctionKind::Pure).map_err(|e| {
-                    match e {
-                        EvalError::TypeError(e) => {
-                            EvalError::TypeError(format!("Error creating fixed column {name}: {e}"))
-                        }
-                        _ => e,
+            let value = try_to_function_value_definition(value.as_ref(), FunctionKind::Pure)
+                .map_err(|e| match e {
+                    EvalError::TypeError(e) => {
+                        EvalError::TypeError(format!("Error creating fixed column {name}: {e}"))
                     }
+                    _ => e,
                 })?;
 
             self.new_column_values.insert(name.clone(), value);
@@ -508,12 +514,14 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             }
         };
 
-        let value = closure_to_function(&SourceRef::unknown(), expr.as_ref(), FunctionKind::Query)
-            .map_err(|e| match e {
-                EvalError::TypeError(e) => {
-                    EvalError::TypeError(format!("Error setting hint for column {col}: {e}"))
+        let value =
+            try_to_function_value_definition(expr.as_ref(), FunctionKind::Query).map_err(|e| {
+                match e {
+                    EvalError::TypeError(e) => {
+                        EvalError::TypeError(format!("Error setting hint for column {col}: {e}"))
+                    }
+                    _ => e,
                 }
-                _ => e,
             })?;
         match self.new_column_values.entry(name) {
             Entry::Vacant(entry) => entry.insert(value),
@@ -682,47 +690,242 @@ fn to_expr<T: Clone>(value: &Value<'_, T>) -> AlgebraicExpression<T> {
     }
 }
 
-/// Turns a value of function type (i.e. a closure) into a FunctionValueDefinition
-/// and sets the expected function kind.
-/// Does not allow captured variables.
-fn closure_to_function<T: Clone + Display>(
-    source: &SourceRef,
+/// Turns a runtime value (usually a closure) into a FunctionValueDefinition
+/// (i.e. an expression) and sets the expected function kind.
+/// Does allow some forms of captured variables by prefixing them
+/// via let statements.
+fn try_to_function_value_definition<T: FieldElement>(
     value: &Value<'_, T>,
     expected_kind: FunctionKind,
 ) -> Result<FunctionValueDefinition, EvalError> {
-    let Value::Closure(evaluator::Closure {
-        lambda,
-        environment: _,
-        type_args,
-    }) = value
-    else {
-        return Err(EvalError::TypeError(format!(
-            "Expected lambda expressions but got {value}."
-        )));
-    };
+    let mut e = try_value_to_expression(value)?;
 
-    if !type_args.is_empty() {
+    // Set the lambda kind since this is used to detect hints in some cases.
+    // Can probably be removed once we have prover functions.
+    if let Expression::LambdaExpression(_, LambdaExpression { kind, .. }) = &mut e {
+        if *kind != FunctionKind::Pure && *kind != expected_kind {
+            return Err(EvalError::TypeError(format!(
+                "Expected {expected_kind} lambda expression but got {kind}.",
+            )));
+        }
+        *kind = expected_kind;
+    }
+
+    Ok(FunctionValueDefinition::Expression(TypedExpression {
+        e,
+        type_scheme: None,
+    }))
+}
+
+/// Turns a closure back into a (source) expression by prefixing
+/// potentially captured variables as let statements.
+fn try_closure_to_expression<T: FieldElement>(
+    closure: &evaluator::Closure<'_, T>,
+) -> Result<Expression, EvalError> {
+    if !closure.type_args.is_empty() {
         return Err(EvalError::TypeError(
             "Lambda expression must not have type arguments.".to_string(),
         ));
     }
-    if !lambda.outer_var_references.is_empty() {
-        return Err(EvalError::TypeError(format!(
-            "Lambda expression must not reference outer variables: {lambda}"
-        )));
-    }
-    if lambda.kind != FunctionKind::Pure && lambda.kind != expected_kind {
-        return Err(EvalError::TypeError(format!(
-            "Expected {expected_kind} lambda expression but got {}.",
-            lambda.kind
-        )));
+
+    // A closure essentially consists of a lambda expression (i.e. source code)
+    // and an environment, which is a stack of runtime values. Some of these
+    // values are captured, but not all of them.
+    // If no values are captured, we can just return the lambda expression.
+    // Otherwise, we will convert the captured values to expressions (using
+    // try_value_to_expression) and introduce them as variables using let statements.
+
+    // Create a map from old id to (new id, name, value) for all captured variables.
+    let captured_var_refs = captured_var_refs(closure).collect::<BTreeMap<_, _>>();
+    let env_map: BTreeMap<_, _> = closure
+        .environment
+        .iter()
+        .enumerate()
+        .filter_map(|(old_id, value)| {
+            captured_var_refs
+                .get(&(old_id as u64))
+                .map(|name| (old_id as u64, (name, value)))
+        })
+        .enumerate()
+        // Since we return a new expression we essentially start with an empty environment,
+        // and thus the new IDs of the captured variables start with 0.
+        // If we add more let statements further up in the call chain, they might be modified again.
+        .map(|(new_id, (old_id, (&name, value)))| (old_id, (new_id as u64, name, value)))
+        .collect();
+
+    // Create the let statements for the captured variables.
+    let statements = env_map
+        .values()
+        .map(|(new_id, name, value)| {
+            let mut expr = try_value_to_expression(value.as_ref())?;
+            // The call to try_value_to_expression assumed a fresh environment,
+            // but we already have `new_id` let statements at this point,
+            // so we adjust the local variable references inside `expr` accordingly.
+            shift_local_var_refs(&mut expr, *new_id);
+
+            Ok(LetStatementInsideBlock {
+                pattern: Pattern::Variable(SourceRef::unknown(), (*name).clone()),
+                // We do not know the type.
+                ty: None,
+                value: Some(expr),
+            }
+            .into())
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    // Adjust the variable references inside the lambda expression
+    // to the new environment.
+    let e = convert_closure_body(closure, env_map).into();
+
+    Ok(if statements.is_empty() {
+        e
+    } else {
+        BlockExpression {
+            statements,
+            expr: Some(Box::new(e)),
+        }
+        .into()
+    })
+}
+
+/// Returns an iterator over all references to variables declared outside the closure,
+/// i.e. the captured variables.
+/// This does not include references to module-level variables.
+fn captured_var_refs<'a, T>(
+    closure: &'a Closure<'_, T>,
+) -> impl Iterator<Item = (u64, &'a String)> {
+    let environment_size = closure.environment.len() as u64;
+    closure.lambda.all_children().filter_map(move |e| {
+        if let Expression::Reference(_, Reference::LocalVar(id, name)) = e {
+            (*id < environment_size).then_some((*id, name))
+        } else {
+            None
+        }
+    })
+}
+
+/// Convert the IDs of local variable references in the body of the closure to match the new environment
+/// and return the new LambdaExpression.
+fn convert_closure_body<T: FieldElement, V>(
+    closure: &Closure<'_, T>,
+    env_map: BTreeMap<u64, (u64, &String, V)>,
+) -> LambdaExpression<analyzed::Expression> {
+    let mut lambda = closure.lambda.clone();
+
+    let old_environment_size = closure.environment.len() as u64;
+    let new_environment_size = env_map.len() as u64;
+    lambda.pre_visit_expressions_mut(&mut |e| {
+        if let Expression::Reference(_, Reference::LocalVar(id, _)) = e {
+            if *id >= old_environment_size {
+                // This is a parameter of the function or a local variable
+                // defined inside the function, i.e. not a variable referencing
+                // a captured value.
+                // We keep the ID but shift it to match the new environment size.
+                *id = *id - old_environment_size + new_environment_size;
+            } else {
+                // Assign the new ID from the environment map.
+                *id = env_map[id].0;
+            }
+        }
+    });
+    lambda
+}
+
+/// Increments all local variable reference IDs in `e` by `shift`,
+/// to counter the effect of adding new variable declarations.
+fn shift_local_var_refs(e: &mut Expression, shift: u64) {
+    if let Expression::Reference(_, Reference::LocalVar(id, _)) = e {
+        *id += shift;
     }
 
-    let mut lambda = (*lambda).clone();
-    lambda.kind = expected_kind;
+    e.children_mut()
+        .for_each(|e| shift_local_var_refs(e, shift));
+}
 
-    Ok(FunctionValueDefinition::Expression(TypedExpression {
-        e: Expression::LambdaExpression(source.clone(), lambda),
-        type_scheme: None,
-    }))
+/// Tries to convert an evaluator value to an expression with the same value.
+fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expression, EvalError> {
+    Ok(match value {
+        Value::Integer(v) => {
+            if v.is_negative() {
+                UnaryOperation {
+                    op: parsed::UnaryOperator::Minus,
+                    expr: Box::new(try_value_to_expression(&Value::<T>::Integer(-v))?),
+                }
+                .into()
+            } else {
+                Number {
+                    value: BigUint::try_from(v).unwrap(),
+                    type_: Some(Type::Int),
+                }
+                .into()
+            }
+        }
+        Value::FieldElement(v) => Number {
+            value: v.to_arbitrary_integer(),
+            type_: Some(Type::Fe),
+        }
+        .into(),
+        Value::String(s) => Expression::String(SourceRef::unknown(), s.clone()),
+        Value::Bool(b) => Expression::Reference(
+            SourceRef::unknown(),
+            Reference::Poly(PolynomialReference {
+                name: if *b {
+                    "std::prelude::true"
+                } else {
+                    "std::prelude::false"
+                }
+                .to_string(),
+                type_args: None,
+            }),
+        ),
+        Value::Tuple(items) => Expression::Tuple(
+            SourceRef::unknown(),
+            items
+                .iter()
+                .map(|i| try_value_to_expression(i))
+                .collect::<Result<_, _>>()?,
+        ),
+        Value::Array(items) => ArrayLiteral {
+            items: items
+                .iter()
+                .map(|i| try_value_to_expression(i))
+                .collect::<Result<_, _>>()?,
+        }
+        .into(),
+        Value::Closure(c) => try_closure_to_expression(c)?,
+        Value::TypeConstructor(c) => {
+            return Err(EvalError::TypeError(format!(
+                "Type constructor as captured value not supported: {c}."
+            )))
+        }
+        Value::Enum(variant, _items) => {
+            // The main problem is that we do not know the type of the enum.
+            return Err(EvalError::TypeError(format!(
+                "Enum as captured value not supported: {variant}."
+            )));
+        }
+        Value::BuiltinFunction(_) => {
+            return Err(EvalError::TypeError(
+                "Builtin function as captured value not supported.".to_string(),
+            ))
+        }
+        Value::Expression(e) => match e {
+            AlgebraicExpression::Reference(AlgebraicReference {
+                name,
+                poly_id: _,
+                next: false,
+            }) => Expression::Reference(
+                SourceRef::unknown(),
+                Reference::Poly(PolynomialReference {
+                    name: name.clone(),
+                    type_args: None,
+                }),
+            ),
+            _ => {
+                return Err(EvalError::TypeError(format!(
+                    "Algebraic expression as captured value not supported: {e}."
+                )))
+            }
+        },
+    })
 }

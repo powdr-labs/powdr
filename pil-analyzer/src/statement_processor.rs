@@ -4,18 +4,16 @@ use std::sync::Arc;
 
 use itertools::Itertools;
 
-use powdr_ast::analyzed::TypedExpression;
+use powdr_ast::analyzed::{DegreeRange, TypedExpression};
 use powdr_ast::parsed::asm::{Part, SymbolPath};
-use powdr_ast::parsed::types::TupleType;
 use powdr_ast::parsed::{
     self,
-    types::{ArrayType, Type, TypeScheme},
+    types::{ArrayType, TupleType, Type, TypeScheme},
     ArrayLiteral, EnumDeclaration, EnumVariant, FunctionDefinition, FunctionKind, LambdaExpression,
     PilStatement, PolynomialName, SelectedExpressions, TraitDeclaration, TraitFunction,
 };
 use powdr_ast::parsed::{NamedExpression, SymbolCategory, TraitImplementation};
 
-use powdr_number::DegreeType;
 use powdr_parser_util::SourceRef;
 
 use powdr_ast::analyzed::{
@@ -105,14 +103,14 @@ impl Counters {
 pub struct StatementProcessor<'a, D> {
     driver: D,
     counters: &'a mut Counters,
-    degree: Option<DegreeType>,
+    degree: Option<DegreeRange>,
 }
 
 impl<'a, D> StatementProcessor<'a, D>
 where
     D: AnalysisDriver,
 {
-    pub fn new(driver: D, counters: &'a mut Counters, degree: Option<DegreeType>) -> Self {
+    pub fn new(driver: D, counters: &'a mut Counters, degree: Option<DegreeRange>) -> Self {
         StatementProcessor {
             driver,
             counters,
