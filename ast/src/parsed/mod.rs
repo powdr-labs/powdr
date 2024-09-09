@@ -895,11 +895,6 @@ pub struct LambdaExpression<E = Expression<NamespacedPolynomialReference>> {
     pub kind: FunctionKind,
     pub params: Vec<Pattern>,
     pub body: Box<E>,
-    /// The IDs of the variables outside the functions that are referenced,
-    /// i.e. the environment that is captured by the closure.
-    /// This is filled in by the expression processor.
-    #[schemars(skip)]
-    pub outer_var_references: BTreeSet<u64>,
 }
 
 impl<Ref> From<LambdaExpression<Expression<Ref>>> for Expression<Ref> {
@@ -1213,6 +1208,12 @@ impl<E> Children<E> for LetStatementInsideBlock<E> {
 
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut E> + '_> {
         Box::new(self.value.iter_mut())
+    }
+}
+
+impl<E> From<LetStatementInsideBlock<E>> for StatementInsideBlock<E> {
+    fn from(let_statement: LetStatementInsideBlock<E>) -> Self {
+        StatementInsideBlock::LetStatement(let_statement)
     }
 }
 
