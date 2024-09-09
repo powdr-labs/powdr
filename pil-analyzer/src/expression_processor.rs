@@ -382,7 +382,6 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             .map(|args| args.into_iter().map(|t| self.process_type(t)).collect());
         PolynomialReference {
             name: self.driver.resolve_value_ref(&reference.path),
-            poly_id: None,
             type_args,
         }
     }

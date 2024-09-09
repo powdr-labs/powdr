@@ -453,6 +453,16 @@ pub fn quote(input: &str) -> String {
     format!("\"{}\"", input.escape_default())
 }
 
+impl Display for NamespaceDegree {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        if self.min == self.max {
+            write!(f, "{}", self.min)
+        } else {
+            write!(f, "{}..{}", self.min, self.max)
+        }
+    }
+}
+
 impl Display for PilStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
@@ -743,23 +753,27 @@ impl Display for NamespacedPolynomialReference {
         if let Some(type_args) = &self.type_args {
             write!(f, "{}::{}", self.path, format_type_args(type_args))
         } else {
-            write!(f, "{}", self.path.to_dotted_string())
+            write!(f, "{}", self.path)
         }
     }
 }
 
-impl<E: Display> Display for LambdaExpression<E> {
+impl<E> Display for LambdaExpression<E>
+where
+    E: Display + Precedence,
+{
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "({}|{}| {})",
-            match self.kind {
-                FunctionKind::Pure => "".into(),
-                _ => format!("{} ", &self.kind),
-            },
-            format_list(&self.params),
-            self.body
-        )
+        let prefix = match self.kind {
+            FunctionKind::Pure => "".into(),
+            _ => format!("{} ", &self.kind),
+        };
+        let params = format_list(&self.params);
+
+        if self.body.precedence() < self.precedence() {
+            write!(f, "{}|{}| {}", prefix, params, self.body)
+        } else {
+            write!(f, "{}|{}| ({})", prefix, params, self.body)
+        }
     }
 }
 
@@ -910,8 +924,9 @@ impl<E: Display> Display for BlockExpression<E> {
             write_items_indented(f, &self.statements)?;
             if let Some(expr) = &self.expr {
                 write_indented_by(f, expr, 1)?;
+                writeln!(f)?;
             }
-            write!(f, "\n}}")
+            write!(f, "}}")
         }
     }
 }
@@ -1201,7 +1216,54 @@ mod tests {
                 test_paren(&test_case);
             }
         }
+        #[test]
+        fn lambda_parentheses() {
+            let test_cases: Vec<TestCase> = vec![
+                // Nested lambdas
+                ("|x| (|y| y) + x;", "|x| (|y| y) + x;"),
+                ("|x| (|y| y + x);", "|x| (|y| y + x);"),
+                ("|x| |y| y + x;", "|x| (|y| y + x);"),
+                ("|x| |y| (y + x);", "|x| (|y| y + x);"),
+                ("|x| (|y| |z| z + y) + x;", "|x| (|y| (|z| z + y)) + x;"),
+                ("|x| |y| (|z| z) + y + x;", "|x| (|y| (|z| z) + y + x);"),
+                ("|x| |y| |z| x + y + z;", "|x| (|y| (|z| x + y + z));"),
+                // Lambda application
+                ("1 + (|x| x)(2);", "1 + (|x| x)(2);"),
+                // Lambda application with nested lambdas
+                ("(|x| |y| y + x)(5);", "(|x| (|y| y + x))(5);"),
+                ("|x| (|y| y)(x) + 1;", "|x| (|y| y)(x) + 1;"),
+                ("|x| (|y| x + y)(5);", "|x| (|y| x + y)(5);"),
+                ("|x| |y| y(x) + 1;", "|x| (|y| y(x) + 1);"),
+                ("(|x| |y| x * y)(2)(3);", "(|x| (|y| x * y))(2)(3);"),
+                ("(|x| x + 1)(|y| y * 2);", "(|x| x + 1)(|y| y * 2);"),
+                (
+                    "(|x| |y| x + y)(|z| z * 2);",
+                    "(|x| (|y| x + y))(|z| z * 2);",
+                ),
+                // Binary operations between lambdas
+                ("(|x| x) + (|y| y);", "(|x| x) + (|y| y);"),
+                ("|x| x * (|y| y);", "|x| x * (|y| y);"),
+                ("|x| x + 1 * (|y| y - 2);", "|x| x + 1 * (|y| y - 2);"),
+                ("(|x| x + 1) - (|y| y) * -1;", "(|x| x + 1) - (|y| y) * -1;"),
+                (
+                    "|x| (|y| y)(x) + (|z| z)(x);",
+                    "|x| (|y| y)(x) + (|z| z)(x);",
+                ),
+                ("|x| |y| y(x) + (|z| z)(x);", "|x| (|y| y(x) + (|z| z)(x));"),
+                (
+                    "|x| (|y| y(x) + (|z| z))(x);",
+                    "|x| (|y| y(x) + (|z| z))(x);",
+                ),
+                (
+                    "(|x| |y| x + y) + (|z| z * 2);",
+                    "(|x| (|y| x + y)) + (|z| z * 2);",
+                ),
+            ];
 
+            for test_case in test_cases {
+                test_paren(&test_case);
+            }
+        }
         #[test]
         fn complex() {
             let test_cases: Vec<TestCase> = vec![
@@ -1216,12 +1278,12 @@ mod tests {
                 "a | b * (c << d + e) & (f ^ g) = h * (i + g);",
             ),
             (
-                "instr_or $ [0, X, Y, Z] is (main_bin.latch * main_bin.sel[0]) $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];",
-                "instr_or $ [0, X, Y, Z] is main_bin.latch * main_bin.sel[0] $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];",
+                "instr_or $ [0, X, Y, Z] is (main_bin::latch * main_bin::sel[0]) $ [main_bin::operation_id, main_bin::A, main_bin::B, main_bin::C];",
+                "instr_or $ [0, X, Y, Z] is main_bin::latch * main_bin::sel[0] $ [main_bin::operation_id, main_bin::A, main_bin::B, main_bin::C];",
             ),
             (
-                "instr_or $ [0, X, Y, Z] is main_bin.latch * main_bin.sel[0] $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];",
-                "instr_or $ [0, X, Y, Z] is main_bin.latch * main_bin.sel[0] $ [main_bin.operation_id, main_bin.A, main_bin.B, main_bin.C];",
+                "instr_or $ [0, X, Y, Z] is main_bin::latch * main_bin::sel[0] $ [main_bin::operation_id, main_bin::A, main_bin::B, main_bin::C];",
+                "instr_or $ [0, X, Y, Z] is main_bin::latch * main_bin::sel[0] $ [main_bin::operation_id, main_bin::A, main_bin::B, main_bin::C];",
             ),
             (
                 "pc' = (1 - first_step') * ((((instr__jump_to_operation * _operation_id) + (instr__loop * pc)) + (instr_return * 0)) + ((1 - ((instr__jump_to_operation + instr__loop) + instr_return)) * (pc + 1)));",
@@ -1229,7 +1291,7 @@ mod tests {
             ),
             (
                 "let root_of_unity_for_log_degree: int -> fe = |n| root_of_unity ** (2**(32 - n));",
-                "let root_of_unity_for_log_degree: int -> fe = (|n| root_of_unity ** (2 ** (32 - n)));",
+                "let root_of_unity_for_log_degree: int -> fe = |n| root_of_unity ** (2 ** (32 - n));",
             ),
         ];
 
