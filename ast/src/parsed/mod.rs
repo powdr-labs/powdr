@@ -6,7 +6,7 @@ pub mod types;
 pub mod visitor;
 
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::HashMap,
     iter::{empty, once},
     ops,
     str::FromStr,
