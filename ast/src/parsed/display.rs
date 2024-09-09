@@ -870,6 +870,10 @@ impl Display for BinaryOperator {
                 BinaryOperator::NotEqual => "!=",
                 BinaryOperator::GreaterEqual => ">=",
                 BinaryOperator::Greater => ">",
+                BinaryOperator::In => "in",
+                BinaryOperator::Is => "is",
+                BinaryOperator::Connect => "connect",
+                BinaryOperator::Select => "$",
             }
         )
     }
