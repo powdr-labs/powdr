@@ -362,7 +362,7 @@ impl<R> TraitImplementation<Expression<R>> {
         self.functions.iter().find(|f| f.name == name)
     }
 
-    pub fn specialize_trait_type(&self, trait_decl: &TraitDeclaration, fn_name: &str) -> Type {
+    pub fn type_of_function(&self, trait_decl: &TraitDeclaration, fn_name: &str) -> Type {
         let Type::Tuple(TupleType { items }) = &self.type_scheme.ty else {
             panic!("Expected tuple type for trait implementation");
         };
