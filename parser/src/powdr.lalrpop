@@ -455,9 +455,9 @@ SelectedExpressions<StructOption>: Box<Expression> = {
 }
 
 LambdaExpression<StructOption>: Box<Expression> = {
-    <start:@L> <kind:FunctionKind> "||" <body:MacroBoxedExpression<StructOption>> <end:@R>
+    <start:@L> <kind:FunctionKind> "||" <body:LambdaExpression<StructOption>> <end:@R>
         => ctx.to_expr_with_source_ref(LambdaExpression{kind, params: vec![], body}, start, end),
-    <start:@L> <kind:FunctionKind> "|" <params:ParameterList> "|" <body:MacroBoxedExpression<StructOption>> <end:@R>
+    <start:@L> <kind:FunctionKind> "|" <params:ParameterList> "|" <body:LambdaExpression<StructOption>> <end:@R>
         => ctx.to_expr_with_source_ref(LambdaExpression{kind, params, body}, start, end),
     LogicalOr<StructOption>
 }
