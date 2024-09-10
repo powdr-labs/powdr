@@ -23,12 +23,12 @@ jobs:
     runs-on: buildjet-4vcpu-ubuntu-2204
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         submodules: recursive
     - name: ⚡ Restore rust cache
       id: cache
-      uses: buildjet/cache/restore@v3
+      uses: buildjet/cache/restore@v4
       with:
         path: |
           ~/.cargo/registry/index/
@@ -57,7 +57,7 @@ jobs:
     - name: Create tests archive
       run: cargo nextest archive --archive-file tests.tar.zst --cargo-profile pr-tests --workspace --all-features
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: tests_archive
         path: |
@@ -74,15 +74,15 @@ jobs:
         - "2"
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         submodules: recursive
     - name: Download build artifacts
-      uses: actions/download-artifact@v2
+      uses: actions/download-artifact@v4
       with:
         name: tests_archive
     - name: ⚡ Cache nodejs
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/pilcom/node_modules
@@ -105,12 +105,12 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         submodules: recursive
     - name: ⚡ Restore rust cache
       id: cache
-      uses: actions/cache/restore@v3
+      uses: actions/cache/restore@v4
       with:
         path: |
           ~/.cargo/registry/index/
@@ -130,15 +130,15 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         submodules: recursive
     - name: Download build artifacts
-      uses: actions/download-artifact@v2
+      uses: actions/download-artifact@v4
       with:
         name: tests_archive
     - name: ⚡ Cache nodejs
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/pilcom/node_modules
@@ -177,15 +177,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         submodules: recursive
     - name: Download build artifacts
-      uses: actions/download-artifact@v2
+      uses: actions/download-artifact@v4
       with:
         name: tests_archive
     - name: ⚡ Cache nodejs
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/pilcom/node_modules
