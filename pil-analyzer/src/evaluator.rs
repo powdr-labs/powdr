@@ -1143,46 +1143,20 @@ fn evaluate_binary_operation<'a, T: FieldElement>(
             Value::Enum("SelectedExprs", Some(vec![left, right])).into()
         }
         (_, BinaryOperator::In | BinaryOperator::Is, _) => {
-            let (left_sel, left_exprs) = to_selected_exprs_expanded(left);
-            let (right_sel, right_exprs) = to_selected_exprs_expanded(right);
+            let (left_sel, left_exprs) = to_selected_exprs_expanded(&left);
+            let (right_sel, right_exprs) = to_selected_exprs_expanded(&right);
             let name = match op {
                 BinaryOperator::In => "Lookup",
                 BinaryOperator::Is => "Permutation",
                 _ => unreachable!(),
             };
             let selectors = Value::Tuple(vec![left_sel, right_sel]).into();
-            if left_exprs.len() != right_exprs.len() {
-                return Err(EvalError::TypeError(format!(
-                    "Tried to use \"{op}\" operator on selected expressions of different lengths: {} and {}",
-                    left_exprs.len(), right_exprs.len()
-                )));
-            }
-            let expr_pairs = Value::Array(
-                left_exprs
-                    .iter()
-                    .zip(right_exprs)
-                    .map(|(l, r)| Value::Tuple(vec![l.clone(), r.clone()]).into())
-                    .collect(),
-            );
-            Value::Enum(name, Some(vec![selectors, expr_pairs.into()])).into()
+            let expr_pairs = zip_expressions_for_op(op, &left_exprs, &right_exprs)?;
+            Value::Enum(name, Some(vec![selectors, expr_pairs])).into()
         }
         (Value::Array(left), BinaryOperator::Connect, Value::Array(right)) => {
-            if left.len() != right.len() {
-                return Err(EvalError::TypeError(format!(
-                    "Tried to use \"connect\" operator on arrays of different lengths: {} and {}",
-                    left.len(),
-                    right.len()
-                )));
-            }
-            let items = left
-                .iter()
-                .zip(right)
-                .map(|(l, r)| Value::Tuple(vec![l.clone(), r.clone()]).into());
-            Value::Enum(
-                "Connection",
-                Some(vec![Value::Array(items.collect()).into()]),
-            )
-            .into()
+            let expr_pairs = zip_expressions_for_op(op, left, right)?;
+            Value::Enum("Connection", Some(vec![expr_pairs])).into()
         }
         (l, op, r) => Err(EvalError::TypeError(format!(
             "Operator {op} not supported on types: {l}: {}, {r}: {}",
@@ -1192,15 +1166,36 @@ fn evaluate_binary_operation<'a, T: FieldElement>(
     })
 }
 
+fn zip_expressions_for_op<'a, T>(
+    op: BinaryOperator,
+    left: &[Arc<Value<'a, T>>],
+    right: &[Arc<Value<'a, T>>],
+) -> Result<Arc<Value<'a, T>>, EvalError> {
+    if left.len() != right.len() {
+        Err(EvalError::TypeError(format!(
+            "Tried to use \"{op}\" operator on arrays of different lengths: {} and {}",
+            left.len(),
+            right.len()
+        )))?
+    }
+    Ok(Value::Array(
+        left.iter()
+            .zip(right)
+            .map(|(l, r)| Value::Tuple(vec![l.clone(), r.clone()]).into())
+            .collect(),
+    )
+    .into())
+}
+
 /// Turns a value that can be interpreted as a seleceted expressions (either "a $ [b, c]" or "[b, c]")
 /// into the selector and the exprs. The selector is already wrappend into a std::prelude::Option.
-fn to_selected_exprs_expanded<T>(
-    selected_exprs: Arc<Value<'_, T>>,
-) -> (Arc<Value<'_, T>>, Vec<Arc<Value<'_, T>>>) {
-    match selected_exprs.as_ref() {
+fn to_selected_exprs_expanded<'a, 'b, T>(
+    selected_exprs: &'a Value<'b, T>,
+) -> (Arc<Value<'b, T>>, &'a Vec<Arc<Value<'b, T>>>) {
+    match selected_exprs {
         // An array of expressions or a selected expressions without selector.
         Value::Array(items) | Value::Enum("JustExprs", Some(items)) => {
-            (Value::Enum("None", None).into(), items.clone())
+            (Value::Enum("None", None).into(), &items)
         }
         // A selected expressions
         Value::Enum("SelectedExprs", Some(items)) => {
@@ -1209,7 +1204,7 @@ fn to_selected_exprs_expanded<T>(
             let Value::Array(exprs) = exprs.as_ref() else {
                 panic!();
             };
-            (selector, exprs.clone())
+            (selector, exprs)
         }
         _ => panic!(),
     }
