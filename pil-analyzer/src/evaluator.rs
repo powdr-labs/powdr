@@ -908,7 +908,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     ))
                     .into(),
                     (_, inner) => Err(EvalError::TypeError(format!(
-                        "Operator {op} not supported on types: {inner}: {}",
+                        "Operator \"{op}\" not supported on types: {inner}: {}",
                         inner.type_formatted()
                     )))?,
                 }
@@ -1140,7 +1140,7 @@ fn evaluate_binary_operation<'a, T: FieldElement>(
             .into(),
         },
         (l, op, r) => Err(EvalError::TypeError(format!(
-            "Operator {op} not supported on types: {l}: {}, {r}: {}",
+            "Operator \"{op}\" not supported on types: {l}: {}, {r}: {}",
             l.type_formatted(),
             r.type_formatted()
         )))?,
@@ -1267,7 +1267,7 @@ pub fn evaluate_binary_operation_field<'a, T: FieldElement>(
         BinaryOperator::Equal => Value::Bool(left == right),
         BinaryOperator::NotEqual => Value::Bool(left != right),
         _ => Err(EvalError::TypeError(format!(
-            "Invalid operator {op} on field elements: {left} {op} {right}"
+            "Invalid operator \"{op}\" on field elements: {left} {op} {right}"
         )))?,
     }
     .into())
@@ -1297,7 +1297,7 @@ pub fn evaluate_binary_operation_integer<'a, T>(
         BinaryOperator::GreaterEqual => Value::Bool(left >= right),
         BinaryOperator::Greater => Value::Bool(left > right),
         _ => Err(EvalError::TypeError(format!(
-            "Invalid operator {op} on integers: {left} {op} {right}"
+            "Invalid operator \"{op}\" on integers: {left} {op} {right}"
         )))?,
     }
     .into())

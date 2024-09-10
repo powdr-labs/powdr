@@ -598,7 +598,7 @@ impl TypeChecker {
                 self.infer_type_of_function_call(
                     fun_type,
                     [left, right].into_iter().map(AsMut::as_mut),
-                    || format!("applying operator {op}"),
+                    || format!("applying operator \"{op}\""),
                     source_ref,
                 )?
             }
