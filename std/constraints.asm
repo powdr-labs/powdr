@@ -1,5 +1,5 @@
-/// Makes a constraint conditional on a condition, i.e. it is only active if tthe condition is non-zero.
-/// We assume that the condition is either zero or on.
+/// Makes a constraint conditional on a condition, i.e. it is only active if the condition is non-zero.
+/// We assume that the condition is either zero or one.
 /// For lookups and permutations, only the left-hand-side is made conditional.
 let make_conditional: Constr, expr -> Constr = |constraint, condition| match constraint {
     Constr::Identity(l, r) => condition * (l - r) = 0,
