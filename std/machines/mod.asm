@@ -1,5 +1,6 @@
 mod arith;
 mod arith_bb;
+mod arith_bb_mul;
 mod binary;
 mod binary_bb;
 mod range;
