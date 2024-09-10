@@ -621,7 +621,6 @@ fn to_constraint<T: FieldElement>(
                 unreachable!()
             };
 
-            println!("exprs: {:?}", fields[1]);
             let (from, to): (Vec<_>, Vec<_>) = if let Value::Array(a) = fields[1].as_ref() {
                 a.iter()
                     .map(|pair| {
