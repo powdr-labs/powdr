@@ -150,6 +150,8 @@ fn translate_program_impl(
     let mut initial_mem = Vec::new();
     let mut data_code = Vec::new();
     for MemEntry { label, addr, value } in program.take_initial_mem() {
+        let addr_h = u32_high(addr);
+        let addr_l = u32_low(addr);
         if let Some(label) = label {
             // This is a comment, so we don't need to escape the label.
             let comment = format!(" // data {label}");
@@ -166,18 +168,21 @@ fn translate_program_impl(
                     // Instead of generating the data loading code, we store it
                     // in the variable that will be used as the initial memory
                     // snapshot, committed by the bootloader.
+                    // TODO for BabyBear
                     initial_mem.push(format!("(0x{addr:x}, 0x{v:x})"));
                 } else {
+                    let v_h = u32_high(v);
+                    let v_l = u32_low(v);
                     data_code.push(format!(
-                        "set_reg {}, 0x{v:x};",
+                        "set_reg {}, 0x{v_h:x}, 0x{v_l:x};",
                         Register::from("tmp2").addr()
                     ));
                     data_code.push(format!(
-                        "set_reg {}, 0x{addr:x};",
+                        "set_reg {}, 0x{addr_h:x}, 0x{addr_l:x};",
                         Register::from("tmp1").addr()
                     ));
                     data_code.push(format!(
-                        "mstore {}, 0, 0, {};",
+                        "mstore {}, 0, 0, 0, {};",
                         Register::from("tmp1").addr(),
                         Register::from("tmp2").addr()
                     ));
@@ -194,9 +199,12 @@ fn translate_program_impl(
                         Register::from("tmp2").addr(),
                         escape_label(&sym)
                     ),
-                    format!("set_reg {}, 0x{addr:x};", Register::from("tmp1").addr()),
                     format!(
-                        "mstore {}, 0, 0, {};",
+                        "set_reg {}, 0x{addr_h:x}, 0x{addr_l:x};",
+                        Register::from("tmp1").addr()
+                    ),
+                    format!(
+                        "mstore {}, 0, 0, 0, {};",
                         Register::from("tmp1").addr(),
                         Register::from("tmp2").addr()
                     ),
@@ -249,7 +257,7 @@ fn translate_program_impl(
         statements.push("jump __data_init, 1;".to_string());
     }
     statements.extend([
-        "set_reg 0, 0;".to_string(),
+        "set_reg 0, 0, 0;".to_string(),
         format!(
             "jump {}, 1;",
             escape_label(program.start_function().as_ref())
@@ -300,7 +308,9 @@ fn riscv_machine(
     format!(
         r#"
 {}
+use std::machines::arith_bb::ArithBB;
 machine Main with min_degree: {}, max_degree: {} {{
+ArithBB arith_bb(byte2);
 {}
 
 {}
@@ -339,16 +349,13 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     };
 
     for machine in [
-        "binary",
-        "shift",
-        "bit2",
-        "bit6",
-        "bit7",
-        "byte",
+        //"binary",
+        //"shift",
+        "bit2", "bit6", "bit7", "byte",
         "byte2",
-        "byte_binary",
-        "byte_shift",
-        "byte_compare",
+        //"byte_binary",
+        //"byte_shift",
+        //"byte_compare",
     ] {
         assert!(
             runtime.has_submachine(machine),
@@ -360,10 +367,14 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
 
     r#"
     reg pc[@pc];
-    reg X[<=];
-    reg Y[<=];
-    reg Z[<=];
-    reg W[<=];
+    reg XL[<=];
+    reg XH[<=];
+    reg YL[<=];
+    reg YH[<=];
+    reg ZL[<=];
+    reg ZH[<=];
+    reg WL[<=];
+    reg WH[<=];
 "#
         .to_string()
         // runtime extra registers
@@ -376,23 +387,42 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
         + &memory(with_bootloader)
         + r#"
     // =============== Register memory =======================
-"# + "std::machines::memory::Memory regs(byte2);"
+"# + "std::machines::memory_bb::Memory regs(byte2);"
         + r#"
     // Get the value in register Y.
-    instr get_reg Y -> X link ~> X = regs.mload(Y, STEP);
+    instr get_reg YL -> XH, XL link ~> (XH, XL) = regs.mload(0, YL, STEP);
 
     // Set the value in register X to the value in register Y.
-    instr set_reg X, Y -> link ~> regs.mstore(X, STEP, Y);
+    instr set_reg XL, YH, YL -> link ~> regs.mstore(0, XL, STEP, YH, YL);
 
     // We still need these registers prover inputs.
-    reg query_arg_1;
-    reg query_arg_2;
+    reg query_arg_1_h;
+    reg query_arg_1_l;
+    reg query_arg_2_h;
+    reg query_arg_2_l;
 
     // Witness columns used in instuctions for intermediate values inside instructions.
-    col witness tmp1_col;
-    col witness tmp2_col;
-    col witness tmp3_col;
-    col witness tmp4_col;
+    col witness tmp1_h;
+    col witness tmp1_l;
+    col witness tmp2_h;
+    col witness tmp2_l;
+    col witness tmp3_h;
+    col witness tmp3_l;
+    col witness tmp4_h;
+    col witness tmp4_l;
+    col witness tmp5_h;
+    col witness tmp5_l;
+
+    link => byte2.check(tmp1_h);
+    link => byte2.check(tmp1_l);
+    link => byte2.check(tmp2_h);
+    link => byte2.check(tmp2_l);
+    link => byte2.check(tmp3_h);
+    link => byte2.check(tmp3_l);
+    link => byte2.check(tmp4_h);
+    link => byte2.check(tmp4_l);
+    link => byte2.check(tmp5_h);
+    link => byte2.check(tmp5_l);
 
     // We need to add these inline instead of using std::utils::is_zero
     // because when XX is not constrained, witgen will try to set XX,
@@ -406,25 +436,34 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     // ============== control-flow instructions ==============
 
     // Load the value of label `l` into register X.
-    instr load_label X, l: label
-        link ~> regs.mstore(X, STEP, tmp1_col)
+    instr load_label XL, l: label
+        link ~> regs.mstore(0, XL, STEP, tmp1_h, tmp1_l)
     {
-        tmp1_col = l
+        tmp1_h * 2**16 + tmp1_l = l
     }
 
     // Jump to `l` and store the return program counter in register W.
-    instr jump l: label, W
-        link ~> regs.mstore(W, STEP, pc + 1)
+    instr jump l: label, WL
+        link ~> regs.mstore(0, WL, STEP, tmp1_h, tmp1_l)
+        link => byte.check(tmp1_h)
     {
+        (tmp1_h * 2**16) + tmp1_l = pc + 1,
         pc' = l
     }
     
     // Jump to the address in register X and store the return program counter in register W.
-    instr jump_dyn X, W
-        link ~> pc' = regs.mload(X, STEP)
-        link ~> regs.mstore(W, STEP, pc + 1);
+    instr jump_dyn XL, WL
+        link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
+        link ~> regs.mstore(0, WL, STEP, tmp2_h, tmp2_l)
+        link => byte.check(tmp2_h)
+    {
+        tmp5_h = (tmp1_h * 2**16) + tmp1_l,
+        pc' = tmp5_h,
+        pc + 1 = tmp2_h * 2**16 + tmp2_l
+    }
 
     // Jump to `l` if val(X) - val(Y) is nonzero, where X and Y are register ids.
+    /*
     instr branch_if_diff_nonzero X, Y, l: label
         link ~> tmp1_col = regs.mload(X, STEP)
         link ~> tmp2_col = regs.mload(Y, STEP + 1)
@@ -433,19 +472,24 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
         XX = tmp1_col - tmp2_col,
         pc' = (1 - XXIsZero) * l + XXIsZero * (pc + 1)
     }
+    */
 
     // Jump to `l` if (val(X) - val(Y)) == Z, where X and Y are register ids and Z is a number.
-    instr branch_if_diff_equal X, Y, Z, l: label
-        link ~> tmp1_col = regs.mload(X, STEP)
-        link ~> tmp2_col = regs.mload(Y, STEP + 1)
+    instr branch_if_diff_equal XL, YL, ZH, ZL, l: label
+        link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
+        link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
+        link ~> (tmp3_h, tmp3_l) = arith_bb.sub(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
+        link ~> (tmp4_h, tmp4_l) = arith_bb.sub(tmp3_h, tmp3_l, ZH, ZL)
     {
         XXIsZero = 1 - XX * XX_inv,
-        XX = tmp1_col - tmp2_col - Z,
+        // TODO is this correct?
+        XX = tmp5_h + tmp5_l,
         pc' = XXIsZero * l + (1 - XXIsZero) * (pc + 1)
     }
 
     // Skips W instructions if val(X) - val(Y) + Z is zero, where X and Y are register ids and Z is a
     // constant offset.
+    /*
     instr skip_if_equal X, Y, Z, W
         link ~> tmp1_col = regs.mload(X, STEP)
         link ~> tmp2_col = regs.mload(Y, STEP + 1)
@@ -530,6 +574,7 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
         XX = tmp1_col - tmp2_col,
         tmp3_col = 1 - XXIsZero
     }
+    */
 
     // ================= submachine instructions =================
 "# + &runtime
@@ -540,15 +585,18 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
         + r#"
     col witness X_b1;
     col witness X_b2;
+    /*
     col witness X_b3;
     col witness X_b4;
     link => byte.check(X_b1);
     link => byte.check(X_b2);
     link => byte.check(X_b3);
     link => byte.check(X_b4);
+    */
     col witness wrap_bit;
     wrap_bit * (1 - wrap_bit) = 0;
 
+    /*
     // Sign extends the value in register X and stores it in register Y.
     // Input is a 32 bit unsigned number. We check bit 7 and set all higher bits to that value.
     instr sign_extend_byte X, Y
@@ -588,10 +636,12 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
         tmp3_col = tmp1_col - wrap_bit * 0x100000000
     }
 
+    */
     // ======================= assertions =========================
 
     instr fail { 1 = 0 }
 
+    /*
     // Wraps V = val(X) * Y and stores it in register Z,
     // where X is a register and Y is a constant factor.
     // Removes up to 16 bits beyond 32
@@ -647,6 +697,7 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
         // quotient is 32 bits:
         tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
     }
+    */
 "# + mul_instruction
 }
 
@@ -671,21 +722,25 @@ fn mul_instruction<T: FieldElement>(runtime: &Runtime) -> &'static str {
 "#
         }
         KnownField::GoldilocksField => {
+            /*
             assert!(
                 runtime.has_submachine("split_gl"),
                 "RISC-V machine with the goldilocks field requires the `split_gl` submachine"
             );
+            */
             // The Goldilocks field cannot fit some 64-bit numbers, so we have to use
             // the split machine. Note that it can fit a product of two 32-bit numbers.
             r#"
     // Computes V = val(X) * val(Y) and
     // stores the lower 32 bits in register Z and the upper 32 bits in register W.
+    /*
     instr mul X, Y, Z, W
         link ~> tmp1_col = regs.mload(X, STEP)
         link ~> tmp2_col = regs.mload(Y, STEP + 1)
         link ~> (tmp3_col, tmp4_col) = split_gl.split(tmp1_col * tmp2_col)
         link ~> regs.mstore(Z, STEP + 2, tmp3_col)
         link ~> regs.mstore(W, STEP + 3, tmp4_col);
+    */
 "#
         }
         KnownField::BabyBearField => todo!(),
@@ -710,7 +765,7 @@ fn memory(with_bootloader: bool) -> String {
 "#
     } else {
         r#"
-    std::machines::memory::Memory memory(byte2);
+    std::machines::memory_bb::Memory memory(byte2);
 "#
     };
 
@@ -726,28 +781,33 @@ fn memory(with_bootloader: bool) -> String {
     /// wraps the address to 32 bits and rounds it down to the next multiple of 4.
     /// Writes the loaded word and the remainder of the division by 4 to registers Z and W,
     /// respectively.
-    instr mload X, Y, Z, W
-        link ~> tmp1_col = regs.mload(X, STEP)
-        link ~> tmp3_col = memory.mload(X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4, STEP + 1)
-        link ~> regs.mstore(Z, STEP + 2, tmp3_col)
-        link ~> regs.mstore(W, STEP + 3, tmp4_col)
-        link => bit2.check(tmp4_col)
+    instr mload XL, YH, YL, ZL, WL
+        link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
+
+        link ~> (tmp2_h, tmp2_l) = arith_bb.add(tmp1_h, tmp1_l, YH, YL)
+
+        link ~> (tmp3_h, tmp3_l) = memory.mload(tmp2_h, X_b2 * 0x100 + X_b1 * 4, STEP + 1)
+        link ~> regs.mstore(0, ZL, STEP + 2, tmp3_h, tmp3_l)
+        link ~> regs.mstore(0, WL, STEP + 3, 0, tmp4_l)
+        link => bit2.check(tmp4_l)
         link => bit6.check(X_b1)
     {
-        tmp1_col + Y = wrap_bit * 2**32 + X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4 + tmp4_col
+        tmp2_l = wrap_bit * 2**16 + X_b2 * 0x100 + X_b1 * 4 + tmp4_l
     }
 
     // Stores val(W) at address (V = val(X) - val(Y) + Z) % 2**32.
     // V can be between 0 and 2**33.
     // V should be a multiple of 4, but this instruction does not enforce it.
-    instr mstore X, Y, Z, W
-        link ~> tmp1_col = regs.mload(X, STEP)
-        link ~> tmp2_col = regs.mload(Y, STEP + 1)
-        link ~> tmp3_col = regs.mload(W, STEP + 2)
-        link ~> memory.mstore(X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP + 3, tmp3_col)
-    {
-        tmp1_col - tmp2_col + Z = (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000) + wrap_bit * 2**32
-    }
+    instr mstore XL, YL, ZH, ZL, WL
+        link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
+        link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
+        link ~> (tmp3_h, tmp3_l) = regs.mload(0, WL, STEP + 2)
+
+        link ~> (tmp4_h, tmp4_l) = arith_bb.sub(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
+        link ~> (tmp5_h, tmp5_l) = arith_bb.add(tmp4_h, tmp4_l, ZH, ZL)
+
+        link ~> memory.mstore(tmp5_h, tmp5_l, STEP + 3, tmp3_h, tmp3_l);
+
 "#
 }
 
@@ -789,7 +849,7 @@ pub fn push_register(name: &str) -> Vec<String> {
     vec![
         // x2 + x0 - 4 => x2
         format!("add_wrap 2, 0, -4, 2;",),
-        format!("mstore 2, 0, 0, {};", reg.addr()),
+        format!("mstore 2, 0, 0, 0, {};", reg.addr()),
     ]
 }
 
@@ -805,6 +865,14 @@ pub fn pop_register(name: &str) -> Vec<String> {
         ),
         "add_wrap 2, 0, 4, 2;".to_string(),
     ]
+}
+
+fn u32_high(x: u32) -> u16 {
+    (x >> 16) as u16
+}
+
+fn u32_low(x: u32) -> u16 {
+    (x & 0xffff) as u16
 }
 
 fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<String>, A::Error> {
@@ -825,13 +893,30 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                 only_if_no_write_to_zero(rd, format!("load_label {}, {label};", rd.addr()))
             } else {
                 let (rd, imm) = args.ri()?;
-                only_if_no_write_to_zero(rd, format!("set_reg {}, {imm};", rd.addr()))
+                only_if_no_write_to_zero(
+                    rd,
+                    format!(
+                        "set_reg {}, {}, {};",
+                        rd.addr(),
+                        u32_high(imm),
+                        u32_low(imm)
+                    ),
+                )
             }
         }
         // TODO check if it is OK to clear the lower order bits
         "lui" => {
             let (rd, imm) = args.ri()?;
-            only_if_no_write_to_zero(rd, format!("set_reg {}, {};", rd.addr(), imm << 12))
+            let imm = imm << 12;
+            only_if_no_write_to_zero(
+                rd,
+                format!(
+                    "set_reg {}, {}, {};",
+                    rd.addr(),
+                    u32_high(imm),
+                    u32_low(imm)
+                ),
+            )
         }
         "mv" => {
             let (rd, rs) = args.rr()?;
@@ -1221,7 +1306,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             let (r1, r2, label) = args.rrl()?;
             let label = escape_label(label.as_ref());
             vec![format!(
-                "branch_if_diff_equal {}, {}, 0, {label};",
+                "branch_if_diff_equal {}, {}, 0, 0, {label};",
                 r1.addr(),
                 r2.addr()
             )]
@@ -1230,7 +1315,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             let (r1, label) = args.rl()?;
             let label = escape_label(label.as_ref());
             vec![format!(
-                "branch_if_diff_equal {}, 0, 0, {label};",
+                "branch_if_diff_equal {}, 0, 0, 0, {label};",
                 r1.addr()
             )]
         }
@@ -1495,7 +1580,13 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
         }
         "sw" => {
             let (r2, r1, off) = args.rro()?;
-            vec![format!("mstore {}, 0, {off}, {};", r1.addr(), r2.addr())]
+            vec![format!(
+                "mstore {}, 0, {}, {}, {};",
+                r1.addr(),
+                u32_high(off),
+                u32_low(off),
+                r2.addr()
+            )]
         }
         "sh" => {
             // store half word (two bytes)
@@ -1510,7 +1601,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                     tmp1.addr(),
                     tmp2.addr()
                 ),
-                format!("set_reg {}, 0xffff;", tmp3.addr()),
+                format!("set_reg {}, 0, 0xffff;", tmp3.addr()),
                 format!("affine {}, {}, 8, 0;", tmp2.addr(), tmp4.addr()),
                 format!("shl {}, {}, 0, {};", tmp3.addr(), tmp4.addr(), tmp3.addr()),
                 format!("xor {}, 0, 0xffffffff, {};", tmp3.addr(), tmp3.addr()),
@@ -1519,9 +1610,11 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                 format!("shl {}, {}, 0, {};", tmp3.addr(), tmp4.addr(), tmp3.addr()),
                 format!("or {}, {}, 0, {};", tmp1.addr(), tmp3.addr(), tmp1.addr()),
                 format!(
-                    "mstore {}, {}, {off}, {};",
+                    "mstore {}, {}, {}, {}, {};",
                     r1.addr(),
                     tmp2.addr(),
+                    u32_high(off),
+                    u32_low(off),
                     tmp1.addr()
                 ),
             ]
@@ -1536,7 +1629,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                     tmp1.addr(),
                     tmp2.addr()
                 ),
-                format!("set_reg {}, 0xff;", tmp3.addr()),
+                format!("set_reg {}, 0, 0xff;", tmp3.addr()),
                 format!("affine {}, {}, 8, 0;", tmp2.addr(), tmp4.addr()),
                 format!("shl {}, {}, 0, {};", tmp3.addr(), tmp4.addr(), tmp3.addr()),
                 format!("xor {}, 0, 0xffffffff, {};", tmp3.addr(), tmp3.addr()),
@@ -1545,9 +1638,11 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                 format!("shl {}, {}, 0, {};", tmp3.addr(), tmp4.addr(), tmp3.addr()),
                 format!("or {}, {}, 0, {};", tmp1.addr(), tmp3.addr(), tmp1.addr()),
                 format!(
-                    "mstore {}, {}, {off}, {};",
+                    "mstore {}, {}, {}, {}, {};",
                     r1.addr(),
                     tmp2.addr(),
+                    u32_high(off),
+                    u32_low(off),
                     tmp1.addr()
                 ),
             ]
@@ -1568,7 +1663,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                         rs2.addr(),
                         tmp2.addr()
                     ),
-                    format!("mstore {}, 0, 0, {};", rs1.addr(), tmp2.addr()),
+                    format!("mstore {}, 0, 0, 0, {};", rs1.addr(), tmp2.addr()),
                 ],
                 only_if_no_write_to_zero(
                     rd,
@@ -1592,7 +1687,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                         tmp1.addr()
                     )],
                 ),
-                vec![format!("set_reg {}, 1;", lr_sc_reservation.addr())],
+                vec![format!("set_reg {}, 0, 1;", lr_sc_reservation.addr())],
             ]
             .concat()
         }
@@ -1603,7 +1698,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             // TODO: misaligned access should raise misaligned address exceptions
             [
                 format!("skip_if_equal {}, 0, 0, 1;", lr_sc_reservation.addr()),
-                format!("mstore {}, 0, 0, {};", rs1.addr(), rs2.addr()),
+                format!("mstore {}, 0, 0, 0, {};", rs1.addr(), rs2.addr()),
             ]
             .into_iter()
             .chain(only_if_no_write_to_zero_vec(
@@ -1614,7 +1709,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                     rd.addr()
                 )],
             ))
-            .chain([format!("set_reg {}, 0;", lr_sc_reservation.addr())])
+            .chain([format!("set_reg {}, 0, 0;", lr_sc_reservation.addr())])
             .collect()
         }
 

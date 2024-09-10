@@ -8,7 +8,6 @@ use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{EvalError, EvalResult, FixedData, MutableState, QueryCallback};
 use crate::witgen::{EvalValue, IncompleteCause};
-use crate::Identity;
 use powdr_number::{DegreeType, FieldElement, LargeInt};
 
 use powdr_ast::analyzed::{DegreeRange, IdentityKind, PolyID};
@@ -265,7 +264,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
             set_selector(None);
         }
 
-        let current_size = addr.len();
+        let current_size = addr1.len();
         let new_size = current_size.next_power_of_two() as DegreeType;
         let new_size = self.degree_range.fit(new_size);
         log::info!(

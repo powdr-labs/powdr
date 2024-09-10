@@ -91,66 +91,78 @@ impl Runtime {
 
         // Base submachines
         // TODO: can/should the memory machine be part of the runtime also?
-        r.add_submachine(
-            "std::machines::binary::Binary",
-            None,
-            "binary",
-            vec!["byte_binary"],
-            [
-                r#"instr and X, Y, Z, W
-                    link ~> tmp1_col = regs.mload(X, STEP)
-                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
-                    link ~> tmp3_col = binary.and(tmp1_col, tmp2_col + Z)
-                    link ~> regs.mstore(W, STEP + 3, tmp3_col);"#,
-                r#"instr or X, Y, Z, W
-                    link ~> tmp1_col = regs.mload(X, STEP)
-                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
-                    link ~> tmp3_col = binary.or(tmp1_col, tmp2_col + Z)
-                    link ~> regs.mstore(W, STEP + 3, tmp3_col);"#,
-                r#"instr xor X, Y, Z, W
-                    link ~> tmp1_col = regs.mload(X, STEP)
-                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
-                    link ~> tmp3_col = binary.xor(tmp1_col, tmp2_col + Z)
-                    link ~> regs.mstore(W, STEP + 3, tmp3_col);"#,
-            ],
-            0,
-            ["and 0, 0, 0, 0;"],
-        );
+        /*
+                r.add_submachine(
+                    "std::machines::binary_bb::Binary16",
+                    None,
+                    "binary",
+                    vec!["byte_binary"],
+                    [
+                        r#"instr and XL, YL, ZH, ZL, WL
+                            link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
+                            link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
+                            link ~> (tmp4_h, tmp4_l, tmp3_h, tmp3_l) = arith_bb.add(tmp2_h, tmp2_l, ZH, ZL)
+                            link ~> (tmp5_h, tmp5_l) = binary.and(tmp1_h, tmp1_l, tmp3_h, tmp3_l)
+                            link ~> regs.mstore(0, WL, STEP + 3, tmp5_h, tmp5_l);"#,
+                        r#"instr or XL, YL, ZH, ZL, WL
+                            link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
+                            link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
+                            link ~> (tmp4_h, tmp4_l, tmp3_h, tmp3_l) = arith_bb.add(tmp2_h, tmp2_l, ZH, ZL)
+                            link ~> (tmp5_h, tmp5_l) = binary.or(tmp1_h, tmp1_l, tmp3_h, tmp3_l)
+                            link ~> regs.mstore(0, WL, STEP + 3, tmp5_h, tmp5_l);"#,
+                        r#"instr xor XL, YL, ZH, ZL, WL
+                            link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
+                            link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
+                            link ~> (tmp4_h, tmp4_l, tmp3_h, tmp3_l) = arith_bb.add(tmp2_h, tmp2_l, ZH, ZL)
+                            link ~> (tmp5_h, tmp5_l) = binary.xor(tmp1_h, tmp1_l, tmp3_h, tmp3_l)
+                            link ~> regs.mstore(0, WL, STEP + 3, tmp5_h, tmp5_l);"#,
+                    ],
+                    0,
+                    ["and 0, 0, 0, 0, 0;"],
+                );
+        */
 
+        /*
         r.add_submachine(
             "std::machines::shift::Shift",
             None,
             "shift",
             vec!["byte_shift"],
             [
-                r#"instr shl X, Y, Z, W
+                r#"/*instr shl X, Y, Z, W
                     link ~> tmp1_col = regs.mload(X, STEP)
                     link ~> tmp2_col = regs.mload(Y, STEP + 1)
                     link ~> tmp3_col = shift.shl(tmp1_col, tmp2_col + Z)
-                    link ~> regs.mstore(W, STEP + 3, tmp3_col);"#,
-                r#"instr shr X, Y, Z, W
-                    link ~> tmp1_col = regs.mload(X, STEP)
-                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
-                    link ~> tmp3_col = shift.shr(tmp1_col, tmp2_col + Z)
-                    link ~> regs.mstore(W, STEP + 3, tmp3_col);"#,
+                    link ~> regs.mstore(W, STEP + 3, tmp3_col);*/
+"#,
+        r#" /*instr shr X, Y, Z, W
+            link ~> tmp1_col = regs.mload(X, STEP)
+            link ~> tmp2_col = regs.mload(Y, STEP + 1)
+            link ~> tmp3_col = shift.shr(tmp1_col, tmp2_col + Z)
+            link ~> regs.mstore(W, STEP + 3, tmp3_col);*/
+"#,
             ],
             0,
             ["shl 0, 0, 0, 0;"],
         );
+        */
 
+        /*
         r.add_submachine(
             "std::machines::split::split_gl::SplitGL",
             None,
             "split_gl",
             vec!["byte_compare"],
-            [r#"instr split_gl X, Z, W
-                    link ~> tmp1_col = regs.mload(X, STEP)
-                    link ~> (tmp3_col, tmp4_col) = split_gl.split(tmp1_col)
-                    link ~> regs.mstore(Z, STEP + 2, tmp3_col)
-                    link ~> regs.mstore(W, STEP + 3, tmp4_col);"#],
+        [r#" /*instr split_gl X, Z, W
+             link ~> tmp1_col = regs.mload(X, STEP)
+             link ~> (tmp3_col, tmp4_col) = split_gl.split(tmp1_col)
+             link ~> regs.mstore(Z, STEP + 2, tmp3_col)
+             link ~> regs.mstore(W, STEP + 3, tmp4_col);*/
+"#],
             0,
-            ["split_gl 0, 0, 0;"],
+        [" //split_gl 0, 0, 0;"],
         );
+        */
 
         r.add_submachine::<&str, _, _>(
             "std::machines::range::Bit2",
@@ -238,17 +250,19 @@ impl Runtime {
             [
                 // TODO this is a quite inefficient way of getting prover inputs.
                 // We need to be able to access the register memory within PIL functions.
-                "query_arg_1 <== get_reg(10);",
-                "set_reg 10, ${ std::prelude::Query::Input(std::convert::int(std::prover::eval(query_arg_1))) };",
+                "query_arg_1_h, query_arg_1_l <== get_reg(10);",
+                // TODO fix for BabyBear
+                "set_reg 10, 0, ${ std::prelude::Query::Input(std::convert::int(std::prover::eval(query_arg_1_l))) };",
             ],
         );
 
         r.add_syscall(
             Syscall::DataIdentifier,
             [
-                "query_arg_1 <== get_reg(10);",
-                "query_arg_2 <== get_reg(11);",
-                "set_reg 10, ${ std::prelude::Query::DataIdentifier(std::convert::int(std::prover::eval(query_arg_2)), std::convert::int(std::prover::eval(query_arg_1))) };",
+                "query_arg_1_h, query_arg_1_l <== get_reg(10);",
+                "query_arg_2_h, query_arg_2_l <== get_reg(11);",
+                // TODO fix for BabyBear
+                "set_reg 10, 0, ${ std::prelude::Query::DataIdentifier(std::convert::int(std::prover::eval(query_arg_2_l)), std::convert::int(std::prover::eval(query_arg_1_l))) };",
             ]
         );
 
@@ -257,9 +271,9 @@ impl Runtime {
             // This is using x0 on purpose, because we do not want to introduce
             // nondeterminism with this.
             [
-                "query_arg_1 <== get_reg(10);",
-                "query_arg_2 <== get_reg(11);",
-                "set_reg 0, ${ std::prelude::Query::Output(std::convert::int(std::prover::eval(query_arg_1)), std::convert::int(std::prover::eval(query_arg_2))) };"
+                "query_arg_1_h, query_arg_1_l <== get_reg(10);",
+                "query_arg_2_h, query_arg_2_l <== get_reg(11);",
+                "set_reg 0, 0, ${ std::prelude::Query::Output(std::convert::int(std::prover::eval(query_arg_1_l)), std::convert::int(std::prover::eval(query_arg_2_l))) };"
             ]
         );
 
@@ -614,10 +628,9 @@ impl Runtime {
         .into_iter();
 
         let jump_table = self.syscalls.keys().map(|s| {
-            format!(
-                "branch_if_diff_equal 5, 0, {}, __ecall_handler_{};",
-                *s as u32, s
-            )
+            let s32_h = ((*s as u32) >> 16) as u16;
+            let s32_l = ((*s as u32) & 0xffff) as u16;
+            format!("branch_if_diff_equal 5, 0, {s32_h}, {s32_l}, __ecall_handler_{s};",)
         });
 
         let invalid_handler = ["__invalid_syscall:".to_string(), "fail;".to_string()].into_iter();
