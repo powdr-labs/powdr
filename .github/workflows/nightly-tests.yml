@@ -16,7 +16,7 @@ jobs:
       status: ${{ steps.count.outputs.status }}
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Count recent commits
       id: count
       run: echo "status=$(git log --oneline --since '24 hours ago' | wc -l)" >> $GITHUB_OUTPUT
@@ -48,7 +48,7 @@ jobs:
     if: needs.check_if_needs_running.outputs.status > 0
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         submodules: recursive
     - name: ⚡ Cache rust
