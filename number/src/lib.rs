@@ -7,6 +7,9 @@ mod macros;
 mod baby_bear;
 mod bn254;
 mod goldilocks;
+mod mersenne31;
+#[macro_use]
+mod plonky3_macros;
 mod serialize;
 mod traits;
 pub use serialize::{
