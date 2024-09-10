@@ -166,3 +166,21 @@ fn set_hint_constr() {
     "#;
     analyze_string(input);
 }
+
+#[test]
+#[should_panic = "Tried to create a fixed column in a pure context: let y: col = constr |i| 2;"]
+fn constr_lambda_in_impl() {
+    let input = r#"namespace N(16);
+    trait Impure<T> {
+            f: T -> T,
+        }
+    impl Impure<int> {
+        f: |x| {
+            let y: col = constr |i| 2;
+            8
+        },
+    }
+    let result: int = Impure::f(5);
+    "#;
+    analyze_string(input);
+}

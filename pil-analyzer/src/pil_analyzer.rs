@@ -1,29 +1,32 @@
+use core::panic;
 use std::collections::{HashMap, HashSet};
 
 use std::fs;
 use std::iter::once;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use itertools::Itertools;
 use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, ModuleStatement, SymbolPath,
 };
 use powdr_ast::parsed::types::{ArrayType, Type};
-use powdr_ast::parsed::visitor::Children;
+use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_ast::parsed::{
     self, FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions,
-    SymbolCategory,
+    SymbolCategory, TraitImplementation,
 };
 use powdr_number::{FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
     type_from_definition, Analyzed, DegreeRange, Expression, FunctionValueDefinition, Identity,
-    IdentityKind, PolynomialType, PublicDeclaration, StatementIdentifier, Symbol, SymbolKind,
-    TypedExpression,
+    IdentityKind, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
+    StatementIdentifier, Symbol, SymbolKind, TypedExpression,
 };
 use powdr_parser::{parse, parse_module, parse_type};
 use powdr_parser_util::Error;
 
+use crate::traits_resolver::TraitsResolver;
 use crate::type_builtins::constr_function_statement_type;
 use crate::type_inference::infer_types;
 use crate::{side_effect_checker, AnalysisDriver};
@@ -54,7 +57,9 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Result<Analyzed<T>, Vec<Erro
     analyzer.process(files)?;
     analyzer.side_effect_check()?;
     analyzer.type_check()?;
-    analyzer.condense()
+    // TODO should use Result here as well.
+    let solved_impls = analyzer.resolve_trait_impls();
+    analyzer.condense(solved_impls)
 }
 
 #[derive(Default)]
@@ -73,6 +78,8 @@ struct PILAnalyzer {
     symbol_counters: Option<Counters>,
     /// Symbols from the core that were added automatically but will not be printed.
     auto_added_symbols: HashSet<String>,
+    /// All trait implementations found, organized according to their associated trait name.
+    implementations: HashMap<String, Vec<TraitImplementation<Expression>>>,
 }
 
 /// Reads and parses the given path and all its imports.
@@ -217,7 +224,18 @@ impl PILAnalyzer {
             value
                 .children()
                 .try_for_each(|e| side_effect_checker::check(&self.definitions, context, e))
-                .unwrap_or_else(|err| errors.push(err))
+                .unwrap_or_else(|err| errors.push(err));
+        }
+
+        for v in self.implementations.values() {
+            for impl_ in v {
+                impl_
+                    .children()
+                    .try_for_each(|e| {
+                        side_effect_checker::check(&self.definitions, FunctionKind::Pure, e)
+                    })
+                    .unwrap_or_else(|err| errors.push(err));
+            }
         }
 
         // for all identities, check that they call pure or constr functions
@@ -239,10 +257,38 @@ impl PILAnalyzer {
     pub fn type_check(&mut self) -> Result<(), Vec<Error>> {
         let query_type: Type = parse_type("int -> std::prelude::Query").unwrap().into();
         let mut expressions = vec![];
-        // Collect all definitions with their types and expressions.
+        // Collect all definitions and traits implementations with their types and expressions.
         // We filter out enum type declarations (the constructor functions have been added
         // by the statement processor already).
         // For Arrays, we also collect the inner expressions and expect them to be field elements.
+
+        for (name, trait_impls) in self.implementations.iter_mut() {
+            let (_, def) = self
+                .definitions
+                .get(name)
+                .expect("Trait definition not found");
+
+            let Some(FunctionValueDefinition::TraitDeclaration(trait_decl)) = def else {
+                continue;
+            };
+            for impl_ in trait_impls {
+                let specialized_types: Vec<_> = impl_
+                    .functions
+                    .iter()
+                    .map(|named_expr| impl_.type_of_function(trait_decl, &named_expr.name))
+                    .collect();
+
+                for (named_expr, specialized_type) in
+                    impl_.functions.iter_mut().zip(specialized_types)
+                {
+                    expressions.push((
+                        Arc::get_mut(&mut named_expr.body).unwrap(),
+                        specialized_type.into(),
+                    ));
+                }
+            }
+        }
+
         let definitions = self
             .definitions
             .iter_mut()
@@ -313,6 +359,7 @@ impl PILAnalyzer {
                 }
             }
         }
+
         let inferred_types = infer_types(definitions, &mut expressions)?;
         // Store the inferred types.
         for (name, ty) in inferred_types {
@@ -328,9 +375,61 @@ impl PILAnalyzer {
         Ok(())
     }
 
-    pub fn condense<T: FieldElement>(self) -> Result<Analyzed<T>, Vec<Error>> {
+    /// Creates and returns a map for every referenced trait and every concrete type to the
+    /// corresponding trait implementation function.
+    fn resolve_trait_impls(&mut self) -> HashMap<String, HashMap<Vec<Type>, Arc<Expression>>> {
+        let mut trait_solver = TraitsResolver::new(&self.implementations);
+
+        let mut resolve_references = |expr: &Expression| {
+            expr.all_children().for_each(|expr| {
+                if let Expression::Reference(
+                    _,
+                    Reference::Poly(
+                        reference @ PolynomialReference {
+                            type_args: Some(_), ..
+                        },
+                    ),
+                ) = expr
+                {
+                    let _ = trait_solver.resolve_trait_function_reference(reference);
+                }
+            });
+        };
+
+        for (_, def) in self.definitions.values() {
+            match def {
+                Some(FunctionValueDefinition::Expression(TypedExpression { e, .. })) => {
+                    resolve_references(e);
+                }
+                Some(FunctionValueDefinition::Array(items)) => {
+                    items.all_children().for_each(&mut resolve_references);
+                }
+                _ => {}
+            }
+        }
+
+        for identity in &self.identities {
+            for expr in identity.all_children() {
+                resolve_references(expr);
+            }
+        }
+
+        for impls in self.implementations.values() {
+            for impl_ in impls {
+                impl_.all_children().for_each(&mut resolve_references);
+            }
+        }
+
+        trait_solver.solved_impls()
+    }
+
+    pub fn condense<T: FieldElement>(
+        self,
+        solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
+    ) -> Result<Analyzed<T>, Vec<Error>> {
         Ok(condenser::condense(
             self.definitions,
+            solved_impls,
             self.public_declarations,
             &self.identities,
             self.source_order,
@@ -411,6 +510,11 @@ impl PILAnalyzer {
                             self.source_order.push(StatementIdentifier::Identity(index));
                             self.identities.push(identity)
                         }
+                        PILItem::TraitImplementation(trait_impl) => self
+                            .implementations
+                            .entry(trait_impl.name.to_string())
+                            .or_default()
+                            .push(trait_impl),
                     }
                 }
             }
@@ -422,10 +526,14 @@ impl PILAnalyzer {
             let e =
                 ExpressionProcessor::new(self.driver(), &Default::default()).process_expression(e);
             u64::try_from(
-                evaluator::evaluate_expression::<GoldilocksField>(&e, &self.definitions)
-                    .unwrap()
-                    .try_to_integer()
-                    .unwrap(),
+                evaluator::evaluate_expression::<GoldilocksField>(
+                    &e,
+                    &self.definitions,
+                    &Default::default(),
+                )
+                .unwrap()
+                .try_to_integer()
+                .unwrap(),
             )
             .unwrap()
         };

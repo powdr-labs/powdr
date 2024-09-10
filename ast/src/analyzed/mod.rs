@@ -36,6 +36,7 @@ pub enum StatementIdentifier {
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct Analyzed<T> {
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    pub solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
     pub intermediate_columns: HashMap<String, (Symbol, Vec<AlgebraicExpression<T>>)>,
     pub identities: Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>>,
