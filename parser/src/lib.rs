@@ -210,44 +210,6 @@ mod test {
         );
     }
 
-    #[test]
-    fn simple_plookup() {
-        let input = "[f] in [g];";
-        let ctx = ParserContext::new(None, input);
-        let parsed = powdr::PILFileParser::new()
-            .parse(&ctx, "[f] in [g];")
-            .unwrap();
-        assert_eq!(
-            parsed,
-            PILFile(vec![PilStatement::PlookupIdentity(
-                SourceRef {
-                    file_name: None,
-                    file_contents: Some(input.into()),
-                    start: 0,
-                    end: 10,
-                },
-                SelectedExpressions {
-                    selector: None,
-                    expressions: Box::new(
-                        ArrayLiteral {
-                            items: vec![direct_reference("f")]
-                        }
-                        .into()
-                    )
-                },
-                SelectedExpressions {
-                    selector: None,
-                    expressions: Box::new(
-                        ArrayLiteral {
-                            items: vec![direct_reference("g")]
-                        }
-                        .into()
-                    )
-                }
-            )])
-        );
-    }
-
     fn find_files_with_ext(
         dir: std::path::PathBuf,
         ext: String,

@@ -635,7 +635,7 @@ fn selected_lookup() {
     col witness x;
     col witness y;
     let k: expr[] = [N::x];
-    let t: std::prelude::SelectedExpr = N::a $ N::k;
+    let t: std::prelude::SelectedExprs = N::a $ N::k;
     N::a $ [N::x] in N::b $ [N::y];
 "#;
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
