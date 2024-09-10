@@ -597,3 +597,47 @@ namespace N(16);
     let expected_ids = "s: 3, i: 4, b: 3, q: 2, r: 0, k: 1";
     assert_eq!(refs, format!("{expected_ids}\n{expected_ids}"));
 }
+
+#[test]
+fn simple_lookup() {
+    let input = r#"namespace N(16);
+    let x;
+    let y;
+    let a = [x];
+    let b = [y]; 
+    a in b;
+    "#;
+    let expected = r#"namespace N(16);
+    col witness x;
+    col witness y;
+    let a: expr[] = [N::x];
+    let b: expr[] = [N::y];
+    [N::x] in [N::y];
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, expected);
+}
+
+#[test]
+fn selected_lookup() {
+    let input = r#"namespace N(16);
+    let a;
+    let b;
+    let x;
+    let y;
+    let k = [x];
+    let t = a $ k;
+    t in b $ [y];
+    "#;
+    let expected = r#"namespace N(16);
+    col witness a;
+    col witness b;
+    col witness x;
+    col witness y;
+    let k: expr[] = [N::x];
+    let t: std::prelude::SelectedExpr = N::a $ N::k;
+    N::a $ [N::x] in N::b $ [N::y];
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, expected);
+}

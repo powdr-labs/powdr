@@ -92,6 +92,7 @@ lazy_static! {
                 "T, U -> std::prelude::Constr"
             )
         ),
+        // TODO we also need Connect
         (
             BinaryOperator::Select,
             ("", "expr, expr[] -> std::prelude::SelectedExpr")
