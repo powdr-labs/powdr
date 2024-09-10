@@ -149,7 +149,7 @@ impl RomBatcher {
 #[cfg(test)]
 mod tests {
 
-    use std::{fs, path::PathBuf};
+    use std::{fs, path::Path};
 
     use powdr_ast::asm_analysis::AnalysisASMFile;
     use pretty_assertions::assert_eq;
