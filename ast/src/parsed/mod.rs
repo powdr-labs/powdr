@@ -6,9 +6,11 @@ pub mod types;
 pub mod visitor;
 
 use std::{
+    collections::HashMap,
     iter::{empty, once},
     ops,
     str::FromStr,
+    sync::Arc,
 };
 
 use auto_enums::auto_enum;
@@ -26,6 +28,8 @@ use self::{
     types::{FunctionType, Type, TypeBounds, TypeScheme},
     visitor::{Children, ExpressionVisitable},
 };
+
+use crate::parsed::types::TupleType;
 
 #[derive(Display, Clone, Copy, PartialEq, Eq)]
 pub enum SymbolCategory {
@@ -348,8 +352,36 @@ impl<R> Children<Expression<R>> for EnumVariant<Expression<R>> {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct TraitImplementation<Expr> {
     pub name: SymbolPath,
+    pub source_ref: SourceRef,
     pub type_scheme: TypeScheme,
-    pub functions: Vec<NamedExpression<Expr>>,
+    pub functions: Vec<NamedExpression<Arc<Expr>>>,
+}
+
+impl<R> TraitImplementation<Expression<R>> {
+    pub fn function_by_name(&self, name: &str) -> Option<&NamedExpression<Arc<Expression<R>>>> {
+        self.functions.iter().find(|f| f.name == name)
+    }
+
+    pub fn type_of_function(&self, trait_decl: &TraitDeclaration, fn_name: &str) -> Type {
+        let Type::Tuple(TupleType { items }) = &self.type_scheme.ty else {
+            panic!("Expected tuple type for trait implementation");
+        };
+
+        let type_var_mapping: HashMap<String, Type> = trait_decl
+            .type_vars
+            .iter()
+            .cloned()
+            .zip(items.iter().cloned())
+            .collect();
+
+        let trait_fn = trait_decl
+            .function_by_name(fn_name)
+            .expect("Function not found in trait declaration");
+
+        let mut trait_type = trait_fn.ty.clone();
+        trait_type.substitute_type_vars(&type_var_mapping);
+        trait_type
+    }
 }
 
 impl<R> Children<Expression<R>> for TraitImplementation<Expression<R>> {
@@ -360,7 +392,7 @@ impl<R> Children<Expression<R>> for TraitImplementation<Expression<R>> {
         Box::new(
             self.functions
                 .iter_mut()
-                .flat_map(|m| m.body.children_mut()),
+                .map(|named_expr| Arc::get_mut(&mut named_expr.body).unwrap()),
         )
     }
 }
@@ -368,7 +400,7 @@ impl<R> Children<Expression<R>> for TraitImplementation<Expression<R>> {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct NamedExpression<Expr> {
     pub name: String,
-    pub body: Box<Expr>,
+    pub body: Expr,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
@@ -381,6 +413,10 @@ pub struct TraitDeclaration<E = u64> {
 impl TraitDeclaration<u64> {
     pub fn function_by_name(&self, name: &str) -> Option<&TraitFunction> {
         self.functions.iter().find(|f| f.name == name)
+    }
+
+    pub fn function_by_name_mut(&mut self, name: &str) -> Option<&mut TraitFunction> {
+        self.functions.iter_mut().find(|f| f.name == name)
     }
 }
 
