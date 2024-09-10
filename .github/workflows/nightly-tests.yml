@@ -52,7 +52,7 @@ jobs:
       with:
         submodules: recursive
     - name: ⚡ Cache rust
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry
@@ -60,7 +60,7 @@ jobs:
           target
         key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
     - name: ⚡ Cache nodejs
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/pilcom/node_modules

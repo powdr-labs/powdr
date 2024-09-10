@@ -28,7 +28,7 @@ jobs:
         submodules: recursive
     - name: ⚡ Restore rust cache
       id: cache
-      uses: actions/cache/restore@v3
+      uses: actions/cache/restore@v4
       with:
         path: |
           ~/.cargo/registry/index/
@@ -82,7 +82,7 @@ jobs:
       with:
         name: tests_archive
     - name: ⚡ Cache nodejs
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/pilcom/node_modules
@@ -110,7 +110,7 @@ jobs:
         submodules: recursive
     - name: ⚡ Restore rust cache
       id: cache
-      uses: actions/cache/restore@v3
+      uses: actions/cache/restore@v4
       with:
         path: |
           ~/.cargo/registry/index/
@@ -138,7 +138,7 @@ jobs:
       with:
         name: tests_archive
     - name: ⚡ Cache nodejs
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/pilcom/node_modules
@@ -185,7 +185,7 @@ jobs:
       with:
         name: tests_archive
     - name: ⚡ Cache nodejs
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/pilcom/node_modules
