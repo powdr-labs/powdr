@@ -529,41 +529,35 @@ impl<T: FieldElement> VMConverter<T> {
             });
         });
 
-        for mut statement in body.0 {
-            if let PilStatement::Expression(source, expr) = statement {
-                match extract_update(expr) {
-                    (Some(var), expr) => {
-                        let reference = direct_reference(flag);
+        for statement in body.0 {
+            let PilStatement::Expression(source, expr) = statement else {
+                panic!("Invalid statement for instruction body: {statement}");
+            };
+            match extract_update(expr) {
+                (Some(var), expr) => {
+                    let reference = direct_reference(flag);
 
-                        // reduce the update to linear by introducing intermediate variables
-                        let expr = self.linearize(&format!("{flag}_{var}_update"), expr);
+                    // reduce the update to linear by introducing intermediate variables
+                    let expr = self.linearize(&format!("{flag}_{var}_update"), expr);
 
-                        self.registers
-                            .get_mut(&var)
-                            .unwrap()
-                            .conditioned_updates
-                            .push((reference, expr));
-                    }
-                    (None, expr) => self.pil.push(PilStatement::Expression(
+                    self.registers
+                        .get_mut(&var)
+                        .unwrap()
+                        .conditioned_updates
+                        .push((reference, expr));
+                }
+                (None, expr) => self.pil.push(
+                    PilStatement::Expression(
                         source,
-                        build::identity(direct_reference(flag) * expr.clone(), 0.into()),
-                    )),
-                }
-            } else {
-                match &mut statement {
-                    PilStatement::PermutationIdentity(_, left, _)
-                    | PilStatement::PlookupIdentity(_, left, _) => {
-                        assert!(
-                                    left.selector.is_none(),
-                                    "LHS selector not supported, could and-combine with instruction flag later."
-                                );
-                        left.selector = Some(direct_reference(flag));
-                        self.pil.push(statement)
-                    }
-                    _ => {
-                        panic!("Invalid statement for instruction body: {statement}");
-                    }
-                }
+                        FunctionCall {
+                            function: absolute_reference("std::constraints::make_conditional")
+                                .into(),
+                            arguments: vec![expr],
+                        }
+                        .into(),
+                    )
+                    .into(),
+                ),
             }
         }
     }
