@@ -13,16 +13,24 @@ enum Option<T> {
     Some(T)
 }
 
-/// The "constraint" type.
+/// The "constraint" type, i.e. the result of the operators
+/// "=", "in", "is" and "connect".
 enum Constr {
-    /// A polynomial identity.
+    /// A polynomial identity, result of the "=" operator.
     Identity(expr, expr),
-    /// A lookup constraint with selectors.
+    /// A lookup constraint with selectors, result of the "in" operator.
     Lookup((Option<expr>, Option<expr>), (expr, expr)[]),
-    /// A permutation constraint with selectors.
+    /// A permutation constraint with selectors, result of the "is" operator.
     Permutation((Option<expr>, Option<expr>), (expr, expr)[]),
-    /// A connection constraint (copy constraint).
+    /// A connection constraint (copy constraint), result of the "connect" operator.
     Connection((expr, expr)[])
+}
+
+/// This is the result of the "$" operator. It can be used as the left and
+/// right hand side of a lookup or permutation constraint.
+enum SelectedExprs {
+    SelectedExprs(expr, expr[]),
+    JustExprs(expr[]),
 }
 
 

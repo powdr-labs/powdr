@@ -122,9 +122,6 @@ pub PilStatement = {
     <start:@L> <decl:EnumDeclaration> <end:@R> => PilStatement::EnumDeclaration(ctx.source_ref(start, end), decl),
     <start:@L> <impl_:TraitImplementation> <end:@R> => PilStatement::TraitImplementation(ctx.source_ref(start, end), impl_),
     <start:@L> <decl:TraitDeclaration> <end:@R> => PilStatement::TraitDeclaration(ctx.source_ref(start, end), decl),
-    PlookupIdentityStatement,
-    PermutationIdentityStatement,
-    ConnectIdentityStatement,
     ExpressionStatement,
 };
 
@@ -216,34 +213,6 @@ PolynomialNameList: Vec<PolynomialName> = {
 
 PolynomialName: PolynomialName = {
     <name:Identifier> <array_size:( "[" <Expression> "]" )?> => PolynomialName{<>}
-}
-
-PlookupIdentityStatement: PilStatement = {
-    <PlookupIdentity> ";"
-}
-
-PlookupIdentity: PilStatement = {
-    <start:@L> <se1:SelectedExpressions> "in" <se2:SelectedExpressions> <end:@R> => PilStatement::PlookupIdentity(ctx.source_ref(start, end), se1, se2)
-}
-
-SelectedExpressions: SelectedExpressions<Expression> = {
-    <selector:(<Expression> "$")?> <expr:Expression> => SelectedExpressions{selector, expressions: Box::new(expr)},
-}
-
-PermutationIdentityStatement: PilStatement = {
-    <PermutationIdentity> ";"
-}
-
-PermutationIdentity: PilStatement = {
-    <start:@L> <se1:SelectedExpressions> "is" <se2:SelectedExpressions> <end:@R> => PilStatement::PermutationIdentity(ctx.source_ref(start, end), se1, se2)
-}
-
-ConnectIdentityStatement: PilStatement = {
-    <ConnectIdentity> ";"
-}
-
-ConnectIdentity: PilStatement = {
-    <start:@L> "[" <list1:ExpressionList> "]" "connect" "[" <list2:ExpressionList> "]" <end:@R> => PilStatement::ConnectIdentity(ctx.source_ref(start, end), list1, list2)
 }
 
 ExpressionStatement: PilStatement = {
@@ -363,8 +332,6 @@ InstructionBodyElements: Vec<PilStatement> = {
 }
 
 InstructionBodyElement: PilStatement = {
-    PlookupIdentity,
-    PermutationIdentity,
     ExpressionStatementWithoutSemicolon,
 }
 
@@ -472,13 +439,25 @@ MacroExpression<StructOption>: Expression = {
 }
 
 MacroBoxedExpression<StructOption>: Box<Expression> = {
-    LambdaExpression<StructOption>,
+    LookupExpression<StructOption>,
+}
+
+LookupExpression<StructOption>: Box<Expression> = {
+    <start:@L> <left:SelectedExpressions<StructOption>> "in" <right:SelectedExpressions<StructOption>> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation {left, op: BinaryOperator::In, right}, start, end),
+    <start:@L> <left:SelectedExpressions<StructOption>> "is" <right:SelectedExpressions<StructOption>> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation {left, op: BinaryOperator::Is, right}, start, end),
+    <start:@L> <left:SelectedExpressions<StructOption>> "connect" <right:SelectedExpressions<StructOption>> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation {left, op: BinaryOperator::Connect, right}, start, end),
+    SelectedExpressions<StructOption>
+}
+
+SelectedExpressions<StructOption>: Box<Expression> = {
+     <start:@L> <left:LambdaExpression<StructOption>> "$" <right:LambdaExpression<StructOption>> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation {left, op: BinaryOperator::Select, right}, start, end),
+    LambdaExpression<StructOption>
 }
 
 LambdaExpression<StructOption>: Box<Expression> = {
-    <start:@L> <kind:FunctionKind> "||" <body:MacroBoxedExpression<StructOption>> <end:@R>
+    <start:@L> <kind:FunctionKind> "||" <body:LambdaExpression<StructOption>> <end:@R>
         => ctx.to_expr_with_source_ref(LambdaExpression{kind, params: vec![], body}, start, end),
-    <start:@L> <kind:FunctionKind> "|" <params:ParameterList> "|" <body:MacroBoxedExpression<StructOption>> <end:@R>
+    <start:@L> <kind:FunctionKind> "|" <params:ParameterList> "|" <body:LambdaExpression<StructOption>> <end:@R>
         => ctx.to_expr_with_source_ref(LambdaExpression{kind, params, body}, start, end),
     LogicalOr<StructOption>
 }
