@@ -20,7 +20,7 @@ env:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: buildjet-4vcpu-ubuntu-2204
 
     steps:
     - uses: actions/checkout@v3
@@ -28,7 +28,7 @@ jobs:
         submodules: recursive
     - name: ⚡ Restore rust cache
       id: cache
-      uses: actions/cache/restore@v3
+      uses: buildjet/cache/restore@v3
       with:
         path: |
           ~/.cargo/registry/index/
