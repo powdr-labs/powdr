@@ -72,7 +72,7 @@ lazy_static! {
 impl FieldElementMap for GoldilocksField {
     type Config = StarkConfig<MyPcs, FriChallenge, FriChallenger>;
 
-    fn to_p3_field(&self) -> Plonky3Field<Self> {
+    fn into_p3_field(self) -> Plonky3Field<Self> {
         Goldilocks::from_canonical_u64(self.to_integer().try_into_u64().unwrap())
     }
 

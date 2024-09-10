@@ -8,7 +8,7 @@ use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
 use p3_challenger::DuplexChallenger;
 use p3_commit::ExtensionMmcs;
 use p3_dft::Radix2DitParallel;
-use p3_field::{extension::BinomialExtensionField, AbstractField, Field};
+use p3_field::{extension::BinomialExtensionField, Field};
 use p3_fri::{FriConfig, TwoAdicFriPcs};
 use p3_merkle_tree::FieldMerkleTreeMmcs;
 use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
@@ -17,7 +17,7 @@ use p3_uni_stark::StarkConfig;
 
 use rand::{distributions::Standard, Rng, SeedableRng};
 
-use powdr_number::{BabyBearField, FieldElement, LargeInt};
+use powdr_number::BabyBearField;
 
 const D: u64 = 7;
 // params directly taken from plonky3's poseidon2_round_numbers_128 function
@@ -76,8 +76,8 @@ lazy_static! {
 
 impl FieldElementMap for BabyBearField {
     type Config = StarkConfig<MyPcs, FriChallenge, FriChallenger>;
-    fn to_p3_field(&self) -> Plonky3Field<Self> {
-        BabyBear::from_canonical_u32(self.to_integer().try_into_u32().unwrap())
+    fn into_p3_field(self) -> Plonky3Field<Self> {
+        self.into_inner()
     }
 
     fn get_challenger() -> Challenger<Self> {

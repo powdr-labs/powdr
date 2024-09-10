@@ -9,6 +9,7 @@ use super::FixedData;
 use super::KnownMachine;
 use crate::witgen::generator::Generator;
 use crate::witgen::machines::write_once_memory::WriteOnceMemory;
+use crate::witgen::machines::MachineParts;
 use crate::Identity;
 use itertools::Itertools;
 use powdr_ast::analyzed::SelectedExpressions;
@@ -18,8 +19,7 @@ use powdr_number::FieldElement;
 
 pub struct ExtractionOutput<'a, T: FieldElement> {
     pub machines: Vec<KnownMachine<'a, T>>,
-    pub base_identities: Vec<&'a Identity<T>>,
-    pub base_witnesses: HashSet<PolyID>,
+    pub base_parts: MachineParts<'a, T>,
 }
 
 /// Finds machines in the witness columns and identities
@@ -100,7 +100,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
         let first_witness = machine_witnesses.iter().next().unwrap();
         let first_witness_name = fixed.column_name(first_witness);
         let namespace = first_witness_name
-            .rfind('.')
+            .rfind("::")
             .map(|idx| &first_witness_name[..idx]);
 
         // For machines compiled using Powdr ASM we'll always have a namespace, but as a last
@@ -110,71 +110,14 @@ pub fn split_out_machines<'a, T: FieldElement>(
         id_counter += 1;
         let name_with_type = |t: &str| format!("Secondary machine {id}: {name} ({t})");
 
-        if let Some(machine) = SortedWitnesses::try_new(
-            name_with_type("SortedWitness"),
+        let machine_parts = MachineParts::new(
             fixed,
-            &connecting_identities,
-            &machine_identities,
-            &machine_witnesses,
-        ) {
-            log::debug!("Detected machine: sorted witnesses / write-once memory");
-            machines.push(KnownMachine::SortedWitnesses(machine));
-        } else if let Some(machine) = DoubleSortedWitnesses::try_new(
-            name_with_type("DoubleSortedWitnesses"),
-            fixed,
-            &connecting_identities,
-            &machine_witnesses,
-        ) {
-            log::debug!("Detected machine: memory");
-            machines.push(KnownMachine::DoubleSortedWitnesses(machine));
-        } else if let Some(machine) = WriteOnceMemory::try_new(
-            name_with_type("WriteOnceMemory"),
-            fixed,
-            &connecting_identities,
-            &machine_identities,
-        ) {
-            log::debug!("Detected machine: write-once memory");
-            machines.push(KnownMachine::WriteOnceMemory(machine));
-        } else if let Some(machine) = BlockMachine::try_new(
-            name_with_type("BlockMachine"),
-            fixed,
-            &connecting_identities,
-            &machine_identities,
-            &machine_witnesses,
-        ) {
-            log::debug!("Detected machine: {machine}");
-            machines.push(KnownMachine::BlockMachine(machine));
-        } else {
-            log::debug!("Detected machine: VM.");
-            let latch = connecting_identities
-                .values()
-                .fold(None, |existing_latch, identity| {
-                    let current_latch = identity
-                        .right
-                        .selector
-                        .as_ref()
-                        .expect("Cannot handle lookup in this machine because it does not have a latch");
-                    if let Some(existing_latch) = existing_latch {
-                        assert_eq!(
-                            &existing_latch, current_latch,
-                            "All connecting identities must have the same selector expression on the right hand side"
-                        );
-                        Some(existing_latch)
-                    } else {
-                        Some(current_latch.clone())
-                    }
-                })
-                .unwrap();
-            machines.push(KnownMachine::Vm(Generator::new(
-                name_with_type("Vm"),
-                fixed.common_degree(&machine_witnesses),
-                fixed,
-                &connecting_identities,
-                machine_identities,
-                machine_witnesses,
-                Some(latch),
-            )));
-        }
+            connecting_identities,
+            machine_identities,
+            machine_witnesses,
+        );
+
+        machines.push(build_machine(fixed, machine_parts, name_with_type));
     }
 
     // Always add a fixed lookup machine.
@@ -190,8 +133,71 @@ pub fn split_out_machines<'a, T: FieldElement>(
 
     ExtractionOutput {
         machines,
-        base_identities,
-        base_witnesses: remaining_witnesses,
+        base_parts: MachineParts::new(
+            fixed,
+            Default::default(),
+            base_identities,
+            remaining_witnesses,
+        ),
+    }
+}
+
+fn build_machine<'a, T: FieldElement>(
+    fixed_data: &'a FixedData<'a, T>,
+    machine_parts: MachineParts<'a, T>,
+    name_with_type: impl Fn(&str) -> String,
+) -> KnownMachine<'a, T> {
+    if let Some(machine) =
+        SortedWitnesses::try_new(name_with_type("SortedWitness"), fixed_data, &machine_parts)
+    {
+        log::debug!("Detected machine: sorted witnesses / write-once memory");
+        KnownMachine::SortedWitnesses(machine)
+    } else if let Some(machine) = DoubleSortedWitnesses::try_new(
+        name_with_type("DoubleSortedWitnesses"),
+        fixed_data,
+        &machine_parts,
+    ) {
+        log::debug!("Detected machine: memory");
+        KnownMachine::DoubleSortedWitnesses(machine)
+    } else if let Some(machine) = WriteOnceMemory::try_new(
+        name_with_type("WriteOnceMemory"),
+        fixed_data,
+        &machine_parts,
+    ) {
+        log::debug!("Detected machine: write-once memory");
+        KnownMachine::WriteOnceMemory(machine)
+    } else if let Some(machine) =
+        BlockMachine::try_new(name_with_type("BlockMachine"), fixed_data, &machine_parts)
+    {
+        log::debug!("Detected machine: {machine}");
+        KnownMachine::BlockMachine(machine)
+    } else {
+        log::debug!("Detected machine: VM.");
+        let latch = machine_parts.connecting_identities
+            .values()
+            .fold(None, |existing_latch, identity| {
+                let current_latch = identity
+                    .right
+                    .selector
+                    .as_ref()
+                    .expect("Cannot handle lookup in this machine because it does not have a latch");
+                if let Some(existing_latch) = existing_latch {
+                    assert_eq!(
+                        &existing_latch, current_latch,
+                        "All connecting identities must have the same selector expression on the right hand side"
+                    );
+                    Some(existing_latch)
+                } else {
+                    Some(current_latch.clone())
+                }
+            })
+            .unwrap();
+        KnownMachine::Vm(Generator::new(
+            name_with_type("Vm"),
+            fixed_data,
+            machine_parts.clone(),
+            Some(latch),
+        ))
     }
 }
 

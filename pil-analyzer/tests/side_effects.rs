@@ -12,7 +12,7 @@ fn new_wit_in_pure() {
 }
 
 #[test]
-#[should_panic = "Tried to create a fixed column in a pure context: let x: col = (|i| i);"]
+#[should_panic = "Tried to create a fixed column in a pure context: let x: col = |i| i;"]
 fn new_fixed_in_pure() {
     let input = r#"namespace N(16);
     let new_col = || { let x: col = |i| i; x };
@@ -61,7 +61,7 @@ fn call_eval_in_query() {
 }
 
 #[test]
-#[should_panic = "Referenced a constr function inside a query context: N.new_wit"]
+#[should_panic = "Referenced a constr function inside a query context: N::new_wit"]
 fn call_constr_in_query() {
     let input = r#"
     namespace std::prover(16);
