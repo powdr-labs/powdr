@@ -551,8 +551,7 @@ impl<T: FieldElement> VMConverter<T> {
                         arguments: vec![expr, instr_flag.clone()],
                     },
                 );
-                self.pil
-                    .push(PilStatement::Expression(source, fun_call))
+                self.pil.push(PilStatement::Expression(source, fun_call))
             }
         }
     }

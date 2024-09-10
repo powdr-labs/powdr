@@ -138,9 +138,7 @@ pub fn unescape_string(s: &str) -> String {
 #[cfg(test)]
 mod test {
     use super::*;
-    use powdr_ast::parsed::{
-        PILFile, PilStatement, PolynomialName,
-    };
+    use powdr_ast::parsed::{PILFile, PilStatement, PolynomialName};
     use powdr_parser_util::UnwrapErrToStderr;
     use pretty_assertions::assert_eq;
     use similar::TextDiff;
