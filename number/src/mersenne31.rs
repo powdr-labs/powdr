@@ -49,7 +49,7 @@ mod test {
         assert!(x.is_in_lower_half());
         assert!(!(x - 1.into()).is_in_lower_half());
 
-        let y = Mersenne31Field::from_str_radix("3c000000", 16).unwrap();
+        let y = Mersenne31Field::from_str_radix("3fffffff", 16).unwrap();
         assert!(y.is_in_lower_half());
         assert!(!(y + 1.into()).is_in_lower_half());
     }
