@@ -28,7 +28,7 @@ jobs:
         submodules: recursive
     - name: ⚡ Restore rust cache
       id: cache
-      uses: actions/cache/restore@v4
+      uses: buildjet/cache/restore@v4
       with:
         path: |
           ~/.cargo/registry/index/
