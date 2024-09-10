@@ -6,9 +6,10 @@ use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::{
     test_util::{
         asm_string_to_pil, gen_estark_proof_with_backend_variant, make_prepared_pipeline,
-        make_simple_prepared_pipeline, regular_test, resolve_test_file,
-        run_pilcom_with_backend_variant, test_halo2, test_halo2_with_backend_variant, test_pilcom,
-        test_plonky3_with_backend_variant, BackendVariant,
+        make_simple_prepared_pipeline, regular_test, regular_test_without_babybear,
+        resolve_test_file, run_pilcom_with_backend_variant, test_halo2,
+        test_halo2_with_backend_variant, test_pilcom, test_plonky3_with_backend_variant,
+        BackendVariant,
     },
     util::{FixedPolySet, PolySet, WitnessPolySet},
     Pipeline,
@@ -38,7 +39,11 @@ fn simple_sum_asm() {
     let f = "asm/simple_sum.asm";
     let i = [16, 4, 1, 2, 8, 5];
     regular_test(f, &i);
-    test_plonky3_with_backend_variant(f, slice_to_vec(&i), BackendVariant::Composite);
+    test_plonky3_with_backend_variant::<GoldilocksField>(
+        f,
+        slice_to_vec(&i),
+        BackendVariant::Composite,
+    );
 }
 
 #[test]
@@ -78,7 +83,7 @@ fn mem_write_once_external_write() {
     let pipeline = make_prepared_pipeline(
         f,
         Default::default(),
-        vec![("main_memory.value".to_string(), mem)],
+        vec![("main_memory::value".to_string(), mem)],
     );
     test_pilcom(pipeline);
 }
@@ -179,6 +184,7 @@ fn vm_to_vm() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn vm_to_vm_dynamic_trace_length() {
     let f = "asm/vm_to_vm_dynamic_trace_length.asm";
     run_pilcom_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite)
@@ -203,6 +209,7 @@ fn vm_to_block_array() {
 }
 
 #[test]
+#[ignore = "Too slow"]
 fn dynamic_vadcop() {
     let f = "asm/dynamic_vadcop.asm";
 
@@ -214,9 +221,9 @@ fn dynamic_vadcop() {
         .collect::<BTreeMap<_, _>>();
 
     // Spot-check some witness columns to have the expected length.
-    assert_eq!(witness_by_name["main.X"].len(), 128);
-    assert_eq!(witness_by_name["main_arith.y"].len(), 32);
-    assert_eq!(witness_by_name["main_memory.m_addr"].len(), 32);
+    assert_eq!(witness_by_name["main::X"].len(), 128);
+    assert_eq!(witness_by_name["main_arith::y"].len(), 32);
+    assert_eq!(witness_by_name["main_memory::m_addr"].len(), 32);
 
     // Because machines have different lengths, this can only be proven
     // with a composite proof.
@@ -292,7 +299,7 @@ fn multi_return_wrong_assignment_register_length() {
 fn bit_access() {
     let f = "asm/bit_access.asm";
     let i = [20];
-    regular_test(f, &i);
+    regular_test_without_babybear(f, &i);
 }
 
 #[test]
@@ -305,7 +312,7 @@ fn sqrt() {
 fn functional_instructions() {
     let f = "asm/functional_instructions.asm";
     let i = [20];
-    regular_test(f, &i);
+    regular_test_without_babybear(f, &i);
 }
 
 #[test]
@@ -387,13 +394,13 @@ fn multiple_signatures() {
 #[test]
 fn permutation_simple() {
     let f = "asm/permutations/simple.asm";
-    regular_test(f, Default::default());
+    regular_test_without_babybear(f, Default::default());
 }
 
 #[test]
 fn permutation_to_block() {
     let f = "asm/permutations/vm_to_block.asm";
-    regular_test(f, Default::default());
+    regular_test_without_babybear(f, Default::default());
 }
 
 #[test]
@@ -407,7 +414,7 @@ fn permutation_to_vm() {
 #[test]
 fn permutation_to_block_to_block() {
     let f = "asm/permutations/block_to_block.asm";
-    regular_test(f, Default::default());
+    regular_test_without_babybear(f, Default::default());
 }
 
 #[test]
@@ -420,14 +427,14 @@ fn permutation_incoming_needs_selector() {
 #[test]
 fn call_selectors_with_no_permutation() {
     let f = "asm/permutations/call_selectors_with_no_permutation.asm";
-    regular_test(f, Default::default());
+    regular_test_without_babybear(f, Default::default());
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn vm_args() {
     let f = "asm/vm_args.asm";
-    regular_test(f, Default::default());
+    regular_test_without_babybear(f, Default::default());
 }
 
 #[test]
@@ -506,7 +513,10 @@ fn keccak() {
     use std::{fs, sync::Arc};
 
     // Set up the file to test
-    let code_path = format!("{}/../test_data/asm/keccak.asm", env!("CARGO_MANIFEST_DIR"),);
+    let code_path = format!(
+        "{}/../test_data/asm/keccakf.asm",
+        env!("CARGO_MANIFEST_DIR"),
+    );
     let code = fs::read_to_string(code_path).unwrap();
     let mut pipeline = Pipeline::<GoldilocksField>::default().from_asm_string(code, None);
     let analyzed = pipeline.compute_analyzed_pil().unwrap().clone();

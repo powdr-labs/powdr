@@ -17,6 +17,7 @@ estark-polygon = ["powdr-pipeline/estark-polygon"]
 powdr-ast.workspace = true
 powdr-asm-utils.workspace = true
 powdr-executor.workspace = true
+powdr-linker.workspace = true
 powdr-number.workspace = true
 powdr-parser.workspace = true
 powdr-parser-util.workspace = true

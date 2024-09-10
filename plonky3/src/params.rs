@@ -1,3 +1,6 @@
+//! The concrete parameters used in the prover
+//! Inspired from [this example](https://github.com/Plonky3/Plonky3/blob/6a1b0710fdf85136d0fdd645b92933615867740a/keccak-air/examples/prove_goldilocks_poseidon.rs)
+
 use p3_commit::PolynomialSpace;
 use p3_uni_stark::StarkGenericConfig;
 use powdr_number::FieldElement;
@@ -18,7 +21,7 @@ where
 {
     type Config: StarkGenericConfig;
 
-    fn to_p3_field(&self) -> Plonky3Field<Self>;
+    fn into_p3_field(self) -> Plonky3Field<Self>;
 
     fn get_challenger() -> Challenger<Self>;
 

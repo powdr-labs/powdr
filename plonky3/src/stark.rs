@@ -95,11 +95,11 @@ where
                     .flat_map(|i| {
                         self.fixed
                             .iter()
-                            .map(move |(_, values)| values[i as usize].to_p3_field())
+                            .map(move |(_, values)| values[i as usize].into_p3_field())
                             .chain(
                                 publics
                                     .iter()
-                                    .map(move |(_, values)| values[i as usize].to_p3_field()),
+                                    .map(move |(_, values)| values[i as usize].into_p3_field()),
                             )
                     })
                     .collect(),
@@ -151,7 +151,7 @@ where
                     fixed
                         .iter()
                         .chain(publics.iter())
-                        .map(move |(_, values)| values[i as usize].to_p3_field())
+                        .map(move |(_, values)| values[i as usize].into_p3_field())
                 })
                 .collect(),
             self.fixed.len() + publics.len(),
@@ -228,7 +228,7 @@ where
         let publics = instances
             .iter()
             .flatten()
-            .map(|v| v.to_p3_field())
+            .map(|v| v.into_p3_field())
             .collect();
 
         let config = T::get_config();
