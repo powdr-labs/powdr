@@ -1185,7 +1185,7 @@ impl<T: FieldElement> VMConverter<T> {
                     ));
                     (counter + 1, direct_reference(intermediate_name))
                 }
-                op => unimplemented!("{op} is not supported when linearizing"),
+                op => unimplemented!("Binary operator \"{op}\" is not supported when linearizing"),
             },
             expr => (counter, expr),
         }
