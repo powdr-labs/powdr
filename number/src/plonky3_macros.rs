@@ -12,8 +12,8 @@ macro_rules! powdr_field_plonky3 {
         use std::str::FromStr;
         use std::{collections::BTreeSet, fmt::LowerHex};
 
-        use crate::{BigUint, FieldElement, KnownField, LargeInt};
         use ark_ff::{One, Zero};
+        use $crate::{BigUint, FieldElement, KnownField, LargeInt};
 
         use core::fmt::{self, Debug, Formatter};
         use core::hash::Hash;
@@ -58,7 +58,7 @@ macro_rules! powdr_field_plonky3 {
 
             const BITS: u32 = 31;
 
-            fn to_degree(&self) -> crate::DegreeType {
+            fn to_degree(&self) -> $crate::DegreeType {
                 self.to_canonical_u32() as u64
             }
 
@@ -107,7 +107,7 @@ macro_rules! powdr_field_plonky3 {
                 self.to_canonical_u32() <= (p - 1) / 2
             }
 
-            fn known_field() -> Option<crate::KnownField> {
+            fn known_field() -> Option<$crate::KnownField> {
                 Some(KnownField::$name)
             }
 
@@ -153,8 +153,8 @@ macro_rules! powdr_field_plonky3 {
             }
         }
 
-        impl From<crate::BigUint> for $name {
-            fn from(n: crate::BigUint) -> Self {
+        impl From<$crate::BigUint> for $name {
+            fn from(n: $crate::BigUint) -> Self {
                 u64::try_from(n).unwrap().into()
             }
         }
