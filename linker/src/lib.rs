@@ -8,8 +8,8 @@ use powdr_ast::{
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         build::{index_access, namespaced_reference},
-        ArrayLiteral, Expression, NamespaceDegree, PILFile, PilStatement, SelectedExpressions,
-        TypedExpression,
+        ArrayLiteral, BinaryOperation, BinaryOperator, Expression, NamespaceDegree, PILFile,
+        PilStatement, SelectedExpressions, TypedExpression,
     },
 };
 use powdr_parser_util::SourceRef;
@@ -213,7 +213,16 @@ fn process_link(link: Link) -> PilStatement {
             ),
         };
 
-        PilStatement::PermutationIdentity(SourceRef::unknown(), lhs, rhs)
+        let permutation_expr = Expression::BinaryOperation(
+            SourceRef::unknown(),
+            BinaryOperation {
+                left: Box::new(lhs),
+                right: Box::new(rhs),
+                op: BinaryOperator::Is,
+            },
+        );
+
+        PilStatement::Expression(SourceRef::unknown(), permutation_expr)
     } else {
         // plookup lhs is `flag $ [ operation_id, inputs, outputs ]`
         let lhs = SelectedExpressions {
@@ -258,7 +267,17 @@ fn process_link(link: Link) -> PilStatement {
                 .into(),
             ),
         };
-        PilStatement::PlookupIdentity(SourceRef::unknown(), lhs, rhs)
+
+        let identity_expr = Expression::BinaryOperation(
+            SourceRef::unknown(),
+            BinaryOperation {
+                left: Box::new(lhs),
+                right: Box::new(rhs),
+                op: BinaryOperator::In,
+            },
+        );
+
+        PilStatement::Expression(SourceRef::unknown(), identity_expr)
     }
 }
 

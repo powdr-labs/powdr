@@ -395,15 +395,12 @@ impl TypeChecker {
             .body
             .0
             .iter()
-            .filter_map(|s| match s {
-                // TODO this could be a function call that returns an identity including a selector in the future.
-                powdr_ast::parsed::PilStatement::Expression(_, _) => None,
-                powdr_ast::parsed::PilStatement::PermutationIdentity(_, l, _)
-                | powdr_ast::parsed::PilStatement::PlookupIdentity(_, l, _) => l
-                    .selector
-                    .is_some()
-                    .then_some(format!("LHS selector not yet supported in {s}.")),
-                _ => Some(format!("Statement not allowed in instruction body: {s}")),
+            .filter_map(|s| {
+                if let powdr_ast::parsed::PilStatement::Expression(_, _) = s {
+                    None
+                } else {
+                    Some(format!("Statement not allowed in instruction body: {s}"))
+                }
             })
             .collect();
         if !errors.is_empty() {
