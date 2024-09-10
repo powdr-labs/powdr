@@ -40,7 +40,7 @@ impl Unifier {
                 }
             }
             Type::NamedType(n, _)
-                if bound == "ToSelectedExpr" && n.to_string() == "std::prelude::SelectedExpr" =>
+                if bound == "ToSelectedExprs" && n.to_string() == "std::prelude::SelectedExprs" =>
             {
                 return Ok(())
             }

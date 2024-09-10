@@ -25,6 +25,12 @@ enum Constr {
     Connection((expr, expr)[])
 }
 
+/// The "SelectedExprs" type.
+enum SelectedExprs {
+    SelectedExprs(expr, expr[]),
+    JustExprs(expr[]),
+}
+
 
 /// The return type of a prover query function.
 enum Query {

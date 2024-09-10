@@ -57,7 +57,7 @@ jobs:
     - name: Create tests archive
       run: cargo nextest archive --archive-file tests.tar.zst --cargo-profile pr-tests --workspace --all-features
     - name: Upload build artifacts
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v4
       with:
         name: tests_archive
         path: |
@@ -78,7 +78,7 @@ jobs:
       with:
         submodules: recursive
     - name: Download build artifacts
-      uses: actions/download-artifact@v2
+      uses: actions/download-artifact@v4
       with:
         name: tests_archive
     - name: ⚡ Cache nodejs
@@ -134,7 +134,7 @@ jobs:
       with:
         submodules: recursive
     - name: Download build artifacts
-      uses: actions/download-artifact@v2
+      uses: actions/download-artifact@v4
       with:
         name: tests_archive
     - name: ⚡ Cache nodejs
@@ -181,7 +181,7 @@ jobs:
       with:
         submodules: recursive
     - name: Download build artifacts
-      uses: actions/download-artifact@v2
+      uses: actions/download-artifact@v4
       with:
         name: tests_archive
     - name: ⚡ Cache nodejs
