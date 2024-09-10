@@ -1151,6 +1151,12 @@ fn evaluate_binary_operation<'a, T: FieldElement>(
                 _ => unreachable!(),
             };
             let selectors = Value::Tuple(vec![left_sel, right_sel]).into();
+            if left_exprs.len() != right_exprs.len() {
+                return Err(EvalError::TypeError(format!(
+                    "Tried to use \"{op}\" operator on selected expressions of different lengths: {} and {}",
+                    left_exprs.len(), right_exprs.len()
+                )));
+            }
             let expr_pairs = Value::Array(
                 left_exprs
                     .iter()
