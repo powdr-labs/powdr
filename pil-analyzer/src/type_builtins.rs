@@ -94,10 +94,7 @@ lazy_static! {
         ),
         (
             BinaryOperator::Connect,
-            (
-                "T: ToSelectedExprs, U: ToSelectedExprs",
-                "T, U -> std::prelude::Constr"
-            )
+            ("", "expr[], expr[] -> std::prelude::Constr")
         ),
         (
             BinaryOperator::Select,

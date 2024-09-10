@@ -1172,7 +1172,11 @@ fn evaluate_binary_operation<'a, T: FieldElement>(
                 .iter()
                 .zip(right)
                 .map(|(l, r)| Value::Tuple(vec![l.clone(), r.clone()]).into());
-            Value::Enum("Connection", Some(items.collect())).into()
+            Value::Enum(
+                "Connection",
+                Some(vec![Value::Array(items.collect()).into()]),
+            )
+            .into()
         }
         (l, op, r) => Err(EvalError::TypeError(format!(
             "Operator {op} not supported on types: {l}: {}, {r}: {}",
