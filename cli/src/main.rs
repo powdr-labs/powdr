@@ -749,9 +749,9 @@ mod test {
         let output_dir = tempfile::tempdir().unwrap();
         let output_dir_str = output_dir.path().to_string_lossy().to_string();
 
-        let file = "../test_data/asm/simple_sum.asm";
+        let file = "../test_data/asm/simple_sum.asm".to_string();
         let pil_command = Commands::Pil {
-            file.to_string(),
+            file,
             field: FieldArgument::Bn254,
             output_directory: output_dir_str.clone(),
             witness_values: None,
