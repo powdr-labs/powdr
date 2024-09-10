@@ -1151,7 +1151,7 @@ fn evaluate_binary_operation<'a, T: FieldElement>(
                 _ => unreachable!(),
             };
             let selectors = Value::Tuple(vec![left_sel, right_sel]).into();
-            let expr_pairs = zip_expressions_for_op(op, &left_exprs, &right_exprs)?;
+            let expr_pairs = zip_expressions_for_op(op, left_exprs, right_exprs)?;
             Value::Enum(name, Some(vec![selectors, expr_pairs])).into()
         }
         (Value::Array(left), BinaryOperator::Connect, Value::Array(right)) => {
