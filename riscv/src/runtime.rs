@@ -91,36 +91,34 @@ impl Runtime {
 
         // Base submachines
         // TODO: can/should the memory machine be part of the runtime also?
-        /*
-                r.add_submachine(
-                    "std::machines::binary_bb::Binary16",
-                    None,
-                    "binary",
-                    vec!["byte_binary"],
-                    [
-                        r#"instr and XL, YL, ZH, ZL, WL
-                            link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
-                            link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
-                            link ~> (tmp4_h, tmp4_l, tmp3_h, tmp3_l) = arith_bb.add(tmp2_h, tmp2_l, ZH, ZL)
-                            link ~> (tmp5_h, tmp5_l) = binary.and(tmp1_h, tmp1_l, tmp3_h, tmp3_l)
-                            link ~> regs.mstore(0, WL, STEP + 3, tmp5_h, tmp5_l);"#,
-                        r#"instr or XL, YL, ZH, ZL, WL
-                            link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
-                            link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
-                            link ~> (tmp4_h, tmp4_l, tmp3_h, tmp3_l) = arith_bb.add(tmp2_h, tmp2_l, ZH, ZL)
-                            link ~> (tmp5_h, tmp5_l) = binary.or(tmp1_h, tmp1_l, tmp3_h, tmp3_l)
-                            link ~> regs.mstore(0, WL, STEP + 3, tmp5_h, tmp5_l);"#,
-                        r#"instr xor XL, YL, ZH, ZL, WL
-                            link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
-                            link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
-                            link ~> (tmp4_h, tmp4_l, tmp3_h, tmp3_l) = arith_bb.add(tmp2_h, tmp2_l, ZH, ZL)
-                            link ~> (tmp5_h, tmp5_l) = binary.xor(tmp1_h, tmp1_l, tmp3_h, tmp3_l)
-                            link ~> regs.mstore(0, WL, STEP + 3, tmp5_h, tmp5_l);"#,
-                    ],
-                    0,
-                    ["and 0, 0, 0, 0, 0;"],
-                );
-        */
+        r.add_submachine(
+            "std::machines::binary_bb::Binary16",
+            None,
+            "binary",
+            vec!["byte_binary"],
+            [
+                r#"instr and XL, YL, ZH, ZL, WL
+                            link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
+                            link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
+                            link ~> (tmp3_h, tmp3_l) = arith_bb.add(tmp2_h, tmp2_l, ZH, ZL)
+                            link ~> (tmp4_h, tmp4_l) = binary.and(tmp1_h, tmp1_l, tmp3_h, tmp3_l)
+                            link ~> regs.mstore(WL, STEP + 3, tmp4_h, tmp4_l);"#,
+                r#"instr or XL, YL, ZH, ZL, WL
+                            link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
+                            link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
+                            link ~> (tmp3_h, tmp3_l) = arith_bb.add(tmp2_h, tmp2_l, ZH, ZL)
+                            link ~> (tmp4_h, tmp4_l) = binary.or(tmp1_h, tmp1_l, tmp3_h, tmp3_l)
+                            link ~> regs.mstore(WL, STEP + 3, tmp4_h, tmp4_l);"#,
+                r#"instr xor XL, YL, ZH, ZL, WL
+                            link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
+                            link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
+                            link ~> (tmp3_h, tmp3_l) = arith_bb.add(tmp2_h, tmp2_l, ZH, ZL)
+                            link ~> (tmp4_h, tmp4_l) = binary.xor(tmp1_h, tmp1_l, tmp3_h, tmp3_l)
+                            link ~> regs.mstore(WL, STEP + 3, tmp4_h, tmp4_l);"#,
+            ],
+            0,
+            ["and 0, 0, 0, 0, 0;"],
+        );
 
         /*
         r.add_submachine(

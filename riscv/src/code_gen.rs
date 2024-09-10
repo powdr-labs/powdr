@@ -390,10 +390,10 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
 "# + "std::machines::memory_bb::Memory regs(byte2);"
         + r#"
     // Get the value in register Y.
-    instr get_reg YL -> XH, XL link ~> (XH, XL) = regs.mload(0, YL, STEP);
+    instr get_reg YL -> XH, XL link ~> (XH, XL) = regs.mload(YL, STEP);
 
     // Set the value in register X to the value in register Y.
-    instr set_reg XL, YH, YL -> link ~> regs.mstore(0, XL, STEP, YH, YL);
+    instr set_reg XL, YH, YL -> link ~> regs.mstore(XL, STEP, YH, YL);
 
     // We still need these registers prover inputs.
     reg query_arg_1_h;
@@ -437,14 +437,14 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
 
     // Load the value of label `l` into register X.
     instr load_label XL, l: label
-        link ~> regs.mstore(0, XL, STEP, tmp1_h, tmp1_l)
+        link ~> regs.mstore(XL, STEP, tmp1_h, tmp1_l)
     {
         tmp1_h * 2**16 + tmp1_l = l
     }
 
     // Jump to `l` and store the return program counter in register W.
     instr jump l: label, WL
-        link ~> regs.mstore(0, WL, STEP, tmp1_h, tmp1_l)
+        link ~> regs.mstore(WL, STEP, tmp1_h, tmp1_l)
         link => byte.check(tmp1_h)
     {
         (tmp1_h * 2**16) + tmp1_l = pc + 1,
@@ -453,8 +453,8 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     
     // Jump to the address in register X and store the return program counter in register W.
     instr jump_dyn XL, WL
-        link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
-        link ~> regs.mstore(0, WL, STEP, tmp2_h, tmp2_l)
+        link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
+        link ~> regs.mstore(WL, STEP, tmp2_h, tmp2_l)
         link => byte.check(tmp2_h)
     {
         tmp5_h = (tmp1_h * 2**16) + tmp1_l,
@@ -476,8 +476,8 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
 
     // Jump to `l` if (val(X) - val(Y)) == Z, where X and Y are register ids and Z is a number.
     instr branch_if_diff_equal XL, YL, ZH, ZL, l: label
-        link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
-        link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
+        link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
+        link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
         link ~> (tmp3_h, tmp3_l) = arith_bb.sub(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
         link ~> (tmp4_h, tmp4_l) = arith_bb.sub(tmp3_h, tmp3_l, ZH, ZL)
     {
@@ -782,13 +782,13 @@ fn memory(with_bootloader: bool) -> String {
     /// Writes the loaded word and the remainder of the division by 4 to registers Z and W,
     /// respectively.
     instr mload XL, YH, YL, ZL, WL
-        link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
+        link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
 
         link ~> (tmp2_h, tmp2_l) = arith_bb.add(tmp1_h, tmp1_l, YH, YL)
 
-        link ~> (tmp3_h, tmp3_l) = memory.mload(tmp2_h, X_b2 * 0x100 + X_b1 * 4, STEP + 1)
-        link ~> regs.mstore(0, ZL, STEP + 2, tmp3_h, tmp3_l)
-        link ~> regs.mstore(0, WL, STEP + 3, 0, tmp4_l)
+        link ~> (tmp3_h, tmp3_l) = memory.mload(tmp2_h * 2**16 + X_b2 * 0x100 + X_b1 * 4, STEP + 1)
+        link ~> regs.mstore(ZL, STEP + 2, tmp3_h, tmp3_l)
+        link ~> regs.mstore(WL, STEP + 3, 0, tmp4_l)
         link => bit2.check(tmp4_l)
         link => bit6.check(X_b1)
     {
@@ -799,14 +799,14 @@ fn memory(with_bootloader: bool) -> String {
     // V can be between 0 and 2**33.
     // V should be a multiple of 4, but this instruction does not enforce it.
     instr mstore XL, YL, ZH, ZL, WL
-        link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
-        link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
-        link ~> (tmp3_h, tmp3_l) = regs.mload(0, WL, STEP + 2)
+        link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
+        link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
+        link ~> (tmp3_h, tmp3_l) = regs.mload(WL, STEP + 2)
 
         link ~> (tmp4_h, tmp4_l) = arith_bb.sub(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
         link ~> (tmp5_h, tmp5_l) = arith_bb.add(tmp4_h, tmp4_l, ZH, ZL)
 
-        link ~> memory.mstore(tmp5_h, tmp5_l, STEP + 3, tmp3_h, tmp3_l);
+        link ~> memory.mstore(tmp5_h * 2**16 + tmp5_l, STEP + 3, tmp3_h, tmp3_l);
 
 "#
 }
