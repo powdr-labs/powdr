@@ -1,7 +1,6 @@
 use std::fmt::{Display, Formatter, Result};
 
 use itertools::Itertools;
-use types::SelectedExprType;
 
 use crate::{
     indent,
@@ -955,7 +954,6 @@ impl<E: Display> Display for Type<E> {
                 write!(f, "{name}{}", format_type_args(args))
             }
             Type::NamedType(name, None) => write!(f, "{name}"),
-            Type::SelectedExpr(exprs) => write!(f, "{exprs}"),
         }
     }
 }
@@ -986,12 +984,6 @@ impl<E: Display> Display for FunctionType<E> {
             if self.params.is_empty() { "" } else { " " },
             format_type_with_parentheses(&self.value)
         )
-    }
-}
-
-impl<E: Display> Display for SelectedExprType<E> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "[{}]", format_list_of_types(&self.items))
     }
 }
 

@@ -39,8 +39,6 @@ pub enum Type<E = u64> {
     /// Directly after parsing, type variables are also
     /// represented as NamedTypes, because the parser cannot distinguish.
     NamedType(SymbolPath, Option<Vec<Type<E>>>),
-    /// Selected expression
-    SelectedExpr(SelectedExprType<E>),
 }
 
 impl<E> Type<E> {
@@ -60,8 +58,7 @@ impl<E> Type<E> {
             | Type::Tuple(_)
             | Type::Function(_)
             | Type::TypeVar(_)
-            | Type::NamedType(_, _)
-            | Type::SelectedExpr(_) => false,
+            | Type::NamedType(_, _) => false,
         }
     }
     /// Returns true if the type name needs parentheses during formatting
@@ -213,7 +210,6 @@ impl<R> Children<Expression<R>> for Type<Expression<R>> {
             Type::Tuple(t) => t.children(),
             Type::Function(f) => f.children(),
             Type::NamedType(_, Some(args)) => Box::new(args.iter().flat_map(|arg| arg.children())),
-            Type::SelectedExpr(e) => e.children(),
             _ => unreachable!(),
         }
     }
@@ -228,7 +224,6 @@ impl<R> Children<Expression<R>> for Type<Expression<R>> {
             Type::NamedType(_, Some(args)) => {
                 Box::new(args.iter_mut().flat_map(|arg| arg.children_mut()))
             }
-            Type::SelectedExpr(e) => e.children_mut(),
             _ => unreachable!(),
         }
     }
@@ -263,7 +258,6 @@ impl<R: Display> From<Type<Expression<R>>> for Type<u64> {
             Type::NamedType(n, Some(args)) => {
                 Type::NamedType(n, Some(args.into_iter().map(|a| a.into()).collect()))
             }
-            Type::SelectedExpr(e) => Type::SelectedExpr(e.into()),
         }
     }
 }
@@ -324,30 +318,6 @@ impl<R> Children<Expression<R>> for TupleType<Expression<R>> {
 impl<R: Display> From<TupleType<Expression<R>>> for TupleType<u64> {
     fn from(value: TupleType<Expression<R>>) -> Self {
         TupleType {
-            items: value.items.into_iter().map(|t| t.into()).collect(),
-        }
-    }
-}
-
-#[derive(
-    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize, Deserialize, JsonSchema,
-)]
-pub struct SelectedExprType<E = u64> {
-    pub items: Vec<Type<E>>,
-}
-
-impl<R> Children<Expression<R>> for SelectedExprType<Expression<R>> {
-    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
-        Box::new(self.items.iter().flat_map(|t| t.children()))
-    }
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
-        Box::new(self.items.iter_mut().flat_map(|t| t.children_mut()))
-    }
-}
-
-impl<R: Display> From<SelectedExprType<Expression<R>>> for SelectedExprType<u64> {
-    fn from(value: SelectedExprType<Expression<R>>) -> Self {
-        SelectedExprType {
             items: value.items.into_iter().map(|t| t.into()).collect(),
         }
     }
