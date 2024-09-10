@@ -529,14 +529,13 @@ impl<T: FieldElement> VMConverter<T> {
             });
         });
 
+        let instr_flag = direct_reference(flag);
         for statement in body.0 {
             let PilStatement::Expression(source, expr) = statement else {
                 panic!("Invalid statement for instruction body: {statement}");
             };
             match extract_update(expr) {
                 (Some(var), expr) => {
-                    let reference = direct_reference(flag);
-
                     // reduce the update to linear by introducing intermediate variables
                     let expr = self.linearize(&format!("{flag}_{var}_update"), expr);
 
@@ -544,20 +543,20 @@ impl<T: FieldElement> VMConverter<T> {
                         .get_mut(&var)
                         .unwrap()
                         .conditioned_updates
-                        .push((reference, expr));
+                        .push((instr_flag.clone(), expr));
                 }
-                (None, expr) => self.pil.push(
-                    PilStatement::Expression(
-                        source,
+                (None, expr) => {
+                    let fun_call = Expression::FunctionCall(
+                        source.clone(),
                         FunctionCall {
-                            function: absolute_reference("std::constraints::make_conditional")
+                            function: absolute_reference("::std::constraints::make_conditional")
                                 .into(),
-                            arguments: vec![expr],
-                        }
-                        .into(),
-                    )
-                    .into(),
-                ),
+                            arguments: vec![expr, instr_flag.clone()],
+                        },
+                    );
+                    self.pil
+                        .push(PilStatement::Expression(source, fun_call).into())
+                }
             }
         }
     }
