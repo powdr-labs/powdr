@@ -1184,9 +1184,9 @@ fn evaluate_binary_operation<'a, T: FieldElement>(
 
 /// Turns a value that can be interpreted as a seleceted expressions (either "a $ [b, c]" or "[b, c]")
 /// into the selector and the exprs. The selector is already wrappend into a std::prelude::Option.
-fn to_selected_exprs_expanded<'a, T>(
-    selected_exprs: Arc<Value<'a, T>>,
-) -> (Arc<Value<'a, T>>, Vec<Arc<Value<'a, T>>>) {
+fn to_selected_exprs_expanded<T>(
+    selected_exprs: Arc<Value<'_, T>>,
+) -> (Arc<Value<'_, T>>, Vec<Arc<Value<'_, T>>>) {
     match selected_exprs.as_ref() {
         // An array of expressions or a selected expressions without selector.
         Value::Array(items) | Value::Enum("JustExprs", Some(items)) => {
