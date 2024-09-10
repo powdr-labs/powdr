@@ -30,7 +30,7 @@ jobs:
     - name: Check without Halo2
       run: cargo check --all --no-default-features --profile pr-tests
     - name: ⚡ Save rust cache
-      uses: buildjet/cache/save@v4
+      uses: actions/cache/save@v4
       with:
         path: |
           ~/.cargo/registry/index/
