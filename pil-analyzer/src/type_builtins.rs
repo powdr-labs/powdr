@@ -172,12 +172,8 @@ pub fn elementary_type_bounds(ty: &Type) -> &'static [&'static str] {
             "Eq",
         ],
         Type::Col | Type::Inter => &[],
-<<<<<<< HEAD
-        Type::Array(_) => &["Add", "ToSelectExpr"],
-=======
         Type::Array(t) if *t.base == Type::Expr => &["Add", "ToSelectedExpr"],
         Type::Array(_) => &["Add"],
->>>>>>> 914fa955bc0d3a43377dc9575ab3f8c1724984b2
         Type::Tuple(_) => &[],
         Type::Function(_) => &[],
         Type::SelectedExpr(_) => &[],
