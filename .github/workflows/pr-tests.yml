@@ -100,6 +100,7 @@ jobs:
       run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/2
       env:
         PILCOM: ${{ github.workspace }}/pilcom/
+        POWDR_DIR: ${{ github.workspace }}
 
   run_examples:
     runs-on: ubuntu-latest
@@ -160,6 +161,7 @@ jobs:
       run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only --no-capture -E "test(=vec_median_estark_polygon)"
       env:
         PILCOM: ${{ github.workspace }}/pilcom/
+        POWDR_DIR: ${{ github.workspace }}
 
   test_slow:
     strategy:
@@ -209,3 +211,4 @@ jobs:
       shell: bash
       env:
         PILCOM: ${{ github.workspace }}/pilcom/
+        POWDR_DIR: ${{ github.workspace }}

@@ -749,12 +749,9 @@ mod test {
         let output_dir = tempfile::tempdir().unwrap();
         let output_dir_str = output_dir.path().to_string_lossy().to_string();
 
-        let file = format!(
-            "{}/../test_data/asm/simple_sum.asm",
-            env!("CARGO_MANIFEST_DIR")
-        );
+        let file = "../test_data/asm/simple_sum.asm";
         let pil_command = Commands::Pil {
-            file,
+            file.to_string(),
             field: FieldArgument::Bn254,
             output_directory: output_dir_str.clone(),
             witness_values: None,

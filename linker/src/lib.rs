@@ -329,11 +329,8 @@ namespace main__rom(4 + 4);
     pol constant latch = [1]*;
 "#;
 
-        let file_name = format!(
-            "{}/../test_data/asm/empty_vm.asm",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        let graph = parse_analyze_and_compile_file::<GoldilocksField>(&file_name);
+        let file_name = "../test_data/asm/empty_vm.asm";
+        let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
         let pil = link(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
@@ -461,11 +458,8 @@ namespace main_sub__rom(16);
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
 "#;
-        let file_name = format!(
-            "{}/../test_data/asm/different_signatures.asm",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        let graph = parse_analyze_and_compile_file::<GoldilocksField>(&file_name);
+        let file_name = "../test_data/asm/different_signatures.asm";
+        let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
         let pil = link(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
@@ -544,11 +538,8 @@ namespace main__rom(16);
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
 "#;
-        let file_name = format!(
-            "{}/../test_data/asm/simple_sum.asm",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        let graph = parse_analyze_and_compile_file::<GoldilocksField>(&file_name);
+        let file_name = "../test_data/asm/simple_sum.asm";
+        let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
         let pil = link(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
@@ -830,11 +821,8 @@ namespace main_bin(128);
     pol commit sel[2];
     std::array::map(sel, std::utils::force_bool);
 "#;
-        let file_name = format!(
-            "{}/../test_data/asm/permutations/vm_to_block.asm",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        let graph = parse_analyze_and_compile_file::<GoldilocksField>(&file_name);
+        let file_name = "../test_data/asm/permutations/vm_to_block.asm";
+        let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
         let pil = link(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expected);
     }
@@ -989,11 +977,8 @@ namespace main_submachine(32);
     pol commit z;
     z = y + x;
 "#;
-        let file_name = format!(
-            "{}/../test_data/asm/permutations/link_merging.asm",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        let graph = parse_analyze_and_compile_file::<GoldilocksField>(&file_name);
+        let file_name = "../test_data/asm/permutations/link_merging.asm";
+        let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
         let pil = link(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expected);
     }
