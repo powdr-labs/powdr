@@ -81,20 +81,20 @@ lazy_static! {
         (
             BinaryOperator::In,
             (
-                "T: ToSelectedExpr, U: ToSelectedExpr",
+                "T: ToSelectedExprs, U: ToSelectedExprs",
                 "T, U -> std::prelude::Constr"
             )
         ),
         (
             BinaryOperator::Is,
             (
-                "T: ToSelectedExpr, U: ToSelectedExpr",
+                "T: ToSelectedExprs, U: ToSelectedExprs",
                 "T, U -> std::prelude::Constr"
             )
         ),
         (
             BinaryOperator::Select,
-            ("", "expr, expr[] -> std::prelude::SelectedExpr")
+            ("", "expr, expr[] -> std::prelude::SelectedExprs")
         )
     ]
     .into_iter()
@@ -172,11 +172,10 @@ pub fn elementary_type_bounds(ty: &Type) -> &'static [&'static str] {
             "Eq",
         ],
         Type::Col | Type::Inter => &[],
-        Type::Array(t) if *t.base == Type::Expr => &["Add", "ToSelectedExpr"],
+        Type::Array(t) if *t.base == Type::Expr => &["Add", "ToSelectedExprs"],
         Type::Array(_) => &["Add"],
         Type::Tuple(_) => &[],
         Type::Function(_) => &[],
-        Type::SelectedExpr(_) => &[],
         Type::TypeVar(_) | Type::NamedType(_, _) => unreachable!(),
     }
 }
