@@ -1,9 +1,9 @@
 /// Creates a new `pub(crate)` general Factory struct from the RestrictedFactory
 /// struct.
 ///
-/// If the type generic type of the general factory is one of the listed
-/// supported types, the macro will forward the calls to the restricted factory.
-/// Otherwise, it will panic.
+/// If the field type of the general factory is one of the listed supported types,
+/// the macro will forward the calls to the restricted factory. Otherwise, it will
+/// panic.
 ///
 /// # Example
 /// ```
