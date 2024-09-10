@@ -78,6 +78,22 @@ lazy_static! {
         (BinaryOperator::Greater, ("T: Ord", "T, T -> bool")),
         (BinaryOperator::LogicalOr, ("", "bool, bool -> bool")),
         (BinaryOperator::LogicalAnd, ("", "bool, bool -> bool")),
+        (
+            BinaryOperator::In,
+            ("T: ToSelectExpr", "T, T -> std::prelude::Constr")
+        ),
+        (
+            BinaryOperator::Is,
+            ("T: ToSelectExpr", "T, T -> std::prelude::Constr")
+        ),
+        (
+            BinaryOperator::Connect,
+            ("T: ToSelectExpr", "T, T -> std::prelude::Constr")
+        ),
+        (
+            BinaryOperator::Select,
+            ("T: ToSelectExpr", "expr, expr[] -> T")
+        ),
     ]
     .into_iter()
     .map(|(op, (vars, ty))| { (op, parse_type_scheme(vars, ty)) })
@@ -154,9 +170,10 @@ pub fn elementary_type_bounds(ty: &Type) -> &'static [&'static str] {
             "Eq",
         ],
         Type::Col | Type::Inter => &[],
-        Type::Array(_) => &["Add"],
+        Type::Array(_) => &["Add", "ToSelectExpr"],
         Type::Tuple(_) => &[],
         Type::Function(_) => &[],
+        Type::SelectedExpr(_) => &[],
         Type::TypeVar(_) | Type::NamedType(_, _) => unreachable!(),
     }
 }
