@@ -13,10 +13,7 @@ use crate::pipeline::Pipeline;
 use crate::verify::verify;
 
 pub fn resolve_test_file(file_name: &str) -> PathBuf {
-    PathBuf::from(format!(
-        "{}/../test_data/{file_name}",
-        env!("CARGO_MANIFEST_DIR")
-    ))
+    PathBuf::from(format!("../test_data/{file_name}"))
 }
 
 pub fn execute_test_file(
@@ -352,7 +349,10 @@ pub fn evaluate_function<'a, T: FieldElement>(
     function: &'a str,
     arguments: Vec<Arc<evaluator::Value<'a, T>>>,
 ) -> evaluator::Value<'a, T> {
-    let mut symbols = evaluator::Definitions(&analyzed.definitions);
+    let mut symbols = evaluator::Definitions {
+        definitions: &analyzed.definitions,
+        solved_impls: &analyzed.solved_impls,
+    };
     let function = symbols.lookup(function, &None).unwrap();
     evaluator::evaluate_function_call(function, arguments, &mut symbols)
         .unwrap()

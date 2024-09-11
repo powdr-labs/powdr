@@ -1,4 +1,4 @@
-use std::{fs::File, path::PathBuf};
+use std::{fs::File, path::Path};
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_number::{Bn254Field, GoldilocksField};
@@ -15,7 +15,7 @@ pub fn run() -> Result<(), String> {
     let current_bn254_schema = Analyzed::<Bn254Field>::get_struct_schema();
     let current_goldilocks_schema = Analyzed::<GoldilocksField>::get_struct_schema();
 
-    let output_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("files");
+    let output_dir = Path::new("files");
     let bn254_path = output_dir.join("bn254.schema");
     let goldilocks_path = output_dir.join("goldilocks.schema");
 
@@ -34,8 +34,8 @@ pub fn run() -> Result<(), String> {
         || old_goldilocks_schema.schema != current_goldilocks_schema.schema
     {
         //bump the version number
-        let version_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("analyzed_type.version");
-        let version = std::fs::read_to_string(&version_path)
+        let version_path = Path::new("analyzed_type.version");
+        let version = std::fs::read_to_string(version_path)
             .map_err(|e| format!("Failed to read version number: {e}"))?
             .trim()
             .parse::<u32>()
