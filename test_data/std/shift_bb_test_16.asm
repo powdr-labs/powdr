@@ -14,8 +14,8 @@ machine Main with degree: 65536 {
     ByteShiftBB byte_shift_bb;
     ShiftBB shift_bb(byte_shift_bb);
 
-    instr shl X0_1, X0_2, X1 -> X2_1, X2_2 link ~> X2_1, X2_2 = shift.shl(X0_1, X0_2, X1);
-    instr shr X0_1, X0_2, X1 -> X2_1, X2_2 link ~> X2_1, X2_2 = shift.shr(X0_1, X0_2, X1);
+    instr shl X0_1, X0_2, X1 -> X2_1, X2_2 link ~> (X2_1, X2_2) = shift_bb.shl(X0_1, X0_2, X1);
+    instr shr X0_1, X0_2, X1 -> X2_1, X2_2 link ~> (X2_1, X2_2) = shift_bb.shr(X0_1, X0_2, X1);
 
     instr assert_eq X0_1, X0_2, X2_1, X2_2  {
         X0_1 = X2_1,
