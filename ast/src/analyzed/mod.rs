@@ -1186,7 +1186,7 @@ impl TryFrom<BinaryOperator> for AlgebraicBinaryOperator {
             BinaryOperator::Mul => Ok(AlgebraicBinaryOperator::Mul),
             BinaryOperator::Pow => Ok(AlgebraicBinaryOperator::Pow),
             _ => Err(format!(
-                "Binary operator {op} not allowed in algebraic expression."
+                "Binary operator \"{op}\" not allowed in algebraic expression."
             )),
         }
     }
@@ -1223,7 +1223,7 @@ impl TryFrom<UnaryOperator> for AlgebraicUnaryOperator {
         match op {
             UnaryOperator::Minus => Ok(AlgebraicUnaryOperator::Minus),
             _ => Err(format!(
-                "Unary operator {op} not allowed in algebraic expression."
+                "Unary operator \"{op}\" not allowed in algebraic expression."
             )),
         }
     }

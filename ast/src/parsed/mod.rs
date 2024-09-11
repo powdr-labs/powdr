@@ -986,6 +986,10 @@ pub enum BinaryOperator {
     NotEqual,
     GreaterEqual,
     Greater,
+    In,
+    Is,
+    Connect,
+    Select, // $
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -1038,8 +1042,10 @@ impl Precedence for BinaryOperator {
             LogicalAnd => 11,
             // ||
             LogicalOr => 12,
-            // .. ..=
-            // ??
+            // $
+            Select => 14,
+            // in is connect
+            In | Is | Connect => 15,
         };
 
         Some(precedence)

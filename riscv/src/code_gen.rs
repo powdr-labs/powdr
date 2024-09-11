@@ -688,7 +688,7 @@ fn mul_instruction<T: FieldElement>(runtime: &Runtime) -> &'static str {
         link ~> regs.mstore(W, STEP + 3, tmp4_col);
 "#
         }
-        KnownField::BabyBearField => todo!(),
+        KnownField::BabyBearField | KnownField::Mersenne31Field => todo!(),
     }
 }
 
