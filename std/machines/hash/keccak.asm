@@ -20,6 +20,7 @@ machine Keccak with
     array::map(preimage, |i| first_step * i = 0);
     
     // operation keccakf<0> preimage[0], preimage[1], ... -> a_prime_prime_prime[0, 0, 0], a_prime_prime_prime[0, 0, 1], ....
+
     col witness operation_id;
 
     let NUM_ROUNDS: int = 24;
@@ -70,7 +71,7 @@ machine Keccak with
     //     pub a_prime_prime_prime_0_0_limbs: [T; U64_LIMBS],
     // }
 
-    pol commit export;
+    // pol commit export;
     pol commit preimage[5 * 5 * 4];
     pol commit a[5 * 5 * 4];
     pol commit c[5 * 64];
@@ -108,7 +109,7 @@ machine Keccak with
 
     let first_step: expr = step_flags[0]; // aliasing instead of defining a new fixed column
     let final_step: expr = step_flags[NUM_ROUNDS - 1];
-    let not_final_step = 1 - final_step;
+    col fixed active_row(i) { if i < NUM_ROUNDS - 1 { 1 } else { 0 } };
 
     // // If this is the first step, the input A must match the preimage.
     // for y in 0..5 {
@@ -126,14 +127,14 @@ machine Keccak with
     // // The export flag must be 0 or 1.
     // builder.assert_bool(local.export);
 
-    force_bool(export);
+    // force_bool(export);
 
     // // If this is not the final step, the export flag must be off.
     // builder
     //     .when(not_final_step.clone())
     //     .assert_zero(local.export);
 
-    not_final_step * export = 0;
+    // not_final_step * export = 0;
 
     // // If this is not the final step, the local and next preimages must match.
     // for y in 0..5 {
@@ -147,7 +148,7 @@ machine Keccak with
     //     }
     // }
 
-    array::new(100, |i| not_final_step * (preimage[i] - preimage[i]') = 0); // why is not_final_step and when_transition both needed? aren't they the same?
+    array::new(100, |i| active_row * (preimage[i] - preimage[i]') = 0); // why is not_final_step and when_transition both needed? aren't they the same?
 
     // // C'[x, z] = xor(C[x, z], C[x - 1, z], C[x + 1, z - 1]).
     // for x in 0..5 {
@@ -366,7 +367,7 @@ machine Keccak with
         let x = i / 20;
         let y = (i / 4) % 5;
         let limb = i % 4;
-        not_final_step * (a_prime_prime_prime(y, x, limb) - a[i]') = 0
+        active_row * (a_prime_prime_prime(y, x, limb) - a[i]') = 0
     });
 
     // pub fn a_prime_prime_prime(&self, y: usize, x: usize, limb: usize) -> T {
