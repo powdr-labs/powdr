@@ -6,5 +6,6 @@ mod hash;
 mod memory;
 mod memory_with_bootloader_write;
 mod shift;
+mod shift_bb;
 mod split;
 mod write_once_memory;

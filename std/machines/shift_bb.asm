@@ -50,7 +50,7 @@ machine ShiftBB(byte_shift: ByteShiftBB) with
 
     col fixed latch(i) { if (i % 4) == 3 { 1 } else { 0 } };
     col fixed FACTOR_ROW(i) { (i + 1) % 4 };
-    col fixed FACTOR = [1 << 8, 1]*;
+    col fixed FACTOR = [256, 1]*;
     col fixed A1_SWITCH = [1, 0, 0, 1]*;
 
     col witness A_byte;
