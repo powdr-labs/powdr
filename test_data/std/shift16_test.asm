@@ -8,8 +8,8 @@ machine Main with degree: 65536 {
     reg X1[<=];
     reg X2_1[<=];
     reg X2_2[<=];
-    reg A1;
-    reg A2;
+    reg ALow;
+    reg AHi;
 
     ByteShift16 byte_shift_16;
     Shift16 shift16(byte_shift_16);
@@ -25,48 +25,48 @@ machine Main with degree: 65536 {
     function main {
 
         // SHL
-        A1, A2 <== shl(0x1357, 0x9acf, 0);
-        assert_eq A1, A2, 0x1357, 0x9acf;
-        A1, A2 <== shl(0x1357, 0x9acf, 1);
-        assert_eq A1, A2, 0x26ae, 0x359e;
-        A1, A2 <== shl(0x1357, 0x9acf, 4);
-        assert_eq A1, A2, 0x3570, 0xacf1;
-        A1, A2 <== shl(0x1357, 0x9acf, 8);
-        assert_eq A1, A2, 0x5700, 0xcf13;
-        A1, A2 <== shl(0x1357, 0x9acf, 12);
-        assert_eq A1, A2, 0x7000, 0xf135;
-        A1, A2 <== shl(0x1357, 0x9acf, 16);
-        assert_eq A1, A2, 0, 0x1357;
-        A1, A2 <== shl(0x1357, 0x9acf, 20);
-        assert_eq A1, A2, 0, 0x3570;
-        A1, A2 <== shl(0x1357, 0x9acf, 24);
-        assert_eq A1, A2, 0, 0x5700;
-        A1, A2 <== shl(0x1357, 0x9acf, 28);
-        assert_eq A1, A2, 0, 0x7000;
-        A1, A2 <== shl(0x1357, 0x9acf, 31);
-        assert_eq A1, A2, 0, 0x8000;
+        ALow, AHi <== shl(0x1357, 0x9acf, 0);
+        assert_eq ALow, AHi, 0x1357, 0x9acf;
+        ALow, AHi <== shl(0x1357, 0x9acf, 1);
+        assert_eq ALow, AHi, 0x26ae, 0x359e;
+        ALow, AHi <== shl(0x1357, 0x9acf, 4);
+        assert_eq ALow, AHi, 0x3570, 0xacf1;
+        ALow, AHi <== shl(0x1357, 0x9acf, 8);
+        assert_eq ALow, AHi, 0x5700, 0xcf13;
+        ALow, AHi <== shl(0x1357, 0x9acf, 12);
+        assert_eq ALow, AHi, 0x7000, 0xf135;
+        ALow, AHi <== shl(0x1357, 0x9acf, 16);
+        assert_eq ALow, AHi, 0, 0x1357;
+        ALow, AHi <== shl(0x1357, 0x9acf, 20);
+        assert_eq ALow, AHi, 0, 0x3570;
+        ALow, AHi <== shl(0x1357, 0x9acf, 24);
+        assert_eq ALow, AHi, 0, 0x5700;
+        ALow, AHi <== shl(0x1357, 0x9acf, 28);
+        assert_eq ALow, AHi, 0, 0x7000;
+        ALow, AHi <== shl(0x1357, 0x9acf, 31);
+        assert_eq ALow, AHi, 0, 0x8000;
 
         // SHR
-        A1, A2 <== shr(0x1357, 0x9acf, 0);
-        assert_eq A1, A2, 0x1357, 0x9acf;
-        A1, A2 <== shr(0x1357, 0x9acf, 1);
-        assert_eq A1, A2, 0x89ab, 0x4d67;
-        A1, A2 <== shr(0x1357, 0x9acf, 4);
-        assert_eq A1, A2, 0xf135, 0x09ac;
-        A1, A2 <== shr(0x1357, 0x9acf, 8);
-        assert_eq A1, A2, 0xcf13, 0x009a;
-        A1, A2 <== shr(0x1357, 0x9acf, 12);
-        assert_eq A1, A2, 0xacf1, 0x0009;
-        A1, A2 <== shr(0x1357, 0x9acf, 16);
-        assert_eq A1, A2, 0x9acf, 0;
-        A1, A2 <== shr(0x1357, 0x9acf, 20);
-        assert_eq A1, A2, 0x09ac, 0;
-        A1, A2 <== shr(0x1357, 0x9acf, 24);
-        assert_eq A1, A2, 0x009a, 0;
-        A1, A2 <== shr(0x1357, 0x9acf, 28);
-        assert_eq A1, A2, 0x0009, 0;
-        A1, A2 <== shr(0x1357, 0x9acf, 31);
-        assert_eq A1, A2, 0x1, 0;
+        ALow, AHi <== shr(0x1357, 0x9acf, 0);
+        assert_eq ALow, AHi, 0x1357, 0x9acf;
+        ALow, AHi <== shr(0x1357, 0x9acf, 1);
+        assert_eq ALow, AHi, 0x89ab, 0x4d67;
+        ALow, AHi <== shr(0x1357, 0x9acf, 4);
+        assert_eq ALow, AHi, 0xf135, 0x09ac;
+        ALow, AHi <== shr(0x1357, 0x9acf, 8);
+        assert_eq ALow, AHi, 0xcf13, 0x009a;
+        ALow, AHi <== shr(0x1357, 0x9acf, 12);
+        assert_eq ALow, AHi, 0xacf1, 0x0009;
+        ALow, AHi <== shr(0x1357, 0x9acf, 16);
+        assert_eq ALow, AHi, 0x9acf, 0;
+        ALow, AHi <== shr(0x1357, 0x9acf, 20);
+        assert_eq ALow, AHi, 0x09ac, 0;
+        ALow, AHi <== shr(0x1357, 0x9acf, 24);
+        assert_eq ALow, AHi, 0x009a, 0;
+        ALow, AHi <== shr(0x1357, 0x9acf, 28);
+        assert_eq ALow, AHi, 0x0009, 0;
+        ALow, AHi <== shr(0x1357, 0x9acf, 31);
+        assert_eq ALow, AHi, 0x1, 0;
 
         return;
     }

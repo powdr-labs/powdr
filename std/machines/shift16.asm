@@ -2,7 +2,7 @@ use std::utils::unchanged_until;
 use std::utils::cross_product;
 use std::convert::int;
 
-// Shift for single bytes using an exhaustive table
+// Shift for single bytes using an exhaustive table, returning two 16-bit values as result.
 // TODO this way, we cannot prove anything that shifts by more than 31 bits.
 machine ByteShift16 with
     latch: latch,
@@ -42,27 +42,27 @@ machine Shift16(byte_shift_16: ByteShift16) with
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
-    operation shl<0> A1, A2, B -> C1, C2;
+    operation shl<0> ALow, AHi, B -> C1, C2;
 
-    operation shr<1> A1, A2, B -> C1, C2;
+    operation shr<1> ALow, AHi, B -> C1, C2;
 
     col witness operation_id;
     unchanged_until(operation_id, latch);
 
     col fixed latch(i) { if (i % 4) == 3 { 1 } else { 0 } };
     col fixed FACTOR_ROW(i) { (i + 1) % 4 };
-    col fixed FACTOR_A1 = [256, 0, 0, 1];
-    col fixed FACTOR_A2 = [0, 1, 256, 0];
+    col fixed FACTOR_ALow = [256, 0, 0, 1];
+    col fixed FACTOR_AHi = [0, 1, 256, 0];
 
     col witness A_byte;
     col witness C_part1, C_part2;
 
-    col witness A1, A2;
+    col witness ALow, AHi;
     col witness B;
     col witness C1, C2;
 
-    A1' = A1 * (1 - latch) + A_byte * FACTOR_A1;
-    A2' = A2 * (1 - latch) + A_byte * FACTOR_A2;
+    ALow' = ALow * (1 - latch) + A_byte * FACTOR_ALow;
+    AHi' = AHi * (1 - latch) + A_byte * FACTOR_AHi;
     unchanged_until(B, latch);
     C1' = C1 * (1 - latch) + C_part1;
     C2' = C2 * (1 - latch) + C_part2;
