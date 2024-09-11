@@ -529,41 +529,29 @@ impl<T: FieldElement> VMConverter<T> {
             });
         });
 
-        for mut statement in body.0 {
-            if let PilStatement::Expression(source, expr) = statement {
-                match extract_update(expr) {
-                    (Some(var), expr) => {
-                        let reference = direct_reference(flag);
+        let instr_flag = direct_reference(flag);
+        for statement in body.0 {
+            let PilStatement::Expression(source, expr) = statement else {
+                panic!("Invalid statement for instruction body: {statement}");
+            };
+            if let Some((var, expr)) = try_extract_update(&expr) {
+                // reduce the update to linear by introducing intermediate variables
+                let expr = self.linearize(&format!("{flag}_{var}_update"), expr);
 
-                        // reduce the update to linear by introducing intermediate variables
-                        let expr = self.linearize(&format!("{flag}_{var}_update"), expr);
-
-                        self.registers
-                            .get_mut(&var)
-                            .unwrap()
-                            .conditioned_updates
-                            .push((reference, expr));
-                    }
-                    (None, expr) => self.pil.push(PilStatement::Expression(
-                        source,
-                        build::identity(direct_reference(flag) * expr.clone(), 0.into()),
-                    )),
-                }
+                self.registers
+                    .get_mut(&var)
+                    .unwrap()
+                    .conditioned_updates
+                    .push((instr_flag.clone(), expr));
             } else {
-                match &mut statement {
-                    PilStatement::PermutationIdentity(_, left, _)
-                    | PilStatement::PlookupIdentity(_, left, _) => {
-                        assert!(
-                                    left.selector.is_none(),
-                                    "LHS selector not supported, could and-combine with instruction flag later."
-                                );
-                        left.selector = Some(direct_reference(flag));
-                        self.pil.push(statement)
-                    }
-                    _ => {
-                        panic!("Invalid statement for instruction body: {statement}");
-                    }
-                }
+                let fun_call = Expression::FunctionCall(
+                    source.clone(),
+                    FunctionCall {
+                        function: absolute_reference("::std::constraints::make_conditional").into(),
+                        arguments: vec![expr, instr_flag.clone()],
+                    },
+                );
+                self.pil.push(PilStatement::Expression(source, fun_call))
             }
         }
     }
@@ -866,7 +854,11 @@ impl<T: FieldElement> VMConverter<T> {
                 | BinaryOperator::Identity
                 | BinaryOperator::NotEqual
                 | BinaryOperator::GreaterEqual
-                | BinaryOperator::Greater => {
+                | BinaryOperator::Greater
+                | BinaryOperator::Is
+                | BinaryOperator::In
+                | BinaryOperator::Select
+                | BinaryOperator::Connect => {
                     panic!("Invalid operation in expression {left} {op} {right}")
                 }
             },
@@ -1185,7 +1177,7 @@ impl<T: FieldElement> VMConverter<T> {
                     ));
                     (counter + 1, direct_reference(intermediate_name))
                 }
-                op => unimplemented!("{op} is not supported when linearizing"),
+                op => unimplemented!("Binary operator \"{op}\" is not supported when linearizing"),
             },
             expr => (counter, expr),
         }
@@ -1284,7 +1276,8 @@ fn witness_column<S: Into<String>>(
     )
 }
 
-fn extract_update(expr: Expression) -> (Option<String>, Expression) {
+/// If the expression is of the form "x' = expr", returns x and expr.
+fn try_extract_update(expr: &Expression) -> Option<(String, Expression)> {
     let Expression::BinaryOperation(
         _,
         BinaryOperation {
@@ -1294,32 +1287,24 @@ fn extract_update(expr: Expression) -> (Option<String>, Expression) {
         },
     ) = expr
     else {
-        panic!("Invalid statement for instruction body, expected constraint: {expr}");
+        return None;
     };
     // TODO check that there are no other "next" references in the expression
-    match *left {
+    match left.as_ref() {
         Expression::UnaryOperation(
-            source_ref,
+            _,
             UnaryOperation {
                 op: UnaryOperator::Next,
                 expr: column,
             },
-        ) => match *column {
-            Expression::Reference(_, column) => {
-                (Some(column.try_to_identifier().unwrap().clone()), *right)
-            }
-            _ => (
-                None,
-                Expression::UnaryOperation(
-                    source_ref,
-                    UnaryOperation {
-                        op: UnaryOperator::Next,
-                        expr: column,
-                    },
-                ) - *right,
-            ),
+        ) => match column.as_ref() {
+            Expression::Reference(_, column) => Some((
+                column.try_to_identifier().unwrap().clone(),
+                (**right).clone(),
+            )),
+            _ => None,
         },
-        _ => (None, *left - *right),
+        _ => None,
     }
 }
 

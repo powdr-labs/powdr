@@ -1,6 +1,7 @@
 //! Component that turns data from the PILAnalyzer into Analyzed,
 //! i.e. it turns more complex expressions in identities to simpler expressions.
 
+use core::fmt::Debug;
 use std::{
     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
     iter::once,
@@ -40,12 +41,13 @@ type AnalyzedIdentity<T> = Identity<SelectedExpressions<AlgebraicExpression<T>>>
 
 pub fn condense<T: FieldElement>(
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
     public_declarations: HashMap<String, PublicDeclaration>,
     identities: &[ParsedIdentity],
     source_order: Vec<StatementIdentifier>,
     auto_added_symbols: HashSet<String>,
 ) -> Analyzed<T> {
-    let mut condenser = Condenser::new(&definitions);
+    let mut condenser = Condenser::new(&definitions, &solved_impls);
 
     let mut condensed_identities = vec![];
     let mut prover_functions = vec![];
@@ -180,6 +182,7 @@ pub fn condense<T: FieldElement>(
 
     Analyzed {
         definitions,
+        solved_impls,
         public_declarations,
         intermediate_columns,
         identities: condensed_identities,
@@ -195,6 +198,8 @@ pub struct Condenser<'a, T> {
     degree: Option<DegreeRange>,
     /// All the definitions from the PIL file.
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    /// Pointers to expressions for all referenced trait implementations and the concrete types.
+    solved_impls: &'a HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
     /// Evaluation cache.
     symbol_values: SymbolCache<'a, T>,
     /// Current namespace (for names of generated columns).
@@ -214,11 +219,15 @@ pub struct Condenser<'a, T> {
 }
 
 impl<'a, T: FieldElement> Condenser<'a, T> {
-    pub fn new(symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>) -> Self {
+    pub fn new(
+        symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+        solved_impls: &'a HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
+    ) -> Self {
         let counters = Counters::with_existing(symbols.values().map(|(sym, _)| sym), None, None);
         Self {
-            symbols,
             degree: None,
+            symbols,
+            solved_impls,
             symbol_values: Default::default(),
             namespace: Default::default(),
             counters,
@@ -360,7 +369,13 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         {
             return Ok(v.clone());
         }
-        let value = Definitions::lookup_with_symbols(self.symbols, name, type_args, self)?;
+        let value = Definitions::lookup_with_symbols(
+            self.symbols,
+            self.solved_impls,
+            name,
+            type_args,
+            self,
+        )?;
         self.symbol_values
             .entry(name.to_string())
             .or_default()
@@ -370,7 +385,11 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
     }
 
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
-        Definitions(self.symbols).lookup_public_reference(name)
+        Definitions {
+            definitions: self.symbols,
+            solved_impls: self.solved_impls,
+        }
+        .lookup_public_reference(name)
     }
 
     fn min_degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
@@ -688,7 +707,7 @@ fn to_constraint<T: FieldElement>(
     }
 }
 
-fn to_selected_exprs<'a, T: Clone>(
+fn to_selected_exprs<'a, T: Clone + Debug>(
     selector: &Value<'a, T>,
     exprs: Vec<&Value<'a, T>>,
 ) -> SelectedExpressions<AlgebraicExpression<T>> {
@@ -698,7 +717,7 @@ fn to_selected_exprs<'a, T: Clone>(
     }
 }
 
-fn to_option_expr<T: Clone>(value: &Value<'_, T>) -> Option<AlgebraicExpression<T>> {
+fn to_option_expr<T: Clone + Debug>(value: &Value<'_, T>) -> Option<AlgebraicExpression<T>> {
     match value {
         Value::Enum("None", None) => None,
         Value::Enum("Some", Some(fields)) => {
@@ -709,7 +728,7 @@ fn to_option_expr<T: Clone>(value: &Value<'_, T>) -> Option<AlgebraicExpression<
     }
 }
 
-fn to_expr<T: Clone>(value: &Value<'_, T>) -> AlgebraicExpression<T> {
+fn to_expr<T: Clone + Debug>(value: &Value<'_, T>) -> AlgebraicExpression<T> {
     if let Value::Expression(expr) = value {
         (*expr).clone()
     } else {

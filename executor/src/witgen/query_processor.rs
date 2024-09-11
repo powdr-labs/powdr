@@ -178,6 +178,7 @@ impl<'a, 'b, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, 'b, T> {
             }
             None => Definitions::lookup_with_symbols(
                 &self.fixed_data.analyzed.definitions,
+                &self.fixed_data.analyzed.solved_impls,
                 name,
                 type_args,
                 self,
