@@ -52,7 +52,7 @@ fn type_scheme_simplify_type_vars() {
 }
 
 #[test]
-#[should_panic = "Expected type: expr\n"]
+#[should_panic = "Expected type: expr\\n"]
 fn use_fun_in_expr_context() {
     let input = r#"namespace N(16);
     let id = |i| i;
@@ -264,7 +264,7 @@ fn type_check_arrays() {
 }
 
 #[test]
-#[should_panic = "Expected either int -> int or int -> fe, but got: int -> (int, string).\nCannot unify types (int, string) and fe"]
+#[should_panic = "Expected either int -> int or int -> fe, but got: int -> (int, string).\\nCannot unify types (int, string) and fe"]
 fn error_for_column_type() {
     let input = "
         let x: col = |i| (i, \"abc\");
@@ -614,7 +614,7 @@ fn type_vars_in_block_let() {
 }
 
 #[test]
-#[should_panic = "Expected type: int -> T\nInferred type: int\n"]
+#[should_panic = "Expected type: int -> T\\nInferred type: int\\n"]
 fn new_fixed_column_wrong_value_type() {
     let input = r#"namespace N(16);
         let f = constr |j| {
