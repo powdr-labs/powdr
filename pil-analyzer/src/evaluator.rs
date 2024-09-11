@@ -1387,16 +1387,10 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
         BuiltinFunction::OutputByte => {
             let byte = arguments.pop().unwrap();
             let fd = arguments.pop().unwrap();
-            let Value::FieldElement(byte) = byte.as_ref() else {
+            let (Value::Integer(fd), Value::Integer(byte)) = (fd.as_ref(), byte.as_ref()) else {
                 panic!()
             };
-            let Value::Integer(channel) = fd.as_ref() else {
-                panic!()
-            };
-            symbols.output_byte(
-                u32::try_from(channel).unwrap(),
-                u8::try_from(byte.try_into_i32().unwrap()).unwrap(),
-            )?;
+            symbols.output_byte(u32::try_from(fd).unwrap(), u8::try_from(byte).unwrap())?;
             Value::Tuple(vec![]).into()
         }
         BuiltinFunction::SetHint => {
