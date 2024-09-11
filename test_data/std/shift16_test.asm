@@ -1,5 +1,5 @@
-use std::machines::shift_bb::ByteShiftBB;
-use std::machines::shift_bb::ShiftBB;
+use std::machines::shift16::ByteShift16;
+use std::machines::shift16::Shift16;
 
 machine Main with degree: 65536 {
     reg pc[@pc];
@@ -11,11 +11,11 @@ machine Main with degree: 65536 {
     reg A1;
     reg A2;
 
-    ByteShiftBB byte_shift_bb;
-    ShiftBB shift_bb(byte_shift_bb);
+    ByteShift16 byte_shift_16;
+    Shift16 shift16(byte_shift_16);
 
-    instr shl X0_1, X0_2, X1 -> X2_1, X2_2 link ~> (X2_1, X2_2) = shift_bb.shl(X0_1, X0_2, X1);
-    instr shr X0_1, X0_2, X1 -> X2_1, X2_2 link ~> (X2_1, X2_2) = shift_bb.shr(X0_1, X0_2, X1);
+    instr shl X0_1, X0_2, X1 -> X2_1, X2_2 link ~> (X2_1, X2_2) = shift16.shl(X0_1, X0_2, X1);
+    instr shr X0_1, X0_2, X1 -> X2_1, X2_2 link ~> (X2_1, X2_2) = shift16.shr(X0_1, X0_2, X1);
 
     instr assert_eq X0_1, X0_2, X2_1, X2_2  {
         X0_1 = X2_1,

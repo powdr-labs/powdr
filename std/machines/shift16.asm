@@ -4,7 +4,7 @@ use std::convert::int;
 
 // Shift for single bytes using an exhaustive table
 // TODO this way, we cannot prove anything that shifts by more than 31 bits.
-machine ByteShiftBB with
+machine ByteShift16 with
     latch: latch,
     operation_id: operation_id,
     degree: 65536
@@ -17,7 +17,8 @@ machine ByteShiftBB with
 
     let bit_counts = [256, 32, 4, 2];
     let min_degree = std::array::product(bit_counts);
-    std::check::assert(std::prover::min_degree() >= std::array::product(bit_counts), || "The shift machine needs at least 65536 rows to work.");
+    std::check::assert(std::prover::min_degree() >= std::array::product(bit_counts), || "The shift16 machine needs at least 65536 rows to work.");
+    std::check::assert(std::field::modulus() >= 65535, || "The field modulo should be at least 2^16 - 1 to work in the shift16 machine.");
     let inputs = cross_product(bit_counts);
     let a: int -> int = inputs[0];
     let b: int -> int = inputs[1];
@@ -35,7 +36,7 @@ machine ByteShiftBB with
     col fixed P_C2(i) { (c(i) >> 16) & 0xffff };
 }
 
-machine ShiftBB(byte_shift: ByteShiftBB) with
+machine Shift16(byte_shift_16: ByteShift16) with
     latch: latch,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation
@@ -66,5 +67,5 @@ machine ShiftBB(byte_shift: ByteShiftBB) with
     C1' = C1 * (1 - latch) + C_part1;
     C2' = C2 * (1 - latch) + C_part2;
 
-    link => (C_part1, C_part2) = byte_shift.run(operation_id', A_byte, B', FACTOR_ROW);
+    link => (C_part1, C_part2) = byte_shift_16.run(operation_id', A_byte, B', FACTOR_ROW);
 }
