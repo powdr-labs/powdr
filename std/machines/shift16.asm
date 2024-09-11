@@ -51,8 +51,8 @@ machine Shift16(byte_shift_16: ByteShift16) with
 
     col fixed latch(i) { if (i % 4) == 3 { 1 } else { 0 } };
     col fixed FACTOR_ROW(i) { (i + 1) % 4 };
-    col fixed FACTOR = [256, 1]*;
-    col fixed A1_SWITCH = [1, 0, 0, 1]*;
+    col fixed FACTOR_A1 = [256, 0, 0, 1];
+    col fixed FACTOR_A2 = [0, 1, 256, 0];
 
     col witness A_byte;
     col witness C_part1, C_part2;
@@ -61,8 +61,8 @@ machine Shift16(byte_shift_16: ByteShift16) with
     col witness B;
     col witness C1, C2;
 
-    A1' = A1 * (1 - latch) + A_byte * FACTOR * A1_SWITCH;
-    A2' = A2 * (1 - latch) + A_byte * FACTOR * (1 - A1_SWITCH);
+    A1' = A1 * (1 - latch) + A_byte * FACTOR_A1;
+    A2' = A2 * (1 - latch) + A_byte * FACTOR_A2;
     unchanged_until(B, latch);
     C1' = C1 * (1 - latch) + C_part1;
     C2' = C2 * (1 - latch) + C_part2;
