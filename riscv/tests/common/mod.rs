@@ -94,6 +94,7 @@ pub fn verify_riscv_asm_file(asm_file: &Path, runtime: &Runtime, use_pie: bool) 
     let case_name = asm_file.file_stem().unwrap().to_str().unwrap();
 
     let powdr_asm = powdr_riscv::elf::translate::<GoldilocksField>(&executable, runtime, false);
+    println!("{}", powdr_asm);
     verify_riscv_asm_string::<GoldilocksField, ()>(
         &format!("{case_name}.asm"),
         &powdr_asm,

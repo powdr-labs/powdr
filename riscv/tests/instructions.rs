@@ -27,6 +27,8 @@ mod instruction_tests {
             false,
         );
 
+        println!("{}", powdr_asm);
+
         verify_riscv_asm_string::<BabyBearField, ()>(
             &format!("{name}.asm"),
             &powdr_asm,
