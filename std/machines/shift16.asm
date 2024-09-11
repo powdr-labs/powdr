@@ -51,11 +51,11 @@ machine Shift16(byte_shift_16: ByteShift16) with
 
     col fixed latch(i) { if (i % 4) == 3 { 1 } else { 0 } };
     col fixed FACTOR_ROW(i) { (i + 1) % 4 };
-    col fixed FACTOR_ALow = [256, 0, 0, 1];
-    col fixed FACTOR_AHi = [0, 1, 256, 0];
+    col fixed FACTOR_ALow = [256, 0, 0, 1]*;
+    col fixed FACTOR_AHi = [0, 1, 256, 0]*;
 
     col witness A_byte;
-    col witness C_part1, C_part2;
+    col witness C_part_low, C_part_hi;
 
     col witness ALow, AHi;
     col witness B;
@@ -64,8 +64,8 @@ machine Shift16(byte_shift_16: ByteShift16) with
     ALow' = ALow * (1 - latch) + A_byte * FACTOR_ALow;
     AHi' = AHi * (1 - latch) + A_byte * FACTOR_AHi;
     unchanged_until(B, latch);
-    CLow' = CLow * (1 - latch) + C_part1;
-    CHi' = CHi * (1 - latch) + C_part2;
+    CLow' = CLow * (1 - latch) + C_part_low;
+    CHi' = CHi * (1 - latch) + C_part_hi;
 
-    link => (C_part1, C_part2) = byte_shift_16.run(operation_id', A_byte, B', FACTOR_ROW);
+    link => (C_part_low, C_part_hi) = byte_shift_16.run(operation_id', A_byte, B', FACTOR_ROW);
 }
