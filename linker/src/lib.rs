@@ -329,11 +329,8 @@ namespace main__rom(4 + 4);
     pol constant latch = [1]*;
 "#;
 
-        let file_name = format!(
-            "{}/../test_data/asm/empty_vm.asm",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        let graph = parse_analyze_and_compile_file::<GoldilocksField>(&file_name);
+        let file_name = "../test_data/asm/empty_vm.asm";
+        let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
         let pil = link(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
@@ -461,11 +458,8 @@ namespace main_sub__rom(16);
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
 "#;
-        let file_name = format!(
-            "{}/../test_data/asm/different_signatures.asm",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        let graph = parse_analyze_and_compile_file::<GoldilocksField>(&file_name);
+        let file_name = "../test_data/asm/different_signatures.asm";
+        let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
         let pil = link(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
@@ -496,7 +490,7 @@ namespace main_sub__rom(16);
     pol commit instr_jmp_param_l;
     pol commit instr_dec_CNT;
     pol commit instr_assert_zero;
-    instr_assert_zero * (XIsZero - 1) = 0;
+    std::constraints::make_conditional(XIsZero = 1, instr_assert_zero);
     pol commit instr__jump_to_operation;
     pol commit instr__reset;
     pol commit instr__loop;
@@ -544,11 +538,8 @@ namespace main__rom(16);
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
 "#;
-        let file_name = format!(
-            "{}/../test_data/asm/simple_sum.asm",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        let graph = parse_analyze_and_compile_file::<GoldilocksField>(&file_name);
+        let file_name = "../test_data/asm/simple_sum.asm";
+        let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
         let pil = link(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
@@ -738,7 +729,7 @@ namespace main_vm(64..128);
     pol commit instr_or;
     pol commit instr_or_into_B;
     pol commit instr_assert_eq;
-    instr_assert_eq * (X - Y) = 0;
+    std::constraints::make_conditional(X = Y, instr_assert_eq);
     pol commit instr__jump_to_operation;
     pol commit instr__reset;
     pol commit instr__loop;
@@ -830,11 +821,8 @@ namespace main_bin(128);
     pol commit sel[2];
     std::array::map(sel, std::utils::force_bool);
 "#;
-        let file_name = format!(
-            "{}/../test_data/asm/permutations/vm_to_block.asm",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        let graph = parse_analyze_and_compile_file::<GoldilocksField>(&file_name);
+        let file_name = "../test_data/asm/permutations/vm_to_block.asm";
+        let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
         let pil = link(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expected);
     }
@@ -876,7 +864,7 @@ namespace main_bin(128);
     pol commit instr_sub;
     pol commit instr_add_with_sub;
     pol commit instr_assert_eq;
-    instr_assert_eq * (X - Y) = 0;
+    std::constraints::make_conditional(X = Y, instr_assert_eq);
     pol commit instr__jump_to_operation;
     pol commit instr__reset;
     pol commit instr__loop;
@@ -989,11 +977,8 @@ namespace main_submachine(32);
     pol commit z;
     z = y + x;
 "#;
-        let file_name = format!(
-            "{}/../test_data/asm/permutations/link_merging.asm",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        let graph = parse_analyze_and_compile_file::<GoldilocksField>(&file_name);
+        let file_name = "../test_data/asm/permutations/link_merging.asm";
+        let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
         let pil = link(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expected);
     }

@@ -1,10 +1,10 @@
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicReference, DegreeRange, IdentityKind, PolyID};
+use powdr_ast::analyzed::{AlgebraicReference, DegreeRange, IdentityKind};
 use powdr_ast::indent;
 use powdr_number::{DegreeType, FieldElement};
 use std::cmp::max;
-use std::collections::HashSet;
+
 use std::time::Instant;
 
 use crate::witgen::identity_processor::{self};
@@ -12,6 +12,7 @@ use crate::witgen::IncompleteCause;
 use crate::Identity;
 
 use super::data_structures::finalizable_data::FinalizableData;
+use super::machines::MachineParts;
 use super::processor::{OuterQuery, Processor};
 
 use super::rows::{Row, RowIndex, UnknownStrategy};
@@ -51,9 +52,10 @@ pub struct VmProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     degree: DegreeType,
     /// The global index of the first row of [VmProcessor::data].
     row_offset: DegreeType,
-    /// The witness columns belonging to this machine
-    witnesses: HashSet<PolyID>,
+    /// The fixed data (containing information about all columns)
     fixed_data: &'a FixedData<'a, T>,
+    /// The machine parts (identities, connecting identities, etc.)
+    parts: &'c MachineParts<'a, T>,
     /// The subset of identities that contains a reference to the next row
     /// (precomputed once for performance reasons)
     identities_with_next_ref: Vec<&'a Identity<T>>,
@@ -72,26 +74,19 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         machine_name: String,
         row_offset: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
-        identities: &[&'a Identity<T>],
-        witnesses: &'c HashSet<PolyID>,
+        parts: &'c MachineParts<'a, T>,
         data: FinalizableData<T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
     ) -> Self {
-        let degree_range = fixed_data.common_degree_range(witnesses);
+        let degree_range = parts.common_degree_range();
 
         let degree = degree_range.max;
 
-        let (identities_with_next, identities_without_next): (Vec<_>, Vec<_>) = identities
+        let (identities_with_next, identities_without_next): (Vec<_>, Vec<_>) = parts
+            .identities
             .iter()
             .partition(|identity| identity.contains_next_ref());
-        let processor = Processor::new(
-            row_offset,
-            data,
-            mutable_state,
-            fixed_data,
-            witnesses,
-            degree,
-        );
+        let processor = Processor::new(row_offset, data, mutable_state, fixed_data, parts, degree);
 
         let progress_bar = ProgressBar::new(degree);
         progress_bar.set_style(
@@ -106,8 +101,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             degree_range,
             degree,
             row_offset: row_offset.into(),
-            witnesses: witnesses.clone(),
             fixed_data,
+            parts,
             identities_with_next_ref: identities_with_next,
             identities_without_next_ref: identities_without_next,
             last_report: 0,
@@ -334,8 +329,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                     row_index as DegreeType + self.row_offset
                 ),
                 true,
-                &self.witnesses,
-                self.fixed_data,
+                self.parts
             )
         );
 
@@ -480,8 +474,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             self.processor.row(row_index).render(
                 &format!("Current row ({row_index})"),
                 false,
-                &self.witnesses,
-                self.fixed_data,
+                self.parts
             )
         );
         log::debug!(
@@ -489,8 +482,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             self.processor.row(row_index + 1).render(
                 &format!("Next row ({})", row_index + 1),
                 false,
-                &self.witnesses,
-                self.fixed_data,
+                self.parts
             )
         );
         log::debug!("Set RUST_LOG=trace to understand why these values were chosen.");
@@ -518,8 +510,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             self.processor.row(row_index).render(
                 &format!("Current row ({row_index})"),
                 true,
-                &self.witnesses,
-                self.fixed_data,
+                self.parts
             )
         );
         log::debug!(
@@ -527,8 +518,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             self.processor.row(row_index + 1).render(
                 &format!("Next row ({})", row_index + 1),
                 true,
-                &self.witnesses,
-                self.fixed_data,
+                self.parts
             )
         );
         log::debug!("\nSet RUST_LOG=trace to understand why these values were (not) chosen.");

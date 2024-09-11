@@ -1,13 +1,11 @@
 //! A plonky3 prover using FRI and Poseidon
 
-use p3_goldilocks::Goldilocks;
 use p3_matrix::dense::RowMajorMatrix;
 
 use core::fmt;
 use std::iter::{once, repeat};
 use std::sync::Arc;
 
-use crate::params::Challenger;
 use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
@@ -15,21 +13,25 @@ use powdr_executor::witgen::WitgenCallback;
 use p3_uni_stark::{
     prove_with_key, verify_with_key, Proof, StarkGenericConfig, StarkProvingKey, StarkVerifyingKey,
 };
-use powdr_number::{FieldElement, KnownField};
 
-use crate::circuit_builder::{cast_to_goldilocks, generate_matrix, PowdrCircuit};
+use crate::{
+    circuit_builder::{generate_matrix, PowdrCircuit},
+    params::{Challenger, Commitment, FieldElementMap, Plonky3Field, ProverData},
+};
 
-use crate::params::{get_challenger, get_config, Config};
-
-pub struct Plonky3Prover<T> {
+pub struct Plonky3Prover<T: FieldElementMap>
+where
+    ProverData<T>: Send,
+    Commitment<T>: Send,
+{
     /// The analyzed PIL
     analyzed: Arc<Analyzed<T>>,
     /// The value of the fixed columns
     fixed: Arc<Vec<(String, Vec<T>)>>,
     /// Proving key
-    proving_key: Option<StarkProvingKey<Config>>,
+    proving_key: Option<StarkProvingKey<T::Config>>,
     /// Verifying key
-    verifying_key: Option<StarkVerifyingKey<Config>>,
+    verifying_key: Option<StarkVerifyingKey<T::Config>>,
 }
 
 pub enum VerificationKeyExportError {
@@ -44,7 +46,11 @@ impl fmt::Display for VerificationKeyExportError {
     }
 }
 
-impl<T: FieldElement> Plonky3Prover<T> {
+impl<T: FieldElementMap> Plonky3Prover<T>
+where
+    ProverData<T>: Send,
+    Commitment<T>: Send,
+{
     pub fn new(analyzed: Arc<Analyzed<T>>, fixed: Arc<Vec<(String, Vec<T>)>>) -> Self {
         Self {
             analyzed,
@@ -69,13 +75,14 @@ impl<T: FieldElement> Plonky3Prover<T> {
 
     /// Returns preprocessed matrix based on the fixed inputs [`Plonky3Prover<T>`].
     /// This is used when running the setup phase
-    pub fn get_preprocessed_matrix(&self) -> RowMajorMatrix<Goldilocks> {
-        let publics = self.analyzed.get_publics();
-        let publics = publics
-            .iter()
+    pub fn get_preprocessed_matrix(&self) -> RowMajorMatrix<Plonky3Field<T>> {
+        let publics = self
+            .analyzed
+            .get_publics()
+            .into_iter()
             .map(|(name, _, row_id)| {
                 let selector = (0..self.analyzed.degree())
-                    .map(move |i| T::from(i == *row_id as u64))
+                    .map(move |i| T::from(i == row_id as u64))
                     .collect::<Vec<T>>();
                 (name, selector)
             })
@@ -85,17 +92,17 @@ impl<T: FieldElement> Plonky3Prover<T> {
             .fixed
             .iter()
             .map(|(name, values)| (name, values.as_ref()))
-            .chain(
-                publics
-                    .iter()
-                    .map(|(name, values)| (*name, values.as_ref())),
-            );
+            .chain(publics.iter().map(|(name, values)| (name, values.as_ref())));
 
         generate_matrix(fixed_with_public_selectors)
     }
 }
 
-impl<T: FieldElement> Plonky3Prover<T> {
+impl<T: FieldElementMap> Plonky3Prover<T>
+where
+    ProverData<T>: Send,
+    Commitment<T>: Send,
+{
     pub fn setup(&mut self) {
         // get fixed columns
         let fixed = &self.fixed;
@@ -118,11 +125,11 @@ impl<T: FieldElement> Plonky3Prover<T> {
         }
 
         // get the config
-        let config = get_config();
+        let config = T::get_config();
 
         // commit to the fixed columns
         let pcs = config.pcs();
-        let domain = <_ as p3_commit::Pcs<_, Challenger>>::natural_domain_for_degree(
+        let domain = <_ as p3_commit::Pcs<_, Challenger<T>>>::natural_domain_for_degree(
             pcs,
             self.analyzed.degree() as usize,
         );
@@ -133,7 +140,7 @@ impl<T: FieldElement> Plonky3Prover<T> {
                     fixed
                         .iter()
                         .chain(publics.iter())
-                        .map(move |(_, values)| cast_to_goldilocks(values[i as usize]))
+                        .map(move |(_, values)| values[i as usize].into_p3_field())
                 })
                 .collect(),
             self.fixed.len() + publics.len(),
@@ -143,10 +150,10 @@ impl<T: FieldElement> Plonky3Prover<T> {
 
         // commit to the evaluations
         let (fixed_commit, fixed_data) =
-            <_ as p3_commit::Pcs<_, Challenger>>::commit(pcs, evaluations);
+            <_ as p3_commit::Pcs<_, Challenger<T>>>::commit(pcs, evaluations);
 
         let proving_key = StarkProvingKey {
-            preprocessed_commit: fixed_commit,
+            preprocessed_commit: fixed_commit.clone(),
             preprocessed_data: fixed_data,
         };
         let verifying_key = StarkVerifyingKey {
@@ -162,12 +169,10 @@ impl<T: FieldElement> Plonky3Prover<T> {
         witness: &[(String, Vec<T>)],
         witgen_callback: WitgenCallback<T>,
     ) -> Result<Vec<u8>, String> {
-        assert_eq!(T::known_field(), Some(KnownField::GoldilocksField));
-
         // TODO: avoid cloning here?
         let circuit = PowdrCircuit::new(&self.analyzed)
-            .with_phase_0_witness(witness.to_vec())
-            .with_witgen_callback(witgen_callback);
+            .with_witgen_callback(witgen_callback)
+            .with_phase_0_witness(witness);
 
         #[cfg(debug_assertions)]
         let circuit = circuit.with_preprocessed(self.get_preprocessed_matrix());
@@ -184,9 +189,9 @@ impl<T: FieldElement> Plonky3Prover<T> {
                 .map(|(name, value)| (name, value.as_ref())),
         );
 
-        let config = get_config();
+        let config = T::get_config();
 
-        let mut challenger = get_challenger();
+        let mut challenger = T::get_challenger();
 
         let proving_key = self.proving_key.as_ref();
 
@@ -200,7 +205,7 @@ impl<T: FieldElement> Plonky3Prover<T> {
             &stage_0_publics,
         );
 
-        let mut challenger = get_challenger();
+        let mut challenger = T::get_challenger();
 
         let verifying_key = self.verifying_key.as_ref();
 
@@ -228,12 +233,12 @@ impl<T: FieldElement> Plonky3Prover<T> {
         let publics = instances
             .iter()
             .flatten()
-            .map(|v| cast_to_goldilocks(*v))
+            .map(|v| v.into_p3_field())
             .collect();
 
-        let config = get_config();
+        let config = T::get_config();
 
-        let mut challenger = get_challenger();
+        let mut challenger = T::get_challenger();
 
         let verifying_key = self.verifying_key.as_ref();
 
@@ -260,7 +265,7 @@ mod tests {
     use std::sync::Arc;
 
     use powdr_executor::constant_evaluator::get_uniquely_sized_cloned;
-    use powdr_number::GoldilocksField;
+    use powdr_number::{BabyBearField, GoldilocksField};
     use powdr_pipeline::Pipeline;
     use test_log::test;
 
@@ -291,10 +296,47 @@ mod tests {
         }
     }
 
+    fn run_test_baby_bear(pil: &str) {
+        run_test_baby_bear_publics(pil, None)
+    }
+
+    fn run_test_baby_bear_publics(pil: &str, malicious_publics: Option<Vec<BabyBearField>>) {
+        let mut pipeline = Pipeline::<BabyBearField>::default().from_pil_string(pil.to_string());
+
+        let pil = pipeline.compute_optimized_pil().unwrap();
+        let witness_callback = pipeline.witgen_callback().unwrap();
+        let witness = pipeline.compute_witness().unwrap();
+        let fixed = pipeline.compute_fixed_cols().unwrap();
+        let fixed = Arc::new(get_uniquely_sized_cloned(&fixed).unwrap());
+
+        let mut prover = Plonky3Prover::new(pil, fixed);
+        prover.setup();
+        let proof = prover.prove(&witness, witness_callback);
+
+        assert!(proof.is_ok());
+
+        if let Some(publics) = malicious_publics {
+            prover.verify(&proof.unwrap(), &[publics]).unwrap()
+        }
+    }
+
+    #[test]
+    fn add_baby_bear() {
+        let content = r#"
+        namespace Add(8);
+            col witness x;
+            col witness y;
+            col witness z;
+            x + y = z;
+        "#;
+        run_test_baby_bear(content);
+    }
+
     #[test]
     fn public_values() {
         let content = "namespace Global(8); pol witness x; x * (x - 1) = 0; public out = x(7);";
         run_test_goldilocks(content);
+        run_test_baby_bear(content);
     }
 
     #[test]
@@ -309,6 +351,7 @@ mod tests {
             y = 1 + :oldstate;
         "#;
         run_test_goldilocks(content);
+        run_test_baby_bear(content);
     }
 
     #[test]
@@ -325,8 +368,11 @@ mod tests {
 
             public outz = z(7);
         "#;
-        let malicious_publics = Some(vec![GoldilocksField::from(0)]);
-        run_test_goldilocks_publics(content, malicious_publics);
+        let gl_malicious_publics = Some(vec![GoldilocksField::from(0)]);
+        run_test_goldilocks_publics(content, gl_malicious_publics);
+
+        let bb_malicious_publics = Some(vec![BabyBearField::from(0)]);
+        run_test_baby_bear_publics(content, bb_malicious_publics);
     }
 
     #[test]
@@ -334,6 +380,7 @@ mod tests {
     fn empty() {
         let content = "namespace Global(8);";
         run_test_goldilocks(content);
+        run_test_baby_bear(content);
     }
 
     #[test]
@@ -346,6 +393,7 @@ mod tests {
             x + y = z;
         "#;
         run_test_goldilocks(content);
+        run_test_baby_bear(content);
     }
 
     #[test]
@@ -357,6 +405,7 @@ mod tests {
             x * y = y;
         "#;
         run_test_goldilocks(content);
+        run_test_baby_bear(content);
     }
 
     #[test]
@@ -372,6 +421,7 @@ mod tests {
             x = y + beta * alpha;
         "#;
         run_test_goldilocks(content);
+        run_test_baby_bear(content);
     }
 
     #[test]
@@ -398,6 +448,7 @@ mod tests {
     fn polynomial_identity() {
         let content = "namespace Global(8); pol fixed z = [1, 2]*; pol witness a; a = z + 1;";
         run_test_goldilocks(content);
+        run_test_baby_bear(content);
     }
 
     #[test]
@@ -405,5 +456,6 @@ mod tests {
     fn lookup() {
         let content = "namespace Global(8); pol fixed z = [0, 1]*; pol witness a; [a] in [z];";
         run_test_goldilocks(content);
+        run_test_baby_bear(content);
     }
 }

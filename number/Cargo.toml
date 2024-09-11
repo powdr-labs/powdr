@@ -13,8 +13,9 @@ ark-bn254 = { version = "0.4.0", default-features = false, features = [
 ] }
 ark-ff = "0.4.2"
 ark-serialize = "0.4.2"
-p3-baby-bear = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "uni-stark-with-fixed" }
-p3-field = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "uni-stark-with-fixed" }
+p3-baby-bear = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "uni-stark-challenges-2" }
+p3-mersenne-31 = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "uni-stark-challenges-2" }
+p3-field = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "uni-stark-challenges-2" }
 num-bigint = { version = "0.4.3", features = ["serde"] }
 num-traits = "0.2.15"
 csv = "1.3"

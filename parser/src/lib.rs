@@ -138,10 +138,7 @@ pub fn unescape_string(s: &str) -> String {
 #[cfg(test)]
 mod test {
     use super::*;
-    use powdr_ast::parsed::{
-        build::direct_reference, ArrayLiteral, PILFile, PilStatement, PolynomialName,
-        SelectedExpressions,
-    };
+    use powdr_ast::parsed::{PILFile, PilStatement, PolynomialName};
     use powdr_parser_util::UnwrapErrToStderr;
     use pretty_assertions::assert_eq;
     use similar::TextDiff;
@@ -210,44 +207,6 @@ mod test {
         );
     }
 
-    #[test]
-    fn simple_plookup() {
-        let input = "[f] in [g];";
-        let ctx = ParserContext::new(None, input);
-        let parsed = powdr::PILFileParser::new()
-            .parse(&ctx, "[f] in [g];")
-            .unwrap();
-        assert_eq!(
-            parsed,
-            PILFile(vec![PilStatement::PlookupIdentity(
-                SourceRef {
-                    file_name: None,
-                    file_contents: Some(input.into()),
-                    start: 0,
-                    end: 10,
-                },
-                SelectedExpressions {
-                    selector: None,
-                    expressions: Box::new(
-                        ArrayLiteral {
-                            items: vec![direct_reference("f")]
-                        }
-                        .into()
-                    )
-                },
-                SelectedExpressions {
-                    selector: None,
-                    expressions: Box::new(
-                        ArrayLiteral {
-                            items: vec![direct_reference("g")]
-                        }
-                        .into()
-                    )
-                }
-            )])
-        );
-    }
-
     fn find_files_with_ext(
         dir: std::path::PathBuf,
         ext: String,
@@ -272,8 +231,7 @@ mod test {
     #[test]
     /// Test that (source -> AST -> source -> AST) works properly for asm files
     fn parse_write_reparse_asm() {
-        let crate_dir = env!("CARGO_MANIFEST_DIR");
-        let basedir = std::path::PathBuf::from(format!("{crate_dir}/../test_data/"));
+        let basedir = std::path::Path::new("../test_data/").to_owned();
         let asm_files = find_files_with_ext(basedir, "asm".into());
         for (file, orig_string) in asm_files {
             let mut orig_asm = parse_asm(Some(&file), &orig_string).unwrap_err_to_stderr();
@@ -307,8 +265,7 @@ mod test {
     /// Test that (source -> AST -> source -> AST) works properly for pil files
     fn parse_write_reparse_pil() {
         use test_utils::ClearSourceRefs;
-        let crate_dir = env!("CARGO_MANIFEST_DIR");
-        let basedir = std::path::PathBuf::from(format!("{crate_dir}/../test_data/"));
+        let basedir = std::path::Path::new("../test_data/").to_owned();
         let pil_files = find_files_with_ext(basedir, "pil".into());
         for (file, orig_string) in pil_files {
             let mut orig_pil = parse(Some(&file), &orig_string).unwrap_err_to_stderr();

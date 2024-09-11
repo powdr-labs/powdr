@@ -1,15 +1,14 @@
-use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference};
 use powdr_number::{DegreeType, FieldElement};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::machines::profiling::{record_end, record_start};
 use crate::witgen::processor::OuterQuery;
 use crate::witgen::EvalValue;
-use crate::Identity;
 
 use super::block_processor::BlockProcessor;
-use super::machines::Machine;
+use super::machines::{Machine, MachineParts};
 use super::rows::{Row, RowIndex, RowPair};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use super::vm_processor::VmProcessor;
@@ -21,10 +20,8 @@ struct ProcessResult<'a, T: FieldElement> {
 }
 
 pub struct Generator<'a, T: FieldElement> {
-    connecting_identities: BTreeMap<u64, &'a Identity<T>>,
     fixed_data: &'a FixedData<'a, T>,
-    identities: Vec<&'a Identity<T>>,
-    witnesses: HashSet<PolyID>,
+    parts: MachineParts<'a, T>,
     data: FinalizableData<T>,
     latch: Option<Expression<T>>,
     name: String,
@@ -33,7 +30,7 @@ pub struct Generator<'a, T: FieldElement> {
 
 impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
-        self.connecting_identities.keys().cloned().collect()
+        self.parts.identity_ids()
     }
 
     fn name(&self) -> &str {
@@ -46,7 +43,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let identity = self.connecting_identities.get(&identity_id).unwrap();
+        let identity = self.parts.connecting_identities.get(&identity_id).unwrap();
         let outer_query = OuterQuery::new(caller_rows, identity);
 
         log::trace!("Start processing secondary VM '{}'", self.name());
@@ -99,20 +96,16 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     pub fn new(
         name: String,
         fixed_data: &'a FixedData<'a, T>,
-        connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
-        identities: Vec<&'a Identity<T>>,
-        witnesses: HashSet<PolyID>,
+        parts: MachineParts<'a, T>,
         latch: Option<Expression<T>>,
     ) -> Self {
-        let data = FinalizableData::new(&witnesses);
+        let data = FinalizableData::new(&parts.witnesses);
 
         Self {
-            degree: fixed_data.common_degree_range(&witnesses).max,
-            connecting_identities: connecting_identities.clone(),
+            degree: parts.common_degree_range().max,
             name,
             fixed_data,
-            identities,
-            witnesses,
+            parts,
             data,
             latch,
         }
@@ -161,7 +154,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         // it does not assert that the row is "complete" afterwards (i.e., that all identities
         // are satisfied assuming 0 for unknown values).
         let data = FinalizableData::with_initial_rows_in_progress(
-            &self.witnesses,
+            &self.parts.witnesses,
             [
                 Row::fresh(self.fixed_data, RowIndex::from_i64(-1, self.degree)),
                 Row::fresh(self.fixed_data, RowIndex::from_i64(0, self.degree)),
@@ -173,22 +166,17 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         // are irrelevant.
         // Also, they can lead to problems in the case where some witness columns are provided
         // externally, e.g. if the last row happens to call into a stateful machine like memory.
-        let identities_with_next_reference = self
-            .identities
-            .iter()
-            .filter_map(|identity| identity.contains_next_ref().then_some(*identity))
-            .collect::<Vec<_>>();
+        let next_parts = self.parts.restricted_to_identities_with_next_references();
         let mut processor = BlockProcessor::new(
             RowIndex::from_i64(-1, self.degree),
             data,
             mutable_state,
-            &identities_with_next_reference,
             self.fixed_data,
-            &self.witnesses,
+            &next_parts,
             self.degree,
         );
         let mut sequence_iterator = ProcessingSequenceIterator::Default(
-            DefaultSequenceIterator::new(0, identities_with_next_reference.len(), None),
+            DefaultSequenceIterator::new(0, next_parts.identities.len(), None),
         );
         processor.solve(&mut sequence_iterator).unwrap();
 
@@ -205,10 +193,10 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     ) -> ProcessResult<'a, T> {
         log::trace!(
             "Running main machine from row {row_offset} with the following initial values in the first row:\n{}",
-            first_row.render_values(false, None, self.fixed_data)
+            first_row.render_values(false, &self.parts)
         );
         let data = FinalizableData::with_initial_rows_in_progress(
-            &self.witnesses,
+            &self.parts.witnesses,
             [first_row].into_iter(),
         );
 
@@ -216,8 +204,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             self.name().to_string(),
             RowIndex::from_degree(row_offset, self.degree),
             self.fixed_data,
-            &self.identities,
-            &self.witnesses,
+            &self.parts,
             data,
             mutable_state,
         );
@@ -240,14 +227,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
 
         let last_row = self.data.pop().unwrap();
         if self.data[0].merge_with(&last_row).is_err() {
-            log::error!(
-                "{}",
-                self.data[0].render("First row", false, &self.witnesses, self.fixed_data)
-            );
-            log::error!(
-                "{}",
-                last_row.render("Last row", false, &self.witnesses, self.fixed_data)
-            );
+            log::error!("{}", self.data[0].render("First row", false, &self.parts));
+            log::error!("{}", last_row.render("Last row", false, &self.parts));
             panic!(
                 "Failed to merge the first and last row of the VM '{}'",
                 self.name()

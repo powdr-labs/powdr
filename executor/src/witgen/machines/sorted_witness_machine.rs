@@ -1,10 +1,10 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 
 use itertools::Itertools;
 
 use super::super::affine_expression::AffineExpression;
-use super::Machine;
 use super::{EvalResult, FixedData};
+use super::{Machine, MachineParts};
 use crate::witgen::rows::RowPair;
 use crate::witgen::{
     expression_evaluator::ExpressionEvaluator, fixed_evaluator::FixedEvaluator,
@@ -39,19 +39,18 @@ pub struct SortedWitnesses<'a, T: FieldElement> {
 impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
     pub fn try_new(
         name: String,
-        fixed_data: &'a FixedData<T>,
-        connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
-        identities: &[&Identity<T>],
-        witnesses: &HashSet<PolyID>,
+        fixed_data: &'a FixedData<'a, T>,
+        parts: &MachineParts<'a, T>,
     ) -> Option<Self> {
-        let degree = fixed_data.common_degree_range(witnesses).max;
-
-        if identities.len() != 1 {
+        if parts.identities.len() != 1 {
             return None;
         }
 
-        check_identity(fixed_data, identities.first().unwrap(), degree).and_then(|key_col| {
-            let witness_positions = witnesses
+        let degree = parts.common_degree_range().max;
+
+        check_identity(fixed_data, parts.identities.first().unwrap(), degree).and_then(|key_col| {
+            let witness_positions = parts
+                .witnesses
                 .iter()
                 .filter(|&w| *w != key_col)
                 .sorted()
@@ -59,7 +58,8 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                 .map(|(i, &x)| (x, i))
                 .collect();
 
-            let rhs_references = connecting_identities
+            let rhs_references = parts
+                .connecting_identities
                 .values()
                 .filter_map(|&id| {
                     let rhs_expressions = id
@@ -77,15 +77,23 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                 })
                 .collect::<BTreeMap<_, _>>();
 
-            if rhs_references.len() != connecting_identities.len() {
+            if rhs_references.len() != parts.connecting_identities.len() {
                 // Not all connected identities meet the criteria above, so this is not a DoubleSortedWitnesses machine.
                 return None;
+            }
+
+            if !parts.prover_functions.is_empty() {
+                log::warn!(
+                    "SortedWitness machine does not support prover functions.\
+                    The following prover functions are ignored:\n{}",
+                    parts.prover_functions.iter().format("\n")
+                );
             }
 
             Some(SortedWitnesses {
                 degree,
                 rhs_references,
-                connecting_identities: connecting_identities.clone(),
+                connecting_identities: parts.connecting_identities.clone(),
                 name,
                 key_col,
                 witness_positions,

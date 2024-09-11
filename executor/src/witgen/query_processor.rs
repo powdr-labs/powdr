@@ -1,11 +1,13 @@
 use std::sync::Arc;
 
-use powdr_ast::analyzed::Challenge;
+use powdr_ast::analyzed::{AlgebraicExpression, Challenge};
 use powdr_ast::analyzed::{AlgebraicReference, Expression, PolyID, PolynomialType};
 use powdr_ast::parsed::types::Type;
+
 use powdr_number::{BigInt, DegreeType, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Definitions, EvalError, SymbolLookup, Value};
 
+use super::Constraints;
 use super::{rows::RowPair, Constraint, EvalResult, EvalValue, FixedData, IncompleteCause};
 
 /// Computes value updates that result from a query.
@@ -28,6 +30,44 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
             query_callback,
             size,
         }
+    }
+
+    pub fn process_prover_function<'c>(
+        &'c mut self,
+        rows: &'c RowPair<'c, 'a, T>,
+        fun: &'a Expression,
+    ) -> EvalResult<'a, T> {
+        let arguments = vec![Arc::new(Value::Integer(BigInt::from(u64::from(
+            rows.current_row_index,
+        ))))];
+
+        let mut symbols = Symbols {
+            fixed_data: self.fixed_data,
+            rows,
+            size: self.size,
+            updates: Constraints::new(),
+        };
+        let res = match evaluator::evaluate(fun, &mut symbols)
+            .and_then(|fun| evaluator::evaluate_function_call(fun, arguments, &mut symbols))
+        {
+            Ok(res) => res,
+            Err(e) => {
+                return match e {
+                    EvalError::DataNotAvailable => {
+                        Ok(EvalValue::incomplete(IncompleteCause::DataNotYetAvailable))
+                    }
+                    // All other errors are non-recoverable
+                    e => Err(super::EvalError::ProverQueryError(format!(
+                        "Error occurred when evaluating prover function {fun} on {}:\n{e:?}",
+                        rows.current_row_index
+                    ))),
+                };
+            }
+        };
+
+        assert!(matches!(res.as_ref(), Value::Tuple(items) if items.is_empty()));
+
+        Ok(EvalValue::complete(symbols.updates()))
     }
 
     /// Process the prover query of a witness column.
@@ -94,6 +134,7 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
             fixed_data: self.fixed_data,
             rows,
             size: self.size,
+            updates: Constraints::new(),
         };
         let fun = evaluator::evaluate(query, &mut symbols)?;
         evaluator::evaluate_function_call(fun, arguments, &mut symbols).map(|v| v.to_string())
@@ -101,14 +142,15 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
 }
 
 #[derive(Clone)]
-struct Symbols<'a, T: FieldElement> {
+struct Symbols<'a, 'b, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
-    rows: &'a RowPair<'a, 'a, T>,
+    rows: &'b RowPair<'b, 'a, T>,
     size: DegreeType,
+    updates: Constraints<&'a AlgebraicReference, T>,
 }
 
-impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
-    fn lookup<'b>(
+impl<'a, 'b, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, 'b, T> {
+    fn lookup(
         &mut self,
         name: &'a str,
         type_args: &Option<Vec<Type>>,
@@ -136,6 +178,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
             }
             None => Definitions::lookup_with_symbols(
                 &self.fixed_data.analyzed.definitions,
+                &self.fixed_data.analyzed.solved_impls,
                 name,
                 type_args,
                 self,
@@ -147,10 +190,18 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
         poly_ref: &AlgebraicReference,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Ok(Value::FieldElement(match poly_ref.poly_id.ptype {
-            PolynomialType::Committed | PolynomialType::Intermediate => self
-                .rows
-                .get_value(poly_ref)
-                .ok_or(EvalError::DataNotAvailable)?,
+            PolynomialType::Committed | PolynomialType::Intermediate => {
+                if let Some((_, update)) = self.updates.iter().find(|(p, _)| p == &poly_ref) {
+                    let Constraint::Assignment(value) = update else {
+                        unreachable!()
+                    };
+                    *value
+                } else {
+                    self.rows
+                        .get_value(poly_ref)
+                        .ok_or(EvalError::DataNotAvailable)?
+                }
+            }
             PolynomialType::Constant => {
                 let values = self.fixed_data.fixed_cols[&poly_ref.poly_id].values(self.size);
                 let row = self.rows.current_row_index + if poly_ref.next { 1 } else { 0 };
@@ -165,13 +216,72 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, T> {
             .fixed_data
             .challenges
             .get(&challenge.id)
-            .unwrap_or_else(|| {
-                panic!(
+            .ok_or_else(|| {
+                EvalError::ProverError(format!(
                     "Challenge {} not found! Available challenges: {:?}",
                     challenge.id,
-                    self.fixed_data.challenges.keys()
-                )
-            });
+                    self.fixed_data.challenges.keys(),
+                ))
+            })?;
+
         Ok(Value::FieldElement(challenge).into())
+    }
+
+    fn provide_value(
+        &mut self,
+        col: Arc<Value<'a, T>>,
+        row: Arc<Value<'a, T>>,
+        value: Arc<Value<'a, T>>,
+    ) -> Result<(), EvalError> {
+        // TODO allow "next: true" in the future.
+        let Value::Expression(AlgebraicExpression::Reference(AlgebraicReference {
+            poly_id,
+            next: false,
+            ..
+        })) = col.as_ref()
+        else {
+            return Err(EvalError::TypeError(
+                "Expected direct column for first argument of std::prover::provide_value"
+                    .to_string(),
+            ));
+        };
+        let Value::Integer(row) = row.as_ref() else {
+            unreachable!()
+        };
+        let Value::FieldElement(value) = value.as_ref() else {
+            unreachable!()
+        };
+        let row = DegreeType::try_from(row).unwrap();
+        if row != DegreeType::from(self.rows.current_row_index) {
+            // TODO we should be more flexible with this is the future.
+            return Err(EvalError::TypeError(
+                "Row index does not match current row index".to_string(),
+            ));
+        }
+        let col = &self.fixed_data.witness_cols[poly_id].poly;
+        match self.eval_reference(col) {
+            Ok(v) => {
+                let Value::FieldElement(v) = v.as_ref() else {
+                    unreachable!()
+                };
+                if v != value {
+                    return Err(EvalError::ProverError(format!(
+                        "Tried to set {col} in row {row} to {value}, but it already has a different value {v}"
+                    )));
+                }
+            }
+            Err(EvalError::DataNotAvailable) => {
+                self.updates.push((col, Constraint::Assignment(*value)));
+            }
+            Err(e) => return Err(e),
+        }
+
+        Ok(())
+    }
+}
+
+impl<'a, 'b, T: FieldElement> Symbols<'a, 'b, T> {
+    fn updates(self) -> Constraints<&'a AlgebraicReference, T> {
+        self.updates
     }
 }

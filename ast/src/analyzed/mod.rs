@@ -31,14 +31,18 @@ pub enum StatementIdentifier {
     PublicDeclaration(String),
     /// Index into the vector of identities.
     Identity(usize),
+    /// Index into the vector of prover functions.
+    ProverFunction(usize),
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct Analyzed<T> {
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    pub solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
     pub intermediate_columns: HashMap<String, (Symbol, Vec<AlgebraicExpression<T>>)>,
     pub identities: Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>>,
+    pub prover_functions: Vec<Expression>,
     /// The order in which definitions and identities
     /// appear in the source.
     pub source_order: Vec<StatementIdentifier>,
@@ -1194,7 +1198,7 @@ impl TryFrom<BinaryOperator> for AlgebraicBinaryOperator {
             BinaryOperator::Mul => Ok(AlgebraicBinaryOperator::Mul),
             BinaryOperator::Pow => Ok(AlgebraicBinaryOperator::Pow),
             _ => Err(format!(
-                "Binary operator {op} not allowed in algebraic expression."
+                "Binary operator \"{op}\" not allowed in algebraic expression."
             )),
         }
     }
@@ -1231,7 +1235,7 @@ impl TryFrom<UnaryOperator> for AlgebraicUnaryOperator {
         match op {
             UnaryOperator::Minus => Ok(AlgebraicUnaryOperator::Minus),
             _ => Err(format!(
-                "Unary operator {op} not allowed in algebraic expression."
+                "Unary operator \"{op}\" not allowed in algebraic expression."
             )),
         }
     }

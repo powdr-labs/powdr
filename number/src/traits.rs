@@ -65,6 +65,7 @@ pub trait LargeInt:
 #[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub enum KnownField {
     BabyBearField,
+    Mersenne31Field,
     GoldilocksField,
     Bn254Field,
 }
