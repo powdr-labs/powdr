@@ -79,6 +79,16 @@ impl<T> Analyzed<T> {
             .collect::<HashSet<_>>()
     }
 
+    /// Returns the number of stages based on the maximum stage number of all definitions
+    pub fn stage_count(&self) -> usize {
+        self.definitions
+            .iter()
+            .map(|(_, (s, _))| s.stage.unwrap_or_default())
+            .max()
+            .unwrap_or_default() as usize
+            + 1
+    }
+
     /// @returns the number of committed polynomials (with multiplicities for arrays)
     pub fn commitment_count(&self) -> usize {
         self.declaration_type_count(PolynomialType::Committed)

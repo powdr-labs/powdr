@@ -22,7 +22,7 @@ use p3_goldilocks::Goldilocks;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_matrix::Matrix;
 
-use p3_uni_stark::NextStageTraceCallback;
+use p3_uni_stark::{CallbackResult, NextStageTraceCallback};
 use powdr_ast::{
     analyzed::{
         AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression,
@@ -39,11 +39,13 @@ use crate::params::Config;
 
 pub type Val = p3_goldilocks::Goldilocks;
 
+type Witness<T> = Mutex<RefCell<Vec<(String, Vec<T>)>>>;
+
 pub(crate) struct PowdrCircuit<'a, T> {
     /// The analyzed PIL
     analyzed: &'a Analyzed<T>,
-    // the values of the witness, in a refcell as they get mutated as we go through stages
-    pub witness_so_far: Mutex<RefCell<Vec<(String, Vec<T>)>>>,
+    // the values of the witness, in a refcell as it gets mutated as we go through stages
+    pub witness_so_far: Witness<T>,
     /// The witgen callback
     witgen_callback: Option<WitgenCallback<T>>,
     /// The matrix of preprocessed values, used in debug mode to check the constraints before proving
@@ -54,51 +56,56 @@ pub(crate) struct PowdrCircuit<'a, T> {
 impl<'a, T: FieldElement> NextStageTraceCallback<Config> for PowdrCircuit<'a, T> {
     // this wraps the witgen callback to make it compatible with p3:
     // - p3 passes its local challenge values and the stage id
-    // - it receives the trace for the next stage in the expected format
+    // - it receives the trace for the next stage in the expected format, as well as the public values for this stage and the updated challenges for the previous stage
     // - internally, the full witness is accumulated in [Self] as it's needed in order to call the witgen callback
-    fn get_next_stage_trace(
+    fn compute_stage(
         &self,
         trace_stage: u32,
-        challenge_values: &[Goldilocks],
-    ) -> RowMajorMatrix<Goldilocks> {
-        let stage_challenges: BTreeSet<Challenge> = self
+        previous_stage_challenge_values: &[Goldilocks],
+    ) -> CallbackResult<Goldilocks> {
+        let witness = self.witness_so_far.lock().unwrap();
+        let mut witness = witness.borrow_mut();
+
+        let previous_stage_challenges: BTreeSet<Challenge> = self
             .get_challenges()
             .into_iter()
-            .filter(|c| c.stage == trace_stage)
+            .filter(|c| c.stage == trace_stage - 1)
             .collect();
-        assert_eq!(stage_challenges.len(), challenge_values.len());
-        let challenge_map = stage_challenges
+        assert_eq!(
+            previous_stage_challenges.len(),
+            previous_stage_challenge_values.len()
+        );
+        let challenge_map = previous_stage_challenges
             .into_iter()
-            .zip(challenge_values)
+            .zip(previous_stage_challenge_values)
             .map(|(c, v)| (c.id, from_goldilocks(*v)))
             .collect();
 
+        let columns_before: BTreeSet<String> =
+            witness.iter().map(|(name, _)| name.clone()).collect();
+
         // to call the witgen callback, we need to pass the witness for all stages so far
-        let next_trace = {
-            let binding = &self.witness_so_far.lock().unwrap();
-            let current_witness = binding.borrow();
+        *witness = {
             self.witgen_callback.as_ref().unwrap().next_stage_witness(
-                &current_witness,
+                &witness,
                 challenge_map,
                 trace_stage as u8,
             )
         };
 
         // generate the next trace in the format p3 expects
-        let res = generate_matrix(
-            next_trace
+        // TODO: since the current witgen callback returns the entire witness so far, we filter out the columns we already know about. Instead, return only the new witness in the witgen callback.
+        let trace = generate_matrix(
+            witness
                 .iter()
+                .filter(|(name, _)| !columns_before.contains(name))
                 .map(|(name, values)| (name, values.as_ref())),
         );
 
-        // append the witness to the full witness
-        self.witness_so_far
-            .lock()
-            .unwrap()
-            .borrow_mut()
-            .extend(next_trace);
         // return the next trace
-        res
+        // later stage publics are not supported, so we return an empty vector. TODO: change this
+        // shared challenges are unsuportted so we return the local challenges. TODO: change this
+        CallbackResult::new(trace, vec![], previous_stage_challenge_values.to_vec())
     }
 }
 
@@ -215,7 +222,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         stages: &[AB::M],
         fixed: &AB::M,
         publics: &BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>,
-        challenges: &BTreeMap<u32, BTreeMap<u64, <AB as AirBuilder>::Expr>>,
+        challenges: &BTreeMap<u32, BTreeMap<u64, <AB as MultistageAirBuilder>::Challenge>>,
     ) -> AB::Expr {
         let res = match e {
             AlgebraicExpression::Reference(r) => {
@@ -291,7 +298,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                 }
             }
             AlgebraicExpression::Challenge(challenge) => {
-                challenges[&challenge.stage][&challenge.id].clone()
+                challenges[&challenge.stage][&challenge.id].clone().into()
             }
         };
         res
@@ -310,7 +317,7 @@ impl<'a, T: FieldElement> BaseAir<Val> for PowdrCircuit<'a, T> {
     }
 
     fn stage_count(&self) -> usize {
-        2
+        self.analyzed.stage_count()
     }
 
     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<Val>> {
@@ -362,7 +369,7 @@ impl<
                     map
                 });
         // for each stage, the values of the challenges drawn at the end of that stage
-        let challenges: BTreeMap<u32, BTreeMap<u64, <AB as AirBuilder>::Expr>> = challenges
+        let challenges: BTreeMap<u32, BTreeMap<u64, _>> = challenges
             .into_iter()
             .map(|(stage, ids)| {
                 let p3_challenges = builder.challenges(stage as usize).to_vec();

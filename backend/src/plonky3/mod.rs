@@ -36,6 +36,17 @@ impl<T: FieldElement> BackendFactory<T> for Factory {
         if pil.degrees().len() > 1 {
             return Err(Error::NoVariableDegreeAvailable);
         }
+        if pil
+            .public_declarations_in_source_order()
+            .iter()
+            .any(|(_, d)| {
+                pil.definitions.iter().any(|(_, (symbol, _))| {
+                    symbol.absolute_name == d.name && symbol.stage.unwrap_or_default() > 0
+                })
+            })
+        {
+            return Err(Error::NoLaterStagePublicAvailable);
+        }
 
         let fixed = Arc::new(
             get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,

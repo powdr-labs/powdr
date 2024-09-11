@@ -4,6 +4,7 @@ use p3_goldilocks::Goldilocks;
 use p3_matrix::dense::RowMajorMatrix;
 
 use core::fmt;
+use std::iter::{once, repeat};
 use std::sync::Arc;
 
 use crate::params::Challenger;
@@ -203,13 +204,19 @@ impl<T: FieldElement> Plonky3Prover<T> {
 
         let verifying_key = self.verifying_key.as_ref();
 
+        let empty_public = vec![];
+        let public_values = once(&stage_0_publics)
+            .chain(repeat(&empty_public))
+            .take(self.analyzed.stage_count())
+            .collect();
+
         verify_with_key(
             &config,
             verifying_key,
             &circuit,
             &mut challenger,
             &proof,
-            vec![&stage_0_publics],
+            public_values,
         )
         .unwrap();
         Ok(bincode::serialize(&proof).unwrap())
@@ -230,13 +237,19 @@ impl<T: FieldElement> Plonky3Prover<T> {
 
         let verifying_key = self.verifying_key.as_ref();
 
+        let empty_public = vec![];
+        let public_values = once(&publics)
+            .chain(repeat(&empty_public))
+            .take(self.analyzed.stage_count())
+            .collect();
+
         verify_with_key(
             &config,
             verifying_key,
             &PowdrCircuit::new(&self.analyzed),
             &mut challenger,
             &proof,
-            vec![&publics],
+            public_values,
         )
         .map_err(|e| format!("Failed to verify proof: {e:?}"))
     }
@@ -352,12 +365,33 @@ mod tests {
         let N: int = 8;
         
         namespace Global(N); 
+            let alpha: expr = std::prelude::challenge(0, 41);
             let beta: expr = std::prelude::challenge(0, 42);
             col witness stage(0) x;
             col witness stage(1) y;
-            x = y + beta;
+            x = y + beta * alpha;
         "#;
         run_test_goldilocks(content);
+    }
+
+    #[test]
+    #[should_panic = "no entry found for key"]
+    fn stage_1_public() {
+        // this currently fails because we try to extract the public values from the stage 0 witness only
+        let content = r#"
+        let N: int = 8;
+        
+        namespace Global(N); 
+            let alpha: expr = std::prelude::challenge(0, 41);
+            let beta: expr = std::prelude::challenge(0, 42);
+            col witness stage(0) x;
+            col witness stage(1) y;
+            x = y + beta * alpha;
+
+            public out = y(N - 1);
+        "#;
+        let malicious_publics = Some(vec![GoldilocksField::from(0)]);
+        run_test_goldilocks_publics(content, malicious_publics);
     }
 
     #[test]
