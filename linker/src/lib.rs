@@ -257,14 +257,16 @@ fn process_link(link: Link) -> PilStatement {
             .map(|oid| namespaced_reference(to_namespace.clone(), oid))
             .into_iter();
 
+        let latch = Box::new(namespaced_reference(
+            to_namespace.clone(),
+            to.machine.latch.unwrap(),
+        ));
+
         // plookup rhs is `latch $ [ operation_id, inputs, outputs ]`
         let rhs = Expression::BinaryOperation(
             SourceRef::unknown(),
             BinaryOperation {
-                left: Box::new(namespaced_reference(
-                    to_namespace.clone(),
-                    to.machine.latch.unwrap(),
-                )),
+                left: latch,
                 op: BinaryOperator::Select,
                 right: Box::new(
                     ArrayLiteral {

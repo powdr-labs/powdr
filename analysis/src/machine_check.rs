@@ -396,6 +396,7 @@ impl TypeChecker {
             .0
             .iter()
             .filter_map(|s| {
+                // TODO this could be a function call that returns an identity including a selector in the future.
                 if let powdr_ast::parsed::PilStatement::Expression(_, _) = s {
                     None
                 } else {
