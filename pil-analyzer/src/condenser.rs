@@ -415,6 +415,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         &mut self,
         name: &str,
         ty: Option<&Type>,
+        stage: Option<u32>,
         value: Option<Arc<Value<'a, T>>>,
         source: SourceRef,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
@@ -488,7 +489,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             id: self.counters.dispense_symbol_id(kind, length),
             source,
             absolute_name: name.clone(),
-            stage: None,
+            stage,
             kind,
             length,
             degree: self.degree,

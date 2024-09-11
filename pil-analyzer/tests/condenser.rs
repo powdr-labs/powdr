@@ -723,3 +723,41 @@ namespace N(16);
 "#;
     assert_eq!(analyzed.to_string(), expected);
 }
+
+#[test]
+fn new_cols_at_stage() {
+    let input = r#"
+    namespace std::prover;
+        let new_witness_col_at_stage: string, int -> expr = [];
+    namespace N(16);
+        let x;
+        let r = std::prover::new_witness_col_at_stage("x", 0);
+        let s = std::prover::new_witness_col_at_stage("x", 1);
+        let t = std::prover::new_witness_col_at_stage("x", 2);
+        let u = std::prover::new_witness_col_at_stage("y", 1);
+        let v = std::prover::new_witness_col_at_stage("y", 2);
+        let unused = std::prover::new_witness_col_at_stage("z", 10);
+        let y;
+        r + s + t + u + v = y;
+    "#;
+    let expected = r#"namespace std::prover;
+    let new_witness_col_at_stage: string, int -> expr = [];
+namespace N(16);
+    col witness x;
+    let r: expr = std::prover::new_witness_col_at_stage("x", 0);
+    let s: expr = std::prover::new_witness_col_at_stage("x", 1);
+    let t: expr = std::prover::new_witness_col_at_stage("x", 2);
+    let u: expr = std::prover::new_witness_col_at_stage("y", 1);
+    let v: expr = std::prover::new_witness_col_at_stage("y", 2);
+    let unused: expr = std::prover::new_witness_col_at_stage("z", 10);
+    col witness y;
+    col witness stage(0) x_1;
+    col witness stage(1) x_2;
+    col witness stage(2) x_3;
+    col witness stage(1) y_1;
+    col witness stage(2) y_2;
+    N::x_1 + N::x_2 + N::x_3 + N::y_1 + N::y_2 = N::y;
+"#;
+    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    assert_eq!(formatted, expected);
+}
