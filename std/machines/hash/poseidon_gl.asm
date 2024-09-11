@@ -67,7 +67,7 @@ machine PoseidonGL with
     let a = array::zip(state, C, |state, C| state + C);
 
     // Compute S-Boxes (x^7) (using a degree bound of 3)
-    let x3[STATE_SIZE];
+    let x3: col[STATE_SIZE];
     array::zip(x3, array::map(a, |a| a * a * a), |x3, expected| x3 = expected);
     let x7[STATE_SIZE];
     array::zip(x7, array::zip(x3, a, |x3, a| x3 * x3 * a), |x7, expected| x7 = expected);
