@@ -157,6 +157,9 @@ lazy_static! {
         ("std::prelude::set_hint", FunctionKind::Constr),
         ("std::prover::eval", FunctionKind::Query),
         ("std::prover::try_eval", FunctionKind::Query),
+        ("std::prover::get_input", FunctionKind::Query),
+        ("std::prover::get_input_from_channel", FunctionKind::Query),
+        ("std::prover::output_byte", FunctionKind::Query),
     ]
     .into_iter()
     .collect();
