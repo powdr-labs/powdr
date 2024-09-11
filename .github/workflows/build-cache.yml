@@ -9,7 +9,7 @@ env:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: buildjet-4vcpu-ubuntu-2204
 
     steps:
     - uses: actions/checkout@v4
@@ -30,7 +30,7 @@ jobs:
     - name: Check without Halo2
       run: cargo check --all --no-default-features --profile pr-tests
     - name: ⚡ Save rust cache
-      uses: actions/cache/save@v4
+      uses: buildjet/cache/save@v4
       with:
         path: |
           ~/.cargo/registry/index/

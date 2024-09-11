@@ -20,7 +20,7 @@ env:
 
 jobs:
   build:
-    runs-on: self-hosted
+    runs-on: buildjet-4vcpu-ubuntu-2204
 
     steps:
     - uses: actions/checkout@v4
@@ -28,7 +28,7 @@ jobs:
         submodules: recursive
     - name: ⚡ Restore rust cache
       id: cache
-      uses: actions/cache/restore@v4
+      uses: buildjet/cache/restore@v4
       with:
         path: |
           ~/.cargo/registry/index/
@@ -100,6 +100,7 @@ jobs:
       run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/2
       env:
         PILCOM: ${{ github.workspace }}/pilcom/
+        POWDR_STD: ${{ github.workspace }}/std/
 
   run_examples:
     runs-on: ubuntu-latest
@@ -160,6 +161,7 @@ jobs:
       run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only --no-capture -E "test(=vec_median_estark_polygon)"
       env:
         PILCOM: ${{ github.workspace }}/pilcom/
+        POWDR_STD: ${{ github.workspace }}/std/
 
   test_slow:
     strategy:
@@ -209,3 +211,4 @@ jobs:
       shell: bash
       env:
         PILCOM: ${{ github.workspace }}/pilcom/
+        POWDR_STD: ${{ github.workspace }}/std/
