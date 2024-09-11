@@ -10,7 +10,7 @@ use powdr_executor::{
     constant_evaluator::{get_uniquely_sized_cloned, VariablySizedColumn},
     witgen::WitgenCallback,
 };
-use powdr_number::{BabyBearField, FieldElement, GoldilocksField};
+use powdr_number::{BabyBearField, FieldElement, GoldilocksField, Mersenne31Field};
 use powdr_plonky3::{Commitment, FieldElementMap, Plonky3Prover, ProverData};
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
@@ -85,6 +85,10 @@ impl<T: FieldElement> BackendFactory<T> for Factory {
                 p3
             } else if let Some(p3) =
                 try_create::<BabyBearField, T>(&pil, &fixed, &mut verification_key)
+            {
+                p3
+            } else if let Some(p3) =
+                try_create::<Mersenne31Field, T>(&pil, &fixed, &mut verification_key)
             {
                 p3
             } else {
