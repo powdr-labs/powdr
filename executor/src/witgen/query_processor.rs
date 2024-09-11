@@ -46,7 +46,6 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
             rows,
             size: self.size,
             updates: Constraints::new(),
-            // TODO find a better solution here.
             query_callback: Some(self.query_callback.take().unwrap()),
         };
         let res = evaluator::evaluate(fun, &mut symbols)
