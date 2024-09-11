@@ -1,6 +1,7 @@
 //! Component that turns data from the PILAnalyzer into Analyzed,
 //! i.e. it turns more complex expressions in identities to simpler expressions.
 
+use core::fmt::Debug;
 use std::{
     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
     iter::once,
@@ -679,7 +680,7 @@ fn to_constraint<T: FieldElement>(
     }
 }
 
-fn to_selected_exprs<'a, T: Clone>(
+fn to_selected_exprs<'a, T: Clone + Debug>(
     selector: &Value<'a, T>,
     exprs: Vec<&Value<'a, T>>,
 ) -> SelectedExpressions<AlgebraicExpression<T>> {
@@ -689,7 +690,7 @@ fn to_selected_exprs<'a, T: Clone>(
     }
 }
 
-fn to_option_expr<T: Clone>(value: &Value<'_, T>) -> Option<AlgebraicExpression<T>> {
+fn to_option_expr<T: Clone + Debug>(value: &Value<'_, T>) -> Option<AlgebraicExpression<T>> {
     match value {
         Value::Enum("None", None) => None,
         Value::Enum("Some", Some(fields)) => {
@@ -700,7 +701,7 @@ fn to_option_expr<T: Clone>(value: &Value<'_, T>) -> Option<AlgebraicExpression<
     }
 }
 
-fn to_expr<T: Clone>(value: &Value<'_, T>) -> AlgebraicExpression<T> {
+fn to_expr<T: Clone + Debug>(value: &Value<'_, T>) -> AlgebraicExpression<T> {
     if let Value::Expression(expr) = value {
         (*expr).clone()
     } else {
