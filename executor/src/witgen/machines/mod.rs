@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
+use powdr_ast::analyzed;
 use powdr_ast::analyzed::DegreeRange;
 use powdr_ast::analyzed::PolyID;
 
@@ -154,6 +155,8 @@ pub struct MachineParts<'a, T: FieldElement> {
     pub identities: Vec<&'a Identity<T>>,
     /// Witness columns relevant to this machine.
     pub witnesses: HashSet<PolyID>,
+    /// Prover functions that are relevant for this machine.
+    pub prover_functions: Vec<&'a analyzed::Expression>,
 }
 
 impl<'a, T: FieldElement> MachineParts<'a, T> {
@@ -162,12 +165,14 @@ impl<'a, T: FieldElement> MachineParts<'a, T> {
         connecting_identities: BTreeMap<u64, &'a Identity<T>>,
         identities: Vec<&'a Identity<T>>,
         witnesses: HashSet<PolyID>,
+        prover_functions: Vec<&'a analyzed::Expression>,
     ) -> Self {
         Self {
             fixed_data,
             connecting_identities,
             identities,
             witnesses,
+            prover_functions,
         }
     }
 
@@ -179,7 +184,7 @@ impl<'a, T: FieldElement> MachineParts<'a, T> {
             .iter()
             .filter_map(|identity| identity.contains_next_ref().then_some(*identity))
             .collect::<Vec<_>>();
-        MachineParts {
+        Self {
             identities: identities_with_next_reference,
             ..self.clone()
         }

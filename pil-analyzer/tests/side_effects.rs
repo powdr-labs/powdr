@@ -169,3 +169,13 @@ fn constr_lambda_in_impl() {
     "#;
     analyze_string::<GoldilocksField>(input);
 }
+
+#[test]
+fn query_in_constr() {
+    let input = r#"namespace N(16);
+    query |i| { };
+    let f = constr || { query |i| { } };
+    f();
+    "#;
+    analyze_string::<GoldilocksField>(input);
+}

@@ -82,6 +82,14 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                 return None;
             }
 
+            if !parts.prover_functions.is_empty() {
+                log::warn!(
+                    "SortedWitness machine does not support prover functions.\
+                    The following prover functions are ignored:\n{}",
+                    parts.prover_functions.iter().format("\n")
+                );
+            }
+
             Some(SortedWitnesses {
                 degree,
                 rhs_references,
