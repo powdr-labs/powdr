@@ -9,8 +9,8 @@ machine ByteShift16 with
     operation_id: operation_id,
     degree: 65536
 {
-    // P_C1 and P_C2 are both 16 bit limbs of P_C, where P_C1 is the less significant limb.
-    operation run<0> P_operation, P_A, P_B, P_ROW -> P_C1, P_C2;
+    // P_CLow and P_CHi are both 16 bit limbs of P_C, where P_CLow is the less significant limb.
+    operation run<0> P_operation, P_A, P_B, P_ROW -> P_CLow, P_CHi;
 
     col fixed latch = [1]*;
     col fixed operation_id = [0]*;
@@ -32,8 +32,8 @@ machine ByteShift16 with
         0 => a(i) << (b(i) + (row(i) * 8)),
         1 => (a(i) << (row(i) * 8)) >> b(i)
     };
-    col fixed P_C1(i) { c(i) & 0xffff };
-    col fixed P_C2(i) { (c(i) >> 16) & 0xffff };
+    col fixed P_CLow(i) { c(i) & 0xffff };
+    col fixed P_CHi(i) { (c(i) >> 16) & 0xffff };
 }
 
 machine Shift16(byte_shift_16: ByteShift16) with
@@ -42,9 +42,9 @@ machine Shift16(byte_shift_16: ByteShift16) with
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
-    operation shl<0> ALow, AHi, B -> C1, C2;
+    operation shl<0> ALow, AHi, B -> CLow, CHi;
 
-    operation shr<1> ALow, AHi, B -> C1, C2;
+    operation shr<1> ALow, AHi, B -> CLow, CHi;
 
     col witness operation_id;
     unchanged_until(operation_id, latch);
@@ -59,13 +59,13 @@ machine Shift16(byte_shift_16: ByteShift16) with
 
     col witness ALow, AHi;
     col witness B;
-    col witness C1, C2;
+    col witness CLow, CHi;
 
     ALow' = ALow * (1 - latch) + A_byte * FACTOR_ALow;
     AHi' = AHi * (1 - latch) + A_byte * FACTOR_AHi;
     unchanged_until(B, latch);
-    C1' = C1 * (1 - latch) + C_part1;
-    C2' = C2 * (1 - latch) + C_part2;
+    CLow' = CLow * (1 - latch) + C_part1;
+    CHi' = CHi * (1 - latch) + C_part2;
 
     link => (C_part1, C_part2) = byte_shift_16.run(operation_id', A_byte, B', FACTOR_ROW);
 }
