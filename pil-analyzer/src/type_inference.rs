@@ -45,7 +45,7 @@ pub struct ExpectedType {
     pub allow_array: bool,
     /// If true, the empty tuple is also allowed.
     pub allow_empty: bool,
-    /// If "int -> ()" is allowed.
+    /// If true, "int -> ()" is also allowed.
     pub allow_int_to_empty_fun: bool,
 }
 
