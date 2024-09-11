@@ -72,7 +72,7 @@ lazy_static! {
             .sample_iter(Standard)
             .take(ROUNDS_P)
             .collect(),
-        DiffusionMatrixMersenne31::default()
+        DiffusionMatrixMersenne31
     );
 }
 
