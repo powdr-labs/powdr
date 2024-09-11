@@ -54,9 +54,18 @@ machine Binary16(byte_binary: ByteBinary) with
     let O1: inter = C1 + 256 * C2;
     let O2: inter = C3 + 256 * C4;
 
-    let A1, A2, A3, A4;
-    let B1, B2, B3, B4;
-    let C1, C2, C3, C4;
+    let A1;
+    let A2;
+    let A3;
+    let A4;
+    let B1;
+    let B2;
+    let B3;
+    let B4;
+    let C1; 
+    let C2; 
+    let C3; 
+    let C4;
 
     link => C1 = byte_binary.run(operation_id, A1, B1);
     link => C2 = byte_binary.run(operation_id, A2, B2);
