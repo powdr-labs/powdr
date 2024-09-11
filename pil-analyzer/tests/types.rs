@@ -9,18 +9,15 @@ use pretty_assertions::assert_eq;
 fn type_check(input: &str, expected: &[(&str, &str, &str)]) {
     let analyzed = analyze_string::<GoldilocksField>(input)
         .map_err(|errors| {
-            panic!(
-                "Failed to analyze test input: {}",
-                errors
-                    .into_iter()
-                    .map(|e| {
-                        e.output_to_stderr();
-                        e.to_string()
-                    })
-                    .format("\n")
-            );
+            errors
+                .into_iter()
+                .map(|e| {
+                    e.output_to_stderr();
+                    e.to_string()
+                })
+                .format("\n")
         })
-        .unwrap();
+        .expect("Failed to analyze test input.");
 
     for (name, bounds, ty) in expected {
         let type_scheme = analyzed.type_of_symbol(name);

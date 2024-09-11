@@ -8,18 +8,15 @@ use pretty_assertions::assert_eq;
 fn analyze_string(input: &str) -> Analyzed<GoldilocksField> {
     powdr_pil_analyzer::analyze_string(input)
         .map_err(|errors| {
-            panic!(
-                "Failed to analyze test input: {}",
-                errors
-                    .into_iter()
-                    .map(|e| {
-                        e.output_to_stderr();
-                        e.to_string()
-                    })
-                    .format("\n")
-            );
+            errors
+                .into_iter()
+                .map(|e| {
+                    e.output_to_stderr();
+                    e.to_string()
+                })
+                .format("\n")
         })
-        .unwrap()
+        .expect("Failed to analyze test input.")
 }
 
 #[test]

@@ -627,7 +627,7 @@ fn simple_lookup() {
     let b: expr[] = [N::y];
     [N::x] in [N::y];
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
 }
 
@@ -651,6 +651,6 @@ fn selected_lookup() {
     let t: std::prelude::SelectedExprs = N::a $ N::k;
     N::a $ [N::x] in N::b $ [N::y];
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
 }

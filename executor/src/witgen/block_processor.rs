@@ -155,9 +155,8 @@ mod tests {
                 for e in errors {
                     e.output_to_stderr();
                 }
-                panic!("Failed to analyze test input.");
             })
-            .unwrap();
+            .expect("Failed to analyze test input.");
         let constants = generate(&analyzed);
         let fixed_data = FixedData::new(&analyzed, &constants, &[], Default::default(), 0);
 
