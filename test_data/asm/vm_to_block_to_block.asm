@@ -5,10 +5,10 @@ machine Inc with
 {
     operation inc<0> x -> y;
 
-    col witness operation_id;
-    col fixed latch = [1]*;
-    col witness x;
-    col witness y;
+    let operation_id;
+    let latch: col = |i| 1;
+    let x;
+    let y;
     y = x + 1;
 }
 
@@ -24,10 +24,10 @@ machine Assert1 with
     // Increment x by calling into inc machine
     link => y = inc.inc(x);
 
-    col witness operation_id;
-    col fixed latch = [1]*;
-    col witness x;
-    col witness y;
+    let operation_id;
+    let latch: col = |i| 1;
+    let x;
+    let y;
 
     y = 2;
 }

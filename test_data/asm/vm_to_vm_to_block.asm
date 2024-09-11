@@ -58,11 +58,11 @@ machine Arith with
     operation add<0> x1, x2 -> y;
     operation mul<1> x1, x2 -> y;
 
-    col fixed latch = [1]*;
-    col witness operation_id;
-    col witness x1;
-    col witness x2;
-    col witness y;
+    let latch: col = |i| 1;
+    let operation_id;
+    let x1;
+    let x2;
+    let y;
 
     y = operation_id * (x1 * x2) + (1 - operation_id) * (x1 + x2);
 }

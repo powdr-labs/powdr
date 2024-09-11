@@ -11,7 +11,7 @@ machine Main with degree: N {
     reg Y[<=];
     reg A;
 
-    col fixed STEP(i) { i };
+    let STEP: col = |i| { i };
 
     Byte2 byte2;
     Memory memory(byte2);

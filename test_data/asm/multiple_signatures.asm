@@ -3,13 +3,13 @@ machine Add with
     operation_id: operation_id,
     call_selectors: sel,
 {
-    col witness A, B, C;
+    let A, B, C;
     A + B = C;
 
     // The compiler enforces that there is an operation ID if there are
     // multiple operations, even though we want the constraints to be
     // the same in both cases...
-    col witness operation_id;
+    let operation_id;
     let latch = 1;
 
     // A and B provided => C will be the sum.

@@ -19,7 +19,7 @@ mod cols {
 
 
 machine Empty with degree: 16 {
-    col witness w;
+    let w;
     w - cols::first() = 0;
     let x;
     let fi: col = |i| match cols::f(i) {

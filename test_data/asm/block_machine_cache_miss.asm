@@ -6,13 +6,13 @@ machine Arith with
     operation double<0> x -> y;
     operation square<1> x -> y;
 
-    col witness operation_id;
-    col fixed latch = [1]*;
-    col fixed X(i) {i};
-    col fixed DOUBLE(i) {2*i};
-    col fixed SQUARE(i) {i*i};
-    col witness x;
-    col witness y;
+    let operation_id;
+    let latch: col = |i| 1;
+    let X: col = |i| {i};
+    let DOUBLE: col = |i| {2*i};
+    let SQUARE: col = |i| {i*i};
+    let x;
+    let y;
 
     // Depending on the operation ID, one of these identities
     // has to be processed, the other can be ignored.

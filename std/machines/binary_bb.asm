@@ -17,13 +17,13 @@ machine Binary8(byte_binary: ByteBinary) with
 
     operation xor<2> A1, A2, A3, A4, B1, B2, B3, B4 -> C1, C2, C3, C4;
 
-    col witness operation_id;
+    let operation_id;
 
     col fixed latch(i) { 1 };
 
-    col witness A1, A2, A3, A4;
-    col witness B1, B2, B3, B4;
-    col witness C1, C2, C3, C4;
+    let A1, A2, A3, A4;
+    let B1, B2, B3, B4;
+    let C1, C2, C3, C4;
 
     link => C1 = byte_binary.run(operation_id, A1, B1);
     link => C2 = byte_binary.run(operation_id, A2, B2);
@@ -43,9 +43,9 @@ machine Binary16(byte_binary: ByteBinary) with
     operation or<1> I1, I2, I3, I4 -> O1, O2;
     operation xor<2> I1, I2, I3, I4 -> O1, O2;
 
-    col witness operation_id;
+    let operation_id;
 
-    col fixed latch(i) { 1 };
+    let latch: col |i| { 1 };
 
     let I1: inter = A1 + 256 * A2;
     let I2: inter = A3 + 256 * A4;
@@ -54,9 +54,9 @@ machine Binary16(byte_binary: ByteBinary) with
     let O1: inter = C1 + 256 * C2;
     let O2: inter = C3 + 256 * C4;
 
-    col witness A1, A2, A3, A4;
-    col witness B1, B2, B3, B4;
-    col witness C1, C2, C3, C4;
+    let A1, A2, A3, A4;
+    let B1, B2, B3, B4;
+    let C1, C2, C3, C4;
 
     link => C1 = byte_binary.run(operation_id, A1, B1);
     link => C2 = byte_binary.run(operation_id, A2, B2);

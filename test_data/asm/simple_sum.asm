@@ -19,8 +19,8 @@ machine Main with degree: 16 {
     reg A;
     reg CNT;
 
-    col witness XInv;
-    col witness XIsZero;
+    let XInv;
+    let XIsZero;
     // assume X = 7
     // XisZero * 7 = 0 -> XIzZero = 0
     // 0 = 1 - 7 * XInv

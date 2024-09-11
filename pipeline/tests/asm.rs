@@ -746,7 +746,7 @@ fn types_in_expressions() {
             } = 0
         };
         machine Main {
-            col witness w;
+            let w;
             f();
         }
         "#;

@@ -40,8 +40,8 @@ machine Pow {
     reg A;
     reg CNT;
 
-    col witness XInv;
-    col witness XIsZero;
+    let XInv;
+    let XIsZero;
     XIsZero  = 1 - X * XInv;
     XIsZero * X = 0;
     XIsZero * (1 - XIsZero) = 0;

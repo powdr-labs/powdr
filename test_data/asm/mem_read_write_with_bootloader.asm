@@ -9,8 +9,8 @@ machine MemReadWrite with degree: 256 {
     reg CNT;
     reg ADDR;
 
-    col witness XInv;
-    col witness XIsZero;
+    let XInv;
+    let XIsZero;
     XIsZero  = 1 - X * XInv;
     XIsZero * X = 0;
     XIsZero * (1 - XIsZero) = 0;
@@ -18,18 +18,18 @@ machine MemReadWrite with degree: 256 {
     // Read-write memory. Columns are sorted by m_addr and
     // then by m_step. m_change is 1 if and only if m_addr changes
     // in the next row.
-    col witness m_addr;
-    col witness m_step;
-    col witness m_change;
-    col witness m_value;
+    let m_addr;
+    let m_step;
+    let m_change;
+    let m_value;
 
     // Memory operation flags
-    col witness m_is_write;
-    col witness m_is_bootloader_write;
+    let m_is_write;
+    let m_is_bootloader_write;
 
-    col witness m_selector1;
-    col witness m_selector2;
-    col witness m_selector3;
+    let m_selector1;
+    let m_selector2;
+    let m_selector3;
     force_bool(m_selector1);
     force_bool(m_selector2);
     force_bool(m_selector3);
@@ -37,10 +37,10 @@ machine MemReadWrite with degree: 256 {
     (1 - m_selector1 - m_selector2 - m_selector3) * m_is_bootloader_write = 0;
 
     // positive numbers (assumed to be much smaller than the field order)
-    col fixed POSITIVE(i) { i + 1 };
+    let POSITIVE: col = |i| { i + 1 };
     col fixed FIRST = [1] + [0]*;
     col fixed LAST  = [0]* + [1];
-    col fixed STEP(i) { i };
+    let STEP: col = |i| { i };
 
     m_change * (1 - m_change) = 0;
 

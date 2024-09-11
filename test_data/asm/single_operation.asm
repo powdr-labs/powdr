@@ -4,8 +4,8 @@ machine SingleOperation with
 {
     operation nothing;
 
-    col fixed latch = [1]*;
-    col witness w;
+    let latch: col = |i| 1;
+    let w;
     w = w * w;
 }
 

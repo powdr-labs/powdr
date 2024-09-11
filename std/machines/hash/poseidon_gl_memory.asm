@@ -42,7 +42,7 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     // Reads happen at the provided time step; writes happen at the next time step.
     operation poseidon_permutation<0> input_addr, output_addr, time_step ->;
 
-    col witness operation_id;
+    let operation_id;
 
     // Ported from:
     // - https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/poseidong.pil
@@ -69,14 +69,14 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     std::utils::force_bool(used);
 
     // Repeat the input state in the whole block
-    col witness input[STATE_SIZE];
+    let input[STATE_SIZE];
     array::map(input, |c| unchanged_until(c, LAST));
     array::zip(input, state, |i, s| CLK[0] * (i - s) = 0);
 
     // Repeat the time step and input / output address in the whole block
-    col witness time_step;
-    col witness input_addr;
-    col witness output_addr;
+    let time_step;
+    let input_addr;
+    let output_addr;
     unchanged_until(time_step, LAST);
     unchanged_until(input_addr, LAST);
     unchanged_until(output_addr, LAST);
@@ -86,7 +86,7 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     let CLK: col[STATE_SIZE + OUTPUT_SIZE] = array::new(STATE_SIZE + OUTPUT_SIZE, |i| |row| if row % ROWS_PER_HASH == i { 1 } else { 0 });
     let CLK_0 = CLK[0];
 
-    col witness word_low, word_high;
+    let word_low, word_high;
 
     // Do *two* memory reads in each of the first STATE_SIZE rows
     // For input i, we expect the low word at address input_addr + 8 * i and
@@ -156,9 +156,9 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     let a = array::zip(state, C, |state, C| state + C);
 
     // Compute S-Boxes (x^7) (using a degree bound of 3)
-    col witness x3[STATE_SIZE];
+    let x3[STATE_SIZE];
     array::zip(x3, array::map(a, |a| a * a * a), |x3, expected| x3 = expected);
-    col witness x7[STATE_SIZE];
+    let x7[STATE_SIZE];
     array::zip(x7, array::zip(x3, a, |x3, a| x3 * x3 * a), |x7, expected| x7 = expected);
 
     // Apply S-Boxes on the first element and otherwise if it is a full round.

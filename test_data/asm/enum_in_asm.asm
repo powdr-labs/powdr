@@ -17,6 +17,6 @@ mod utils {
 }
 
 machine Empty with degree: 4 {
-    col witness w;
+    let w;
     w = w * w;
 }

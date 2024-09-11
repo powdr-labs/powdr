@@ -64,11 +64,11 @@ machine Arith with
 
     // ==== End bus ====
 
-    col fixed operation_id = [0]*;
-    col fixed latch = [1]*;
-    col witness x;
-    col witness y;
-    col witness z;
+    let operation_id: col = |i| 0;
+    let latch: col = |i| 1;
+    let x;
+    let y;
+    let z;
     z = x + y;
 }
 
@@ -85,7 +85,7 @@ machine Main with
     link if instr_add ~> z = arith.add(x, y);
 
     // Can't have a challenge without a witness column, so add one here
-    col witness dummy;
+    let dummy;
     // Need a constraint so that it's not optimized away
     dummy = dummy';
 
@@ -127,11 +127,11 @@ machine Main with
 
     // ==== End bus ====
 
-    col fixed operation_id = [0]*;
-    col fixed x(i) { i / 4 };
-    col fixed y(i) { i / 4 + 1 };
-    col witness z;
-    col witness res;
+    let operation_id = [0]*;
+    let x: col = |i| { i / 4 };
+    let y: col = |i| { i / 4 + 1 };
+    let z;
+    let res;
     col fixed latch = [0, 0, 0, 1]*; // return every 4th row
 
     // accumulate the intermediate results into `res`

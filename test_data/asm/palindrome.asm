@@ -13,18 +13,18 @@ machine Palindrome with degree: 32 {
     reg CNT;
     reg ADDR;
 
-    col witness XInv;
-    col witness XIsZero;
+    let XInv;
+    let XIsZero;
     XIsZero  = 1 - X * XInv;
     XIsZero * X = 0;
     XIsZero * (1 - XIsZero) = 0;
 
     /// Write-once memory (actually a key-value store)
-    col witness m_addr;
-    col witness m_value;
+    let m_addr;
+    let m_value;
 
     // positive numbers (assumed to be less than half the field order)
-    col fixed POSITIVE(i) { i + 1 };
+    let POSITIVE: col = |i| { i + 1 };
     col fixed FIRST = [1] + [0]*;
     col fixed NOTLAST = [1]* + [0];
 

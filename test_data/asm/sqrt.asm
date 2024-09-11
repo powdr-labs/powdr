@@ -7,11 +7,12 @@ machine Sqrt with
 
     operation sqrt<0> x -> y;
 
-    col fixed operation_id = [0]*;
-    col fixed latch = [1]*;
+
+    let operation_id: col = |i| 0;
+    let latch: col = |i| 1;
     // Only works for small results, to keep the degree of this example small.
-    col fixed range(i) { i % 8 };
-    col witness x;
+    let range: col = |i| { i % 8 };
+    let x;
 
     // Witness generation is not smart enough to figure out that
     // there is a unique witness, so we provide it as a hint.
@@ -28,8 +29,9 @@ machine Sqrt with
             sqrt_rec((y + x / y) / 2, x)
         };
 
-    col witness y(i) query Query::Hint(sqrt_hint(std::prover::eval(x)));
-    
+    let y;
+    query |i| std::prover::provide_value(y, i, sqrt_hint(std::prover::eval(x)));
+
     y * y = x;
     
     // Note that this is required to make the witness unique
@@ -46,8 +48,8 @@ machine Main with degree: 8 {
     reg Y[<=];
     reg A;
 
-    col witness XInv;
-    col witness XIsZero;
+    let XInv;
+    let XIsZero;
     XIsZero  = 1 - X * XInv;
     XIsZero * X = 0;
     XIsZero * (1 - XIsZero) = 0;

@@ -16,7 +16,7 @@ machine PoseidonBN254 with
     // hash functions.
     operation poseidon_permutation<0> state[0], state[1], state[2] -> output[0];
 
-    col witness operation_id;
+    let operation_id;
 
     // Using parameters from https://eprint.iacr.org/2019/458.pdf
     // See https://extgit.iaik.tugraz.at/krypto/hadeshash/-/blob/master/code/poseidonperm_x5_254_3.sage
