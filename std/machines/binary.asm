@@ -24,7 +24,7 @@ machine ByteBinary with
     let P_A: col = a;
     let P_B: col = b;
     let P_operation: col = op;
-    let P_C = |i| {
+    let P_C: col = |i| {
         match op(i) {
             0 => a(i) & b(i),
             1 => a(i) | b(i),
