@@ -35,7 +35,9 @@ pub fn infer_types(
     TypeChecker::new().infer_types(definitions, expressions)
 }
 
-/// A type to expect and a flag that says if arrays of that type are also fine.
+/// A type to expect with a bit of flexibility.
+/// This is used for example at statement level, where we allow Constr, Constr[], prover functions
+/// (functions from int to ()) and the empty tuple.
 #[derive(Clone)]
 pub struct ExpectedType {
     pub ty: Type,
@@ -43,6 +45,8 @@ pub struct ExpectedType {
     pub allow_array: bool,
     /// If true, the empty tuple is also allowed.
     pub allow_empty: bool,
+    /// If true, "int -> ()" is also allowed.
+    pub allow_int_to_empty_fun: bool,
 }
 
 impl From<Type> for ExpectedType {
@@ -51,6 +55,7 @@ impl From<Type> for ExpectedType {
             ty,
             allow_array: false,
             allow_empty: false,
+            allow_int_to_empty_fun: false,
         }
     }
 }
@@ -464,7 +469,8 @@ impl TypeChecker {
         Ok(())
     }
 
-    /// Process an expression, inferring its type and expecting either a certain type or potentially an array of that type.
+    /// Process an expression, inferring its type and allowing a certain flexibility in the type
+    /// as specified by `expected_type`.
     fn expect_type_with_flexibility(
         &mut self,
         expected_type: &ExpectedType,
@@ -481,6 +487,11 @@ impl TypeChecker {
             })
         } else if expected_type.allow_empty && (ty == Type::empty_tuple()) {
             Type::empty_tuple()
+        } else if expected_type.allow_int_to_empty_fun && matches!(ty, Type::Function(_)) {
+            Type::Function(FunctionType {
+                params: vec![Type::Int],
+                value: Box::new(Type::empty_tuple()),
+            })
         } else {
             expected_type.ty.clone()
         };

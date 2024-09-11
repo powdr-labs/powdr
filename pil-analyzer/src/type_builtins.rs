@@ -50,6 +50,11 @@ lazy_static! {
             ("", "expr, (int -> std::prelude::Query) -> ()")
         ),
         ("std::prover::eval", ("", "expr -> fe")),
+        (
+            "std::prover::try_eval",
+            ("", "expr -> std::prelude::Option<fe>")
+        ),
+        ("std::prover::provide_value", ("", "expr, int, fe -> ()"))
     ]
     .into_iter()
     .map(|(name, (vars, ty))| { (name.to_string(), parse_type_scheme(vars, ty)) })
@@ -114,6 +119,7 @@ lazy_static! {
     .collect();
     static ref CONSTR_FUNCTION_STATEMENT_TYPE: ExpectedType = ExpectedType {
         ty: Type::NamedType(SymbolPath::from_str("std::prelude::Constr").unwrap(), None),
+        allow_int_to_empty_fun: true,
         allow_array: true,
         allow_empty: true,
     };

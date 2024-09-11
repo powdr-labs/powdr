@@ -116,6 +116,8 @@ pub enum EvalError {
     DataNotAvailable,
     /// Failed assertion, with reason.
     FailedAssertion(String),
+    /// Failure when running a prover function (non-recoverable).
+    ProverError(String),
 }
 
 impl Display for EvalError {
@@ -128,6 +130,7 @@ impl Display for EvalError {
             EvalError::SymbolNotFound(msg) => write!(f, "Symbol not found: {msg}"),
             EvalError::DataNotAvailable => write!(f, "Data not (yet) available."),
             EvalError::FailedAssertion(msg) => write!(f, "Assertion failed: {msg}"),
+            EvalError::ProverError(msg) => write!(f, "Error executing prover function: {msg}"),
         }
     }
 }
@@ -315,7 +318,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
     }
 }
 
-const BUILTINS: [(&str, BuiltinFunction); 13] = [
+const BUILTINS: [(&str, BuiltinFunction); 15] = [
     ("std::array::len", BuiltinFunction::ArrayLen),
     ("std::check::panic", BuiltinFunction::Panic),
     ("std::convert::expr", BuiltinFunction::ToExpr),
@@ -324,11 +327,13 @@ const BUILTINS: [(&str, BuiltinFunction); 13] = [
     ("std::debug::print", BuiltinFunction::Print),
     ("std::field::modulus", BuiltinFunction::Modulus),
     ("std::prelude::challenge", BuiltinFunction::Challenge),
+    ("std::prover::provide_value", BuiltinFunction::ProvideValue),
     ("std::prelude::set_hint", BuiltinFunction::SetHint),
     ("std::prover::min_degree", BuiltinFunction::MinDegree),
     ("std::prover::max_degree", BuiltinFunction::MaxDegree),
     ("std::prover::degree", BuiltinFunction::Degree),
     ("std::prover::eval", BuiltinFunction::Eval),
+    ("std::prover::try_eval", BuiltinFunction::TryEval),
 ];
 
 #[derive(Clone, Copy, Debug)]
@@ -351,6 +356,8 @@ pub enum BuiltinFunction {
     ToFe,
     /// std::prover::challenge: int, int -> expr, constructs a challenge with a given stage and ID.
     Challenge,
+    /// std::prover::provide_value: expr, int, fe -> (), provides a value for a witness column at a given row.
+    ProvideValue,
     /// std::prelude::set_hint: expr, (int -> std::prelude::Query) -> (), adds a hint to a witness column.
     SetHint,
     /// std::prover::min_degree: -> int, returns the minimum column length / degree.
@@ -361,6 +368,8 @@ pub enum BuiltinFunction {
     Degree,
     /// std::prover::eval: expr -> fe, evaluates an expression on the current row
     Eval,
+    /// std::prover::try_eval: expr -> std::prelude::Option<fe>, evaluates an expression on the current row
+    TryEval,
 }
 
 impl<'a, T: Display> Display for Value<'a, T> {
@@ -608,6 +617,17 @@ pub trait SymbolLookup<'a, T: FieldElement> {
     ) -> Result<(), EvalError> {
         Err(EvalError::Unsupported(
             "Tried to add constraints outside of statement context.".to_string(),
+        ))
+    }
+
+    fn provide_value(
+        &mut self,
+        _col: Arc<Value<'a, T>>,
+        _row: Arc<Value<'a, T>>,
+        _value: Arc<Value<'a, T>>,
+    ) -> Result<(), EvalError> {
+        Err(EvalError::Unsupported(
+            "Tried to provide value outside of prover function.".to_string(),
         ))
     }
 }
@@ -1225,11 +1245,13 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
         BuiltinFunction::ToFe => 1,
         BuiltinFunction::ToInt => 1,
         BuiltinFunction::Challenge => 2,
+        BuiltinFunction::ProvideValue => 3,
         BuiltinFunction::SetHint => 2,
         BuiltinFunction::MinDegree => 0,
         BuiltinFunction::MaxDegree => 0,
         BuiltinFunction::Degree => 0,
         BuiltinFunction::Eval => 1,
+        BuiltinFunction::TryEval => 1,
     };
 
     if arguments.len() != params {
@@ -1296,6 +1318,13 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
             }))
             .into()
         }
+        BuiltinFunction::ProvideValue => {
+            let value = arguments.pop().unwrap();
+            let row = arguments.pop().unwrap();
+            let col = arguments.pop().unwrap();
+            symbols.provide_value(col, row, value)?;
+            Value::Tuple(vec![]).into()
+        }
         BuiltinFunction::SetHint => {
             let expr = arguments.pop().unwrap();
             let col = arguments.pop().unwrap();
@@ -1314,6 +1343,22 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
                     v.type_formatted()
                 ),
             }
+        }
+        BuiltinFunction::TryEval => {
+            let arg = arguments.pop().unwrap();
+            let result = match arg.as_ref() {
+                Value::Expression(e) => symbols.eval_expr(e),
+                v => panic!(
+                    "Expected expression for std::prover::eval, but got {v}: {}",
+                    v.type_formatted()
+                ),
+            };
+            match result {
+                Ok(v) => Value::Enum("Some", Some(vec![v])),
+                Err(EvalError::DataNotAvailable) => Value::Enum("None", None),
+                Err(e) => return Err(e),
+            }
+            .into()
         }
     })
 }

@@ -641,3 +641,85 @@ fn selected_lookup() {
     let formatted = analyze_string::<GoldilocksField>(input).to_string();
     assert_eq!(formatted, expected);
 }
+
+#[test]
+fn prover_functions() {
+    let input = "
+    namespace std::convert;
+        let fe = 8;
+    namespace std::prover;
+        let provide_value = 9;
+    namespace N(16);
+        let x;
+        let y;
+        x = y;
+        query |i| {
+            std::prover::provide_value(x, i, std::convert::fe(i % 2));
+            std::prover::provide_value(y, i, std::convert::fe(i % 2));
+        };
+    ";
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    let expected = r#"namespace std::convert;
+    let fe = 8;
+namespace std::prover;
+    let provide_value = 9;
+namespace N(16);
+    col witness x;
+    col witness y;
+    N::x = N::y;
+    query |i| {
+        std::prover::provide_value(N::x, i, std::convert::fe::<int>(i % 2));
+        std::prover::provide_value(N::y, i, std::convert::fe::<int>(i % 2));
+    };
+"#;
+    assert_eq!(analyzed.to_string(), expected);
+}
+
+#[test]
+fn prover_functions_dynamic() {
+    let input = "
+    namespace std::convert;
+        let fe = 8;
+    namespace std::prover;
+        let provide_value = 9;
+    namespace N(16);
+        let gen = constr || {
+            let x;
+            let y;
+            x = y;
+            query |i| {
+                std::prover::provide_value(x, i, std::convert::fe(i % 2));
+                std::prover::provide_value(y, i, std::convert::fe(i % 2));
+            };
+        };
+        gen();
+    ";
+    let analyzed = analyze_string::<GoldilocksField>(input);
+    let expected = r#"namespace std::convert;
+    let fe = 8;
+namespace std::prover;
+    let provide_value = 9;
+namespace N(16);
+    let gen: -> () = constr || {
+        let x: col;
+        let y: col;
+        x = y;
+        query |i| {
+            std::prover::provide_value(x, i, std::convert::fe::<int>(i % 2));
+            std::prover::provide_value(y, i, std::convert::fe::<int>(i % 2));
+        };
+    };
+    col witness x;
+    col witness y;
+    N::x = N::y;
+    {
+        let x = N::x;
+        let y = N::y;
+        query |i| {
+            std::prover::provide_value(x, i, std::convert::fe::<int>(i % 2));
+            std::prover::provide_value(y, i, std::convert::fe::<int>(i % 2));
+        }
+    };
+"#;
+    assert_eq!(analyzed.to_string(), expected);
+}

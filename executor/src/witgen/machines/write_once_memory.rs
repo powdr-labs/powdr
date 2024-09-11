@@ -115,6 +115,14 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             }
         }
 
+        if !parts.prover_functions.is_empty() {
+            log::warn!(
+                "WriteOnceMemory machine does not support prover functions.\
+                The following prover functions are ignored:\n{}",
+                parts.prover_functions.iter().format("\n")
+            );
+        }
+
         Some(Self {
             degree,
             connecting_identities: parts.connecting_identities.clone(),
