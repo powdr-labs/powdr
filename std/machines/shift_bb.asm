@@ -27,12 +27,12 @@ machine ByteShiftBB with
     let P_B: col = b;
     let P_ROW: col = row;
     let P_operation: col = op;
-    let c: int -> int = match op(i) {
+    let c: int -> int = |i| match op(i) {
         0 => a(i) << (b(i) + (row(i) * 8)),
         1 => (a(i) << (row(i) * 8)) >> b(i)
     };
-    col fixed P_C1(i) c(i) & 0xffff;
-    col fixed P_C2(i) (c(i) >> 16) & 0xffff;
+    col fixed P_C1(i) { c(i) & 0xffff };
+    col fixed P_C2(i) { (c(i) >> 16) & 0xffff };
 }
 
 machine ShiftBB(byte_shift: ByteShiftBB) with
@@ -66,5 +66,5 @@ machine ShiftBB(byte_shift: ByteShiftBB) with
     C1' = C1 * (1 - latch) + C_part1;
     C2' = C2 * (1 - latch) + C_part2;
 
-    link => C_part1, C_part2 = byte_shift.run(operation_id', A_byte, B', FACTOR_ROW);
+    link => (C_part1, C_part2) = byte_shift.run(operation_id', A_byte, B', FACTOR_ROW);
 }
