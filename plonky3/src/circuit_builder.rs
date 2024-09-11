@@ -11,7 +11,6 @@ use std::collections::{BTreeMap, HashSet};
 use crate::params::{Commitment, FieldElementMap, Plonky3Field, ProverData};
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir, PairBuilder};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
-// use p3_mds::MdsPermutation;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Identity, IdentityKind,
