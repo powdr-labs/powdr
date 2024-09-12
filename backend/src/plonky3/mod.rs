@@ -5,7 +5,7 @@ use powdr_executor::{
     constant_evaluator::{get_uniquely_sized_cloned, VariablySizedColumn},
     witgen::WitgenCallback,
 };
-use powdr_number::{BabyBearField, GoldilocksField};
+use powdr_number::{BabyBearField, GoldilocksField, Mersenne31Field};
 use powdr_plonky3::{Commitment, FieldElementMap, Plonky3Prover, ProverData};
 
 use crate::{
@@ -66,7 +66,7 @@ where
     }
 }
 
-generalize_factory!(Factory <- RestrictedFactory, [BabyBearField, GoldilocksField]);
+generalize_factory!(Factory <- RestrictedFactory, [BabyBearField, GoldilocksField, Mersenne31Field]);
 
 impl<T: FieldElementMap> Backend<T> for Plonky3Prover<T>
 where
