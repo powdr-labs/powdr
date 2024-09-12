@@ -10,7 +10,7 @@ machine SplitGL(byte_compare: ByteCompare) with
     operation split in_acc -> output_low, output_high;
 
     // Latch and operation ID
-    col fixed RESET(i) { if i % 8 == 7 { 1 } else { 0 } };
+    let RESET: col = |i| { if i % 8 == 7 { 1 } else { 0 } };
 
     // 1. Decompose the input into bytes
 
@@ -27,12 +27,13 @@ machine SplitGL(byte_compare: ByteCompare) with
     // Puts the bytes together to form the input
     let in_acc;
     // Factors to multiply the bytes by
-    col fixed FACTOR(i) { 1 << (((i + 1) % 8) * 8) };
+    let FACTOR: col = |i| { 1 << (((i + 1) % 8) * 8) };
 
     in_acc' = (1 - RESET) * in_acc + bytes * FACTOR;
 
     // 2. Build the output, packing chunks of 4 bytes (i.e., 32 bit) into a field element
-    let output_low, output_high;
+    let output_low;
+    let output_high;
     col fixed FACTOR_OUTPUT_LOW = [0x100, 0x10000, 0x1000000, 0, 0, 0, 0, 1]*;
     col fixed FACTOR_OUTPUT_HIGH = [0, 0, 0, 1, 0x100, 0x10000, 0x1000000, 0]*;
     output_low' = (1 - RESET) * output_low + bytes * FACTOR_OUTPUT_LOW;

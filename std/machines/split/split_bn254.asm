@@ -10,7 +10,7 @@ machine SplitBN254(byte_compare: ByteCompare) with
     operation split in_acc -> o1, o2, o3, o4, o5, o6, o7, o8;
 
     // Latch and operation ID
-    col fixed RESET(i) { if i % 32 == 31 { 1 } else { 0 } };
+    let RESET: col = |i| { if i % 32 == 31 { 1 } else { 0 } };
 
     // 1. Decompose the input into bytes
 
@@ -27,12 +27,20 @@ machine SplitBN254(byte_compare: ByteCompare) with
     // Puts the bytes together to form the input
     let in_acc;
     // Factors to multiply the bytes by
-    col fixed FACTOR(i) { 1 << (((i + 1) % 32) * 8) };
+    let FACTOR: col = |i| { 1 << (((i + 1) % 32) * 8) };
 
     in_acc' = (1 - RESET) * in_acc + bytes * FACTOR;
 
     // 2. Build the output, packing chunks of 4 bytes (i.e., 32 bit) into a field element
-    let o1, o2, o3, o4, o5, o6, o7, o8;
+    let o1;
+    let o2;
+    let o3;
+    let o4;
+    let o5;
+    let o6;
+    let o7;
+    let o8;
+    
     col fixed FACTOR_OUTPUT1 = [0x100, 0x10000, 0x1000000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]*;
     col fixed FACTOR_OUTPUT2 = [0, 0, 0, 1, 0x100, 0x10000, 0x1000000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]*;
     col fixed FACTOR_OUTPUT3 = [0, 0, 0, 0, 0, 0, 0, 1, 0x100, 0x10000, 0x1000000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]*;

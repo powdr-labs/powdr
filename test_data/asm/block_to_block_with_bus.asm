@@ -127,7 +127,7 @@ machine Main with
 
     // ==== End bus ====
 
-    let operation_id = [0]*;
+    let operation_id: col = |i| 0;
     let x: col = |i| { i / 4 };
     let y: col = |i| { i / 4 + 1 };
     let z;

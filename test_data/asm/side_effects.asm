@@ -24,7 +24,9 @@ machine MemoryProxy with
     Byte2 byte2;
     Memory mem(byte2);
 
-    let addr, step, value;
+    let addr;
+    let step;
+    let value;
     
     let used;
     used = std::array::sum(sel);

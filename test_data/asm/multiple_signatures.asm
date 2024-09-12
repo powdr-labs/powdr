@@ -3,7 +3,9 @@ machine Add with
     operation_id: operation_id,
     call_selectors: sel,
 {
-    let A, B, C;
+    let A;
+    let B;
+    let C;
     A + B = C;
 
     // The compiler enforces that there is an operation ID if there are
