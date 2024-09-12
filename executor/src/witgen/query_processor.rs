@@ -13,7 +13,7 @@ use super::{rows::RowPair, Constraint, EvalResult, EvalValue, FixedData, Incompl
 /// Computes value updates that result from a query.
 pub struct QueryProcessor<'a, 'b, T: FieldElement, QueryCallback: Send + Sync> {
     fixed_data: &'a FixedData<'a, T>,
-    query_callback: Option<&'b mut QueryCallback>,
+    query_callback: &'b mut QueryCallback,
     size: DegreeType,
 }
 
@@ -27,7 +27,7 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
     ) -> Self {
         Self {
             fixed_data,
-            query_callback: Some(query_callback),
+            query_callback,
             size,
         }
     }
@@ -46,11 +46,10 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
             rows,
             size: self.size,
             updates: Constraints::new(),
-            query_callback: Some(self.query_callback.take().unwrap()),
+            query_callback: Some(&mut *self.query_callback),
         };
         let res = evaluator::evaluate(fun, &mut symbols)
             .and_then(|fun| evaluator::evaluate_function_call(fun, arguments, &mut symbols));
-        self.query_callback = Some(symbols.query_callback.take().unwrap());
 
         let res = match res {
             Ok(res) => res,
@@ -112,8 +111,8 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
             }
         };
         Ok(
-            if let Some(value) = (self.query_callback.as_mut().unwrap())(&query_str)
-                .map_err(super::EvalError::ProverQueryError)?
+            if let Some(value) =
+                (self.query_callback)(&query_str).map_err(super::EvalError::ProverQueryError)?
             {
                 EvalValue::complete(vec![(poly, Constraint::Assignment(value))])
             } else {
@@ -138,12 +137,11 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
             rows,
             size: self.size,
             updates: Constraints::new(),
-            query_callback: Some(self.query_callback.take().unwrap()),
+            query_callback: Some(&mut *self.query_callback),
         };
         let fun = evaluator::evaluate(query, &mut symbols)?;
         let res =
             evaluator::evaluate_function_call(fun, arguments, &mut symbols).map(|v| v.to_string());
-        self.query_callback = Some(symbols.query_callback.take().unwrap());
         res
     }
 }
