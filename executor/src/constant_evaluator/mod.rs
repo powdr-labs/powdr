@@ -6,7 +6,7 @@ use std::{
 pub use data_structures::{get_uniquely_sized, get_uniquely_sized_cloned, VariablySizedColumn};
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{Analyzed, Expression, FunctionValueDefinition, PolyID, Symbol, TypedExpression},
+    analyzed::{Analyzed, Expression, FunctionValueDefinition, Symbol, TypedExpression},
     parsed::{
         types::{ArrayType, Type},
         IndexAccess,
@@ -24,9 +24,6 @@ mod data_structures;
 /// Arrays of columns are flattened, the name of the `i`th array element
 /// is `name[i]`.
 pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, VariablySizedColumn<T>)> {
-    // TODO to do this properly, we should try to compile as much as possible
-    // and only evaulato if it fails. Still, compilation should be done in one run.
-
     let mut fixed_cols = HashMap::new();
     for (poly, value) in analyzed.constant_polys_in_source_order() {
         if let Some(value) = value {
