@@ -147,12 +147,12 @@ machine Arith with
 
     let combine: expr[] -> expr[] = |x| array::new(array::len(x) / 2, |i| x[2 * i + 1] * 2**16 + x[2 * i]);
     // Intermediate polynomials, arrays of 8 columns, 32 bit per column.
-    col x1c[8] = combine(x1);
-    col y1c[8] = combine(y1);
-    col x2c[8] = combine(x2);
-    col y2c[8] = combine(y2);
-    col x3c[8] = combine(x3);
-    col y3c[8] = combine(y3);
+    let x1c: col[8] = combine(x1);
+    let y1c: col[8] = combine(y1);
+    let x2c: col[8] = combine(x2);
+    let y2c: col[8] = combine(y2);
+    let x3c: col[8] = combine(x3);
+    let y3c: col[8] = combine(y3);
 
     let CLK32: col[32] = array::new(32, |i| |row| if row % 32 == i { 1 } else { 0 });
     let CLK32_31: expr = CLK32[31];
