@@ -86,7 +86,8 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     let CLK: col[STATE_SIZE + OUTPUT_SIZE] = array::new(STATE_SIZE + OUTPUT_SIZE, |i| |row| if row % ROWS_PER_HASH == i { 1 } else { 0 });
     let CLK_0 = CLK[0];
 
-    let word_low, word_high;
+    let word_low;
+    let word_high;
 
     // Do *two* memory reads in each of the first STATE_SIZE rows
     // For input i, we expect the low word at address input_addr + 8 * i and
