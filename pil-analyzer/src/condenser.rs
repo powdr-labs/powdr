@@ -50,6 +50,7 @@ pub fn condense<T: FieldElement>(
     let mut condenser = Condenser::new(&definitions, &solved_impls);
 
     let mut condensed_identities = vec![];
+    let mut prover_functions = vec![];
     let mut intermediate_columns = HashMap::new();
     let mut new_columns = vec![];
     let mut new_values = HashMap::new();
@@ -109,7 +110,7 @@ pub fn condense<T: FieldElement>(
 
             let mut intermediate_values = condenser.extract_new_intermediate_column_values();
 
-            // Extract and prepend the new columns, then identities
+            // Extract and prepend the new columns, then identities, prover functions
             // and finally the original statement (if it exists).
             let new_cols = condenser
                 .extract_new_columns()
@@ -138,6 +139,16 @@ pub fn condense<T: FieldElement>(
                 })
                 .collect::<Vec<_>>();
 
+            let new_prover_functions = condenser
+                .extract_new_prover_functions()
+                .into_iter()
+                .map(|f| {
+                    let index = prover_functions.len();
+                    prover_functions.push(f);
+                    StatementIdentifier::ProverFunction(index)
+                })
+                .collect::<Vec<_>>();
+
             for (name, value) in condenser.extract_new_column_values() {
                 if new_values.insert(name.clone(), value).is_some() {
                     panic!("Column {name} already has a hint set, but tried to add another one.",)
@@ -147,6 +158,7 @@ pub fn condense<T: FieldElement>(
             new_cols
                 .into_iter()
                 .chain(identity_statements)
+                .chain(new_prover_functions)
                 .chain(statement)
         })
         .collect();
@@ -174,6 +186,7 @@ pub fn condense<T: FieldElement>(
         public_declarations,
         intermediate_columns,
         identities: condensed_identities,
+        prover_functions,
         source_order,
         auto_added_symbols,
     }
@@ -202,6 +215,7 @@ pub struct Condenser<'a, T> {
     /// The names of all new columns ever generated, to avoid duplicates.
     new_symbols: HashSet<String>,
     new_constraints: Vec<AnalyzedIdentity<T>>,
+    new_prover_functions: Vec<Expression>,
 }
 
 impl<'a, T: FieldElement> Condenser<'a, T> {
@@ -211,8 +225,9 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     ) -> Self {
         let counters = Counters::with_existing(symbols.values().map(|(sym, _)| sym), None, None);
         Self {
-            symbols,
             degree: None,
+            symbols,
+            solved_impls,
             symbol_values: Default::default(),
             namespace: Default::default(),
             counters,
@@ -221,7 +236,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             new_intermediate_column_values: Default::default(),
             new_symbols: HashSet::new(),
             new_constraints: vec![],
-            solved_impls,
+            new_prover_functions: vec![],
         }
     }
 
@@ -286,6 +301,11 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     /// Returns the new constraints generated since the last call to this function.
     pub fn extract_new_constraints(&mut self) -> Vec<AnalyzedIdentity<T>> {
         std::mem::take(&mut self.new_constraints)
+    }
+
+    /// Returns the new prover functions generated since the last call to this function.
+    pub fn extract_new_prover_functions(&mut self) -> Vec<Expression> {
+        std::mem::take(&mut self.new_prover_functions)
     }
 
     fn condense_selected_expressions(
@@ -567,6 +587,13 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
                         &mut self.counters,
                     ))
                 }
+            }
+            Value::Closure(..) => {
+                let e = try_value_to_expression(&constraints).map_err(|e| {
+                    EvalError::TypeError(format!("Error adding prover function: {e}"))
+                })?;
+
+                self.new_prover_functions.push(e);
             }
             _ => self
                 .new_constraints

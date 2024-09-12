@@ -53,13 +53,20 @@ impl<'a> SideEffectChecker<'a> {
                     body,
                 },
             ) => {
-                if *kind != FunctionKind::Pure && *kind != self.context {
+                let new_context;
+                if kind == &FunctionKind::Query && self.context == FunctionKind::Constr {
+                    // Query lambda expressions are allowed in constr context.
+                    new_context = FunctionKind::Query;
+                } else if *kind != FunctionKind::Pure && *kind != self.context {
                     return Err(source.with_error(format!(
                         "Used a {kind} lambda function inside a {} context.",
                         self.context
                     )));
+                } else {
+                    new_context = self.context;
                 }
                 let old_context = self.context;
+                self.context = new_context;
                 let result = self.check(body);
                 self.context = old_context;
                 result
@@ -152,6 +159,7 @@ lazy_static! {
         ("std::prover::degree", FunctionKind::Pure),
         ("std::prelude::set_hint", FunctionKind::Constr),
         ("std::prover::eval", FunctionKind::Query),
+        ("std::prover::try_eval", FunctionKind::Query),
     ]
     .into_iter()
     .collect();
