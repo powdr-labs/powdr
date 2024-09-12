@@ -29,7 +29,7 @@ machine Arith with
 
     let latch: col = |i| 1;
     let operation_id;
-    let x[2];
+    let x: col[2];
     let y;
 
     y = operation_id * (x[0] * x[1]) + (1 - operation_id) * (x[0] + x[1]);

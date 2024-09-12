@@ -467,8 +467,8 @@ namespace main_sub__rom(16);
     #[test]
     fn compile_simple_sum() {
         let expectation = r#"namespace main(16);
-    pol commit XInv;
-    pol commit XIsZero;
+    let XInv;
+    let XIsZero;
     XIsZero = 1 - X * XInv;
     XIsZero * X = 0;
     XIsZero * (1 - XIsZero) = 0;

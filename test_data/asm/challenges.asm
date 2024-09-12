@@ -9,7 +9,7 @@ machine Main with degree: 4 {
     bar = foo + 3;
 
     // Stage-1 witness column, depends on after-stage-0 challenge #1:
-    let stage(1) bar2;
+    col witness stage(1) bar2;
     let alpha: expr = challenge(0, 1);
     bar2 = bar + alpha;
 }

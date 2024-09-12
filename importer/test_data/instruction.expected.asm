@@ -1,8 +1,8 @@
 let identity: expr -> expr = |expr| expr;
 machine Id {
     operation id<0> x, y;
-        let x: col;
-        let y: col;
+        let x;
+        let y;
         x = y;
 }
 machine Main {
