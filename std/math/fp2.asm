@@ -11,14 +11,20 @@ use std::math::ff::inv_field;
 use std::prover::eval;
 
 /// Corresponding Sage code to test irreduciblity
-/// BabyBear = 2^27 * 15 + 1
-/// M31 = 2^31 - 1
-/// BN254 = 21888242871839275222246405745257275088548364400416034343698204186575808495617
+/// BabyBear = 0x78000001
+/// M31 = 0x7fffffff
+/// BN254 = 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
 /// GL = 0xffffffff00000001
-/// F = GF(GL)
-/// R.<x> = PolynomialRing(F)
-/// f = x^2 - 7
-/// f.is_irreducible()
+/// 
+/// fields = [BabyBear, M31, BN254, GL]
+/// 
+/// def check_irreducibility(field):
+///     F = GF(field)
+///     R.<x> = PolynomialRing(F)
+///     f = x^2 - 11
+///     return f"Field: {field}\nIs irreducible: {f.is_irreducible()}"
+/// 
+/// print("\n".join(map(check_irreducibility, fields)))
 
 /// An element of the extension field over the implied base field (which has to be one
 /// of the field elements: Goldilocks, BN254, BabyBear, M31) relative to the irreducible polynomial X^2 - 11,
@@ -165,7 +171,7 @@ mod test {
 
         // Subtract arbitrary elements
         let _ = test_sub(Fp2::Fp2(123, 1234), Fp2::Fp2(567, 5678), Fp2::Fp2(123 - 567, 1234 - 5678));
-        test_sub(Fp2::Fp2(-1, -1), Fp2::Fp2(2013265920, 1), Fp2::Fp2(-2013265920 - 1, -2))
+        test_sub(Fp2::Fp2(-1, -1), Fp2::Fp2(0x78000000, 1), Fp2::Fp2(-0x78000000 - 1, -2))
     };
 
     let mul = || {
