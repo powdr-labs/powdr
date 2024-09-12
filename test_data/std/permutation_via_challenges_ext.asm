@@ -36,8 +36,8 @@ machine Main with degree: 8 {
     col witness stage(1) z1;
     col witness stage(1) z2;
     let z = Fp2::Fp2(z1, z2);
-    let is_first: col = std::well_known::is_first;
-    permutation(is_first, [z1, z2], alpha, beta, permutation_constraint);
+
+    permutation([z1, z2], alpha, beta, permutation_constraint);
 
     // TODO: Helper columns, because we can't access the previous row in hints
     col witness stage(1) z1_next;

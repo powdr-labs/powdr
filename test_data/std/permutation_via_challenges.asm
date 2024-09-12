@@ -29,7 +29,5 @@ machine Main with degree: 8 {
     // TODO: Functions currently cannot add witness columns at later stages,
     // so we have to manually create it here and pass it to permutation(). 
     col witness stage(1) z;
-    let is_first: col = std::well_known::is_first;
-    permutation(is_first, [z], alpha, beta, permutation_constraint);
-
+    permutation([z], alpha, beta, permutation_constraint);
 }
