@@ -352,30 +352,6 @@ where
                 },
                 SelectedExpressions::default(),
             ),
-            PilStatement::PlookupIdentity(source, key, haystack) => (
-                source,
-                IdentityKind::Plookup,
-                self.expression_processor(&Default::default())
-                    .process_selected_expressions(key),
-                self.expression_processor(&Default::default())
-                    .process_selected_expressions(haystack),
-            ),
-            PilStatement::PermutationIdentity(source, left, right) => (
-                source,
-                IdentityKind::Permutation,
-                self.expression_processor(&Default::default())
-                    .process_selected_expressions(left),
-                self.expression_processor(&Default::default())
-                    .process_selected_expressions(right),
-            ),
-            PilStatement::ConnectIdentity(source, left, right) => (
-                source,
-                IdentityKind::Connect,
-                self.expression_processor(&Default::default())
-                    .process_vec_into_selected_expression(left),
-                self.expression_processor(&Default::default())
-                    .process_vec_into_selected_expression(right),
-            ),
             // TODO at some point, these should all be caught by the type checker.
             _ => {
                 panic!("Only identities allowed at this point.")
