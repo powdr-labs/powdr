@@ -22,7 +22,7 @@ machine Arith with
     Byte2 byte2;
     
     // The operation ID will be bit-decomposed to yield selEq[], controlling which equations are activated.
-    let operation_id;
+    col witness operation_id;
 
     // Computes x1 * y1 + x2, where all inputs / outputs are 256-bit words (represented as 32-Bit limbs in little-endian order).
     // More precisely, affine_256(x1, y1, x2) = (y2, y3), where x1 * y1 + x2 = 2**256 * y2 + y3
@@ -50,16 +50,9 @@ machine Arith with
     let mul = |x, y| ff::mul(x, y, secp_modulus);
     let div = |x, y| ff::div(x, y, secp_modulus);
 
-    let x1: col[16];
-    let x2: col[16];
-    let x3: col[16];
-    let y1: col[16];
-    let y2: col[16];
-    let y3: col[16];
-    let s: col[16];
-    let q0: col[16];
-    let q1: col[16];
-    let q2: col[16];
+    pol commit x1[16], x2[16], x3[16];
+    pol commit y1[16], y2[16], y3[16];
+    pol commit s[16], q0[16], q1[16], q2[16];
 
     // Selects the ith limb of x (little endian)
     // Note that the most significant limb can be up to 32 bits; all others are 16 bits.
@@ -147,12 +140,12 @@ machine Arith with
 
     let combine: expr[] -> expr[] = |x| array::new(array::len(x) / 2, |i| x[2 * i + 1] * 2**16 + x[2 * i]);
     // Intermediate polynomials, arrays of 8 columns, 32 bit per column.
-    let x1c: col[8] = combine(x1);
-    let y1c: col[8] = combine(y1);
-    let x2c: col[8] = combine(x2);
-    let y2c: col[8] = combine(y2);
-    let x3c: col[8] = combine(x3);
-    let y3c: col[8] = combine(y3);
+    col x1c[8] = combine(x1);
+    col y1c[8] = combine(y1);
+    col x2c[8] = combine(x2);
+    col y2c[8] = combine(y2);
+    col x3c[8] = combine(x3);
+    col y3c[8] = combine(y3);
 
     let CLK32: col[32] = array::new(32, |i| |row| if row % 32 == i { 1 } else { 0 });
     let CLK32_31: expr = CLK32[31];
@@ -301,7 +294,7 @@ machine Arith with
     // Binary selectors for the equations that are activated. Determined from the operation ID via bit-decomposition.
     // Note that there are only 4 selectors because equation 4 is activated iff. equation 3 is activated, so we can
     // re-use the same selector.
-    let selEq: col[4];
+    pol commit selEq[4];
     // Note that this implies that the selEq[] columns are also constant within the block.
     fixed_inside_32_block(operation_id);
     array::map(selEq, |c| force_bool(c));
