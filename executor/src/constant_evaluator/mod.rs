@@ -16,9 +16,6 @@ use powdr_number::{BigInt, BigUint, DegreeType, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Definitions, SymbolLookup, Value};
 use rayon::prelude::{IntoParallelIterator, ParallelIterator};
 
-// TODO this is probabyl not the right place.
-mod compiler;
-
 mod data_structures;
 
 /// Generates the fixed column values for all fixed columns that are defined
@@ -30,16 +27,12 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, Variabl
     // TODO to do this properly, we should try to compile as much as possible
     // and only evaulato if it fails. Still, compilation should be done in one run.
 
-    let mut fixed_cols: HashMap<String, (PolyID, VariablySizedColumn<T>)> =
-        compiler::generate_fixed_cols(analyzed);
+    let mut fixed_cols = HashMap::new();
     for (poly, value) in analyzed.constant_polys_in_source_order() {
         if let Some(value) = value {
             // For arrays, generate values for each index,
             // for non-arrays, set index to None.
             for (index, (name, id)) in poly.array_elements().enumerate() {
-                if fixed_cols.contains_key(&name) {
-                    continue;
-                }
                 let index = poly.is_array().then_some(index as u64);
                 let range = poly.degree.unwrap();
                 let values = range

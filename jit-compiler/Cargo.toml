@@ -1,0 +1,20 @@
+[package]
+name = "powdr-jit-compiler"
+description = "powdr just-in-time compiler"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
+
+[dependencies]
+powdr-ast.workspace = true
+powdr-number.workspace = true
+powdr-parser.workspace = true
+
+libc = "0.2.0"
+mktemp = "0.5.0"
+itertools = "0.13"
+
+[lints.clippy]
+uninlined_format_args = "deny"
