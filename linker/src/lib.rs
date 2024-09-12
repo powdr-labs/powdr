@@ -7,9 +7,8 @@ use powdr_ast::{
     object::{Link, Location, PILGraph, TypeOrExpression},
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
-        build::{index_access, namespaced_reference},
-        ArrayLiteral, BinaryOperation, BinaryOperator, Expression, NamespaceDegree, PILFile,
-        PilStatement, TypedExpression,
+        build::{index_access, lookup, namespaced_reference, permutation, selected},
+        ArrayLiteral, Expression, NamespaceDegree, PILFile, PilStatement, TypedExpression,
     },
 };
 use powdr_parser_util::SourceRef;
@@ -163,23 +162,17 @@ fn process_link(link: Link) -> PilStatement {
     // the lhs is `instr_flag { operation_id, inputs, outputs }`
     let op_id = to.operation.id.iter().cloned().map(|n| n.into());
 
-    if link.is_permutation {
+    let expr = if link.is_permutation {
         // permutation lhs is `flag { operation_id, inputs, outputs }`
-        let lhs = Expression::BinaryOperation(
-            SourceRef::unknown(),
-            BinaryOperation {
-                left: Box::new(combine_flags(from.instr_flag, from.link_flag)),
-                op: BinaryOperator::Select,
-                right: Box::new(
-                    ArrayLiteral {
-                        items: op_id
-                            .chain(from.params.inputs)
-                            .chain(from.params.outputs)
-                            .collect(),
-                    }
-                    .into(),
-                ),
-            },
+        let lhs = selected(
+            combine_flags(from.instr_flag, from.link_flag),
+            ArrayLiteral {
+                items: op_id
+                    .chain(from.params.inputs)
+                    .chain(from.params.outputs)
+                    .collect(),
+            }
+            .into(),
         );
 
         // permutation rhs is `(latch * selector[idx]) { operation_id, inputs, outputs }`
@@ -195,59 +188,38 @@ fn process_link(link: Link) -> PilStatement {
             let call_selector_array = namespaced_reference(to_namespace.clone(), call_selectors);
             let call_selector =
                 index_access(call_selector_array, Some(to.selector_idx.unwrap().into()));
-            Box::new(latch * call_selector)
+            latch * call_selector
         } else {
-            Box::new(latch)
+            latch
         };
 
-        let rhs = Expression::BinaryOperation(
-            SourceRef::unknown(),
-            BinaryOperation {
-                left: rhs_selector,
-                op: BinaryOperator::Select,
-                right: Box::new(
-                    ArrayLiteral {
-                        items: op_id
-                            .chain(to.operation.params.inputs_and_outputs().map(|i| {
-                                index_access(
-                                    namespaced_reference(to_namespace.clone(), &i.name),
-                                    i.index.clone(),
-                                )
-                            }))
-                            .collect(),
-                    }
-                    .into(),
-                ),
-            },
+        let rhs = selected(
+            rhs_selector,
+            ArrayLiteral {
+                items: op_id
+                    .chain(to.operation.params.inputs_and_outputs().map(|i| {
+                        index_access(
+                            namespaced_reference(to_namespace.clone(), &i.name),
+                            i.index.clone(),
+                        )
+                    }))
+                    .collect(),
+            }
+            .into(),
         );
 
-        let permutation_expr = Expression::BinaryOperation(
-            SourceRef::unknown(),
-            BinaryOperation {
-                left: Box::new(lhs),
-                right: Box::new(rhs),
-                op: BinaryOperator::Is,
-            },
-        );
-
-        PilStatement::Expression(SourceRef::unknown(), permutation_expr)
+        permutation(lhs, rhs)
     } else {
         // plookup lhs is `flag $ [ operation_id, inputs, outputs ]`
-        let lhs = Expression::BinaryOperation(
-            SourceRef::unknown(),
-            BinaryOperation {
-                left: Box::new(combine_flags(from.instr_flag, from.link_flag)),
-                op: BinaryOperator::Select,
-                right: Box::new(
-                    ArrayLiteral {
-                        items: op_id
-                            .chain(from.params.inputs)
-                            .chain(from.params.outputs)
-                            .collect(),
-                    }
-                    .into(),
-                ),
-            },
+        let lhs = selected(
+            combine_flags(from.instr_flag, from.link_flag),
+            ArrayLiteral {
+                items: op_id
+                    .chain(from.params.inputs)
+                    .chain(from.params.outputs)
+                    .collect(),
+            }
+            .into(),
         );
 
         let to_namespace = to.machine.location.clone().to_string();
@@ -257,44 +229,28 @@ fn process_link(link: Link) -> PilStatement {
             .map(|oid| namespaced_reference(to_namespace.clone(), oid))
             .into_iter();
 
-        let latch = Box::new(namespaced_reference(
-            to_namespace.clone(),
-            to.machine.latch.unwrap(),
-        ));
+        let latch = namespaced_reference(to_namespace.clone(), to.machine.latch.unwrap());
 
         // plookup rhs is `latch $ [ operation_id, inputs, outputs ]`
-        let rhs = Expression::BinaryOperation(
-            SourceRef::unknown(),
-            BinaryOperation {
-                left: latch,
-                op: BinaryOperator::Select,
-                right: Box::new(
-                    ArrayLiteral {
-                        items: op_id
-                            .chain(to.operation.params.inputs_and_outputs().map(|i| {
-                                index_access(
-                                    namespaced_reference(to_namespace.clone(), &i.name),
-                                    i.index.clone(),
-                                )
-                            }))
-                            .collect(),
-                    }
-                    .into(),
-                ),
-            },
+        let rhs = selected(
+            latch,
+            ArrayLiteral {
+                items: op_id
+                    .chain(to.operation.params.inputs_and_outputs().map(|i| {
+                        index_access(
+                            namespaced_reference(to_namespace.clone(), &i.name),
+                            i.index.clone(),
+                        )
+                    }))
+                    .collect(),
+            }
+            .into(),
         );
 
-        let identity_expr = Expression::BinaryOperation(
-            SourceRef::unknown(),
-            BinaryOperation {
-                left: Box::new(lhs),
-                right: Box::new(rhs),
-                op: BinaryOperator::In,
-            },
-        );
+        lookup(lhs, rhs)
+    };
 
-        PilStatement::Expression(SourceRef::unknown(), identity_expr)
-    }
+    PilStatement::Expression(SourceRef::unknown(), expr)
 }
 
 #[cfg(test)]
