@@ -9,11 +9,11 @@ machine Arith with
 
     operation sub<1> z, x -> y;
 
-    let operation_id;
-    let latch: col = |i| 1;
-    let x;
-    let y;
-    let z;
+    col witness operation_id;
+    col fixed latch = [1]*;
+    col witness x;
+    col witness y;
+    col witness z;
     z = x + y;
 }
 

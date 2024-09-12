@@ -12,16 +12,16 @@ machine Mul with
 {
     operation mul<0> input -> z;
 
-    let FOUR_BIT: col = |i| { i & 0xf };
+    col fixed FOUR_BIT(i) { i & 0xf };
 
-    let operation_id: col = |i| 0;
-    let latch: col = |i| 1;
+    col fixed operation_id = [0]*;
+    col fixed latch = [1]*;
     let used = std::array::sum(sel);
     let input = x + 16 * y;
 
-    let x;
-    let y;
-    let z;
+    col witness x;
+    col witness y;
+    col witness z;
 
     // Make range constraints conditional on "used", just so
     // that witgen is forced to infer the range constraints
@@ -43,16 +43,16 @@ machine Main with
 
     link if latch ~> res = mul.mul(x);
 
-    let operation_id: col = |i| 0;
+    col fixed operation_id = [0]*;
     col fixed latch = [1, 0]*;
     // Just some numbers that can be decomposed into 2 4-bit chunks.
-    let x: col = |i| { i * 15 };
-    let res_lower;
-    let res_upper;
+    col fixed x(i) { i * 15 };
+    col witness res_lower;
+    col witness res_upper;
     let res = res_lower + 16 * res_upper;
 
     // Again, make range constraints conditional
-    let FOUR_BIT: col = |i| { i & 0xf };
+    col fixed FOUR_BIT(i) { i & 0xf };
     latch $ [ res_lower ] in [ FOUR_BIT ];
     latch $ [ res_upper ] in [ FOUR_BIT ];
 }

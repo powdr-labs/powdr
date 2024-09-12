@@ -3,9 +3,9 @@ machine Intermediate with
     operation_id: operation_id,
     degree: 8
 {
-	let latch: col = |i| 1;
-    let operation_id: col = |i| 0;
-	let x;
+	col fixed latch = [1]*;
+	col fixed operation_id = [0]*;
+	col witness x;
 	col intermediate = x;
 	col int2 = intermediate * x;
 	col int3 = int2 + intermediate;

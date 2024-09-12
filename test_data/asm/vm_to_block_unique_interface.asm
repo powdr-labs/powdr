@@ -7,11 +7,11 @@ machine Binary with
 
     operation or<1> x, y -> z;
 
-    let operation_id;
-    let latch: col = |i| 1;
-    let x;
-    let y;
-    let z;
+    col witness operation_id;
+    col fixed latch = [1]*;
+    col witness x;
+    col witness y;
+    col witness z;
     col fixed P_FUNCTION = [0, 0, 0, 0, 1, 1, 1, 1] + [1]*;
     col fixed P_X = [0, 0, 1, 1, 0, 0, 1, 1] + [1]*;
     col fixed P_Y = [0, 1, 0, 1, 0, 1, 0, 1] + [1]*;
@@ -28,11 +28,11 @@ machine Arith with
 
     operation sub<1> x, y -> z;
 
-    let operation_id;
-    let latch: col = |i| 1;
-    let x;
-    let y;
-    let z;
+    col witness operation_id;
+    col fixed latch = [1]*;
+    col witness x;
+    col witness y;
+    col witness z;
     z = (1 - operation_id) * (x + y) + operation_id * (x - y);
 }
 

@@ -18,17 +18,15 @@ machine MemoryProxy with
 {
     operation mstore<0> addr, step, value ->;
 
-    let operation_id;
-    let latch: col = |i| 1;
+    col witness operation_id;
+    col fixed latch = [1]*;
 
     Byte2 byte2;
     Memory mem(byte2);
 
-    let addr;
-    let step;
-    let value;
+    col witness addr, step, value;
     
-    let used;
+    col witness used;
     used = std::array::sum(sel);
     std::utils::force_bool(used);
 
@@ -41,7 +39,7 @@ machine Main with degree: N {
     reg Y[<=];
     reg Z[<=];
 
-    let STEP: col = |i| { i };
+    col fixed STEP(i) { i };
     MemoryProxy mem;
     instr mstore X, Y -> link ~> mem.mstore(X, STEP, Y);
 

@@ -168,6 +168,6 @@ machine KeccakF with
 { 
     let x;
     let y;
-    let STEP: col;
+    pol commit STEP;
     operation keccakf x, y, STEP ->;
 }

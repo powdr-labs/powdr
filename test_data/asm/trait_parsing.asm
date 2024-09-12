@@ -11,6 +11,6 @@ mod types {
 
 
 machine Empty with degree: 4 {
-    let w;
+    col witness w;
     w = w * w;
 }

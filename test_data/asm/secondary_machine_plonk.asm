@@ -63,9 +63,7 @@ machine Pythagoras with
     // Whether the current gate is addition
     col fixed ADD = [0, 0, 0, 1]*;
 
-    let a;
-    let b;
-    let c;
+    col witness a, b, c;
 
     // Implement addition and multiplication gate
     MUL * (a * b - c) = 0;

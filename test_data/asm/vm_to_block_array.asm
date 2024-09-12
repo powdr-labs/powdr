@@ -27,10 +27,10 @@ machine Arith with
     operation add<0> x[0], x[1] -> y;
     operation mul<1> x[0], x[1] -> y;
 
-    let latch: col = |i| 1;
-    let operation_id;
-    let x: col[2];
-    let y;
+    col fixed latch = [1]*;
+    col witness operation_id;
+    col witness x[2];
+    col witness y;
 
     y = operation_id * (x[0] * x[1]) + (1 - operation_id) * (x[0] + x[1]);
 }

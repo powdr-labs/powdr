@@ -11,9 +11,9 @@ machine Main with degree: 16 {
     col fixed RESET = [0, 0, 1]* + [1];
 
     // State is initialized with the input and incremented by 1 in each step
-    let add_two_state;
+    col witness add_two_state;
     // The input column needs to be constant for the entire block
-    let add_two_input;
+    col witness add_two_input;
 
     col fixed _first_step = [1] + [0]*;
     // Because constraints are not cyclic, we need to explicitly constrain the first state

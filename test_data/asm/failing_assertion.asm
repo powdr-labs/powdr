@@ -3,7 +3,7 @@ use std::check;
 machine Empty with degree: 4 {
     let line = |i| i - 7;
     let line_col: col = line;
-    let w;
+    col witness w;
     w = line_col;
 
 

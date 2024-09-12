@@ -14,7 +14,7 @@ let q: int -> int = |i| {
     }
 };
 machine Main with degree: 4 {
-    let w;
+    col witness w;
     let f: col = q;
     w = f;
 }

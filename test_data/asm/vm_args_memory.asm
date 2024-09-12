@@ -11,7 +11,7 @@ machine Main with degree: N {
     reg Y[<=];
     reg A;
 
-    let STEP: col = |i| { i };
+    col fixed STEP(i) { i };
     Byte2 byte2;
     Memory memory(byte2);
     WithArg sub(memory);
@@ -65,7 +65,7 @@ machine WithArg(mem: Memory) with degree: N {
     reg A;
     reg B;
 
-    let STEP: col = |i| { i };
+    col fixed STEP(i) { i };
 
     instr mload X, Y -> Z link ~> Z = mem.mload(X, Y);
     instr mstore X, Y, Z -> link ~> mem.mstore(X, Y, Z);

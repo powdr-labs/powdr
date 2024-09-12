@@ -23,12 +23,12 @@ machine AddVM with
 {
     operation add<0> x,y -> z;
 
-    let operation_id;
-    let latch: col = |i| 1;
+    col witness operation_id;
+    col fixed latch = [1]*;
 
-    let x;
-    let y;
-    let z;
+    col witness x;
+    col witness y;
+    col witness z;
 
     z = y + x;
 }
@@ -53,7 +53,7 @@ machine Main with degree: N {
     instr sub_from_add X, Y -> Z link => X = addvm.add(Y, Z);
     instr sub_from_add_into_A X, Y link => X = addvm.add(Y, A');
     instr add5 X -> Z link => Z = addvm.add(X, 5);
-    let NUM: col = |i| { 42 };
+    col fixed NUM(i) { 42 };
     instr add42 X -> Z link => Z = addvm.add(X, NUM);
     let arr = [1,2,3,4,5];
     instr add_arr_sum X -> Z link => Z = addvm.add(X, std::array::sum(arr));
