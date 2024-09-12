@@ -31,22 +31,6 @@ use powdr_number::FieldElement;
 
 type Witness<T> = Mutex<RefCell<Vec<(String, Vec<T>)>>>;
 
-pub(crate) struct PowdrCircuit<T: FieldElementMap>
-where
-    ProverData<T>: Send,
-    Commitment<T>: Send,
-{
-    /// The analyzed PIL
-    constraint_system: ConstraintSystem<T>,
-    // the values of the witness, in a refcell as it gets mutated as we go through stages
-    pub witness_so_far: Witness<T>,
-    /// The witgen callback
-    witgen_callback: Option<WitgenCallback<T>>,
-    /// The matrix of preprocessed values, used in debug mode to check the constraints before proving
-    #[cfg(debug_assertions)]
-    preprocessed: Option<RowMajorMatrix<Plonky3Field<T>>>,
-}
-
 /// A description of the constraint system.
 /// All of the data is derived from the analyzed PIL, but is materialized
 /// here for performance reasons.
@@ -54,9 +38,10 @@ struct ConstraintSystem<T> {
     // for each column, the stage (-1 for fixed) and index of this witness in this stage
     columns: HashMap<PolyID, (isize, usize)>,
     identities: Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>>,
-    publics: Vec<(String, usize, usize)>,
+    publics: Vec<(String, PolyID, usize)>,
     commitment_count: usize,
     constant_count: usize,
+    // for each stage, the number of witness columns
     stage_widths: Vec<usize>,
 }
 
@@ -122,64 +107,20 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
     }
 }
 
-impl<T: FieldElementMap> NextStageTraceCallback<T::Config> for PowdrCircuit<T>
+pub(crate) struct PowdrCircuit<T: FieldElementMap>
 where
     ProverData<T>: Send,
     Commitment<T>: Send,
 {
-    // this wraps the witgen callback to make it compatible with p3:
-    // - p3 passes its local challenge values and the stage id
-    // - it receives the trace for the next stage in the expected format, as well as the public values for this stage and the updated challenges for the previous stage
-    // - internally, the full witness is accumulated in [Self] as it's needed in order to call the witgen callback
-    fn compute_stage(
-        &self,
-        trace_stage: u32,
-        previous_stage_challenge_values: &[Plonky3Field<T>],
-    ) -> CallbackResult<Plonky3Field<T>> {
-        let witness = self.witness_so_far.lock().unwrap();
-        let mut witness = witness.borrow_mut();
-
-        let previous_stage_challenges: BTreeSet<Challenge> = self
-            .get_challenges()
-            .into_iter()
-            .filter(|c| c.stage == trace_stage - 1)
-            .collect();
-        assert_eq!(
-            previous_stage_challenges.len(),
-            previous_stage_challenge_values.len()
-        );
-        let challenge_map = previous_stage_challenges
-            .into_iter()
-            .zip(previous_stage_challenge_values)
-            .map(|(c, v)| (c.id, T::from_p3_field(*v)))
-            .collect();
-
-        let columns_before: BTreeSet<String> =
-            witness.iter().map(|(name, _)| name.clone()).collect();
-
-        // to call the witgen callback, we need to pass the witness for all stages so far
-        *witness = {
-            self.witgen_callback.as_ref().unwrap().next_stage_witness(
-                &witness,
-                challenge_map,
-                trace_stage as u8,
-            )
-        };
-
-        // generate the next trace in the format p3 expects
-        // TODO: since the current witgen callback returns the entire witness so far, we filter out the columns we already know about. Instead, return only the new witness in the witgen callback.
-        let trace = generate_matrix(
-            witness
-                .iter()
-                .filter(|(name, _)| !columns_before.contains(name))
-                .map(|(name, values)| (name, values.as_ref())),
-        );
-
-        // return the next trace
-        // later stage publics are not supported, so we return an empty vector. TODO: change this
-        // shared challenges are unsuportted so we return the local challenges. TODO: change this
-        CallbackResult::new(trace, vec![], previous_stage_challenge_values.to_vec())
-    }
+    /// The constraint system description
+    constraint_system: ConstraintSystem<T>,
+    // the values of the witness, in a [RefCell] as it gets mutated as we go through stages
+    witness_so_far: Witness<T>,
+    /// Callback to augment the witness in the later stages
+    witgen_callback: Option<WitgenCallback<T>>,
+    /// The matrix of preprocessed values, used in debug mode to check the constraints before proving
+    #[cfg(debug_assertions)]
+    preprocessed: Option<RowMajorMatrix<Plonky3Field<T>>>,
 }
 
 /// Convert a witness for a stage
@@ -223,13 +164,6 @@ where
         }
     }
 
-    pub(crate) fn with_witgen_callback(self, witgen_callback: WitgenCallback<T>) -> Self {
-        Self {
-            witgen_callback: Some(witgen_callback),
-            ..self
-        }
-    }
-
     /// Calculates public values from generated witness values.
     pub(crate) fn public_values_so_far(&self) -> Vec<Plonky3Field<T>> {
         let binding = &self.witness_so_far.lock().unwrap();
@@ -255,6 +189,13 @@ where
         assert!(self.witness_so_far.lock().unwrap().borrow().is_empty());
         Self {
             witness_so_far: RefCell::new(witness.to_vec()).into(),
+            ..self
+        }
+    }
+
+    pub(crate) fn with_witgen_callback(self, witgen_callback: WitgenCallback<T>) -> Self {
+        Self {
+            witgen_callback: Some(witgen_callback),
             ..self
         }
     }
@@ -420,6 +361,8 @@ where
             .collect();
         assert_eq!(self.constraint_system.publics.len(), pi.len());
 
+        let stage_0_local = stages[0].row_slice(0);
+
         // public constraints
         let public_vals_by_id = self
             .constraint_system
@@ -431,14 +374,14 @@ where
 
         // constrain public inputs using witness columns in stage 0
         let fixed_local = fixed.row_slice(0);
-
         let public_offset = self.constraint_system.constant_count;
-        let stage_0_local = stages[0].row_slice(0);
 
         self.constraint_system.publics.iter().enumerate().for_each(
-            |(index, (pub_id, col_id, _))| {
+            |(index, (pub_id, poly_id, _))| {
                 let selector = fixed_local[public_offset + index];
-                let witness_col = stage_0_local[*col_id];
+                let (stage, index) = self.constraint_system.columns[poly_id];
+                assert_eq!(stage, 0);
+                let witness_col = stage_0_local[index];
                 let public_value = public_vals_by_id[pub_id];
 
                 // constraining s(i) * (pub[i] - x(i)) = 0
@@ -471,5 +414,65 @@ where
                 IdentityKind::Connect => unimplemented!("Plonky3 does not support connections"),
             }
         }
+    }
+}
+
+impl<T: FieldElementMap> NextStageTraceCallback<T::Config> for PowdrCircuit<T>
+where
+    ProverData<T>: Send,
+    Commitment<T>: Send,
+{
+    // this wraps the witgen callback to make it compatible with p3:
+    // - p3 passes its local challenge values and the stage id
+    // - it receives the trace for the next stage in the expected format, as well as the public values for this stage and the updated challenges for the previous stage
+    // - internally, the full witness is accumulated in [Self] as it's needed in order to call the witgen callback
+    fn compute_stage(
+        &self,
+        trace_stage: u32,
+        previous_stage_challenge_values: &[Plonky3Field<T>],
+    ) -> CallbackResult<Plonky3Field<T>> {
+        let witness = self.witness_so_far.lock().unwrap();
+        let mut witness = witness.borrow_mut();
+
+        let previous_stage_challenges: BTreeSet<Challenge> = self
+            .get_challenges()
+            .into_iter()
+            .filter(|c| c.stage == trace_stage - 1)
+            .collect();
+        assert_eq!(
+            previous_stage_challenges.len(),
+            previous_stage_challenge_values.len()
+        );
+        let challenge_map = previous_stage_challenges
+            .into_iter()
+            .zip(previous_stage_challenge_values)
+            .map(|(c, v)| (c.id, T::from_p3_field(*v)))
+            .collect();
+
+        let columns_before: BTreeSet<String> =
+            witness.iter().map(|(name, _)| name.clone()).collect();
+
+        // to call the witgen callback, we need to pass the witness for all stages so far
+        *witness = {
+            self.witgen_callback.as_ref().unwrap().next_stage_witness(
+                &witness,
+                challenge_map,
+                trace_stage as u8,
+            )
+        };
+
+        // generate the next trace in the format p3 expects
+        // TODO: since the current witgen callback returns the entire witness so far, we filter out the columns we already know about. Instead, return only the new witness in the witgen callback.
+        let trace = generate_matrix(
+            witness
+                .iter()
+                .filter(|(name, _)| !columns_before.contains(name))
+                .map(|(name, values)| (name, values.as_ref())),
+        );
+
+        // return the next trace
+        // later stage publics are not supported, so we return an empty vector. TODO: change this
+        // shared challenges are unsuportted so we return the local challenges. TODO: change this
+        CallbackResult::new(trace, vec![], previous_stage_challenge_values.to_vec())
     }
 }

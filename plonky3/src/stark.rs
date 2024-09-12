@@ -91,8 +91,8 @@ where
         let fixed_with_public_selectors = self
             .fixed
             .iter()
-            .map(|(name, values)| (name, values.as_ref()))
-            .chain(publics.iter().map(|(name, values)| (name, values.as_ref())));
+            .chain(publics.iter())
+            .map(|(name, values)| (name, values.as_ref()));
 
         generate_matrix(fixed_with_public_selectors)
     }
@@ -169,6 +169,9 @@ where
         witness: &[(String, Vec<T>)],
         witgen_callback: WitgenCallback<T>,
     ) -> Result<Vec<u8>, String> {
+        let stage_0_trace =
+            generate_matrix(witness.iter().map(|(name, value)| (name, value.as_ref())));
+
         // TODO: avoid cloning here?
         let circuit = PowdrCircuit::new(&self.analyzed)
             .with_witgen_callback(witgen_callback)
@@ -178,16 +181,6 @@ where
         let circuit = circuit.with_preprocessed(self.get_preprocessed_matrix());
 
         let stage_0_publics = circuit.public_values_so_far();
-
-        let stage_0_trace = generate_matrix(
-            circuit
-                .witness_so_far
-                .lock()
-                .unwrap()
-                .borrow()
-                .iter()
-                .map(|(name, value)| (name, value.as_ref())),
-        );
 
         let config = T::get_config();
 
