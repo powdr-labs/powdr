@@ -46,7 +46,7 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
             rows,
             size: self.size,
             updates: Constraints::new(),
-            query_callback: Some(&mut *self.query_callback),
+            query_callback: &mut *self.query_callback,
         };
         let res = evaluator::evaluate(fun, &mut symbols)
             .and_then(|fun| evaluator::evaluate_function_call(fun, arguments, &mut symbols));
@@ -137,7 +137,7 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
             rows,
             size: self.size,
             updates: Constraints::new(),
-            query_callback: Some(&mut *self.query_callback),
+            query_callback: &mut *self.query_callback,
         };
         let fun = evaluator::evaluate(query, &mut symbols)?;
         let res =
@@ -151,7 +151,7 @@ struct Symbols<'a, 'b, 'c, T: FieldElement, QueryCallback: Send + Sync> {
     rows: &'b RowPair<'b, 'a, T>,
     size: DegreeType,
     updates: Constraints<&'a AlgebraicReference, T>,
-    query_callback: Option<&'c mut QueryCallback>,
+    query_callback: &'c mut QueryCallback,
 }
 
 impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>> SymbolLookup<'a, T>
@@ -287,8 +287,8 @@ impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>> Symbol
     }
 
     fn get_input(&mut self, index: usize) -> Result<Arc<Value<'a, T>>, EvalError> {
-        if let Some(v) = self.query_callback.as_mut().unwrap()(&format!("Input({index})"))
-            .map_err(EvalError::ProverError)?
+        if let Some(v) =
+            (self.query_callback)(&format!("Input({index})")).map_err(EvalError::ProverError)?
         {
             Ok(Value::FieldElement(v).into())
         } else {
@@ -301,9 +301,8 @@ impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>> Symbol
         channel: u32,
         index: usize,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        if let Some(v) =
-            self.query_callback.as_mut().unwrap()(&format!("DataIdentifier({channel}, {index})"))
-                .map_err(EvalError::ProverError)?
+        if let Some(v) = (self.query_callback)(&format!("DataIdentifier({channel}, {index})"))
+            .map_err(EvalError::ProverError)?
         {
             Ok(Value::FieldElement(v).into())
         } else {
@@ -312,7 +311,7 @@ impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>> Symbol
     }
 
     fn output_byte(&mut self, fd: u32, byte: u8) -> Result<(), EvalError> {
-        if (self.query_callback.as_mut().unwrap()(&format!("Output({fd}, {byte})"))
+        if ((self.query_callback)(&format!("Output({fd}, {byte})"))
             .map_err(EvalError::ProverError)?)
         .is_some()
         {
