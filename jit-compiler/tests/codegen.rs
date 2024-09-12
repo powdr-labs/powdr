@@ -29,10 +29,16 @@ fn simple_fun() {
 }
 
 #[test]
-fn constant() {
-    let result = compile("let c: int -> int = |i| i; let d = c(20);", &["c", "d"]);
+fn fun_calls() {
+    let result = compile(
+        "let c: int -> int = |i| i + 20; let d = |k| c(k * 20);",
+        &["c", "d"],
+    );
     assert_eq!(
         result,
-        "fn c(i: num_bigint::BigInt) -> num_bigint::BigInt { i }\n"
+        "fn c(i: num_bigint::BigInt) -> num_bigint::BigInt { ((i).clone() + (num_bigint::BigInt::from(20_u64)).clone()) }
+
+fn d(k: num_bigint::BigInt) -> num_bigint::BigInt { (c)(((k).clone() * (num_bigint::BigInt::from(20_u64)).clone()).clone()) }
+"
     );
 }

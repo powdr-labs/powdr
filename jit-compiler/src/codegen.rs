@@ -1,21 +1,8 @@
-use libc::{c_void, dlclose, dlopen, dlsym, RTLD_NOW};
-use std::{
-    collections::{HashMap, HashSet},
-    ffi::CString,
-    fs::{self, create_dir, File},
-    io::Write,
-    path,
-    process::Command,
-    sync::Arc,
-    time::Instant,
-};
+use std::collections::{HashMap, HashSet};
 
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{
-        Analyzed, Expression, FunctionValueDefinition, PolyID, PolynomialReference, PolynomialType,
-        Reference, SymbolKind,
-    },
+    analyzed::{Analyzed, Expression, FunctionValueDefinition, PolynomialReference, Reference},
     parsed::{
         display::{format_type_args, quote},
         types::{ArrayType, FunctionType, Type, TypeScheme},
@@ -23,7 +10,7 @@ use powdr_ast::{
         IndexAccess, LambdaExpression, Number, StatementInsideBlock, UnaryOperation,
     },
 };
-use powdr_number::{FieldElement, LargeInt};
+use powdr_number::FieldElement;
 
 pub struct Compiler<'a, T> {
     analyzed: &'a Analyzed<T>,
@@ -70,8 +57,9 @@ impl<'a, T: FieldElement> Compiler<'a, T> {
     pub fn compiled_symbols(self) -> String {
         self.symbols
             .into_iter()
+            .sorted()
             .map(|(_, code)| code)
-            .format("\n\n")
+            .format("\n")
             .to_string()
     }
 
@@ -148,13 +136,12 @@ impl<'a, T: FieldElement> Compiler<'a, T> {
             Expression::Reference(_, Reference::LocalVar(_id, name)) => name.clone(),
             Expression::Reference(_, Reference::Poly(PolynomialReference { name, type_args })) => {
                 self.request_symbol(name)?;
+                let ta = type_args.as_ref().unwrap();
                 format!(
                     "{}{}",
                     escape_symbol(name),
-                    // TODO do all type args work here?
-                    type_args
-                        .as_ref()
-                        .map(|ta| format!("::{}", format_type_args(&ta)))
+                    (!ta.is_empty())
+                        .then(|| format!("::{}", format_type_args(ta)))
                         .unwrap_or_default()
                 )
             }
@@ -164,14 +151,15 @@ impl<'a, T: FieldElement> Compiler<'a, T> {
                     value,
                     type_: Some(type_),
                 },
-            ) => match type_ {
-                // TODO value does not need to be u64
-                Type::Int => format!("num_bigint::BigInt::from({value}_u64)"),
-                Type::Fe => format!("FieldElement::from({value}_u64)"),
-                Type::Expr => format!("Expr::from({value}_u64)"),
-                Type::TypeVar(t) => format!("{t}::from({value}_u64)"),
-                _ => unreachable!(),
-            },
+            ) => {
+                let value = u64::try_from(value).unwrap_or_else(|_| unimplemented!());
+                match type_ {
+                    Type::Int => format!("num_bigint::BigInt::from({value}_u64)"),
+                    Type::Fe => format!("FieldElement::from({value}_u64)"),
+                    Type::Expr => format!("Expr::from({value}_u64)"),
+                    _ => unreachable!(),
+                }
+            }
             Expression::FunctionCall(
                 _,
                 FunctionCall {
@@ -214,12 +202,6 @@ impl<'a, T: FieldElement> Compiler<'a, T> {
                 )
             }
             Expression::LambdaExpression(_, LambdaExpression { params, body, .. }) => {
-                // let params = if *params == vec!["r".to_string()] {
-                //     // Hack because rust needs the type
-                //     vec!["r: Vec<num_bigint::BigInt>".to_string()]
-                // } else {
-                //     params.clone()
-                // };
                 format!(
                     "|{}| {{ {} }}",
                     params.iter().format(", "),
@@ -284,6 +266,7 @@ impl<'a, T: FieldElement> Compiler<'a, T> {
 }
 
 fn escape_symbol(s: &str) -> String {
+    // TODO better escaping
     s.replace('.', "_").replace("::", "_")
 }
 
