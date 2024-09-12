@@ -46,7 +46,7 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
             rows,
             size: self.size,
             updates: Constraints::new(),
-            query_callback: &mut *self.query_callback,
+            query_callback: self.query_callback,
         };
         let res = evaluator::evaluate(fun, &mut symbols)
             .and_then(|fun| evaluator::evaluate_function_call(fun, arguments, &mut symbols));
@@ -137,7 +137,7 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
             rows,
             size: self.size,
             updates: Constraints::new(),
-            query_callback: &mut *self.query_callback,
+            query_callback: self.query_callback,
         };
         let fun = evaluator::evaluate(query, &mut symbols)?;
         let res =
