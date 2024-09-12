@@ -69,7 +69,7 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     std::utils::force_bool(used);
 
     // Repeat the input state in the whole block
-    let input[STATE_SIZE];
+    let input: col[STATE_SIZE];
     array::map(input, |c| unchanged_until(c, LAST));
     array::zip(input, state, |i, s| CLK[0] * (i - s) = 0);
 
