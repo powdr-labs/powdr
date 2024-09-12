@@ -1,6 +1,6 @@
 use libc::{c_void, dlopen, dlsym, RTLD_NOW};
 use std::{
-    collections::{HashMap},
+    collections::HashMap,
     ffi::CString,
     fs::{self},
     path,
@@ -8,11 +8,7 @@ use std::{
 };
 
 use itertools::Itertools;
-use powdr_ast::{
-    analyzed::{
-        Analyzed,
-    },
-};
+use powdr_ast::analyzed::Analyzed;
 use powdr_number::FieldElement;
 
 use crate::codegen::{escape_symbol, CodeGenerator};
@@ -21,7 +17,7 @@ use crate::codegen::{escape_symbol, CodeGenerator};
 
 const PREAMBLE: &str = r#"
 #![allow(unused_parens)]
-type FieldElement = powdr_number::goldilocks::GoldilocksField;
+//type FieldElement = powdr_number::GoldilocksField;
 "#;
 
 // TODO this is the old impl of goldilocks
@@ -54,7 +50,7 @@ pub fn compile<T: FieldElement>(
             r#"
             #[no_mangle]
             pub extern fn extern_{name}(i: u64) -> u64 {{
-                {name}(powdr_number::BigInt::from(i)).into_bigint().0[0]
+                u64::try_from({name}(powdr_number::BigInt::from(i))).unwrap()
             }}
             "#
         ));
@@ -85,7 +81,7 @@ pub fn compile<T: FieldElement>(
     let lib_path = CString::new(
         dir.join("target")
             .join("release")
-            .join("libpowdr_constants.so")
+            .join("libpowdr_jit_compiled.so")
             .to_str()
             .unwrap(),
     )
@@ -97,15 +93,15 @@ pub fn compile<T: FieldElement>(
     }
     let mut result = HashMap::new();
     for sym in symbols {
-        let sym = format!("extern_{}", escape_symbol(sym));
-        let sym_cstr = CString::new(sym.clone()).unwrap();
+        let extern_sym = format!("extern_{}", escape_symbol(sym));
+        let sym_cstr = CString::new(extern_sym).unwrap();
         let fun_ptr = unsafe { dlsym(lib, sym_cstr.as_ptr()) };
         if fun_ptr.is_null() {
             return Err(format!("Failed to load symbol: {fun_ptr:?}"));
         }
         println!("Loaded symbol: {fun_ptr:?}");
         let fun = unsafe { std::mem::transmute::<*mut c_void, fn(u64) -> u64>(fun_ptr) };
-        result.insert(sym, fun);
+        result.insert(sym.to_string(), fun);
     }
     Ok(result)
 }
