@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use powdr_ast::parsed::display::format_type_scheme_around_name;
 use powdr_number::GoldilocksField;
 use powdr_parser::parse_type_scheme;
@@ -6,7 +7,18 @@ use powdr_pil_analyzer::analyze_string;
 use pretty_assertions::assert_eq;
 
 fn type_check(input: &str, expected: &[(&str, &str, &str)]) {
-    let analyzed = analyze_string::<GoldilocksField>(input);
+    let analyzed = analyze_string::<GoldilocksField>(input)
+        .map_err(|errors| {
+            errors
+                .into_iter()
+                .map(|e| {
+                    e.output_to_stderr();
+                    e.to_string()
+                })
+                .format("\n")
+        })
+        .expect("Failed to analyze test input.");
+
     for (name, bounds, ty) in expected {
         let type_scheme = analyzed.type_of_symbol(name);
         assert_eq!(
@@ -47,7 +59,7 @@ fn use_fun_in_expr_context() {
     let w;
     w = id;
 "#;
-    analyze_string::<GoldilocksField>(input);
+    type_check(input, &[]);
 }
 
 #[test]

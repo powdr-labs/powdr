@@ -24,6 +24,7 @@ use powdr_ast::analyzed::{
     StatementIdentifier, Symbol, SymbolKind, TypedExpression,
 };
 use powdr_parser::{parse, parse_module, parse_type};
+use powdr_parser_util::Error;
 
 use crate::traits_resolver::TraitsResolver;
 use crate::type_builtins::constr_function_statement_type;
@@ -33,16 +34,16 @@ use crate::{side_effect_checker, AnalysisDriver};
 use crate::statement_processor::{Counters, PILItem, StatementProcessor};
 use crate::{condenser, evaluator, expression_processor::ExpressionProcessor};
 
-pub fn analyze_file<T: FieldElement>(path: &Path) -> Analyzed<T> {
+pub fn analyze_file<T: FieldElement>(path: &Path) -> Result<Analyzed<T>, Vec<Error>> {
     let files = import_all_dependencies(path);
     analyze(files)
 }
 
-pub fn analyze_ast<T: FieldElement>(pil_file: PILFile) -> Analyzed<T> {
+pub fn analyze_ast<T: FieldElement>(pil_file: PILFile) -> Result<Analyzed<T>, Vec<Error>> {
     analyze(vec![pil_file])
 }
 
-pub fn analyze_string<T: FieldElement>(contents: &str) -> Analyzed<T> {
+pub fn analyze_string<T: FieldElement>(contents: &str) -> Result<Analyzed<T>, Vec<Error>> {
     let pil_file = powdr_parser::parse(Some("input"), contents).unwrap_or_else(|err| {
         eprintln!("Error parsing .pil file:");
         err.output_to_stderr();
@@ -51,11 +52,12 @@ pub fn analyze_string<T: FieldElement>(contents: &str) -> Analyzed<T> {
     analyze(vec![pil_file])
 }
 
-fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
+fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Result<Analyzed<T>, Vec<Error>> {
     let mut analyzer = PILAnalyzer::new();
-    analyzer.process(files);
-    analyzer.side_effect_check();
-    analyzer.type_check();
+    analyzer.process(files)?;
+    analyzer.side_effect_check()?;
+    analyzer.type_check()?;
+    // TODO should use Result here as well.
     let solved_impls = analyzer.resolve_trait_impls();
     analyzer.condense(solved_impls)
 }
@@ -131,7 +133,7 @@ impl PILAnalyzer {
         }
     }
 
-    pub fn process(&mut self, mut files: Vec<PILFile>) {
+    pub fn process(&mut self, mut files: Vec<PILFile>) -> Result<(), Vec<Error>> {
         for PILFile(file) in &files {
             self.current_namespace = Default::default();
             for statement in file {
@@ -155,6 +157,7 @@ impl PILAnalyzer {
                 self.handle_statement(statement);
             }
         }
+        Ok(())
     }
 
     /// Adds core types if they are not present in the input.
@@ -195,8 +198,9 @@ impl PILAnalyzer {
     }
 
     /// Check that query and constr functions are used in the correct contexts.
-    pub fn side_effect_check(&self) {
-        for (name, (symbol, value)) in &self.definitions {
+    pub fn side_effect_check(&self) -> Result<(), Vec<Error>> {
+        let mut errors = vec![];
+        for (symbol, value) in self.definitions.values() {
             let Some(value) = value else { continue };
             let context = match symbol.kind {
                 // Witness column value is query function
@@ -220,7 +224,7 @@ impl PILAnalyzer {
             value
                 .children()
                 .try_for_each(|e| side_effect_checker::check(&self.definitions, context, e))
-                .unwrap_or_else(|err| panic!("Error checking side-effects of {name}: {err}"));
+                .unwrap_or_else(|err| errors.push(err));
         }
 
         for v in self.implementations.values() {
@@ -230,12 +234,7 @@ impl PILAnalyzer {
                     .try_for_each(|e| {
                         side_effect_checker::check(&self.definitions, FunctionKind::Pure, e)
                     })
-                    .unwrap_or_else(|err| {
-                        panic!(
-                            "Error checking side-effects for implementation of {}: {err}",
-                            impl_.name
-                        )
-                    });
+                    .unwrap_or_else(|err| errors.push(err));
             }
         }
 
@@ -245,11 +244,17 @@ impl PILAnalyzer {
                 .try_for_each(|e| {
                     side_effect_checker::check(&self.definitions, FunctionKind::Constr, e)
                 })
-                .unwrap_or_else(|err| panic!("Error checking side-effects of identity {id}: {err}"))
+                .unwrap_or_else(|err| errors.push(err))
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
         }
     }
 
-    pub fn type_check(&mut self) {
+    pub fn type_check(&mut self) -> Result<(), Vec<Error>> {
         let query_type: Type = parse_type("int -> std::prelude::Query").unwrap().into();
         let mut expressions = vec![];
         // Collect all definitions and traits implementations with their types and expressions.
@@ -355,15 +360,7 @@ impl PILAnalyzer {
             }
         }
 
-        let inferred_types = infer_types(definitions, &mut expressions)
-            .map_err(|mut errors| {
-                eprintln!("\nError during type inference:");
-                for e in &errors {
-                    e.output_to_stderr();
-                }
-                errors.pop().unwrap()
-            })
-            .unwrap();
+        let inferred_types = infer_types(definitions, &mut expressions)?;
         // Store the inferred types.
         for (name, ty) in inferred_types {
             let Some(FunctionValueDefinition::Expression(TypedExpression {
@@ -375,6 +372,7 @@ impl PILAnalyzer {
             };
             *ts = Some(ty.into());
         }
+        Ok(())
     }
 
     /// Creates and returns a map for every referenced trait and every concrete type to the
@@ -428,15 +426,15 @@ impl PILAnalyzer {
     pub fn condense<T: FieldElement>(
         self,
         solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
-    ) -> Analyzed<T> {
-        condenser::condense(
+    ) -> Result<Analyzed<T>, Vec<Error>> {
+        Ok(condenser::condense(
             self.definitions,
             solved_impls,
             self.public_declarations,
             &self.identities,
             self.source_order,
             self.auto_added_symbols,
-        )
+        ))
     }
 
     /// A step to collect all defined names in the statement.
