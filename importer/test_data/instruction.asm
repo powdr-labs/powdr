@@ -3,8 +3,8 @@ let identity: expr -> expr = |expr| expr;
 machine Id {
     operation id<0> x, y;
 
-    let x;
-    let y;
+    col witness x;
+    col witness y;
     x = y;
 }
 

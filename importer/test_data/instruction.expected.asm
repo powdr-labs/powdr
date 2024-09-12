@@ -1,8 +1,8 @@
 let identity: expr -> expr = |expr| expr;
 machine Id {
     operation id<0> x, y;
-        let x;
-        let y;
+        pol commit x;
+        pol commit y;
         x = y;
 }
 machine Main {
