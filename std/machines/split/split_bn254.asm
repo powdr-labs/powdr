@@ -10,7 +10,7 @@ machine SplitBN254(byte_compare: ByteCompare) with
     operation split in_acc -> o1, o2, o3, o4, o5, o6, o7, o8;
 
     // Latch and operation ID
-    let RESET: col = |i| { if i % 32 == 31 { 1 } else { 0 } };
+    col fixed RESET(i) { if i % 32 == 31 { 1 } else { 0 } };
 
     // 1. Decompose the input into bytes
 
@@ -25,22 +25,14 @@ machine SplitBN254(byte_compare: ByteCompare) with
         std::prover::provide_value(bytes, i, select_byte(std::prover::eval(in_acc'), (i + 1) % 32));
     };
     // Puts the bytes together to form the input
-    let in_acc;
+    col witness in_acc;
     // Factors to multiply the bytes by
-    let FACTOR: col = |i| { 1 << (((i + 1) % 32) * 8) };
+    col fixed FACTOR(i) { 1 << (((i + 1) % 32) * 8) };
 
     in_acc' = (1 - RESET) * in_acc + bytes * FACTOR;
 
     // 2. Build the output, packing chunks of 4 bytes (i.e., 32 bit) into a field element
-    let o1;
-    let o2;
-    let o3;
-    let o4;
-    let o5;
-    let o6;
-    let o7;
-    let o8;
-    
+    col witness o1, o2, o3, o4, o5, o6, o7, o8;
     col fixed FACTOR_OUTPUT1 = [0x100, 0x10000, 0x1000000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1]*;
     col fixed FACTOR_OUTPUT2 = [0, 0, 0, 1, 0x100, 0x10000, 0x1000000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]*;
     col fixed FACTOR_OUTPUT3 = [0, 0, 0, 0, 0, 0, 0, 1, 0x100, 0x10000, 0x1000000, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]*;
@@ -78,14 +70,14 @@ machine SplitBN254(byte_compare: ByteCompare) with
     col fixed BYTES_MAX = [0x00, 0x00, 0xf0, 0x93, 0xf5, 0xe1, 0x43, 0x91, 0x70, 0xb9, 0x79, 0x48, 0xe8, 0x33, 0x28, 0x5d, 0x58, 0x81, 0x81, 0xb6, 0x45, 0x50, 0xb8, 0x29, 0xa0, 0x31, 0xe1, 0x72, 0x4e, 0x64, 0x30, 0x00]*;
 
     // Compare the current byte with the corresponding byte of the maximum value.
-    let lt;
-    let gt;
+    col witness lt;
+    col witness gt;
     link => (lt, gt) = byte_compare.run(bytes, BYTES_MAX);
 
     // Compute whether the current or any previous byte has been less than
     // the corresponding byte of the maximum value.
     // This moves *backward* from the second to last row.
-    let was_lt;
+    col witness was_lt;
     was_lt = RESET' * lt + (1 - RESET') * (was_lt' + lt - was_lt' * lt);
 
     // If any byte is larger, but no previous byte was smaller, the byte

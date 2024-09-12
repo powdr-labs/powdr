@@ -14,11 +14,11 @@ machine ByteCompare with
     let b: int -> int = inputs[1];
     let P_A: col = a;
     let P_B: col = b;
-    let P_LT: col = |i| { if a(i) < b(i) { 1 } else { 0 } };
-    let P_GT: col = |i| { if a(i) > b(i) { 1 } else { 0 } };
+    col fixed P_LT(i) { if a(i) < b(i) { 1 } else { 0 } };
+    col fixed P_GT(i) { if a(i) > b(i) { 1 } else { 0 } };
 
     operation run<0> P_A, P_B -> P_LT, P_GT;
 
-    let latch: col = |i| 1;
-    let operation_id: col = |i| 0;
+    col fixed latch = [1]*;
+    col fixed operation_id = [0]*;
 }
