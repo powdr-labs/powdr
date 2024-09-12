@@ -7,6 +7,6 @@ machine KeccakF(mem: Memory) with
 { 
     let x;
     let y;
-    pol commit STEP;
+    let STEP: col;
     operation keccakf x, y, STEP ->;
 }

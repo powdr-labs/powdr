@@ -145,11 +145,11 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     let C = [C_0, C_1, C_2, C_3, C_4, C_5, C_6, C_7, C_8, C_9, C_10, C_11];
 
     // State of the Poseidon permutation (8 rate elements and 4 capacity elements)
-    pol commit state[STATE_SIZE];
+    let state: col[STATE_SIZE];
 
     // The first OUTPUT_SIZE elements of the *final* state
     // (constrained to be constant within the block and equal to parts of the state in the last row)
-    pol commit output[OUTPUT_SIZE];
+    let output: col[OUTPUT_SIZE];
 
     // Add round constants
     // TODO should these be intermediate?

@@ -50,9 +50,16 @@ machine Arith with
     let mul = |x, y| ff::mul(x, y, secp_modulus);
     let div = |x, y| ff::div(x, y, secp_modulus);
 
-    pol commit x1[16], x2[16], x3[16];
-    pol commit y1[16], y2[16], y3[16];
-    pol commit s[16], q0[16], q1[16], q2[16];
+    let x1: col[16];
+    let x2: col[16];
+    let x3: col[16];
+    let y1: col[16];
+    let y2: col[16];
+    let y3: col[16];
+    let s: col[16];
+    let q0: col[16];
+    let q1: col[16];
+    let q2: col[16];
 
     // Selects the ith limb of x (little endian)
     // Note that the most significant limb can be up to 32 bits; all others are 16 bits.
@@ -294,7 +301,7 @@ machine Arith with
     // Binary selectors for the equations that are activated. Determined from the operation ID via bit-decomposition.
     // Note that there are only 4 selectors because equation 4 is activated iff. equation 3 is activated, so we can
     // re-use the same selector.
-    pol commit selEq[4];
+    let selEq: col[4];
     // Note that this implies that the selEq[] columns are also constant within the block.
     fixed_inside_32_block(operation_id);
     array::map(selEq, |c| force_bool(c));
