@@ -191,9 +191,9 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
 
 #[cfg(test)]
 mod test {
+    use itertools::Itertools;
     use powdr_ast::analyzed::Analyzed;
     use powdr_number::GoldilocksField;
-    use powdr_pil_analyzer::analyze_string;
     use pretty_assertions::assert_eq;
     use test_log::test;
 
@@ -211,6 +211,22 @@ mod test {
             .into_iter()
             .map(|(name, values)| (name, values.clone()))
             .collect()
+    }
+
+    fn analyze_string<T: powdr_number::FieldElement>(src: &str) -> Analyzed<T> {
+        powdr_pil_analyzer::analyze_string::<T>(src)
+            .map_err(|errors| {
+                eprintln!("Error analyzing test input:");
+                errors
+                    .into_iter()
+                    .map(|e| {
+                        e.output_to_stderr();
+                        e.to_string()
+                    })
+                    .format("\n")
+                    .to_string()
+            })
+            .unwrap()
     }
 
     #[test]
@@ -526,7 +542,7 @@ mod test {
             let w;
             let x: col = |i| w(i) + 1;
         "#;
-        let analyzed = analyze_string::<GoldilocksField>(src);
+        let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 10);
         generate(&analyzed);
     }
@@ -539,7 +555,7 @@ mod test {
             namespace F(N);
             let x = |i| w(i) + 1;
         "#;
-        let analyzed = analyze_string::<GoldilocksField>(src);
+        let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 10);
         generate(&analyzed);
     }
@@ -553,7 +569,7 @@ mod test {
             let x: col = |i| y(i) + 1;
             col fixed y = [1, 2, 3]*;
         "#;
-        let analyzed = analyze_string::<GoldilocksField>(src);
+        let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 10);
         generate(&analyzed);
     }
@@ -568,7 +584,7 @@ mod test {
             let X: col = x;
             let Y: col = y;
         "#;
-        let analyzed = analyze_string::<GoldilocksField>(src);
+        let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 4);
         let constants = generate(&analyzed);
         assert_eq!(
@@ -591,7 +607,7 @@ mod test {
             namespace F(N);
             let x: col = |i| (1 << (2000 + i)) >> 2000;
         "#;
-        let analyzed = analyze_string::<GoldilocksField>(src);
+        let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 4);
         let constants = generate(&analyzed);
         assert_eq!(
@@ -611,7 +627,7 @@ mod test {
             let x_arr = [ 3 % 4, (-3) % 4, 3 % (-4), (-3) % (-4)];
             let x: col = |i| 100 + x_arr[i];
         "#;
-        let analyzed = analyze_string::<GoldilocksField>(src);
+        let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 4);
         let constants = generate(&analyzed);
         // Semantics of p % q involving negative numbers:
@@ -631,7 +647,7 @@ mod test {
             namespace std::convert(4);
                 let fe = || fe();
         "#;
-        let analyzed = analyze_string::<GoldilocksField>(src);
+        let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 4);
         let constants = generate(&analyzed);
         assert_eq!(
@@ -655,7 +671,7 @@ mod test {
                 let<T: FromLiteral> seven: T = 7;
                 let a: col = |i| std::convert::fe(i + seven) + seven;
         "#;
-        let analyzed = analyze_string::<GoldilocksField>(src);
+        let analyzed = analyze_string(src);
         assert_eq!(analyzed.degree(), 4);
         let constants = generate(&analyzed);
         assert_eq!(
@@ -675,7 +691,7 @@ mod test {
                 i
             };
         "#;
-        let analyzed = analyze_string::<GoldilocksField>(input);
+        let analyzed = analyze_string(input);
         assert_eq!(analyzed.degree(), 4);
         let constants = generate(&analyzed);
         assert_eq!(
