@@ -13,9 +13,7 @@ use std::{
 };
 
 use crate::params::{Commitment, FieldElementMap, Plonky3Field, ProverData};
-use p3_air::{
-    Air, AirBuilder, AirBuilderWithPublicValues, BaseAir, MultistageAirBuilder, PairBuilder,
-};
+use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir, PairBuilder};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression,
@@ -23,7 +21,7 @@ use powdr_ast::analyzed::{
     PolyID, PolynomialType, SelectedExpressions, SymbolKind,
 };
 
-use p3_uni_stark::{CallbackResult, NextStageTraceCallback};
+use p3_uni_stark::{CallbackResult, MultiStageAir, MultistageAirBuilder, NextStageTraceCallback};
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 
 use powdr_executor::witgen::WitgenCallback;
@@ -223,9 +221,7 @@ where
     }
 
     /// Conversion to plonky3 expression
-    fn to_plonky3_expr<
-        AB: AirBuilder<F = Plonky3Field<T>> + AirBuilderWithPublicValues + MultistageAirBuilder,
-    >(
+    fn to_plonky3_expr<AB: AirBuilder<F = Plonky3Field<T>> + MultistageAirBuilder>(
         &self,
         e: &AlgebraicExpression<T>,
         stages: &[AB::M],
@@ -303,10 +299,6 @@ where
         self.constraint_system.constant_count + self.constraint_system.publics.len()
     }
 
-    fn stage_count(&self) -> usize {
-        self.constraint_system.stage_widths.len()
-    }
-
     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<Plonky3Field<T>>> {
         #[cfg(debug_assertions)]
         {
@@ -314,17 +306,6 @@ where
         }
         #[cfg(not(debug_assertions))]
         unimplemented!()
-    }
-
-    fn multi_stage_width(&self, stage: u32) -> usize {
-        self.constraint_system.stage_widths[stage as usize]
-    }
-
-    fn challenge_count(&self, stage: u32) -> usize {
-        self.get_challenges()
-            .iter()
-            .filter(|c| c.stage == stage)
-            .count()
     }
 }
 
@@ -337,7 +318,7 @@ where
     Commitment<T>: Send,
 {
     fn eval(&self, builder: &mut AB) {
-        let stage_count = self.stage_count();
+        let stage_count = <Self as MultiStageAir<AB>>::stage_count(self);
         let stages: Vec<AB::M> = (0..stage_count).map(|i| builder.multi_stage(i)).collect();
         let fixed = builder.preprocessed();
         let pi = builder.public_values();
@@ -414,6 +395,30 @@ where
                 IdentityKind::Connect => unimplemented!("Plonky3 does not support connections"),
             }
         }
+    }
+}
+
+impl<
+        T: FieldElementMap,
+        AB: AirBuilderWithPublicValues<F = Plonky3Field<T>> + PairBuilder + MultistageAirBuilder,
+    > MultiStageAir<AB> for PowdrCircuit<T>
+where
+    ProverData<T>: Send,
+    Commitment<T>: Send,
+{
+    fn stage_count(&self) -> usize {
+        self.constraint_system.stage_widths.len()
+    }
+
+    fn multi_stage_width(&self, stage: u32) -> usize {
+        self.constraint_system.stage_widths[stage as usize]
+    }
+
+    fn challenge_count(&self, stage: u32) -> usize {
+        self.get_challenges()
+            .iter()
+            .filter(|c| c.stage == stage)
+            .count()
     }
 }
 
