@@ -704,7 +704,7 @@ fn trait_user_defined_enum_wrong_type() {
     }
 
     let n: int = 7;
-    let r1 = Convert::convert(n);
+    let r1: int = Convert::convert(n);
     ";
     type_check(input, &[]);
 }

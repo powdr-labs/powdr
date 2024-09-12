@@ -114,5 +114,37 @@ fn evaluator_benchmark(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches_pil, evaluator_benchmark);
+fn jit_benchmark(c: &mut Criterion) {
+    let mut group = c.benchmark_group("jit-benchmark");
+
+    let sqrt_analyzed: Analyzed<GoldilocksField> = {
+        let code = "
+            let sqrt: int -> int = |x| sqrt_rec(x, x);
+            let sqrt_rec: int, int -> int = |y, x|
+                if y * y <= x && (y + 1) * (y + 1) > x {
+                    y
+                } else {
+                    sqrt_rec((y + x / y) / 2, x)
+                };
+        "
+        .to_string();
+        let mut pipeline = Pipeline::default().from_asm_string(code, None);
+        pipeline.compute_analyzed_pil().unwrap().clone()
+    };
+
+    let sqrt_fun = powdr_jit_compiler::compile(&sqrt_analyzed, &["sqrt"]).unwrap()["sqrt"];
+
+    for x in [879882356, 1882356, 1187956, 56] {
+        group.bench_with_input(format!("sqrt_{x}"), &x, |b, &x| {
+            b.iter(|| {
+                let y = (x as u64) * 112655675;
+                sqrt_fun(y);
+            });
+        });
+    }
+
+    group.finish();
+}
+
+criterion_group!(benches_pil, evaluator_benchmark, jit_benchmark);
 criterion_main!(benches_pil);
