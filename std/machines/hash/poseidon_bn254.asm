@@ -16,7 +16,7 @@ machine PoseidonBN254 with
     // hash functions.
     operation poseidon_permutation<0> state[0], state[1], state[2] -> output[0];
 
-    let operation_id;
+    col witness operation_id;
 
     // Using parameters from https://eprint.iacr.org/2019/458.pdf
     // See https://extgit.iaik.tugraz.at/krypto/hadeshash/-/blob/master/code/poseidonperm_x5_254_3.sage
@@ -53,11 +53,11 @@ machine PoseidonBN254 with
     let C = [C_0, C_1, C_2];
 
     // State of the Poseidon permutation (2 rate elements and 1 capacity element)
-    let state: col[STATE_SIZE];
+    pol commit state[STATE_SIZE];
 
     // The first OUTPUT_SIZE elements of the *final* state
     // (constrained to be constant within the block and equal to parts of the state in the last row)
-    let output: col[OUTPUT_SIZE];
+    pol commit output[OUTPUT_SIZE];
 
     // Add round constants
     let a = array::zip(state, C, |state, C| state + C);
