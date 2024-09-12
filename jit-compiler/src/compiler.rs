@@ -7,7 +7,6 @@ use std::{
     process::Command,
 };
 
-use itertools::Itertools;
 use powdr_ast::analyzed::Analyzed;
 use powdr_number::FieldElement;
 
