@@ -272,7 +272,7 @@ fn build_machine_pil<F: FieldElement>(
     };
     let pil_string = add_dummy_witness_column(&pil.to_string());
     let parsed_string = powdr_parser::parse(None, &pil_string).unwrap();
-    powdr_pil_analyzer::analyze_ast(parsed_string)
+    powdr_pil_analyzer::analyze_ast(parsed_string).unwrap()
 }
 
 /// Insert a dummy witness column and identity into the PIL string, just after the namespace.

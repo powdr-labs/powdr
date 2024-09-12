@@ -9,7 +9,7 @@ use test_log::test;
 use pretty_assertions::assert_eq;
 
 fn parse_and_evaluate_symbol(input: &str, symbol: &str) -> String {
-    let analyzed = analyze_string::<GoldilocksField>(input);
+    let analyzed = analyze_string::<GoldilocksField>(input).unwrap();
     let Some(FunctionValueDefinition::Expression(TypedExpression {
         e: symbol,
         type_scheme: _,
@@ -29,7 +29,7 @@ fn parse_and_evaluate_symbol(input: &str, symbol: &str) -> String {
 }
 
 pub fn evaluate_function<T: FieldElement>(input: &str, function: &str) -> T {
-    let analyzed = analyze_string::<GoldilocksField>(input);
+    let analyzed = analyze_string::<GoldilocksField>(input).unwrap();
     let mut symbols = evaluator::Definitions {
         definitions: &analyzed.definitions,
         solved_impls: &analyzed.solved_impls,

@@ -341,6 +341,12 @@ fn fp2() {
     evaluate_function(&analyzed, "std::math::fp2::test::sub", vec![]);
     evaluate_function(&analyzed, "std::math::fp2::test::mul", vec![]);
     evaluate_function(&analyzed, "std::math::fp2::test::inverse", vec![]);
+
+    let analyzed = std_analyzed::<BabyBearField>();
+    evaluate_function(&analyzed, "std::math::fp2::test::add", vec![]);
+    evaluate_function(&analyzed, "std::math::fp2::test::sub", vec![]);
+    evaluate_function(&analyzed, "std::math::fp2::test::mul", vec![]);
+    evaluate_function(&analyzed, "std::math::fp2::test::inverse", vec![]);
 }
 
 #[test]

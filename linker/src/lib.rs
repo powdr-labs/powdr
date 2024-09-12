@@ -7,9 +7,8 @@ use powdr_ast::{
     object::{Link, Location, PILGraph, TypeOrExpression},
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
-        build::{index_access, namespaced_reference},
-        ArrayLiteral, Expression, NamespaceDegree, PILFile, PilStatement, SelectedExpressions,
-        TypedExpression,
+        build::{index_access, lookup, namespaced_reference, permutation, selected},
+        ArrayLiteral, Expression, NamespaceDegree, PILFile, PilStatement, TypedExpression,
     },
 };
 use powdr_parser_util::SourceRef;
@@ -163,20 +162,18 @@ fn process_link(link: Link) -> PilStatement {
     // the lhs is `instr_flag { operation_id, inputs, outputs }`
     let op_id = to.operation.id.iter().cloned().map(|n| n.into());
 
-    if link.is_permutation {
+    let expr = if link.is_permutation {
         // permutation lhs is `flag { operation_id, inputs, outputs }`
-        let lhs = SelectedExpressions {
-            selector: Some(combine_flags(from.instr_flag, from.link_flag)),
-            expressions: Box::new(
-                ArrayLiteral {
-                    items: op_id
-                        .chain(from.params.inputs)
-                        .chain(from.params.outputs)
-                        .collect(),
-                }
-                .into(),
-            ),
-        };
+        let lhs = selected(
+            combine_flags(from.instr_flag, from.link_flag),
+            ArrayLiteral {
+                items: op_id
+                    .chain(from.params.inputs)
+                    .chain(from.params.outputs)
+                    .collect(),
+            }
+            .into(),
+        );
 
         // permutation rhs is `(latch * selector[idx]) { operation_id, inputs, outputs }`
         let to_namespace = to.machine.location.clone().to_string();
@@ -191,43 +188,39 @@ fn process_link(link: Link) -> PilStatement {
             let call_selector_array = namespaced_reference(to_namespace.clone(), call_selectors);
             let call_selector =
                 index_access(call_selector_array, Some(to.selector_idx.unwrap().into()));
-            Some(latch * call_selector)
+            latch * call_selector
         } else {
-            Some(latch)
+            latch
         };
 
-        let rhs = SelectedExpressions {
-            selector: rhs_selector,
-            expressions: Box::new(
-                ArrayLiteral {
-                    items: op_id
-                        .chain(to.operation.params.inputs_and_outputs().map(|i| {
-                            index_access(
-                                namespaced_reference(to_namespace.clone(), &i.name),
-                                i.index.clone(),
-                            )
-                        }))
-                        .collect(),
-                }
-                .into(),
-            ),
-        };
+        let rhs = selected(
+            rhs_selector,
+            ArrayLiteral {
+                items: op_id
+                    .chain(to.operation.params.inputs_and_outputs().map(|i| {
+                        index_access(
+                            namespaced_reference(to_namespace.clone(), &i.name),
+                            i.index.clone(),
+                        )
+                    }))
+                    .collect(),
+            }
+            .into(),
+        );
 
-        PilStatement::PermutationIdentity(SourceRef::unknown(), lhs, rhs)
+        permutation(lhs, rhs)
     } else {
         // plookup lhs is `flag $ [ operation_id, inputs, outputs ]`
-        let lhs = SelectedExpressions {
-            selector: Some(combine_flags(from.instr_flag, from.link_flag)),
-            expressions: Box::new(
-                ArrayLiteral {
-                    items: op_id
-                        .chain(from.params.inputs)
-                        .chain(from.params.outputs)
-                        .collect(),
-                }
-                .into(),
-            ),
-        };
+        let lhs = selected(
+            combine_flags(from.instr_flag, from.link_flag),
+            ArrayLiteral {
+                items: op_id
+                    .chain(from.params.inputs)
+                    .chain(from.params.outputs)
+                    .collect(),
+            }
+            .into(),
+        );
 
         let to_namespace = to.machine.location.clone().to_string();
         let op_id = to
@@ -236,30 +229,28 @@ fn process_link(link: Link) -> PilStatement {
             .map(|oid| namespaced_reference(to_namespace.clone(), oid))
             .into_iter();
 
-        // plookup rhs is `latch $ [ operation_id, inputs, outputs ]`
-        let latch = Some(namespaced_reference(
-            to_namespace.clone(),
-            to.machine.latch.unwrap(),
-        ));
+        let latch = namespaced_reference(to_namespace.clone(), to.machine.latch.unwrap());
 
-        let rhs = SelectedExpressions {
-            selector: latch,
-            expressions: Box::new(
-                ArrayLiteral {
-                    items: op_id
-                        .chain(to.operation.params.inputs_and_outputs().map(|i| {
-                            index_access(
-                                namespaced_reference(to_namespace.clone(), &i.name),
-                                i.index.clone(),
-                            )
-                        }))
-                        .collect(),
-                }
-                .into(),
-            ),
-        };
-        PilStatement::PlookupIdentity(SourceRef::unknown(), lhs, rhs)
-    }
+        // plookup rhs is `latch $ [ operation_id, inputs, outputs ]`
+        let rhs = selected(
+            latch,
+            ArrayLiteral {
+                items: op_id
+                    .chain(to.operation.params.inputs_and_outputs().map(|i| {
+                        index_access(
+                            namespaced_reference(to_namespace.clone(), &i.name),
+                            i.index.clone(),
+                        )
+                    }))
+                    .collect(),
+            }
+            .into(),
+        );
+
+        lookup(lhs, rhs)
+    };
+
+    PilStatement::Expression(SourceRef::unknown(), expr)
 }
 
 #[cfg(test)]
