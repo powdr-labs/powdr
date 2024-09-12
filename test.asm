@@ -56,7 +56,7 @@ ByteShift byte_shift;
         link => bit2.check(tmp4_l)
         link => bit6.check(X_b1)
     {
-        tmp2_l = wrap_bit * 2**16 + X_b2 * 0x100 + X_b1 * 4 + tmp4_l
+        tmp2_l = X_b2 * 0x100 + X_b1 * 4 + tmp4_l
     }
 
     // Stores val(W) at address (V = val(X) - val(Y) + Z) % 2**32.
@@ -220,7 +220,7 @@ std::machines::memory_bb::Memory regs(byte2);
         link ~> (tmp3_l, tmp3_h, tmp2_l, tmp2_h) = arith_bb_mul.mul(tmp1_l, tmp1_h, ZL, ZH)
         // we ignore tmp3 because that's the high 32 bits of the 64 bits multiplication result
         link ~> (tmp4_h, tmp4_l) = arith_bb.add(tmp2_h, tmp2_l, WH, WL)
-        link ~> regs.mstore(YL, STEP + 1, tmp3_h, tmp3_l);
+        link ~> regs.mstore(YL, STEP + 1, tmp4_h, tmp4_l);
 
     // ================= wrapping instructions =================
 
@@ -231,7 +231,7 @@ std::machines::memory_bb::Memory regs(byte2);
         link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
         link ~> (tmp3_h, tmp3_l) = arith_bb.add(tmp2_h, tmp2_l, ZH, ZL)
         link ~> (tmp4_h, tmp4_l) = arith_bb.add(tmp1_h, tmp1_l, tmp3_h, tmp3_l)
-        link ~> regs.mstore(WL, STEP + 2, tmp3_h, tmp3_l)
+        link ~> regs.mstore(WL, STEP + 2, tmp4_h, tmp4_l)
     {
         // TODO is this correct?
         //tmp1_col + tmp2_col + Z = tmp3_col + wrap_bit * 2**32,
@@ -414,7 +414,7 @@ std::machines::memory_bb::Memory regs(byte2);
         link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
   {
     tmp1_h = YH,
-    tmp2_l = YL
+    tmp1_l = YL
   }
 
 let initial_memory: (fe, fe)[] = [

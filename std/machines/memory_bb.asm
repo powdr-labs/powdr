@@ -26,7 +26,6 @@ machine Memory(byte2: Byte2) with
     col witness m_change;
     col witness m_value1, m_value2;
 
-    link => byte2.check(m_addr);
     link => byte2.check(m_value1);
     link => byte2.check(m_value2);
 

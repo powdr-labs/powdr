@@ -7,7 +7,7 @@ use std::machines::range::Byte2;
     call_selectors: sel,
 {
     operation add<0> A_h, A_l, B_h, B_l -> C_h, C_l;
-    operation sub<1> A_h, A_l, C_h, C_l -> B_h, B_l;
+    operation sub<1> C_h, C_l, B_h, B_l -> A_h, A_l;
 
     col witness operation_id;
 
