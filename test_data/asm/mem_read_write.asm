@@ -35,7 +35,7 @@ machine MemReadWrite with degree: 256 {
     let POSITIVE: col = |i| { i + 1 };
     col fixed FIRST = [1] + [0]*;
     col fixed LAST  = [0]* + [1];
-    let STEP: col |i| { i };
+    let STEP: col = |i| { i };
 
     m_change * (1 - m_change) = 0;
 

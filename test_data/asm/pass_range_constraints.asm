@@ -52,7 +52,7 @@ machine Main with
     let res = res_lower + 16 * res_upper;
 
     // Again, make range constraints conditional
-    let FOUR_BIT: col |i| { i & 0xf };
+    let FOUR_BIT: col = |i| { i & 0xf };
     latch $ [ res_lower ] in [ FOUR_BIT ];
     latch $ [ res_upper ] in [ FOUR_BIT ];
 }

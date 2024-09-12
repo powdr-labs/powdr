@@ -54,7 +54,7 @@ machine Binary16(byte_binary: ByteBinary) with
 
     let operation_id;
 
-    let latch: col |i| { 1 };
+    let latch: col = |i| { 1 };
 
     let I1: inter = A1 + 256 * A2;
     let I2: inter = A3 + 256 * A4;
