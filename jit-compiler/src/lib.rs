@@ -1,2 +1,3 @@
-mod compiler;
-mod loader;
+pub mod codegen;
+pub mod compiler;
+pub mod loader;

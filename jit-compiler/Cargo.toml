@@ -16,5 +16,10 @@ libc = "0.2.0"
 mktemp = "0.5.0"
 itertools = "0.13"
 
+[dev-dependencies]
+powdr-pil-analyzer.workspace = true
+pretty_assertions = "1.4.0"
+
+
 [lints.clippy]
 uninlined_format_args = "deny"
