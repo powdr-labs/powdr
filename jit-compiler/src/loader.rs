@@ -101,7 +101,7 @@
 //             }
 //             println!("Loaded symbol: {:?}", sym);
 //             let fun = std::mem::transmute::<*mut c_void, fn(u64) -> u64>(sym);
-//             let degrees = if let Some(degree) = poly.degree {
+//             let degrees = if let Some(degree) = poly.degraee {
 //                 vec![degree]
 //             } else {
 //                 (MIN_DEGREE_LOG..=MAX_DEGREE_LOG)

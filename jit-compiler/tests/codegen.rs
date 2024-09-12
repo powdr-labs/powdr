@@ -1,4 +1,4 @@
-use powdr_jit_compiler::codegen::Compiler;
+use powdr_jit_compiler::codegen::CodeGenerator;
 use powdr_number::GoldilocksField;
 use powdr_pil_analyzer::analyze_string;
 
@@ -6,7 +6,7 @@ use pretty_assertions::assert_eq;
 
 fn compile(input: &str, syms: &[&str]) -> String {
     let analyzed = analyze_string::<GoldilocksField>(input);
-    let mut compiler = Compiler::new(&analyzed);
+    let mut compiler = CodeGenerator::new(&analyzed);
     for s in syms {
         compiler.request_symbol(s).unwrap();
     }

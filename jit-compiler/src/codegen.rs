@@ -12,14 +12,14 @@ use powdr_ast::{
 };
 use powdr_number::FieldElement;
 
-pub struct Compiler<'a, T> {
+pub struct CodeGenerator<'a, T> {
     analyzed: &'a Analyzed<T>,
     requested: HashSet<String>,
     failed: HashMap<String, String>,
     symbols: HashMap<String, String>,
 }
 
-impl<'a, T: FieldElement> Compiler<'a, T> {
+impl<'a, T: FieldElement> CodeGenerator<'a, T> {
     pub fn new(analyzed: &'a Analyzed<T>) -> Self {
         Self {
             analyzed,
@@ -122,9 +122,9 @@ impl<'a, T: FieldElement> Compiler<'a, T> {
             "std::check::panic" => Some("(s: &str) -> ! { panic!(\"{s}\"); }".to_string()),
             "std::field::modulus" => {
                 let modulus = T::modulus();
-                Some(format!("() -> num_bigint::BigInt {{ num_bigint::BigInt::from(\"{modulus}\") }}"))
+                Some(format!("() -> powdr_number::BigInt {{ powdr_number::BigInt::from(\"{modulus}\") }}"))
             }
-            "std::convert::fe" => Some("(n: num_bigint::BigInt) -> FieldElement {\n    <FieldElement as PrimeField>::BigInt::try_from(n.to_biguint().unwrap()).unwrap().into()\n}"
+            "std::convert::fe" => Some("(n: powdr_number::BigInt) -> FieldElement {\n    <FieldElement as PrimeField>::BigInt::try_from(n.to_biguint().unwrap()).unwrap().into()\n}"
                 .to_string()),
             _ => None,
         }?;
@@ -154,7 +154,7 @@ impl<'a, T: FieldElement> Compiler<'a, T> {
             ) => {
                 let value = u64::try_from(value).unwrap_or_else(|_| unimplemented!());
                 match type_ {
-                    Type::Int => format!("num_bigint::BigInt::from({value}_u64)"),
+                    Type::Int => format!("powdr_number::BigInt::from({value}_u64)"),
                     Type::Fe => format!("FieldElement::from({value}_u64)"),
                     Type::Expr => format!("Expr::from({value}_u64)"),
                     _ => unreachable!(),
@@ -265,7 +265,7 @@ impl<'a, T: FieldElement> Compiler<'a, T> {
     }
 }
 
-fn escape_symbol(s: &str) -> String {
+pub fn escape_symbol(s: &str) -> String {
     // TODO better escaping
     s.replace('.', "_").replace("::", "_")
 }
@@ -273,7 +273,7 @@ fn escape_symbol(s: &str) -> String {
 fn map_type(ty: &Type) -> String {
     match ty {
         Type::Bottom | Type::Bool => format!("{ty}"),
-        Type::Int => "num_bigint::BigInt".to_string(),
+        Type::Int => "powdr_number::BigInt".to_string(),
         Type::Fe => "FieldElement".to_string(),
         Type::String => "String".to_string(),
         Type::Expr => "Expr".to_string(),
