@@ -429,29 +429,42 @@ where
         match value {
             Some(FunctionDefinition::TypeDeclaration(enum_decl)) => {
                 assert_eq!(symbol_kind, SymbolKind::Other());
-                self.handle_enum_symbol_declaration(source, name, symbol, enum_decl)
+                self.process_enum_declaration(source, name, symbol, enum_decl)
             }
             Some(FunctionDefinition::TraitDeclaration(trait_decl)) => {
-                self.handle_trait_symbol_declaration(source, name, symbol, trait_decl)
+                self.process_trait_declaration(source, name, symbol, trait_decl)
             }
             Some(FunctionDefinition::Expression(expr)) => {
-                self.handle_expression_symbol(symbol_kind, symbol, type_scheme, expr)
+                self.process_expression_symbol(symbol_kind, symbol, type_scheme, expr)
             }
             Some(FunctionDefinition::Array(value)) => {
-                self.handle_array_symbol(symbol, type_scheme, value)
+                self.process_array_symbol(symbol, type_scheme, value)
             }
             None => vec![PILItem::Definition(symbol, None)],
         }
     }
 
-    fn handle_trait_symbol_declaration(
+    fn process_trait_declaration(
         &mut self,
         source: SourceRef,
         name: String,
         symbol: Symbol,
         trait_decl: TraitDeclaration<parsed::Expression>,
     ) -> Vec<PILItem> {
-        let trait_decl = self.process_trait_declaration(trait_decl);
+        let type_vars = trait_decl.type_vars.iter().collect();
+        let functions = trait_decl
+            .functions
+            .into_iter()
+            .map(|f| TraitFunction {
+                name: f.name,
+                ty: self.type_processor(&type_vars).process_type(f.ty),
+            })
+            .collect();
+        let trait_decl = TraitDeclaration {
+            name: self.driver.resolve_decl(&trait_decl.name),
+            type_vars: trait_decl.type_vars,
+            functions,
+        };
         let shared_trait_decl = Arc::new(trait_decl.clone());
 
         let inner_items = trait_decl
@@ -479,7 +492,7 @@ where
         .collect()
     }
 
-    fn handle_expression_symbol(
+    fn process_expression_symbol(
         &mut self,
         symbol_kind: SymbolKind,
         symbol: Symbol,
@@ -514,7 +527,7 @@ where
         vec![PILItem::Definition(symbol, Some(value))]
     }
 
-    fn handle_array_symbol(
+    fn process_array_symbol(
         &mut self,
         symbol: Symbol,
         type_scheme: Option<TypeScheme>,
@@ -599,7 +612,7 @@ where
         TypeProcessor::new(self.driver, type_vars)
     }
 
-    fn handle_enum_symbol_declaration(
+    fn process_enum_declaration(
         &mut self,
         source: SourceRef,
         name: String,
@@ -656,26 +669,6 @@ where
                     .map(|ty| self.type_processor(type_vars).process_type(ty))
                     .collect()
             }),
-        }
-    }
-
-    fn process_trait_declaration(
-        &self,
-        trait_decl: parsed::TraitDeclaration<parsed::Expression>,
-    ) -> TraitDeclaration {
-        let type_vars = trait_decl.type_vars.iter().collect();
-        let functions = trait_decl
-            .functions
-            .into_iter()
-            .map(|f| TraitFunction {
-                name: f.name,
-                ty: self.type_processor(&type_vars).process_type(f.ty),
-            })
-            .collect();
-        TraitDeclaration {
-            name: self.driver.resolve_decl(&trait_decl.name),
-            type_vars: trait_decl.type_vars,
-            functions,
         }
     }
 
