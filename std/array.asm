@@ -15,6 +15,9 @@ let<T> set_element: T[], int, T -> T[] = |arr, i, x| {
 /// Returns a new array of length l containing the elements of arr starting at index start.
 let<T> sub_array: T[], int, int -> T[] = |arr, start, l| std::array::new(l, |i| arr[start + i]);
 
+/// Returns a new array that reverses the input array.
+let<T> reverse: T[] -> T[] = |arr| new(len(arr), |i| arr[len(arr) - i - 1]);
+
 /// Evaluates to the array [f(arr[0]), f(arr[1]), ..., f(arr[len(arr) - 1])].
 let<T1, T2> map: T1[], (T1 -> T2) -> T2[] = |arr, f| new(len(arr), |i| f(arr[i]));
 
@@ -28,9 +31,6 @@ let<T1, T2> fold: T1[], T2, (T2, T1 -> T2) -> T2 = |arr, initial, folder| std::u
 // TODO: Should make use of the Default or Zero trait instead of FromLiteral (then we can also
 // use this function to flatten an array of arrays.
 let<T: Add + FromLiteral> sum: T[] -> T = |arr| fold(arr, 0, |a, b| a + b);
-
-/// Returns the reversed array.
-let<T> reverse: T[] -> T[] = |arr| new(len(arr), |i| arr[len(arr) - i - 1]);
 
 /// Returns the product of the array elements.
 let<T: Mul + FromLiteral> product: T[] -> T = |arr| fold(arr, 1, |a, b| a * b);
