@@ -828,8 +828,7 @@ fn capture_challenges_and_numbers() {
             let y;
             let t = 2;
             query |i| {
-                std::prover::provide_value(y, i, std::prover::eval(x));
-                y = 2;
+                std::prover::provide_value(y, i, std::prover::eval(x) + t);
             }
         })();
 
@@ -843,8 +842,9 @@ namespace std::prover;
     {
         let x = std::prelude::challenge(0, 4);
         let y = std::prover::y;
+        let t = 2;
         query |i| {
-            std::prover::provide_value(y, i, std::prover::eval(x));
+            std::prover::provide_value(y, i, std::prover::eval(x) + t);
         }
     };
 "#;
