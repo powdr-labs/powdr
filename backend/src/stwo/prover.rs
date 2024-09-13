@@ -116,9 +116,10 @@ impl<F: FieldElement> StwoProver<F> {
             .with_witgen_callback(witgen_callback)
             .with_witness(witness);
         
-        generate_stwo_trace(witness,6);
+        println!("this is from the generate stwo trace in circle domain \n {:?}",generate_stwo_trace(witness,6));
 
         println!("{:?}", witness);
+        
 
 
         println!("prove_stwo in prover.rs is not complete yet");
