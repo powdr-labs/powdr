@@ -55,3 +55,39 @@ pub fn identity(lhs: Expression, rhs: Expression) -> Expression {
     }
     .into()
 }
+
+pub fn selected(lhs: Expression, rhs: Expression) -> Expression {
+    BinaryOperation {
+        left: Box::new(lhs),
+        op: BinaryOperator::Select,
+        right: Box::new(rhs),
+    }
+    .into()
+}
+
+pub fn connect(lhs: Expression, rhs: Expression) -> Expression {
+    BinaryOperation {
+        left: Box::new(lhs),
+        op: BinaryOperator::Connect,
+        right: Box::new(rhs),
+    }
+    .into()
+}
+
+pub fn permutation(lhs: Expression, rhs: Expression) -> Expression {
+    BinaryOperation {
+        left: Box::new(lhs),
+        op: BinaryOperator::Is,
+        right: Box::new(rhs),
+    }
+    .into()
+}
+
+pub fn lookup(lhs: Expression, rhs: Expression) -> Expression {
+    BinaryOperation {
+        left: Box::new(lhs),
+        op: BinaryOperator::In,
+        right: Box::new(rhs),
+    }
+    .into()
+}

@@ -11,6 +11,7 @@ use powdr_ast::{
 };
 
 use lazy_static::lazy_static;
+use powdr_parser_util::Error;
 
 /// Check that query functions are only referenced/defined in a query context
 /// and that constr functions are only referenced/defined in a constr context.
@@ -18,7 +19,7 @@ pub fn check(
     definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     context: FunctionKind,
     e: &Expression,
-) -> Result<(), String> {
+) -> Result<(), Error> {
     SideEffectChecker {
         definitions,
         context,
@@ -32,20 +33,20 @@ struct SideEffectChecker<'a> {
 }
 
 impl<'a> SideEffectChecker<'a> {
-    fn check(&mut self, e: &Expression) -> Result<(), String> {
+    fn check(&mut self, e: &Expression) -> Result<(), Error> {
         match e {
-            Expression::Reference(_, Reference::Poly(r)) => {
+            Expression::Reference(source, Reference::Poly(r)) => {
                 let kind = self.function_kind_of_symbol(&r.name);
                 if kind != FunctionKind::Pure && kind != self.context {
-                    return Err(format!(
-                        "Referenced a {kind} function inside a {} context: {}",
-                        self.context, r.name,
-                    ));
+                    return Err(source.with_error(format!(
+                        "Referenced the {kind} function {} inside a {} context.",
+                        &r.name, self.context,
+                    )));
                 }
                 Ok(())
             }
             Expression::LambdaExpression(
-                _,
+                source,
                 LambdaExpression {
                     kind,
                     params: _,
@@ -57,10 +58,10 @@ impl<'a> SideEffectChecker<'a> {
                     // Query lambda expressions are allowed in constr context.
                     new_context = FunctionKind::Query;
                 } else if *kind != FunctionKind::Pure && *kind != self.context {
-                    return Err(format!(
-                        "Used a {kind} lambda function inside a {} context: {e}",
+                    return Err(source.with_error(format!(
+                        "Used a {kind} lambda function inside a {} context.",
                         self.context
-                    ));
+                    )));
                 } else {
                     new_context = self.context;
                 }
@@ -70,19 +71,21 @@ impl<'a> SideEffectChecker<'a> {
                 self.context = old_context;
                 result
             }
-            Expression::BlockExpression(_, BlockExpression { statements, .. }) => {
+            Expression::BlockExpression(source, BlockExpression { statements, .. }) => {
                 for s in statements {
                     if let StatementInsideBlock::LetStatement(ls) = s {
                         if ls.value.is_none() && self.context != FunctionKind::Constr {
-                            return Err(format!(
+                            // TODO the source location is not exact enough. there should be one for each statement.
+                            return Err(source.with_error(format!(
                                 "Tried to create a witness column in a {} context: {ls}",
                                 self.context
-                            ));
+                            )));
                         } else if ls.ty == Some(Type::Col) && self.context != FunctionKind::Constr {
-                            return Err(format!(
+                            // TODO the source location is not exact enough. there should be one for each statement.
+                            return Err(source.with_error(format!(
                                 "Tried to create a fixed column in a {} context: {ls}",
                                 self.context
-                            ));
+                            )));
                         }
                     }
                 }

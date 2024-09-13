@@ -44,6 +44,11 @@ let handle_query: expr, int, std::prelude::Query -> () = query |column, row, v| 
 /// The arguments are the proof stage and the id of the challenge, in this order.
 let challenge: int, int -> expr = constr |st, id| std::prelude::challenge(st, id);
 
+/// Creates a witness column at a given stage.
+/// The first argument is a name suggestion, but it will be made unique.
+/// The second argument is the stage.
+let new_witness_col_at_stage: string, int -> expr = [];
+
 /// Returns the minimum number of rows in this namespace, sometimes known as the minimum "degree".
 let min_degree: -> int = [];
 /// Returns the maximum number of rows in this namespace, sometimes known as the maximum "degree".

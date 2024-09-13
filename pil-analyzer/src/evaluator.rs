@@ -318,7 +318,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
     }
 }
 
-const BUILTINS: [(&str, BuiltinFunction); 19] = [
+const BUILTINS: [(&str, BuiltinFunction); 16] = [
     ("std::array::len", BuiltinFunction::ArrayLen),
     ("std::check::panic", BuiltinFunction::Panic),
     ("std::convert::expr", BuiltinFunction::ToExpr),
@@ -327,6 +327,10 @@ const BUILTINS: [(&str, BuiltinFunction); 19] = [
     ("std::debug::print", BuiltinFunction::Print),
     ("std::field::modulus", BuiltinFunction::Modulus),
     ("std::prelude::challenge", BuiltinFunction::Challenge),
+    (
+        "std::prover::new_witness_col_at_stage",
+        BuiltinFunction::NewWitAtStage,
+    ),
     ("std::prover::provide_value", BuiltinFunction::ProvideValue),
     ("std::prelude::set_hint", BuiltinFunction::SetHint),
     ("std::prover::min_degree", BuiltinFunction::MinDegree),
@@ -363,6 +367,8 @@ pub enum BuiltinFunction {
     ToFe,
     /// std::prover::challenge: int, int -> expr, constructs a challenge with a given stage and ID.
     Challenge,
+    /// std::prover::new_witness_col_at_stage: string, int -> expr, creates a new witness column at a certain proof stage.
+    NewWitAtStage,
     /// std::prover::provide_value: expr, int, fe -> (), provides a value for a witness column at a given row.
     ProvideValue,
     /// std::prelude::set_hint: expr, (int -> std::prelude::Query) -> (), adds a hint to a witness column.
@@ -605,6 +611,7 @@ pub trait SymbolLookup<'a, T: FieldElement> {
         &mut self,
         name: &str,
         _type: Option<&Type>,
+        _stage: Option<u32>,
         _value: Option<Arc<Value<'a, T>>>,
         _source: SourceRef,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
@@ -883,7 +890,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             };
             let value = s.value.as_ref().map(|_| self.value_stack.pop().unwrap());
             self.symbols
-                .new_column(name, s.ty.as_ref(), value, SourceRef::unknown())?
+                .new_column(name, s.ty.as_ref(), None, value, SourceRef::unknown())?
         } else {
             // Regular local variable declaration.
             self.value_stack.pop().unwrap()
@@ -1280,6 +1287,7 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
         BuiltinFunction::ToFe => 1,
         BuiltinFunction::ToInt => 1,
         BuiltinFunction::Challenge => 2,
+        BuiltinFunction::NewWitAtStage => 2,
         BuiltinFunction::ProvideValue => 3,
         BuiltinFunction::SetHint => 2,
         BuiltinFunction::MinDegree => 0,
@@ -1355,6 +1363,19 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
                 stage: u32::try_from(stage).unwrap(),
             }))
             .into()
+        }
+        BuiltinFunction::NewWitAtStage => {
+            let [name, stage] = &arguments[..] else {
+                panic!()
+            };
+            let Value::String(name) = name.as_ref() else {
+                panic!()
+            };
+            let Value::Integer(stage) = (**stage).clone() else {
+                panic!()
+            };
+            let stage = Some(u32::try_from(stage).unwrap());
+            symbols.new_column(name, Some(&Type::Col), stage, None, SourceRef::unknown())?
         }
         BuiltinFunction::ProvideValue => {
             let value = arguments.pop().unwrap();

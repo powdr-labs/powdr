@@ -42,6 +42,10 @@ lazy_static! {
         ("std::debug::print", ("T: ToString", "T -> ()")),
         ("std::field::modulus", ("", "-> int")),
         ("std::prelude::challenge", ("", "int, int -> expr")),
+        (
+            "std::prover::new_witness_col_at_stage",
+            ("", "string, int -> expr")
+        ),
         ("std::prover::min_degree", ("", "-> int")),
         ("std::prover::max_degree", ("", "-> int")),
         ("std::prover::degree", ("", "-> int")),
