@@ -626,7 +626,7 @@ fn to_constraint<T: FieldElement>(
     counters: &mut Counters,
 ) -> AnalyzedIdentity<T> {
     match constraint {
-        Value::Enum("Identity", Some(fields)) => {
+        Value::Enum(_, "Identity", Some(fields)) => {
             assert_eq!(fields.len(), 2);
             AnalyzedIdentity::from_polynomial_identity(
                 counters.dispense_identity_id(),
@@ -634,7 +634,7 @@ fn to_constraint<T: FieldElement>(
                 to_expr(&fields[0]) - to_expr(&fields[1]),
             )
         }
-        Value::Enum(kind @ "Lookup" | kind @ "Permutation", Some(fields)) => {
+        Value::Enum(_, kind @ "Lookup" | kind @ "Permutation", Some(fields)) => {
             assert_eq!(fields.len(), 2);
             let kind = if *kind == "Lookup" {
                 IdentityKind::Plookup
@@ -672,7 +672,7 @@ fn to_constraint<T: FieldElement>(
                 right: to_selected_exprs(sel_to, to),
             }
         }
-        Value::Enum("Connection", Some(fields)) => {
+        Value::Enum(_, "Connection", Some(fields)) => {
             assert_eq!(fields.len(), 1);
 
             let (from, to): (Vec<_>, Vec<_>) = if let Value::Array(a) = fields[0].as_ref() {
@@ -720,8 +720,8 @@ fn to_selected_exprs<'a, T: Clone + Debug>(
 
 fn to_option_expr<T: Clone + Debug>(value: &Value<'_, T>) -> Option<AlgebraicExpression<T>> {
     match value {
-        Value::Enum("None", None) => None,
-        Value::Enum("Some", Some(fields)) => {
+        Value::Enum(_, "None", None) => None,
+        Value::Enum(_, "Some", Some(fields)) => {
             assert_eq!(fields.len(), 1);
             Some(to_expr(&fields[0]))
         }
@@ -940,12 +940,14 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
         }
         .into(),
         Value::Closure(c) => try_closure_to_expression(c)?,
-        Value::TypeConstructor(c) => {
+        Value::TypeConstructor(enum_, c) => {
             return Err(EvalError::TypeError(format!(
-                "Type constructor as captured value not supported: {c}."
+                "Type constructor as captured value not supported: {}::{c}.",
+                enum_.name
             )))
         }
-        Value::Enum(variant, _items) => {
+        Value::Enum(enum_, variant, _items) => {
+            // TODO
             // The main problem is that we do not know the type of the enum.
             return Err(EvalError::TypeError(format!(
                 "Enum as captured value not supported: {variant}."

@@ -16,9 +16,10 @@ use powdr_ast::{
     parsed::{
         display::quote,
         types::{ArrayType, Type, TypeScheme},
-        ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
-        IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number,
-        Pattern, StatementInsideBlock, UnaryOperation, UnaryOperator,
+        ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, EnumDeclaration,
+        FunctionCall, IfExpression, IndexAccess, LambdaExpression, LetStatementInsideBlock,
+        MatchArm, MatchExpression, Number, Pattern, StatementInsideBlock, UnaryOperation,
+        UnaryOperator,
     },
 };
 use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
@@ -144,8 +145,8 @@ pub enum Value<'a, T> {
     Tuple(Vec<Arc<Self>>),
     Array(Vec<Arc<Self>>),
     Closure(Closure<'a, T>),
-    TypeConstructor(&'a str),
-    Enum(&'a str, Option<Vec<Arc<Self>>>),
+    TypeConstructor(&'a EnumDeclaration, &'a str),
+    Enum(&'a EnumDeclaration, &'a str, Option<Vec<Arc<Self>>>),
     BuiltinFunction(BuiltinFunction),
     Expression(AlgebraicExpression<T>),
 }
@@ -221,8 +222,8 @@ impl<'a, T: FieldElement> Value<'a, T> {
                 )
             }
             Value::Closure(c) => c.type_formatted(),
-            Value::TypeConstructor(name) => format!("{name}_constructor"),
-            Value::Enum(name, _) => name.to_string(),
+            Value::TypeConstructor(enum_, name) => format!("{}::{name}", enum_.name),
+            Value::Enum(enum_, name, _) => format!("{}::{name}", enum_.name),
             Value::BuiltinFunction(b) => format!("builtin_{b:?}"),
             Value::Expression(_) => "expr".to_string(),
         }
@@ -286,7 +287,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
             }
             Pattern::Variable(_, _) => Some(vec![v.clone()]),
             Pattern::Enum(_, name, fields_pattern) => {
-                let Value::Enum(n, data) = v.as_ref() else {
+                let Value::Enum(_, n, data) = v.as_ref() else {
                     panic!()
                 };
                 if name.name() != n {
@@ -316,6 +317,15 @@ impl<'a, T: FieldElement> Value<'a, T> {
                 })
             })
     }
+}
+
+// Some enums from the prelude. We can remove this once we implement the
+// `$`, `in`, `is` and `connect` operators using traits.
+// The declarations are wrong, but we only need their name for now.
+lazy_static::lazy_static! {
+    static ref OPTION: EnumDeclaration = EnumDeclaration { name: "std::prelude::Option".to_string(), type_vars: Default::default(), variants: Default::default() };
+    static ref SELECTED_EXPRS: EnumDeclaration = EnumDeclaration { name: "std::prelude::SelectedExprs".to_string(), type_vars: Default::default(), variants: Default::default() };
+    static ref CONSTR: EnumDeclaration = EnumDeclaration { name: "std::prelude::Constr".to_string(), type_vars: Default::default(), variants: Default::default() };
 }
 
 const BUILTINS: [(&str, BuiltinFunction); 16] = [
@@ -388,9 +398,9 @@ impl<'a, T: Display> Display for Value<'a, T> {
             Value::Tuple(items) => write!(f, "({})", items.iter().format(", ")),
             Value::Array(elements) => write!(f, "[{}]", elements.iter().format(", ")),
             Value::Closure(closure) => write!(f, "{closure}"),
-            Value::TypeConstructor(name) => write!(f, "{name}_constructor"),
-            Value::Enum(name, data) => {
-                write!(f, "{name}")?;
+            Value::TypeConstructor(enum_, name) => write!(f, "{}::{name}", enum_.name),
+            Value::Enum(enum_, name, data) => {
+                write!(f, "{}::{name}", enum_.name)?;
                 if let Some(data) = data {
                     write!(f, "({})", data.iter().format(", "))?;
                 }
@@ -479,11 +489,11 @@ impl<'a> Definitions<'a> {
                     let type_args = type_arg_mapping(type_scheme, type_args);
                     evaluate_generic(value, &type_args, symbols)?
                 }
-                Some(FunctionValueDefinition::TypeConstructor(_type_name, variant)) => {
+                Some(FunctionValueDefinition::TypeConstructor(type_name, variant)) => {
                     if variant.fields.is_none() {
-                        Value::Enum(&variant.name, None).into()
+                        Value::Enum(type_name.as_ref(), &variant.name, None).into()
                     } else {
-                        Value::TypeConstructor(&variant.name).into()
+                        Value::TypeConstructor(type_name.as_ref(), &variant.name).into()
                     }
                 }
                 Some(FunctionValueDefinition::TraitFunction(_, _)) => {
@@ -1020,9 +1030,9 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 self.value_stack
                     .push(evaluate_builtin_function(*b, arguments, self.symbols)?)
             }
-            Value::TypeConstructor(name) => self
+            Value::TypeConstructor(enum_, name) => self
                 .value_stack
-                .push(Value::Enum(name, Some(arguments)).into()),
+                .push(Value::Enum(enum_, name, Some(arguments)).into()),
             Value::Closure(Closure {
                 lambda,
                 environment,
@@ -1149,7 +1159,12 @@ fn evaluate_binary_operation<'a, T: FieldElement>(
             }
         }
         (l @ Value::Expression(_), BinaryOperator::Identity, r @ Value::Expression(_)) => {
-            Value::Enum("Identity", Some(vec![l.clone().into(), r.clone().into()])).into()
+            Value::Enum(
+                &CONSTR,
+                "Identity",
+                Some(vec![l.clone().into(), r.clone().into()]),
+            )
+            .into()
         }
         (Value::Expression(l), op, Value::Expression(r)) => match (l, r) {
             (AlgebraicExpression::Number(l), AlgebraicExpression::Number(r)) => {
@@ -1167,7 +1182,7 @@ fn evaluate_binary_operation<'a, T: FieldElement>(
             .into(),
         },
         (Value::Expression(_), BinaryOperator::Select, Value::Array(_)) => {
-            Value::Enum("SelectedExprs", Some(vec![left, right])).into()
+            Value::Enum(&SELECTED_EXPRS, "SelectedExprs", Some(vec![left, right])).into()
         }
         (_, BinaryOperator::In | BinaryOperator::Is, _) => {
             let (left_sel, left_exprs) = to_selected_exprs_expanded(&left);
@@ -1179,11 +1194,11 @@ fn evaluate_binary_operation<'a, T: FieldElement>(
             };
             let selectors = Value::Tuple(vec![left_sel, right_sel]).into();
             let expr_pairs = zip_expressions_for_op(op, left_exprs, right_exprs)?;
-            Value::Enum(name, Some(vec![selectors, expr_pairs])).into()
+            Value::Enum(&CONSTR, name, Some(vec![selectors, expr_pairs])).into()
         }
         (Value::Array(left), BinaryOperator::Connect, Value::Array(right)) => {
             let expr_pairs = zip_expressions_for_op(op, left, right)?;
-            Value::Enum("Connection", Some(vec![expr_pairs])).into()
+            Value::Enum(&CONSTR, "Connection", Some(vec![expr_pairs])).into()
         }
         (l, op, r) => Err(EvalError::TypeError(format!(
             "Operator \"{op}\" not supported on types: {l}: {}, {r}: {}",
@@ -1221,13 +1236,13 @@ fn to_selected_exprs_expanded<'a, 'b, T>(
 ) -> (Arc<Value<'b, T>>, &'a Vec<Arc<Value<'b, T>>>) {
     match selected_exprs {
         // An array of expressions or a selected expressions without selector.
-        Value::Array(items) | Value::Enum("JustExprs", Some(items)) => {
-            (Value::Enum("None", None).into(), &items)
+        Value::Array(items) | Value::Enum(_, "JustExprs", Some(items)) => {
+            (Value::Enum(&OPTION, "None", None).into(), &items)
         }
         // A selected expressions
-        Value::Enum("SelectedExprs", Some(items)) => {
+        Value::Enum(_, "SelectedExprs", Some(items)) => {
             let [sel, exprs] = &items[..] else { panic!() };
-            let selector = Value::Enum("Some", Some(vec![sel.clone()])).into();
+            let selector = Value::Enum(&OPTION, "Some", Some(vec![sel.clone()])).into();
             let Value::Array(exprs) = exprs.as_ref() else {
                 panic!();
             };
@@ -1375,8 +1390,8 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
                 ),
             };
             match result {
-                Ok(v) => Value::Enum("Some", Some(vec![v])),
-                Err(EvalError::DataNotAvailable) => Value::Enum("None", None),
+                Ok(v) => Value::Enum(&OPTION, "Some", Some(vec![v])),
+                Err(EvalError::DataNotAvailable) => Value::Enum(&OPTION, "None", None),
                 Err(e) => return Err(e),
             }
             .into()
