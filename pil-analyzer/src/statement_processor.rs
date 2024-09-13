@@ -465,7 +465,6 @@ where
             type_vars: trait_decl.type_vars,
             functions,
         };
-        //let shared_trait_decl = Arc::new(trait_decl.clone());
 
         let inner_items = trait_decl
             .functions
