@@ -1,3 +1,5 @@
+use test_log::test;
+
 use powdr_number::GoldilocksField;
 use powdr_pil_analyzer::analyze_string;
 

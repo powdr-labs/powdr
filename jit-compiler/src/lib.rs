@@ -1,7 +1,7 @@
 mod codegen;
 mod compiler;
 
-use std::collections::HashMap;
+use std::{collections::HashMap, fs};
 
 use compiler::{call_cargo, create_full_code, load_library};
 use powdr_ast::analyzed::Analyzed;
@@ -16,11 +16,16 @@ pub fn compile<T: FieldElement>(
     analyzed: &Analyzed<T>,
     symbols: &[&str],
 ) -> Result<SymbolMap, String> {
+    log::info!("JIT-compiling {} symbols...", symbols.len());
     let code = create_full_code(analyzed, symbols)?;
 
     let (dir, lib_path) = call_cargo(&code);
+    let metadata = fs::metadata(&lib_path).unwrap();
+
+    log::info!("Loading library with size {}...", metadata.len());
 
     let result = load_library(&lib_path, symbols);
+    log::info!("Done.");
 
     drop(dir);
     result
