@@ -116,6 +116,5 @@ let lookup: expr[], Fp2<expr>, Fp2<expr>, Constr, expr -> () = constr |acc, alph
             acc_col' = acc_next
         });
     } else {
-        ()
     }
 };
