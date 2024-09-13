@@ -429,10 +429,10 @@ where
         match value {
             Some(FunctionDefinition::TypeDeclaration(enum_decl)) => {
                 assert_eq!(symbol_kind, SymbolKind::Other());
-                self.handle_enum_declaration_symbol(source, name, symbol, enum_decl)
+                self.handle_enum_symbol_declaration(source, name, symbol, enum_decl)
             }
             Some(FunctionDefinition::TraitDeclaration(trait_decl)) => {
-                self.handle_trait_declaration_symbol(source, name, symbol, trait_decl)
+                self.handle_trait_symbol_declaration(source, name, symbol, trait_decl)
             }
             Some(FunctionDefinition::Expression(expr)) => {
                 self.handle_expression_symbol(symbol_kind, symbol, type_scheme, expr)
@@ -444,41 +444,7 @@ where
         }
     }
 
-    fn handle_enum_declaration_symbol(
-        &mut self,
-        source: SourceRef,
-        name: String,
-        symbol: Symbol,
-        enum_decl: EnumDeclaration<parsed::Expression>,
-    ) -> Vec<PILItem> {
-        let enum_decl = self.process_enum_declaration(enum_decl);
-        let shared_enum_decl = Arc::new(enum_decl.clone());
-
-        let inner_items = enum_decl
-            .variants
-            .iter()
-            .map(|variant| {
-                (
-                    vec![name.clone(), variant.name.clone()],
-                    FunctionValueDefinition::TypeConstructor(
-                        shared_enum_decl.clone(),
-                        variant.clone(),
-                    ),
-                )
-            })
-            .collect();
-
-        let var_items = self.generate_items(source, inner_items);
-
-        iter::once(PILItem::Definition(
-            symbol,
-            Some(FunctionValueDefinition::TypeDeclaration(enum_decl.clone())),
-        ))
-        .chain(var_items)
-        .collect()
-    }
-
-    fn handle_trait_declaration_symbol(
+    fn handle_trait_symbol_declaration(
         &mut self,
         source: SourceRef,
         name: String,
@@ -633,21 +599,49 @@ where
         TypeProcessor::new(self.driver, type_vars)
     }
 
-    fn process_enum_declaration(
-        &self,
+    fn handle_enum_symbol_declaration(
+        &mut self,
+        source: SourceRef,
+        name: String,
+        symbol: Symbol,
         enum_decl: EnumDeclaration<parsed::Expression>,
-    ) -> EnumDeclaration {
+    ) -> Vec<PILItem> {
         let type_vars = enum_decl.type_vars.vars().collect();
         let variants = enum_decl
             .variants
             .into_iter()
             .map(|v| self.process_enum_variant(v, &type_vars))
             .collect();
-        EnumDeclaration {
+        let enum_decl = EnumDeclaration {
             name: self.driver.resolve_decl(&enum_decl.name),
             type_vars: enum_decl.type_vars,
             variants,
-        }
+        };
+
+        let shared_enum_decl = Arc::new(enum_decl.clone());
+
+        let inner_items = enum_decl
+            .variants
+            .iter()
+            .map(|variant| {
+                (
+                    vec![name.clone(), variant.name.clone()],
+                    FunctionValueDefinition::TypeConstructor(
+                        shared_enum_decl.clone(),
+                        variant.clone(),
+                    ),
+                )
+            })
+            .collect();
+
+        let var_items = self.generate_items(source, inner_items);
+
+        iter::once(PILItem::Definition(
+            symbol,
+            Some(FunctionValueDefinition::TypeDeclaration(enum_decl.clone())),
+        ))
+        .chain(var_items)
+        .collect()
     }
 
     fn process_enum_variant(
