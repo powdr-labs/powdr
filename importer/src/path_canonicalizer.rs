@@ -532,8 +532,8 @@ fn check_path_internal<'a>(
                                 chain,
                             )
                         }),
-                    SymbolValueRef::TypeDeclaration(TypeDeclaration::Struct(_struct_decl)) => {
-                        unimplemented!("check_path_internal for TypeDeclaration::Struct")
+                    SymbolValueRef::TypeDeclaration(TypeDeclaration::Struct(_)) => {
+                        Ok((location.with_part(member), value, chain))
                     }
                 }
             },
