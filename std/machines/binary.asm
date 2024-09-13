@@ -10,8 +10,8 @@ machine ByteBinary with
 {
     operation run<0> P_operation, P_A, P_B -> P_C;
 
-    let latch: col = |i| 1;
-    let operation_id: col = |i| 0;
+    col fixed latch = [1]*;
+    col fixed operation_id = [0]*;
 
     let bit_counts = [256, 256, 3];
     let min_degree = std::array::product(bit_counts);
