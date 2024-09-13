@@ -813,3 +813,41 @@ fn capture_enums() {
     let re_analyzed = analyze_string(&formatted);
     assert_eq!(re_analyzed.to_string(), expected);
 }
+
+#[test]
+fn capture_challenges() {
+    let input = r#"
+    namespace std::prelude;
+        let challenge = 8;
+    namespace std::prover;
+        let provide_value = 9;
+        let eval = -1;
+    namespace N(16);
+        (constr || {
+            let x = std::prelude::challenge(0, 4);
+            let y;
+            query |i| {
+                std::prover::provide_value(y, i, std::prover::eval(x));
+            }
+        })();
+
+    "#;
+    let expected = r#"namespace std::prelude;
+    let challenge = 8;
+namespace std::prover;
+    let provide_value = 9;
+    let eval = -1;
+    col witness y;
+    {
+        let x = std::prelude::challenge(0, 4);
+        let y = std::prover::y;
+        query |i| {
+            std::prover::provide_value(y, i, std::prover::eval(x));
+        }
+    };
+"#;
+    let formatted = analyze_string(input).to_string();
+    assert_eq!(formatted, expected);
+    let re_analyzed = analyze_string(&formatted);
+    assert_eq!(re_analyzed.to_string(), expected);
+}
