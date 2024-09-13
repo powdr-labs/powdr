@@ -23,10 +23,7 @@ machine Main with degree: 8 {
     };
     col fixed m = [3, 1, 0, 2, 0, 0, 0, 0];
 
-    let lookup_constraint = Constr::Lookup(
-        (Option::Some(random_six), Option::Some(first_seven)),
-        [(a1, b1), (a2, b2), (a3, b3)]
-    );
+    let lookup_constraint = random_six $ [a1, a2, a3] in first_seven $ [b1, b2, b3];
 
     // TODO: Functions currently cannot add witness columns at later stages,
     // so we have to manually create it here and pass it to permutation(). 
