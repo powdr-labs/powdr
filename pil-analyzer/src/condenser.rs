@@ -24,8 +24,8 @@ use powdr_ast::{
         display::format_type_scheme_around_name,
         types::{ArrayType, Type},
         visitor::{AllChildren, ExpressionVisitable},
-        ArrayLiteral, BlockExpression, FunctionKind, LambdaExpression, LetStatementInsideBlock,
-        Number, Pattern, TypedExpression, UnaryOperation,
+        ArrayLiteral, BlockExpression, FunctionCall, FunctionKind, LambdaExpression,
+        LetStatementInsideBlock, Number, Pattern, TypedExpression, UnaryOperation,
     },
 };
 use powdr_number::{BigUint, FieldElement};
@@ -946,12 +946,25 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
                 enum_.name
             )))
         }
-        Value::Enum(enum_, variant, _items) => {
-            // TODO
-            // The main problem is that we do not know the type of the enum.
-            return Err(EvalError::TypeError(format!(
-                "Enum as captured value not supported: {variant}."
-            )));
+        Value::Enum(enum_, variant, items) => {
+            let enum_ref = Expression::Reference(
+                SourceRef::unknown(),
+                Reference::Poly(PolynomialReference {
+                    name: format!("{}::{variant}", enum_.name),
+                    type_args: None,
+                }),
+            );
+            match items {
+                None => enum_ref,
+                Some(items) => FunctionCall {
+                    function: Box::new(enum_ref),
+                    arguments: items
+                        .iter()
+                        .map(|i| try_value_to_expression(i))
+                        .collect::<Result<_, _>>()?,
+                }
+                .into(),
+            }
         }
         Value::BuiltinFunction(_) => {
             return Err(EvalError::TypeError(

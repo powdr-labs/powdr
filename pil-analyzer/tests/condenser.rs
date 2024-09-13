@@ -780,13 +780,14 @@ fn capture_enums() {
     let input = r#"
     namespace N(16);
         enum E<T> { A(T), B, C(T, int), D() }
-        (||
+        (|| {
             let x = E::A("abc");
             let y = E::B::<int[][]>;
             let z: E<int[]> = E::C([1, 2], 9);
             let w: E<fe> = E::D();
             query |_| {
                 let t = (x, y, z, w);
+            }
         })();
 
     "#;
@@ -797,12 +798,14 @@ fn capture_enums() {
         C(T, int),
         D(),
     }
-    let x: N::E<string> = N::E::A::<string>("abc");
-    let y: N::E<int[][]> = N::E::B::<int[][]>;
-    let z: N::E<int[]> = N::E::C::<int[]>([1, 2], 9);
-    let w: N::E<fe> = N::E::D::<fe>();
-    query |_| {
-        let t: (N::E<string>, N::E<int[][]>, N::E<int[]>, N::E<fe>) = (N::x, N::y, N::z, N::w);
+    {
+        let x = N::E::A("abc");
+        let y = N::E::B;
+        let z = N::E::C([1, 2], 9);
+        let w = N::E::D();
+        query |_| {
+            let t: (N::E<string>, N::E<int[][]>, N::E<int[]>, N::E<fe>) = (x, y, z, w);
+        }
     };
 "#;
     let formatted = analyze_string(input).to_string();
