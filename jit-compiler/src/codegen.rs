@@ -50,10 +50,6 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
         }
     }
 
-    pub fn is_compiled(&self, name: &str) -> bool {
-        self.symbols.contains_key(name)
-    }
-
     pub fn compiled_symbols(self) -> String {
         self.symbols
             .into_iter()
@@ -283,5 +279,54 @@ fn map_type(ty: &Type) -> String {
         Type::TypeVar(tv) => tv.to_string(),
         Type::NamedType(_path, _type_args) => todo!(),
         Type::Col | Type::Inter => unreachable!(),
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use powdr_number::GoldilocksField;
+    use powdr_pil_analyzer::analyze_string;
+
+    use pretty_assertions::assert_eq;
+
+    use super::CodeGenerator;
+
+    fn compile(input: &str, syms: &[&str]) -> String {
+        let analyzed = analyze_string::<GoldilocksField>(input);
+        let mut compiler = CodeGenerator::new(&analyzed);
+        for s in syms {
+            compiler.request_symbol(s).unwrap();
+        }
+        compiler.compiled_symbols()
+    }
+
+    #[test]
+    fn empty_code() {
+        let result = compile("", &[]);
+        assert_eq!(result, "");
+    }
+
+    #[test]
+    fn simple_fun() {
+        let result = compile("let c: int -> int = |i| i;", &["c"]);
+        assert_eq!(
+            result,
+            "fn c(i: num_bigint::BigInt) -> num_bigint::BigInt { i }\n"
+        );
+    }
+
+    #[test]
+    fn fun_calls() {
+        let result = compile(
+            "let c: int -> int = |i| i + 20; let d = |k| c(k * 20);",
+            &["c", "d"],
+        );
+        assert_eq!(
+        result,
+        "fn c(i: num_bigint::BigInt) -> num_bigint::BigInt { ((i).clone() + (num_bigint::BigInt::from(20_u64)).clone()) }
+
+fn d(k: num_bigint::BigInt) -> num_bigint::BigInt { (c)(((k).clone() * (num_bigint::BigInt::from(20_u64)).clone()).clone()) }
+"
+    );
     }
 }

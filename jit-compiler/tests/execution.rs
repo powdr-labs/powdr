@@ -1,10 +1,9 @@
-use powdr_jit_compiler::compiler;
 use powdr_number::GoldilocksField;
 use powdr_pil_analyzer::analyze_string;
 
 fn compile(input: &str, symbol: &str) -> fn(u64) -> u64 {
     let analyzed = analyze_string::<GoldilocksField>(input);
-    compiler::compile(&analyzed, &[symbol]).unwrap()[symbol]
+    powdr_jit_compiler::compile(&analyzed, &[symbol]).unwrap()[symbol]
 }
 
 #[test]
@@ -29,13 +28,10 @@ fn sqrt() {
         "sqrt",
     );
 
-    for i in 0..100000 {
-        f(879882356 * 112655675);
-        // assert_eq!(f(9), 3);
-        // assert_eq!(f(100), 10);
-        // assert_eq!(f(8), 2);
-        // assert_eq!(f(101), 10);
-        // assert_eq!(f(99), 9);
-        // assert_eq!(f(0), 0);
-    }
+    assert_eq!(f(9), 3);
+    assert_eq!(f(100), 10);
+    assert_eq!(f(8), 2);
+    assert_eq!(f(101), 10);
+    assert_eq!(f(99), 9);
+    assert_eq!(f(0), 0);
 }
