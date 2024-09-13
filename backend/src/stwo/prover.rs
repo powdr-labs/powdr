@@ -1,6 +1,5 @@
 use halo2_proofs::{
     halo2curves::bn256::{Bn256, Fr, G1Affine},
-    halo2curves::ff::PrimeField,
     plonk::{create_proof, keygen_pk, keygen_vk, verify_proof, Circuit, ProvingKey, VerifyingKey},
     poly::{
         commitment::{Params, ParamsProver},
@@ -12,13 +11,13 @@ use halo2_proofs::{
         VerificationStrategy,
     },
     transcript::{EncodedChallenge, TranscriptReadBuffer, TranscriptWriterBuffer},
-    SerdeFormat,
 };
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement, KnownField};
 use super::circuit_builder::PowdrCircuit;
+use super::circuit_builder::generate_stwo_trace;
 
 // We use two different EVM verifier libraries.
 // 1. snark_verifier: supports single SNARK verification as well as aggregated proof verification.
@@ -117,10 +116,9 @@ impl<F: FieldElement> StwoProver<F> {
             .with_witgen_callback(witgen_callback)
             .with_witness(witness);
         
-        for (name, values) in witness {
-            println!("Name: {}", name);
-            println!("Values: {:?}", values);
-        }
+        generate_stwo_trace(witness,6);
+
+        println!("{:?}", witness);
 
 
         println!("prove_stwo in prover.rs is not complete yet");

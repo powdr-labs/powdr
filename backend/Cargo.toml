@@ -36,7 +36,8 @@ halo2_curves = { version = "0.6.1", package = "halo2curves", optional = true}
 snark-verifier = { git = "https://github.com/powdr-labs/snark-verifier", branch = "powdr-halo2", optional = true }
 halo2_solidity_verifier = { git = "https://github.com/powdr-labs/halo2-solidity-verifier", branch = "main", features = ["evm"], optional = true }
 
-stwo-prover={git= "https://github.com/starkware-libs/stwo", optional= true}
+stwo-prover={git= "https://github.com/starkware-libs/stwo",optional=true}
+p3-mersenne-31 = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
 
 strum = { version = "0.24.1", features = ["derive"] }
 log = "0.4.17"
