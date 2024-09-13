@@ -15,6 +15,8 @@ machine Keccakf16 with
     operation_id: operation_id,
     call_selectors: sel,
 {
+    // Adapted from Plonky3 implementation of Keccak: https://github.com/Plonky3/Plonky3/tree/main/keccak-air/src
+
     // The output is a_prime_prime_prime_0_0_limbs for the first 4 and a_prime_prime for the rest.
     // Expects input of 25 64-bit numbers decomposed to 25 chunks of 4 16-bit little endian limbs. 
     operation keccakf16<0> preimage[0], preimage[1], preimage[2], preimage[3], preimage[4], preimage[5], preimage[6], preimage[7], preimage[8], preimage[9], preimage[10], preimage[11], preimage[12], preimage[13], preimage[14], preimage[15], preimage[16], preimage[17], preimage[18], preimage[19], preimage[20], preimage[21], preimage[22], preimage[23], preimage[24], preimage[25], preimage[26], preimage[27], preimage[28], preimage[29], preimage[30], preimage[31], preimage[32], preimage[33], preimage[34], preimage[35], preimage[36], preimage[37], preimage[38], preimage[39], preimage[40], preimage[41], preimage[42], preimage[43], preimage[44], preimage[45], preimage[46], preimage[47], preimage[48], preimage[49], preimage[50], preimage[51], preimage[52], preimage[53], preimage[54], preimage[55], preimage[56], preimage[57], preimage[58], preimage[59], preimage[60], preimage[61], preimage[62], preimage[63], preimage[64], preimage[65], preimage[66], preimage[67], preimage[68], preimage[69], preimage[70], preimage[71], preimage[72], preimage[73], preimage[74], preimage[75], preimage[76], preimage[77], preimage[78], preimage[79], preimage[80], preimage[81], preimage[82], preimage[83], preimage[84], preimage[85], preimage[86], preimage[87], preimage[88], preimage[89], preimage[90], preimage[91], preimage[92], preimage[93], preimage[94], preimage[95], preimage[96], preimage[97], preimage[98], preimage[99] -> a_prime_prime_prime_0_0_limbs[0], a_prime_prime_prime_0_0_limbs[1], a_prime_prime_prime_0_0_limbs[2], a_prime_prime_prime_0_0_limbs[3], a_prime_prime[4], a_prime_prime[5], a_prime_prime[6], a_prime_prime[7], a_prime_prime[8], a_prime_prime[9], a_prime_prime[10], a_prime_prime[11], a_prime_prime[12], a_prime_prime[13], a_prime_prime[14], a_prime_prime[15], a_prime_prime[16], a_prime_prime[17], a_prime_prime[18], a_prime_prime[19], a_prime_prime[20], a_prime_prime[21], a_prime_prime[22], a_prime_prime[23], a_prime_prime[24], a_prime_prime[25], a_prime_prime[26], a_prime_prime[27], a_prime_prime[28], a_prime_prime[29], a_prime_prime[30], a_prime_prime[31], a_prime_prime[32], a_prime_prime[33], a_prime_prime[34], a_prime_prime[35], a_prime_prime[36], a_prime_prime[37], a_prime_prime[38], a_prime_prime[39], a_prime_prime[40], a_prime_prime[41], a_prime_prime[42], a_prime_prime[43], a_prime_prime[44], a_prime_prime[45], a_prime_prime[46], a_prime_prime[47], a_prime_prime[48], a_prime_prime[49], a_prime_prime[50], a_prime_prime[51], a_prime_prime[52], a_prime_prime[53], a_prime_prime[54], a_prime_prime[55], a_prime_prime[56], a_prime_prime[57], a_prime_prime[58], a_prime_prime[59], a_prime_prime[60], a_prime_prime[61], a_prime_prime[62], a_prime_prime[63], a_prime_prime[64], a_prime_prime[65], a_prime_prime[66], a_prime_prime[67], a_prime_prime[68], a_prime_prime[69], a_prime_prime[70], a_prime_prime[71], a_prime_prime[72], a_prime_prime[73], a_prime_prime[74], a_prime_prime[75], a_prime_prime[76], a_prime_prime[77], a_prime_prime[78], a_prime_prime[79], a_prime_prime[80], a_prime_prime[81], a_prime_prime[82], a_prime_prime[83], a_prime_prime[84], a_prime_prime[85], a_prime_prime[86], a_prime_prime[87], a_prime_prime[88], a_prime_prime[89], a_prime_prime[90], a_prime_prime[91], a_prime_prime[92], a_prime_prime[93], a_prime_prime[94], a_prime_prime[95], a_prime_prime[96], a_prime_prime[97], a_prime_prime[98], a_prime_prime[99];
@@ -26,7 +28,6 @@ machine Keccakf16 with
     // pub struct KeccakCols<T> {
     //     /// The `i`th value is set to 1 if we are in the `i`th round, otherwise 0.
     //     pub step_flags: [T; NUM_ROUNDS],
-
 
     //     /// A register which indicates if a row should be exported, i.e. included in a multiset equality
     //     /// argument. Should be 1 only for certain rows which are final steps, i.e. with
@@ -105,7 +106,8 @@ machine Keccakf16 with
     let first_step: expr = step_flags[0]; // aliasing instead of defining a new fixed column
     let final_step: expr = step_flags[NUM_ROUNDS - 1];
     // Equals to 1 for all non-last rows in all 24-row blocks. Forced to zero for the very last row of the submachine (if partial block).
-    col fixed active_row = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0]* + [0];
+    // This is used to deactivate constraints that reference the next row, whenever we are at the latch row or the last row of the trace (so that we don't incorrectly cycle to the first row).
+    col fixed internal_row = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0]* + [0];
 
     // // If this is the first step, the input A must match the preimage.
     // for y in 0..5 {
@@ -144,9 +146,8 @@ machine Keccakf16 with
     //     }
     // }
 
-    array::new(100, |i| active_row * (preimage[i] - preimage[i]') = 0);
+    array::map(preimage, |p| internal_row * (p - p') = 0);
 
-    // // C'[x, z] = xor(C[x, z], C[x - 1, z], C[x + 1, z - 1]).
     // for x in 0..5 {
     //     for z in 0..64 {
     //         builder.assert_bool(local.c[x][z]);
@@ -161,8 +162,10 @@ machine Keccakf16 with
     // }
 
     array::map(c, |i| force_bool(i));
+    
+    let andn: expr, expr -> expr = |a, b| (1 - a) * b;
     let xor: expr, expr -> expr = |a, b| a + b - 2*a*b;
-    let xor3: expr, expr, expr -> expr = |a, b, c| a + b + c - 2*(a*b + b*c + c*a) + 4*a*b*c;
+    let xor3: expr, expr, expr -> expr = |a, b, c| xor(xor(a, b), c);
     // a b c xor3
     // 0 0 0  0
     // 0 0 1  1
@@ -175,7 +178,11 @@ machine Keccakf16 with
     array::new(320, |i| {
         let x = i / 64;
         let z = i % 64;
-        xor3(c[i], c[((x + 4) % 5) * 64 + z], c[((x + 1) % 5) * 64 + ((z + 63) % 64)]) - c_prime[i] = 0
+        c_prime[i] = xor3(
+            c[i], 
+            c[((x + 4) % 5) * 64 + z], 
+            c[((x + 1) % 5) * 64 + ((z + 63) % 64)]
+        )
     });
 
     // // Check that the input limbs are consistent with A' and D.
@@ -206,14 +213,16 @@ machine Keccakf16 with
     //     }
     // }
 
+    let bits_to_value_be: expr[] -> expr = |bits_be| array::fold(bits_be, 0, |acc, e| (acc * 2 + e));
+
     array::map(a_prime, |i| force_bool(i));
     array::new(100, |i| {
         let y = i / 20;
         let x = (i / 4) % 5;
         let limb = i % 4;
         let get_bit: int -> expr = |z| xor3(a_prime[y * 320 + x * 64 + z], c[x * 64 + z], c_prime[x * 64 + z]);
-        let computed_limb: expr = utils::fold(16, |z| get_bit((limb + 1) * 16 - 1 - z), 0, |acc, e| (acc * 2 + e));
-        computed_limb - a[i] = 0
+        let limb_bits_be: expr[] = array::reverse(array::new(16, |z| get_bit(limb * 16 + z)));
+        a[i] = bits_to_value_be(limb_bits_be)
     });
 
     // // xor_{i=0}^4 A'[x, i, z] = C'[x, z], so for each x, z,
@@ -257,8 +266,6 @@ machine Keccakf16 with
     //     }
     // }
 
-    let andn: expr, expr -> expr = |a, b| (1 - a) * b;
-
     array::new(100, |i| {
         let y = i / 20;
         let x = (i / 4) % 5;
@@ -267,8 +274,8 @@ machine Keccakf16 with
         let get_bit: int -> expr = |z| {
             xor(b(x, y, z), andn(b((x + 1) % 5, y, z), b((x + 2) % 5, y, z)))
         };
-        let computed_limb: expr = utils::fold(16, |z| get_bit((limb + 1) * 16 - 1 - z), 0, |acc, e| (acc * 2 + e));
-        computed_limb - a_prime_prime[i] = 0
+        let limb_bits_be: expr[] = array::reverse(array::new(16, |z| get_bit(limb * 16 + z)));
+        a_prime_prime[i] = bits_to_value_be(limb_bits_be)
     });
 
     // pub fn b(&self, x: usize, y: usize, z: usize) -> T {
@@ -310,8 +317,8 @@ machine Keccakf16 with
     array::map(a_prime_prime_0_0_bits, |i| force_bool(i));
 
     array::new(4, |limb| {
-        let computed_a_prime_prime_0_0_limb = utils::fold(16, |z| a_prime_prime_0_0_bits[(limb + 1) * 16 - 1 - z], 0, |acc, e| (acc * 2 + e));
-        computed_a_prime_prime_0_0_limb - a_prime_prime[limb] = 0
+        let limb_bits_be: expr[] = array::reverse(array::new(16, |z| a_prime_prime_0_0_bits[limb * 16 + z]));
+        a_prime_prime[limb] = bits_to_value_be(limb_bits_be)
     });
 
     // let get_xored_bit = |i| {
@@ -340,8 +347,8 @@ machine Keccakf16 with
     // }
 
     array::new(4, |limb| {
-        let computed_a_prime_prime_prime_0_0_limb = utils::fold(16, |z| get_xored_bit((limb + 1) * 16 - 1 - z), 0, |acc, e| (acc * 2 + e));
-        computed_a_prime_prime_prime_0_0_limb - a_prime_prime_prime_0_0_limbs[limb] = 0
+        let limb_bits_be: expr[] = array::reverse(array::new(16, |z| get_xored_bit(limb * 16 + z)));
+        a_prime_prime_prime_0_0_limbs[limb] = bits_to_value_be(limb_bits_be)
     });
 
     // // Enforce that this round's output equals the next round's input.
@@ -362,7 +369,7 @@ machine Keccakf16 with
         let y = i / 20;
         let x = (i / 4) % 5;
         let limb = i % 4;
-        active_row * (a_prime_prime_prime(y, x, limb) - a[i]') = 0
+        internal_row * (a_prime_prime_prime(y, x, limb) - a[i]') = 0
     });
 
     // pub fn a_prime_prime_prime(&self, y: usize, x: usize, limb: usize) -> T {
@@ -420,7 +427,7 @@ machine Keccakf16 with
         RC[rc_idx] >> bit & 0x1
     });
 
-    // hints
+    // Prover function section (for witness generation).
 
     // // Populate C[x] = xor(A[x, 0], A[x, 1], A[x, 2], A[x, 3], A[x, 4]).
     // for x in 0..5 {
@@ -435,16 +442,22 @@ machine Keccakf16 with
     //     }
     // }
 
-    let query_c: int, int, int -> int = query |x, limb, bit_in_limb| utils::fold(5, |y| (int(eval(a[y * 20 + x * 4 + limb])) >> bit_in_limb) & 0x1, 0, |acc, e| acc ^ e);
+    let query_c: int, int, int -> int = query |x, limb, bit_in_limb|
+        utils::fold(
+            5, 
+            |y| (int(eval(a[y * 20 + x * 4 + limb])) >> bit_in_limb) & 0x1, 
+            0, 
+            |acc, e| acc ^ e
+        );
 
     query |row| {
-        let _ = array::new(320, |i| {
+        let _ = array::map_enumerated(c, |i, c_i| {
             let x = i / 64;
             let z = i % 64;
             let limb = z / 16;
             let bit_in_limb = z % 16;
 
-            provide_value(c[i], row, fe(query_c(x, limb, bit_in_limb)));
+            provide_value(c_i, row, fe(query_c(x, limb, bit_in_limb)));
         });
     };
 
@@ -459,14 +472,17 @@ machine Keccakf16 with
     //     }
     // }
 
-    let query_c_prime: int, int -> int = query |x, z| int(eval(c[x * 64 + z])) ^ int(eval(c[((x + 4) % 5) * 64 + z])) ^ int(eval(c[((x + 1) % 5) * 64 + (z + 63) % 64]));
+    let query_c_prime: int, int -> int = query |x, z| 
+        int(eval(c[x * 64 + z])) ^ 
+        int(eval(c[((x + 4) % 5) * 64 + z])) ^ 
+        int(eval(c[((x + 1) % 5) * 64 + (z + 63) % 64]));
 
     query |row| {
-        let _ = array::new(320, |i| {
+        let _ = array::map_enumerated(c_prime, |i, c_i| {
             let x = i / 64;
             let z = i % 64;
 
-            provide_value(c_prime[i], row, fe(query_c_prime(x, z)));
+            provide_value(c_i, row, fe(query_c_prime(x, z)));
         });
     };
 
@@ -486,17 +502,20 @@ machine Keccakf16 with
     //     }
     // }
 
-    let query_a_prime: int, int, int, int, int -> int = query |x, y, z, limb, bit_in_limb| ((int(eval(a[y * 20 + x * 4 + limb])) >> bit_in_limb) & 0x1) ^ int(eval(c[x * 64 + z])) ^ int(eval(c_prime[x * 64 + z]));
+    let query_a_prime: int, int, int, int, int -> int = query |x, y, z, limb, bit_in_limb| 
+        ((int(eval(a[y * 20 + x * 4 + limb])) >> bit_in_limb) & 0x1) ^ 
+        int(eval(c[x * 64 + z])) ^ 
+        int(eval(c_prime[x * 64 + z]));
 
     query |row| {
-        let _ = array::new(1600, |i| {
+        let _ = array::map_enumerated(a_prime, |i, a_i| {
             let y = i / 320;
             let x = (i / 64) % 5;
             let z = i % 64;
             let limb = z / 16;
             let bit_in_limb = z % 16;
 
-            provide_value(a_prime[i], row, fe(query_a_prime(x, y, z, limb, bit_in_limb)));
+            provide_value(a_i, row, fe(query_a_prime(x, y, z, limb, bit_in_limb)));
         });
     };
 
@@ -518,15 +537,24 @@ machine Keccakf16 with
     //     }
     // }
 
-    let query_a_prime_prime: int, int, int -> int = query |x, y, limb| utils::fold(16, |z| int(eval(b(x, y, (limb + 1) * 16 - 1 - z))) ^ int(eval(andn(b((x + 1) % 5, y, (limb + 1) * 16 - 1 - z), b((x + 2) % 5, y, (limb + 1) * 16 - 1 - z)))), 0, |acc, e| acc * 2 + e);
+    let query_a_prime_prime: int, int, int -> int = query |x, y, limb| 
+        utils::fold(
+            16, 
+            |z| 
+                int(eval(b(x, y, (limb + 1) * 16 - 1 - z))) ^ 
+                int(eval(andn(b((x + 1) % 5, y, (limb + 1) * 16 - 1 - z), 
+                b((x + 2) % 5, y, (limb + 1) * 16 - 1 - z)))), 
+            0, 
+            |acc, e| acc * 2 + e
+        );
 
     query |row| {
-        let _ = array::new(100, |i| {
+        let _ = array::map_enumerated(a_prime_prime, |i, a_i| {
             let y = i / 20;
             let x = (i / 4) % 5;
             let limb = i % 4;
 
-            provide_value(a_prime_prime[i], row, fe(query_a_prime_prime(x, y, limb)));
+            provide_value(a_i, row, fe(query_a_prime_prime(x, y, limb)));
         });
     };
 
@@ -547,14 +575,16 @@ machine Keccakf16 with
     //     *bit = F::from_bool(val_bits[i]);
     // }
 
-    let query_a_prime_prime_0_0_bits: int, int -> int = query |limb, bit_in_limb| (int(eval(a_prime_prime[limb])) >> bit_in_limb) & 0x1;
-
     query |row| {
-        let _ = array::new(64, |i| {
+        let _ = array::map_enumerated(a_prime_prime_0_0_bits, |i, a_i| {
             let limb = i / 16;
             let bit_in_limb = i % 16;
 
-            provide_value(a_prime_prime_0_0_bits[i], row, fe(query_a_prime_prime_0_0_bits(limb, bit_in_limb)));
+            provide_value(
+                a_i, 
+                row, 
+                fe((int(eval(a_prime_prime[limb])) >> bit_in_limb) & 0x1)
+            );
         });
     };
 
@@ -565,7 +595,9 @@ machine Keccakf16 with
     //         F::from_canonical_u16(row.a_prime_prime[0][0][limb].as_canonical_u64() as u16 ^ rc_lo);
     // }
 
-    let query_a_prime_prime_prime_0_0_limbs: int -> int = query |limb| int(eval(a_prime_prime[limb])) ^ ((int(eval(utils::sum(NUM_ROUNDS, |r| expr(RC[r]) * step_flags[r]))) >> (limb * 16)) & 0xffff);
+    let query_a_prime_prime_prime_0_0_limbs: int -> int = query |limb| 
+        int(eval(a_prime_prime[limb])) ^ 
+        ((int(eval(utils::sum(NUM_ROUNDS, |r| expr(RC[r]) * step_flags[r]))) >> (limb * 16)) & 0xffff);
 
     query |row| {
         let _ = array::new(4, |limb| {
