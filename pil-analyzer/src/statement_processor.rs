@@ -632,7 +632,7 @@ where
         };
 
         let shared_enum_decl = Arc::new(enum_decl.clone());
-        let inner_items = enum_decl
+        let inner_items: Vec<_> = enum_decl
             .variants
             .iter()
             .map(|variant| {
