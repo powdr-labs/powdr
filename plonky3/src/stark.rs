@@ -194,7 +194,7 @@ where
             &circuit,
             &mut challenger,
             stage_0_trace,
-            Some(&circuit),
+            &circuit,
             &stage_0_publics,
         );
 

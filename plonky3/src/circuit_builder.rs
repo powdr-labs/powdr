@@ -319,7 +319,7 @@ where
 {
     fn eval(&self, builder: &mut AB) {
         let stage_count = <Self as MultiStageAir<AB>>::stage_count(self);
-        let stages: Vec<AB::M> = (0..stage_count).map(|i| builder.multi_stage(i)).collect();
+        let stages: Vec<AB::M> = (0..stage_count).map(|i| builder.stage_trace(i)).collect();
         let fixed = builder.preprocessed();
         let pi = builder.public_values();
 
@@ -335,7 +335,7 @@ where
         let challenges: BTreeMap<u32, BTreeMap<u64, _>> = challenges
             .into_iter()
             .map(|(stage, ids)| {
-                let p3_challenges = builder.challenges(stage as usize).to_vec();
+                let p3_challenges = builder.stage_challenges(stage as usize).to_vec();
                 assert_eq!(p3_challenges.len(), ids.len());
                 (stage, ids.into_iter().zip(p3_challenges).collect())
             })
@@ -410,11 +410,11 @@ where
         self.constraint_system.stage_widths.len()
     }
 
-    fn multi_stage_width(&self, stage: u32) -> usize {
+    fn stage_width(&self, stage: u32) -> usize {
         self.constraint_system.stage_widths[stage as usize]
     }
 
-    fn challenge_count(&self, stage: u32) -> usize {
+    fn stage_challenge_count(&self, stage: u32) -> usize {
         self.get_challenges()
             .iter()
             .filter(|c| c.stage == stage)
