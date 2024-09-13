@@ -41,9 +41,11 @@ machine Main with degree: 8 {
     col witness stage(1) u2;
     let u = Fp2::Fp2(u1, u2);
 
-    let is_first: col = std::well_known::is_first;
-    lookup(is_first, 1, [z1,z2], [u1, u2], alpha, beta, lookup_constraint, m);
 
+    lookup(1, [z1,z2], [u1, u2], alpha, beta, lookup_constraint, m);
+
+    let is_first: col = std::well_known::is_first;
+    
     col witness stage(1) z1_next;
     col witness stage(1) z2_next;
     query |i| {
