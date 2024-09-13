@@ -1005,6 +1005,11 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
                     },
                 )
             }
+            AlgebraicExpression::Number(n) => Number {
+                value: n.to_arbitrary_integer(),
+                type_: Some(Type::Fe),
+            }
+            .into(),
             _ => {
                 return Err(EvalError::TypeError(format!(
                     "Algebraic expression as captured value not supported: {e}."
