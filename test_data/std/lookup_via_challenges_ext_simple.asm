@@ -22,10 +22,7 @@ machine Main with degree: 8 {
     };
     col fixed m = [6, 1, 0, 1, 0, 0, 0, 0];
 
-    let lookup_constraint = Constr::Lookup(
-        (Option::None, Option::None),
-        [(a, b)]
-    );
+    let lookup_constraint = [a] in [b];
 
     // TODO: Functions currently cannot add witness columns at later stages,
     // so we have to manually create it here and pass it to lookup(). 
