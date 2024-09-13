@@ -96,9 +96,7 @@ impl BackendType {
                 Box::new(composite::CompositeBackendFactory::new(plonky3::Factory))
             }
             #[cfg(feature = "stwo")]
-            BackendType::Stwo => {
-                Box::new(composite::CompositeBackendFactory::new(plonky3::Factory))
-            }
+            BackendType::Stwo => Box::new(stwo::StwoProverFactory),
         }
     }
 }
