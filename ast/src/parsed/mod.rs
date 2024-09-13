@@ -288,7 +288,7 @@ impl<R> Children<Expression<R>> for NamedExpression<Arc<Expression<R>>> {
         Box::new(once(self.body.as_ref()))
     }
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
-        Box::new(Arc::get_mut(&mut self.body).unwrap().children_mut())
+        Box::new(once(Arc::get_mut(&mut self.body).unwrap()))
     }
 }
 
@@ -411,14 +411,10 @@ impl<R> TraitImplementation<Expression<R>> {
 
 impl<R> Children<Expression<R>> for TraitImplementation<Expression<R>> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
-        Box::new(self.functions.iter().flat_map(|m| m.body.children()))
+        Box::new(self.functions.iter().flat_map(|m| m.children()))
     }
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
-        Box::new(
-            self.functions
-                .iter_mut()
-                .flat_map(|m| m.body.children_mut()),
-        )
+        Box::new(self.functions.iter_mut().flat_map(|m| m.children_mut()))
     }
 }
 
@@ -1220,7 +1216,7 @@ impl<Ref> From<StructExpression<Expression<Ref>>> for Expression<Ref> {
     }
 }
 
-impl<R> Children<Expression<R>> for StructExpression<R> {
+impl<R> Children<Expression<R>> for StructExpression<Expression<R>> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
         Box::new(self.fields.iter().flat_map(|f| f.children()))
     }

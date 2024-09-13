@@ -10,6 +10,7 @@ use powdr_ast::analyzed::{
 };
 use powdr_ast::parsed::asm::SymbolPath;
 use powdr_ast::parsed::types::TupleType;
+use powdr_ast::parsed::ArrayExpression;
 use powdr_ast::parsed::{
     self,
     types::{ArrayType, Type, TypeScheme},
@@ -17,9 +18,7 @@ use powdr_ast::parsed::{
     PilStatement, PolynomialName, SelectedExpressions, StructDeclaration, TraitDeclaration,
     TraitFunction, TypeDeclaration as TypeDeclarationParsed,
 };
-use powdr_ast::parsed::{ArrayExpression, TypedExpression};
 use powdr_ast::parsed::{NamedExpression, SymbolCategory, TraitImplementation};
-use powdr_number::DegreeType;
 use powdr_parser_util::SourceRef;
 use std::str::FromStr;
 

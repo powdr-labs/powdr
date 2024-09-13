@@ -668,13 +668,13 @@ StatementInsideBlock: StatementInsideBlock = {
     <Expression> ";" => StatementInsideBlock::Expression(<>),
 }
 
-NamedExpressions: Vec<NamedExpression<Expression>> = {
+NamedExpressions: Vec<NamedExpression<Box<Expression>>> = {
     => vec![],
     <mut list:( <NamedExpression> "," )*> <end:NamedExpression> ","?  => { list.push(end); list }
 }
 
-NamedExpression: NamedExpression<Expression> = {
-    <name:Identifier> ":" <body:Expression> => NamedExpression { name, body }
+NamedExpression: NamedExpression<Box<Expression>> = {
+    <name:Identifier> ":" <body:BoxedExpression> => NamedExpression { name, body }
 }
 
 // ---------------------------- Pattern -----------------------------
