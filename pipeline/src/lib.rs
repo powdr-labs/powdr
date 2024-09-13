@@ -77,10 +77,9 @@ impl HostContext {
 // TODO at some point, we could also just pass evaluator::Values around - would be much faster.
 pub fn parse_query(query: &str) -> Result<(&str, Vec<&str>), String> {
     // We are expecting an enum value
+    let query = query.strip_prefix("std::prelude::Query::").unwrap_or(query);
     if let Some(paren) = query.find('(') {
-        let name = query[..paren]
-            .strip_prefix("std::prelude::Query::")
-            .unwrap_or(&query[..paren]);
+        let name = &query[..paren];
         let data = query[paren + 1..].strip_suffix(')').ok_or_else(|| {
             format!(
                 "Error parsing query input \"{query}\". Could not find closing ')' in enum data."
