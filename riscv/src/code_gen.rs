@@ -447,6 +447,7 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     // Load the value of label `l` into register X.
     instr load_label XL, l: label
         link ~> regs.mstore(XL, STEP, tmp1_h, tmp1_l)
+        link => byte.check(tmp1_h)
     {
         tmp1_h * 2**16 + tmp1_l = l
     }
@@ -649,38 +650,37 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     std::utils::force_bool(wrap_bit_2);
     std::utils::force_bool(wrap_bit_3);
 
-    /*
     // Sign extends the value in register X and stores it in register Y.
     // Input is a 32 bit unsigned number. We check bit 7 and set all higher bits to that value.
-    instr sign_extend_byte X, Y
-        link ~> tmp1_col = regs.mload(X, STEP)
-        link ~> regs.mstore(Y, STEP + 3, tmp3_col)
+    instr sign_extend_byte XL, YL
+        link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
+        link ~> regs.mstore(YL, STEP + 3, tmp3_h, tmp3_l)
     {
         // wrap_bit is used as sign_bit here.
-        tmp1_col = Y_7bit + wrap_bit * 0x80 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
-        tmp3_col = Y_7bit + wrap_bit * 0xffffff80
+        tmp1_l = Y_7bit + wrap_bit * 0x80 + X_b2 * 0x100,
+        tmp3_h = wrap_bit * 0xffff,
+        tmp3_l = Y_7bit + wrap_bit * 0xff80
     }
-    */
+
     col witness Y_7bit;
     col witness Y_7bit_2;
     link => bit7.check(Y_7bit);
     link => bit7.check(Y_7bit_2);
-    /*
 
     // Sign extends the value in register X and stores it in register Y.
     // Input is a 32 bit unsigned number. We check bit 15 and set all higher bits to that value.
-    instr sign_extend_16_bits X, Y
-        link ~> tmp1_col = regs.mload(X, STEP)
-        link ~> regs.mstore(Y, STEP + 3, tmp3_col)
+    instr sign_extend_16_bits XL, YL
+        link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
+        link ~> regs.mstore(YL, STEP + 3, tmp3_h, tmp3_l)
     {
         Y_15bit = X_b1 + Y_7bit * 0x100,
 
         // wrap_bit is used as sign_bit here.
-        tmp1_col = Y_15bit + wrap_bit * 0x8000 + X_b3 * 0x10000 + X_b4 * 0x1000000,
-        tmp3_col = Y_15bit + wrap_bit * 0xffff8000
+        tmp1_l = Y_15bit + wrap_bit * 0x8000,
+        tmp3_h = wrap_bit * 0xffff,
+        tmp3_l = tmp1_l
     }
     col witness Y_15bit;
-    */
 
     // ======================= assertions =========================
 
@@ -1214,29 +1214,53 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             let (rd, r1, r2) = args.rrr()?;
             only_if_no_write_to_zero(
                 rd,
-                format!("and {}, {}, 0, {};", r1.addr(), r2.addr(), rd.addr()),
+                format!("and {}, {}, 0, 0, {};", r1.addr(), r2.addr(), rd.addr()),
             )
         }
         "andi" => {
             let (rd, r1, imm) = args.rri()?;
-            only_if_no_write_to_zero(rd, format!("and {}, 0, {imm}, {};", r1.addr(), rd.addr()))
+            only_if_no_write_to_zero(
+                rd,
+                format!(
+                    "and {}, 0, {}, {}, {};",
+                    r1.addr(),
+                    u32_high(imm),
+                    u32_low(imm),
+                    rd.addr()
+                ),
+            )
         }
         "or" => {
             let (rd, r1, r2) = args.rrr()?;
             only_if_no_write_to_zero(
                 rd,
-                format!("or {}, {}, 0, {};", r1.addr(), r2.addr(), rd.addr()),
+                format!("or {}, {}, 0, 0, {};", r1.addr(), r2.addr(), rd.addr()),
             )
         }
         "ori" => {
             let (rd, r1, imm) = args.rri()?;
-            only_if_no_write_to_zero(rd, format!("or {}, 0, {imm}, {};", r1.addr(), rd.addr()))
+            only_if_no_write_to_zero(
+                rd,
+                format!(
+                    "or {}, 0, {}, {}, {};",
+                    r1.addr(),
+                    u32_high(imm),
+                    u32_low(imm),
+                    rd.addr()
+                ),
+            )
         }
         "not" => {
             let (rd, rs) = args.rr()?;
             only_if_no_write_to_zero(
                 rd,
-                format!("sub_wrap_with_offset 0, {}, -1, {};", rs.addr(), rd.addr()),
+                format!(
+                    "sub_wrap_with_offset 0, {}, {}, {}, {};",
+                    rs.addr(),
+                    i32_high(-1),
+                    i32_low(-1),
+                    rd.addr()
+                ),
             )
         }
 
@@ -1321,13 +1345,29 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
         }
         "slti" => {
             let (rd, rs, imm) = args.rri()?;
-            let imm = -(imm as i32);
             only_if_no_write_to_zero_vec(
                 rd,
                 vec![
                     //format!("to_signed {}, {};", rs.addr(), tmp1.addr()),
-                    format!("affine {}, {}, 0, 1, 0, 0;", rs.addr(), tmp1.addr()),
-                    format!("is_greater_or_equal 0, {}, {};", tmp1.addr(), rd.addr()),
+                    format!(
+                        "set_reg {}, {}, {};",
+                        tmp1.addr(),
+                        u32_high(imm),
+                        u32_low(imm)
+                    ),
+                    format!(
+                        "is_greater_or_equal_signed {}, {}, {};",
+                        rs.addr(),
+                        tmp1.addr(),
+                        rd.addr()
+                    ),
+                    format!(
+                        "affine {}, {}, {}, {}, 0, 1;",
+                        rd.addr(),
+                        rd.addr(),
+                        i32_high(-1),
+                        i32_low(-1)
+                    ),
                 ],
             )
         }
@@ -1337,46 +1377,84 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                 rd,
                 vec![
                     //format!("to_signed {}, {};", r1.addr(), tmp1.addr()),
-                    format!("affine {}, {}, 0, 1, 0, 0;", r1.addr(), tmp1.addr()),
                     //format!("to_signed {}, {};", r2.addr(), tmp2.addr()),
-                    format!("affine {}, {}, 0, 1, 0, 0;", r2.addr(), tmp2.addr()),
                     format!(
-                        "is_greater_or_equal {}, {}, {};",
-                        tmp2.addr(),
-                        tmp1.addr(),
+                        "is_greater_or_equal_signed {}, {}, {};",
+                        r1.addr(),
+                        r2.addr(),
                         rd.addr()
+                    ),
+                    format!(
+                        "affine {}, {}, {}, {}, 0, 1;",
+                        rd.addr(),
+                        rd.addr(),
+                        i32_high(-1),
+                        i32_low(-1)
                     ),
                 ],
             )
         }
         "sltiu" => {
             let (rd, rs, imm) = args.rri()?;
-            let imm = -(imm as i32);
-            only_if_no_write_to_zero(
+            only_if_no_write_to_zero_vec(
                 rd,
-                format!("is_greater_or_equal 0, {}, {};", rs.addr(), rd.addr()),
+                vec![
+                    format!(
+                        "set_reg {}, {}, {};",
+                        tmp1.addr(),
+                        u32_high(imm),
+                        u32_low(imm)
+                    ),
+                    format!(
+                        "is_greater_or_equal {}, {}, {};",
+                        rs.addr(),
+                        tmp1.addr(),
+                        rd.addr()
+                    ),
+                    format!(
+                        "affine {}, {}, {}, {}, 0, 1;",
+                        rd.addr(),
+                        rd.addr(),
+                        i32_high(-1),
+                        i32_low(-1)
+                    ),
+                ],
             )
         }
         "sltu" => {
             let (rd, r1, r2) = args.rrr()?;
-            only_if_no_write_to_zero(
+            only_if_no_write_to_zero_vec(
                 rd,
-                format!(
-                    "is_greater_or_equal {}, {}, {};",
-                    r2.addr(),
-                    r1.addr(),
-                    rd.addr()
-                ),
+                vec![
+                    format!(
+                        "is_greater_or_equal {}, {}, {};",
+                        r1.addr(),
+                        r2.addr(),
+                        rd.addr()
+                    ),
+                    format!(
+                        "affine {}, {}, {}, {}, 0, 1;",
+                        rd.addr(),
+                        rd.addr(),
+                        i32_high(-1),
+                        i32_low(-1)
+                    ),
+                ],
             )
         }
         "sgtz" => {
             let (rd, rs) = args.rr()?;
+
             only_if_no_write_to_zero_vec(
                 rd,
                 vec![
-                    //format!("to_signed {}, {};", rs.addr(), tmp1.addr()),
-                    format!("affine {}, {}, 0, 1, 0, 0;", rs.addr(), tmp1.addr()),
-                    format!("is_greater_or_equal {}, 0, {};", tmp1.addr(), rd.addr()),
+                    format!("set_reg {}, 0, 1;", tmp1.addr(),),
+                    format!(
+                        "is_greater_or_equal_signed {}, {}, {};",
+                        rs.addr(),
+                        tmp1.addr(),
+                        rd.addr()
+                    ),
                 ],
             )
         }
@@ -1608,7 +1686,12 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                         tmp2.addr()
                     ),
                     format!("affine {}, {}, 0, 8, 0, 0;", tmp2.addr(), tmp2.addr()),
-                    format!("shr {}, {}, 0, {};", tmp1.addr(), tmp2.addr(), tmp1.addr()),
+                    format!(
+                        "shr {}, {}, 0, 0, {};",
+                        tmp1.addr(),
+                        tmp2.addr(),
+                        tmp1.addr()
+                    ),
                     format!("sign_extend_byte {}, {};", tmp1.addr(), rd.addr()),
                 ],
             )
@@ -1628,8 +1711,13 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                         tmp2.addr()
                     ),
                     format!("affine {}, {}, 0, 8, 0, 0;", tmp2.addr(), tmp2.addr()),
-                    format!("shr {}, {}, 0, {};", tmp1.addr(), tmp2.addr(), tmp1.addr()),
-                    format!("and {}, 0, 0xff, {};", tmp1.addr(), rd.addr()),
+                    format!(
+                        "shr {}, {}, 0, 0, {};",
+                        tmp1.addr(),
+                        tmp2.addr(),
+                        tmp1.addr()
+                    ),
+                    format!("and {}, 0, 0, 0xff, {};", tmp1.addr(), rd.addr()),
                 ],
             )
         }
@@ -1649,7 +1737,12 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                         tmp2.addr()
                     ),
                     format!("affine {}, {}, 0, 8, 0, 0;", tmp2.addr(), tmp2.addr()),
-                    format!("shr {}, {}, 0, {};", tmp1.addr(), tmp2.addr(), tmp1.addr()),
+                    format!(
+                        "shr {}, {}, 0, 0, {};",
+                        tmp1.addr(),
+                        tmp2.addr(),
+                        tmp1.addr()
+                    ),
                     format!("sign_extend_16_bits {}, {};", tmp1.addr(), rd.addr()),
                 ],
             )
@@ -1670,8 +1763,13 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                         tmp2.addr()
                     ),
                     format!("affine {}, {}, 0, 8, 0, 0;", tmp2.addr(), tmp2.addr()),
-                    format!("shr {}, {}, 0, {};", tmp1.addr(), tmp2.addr(), tmp1.addr()),
-                    format!("and {}, 0, 0x0000ffff, {};", tmp1.addr(), rd.addr()),
+                    format!(
+                        "shr {}, {}, 0, 0, {};",
+                        tmp1.addr(),
+                        tmp2.addr(),
+                        tmp1.addr()
+                    ),
+                    format!("and {}, 0, 0, 0x0000ffff, {};", tmp1.addr(), rd.addr()),
                 ],
             )
         }
@@ -1702,12 +1800,32 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                 ),
                 format!("set_reg {}, 0, 0xffff;", tmp3.addr()),
                 format!("affine {}, {}, 0, 8, 0, 0;", tmp2.addr(), tmp4.addr()),
-                format!("shl {}, {}, 0, {};", tmp3.addr(), tmp4.addr(), tmp3.addr()),
+                format!(
+                    "shl {}, {}, 0, 0, {};",
+                    tmp3.addr(),
+                    tmp4.addr(),
+                    tmp3.addr()
+                ),
                 format!("xor {}, 0, 0xffff, 0xffff, {};", tmp3.addr(), tmp3.addr()),
-                format!("and {}, {}, 0, {};", tmp1.addr(), tmp3.addr(), tmp1.addr()),
-                format!("and {}, 0, 0xffff, {};", r2.addr(), tmp3.addr()),
-                format!("shl {}, {}, 0, {};", tmp3.addr(), tmp4.addr(), tmp3.addr()),
-                format!("or {}, {}, 0, {};", tmp1.addr(), tmp3.addr(), tmp1.addr()),
+                format!(
+                    "and {}, {}, 0, 0, {};",
+                    tmp1.addr(),
+                    tmp3.addr(),
+                    tmp1.addr()
+                ),
+                format!("and {}, 0, 0, 0xffff, {};", r2.addr(), tmp3.addr()),
+                format!(
+                    "shl {}, {}, 0, 0, {};",
+                    tmp3.addr(),
+                    tmp4.addr(),
+                    tmp3.addr()
+                ),
+                format!(
+                    "or {}, {}, 0, 0, {};",
+                    tmp1.addr(),
+                    tmp3.addr(),
+                    tmp1.addr()
+                ),
                 format!(
                     "mstore {}, {}, {}, {}, {};",
                     r1.addr(),
@@ -1732,12 +1850,32 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                 ),
                 format!("set_reg {}, 0, 0xff;", tmp3.addr()),
                 format!("affine {}, {}, 0, 8, 0, 0;", tmp2.addr(), tmp4.addr()),
-                format!("shl {}, {}, 0, {};", tmp3.addr(), tmp4.addr(), tmp3.addr()),
+                format!(
+                    "shl {}, {}, 0, 0, {};",
+                    tmp3.addr(),
+                    tmp4.addr(),
+                    tmp3.addr()
+                ),
                 format!("xor {}, 0, 0xffff, 0xffff, {};", tmp3.addr(), tmp3.addr()),
-                format!("and {}, {}, 0, {};", tmp1.addr(), tmp3.addr(), tmp1.addr()),
-                format!("and {}, 0, 0xff, {};", r2.addr(), tmp3.addr()),
-                format!("shl {}, {}, 0, {};", tmp3.addr(), tmp4.addr(), tmp3.addr()),
-                format!("or {}, {}, 0, {};", tmp1.addr(), tmp3.addr(), tmp1.addr()),
+                format!(
+                    "and {}, {}, 0, 0, {};",
+                    tmp1.addr(),
+                    tmp3.addr(),
+                    tmp1.addr()
+                ),
+                format!("and {}, 0, 0, 0xff, {};", r2.addr(), tmp3.addr()),
+                format!(
+                    "shl {}, {}, 0, 0, {};",
+                    tmp3.addr(),
+                    tmp4.addr(),
+                    tmp3.addr()
+                ),
+                format!(
+                    "or {}, {}, 0, 0, {};",
+                    tmp1.addr(),
+                    tmp3.addr(),
+                    tmp1.addr()
+                ),
                 format!(
                     "mstore {}, {}, {}, {}, {};",
                     r1.addr(),
