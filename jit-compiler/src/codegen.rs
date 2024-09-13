@@ -118,9 +118,9 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
             "std::check::panic" => Some("(s: &str) -> ! { panic!(\"{s}\"); }".to_string()),
             "std::field::modulus" => {
                 let modulus = T::modulus();
-                Some(format!("() -> powdr_number::BigInt {{ powdr_number::BigInt::from(\"{modulus}\") }}"))
+                Some(format!("() -> ibig::IBig {{ ibig::IBig::from(\"{modulus}\") }}"))
             }
-            "std::convert::fe" => Some("(n: powdr_number::BigInt) -> FieldElement {\n    <FieldElement as PrimeField>::BigInt::try_from(n.to_biguint().unwrap()).unwrap().into()\n}"
+            "std::convert::fe" => Some("(n: ibig::IBig) -> FieldElement {\n    <FieldElement as PrimeField>::BigInt::try_from(n.to_biguint().unwrap()).unwrap().into()\n}"
                 .to_string()),
             _ => None,
         }?;
@@ -150,7 +150,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
             ) => {
                 let value = u64::try_from(value).unwrap_or_else(|_| unimplemented!());
                 match type_ {
-                    Type::Int => format!("powdr_number::BigInt::from({value}_u64)"),
+                    Type::Int => format!("ibig::IBig::from({value}_u64)"),
                     Type::Fe => format!("FieldElement::from({value}_u64)"),
                     Type::Expr => format!("Expr::from({value}_u64)"),
                     _ => unreachable!(),
@@ -269,7 +269,7 @@ pub fn escape_symbol(s: &str) -> String {
 fn map_type(ty: &Type) -> String {
     match ty {
         Type::Bottom | Type::Bool => format!("{ty}"),
-        Type::Int => "powdr_number::BigInt".to_string(),
+        Type::Int => "ibig::IBig".to_string(),
         Type::Fe => "FieldElement".to_string(),
         Type::String => "String".to_string(),
         Type::Expr => "Expr".to_string(),
@@ -311,7 +311,7 @@ mod test {
         let result = compile("let c: int -> int = |i| i;", &["c"]);
         assert_eq!(
             result,
-            "fn c(i: powdr_number::BigInt) -> powdr_number::BigInt { i }\n"
+            "fn c(i: ibig::IBig) -> ibig::IBig { i }\n"
         );
     }
 
@@ -323,9 +323,9 @@ mod test {
         );
         assert_eq!(
         result,
-        "fn c(i: powdr_number::BigInt) -> powdr_number::BigInt { ((i).clone() + (powdr_number::BigInt::from(20_u64)).clone()) }
+        "fn c(i: ibig::IBig) -> ibig::IBig { ((i).clone() + (ibig::IBig::from(20_u64)).clone()) }
 
-fn d(k: powdr_number::BigInt) -> powdr_number::BigInt { (c)(((k).clone() * (powdr_number::BigInt::from(20_u64)).clone()).clone()) }
+fn d(k: ibig::IBig) -> ibig::IBig { (c)(((k).clone() * (ibig::IBig::from(20_u64)).clone()).clone()) }
 "
     );
     }

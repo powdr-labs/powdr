@@ -54,7 +54,7 @@ pub fn create_full_code<T: FieldElement>(
             r#"
             #[no_mangle]
             pub extern fn {}(i: u64) -> u64 {{
-                u64::try_from({name}(powdr_number::BigInt::from(i))).unwrap()
+                u64::try_from({name}(ibig::IBig::from(i))).unwrap()
             }}
             "#,
             extern_symbol_name(sym)
@@ -77,7 +77,7 @@ edition = "2021"
 crate-type = ["dylib"]
 
 [dependencies]
-powdr-number = { git = "https://github.com/powdr-labs/powdr.git" }
+ibig = { version = "0.3.6", features = [] }
 "#;
 
 /// Compiles the given code and returns the path to the
