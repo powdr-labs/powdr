@@ -721,7 +721,15 @@ impl TypeChecker {
             Expression::StructExpression(sr, struct_expr) => {
                 for named_expr in struct_expr.fields.iter_mut() {
                     let name = format!("{}::{}", struct_expr.name, named_expr.name);
-                    let expr_ty = self.declared_types[&name].1.ty.clone();
+                    let expr_ty = match self.declared_types.get(&name) {
+                        Some(declared_type) => declared_type.1.ty.clone(),
+                        None => {
+                            return Err(sr.with_error(format!(
+                                "Struct {} has no field {}.",
+                                struct_expr.name, named_expr.name
+                            )));
+                        }
+                    };
                     self.expect_type(&expr_ty, named_expr.body.as_mut())?;
                 }
 

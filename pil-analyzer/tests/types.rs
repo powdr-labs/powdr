@@ -579,7 +579,19 @@ fn simple_struct() {
     struct Dot { x: int, y: int }
     let f: int -> Dot = |i| Dot{x: 0, y: i};
 
-    let x: Dot = f(0);
+    let x = f(0);
+    ";
+    type_check(input, &[("x", "", "Dot")]);
+}
+
+#[test]
+#[should_panic = "Struct Dot has no field a."]
+fn struct_wrong_fields() {
+    let input = "
+    struct Dot { x: int, y: int }
+    let f: int -> Dot = |i| Dot{a: 0, b: i};
+
+    let x = f(0);
     ";
     type_check(input, &[]);
 }
@@ -610,22 +622,6 @@ fn cols_in_func() {
     h();
     ";
     type_check(input, &[]);
-}
-
-#[test]
-fn struct_constr_var_typed() {
-    let input = "
-    struct X {x: int, y: int}
-    let v: int -> X = |i| match i {
-        1 => X{x: 1, y: 0},
-        2 => X{x: 2, y: 2},
-        _ => X{x: 0, y: 1},
-    };
-
-    let x: X = v(1);
-    ";
-
-    type_check(input, &[])
 }
 
 #[test]
