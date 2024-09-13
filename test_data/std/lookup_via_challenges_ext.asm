@@ -37,16 +37,4 @@ machine Main with degree: 8 {
     let z = Fp2::Fp2(z1, z2);
 
     lookup([z1, z2], alpha, beta, lookup_constraint, m);
-
-    // TODO: Helper columns, because we can't access the previous row in hints
-    col witness stage(1) z1_next;
-    col witness stage(1) z2_next;
-    query |i| {
-        let hint = compute_next_z(z, alpha, beta, lookup_constraint, m);
-        std::prover::provide_value(z1_next, i, hint[0]);
-        std::prover::provide_value(z2_next, i, hint[1]);
-    };
-
-    z1' = z1_next;
-    z2' = z2_next;
 }
