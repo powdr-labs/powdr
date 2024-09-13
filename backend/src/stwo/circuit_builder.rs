@@ -73,7 +73,8 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
 }
 
 // Generates the STWO trace.
-pub fn generate_stwo_trace<T>(witness: &[(String, Vec<T>)], log_n_instances: u32) {
+pub fn generate_stwo_trace<T>(witness: &[(String, Vec<T>)], log_n_instances: u32
+)-> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
     let trace: Vec<PackedBaseField> = witness
         .iter()
         .flat_map(|(_, vec)| {
@@ -98,6 +99,25 @@ pub fn generate_stwo_trace<T>(witness: &[(String, Vec<T>)], log_n_instances: u32
                 })
         })
         .collect(); // Collect the flattened iterator into a Vec<PackedBaseField>.
+        println!("from generate stwo trace trace");
+        println!("{:?}", trace);
+    
+        let mut trace_stwo= (0..2)
+        .map(|_| Col::<SimdBackend, BaseField>::zeros(1 << 5))
+        .collect_vec();
+        // column x
+        trace_stwo[0].data[0]= trace[0];
+        trace_stwo[0].data[1]= trace[1];
 
-    println!("{:?}", trace);
+        trace_stwo[1].data[0]= trace[2];
+        trace_stwo[1].data[1]= trace[3];
+
+        println!("from generate stwo trace trace_stwo");
+        println!("{:?}", trace_stwo);
+
+        let domain = CanonicCoset::new(5).circle_domain();
+        trace_stwo
+        .into_iter()
+        .map(|eval| CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(domain, eval))
+        .collect_vec()  
 }
