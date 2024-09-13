@@ -110,7 +110,7 @@ impl<'a> Folder for Canonicalizer<'a> {
                                 mut struct_decl,
                             )) => {
                                 let type_vars = struct_decl.type_vars.vars().collect();
-                                for (_name, ty) in struct_decl.fields.iter_mut() {
+                                for (_, ty) in struct_decl.fields.iter_mut() {
                                     canonicalize_inside_type(
                                         ty, &type_vars, &self.path, self.paths,
                                     );

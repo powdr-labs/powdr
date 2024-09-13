@@ -474,13 +474,10 @@ pub fn type_from_definition(
             FunctionValueDefinition::TypeConstructor(TypeConstructor::Struct(
                 struct_decl,
                 field,
-            )) => {
-                let vars = struct_decl.type_vars.clone();
-                Some(TypeScheme {
-                    vars,
-                    ty: field.1.clone(),
-                })
-            }
+            )) => Some(TypeScheme {
+                vars: struct_decl.type_vars.clone(),
+                ty: field.1.clone(),
+            }),
             FunctionValueDefinition::TraitDeclaration(_) => {
                 panic!("Requested type of trait declaration.")
             }

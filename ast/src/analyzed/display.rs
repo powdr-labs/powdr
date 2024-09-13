@@ -66,7 +66,7 @@ impl<T: Display> Display for Analyzed<T> {
                             Some(FunctionValueDefinition::TypeConstructor(_))
                                 | Some(FunctionValueDefinition::TraitFunction(_, _))
                         ) {
-                            // These are printed as part of the enum / trait.
+                            // These are printed as part of the enum / struct / trait.
                             continue;
                         }
                         let (name, _) = update_namespace(name, symbol.degree, f)?;
