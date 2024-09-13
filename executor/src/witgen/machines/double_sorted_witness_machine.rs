@@ -162,6 +162,15 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
         } else {
             None
         };
+
+        if !parts.prover_functions.is_empty() {
+            log::warn!(
+                "DoubleSortedWitness machine does not support prover functions.\
+                The following prover functions are ignored:\n{}",
+                parts.prover_functions.iter().format("\n")
+            );
+        }
+
         Some(Self {
             name,
             degree_range,

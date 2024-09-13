@@ -24,7 +24,6 @@ use std::prover::eval;
 ///
 /// # Arguments:
 ///
-/// - is_first: A column that is 1 for the first row and 0 for the rest
 /// - id: Interaction Id
 /// - tuple: An array of columns to be sent to the bus
 /// - multiplicity: The multiplicity which shows how many times a column will be sent
@@ -36,7 +35,7 @@ use std::prover::eval;
 /// # Returns:
 ///
 /// - Constraints to be added to enforce the bus
-let bus_interaction: expr, expr, expr[], expr, expr[], Fp2<expr>, Fp2<expr> -> Constr[] = |is_first, id, tuple, multiplicity, acc, alpha, beta| {
+let bus_interaction: expr, expr[], expr, expr[], Fp2<expr>, Fp2<expr> -> () = constr |id, tuple, multiplicity, acc, alpha, beta| {
 
     // Implemented as: folded = (beta - fingerprint(id, tuple...));
     let folded = sub_ext(beta, fingerprint_with_id(id, tuple, alpha));
@@ -48,6 +47,7 @@ let bus_interaction: expr, expr, expr[], expr, expr[], Fp2<expr>, Fp2<expr> -> C
     let acc_ext = fp2_from_array(acc);
     let next_acc = next_ext(acc_ext);
 
+    let is_first: col = std::well_known::is_first;
     let is_first_next = from_base(is_first');
 
     // Update rule:
@@ -58,7 +58,7 @@ let bus_interaction: expr, expr, expr[], expr, expr[], Fp2<expr>, Fp2<expr> -> C
         mul_ext(folded_next, sub_ext(next_acc, mul_ext(acc_ext, sub_ext(from_base(1), is_first_next)))), m_ext_next
     );
     
-    constrain_eq_ext(update_expr, from_base(0))
+    constrain_eq_ext(update_expr, from_base(0));
 };
 
 /// Compute acc' = acc * (1 - is_first') + multiplicity' / fingerprint_with_id(id, (a1', a2')),
@@ -94,11 +94,11 @@ let compute_next_z_receive: expr, expr, expr[], expr, Fp2<expr>, Fp2<expr>, Fp2<
     compute_next_z_send(is_first, id, tuple, -multiplicity, acc, alpha, beta);
 
 /// Convenience function for bus interaction to send columns
-let bus_send: expr, expr, expr[], expr, expr[], Fp2<expr>, Fp2<expr> -> Constr[] = |is_first, id, tuple, multiplicity, acc, alpha, beta| {
-    bus_interaction(is_first, id, tuple, multiplicity, acc, alpha, beta)
+let bus_send: expr, expr[], expr, expr[], Fp2<expr>, Fp2<expr> -> () = constr |id, tuple, multiplicity, acc, alpha, beta| {
+    bus_interaction(id, tuple, multiplicity, acc, alpha, beta);
 };
 
 /// Convenience function for bus interaction to receive columns
-let bus_receive: expr, expr, expr[], expr, expr[], Fp2<expr>, Fp2<expr> -> Constr[] = |is_first, id, tuple, multiplicity, acc, alpha, beta| {
-    bus_interaction(is_first, id, tuple, -1 * multiplicity, acc, alpha, beta)
+let bus_receive: expr, expr[], expr, expr[], Fp2<expr>, Fp2<expr> -> () = constr |id, tuple, multiplicity, acc, alpha, beta| {
+    bus_interaction(id, tuple, -1 * multiplicity, acc, alpha, beta);
 };

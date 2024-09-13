@@ -146,6 +146,9 @@ impl<T: Display> Display for Analyzed<T> {
                 StatementIdentifier::Identity(i) => {
                     writeln_indented(f, &self.identities[*i])?;
                 }
+                StatementIdentifier::ProverFunction(i) => {
+                    writeln_indented(f, format!("{};", &self.prover_functions[*i]))?;
+                }
             }
         }
 
@@ -504,7 +507,7 @@ mod test {
         };
 
         let (input, expected) = &(&wrap(input), &wrap(expected));
-        let analyzed = analyze_string::<GoldilocksField>(input);
+        let analyzed = analyze_string::<GoldilocksField>(input).unwrap();
         let printed = analyzed.to_string();
 
         assert_eq!(expected.trim(), printed.trim());

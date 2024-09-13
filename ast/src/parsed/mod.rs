@@ -112,17 +112,6 @@ pub enum PilStatement {
         // Value (prover query / hint)
         Option<FunctionDefinition>,
     ),
-    PlookupIdentity(
-        SourceRef,
-        SelectedExpressions<Expression>,
-        SelectedExpressions<Expression>,
-    ),
-    PermutationIdentity(
-        SourceRef,
-        SelectedExpressions<Expression>,
-        SelectedExpressions<Expression>,
-    ),
-    ConnectIdentity(SourceRef, Vec<Expression>, Vec<Expression>),
     EnumDeclaration(SourceRef, EnumDeclaration<Expression>),
     TraitImplementation(SourceRef, TraitImplementation<Expression>),
     TraitDeclaration(SourceRef, TraitDeclaration<Expression>),
@@ -183,9 +172,6 @@ impl PilStatement {
 
             PilStatement::Include(_, _)
             | PilStatement::Namespace(_, _, _)
-            | PilStatement::PlookupIdentity(_, _, _)
-            | PilStatement::PermutationIdentity(_, _, _)
-            | PilStatement::ConnectIdentity(_, _, _)
             | PilStatement::Expression(_, _)
             | PilStatement::TraitImplementation(_, _) => Box::new(empty()),
         }
@@ -196,13 +182,6 @@ impl Children<Expression> for PilStatement {
     /// Returns an iterator over all (top-level) expressions in this statement.
     fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
         match self {
-            PilStatement::PlookupIdentity(_, left, right)
-            | PilStatement::PermutationIdentity(_, left, right) => {
-                Box::new(left.children().chain(right.children()))
-            }
-            PilStatement::ConnectIdentity(_start, left, right) => {
-                Box::new(left.iter().chain(right.iter()))
-            }
             PilStatement::Expression(_, e) => Box::new(once(e)),
             PilStatement::Namespace(_, _, Some(d)) => d.children(),
             PilStatement::PolynomialDefinition(_, PolynomialName { array_size, .. }, e) => {
@@ -234,13 +213,6 @@ impl Children<Expression> for PilStatement {
     /// Returns an iterator over all (top-level) expressions in this statement.
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
         match self {
-            PilStatement::PlookupIdentity(_, left, right)
-            | PilStatement::PermutationIdentity(_, left, right) => {
-                Box::new(left.children_mut().chain(right.children_mut()))
-            }
-            PilStatement::ConnectIdentity(_start, left, right) => {
-                Box::new(left.iter_mut().chain(right.iter_mut()))
-            }
             PilStatement::Expression(_, e) => Box::new(once(e)),
             PilStatement::Namespace(_, _, Some(d)) => d.children_mut(),
             PilStatement::PolynomialDefinition(_, PolynomialName { array_size, .. }, e) => {
@@ -986,6 +958,10 @@ pub enum BinaryOperator {
     NotEqual,
     GreaterEqual,
     Greater,
+    In,
+    Is,
+    Connect,
+    Select, // $
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -1038,8 +1014,10 @@ impl Precedence for BinaryOperator {
             LogicalAnd => 11,
             // ||
             LogicalOr => 12,
-            // .. ..=
-            // ??
+            // $
+            Select => 14,
+            // in is connect
+            In | Is | Connect => 15,
         };
 
         Some(precedence)
@@ -1174,6 +1152,7 @@ impl<E> Children<E> for IfExpression<E> {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum StatementInsideBlock<E = Expression<NamespacedPolynomialReference>> {
+    // TODO add a source ref here.
     LetStatement(LetStatementInsideBlock<E>),
     Expression(E),
 }

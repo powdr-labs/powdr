@@ -16,7 +16,7 @@ machine PoseidonGL with
     // hash functions.
     operation poseidon_permutation<0> state[0], state[1], state[2], state[3], state[4], state[5], state[6], state[7], state[8], state[9], state[10], state[11] -> output[0], output[1], output[2], output[3];
 
-    col witness operation_id;
+    let operation_id;
 
     // Ported from:
     // - https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/poseidong.pil
@@ -57,19 +57,19 @@ machine PoseidonGL with
     let C = [C_0, C_1, C_2, C_3, C_4, C_5, C_6, C_7, C_8, C_9, C_10, C_11];
 
     // State of the Poseidon permutation (8 rate elements and 4 capacity elements)
-    pol commit state[STATE_SIZE];
+    let state: col[STATE_SIZE];
 
     // The first OUTPUT_SIZE elements of the *final* state
     // (constrained to be constant within the block and equal to parts of the state in the last row)
-    pol commit output[OUTPUT_SIZE];
+    let output: col[OUTPUT_SIZE];
 
     // Add round constants
     let a = array::zip(state, C, |state, C| state + C);
 
     // Compute S-Boxes (x^7) (using a degree bound of 3)
-    col witness x3[STATE_SIZE];
+    let x3: col[STATE_SIZE];
     array::zip(x3, array::map(a, |a| a * a * a), |x3, expected| x3 = expected);
-    col witness x7[STATE_SIZE];
+    let x7: col[STATE_SIZE];
     array::zip(x7, array::zip(x3, a, |x3, a| x3 * x3 * a), |x7, expected| x7 = expected);
 
     // Apply S-Boxes on the first element and otherwise if it is a full round.

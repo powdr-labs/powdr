@@ -13,10 +13,7 @@ use crate::pipeline::Pipeline;
 use crate::verify::verify;
 
 pub fn resolve_test_file(file_name: &str) -> PathBuf {
-    PathBuf::from(format!(
-        "{}/../test_data/{file_name}",
-        env!("CARGO_MANIFEST_DIR")
-    ))
+    PathBuf::from(format!("../test_data/{file_name}"))
 }
 
 pub fn execute_test_file(

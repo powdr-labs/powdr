@@ -783,7 +783,7 @@ fn mul_instruction<T: FieldElement>(runtime: &Runtime) -> &'static str {
         link ~> regs.mstore(W, STEP + 3, tmp4_col);
 "#
         }
-        KnownField::BabyBearField => {
+        KnownField::BabyBearField | KnownField::Mersenne31Field => {
             r#"
     // Computes V = val(X) * val(Y) and
     // stores the lower 32 bits in register Z and the upper 32 bits in register W.
