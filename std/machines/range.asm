@@ -6,8 +6,8 @@ machine Byte with
     operation check<0> BYTE -> ;
 
     let BYTE: col = |i| i & 0xff;
-    let latch: col = |i| 1;
-    let operation_id: col = |i| 0;
+    col fixed latch = [1]*;
+    col fixed operation_id = [0]*;
 }
 
 machine Byte2 with
@@ -18,8 +18,8 @@ machine Byte2 with
     operation check<0> BYTE2 -> ;
 
     let BYTE2: col = |i| i & 0xffff;
-    let latch: col = |i| 1;
-    let operation_id: col = |i| 0;
+    col fixed latch = [1]*;
+    col fixed operation_id = [0]*;
 }
 
 machine Bit2 with
@@ -30,8 +30,8 @@ machine Bit2 with
     operation check<0> BIT2 -> ;
 
     let BIT2: col = |i| i % 4;
-    let latch: col = |i| 1;
-    let operation_id: col = |i| 0;
+    col fixed latch = [1]*;
+    col fixed operation_id = [0]*;
 }
 
 machine Bit6 with
@@ -42,8 +42,8 @@ machine Bit6 with
     operation check<0> BIT6 -> ;
 
     let BIT6: col = |i| i % 64;
-    let latch: col = |i| 1;
-    let operation_id: col = |i| 0;
+    col fixed latch = [1]*;
+    col fixed operation_id = [0]*;
 }
 
 machine Bit7 with
@@ -54,6 +54,6 @@ machine Bit7 with
     operation check<0> BIT7 -> ;
 
     let BIT7: col = |i| i % 128;
-    let latch: col = |i| 1;
-    let operation_id: col = |i| 0;
+    col fixed latch = [1]*;
+    col fixed operation_id = [0]*;
 }
