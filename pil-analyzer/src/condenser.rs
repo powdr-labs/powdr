@@ -947,17 +947,18 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
             )))
         }
         Value::Enum(enum_, variant, items) => {
-            let enum_ref = Expression::Reference(
+            let variant_ref = Expression::Reference(
                 SourceRef::unknown(),
                 Reference::Poly(PolynomialReference {
                     name: format!("{}::{variant}", enum_.name),
+                    // We do not know the type args here.
                     type_args: None,
                 }),
             );
             match items {
-                None => enum_ref,
+                None => variant_ref,
                 Some(items) => FunctionCall {
-                    function: Box::new(enum_ref),
+                    function: Box::new(variant_ref),
                     arguments: items
                         .iter()
                         .map(|i| try_value_to_expression(i))
