@@ -1007,7 +1007,7 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
             }
             AlgebraicExpression::Number(n) => Number {
                 value: n.to_arbitrary_integer(),
-                type_: Some(Type::Fe),
+                type_: Some(Type::Expr),
             }
             .into(),
             _ => {
