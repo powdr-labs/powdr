@@ -139,17 +139,13 @@ impl Display for InstructionBody {
 }
 
 fn format_instruction_statement(stmt: &PilStatement) -> String {
-    match stmt {
-        PilStatement::Expression(_, _)
-        | PilStatement::PlookupIdentity(_, _, _)
-        | PilStatement::PermutationIdentity(_, _, _)
-        | PilStatement::ConnectIdentity(_, _, _) => {
-            // statements inside instruction definition don't end in semicolon
-            let mut s = format!("{stmt}");
-            assert_eq!(s.pop(), Some(';'));
-            s
-        }
-        _ => panic!("invalid statement inside instruction body: {stmt}"),
+    if let PilStatement::Expression(_, _) = stmt {
+        // statements inside instruction definition don't end in semicolon
+        let mut s = format!("{stmt}");
+        assert_eq!(s.pop(), Some(';'));
+        s
+    } else {
+        panic!("invalid statement inside instruction body: {stmt}")
     }
 }
 
@@ -514,18 +510,6 @@ impl Display for PilStatement {
                 names.iter().format(", "),
                 value.as_ref().map(|v| format!("{v}")).unwrap_or_default()
             ),
-            PilStatement::PlookupIdentity(_, left, right) => {
-                write!(f, "{left} in {right};")
-            }
-            PilStatement::PermutationIdentity(_, left, right) => {
-                write!(f, "{left} is {right};")
-            }
-            PilStatement::ConnectIdentity(_, left, right) => write!(
-                f,
-                "[ {} ] connect [ {} ];",
-                format_list(left),
-                format_list(right),
-            ),
             PilStatement::Expression(_, e) => write!(f, "{e};"),
             PilStatement::EnumDeclaration(_, enum_decl) => write!(f, "{enum_decl}"),
             PilStatement::TraitImplementation(_, trait_impl) => write!(f, "{trait_impl}"),
@@ -855,6 +839,10 @@ impl Display for BinaryOperator {
                 BinaryOperator::NotEqual => "!=",
                 BinaryOperator::GreaterEqual => ">=",
                 BinaryOperator::Greater => ">",
+                BinaryOperator::In => "in",
+                BinaryOperator::Is => "is",
+                BinaryOperator::Connect => "connect",
+                BinaryOperator::Select => "$",
             }
         )
     }

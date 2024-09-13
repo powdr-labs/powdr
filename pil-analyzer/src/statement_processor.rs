@@ -5,14 +5,17 @@ use std::sync::Arc;
 use itertools::Itertools;
 
 use powdr_ast::analyzed::{DegreeRange, TypedExpression};
+use powdr_ast::parsed::asm::SymbolPath;
+use powdr_ast::parsed::types::TupleType;
 use powdr_ast::parsed::{
     self,
     types::{ArrayType, Type, TypeScheme},
     ArrayLiteral, EnumDeclaration, EnumVariant, FunctionDefinition, FunctionKind, LambdaExpression,
     PilStatement, PolynomialName, SelectedExpressions, TraitDeclaration, TraitFunction,
 };
-
+use powdr_ast::parsed::{NamedExpression, SymbolCategory, TraitImplementation};
 use powdr_parser_util::SourceRef;
+use std::str::FromStr;
 
 use powdr_ast::analyzed::{
     Expression, FunctionValueDefinition, Identity, IdentityKind, PolynomialType, PublicDeclaration,
@@ -28,6 +31,7 @@ pub enum PILItem {
     Definition(Symbol, Option<FunctionValueDefinition>),
     PublicDeclaration(PublicDeclaration),
     Identity(Identity<SelectedExpressions<Expression>>),
+    TraitImplementation(TraitImplementation<Expression>),
 }
 
 pub struct Counters {
@@ -201,6 +205,10 @@ where
                 None,
                 Some(FunctionDefinition::TraitDeclaration(trait_decl.clone())),
             ),
+            PilStatement::TraitImplementation(_, trait_impl) => {
+                let trait_impl = self.process_trait_implementation(trait_impl);
+                vec![PILItem::TraitImplementation(trait_impl)]
+            }
             _ => self.handle_identity_statement(statement),
         }
     }
@@ -343,30 +351,6 @@ where
                     expressions: Box::new(ArrayLiteral { items: vec![] }.into()),
                 },
                 SelectedExpressions::default(),
-            ),
-            PilStatement::PlookupIdentity(source, key, haystack) => (
-                source,
-                IdentityKind::Plookup,
-                self.expression_processor(&Default::default())
-                    .process_selected_expressions(key),
-                self.expression_processor(&Default::default())
-                    .process_selected_expressions(haystack),
-            ),
-            PilStatement::PermutationIdentity(source, left, right) => (
-                source,
-                IdentityKind::Permutation,
-                self.expression_processor(&Default::default())
-                    .process_selected_expressions(left),
-                self.expression_processor(&Default::default())
-                    .process_selected_expressions(right),
-            ),
-            PilStatement::ConnectIdentity(source, left, right) => (
-                source,
-                IdentityKind::Connect,
-                self.expression_processor(&Default::default())
-                    .process_vec_into_selected_expression(left),
-                self.expression_processor(&Default::default())
-                    .process_vec_into_selected_expression(right),
             ),
             // TODO at some point, these should all be caught by the type checker.
             _ => {
@@ -640,6 +624,55 @@ where
         TraitDeclaration {
             name: self.driver.resolve_decl(&trait_decl.name),
             type_vars: trait_decl.type_vars,
+            functions,
+        }
+    }
+
+    fn process_trait_implementation(
+        &self,
+        trait_impl: parsed::TraitImplementation<parsed::Expression>,
+    ) -> TraitImplementation<Expression> {
+        let type_vars: HashSet<_> = trait_impl.type_scheme.vars.vars().collect();
+        if !type_vars.is_empty() {
+            unimplemented!("Generic impls are not supported yet.");
+        }
+        let functions = trait_impl
+            .functions
+            .into_iter()
+            .map(|named| NamedExpression {
+                name: named.name,
+                body: Arc::new(
+                    self.expression_processor(&type_vars)
+                        .process_expression(Arc::try_unwrap(named.body).unwrap()),
+                ),
+            })
+            .collect();
+
+        let Type::Tuple(TupleType { items }) = trait_impl.type_scheme.ty.clone() else {
+            panic!("Type from trait scheme is not a tuple.")
+        };
+
+        let mapped_types: Vec<_> = items
+            .into_iter()
+            .map(|mut ty| {
+                ty.map_to_type_vars(&type_vars);
+                ty
+            })
+            .collect();
+
+        let resolved_name = self
+            .driver
+            .resolve_ref(&trait_impl.name, SymbolCategory::TraitDeclaration);
+
+        TraitImplementation {
+            name: SymbolPath::from_str(&resolved_name).unwrap(),
+            source_ref: trait_impl.source_ref,
+            type_scheme: TypeScheme {
+                vars: trait_impl.type_scheme.vars,
+                ty: Type::Tuple(TupleType {
+                    items: mapped_types,
+                }),
+            },
             functions,
         }
     }

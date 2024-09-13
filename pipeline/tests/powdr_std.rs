@@ -6,8 +6,8 @@ use powdr_pil_analyzer::evaluator::Value;
 use powdr_pipeline::{
     test_util::{
         evaluate_function, evaluate_integer_function, execute_test_file, gen_estark_proof,
-        gen_halo2_proof, make_simple_prepared_pipeline, regular_test, regular_test_only_babybear,
-        std_analyzed, test_halo2, test_pilcom, BackendVariant,
+        gen_halo2_proof, make_simple_prepared_pipeline, regular_test, std_analyzed, test_halo2,
+        test_pilcom, test_plonky3_with_backend_variant, BackendVariant,
     },
     Pipeline,
 };
@@ -104,7 +104,7 @@ fn permutation_via_challenges_bn() {
 }
 
 #[test]
-#[should_panic = "Error reducing expression to constraint:\nExpression: std::protocols::permutation::permutation(main::is_first, [main::z], main::alpha, main::beta, main::permutation_constraint)\nError: FailedAssertion(\"The field is too small and needs to move to the extension field. Pass two elements instead!\")"]
+#[should_panic = "Error reducing expression to constraint:\nExpression: std::protocols::permutation::permutation([main::z], main::alpha, main::beta, main::permutation_constraint)\nError: FailedAssertion(\"The field is too small and needs to move to the extension field. Pass two elements instead!\")"]
 fn permutation_via_challenges_gl() {
     let f = "std/permutation_via_challenges.asm";
     make_simple_prepared_pipeline::<GoldilocksField>(f);
@@ -186,14 +186,14 @@ fn binary_test() {
 #[ignore = "Too slow"]
 fn binary_bb_8_test() {
     let f = "std/binary_bb_test_8.asm";
-    regular_test_only_babybear(f, &[]);
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn binary_bb_16_test() {
     let f = "std/binary_bb_test_16.asm";
-    regular_test_only_babybear(f, &[]);
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
 }
 
 #[test]
@@ -337,6 +337,12 @@ fn fp2() {
     evaluate_function(&analyzed, "std::math::fp2::test::inverse", vec![]);
 
     let analyzed = std_analyzed::<Bn254Field>();
+    evaluate_function(&analyzed, "std::math::fp2::test::add", vec![]);
+    evaluate_function(&analyzed, "std::math::fp2::test::sub", vec![]);
+    evaluate_function(&analyzed, "std::math::fp2::test::mul", vec![]);
+    evaluate_function(&analyzed, "std::math::fp2::test::inverse", vec![]);
+
+    let analyzed = std_analyzed::<BabyBearField>();
     evaluate_function(&analyzed, "std::math::fp2::test::add", vec![]);
     evaluate_function(&analyzed, "std::math::fp2::test::sub", vec![]);
     evaluate_function(&analyzed, "std::math::fp2::test::mul", vec![]);

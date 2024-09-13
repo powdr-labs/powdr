@@ -141,6 +141,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                     }
                 }
             }
+            StatementIdentifier::ProverFunction(_) => {}
         }
     }
     PIL {

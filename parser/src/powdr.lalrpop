@@ -4,6 +4,7 @@ use powdr_ast::parsed::{*, asm::*, types::*};
 use powdr_number::{BigInt, BigUint};
 use crate::{ParserContext, unescape_string};
 use powdr_parser_util::Error;
+use std::sync::Arc;
 
 grammar(ctx: &ParserContext);
 
@@ -111,9 +112,6 @@ pub PilStatement = {
     <start:@L> <decl:EnumDeclaration> <end:@R> => PilStatement::EnumDeclaration(ctx.source_ref(start, end), decl),
     <start:@L> <impl_:TraitImplementation> <end:@R> => PilStatement::TraitImplementation(ctx.source_ref(start, end), impl_),
     <start:@L> <decl:TraitDeclaration> <end:@R> => PilStatement::TraitDeclaration(ctx.source_ref(start, end), decl),
-    PlookupIdentityStatement,
-    PermutationIdentityStatement,
-    ConnectIdentityStatement,
     ExpressionStatement,
 };
 
@@ -161,8 +159,7 @@ FunctionDefinition: FunctionDefinition = {
         => FunctionDefinition::Expression(Expression::LambdaExpression(ctx.source_ref(start, end), LambdaExpression{
             kind: FunctionKind::Pure,
             params,
-            body,
-            outer_var_references: Default::default()
+            body
         })),
     <start:@L> "=" <array:ArrayLiteralExpression> <end:@R> => FunctionDefinition::Array(array),
 }
@@ -191,8 +188,7 @@ PolynomialCommitDeclaration: PilStatement = {
         Some(FunctionDefinition::Expression(Expression::LambdaExpression(ctx.source_ref(start, end), LambdaExpression{
             kind: FunctionKind::Query,
             params,
-            body,
-            outer_var_references: Default::default()
+            body
         })))
     )
 }
@@ -207,34 +203,6 @@ PolynomialNameList: Vec<PolynomialName> = {
 
 PolynomialName: PolynomialName = {
     <name:Identifier> <array_size:( "[" <Expression> "]" )?> => PolynomialName{<>}
-}
-
-PlookupIdentityStatement: PilStatement = {
-    <PlookupIdentity> ";"
-}
-
-PlookupIdentity: PilStatement = {
-    <start:@L> <se1:SelectedExpressions> "in" <se2:SelectedExpressions> <end:@R> => PilStatement::PlookupIdentity(ctx.source_ref(start, end), se1, se2)
-}
-
-SelectedExpressions: SelectedExpressions<Expression> = {
-    <selector:(<Expression> "$")?> <expr:Expression> => SelectedExpressions{selector, expressions: Box::new(expr)},
-}
-
-PermutationIdentityStatement: PilStatement = {
-    <PermutationIdentity> ";"
-}
-
-PermutationIdentity: PilStatement = {
-    <start:@L> <se1:SelectedExpressions> "is" <se2:SelectedExpressions> <end:@R> => PilStatement::PermutationIdentity(ctx.source_ref(start, end), se1, se2)
-}
-
-ConnectIdentityStatement: PilStatement = {
-    <ConnectIdentity> ";"
-}
-
-ConnectIdentity: PilStatement = {
-    <start:@L> "[" <list1:ExpressionList> "]" "connect" "[" <list2:ExpressionList> "]" <end:@R> => PilStatement::ConnectIdentity(ctx.source_ref(start, end), list1, list2)
 }
 
 ExpressionStatement: PilStatement = {
@@ -354,8 +322,6 @@ InstructionBodyElements: Vec<PilStatement> = {
 }
 
 InstructionBodyElement: PilStatement = {
-    PlookupIdentity,
-    PermutationIdentity,
     ExpressionStatementWithoutSemicolon,
 }
 
@@ -463,14 +429,26 @@ MacroExpression<StructOption>: Expression = {
 }
 
 MacroBoxedExpression<StructOption>: Box<Expression> = {
-    LambdaExpression<StructOption>,
+    LookupExpression<StructOption>,
+}
+
+LookupExpression<StructOption>: Box<Expression> = {
+    <start:@L> <left:SelectedExpressions<StructOption>> "in" <right:SelectedExpressions<StructOption>> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation {left, op: BinaryOperator::In, right}, start, end),
+    <start:@L> <left:SelectedExpressions<StructOption>> "is" <right:SelectedExpressions<StructOption>> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation {left, op: BinaryOperator::Is, right}, start, end),
+    <start:@L> <left:SelectedExpressions<StructOption>> "connect" <right:SelectedExpressions<StructOption>> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation {left, op: BinaryOperator::Connect, right}, start, end),
+    SelectedExpressions<StructOption>
+}
+
+SelectedExpressions<StructOption>: Box<Expression> = {
+     <start:@L> <left:LambdaExpression<StructOption>> "$" <right:LambdaExpression<StructOption>> <end:@R> => ctx.to_expr_with_source_ref(BinaryOperation {left, op: BinaryOperator::Select, right}, start, end),
+    LambdaExpression<StructOption>
 }
 
 LambdaExpression<StructOption>: Box<Expression> = {
-    <start:@L> <kind:FunctionKind> "||" <body:MacroBoxedExpression<StructOption>> <end:@R>
-        => ctx.to_expr_with_source_ref(LambdaExpression{kind, params: vec![], body, outer_var_references: Default::default()}, start, end),
-    <start:@L> <kind:FunctionKind> "|" <params:ParameterList> "|" <body:MacroBoxedExpression<StructOption>> <end:@R>
-        => ctx.to_expr_with_source_ref(LambdaExpression{kind, params, body, outer_var_references: Default::default()}, start, end),
+    <start:@L> <kind:FunctionKind> "||" <body:LambdaExpression<StructOption>> <end:@R>
+        => ctx.to_expr_with_source_ref(LambdaExpression{kind, params: vec![], body}, start, end),
+    <start:@L> <kind:FunctionKind> "|" <params:ParameterList> "|" <body:LambdaExpression<StructOption>> <end:@R>
+        => ctx.to_expr_with_source_ref(LambdaExpression{kind, params, body}, start, end),
     LogicalOr<StructOption>
 }
 
@@ -677,6 +655,15 @@ StructExpression: Box<Expression> = {
     <start:@L> <name:Identifier> "{" <fields:NamedExpressions> "}" <end:@R> => Box::new(Expression::Tuple(ctx.source_ref(start, end), vec![])),
 }
 
+NamedExpressions: Vec<NamedExpression<Expression>> = {
+    => vec![],
+    <mut list:( <NamedExpression> "," )*> <end:NamedExpression> ","?  => { list.push(end); list }
+}
+
+NamedExpression: NamedExpression<Expression> = {
+    <name:Identifier> ":" <body:Expression> => NamedExpression { name, body }
+}
+
 // ---------------------------- Pattern -----------------------------
 
 Pattern: Pattern = {
@@ -739,21 +726,22 @@ TraitFunction: TraitFunction<Expression> = {
 }
 
 TraitImplementation: TraitImplementation<Expression> = {
-    "impl" <type_scheme: GenericTraitName> "{" <functions:NamedExpressions> "}" => TraitImplementation { name: type_scheme.0, type_scheme: type_scheme.1, functions }
+    <start:@L> "impl" <type_scheme: GenericTraitName> "{" <functions:NamedArcExpressions> "}" <end:@L> => TraitImplementation { name: type_scheme.0, source_ref: ctx.source_ref(start, end), type_scheme: type_scheme.1, functions }
 }
 
-NamedExpressions: Vec<NamedExpression<Expression>> = {
+
+NamedArcExpressions: Vec<NamedExpression<Arc<Expression>>> = {
     => vec![],
-    <mut list:( <NamedExpression> "," )*> <end:NamedExpression> ","?  => { list.push(end); list }
+    <mut list:( <NamedArcExpression> "," )*> <end:NamedArcExpression> ","?  => { list.push(end); list }
 }
 
-NamedExpression: NamedExpression<Expression> = {
-    <name:Identifier> ":" <body:BoxedExpression> => NamedExpression { name, body }
+NamedArcExpression: NamedExpression<Arc<Expression>> = {
+    <name:Identifier> ":" <body:Expression> => NamedExpression { name, body: body.into() }
 }
 
 GenericTraitName: (SymbolPath, TypeScheme) = {
-    <vars:("<" <TypeVarBounds> ">")> <name:SymbolPath> <items:("<" <TypeTermList<ArrayLengthNumber>> ">")> =>
-        (name, TypeScheme{ vars, ty: Type::Tuple(TupleType{items}) })
+    <vars:("<" <TypeVarBounds> ">")?> <name:SymbolPath> <items:("<" <TypeTermList<ArrayLengthNumber>> ">")> =>
+        (name, TypeScheme{ vars: vars.unwrap_or_default(), ty: Type::Tuple(TupleType{items}) })
 }
 
 

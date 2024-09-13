@@ -257,8 +257,8 @@ fn canonicalize_inside_pil_statement(
             }
         }
         PilStatement::TraitImplementation(_, trait_impl) => {
-            for f in &mut trait_impl.functions {
-                canonicalize_inside_expression(&mut f.body, path, paths)
+            for f in trait_impl.children_mut() {
+                canonicalize_inside_expression(f, path, paths)
             }
         }
         PilStatement::TraitDeclaration(_, trait_decl) => {
@@ -808,7 +808,6 @@ fn check_expression(
                 kind: _,
                 params,
                 body,
-                outer_var_references: _,
             },
         ) => {
             // Add the local variables, ignore collisions.
