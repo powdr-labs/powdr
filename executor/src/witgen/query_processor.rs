@@ -301,7 +301,7 @@ impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>> Symbol
         channel: u32,
         index: usize,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        if let Some(v) = (self.query_callback)(&format!("DataIdentifier({channel}, {index})"))
+        if let Some(v) = (self.query_callback)(&format!("DataIdentifier({channel},{index})"))
             .map_err(EvalError::ProverError)?
         {
             Ok(Value::FieldElement(v).into())
@@ -311,7 +311,7 @@ impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>> Symbol
     }
 
     fn output_byte(&mut self, fd: u32, byte: u8) -> Result<(), EvalError> {
-        if ((self.query_callback)(&format!("Output({fd}, {byte})"))
+        if ((self.query_callback)(&format!("Output({fd},{byte})"))
             .map_err(EvalError::ProverError)?)
         .is_some()
         {
