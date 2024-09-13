@@ -465,7 +465,7 @@ where
             type_vars: trait_decl.type_vars,
             functions,
         };
-        let shared_trait_decl = Arc::new(trait_decl.clone());
+        //let shared_trait_decl = Arc::new(trait_decl.clone());
 
         let inner_items = trait_decl
             .functions
@@ -477,7 +477,7 @@ where
                         .relative_to(&Default::default())
                         .to_string(),
                     FunctionValueDefinition::TraitFunction(
-                        shared_trait_decl.clone(),
+                        Arc::new(trait_decl.clone()),
                         function.clone(),
                     ),
                 )
@@ -631,7 +631,6 @@ where
             variants,
         };
 
-        let shared_enum_decl = Arc::new(enum_decl.clone());
         let inner_items: Vec<_> = enum_decl
             .variants
             .iter()
@@ -642,7 +641,7 @@ where
                         .relative_to(&Default::default())
                         .to_string(),
                     FunctionValueDefinition::TypeConstructor(
-                        shared_enum_decl.clone(),
+                        Arc::new(enum_decl.clone()),
                         variant.clone(),
                     ),
                 )
