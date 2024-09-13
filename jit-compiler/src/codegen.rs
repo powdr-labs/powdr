@@ -311,7 +311,7 @@ mod test {
         let result = compile("let c: int -> int = |i| i;", &["c"]);
         assert_eq!(
             result,
-            "fn c(i: num_bigint::BigInt) -> num_bigint::BigInt { i }\n"
+            "fn c(i: powdr_number::BigInt) -> powdr_number::BigInt { i }\n"
         );
     }
 
@@ -323,9 +323,9 @@ mod test {
         );
         assert_eq!(
         result,
-        "fn c(i: num_bigint::BigInt) -> num_bigint::BigInt { ((i).clone() + (num_bigint::BigInt::from(20_u64)).clone()) }
+        "fn c(i: powdr_number::BigInt) -> powdr_number::BigInt { ((i).clone() + (powdr_number::BigInt::from(20_u64)).clone()) }
 
-fn d(k: num_bigint::BigInt) -> num_bigint::BigInt { (c)(((k).clone() * (num_bigint::BigInt::from(20_u64)).clone()).clone()) }
+fn d(k: powdr_number::BigInt) -> powdr_number::BigInt { (c)(((k).clone() * (powdr_number::BigInt::from(20_u64)).clone()).clone()) }
 "
     );
     }
