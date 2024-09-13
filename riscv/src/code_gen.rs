@@ -414,6 +414,8 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     col witness tmp4_l;
     col witness tmp5_h;
     col witness tmp5_l;
+    col witness tmp6_h;
+    col witness tmp6_l;
 
     link => byte2.check(tmp1_h);
     link => byte2.check(tmp1_l);
@@ -425,6 +427,8 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     link => byte2.check(tmp4_l);
     link => byte2.check(tmp5_h);
     link => byte2.check(tmp5_l);
+    link => byte2.check(tmp6_h);
+    link => byte2.check(tmp6_l);
 
     // We need to add these inline instead of using std::utils::is_zero
     // because when XX is not constrained, witgen will try to set XX,
@@ -515,12 +519,58 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
         pc' = (1 - wrap_bit) * l + wrap_bit * (pc + 1)
     }
 
+    col witness sign_bit;
+    std::utils::force_bool(sign_bit);
+
+    // Branches to `l` if val(X) >= val(Y) <=> not(val(X) < val(Y)).
+    instr branch_if_greater_or_equal_signed XL, YL, l: label
+        link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
+        link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
+        link ~> wrap_bit_3 = arith_bb.cmp(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
+    {
+        tmp1_h = X_b1 + Y_7bit * 0x100 + wrap_bit * 0x8000,
+        tmp2_h = X_b2 + Y_7bit_2 * 0x100 + wrap_bit_2 * 0x8000,
+
+        Y_b5 = (1 - wrap_bit) * (1 - wrap_bit_2),
+        Y_b6 = wrap_bit * wrap_bit_2,
+        Y_b7 = (1 - wrap_bit) * wrap_bit_2,
+
+        //Y_b8 = wrap_bit * (1 - wrap_bit_2),
+        X_b3 = Y_b5 * (1 - wrap_bit_3) +
+               Y_b6 * (1 - wrap_bit_3) +
+               Y_b7, /* * 1 */
+               /* Y_b8 * 0, */
+
+        pc' = X_b3 * l + (1 - X_b3) * (pc + 1)
+    }
+
     // Stores 1 in register W if val(X) >= val(Y) <=> not(val(X) < val(Y)).
     instr is_greater_or_equal XL, YL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
         link ~> wrap_bit = arith_bb.cmp(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
         link ~> regs.mstore(WL, STEP + 2, 0, 1 - wrap_bit);
+
+    // Branches to `l` if val(X) >= val(Y) <=> not(val(X) < val(Y)).
+    instr is_greater_or_equal_signed XL, YL, WL
+        link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
+        link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
+        link ~> wrap_bit_3 = arith_bb.cmp(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
+        link ~> regs.mstore(WL, STEP + 2, 0, X_b3)
+    {
+        tmp1_h = X_b1 + Y_7bit * 0x100 + wrap_bit * 0x8000,
+        tmp2_h = X_b2 + Y_7bit_2 * 0x100 + wrap_bit_2 * 0x8000,
+
+        Y_b5 = (1 - wrap_bit) * (1 - wrap_bit_2),
+        Y_b6 = wrap_bit * wrap_bit_2,
+        Y_b7 = (1 - wrap_bit) * wrap_bit_2,
+
+        //Y_b8 = wrap_bit * (1 - wrap_bit_2),
+        X_b3 = Y_b5 * (1 - wrap_bit_3) +
+               Y_b6 * (1 - wrap_bit_3) +
+               Y_b7 /* * 1 */
+               /* Y_b8 * 0, */
+    }
 
     // Stores val(X) * Z + W in register Y.
     instr affine XL, YL, ZH, ZL, WH, WL
@@ -542,41 +592,37 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
         link ~> (tmp4_h, tmp4_l) = arith_bb.add(tmp1_h, tmp1_l, tmp3_h, tmp3_l)
         link ~> regs.mstore(WL, STEP + 2, tmp4_h, tmp4_l);
 
-    /*
     // Computes V = val(X) - val(Y) + Z, wraps it in 32 bits, and stores the result in register W.
     // Requires -2**32 <= V < 2**32.
-    instr sub_wrap_with_offset X, Y, Z, W
-        link ~> tmp1_col = regs.mload(X, STEP)
-        link ~> tmp2_col = regs.mload(Y, STEP + 1)
-        link ~> regs.mstore(W, STEP + 2, tmp3_col)
-    {
-        (tmp1_col - tmp2_col + Z) + 2**32 = tmp3_col + wrap_bit * 2**32,
-        tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
-    }
+    instr sub_wrap_with_offset XL, YL, ZH, ZL, WL
+        link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
+        link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
+        link ~> (tmp3_h, tmp3_l) = arith_bb.sub(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
+        link ~> (tmp4_h, tmp4_l) = arith_bb.add(tmp3_h, tmp3_l, ZH, ZL)
+        link ~> regs.mstore(WL, STEP + 2, tmp4_h, tmp4_l);
 
     // ================= logical instructions =================
 
     // Stores 1 in register W if the value in register X is zero,
     // otherwise stores 0.
-    instr is_equal_zero X, W
-        link ~> tmp1_col = regs.mload(X, STEP)
-        link ~> regs.mstore(W, STEP + 2, XXIsZero)
+    instr is_equal_zero XL, WL
+        link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
+        link ~> regs.mstore(WL, STEP + 2, 0, XXIsZero)
     {
         XXIsZero = 1 - XX * XX_inv,
-        XX = tmp1_col
+        XX = (tmp1_h + tmp1_l)
     }
 
     // Stores 1 in register W if val(X) == val(Y), otherwise stores 0.
-    instr is_not_equal X, Y, W
-        link ~> tmp1_col = regs.mload(X, STEP)
-        link ~> tmp2_col = regs.mload(Y, STEP + 1)
-        link ~> regs.mstore(W, STEP + 2, tmp3_col)
+    instr is_not_equal XL, YL, WL
+        link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
+        link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP)
+        link ~> (tmp3_h, tmp3_l) = arith_bb.sub(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
+        link ~> regs.mstore(WL, STEP + 2, 0, 1 - XXIsZero)
     {
         XXIsZero = 1 - XX * XX_inv,
-        XX = tmp1_col - tmp2_col,
-        tmp3_col = 1 - XXIsZero
+        XX = (tmp3_h + tmp3_l)
     }
-    */
 
     // ================= submachine instructions =================
 "# + &runtime
@@ -594,7 +640,11 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     link => byte.check(X_b3);
     link => byte.check(X_b4);
     col witness wrap_bit;
-    wrap_bit * (1 - wrap_bit) = 0;
+    col witness wrap_bit_2;
+    col witness wrap_bit_3;
+    std::utils::force_bool(wrap_bit);
+    std::utils::force_bool(wrap_bit_2);
+    std::utils::force_bool(wrap_bit_3);
 
     /*
     // Sign extends the value in register X and stores it in register Y.
@@ -609,7 +659,9 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     }
     */
     col witness Y_7bit;
+    col witness Y_7bit_2;
     link => bit7.check(Y_7bit);
+    link => bit7.check(Y_7bit_2);
     /*
 
     // Sign extends the value in register X and stores it in register Y.
@@ -643,6 +695,7 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
         (tmp1_col * Y) = Y_b5 * 2**32 + Y_b6 * 2**40 + tmp3_col,
         tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
     }
+    */
 
     col witness Y_b5;
     col witness Y_b6;
@@ -663,31 +716,32 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     link => byte.check(REM_b4);
 
     // Computes Q = val(Y) / val(X) and R = val(Y) % val(X) and stores them in registers Z and W.
-    instr divremu Y, X, Z, W
-        link ~> tmp1_col = regs.mload(Y, STEP)
-        link ~> tmp2_col = regs.mload(X, STEP + 1)
-        link ~> regs.mstore(Z, STEP + 2, tmp3_col)
-        link ~> regs.mstore(W, STEP + 3, tmp4_col)
+    instr divremu YL, XL, ZL, WL
+        link ~> (tmp1_h, tmp1_l) = regs.mload(YL, STEP)
+        link ~> (tmp2_h, tmp2_l) = regs.mload(XL, STEP + 1)
+        link if (1 - XXIsZero) ~> (tmp4_l, tmp4_h, tmp3_l, tmp3_h) = arith_bb_mul.div(tmp1_l, tmp1_h, tmp2_l, tmp2_h)
+        link if (1 - XXIsZero) ~> wrap_bit = arith_bb.cmp(tmp3_h, tmp3_l, tmp2_h, tmp2_l)
+        link if (1 - XXIsZero) ~> wrap_bit_2 = arith_bb.cmp(tmp3_h, tmp3_l, 0, 0)
+        link ~> regs.mstore(ZL, STEP + 2, tmp6_h, tmp6_l)
+        link ~> regs.mstore(WL, STEP + 3, tmp5_h, tmp5_l)
     {
         XXIsZero = 1 - XX * XX_inv,
-        XX = tmp2_col,
+        XX = tmp2_h + tmp2_l,
 
         // if X is zero, remainder is set to dividend, as per RISC-V specification:
-        tmp2_col * tmp3_col + tmp4_col = tmp1_col,
+        XXIsZero * tmp1_h + (1 - XXIsZero) * tmp3_h = tmp5_h,
+        XXIsZero * tmp1_l + (1 - XXIsZero) * tmp3_l = tmp5_l,
 
         // remainder >= 0:
-        tmp4_col = REM_b1 + REM_b2 * 0x100 + REM_b3 * 0x10000 + REM_b4 * 0x1000000,
+        (1 - XXIsZero) * wrap_bit_2 = 0, 
 
         // remainder < divisor, conditioned to val(X) not being 0:
-        (1 - XXIsZero) * (tmp2_col - tmp4_col - 1 - Y_b5 - Y_b6 * 0x100 - Y_b7 * 0x10000 - Y_b8 * 0x1000000) = 0,
+        (1 - XXIsZero) * (wrap_bit - 1) = 0,
 
         // in case X is zero, we set quotient according to RISC-V specification
-        XXIsZero * (tmp3_col - 0xffffffff) = 0,
-
-        // quotient is 32 bits:
-        tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
+        XXIsZero * 0xffff + (1 - XXIsZero) * tmp4_h = tmp6_h,
+        XXIsZero * 0xffff + (1 - XXIsZero) * tmp4_l = tmp6_l
     }
-    */
 "# + mul_instruction
 }
 
@@ -963,7 +1017,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             only_if_no_write_to_zero(
                 rd,
                 format!(
-                    "sub_wrap_with_offset {}, {}, 0, {};",
+                    "sub_wrap_with_offset {}, {}, 0, 0, {};",
                     r1.addr(),
                     r2.addr(),
                     rd.addr()
@@ -974,7 +1028,11 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             let (rd, r1) = args.rr()?;
             only_if_no_write_to_zero(
                 rd,
-                format!("sub_wrap_with_offset 0, {}, 0, {};", r1.addr(), rd.addr()),
+                format!(
+                    "sub_wrap_with_offset 0, {}, 0, 0, {};",
+                    r1.addr(),
+                    rd.addr()
+                ),
             )
         }
         "mul" => {
@@ -1013,9 +1071,17 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                     //format!("to_signed {}, {};", r2.addr(), tmp2.addr()),
                     format!("affine {}, {}, 0, 1, 0, 0;", r2.addr(), tmp2.addr()),
                     // tmp3 is 1 if tmp1 is non-negative
-                    format!("is_greater_or_equal {}, 0, {};", tmp1.addr(), tmp3.addr()),
+                    format!(
+                        "is_greater_or_equal_signed {}, 0, {};",
+                        tmp1.addr(),
+                        tmp3.addr()
+                    ),
                     // tmp4 is 1 if tmp2 is non-negative
-                    format!("is_greater_or_equal {}, 0, {};", tmp2.addr(), tmp4.addr()),
+                    format!(
+                        "is_greater_or_equal_signed {}, 0, {};",
+                        tmp2.addr(),
+                        tmp4.addr()
+                    ),
                     // If tmp1 is negative, convert to positive
                     format!("skip_if_equal 0, {}, 0, 1, 1;", tmp3.addr()),
                     format!(
@@ -1052,9 +1118,11 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                     format!("skip_if_equal {}, 0, 0, 0, 2;", tmp3.addr()),
                     format!("is_equal_zero {}, {};", tmp1.addr(), tmp1.addr()),
                     format!(
-                        "sub_wrap_with_offset {}, {}, -1, {};",
+                        "sub_wrap_with_offset {}, {}, {}, {}, {};",
                         tmp1.addr(),
                         rd.addr(),
+                        i32_high(-1),
+                        i32_low(-1),
                         rd.addr()
                     ),
                 ],
@@ -1068,7 +1136,11 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                     //format!("to_signed {}, {};", r1.addr(), tmp1.addr()),
                     format!("affine {}, {}, 0, 1, 0, 0;", r1.addr(), tmp1.addr()),
                     // tmp2 is 1 if tmp1 is non-negative
-                    format!("is_greater_or_equal {}, 0, {};", tmp1.addr(), tmp2.addr()),
+                    format!(
+                        "is_greater_or_equal_signed {}, 0, {};",
+                        tmp1.addr(),
+                        tmp2.addr()
+                    ),
                     // If negative, convert to positive
                     format!("skip_if_equal 0, {}, 0, 1, 1;", tmp2.addr()),
                     format!(
@@ -1091,9 +1163,11 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                     // If the lower bits are zero, return the two's complement,
                     // otherwise return one's complement.
                     format!(
-                        "sub_wrap_with_offset {}, {}, -1, {};",
+                        "sub_wrap_with_offset {}, {}, {}, {}, {};",
                         tmp1.addr(),
                         rd.addr(),
+                        i32_high(-1),
+                        i32_low(-1),
                         rd.addr()
                     ),
                 ],
@@ -1365,7 +1439,10 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             vec![
                 //format!("to_signed {}, {};", r1.addr(), tmp1.addr()),
                 format!("affine {}, {}, 0, 1, 0, 0;", r1.addr(), tmp1.addr()),
-                format!("branch_if_greater_or_equal {}, 0, {label};", tmp1.addr(),),
+                format!(
+                    "branch_if_greater_or_equal_signed {}, 0, {label};",
+                    tmp1.addr(),
+                ),
             ]
         }
         "bltu" => {
@@ -1388,7 +1465,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                 //format!("to_signed {}, {};", r2.addr(), tmp2.addr()),
                 format!("affine {}, {}, 0, 1, 0, 0;", r2.addr(), tmp2.addr()),
                 format!(
-                    "branch_if_greater_or_equal {}, {}, {label};",
+                    "branch_if_greater_or_equal_signed {}, {}, {label};",
                     tmp2.addr(),
                     tmp1.addr()
                 ),
@@ -1405,7 +1482,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                 //format!("to_signed {}, {};", r2.addr(), tmp2.addr()),
                 format!("affine {}, {}, 0, 1, 0, 0;", r2.addr(), tmp2.addr()),
                 format!(
-                    "branch_if_greater_or_equal {}, {}, {label};",
+                    "branch_if_greater_or_equal_signed {}, {}, {label};",
                     tmp1.addr(),
                     tmp2.addr(),
                 ),
@@ -1416,7 +1493,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             let (r1, label) = args.rl()?;
             let label = escape_label(label.as_ref());
             vec![format!(
-                "branch_if_greater_or_equal {}, 0, {label};",
+                "branch_if_greater_or_equal_signed 0, {}, {label};",
                 r1.addr(),
             )]
         }
@@ -1427,7 +1504,10 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             vec![
                 //format!("to_signed {}, {};", r1.addr(), tmp1.addr()),
                 format!("affine {}, {}, 0, 1, 0, 0;", r1.addr(), tmp1.addr()),
-                format!("branch_if_greater_or_equal 0, {}, {label};", tmp1.addr(),),
+                format!(
+                    "branch_if_greater_or_equal_signed 1, {}, {label};",
+                    tmp1.addr(),
+                ),
             ]
         }
         "bgtz" => {
@@ -1437,7 +1517,10 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             vec![
                 //format!("to_signed {}, {};", r1.addr(), tmp1.addr()),
                 format!("affine {}, {}, 0, 1, 0, 0;", r1.addr(), tmp1.addr()),
-                format!("branch_if_greater_or_equal {}, 0, {label};", tmp1.addr()),
+                format!(
+                    "branch_if_greater_or_equal_signed {}, 1, {label};",
+                    tmp1.addr()
+                ),
             ]
         }
         "bne" => {
