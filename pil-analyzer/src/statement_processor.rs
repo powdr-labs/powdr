@@ -472,7 +472,10 @@ where
             .iter()
             .map(|function| {
                 (
-                    vec![name.clone(), function.name.clone()],
+                    self.driver
+                        .resolve_namespaced_decl(&[&name, &function.name])
+                        .relative_to(&Default::default())
+                        .to_string(),
                     FunctionValueDefinition::TraitFunction(
                         shared_trait_decl.clone(),
                         function.clone(),
@@ -480,7 +483,7 @@ where
                 )
             })
             .collect();
-        let trait_functions = self.generate_items(source, inner_items);
+        let trait_functions = self.process_inner_definitions(source, inner_items);
 
         iter::once(PILItem::Definition(
             symbol,
@@ -542,22 +545,19 @@ where
         vec![PILItem::Definition(symbol, Some(value))]
     }
 
-    fn generate_items(
+    /// Given a list of (absolute_name, value) pairs, create PIL items for each of them.
+    fn process_inner_definitions(
         &mut self,
         source: SourceRef,
-        inner_items: Vec<(Vec<String>, FunctionValueDefinition)>,
+        inner_items: Vec<(String, FunctionValueDefinition)>,
     ) -> Vec<PILItem> {
         inner_items
             .into_iter()
-            .map(|(names, value)| {
+            .map(|(absolute_name, value)| {
                 let symbol = Symbol {
                     id: self.counters.dispense_symbol_id(SymbolKind::Other(), None),
                     source: source.clone(),
-                    absolute_name: self
-                        .driver
-                        .resolve_namespaced_decl(&names.iter().collect::<Vec<&String>>())
-                        .relative_to(&Default::default())
-                        .to_string(),
+                    absolute_name,
                     stage: None,
                     kind: SymbolKind::Other(),
                     length: None,
@@ -632,13 +632,15 @@ where
         };
 
         let shared_enum_decl = Arc::new(enum_decl.clone());
-
         let inner_items = enum_decl
             .variants
             .iter()
             .map(|variant| {
                 (
-                    vec![name.clone(), variant.name.clone()],
+                    self.driver
+                        .resolve_namespaced_decl(&[&name, &variant.name])
+                        .relative_to(&Default::default())
+                        .to_string(),
                     FunctionValueDefinition::TypeConstructor(
                         shared_enum_decl.clone(),
                         variant.clone(),
@@ -646,8 +648,7 @@ where
                 )
             })
             .collect();
-
-        let var_items = self.generate_items(source, inner_items);
+        let var_items = self.process_inner_definitions(source, inner_items);
 
         iter::once(PILItem::Definition(
             symbol,
