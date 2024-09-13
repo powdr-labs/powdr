@@ -585,7 +585,7 @@ fn simple_struct() {
 }
 
 #[test]
-#[should_panic = "Struct NotADot has not been declared."]
+#[should_panic = "Struct NotADot has not been declared or has not a field x."]
 fn wrong_struct() {
     let input = "
     struct Dot { x: int, y: int }
@@ -597,7 +597,7 @@ fn wrong_struct() {
 }
 
 #[test]
-#[should_panic = "Struct Dot has no field a."]
+#[should_panic = "Struct Dot has not been declared or has not a field a."]
 fn struct_wrong_fields() {
     let input = "
     struct Dot { x: int, y: int }

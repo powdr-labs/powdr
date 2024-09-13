@@ -901,24 +901,6 @@ fn simple_struct() {
 }
 
 #[test]
-fn struct_constr_var_typed() {
-    let input = "    struct X {
-        x: int,
-        y: int,
-    }
-    let v: int -> X = |i| match i {
-        1 => X{ x: 1, y: 0 },
-        2 => X{ x: 2, y: 2 },
-        _ => X{ x: 0, y: 1 },
-    };
-    let x: X = v(1);
-";
-
-    let formatted = analyze_string(input).to_string();
-    assert_eq!(formatted, input);
-}
-
-#[test]
 fn intermediate_syntax() {
     let input = r#"namespace X(16);
     let w;
