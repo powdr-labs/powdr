@@ -815,7 +815,7 @@ fn capture_enums() {
 }
 
 #[test]
-fn capture_challenges() {
+fn capture_challenges_and_numbers() {
     let input = r#"
     namespace std::prelude;
         let challenge = 8;
@@ -826,8 +826,10 @@ fn capture_challenges() {
         (constr || {
             let x = std::prelude::challenge(0, 4);
             let y;
+            let t = 2;
             query |i| {
                 std::prover::provide_value(y, i, std::prover::eval(x));
+                y = 2;
             }
         })();
 
