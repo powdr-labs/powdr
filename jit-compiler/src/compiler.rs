@@ -89,6 +89,7 @@ pub fn call_cargo(code: &str) -> (Temp, String) {
     fs::create_dir(dir.join("src")).unwrap();
     fs::write(dir.join("src").join("lib.rs"), code).unwrap();
     let out = Command::new("cargo")
+        .env("RUSTFLAGS", "-C target-cpu=native")
         .arg("build")
         .arg("--release")
         .current_dir(dir.clone())
