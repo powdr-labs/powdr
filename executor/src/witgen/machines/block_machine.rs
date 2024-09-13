@@ -121,6 +121,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         fixed_data: &'a FixedData<'a, T>,
         parts: &MachineParts<'a, T>,
     ) -> Option<Self> {
+        
+        log::debug!("block machine try new");
+
         let degree_range = parts.common_degree_range();
 
         // start from the max degree
@@ -129,6 +132,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let (is_permutation, block_size, latch_row) =
             detect_connection_type_and_block_size(fixed_data, &parts.connecting_identities)?;
 
+        log::debug!("block machine try new");
+
         for id in parts.connecting_identities.values() {
             for r in id.right.expressions.iter() {
                 if let Some(poly) = try_to_simple_poly(r) {
@@ -136,6 +141,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                         // It does not really make sense to have constant polynomials on the RHS
                         // of a block machine lookup, as all constant polynomials are periodic, so
                         // it would always return the same value.
+                        log::debug!("Constant in RHS of block machine lookup");
                         return None;
                     }
                 }
@@ -143,6 +149,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         }
 
         assert!(block_size <= degree as usize);
+
+        log::debug!("block machine try new assertion passed");
         // Because block shapes are not always rectangular, we add the last block to the data at the
         // beginning. It starts out with unknown values. Should the first block decide to write to
         // rows < 0, they will be written to this block.
@@ -187,6 +195,8 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
         .exactly_one()
         .ok()?
         .ok()?;
+
+    log::debug!("connection type goes through");
 
     // Detect the block size.
     let (latch_row, block_size) = match connection_type {
