@@ -33,7 +33,7 @@ type Witness<T> = Mutex<RefCell<Vec<(String, Vec<T>)>>>;
 /// All of the data is derived from the analyzed PIL, but is materialized
 /// here for performance reasons.
 struct ConstraintSystem<T> {
-    // for each column, the stage (-1 for fixed) and index of this witness in this stage
+    // for each column, the stage (-1 for fixed) and index of this column in this stage
     columns: HashMap<PolyID, (isize, usize)>,
     identities: Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>>,
     publics: Vec<(String, PolyID, usize)>,

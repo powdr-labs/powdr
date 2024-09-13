@@ -172,7 +172,6 @@ where
         let stage_0_trace =
             generate_matrix(witness.iter().map(|(name, value)| (name, value.as_ref())));
 
-        // TODO: avoid cloning here?
         let circuit = PowdrCircuit::new(&self.analyzed)
             .with_witgen_callback(witgen_callback)
             .with_phase_0_witness(witness);
