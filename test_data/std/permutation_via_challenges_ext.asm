@@ -47,5 +47,4 @@ machine Main with degree: 8 {
 
     z1' = z1_next;
     z2' = z2_next;
-
 }
