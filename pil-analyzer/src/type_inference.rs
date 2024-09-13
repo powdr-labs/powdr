@@ -719,6 +719,13 @@ impl TypeChecker {
                 result?
             }
             Expression::StructExpression(sr, struct_expr) => {
+                if !self.declared_types.contains_key(&struct_expr.name) {
+                    return Err(sr.with_error(format!(
+                        "Struct {} has not been declared.",
+                        struct_expr.name
+                    )));
+                }
+
                 for named_expr in struct_expr.fields.iter_mut() {
                     let name = format!("{}::{}", struct_expr.name, named_expr.name);
                     let expr_ty = match self.declared_types.get(&name) {

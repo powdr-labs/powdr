@@ -585,6 +585,18 @@ fn simple_struct() {
 }
 
 #[test]
+#[should_panic = "Struct NotADot has not been declared."]
+fn wrong_struct() {
+    let input = "
+    struct Dot { x: int, y: int }
+    let f: int -> Dot = |i| NotADot{x: 0, y: i};
+
+    let x = f(0);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
 #[should_panic = "Struct Dot has no field a."]
 fn struct_wrong_fields() {
     let input = "
