@@ -100,4 +100,22 @@ let lookup: expr[], Fp2<expr>, Fp2<expr>, Constr, expr -> () = constr |acc, alph
     is_first * acc_1 = 0;
     is_first * acc_2 = 0;
     constrain_eq_ext(update_expr, from_base(0));
+
+    // In the extension field, we need a prover function for the accumulator.
+    if std::array::len(acc) > 1 {
+        // TODO: Helper columns, because we can't access the previous row in hints
+        let acc_next_col = std::array::map(acc, |_| std::prover::new_witness_col_at_stage("acc_next", 1));
+        query |i| {
+            let _ = std::array::zip(
+                acc_next_col,
+                compute_next_z(acc_ext, alpha, beta, lookup_constraint, multiplicities),
+                |acc_next, hint_val| std::prover::provide_value(acc_next, i, hint_val)
+            );
+        };
+        std::array::zip(acc, acc_next_col, |acc_col, acc_next| {
+            acc_col' = acc_next
+        });
+    } else {
+        ()
+    }
 };
