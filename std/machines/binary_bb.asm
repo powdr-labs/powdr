@@ -19,7 +19,7 @@ machine Binary8(byte_binary: ByteBinary) with
 
     let operation_id;
 
-    col fixed latch(i) { 1 };
+    let latch: col = |i| { 1 };
 
     let A1;
     let A2;
