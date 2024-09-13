@@ -39,7 +39,9 @@ pub fn infer_types(
     TypeChecker::new().infer_types(definitions, expressions)
 }
 
-/// A type to expect and a flag that says if arrays of that type are also fine.
+/// A type to expect with a bit of flexibility.
+/// This is used for example at statement level, where we allow Constr, Constr[], prover functions
+/// (functions from int to ()) and the empty tuple.
 #[derive(Clone)]
 pub struct ExpectedType {
     pub ty: Type,
@@ -47,6 +49,8 @@ pub struct ExpectedType {
     pub allow_array: bool,
     /// If true, the empty tuple is also allowed.
     pub allow_empty: bool,
+    /// If true, "int -> ()" is also allowed.
+    pub allow_int_to_empty_fun: bool,
 }
 
 impl From<Type> for ExpectedType {
@@ -55,6 +59,7 @@ impl From<Type> for ExpectedType {
             ty,
             allow_array: false,
             allow_empty: false,
+            allow_int_to_empty_fun: false,
         }
     }
 }
@@ -403,11 +408,7 @@ impl TypeChecker {
             },
             Expression::Reference(
                 source_ref,
-                Reference::Poly(PolynomialReference {
-                    name,
-                    poly_id: _,
-                    type_args,
-                }),
+                Reference::Poly(PolynomialReference { name, type_args }),
             ) => {
                 for ty in type_args.as_mut().unwrap() {
                     if !self.update_local_type(ty, type_var_mapping) {
@@ -472,7 +473,8 @@ impl TypeChecker {
         Ok(())
     }
 
-    /// Process an expression, inferring its type and expecting either a certain type or potentially an array of that type.
+    /// Process an expression, inferring its type and allowing a certain flexibility in the type
+    /// as specified by `expected_type`.
     fn expect_type_with_flexibility(
         &mut self,
         expected_type: &ExpectedType,
@@ -489,6 +491,11 @@ impl TypeChecker {
             })
         } else if expected_type.allow_empty && (ty == Type::empty_tuple()) {
             Type::empty_tuple()
+        } else if expected_type.allow_int_to_empty_fun && matches!(ty, Type::Function(_)) {
+            Type::Function(FunctionType {
+                params: vec![Type::Int],
+                value: Box::new(Type::empty_tuple()),
+            })
         } else {
             expected_type.ty.clone()
         };
@@ -510,11 +517,7 @@ impl TypeChecker {
             Expression::Reference(_, Reference::LocalVar(id, _name)) => self.local_var_type(*id),
             Expression::Reference(
                 source_ref,
-                Reference::Poly(PolynomialReference {
-                    name,
-                    poly_id: _,
-                    type_args,
-                }),
+                Reference::Poly(PolynomialReference { name, type_args }),
             ) => {
                 let (ty, args) = self
                     .unifier
@@ -570,15 +573,7 @@ impl TypeChecker {
                     .map(|item| self.infer_type_of_expression(item))
                     .collect::<Result<_, _>>()?,
             }),
-            Expression::LambdaExpression(
-                _,
-                LambdaExpression {
-                    kind,
-                    params,
-                    body,
-                    outer_var_references: _,
-                },
-            ) => {
+            Expression::LambdaExpression(_, LambdaExpression { kind, params, body }) => {
                 let old_len = self.local_var_types.len();
                 let result = params
                     .iter()
@@ -618,7 +613,7 @@ impl TypeChecker {
                 self.infer_type_of_function_call(
                     fun_type,
                     [left, right].into_iter().map(AsMut::as_mut),
-                    || format!("applying operator {op}"),
+                    || format!("applying binary operator \"{op}\""),
                     source_ref,
                 )?
             }
@@ -631,7 +626,7 @@ impl TypeChecker {
                 self.infer_type_of_function_call(
                     fun_type,
                     [inner].into_iter().map(AsMut::as_mut),
-                    || format!("applying unary {op}"),
+                    || format!("applying unary operator \"{op}\""),
                     source_ref,
                 )?
             }

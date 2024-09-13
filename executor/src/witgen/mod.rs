@@ -2,15 +2,16 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
 use itertools::Itertools;
+use machines::MachineParts;
 use powdr_ast::analyzed::{
-    AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition,
-    IdentityKind, PolyID, PolynomialType, SymbolKind, TypedExpression,
+    AlgebraicExpression, AlgebraicReference, Analyzed, DegreeRange, Expression,
+    FunctionValueDefinition, IdentityKind, PolyID, PolynomialType, SymbolKind, TypedExpression,
 };
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_number::{DegreeType, FieldElement};
 
-use crate::constant_evaluator::{VariablySizedColumn, MAX_DEGREE_LOG};
+use crate::constant_evaluator::VariablySizedColumn;
 
 use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{
@@ -211,10 +212,9 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             global_constraints::set_global_constraints(fixed, &identities);
         let ExtractionOutput {
             mut machines,
-            base_identities,
-            base_witnesses,
+            base_parts,
         } = if self.stage == 0 {
-            machines::machine_extractor::split_out_machines(&fixed, retained_identities)
+            machines::machine_extractor::split_out_machines(&fixed, retained_identities, self.stage)
         } else {
             // We expect later-stage witness columns to be accumulators for lookup and permutation arguments.
             // These don't behave like normal witness columns (e.g. in a block machine), and they might depend
@@ -227,32 +227,27 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                 .collect::<Vec<_>>();
             ExtractionOutput {
                 machines: Vec::new(),
-                base_identities: polynomial_identities,
-                base_witnesses: fixed.witness_cols.keys().collect::<HashSet<_>>(),
+                base_parts: MachineParts::new(
+                    &fixed,
+                    Default::default(),
+                    polynomial_identities,
+                    fixed.witness_cols.keys().collect::<HashSet<_>>(),
+                    fixed.analyzed.prover_functions.iter().collect(),
+                ),
             }
         };
+
         let mut query_callback = self.query_callback;
         let mut mutable_state = MutableState {
             machines: Machines::from(machines.iter_mut()),
             query_callback: &mut query_callback,
         };
 
-        let generator = (!base_witnesses.is_empty()).then(|| {
-            let main_size = fixed
-                .common_set_degree(&base_witnesses)
-                // In the dynamic VADCOP setting, we assume that some machines
-                // (e.g. register memory) may take up to 4x the number of rows
-                // of the main machine. By running the main machine only 1/4 of
-                // of the steps, we ensure that no secondary machine will run out
-                // of rows.
-                .unwrap_or(1 << (*MAX_DEGREE_LOG - 2));
+        let generator = (!base_parts.witnesses.is_empty()).then(|| {
             let mut generator = Generator::new(
                 "Main Machine".to_string(),
-                main_size,
                 &fixed,
-                &BTreeMap::new(), // No connecting identities
-                base_identities,
-                base_witnesses,
+                base_parts,
                 // We could set the latch of the main VM here, but then we would have to detect it.
                 // Instead, the main VM will be computed in one block, directly continuing into the
                 // infinite loop after the first return.
@@ -334,10 +329,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     /// - the degree is not unique
     /// - the set of polynomials is empty
     /// - a declared polynomial does not have an explicit degree
-    fn common_set_degree<'b>(
-        &self,
-        ids: impl IntoIterator<Item = &'b PolyID>,
-    ) -> Option<DegreeType> {
+    fn common_degree_range<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> DegreeRange {
         let ids: HashSet<_> = ids.into_iter().collect();
 
         self.analyzed
@@ -356,14 +348,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             .unique()
             .exactly_one()
             .unwrap_or_else(|_| panic!("expected all polynomials to have the same degree"))
-    }
-
-    fn common_degree<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> DegreeType {
-        self.common_set_degree(ids).unwrap_or(1 << *MAX_DEGREE_LOG)
-    }
-
-    fn is_variable_size<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> bool {
-        self.common_set_degree(ids).is_none()
+            .unwrap()
     }
 
     pub fn new(

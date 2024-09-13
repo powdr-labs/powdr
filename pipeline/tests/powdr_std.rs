@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
-use powdr_number::{BigInt, Bn254Field, GoldilocksField};
+use powdr_number::{BabyBearField, BigInt, Bn254Field, GoldilocksField};
 
 use powdr_pil_analyzer::evaluator::Value;
 use powdr_pipeline::{
     test_util::{
         evaluate_function, evaluate_integer_function, execute_test_file, gen_estark_proof,
         gen_halo2_proof, make_simple_prepared_pipeline, regular_test, std_analyzed, test_halo2,
-        test_pilcom, BackendVariant,
+        test_pilcom, test_plonky3_with_backend_variant, BackendVariant,
     },
     Pipeline,
 };
@@ -184,6 +184,20 @@ fn binary_test() {
 
 #[test]
 #[ignore = "Too slow"]
+fn binary_bb_8_test() {
+    let f = "std/binary_bb_test_8.asm";
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn binary_bb_16_test() {
+    let f = "std/binary_bb_test_16.asm";
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn shift_test() {
     let f = "std/shift_test.asm";
     test_pilcom(make_simple_prepared_pipeline(f));
@@ -327,6 +341,33 @@ fn fp2() {
     evaluate_function(&analyzed, "std::math::fp2::test::sub", vec![]);
     evaluate_function(&analyzed, "std::math::fp2::test::mul", vec![]);
     evaluate_function(&analyzed, "std::math::fp2::test::inverse", vec![]);
+
+    let analyzed = std_analyzed::<BabyBearField>();
+    evaluate_function(&analyzed, "std::math::fp2::test::add", vec![]);
+    evaluate_function(&analyzed, "std::math::fp2::test::sub", vec![]);
+    evaluate_function(&analyzed, "std::math::fp2::test::mul", vec![]);
+    evaluate_function(&analyzed, "std::math::fp2::test::inverse", vec![]);
+}
+
+#[test]
+fn fp4() {
+    let analyzed = std_analyzed::<GoldilocksField>();
+    evaluate_function(&analyzed, "std::math::fp4::test::add", vec![]);
+    evaluate_function(&analyzed, "std::math::fp4::test::sub", vec![]);
+    evaluate_function(&analyzed, "std::math::fp4::test::mul", vec![]);
+    evaluate_function(&analyzed, "std::math::fp4::test::inverse", vec![]);
+
+    let analyzed = std_analyzed::<Bn254Field>();
+    evaluate_function(&analyzed, "std::math::fp4::test::add", vec![]);
+    evaluate_function(&analyzed, "std::math::fp4::test::sub", vec![]);
+    evaluate_function(&analyzed, "std::math::fp4::test::mul", vec![]);
+    evaluate_function(&analyzed, "std::math::fp4::test::inverse", vec![]);
+
+    let analyzed = std_analyzed::<BabyBearField>();
+    evaluate_function(&analyzed, "std::math::fp4::test::add", vec![]);
+    evaluate_function(&analyzed, "std::math::fp4::test::sub", vec![]);
+    evaluate_function(&analyzed, "std::math::fp4::test::mul", vec![]);
+    evaluate_function(&analyzed, "std::math::fp4::test::inverse", vec![]);
 }
 
 #[test]

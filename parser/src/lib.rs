@@ -138,10 +138,7 @@ pub fn unescape_string(s: &str) -> String {
 #[cfg(test)]
 mod test {
     use super::*;
-    use powdr_ast::parsed::{
-        build::direct_reference, ArrayLiteral, PILFile, PilStatement, PolynomialName,
-        SelectedExpressions,
-    };
+    use powdr_ast::parsed::{PILFile, PilStatement, PolynomialName};
     use powdr_parser_util::UnwrapErrToStderr;
     use pretty_assertions::assert_eq;
     use similar::TextDiff;
@@ -210,44 +207,6 @@ mod test {
         );
     }
 
-    #[test]
-    fn simple_plookup() {
-        let input = "[f] in [g];";
-        let ctx = ParserContext::new(None, input);
-        let parsed = powdr::PILFileParser::new()
-            .parse(&ctx, "[f] in [g];")
-            .unwrap();
-        assert_eq!(
-            parsed,
-            PILFile(vec![PilStatement::PlookupIdentity(
-                SourceRef {
-                    file_name: None,
-                    file_contents: Some(input.into()),
-                    start: 0,
-                    end: 10,
-                },
-                SelectedExpressions {
-                    selector: None,
-                    expressions: Box::new(
-                        ArrayLiteral {
-                            items: vec![direct_reference("f")]
-                        }
-                        .into()
-                    )
-                },
-                SelectedExpressions {
-                    selector: None,
-                    expressions: Box::new(
-                        ArrayLiteral {
-                            items: vec![direct_reference("g")]
-                        }
-                        .into()
-                    )
-                }
-            )])
-        );
-    }
-
     fn find_files_with_ext(
         dir: std::path::PathBuf,
         ext: String,
@@ -272,8 +231,7 @@ mod test {
     #[test]
     /// Test that (source -> AST -> source -> AST) works properly for asm files
     fn parse_write_reparse_asm() {
-        let crate_dir = env!("CARGO_MANIFEST_DIR");
-        let basedir = std::path::PathBuf::from(format!("{crate_dir}/../test_data/"));
+        let basedir = std::path::Path::new("../test_data/").to_owned();
         let asm_files = find_files_with_ext(basedir, "asm".into());
         for (file, orig_string) in asm_files {
             let mut orig_asm = parse_asm(Some(&file), &orig_string).unwrap_err_to_stderr();
@@ -307,8 +265,7 @@ mod test {
     /// Test that (source -> AST -> source -> AST) works properly for pil files
     fn parse_write_reparse_pil() {
         use test_utils::ClearSourceRefs;
-        let crate_dir = env!("CARGO_MANIFEST_DIR");
-        let basedir = std::path::PathBuf::from(format!("{crate_dir}/../test_data/"));
+        let basedir = std::path::Path::new("../test_data/").to_owned();
         let pil_files = find_files_with_ext(basedir, "pil".into());
         for (file, orig_string) in pil_files {
             let mut orig_pil = parse(Some(&file), &orig_string).unwrap_err_to_stderr();
@@ -347,11 +304,11 @@ mod test {
     let N: int = 16;
 namespace Fibonacci(N);
     let last_row = N - 1;
-    let bool: expr -> expr = (|X| X * (1 - X));
-    let one_hot = (|i, which| match i {
+    let bool: expr -> expr = |X| X * (1 - X);
+    let one_hot = |i, which| match i {
         which => 1,
         _ => 0,
-    });
+    };
     pol constant ISLAST(i) { one_hot(i, %last_row) };
     pol commit arr[8];
     pol commit x, y;
@@ -479,7 +436,7 @@ namespace N(2);
     fn patterns() {
         let input = r#"
 namespace N(2);
-    let x = (|(x, y), [t, r, ..]| (x, y, t, r));
+    let x = |(x, y), [t, r, ..]| (x, y, t, r);
     {
         let (a, b, _, d) = x((1, 2), [3, 4]);
         b
@@ -493,8 +450,8 @@ namespace N(2);
     fn type_args() {
         let input = r#"
 namespace N(2);
-    let<T: Ord> max: T, T -> T = (|a, b| if a < b { b } else { a });
-    let<T1, T2> left: T1, T2 -> T1 = (|a, b| a);
+    let<T: Ord> max: T, T -> T = |a, b| if a < b { b } else { a };
+    let<T1, T2> left: T1, T2 -> T1 = |a, b| a;
     let seven = max::<int>(3, 7);
     let five = left::<int, fe[]>(5, [7]);
     let also_five = five::<>;
@@ -507,12 +464,12 @@ namespace N(2);
     fn type_args_with_space() {
         let input = r#"
 namespace N(2);
-    let<T: Ord> max: T, T -> T = (|a, b| if a < b { b } else { a });
+    let<T: Ord> max: T, T -> T = |a, b| if a < b { b } else { a };
     let seven = max :: <int>(3, 7);
 "#;
         let expected = r#"
 namespace N(2);
-    let<T: Ord> max: T, T -> T = (|a, b| if a < b { b } else { a });
+    let<T: Ord> max: T, T -> T = |a, b| if a < b { b } else { a };
     let seven = max::<int>(3, 7);
 "#;
         let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
@@ -528,7 +485,7 @@ namespace N(2);
 
         let expected = r#"
     impl<T> Iterator<ArrayIterator<T>, T> {
-        next_max: (|it, max| if pos(it) >= max { None } else { Some(increment(it)) }),
+        next_max: |it, max| if pos(it) >= max { None } else { Some(increment(it)) },
     }"#;
 
         let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
@@ -544,7 +501,7 @@ namespace N(2);
 
         let expected = r#"
     impl<A, B> Iterator<ArrayIterator<A>, B> {
-        next: (|it, pm| if pos(it) >= val(pm) { (it, pos(it)) } else { (it, 0) }),
+        next: |it, pm| if pos(it) >= val(pm) { (it, pos(it)) } else { (it, 0) },
     }"#;
 
         let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
