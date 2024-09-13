@@ -13,8 +13,8 @@ use num_traits::sign::Signed;
 
 use powdr_ast::{
     analyzed::{
-        self, AlgebraicExpression, AlgebraicReference, Analyzed, DegreeRange, Expression,
-        FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialReference,
+        self, AlgebraicExpression, AlgebraicReference, Analyzed, Challenge, DegreeRange,
+        Expression, FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialReference,
         PolynomialType, PublicDeclaration, Reference, SelectedExpressions, StatementIdentifier,
         Symbol, SymbolKind,
     },
@@ -984,6 +984,27 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
                     type_args: None,
                 }),
             ),
+            AlgebraicExpression::Challenge(Challenge { id, stage }) => {
+                let function = Expression::Reference(
+                    SourceRef::unknown(),
+                    Reference::Poly(PolynomialReference {
+                        name: "std::prelude::challenge".to_string(),
+                        type_args: None,
+                    }),
+                )
+                .into();
+                let arguments = [*stage as u64, *id]
+                    .into_iter()
+                    .map(|x| BigUint::from(x).into())
+                    .collect();
+                Expression::FunctionCall(
+                    SourceRef::unknown(),
+                    FunctionCall {
+                        function,
+                        arguments,
+                    },
+                )
+            }
             _ => {
                 return Err(EvalError::TypeError(format!(
                     "Algebraic expression as captured value not supported: {e}."
