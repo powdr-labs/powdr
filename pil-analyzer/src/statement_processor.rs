@@ -427,21 +427,19 @@ where
         };
 
         match value {
-            Some(value) => match value {
-                FunctionDefinition::TypeDeclaration(enum_decl) => {
-                    assert_eq!(symbol_kind, SymbolKind::Other());
-                    self.handle_enum_declaration_symbol(source, name, symbol, enum_decl)
-                }
-                FunctionDefinition::TraitDeclaration(trait_decl) => {
-                    self.handle_trait_declaration_symbol(source, name, symbol, trait_decl)
-                }
-                FunctionDefinition::Expression(expr) => {
-                    self.handle_expression_symbol(symbol_kind, symbol, type_scheme, expr)
-                }
-                FunctionDefinition::Array(value) => {
-                    self.handle_array_symbol(symbol, type_scheme, value)
-                }
-            },
+            Some(FunctionDefinition::TypeDeclaration(enum_decl)) => {
+                assert_eq!(symbol_kind, SymbolKind::Other());
+                self.handle_enum_declaration_symbol(source, name, symbol, enum_decl)
+            }
+            Some(FunctionDefinition::TraitDeclaration(trait_decl)) => {
+                self.handle_trait_declaration_symbol(source, name, symbol, trait_decl)
+            }
+            Some(FunctionDefinition::Expression(expr)) => {
+                self.handle_expression_symbol(symbol_kind, symbol, type_scheme, expr)
+            }
+            Some(FunctionDefinition::Array(value)) => {
+                self.handle_array_symbol(symbol, type_scheme, value)
+            }
             None => vec![PILItem::Definition(symbol, None)],
         }
     }
