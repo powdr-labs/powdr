@@ -22,7 +22,10 @@ pub fn compile<T: FieldElement>(
     let (dir, lib_path) = call_cargo(&code);
     let metadata = fs::metadata(&lib_path).unwrap();
 
-    log::info!("Loading library with size {}...", metadata.len());
+    log::info!(
+        "Loading library with size {} MB...",
+        metadata.len() as f64 / 1000000.0
+    );
 
     let result = load_library(&lib_path, symbols);
     log::info!("Done.");
