@@ -353,10 +353,13 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     for machine in [
         //"binary",
         //"shift",
-        "bit2", "bit6", "bit7", "byte",
+        "bit2",
+        "bit6",
+        "bit7",
+        "byte",
         "byte2",
         //"byte_binary",
-        //"byte_shift",
+        "byte_shift_16",
         //"byte_compare",
     ] {
         assert!(
@@ -682,20 +685,6 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     // ======================= assertions =========================
 
     instr fail { 1 = 0 }
-
-    /*
-    // Wraps V = val(X) * Y and stores it in register Z,
-    // where X is a register and Y is a constant factor.
-    // Removes up to 16 bits beyond 32
-    // TODO is this really safe?
-    instr wrap16 X, Y, Z
-        link ~> tmp1_col = regs.mload(X, STEP)
-        link ~> regs.mstore(Z, STEP + 3, tmp3_col)
-    {
-        (tmp1_col * Y) = Y_b5 * 2**32 + Y_b6 * 2**40 + tmp3_col,
-        tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
-    }
-    */
 
     col witness Y_b5;
     col witness Y_b6;
@@ -1257,24 +1246,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             assert!(amount <= 31);
             only_if_no_write_to_zero_vec(
                 rd,
-                if amount <= 16 {
-                    vec![format!(
-                        "wrap16 {}, {}, {};",
-                        rs.addr(),
-                        1 << amount,
-                        rd.addr()
-                    )]
-                } else {
-                    vec![
-                        format!("wrap16 {}, {}, {};", rs.addr(), 1 << 16, tmp1.addr()),
-                        format!(
-                            "wrap16 {}, {}, {};",
-                            tmp1.addr(),
-                            1 << (amount - 16),
-                            rd.addr()
-                        ),
-                    ]
-                },
+                vec![format!("shl {}, 0, 0, {amount}, {};", rs.addr(), rd.addr())],
             )
         }
         "sll" => {
@@ -1282,8 +1254,8 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             only_if_no_write_to_zero_vec(
                 rd,
                 vec![
-                    format!("and {}, 0, 0x1f, {};", r2.addr(), tmp1.addr()),
-                    format!("shl {}, {}, 0, {};", r1.addr(), tmp1.addr(), rd.addr()),
+                    format!("and {}, 0, 0, 0x1f, {};", r2.addr(), tmp1.addr()),
+                    format!("shl {}, {}, 0, 0, {};", r1.addr(), tmp1.addr(), rd.addr()),
                 ],
             )
         }
@@ -1293,7 +1265,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             assert!(amount <= 31);
             only_if_no_write_to_zero(
                 rd,
-                format!("shr {}, 0, {amount}, {};", rs.addr(), rd.addr()),
+                format!("shr {}, 0, 0, {amount}, {};", rs.addr(), rd.addr()),
             )
         }
         "srl" => {
@@ -1302,8 +1274,8 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             only_if_no_write_to_zero_vec(
                 rd,
                 vec![
-                    format!("and {}, 0, 0x1f, {};", r2.addr(), tmp1.addr()),
-                    format!("shr {}, {}, 0, {};", r1.addr(), tmp1.addr(), rd.addr()),
+                    format!("and {}, 0, 0, 0x1f, {};", r2.addr(), tmp1.addr()),
+                    format!("shr {}, {}, 0, 0, {};", r1.addr(), tmp1.addr(), rd.addr()),
                 ],
             )
         }
@@ -1319,7 +1291,11 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                 vec![
                     //format!("to_signed {}, {};", rs.addr(), tmp1.addr()),
                     format!("affine {}, {}, 0, 1, 0, 0;", rs.addr(), tmp1.addr()),
-                    format!("is_greater_or_equal 0, {}, {};", tmp1.addr(), tmp1.addr()),
+                    format!(
+                        "is_greater_or_equal_signed 0, {}, {};",
+                        tmp1.addr(),
+                        tmp1.addr()
+                    ),
                     format!(
                         "affine {}, {}, 0xffff, 0xffff, 0, 0;",
                         tmp1.addr(),
@@ -1328,7 +1304,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                     // Here, tmp1 is the full bit mask if rs is negative
                     // and zero otherwise.
                     format!("xor {}, {}, 0, 0, {};", tmp1.addr(), rs.addr(), rd.addr()),
-                    format!("shr {}, 0, {amount}, {};", rd.addr(), rd.addr()),
+                    format!("shr {}, 0, 0, {amount}, {};", rd.addr(), rd.addr()),
                     format!("xor {}, {}, 0, 0, {};", tmp1.addr(), rd.addr(), rd.addr()),
                 ],
             )

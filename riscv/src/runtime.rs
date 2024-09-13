@@ -120,30 +120,30 @@ impl Runtime {
             ["and 0, 0, 0, 0, 0;"],
         );
 
-        /*
         r.add_submachine(
-            "std::machines::shift::Shift",
+            "std::machines::shift16::Shift16",
             None,
             "shift",
-            vec!["byte_shift"],
+            vec!["byte_shift_16"],
             [
-                r#"/*instr shl X, Y, Z, W
-                    link ~> tmp1_col = regs.mload(X, STEP)
-                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
-                    link ~> tmp3_col = shift.shl(tmp1_col, tmp2_col + Z)
-                    link ~> regs.mstore(W, STEP + 3, tmp3_col);*/
+                r#"instr shl XL, YL, ZH, ZL, WL
+                    link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
+                    link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP)
+                    link ~> (tmp3_h, tmp3_l) = arith_bb.add(tmp2_h, tmp2_l, ZH, ZL)
+                    link ~> (tmp4_l, tmp4_h) = shift.shl(tmp1_l, tmp1_h, tmp3_l)
+                    link ~> regs.mstore(WL, STEP + 3, tmp4_h, tmp4_l);
 "#,
-        r#" /*instr shr X, Y, Z, W
-            link ~> tmp1_col = regs.mload(X, STEP)
-            link ~> tmp2_col = regs.mload(Y, STEP + 1)
-            link ~> tmp3_col = shift.shr(tmp1_col, tmp2_col + Z)
-            link ~> regs.mstore(W, STEP + 3, tmp3_col);*/
+                r#"instr shr XL, YL, ZH, ZL, WL
+                    link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
+                    link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP)
+                    link ~> (tmp3_h, tmp3_l) = arith_bb.add(tmp2_h, tmp2_l, ZH, ZL)
+                    link ~> (tmp4_l, tmp4_h) = shift.shr(tmp1_l, tmp1_h, tmp3_l)
+                    link ~> regs.mstore(WL, STEP + 3, tmp4_h, tmp4_l);
 "#,
             ],
             0,
-            ["shl 0, 0, 0, 0;"],
+            ["shl 0, 0, 0, 0, 0;"],
         );
-        */
 
         /*
         r.add_submachine(
@@ -223,9 +223,9 @@ impl Runtime {
         );
 
         r.add_submachine::<&str, _, _>(
-            "std::machines::shift::ByteShift",
+            "std::machines::shift16::ByteShift16",
             None,
-            "byte_shift",
+            "byte_shift_16",
             vec![],
             [],
             0,
