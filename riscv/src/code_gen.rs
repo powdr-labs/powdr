@@ -1501,39 +1501,38 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
         "bgez" => {
             let (r1, label) = args.rl()?;
             let label = escape_label(label.as_ref());
-            vec![
-                //format!("to_signed {}, {};", r1.addr(), tmp1.addr()),
-                format!("affine {}, {}, 0, 1, 0, 0;", r1.addr(), tmp1.addr()),
-                format!(
-                    "branch_if_greater_or_equal_signed {}, 0, {label};",
-                    tmp1.addr(),
-                ),
-            ]
+            vec![format!(
+                "branch_if_greater_or_equal_signed {}, 0, {label};",
+                r1.addr(),
+            )]
         }
         "bltu" => {
             let (r1, r2, label) = args.rrl()?;
             let label = escape_label(label.as_ref());
-            vec![format!(
-                "branch_if_greater_or_equal {}, {}, {label};",
-                r2.addr(),
-                r1.addr()
-            )]
+            vec![
+                format!(
+                    "is_greater_or_equal {}, {}, {};",
+                    r1.addr(),
+                    r2.addr(),
+                    tmp1.addr()
+                ),
+                format!("branch_if_diff_equal {}, 0, 0, 0, {label};", tmp1.addr()),
+            ]
         }
         "blt" => {
             let (r1, r2, label) = args.rrl()?;
             let label = escape_label(label.as_ref());
+
             // Branch if r1 < r2 (signed).
             // TODO does this fulfill the input requirements for branch_if_greater_or_equal?
             vec![
-                //format!("to_signed {}, {};", r1.addr(), tmp1.addr()),
-                format!("affine {}, {}, 0, 1, 0, 0;", r1.addr(), tmp1.addr()),
-                //format!("to_signed {}, {};", r2.addr(), tmp2.addr()),
-                format!("affine {}, {}, 0, 1, 0, 0;", r2.addr(), tmp2.addr()),
                 format!(
-                    "branch_if_greater_or_equal_signed {}, {}, {label};",
-                    tmp2.addr(),
+                    "is_greater_or_equal_signed {}, {}, {};",
+                    r1.addr(),
+                    r2.addr(),
                     tmp1.addr()
                 ),
+                format!("branch_if_diff_equal {}, 0, 0, 0, {label};", tmp1.addr()),
             ]
         }
         "bge" => {
@@ -1541,20 +1540,27 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             let label = escape_label(label.as_ref());
             // Branch if r1 >= r2 (signed).
             // TODO does this fulfill the input requirements for branch_if_greater_or_equal?
-            vec![
-                //format!("to_signed {}, {};", r1.addr(), tmp1.addr()),
-                format!("affine {}, {}, 0, 1, 0, 0;", r1.addr(), tmp1.addr()),
-                //format!("to_signed {}, {};", r2.addr(), tmp2.addr()),
-                format!("affine {}, {}, 0, 1, 0, 0;", r2.addr(), tmp2.addr()),
-                format!(
-                    "branch_if_greater_or_equal_signed {}, {}, {label};",
-                    tmp1.addr(),
-                    tmp2.addr(),
-                ),
-            ]
+            vec![format!(
+                "branch_if_greater_or_equal_signed {}, {}, {label};",
+                r1.addr(),
+                r2.addr(),
+            )]
         }
         "bltz" => {
             // branch if 2**31 <= r1 < 2**32
+            let (r1, label) = args.rl()?;
+            let label = escape_label(label.as_ref());
+            vec![
+                format!(
+                    "is_greater_or_equal_signed {}, 0, {};",
+                    r1.addr(),
+                    tmp1.addr()
+                ),
+                format!("branch_if_diff_equal {}, 0, 0, 0, {label};", tmp1.addr()),
+            ]
+        }
+        "blez" => {
+            // branch less or equal zero
             let (r1, label) = args.rl()?;
             let label = escape_label(label.as_ref());
             vec![format!(
@@ -1562,28 +1568,15 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                 r1.addr(),
             )]
         }
-        "blez" => {
-            // branch less or equal zero
-            let (r1, label) = args.rl()?;
-            let label = escape_label(label.as_ref());
-            vec![
-                //format!("to_signed {}, {};", r1.addr(), tmp1.addr()),
-                format!("affine {}, {}, 0, 1, 0, 0;", r1.addr(), tmp1.addr()),
-                format!(
-                    "branch_if_greater_or_equal_signed 1, {}, {label};",
-                    tmp1.addr(),
-                ),
-            ]
-        }
         "bgtz" => {
             // branch if 0 < r1 < 2**31
             let (r1, label) = args.rl()?;
             let label = escape_label(label.as_ref());
             vec![
-                //format!("to_signed {}, {};", r1.addr(), tmp1.addr()),
-                format!("affine {}, {}, 0, 1, 0, 0;", r1.addr(), tmp1.addr()),
+                format!("affine 0, {}, 0, 0, 0, 1;", tmp1.addr()),
                 format!(
-                    "branch_if_greater_or_equal_signed {}, 1, {label};",
+                    "branch_if_greater_or_equal_signed {}, {}, {label};",
+                    r1.addr(),
                     tmp1.addr()
                 ),
             ]
