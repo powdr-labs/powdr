@@ -684,7 +684,11 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
 
     // ======================= assertions =========================
 
-    instr fail { 1 = 0 }
+    instr fail 
+        link ~> (tmp1_h, tmp1_l) = regs.mload(0, STEP)
+    {
+      tmp1_h = 1
+    }
 
     col witness Y_b5;
     col witness Y_b6;
@@ -1316,9 +1320,16 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                     //format!("to_signed {}, {};", rs.addr(), tmp1.addr()),
                     format!("affine {}, {}, 0, 1, 0, 0;", rs.addr(), tmp1.addr()),
                     format!(
-                        "is_greater_or_equal_signed 0, {}, {};",
+                        "is_greater_or_equal_signed {}, 0, {};",
                         tmp1.addr(),
                         tmp1.addr()
+                    ),
+                    format!(
+                        "affine {}, {}, {}, {}, 0, 1;",
+                        tmp1.addr(),
+                        tmp1.addr(),
+                        i32_high(-1),
+                        i32_low(-1)
                     ),
                     format!(
                         "affine {}, {}, 0xffff, 0xffff, 0, 0;",
