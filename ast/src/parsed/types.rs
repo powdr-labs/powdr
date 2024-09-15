@@ -136,6 +136,62 @@ impl<E> Type<E> {
         Type::Tuple(TupleType { items: vec![] })
     }
 }
+
+impl<E: ArrayLength> Type<E> {
+    pub fn contained_expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        match self {
+            Type::Array(ArrayType { base, length }) => Box::new(
+                length
+                    .as_mut()
+                    .and_then(|l| l.try_to_expression_mut())
+                    .into_iter()
+                    .chain(base.contained_expressions_mut()),
+            ),
+            t => Box::new(t.children_mut().flat_map(|t| t.contained_expressions_mut())),
+        }
+    }
+
+    pub fn contained_expressions(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        match self {
+            Type::Array(ArrayType { base, length }) => Box::new(
+                length
+                    .as_ref()
+                    .and_then(|l| l.try_to_expression())
+                    .into_iter()
+                    .chain(base.contained_expressions()),
+            ),
+            t => Box::new(t.children().flat_map(|t| t.contained_expressions())),
+        }
+    }
+}
+
+/// A trait to operate the possible types for the array type lengths
+pub trait ArrayLength: std::fmt::Display + std::fmt::Debug {
+    fn try_to_expression_mut(&mut self) -> Option<&mut Expression>;
+
+    fn try_to_expression(&self) -> Option<&Expression>;
+}
+
+impl ArrayLength for Expression {
+    fn try_to_expression_mut(&mut self) -> Option<&mut Expression> {
+        Some(self)
+    }
+
+    fn try_to_expression(&self) -> Option<&Expression> {
+        Some(self)
+    }
+}
+
+impl ArrayLength for u64 {
+    fn try_to_expression_mut(&mut self) -> Option<&mut Expression> {
+        None
+    }
+
+    fn try_to_expression(&self) -> Option<&Expression> {
+        None
+    }
+}
+
 impl<E: Clone> Type<E> {
     /// Substitutes all occurrences of the given type variables with the given types.
     /// Does not apply the substitutions inside the replacements.

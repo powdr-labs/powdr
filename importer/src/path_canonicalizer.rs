@@ -12,7 +12,7 @@ use powdr_ast::parsed::{
         SymbolValue, SymbolValueRef,
     },
     folder::Folder,
-    types::{Type, TypeScheme},
+    types::{ArrayLength, Type, TypeScheme},
     visitor::{Children, ExpressionVisitable},
     ArrayLiteral, BinaryOperation, BlockExpression, EnumDeclaration, EnumVariant, Expression,
     FunctionCall, IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm,
@@ -257,6 +257,7 @@ fn canonicalize_inside_pil_statement(
             }
         }
         PilStatement::TraitImplementation(_, trait_impl) => {
+            canonicalize_inside_type_scheme(&mut trait_impl.type_scheme, path, paths);
             for f in trait_impl.children_mut() {
                 canonicalize_inside_expression(f, path, paths)
             }
@@ -338,8 +339,8 @@ fn canonicalize_inside_pattern(
     }
 }
 
-fn canonicalize_inside_type_scheme(
-    type_scheme: &mut TypeScheme<Expression>,
+fn canonicalize_inside_type_scheme<E: ArrayLength>(
+    type_scheme: &mut TypeScheme<E>,
     path: &AbsoluteSymbolPath,
     paths: &'_ PathMap,
 ) {
@@ -351,19 +352,23 @@ fn canonicalize_inside_type_scheme(
     );
 }
 
-fn canonicalize_inside_type(
-    ty: &mut Type<Expression>,
+fn canonicalize_inside_type<E: ArrayLength>(
+    ty: &mut Type<E>,
     type_vars: &HashSet<&String>,
     path: &AbsoluteSymbolPath,
     paths: &'_ PathMap,
 ) {
+    // replace type vars recursively
     ty.map_to_type_vars(type_vars);
+
+    // canonicalize names recursively
     for p in ty.contained_named_types_mut() {
         let abs = paths.get(&path.clone().join(p.clone())).unwrap();
         *p = abs.relative_to(&Default::default()).clone();
     }
 
-    for tne in ty.children_mut() {
+    // canonicalize contained expressions recursively
+    for tne in ty.contained_expressions_mut() {
         canonicalize_inside_expression(tne, path, paths);
     }
 }
@@ -647,8 +652,17 @@ fn check_pil_statement_inside_module(
         PilStatement::EnumDeclaration(_, enum_decl) => {
             check_type_declaration(&location, enum_decl, state)
         }
-        PilStatement::TraitImplementation(_, _) => {
-            // trait implementations do not define symbols
+        PilStatement::TraitImplementation(_, trait_impl) => {
+            check_type_scheme(
+                &location,
+                &trait_impl.type_scheme,
+                state,
+                &Default::default(),
+            )?;
+            let type_vars = trait_impl.type_scheme.vars.vars().collect::<HashSet<_>>();
+            for f in &trait_impl.functions {
+                check_expression(&location, &f.body, state, &type_vars, &Default::default())?;
+            }
             Ok(())
         }
         PilStatement::TraitDeclaration(_, trait_decl) => {
@@ -969,9 +983,9 @@ fn check_type_declaration(
         .try_for_each(|ty| check_type(location, ty, state, &type_vars, &Default::default()))
 }
 
-fn check_type_scheme(
+fn check_type_scheme<E: ArrayLength>(
     location: &AbsoluteSymbolPath,
-    type_scheme: &TypeScheme<Expression>,
+    type_scheme: &TypeScheme<E>,
     state: &mut State<'_>,
     local_variables: &HashSet<String>,
 ) -> Result<(), Error> {
@@ -985,16 +999,13 @@ fn check_type_scheme(
     )
 }
 
-fn check_type<ArrayLengthType>(
+fn check_type<E: ArrayLength>(
     location: &AbsoluteSymbolPath,
-    ty: &Type<ArrayLengthType>,
+    ty: &Type<E>,
     state: &mut State<'_>,
     type_vars: &HashSet<&String>,
     local_variables: &HashSet<String>,
-) -> Result<(), Error>
-where
-    Type<ArrayLengthType>: Children<Expression>,
-{
+) -> Result<(), Error> {
     for p in ty.contained_named_types() {
         if let Some(id) = p.try_to_identifier() {
             if type_vars.contains(id) {
@@ -1004,7 +1015,7 @@ where
         check_path_try_prelude(location.clone(), p.clone(), state)
             .map_err(|e| SourceRef::unknown().with_error(e))?;
     }
-    ty.children()
+    ty.contained_expressions()
         .try_for_each(|e| check_expression(location, e, state, type_vars, local_variables))
 }
 
@@ -1195,5 +1206,10 @@ mod tests {
     #[test]
     fn degree_not_found() {
         expect("degree_not_found", Err("symbol not found in `::`: `N`"))
+    }
+
+    #[test]
+    fn trait_implementation() {
+        expect("trait_implementation", Ok(()))
     }
 }
