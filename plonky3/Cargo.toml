@@ -13,24 +13,31 @@ rand = "0.8.5"
 powdr-analysis = { path = "../analysis" }
 powdr-executor = { path = "../executor" }
 
-p3-air = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "uni-stark-with-fixed" }
-p3-matrix = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "uni-stark-with-fixed" }
-p3-field = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "uni-stark-with-fixed" }
-p3-uni-stark = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "uni-stark-with-fixed" }
-p3-commit = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "uni-stark-with-fixed", features = ["test-utils"] }
-p3-poseidon2 = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "uni-stark-with-fixed" }
-p3-poseidon = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "uni-stark-with-fixed" }
-p3-fri = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "uni-stark-with-fixed" }
+p3-air = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
+p3-matrix = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
+p3-field = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
+p3-uni-stark = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
+p3-commit = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main", features = [
+  "test-utils",
+] }
+p3-poseidon2 = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
+p3-poseidon = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
+p3-fri = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
 # We don't use p3-maybe-rayon directly, but it is a dependency of p3-uni-stark.
 # Activating the "parallel" feature gives us parallelism in the prover.
-p3-maybe-rayon = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "uni-stark-with-fixed", features = ["parallel"] }
-p3-mds = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "uni-stark-with-fixed" }
-p3-merkle-tree = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "uni-stark-with-fixed" }
-p3-goldilocks = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "uni-stark-with-fixed" }
-p3-symmetric = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "uni-stark-with-fixed" }
-p3-dft = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "uni-stark-with-fixed" }
-p3-challenger = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "uni-stark-with-fixed" }
-p3-util = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "uni-stark-with-fixed" }
+p3-maybe-rayon = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main", features = [
+  "parallel",
+] }
+p3-mds = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
+p3-merkle-tree = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
+p3-mersenne-31 = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
+p3-circle = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
+p3-baby-bear = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
+p3-goldilocks = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
+p3-symmetric = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
+p3-dft = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
+p3-challenger = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
+p3-util = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
 lazy_static = "1.4.0"
 rand_chacha = "0.3.1"
 bincode = "1.3.3"

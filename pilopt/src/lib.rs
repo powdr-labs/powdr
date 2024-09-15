@@ -2,7 +2,7 @@
 #![deny(clippy::print_stdout)]
 
 use std::borrow::Cow;
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::iter::once;
 
 use powdr_ast::analyzed::{
@@ -49,6 +49,7 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         let symbols: Box<dyn Iterator<Item = Cow<'_, str>>> = if let Some((sym, value)) =
             pil_file.definitions.get(n.as_ref())
         {
+            // TODO remove this.
             let set_hint = (sym.kind == SymbolKind::Poly(PolynomialType::Committed)
                 && value.is_some())
             .then_some(Cow::from("std::prelude::set_hint"));
@@ -129,11 +130,7 @@ impl ReferencedSymbols for Expression {
                 .flat_map(|e| match e {
                     Expression::Reference(
                         _,
-                        Reference::Poly(PolynomialReference {
-                            name,
-                            type_args,
-                            poly_id: _,
-                        }),
+                        Reference::Poly(PolynomialReference { name, type_args }),
                     ) => Some(
                         type_args
                             .iter()
@@ -177,7 +174,7 @@ fn build_poly_id_to_definition_name_lookup(
 
 /// Collect all names that are referenced in identities and public declarations.
 fn collect_required_names<'a, T: FieldElement>(
-    pil_file: &Analyzed<T>,
+    pil_file: &'a Analyzed<T>,
     poly_id_to_definition_name: &BTreeMap<PolyID, &'a String>,
 ) -> HashSet<Cow<'a, str>> {
     let mut required_names: HashSet<Cow<'a, str>> = Default::default();
@@ -185,8 +182,15 @@ fn collect_required_names<'a, T: FieldElement>(
         pil_file
             .public_declarations
             .values()
-            .map(|p| poly_id_to_definition_name[&p.polynomial.poly_id.unwrap()].into()),
+            .map(|p| p.polynomial.name.as_str().into()),
     );
+    for fun in &pil_file.prover_functions {
+        for e in fun.all_children() {
+            if let Expression::Reference(_, Reference::Poly(PolynomialReference { name, .. })) = e {
+                required_names.insert(Cow::from(name));
+            }
+        }
+    }
     for id in &pil_file.identities {
         id.pre_visit_expressions(&mut |e: &AlgebraicExpression<T>| {
             if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = e {
@@ -211,11 +215,11 @@ fn remove_constant_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 "Determined fixed column {} to be constant {value}. Removing.",
                 poly.absolute_name
             );
-            Some((poly.into(), value))
+            Some(((poly.absolute_name.clone(), poly.into()), value))
         })
-        .collect::<BTreeMap<PolyID, _>>();
+        .collect::<Vec<((String, PolyID), _)>>();
 
-    substitute_polynomial_references(pil_file, &constant_polys);
+    substitute_polynomial_references(pil_file, constant_polys);
 }
 
 /// Checks if a fixed column defined through a function has a constant
@@ -438,7 +442,7 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         .filter(|&id| (id.kind == IdentityKind::Polynomial))
         .map(|id| id.expression_for_poly_id())
         .filter_map(constrained_to_constant)
-        .collect::<BTreeMap<PolyID, _>>();
+        .collect::<Vec<((String, PolyID), _)>>();
     // We cannot remove arrays or array elements, so filter them out.
     let columns = pil_file
         .committed_polys_in_source_order()
@@ -446,30 +450,34 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         .filter(|&(s, _)| (!s.is_array()))
         .map(|(s, _)| s.into())
         .collect::<HashSet<PolyID>>();
-    constant_polys.retain(|id, _| columns.contains(id));
+    constant_polys.retain(|((_, id), _)| columns.contains(id));
 
-    substitute_polynomial_references(pil_file, &constant_polys);
+    substitute_polynomial_references(pil_file, constant_polys);
 }
 
 /// Substitutes all references to certain polynomials by the given field elements.
 fn substitute_polynomial_references<T: FieldElement>(
     pil_file: &mut Analyzed<T>,
-    substitutions: &BTreeMap<PolyID, BigUint>,
+    substitutions: Vec<((String, PolyID), BigUint)>,
 ) {
+    let substitutions_by_id = substitutions
+        .iter()
+        .map(|((_, id), value)| (*id, value.clone()))
+        .collect::<HashMap<PolyID, _>>();
+    let substitutions_by_name = substitutions
+        .into_iter()
+        .map(|((name, _), value)| (name, value))
+        .collect::<HashMap<String, _>>();
     pil_file.post_visit_expressions_in_definitions_mut(&mut |e: &mut Expression| {
         if let Expression::Reference(
             _,
-            Reference::Poly(PolynomialReference {
-                name: _,
-                poly_id: Some(poly_id),
-                type_args: _,
-            }),
+            Reference::Poly(PolynomialReference { name, type_args: _ }),
         ) = e
         {
-            if let Some(value) = substitutions.get(poly_id) {
+            if let Some(value) = substitutions_by_name.get(name) {
                 *e = Number {
-                    value: value.clone(),
-                    type_: Some(Type::Fe),
+                    value: (*value).clone(),
+                    type_: Some(Type::Expr),
                 }
                 .into();
             }
@@ -477,8 +485,8 @@ fn substitute_polynomial_references<T: FieldElement>(
     });
     pil_file.post_visit_expressions_in_identities_mut(&mut |e: &mut AlgebraicExpression<_>| {
         if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = e {
-            if let Some(value) = substitutions.get(poly_id) {
-                *e = AlgebraicExpression::Number(T::checked_from(value.clone()).unwrap());
+            if let Some(value) = substitutions_by_id.get(poly_id) {
+                *e = AlgebraicExpression::Number(T::checked_from((*value).clone()).unwrap());
             }
         }
     });
@@ -486,7 +494,7 @@ fn substitute_polynomial_references<T: FieldElement>(
 
 fn constrained_to_constant<T: FieldElement>(
     expr: &AlgebraicExpression<T>,
-) -> Option<(PolyID, BigUint)> {
+) -> Option<((String, PolyID), BigUint)> {
     match expr {
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
             left,
@@ -498,7 +506,7 @@ fn constrained_to_constant<T: FieldElement>(
                 | (AlgebraicExpression::Reference(poly), AlgebraicExpression::Number(n)) => {
                     if poly.is_witness() {
                         // This also works if "next" is true.
-                        return Some((poly.poly_id, n.to_arbitrary_integer()));
+                        return Some(((poly.name.clone(), poly.poly_id), n.to_arbitrary_integer()));
                     }
                 }
                 _ => {}
@@ -506,7 +514,7 @@ fn constrained_to_constant<T: FieldElement>(
         }
         AlgebraicExpression::Reference(poly) => {
             if poly.is_witness() {
-                return Some((poly.poly_id, 0u32.into()));
+                return Some(((poly.name.clone(), poly.poly_id), 0u32.into()));
             }
         }
         _ => {}
@@ -587,7 +595,7 @@ mod test {
     N::X = N::Y;
     N::Y = 7 * N::X;
 "#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
         assert_eq!(optimized, expectation);
     }
 
@@ -621,7 +629,7 @@ mod test {
     N::A = 1 + N::A;
     N::Z = 1 + N::A;
 "#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
         assert_eq!(optimized, expectation);
     }
 
@@ -637,7 +645,7 @@ mod test {
     col intermediate = N::x;
     N::intermediate = N::intermediate;
 "#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
         assert_eq!(optimized, expectation);
     }
 
@@ -660,7 +668,7 @@ namespace N(65536);
     col fixed t(i) { std::array::len::<expr>(N::y) };
     N::x[0] = N::t;
 "#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
         assert_eq!(optimized, expectation);
     }
 
@@ -689,7 +697,7 @@ namespace N(65536);
     [N::x + 1] in [N::cnt];
     [N::x] in [N::cnt + 1];
 "#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
         assert_eq!(optimized, expectation);
     }
 
@@ -712,10 +720,10 @@ namespace N(65536);
         let expectation = r#"namespace N(65536);
     col witness x;
     col fixed cnt(i) { N::inc(i) };
-    let inc: int -> int = (|x| x + 1);
+    let inc: int -> int = |x| x + 1;
     [N::x] in [N::cnt];
 "#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
         assert_eq!(optimized, expectation);
     }
 
@@ -731,7 +739,7 @@ namespace N(65536);
     col inte[5] = [N::x[0], N::x[1], N::x[2], N::x[3], N::x[4]];
     N::x[2] = N::inte[4];
 "#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input));
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap());
         assert_eq!(optimized.intermediate_count(), 5);
         assert_eq!(optimized.to_string(), expectation);
     }
@@ -763,12 +771,12 @@ namespace N(65536);
     enum R {
         T,
     }
-    let t: N::X[] -> int = (|r| 1);
+    let t: N::X[] -> int = |r| 1;
     col fixed f(i) { if i == 0 { N::t([]) } else { (|x| 1)(N::Y::F([])) } };
     col witness x;
     N::x = N::f;
 "#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
         assert_eq!(optimized, expectation);
     }
 }

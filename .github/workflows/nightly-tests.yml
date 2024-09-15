@@ -16,7 +16,7 @@ jobs:
       status: ${{ steps.count.outputs.status }}
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Count recent commits
       id: count
       run: echo "status=$(git log --oneline --since '24 hours ago' | wc -l)" >> $GITHUB_OUTPUT
@@ -28,7 +28,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Install nightly toolchain
         uses: actions-rs/toolchain@v1
@@ -48,11 +48,11 @@ jobs:
     if: needs.check_if_needs_running.outputs.status > 0
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         submodules: recursive
     - name: ⚡ Cache rust
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry
@@ -60,7 +60,7 @@ jobs:
           target
         key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
     - name: ⚡ Cache nodejs
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/pilcom/node_modules

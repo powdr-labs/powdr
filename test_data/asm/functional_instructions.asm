@@ -19,7 +19,7 @@ machine FunctionalInstructions with degree: 32 {
     instr wrap Y -> X { Y = X + wrap_bit * 2**32, X = array::sum(array::map_enumerated(NIB, |i, nib| (2 ** (i * 4)) * nib)) }
 
     col fixed NIBBLES(i) { i & 0xf };
-    let NIB = std::array::new(8, constr |i| { let XN; Constr::Lookup((Option::None, Option::None), [(XN, NIBBLES)]); XN });
+    let NIB = std::array::new(8, constr |i| { let XN; [XN] in [NIBBLES]; XN });
     col commit wrap_bit;
     wrap_bit * (1 - wrap_bit) = 0;
 
