@@ -165,7 +165,7 @@ impl<E: ArrayLength> Type<E> {
     }
 }
 
-/// A trait to operate the possible types for the array type lengths
+/// A trait to operate over the possible types for the array type lengths
 pub trait ArrayLength: std::fmt::Display + std::fmt::Debug {
     fn try_to_expression_mut(&mut self) -> Option<&mut Expression>;
 
