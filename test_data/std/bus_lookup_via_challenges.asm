@@ -30,8 +30,8 @@ machine Main with degree: 8 {
     col witness stage(1) z;
     col witness stage(1) u;
 
-    let is_first: col = std::well_known::is_first;
-    lookup(is_first, 1, [z], [u], alpha, beta, lookup_constraint, m);
+    lookup(1, [z], [u], alpha, beta, lookup_constraint, m);
 
+    let is_first: col = std::well_known::is_first;
     is_first' * (z + u) = 0;
 }

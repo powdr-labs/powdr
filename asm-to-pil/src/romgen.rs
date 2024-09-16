@@ -219,8 +219,9 @@ pub fn generate_machine_rom<T: FieldElement>(mut machine: Machine) -> (Machine, 
 
         machine.pil.extend([
             // inject the operation_id
+            parse_pil_statement(&format!("let {operation_id};")),
             parse_pil_statement(&format!(
-                "col witness {operation_id}(i) query std::prelude::Query::Hint({sink_id});"
+                "query |__i| std::prover::provide_if_unknown({operation_id}, __i, || {sink_id});"
             )),
             // inject last step
             parse_pil_statement(&format!("col constant {last_step} = [0]* + [1];")),
