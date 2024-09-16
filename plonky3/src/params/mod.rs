@@ -4,7 +4,7 @@
 pub mod baby_bear;
 pub mod goldilocks;
 pub mod mersenne_31;
-pub(crate) mod poseidon2;
+pub mod poseidon2;
 
 use p3_uni_stark::StarkGenericConfig;
 use powdr_number::FieldElement;

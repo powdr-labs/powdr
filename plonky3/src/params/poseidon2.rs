@@ -4,9 +4,7 @@ use rand::{distributions::Standard, prelude::Distribution, Rng, SeedableRng};
 
 pub const RNG_SEED: u64 = 42;
 
-pub(crate) fn poseidon2_external_constants<T, const WIDTH: usize>(
-    full_rounds: usize,
-) -> Vec<[T; WIDTH]>
+pub fn external_constants<T, const WIDTH: usize>(full_rounds: usize) -> Vec<[T; WIDTH]>
 where
     Standard: Distribution<[T; WIDTH]>,
 {
@@ -16,7 +14,7 @@ where
         .collect()
 }
 
-pub(crate) fn poseidon2_internal_constants<T>(partial_rounds: usize) -> Vec<T>
+pub fn internal_constants<T>(partial_rounds: usize) -> Vec<T>
 where
     Standard: Distribution<T>,
 {
