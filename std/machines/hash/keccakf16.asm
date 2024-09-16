@@ -146,7 +146,7 @@ machine Keccakf16 with
     //     }
     // }
 
-    array::map(preimage, |p| unchanged_until(p, internal_row));
+    array::map(preimage, |p| unchanged_until(p, 1 - internal_row));
 
     // for x in 0..5 {
     //     for z in 0..64 {
