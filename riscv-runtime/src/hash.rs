@@ -7,7 +7,7 @@ use powdr_riscv_syscalls::Syscall;
 const GOLDILOCKS: u64 = 0xffffffff00000001;
 
 /// Calls the low level Poseidon PIL machine, where the last 4 elements are the
-/// "cap" and the return value is placed in data[..4] and the reference to this
+/// "cap", the return value is placed in data[..4] and the reference to this
 /// sub-array is returned.
 ///
 /// This is unsafe because it does not check if the u64 elements fit the
