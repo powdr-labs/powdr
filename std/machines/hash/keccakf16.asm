@@ -604,5 +604,4 @@ machine Keccakf16 with
             provide_value(a_prime_prime_prime_0_0_limbs[limb], row, fe(query_a_prime_prime_prime_0_0_limbs(limb)));
         });
     };
-
 }
