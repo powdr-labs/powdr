@@ -12,7 +12,7 @@ use std::prelude::Query;
 use std::machines::range::Byte;
 
 // Arithmetic machine, ported mainly from Polygon: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/arith.pil
-// Currently only supports "Equation 0", i.e., 256-Bit addition and multiplication.
+// This machine supports eq0, which is the affine equation. Currently we only expose operations for mul and div.
 machine Arith16 with
     latch: CLK8_7,
     operation_id: operation_id,
@@ -21,15 +21,13 @@ machine Arith16 with
 {
     Byte byte;
     
-    // The operation ID will be bit-decomposed to yield selEq[], controlling which equations are activated.
     col witness operation_id;
 
     // operation_id has to be either mul or div.
-    operation_id * (1 - operation_id) = 0;
+    force_bool(operation_id);
 
-    // Computes x1 * y1 + x2, where all inputs / outputs are 256-bit words (represented as 16-Bit limbs in little-endian order).
-    // More precisely, affine_256(x1, y1, x2) = (y2, y3), where x1 * y1 + x2 = 2**256 * y2 + y3
-    // Operation ID is 1 = 0b0001, i.e., we activate equation 0.
+    // Computes x1 * y1 + x2, where all inputs / outputs are 32-bit words (represented as 16-bit limbs in little-endian order).
+    // More precisely, affine_256(x1, y1, x2) = (y2, y3), where x1 * y1 + x2 = 2**16 * y2 + y3
 
     // x1 * y1 = y2 * 2**16 + y3
     operation mul<0> x1c[0], x1c[1], y1c[0], y1c[1] -> y2c[0], y2c[1], y3c[0], y3c[1];
@@ -39,9 +37,14 @@ machine Arith16 with
     
     // y3 / x1 = y1 (remainder x2)
     // WARNING: it's not constrained that remainder is less than the divisor.
+    // This is done in the main machine, e.g. our RISCV BabyBear machine, that uses this operation.
     operation div<1> y3c[0], y3c[1], x1c[0], x1c[1] -> y1c[0], y1c[1], x2c[0], x2c[1];
 
+    // Constrain that y2 = 0 when operation is div.
+    array::new(4, |i| operation_id * y2[i] = 0);
+
     // We need to provide hints for the quotient and remainder, because they are not unique under our current constraints.
+    // They are unique given additional main machine constraints, but it's still good to provide hints for the solver.
     let quotient_hint = query |limb| match(eval(operation_id)) {
         1 => {
             let y3 = y3_int();
@@ -76,9 +79,6 @@ machine Arith16 with
 
     let x2: expr[] = [x2_0, x2_1, x2_2, x2_3];
 
-    // Constrain that y2 = 0 when operation is div.
-    array::new(4, |i| operation_id * y2[i] = 0);
-
     pol commit x1[4], y2[4], y3[4];
 
     // Selects the ith limb of x (little endian)
@@ -108,11 +108,9 @@ machine Arith16 with
     let CLK8: col[8] = array::new(8, |i| |row| if row % 8 == i { 1 } else { 0 });
     let CLK8_7: expr = CLK8[7];
 
-    // TODO: Add the equivalent of these constraints for soundness: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/arith.pil#L43-L243
-
     /****
     *
-    * LATCH POLS: x1,y1,x2,y2,x3,y3,s,q0,q1,q2
+    * LATCH POLS: x1,y1,x2,y2,y3
     *
     *****/
 
@@ -126,7 +124,7 @@ machine Arith16 with
 
     /****
     *
-    * RANGE CHECK x1,y1,x2,y2,x3,y3,s,q0,q1,q2
+    * RANGE CHECK x1,y1,x2,y2,y3
     *
     *****/
 
@@ -136,7 +134,7 @@ machine Arith16 with
 
     /*******
     *
-    * EQ0: A(x1) * B(y1) + C(x2) = D (y2) * 2 ** 256 + op (y3)
+    * EQ0: A(x1) * B(y1) + C(x2) = D (y2) * 2 ** 16 + op (y3)
     *        x1 * y1 + x2 - y2 * 2**256 - y3 = 0
     *
     *******/
@@ -173,14 +171,10 @@ machine Arith16 with
     *
     *******/
     
-    // Note that Polygon uses a single 22-Bit column. However, this approach allows for a lower degree (2**16)
-    // while still preventing overflows: The 32-bit carry gets added to 32 48-Bit values, which can't overflow
-    // the Goldilocks field.
     pol witness carry_low, carry_high;
     link => byte.check(carry_low);
     link => byte.check(carry_high);
 
-    // Carries can be any integer in the range [-2**31, 2**31 - 1)
     let carry = carry_high * 2**8 + carry_low;
     
     carry * CLK8[0] = 0;
