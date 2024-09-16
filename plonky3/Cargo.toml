@@ -32,7 +32,12 @@ p3-mds = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
 p3-merkle-tree = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
 p3-mersenne-31 = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
 p3-circle = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
-p3-baby-bear = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
+p3-baby-bear = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main", features = [
+  "nightly-features",
+] }
+p3-monty-31 = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main", features = [
+  "nightly-features",
+] }
 p3-goldilocks = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
 p3-symmetric = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
 p3-dft = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
