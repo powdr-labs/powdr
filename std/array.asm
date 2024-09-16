@@ -32,9 +32,6 @@ let<T1, T2> fold: T1[], T2, (T2, T1 -> T2) -> T2 = |arr, initial, folder| std::u
 // use this function to flatten an array of arrays.
 let<T: Add + FromLiteral> sum: T[] -> T = |arr| fold(arr, 0, |a, b| a + b);
 
-/// Returns the reverse of the array elements.
-let<T> reverse: T[] -> T[] = |arr| new(len(arr), |i| arr[len(arr) - i - 1]);
-
 /// Returns the product of the array elements.
 let<T: Mul + FromLiteral> product: T[] -> T = |arr| fold(arr, 1, |a, b| a * b);
 
