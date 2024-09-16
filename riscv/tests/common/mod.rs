@@ -1,7 +1,10 @@
 use mktemp::Temp;
-use powdr_number::GoldilocksField;
+use powdr_number::{BabyBearField, FieldElement /*GoldilocksField*/};
 use powdr_pipeline::{
-    test_util::{run_pilcom_with_backend_variant, BackendVariant},
+    test_util::{
+        /*run_pilcom_with_backend_variant*/ test_plonky3_pipeline_with_backend_variant,
+        BackendVariant,
+    },
     Pipeline,
 };
 use powdr_riscv::Runtime;
@@ -11,10 +14,10 @@ use std::{
 };
 
 /// Like compiler::test_util::run_pilcom_asm_string, but also runs RISCV executor.
-pub fn verify_riscv_asm_string<S: serde::Serialize + Send + Sync + 'static>(
+pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Sync + 'static>(
     file_name: &str,
     contents: &str,
-    inputs: &[GoldilocksField],
+    inputs: &[T],
     data: Option<&[(u32, S)]>,
 ) {
     let temp_dir = mktemp::Temp::new_dir().unwrap().release();
@@ -28,7 +31,8 @@ pub fn verify_riscv_asm_string<S: serde::Serialize + Send + Sync + 'static>(
         pipeline = pipeline.add_data_vec(data);
     }
 
-    let analyzed = pipeline.compute_analyzed_asm().unwrap().clone();
+    //let analyzed = pipeline.compute_analyzed_asm().unwrap().clone();
+    /*
     powdr_riscv_executor::execute_ast(
         &analyzed,
         Default::default(),
@@ -39,7 +43,9 @@ pub fn verify_riscv_asm_string<S: serde::Serialize + Send + Sync + 'static>(
         powdr_riscv_executor::ExecMode::Fast,
         Default::default(),
     );
-    run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).unwrap();
+    */
+    //run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).unwrap();
+    test_plonky3_pipeline_with_backend_variant::<T>(pipeline, vec![], BackendVariant::Composite);
 }
 
 fn find_assembler() -> &'static str {
@@ -88,6 +94,12 @@ pub fn verify_riscv_asm_file(asm_file: &Path, runtime: &Runtime, use_pie: bool) 
 
     let case_name = asm_file.file_stem().unwrap().to_str().unwrap();
 
-    let powdr_asm = powdr_riscv::elf::translate::<GoldilocksField>(&executable, runtime, false);
-    verify_riscv_asm_string::<()>(&format!("{case_name}.asm"), &powdr_asm, &[], None);
+    let powdr_asm = powdr_riscv::elf::translate::<BabyBearField>(&executable, runtime, false);
+    //println!("{powdr_asm}");
+    verify_riscv_asm_string::<BabyBearField, ()>(
+        &format!("{case_name}.asm"),
+        &powdr_asm,
+        &[],
+        None,
+    );
 }

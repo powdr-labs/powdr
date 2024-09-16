@@ -418,7 +418,7 @@ fn features() {
         &Runtime::base(),
         false,
     );
-    verify_riscv_asm_string::<usize>(
+    verify_riscv_asm_string::<GoldilocksField, usize>(
         &format!("{case}_from_elf.asm"),
         &from_elf,
         &[expected.into()],
@@ -439,7 +439,7 @@ fn features() {
         &Runtime::base(),
         false,
     );
-    verify_riscv_asm_string::<usize>(
+    verify_riscv_asm_string::<GoldilocksField, usize>(
         &format!("{case}_from_elf.asm"),
         &from_elf,
         &[expected.into()],
@@ -460,7 +460,7 @@ fn features() {
         &Runtime::base(),
         false,
     );
-    verify_riscv_asm_string::<usize>(
+    verify_riscv_asm_string::<GoldilocksField, usize>(
         &format!("{case}_from_elf.asm"),
         &from_elf,
         &[expected.into()],

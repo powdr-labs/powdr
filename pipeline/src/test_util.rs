@@ -331,6 +331,49 @@ pub fn test_plonky3_with_backend_variant<T: FieldElement>(
     }
 }
 
+#[cfg(feature = "plonky3")]
+pub fn test_plonky3_pipeline_with_backend_variant<T: FieldElement>(
+    pipeline: Pipeline<T>,
+    inputs: Vec<T>,
+    backend: BackendVariant,
+) {
+    let backend = match backend {
+        BackendVariant::Monolithic => powdr_backend::BackendType::Plonky3,
+        BackendVariant::Composite => powdr_backend::BackendType::Plonky3Composite,
+    };
+    let mut pipeline = pipeline
+        .with_prover_inputs(inputs)
+        .with_backend(backend, None);
+
+    // Generate a proof
+    let proof = pipeline.compute_proof().cloned().unwrap();
+
+    let publics: Vec<T> = pipeline
+        .publics()
+        .clone()
+        .unwrap()
+        .iter()
+        .map(|(_name, v)| *v)
+        .collect();
+
+    pipeline.verify(&proof, &[publics.clone()]).unwrap();
+
+    if pipeline.optimized_pil().unwrap().constant_count() > 0 {
+        // Export verification Key
+        let output_dir = pipeline.output_dir().as_ref().unwrap();
+        let vkey_file_path = output_dir.join("verification_key.bin");
+        buffered_write_file(&vkey_file_path, |writer| {
+            pipeline.export_verification_key(writer).unwrap()
+        })
+        .unwrap();
+
+        let mut pipeline = pipeline.with_vkey_file(Some(vkey_file_path));
+
+        // Verify the proof again
+        pipeline.verify(&proof, &[publics]).unwrap();
+    }
+}
+
 #[cfg(not(feature = "plonky3"))]
 pub fn test_plonky3_with_backend_variant<T: FieldElement>(_: &str, _: Vec<T>, _: BackendVariant) {}
 
