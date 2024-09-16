@@ -1,4 +1,4 @@
-mod baby_bear;
+pub mod baby_bear;
 mod circuit_builder;
 mod goldilocks;
 mod mersenne_31;
