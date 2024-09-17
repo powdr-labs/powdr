@@ -30,7 +30,7 @@ machine Arith16 with
     // More precisely, affine_256(x1, y1, x2) = (y2, y3), where x1 * y1 + x2 = 2**16 * y2 + y3
 
     // x1 * y1 = y2 * 2**16 + y3
-    operation mul<0> x1c[0], x1c[1], y1c[0], y1c[1] -> y2c[0], y2c[1], y3c[0], y3c[1];
+    operation mul<0> x1c[1], x1c[0], y1c[1], y1c[0] -> y2c[1], y2c[0], y3c[1], y3c[0];
 
     // Constrain that x2 = 0 when operation is mul.
     array::new(4, |i| (1 - operation_id) * x2[i] = 0);
@@ -38,7 +38,7 @@ machine Arith16 with
     // y3 / x1 = y1 (remainder x2)
     // WARNING: it's not constrained that remainder is less than the divisor.
     // This is done in the main machine, e.g. our RISCV BabyBear machine, that uses this operation.
-    operation div<1> y3c[0], y3c[1], x1c[0], x1c[1] -> y1c[0], y1c[1], x2c[0], x2c[1];
+    operation div<1> y3c[1], y3c[0], x1c[1], x1c[0] -> y1c[1], y1c[0], x2c[1], x2c[0];
 
     // Constrain that y2 = 0 when operation is div.
     array::new(4, |i| operation_id * y2[i] = 0);
@@ -81,15 +81,15 @@ machine Arith16 with
 
     pol commit x1[4], y2[4], y3[4];
 
-    // Selects the ith limb of x (big endian)
+    // Selects the ith limb of x (little endian)
     // All limbs are 8 bits
     let select_limb = |x, i| if i >= 0 {
-        (x >> (24 - i * 8)) & 0xff
+        (x >> (i * 8)) & 0xff
     } else {
         0
     };
 
-    let limbs_to_int: expr[] -> int = query |limbs| array::sum(array::map_enumerated(limbs, |i, limb| int(eval(limb)) << (24 - i * 8)));
+    let limbs_to_int: expr[] -> int = query |limbs| array::sum(array::map_enumerated(limbs, |i, limb| int(eval(limb)) << (i * 8)));
 
     let x1_int = query || limbs_to_int(x1);
     let y1_int = query || limbs_to_int(y1);
@@ -97,7 +97,7 @@ machine Arith16 with
     let y2_int = query || limbs_to_int(y2);
     let y3_int = query || limbs_to_int(y3);
 
-    let combine: expr[] -> expr[] = |x| array::new(array::len(x) / 2, |i| x[2 * i + 1] + x[2 * i] * 2**8);
+    let combine: expr[] -> expr[] = |x| array::new(array::len(x) / 2, |i| x[2 * i + 1] * 2**8 + x[2 * i]);
     // Intermediate polynomials, arrays of 16 columns, 16 bit per column.
     col x1c[2] = combine(x1);
     col y1c[2] = combine(y1);
