@@ -488,7 +488,6 @@ where
             type_vars: struct_decl.type_vars,
             fields,
         };
-        let shared_struct_decl = Arc::new(struct_decl.clone());
 
         let inner_items = struct_decl
             .fields
@@ -500,7 +499,7 @@ where
                         .relative_to(&Default::default())
                         .to_string(),
                     FunctionValueDefinition::TypeConstructor(TypeConstructor::Struct(
-                        shared_struct_decl.clone(),
+                        Arc::new(struct_decl.clone()),
                         (field_name.clone(), ty.clone()),
                     )),
                 )
