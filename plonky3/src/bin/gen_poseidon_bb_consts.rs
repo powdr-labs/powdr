@@ -1,9 +1,10 @@
 use itertools::Itertools;
-use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
+use p3_baby_bear::BabyBear;
 use p3_field::AbstractField;
 use p3_poseidon2::Poseidon2ExternalMatrixGeneral;
 use p3_symmetric::Permutation;
 use powdr_plonky3::baby_bear;
+use rand::{distributions::Standard, Rng, SeedableRng};
 
 fn extract_matrix(
     mat: impl Permutation<[BabyBear; baby_bear::WIDTH]>,
@@ -31,31 +32,30 @@ fn extract_matrix(
 }
 
 fn main() {
-    println!("EXTERNAL_CONSTANTS = [");
-    let ec = baby_bear::poseidon2_external_constants();
-    for row in ec {
-        println!("    [{}],", row.into_iter().format(", "));
-    }
-    println!("];");
+    // We use for Poseidon the same MDS matrix as for Poseidon2, and the same number of internal and external rounds.
+    let constants: Vec<[BabyBear; baby_bear::ROUNDS_F + baby_bear::ROUNDS_P]> =
+        rand_chacha::ChaCha8Rng::seed_from_u64(42)
+            .sample_iter(Standard)
+            .take(baby_bear::WIDTH)
+            .collect();
 
-    println!("EXTERNAL_MATRIX = [");
+    for (i, row) in constants.into_iter().enumerate() {
+        println!(
+            "    pol constant C_{i} = [{}, 0]*;",
+            row.into_iter().format(", ")
+        );
+    }
+    println!(
+        "    let C = [{}];",
+        (0..baby_bear::WIDTH)
+            .map(|i| format!("C_{}", i))
+            .format(", ")
+    );
+
+    println!("    let M = [");
     let mds = extract_matrix(Poseidon2ExternalMatrixGeneral);
     for row in mds {
-        println!("    [{}],", row.into_iter().format(", "));
+        println!("        [{}],", row.into_iter().format(", "));
     }
-    println!("];");
-
-    println!("INTERNAL_CONSTANTS = [");
-    let ic = baby_bear::poseidon2_internal_constants();
-    for &elem in ic.iter() {
-        println!("    {},", elem);
-    }
-    println!("];");
-
-    println!("INTERNAL_MATRIX = [");
-    let diffusion = extract_matrix(DiffusionMatrixBabyBear::default());
-    for row in diffusion {
-        println!("    [{}],", row.into_iter().format(", "));
-    }
-    println!("];");
+    println!("    ];");
 }
