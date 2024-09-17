@@ -26,7 +26,7 @@ machine Arith16 with
     // operation_id has to be either mul or div.
     force_bool(operation_id);
 
-    // Computes x1 * y1 + x2, where all inputs / outputs are 32-bit words (represented as 16-bit limbs in little-endian order).
+    // Computes x1 * y1 + x2, where all inputs / outputs are 32-bit words (represented as 16-bit limbs in big-endian order).
     // More precisely, affine_256(x1, y1, x2) = (y2, y3), where x1 * y1 + x2 = 2**16 * y2 + y3
 
     // x1 * y1 = y2 * 2**16 + y3
@@ -81,15 +81,15 @@ machine Arith16 with
 
     pol commit x1[4], y2[4], y3[4];
 
-    // Selects the ith limb of x (little endian)
+    // Selects the ith limb of x (big endian)
     // All limbs are 8 bits
     let select_limb = |x, i| if i >= 0 {
-        (x >> (i * 8)) & 0xff
+        (x >> (24 - i * 8)) & 0xff
     } else {
         0
     };
 
-    let limbs_to_int: expr[] -> int = query |limbs| array::sum(array::map_enumerated(limbs, |i, limb| int(eval(limb)) << (i * 8)));
+    let limbs_to_int: expr[] -> int = query |limbs| array::sum(array::map_enumerated(limbs, |i, limb| int(eval(limb)) << (24 - i * 8)));
 
     let x1_int = query || limbs_to_int(x1);
     let y1_int = query || limbs_to_int(y1);
@@ -97,7 +97,7 @@ machine Arith16 with
     let y2_int = query || limbs_to_int(y2);
     let y3_int = query || limbs_to_int(y3);
 
-    let combine: expr[] -> expr[] = |x| array::new(array::len(x) / 2, |i| x[2 * i + 1] * 2**8 + x[2 * i]);
+    let combine: expr[] -> expr[] = |x| array::new(array::len(x) / 2, |i| x[2 * i + 1] + x[2 * i] * 2**8);
     // Intermediate polynomials, arrays of 16 columns, 16 bit per column.
     col x1c[2] = combine(x1);
     col y1c[2] = combine(y1);

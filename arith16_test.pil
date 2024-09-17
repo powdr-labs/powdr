@@ -1,0 +1,854 @@
+namespace std::array;
+    enum Slice<T> {
+        S(T[], int, int),
+    }
+    let<T> find_index: T[], (T -> bool) -> std::prelude::Option<int> = |arr, f| std::array::find_map_enumerated(arr, |i, x| if f(x) { std::prelude::Option::Some(i) } else { std::prelude::Option::None });
+    let<T1, T2> find_map: T1[], (T1 -> std::prelude::Option<T2>) -> std::prelude::Option<T2> = |arr, f| std::array::find_map_enumerated(arr, |_, x| f(x));
+    let<T1, T2> find_map_enumerated: T1[], (int, T1 -> std::prelude::Option<T2>) -> std::prelude::Option<T2> = |arr, f| std::array::find_internal::find_map_enumerated(arr, 0, std::array::len(arr), f);
+    let<T1, T2> fold: T1[], T2, (T2, T1 -> T2) -> T2 = |arr, initial, folder| std::utils::fold(std::array::len(arr), |i| arr[i], initial, folder);
+    let<T> len: T[] -> int = [];
+    let<T1, T2> map: T1[], (T1 -> T2) -> T2[] = |arr, f| std::array::new(std::array::len(arr), |i| f(arr[i]));
+    let<T1, T2> map_enumerated: T1[], (int, T1 -> T2) -> T2[] = |arr, f| std::array::new(std::array::len(arr), |i| f(i, arr[i]));
+    let<T> new: int, (int -> T) -> T[] = |length, f| std::utils::fold(length, f, [], |acc, e| acc + [e]);
+    let<T: FromLiteral + Mul> product: T[] -> T = |arr| std::array::fold(arr, 1, |a, b| a * b);
+    let<T> set_element: T[], int, T -> T[] = |arr, i, x| {
+        let _ = std::check::assert(i < std::array::len(arr), || "Index out of bounds");
+        std::array::map_enumerated(arr, |j, y| if i == j { x } else { y })
+    };
+    let<T> slice_pop: std::array::Slice<T> -> (std::array::Slice<T>, std::prelude::Option<T>) = |s| match s {
+        std::array::Slice::S(_, _, 0) => (s, std::prelude::Option::None),
+        std::array::Slice::S(arr, start, l) => (std::array::Slice::S(arr, start, l - 1), std::prelude::Option::Some(arr[start + l - 1])),
+    };
+    let<T> sort: T[], (T, T -> bool) -> T[] = |arr, lt| std::array::internal::sort(std::array::to_slice(arr), lt);
+    let<T> split_slice_half: std::array::Slice<T> -> (std::array::Slice<T>, std::array::Slice<T>) = |s| match s {
+        std::array::Slice::S(arr, start, l) => {
+            let half_len = l / 2;
+            (std::array::Slice::S(arr, start, half_len), std::array::Slice::S(arr, start + half_len, l - half_len))
+        },
+    };
+    let<T> sub_array: T[], int, int -> T[] = |arr, start, l| std::array::new(l, |i| arr[start + i]);
+    let<T: Add + FromLiteral> sum: T[] -> T = |arr| std::array::fold(arr, 0, |a, b| a + b);
+    let<T> to_array: std::array::Slice<T> -> T[] = |s| match s {
+        std::array::Slice::S(arr, start, l) => if start == 0 && l == std::array::len(arr) { arr } else { std::array::new(l, |i| arr[start + i]) },
+    };
+    let<T> to_slice: T[] -> std::array::Slice<T> = |x| std::array::Slice::S(x, 0, std::array::len(x));
+    let<T1, T2, T3> zip: T1[], T2[], (T1, T2 -> T3) -> T3[] = |array1, array2, fn| std::array::new(std::array::len(array1), |i| fn(array1[i], array2[i]));
+namespace std::array::find_internal;
+    let<T1, T2> find_map_enumerated: T1[], int, int, (int, T1 -> std::prelude::Option<T2>) -> std::prelude::Option<T2> = |arr, i, l, f| if i >= l { std::prelude::Option::None } else { match f(i, arr[i]) {
+        std::prelude::Option::Some(x) => std::prelude::Option::Some(x),
+        std::prelude::Option::None => std::array::find_internal::find_map_enumerated(arr, i + 1, l, f),
+    } };
+namespace std::array::internal;
+    let<T> merge: std::array::Slice<T>, std::array::Slice<T>, (T, T -> bool) -> T[] = |left, right, lt| match (std::array::slice_pop(left), std::array::slice_pop(right)) {
+        ((_, std::prelude::Option::None), _) => std::array::to_array(right),
+        (_, (_, std::prelude::Option::None)) => std::array::to_array(left),
+        ((l_short, std::prelude::Option::Some(l_last)), (r_short, std::prelude::Option::Some(r_last))) => if lt(l_last, r_last) { std::array::internal::merge(left, r_short, lt) + [r_last] } else { std::array::internal::merge(l_short, right, lt) + [l_last] },
+    };
+    let<T> sort: std::array::Slice<T>, (T, T -> bool) -> T[] = |slice, lt| match slice {
+        std::array::Slice::S(_, _, 0) => [],
+        std::array::Slice::S(_, _, 1) => std::array::to_array(slice),
+        s => {
+            let (left, right) = std::array::split_slice_half(s);
+            let left_sorted = std::array::to_slice(std::array::internal::sort(left, lt));
+            let right_sorted = std::array::to_slice(std::array::internal::sort(right, lt));
+            std::array::internal::merge(left_sorted, right_sorted, lt)
+        },
+    };
+namespace std::btree;
+    enum BTree<K, V> {
+        Inner((K, V)[], std::btree::BTree<K, V>[]),
+        Leaf((K, V)[]),
+    }
+    enum CmpResult {
+        Less,
+        Equal,
+        Greater,
+    }
+    let<K, V> get: std::btree::BTree<K, V>, K, (K, K -> std::btree::CmpResult) -> std::prelude::Option<V> = std::btree::internal::get::<K, V>;
+    let<K, V> insert: std::btree::BTree<K, V>, (K, V), (K, K -> std::btree::CmpResult) -> std::btree::BTree<K, V> = |b_tree, (k, v), cmp| match std::btree::internal::insert(b_tree, (k, v), cmp) {
+        std::btree::internal::InsertResult::Split(item, left, right) => std::btree::BTree::Inner([item], [left, right]),
+        std::btree::internal::InsertResult::Updated(t) => t,
+    };
+    let max_items = 5;
+    let<K, V> new: -> std::btree::BTree<K, V> = || std::btree::BTree::Leaf([]);
+namespace std::btree::internal;
+    enum InsertResult<K, V> {
+        Split((K, V), std::btree::BTree<K, V>, std::btree::BTree<K, V>),
+        Updated(std::btree::BTree<K, V>),
+    }
+    enum NodeSearchResult {
+        InNode(int),
+        InChild(int),
+    }
+    let<T> array_insert_at: T[], int, T -> T[] = |arr, i, x| {
+        let (left, right) = std::btree::internal::array_split(arr, i);
+        left + [x] + right
+    };
+    let<T> array_split: T[], int -> (T[], T[]) = |arr, l| {
+        let left = std::array::sub_array(arr, 0, l);
+        let right = std::array::sub_array(arr, l, std::array::len(arr) - l);
+        (left, right)
+    };
+    let<T> array_split_pivot: T[], int -> (T[], T, T[]) = |arr, i| {
+        let left = std::array::sub_array(arr, 0, i);
+        let right = std::array::sub_array(arr, i + 1, std::array::len(arr) - i - 1);
+        (left, arr[i], right)
+    };
+    let<K, V> get: std::btree::BTree<K, V>, K, (K, K -> std::btree::CmpResult) -> std::prelude::Option<V> = |b_tree, k, cmp| match b_tree {
+        std::btree::BTree::Inner(items, children) => match std::btree::internal::search_in_node(items, k, cmp) {
+            std::btree::internal::NodeSearchResult::InNode(i) => std::prelude::Option::Some(std::btree::internal::value_of_item(items[i])),
+            std::btree::internal::NodeSearchResult::InChild(i) => std::btree::internal::get(children[i], k, cmp),
+        },
+        std::btree::BTree::Leaf(items) => std::array::find_map(items, |(key, value)| match cmp(k, key) {
+            std::btree::CmpResult::Equal => std::prelude::Option::Some(value),
+            _ => std::prelude::Option::None,
+        }),
+    };
+    let<K, V> insert: std::btree::BTree<K, V>, (K, V), (K, K -> std::btree::CmpResult) -> std::btree::internal::InsertResult<K, V> = |b_tree, (k, v), cmp| match b_tree {
+        std::btree::BTree::Leaf(items) => std::btree::internal::insert_into_leaf(items, (k, v), cmp),
+        std::btree::BTree::Inner(items, children) => match std::btree::internal::search_in_node(items, k, cmp) {
+            std::btree::internal::NodeSearchResult::InNode(i) => std::btree::internal::InsertResult::Updated(std::btree::BTree::Inner(std::array::set_element(items, i, (k, v)), children)),
+            std::btree::internal::NodeSearchResult::InChild(i) => match std::btree::internal::insert(children[i], (k, v), cmp) {
+                std::btree::internal::InsertResult::Updated(child) => std::btree::internal::InsertResult::Updated(std::btree::BTree::Inner(items, std::array::set_element(children, i, child))),
+                std::btree::internal::InsertResult::Split((k1, v1), left, right) => std::btree::internal::insert_into_inner(items, children, (k1, v1), i, left, right),
+            },
+        },
+    };
+    let<K, V> insert_into_inner: (K, V)[], std::btree::BTree<K, V>[], (K, V), int, std::btree::BTree<K, V>, std::btree::BTree<K, V> -> std::btree::internal::InsertResult<K, V> = |items, children, (k, v), i, left, right| {
+        let new_items = std::btree::internal::array_insert_at(items, i, (k, v));
+        let (children_left, _, children_right) = std::btree::internal::array_split_pivot(children, i);
+        let new_children = children_left + [left, right] + children_right;
+        if std::array::len(new_items) <= std::btree::max_items { std::btree::internal::InsertResult::Updated(std::btree::BTree::Inner(new_items, new_children)) } else { std::btree::internal::split_inner(new_items, new_children) }
+    };
+    let<K, V> insert_into_leaf: (K, V)[], (K, V), (K, K -> std::btree::CmpResult) -> std::btree::internal::InsertResult<K, V> = |items, (k, v), cmp| {
+        let new_items = std::btree::internal::items_insert(items, (k, v), cmp);
+        if std::array::len(new_items) <= std::btree::max_items { std::btree::internal::InsertResult::Updated(std::btree::BTree::Leaf(new_items)) } else { std::btree::internal::split_leaf(new_items) }
+    };
+    let<K, V> items_insert: (K, V)[], (K, V), (K, K -> std::btree::CmpResult) -> (K, V)[] = |items, (k, v), cmp| {
+        let (new_items, ins) = std::array::fold(items, ([], std::prelude::false), |(acc, inserted), (key, value)| if inserted { (acc + [(key, value)], inserted) } else { match cmp(k, key) {
+            std::btree::CmpResult::Less => (acc + [(k, v), (key, value)], std::prelude::true),
+            std::btree::CmpResult::Equal => (acc + [(k, v)], std::prelude::true),
+            std::btree::CmpResult::Greater => (acc + [(key, value)], std::prelude::false),
+        } });
+        if ins { new_items } else { new_items + [(k, v)] }
+    };
+    let one: int = 1;
+    let<K1, V, K2> search_in_node: (K1, V)[], K2, (K2, K1 -> std::btree::CmpResult) -> std::btree::internal::NodeSearchResult = |items, k, cmp| {
+        let r = std::array::find_map_enumerated(items, |i, (key, _)| match cmp(k, key) {
+            std::btree::CmpResult::Less => std::prelude::Option::Some(std::btree::internal::NodeSearchResult::InChild(i)),
+            std::btree::CmpResult::Equal => std::prelude::Option::Some(std::btree::internal::NodeSearchResult::InNode(i)),
+            std::btree::CmpResult::Greater => std::prelude::Option::None,
+        });
+        std::utils::unwrap_or_else(r, || std::btree::internal::NodeSearchResult::InChild(std::array::len(items)))
+    };
+    let<K, V> split_inner: (K, V)[], std::btree::BTree<K, V>[] -> std::btree::internal::InsertResult<K, V> = |items, children| {
+        let split = (std::array::len(items) - 1) / 2;
+        let (left_items, push_up, right_items) = std::btree::internal::array_split_pivot(items, split);
+        let (left_children, right_children) = std::btree::internal::array_split(children, split + 1);
+        std::btree::internal::InsertResult::Split(push_up, std::btree::BTree::Inner(left_items, left_children), std::btree::BTree::Inner(right_items, right_children))
+    };
+    let<K, V> split_leaf: (K, V)[] -> std::btree::internal::InsertResult<K, V> = |items| {
+        let split = (std::array::len(items) - 1) / 2;
+        let (left, center, right) = std::btree::internal::array_split_pivot(items, split);
+        std::btree::internal::InsertResult::Split(center, std::btree::BTree::Leaf(left), std::btree::BTree::Leaf(right))
+    };
+    let<K, V> value_of_item: (K, V) -> V = |(_, value)| value;
+namespace std::check;
+    let assert: bool, (-> string) -> () = |condition, reason| if !condition { std::check::panic(reason()) } else { () };
+    let panic: string -> ! = [];
+namespace std::convert;
+    let expr = [];
+    let fe = [];
+    let int = [];
+namespace std::debug;
+    let<T: ToString> print: T -> () = [];
+    let<T: ToString> println: T -> () = |msg| {
+        let _ = std::debug::print(msg);
+        std::debug::print("\n")
+    };
+namespace std::field;
+    let BABYBEAR_PRIME: int = 2013265921;
+    let BN254_PRIME: int = 21888242871839275222246405745257275088548364400416034343698204186575808495617;
+    let GOLDILOCKS_PRIME: int = 18446744069414584321;
+    enum KnownField {
+        Goldilocks,
+        BN254,
+        BabyBear,
+    }
+    let known_field: -> std::prelude::Option<std::field::KnownField> = || if std::field::modulus() == std::field::GOLDILOCKS_PRIME { std::prelude::Option::Some(std::field::KnownField::Goldilocks) } else { if std::field::modulus() == std::field::BN254_PRIME { std::prelude::Option::Some(std::field::KnownField::BN254) } else { if std::field::modulus() == std::field::BABYBEAR_PRIME { std::prelude::Option::Some(std::field::KnownField::BabyBear) } else { std::prelude::Option::None } } };
+    let modulus: -> int = [];
+    let require_known_field: std::field::KnownField, (-> string) -> () = |f, err| match (f, std::field::known_field()) {
+        (std::field::KnownField::Goldilocks, std::prelude::Option::Some(std::field::KnownField::Goldilocks)) => (),
+        (std::field::KnownField::BN254, std::prelude::Option::Some(std::field::KnownField::BN254)) => (),
+        (std::field::KnownField::BabyBear, std::prelude::Option::Some(std::field::KnownField::BabyBear)) => (),
+        _ => std::check::panic(err()),
+    };
+namespace std::math::ff;
+    let add = |x, y, modulus| std::math::ff::reduce(x + y, modulus);
+    let div = |x, y, modulus| std::math::ff::mul(x, std::math::ff::inverse(y, modulus), modulus);
+    let extended_gcd = |a, b| if b == 0 { if a == 1 { (1, 0) } else { std::check::panic("Inputs are not co-prime, inverse does not exist.") } } else {
+        let (r1, r2) = std::math::ff::extended_gcd(b, a % b);
+        (r2, r1 - a / b * r2)
+    };
+    let inv_field: fe -> fe = |x| std::convert::fe(std::math::ff::inverse(std::convert::int(x), std::field::modulus()));
+    let inverse = |x, modulus| if x <= 0 || x >= modulus { if x == 0 { std::check::panic("Tried to compute the inverse of zero.") } else { std::check::panic("Tried to compute the inverse of a negative number or a number outside the field.") } } else {
+        let (r, _) = std::math::ff::extended_gcd(x, modulus);
+        std::math::ff::reduce(r, modulus)
+    };
+    let mul = |x, y, modulus| std::math::ff::reduce(x * y, modulus);
+    let reduce = |x, modulus| if x < 0 { (modulus - -x % modulus) % modulus } else { x % modulus };
+    let sub = |x, y, modulus| std::math::ff::reduce(x - y, modulus);
+namespace std::math::fp2;
+    enum Fp2<T> {
+        Fp2(T, T),
+    }
+    let<T: Add> add_ext: std::math::fp2::Fp2<T>, std::math::fp2::Fp2<T> -> std::math::fp2::Fp2<T> = |a, b| match (a, b) {
+        (std::math::fp2::Fp2::Fp2(a0, a1), std::math::fp2::Fp2::Fp2(b0, b1)) => std::math::fp2::Fp2::Fp2(a0 + b0, a1 + b1),
+    };
+    let constrain_eq_ext: std::math::fp2::Fp2<expr>, std::math::fp2::Fp2<expr> -> std::prelude::Constr[] = |a, b| match (a, b) {
+        (std::math::fp2::Fp2::Fp2(a0, a1), std::math::fp2::Fp2::Fp2(b0, b1)) => [a0 = b0, a1 = b1],
+    };
+    let eq_ext: std::math::fp2::Fp2<fe>, std::math::fp2::Fp2<fe> -> bool = |a, b| match (a, b) {
+        (std::math::fp2::Fp2::Fp2(a0, a1), std::math::fp2::Fp2::Fp2(b0, b1)) => a0 == b0 && a1 == b1,
+    };
+    let eval_ext: std::math::fp2::Fp2<expr> -> std::math::fp2::Fp2<fe> = query |a| match a {
+        std::math::fp2::Fp2::Fp2(a0, a1) => std::math::fp2::Fp2::Fp2(std::prover::eval(a0), std::prover::eval(a1)),
+    };
+    let expr_ext: std::math::fp2::Fp2<fe> -> std::math::fp2::Fp2<expr> = |a| match a {
+        std::math::fp2::Fp2::Fp2(a0, a1) => std::math::fp2::Fp2::Fp2(std::convert::expr(a0), std::convert::expr(a1)),
+    };
+    let fp2_from_array = |arr| { if std::math::fp2::is_extension(arr) { std::math::fp2::Fp2::Fp2(arr[0], arr[1]) } else {
+        let _ = std::check::assert(!std::math::fp2::needs_extension(), || "The field is too small and needs to move to the extension field. Pass two elements instead!");
+        std::math::fp2::from_base(arr[0])
+    } };
+    let<T: FromLiteral> from_base: T -> std::math::fp2::Fp2<T> = |x| std::math::fp2::Fp2::Fp2(x, 0);
+    let inv_ext: std::math::fp2::Fp2<fe> -> std::math::fp2::Fp2<fe> = |a| match a {
+        std::math::fp2::Fp2::Fp2(a0, a1) => {
+            let factor = std::math::ff::inv_field(7 * a1 * a1 - a0 * a0);
+            std::math::fp2::Fp2::Fp2(-a0 * factor, a1 * factor)
+        },
+    };
+    let is_extension = |arr| match std::array::len(arr) {
+        1 => std::prelude::false,
+        2 => std::prelude::true,
+        _ => std::check::panic("Expected 1 or 2 accumulator columns!"),
+    };
+    let<T: Add + FromLiteral + Mul> mul_ext: std::math::fp2::Fp2<T>, std::math::fp2::Fp2<T> -> std::math::fp2::Fp2<T> = |a, b| match (a, b) {
+        (std::math::fp2::Fp2::Fp2(a0, a1), std::math::fp2::Fp2::Fp2(b0, b1)) => std::math::fp2::Fp2::Fp2(a0 * b0 + 7 * a1 * b1, a1 * b0 + a0 * b1),
+    };
+    let needs_extension: -> bool = || match std::field::known_field() {
+        std::prelude::Option::Some(std::field::KnownField::Goldilocks) => std::prelude::true,
+        std::prelude::Option::Some(std::field::KnownField::BN254) => std::prelude::false,
+        None => std::check::panic("The permutation/lookup argument is not implemented for the current field!"),
+    };
+    let next_ext: std::math::fp2::Fp2<expr> -> std::math::fp2::Fp2<expr> = |a| match a {
+        std::math::fp2::Fp2::Fp2(a0, a1) => std::math::fp2::Fp2::Fp2(a0', a1'),
+    };
+    let<T: Sub> sub_ext: std::math::fp2::Fp2<T>, std::math::fp2::Fp2<T> -> std::math::fp2::Fp2<T> = |a, b| match (a, b) {
+        (std::math::fp2::Fp2::Fp2(a0, a1), std::math::fp2::Fp2::Fp2(b0, b1)) => std::math::fp2::Fp2::Fp2(a0 - b0, a1 - b1),
+    };
+    let<T> unpack_ext: std::math::fp2::Fp2<T> -> (T, T) = |a| match a {
+        std::math::fp2::Fp2::Fp2(a0, a1) => (a0, a1),
+    };
+    let<T> unpack_ext_array: std::math::fp2::Fp2<T> -> T[] = |a| match a {
+        std::math::fp2::Fp2::Fp2(a0, a1) => [a0, a1],
+    };
+namespace std::math::fp2::test;
+    let add = || {
+        let test_add = |a, b, c| std::check::assert(std::math::fp2::eq_ext(std::math::fp2::add_ext(a, b), c), || "Wrong addition result");
+        let _ = test_add(std::math::fp2::from_base(0), std::math::fp2::from_base(0), std::math::fp2::from_base(0));
+        let _ = test_add(std::math::fp2::Fp2::Fp2(123, 1234), std::math::fp2::from_base(0), std::math::fp2::Fp2::Fp2(123, 1234));
+        let _ = test_add(std::math::fp2::from_base(0), std::math::fp2::Fp2::Fp2(123, 1234), std::math::fp2::Fp2::Fp2(123, 1234));
+        let _ = test_add(std::math::fp2::Fp2::Fp2(123, 1234), std::math::fp2::Fp2::Fp2(567, 5678), std::math::fp2::Fp2::Fp2(690, 6912));
+        test_add(std::math::fp2::Fp2::Fp2(-1, -1), std::math::fp2::Fp2::Fp2(3, 4), std::math::fp2::Fp2::Fp2(2, 3))
+    };
+    let inverse = || {
+        let test_elements = [std::math::fp2::from_base(1), std::math::fp2::Fp2::Fp2(123, 1234), std::math::fp2::Fp2::Fp2(-1, 500)];
+        std::array::map(test_elements, |x| {
+            let mul_with_inverse = std::math::fp2::mul_ext(x, std::math::fp2::inv_ext(x));
+            std::check::assert(std::math::fp2::eq_ext(mul_with_inverse, std::math::fp2::from_base(1)), || "Should be 1")
+        })
+    };
+    let mul = || {
+        let test_mul = |a, b, c| std::check::assert(std::math::fp2::eq_ext(std::math::fp2::mul_ext(a, b), c), || "Wrong multiplication result");
+        let _ = test_mul(std::math::fp2::from_base(1), std::math::fp2::from_base(1), std::math::fp2::from_base(1));
+        let _ = test_mul(std::math::fp2::Fp2::Fp2(123, 1234), std::math::fp2::from_base(1), std::math::fp2::Fp2::Fp2(123, 1234));
+        let _ = test_mul(std::math::fp2::from_base(1), std::math::fp2::Fp2::Fp2(123, 1234), std::math::fp2::Fp2::Fp2(123, 1234));
+        let _ = test_mul(std::math::fp2::Fp2::Fp2(123, 1234), std::math::fp2::from_base(0), std::math::fp2::from_base(0));
+        let _ = test_mul(std::math::fp2::from_base(0), std::math::fp2::Fp2::Fp2(123, 1234), std::math::fp2::from_base(0));
+        let _ = test_mul(std::math::fp2::Fp2::Fp2(123, 1234), std::math::fp2::Fp2::Fp2(567, 5678), std::math::fp2::Fp2::Fp2(49116305, 1398072));
+        test_mul(std::math::fp2::Fp2::Fp2(-1, -2), std::math::fp2::Fp2::Fp2(-3, 4), std::math::fp2::Fp2::Fp2(3 - 7 * 8, 6 - 4))
+    };
+    let sub = || {
+        let test_sub = |a, b, c| std::check::assert(std::math::fp2::eq_ext(std::math::fp2::sub_ext(a, b), c), || "Wrong subtraction result");
+        let _ = test_sub(std::math::fp2::from_base(0), std::math::fp2::from_base(0), std::math::fp2::from_base(0));
+        let _ = test_sub(std::math::fp2::Fp2::Fp2(123, 1234), std::math::fp2::from_base(0), std::math::fp2::Fp2::Fp2(123, 1234));
+        let _ = test_sub(std::math::fp2::Fp2::Fp2(123, 1234), std::math::fp2::Fp2::Fp2(567, 5678), std::math::fp2::Fp2::Fp2(123 - 567, 1234 - 5678));
+        test_sub(std::math::fp2::Fp2::Fp2(-1, -1), std::math::fp2::Fp2::Fp2(4294967296, 1), std::math::fp2::Fp2::Fp2(-4294967296 - 1, -2))
+    };
+namespace std::math::fp4;
+    enum Fp4<T> {
+        Fp4(T, T, T, T),
+    }
+    let<T: Add> add_ext: std::math::fp4::Fp4<T>, std::math::fp4::Fp4<T> -> std::math::fp4::Fp4<T> = |a, b| match (a, b) {
+        (std::math::fp4::Fp4::Fp4(a0, a1, a2, a3), std::math::fp4::Fp4::Fp4(b0, b1, b2, b3)) => std::math::fp4::Fp4::Fp4(a0 + b0, a1 + b1, a2 + b2, a3 + b3),
+    };
+    let constrain_eq_ext: std::math::fp4::Fp4<expr>, std::math::fp4::Fp4<expr> -> std::prelude::Constr[] = |a, b| match (a, b) {
+        (std::math::fp4::Fp4::Fp4(a0, a1, a2, a3), std::math::fp4::Fp4::Fp4(b0, b1, b2, b3)) => [a0 = b0, a1 = b1, a2 = b2, a3 = b3],
+    };
+    let eq_ext: std::math::fp4::Fp4<fe>, std::math::fp4::Fp4<fe> -> bool = |a, b| match (a, b) {
+        (std::math::fp4::Fp4::Fp4(a0, a1, a2, a3), std::math::fp4::Fp4::Fp4(b0, b1, b2, b3)) => a0 == b0 && a1 == b1 && a2 == b2 && a3 == b3,
+    };
+    let eval_ext: std::math::fp4::Fp4<expr> -> std::math::fp4::Fp4<fe> = query |a| match a {
+        std::math::fp4::Fp4::Fp4(a0, a1, a2, a3) => std::math::fp4::Fp4::Fp4(std::prover::eval(a0), std::prover::eval(a1), std::prover::eval(a2), std::prover::eval(a3)),
+    };
+    let expr_ext: std::math::fp4::Fp4<fe> -> std::math::fp4::Fp4<expr> = |a| match a {
+        std::math::fp4::Fp4::Fp4(a0, a1, a2, a3) => std::math::fp4::Fp4::Fp4(std::convert::expr(a0), std::convert::expr(a1), std::convert::expr(a2), std::convert::expr(a3)),
+    };
+    let<T: FromLiteral> from_base: T -> std::math::fp4::Fp4<T> = |x| std::math::fp4::Fp4::Fp4(x, 0, 0, 0);
+    let inv_ext: std::math::fp4::Fp4<fe> -> std::math::fp4::Fp4<fe> = |a| match a {
+        std::math::fp4::Fp4::Fp4(a0, a1, a2, a3) => {
+            let b0 = a0 * a0 - 11 * (a1 * (a3 + a3) - a2 * a2);
+            let b2 = a0 * (a2 + a2) - a1 * a1 - 11 * (a3 * a3);
+            let c = b0 * b0 - 11 * b2 * b2;
+            let ic = std::math::ff::inv_field(c);
+            let b_0 = b0 * ic;
+            let b_2 = b2 * ic;
+            std::math::fp4::Fp4::Fp4(a0 * b_0 - 11 * a2 * b_2, -1 * a1 * b_0 + 11 * a3 * b_2, -1 * a0 * b_2 + a2 * b_0, a1 * b_2 - a3 * b_0)
+        },
+    };
+    let<T: Add + FromLiteral + Mul> mul_ext: std::math::fp4::Fp4<T>, std::math::fp4::Fp4<T> -> std::math::fp4::Fp4<T> = |a, b| match (a, b) {
+        (std::math::fp4::Fp4::Fp4(a0, a1, a2, a3), std::math::fp4::Fp4::Fp4(b0, b1, b2, b3)) => std::math::fp4::Fp4::Fp4(a0 * b0 + 11 * (a1 * b3 + a2 * b2 + a3 * b1), a0 * b1 + a1 * b0 + 11 * (a2 * b3 + a3 * b2), a0 * b2 + a1 * b1 + a2 * b0 + 11 * (a3 * b3), a0 * b3 + a1 * b2 + a2 * b1 + a3 * b0),
+    };
+    let next_ext: std::math::fp4::Fp4<expr> -> std::math::fp4::Fp4<expr> = |a| match a {
+        std::math::fp4::Fp4::Fp4(a0, a1, a2, a3) => std::math::fp4::Fp4::Fp4(a0', a1', a2', a3'),
+    };
+    let<T: Sub> sub_ext: std::math::fp4::Fp4<T>, std::math::fp4::Fp4<T> -> std::math::fp4::Fp4<T> = |a, b| match (a, b) {
+        (std::math::fp4::Fp4::Fp4(a0, a1, a2, a3), std::math::fp4::Fp4::Fp4(b0, b1, b2, b3)) => std::math::fp4::Fp4::Fp4(a0 - b0, a1 - b1, a2 - b2, a3 - b3),
+    };
+    let<T> unpack_ext: std::math::fp4::Fp4<T> -> (T, T, T, T) = |a| match a {
+        std::math::fp4::Fp4::Fp4(a0, a1, a2, a3) => (a0, a1, a2, a3),
+    };
+    let<T> unpack_ext_array: std::math::fp4::Fp4<T> -> T[] = |a| match a {
+        std::math::fp4::Fp4::Fp4(a0, a1, a2, a3) => [a0, a1, a2, a3],
+    };
+namespace std::math::fp4::test;
+    let add = || {
+        let test_add = |a, b, c| std::check::assert(std::math::fp4::eq_ext(std::math::fp4::add_ext(a, b), c), || "Wrong addition result");
+        let _ = test_add(std::math::fp4::from_base(0), std::math::fp4::from_base(0), std::math::fp4::from_base(0));
+        let _ = test_add(std::math::fp4::Fp4::Fp4(123, 1234, 1, 2), std::math::fp4::from_base(0), std::math::fp4::Fp4::Fp4(123, 1234, 1, 2));
+        let _ = test_add(std::math::fp4::from_base(0), std::math::fp4::Fp4::Fp4(123, 1234, 123, 1334), std::math::fp4::Fp4::Fp4(123, 1234, 123, 1334));
+        let _ = test_add(std::math::fp4::Fp4::Fp4(123, 1234, 123, 122), std::math::fp4::Fp4::Fp4(567, 5678, 250, 678), std::math::fp4::Fp4::Fp4(690, 6912, 373, 800));
+        test_add(std::math::fp4::Fp4::Fp4(-1, -1, -1, -1), std::math::fp4::Fp4::Fp4(3, 4, 5, 6), std::math::fp4::Fp4::Fp4(2, 3, 4, 5));
+        test_add(std::math::fp4::Fp4::Fp4(-11, -11, -11, -11), std::math::fp4::Fp4::Fp4(0, 0, 0, 0), std::math::fp4::Fp4::Fp4(-11, -11, -11, -11));
+        test_add(std::math::fp4::Fp4::Fp4(-1, 0, 0, 0), std::math::fp4::Fp4::Fp4(1, 0, 0, 0), std::math::fp4::from_base(0));
+    };
+    let inverse = || {
+        let test_elements = [std::math::fp4::from_base(1), std::math::fp4::Fp4::Fp4(123, 1234, 1, 2), std::math::fp4::Fp4::Fp4(-1, 500, 3, 5)];
+        std::array::map(test_elements, |x| {
+            let mul_with_inverse = std::math::fp4::mul_ext(x, std::math::fp4::inv_ext(x));
+            std::check::assert(std::math::fp4::eq_ext(mul_with_inverse, std::math::fp4::from_base(1)), || "Should be 1")
+        })
+    };
+    let mul = || {
+        let test_mul = |a, b, c| std::check::assert(std::math::fp4::eq_ext(std::math::fp4::mul_ext(a, b), c), || "Wrong multiplication result");
+        let _ = test_mul(std::math::fp4::from_base(1), std::math::fp4::from_base(1), std::math::fp4::from_base(1));
+        let _ = test_mul(std::math::fp4::Fp4::Fp4(123, 1234, 280, 400), std::math::fp4::from_base(1), std::math::fp4::Fp4::Fp4(123, 1234, 280, 400));
+        let _ = test_mul(std::math::fp4::from_base(1), std::math::fp4::Fp4::Fp4(123, 1234, 12, 15), std::math::fp4::Fp4::Fp4(123, 1234, 12, 15));
+        let _ = test_mul(std::math::fp4::Fp4::Fp4(123, 1234, 234, 500), std::math::fp4::from_base(0), std::math::fp4::from_base(0));
+        let _ = test_mul(std::math::fp4::from_base(0), std::math::fp4::Fp4::Fp4(123, 1234, 33, 200), std::math::fp4::from_base(0));
+        test_mul(std::math::fp4::Fp4::Fp4(1, 2, 3, 4), std::math::fp4::Fp4::Fp4(5, 6, 7, 8), std::math::fp4::Fp4::Fp4(676, 588, 386, 60));
+        test_mul(std::math::fp4::Fp4::Fp4(-1, -2, -3, -4), std::math::fp4::Fp4::Fp4(-3, 4, 4, 5), std::math::fp4::Fp4::Fp4(-415, -339, -223, -13));
+    };
+    let sub = || {
+        let test_sub = |a, b, c| std::check::assert(std::math::fp4::eq_ext(std::math::fp4::sub_ext(a, b), c), || "Wrong subtraction result");
+        let _ = test_sub(std::math::fp4::from_base(0), std::math::fp4::from_base(0), std::math::fp4::from_base(0));
+        let _ = test_sub(std::math::fp4::Fp4::Fp4(123, 1234, 124, 1235), std::math::fp4::from_base(0), std::math::fp4::Fp4::Fp4(123, 1234, 124, 1235));
+        let _ = test_sub(std::math::fp4::Fp4::Fp4(123, 1234, 248, 5000), std::math::fp4::Fp4::Fp4(567, 5678, 300, 2380), std::math::fp4::Fp4::Fp4(123 - 567, 1234 - 5678, 248 - 300, 5000 - 2380));
+        test_sub(std::math::fp4::Fp4::Fp4(-1, -1, 0, 0), std::math::fp4::Fp4::Fp4(2013265920, 1, 0, 0), std::math::fp4::Fp4::Fp4(-2013265920 - 1, -2, 0, 0))
+    };
+namespace std::prelude;
+    enum Constr {
+        Identity(expr, expr),
+        Lookup((std::prelude::Option<expr>, std::prelude::Option<expr>), (expr, expr)[]),
+        Permutation((std::prelude::Option<expr>, std::prelude::Option<expr>), (expr, expr)[]),
+        Connection((expr, expr)[]),
+    }
+    enum Option<T> {
+        None,
+        Some(T),
+    }
+    enum Query {
+        Input(int),
+        Output(int, int),
+        Hint(fe),
+        DataIdentifier(int, int),
+        None,
+    }
+    let challenge: int, int -> expr = [];
+    let false: bool = !std::prelude::true;
+    let set_hint: expr, (int -> std::prelude::Query) -> () = [];
+    let true: bool = "" == "";
+namespace std::protocols::bus;
+    let bus_interaction: expr, expr, expr[], expr, expr[], std::math::fp2::Fp2<expr>, std::math::fp2::Fp2<expr> -> std::prelude::Constr[] = |is_first, id, tuple, multiplicity, acc, alpha, beta| {
+        let folded = std::math::fp2::sub_ext(beta, std::protocols::fingerprint::fingerprint_with_id(id, tuple, alpha));
+        let folded_next = std::math::fp2::next_ext(folded);
+        let m_ext = std::math::fp2::from_base(multiplicity);
+        let m_ext_next = std::math::fp2::next_ext(m_ext);
+        let acc_ext = std::math::fp2::fp2_from_array(acc);
+        let next_acc = std::math::fp2::next_ext(acc_ext);
+        let is_first_next = std::math::fp2::from_base(is_first');
+        let update_expr = std::math::fp2::sub_ext(std::math::fp2::mul_ext(folded_next, std::math::fp2::sub_ext(next_acc, std::math::fp2::mul_ext(acc_ext, std::math::fp2::sub_ext(std::math::fp2::from_base(1), is_first_next)))), m_ext_next);
+        std::math::fp2::constrain_eq_ext(update_expr, std::math::fp2::from_base(0))
+    };
+    let bus_receive: expr, expr, expr[], expr, expr[], std::math::fp2::Fp2<expr>, std::math::fp2::Fp2<expr> -> std::prelude::Constr[] = |is_first, id, tuple, multiplicity, acc, alpha, beta| { std::protocols::bus::bus_interaction(is_first, id, tuple, -1 * multiplicity, acc, alpha, beta) };
+    let bus_send: expr, expr, expr[], expr, expr[], std::math::fp2::Fp2<expr>, std::math::fp2::Fp2<expr> -> std::prelude::Constr[] = |is_first, id, tuple, multiplicity, acc, alpha, beta| { std::protocols::bus::bus_interaction(is_first, id, tuple, multiplicity, acc, alpha, beta) };
+    let compute_next_z_receive: expr, expr, expr[], expr, std::math::fp2::Fp2<expr>, std::math::fp2::Fp2<expr>, std::math::fp2::Fp2<expr> -> fe[] = query |is_first, id, tuple, multiplicity, acc, alpha, beta| std::protocols::bus::compute_next_z_send(is_first, id, tuple, -multiplicity, acc, alpha, beta);
+    let compute_next_z_send: expr, expr, expr[], expr, std::math::fp2::Fp2<expr>, std::math::fp2::Fp2<expr>, std::math::fp2::Fp2<expr> -> fe[] = query |is_first, id, tuple, multiplicity, acc, alpha, beta| {
+        let folded = std::math::fp2::sub_ext(beta, std::protocols::fingerprint::fingerprint_with_id(id, tuple, alpha));
+        let folded_next = std::math::fp2::next_ext(folded);
+        let m_ext = std::math::fp2::from_base(multiplicity);
+        let m_ext_next = std::math::fp2::next_ext(m_ext);
+        let is_first_next = std::prover::eval(is_first');
+        let current_acc = if is_first_next == 1 { std::math::fp2::from_base(0) } else { std::math::fp2::eval_ext(acc) };
+        let res = std::math::fp2::add_ext(current_acc, std::math::fp2::mul_ext(std::math::fp2::eval_ext(m_ext_next), std::math::fp2::inv_ext(std::math::fp2::eval_ext(folded_next))));
+        std::math::fp2::unpack_ext_array(res)
+    };
+namespace std::protocols::fingerprint;
+    let<T: Add + FromLiteral + Mul> fingerprint: T[], std::math::fp2::Fp2<T> -> std::math::fp2::Fp2<T> = |expr_array, alpha| std::array::fold(expr_array, std::math::fp2::from_base(0), |sum_acc, el| std::math::fp2::add_ext(std::math::fp2::mul_ext(alpha, sum_acc), std::math::fp2::from_base(el)));
+    let<T: Add + FromLiteral + Mul> fingerprint_with_id: T, T[], std::math::fp2::Fp2<T> -> std::math::fp2::Fp2<T> = |id, expr_array, alpha| std::protocols::fingerprint::fingerprint([id] + expr_array, alpha);
+namespace std::protocols::lookup;
+    let compute_next_z: std::math::fp2::Fp2<expr>, std::math::fp2::Fp2<expr>, std::math::fp2::Fp2<expr>, std::prelude::Constr, expr -> fe[] = query |acc, alpha, beta, lookup_constraint, multiplicities| {
+        let (lhs_selector, lhs, rhs_selector, rhs) = std::protocols::lookup::unpack_lookup_constraint(lookup_constraint);
+        let lhs_denom = std::math::fp2::sub_ext(beta, std::protocols::fingerprint::fingerprint(lhs, alpha));
+        let rhs_denom = std::math::fp2::sub_ext(beta, std::protocols::fingerprint::fingerprint(rhs, alpha));
+        let m_ext = std::math::fp2::from_base(multiplicities);
+        let res = std::math::fp2::add_ext(std::math::fp2::eval_ext(acc), std::math::fp2::sub_ext(std::math::fp2::mul_ext(std::math::fp2::inv_ext(std::math::fp2::eval_ext(lhs_denom)), std::math::fp2::eval_ext(std::math::fp2::from_base(lhs_selector))), std::math::fp2::mul_ext(std::math::fp2::mul_ext(std::math::fp2::eval_ext(m_ext), std::math::fp2::inv_ext(std::math::fp2::eval_ext(rhs_denom))), std::math::fp2::eval_ext(std::math::fp2::from_base(rhs_selector)))));
+        std::math::fp2::unpack_ext_array(res)
+    };
+    let lookup: expr, expr[], std::math::fp2::Fp2<expr>, std::math::fp2::Fp2<expr>, std::prelude::Constr, expr -> std::prelude::Constr[] = |is_first, acc, alpha, beta, lookup_constraint, multiplicities| {
+        let (lhs_selector, lhs, rhs_selector, rhs) = std::protocols::lookup::unpack_lookup_constraint(lookup_constraint);
+        let lhs_denom = std::math::fp2::sub_ext(beta, std::protocols::fingerprint::fingerprint(lhs, alpha));
+        let rhs_denom = std::math::fp2::sub_ext(beta, std::protocols::fingerprint::fingerprint(rhs, alpha));
+        let m_ext = std::math::fp2::from_base(multiplicities);
+        let acc_ext = std::math::fp2::fp2_from_array(acc);
+        let next_acc = std::math::fp2::next_ext(acc_ext);
+        let update_expr = std::math::fp2::sub_ext(std::math::fp2::add_ext(std::math::fp2::mul_ext(std::math::fp2::mul_ext(lhs_denom, rhs_denom), std::math::fp2::sub_ext(next_acc, acc_ext)), std::math::fp2::mul_ext(std::math::fp2::mul_ext(m_ext, std::math::fp2::from_base(rhs_selector)), lhs_denom)), std::math::fp2::mul_ext(std::math::fp2::from_base(lhs_selector), rhs_denom));
+        let (acc_1, acc_2) = std::math::fp2::unpack_ext(acc_ext);
+        [is_first * acc_1 = 0, is_first * acc_2 = 0] + std::math::fp2::constrain_eq_ext(update_expr, std::math::fp2::from_base(0))
+    };
+    let unpack_lookup_constraint: std::prelude::Constr -> (expr, expr[], expr, expr[]) = |lookup_constraint| match lookup_constraint {
+        std::prelude::Constr::Lookup((lhs_selector, rhs_selector), values) => (std::utils::unwrap_or_else(lhs_selector, || 1), std::array::map(values, |(lhs, _)| lhs), std::utils::unwrap_or_else(rhs_selector, || 1), std::array::map(values, |(_, rhs)| rhs)),
+        _ => std::check::panic("Expected lookup constraint"),
+    };
+namespace std::protocols::lookup_via_bus;
+    let compute_next_z_receive_lookup: expr, expr, std::math::fp2::Fp2<expr>, std::math::fp2::Fp2<expr>, std::math::fp2::Fp2<expr>, std::prelude::Constr, expr -> fe[] = query |is_first, id, acc, alpha, beta, lookup_constraint, multiplicities| {
+        let (lhs_selector, lhs, rhs_selector, rhs) = std::protocols::lookup::unpack_lookup_constraint(lookup_constraint);
+        std::protocols::bus::compute_next_z_receive(is_first, id, rhs, rhs_selector * multiplicities, acc, alpha, beta)
+    };
+    let compute_next_z_send_lookup: expr, expr, std::math::fp2::Fp2<expr>, std::math::fp2::Fp2<expr>, std::math::fp2::Fp2<expr>, std::prelude::Constr -> fe[] = query |is_first, id, acc, alpha, beta, lookup_constraint| {
+        let (lhs_selector, lhs, rhs_selector, rhs) = std::protocols::lookup::unpack_lookup_constraint(lookup_constraint);
+        std::protocols::bus::compute_next_z_send(is_first, id, lhs, lhs_selector, acc, alpha, beta)
+    };
+    let lookup: expr, expr, expr[], expr[], std::math::fp2::Fp2<expr>, std::math::fp2::Fp2<expr>, std::prelude::Constr, expr -> std::prelude::Constr[] = |is_first, id, acc_lhs, acc_rhs, alpha, beta, lookup_constraint, multiplicities| {
+        let (lhs_selector, lhs, rhs_selector, rhs) = std::protocols::lookup::unpack_lookup_constraint(lookup_constraint);
+        std::protocols::bus::bus_send(is_first, id, lhs, lhs_selector, acc_lhs, alpha, beta) + std::protocols::bus::bus_receive(is_first, id, rhs, rhs_selector * multiplicities, acc_rhs, alpha, beta)
+    };
+namespace std::protocols::permutation;
+    let compute_next_z: std::math::fp2::Fp2<expr>, std::math::fp2::Fp2<expr>, std::math::fp2::Fp2<expr>, std::prelude::Constr -> fe[] = query |acc, alpha, beta, permutation_constraint| {
+        let (lhs_selector, lhs, rhs_selector, rhs) = std::protocols::permutation::unpack_permutation_constraint(permutation_constraint);
+        let lhs_folded = std::protocols::permutation::selected_or_one(lhs_selector, std::math::fp2::sub_ext(beta, std::protocols::fingerprint::fingerprint(lhs, alpha)));
+        let rhs_folded = std::protocols::permutation::selected_or_one(rhs_selector, std::math::fp2::sub_ext(beta, std::protocols::fingerprint::fingerprint(rhs, alpha)));
+        let res = std::math::fp2::mul_ext(std::math::fp2::eval_ext(std::math::fp2::mul_ext(acc, lhs_folded)), std::math::fp2::inv_ext(std::math::fp2::eval_ext(rhs_folded)));
+        std::math::fp2::unpack_ext_array(res)
+    };
+    let permutation: expr, expr[], std::math::fp2::Fp2<expr>, std::math::fp2::Fp2<expr>, std::prelude::Constr -> std::prelude::Constr[] = |is_first, acc, alpha, beta, permutation_constraint| {
+        let (lhs_selector, lhs, rhs_selector, rhs) = std::protocols::permutation::unpack_permutation_constraint(permutation_constraint);
+        let lhs_folded = std::protocols::permutation::selected_or_one(lhs_selector, std::math::fp2::sub_ext(beta, std::protocols::fingerprint::fingerprint(lhs, alpha)));
+        let rhs_folded = std::protocols::permutation::selected_or_one(rhs_selector, std::math::fp2::sub_ext(beta, std::protocols::fingerprint::fingerprint(rhs, alpha)));
+        let acc_ext = std::math::fp2::fp2_from_array(acc);
+        let next_acc = std::math::fp2::next_ext(acc_ext);
+        let update_expr = std::math::fp2::sub_ext(std::math::fp2::mul_ext(rhs_folded, next_acc), std::math::fp2::mul_ext(lhs_folded, acc_ext));
+        let (acc_1, acc_2) = std::math::fp2::unpack_ext(acc_ext);
+        [is_first * (acc_1 - 1) = 0, is_first * acc_2 = 0] + std::math::fp2::constrain_eq_ext(update_expr, std::math::fp2::from_base(0))
+    };
+    let<T: Add + FromLiteral + Mul + Sub> selected_or_one: T, std::math::fp2::Fp2<T> -> std::math::fp2::Fp2<T> = |selector, value| std::math::fp2::add_ext(std::math::fp2::mul_ext(std::math::fp2::from_base(selector), std::math::fp2::sub_ext(value, std::math::fp2::from_base(1))), std::math::fp2::from_base(1));
+    let unpack_permutation_constraint: std::prelude::Constr -> (expr, expr[], expr, expr[]) = |permutation_constraint| match permutation_constraint {
+        std::prelude::Constr::Permutation((lhs_selector, rhs_selector), values) => (std::utils::unwrap_or_else(lhs_selector, || 1), std::array::map(values, |(lhs, _)| lhs), std::utils::unwrap_or_else(rhs_selector, || 1), std::array::map(values, |(_, rhs)| rhs)),
+        _ => std::check::panic("Expected permutation constraint"),
+    };
+namespace std::protocols::permutation_via_bus;
+    let compute_next_z_receive_permutation: expr, expr, std::math::fp2::Fp2<expr>, std::math::fp2::Fp2<expr>, std::math::fp2::Fp2<expr>, std::prelude::Constr -> fe[] = query |is_first, id, acc, alpha, beta, permutation_constraint| {
+        let (lhs_selector, lhs, rhs_selector, rhs) = std::protocols::permutation::unpack_permutation_constraint(permutation_constraint);
+        std::protocols::bus::compute_next_z_receive(is_first, id, rhs, rhs_selector, acc, alpha, beta)
+    };
+    let compute_next_z_send_permutation: expr, expr, std::math::fp2::Fp2<expr>, std::math::fp2::Fp2<expr>, std::math::fp2::Fp2<expr>, std::prelude::Constr -> fe[] = query |is_first, id, acc, alpha, beta, permutation_constraint| {
+        let (lhs_selector, lhs, rhs_selector, rhs) = std::protocols::permutation::unpack_permutation_constraint(permutation_constraint);
+        std::protocols::bus::compute_next_z_send(is_first, id, lhs, lhs_selector, acc, alpha, beta)
+    };
+    let permutation: expr, expr, expr[], expr[], std::math::fp2::Fp2<expr>, std::math::fp2::Fp2<expr>, std::prelude::Constr -> std::prelude::Constr[] = |is_first, id, acc_lhs, acc_rhs, alpha, beta, permutation_constraint| {
+        let (lhs_selector, lhs, rhs_selector, rhs) = std::protocols::permutation::unpack_permutation_constraint(permutation_constraint);
+        std::protocols::bus::bus_send(is_first, id, lhs, lhs_selector, acc_lhs, alpha, beta) + std::protocols::bus::bus_receive(is_first, id, rhs, rhs_selector, acc_rhs, alpha, beta)
+    };
+namespace std::prover;
+    let challenge: int, int -> expr = constr |st, id| std::prelude::challenge(st, id);
+    let degree: -> int = [];
+    let eval: expr -> fe = [];
+    let max_degree: -> int = [];
+    let min_degree: -> int = [];
+    let require_max_degree: int -> () = |m| std::check::assert(std::prover::degree() <= m, || "Degree too large.");
+    let require_min_degree: int -> () = |m| std::check::assert(std::prover::degree() >= m, || "Degree too small.");
+namespace std::utils;
+    let cross_product: int[] -> (int -> int)[] = |sizes| std::utils::cross_product_internal(1, 0, sizes);
+    let cross_product_internal: int, int, int[] -> (int -> int)[] = |cycle_len, pos, sizes| if pos >= std::array::len(sizes) { [] } else { [|i| i / cycle_len % sizes[pos]] + std::utils::cross_product_internal(cycle_len * sizes[pos], pos + 1, sizes) };
+    let<T1, T2> fold: int, (int -> T1), T2, (T2, T1 -> T2) -> T2 = |length, f, initial, folder| if length <= 0 { initial } else { folder(std::utils::fold(length - 1, f, initial, folder), f(length - 1)) };
+    let force_bool: expr -> std::prelude::Constr = |c| c * (1 - c) = 0;
+    let is_zero: expr -> expr = constr |x| {
+        let x_is_zero;
+        std::utils::force_bool(x_is_zero);
+        let x_inv;
+        x_is_zero = 1 - x * x_inv;
+        x_is_zero * x = 0;
+        x_is_zero
+    };
+    let<T: Ord> max: T, T -> T = |a, b| if a < b { b } else { a };
+    let<T: Ord> min: T, T -> T = |a, b| if a < b { a } else { b };
+    let new_bool: -> expr = constr || {
+        let x;
+        std::utils::force_bool(x);
+        x
+    };
+    let<T: Add + FromLiteral> sum: int, (int -> T) -> T = |length, f| std::utils::fold(length, f, 0, |acc, e| acc + e);
+    let unchanged_until: expr, expr -> std::prelude::Constr = |c, latch| (c' - c) * (1 - latch) = 0;
+    let<T> unwrap_or_else: std::prelude::Option<T>, (-> T) -> T = |o, f| match o {
+        std::prelude::Option::None => f(),
+        std::prelude::Option::Some(x) => x,
+    };
+namespace std::well_known;
+    let is_first: int -> int = |i| if i == 0 { 1 } else { 0 };
+namespace main(65536);
+    pol commit _operation_id(i) query std::prelude::Query::Hint(14);
+    pol constant _block_enforcer_last_step = [0]* + [1];
+    let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
+    _operation_id_no_change * (_operation_id' - _operation_id) = 0;
+    pol commit pc;
+    pol commit A0;
+    pol commit A1;
+    pol commit B0;
+    pol commit B1;
+    pol commit C0;
+    pol commit C1;
+    pol commit D0;
+    pol commit D1;
+    pol commit reg_write_A0_t_0_0;
+    pol commit reg_write_A1_t_0_0;
+    pol commit reg_write_B0_t_0_0;
+    pol commit reg_write_B1_t_0_0;
+    pol commit reg_write_C0_t_0_0;
+    pol commit reg_write_C1_t_0_0;
+    pol commit reg_write_D0_t_0_0;
+    pol commit reg_write_D1_t_0_0;
+    pol commit t_0_0;
+    pol commit reg_write_A0_t_0_1;
+    pol commit reg_write_A1_t_0_1;
+    pol commit reg_write_B0_t_0_1;
+    pol commit reg_write_B1_t_0_1;
+    pol commit reg_write_C0_t_0_1;
+    pol commit reg_write_C1_t_0_1;
+    pol commit reg_write_D0_t_0_1;
+    pol commit reg_write_D1_t_0_1;
+    pol commit t_0_1;
+    pol commit reg_write_A0_t_1_0;
+    pol commit reg_write_A1_t_1_0;
+    pol commit reg_write_B0_t_1_0;
+    pol commit reg_write_B1_t_1_0;
+    pol commit reg_write_C0_t_1_0;
+    pol commit reg_write_C1_t_1_0;
+    pol commit reg_write_D0_t_1_0;
+    pol commit reg_write_D1_t_1_0;
+    pol commit t_1_0;
+    pol commit reg_write_A0_t_1_1;
+    pol commit reg_write_A1_t_1_1;
+    pol commit reg_write_B0_t_1_1;
+    pol commit reg_write_B1_t_1_1;
+    pol commit reg_write_C0_t_1_1;
+    pol commit reg_write_C1_t_1_1;
+    pol commit reg_write_D0_t_1_1;
+    pol commit reg_write_D1_t_1_1;
+    pol commit t_1_1;
+    pol commit instr_mul;
+    pol commit instr_div;
+    pol commit instr_assert_eq;
+    instr_assert_eq * (A0 - C0) = 0;
+    instr_assert_eq * (A1 - C1) = 0;
+    instr_assert_eq * (B0 - D0) = 0;
+    instr_assert_eq * (B1 - D1) = 0;
+    pol commit instr__jump_to_operation;
+    pol commit instr__reset;
+    pol commit instr__loop;
+    pol commit instr_return;
+    pol commit A0_const;
+    pol commit A0_read_free;
+    pol commit read_A0_t_0_0;
+    pol commit read_A0_t_0_1;
+    pol commit read_A0_t_1_0;
+    pol commit read_A0_t_1_1;
+    pol commit read_A0_pc;
+    A0 = read_A0_t_0_0 * t_0_0 + read_A0_t_0_1 * t_0_1 + read_A0_t_1_0 * t_1_0 + read_A0_t_1_1 * t_1_1 + read_A0_pc * pc + A0_const + A0_read_free * A0_free_value;
+    pol commit A1_const;
+    pol commit A1_read_free;
+    pol commit read_A1_t_0_0;
+    pol commit read_A1_t_0_1;
+    pol commit read_A1_t_1_0;
+    pol commit read_A1_t_1_1;
+    pol commit read_A1_pc;
+    A1 = read_A1_t_0_0 * t_0_0 + read_A1_t_0_1 * t_0_1 + read_A1_t_1_0 * t_1_0 + read_A1_t_1_1 * t_1_1 + read_A1_pc * pc + A1_const + A1_read_free * A1_free_value;
+    pol commit B0_const;
+    pol commit B0_read_free;
+    pol commit read_B0_t_0_0;
+    pol commit read_B0_t_0_1;
+    pol commit read_B0_t_1_0;
+    pol commit read_B0_t_1_1;
+    pol commit read_B0_pc;
+    B0 = read_B0_t_0_0 * t_0_0 + read_B0_t_0_1 * t_0_1 + read_B0_t_1_0 * t_1_0 + read_B0_t_1_1 * t_1_1 + read_B0_pc * pc + B0_const + B0_read_free * B0_free_value;
+    pol commit B1_const;
+    pol commit B1_read_free;
+    pol commit read_B1_t_0_0;
+    pol commit read_B1_t_0_1;
+    pol commit read_B1_t_1_0;
+    pol commit read_B1_t_1_1;
+    pol commit read_B1_pc;
+    B1 = read_B1_t_0_0 * t_0_0 + read_B1_t_0_1 * t_0_1 + read_B1_t_1_0 * t_1_0 + read_B1_t_1_1 * t_1_1 + read_B1_pc * pc + B1_const + B1_read_free * B1_free_value;
+    pol commit C0_const;
+    pol commit C0_read_free;
+    pol commit read_C0_t_0_0;
+    pol commit read_C0_t_0_1;
+    pol commit read_C0_t_1_0;
+    pol commit read_C0_t_1_1;
+    pol commit read_C0_pc;
+    C0 = read_C0_t_0_0 * t_0_0 + read_C0_t_0_1 * t_0_1 + read_C0_t_1_0 * t_1_0 + read_C0_t_1_1 * t_1_1 + read_C0_pc * pc + C0_const + C0_read_free * C0_free_value;
+    pol commit C1_const;
+    pol commit C1_read_free;
+    pol commit read_C1_t_0_0;
+    pol commit read_C1_t_0_1;
+    pol commit read_C1_t_1_0;
+    pol commit read_C1_t_1_1;
+    pol commit read_C1_pc;
+    C1 = read_C1_t_0_0 * t_0_0 + read_C1_t_0_1 * t_0_1 + read_C1_t_1_0 * t_1_0 + read_C1_t_1_1 * t_1_1 + read_C1_pc * pc + C1_const + C1_read_free * C1_free_value;
+    pol commit D0_const;
+    pol commit D0_read_free;
+    pol commit read_D0_t_0_0;
+    pol commit read_D0_t_0_1;
+    pol commit read_D0_t_1_0;
+    pol commit read_D0_t_1_1;
+    pol commit read_D0_pc;
+    D0 = read_D0_t_0_0 * t_0_0 + read_D0_t_0_1 * t_0_1 + read_D0_t_1_0 * t_1_0 + read_D0_t_1_1 * t_1_1 + read_D0_pc * pc + D0_const + D0_read_free * D0_free_value;
+    pol commit D1_const;
+    pol commit D1_read_free;
+    pol commit read_D1_t_0_0;
+    pol commit read_D1_t_0_1;
+    pol commit read_D1_t_1_0;
+    pol commit read_D1_t_1_1;
+    pol commit read_D1_pc;
+    D1 = read_D1_t_0_0 * t_0_0 + read_D1_t_0_1 * t_0_1 + read_D1_t_1_0 * t_1_0 + read_D1_t_1_1 * t_1_1 + read_D1_pc * pc + D1_const + D1_read_free * D1_free_value;
+    pol constant first_step = [1] + [0]*;
+    pol commit pc_update;
+    pc_update = instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1);
+    pc' = (1 - first_step') * pc_update;
+    t_0_0' = reg_write_A0_t_0_0 * A0 + reg_write_A1_t_0_0 * A1 + reg_write_B0_t_0_0 * B0 + reg_write_B1_t_0_0 * B1 + reg_write_C0_t_0_0 * C0 + reg_write_C1_t_0_0 * C1 + reg_write_D0_t_0_0 * D0 + reg_write_D1_t_0_0 * D1 + instr__reset * 0 + (1 - (reg_write_A0_t_0_0 + reg_write_A1_t_0_0 + reg_write_B0_t_0_0 + reg_write_B1_t_0_0 + reg_write_C0_t_0_0 + reg_write_C1_t_0_0 + reg_write_D0_t_0_0 + reg_write_D1_t_0_0 + instr__reset)) * t_0_0;
+    t_0_1' = reg_write_A0_t_0_1 * A0 + reg_write_A1_t_0_1 * A1 + reg_write_B0_t_0_1 * B0 + reg_write_B1_t_0_1 * B1 + reg_write_C0_t_0_1 * C0 + reg_write_C1_t_0_1 * C1 + reg_write_D0_t_0_1 * D0 + reg_write_D1_t_0_1 * D1 + instr__reset * 0 + (1 - (reg_write_A0_t_0_1 + reg_write_A1_t_0_1 + reg_write_B0_t_0_1 + reg_write_B1_t_0_1 + reg_write_C0_t_0_1 + reg_write_C1_t_0_1 + reg_write_D0_t_0_1 + reg_write_D1_t_0_1 + instr__reset)) * t_0_1;
+    t_1_0' = reg_write_A0_t_1_0 * A0 + reg_write_A1_t_1_0 * A1 + reg_write_B0_t_1_0 * B0 + reg_write_B1_t_1_0 * B1 + reg_write_C0_t_1_0 * C0 + reg_write_C1_t_1_0 * C1 + reg_write_D0_t_1_0 * D0 + reg_write_D1_t_1_0 * D1 + instr__reset * 0 + (1 - (reg_write_A0_t_1_0 + reg_write_A1_t_1_0 + reg_write_B0_t_1_0 + reg_write_B1_t_1_0 + reg_write_C0_t_1_0 + reg_write_C1_t_1_0 + reg_write_D0_t_1_0 + reg_write_D1_t_1_0 + instr__reset)) * t_1_0;
+    t_1_1' = reg_write_A0_t_1_1 * A0 + reg_write_A1_t_1_1 * A1 + reg_write_B0_t_1_1 * B0 + reg_write_B1_t_1_1 * B1 + reg_write_C0_t_1_1 * C0 + reg_write_C1_t_1_1 * C1 + reg_write_D0_t_1_1 * D0 + reg_write_D1_t_1_1 * D1 + instr__reset * 0 + (1 - (reg_write_A0_t_1_1 + reg_write_A1_t_1_1 + reg_write_B0_t_1_1 + reg_write_B1_t_1_1 + reg_write_C0_t_1_1 + reg_write_C1_t_1_1 + reg_write_D0_t_1_1 + reg_write_D1_t_1_1 + instr__reset)) * t_1_1;
+    pol commit A0_free_value;
+    pol commit A1_free_value;
+    pol commit B0_free_value;
+    pol commit B1_free_value;
+    pol commit C0_free_value;
+    pol commit C1_free_value;
+    pol commit D0_free_value;
+    pol commit D1_free_value;
+    1 $ [0, pc, reg_write_A0_t_0_0, reg_write_A1_t_0_0, reg_write_B0_t_0_0, reg_write_B1_t_0_0, reg_write_C0_t_0_0, reg_write_C1_t_0_0, reg_write_D0_t_0_0, reg_write_D1_t_0_0, reg_write_A0_t_0_1, reg_write_A1_t_0_1, reg_write_B0_t_0_1, reg_write_B1_t_0_1, reg_write_C0_t_0_1, reg_write_C1_t_0_1, reg_write_D0_t_0_1, reg_write_D1_t_0_1, reg_write_A0_t_1_0, reg_write_A1_t_1_0, reg_write_B0_t_1_0, reg_write_B1_t_1_0, reg_write_C0_t_1_0, reg_write_C1_t_1_0, reg_write_D0_t_1_0, reg_write_D1_t_1_0, reg_write_A0_t_1_1, reg_write_A1_t_1_1, reg_write_B0_t_1_1, reg_write_B1_t_1_1, reg_write_C0_t_1_1, reg_write_C1_t_1_1, reg_write_D0_t_1_1, reg_write_D1_t_1_1, instr_mul, instr_div, instr_assert_eq, instr__jump_to_operation, instr__reset, instr__loop, instr_return, A0_const, A0_read_free, read_A0_t_0_0, read_A0_t_0_1, read_A0_t_1_0, read_A0_t_1_1, read_A0_pc, A1_const, A1_read_free, read_A1_t_0_0, read_A1_t_0_1, read_A1_t_1_0, read_A1_t_1_1, read_A1_pc, B0_const, B0_read_free, read_B0_t_0_0, read_B0_t_0_1, read_B0_t_1_0, read_B0_t_1_1, read_B0_pc, B1_const, B1_read_free, read_B1_t_0_0, read_B1_t_0_1, read_B1_t_1_0, read_B1_t_1_1, read_B1_pc, C0_const, C0_read_free, read_C0_t_0_0, read_C0_t_0_1, read_C0_t_1_0, read_C0_t_1_1, read_C0_pc, C1_const, C1_read_free, read_C1_t_0_0, read_C1_t_0_1, read_C1_t_1_0, read_C1_t_1_1, read_C1_pc, D0_const, D0_read_free, read_D0_t_0_0, read_D0_t_0_1, read_D0_t_1_0, read_D0_t_1_1, read_D0_pc, D1_const, D1_read_free, read_D1_t_0_0, read_D1_t_0_1, read_D1_t_1_0, read_D1_t_1_1, read_D1_pc] in main__rom::latch $ [main__rom::operation_id, main__rom::p_line, main__rom::p_reg_write_A0_t_0_0, main__rom::p_reg_write_A1_t_0_0, main__rom::p_reg_write_B0_t_0_0, main__rom::p_reg_write_B1_t_0_0, main__rom::p_reg_write_C0_t_0_0, main__rom::p_reg_write_C1_t_0_0, main__rom::p_reg_write_D0_t_0_0, main__rom::p_reg_write_D1_t_0_0, main__rom::p_reg_write_A0_t_0_1, main__rom::p_reg_write_A1_t_0_1, main__rom::p_reg_write_B0_t_0_1, main__rom::p_reg_write_B1_t_0_1, main__rom::p_reg_write_C0_t_0_1, main__rom::p_reg_write_C1_t_0_1, main__rom::p_reg_write_D0_t_0_1, main__rom::p_reg_write_D1_t_0_1, main__rom::p_reg_write_A0_t_1_0, main__rom::p_reg_write_A1_t_1_0, main__rom::p_reg_write_B0_t_1_0, main__rom::p_reg_write_B1_t_1_0, main__rom::p_reg_write_C0_t_1_0, main__rom::p_reg_write_C1_t_1_0, main__rom::p_reg_write_D0_t_1_0, main__rom::p_reg_write_D1_t_1_0, main__rom::p_reg_write_A0_t_1_1, main__rom::p_reg_write_A1_t_1_1, main__rom::p_reg_write_B0_t_1_1, main__rom::p_reg_write_B1_t_1_1, main__rom::p_reg_write_C0_t_1_1, main__rom::p_reg_write_C1_t_1_1, main__rom::p_reg_write_D0_t_1_1, main__rom::p_reg_write_D1_t_1_1, main__rom::p_instr_mul, main__rom::p_instr_div, main__rom::p_instr_assert_eq, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return, main__rom::p_A0_const, main__rom::p_A0_read_free, main__rom::p_read_A0_t_0_0, main__rom::p_read_A0_t_0_1, main__rom::p_read_A0_t_1_0, main__rom::p_read_A0_t_1_1, main__rom::p_read_A0_pc, main__rom::p_A1_const, main__rom::p_A1_read_free, main__rom::p_read_A1_t_0_0, main__rom::p_read_A1_t_0_1, main__rom::p_read_A1_t_1_0, main__rom::p_read_A1_t_1_1, main__rom::p_read_A1_pc, main__rom::p_B0_const, main__rom::p_B0_read_free, main__rom::p_read_B0_t_0_0, main__rom::p_read_B0_t_0_1, main__rom::p_read_B0_t_1_0, main__rom::p_read_B0_t_1_1, main__rom::p_read_B0_pc, main__rom::p_B1_const, main__rom::p_B1_read_free, main__rom::p_read_B1_t_0_0, main__rom::p_read_B1_t_0_1, main__rom::p_read_B1_t_1_0, main__rom::p_read_B1_t_1_1, main__rom::p_read_B1_pc, main__rom::p_C0_const, main__rom::p_C0_read_free, main__rom::p_read_C0_t_0_0, main__rom::p_read_C0_t_0_1, main__rom::p_read_C0_t_1_0, main__rom::p_read_C0_t_1_1, main__rom::p_read_C0_pc, main__rom::p_C1_const, main__rom::p_C1_read_free, main__rom::p_read_C1_t_0_0, main__rom::p_read_C1_t_0_1, main__rom::p_read_C1_t_1_0, main__rom::p_read_C1_t_1_1, main__rom::p_read_C1_pc, main__rom::p_D0_const, main__rom::p_D0_read_free, main__rom::p_read_D0_t_0_0, main__rom::p_read_D0_t_0_1, main__rom::p_read_D0_t_1_0, main__rom::p_read_D0_t_1_1, main__rom::p_read_D0_pc, main__rom::p_D1_const, main__rom::p_D1_read_free, main__rom::p_read_D1_t_0_0, main__rom::p_read_D1_t_0_1, main__rom::p_read_D1_t_1_0, main__rom::p_read_D1_t_1_1, main__rom::p_read_D1_pc];
+    instr_div $ [1, A0, A1, B0, B1, C0, C1, D0, D1] is main_arith::CLK8_7 * main_arith::sel[0] $ [main_arith::operation_id, main_arith::y3c[0], main_arith::y3c[1], main_arith::x1c[0], main_arith::x1c[1], main_arith::y1c[0], main_arith::y1c[1], main_arith::x2c[0], main_arith::x2c[1]];
+    instr_mul $ [0, A0, A1, B0, B1, C0, C1, D0, D1] is main_arith::CLK8_7 * main_arith::sel[1] $ [main_arith::operation_id, main_arith::x1c[0], main_arith::x1c[1], main_arith::y1c[0], main_arith::y1c[1], main_arith::y2c[0], main_arith::y2c[1], main_arith::y3c[0], main_arith::y3c[1]];
+    pol constant _linker_first_step(i) { if i == 0 { 1 } else { 0 } };
+    _linker_first_step * (_operation_id - 2) = 0;
+namespace main__rom(65536);
+    pol constant p_line = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14] + [14]*;
+    pol constant p_A0_const = [0, 0, 0, 0, 65535, 0, 0, 0, 65535, 0, 65535, 0, 4095, 0, 0] + [0]*;
+    pol constant p_A0_read_free = [0]*;
+    pol constant p_A1_const = [0, 0, 2, 0, 65535, 0, 7, 0, 65535, 0, 65534, 0, 65279, 0, 0] + [0]*;
+    pol constant p_A1_read_free = [0]*;
+    pol constant p_B0_const = [0, 0, 0, 0, 65535, 0, 0, 0, 15, 0, 0, 0, 15, 0, 0] + [0]*;
+    pol constant p_B0_read_free = [0]*;
+    pol constant p_B1_const = [0, 0, 3, 0, 65535, 0, 3, 0, 65535, 0, 255, 0, 65535, 0, 0] + [0]*;
+    pol constant p_B1_read_free = [0]*;
+    pol constant p_C0_const = [0, 0, 0, 0, 0, 65535, 0, 0, 0, 0, 0, 257, 0, 0, 0] + [0]*;
+    pol constant p_C0_read_free = [0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0] + [0]*;
+    pol constant p_C1_const = [0, 0, 0, 0, 0, 65534, 0, 2, 0, 4096, 0, 256, 0, 255, 0] + [0]*;
+    pol constant p_C1_read_free = [0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0] + [0]*;
+    pol constant p_D0_const = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 15, 0] + [0]*;
+    pol constant p_D0_read_free = [0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0] + [0]*;
+    pol constant p_D1_const = [0, 0, 0, 6, 0, 1, 0, 1, 0, 4095, 0, 254, 0, 65534, 0] + [0]*;
+    pol constant p_D1_read_free = [0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0] + [0]*;
+    pol constant p_instr__jump_to_operation = [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
+    pol constant p_instr__loop = [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1] + [1]*;
+    pol constant p_instr__reset = [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
+    pol constant p_instr_assert_eq = [0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0] + [0]*;
+    pol constant p_instr_div = [0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0] + [0]*;
+    pol constant p_instr_mul = [0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
+    pol constant p_instr_return = [0]*;
+    pol constant p_read_A0_pc = [0]*;
+    pol constant p_read_A0_t_0_0 = [0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0] + [0]*;
+    pol constant p_read_A0_t_0_1 = [0]*;
+    pol constant p_read_A0_t_1_0 = [0]*;
+    pol constant p_read_A0_t_1_1 = [0]*;
+    pol constant p_read_A1_pc = [0]*;
+    pol constant p_read_A1_t_0_0 = [0]*;
+    pol constant p_read_A1_t_0_1 = [0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0] + [0]*;
+    pol constant p_read_A1_t_1_0 = [0]*;
+    pol constant p_read_A1_t_1_1 = [0]*;
+    pol constant p_read_B0_pc = [0]*;
+    pol constant p_read_B0_t_0_0 = [0]*;
+    pol constant p_read_B0_t_0_1 = [0]*;
+    pol constant p_read_B0_t_1_0 = [0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0] + [0]*;
+    pol constant p_read_B0_t_1_1 = [0]*;
+    pol constant p_read_B1_pc = [0]*;
+    pol constant p_read_B1_t_0_0 = [0]*;
+    pol constant p_read_B1_t_0_1 = [0]*;
+    pol constant p_read_B1_t_1_0 = [0]*;
+    pol constant p_read_B1_t_1_1 = [0, 0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0] + [0]*;
+    pol constant p_read_C0_pc = [0]*;
+    pol constant p_read_C0_t_0_0 = [0]*;
+    pol constant p_read_C0_t_0_1 = [0]*;
+    pol constant p_read_C0_t_1_0 = [0]*;
+    pol constant p_read_C0_t_1_1 = [0]*;
+    pol constant p_read_C1_pc = [0]*;
+    pol constant p_read_C1_t_0_0 = [0]*;
+    pol constant p_read_C1_t_0_1 = [0]*;
+    pol constant p_read_C1_t_1_0 = [0]*;
+    pol constant p_read_C1_t_1_1 = [0]*;
+    pol constant p_read_D0_pc = [0]*;
+    pol constant p_read_D0_t_0_0 = [0]*;
+    pol constant p_read_D0_t_0_1 = [0]*;
+    pol constant p_read_D0_t_1_0 = [0]*;
+    pol constant p_read_D0_t_1_1 = [0]*;
+    pol constant p_read_D1_pc = [0]*;
+    pol constant p_read_D1_t_0_0 = [0]*;
+    pol constant p_read_D1_t_0_1 = [0]*;
+    pol constant p_read_D1_t_1_0 = [0]*;
+    pol constant p_read_D1_t_1_1 = [0]*;
+    pol constant p_reg_write_A0_t_0_0 = [0]*;
+    pol constant p_reg_write_A0_t_0_1 = [0]*;
+    pol constant p_reg_write_A0_t_1_0 = [0]*;
+    pol constant p_reg_write_A0_t_1_1 = [0]*;
+    pol constant p_reg_write_A1_t_0_0 = [0]*;
+    pol constant p_reg_write_A1_t_0_1 = [0]*;
+    pol constant p_reg_write_A1_t_1_0 = [0]*;
+    pol constant p_reg_write_A1_t_1_1 = [0]*;
+    pol constant p_reg_write_B0_t_0_0 = [0]*;
+    pol constant p_reg_write_B0_t_0_1 = [0]*;
+    pol constant p_reg_write_B0_t_1_0 = [0]*;
+    pol constant p_reg_write_B0_t_1_1 = [0]*;
+    pol constant p_reg_write_B1_t_0_0 = [0]*;
+    pol constant p_reg_write_B1_t_0_1 = [0]*;
+    pol constant p_reg_write_B1_t_1_0 = [0]*;
+    pol constant p_reg_write_B1_t_1_1 = [0]*;
+    pol constant p_reg_write_C0_t_0_0 = [0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0] + [0]*;
+    pol constant p_reg_write_C0_t_0_1 = [0]*;
+    pol constant p_reg_write_C0_t_1_0 = [0]*;
+    pol constant p_reg_write_C0_t_1_1 = [0]*;
+    pol constant p_reg_write_C1_t_0_0 = [0]*;
+    pol constant p_reg_write_C1_t_0_1 = [0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0] + [0]*;
+    pol constant p_reg_write_C1_t_1_0 = [0]*;
+    pol constant p_reg_write_C1_t_1_1 = [0]*;
+    pol constant p_reg_write_D0_t_0_0 = [0]*;
+    pol constant p_reg_write_D0_t_0_1 = [0]*;
+    pol constant p_reg_write_D0_t_1_0 = [0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0] + [0]*;
+    pol constant p_reg_write_D0_t_1_1 = [0]*;
+    pol constant p_reg_write_D1_t_0_0 = [0]*;
+    pol constant p_reg_write_D1_t_0_1 = [0]*;
+    pol constant p_reg_write_D1_t_1_0 = [0]*;
+    pol constant p_reg_write_D1_t_1_1 = [0, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0] + [0]*;
+    pol constant operation_id = [0]*;
+    pol constant latch = [1]*;
+namespace main_arith(65536);
+    pol commit operation_id;
+    std::utils::force_bool(operation_id);
+    std::array::new(4, |i| (1 - operation_id) * x2[i] = 0);
+    std::array::new(4, |i| operation_id * y2[i] = 0);
+    let quotient_hint = query |limb| match std::prover::eval(operation_id) {
+        1 => {
+            let y3 = y3_int();
+            let x1 = x1_int();
+            let quotient = y3 / x1;
+            std::prelude::Query::Hint(std::convert::fe(select_limb(quotient, limb)))
+        },
+        _ => std::prelude::Query::None,
+    };
+    pol commit y1_0(i) query quotient_hint(0);
+    pol commit y1_1(i) query quotient_hint(1);
+    pol commit y1_2(i) query quotient_hint(2);
+    pol commit y1_3(i) query quotient_hint(3);
+    let y1: expr[] = [y1_0, y1_1, y1_2, y1_3];
+    let remainder_hint = query |limb| match std::prover::eval(operation_id) {
+        1 => {
+            let y3 = y3_int();
+            let x1 = x1_int();
+            let remainder = y3 % x1;
+            std::prelude::Query::Hint(std::convert::fe(select_limb(remainder, limb)))
+        },
+        _ => std::prelude::Query::None,
+    };
+    pol commit x2_0(i) query remainder_hint(0);
+    pol commit x2_1(i) query remainder_hint(1);
+    pol commit x2_2(i) query remainder_hint(2);
+    pol commit x2_3(i) query remainder_hint(3);
+    let x2: expr[] = [x2_0, x2_1, x2_2, x2_3];
+    pol commit x1[4], y2[4], y3[4];
+    let select_limb = |x, i| if i >= 0 { x >> 24 - i * 8 & 255 } else { 0 };
+    let limbs_to_int: expr[] -> int = query |limbs| std::array::sum(std::array::map_enumerated(limbs, |i, limb| std::convert::int(std::prover::eval(limb)) << 24 - i * 8));
+    let x1_int = query || limbs_to_int(x1);
+    let y1_int = query || limbs_to_int(y1);
+    let x2_int = query || limbs_to_int(x2);
+    let y2_int = query || limbs_to_int(y2);
+    let y3_int = query || limbs_to_int(y3);
+    let combine: expr[] -> expr[] = |x| std::array::new(std::array::len(x) / 2, |i| x[2 * i + 1] + x[2 * i] * 2 ** 8);
+    pol x1c[2] = combine(x1);
+    pol y1c[2] = combine(y1);
+    pol x2c[2] = combine(x2);
+    pol y2c[2] = combine(y2);
+    pol y3c[2] = combine(y3);
+    let CLK8: col[8] = std::array::new(8, |i| (|row| if row % 8 == i { 1 } else { 0 }));
+    let CLK8_7: expr = CLK8[7];
+    let fixed_inside_8_block = |e| std::utils::unchanged_until(e, CLK8[7]);
+    std::array::map(x1, fixed_inside_8_block);
+    std::array::map(y1, fixed_inside_8_block);
+    std::array::map(x2, fixed_inside_8_block);
+    std::array::map(y2, fixed_inside_8_block);
+    std::array::map(y3, fixed_inside_8_block);
+    let dot_prod = |n, a, b| std::utils::sum(n, |i| a(i) * b(i));
+    let product = |a, b| (|n| dot_prod(n + 1, a, |i| b(n - i)));
+    let array_as_fun: expr[] -> (int -> expr) = |arr| (|i| if 0 <= i && i < std::array::len(arr) { arr[i] } else { 0 });
+    let shift_right = |fn, amount| (|i| fn(i - amount));
+    let x1f = array_as_fun(x1);
+    let y1f = array_as_fun(y1);
+    let x2f = array_as_fun(x2);
+    let y2f = array_as_fun(y2);
+    let y3f = array_as_fun(y3);
+    let eq0 = |nr| product(x1f, y1f)(nr) + x2f(nr) - shift_right(y2f, 4)(nr) - y3f(nr);
+    pol commit carry_low, carry_high;
+    let carry = carry_high * 2 ** 8 + carry_low;
+    carry * CLK8[0] = 0;
+    pol eq0_sum = std::utils::sum(8, |i| eq0(i) * CLK8[i]);
+    eq0_sum + carry = carry' * 2 ** 8;
+    pol commit sel[2];
+    std::array::map(sel, std::utils::force_bool);
+    1 $ [0, std::utils::sum(4, |i| x1[i] * CLK8[i]) + std::utils::sum(4, |i| y1[i] * CLK8[4 + i])] in main_arith_byte::latch $ [main_arith_byte::operation_id, main_arith_byte::BYTE];
+    1 $ [0, std::utils::sum(4, |i| x2[i] * CLK8[i]) + std::utils::sum(4, |i| y2[i] * CLK8[4 + i])] in main_arith_byte::latch $ [main_arith_byte::operation_id, main_arith_byte::BYTE];
+    1 $ [0, std::utils::sum(4, |i| y3[i] * CLK8[i])] in main_arith_byte::latch $ [main_arith_byte::operation_id, main_arith_byte::BYTE];
+    1 $ [0, carry_low] in main_arith_byte::latch $ [main_arith_byte::operation_id, main_arith_byte::BYTE];
+    1 $ [0, carry_high] in main_arith_byte::latch $ [main_arith_byte::operation_id, main_arith_byte::BYTE];
+namespace main_arith_byte(65536);
+    let BYTE: col = |i| i & 255;
+    pol constant latch = [1]*;
+    pol constant operation_id = [0]*;
