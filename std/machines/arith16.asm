@@ -13,14 +13,12 @@ use std::machines::range::Byte;
 
 // Arithmetic machine, ported mainly from Polygon: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/arith.pil
 // This machine supports eq0, which is the affine equation. Currently we only expose operations for mul and div.
-machine Arith16 with
+machine Arith16(byte: Byte) with
     latch: CLK8_7,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
-    Byte byte;
-    
     col witness operation_id;
 
     // operation_id has to be either mul or div.
