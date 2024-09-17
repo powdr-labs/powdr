@@ -20,7 +20,7 @@ use std::machines::split::split_bb::SplitBB;
 //
 // This version of the Poseidon machine receives memory pointers and interacts
 // with memory directly to fetch its inputs and write its outputs.
-machine PoseidonGLMemory(mem: Memory, split_BB: SplitBB) with
+machine PoseidonBB(mem: Memory, split_BB: SplitBB) with
     latch: CKL_0,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation
