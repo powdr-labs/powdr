@@ -9,8 +9,8 @@ use powdr_ast::{
     asm_analysis::{
         combine_flags, AssignmentStatement, Batch, CallableSymbol, CallableSymbolDefinitions,
         DebugDirective, FunctionStatement, InstructionDefinitionStatement, InstructionStatement,
-        LabelStatement, LinkDefinition, Machine, OperationSymbol, RegisterDeclarationStatement,
-        RegisterTy, Rom,
+        LabelStatement, LinkDefinition, Machine, MachineDegree, OperationSymbol,
+        RegisterDeclarationStatement, RegisterTy, Rom,
     },
     parsed::{
         self,
@@ -62,12 +62,12 @@ pub const ROM_SUBMACHINE_NAME: &str = "_rom";
 const ROM_ENTRY_POINT: &str = "get_line";
 
 fn rom_machine<'a>(
-    degree: Expression,
+    degree: MachineDegree,
     mut pil: Vec<PilStatement>,
     mut line_lookup: impl Iterator<Item = &'a str>,
 ) -> Machine {
     Machine {
-        degree: Some(degree),
+        degree,
         operation_id: Some(ROM_OPERATION_ID.into()),
         latch: Some(ROM_LATCH.into()),
         pil: {
@@ -283,10 +283,11 @@ impl<T: FieldElement> VMConverter<T> {
         // This is hacky: in the absence of proof objects, we want to support both monolithic proofs and composite proofs.
         // In the monolithic case, all degrees must be the same, so we align the degree of the rom to that of the vm.
         // In the composite case, we set the minimum degree for the rom, which is the number of lines in the code.
-        let rom_degree = input
-            .degree
-            .clone()
-            .unwrap_or_else(|| Expression::from(self.code_lines.len().next_power_of_two() as u32));
+        // this can lead to false negatives as we apply expression equality here, so `4` and `2 + 2` would be considered different.
+        let rom_degree = match input.degree.is_static() {
+            true => input.degree.clone(),
+            false => Expression::from(self.code_lines.len().next_power_of_two() as u32).into(),
+        };
 
         (
             input,
@@ -528,41 +529,29 @@ impl<T: FieldElement> VMConverter<T> {
             });
         });
 
-        for mut statement in body.0 {
-            if let PilStatement::Expression(source, expr) = statement {
-                match extract_update(expr) {
-                    (Some(var), expr) => {
-                        let reference = direct_reference(flag);
+        let instr_flag = direct_reference(flag);
+        for statement in body.0 {
+            let PilStatement::Expression(source, expr) = statement else {
+                panic!("Invalid statement for instruction body: {statement}");
+            };
+            if let Some((var, expr)) = try_extract_update(&expr) {
+                // reduce the update to linear by introducing intermediate variables
+                let expr = self.linearize(&format!("{flag}_{var}_update"), expr);
 
-                        // reduce the update to linear by introducing intermediate variables
-                        let expr = self.linearize(&format!("{flag}_{var}_update"), expr);
-
-                        self.registers
-                            .get_mut(&var)
-                            .unwrap()
-                            .conditioned_updates
-                            .push((reference, expr));
-                    }
-                    (None, expr) => self.pil.push(PilStatement::Expression(
-                        source,
-                        build::identity(direct_reference(flag) * expr.clone(), 0.into()),
-                    )),
-                }
+                self.registers
+                    .get_mut(&var)
+                    .unwrap()
+                    .conditioned_updates
+                    .push((instr_flag.clone(), expr));
             } else {
-                match &mut statement {
-                    PilStatement::PermutationIdentity(_, left, _)
-                    | PilStatement::PlookupIdentity(_, left, _) => {
-                        assert!(
-                                    left.selector.is_none(),
-                                    "LHS selector not supported, could and-combine with instruction flag later."
-                                );
-                        left.selector = Some(direct_reference(flag));
-                        self.pil.push(statement)
-                    }
-                    _ => {
-                        panic!("Invalid statement for instruction body: {statement}");
-                    }
-                }
+                let fun_call = Expression::FunctionCall(
+                    source.clone(),
+                    FunctionCall {
+                        function: absolute_reference("::std::constraints::make_conditional").into(),
+                        arguments: vec![expr, instr_flag.clone()],
+                    },
+                );
+                self.pil.push(PilStatement::Expression(source, fun_call))
             }
         }
     }
@@ -866,7 +855,11 @@ impl<T: FieldElement> VMConverter<T> {
                 | BinaryOperator::Identity
                 | BinaryOperator::NotEqual
                 | BinaryOperator::GreaterEqual
-                | BinaryOperator::Greater => {
+                | BinaryOperator::Greater
+                | BinaryOperator::Is
+                | BinaryOperator::In
+                | BinaryOperator::Select
+                | BinaryOperator::Connect => {
                     panic!("Invalid operation in expression {left} {op} {right}")
                 }
             },
@@ -1027,10 +1020,15 @@ impl<T: FieldElement> VMConverter<T> {
         let pc_name = self.pc_name.clone();
         let free_value_pil = self
             .assignment_register_names()
-            .map(|reg| {
+            .flat_map(|reg| {
                 let free_value = format!("{reg}_free_value");
                 let prover_query_arms = free_value_query_arms.remove(reg).unwrap();
-                let prover_query = (!prover_query_arms.is_empty()).then_some({
+                let mut statements = vec![witness_column(
+                    SourceRef::unknown(),
+                    free_value.clone(),
+                    None,
+                )];
+                if !prover_query_arms.is_empty() {
                     let mut prover_query_arms = prover_query_arms;
                     prover_query_arms.push(MatchArm {
                         pattern: Pattern::CatchAll(SourceRef::unknown()),
@@ -1045,23 +1043,30 @@ impl<T: FieldElement> VMConverter<T> {
                         .into(),
                     );
 
-                    let lambda = LambdaExpression {
-                        kind: FunctionKind::Query,
-                        params: vec![Pattern::Variable(SourceRef::unknown(), "__i".to_string())],
-                        body: Box::new(
+                    let call_to_handle_query = FunctionCall {
+                        function: Box::new(absolute_reference("::std::prover::handle_query")),
+                        arguments: vec![
+                            direct_reference(&free_value),
+                            direct_reference("__i"),
                             MatchExpression {
                                 scrutinee,
                                 arms: prover_query_arms,
                             }
                             .into(),
-                        ),
-                        outer_var_references: Default::default(),
-                    }
-                    .into();
+                        ],
+                    };
+                    let prover_function = LambdaExpression {
+                        kind: FunctionKind::Query,
+                        params: vec![Pattern::Variable(SourceRef::unknown(), "__i".to_string())],
+                        body: Box::new(call_to_handle_query.into()),
+                    };
 
-                    FunctionDefinition::Expression(lambda)
-                });
-                witness_column(SourceRef::unknown(), free_value, prover_query)
+                    statements.push(PilStatement::Expression(
+                        SourceRef::unknown(),
+                        prover_function.into(),
+                    ));
+                }
+                statements
             })
             .collect::<Vec<_>>();
         self.pil.extend(free_value_pil);
@@ -1187,7 +1192,7 @@ impl<T: FieldElement> VMConverter<T> {
                     ));
                     (counter + 1, direct_reference(intermediate_name))
                 }
-                op => unimplemented!("{op} is not supported when linearizing"),
+                op => unimplemented!("Binary operator \"{op}\" is not supported when linearizing"),
             },
             expr => (counter, expr),
         }
@@ -1286,7 +1291,8 @@ fn witness_column<S: Into<String>>(
     )
 }
 
-fn extract_update(expr: Expression) -> (Option<String>, Expression) {
+/// If the expression is of the form "x' = expr", returns x and expr.
+fn try_extract_update(expr: &Expression) -> Option<(String, Expression)> {
     let Expression::BinaryOperation(
         _,
         BinaryOperation {
@@ -1296,32 +1302,24 @@ fn extract_update(expr: Expression) -> (Option<String>, Expression) {
         },
     ) = expr
     else {
-        panic!("Invalid statement for instruction body, expected constraint: {expr}");
+        return None;
     };
     // TODO check that there are no other "next" references in the expression
-    match *left {
+    match left.as_ref() {
         Expression::UnaryOperation(
-            source_ref,
+            _,
             UnaryOperation {
                 op: UnaryOperator::Next,
                 expr: column,
             },
-        ) => match *column {
-            Expression::Reference(_, column) => {
-                (Some(column.try_to_identifier().unwrap().clone()), *right)
-            }
-            _ => (
-                None,
-                Expression::UnaryOperation(
-                    source_ref,
-                    UnaryOperation {
-                        op: UnaryOperator::Next,
-                        expr: column,
-                    },
-                ) - *right,
-            ),
+        ) => match column.as_ref() {
+            Expression::Reference(_, column) => Some((
+                column.try_to_identifier().unwrap().clone(),
+                (**right).clone(),
+            )),
+            _ => None,
         },
-        _ => (None, *left - *right),
+        _ => None,
     }
 }
 

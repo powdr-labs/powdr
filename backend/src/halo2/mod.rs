@@ -4,11 +4,12 @@ use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use crate::field_filter::generalize_factory;
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::constant_evaluator::{get_uniquely_sized_cloned, VariablySizedColumn};
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{DegreeType, FieldElement};
+use powdr_number::{Bn254Field, DegreeType, FieldElement};
 use prover::{generate_setup, Halo2Prover};
 
 use serde::de::{self, Deserializer};
@@ -22,8 +23,6 @@ mod prover;
 
 use halo2_proofs::poly::commitment::Params;
 use halo2_proofs::SerdeFormat;
-
-pub(crate) struct Halo2ProverFactory;
 
 #[derive(Clone)]
 enum ProofType {
@@ -73,17 +72,19 @@ where
     hex::decode(s).map_err(de::Error::custom)
 }
 
-impl<F: FieldElement> BackendFactory<F> for Halo2ProverFactory {
+struct Bn254Factory;
+
+impl BackendFactory<Bn254Field> for Bn254Factory {
     fn create(
         &self,
-        pil: Arc<Analyzed<F>>,
-        fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
+        pil: Arc<Analyzed<Bn254Field>>,
+        fixed: Arc<Vec<(String, VariablySizedColumn<Bn254Field>)>>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,
         options: BackendOptions,
-    ) -> Result<Box<dyn crate::Backend<F>>, Error> {
+    ) -> Result<Box<dyn crate::Backend<Bn254Field>>, Error> {
         if pil.degrees().len() > 1 {
             return Err(Error::NoVariableDegreeAvailable);
         }
@@ -112,12 +113,14 @@ impl<F: FieldElement> BackendFactory<F> for Halo2ProverFactory {
     }
 }
 
+generalize_factory!(Halo2ProverFactory <- Bn254Factory, [Bn254Field]);
+
 fn fe_slice_to_string<F: FieldElement>(fe: &[F]) -> Vec<String> {
     fe.iter().map(|x| x.to_string()).collect()
 }
 
-impl<T: FieldElement> Backend<T> for Halo2Prover<T> {
-    fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
+impl Backend<Bn254Field> for Halo2Prover {
+    fn verify(&self, proof: &[u8], instances: &[Vec<Bn254Field>]) -> Result<(), Error> {
         let proof: Halo2Proof = bincode::deserialize(proof).unwrap();
         // TODO should do a verification refactoring making it a 1d vec
         assert!(instances.len() == 1);
@@ -137,9 +140,9 @@ impl<T: FieldElement> Backend<T> for Halo2Prover<T> {
 
     fn prove(
         &self,
-        witness: &[(String, Vec<T>)],
+        witness: &[(String, Vec<Bn254Field>)],
         prev_proof: Option<Proof>,
-        witgen_callback: WitgenCallback<T>,
+        witgen_callback: WitgenCallback<Bn254Field>,
     ) -> Result<Proof, Error> {
         let proof_and_publics = match self.proof_type() {
             ProofType::Poseidon => self.prove_poseidon(witness, witgen_callback),

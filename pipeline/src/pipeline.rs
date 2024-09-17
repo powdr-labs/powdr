@@ -1,5 +1,6 @@
 use std::{
     borrow::Borrow,
+    collections::HashMap,
     fmt::Display,
     fs,
     io::{self, BufReader},
@@ -20,7 +21,7 @@ use powdr_ast::{
 };
 use powdr_backend::{Backend, BackendOptions, BackendType, Proof};
 use powdr_executor::{
-    constant_evaluator::{self, get_uniquely_sized_cloned, VariablySizedColumn},
+    constant_evaluator::{self, VariablySizedColumn},
     witgen::{
         chain_callbacks, extract_publics, unused_query_callback, QueryCallback, WitgenCallback,
         WitgenCallbackContext, WitnessGenerator,
@@ -549,9 +550,30 @@ impl<T: FieldElement> Pipeline<T> {
 
         if self.arguments.export_witness_csv {
             if let Some(path) = self.path_if_should_write(|name| format!("{name}_columns.csv"))? {
-                // TODO: Handle multiple sizes
-                let fixed = get_uniquely_sized_cloned(fixed).unwrap();
-                let columns = fixed.iter().chain(witness.iter()).collect::<Vec<_>>();
+                // get the column size for each namespace. This assumes all witness columns of the same namespace have the same size.
+                let witness_sizes: HashMap<&str, u64> = witness
+                    .iter()
+                    .map(|(name, values)| {
+                        let namespace = name.split("::").next().unwrap();
+                        (namespace, values.len() as u64)
+                    })
+                    .collect();
+
+                // choose the fixed column of the correct size. This assumes any namespace with no witness columns has a unique size
+                let fixed = fixed.iter().map(|(name, columns)| {
+                    let namespace = name.split("::").next().unwrap();
+                    let columns = witness_sizes
+                        .get(&namespace)
+                        // if we have witness columns, use their size
+                        .map(|size| columns.get_by_size(*size).unwrap())
+                        // otherwise, return the unique size
+                        .unwrap_or_else(|| columns.get_uniquely_sized().unwrap());
+                    (name, columns)
+                });
+
+                let columns = fixed
+                    .chain(witness.iter().map(|(name, values)| (name, values.as_ref())))
+                    .collect::<Vec<_>>();
 
                 let csv_file = fs::File::create(path).map_err(|e| vec![format!("{}", e)])?;
                 write_polys_csv_file(csv_file, self.arguments.csv_render_mode, &columns);
@@ -753,7 +775,8 @@ impl<T: FieldElement> Pipeline<T> {
         let linked = self.artifact.parsed_pil_file.take().unwrap();
 
         self.log("Analyzing PIL and computing constraints...");
-        let analyzed = powdr_pil_analyzer::analyze_ast(linked);
+        let analyzed =
+            powdr_pil_analyzer::analyze_ast(linked).map_err(output_pil_analysis_errors)?;
         self.maybe_write_pil(&analyzed, "_analyzed")?;
         self.log("done.");
 
@@ -767,7 +790,8 @@ impl<T: FieldElement> Pipeline<T> {
         };
 
         self.log("Analyzing PIL and computing constraints...");
-        let analyzed = powdr_pil_analyzer::analyze_file(pil_file);
+        let analyzed =
+            powdr_pil_analyzer::analyze_file(pil_file).map_err(output_pil_analysis_errors)?;
         self.maybe_write_pil(&analyzed, "_analyzed")?;
         self.log("done.");
 
@@ -781,7 +805,8 @@ impl<T: FieldElement> Pipeline<T> {
         };
 
         self.log("Analyzing PIL and computing constraints...");
-        let analyzed = powdr_pil_analyzer::analyze_string(pil_string);
+        let analyzed =
+            powdr_pil_analyzer::analyze_string(pil_string).map_err(output_pil_analysis_errors)?;
         self.maybe_write_pil(&analyzed, "_analyzed")?;
         self.log("done.");
 
@@ -1079,4 +1104,15 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn host_context(&self) -> &HostContext {
         &self.host_context
     }
+}
+
+fn output_pil_analysis_errors(errors: Vec<powdr_parser_util::Error>) -> Vec<String> {
+    eprintln!("Error analyzing PIL file:");
+    errors
+        .into_iter()
+        .map(|e| {
+            e.output_to_stderr();
+            e.to_string()
+        })
+        .collect()
 }

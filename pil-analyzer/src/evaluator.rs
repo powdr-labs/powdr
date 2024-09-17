@@ -29,8 +29,15 @@ use powdr_parser_util::SourceRef;
 pub fn evaluate_expression<'a, T: FieldElement>(
     expr: &'a Expression,
     definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    solved_impls: &'a HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
-    evaluate(expr, &mut Definitions(definitions))
+    evaluate(
+        expr,
+        &mut Definitions {
+            definitions,
+            solved_impls,
+        },
+    )
 }
 
 /// Evaluates an expression given a symbol lookup implementation
@@ -110,6 +117,8 @@ pub enum EvalError {
     DataNotAvailable,
     /// Failed assertion, with reason.
     FailedAssertion(String),
+    /// Failure when running a prover function (non-recoverable).
+    ProverError(String),
 }
 
 impl Display for EvalError {
@@ -122,6 +131,7 @@ impl Display for EvalError {
             EvalError::SymbolNotFound(msg) => write!(f, "Symbol not found: {msg}"),
             EvalError::DataNotAvailable => write!(f, "Data not (yet) available."),
             EvalError::FailedAssertion(msg) => write!(f, "Assertion failed: {msg}"),
+            EvalError::ProverError(msg) => write!(f, "Error executing prover function: {msg}"),
         }
     }
 }
@@ -310,7 +320,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
     }
 }
 
-const BUILTINS: [(&str, BuiltinFunction); 11] = [
+const BUILTINS: [(&str, BuiltinFunction); 20] = [
     ("std::array::len", BuiltinFunction::ArrayLen),
     ("std::check::panic", BuiltinFunction::Panic),
     ("std::convert::expr", BuiltinFunction::ToExpr),
@@ -319,9 +329,24 @@ const BUILTINS: [(&str, BuiltinFunction); 11] = [
     ("std::debug::print", BuiltinFunction::Print),
     ("std::field::modulus", BuiltinFunction::Modulus),
     ("std::prelude::challenge", BuiltinFunction::Challenge),
+    (
+        "std::prover::new_witness_col_at_stage",
+        BuiltinFunction::NewWitAtStage,
+    ),
+    ("std::prover::provide_value", BuiltinFunction::ProvideValue),
     ("std::prelude::set_hint", BuiltinFunction::SetHint),
+    ("std::prover::min_degree", BuiltinFunction::MinDegree),
+    ("std::prover::max_degree", BuiltinFunction::MaxDegree),
     ("std::prover::degree", BuiltinFunction::Degree),
     ("std::prover::eval", BuiltinFunction::Eval),
+    ("std::prover::try_eval", BuiltinFunction::TryEval),
+    ("std::prover::try_eval", BuiltinFunction::TryEval),
+    ("std::prover::get_input", BuiltinFunction::GetInput),
+    (
+        "std::prover::get_input_from_channel",
+        BuiltinFunction::GetInputFromChannel,
+    ),
+    ("std::prover::output_byte", BuiltinFunction::OutputByte),
 ];
 
 #[derive(Clone, Copy, Debug)]
@@ -344,12 +369,28 @@ pub enum BuiltinFunction {
     ToFe,
     /// std::prover::challenge: int, int -> expr, constructs a challenge with a given stage and ID.
     Challenge,
+    /// std::prover::new_witness_col_at_stage: string, int -> expr, creates a new witness column at a certain proof stage.
+    NewWitAtStage,
+    /// std::prover::provide_value: expr, int, fe -> (), provides a value for a witness column at a given row.
+    ProvideValue,
     /// std::prelude::set_hint: expr, (int -> std::prelude::Query) -> (), adds a hint to a witness column.
     SetHint,
-    /// std::prover::degree: -> int, returns the current column length / degree.
+    /// std::prover::min_degree: -> int, returns the minimum column length / degree.
+    MinDegree,
+    /// std::prover::max_degree: -> int, returns the maximum column length / degree.
+    MaxDegree,
+    /// std::prover::degree: -> int, returns the column length / degree, if the minimum and maximum are equal.
     Degree,
     /// std::prover::eval: expr -> fe, evaluates an expression on the current row
     Eval,
+    /// std::prover::try_eval: expr -> std::prelude::Option<fe>, evaluates an expression on the current row
+    TryEval,
+    /// std::prover::get_input: int -> fe, returns the value of a prover-provided and uncommitted input
+    GetInput,
+    /// std::prover::get_input_from_channel: int, int -> fe, returns the value of a prover-provided and uncommitted input from a certain channel
+    GetInputFromChannel,
+    /// std::prover::output_byte: int, int -> (), outputs a byte to a file descriptor
+    OutputByte,
 }
 
 impl<'a, T: Display> Display for Value<'a, T> {
@@ -409,19 +450,22 @@ impl<'a, T> Closure<'a, T> {
     }
 }
 
-pub struct Definitions<'a>(pub &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>);
+pub struct Definitions<'a> {
+    pub definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    pub solved_impls: &'a HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
+}
 
 impl<'a> Definitions<'a> {
     /// Implementation of `lookup` that allows to provide a different implementation
     /// of SymbolLookup for the recursive call.
     pub fn lookup_with_symbols<T: FieldElement>(
         definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+        solved_impls: &'a HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
         name: &str,
         type_args: &Option<Vec<Type>>,
         symbols: &mut impl SymbolLookup<'a, T>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         let name = name.to_string();
-
         let (symbol, value) = definitions
             .get(&name)
             .ok_or_else(|| EvalError::SymbolNotFound(format!("Symbol {name} not found.")))?;
@@ -470,8 +514,20 @@ impl<'a> Definitions<'a> {
                 Some(FunctionValueDefinition::TypeConstructor(TypeConstructor::Struct(
                     struct_decl,
                     _fields,
-                ))) => {
-                    Value::TypeConstructor(&struct_decl.name).into() // TODO Check this
+                ))) => Value::TypeConstructor(&struct_decl.name).into(),
+                Some(FunctionValueDefinition::TraitFunction(_, _)) => {
+                    let type_arg = type_args.as_ref().unwrap();
+                    let Expression::LambdaExpression(_, lambda) =
+                        solved_impls[&name][type_arg].as_ref()
+                    else {
+                        unreachable!()
+                    };
+                    let closure = Closure {
+                        lambda,
+                        environment: vec![],
+                        type_args: HashMap::new(),
+                    };
+                    Value::Closure(closure).into()
                 }
                 _ => Err(EvalError::Unsupported(
                     "Cannot evaluate arrays and queries.".to_string(),
@@ -487,17 +543,11 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Definitions<'a> {
         name: &str,
         type_args: &Option<Vec<Type>>,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        Self::lookup_with_symbols(self.0, name, type_args, self)
+        Self::lookup_with_symbols(self.definitions, self.solved_impls, name, type_args, self)
     }
 
     fn lookup_public_reference(&self, name: &str) -> Result<Arc<Value<'a, T>>, EvalError> {
         Ok(Value::from(AlgebraicExpression::PublicReference(name.to_string())).into())
-    }
-}
-
-impl<'a> From<&'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>> for Definitions<'a> {
-    fn from(value: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>) -> Self {
-        Definitions(value)
     }
 }
 
@@ -555,6 +605,18 @@ pub trait SymbolLookup<'a, T: FieldElement> {
         Err(EvalError::DataNotAvailable)
     }
 
+    fn min_degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Err(EvalError::Unsupported(
+            "Cannot evaluate min degree.".to_string(),
+        ))
+    }
+
+    fn max_degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Err(EvalError::Unsupported(
+            "Cannot evaluate max degree.".to_string(),
+        ))
+    }
+
     fn degree(&self) -> Result<Arc<Value<'a, T>>, EvalError> {
         Err(EvalError::Unsupported(
             "Cannot evaluate degree.".to_string(),
@@ -565,6 +627,7 @@ pub trait SymbolLookup<'a, T: FieldElement> {
         &mut self,
         name: &str,
         _type: Option<&Type>,
+        _stage: Option<u32>,
         _value: Option<Arc<Value<'a, T>>>,
         _source: SourceRef,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
@@ -590,6 +653,39 @@ pub trait SymbolLookup<'a, T: FieldElement> {
     ) -> Result<(), EvalError> {
         Err(EvalError::Unsupported(
             "Tried to add constraints outside of statement context.".to_string(),
+        ))
+    }
+
+    fn provide_value(
+        &mut self,
+        _col: Arc<Value<'a, T>>,
+        _row: Arc<Value<'a, T>>,
+        _value: Arc<Value<'a, T>>,
+    ) -> Result<(), EvalError> {
+        Err(EvalError::Unsupported(
+            "Tried to provide value outside of prover function.".to_string(),
+        ))
+    }
+
+    fn get_input(&mut self, _index: usize) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Err(EvalError::Unsupported(
+            "Tried to get input outside of prover function.".to_string(),
+        ))
+    }
+
+    fn get_input_from_channel(
+        &mut self,
+        _channel: u32,
+        _index: usize,
+    ) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Err(EvalError::Unsupported(
+            "Tried to get input from channel outside of prover function.".to_string(),
+        ))
+    }
+
+    fn output_byte(&mut self, _fd: u32, _byte: u8) -> Result<(), EvalError> {
+        Err(EvalError::Unsupported(
+            "Tried to output byte outside of prover function.".to_string(),
         ))
     }
 }
@@ -829,7 +925,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             };
             let value = s.value.as_ref().map(|_| self.value_stack.pop().unwrap());
             self.symbols
-                .new_column(name, s.ty.as_ref(), value, SourceRef::unknown())?
+                .new_column(name, s.ty.as_ref(), None, value, SourceRef::unknown())?
         } else {
             // Regular local variable declaration.
             self.value_stack.pop().unwrap()
@@ -882,7 +978,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             Expression::BinaryOperation(_, BinaryOperation { op, .. }) => {
                 let right = self.value_stack.pop().unwrap();
                 let left = self.value_stack.pop().unwrap();
-                evaluate_binary_operation(&left, *op, &right)?
+                evaluate_binary_operation(left, *op, right)?
             }
             Expression::UnaryOperation(_, UnaryOperation { op, .. }) => {
                 let inner = self.value_stack.pop().unwrap();
@@ -909,7 +1005,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     ))
                     .into(),
                     (_, inner) => Err(EvalError::TypeError(format!(
-                        "Operator {op} not supported on types: {inner}: {}",
+                        "Operator \"{op}\" not supported on types: {inner}: {}",
                         inner.type_formatted()
                     )))?,
                 }
@@ -1094,11 +1190,11 @@ fn evaluate_literal<'a, T: FieldElement>(
 }
 
 fn evaluate_binary_operation<'a, T: FieldElement>(
-    left: &Value<'a, T>,
+    left: Arc<Value<'a, T>>,
     op: BinaryOperator,
-    right: &Value<'a, T>,
+    right: Arc<Value<'a, T>>,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
-    Ok(match (left, op, right) {
+    Ok(match (left.as_ref(), op, right.as_ref()) {
         (Value::Array(l), BinaryOperator::Add, Value::Array(r)) => {
             Value::Array(l.iter().chain(r).cloned().collect::<Vec<_>>()).into()
         }
@@ -1165,12 +1261,75 @@ fn evaluate_binary_operation<'a, T: FieldElement>(
             ))
             .into(),
         },
+        (Value::Expression(_), BinaryOperator::Select, Value::Array(_)) => {
+            Value::Enum("SelectedExprs", Some(vec![left, right])).into()
+        }
+        (_, BinaryOperator::In | BinaryOperator::Is, _) => {
+            let (left_sel, left_exprs) = to_selected_exprs_expanded(&left);
+            let (right_sel, right_exprs) = to_selected_exprs_expanded(&right);
+            let name = match op {
+                BinaryOperator::In => "Lookup",
+                BinaryOperator::Is => "Permutation",
+                _ => unreachable!(),
+            };
+            let selectors = Value::Tuple(vec![left_sel, right_sel]).into();
+            let expr_pairs = zip_expressions_for_op(op, left_exprs, right_exprs)?;
+            Value::Enum(name, Some(vec![selectors, expr_pairs])).into()
+        }
+        (Value::Array(left), BinaryOperator::Connect, Value::Array(right)) => {
+            let expr_pairs = zip_expressions_for_op(op, left, right)?;
+            Value::Enum("Connection", Some(vec![expr_pairs])).into()
+        }
         (l, op, r) => Err(EvalError::TypeError(format!(
-            "Operator {op} not supported on types: {l}: {}, {r}: {}",
+            "Operator \"{op}\" not supported on types: {l}: {}, {r}: {}",
             l.type_formatted(),
             r.type_formatted()
         )))?,
     })
+}
+
+fn zip_expressions_for_op<'a, T>(
+    op: BinaryOperator,
+    left: &[Arc<Value<'a, T>>],
+    right: &[Arc<Value<'a, T>>],
+) -> Result<Arc<Value<'a, T>>, EvalError> {
+    if left.len() != right.len() {
+        Err(EvalError::TypeError(format!(
+            "Tried to use \"{op}\" operator on arrays of different lengths: {} and {}",
+            left.len(),
+            right.len()
+        )))?
+    }
+    Ok(Value::Array(
+        left.iter()
+            .zip(right)
+            .map(|(l, r)| Value::Tuple(vec![l.clone(), r.clone()]).into())
+            .collect(),
+    )
+    .into())
+}
+
+/// Turns a value that can be interpreted as a seleceted expressions (either "a $ [b, c]" or "[b, c]")
+/// into the selector and the exprs. The selector is already wrappend into a std::prelude::Option.
+fn to_selected_exprs_expanded<'a, 'b, T>(
+    selected_exprs: &'a Value<'b, T>,
+) -> (Arc<Value<'b, T>>, &'a Vec<Arc<Value<'b, T>>>) {
+    match selected_exprs {
+        // An array of expressions or a selected expressions without selector.
+        Value::Array(items) | Value::Enum("JustExprs", Some(items)) => {
+            (Value::Enum("None", None).into(), &items)
+        }
+        // A selected expressions
+        Value::Enum("SelectedExprs", Some(items)) => {
+            let [sel, exprs] = &items[..] else { panic!() };
+            let selector = Value::Enum("Some", Some(vec![sel.clone()])).into();
+            let Value::Array(exprs) = exprs.as_ref() else {
+                panic!();
+            };
+            (selector, exprs)
+        }
+        _ => panic!(),
+    }
 }
 
 #[allow(clippy::print_stdout)]
@@ -1188,9 +1347,17 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
         BuiltinFunction::ToFe => 1,
         BuiltinFunction::ToInt => 1,
         BuiltinFunction::Challenge => 2,
+        BuiltinFunction::NewWitAtStage => 2,
+        BuiltinFunction::ProvideValue => 3,
         BuiltinFunction::SetHint => 2,
+        BuiltinFunction::MinDegree => 0,
+        BuiltinFunction::MaxDegree => 0,
         BuiltinFunction::Degree => 0,
         BuiltinFunction::Eval => 1,
+        BuiltinFunction::TryEval => 1,
+        BuiltinFunction::GetInput => 1,
+        BuiltinFunction::GetInputFromChannel => 2,
+        BuiltinFunction::OutputByte => 2,
     };
 
     if arguments.len() != params {
@@ -1257,12 +1424,64 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
             }))
             .into()
         }
+        BuiltinFunction::NewWitAtStage => {
+            let [name, stage] = &arguments[..] else {
+                panic!()
+            };
+            let Value::String(name) = name.as_ref() else {
+                panic!()
+            };
+            let Value::Integer(stage) = (**stage).clone() else {
+                panic!()
+            };
+            let stage = Some(u32::try_from(stage).unwrap());
+            symbols.new_column(name, Some(&Type::Col), stage, None, SourceRef::unknown())?
+        }
+        BuiltinFunction::ProvideValue => {
+            let value = arguments.pop().unwrap();
+            let row = arguments.pop().unwrap();
+            let col = arguments.pop().unwrap();
+            symbols.provide_value(col, row, value)?;
+            Value::Tuple(vec![]).into()
+        }
+        BuiltinFunction::GetInput => {
+            let index = arguments.pop().unwrap();
+            let Value::Integer(index) = index.as_ref() else {
+                panic!()
+            };
+            symbols.get_input(usize::try_from(index).unwrap())?
+        }
+        BuiltinFunction::GetInputFromChannel => {
+            let index = arguments.pop().unwrap();
+            let channel = arguments.pop().unwrap();
+            let Value::Integer(index) = index.as_ref() else {
+                panic!()
+            };
+            let Value::Integer(channel) = channel.as_ref() else {
+                panic!()
+            };
+            symbols.get_input_from_channel(
+                u32::try_from(channel).unwrap(),
+                usize::try_from(index).unwrap(),
+            )?
+        }
+        BuiltinFunction::OutputByte => {
+            let byte = arguments.pop().unwrap();
+            let fd = arguments.pop().unwrap();
+            let (Value::Integer(fd), Value::Integer(byte)) = (fd.as_ref(), byte.as_ref()) else {
+                panic!()
+            };
+            symbols.output_byte(u32::try_from(fd).unwrap(), u8::try_from(byte).unwrap())?;
+            Value::Tuple(vec![]).into()
+        }
         BuiltinFunction::SetHint => {
             let expr = arguments.pop().unwrap();
             let col = arguments.pop().unwrap();
             symbols.set_hint(col, expr)?;
             Value::Tuple(vec![]).into()
         }
+        BuiltinFunction::MaxDegree => symbols.max_degree()?,
+        BuiltinFunction::MinDegree => symbols.min_degree()?,
         BuiltinFunction::Degree => symbols.degree()?,
         BuiltinFunction::Eval => {
             let arg = arguments.pop().unwrap();
@@ -1273,6 +1492,22 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
                     v.type_formatted()
                 ),
             }
+        }
+        BuiltinFunction::TryEval => {
+            let arg = arguments.pop().unwrap();
+            let result = match arg.as_ref() {
+                Value::Expression(e) => symbols.eval_expr(e),
+                v => panic!(
+                    "Expected expression for std::prover::eval, but got {v}: {}",
+                    v.type_formatted()
+                ),
+            };
+            match result {
+                Ok(v) => Value::Enum("Some", Some(vec![v])),
+                Err(EvalError::DataNotAvailable) => Value::Enum("None", None),
+                Err(e) => return Err(e),
+            }
+            .into()
         }
     })
 }
@@ -1289,7 +1524,7 @@ pub fn evaluate_binary_operation_field<'a, T: FieldElement>(
         BinaryOperator::Equal => Value::Bool(left == right),
         BinaryOperator::NotEqual => Value::Bool(left != right),
         _ => Err(EvalError::TypeError(format!(
-            "Invalid operator {op} on field elements: {left} {op} {right}"
+            "Invalid operator \"{op}\" on field elements: {left} {op} {right}"
         )))?,
     }
     .into())
@@ -1319,458 +1554,8 @@ pub fn evaluate_binary_operation_integer<'a, T>(
         BinaryOperator::GreaterEqual => Value::Bool(left >= right),
         BinaryOperator::Greater => Value::Bool(left > right),
         _ => Err(EvalError::TypeError(format!(
-            "Invalid operator {op} on integers: {left} {op} {right}"
+            "Invalid operator \"{op}\" on integers: {left} {op} {right}"
         )))?,
     }
     .into())
-}
-
-#[cfg(test)]
-mod test {
-    use crate::evaluator;
-    use powdr_number::GoldilocksField;
-    use pretty_assertions::assert_eq;
-
-    use crate::analyze_string;
-
-    use super::*;
-
-    fn parse_and_evaluate_symbol(input: &str, symbol: &str) -> String {
-        let analyzed = analyze_string::<GoldilocksField>(input);
-        let Some(FunctionValueDefinition::Expression(TypedExpression {
-            e: symbol,
-            type_scheme: _,
-        })) = &analyzed.definitions[symbol].1
-        else {
-            panic!()
-        };
-        evaluate::<GoldilocksField>(symbol, &mut Definitions(&analyzed.definitions))
-            .unwrap()
-            .to_string()
-    }
-
-    pub fn evaluate_function<T: FieldElement>(input: &str, function: &str) -> T {
-        let analyzed = analyze_string::<GoldilocksField>(input);
-        let mut symbols = evaluator::Definitions(&analyzed.definitions);
-        let function = symbols.lookup(function, &None).unwrap();
-        let result = evaluator::evaluate_function_call(function, vec![], &mut symbols)
-            .unwrap()
-            .as_ref()
-            .clone();
-        match result {
-            Value::FieldElement(fe) => fe,
-            _ => panic!("Expected field element but got {result}"),
-        }
-    }
-
-    #[test]
-    fn trivial() {
-        let src = r#"namespace Main(16);
-            let x: int = 1 + 20;
-        "#;
-        let result = parse_and_evaluate_symbol(src, "Main::x");
-        assert_eq!(result, r#"21"#);
-    }
-
-    #[test]
-    fn recursion() {
-        let src = r#"namespace Main(16);
-            let x: int -> int = |i| match i { 0 => 0, _ => x(i - 1) + 1 };
-            let y = x(4);
-        "#;
-        let result = parse_and_evaluate_symbol(src, "Main::y");
-        assert_eq!(result, r#"4"#);
-    }
-
-    #[test]
-    fn arrays_and_strings() {
-        let src = r#"namespace Main(16);
-            let words = ["the", "quick", "brown", "fox"];
-            let translate = |w| match w {
-                "the" => "franz",
-                "quick" => "jagt",
-                "brown" => "mit",
-                "fox" => "dem",
-                _ => "?",
-            };
-            let map_array = |arr, f| [f(arr[0]), f(arr[1]), f(arr[2]), f(arr[3])];
-            let translated = map_array(words, translate);
-        "#;
-        let result = parse_and_evaluate_symbol(src, "Main::translated");
-        assert_eq!(result, r#"["franz", "jagt", "mit", "dem"]"#);
-    }
-
-    #[test]
-    fn fibonacci() {
-        let src = r#"namespace Main(16);
-            let fib: int -> int = |i| match i {
-                0 => 0,
-                1 => 1,
-                _ => fib(i - 1) + fib(i - 2),
-            };
-            let result = fib(20);
-        "#;
-        assert_eq!(
-            parse_and_evaluate_symbol(src, "Main::result"),
-            "6765".to_string()
-        );
-    }
-
-    #[test]
-    fn capturing() {
-        let src = r#"namespace Main(16);
-            let f: int, (int -> int) -> (int -> int) = |n, g| match n { 99 => |i| n, 1 => g };
-            let result = f(1, f(99, |x| x + 3000))(0);
-        "#;
-        // If the lambda function returned by the expression f(99, ...) does not
-        // properly capture the value of n in a closure, then f(1, ...) would return 1.
-        assert_eq!(
-            parse_and_evaluate_symbol(src, "Main::result"),
-            "99".to_string()
-        );
-    }
-
-    #[test]
-    fn array_len() {
-        let src = r#"
-            let N: int = 2;
-            namespace std::array(N);
-            let len = 123;
-            namespace F(N);
-            let x = std::array::len([1, N, 3]);
-            let empty: int[] = [];
-            let y = std::array::len(empty);
-        "#;
-        assert_eq!(parse_and_evaluate_symbol(src, "F::x"), "3".to_string());
-        assert_eq!(parse_and_evaluate_symbol(src, "F::y"), "0".to_string());
-    }
-
-    #[test]
-    #[should_panic = r#"FailedAssertion("this text")"#]
-    fn panic_complex() {
-        let src = r#"
-            let N: int = 2;
-            namespace std::check(N);
-            let panic = 123;
-            namespace F(N);
-            let concat = |a, b| a + b;
-            let arg: int = 1;
-            let x: int[] = (|i| if i == 1 { std::check::panic(concat("this ", "text")) } else { [9] })(arg);
-        "#;
-        parse_and_evaluate_symbol(src, "F::x");
-    }
-
-    #[test]
-    #[should_panic = r#"FailedAssertion("text")"#]
-    fn panic_string() {
-        let src = r#"
-            let N: int = 2;
-            namespace std::check(N);
-            let panic = 123;
-            namespace F(N);
-            let x: int = std::check::panic("text");
-        "#;
-        parse_and_evaluate_symbol(src, "F::x");
-    }
-
-    #[test]
-    fn hex_number_outside_field() {
-        // This tests that the parser does not lose precision when parsing large integers.
-        let src = r#"
-            let N: int = 0x9999999999999999999999999999999;
-        "#;
-        parse_and_evaluate_symbol(src, "N");
-    }
-
-    #[test]
-    fn decimal_number_outside_field() {
-        // This tests that the parser does not lose precision when parsing large integers.
-        let src = r#"
-            let N: int = 9999999999999999999999999999999;
-        "#;
-        parse_and_evaluate_symbol(src, "N");
-    }
-
-    #[test]
-    #[should_panic = "Number literal 9999999999999999999999999999999 is too large for field element."]
-    fn decimal_number_outside_field_for_fe() {
-        let src = r#"
-            let N: fe = 9999999999999999999999999999999;
-        "#;
-        parse_and_evaluate_symbol(src, "N");
-    }
-
-    #[test]
-    fn zero_power_zero() {
-        let src = r#"
-        let zpz_int: int = 0**0;
-        let zpz_fe: fe = 0**0;
-        "#;
-        assert_eq!(parse_and_evaluate_symbol(src, "zpz_int"), "1".to_string());
-        assert_eq!(parse_and_evaluate_symbol(src, "zpz_fe"), "1".to_string());
-    }
-
-    #[test]
-    fn debug_print() {
-        let src = r#"
-            namespace std::debug(8);
-            let print = 2;
-            let N = std::debug::print("test output\n");
-        "#;
-        parse_and_evaluate_symbol(src, "std::debug::N");
-    }
-
-    #[test]
-    fn debug_print_complex() {
-        let src = r#"
-            namespace std::debug(8);
-            let print = 2;
-            let t: fe = 9;
-            let x: int = 2;
-            let N = {
-                let _ = std::debug::print((t, [x, 3], "test output\n"));
-                std::debug::print("\n")
-            };
-        "#;
-        parse_and_evaluate_symbol(src, "std::debug::N");
-    }
-
-    #[test]
-    fn local_vars() {
-        let src = r#"
-            let f: int -> int = |i| {
-                let x = i + 1;
-                let y = x - 1;
-                let z = y - i;
-                z
-            };
-            let t = f(8);
-        "#;
-        assert_eq!(parse_and_evaluate_symbol(src, "t"), "0".to_string());
-    }
-
-    #[test]
-    fn match_pattern() {
-        let src = r#"
-            let f: int[] -> int = |arr| match arr {
-                [] => 0,
-                [x] => x,
-                [_, x] => x + 9,
-                [_, x, y] => x + y,
-                _ => 99,
-            };
-            let t = [
-                f([]), f([1]), f([1, 2]), f([1, 2, 3]), f([1, 2, 3, 4])
-            ];
-        "#;
-        assert_eq!(
-            parse_and_evaluate_symbol(src, "t"),
-            "[0, 1, 11, 5, 99]".to_string()
-        );
-    }
-
-    #[test]
-    fn match_pattern_complex() {
-        let src = r#"
-            let f: ((int, int), int[]) -> int = |q| match q {
-                ((1, _), [x, 4]) => 1 + x,
-                ((1, 2), [y]) => 2 + y,
-                ((_, 2), [y, z]) => 3 + y + z,
-                ((x, 3), _) => x,
-                ((x, -1), _) => x,
-                (t, [_, r]) => r
-            };
-            let res = [
-                f(((1, 9), [20, 4])),
-                f(((1, 2), [3])),
-                f(((9, 2), [300, 4])),
-                f(((9, 3), [900, 8])),
-                f(((90, 3), [900, 8, 7])),
-                f(((99, -1), [900, 8, 7])),
-                f(((1, 1), [-3, -1]))
-            ];
-        "#;
-        assert_eq!(
-            parse_and_evaluate_symbol(src, "res"),
-            "[21, 5, 307, 9, 90, 99, -1]".to_string()
-        );
-    }
-
-    #[test]
-    fn match_skip_array() {
-        let src = r#"
-            let f: int[] -> int = |arr| match arr {
-                [x, .., y] => x + y,
-                [] => 19,
-                _ => 99,
-            };
-            let t = [f([]), f([1]), f([1, 2]), f([1, 2, 3]), f([1, 2, 3, 4])];
-        "#;
-        assert_eq!(
-            parse_and_evaluate_symbol(src, "t"),
-            "[19, 99, 3, 4, 5]".to_string()
-        );
-    }
-
-    #[test]
-    fn match_skip_array_2() {
-        let src = r#"
-            let f: int[] -> int = |arr| match arr {
-                [.., y] => y,
-                _ => 99,
-            };
-            let t = [f([]), f([1]), f([1, 2]), f([1, 2, 3]), f([1, 2, 3, 4])];
-        "#;
-        assert_eq!(
-            parse_and_evaluate_symbol(src, "t"),
-            "[99, 1, 2, 3, 4]".to_string()
-        );
-    }
-
-    #[test]
-    fn match_skip_array_3() {
-        let src = r#"
-            let f: int[] -> int = |arr| match arr {
-                [.., x, y] => x,
-                [..] => 99,
-            };
-            let t = [f([]), f([1]), f([1, 2]), f([1, 2, 3]), f([1, 2, 3, 4])];
-        "#;
-        assert_eq!(
-            parse_and_evaluate_symbol(src, "t"),
-            "[99, 99, 1, 2, 3]".to_string()
-        );
-    }
-
-    #[test]
-    fn match_skip_array_4() {
-        let src = r#"
-            let f: int[] -> int = |arr| match arr {
-                [x, y, ..] => y,
-                [..] => 99,
-            };
-            let t = [f([]), f([1]), f([1, 2]), f([1, 2, 3]), f([1, 2, 3, 4])];
-        "#;
-        assert_eq!(
-            parse_and_evaluate_symbol(src, "t"),
-            "[99, 99, 2, 2, 2]".to_string()
-        );
-    }
-
-    #[test]
-    fn unpack_fun() {
-        let src = r#"
-            let t: (int, fe, int), int -> int[] = |(x, _, y), z| [x, y, z];
-            let x: int[] = t((1, 2, 3), 4);
-        "#;
-        assert_eq!(parse_and_evaluate_symbol(src, "x"), "[1, 3, 4]".to_string());
-    }
-
-    #[test]
-    fn unpack_let() {
-        let src = r#"
-            let x: int[] = {
-                let (a, (_, b), (c, _, _, d, _)) = (1, ((), 3), (4, (), (), 7, ()));
-                [a, b, c, d]
-            };
-        "#;
-        assert_eq!(
-            parse_and_evaluate_symbol(src, "x"),
-            "[1, 3, 4, 7]".to_string()
-        );
-    }
-
-    #[test]
-    pub fn match_enum() {
-        let src = r#"
-            enum X {
-                A,
-                B(),
-                C(int, int),
-                D(int, X)
-            }
-            let f = |x| match x {
-                X::A => 1,
-                X::B() => 2,
-                X::C(a, b) => a + b,
-                X::D(0, X::A) => 10001,
-                X::D(c, y) => c + f(y),
-            };
-            let t = [f(X::A), f(X::B()), f(X::C(3, 4)), f(X::D(0, X::A)), f(X::D(0, X::B())), f(X::D(100, X::C(4, 5)))];
-        "#;
-        assert_eq!(
-            parse_and_evaluate_symbol(src, "t"),
-            "[1, 2, 7, 10001, 2, 109]".to_string()
-        );
-    }
-
-    #[test]
-    pub fn gigantic_stack() {
-        let src = r#"
-            let arr_new: int, (int -> int) -> int[] = |n, f| if n == 0 { [] } else { arr_new(n - 1, f) + [f(n - 1)] };
-            let arr_rev: int[], int, int -> int[] = |a, i, n| if i >= n { [] } else { arr_rev(a, i + 1, n) + [a[i]] };
-            let l = 10000;
-            let t = arr_new(l, |i| i);
-            let r = arr_rev(t, 0, l);
-            let x = r[7];
-        "#;
-        assert_eq!(parse_and_evaluate_symbol(src, "x"), "9992".to_string());
-    }
-
-    #[test]
-    pub fn string_eq() {
-        let src = r#"
-            let yes = "abc" != "def";
-            let no = "abc" == "def";
-            let yes2 = "abc" == "abc";
-            let no2 = "abc" != "abc";
-            let yes3 = "ab" != "abc";
-            let no3 = "ab" == "abc";
-        "#;
-        assert_eq!(parse_and_evaluate_symbol(src, "yes"), "true".to_string());
-        assert_eq!(parse_and_evaluate_symbol(src, "yes2"), "true".to_string());
-        assert_eq!(parse_and_evaluate_symbol(src, "yes3"), "true".to_string());
-        assert_eq!(parse_and_evaluate_symbol(src, "no"), "false".to_string());
-        assert_eq!(parse_and_evaluate_symbol(src, "no2"), "false".to_string());
-        assert_eq!(parse_and_evaluate_symbol(src, "no3"), "false".to_string());
-    }
-
-    #[test]
-    pub fn eval_complex_expression() {
-        let src = r#"
-            namespace std::prover;
-                let eval: expr -> fe = [];
-            namespace main;
-                // Put into query function, so we're allowed to use eval()
-                let test = query || std::prover::eval(2 * (1 + 1 + 1) + 1);
-        "#;
-        assert_eq!(
-            evaluate_function::<GoldilocksField>(src, "main::test"),
-            7u64.into()
-        );
-    }
-
-    #[test]
-    fn no_stmts_in_block() {
-        let input = "
-    let f: int -> () = |i| ();
-    let g: int -> () = |i| {
-        f(1)
-    };
-    
-    let h: () = g(1);
-    ";
-
-        assert_eq!(parse_and_evaluate_symbol(input, "h"), "()".to_string());
-    }
-
-    #[test]
-    fn called_with_empty_block() {
-        let input = "
-    let<T1, T2: FromLiteral> f: T1 -> T2 = |_| 7;
-    let g: int = f({ });
-    ";
-
-        assert_eq!(parse_and_evaluate_symbol(input, "g"), "7".to_string());
-    }
 }
