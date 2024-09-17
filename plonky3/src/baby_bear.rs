@@ -24,7 +24,7 @@ const D: u64 = 7;
 // to guarantee 128-bit security.
 const ROUNDS_F: usize = 8;
 const ROUNDS_P: usize = 13;
-const WIDTH: usize = 16;
+pub const WIDTH: usize = 16;
 type Perm = Poseidon2<BabyBear, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, WIDTH, D>;
 
 const DEGREE: usize = 4;
