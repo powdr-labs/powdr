@@ -1,4 +1,5 @@
 use std::machines::arith16::Arith16;
+use std::machines::range::Byte;
 
 machine Main with degree: 65536 {
     reg pc[@pc];
@@ -16,7 +17,9 @@ machine Main with degree: 65536 {
     reg t_1_0;
     reg t_1_1;
 
-    Arith16 arith;
+    Byte byte;
+
+    Arith16 arith(byte);
 
     instr mul A0, A1, B0, B1 -> C0, C1, D0, D1
         link ~> (C0, C1, D0, D1) = arith.mul(A0, A1, B0, B1);
