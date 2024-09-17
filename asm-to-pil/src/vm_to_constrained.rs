@@ -1019,10 +1019,15 @@ impl<T: FieldElement> VMConverter<T> {
         let pc_name = self.pc_name.clone();
         let free_value_pil = self
             .assignment_register_names()
-            .map(|reg| {
+            .flat_map(|reg| {
                 let free_value = format!("{reg}_free_value");
                 let prover_query_arms = free_value_query_arms.remove(reg).unwrap();
-                let prover_query = (!prover_query_arms.is_empty()).then_some({
+                let mut statements = vec![witness_column(
+                    SourceRef::unknown(),
+                    free_value.clone(),
+                    None,
+                )];
+                if !prover_query_arms.is_empty() {
                     let mut prover_query_arms = prover_query_arms;
                     prover_query_arms.push(MatchArm {
                         pattern: Pattern::CatchAll(SourceRef::unknown()),
@@ -1037,22 +1042,30 @@ impl<T: FieldElement> VMConverter<T> {
                         .into(),
                     );
 
-                    let lambda = LambdaExpression {
-                        kind: FunctionKind::Query,
-                        params: vec![Pattern::Variable(SourceRef::unknown(), "__i".to_string())],
-                        body: Box::new(
+                    let call_to_handle_query = FunctionCall {
+                        function: Box::new(absolute_reference("::std::prover::handle_query")),
+                        arguments: vec![
+                            direct_reference(&free_value),
+                            direct_reference("__i"),
                             MatchExpression {
                                 scrutinee,
                                 arms: prover_query_arms,
                             }
                             .into(),
-                        ),
-                    }
-                    .into();
+                        ],
+                    };
+                    let prover_function = LambdaExpression {
+                        kind: FunctionKind::Query,
+                        params: vec![Pattern::Variable(SourceRef::unknown(), "__i".to_string())],
+                        body: Box::new(call_to_handle_query.into()),
+                    };
 
-                    FunctionDefinition::Expression(lambda)
-                });
-                witness_column(SourceRef::unknown(), free_value, prover_query)
+                    statements.push(PilStatement::Expression(
+                        SourceRef::unknown(),
+                        prover_function.into(),
+                    ));
+                }
+                statements
             })
             .collect::<Vec<_>>();
         self.pil.extend(free_value_pil);

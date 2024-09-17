@@ -320,7 +320,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
     }
 }
 
-const BUILTINS: [(&str, BuiltinFunction); 15] = [
+const BUILTINS: [(&str, BuiltinFunction); 20] = [
     ("std::array::len", BuiltinFunction::ArrayLen),
     ("std::check::panic", BuiltinFunction::Panic),
     ("std::convert::expr", BuiltinFunction::ToExpr),
@@ -329,6 +329,10 @@ const BUILTINS: [(&str, BuiltinFunction); 15] = [
     ("std::debug::print", BuiltinFunction::Print),
     ("std::field::modulus", BuiltinFunction::Modulus),
     ("std::prelude::challenge", BuiltinFunction::Challenge),
+    (
+        "std::prover::new_witness_col_at_stage",
+        BuiltinFunction::NewWitAtStage,
+    ),
     ("std::prover::provide_value", BuiltinFunction::ProvideValue),
     ("std::prelude::set_hint", BuiltinFunction::SetHint),
     ("std::prover::min_degree", BuiltinFunction::MinDegree),
@@ -336,6 +340,13 @@ const BUILTINS: [(&str, BuiltinFunction); 15] = [
     ("std::prover::degree", BuiltinFunction::Degree),
     ("std::prover::eval", BuiltinFunction::Eval),
     ("std::prover::try_eval", BuiltinFunction::TryEval),
+    ("std::prover::try_eval", BuiltinFunction::TryEval),
+    ("std::prover::get_input", BuiltinFunction::GetInput),
+    (
+        "std::prover::get_input_from_channel",
+        BuiltinFunction::GetInputFromChannel,
+    ),
+    ("std::prover::output_byte", BuiltinFunction::OutputByte),
 ];
 
 #[derive(Clone, Copy, Debug)]
@@ -358,6 +369,8 @@ pub enum BuiltinFunction {
     ToFe,
     /// std::prover::challenge: int, int -> expr, constructs a challenge with a given stage and ID.
     Challenge,
+    /// std::prover::new_witness_col_at_stage: string, int -> expr, creates a new witness column at a certain proof stage.
+    NewWitAtStage,
     /// std::prover::provide_value: expr, int, fe -> (), provides a value for a witness column at a given row.
     ProvideValue,
     /// std::prelude::set_hint: expr, (int -> std::prelude::Query) -> (), adds a hint to a witness column.
@@ -372,6 +385,12 @@ pub enum BuiltinFunction {
     Eval,
     /// std::prover::try_eval: expr -> std::prelude::Option<fe>, evaluates an expression on the current row
     TryEval,
+    /// std::prover::get_input: int -> fe, returns the value of a prover-provided and uncommitted input
+    GetInput,
+    /// std::prover::get_input_from_channel: int, int -> fe, returns the value of a prover-provided and uncommitted input from a certain channel
+    GetInputFromChannel,
+    /// std::prover::output_byte: int, int -> (), outputs a byte to a file descriptor
+    OutputByte,
 }
 
 impl<'a, T: Display> Display for Value<'a, T> {
@@ -608,6 +627,7 @@ pub trait SymbolLookup<'a, T: FieldElement> {
         &mut self,
         name: &str,
         _type: Option<&Type>,
+        _stage: Option<u32>,
         _value: Option<Arc<Value<'a, T>>>,
         _source: SourceRef,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
@@ -644,6 +664,28 @@ pub trait SymbolLookup<'a, T: FieldElement> {
     ) -> Result<(), EvalError> {
         Err(EvalError::Unsupported(
             "Tried to provide value outside of prover function.".to_string(),
+        ))
+    }
+
+    fn get_input(&mut self, _index: usize) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Err(EvalError::Unsupported(
+            "Tried to get input outside of prover function.".to_string(),
+        ))
+    }
+
+    fn get_input_from_channel(
+        &mut self,
+        _channel: u32,
+        _index: usize,
+    ) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Err(EvalError::Unsupported(
+            "Tried to get input from channel outside of prover function.".to_string(),
+        ))
+    }
+
+    fn output_byte(&mut self, _fd: u32, _byte: u8) -> Result<(), EvalError> {
+        Err(EvalError::Unsupported(
+            "Tried to output byte outside of prover function.".to_string(),
         ))
     }
 }
@@ -879,7 +921,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             };
             let value = s.value.as_ref().map(|_| self.value_stack.pop().unwrap());
             self.symbols
-                .new_column(name, s.ty.as_ref(), value, SourceRef::unknown())?
+                .new_column(name, s.ty.as_ref(), None, value, SourceRef::unknown())?
         } else {
             // Regular local variable declaration.
             self.value_stack.pop().unwrap()
@@ -1278,6 +1320,7 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
         BuiltinFunction::ToFe => 1,
         BuiltinFunction::ToInt => 1,
         BuiltinFunction::Challenge => 2,
+        BuiltinFunction::NewWitAtStage => 2,
         BuiltinFunction::ProvideValue => 3,
         BuiltinFunction::SetHint => 2,
         BuiltinFunction::MinDegree => 0,
@@ -1285,6 +1328,9 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
         BuiltinFunction::Degree => 0,
         BuiltinFunction::Eval => 1,
         BuiltinFunction::TryEval => 1,
+        BuiltinFunction::GetInput => 1,
+        BuiltinFunction::GetInputFromChannel => 2,
+        BuiltinFunction::OutputByte => 2,
     };
 
     if arguments.len() != params {
@@ -1351,11 +1397,54 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
             }))
             .into()
         }
+        BuiltinFunction::NewWitAtStage => {
+            let [name, stage] = &arguments[..] else {
+                panic!()
+            };
+            let Value::String(name) = name.as_ref() else {
+                panic!()
+            };
+            let Value::Integer(stage) = (**stage).clone() else {
+                panic!()
+            };
+            let stage = Some(u32::try_from(stage).unwrap());
+            symbols.new_column(name, Some(&Type::Col), stage, None, SourceRef::unknown())?
+        }
         BuiltinFunction::ProvideValue => {
             let value = arguments.pop().unwrap();
             let row = arguments.pop().unwrap();
             let col = arguments.pop().unwrap();
             symbols.provide_value(col, row, value)?;
+            Value::Tuple(vec![]).into()
+        }
+        BuiltinFunction::GetInput => {
+            let index = arguments.pop().unwrap();
+            let Value::Integer(index) = index.as_ref() else {
+                panic!()
+            };
+            symbols.get_input(usize::try_from(index).unwrap())?
+        }
+        BuiltinFunction::GetInputFromChannel => {
+            let index = arguments.pop().unwrap();
+            let channel = arguments.pop().unwrap();
+            let Value::Integer(index) = index.as_ref() else {
+                panic!()
+            };
+            let Value::Integer(channel) = channel.as_ref() else {
+                panic!()
+            };
+            symbols.get_input_from_channel(
+                u32::try_from(channel).unwrap(),
+                usize::try_from(index).unwrap(),
+            )?
+        }
+        BuiltinFunction::OutputByte => {
+            let byte = arguments.pop().unwrap();
+            let fd = arguments.pop().unwrap();
+            let (Value::Integer(fd), Value::Integer(byte)) = (fd.as_ref(), byte.as_ref()) else {
+                panic!()
+            };
+            symbols.output_byte(u32::try_from(fd).unwrap(), u8::try_from(byte).unwrap())?;
             Value::Tuple(vec![]).into()
         }
         BuiltinFunction::SetHint => {
