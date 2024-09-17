@@ -6,8 +6,8 @@ use powdr_ast::{
     asm_analysis::{
         AnalysisASMFile, AssignmentStatement, CallableSymbolDefinitions, DebugDirective,
         FunctionBody, FunctionStatements, FunctionSymbol, InstructionDefinitionStatement,
-        InstructionStatement, Item, LabelStatement, LinkDefinition, Machine, OperationSymbol,
-        RegisterDeclarationStatement, RegisterTy, Return, SubmachineDeclaration,
+        InstructionStatement, Item, LabelStatement, LinkDefinition, Machine, MachineDegree,
+        OperationSymbol, RegisterDeclarationStatement, RegisterTy, Return, SubmachineDeclaration,
     },
     parsed::{
         self,
@@ -172,10 +172,34 @@ impl TypeChecker {
 
         let MachineProperties {
             degree,
+            min_degree,
+            max_degree,
             latch,
             operation_id,
             call_selectors,
         } = machine.properties;
+
+        let degree = match (degree, min_degree, max_degree) {
+            (Some(d), None, None) => MachineDegree {
+                min: Some(d.clone()),
+                max: Some(d),
+            },
+            (Some(d), Some(_), _) => {
+                errors.push("Machine {ctx} should not have a min_degree if it has a degree".into());
+                MachineDegree {
+                    min: Some(d.clone()),
+                    max: Some(d),
+                }
+            }
+            (Some(d), _, Some(_)) => {
+                errors.push("Machine {ctx} should not have a max_degree if it has a degree".into());
+                MachineDegree {
+                    min: Some(d.clone()),
+                    max: Some(d),
+                }
+            }
+            (None, min, max) => MachineDegree { min, max },
+        };
 
         if !registers.iter().any(|r| r.ty.is_pc()) {
             let operation_count = callable.operation_definitions().count();
@@ -377,15 +401,13 @@ impl TypeChecker {
             .body
             .0
             .iter()
-            .filter_map(|s| match s {
+            .filter_map(|s| {
                 // TODO this could be a function call that returns an identity including a selector in the future.
-                powdr_ast::parsed::PilStatement::Expression(_, _) => None,
-                powdr_ast::parsed::PilStatement::PermutationIdentity(_, l, _)
-                | powdr_ast::parsed::PilStatement::PlookupIdentity(_, l, _) => l
-                    .selector
-                    .is_some()
-                    .then_some(format!("LHS selector not yet supported in {s}.")),
-                _ => Some(format!("Statement not allowed in instruction body: {s}")),
+                if let powdr_ast::parsed::PilStatement::Expression(_, _) = s {
+                    None
+                } else {
+                    Some(format!("Statement not allowed in instruction body: {s}"))
+                }
             })
             .collect();
         if !errors.is_empty() {

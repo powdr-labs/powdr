@@ -110,7 +110,7 @@ impl<'a> Folder for Canonicalizer<'a> {
                                 mut struct_decl,
                             )) => {
                                 let type_vars = struct_decl.type_vars.vars().collect();
-                                for (_name, ty) in struct_decl.fields.iter_mut() {
+                                for (_, ty) in struct_decl.fields.iter_mut() {
                                     canonicalize_inside_type(
                                         ty, &type_vars, &self.path, self.paths,
                                     );
@@ -132,8 +132,8 @@ impl<'a> Folder for Canonicalizer<'a> {
                         .map(|value| value.map(|value| SymbolDefinition { name, value }.into()))
                     }
                     ModuleStatement::TraitImplementation(mut trait_impl) => {
-                        for f in &mut trait_impl.functions {
-                            canonicalize_inside_expression(&mut f.body, &self.path, self.paths)
+                        for f in trait_impl.children_mut() {
+                            canonicalize_inside_expression(f, &self.path, self.paths)
                         }
                         Some(Ok(ModuleStatement::TraitImplementation(trait_impl)))
                     }
@@ -532,8 +532,8 @@ fn check_path_internal<'a>(
                                 chain,
                             )
                         }),
-                    SymbolValueRef::TypeDeclaration(TypeDeclaration::Struct(_struct_decl)) => {
-                        unimplemented!("check_path_internal for TypeDeclaration::Struct")
+                    SymbolValueRef::TypeDeclaration(TypeDeclaration::Struct(_)) => {
+                        Ok((location.with_part(member), value, chain))
                     }
                 }
             },
@@ -788,7 +788,6 @@ fn check_expression(
                 kind: _,
                 params,
                 body,
-                outer_var_references: _,
             },
         ) => {
             // Add the local variables, ignore collisions.

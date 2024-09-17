@@ -16,7 +16,7 @@ machine ByteShift with
 
     let bit_counts = [256, 32, 4, 2];
     let min_degree = std::array::product(bit_counts);
-    std::check::assert(std::prover::degree() >= std::array::product(bit_counts), || "The shift machine needs at least 65536 rows to work.");
+    std::check::assert(std::prover::min_degree() >= std::array::product(bit_counts), || "The shift machine needs at least 65536 rows to work.");
     let inputs = cross_product(bit_counts);
     let a: int -> int = inputs[0];
     let b: int -> int = inputs[1];
@@ -26,7 +26,7 @@ machine ByteShift with
     let P_B: col = b;
     let P_ROW: col = row;
     let P_operation: col = op;
-    col fixed P_C(i) {
+    let P_C: col = |i| {
         match op(i) {
             0 => a(i) << (b(i) + (row(i) * 8)),
             1 => (a(i) << (row(i) * 8)) >> b(i),
@@ -44,19 +44,19 @@ machine Shift(byte_shift: ByteShift) with
 
     operation shr<1> A, B -> C;
 
-    col witness operation_id;
+    let operation_id;
     unchanged_until(operation_id, latch);
 
-    col fixed latch(i) { if (i % 4) == 3 { 1 } else { 0 } };
-    col fixed FACTOR_ROW(i) { (i + 1) % 4 };
-    col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
+    let latch: col = |i| { if (i % 4) == 3 { 1 } else { 0 } };
+    let FACTOR_ROW: col = |i| { (i + 1) % 4 };
+    let FACTOR: col = |i| { 1 << (((i + 1) % 4) * 8) };
 
-    col witness A_byte;
-    col witness C_part;
+    let A_byte;
+    let C_part;
 
-    col witness A;
-    col witness B;
-    col witness C;
+    let A;
+    let B;
+    let C;
 
     A' = A * (1 - latch) + A_byte * FACTOR;
     unchanged_until(B, latch);

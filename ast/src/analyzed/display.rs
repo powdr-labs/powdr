@@ -20,11 +20,20 @@ use self::parsed::{
 
 use super::*;
 
+impl Display for DegreeRange {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match (self.min, self.max) {
+            (min, max) if min == max => write!(f, "{min}"),
+            (min, max) => write!(f, "{min}..{max}"),
+        }
+    }
+}
+
 impl<T: Display> Display for Analyzed<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let (mut current_namespace, mut current_degree) = (AbsoluteSymbolPath::default(), None);
         let mut update_namespace =
-            |name: &str, degree: Option<DegreeType>, f: &mut Formatter<'_>| {
+            |name: &str, degree: Option<DegreeRange>, f: &mut Formatter<'_>| {
                 let mut namespace =
                     AbsoluteSymbolPath::default().join(SymbolPath::from_str(name).unwrap());
                 let name = namespace.pop().unwrap();
@@ -57,7 +66,7 @@ impl<T: Display> Display for Analyzed<T> {
                             Some(FunctionValueDefinition::TypeConstructor(_))
                                 | Some(FunctionValueDefinition::TraitFunction(_, _))
                         ) {
-                            // These are printed as part of the enum / trait.
+                            // These are printed as part of the enum / struct / trait.
                             continue;
                         }
                         let (name, _) = update_namespace(name, symbol.degree, f)?;
@@ -139,6 +148,9 @@ impl<T: Display> Display for Analyzed<T> {
                 }
                 StatementIdentifier::Identity(i) => {
                     writeln_indented(f, &self.identities[*i])?;
+                }
+                StatementIdentifier::ProverFunction(i) => {
+                    writeln_indented(f, format!("{};", &self.prover_functions[*i]))?;
                 }
             }
         }
@@ -498,7 +510,7 @@ mod test {
         };
 
         let (input, expected) = &(&wrap(input), &wrap(expected));
-        let analyzed = analyze_string::<GoldilocksField>(input);
+        let analyzed = analyze_string::<GoldilocksField>(input).unwrap();
         let printed = analyzed.to_string();
 
         assert_eq!(expected.trim(), printed.trim());

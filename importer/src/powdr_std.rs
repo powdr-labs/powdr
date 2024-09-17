@@ -1,4 +1,7 @@
-use std::{env, path::PathBuf};
+use std::{
+    env,
+    path::{Path, PathBuf},
+};
 
 use powdr_ast::parsed::{
     asm::{
@@ -20,7 +23,7 @@ static MOD_FILE: &str = "mod.asm";
 /// # Panics
 /// If there is an error loading the standard library
 fn load_std() -> ASMModule {
-    let default_std_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    let default_std_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
         .join("std");
