@@ -70,7 +70,10 @@ machine Keccakf16 with
     //     pub a_prime_prime_prime_0_0_limbs: [T; U64_LIMBS],
     // }
 
-    let c = array::new(5, |y| array::new(64, |z| {let tt; tt})); 
+     let c_flat: col[5 * 64];
+     array::map(c_flat, |i| force_bool(i));
+
+     let c = array::new(5, |i| array::new(64, |j| c_flat[i*64 + j]));
 
     pol commit preimage[5 * 5 * 4];
     pol commit a[5 * 5 * 4];
@@ -80,6 +83,8 @@ machine Keccakf16 with
     pol commit a_prime_prime[5 * 5 * 4];
     pol commit a_prime_prime_0_0_bits[64];
     pol commit a_prime_prime_prime_0_0_limbs[4];
+
+    // array::map(c, |i| force_bool(i));
 
     // Initially, the first step flag should be 1 while the others should be 0.
     // builder.when_first_row().assert_one(local.step_flags[0]);
@@ -162,7 +167,7 @@ machine Keccakf16 with
     //     }
     // }
 
-    // array::map(c, |i| force_bool(i));
+    
     
     let andn: expr, expr -> expr = |a, b| (1 - a) * b;
     let xor: expr, expr -> expr = |a, b| a + b - 2*a*b;
@@ -185,6 +190,16 @@ machine Keccakf16 with
             c[((x + 1) % 5)][((z + 63) % 64)]
         )
     });
+
+    // array::new(320, |i| {
+    //     let x = i / 64;
+    //     let z = i % 64;
+    //     c_prime[i] = xor3(
+    //         c[i], 
+    //         c[((x + 4) % 5) * 64 + z], 
+    //         c[((x + 1) % 5) * 64 + ((z + 63) % 64)]
+    //     )
+    // });
 
     // // Check that the input limbs are consistent with A' and D.
     // // A[x, y, z] = xor(A'[x, y, z], D[x, y, z])
@@ -222,6 +237,8 @@ machine Keccakf16 with
         let x = (i / 4) % 5;
         let limb = i % 4;
         let get_bit: int -> expr = |z| xor3(a_prime[y * 320 + x * 64 + z], c[x][z], c_prime[x * 64 + z]);
+        // let get_bit: int -> expr = |z| xor3(a_prime[y * 320 + x * 64 + z], c[x * 64 + z], c_prime[x * 64 + z]);
+
         let limb_bits_be: expr[] = array::reverse(array::new(16, |z| get_bit(limb * 16 + z)));
         a[i] = bits_to_value_be(limb_bits_be)
     });
@@ -453,16 +470,27 @@ machine Keccakf16 with
             |acc, e| acc ^ e
         );
 
-    query |row| {
-        let _ = array::map_enumerated(c, |i, c_i| {
-            let _ = array::map_enumerated(c_i, |j, c_ij| {
-                let limb: int = j / 16;
-                let bit_in_limb: int = j % 16;
+    //query |row| {
+    //    let _ = array::map_enumerated(c, |i, c_i| {
+    //        let _ = array::map_enumerated(c_i, |j, c_ij| {
+    //            let limb: int = j / 16;
+    //            let bit_in_limb: int = j % 16;
+//
+    //            provide_value(c_ij, row, fe(query_c(i, limb, bit_in_limb)));
+    //        });
+    //    });
+    //};
 
-                provide_value(c_ij, row, fe(query_c(i, limb, bit_in_limb)));
-            });
-        });
-    };
+    // query |row| {
+    //     let _ = array::map_enumerated(c, |i, c_i| {
+    //         let x = i / 64;
+    //         let z = i % 64;
+    //         let limb = z / 16;
+    //         let bit_in_limb = z % 16;
+// 
+    //         provide_value(c_i, row, fe(query_c(x, limb, bit_in_limb)));
+    //     });
+    // };
 
     query |row| {
         let _ = array::new(5 * 64, |i| {
@@ -501,6 +529,9 @@ machine Keccakf16 with
         int(eval(c[x][z])) ^ 
         int(eval(c[((x + 4) % 5)][z])) ^ 
         int(eval(c[((x + 1) % 5)][(z + 63) % 64]));
+        // int(eval(c[x * 64 + z])) ^ 
+        // int(eval(c[((x + 4) % 5) * 64 + z])) ^ 
+        // int(eval(c[((x + 1) % 5) * 64 + (z + 63) % 64]));
 
     query |row| {
         let _ = array::map_enumerated(c_prime, |i, c_i| {
@@ -530,6 +561,7 @@ machine Keccakf16 with
     let query_a_prime: int, int, int, int, int -> int = query |x, y, z, limb, bit_in_limb| 
         ((int(eval(a[y * 20 + x * 4 + limb])) >> bit_in_limb) & 0x1) ^ 
         int(eval(c[x][z])) ^ 
+        // int(eval(c[x * 64 + z])) ^ 
         int(eval(c_prime[x * 64 + z]));
 
     query |row| {
