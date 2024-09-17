@@ -108,7 +108,7 @@ machine Keccakf16 with
     let first_step: expr = step_flags[0]; // aliasing instead of defining a new fixed column
     let final_step: expr = step_flags[NUM_ROUNDS - 1];
     
-    col fixed is_last = [0]* + 1;
+    col fixed is_last = [0]* + [1];
 
     // // If this is the first step, the input A must match the preimage.
     // for y in 0..5 {
