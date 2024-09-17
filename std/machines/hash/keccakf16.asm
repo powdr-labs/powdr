@@ -17,6 +17,8 @@ machine Keccakf16 with
 {
     // Adapted from Plonky3 implementation of Keccak: https://github.com/Plonky3/Plonky3/tree/main/keccak-air/src
 
+    std::check::assert(std::field::modulus() >= 65535, || "The field modulo should be at least 2^16 - 1 to work in the keccakf16 machine.");
+
     // Expects input of 25 64-bit numbers decomposed to 25 chunks of 4 16-bit little endian limbs. 
     // The output is a_prime_prime_prime_0_0_limbs for the first 4 and a_prime_prime for the rest.
     operation keccakf16<0> preimage[0], preimage[1], preimage[2], preimage[3], preimage[4], preimage[5], preimage[6], preimage[7], preimage[8], preimage[9], preimage[10], preimage[11], preimage[12], preimage[13], preimage[14], preimage[15], preimage[16], preimage[17], preimage[18], preimage[19], preimage[20], preimage[21], preimage[22], preimage[23], preimage[24], preimage[25], preimage[26], preimage[27], preimage[28], preimage[29], preimage[30], preimage[31], preimage[32], preimage[33], preimage[34], preimage[35], preimage[36], preimage[37], preimage[38], preimage[39], preimage[40], preimage[41], preimage[42], preimage[43], preimage[44], preimage[45], preimage[46], preimage[47], preimage[48], preimage[49], preimage[50], preimage[51], preimage[52], preimage[53], preimage[54], preimage[55], preimage[56], preimage[57], preimage[58], preimage[59], preimage[60], preimage[61], preimage[62], preimage[63], preimage[64], preimage[65], preimage[66], preimage[67], preimage[68], preimage[69], preimage[70], preimage[71], preimage[72], preimage[73], preimage[74], preimage[75], preimage[76], preimage[77], preimage[78], preimage[79], preimage[80], preimage[81], preimage[82], preimage[83], preimage[84], preimage[85], preimage[86], preimage[87], preimage[88], preimage[89], preimage[90], preimage[91], preimage[92], preimage[93], preimage[94], preimage[95], preimage[96], preimage[97], preimage[98], preimage[99] -> a_prime_prime_prime_0_0_limbs[0], a_prime_prime_prime_0_0_limbs[1], a_prime_prime_prime_0_0_limbs[2], a_prime_prime_prime_0_0_limbs[3], a_prime_prime[4], a_prime_prime[5], a_prime_prime[6], a_prime_prime[7], a_prime_prime[8], a_prime_prime[9], a_prime_prime[10], a_prime_prime[11], a_prime_prime[12], a_prime_prime[13], a_prime_prime[14], a_prime_prime[15], a_prime_prime[16], a_prime_prime[17], a_prime_prime[18], a_prime_prime[19], a_prime_prime[20], a_prime_prime[21], a_prime_prime[22], a_prime_prime[23], a_prime_prime[24], a_prime_prime[25], a_prime_prime[26], a_prime_prime[27], a_prime_prime[28], a_prime_prime[29], a_prime_prime[30], a_prime_prime[31], a_prime_prime[32], a_prime_prime[33], a_prime_prime[34], a_prime_prime[35], a_prime_prime[36], a_prime_prime[37], a_prime_prime[38], a_prime_prime[39], a_prime_prime[40], a_prime_prime[41], a_prime_prime[42], a_prime_prime[43], a_prime_prime[44], a_prime_prime[45], a_prime_prime[46], a_prime_prime[47], a_prime_prime[48], a_prime_prime[49], a_prime_prime[50], a_prime_prime[51], a_prime_prime[52], a_prime_prime[53], a_prime_prime[54], a_prime_prime[55], a_prime_prime[56], a_prime_prime[57], a_prime_prime[58], a_prime_prime[59], a_prime_prime[60], a_prime_prime[61], a_prime_prime[62], a_prime_prime[63], a_prime_prime[64], a_prime_prime[65], a_prime_prime[66], a_prime_prime[67], a_prime_prime[68], a_prime_prime[69], a_prime_prime[70], a_prime_prime[71], a_prime_prime[72], a_prime_prime[73], a_prime_prime[74], a_prime_prime[75], a_prime_prime[76], a_prime_prime[77], a_prime_prime[78], a_prime_prime[79], a_prime_prime[80], a_prime_prime[81], a_prime_prime[82], a_prime_prime[83], a_prime_prime[84], a_prime_prime[85], a_prime_prime[86], a_prime_prime[87], a_prime_prime[88], a_prime_prime[89], a_prime_prime[90], a_prime_prime[91], a_prime_prime[92], a_prime_prime[93], a_prime_prime[94], a_prime_prime[95], a_prime_prime[96], a_prime_prime[97], a_prime_prime[98], a_prime_prime[99];
@@ -70,21 +72,17 @@ machine Keccakf16 with
     //     pub a_prime_prime_prime_0_0_limbs: [T; U64_LIMBS],
     // }
 
-     let c_flat: col[5 * 64];
-     array::map(c_flat, |i| force_bool(i));
-
-     let c = array::new(5, |i| array::new(64, |j| c_flat[i*64 + j]));
-
     pol commit preimage[5 * 5 * 4];
     pol commit a[5 * 5 * 4];
-    // pol commit c[5 * 64];
+    pol commit c[5 * 64];
+    array::map(c, |i| force_bool(i));
     pol commit c_prime[5 * 64];
     pol commit a_prime[5 * 5 * 64];
+    array::map(a_prime, |i| force_bool(i));
     pol commit a_prime_prime[5 * 5 * 4];
     pol commit a_prime_prime_0_0_bits[64];
+    array::map(a_prime_prime_0_0_bits, |i| force_bool(i));
     pol commit a_prime_prime_prime_0_0_limbs[4];
-
-    // array::map(c, |i| force_bool(i));
 
     // Initially, the first step flag should be 1 while the others should be 0.
     // builder.when_first_row().assert_one(local.step_flags[0]);
@@ -110,9 +108,8 @@ machine Keccakf16 with
     // let final_step = local.step_flags[NUM_ROUNDS - 1];
     // let not_final_step = AB::Expr::one() - final_step;
 
-    let first_step: expr = step_flags[0]; // aliasing instead of defining a new fixed column
+    let first_step: expr = step_flags[0]; // Aliasing instead of defining a new fixed column.
     let final_step: expr = step_flags[NUM_ROUNDS - 1];
-    
     col fixed is_last = [0]* + [1];
 
     // // If this is the first step, the input A must match the preimage.
@@ -166,8 +163,6 @@ machine Keccakf16 with
     //         builder.assert_eq(c_prime, xor);
     //     }
     // }
-
-    
     
     let andn: expr, expr -> expr = |a, b| (1 - a) * b;
     let xor: expr, expr -> expr = |a, b| a + b - 2*a*b;
@@ -181,25 +176,16 @@ machine Keccakf16 with
     // 1 0 1  0
     // 1 1 0  0
     // 1 1 1  1
+
     array::new(320, |i| {
         let x = i / 64;
         let z = i % 64;
         c_prime[i] = xor3(
-            c[x][z], 
-            c[((x + 4) % 5)][z], 
-            c[((x + 1) % 5)][((z + 63) % 64)]
+            c[i], 
+            c[((x + 4) % 5) * 64 + z], 
+            c[((x + 1) % 5) * 64 + ((z + 63) % 64)]
         )
     });
-
-    // array::new(320, |i| {
-    //     let x = i / 64;
-    //     let z = i % 64;
-    //     c_prime[i] = xor3(
-    //         c[i], 
-    //         c[((x + 4) % 5) * 64 + z], 
-    //         c[((x + 1) % 5) * 64 + ((z + 63) % 64)]
-    //     )
-    // });
 
     // // Check that the input limbs are consistent with A' and D.
     // // A[x, y, z] = xor(A'[x, y, z], D[x, y, z])
@@ -231,13 +217,11 @@ machine Keccakf16 with
 
     let bits_to_value_be: expr[] -> expr = |bits_be| array::fold(bits_be, 0, |acc, e| (acc * 2 + e));
 
-    array::map(a_prime, |i| force_bool(i));
     array::new(100, |i| {
         let y = i / 20;
         let x = (i / 4) % 5;
         let limb = i % 4;
-        let get_bit: int -> expr = |z| xor3(a_prime[y * 320 + x * 64 + z], c[x][z], c_prime[x * 64 + z]);
-        // let get_bit: int -> expr = |z| xor3(a_prime[y * 320 + x * 64 + z], c[x * 64 + z], c_prime[x * 64 + z]);
+        let get_bit: int -> expr = |z| xor3(a_prime[y * 320 + x * 64 + z], c[x * 64 + z], c_prime[x * 64 + z]);
 
         let limb_bits_be: expr[] = array::reverse(array::new(16, |z| get_bit(limb * 16 + z)));
         a[i] = bits_to_value_be(limb_bits_be)
@@ -331,8 +315,6 @@ machine Keccakf16 with
     //     let a_prime_prime_0_0_limb = local.a_prime_prime[0][0][limb];
     //     builder.assert_eq(computed_a_prime_prime_0_0_limb, a_prime_prime_0_0_limb);
     // }
-
-    array::map(a_prime_prime_0_0_bits, |i| force_bool(i));
 
     array::new(4, |limb| {
         let limb_bits_be: expr[] = array::reverse(array::new(16, |z| a_prime_prime_0_0_bits[limb * 16 + z]));
@@ -470,49 +452,16 @@ machine Keccakf16 with
             |acc, e| acc ^ e
         );
 
-    //query |row| {
-    //    let _ = array::map_enumerated(c, |i, c_i| {
-    //        let _ = array::map_enumerated(c_i, |j, c_ij| {
-    //            let limb: int = j / 16;
-    //            let bit_in_limb: int = j % 16;
-//
-    //            provide_value(c_ij, row, fe(query_c(i, limb, bit_in_limb)));
-    //        });
-    //    });
-    //};
-
-    // query |row| {
-    //     let _ = array::map_enumerated(c, |i, c_i| {
-    //         let x = i / 64;
-    //         let z = i % 64;
-    //         let limb = z / 16;
-    //         let bit_in_limb = z % 16;
-// 
-    //         provide_value(c_i, row, fe(query_c(x, limb, bit_in_limb)));
-    //     });
-    // };
-
     query |row| {
-        let _ = array::new(5 * 64, |i| {
+        let _ = array::map_enumerated(c, |i, c_i| {
             let x = i / 64;
             let z = i % 64;
             let limb = z / 16;
             let bit_in_limb = z % 16;
-            
-            provide_value(c[x][z], row, fe(query_c(x, limb, bit_in_limb)));
+
+            provide_value(c_i, row, fe(query_c(x, limb, bit_in_limb)));
         });
     };
-
-    //query |row| {
-    //    let _ = array::map_enumerated(c, |i, c_i| {
-    //        let x = i / 64;
-    //        let z = i % 64;
-    //        let limb = z / 16;
-    //        let bit_in_limb = z % 16;
-//
-    //        provide_value(c_i, row, fe(query_c(x, limb, bit_in_limb)));
-    //    });
-    //};
 
     // // Populate C'[x, z] = xor(C[x, z], C[x - 1, z], C[x + 1, z - 1]).
     // for x in 0..5 {
@@ -526,12 +475,9 @@ machine Keccakf16 with
     // }
 
     let query_c_prime: int, int -> int = query |x, z| 
-        int(eval(c[x][z])) ^ 
-        int(eval(c[((x + 4) % 5)][z])) ^ 
-        int(eval(c[((x + 1) % 5)][(z + 63) % 64]));
-        // int(eval(c[x * 64 + z])) ^ 
-        // int(eval(c[((x + 4) % 5) * 64 + z])) ^ 
-        // int(eval(c[((x + 1) % 5) * 64 + (z + 63) % 64]));
+        int(eval(c[x * 64 + z])) ^ 
+        int(eval(c[((x + 4) % 5) * 64 + z])) ^ 
+        int(eval(c[((x + 1) % 5) * 64 + (z + 63) % 64]));
 
     query |row| {
         let _ = array::map_enumerated(c_prime, |i, c_i| {
@@ -560,8 +506,7 @@ machine Keccakf16 with
 
     let query_a_prime: int, int, int, int, int -> int = query |x, y, z, limb, bit_in_limb| 
         ((int(eval(a[y * 20 + x * 4 + limb])) >> bit_in_limb) & 0x1) ^ 
-        int(eval(c[x][z])) ^ 
-        // int(eval(c[x * 64 + z])) ^ 
+        int(eval(c[x * 64 + z])) ^ 
         int(eval(c_prime[x * 64 + z]));
 
     query |row| {
