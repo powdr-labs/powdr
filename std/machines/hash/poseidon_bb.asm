@@ -4,7 +4,7 @@ use std::utils::unchanged_until;
 use std::utils::force_bool;
 use std::utils::sum;
 use std::convert::expr;
-use std::machines::memory::Memory;
+use std::machines::memory_bb::Memory;
 use std::machines::split::split_bb::SplitBB;
 
 // Implements the Poseidon permutation for the BabyBear field with the following parameters:
@@ -21,8 +21,8 @@ use std::machines::split::split_bb::SplitBB;
 //
 // This version of the Poseidon machine receives memory pointers and interacts
 // with memory directly to fetch its inputs and write its outputs.
-machine PoseidonBB(mem: Memory, split_BB: SplitBB) with
-    latch: CKL_0,
+machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
+    latch: CLK_0,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,

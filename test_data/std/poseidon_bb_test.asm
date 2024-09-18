@@ -1,6 +1,6 @@
 use std::machines::hash::poseidon_bb::PoseidonBB;
 use std::machines::range::Byte2;
-use std::machines::memory::Memory;
+use std::machines::memory_bb::Memory;
 use std::machines::split::ByteCompare;
 use std::machines::split::split_gl::SplitGL;
 
