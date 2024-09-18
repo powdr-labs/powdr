@@ -16,6 +16,8 @@ use stwo_prover::core::fields::FieldExpOps;
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::ColumnVec;
+use stwo_prover::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig, TreeVec};
+
 
 // Type alias for a wide Fibonacci component with a constant size.
 pub type WideFibonacciComponent<const N: usize> = FrameworkComponent<WideFibonacciEval<N>>;
@@ -120,4 +122,8 @@ pub fn generate_stwo_trace<T>(witness: &[(String, Vec<T>)], log_n_instances: u32
         .into_iter()
         .map(|eval| CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(domain, eval))
         .collect_vec()  
+
+      
+
+        
 }

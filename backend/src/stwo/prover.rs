@@ -19,6 +19,20 @@ use powdr_number::{DegreeType, FieldElement, KnownField};
 use super::circuit_builder::PowdrCircuit;
 use super::circuit_builder::generate_stwo_trace;
 
+use stwo_prover::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
+use stwo_prover::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
+use stwo_prover::core::backend::simd::SimdBackend;
+use stwo_prover::core::backend::{Col, Column};
+use stwo_prover::core::fields::m31::BaseField;
+use stwo_prover::core::fields::FieldExpOps;
+use stwo_prover::core::channel::Blake2sChannel;
+
+use stwo_prover::core::poly::BitReversedOrder;
+use stwo_prover::core::ColumnVec;
+use stwo_prover::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig, TreeVec};
+use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
+use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
+
 // We use two different EVM verifier libraries.
 // 1. snark_verifier: supports single SNARK verification as well as aggregated proof verification.
 // However the generated smart contract code size is often larger than the limit on Ethereum for complex VMs.
@@ -112,13 +126,35 @@ impl<F: FieldElement> StwoProver<F> {
         witness: &[(String, Vec<F>)],
         witgen_callback: WitgenCallback<F>,
     ) {
-        let circuit = PowdrCircuit::new(&self.analyzed)
-            .with_witgen_callback(witgen_callback)
-            .with_witness(witness);
-        
-        println!("this is from the generate stwo trace in circle domain \n {:?}",generate_stwo_trace(witness,6));
 
-        println!("{:?}", witness);
+        const LOG_N_INSTANCES: u32 = 6;
+
+       
+
+        let config = PcsConfig::default();
+
+        // Precompute twiddles.
+        let twiddles = SimdBackend::precompute_twiddles(
+            CanonicCoset::new(LOG_N_INSTANCES + 1 + config.fri_config.log_blowup_factor)
+                .circle_domain()
+                .half_coset,
+        );
+
+         // Setup protocol.
+         let prover_channel = &mut Blake2sChannel::default();
+         let commitment_scheme =
+             &mut CommitmentSchemeProver::<SimdBackend, Blake2sMerkleChannel>::new(
+                 config, &twiddles,
+             );
+        
+             let circuit = PowdrCircuit::new(&self.analyzed)
+             .with_witgen_callback(witgen_callback)
+             .with_witness(witness);
+         
+         println!("this is from the generate stwo trace in circle domain \n {:?}",generate_stwo_trace(witness,LOG_N_INSTANCES));
+ 
+         println!("{:?}", witness);
+
         
 
 
