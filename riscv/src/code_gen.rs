@@ -309,10 +309,10 @@ fn riscv_machine(
         r#"
 {}
 use std::machines::arith_bb::ArithBB;
-use std::machines::arith_bb_mul::Arith16Mul;
+use std::machines::arith16::Arith16;
 machine Main with min_degree: {}, max_degree: {} {{
 ArithBB arith_bb(byte2);
-Arith16Mul arith_bb_mul;
+Arith16 arith_mul(byte);
 {}
 
 {}
@@ -580,7 +580,7 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     instr affine XL, YL, ZH, ZL, WH, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
         // the mul machine is currently implemented as big endian, should change to match the rest
-        link ~> (tmp3_l, tmp3_h, tmp2_l, tmp2_h) = arith_bb_mul.mul(tmp1_l, tmp1_h, ZL, ZH)
+        link ~> (tmp3_h, tmp3_l, tmp2_h, tmp2_l) = arith_mul.mul(tmp1_h, tmp1_l, ZH, ZL)
         // we ignore tmp3 because that's the high 32 bits of the 64 bits multiplication result
         link ~> (tmp4_h, tmp4_l) = arith_bb.add(tmp2_h, tmp2_l, WH, WL)
         link ~> regs.mstore(YL, STEP + 1, tmp4_h, tmp4_l);
@@ -712,7 +712,7 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     instr divremu YL, XL, ZL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(YL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(XL, STEP + 1)
-        link if (1 - XXIsZero) ~> (tmp4_l, tmp4_h, tmp3_l, tmp3_h) = arith_bb_mul.div(tmp1_l, tmp1_h, tmp2_l, tmp2_h)
+        link if (1 - XXIsZero) ~> (tmp4_h, tmp4_l, tmp3_h, tmp3_l) = arith_mul.div(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
         link if (1 - XXIsZero) ~> wrap_bit = arith_bb.cmp(tmp3_h, tmp3_l, tmp2_h, tmp2_l)
         link if (1 - XXIsZero) ~> wrap_bit_2 = arith_bb.cmp(tmp3_h, tmp3_l, 0, 0)
         link ~> regs.mstore(ZL, STEP + 2, tmp6_h, tmp6_l)
@@ -783,7 +783,7 @@ fn mul_instruction<T: FieldElement>(runtime: &Runtime) -> &'static str {
     instr mul XL, YL, ZL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
-        link ~> (tmp4_l, tmp4_h, tmp3_l, tmp3_h) = arith_bb_mul.mul(tmp1_l, tmp1_h, tmp2_l, tmp2_h)
+        link ~> (tmp4_h, tmp4_l, tmp3_h, tmp3_l) = arith_mul.mul(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
         link ~> regs.mstore(ZL, STEP + 2, tmp3_h, tmp3_l)
         link ~> regs.mstore(WL, STEP + 3, tmp4_h, tmp4_l);
 "#
