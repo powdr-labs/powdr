@@ -27,8 +27,9 @@ machine Main with degree: 8 {
     col witness stage(1) z;
     col witness stage(1) u;
 
-    let is_first: col = std::well_known::is_first;
-    permutation(is_first, 1, [z], [u], alpha, beta, permutation_constraint);
 
+    permutation(1, [z], [u], alpha, beta, permutation_constraint);
+
+    let is_first: col = std::well_known::is_first;
     is_first' * (z + u) = 0;
 }

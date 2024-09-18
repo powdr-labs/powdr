@@ -55,7 +55,6 @@ let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr -> fe[] = query |acc
 /// Returns constraints that enforce that lhs is a permutation of rhs
 ///
 /// # Arguments:
-/// - is_first: A column that is 1 for the first row and 0 for the rest
 /// - acc: A phase-2 witness column to be used as the accumulator. If 2 are provided, computations
 ///        are done on the F_{p^2} extension field.
 /// - alpha: A challenge used to compress the LHS and RHS values
@@ -80,7 +79,7 @@ let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr -> fe[] = query |acc
 /// the wrapping behavior: The first accumulator is constrained to be 1, and the last
 /// accumulator is the same as the first one, because of wrapping.
 /// For small fields, this computation should happen in the extension field.
-let permutation: expr, expr[], Fp2<expr>, Fp2<expr>, Constr -> Constr[] = |is_first, acc, alpha, beta, permutation_constraint| {
+let permutation: expr[], Fp2<expr>, Fp2<expr>, Constr -> () = constr |acc, alpha, beta, permutation_constraint| {
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
 
@@ -100,12 +99,13 @@ let permutation: expr, expr[], Fp2<expr>, Fp2<expr>, Constr -> Constr[] = |is_fi
         mul_ext(lhs_folded, acc_ext)
     );
 
+    let is_first: col = std::well_known::is_first;
+
     let (acc_1, acc_2) = unpack_ext(acc_ext);
 
-    [
-        // First and last acc needs to be 1
-        // (because of wrapping, the acc[0] and acc[N] are the same)
-        is_first * (acc_1 - 1) = 0,
-        is_first * acc_2 = 0
-    ] + constrain_eq_ext(update_expr, from_base(0))
+    // First and last acc needs to be 1
+    // (because of wrapping, the acc[0] and acc[N] are the same)
+    is_first * (acc_1 - 1) = 0;
+    is_first * acc_2 = 0;
+    constrain_eq_ext(update_expr, from_base(0));
 };
