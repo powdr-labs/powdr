@@ -1,18 +1,16 @@
 use itertools::Itertools;
-use p3_baby_bear::BabyBear;
-use p3_field::AbstractField;
-use p3_poseidon2::Poseidon2ExternalMatrixGeneral;
+use p3_baby_bear::{BabyBear, MdsMatrixBabyBear};
+use p3_field::{AbstractField, PrimeField32};
+use p3_poseidon::Poseidon;
 use p3_symmetric::Permutation;
-use powdr_plonky3::baby_bear;
+use powdr_plonky3::baby_bear::{ROUNDS_F, ROUNDS_P, WIDTH};
 use rand::{distributions::Standard, Rng, SeedableRng};
 
-fn extract_matrix(
-    mat: impl Permutation<[BabyBear; baby_bear::WIDTH]>,
-) -> Vec<[BabyBear; baby_bear::WIDTH]> {
-    let zeroed = [BabyBear::zero(); baby_bear::WIDTH];
+fn extract_matrix(mat: impl Permutation<[BabyBear; WIDTH]>) -> Vec<[BabyBear; WIDTH]> {
+    let zeroed = [BabyBear::zero(); WIDTH];
 
-    let mut cols = Vec::with_capacity(baby_bear::WIDTH);
-    for i in 0..baby_bear::WIDTH {
+    let mut cols = Vec::with_capacity(WIDTH);
+    for i in 0..WIDTH {
         let mut col = zeroed;
         col[i] = BabyBear::one();
         mat.permute_mut(&mut col);
@@ -20,10 +18,10 @@ fn extract_matrix(
     }
 
     // Transpose to row-major order for easier printing.
-    let mut rows = Vec::with_capacity(baby_bear::WIDTH);
-    for i in 0..baby_bear::WIDTH {
-        let mut row = [BabyBear::zero(); baby_bear::WIDTH];
-        for j in 0..baby_bear::WIDTH {
+    let mut rows = Vec::with_capacity(WIDTH);
+    for i in 0..WIDTH {
+        let mut row = [BabyBear::zero(); WIDTH];
+        for j in 0..WIDTH {
             row[j] = cols[j][i];
         }
         rows.push(row);
@@ -32,30 +30,96 @@ fn extract_matrix(
 }
 
 fn main() {
-    // We use for Poseidon the same MDS matrix as for Poseidon2, and the same number of internal and external rounds.
-    let constants: Vec<[BabyBear; baby_bear::ROUNDS_F + baby_bear::ROUNDS_P]> =
+    // We use for Poseidon the same number of internal and external rounds as
+    // for Poseidon2, as it should give us at least the same security of
+    // Poseidon2 (except for the algebraic attack addressed in Poseidon2, for
+    // which our other Poseidon implementations are not safe against, anyway).
+    let constants: Vec<[BabyBear; ROUNDS_F + ROUNDS_P]> =
         rand_chacha::ChaCha8Rng::seed_from_u64(42)
             .sample_iter(Standard)
-            .take(baby_bear::WIDTH)
+            .take(WIDTH)
             .collect();
 
-    for (i, row) in constants.into_iter().enumerate() {
+    for (i, row) in constants.iter().enumerate() {
         println!(
             "    pol constant C_{i} = [{}, 0]*;",
-            row.into_iter().format(", ")
+            row.iter().format(", ")
         );
     }
     println!(
         "    let C = [{}];",
-        (0..baby_bear::WIDTH)
-            .map(|i| format!("C_{}", i))
-            .format(", ")
+        (0..WIDTH).map(|i| format!("C_{}", i)).format(", ")
     );
 
     println!("    let M = [");
-    let mds = extract_matrix(Poseidon2ExternalMatrixGeneral);
+    let mds = extract_matrix(MdsMatrixBabyBear::default());
     for row in mds {
         println!("        [{}],", row.into_iter().format(", "));
     }
     println!("    ];");
+
+    println!("// TESTS:");
+    let poseidon = Poseidon::<BabyBear, MdsMatrixBabyBear, WIDTH, 7>::new(
+        // Contrary to Poseidon2, the API takes half the number of external rounds.
+        ROUNDS_F / 2,
+        ROUNDS_P,
+        // In our pil implementation, we have one row of constants per state
+        // element. In plonky3 implementation, we have one row of constants per
+        // round, so we need to transpose the constants.
+        transpose_and_flatten(constants),
+        MdsMatrixBabyBear::default(),
+    );
+    let test_vectors = [
+        [BabyBear::zero(); WIDTH],
+        [BabyBear::one(); WIDTH],
+        [-BabyBear::one(); WIDTH],
+        // The test vector from goldilocks, that I don't know where it came from.
+        [
+            923978,
+            235763497586,
+            9827635653498,
+            112870,
+            289273673480943876,
+            230295874986745876,
+            6254867324987,
+            2087,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        ]
+        .map(|x: u64| BabyBear::new((x % BabyBear::ORDER_U32 as u64) as u32)),
+    ];
+
+    for (test_num, mut test_vector) in test_vectors.into_iter().enumerate() {
+        println!("\n        // Test vector {}:\n", test_num);
+        for (i, val) in test_vector.iter().enumerate() {
+            let val = val.as_canonical_u32();
+            println!(
+                "        mstore_le {}, {}, {};",
+                i * 4,
+                val >> 16,
+                val & 0xffff,
+            );
+        }
+        println!("\n        poseidon 0, 0;\n");
+        poseidon.permute_mut(&mut test_vector);
+        for (i, val) in test_vector[..8].iter().enumerate() {
+            println!("        assert_eq {}, {val};", i * 4);
+        }
+    }
+}
+
+fn transpose_and_flatten(input: Vec<[BabyBear; ROUNDS_F + ROUNDS_P]>) -> Vec<BabyBear> {
+    let mut output = Vec::with_capacity(WIDTH * (ROUNDS_F + ROUNDS_P));
+    for i in 0..(ROUNDS_F + ROUNDS_P) {
+        for in_row in input.iter() {
+            output.push(in_row[i]);
+        }
+    }
+    output
 }

@@ -7,12 +7,13 @@ use std::convert::expr;
 use std::machines::memory::Memory;
 use std::machines::split::split_bb::SplitBB;
 
-// Implements the Poseidon2 permutation for the BabyBear field with the following parameters:
-// - 8 field elements of input
-// - 16 field elements in the state
+// Implements the Poseidon permutation for the BabyBear field with the following parameters:
+// - 16 field elements in the state, of which
+//   - 8 are meant to be rate elements
+//   - 8 are meant to be capacity elements
 // - 8 field elements of output
 // - 8 full rounds
-// - 13 partial rounds
+// - 21 partial rounds
 // - S-Box: x^7
 //
 // The the number of rounds to get 128-bit security was taken from here:
@@ -32,18 +33,18 @@ machine PoseidonBB(mem: Memory, split_BB: SplitBB) with
     // When the hash function is used only once, the capacity elements should be
     // set to constants, where different constants can be used to define different
     // hash functions.
-    // The input data is passed via a memory pointer: the machine will read 24
-    // memory field elements.
+    //
+    // The input data is passed via a memory pointer: the machine will read 16 field
+    // elements from memory (32 16-bits half-words).
+    //
     // Similarly, the output data is written to memory at the provided pointer as
     // 16 16-bit machine half-words representing 8 field elements in little-endian format
     // (in canonical form).
+    //
     // Reads happen at the provided time step; writes happen at the next time step.
     operation poseidon_permutation<0> input_addr, output_addr, time_step ->;
 
     col witness operation_id;
-
-    // Ported from:
-    // - TODO
 
     // Number of field elements in the state
     let STATE_SIZE: int = 16;
@@ -63,7 +64,7 @@ machine PoseidonBB(mem: Memory, split_BB: SplitBB) with
     // actual block, not a default block. Its value is constant
     // within the block.
     let used = array::sum(sel);
-    array::map(sel, |s| uncnghaed_until(s, LAST));
+    array::map(sel, |s| unchanged_until(s, LAST));
     std::utils::force_bool(used);
 
     // Repeat the input state in the whole block
@@ -169,23 +170,24 @@ machine PoseidonBB(mem: Memory, split_BB: SplitBB) with
 
     // The MDS matrix
     let M = [
-        [4, 6, 2, 2, 2, 3, 1, 1, 2, 3, 1, 1, 2, 3, 1, 1],
-        [2, 4, 6, 2, 1, 2, 3, 1, 1, 2, 3, 1, 1, 2, 3, 1],
-        [2, 2, 4, 6, 1, 1, 2, 3, 1, 1, 2, 3, 1, 1, 2, 3],
-        [6, 2, 2, 4, 3, 1, 1, 2, 3, 1, 1, 2, 3, 1, 1, 2],
-        [2, 3, 1, 1, 4, 6, 2, 2, 2, 3, 1, 1, 2, 3, 1, 1],
-        [1, 2, 3, 1, 2, 4, 6, 2, 1, 2, 3, 1, 1, 2, 3, 1],
-        [1, 1, 2, 3, 2, 2, 4, 6, 1, 1, 2, 3, 1, 1, 2, 3],
-        [3, 1, 1, 2, 6, 2, 2, 4, 3, 1, 1, 2, 3, 1, 1, 2],
-        [2, 3, 1, 1, 2, 3, 1, 1, 4, 6, 2, 2, 2, 3, 1, 1],
-        [1, 2, 3, 1, 1, 2, 3, 1, 2, 4, 6, 2, 1, 2, 3, 1],
-        [1, 1, 2, 3, 1, 1, 2, 3, 2, 2, 4, 6, 1, 1, 2, 3],
-        [3, 1, 1, 2, 3, 1, 1, 2, 6, 2, 2, 4, 3, 1, 1, 2],
-        [2, 3, 1, 1, 2, 3, 1, 1, 2, 3, 1, 1, 4, 6, 2, 2],
-        [1, 2, 3, 1, 1, 2, 3, 1, 1, 2, 3, 1, 2, 4, 6, 2],
-        [1, 1, 2, 3, 1, 1, 2, 3, 1, 1, 2, 3, 2, 2, 4, 6],
-        [3, 1, 1, 2, 3, 1, 1, 2, 3, 1, 1, 2, 6, 2, 2, 4],
+        [1, 1, 51, 1, 11, 17, 2, 1, 101, 63, 15, 2, 67, 22, 13, 3],
+        [3, 1, 1, 51, 1, 11, 17, 2, 1, 101, 63, 15, 2, 67, 22, 13],
+        [13, 3, 1, 1, 51, 1, 11, 17, 2, 1, 101, 63, 15, 2, 67, 22],
+        [22, 13, 3, 1, 1, 51, 1, 11, 17, 2, 1, 101, 63, 15, 2, 67],
+        [67, 22, 13, 3, 1, 1, 51, 1, 11, 17, 2, 1, 101, 63, 15, 2],
+        [2, 67, 22, 13, 3, 1, 1, 51, 1, 11, 17, 2, 1, 101, 63, 15],
+        [15, 2, 67, 22, 13, 3, 1, 1, 51, 1, 11, 17, 2, 1, 101, 63],
+        [63, 15, 2, 67, 22, 13, 3, 1, 1, 51, 1, 11, 17, 2, 1, 101],
+        [101, 63, 15, 2, 67, 22, 13, 3, 1, 1, 51, 1, 11, 17, 2, 1],
+        [1, 101, 63, 15, 2, 67, 22, 13, 3, 1, 1, 51, 1, 11, 17, 2],
+        [2, 1, 101, 63, 15, 2, 67, 22, 13, 3, 1, 1, 51, 1, 11, 17],
+        [17, 2, 1, 101, 63, 15, 2, 67, 22, 13, 3, 1, 1, 51, 1, 11],
+        [11, 17, 2, 1, 101, 63, 15, 2, 67, 22, 13, 3, 1, 1, 51, 1],
+        [1, 11, 17, 2, 1, 101, 63, 15, 2, 67, 22, 13, 3, 1, 1, 51],
+        [51, 1, 11, 17, 2, 1, 101, 63, 15, 2, 67, 22, 13, 3, 1, 1],
+        [1, 51, 1, 11, 17, 2, 1, 101, 63, 15, 2, 67, 22, 13, 3, 1]
     ];
+
 
     // Multiply with MDS Matrix
     let dot_product = |v1, v2| array::sum(array::zip(v1, v2, |v1_i, v2_i| v1_i * v2_i));
