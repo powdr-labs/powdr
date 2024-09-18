@@ -45,6 +45,13 @@ fn poseidon_gl_memory_test() {
 
 #[test]
 #[ignore = "Too slow"]
+fn keccakf16_test() {
+    let f = "std/keccakf16_test.asm";
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn split_bn254_test() {
     let f = "std/split_bn254_test.asm";
     test_halo2(make_simple_prepared_pipeline(f));
