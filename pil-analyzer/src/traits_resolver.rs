@@ -17,13 +17,18 @@ type SolvedImpl = ((String, Vec<Type>), Arc<Expression>);
 pub struct TraitsResolver<'a> {
     trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
     solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
+    trait_typevars_mapping: &'a HashMap<String, Vec<Type>>,
 }
 
 impl<'a> TraitsResolver<'a> {
-    pub fn new(trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>) -> Self {
+    pub fn new(
+        trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
+        trait_typevars_mapping: &'a HashMap<String, Vec<Type>>,
+    ) -> Self {
         Self {
             trait_impls,
             solved_impls: HashMap::new(),
+            trait_typevars_mapping,
         }
     }
 
@@ -43,15 +48,17 @@ impl<'a> TraitsResolver<'a> {
             }
         }
 
-        match self.resolve_trait(ref_poly) {
-            Some(((key, type_args), expr)) => {
+        let resolved_traits = self.resolve_trait(ref_poly);
+        if !resolved_traits.is_empty() {
+            for ((key, type_args), expr) in resolved_traits {
                 self.solved_impls
                     .entry(key)
                     .or_default()
                     .insert(type_args, expr);
-                Ok(())
             }
-            None => Err(format!("Impl not found for {ref_poly}")),
+            Ok(())
+        } else {
+            Err(format!("Impl not found for {ref_poly}"))
         }
     }
 
@@ -60,26 +67,65 @@ impl<'a> TraitsResolver<'a> {
         self.solved_impls
     }
 
-    fn resolve_trait(&self, reference: &PolynomialReference) -> Option<SolvedImpl> {
-        let (trait_decl_name, trait_fn_name) = reference.name.rsplit_once("::")?;
+    fn resolve_trait(&self, reference: &PolynomialReference) -> Vec<SolvedImpl> {
+        let mut solved_impls = Vec::new();
+        let (trait_decl_name, trait_fn_name) = match reference.name.rsplit_once("::") {
+            Some(parts) => parts,
+            None => return solved_impls,
+        };
+
         if let Some(impls) = self.trait_impls.get(trait_decl_name) {
             let type_args = reference.type_args.as_ref().unwrap().to_vec();
             let tuple_args = Type::Tuple(TupleType {
                 items: type_args.clone(),
             });
-            for impl_ in impls.iter() {
-                assert!(tuple_args.is_concrete_type());
 
-                let mut unifier: Unifier = Default::default();
+            if tuple_args.is_concrete_type() {
+                for impl_ in impls.iter() {
+                    let mut unifier: Unifier = Default::default();
 
-                let res = unifier.unify_types(tuple_args.clone(), impl_.type_scheme.ty.clone());
-                if res.is_ok() {
-                    let expr = impl_.function_by_name(trait_fn_name).unwrap();
-                    return Some(((reference.name.clone(), type_args), Arc::clone(&expr.body)));
+                    let res = unifier.unify_types(tuple_args.clone(), impl_.type_scheme.ty.clone());
+                    if res.is_ok() {
+                        if let Some(expr) = impl_.function_by_name(trait_fn_name) {
+                            solved_impls.push((
+                                (reference.name.clone(), type_args.clone()),
+                                Arc::clone(&expr.body),
+                            ));
+                        }
+                    }
+                }
+            } else {
+                for impl_ in impls.iter() {
+                    let type_vars = self.trait_typevars_mapping.get(&reference.name);
+                    match type_vars {
+                        Some(type_vars) => {
+                            for t in type_vars {
+                                let tuple_args = Type::Tuple(TupleType {
+                                    items: vec![t.clone()],
+                                });
+
+                                let mut unifier: Unifier = Default::default();
+
+                                let res = unifier
+                                    .unify_types(tuple_args.clone(), impl_.type_scheme.ty.clone());
+                                if res.is_ok() {
+                                    if let Some(expr) = impl_.function_by_name(trait_fn_name) {
+                                        solved_impls.push((
+                                            (reference.name.clone(), vec![t.clone()]),
+                                            Arc::clone(&expr.body),
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                        None => {
+                            continue;
+                        }
+                    }
                 }
             }
         }
 
-        None
+        solved_impls
     }
 }
