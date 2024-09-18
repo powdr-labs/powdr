@@ -8,11 +8,11 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [features]
-default = []
+default = ["dep:stwo-prover"]
 halo2 = ["dep:halo2_proofs", "dep:halo2_curves", "dep:snark-verifier", "dep:halo2_solidity_verifier"]
 estark-polygon = ["dep:pil-stark-prover"]
 plonky3 = ["dep:powdr-plonky3"]
-stwo = ["stwo-prover"]
+stwo = ["dep:stwo-prover"]
 
 [dependencies]
 powdr-ast.workspace = true
@@ -36,7 +36,7 @@ halo2_curves = { version = "0.6.1", package = "halo2curves", optional = true}
 snark-verifier = { git = "https://github.com/powdr-labs/snark-verifier", branch = "powdr-halo2", optional = true }
 halo2_solidity_verifier = { git = "https://github.com/powdr-labs/halo2-solidity-verifier", branch = "main", features = ["evm"], optional = true }
 
-stwo-prover={git= "https://github.com/starkware-libs/stwo",optional=true}
+stwo-prover = { git= "https://github.com/starkware-libs/stwo.git",optional=true}
 p3-mersenne-31 = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
 
 strum = { version = "0.24.1", features = ["derive"] }
