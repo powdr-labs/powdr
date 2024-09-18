@@ -7,7 +7,7 @@ use env_logger::fmt::Color;
 use env_logger::{Builder, Target};
 use log::LevelFilter;
 
-use powdr_number::{BigUint, Bn254Field, FieldElement, GoldilocksField};
+use powdr_number::{BabyBearField, BigUint, Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::Pipeline;
 use powdr_riscv_executor::ProfilerOptions;
 
@@ -18,6 +18,8 @@ use strum::{Display, EnumString, EnumVariantNames};
 
 #[derive(Clone, EnumString, EnumVariantNames, Display)]
 pub enum FieldArgument {
+    #[strum(serialize = "bb")]
+    Bb,
     #[strum(serialize = "gl")]
     Gl,
     #[strum(serialize = "bn254")]
