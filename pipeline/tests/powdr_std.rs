@@ -43,6 +43,17 @@ fn poseidon_gl_memory_test() {
     gen_estark_proof(pipeline);
 }
 
+/*
+#[test]
+#[ignore = "Too slow"]
+fn poseidon_bb_test() {
+    let f = "std/poseidon_bb_test.asm";
+    let pipeline = make_simple_prepared_pipeline(f);
+    test_pilcom(pipeline.clone());
+    gen_estark_proof(pipeline);
+}
+*/
+
 #[test]
 #[ignore = "Too slow"]
 fn split_bn254_test() {
