@@ -318,7 +318,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
     }
 }
 
-const BUILTINS: [(&str, BuiltinFunction); 20] = [
+const BUILTINS: [(&str, BuiltinFunction); 21] = [
     ("std::array::len", BuiltinFunction::ArrayLen),
     ("std::check::panic", BuiltinFunction::Panic),
     ("std::convert::expr", BuiltinFunction::ToExpr),
@@ -366,10 +366,9 @@ pub enum BuiltinFunction {
     ToInt,
     /// std::convert::fe: int/fe -> fe, converts int to fe
     ToFe,
-    /// std::prover::capture_stage: (-> int) -> Constr[], evaluates the first argument,
-    /// and returns the constraints that this functions added to the global set.
-    /// Increments the stage and sets the degree of the previous stage to the number returned
-    /// by the function.
+    /// std::prover::capture_stage: (-> ()), (Constr[] -> ()) -> (),
+    /// calls the first argument, and then increments the stage and calls the second argument with the constraints that
+    /// the first argument added to the global set. Resets the stage again.
     CaptureStage,
     /// std::prover::challenge: int, int -> expr, constructs a challenge with a given stage and ID.
     Challenge,
@@ -646,7 +645,11 @@ pub trait SymbolLookup<'a, T: FieldElement> {
         ))
     }
 
-    fn capture_stage(&mut self, _fun: Arc<Value<'a, T>>) -> Result<Arc<Value<'a, T>>, EvalError> {
+    fn capture_stage(
+        &mut self,
+        _creator: Arc<Value<'a, T>>,
+        _processor: Arc<Value<'a, T>>,
+    ) -> Result<(), EvalError> {
         Err(EvalError::Unsupported(
             "The function capture_stage is not allowed at this point.".to_string(),
         ))
@@ -1298,7 +1301,6 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
         BuiltinFunction::ToExpr => 1,
         BuiltinFunction::ToFe => 1,
         BuiltinFunction::ToInt => 1,
-        BuiltinFunction::CaptureStage => 1,
         BuiltinFunction::Challenge => 2,
         BuiltinFunction::NewWitAtStage => 2,
         BuiltinFunction::ProvideValue => 3,
@@ -1306,6 +1308,7 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
         BuiltinFunction::MinDegree => 0,
         BuiltinFunction::MaxDegree => 0,
         BuiltinFunction::Degree => 0,
+        BuiltinFunction::CaptureStage => 2,
         BuiltinFunction::Eval => 1,
         BuiltinFunction::TryEval => 1,
         BuiltinFunction::GetInput => 1,
@@ -1437,8 +1440,10 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
         BuiltinFunction::MinDegree => symbols.min_degree()?,
         BuiltinFunction::Degree => symbols.degree()?,
         BuiltinFunction::CaptureStage => {
-            let fun = arguments.pop().unwrap();
-            symbols.capture_stage(fun)?
+            let processor = arguments.pop().unwrap();
+            let creator = arguments.pop().unwrap();
+            symbols.capture_stage(creator, processor)?;
+            Value::Tuple(vec![]).into()
         }
         BuiltinFunction::Eval => {
             let arg = arguments.pop().unwrap();

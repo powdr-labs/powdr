@@ -787,7 +787,7 @@ pub fn capture_stage_non_fresh_wit() {
             let f = constr || { x = 2; 1024 };
             std::prover::capture_stage(f);
     "#;
-    analyze_string::<GoldilocksField>(input);
+    analyze_string(input);
 }
 
 #[test]
@@ -802,7 +802,7 @@ pub fn capture_stage_non_fresh_inter() {
             let f = constr || { x = 2; 1024 };
             std::prover::capture_stage(f);
     "#;
-    analyze_string::<GoldilocksField>(input);
+    analyze_string(input);
 }
 
 #[test]
@@ -817,7 +817,7 @@ pub fn capture_stage_non_fresh_constr() {
             let f = constr || 1024;
             std::prover::capture_stage(f);
     "#;
-    analyze_string::<GoldilocksField>(input);
+    analyze_string(input);
 }
 
 #[test]
@@ -831,7 +831,7 @@ pub fn capture_stage_set_different_degree() {
             let f = constr || 2048;
             std::prover::capture_stage(f);
     "#;
-    analyze_string::<GoldilocksField>(input);
+    analyze_string(input);
 }
 
 #[test]
@@ -847,7 +847,7 @@ pub fn capture_stage_working() {
             let w;
             w = 10;
     "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     let expected = "namespace std::prover(1024);
     let capture_stage: (-> int) -> std::prelude::Constr[] = 9;
 namespace Main(1024);

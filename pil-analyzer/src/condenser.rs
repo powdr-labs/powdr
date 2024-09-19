@@ -32,7 +32,9 @@ use powdr_number::{BigUint, FieldElement};
 use powdr_parser_util::SourceRef;
 
 use crate::{
-    evaluator::{self, Closure, evaluate_function_call, Definitions, EvalError, SymbolLookup, Value},
+    evaluator::{
+        self, Closure, Definitions, EvalError, SymbolLookup, Value,
+    },
     statement_processor::Counters,
 };
 
@@ -106,14 +108,6 @@ pub fn condense<T: FieldElement>(
                         vec![condenser.condense_to_algebraic_expression(&e.e)]
                     };
                     intermediate_columns.insert(name.clone(), (symbol.clone(), value));
-                    Some(StatementIdentifier::Definition(name))
-                }
-                StatementIdentifier::Definition(name)
-                    if matches!(
-                        definitions[&name].0.kind,
-                        SymbolKind::Poly(PolynomialType::Committed)
-                    ) =>
-                {
                     Some(StatementIdentifier::Definition(name))
                 }
                 s => Some(s),
@@ -298,24 +292,6 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     /// TODO needed?
     pub fn stage(&self) -> u32 {
         self.stage
-    }
-
-    /// Returns the degree (potentially modified through the "capture_stage" builtin).
-    /// TODO needed?
-    pub fn degree(&self) -> Option<u64> {
-        self.degree
-    }
-
-    /// Returns the current stage (index).
-    /// TODO needed?
-    pub fn stage(&self) -> u32 {
-        self.stage
-    }
-
-    /// Returns the degree (potentially modified through the "capture_stage" builtin).
-    /// TODO needed?
-    pub fn degree(&self) -> Option<u64> {
-        self.degree
     }
 
     /// Returns columns generated since the last call to this function.
@@ -528,7 +504,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             id: self.counters.dispense_symbol_id(kind, length),
             source,
             absolute_name: name.clone(),
-            stage: Some(stage.unwrap_or_else(self.stage())),
+            stage: Some(stage.unwrap_or_else(|| self.stage())),
             kind,
             length,
             degree: self.degree,
@@ -639,39 +615,46 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
                 .new_constraints
                 .push(to_constraint(&constraints, source, &mut self.counters)),
         }
-        }
         Ok(())
     }
 
-    fn capture_stage(&mut self, fun: Arc<Value<'a, T>>) -> Result<Arc<Value<'a, T>>, EvalError> {
-        if !self.stage_is_fresh {
-            return Err(EvalError::InvalidState("Cannot call \"capture_stage\": There are pre-existing constraints or witness columns.".to_string()));
-        }
+    fn capture_stage(
+        &mut self,
+        _creator: Arc<Value<'a, T>>,
+        _processor: Arc<Value<'a, T>>,
+    ) -> Result<(), EvalError> {
+        // TODO store self.new_constraints.
+        // call constraint_creator,
+        // extract constraints. - maybe reset the counters?
+        // increment stage
+        // call constraint_processor with the extracted constraints.
+        // decrement stage
+        // return nothing.
+        // let degree = evaluate_function_call(fun, vec![], self)?;
+        // let Value::Integer(degree) = degree.as_ref() else {
+        //     panic!("Type error")
+        // };
+        // let degree: u64 = degree.try_into().unwrap();
+        // if self.degree.is_some() && self.degree != Some(degree) {
+        //     return Err(EvalError::InvalidState(format!(
+        //             "Call to \"capture_stage\" returned degree {degree}, but the degree has already been set to {}.",
+        //             self.degree.unwrap()
+        //         )));
+        // } else {
+        //     self.degree = Some(degree);
+        // }
+        // self.stage += 1;
+        // self.stage_is_fresh = true;
 
-        let degree = evaluate_function_call(fun, vec![], self)?;
-        let Value::Integer(degree) = degree.as_ref() else {
-            panic!("Type error")
-        };
-        let degree: u64 = degree.try_into().unwrap();
-        if self.degree.is_some() && self.degree != Some(degree) {
-            return Err(EvalError::InvalidState(format!(
-                    "Call to \"capture_stage\" returned degree {degree}, but the degree has already been set to {}.",
-                    self.degree.unwrap()
-                )));
-        } else {
-            self.degree = Some(degree);
-        }
-        self.stage += 1;
-        self.stage_is_fresh = true;
-
-        Ok(Value::Array(
-            self.extract_new_constraints()
-                .into_iter()
-                .map(Into::into)
-                .map(Arc::new)
-                .collect(),
-        )
-        .into())
+        // Ok(Value::Array(
+        //     self.extract_new_constraints()
+        //         .into_iter()
+        //         .map(Into::into)
+        //         .map(Arc::new)
+        //         .collect(),
+        // )
+        // .into())
+        Ok(())
     }
 }
 
@@ -691,45 +674,45 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement> From<IdentityWithoutID<AlgebraicExpression<T>>> for Value<'a, T> {
-    fn from(id: IdentityWithoutID<AlgebraicExpression<T>>) -> Self {
-        match id.kind {
-            IdentityKind::Polynomial => {
-                let id = id.into_identity(0);
-                let (left, right) = id.as_polynomial_identity();
-                let right = right
-                    .cloned()
-                    .unwrap_or_else(|| AlgebraicExpression::Number(0.into()));
-                let fields = vec![Arc::new(left.clone().into()), Arc::new(right.into())];
+// impl<'a, T: FieldElement> From<IdentityWithoutID<AlgebraicExpression<T>>> for Value<'a, T> {
+//     fn from(id: IdentityWithoutID<AlgebraicExpression<T>>) -> Self {
+//         match id.kind {
+//             IdentityKind::Polynomial => {
+//                 let id = id.into_identity(0);
+//                 let (left, right) = id.as_polynomial_identity();
+//                 let right = right
+//                     .cloned()
+//                     .unwrap_or_else(|| AlgebraicExpression::Number(0.into()));
+//                 let fields = vec![Arc::new(left.clone().into()), Arc::new(right.into())];
 
-                Value::Enum("Identity", Some(fields))
-            }
-            IdentityKind::Plookup | IdentityKind::Permutation => {
-                let name = if id.kind == IdentityKind::Plookup {
-                    "Lookup"
-                } else {
-                    "Permutation"
-                };
-                Value::Enum(
-                    name,
-                    Some(vec![
-                        to_option_expr_value(id.left.selector),
-                        to_vec_expr_value(id.left.expressions),
-                        to_option_expr_value(id.right.selector),
-                        to_vec_expr_value(id.right.expressions),
-                    ]),
-                )
-            }
-            IdentityKind::Connect => Value::Enum(
-                "Connection",
-                Some(vec![
-                    to_vec_expr_value(id.left.expressions),
-                    to_vec_expr_value(id.right.expressions),
-                ]),
-            ),
-        }
-    }
-}
+//                 Value::Enum("Identity", Some(fields))
+//             }
+//             IdentityKind::Plookup | IdentityKind::Permutation => {
+//                 let name = if id.kind == IdentityKind::Plookup {
+//                     "Lookup"
+//                 } else {
+//                     "Permutation"
+//                 };
+//                 Value::Enum(
+//                     name,
+//                     Some(vec![
+//                         to_option_expr_value(id.left.selector),
+//                         to_vec_expr_value(id.left.expressions),
+//                         to_option_expr_value(id.right.selector),
+//                         to_vec_expr_value(id.right.expressions),
+//                     ]),
+//                 )
+//             }
+//             IdentityKind::Connect => Value::Enum(
+//                 "Connection",
+//                 Some(vec![
+//                     to_vec_expr_value(id.left.expressions),
+//                     to_vec_expr_value(id.right.expressions),
+//                 ]),
+//             ),
+//         }
+//     }
+// }
 
 fn to_constraint<T: FieldElement>(
     constraint: &Value<'_, T>,
