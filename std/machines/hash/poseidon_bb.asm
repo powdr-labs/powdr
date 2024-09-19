@@ -197,7 +197,8 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     array::zip(state, c, |state, c| (state' - c) * (1-LAST) = 0);
 
     // In the last row, the first OUTPUT_SIZE elements of the state should equal output
-    array::zip(output, state, |output, state| LASTBLOCK * (output - state) = 0);
+    let output_state = array::sub_array(state, 0, OUTPUT_SIZE);
+    array::zip(output, output_state, |output, state| LASTBLOCK * (output - state) = 0);
 
     // The output should stay constant in the block
     array::map(output, |c| unchanged_until(c, LAST));
