@@ -10,8 +10,8 @@ repository.workspace = true
 name = "powdr_plonky3"
 
 [[bin]]
-name = "gen_poseidon2_bb_consts"
-path = "src/bin/gen_poseidon2_bb_consts.rs" 
+name = "gen_poseidon_bb_consts"
+path = "src/bin/gen_poseidon_bb_consts.rs" 
 
 [dependencies]
 powdr-ast.workspace = true
