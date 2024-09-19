@@ -1,6 +1,6 @@
 use powdr_number::BigUint;
 
-use crate::parsed::Expression;
+use crate::parsed::{Expression, SourceReference};
 
 use super::{
     asm::{parse_absolute_path, Part, SymbolPath},
@@ -36,10 +36,13 @@ pub fn next_reference<S: Into<String>>(name: S) -> Expression {
 /// Returns an index access operation to expr if the index is Some, otherwise returns expr itself.
 pub fn index_access(expr: Expression, index: Option<BigUint>) -> Expression {
     match index {
-        Some(i) => Expression::IndexAccess(IndexAccess {
-            array: Box::new(expr),
-            index: Box::new(i.into()),
-        }),
+        Some(i) => Expression::IndexAccess(
+            expr.source_reference().clone(),
+            IndexAccess {
+                array: Box::new(expr),
+                index: Box::new(i.into()),
+            },
+        ),
         None => expr,
     }
 }
@@ -48,6 +51,42 @@ pub fn identity(lhs: Expression, rhs: Expression) -> Expression {
     BinaryOperation {
         left: Box::new(lhs),
         op: BinaryOperator::Identity,
+        right: Box::new(rhs),
+    }
+    .into()
+}
+
+pub fn selected(lhs: Expression, rhs: Expression) -> Expression {
+    BinaryOperation {
+        left: Box::new(lhs),
+        op: BinaryOperator::Select,
+        right: Box::new(rhs),
+    }
+    .into()
+}
+
+pub fn connect(lhs: Expression, rhs: Expression) -> Expression {
+    BinaryOperation {
+        left: Box::new(lhs),
+        op: BinaryOperator::Connect,
+        right: Box::new(rhs),
+    }
+    .into()
+}
+
+pub fn permutation(lhs: Expression, rhs: Expression) -> Expression {
+    BinaryOperation {
+        left: Box::new(lhs),
+        op: BinaryOperator::Is,
+        right: Box::new(rhs),
+    }
+    .into()
+}
+
+pub fn lookup(lhs: Expression, rhs: Expression) -> Expression {
+    BinaryOperation {
+        left: Box::new(lhs),
+        op: BinaryOperator::In,
         right: Box::new(rhs),
     }
     .into()

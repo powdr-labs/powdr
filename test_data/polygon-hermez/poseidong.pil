@@ -8,7 +8,7 @@
 
 include "config.pil";
 
-namespace PoseidonG(%N);
+namespace PoseidonG(N);
 
     pol constant LAST;   // 0, 0, 0, ...0, 1,      0, ...., 0, 1, 0, ....
     pol constant LATCH;  // 1, 0, 0, 0, ..., 0,    1, 0, 0,

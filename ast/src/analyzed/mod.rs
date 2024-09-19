@@ -5,20 +5,24 @@ use std::cmp::max;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
-use std::iter;
+use std::iter::{self, empty};
 use std::ops::{self, ControlFlow};
 use std::sync::Arc;
 
+use itertools::Itertools;
 use powdr_number::{DegreeType, FieldElement};
+use powdr_parser_util::SourceRef;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::parsed::types::{ArrayType, Type, TypeScheme};
+use crate::parsed::types::{ArrayType, Type, TypeBounds, TypeScheme};
 use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
-use crate::parsed::{self, EnumDeclaration, EnumVariant, SelectedExpressions};
-use crate::SourceRef;
+use crate::parsed::{
+    self, ArrayExpression, ArrayLiteral, EnumDeclaration, EnumVariant, TraitDeclaration,
+    TraitFunction,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 pub enum StatementIdentifier {
@@ -27,16 +31,18 @@ pub enum StatementIdentifier {
     PublicDeclaration(String),
     /// Index into the vector of identities.
     Identity(usize),
+    /// Index into the vector of prover functions.
+    ProverFunction(usize),
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct Analyzed<T> {
-    /// The degree of all namespaces, which must match if provided. If no degrees are given, then `None`.
-    pub degree: Option<DegreeType>,
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    pub solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
     pub intermediate_columns: HashMap<String, (Symbol, Vec<AlgebraicExpression<T>>)>,
-    pub identities: Vec<Identity<AlgebraicExpression<T>>>,
+    pub identities: Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>>,
+    pub prover_functions: Vec<Expression>,
     /// The order in which definitions and identities
     /// appear in the source.
     pub source_order: Vec<StatementIdentifier>,
@@ -45,10 +51,38 @@ pub struct Analyzed<T> {
 }
 
 impl<T> Analyzed<T> {
-    /// @returns the degree if any. Panics if there is none.
+    /// Returns the degree common among all symbols that have an explicit degree.
+    ///
+    /// # Panics
+    ///
+    /// Panics if there is no common degree or if there are no symbols
     pub fn degree(&self) -> DegreeType {
-        self.degree.unwrap()
+        self.definitions
+            .values()
+            .filter_map(|(symbol, _)| symbol.degree)
+            .unique()
+            .exactly_one()
+            .unwrap()
+            .try_into_unique()
+            .unwrap()
     }
+
+    pub fn degree_ranges(&self) -> HashSet<DegreeRange> {
+        self.definitions
+            .values()
+            .filter_map(|(symbol, _)| symbol.degree)
+            .collect::<HashSet<_>>()
+    }
+
+    /// Returns the set of all explicit degrees in this [`Analyzed<T>`].
+    pub fn degrees(&self) -> HashSet<DegreeType> {
+        self.definitions
+            .values()
+            .filter_map(|(symbol, _)| symbol.degree)
+            .map(|d| d.try_into_unique().unwrap())
+            .collect::<HashSet<_>>()
+    }
+
     /// @returns the number of committed polynomials (with multiplicities for arrays)
     pub fn commitment_count(&self) -> usize {
         self.declaration_type_count(PolynomialType::Committed)
@@ -63,6 +97,10 @@ impl<T> Analyzed<T> {
     /// @returns the number of constant polynomials (with multiplicities for arrays)
     pub fn constant_count(&self) -> usize {
         self.declaration_type_count(PolynomialType::Constant)
+    }
+    /// @returns the number of public inputs
+    pub fn publics_count(&self) -> usize {
+        self.public_declarations.len()
     }
 
     pub fn constant_polys_in_source_order(
@@ -164,8 +202,11 @@ impl<T> Analyzed<T> {
             .max()
             .unwrap_or_default()
             + 1;
-        self.identities
-            .push(Identity::from_polynomial_identity(id, source, identity));
+        self.identities.push(
+            Identity::<SelectedExpressions<AlgebraicExpression<T>>>::from_polynomial_identity(
+                id, source, identity,
+            ),
+        );
         self.source_order
             .push(StatementIdentifier::Identity(self.identities.len() - 1));
         id
@@ -250,24 +291,12 @@ impl<T> Analyzed<T> {
                 let poly_id = PolyID::from(poly as &Symbol);
                 poly.id = replacements[&poly_id].id;
             });
-        let visitor = &mut |expr: &mut Expression| {
-            if let Expression::Reference(Reference::Poly(poly)) = expr {
-                poly.poly_id = poly.poly_id.map(|poly_id| replacements[&poly_id]);
-            }
-        };
-        self.post_visit_expressions_in_definitions_mut(visitor);
         let algebraic_visitor = &mut |expr: &mut AlgebraicExpression<_>| {
             if let AlgebraicExpression::Reference(poly) = expr {
                 poly.poly_id = replacements[&poly.poly_id];
             }
         };
         self.post_visit_expressions_in_identities_mut(algebraic_visitor);
-        self.public_declarations
-            .values_mut()
-            .for_each(|public_decl| {
-                let poly_id = public_decl.polynomial.poly_id.unwrap();
-                public_decl.polynomial.poly_id = Some(replacements[&poly_id]);
-            });
     }
 
     pub fn post_visit_expressions_in_identities_mut<F>(&mut self, f: &mut F)
@@ -296,13 +325,37 @@ impl<T> Analyzed<T> {
             .filter_map(|(_poly, definition)| definition.as_mut())
             .for_each(|definition| definition.post_visit_expressions_mut(f))
     }
+
+    /// Retrieves (col_name, col_idx, offset) of each public witness in the trace.
+    pub fn get_publics(&self) -> Vec<(String, usize, usize)> {
+        let mut publics = self
+            .public_declarations
+            .values()
+            .map(|public_declaration| {
+                let column_name = public_declaration.referenced_poly_name();
+                let column_idx = {
+                    let base = self.definitions[&public_declaration.polynomial.name].0.id;
+                    match public_declaration.array_index {
+                        Some(array_idx) => base + array_idx as u64,
+                        None => base,
+                    }
+                };
+                let row_offset = public_declaration.index as usize;
+                (column_name, column_idx as usize, row_offset)
+            })
+            .collect::<Vec<_>>();
+
+        // Sort, so that the order is deterministic
+        publics.sort();
+        publics
+    }
 }
 
 impl<T: FieldElement> Analyzed<T> {
     /// @returns all identities with intermediate polynomials inlined.
     pub fn identities_with_inlined_intermediate_polynomials(
         &self,
-    ) -> Vec<Identity<AlgebraicExpression<T>>> {
+    ) -> Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>> {
         let intermediates = &self
             .intermediate_polys_in_source_order()
             .iter()
@@ -333,9 +386,9 @@ impl<T: FieldElement> Analyzed<T> {
 /// Takes identities as values and inlines intermediate polynomials everywhere, returning a vector of the updated identities
 /// TODO: this could return an iterator
 fn substitute_intermediate<T: Copy + Display>(
-    identities: impl IntoIterator<Item = Identity<AlgebraicExpression<T>>>,
+    identities: impl IntoIterator<Item = Identity<SelectedExpressions<AlgebraicExpression<T>>>>,
     intermediate_polynomials: &HashMap<PolyID, &AlgebraicExpression<T>>,
-) -> Vec<Identity<AlgebraicExpression<T>>> {
+) -> Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>> {
     identities
         .into_iter()
         .scan(HashMap::default(), |cache, mut identity| {
@@ -418,6 +471,24 @@ pub fn type_from_definition(
             FunctionValueDefinition::TypeConstructor(enum_decl, variant) => {
                 Some(variant.constructor_type(enum_decl))
             }
+            FunctionValueDefinition::TraitDeclaration(_) => {
+                panic!("Requested type of trait declaration.")
+            }
+            FunctionValueDefinition::TraitFunction(trait_decl, trait_func) => {
+                let vars = trait_decl
+                    .type_vars
+                    .iter()
+                    .map(|var| {
+                        let bounds = BTreeSet::new();
+                        (var.clone(), bounds)
+                    })
+                    .collect::<Vec<_>>();
+
+                Some(TypeScheme {
+                    vars: TypeBounds::new(vars.into_iter()),
+                    ty: trait_func.ty.clone(),
+                })
+            }
         }
     } else {
         assert!(
@@ -438,6 +509,44 @@ pub fn type_from_definition(
     }
 }
 
+#[derive(PartialEq, Eq, Hash, Debug, Clone, Serialize, Deserialize, JsonSchema, Copy)]
+pub struct DegreeRange {
+    pub min: DegreeType,
+    pub max: DegreeType,
+}
+
+impl From<DegreeType> for DegreeRange {
+    fn from(value: DegreeType) -> Self {
+        Self {
+            min: value,
+            max: value,
+        }
+    }
+}
+
+impl DegreeRange {
+    pub fn try_into_unique(self) -> Option<DegreeType> {
+        (self.min == self.max).then_some(self.min)
+    }
+
+    /// Iterate through powers of two in this range
+    pub fn iter(&self) -> impl Iterator<Item = DegreeType> {
+        let min_ceil = self.min.next_power_of_two();
+        let max_ceil = self.max.next_power_of_two();
+        let min_log = usize::BITS - min_ceil.leading_zeros() - 1;
+        let max_log = usize::BITS - max_ceil.leading_zeros() - 1;
+        (min_log..=max_log).map(|exponent| 1 << exponent)
+    }
+
+    /// Fit a degree to this range:
+    /// - returns the smallest value in the range which is larger or equal to `new_degree`
+    /// - panics if no such value exists
+    pub fn fit(&self, new_degree: u64) -> u64 {
+        assert!(new_degree <= self.max);
+        self.min.max(new_degree)
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct Symbol {
     pub id: u64,
@@ -445,7 +554,8 @@ pub struct Symbol {
     pub absolute_name: String,
     pub stage: Option<u32>,
     pub kind: SymbolKind,
-    pub length: Option<DegreeType>,
+    pub length: Option<u64>,
+    pub degree: Option<DegreeRange>,
 }
 
 impl Symbol {
@@ -511,8 +621,6 @@ impl Symbol {
 pub enum SymbolKind {
     /// Fixed, witness or intermediate polynomial
     Poly(PolynomialType),
-    /// A constant value.
-    Constant(),
     /// Other symbol, depends on the type.
     /// Examples include functions not of the type "int -> fe".
     Other(),
@@ -520,10 +628,12 @@ pub enum SymbolKind {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum FunctionValueDefinition {
-    Array(Vec<RepeatedArray>),
+    Array(ArrayExpression<Reference>),
     Expression(TypedExpression),
     TypeDeclaration(EnumDeclaration),
     TypeConstructor(Arc<EnumDeclaration>, EnumVariant),
+    TraitDeclaration(TraitDeclaration),
+    TraitFunction(Arc<TraitDeclaration>, TraitFunction),
 }
 
 impl Children<Expression> for FunctionValueDefinition {
@@ -532,13 +642,13 @@ impl Children<Expression> for FunctionValueDefinition {
             FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ }) => {
                 Box::new(iter::once(e))
             }
-            FunctionValueDefinition::Array(array) => {
-                Box::new(array.iter().flat_map(|i| i.children()))
-            }
+            FunctionValueDefinition::Array(e) => e.children(),
             FunctionValueDefinition::TypeDeclaration(enum_declaration) => {
                 enum_declaration.children()
             }
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children(),
+            FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children(),
+            FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children(),
         }
     }
 
@@ -547,70 +657,32 @@ impl Children<Expression> for FunctionValueDefinition {
             FunctionValueDefinition::Expression(TypedExpression { e, type_scheme: _ }) => {
                 Box::new(iter::once(e))
             }
-            FunctionValueDefinition::Array(array) => {
-                Box::new(array.iter_mut().flat_map(|i| i.children_mut()))
-            }
+            FunctionValueDefinition::Array(e) => e.children_mut(),
             FunctionValueDefinition::TypeDeclaration(enum_declaration) => {
                 enum_declaration.children_mut()
             }
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children_mut(),
+            FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children_mut(),
+            FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children_mut(),
         }
     }
 }
 
-/// An array of elements that might be repeated.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct RepeatedArray {
-    /// The pattern to be repeated
-    pattern: Vec<Expression>,
-    /// The number of values to be filled by repeating the pattern, possibly truncating it at the end
-    size: DegreeType,
-}
-
-impl RepeatedArray {
-    pub fn new(pattern: Vec<Expression>, size: DegreeType) -> Self {
-        if pattern.is_empty() {
-            assert!(
-                size == 0,
-                "impossible to fill {size} values with an empty pattern"
-            )
-        }
-        Self { pattern, size }
-    }
-
-    /// Returns the number of elements in this array (including repetitions).
-    pub fn size(&self) -> DegreeType {
-        self.size
-    }
-
-    /// Returns the pattern to be repeated
-    pub fn pattern(&self) -> &[Expression] {
-        &self.pattern
-    }
-
-    /// Returns the pattern to be repeated
-    pub fn pattern_mut(&mut self) -> &mut [Expression] {
-        &mut self.pattern
-    }
-
-    /// Returns true iff this array is empty.
-    pub fn is_empty(&self) -> bool {
-        self.size == 0
-    }
-
-    /// Returns whether pattern needs to be repeated (or truncated) in order to match the size.
-    pub fn is_repeated(&self) -> bool {
-        self.size != self.pattern.len() as DegreeType
-    }
-}
-
-impl Children<Expression> for RepeatedArray {
+impl Children<Expression> for TraitDeclaration {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
-        Box::new(self.pattern.iter())
+        Box::new(empty())
     }
-
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
-        Box::new(self.pattern.iter_mut())
+        Box::new(empty())
+    }
+}
+
+impl Children<Expression> for TraitFunction {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(empty())
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(empty())
     }
 }
 
@@ -634,21 +706,51 @@ impl PublicDeclaration {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SelectedExpressions<Expr> {
+    pub selector: Option<Expr>,
+    pub expressions: Vec<Expr>,
+}
+
+impl<Expr> Default for SelectedExpressions<Expr> {
+    fn default() -> Self {
+        Self {
+            selector: Default::default(),
+            expressions: vec![],
+        }
+    }
+}
+
+impl<Expr> Children<Expr> for SelectedExpressions<Expr> {
+    /// Returns an iterator over all (top-level) expressions in this SelectedExpressions.
+    fn children(&self) -> Box<dyn Iterator<Item = &Expr> + '_> {
+        Box::new(self.selector.iter().chain(self.expressions.iter()))
+    }
+    /// Returns an iterator over all (top-level) expressions in this SelectedExpressions.
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expr> + '_> {
+        Box::new(self.selector.iter_mut().chain(self.expressions.iter_mut()))
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct Identity<Expr> {
+pub struct Identity<SelectedExpressions> {
     /// The ID is globally unique among identities.
     pub id: u64,
     pub kind: IdentityKind,
     pub source: SourceRef,
     /// For a simple polynomial identity, the selector contains
     /// the actual expression (see expression_for_poly_id).
-    pub left: SelectedExpressions<Expr>,
-    pub right: SelectedExpressions<Expr>,
+    pub left: SelectedExpressions,
+    pub right: SelectedExpressions,
 }
 
-impl<Expr> Identity<Expr> {
+impl<T> Identity<SelectedExpressions<AlgebraicExpression<T>>> {
     /// Constructs an Identity from a polynomial identity (expression assumed to be identical zero).
-    pub fn from_polynomial_identity(id: u64, source: SourceRef, identity: Expr) -> Self {
+    pub fn from_polynomial_identity(
+        id: u64,
+        source: SourceRef,
+        identity: AlgebraicExpression<T>,
+    ) -> Self {
         Identity {
             id,
             kind: IdentityKind::Polynomial,
@@ -657,23 +759,24 @@ impl<Expr> Identity<Expr> {
                 selector: Some(identity),
                 expressions: vec![],
             },
-            right: Default::default(),
+            right: SelectedExpressions {
+                selector: Default::default(),
+                expressions: vec![],
+            },
         }
     }
     /// Returns the expression in case this is a polynomial identity.
-    pub fn expression_for_poly_id(&self) -> &Expr {
+    pub fn expression_for_poly_id(&self) -> &AlgebraicExpression<T> {
         assert_eq!(self.kind, IdentityKind::Polynomial);
         self.left.selector.as_ref().unwrap()
     }
 
     /// Returns the expression in case this is a polynomial identity.
-    pub fn expression_for_poly_id_mut(&mut self) -> &mut Expr {
+    pub fn expression_for_poly_id_mut(&mut self) -> &mut AlgebraicExpression<T> {
         assert_eq!(self.kind, IdentityKind::Polynomial);
         self.left.selector.as_mut().unwrap()
     }
-}
 
-impl<T> Identity<AlgebraicExpression<T>> {
     pub fn contains_next_ref(&self) -> bool {
         self.left.contains_next_ref() || self.right.contains_next_ref()
     }
@@ -686,15 +789,49 @@ impl<T> Identity<AlgebraicExpression<T>> {
     ) -> (&AlgebraicExpression<T>, Option<&AlgebraicExpression<T>>) {
         assert_eq!(self.kind, IdentityKind::Polynomial);
         match self.expression_for_poly_id() {
-            AlgebraicExpression::BinaryOperation(a, AlgebraicBinaryOperator::Sub, b) => {
-                (a.as_ref(), Some(b.as_ref()))
-            }
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                left: a,
+                op: AlgebraicBinaryOperator::Sub,
+                right: b,
+            }) => (a.as_ref(), Some(b.as_ref())),
             a => (a, None),
         }
     }
+
+    pub fn degree(&self) -> usize {
+        self.children().map(|e| e.degree()).max().unwrap_or(0)
+    }
 }
 
-impl<R> Identity<parsed::Expression<R>> {
+impl<R> Identity<parsed::SelectedExpressions<parsed::Expression<R>>> {
+    /// Constructs an Identity from a polynomial identity (expression assumed to be identical zero).
+    pub fn from_polynomial_identity(
+        id: u64,
+        source: SourceRef,
+        identity: parsed::Expression<R>,
+    ) -> Self {
+        Identity {
+            id,
+            kind: IdentityKind::Polynomial,
+            source,
+            left: parsed::SelectedExpressions {
+                selector: Some(identity),
+                expressions: Box::new(ArrayLiteral { items: vec![] }.into()),
+            },
+            right: Default::default(),
+        }
+    }
+    /// Returns the expression in case this is a polynomial identity.
+    pub fn expression_for_poly_id(&self) -> &parsed::Expression<R> {
+        assert_eq!(self.kind, IdentityKind::Polynomial);
+        self.left.selector.as_ref().unwrap()
+    }
+
+    /// Returns the expression in case this is a polynomial identity.
+    pub fn expression_for_poly_id_mut(&mut self) -> &mut parsed::Expression<R> {
+        assert_eq!(self.kind, IdentityKind::Polynomial);
+        self.left.selector.as_mut().unwrap()
+    }
     /// Either returns (a, Some(b)) if this is a - b or (a, None)
     /// if it is a polynomial identity of a different structure.
     /// Panics if it is a different kind of constraint.
@@ -703,22 +840,37 @@ impl<R> Identity<parsed::Expression<R>> {
     ) -> (&parsed::Expression<R>, Option<&parsed::Expression<R>>) {
         assert_eq!(self.kind, IdentityKind::Polynomial);
         match self.expression_for_poly_id() {
-            parsed::Expression::BinaryOperation(parsed::BinaryOperation {
-                left,
-                op: BinaryOperator::Sub,
-                right,
-            }) => (left.as_ref(), Some(right.as_ref())),
+            parsed::Expression::BinaryOperation(
+                _,
+                parsed::BinaryOperation {
+                    left,
+                    op: BinaryOperator::Sub,
+                    right,
+                },
+            ) => (left.as_ref(), Some(right.as_ref())),
             a => (a, None),
         }
     }
 }
 
-impl<Expr> Children<Expr> for Identity<Expr> {
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expr> + '_> {
+impl<T> Children<AlgebraicExpression<T>> for Identity<SelectedExpressions<AlgebraicExpression<T>>> {
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
         Box::new(self.left.children_mut().chain(self.right.children_mut()))
     }
 
-    fn children(&self) -> Box<dyn Iterator<Item = &Expr> + '_> {
+    fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
+        Box::new(self.left.children().chain(self.right.children()))
+    }
+}
+
+impl<R> Children<parsed::Expression<R>>
+    for Identity<parsed::SelectedExpressions<parsed::Expression<R>>>
+{
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut parsed::Expression<R>> + '_> {
+        Box::new(self.left.children_mut().chain(self.right.children_mut()))
+    }
+
+    fn children(&self) -> Box<dyn Iterator<Item = &parsed::Expression<R>> + '_> {
         Box::new(self.left.children().chain(self.right.children()))
     }
 }
@@ -807,13 +959,119 @@ pub enum AlgebraicExpression<T> {
     PublicReference(String),
     Challenge(Challenge),
     Number(T),
-    BinaryOperation(
-        Box<AlgebraicExpression<T>>,
-        AlgebraicBinaryOperator,
-        Box<AlgebraicExpression<T>>,
-    ),
+    BinaryOperation(AlgebraicBinaryOperation<T>),
+    UnaryOperation(AlgebraicUnaryOperation<T>),
+}
 
-    UnaryOperation(AlgebraicUnaryOperator, Box<AlgebraicExpression<T>>),
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AlgebraicBinaryOperation<T> {
+    pub left: Box<AlgebraicExpression<T>>,
+    pub op: AlgebraicBinaryOperator,
+    pub right: Box<AlgebraicExpression<T>>,
+}
+impl<T> AlgebraicBinaryOperation<T> {
+    fn new(
+        left: AlgebraicExpression<T>,
+        op: AlgebraicBinaryOperator,
+        right: AlgebraicExpression<T>,
+    ) -> Self {
+        Self {
+            left: Box::new(left),
+            op,
+            right: Box::new(right),
+        }
+    }
+}
+
+impl<T> From<AlgebraicBinaryOperation<T>> for AlgebraicExpression<T> {
+    fn from(value: AlgebraicBinaryOperation<T>) -> Self {
+        Self::BinaryOperation(value)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct AlgebraicUnaryOperation<T> {
+    pub op: AlgebraicUnaryOperator,
+    pub expr: Box<AlgebraicExpression<T>>,
+}
+impl<T> AlgebraicUnaryOperation<T> {
+    fn new(op: AlgebraicUnaryOperator, expr: AlgebraicExpression<T>) -> Self {
+        Self {
+            op,
+            expr: Box::new(expr),
+        }
+    }
+}
+
+impl<T> From<AlgebraicUnaryOperation<T>> for AlgebraicExpression<T> {
+    fn from(value: AlgebraicUnaryOperation<T>) -> Self {
+        Self::UnaryOperation(value)
+    }
+}
+
+pub type ExpressionPrecedence = u64;
+trait Precedence {
+    fn precedence(&self) -> Option<ExpressionPrecedence>;
+}
+
+impl Precedence for AlgebraicUnaryOperator {
+    fn precedence(&self) -> Option<ExpressionPrecedence> {
+        use AlgebraicUnaryOperator::*;
+        let precedence = match self {
+            // NOTE: Any modification must be done with care to not overlap with BinaryOperator's precedence
+            Minus => 1,
+        };
+
+        Some(precedence)
+    }
+}
+
+impl Precedence for AlgebraicBinaryOperator {
+    fn precedence(&self) -> Option<ExpressionPrecedence> {
+        use AlgebraicBinaryOperator::*;
+        let precedence = match self {
+            // NOTE: Any modification must be done with care to not overlap with LambdaExpression's precedence
+            // Unary Oprators
+            // **
+            Pow => 2,
+            // * / %
+            Mul => 3,
+            // + -
+            Add | Sub => 4,
+        };
+
+        Some(precedence)
+    }
+}
+
+impl<E> Precedence for AlgebraicExpression<E> {
+    fn precedence(&self) -> Option<ExpressionPrecedence> {
+        match self {
+            AlgebraicExpression::UnaryOperation(operation) => operation.op.precedence(),
+            AlgebraicExpression::BinaryOperation(operation) => operation.op.precedence(),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum AlgebraicBinaryOperatorAssociativity {
+    Left,
+    Right,
+    RequireParentheses,
+}
+
+impl AlgebraicBinaryOperator {
+    pub fn associativity(&self) -> AlgebraicBinaryOperatorAssociativity {
+        use AlgebraicBinaryOperator::*;
+        use AlgebraicBinaryOperatorAssociativity::*;
+        match self {
+            Pow => Right,
+
+            // .. ..= => RequireParentheses,
+            _ => Left,
+        }
+    }
 }
 
 impl<T> AlgebraicExpression<T> {
@@ -827,10 +1085,12 @@ impl<T> AlgebraicExpression<T> {
             | AlgebraicExpression::PublicReference(_)
             | AlgebraicExpression::Challenge(_)
             | AlgebraicExpression::Number(_) => Box::new(iter::empty()),
-            AlgebraicExpression::BinaryOperation(left, _, right) => {
-                Box::new([left.as_ref(), right.as_ref()].into_iter())
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                left, right, ..
+            }) => Box::new([left.as_ref(), right.as_ref()].into_iter()),
+            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { expr: e, .. }) => {
+                Box::new([e.as_ref()].into_iter())
             }
-            AlgebraicExpression::UnaryOperation(_, e) => Box::new([e.as_ref()].into_iter()),
         }
     }
     /// Returns an iterator over all (top-level) expressions in this expression.
@@ -843,10 +1103,55 @@ impl<T> AlgebraicExpression<T> {
             | AlgebraicExpression::PublicReference(_)
             | AlgebraicExpression::Challenge(_)
             | AlgebraicExpression::Number(_) => Box::new(iter::empty()),
-            AlgebraicExpression::BinaryOperation(left, _, right) => {
-                Box::new([left.as_mut(), right.as_mut()].into_iter())
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                left, right, ..
+            }) => Box::new([left.as_mut(), right.as_mut()].into_iter()),
+            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { expr: e, .. }) => {
+                Box::new([e.as_mut()].into_iter())
             }
-            AlgebraicExpression::UnaryOperation(_, e) => Box::new([e.as_mut()].into_iter()),
+        }
+    }
+
+    /// Apply `'` to the expression, returning a new expression
+    /// For example, `x + 1` becomes `x' + 1`
+    ///
+    /// # Errors
+    ///
+    /// If the `next` flag is already active on an `AlgebraicReference`, it is returned as an error
+    pub fn next(self) -> Result<Self, AlgebraicReference> {
+        use AlgebraicExpression::*;
+
+        match self {
+            Reference(r) => {
+                if r.next {
+                    Err(r)
+                } else {
+                    Ok(Self::Reference(AlgebraicReference { next: true, ..r }))
+                }
+            }
+            e @ PublicReference(..) | e @ Challenge(..) | e @ Number(..) => Ok(e),
+            BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+                Ok(Self::new_binary(left.next()?, op, right.next()?))
+            }
+            UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
+                Ok(Self::new_unary(op, expr.next()?))
+            }
+        }
+    }
+
+    /// Returns the degree of the expressions
+    pub fn degree(&self) -> usize {
+        match self {
+            // One for each column
+            AlgebraicExpression::Reference(_) => 1,
+            // Multiplying two expressions adds their degrees
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                op: AlgebraicBinaryOperator::Mul,
+                left,
+                right,
+            }) => left.degree() + right.degree(),
+            // In all other cases, we take the maximum of the degrees of the children
+            _ => self.children().map(|e| e.degree()).max().unwrap_or(0),
         }
     }
 }
@@ -890,7 +1195,7 @@ impl TryFrom<BinaryOperator> for AlgebraicBinaryOperator {
             BinaryOperator::Mul => Ok(AlgebraicBinaryOperator::Mul),
             BinaryOperator::Pow => Ok(AlgebraicBinaryOperator::Pow),
             _ => Err(format!(
-                "Binary operator {op} not allowed in algebraic expression."
+                "Binary operator \"{op}\" not allowed in algebraic expression."
             )),
         }
     }
@@ -901,6 +1206,15 @@ impl TryFrom<BinaryOperator> for AlgebraicBinaryOperator {
 )]
 pub enum AlgebraicUnaryOperator {
     Minus,
+}
+
+impl AlgebraicUnaryOperator {
+    /// Returns true if the operator is a prefix-operator and false if it is a postfix operator.
+    pub fn is_prefix(&self) -> bool {
+        match self {
+            AlgebraicUnaryOperator::Minus => true,
+        }
+    }
 }
 
 impl From<AlgebraicUnaryOperator> for UnaryOperator {
@@ -918,7 +1232,7 @@ impl TryFrom<UnaryOperator> for AlgebraicUnaryOperator {
         match op {
             UnaryOperator::Minus => Ok(AlgebraicUnaryOperator::Minus),
             _ => Err(format!(
-                "Unary operator {op} not allowed in algebraic expression."
+                "Unary operator \"{op}\" not allowed in algebraic expression."
             )),
         }
     }
@@ -926,7 +1240,11 @@ impl TryFrom<UnaryOperator> for AlgebraicUnaryOperator {
 
 impl<T> AlgebraicExpression<T> {
     pub fn new_binary(left: Self, op: AlgebraicBinaryOperator, right: Self) -> Self {
-        AlgebraicExpression::BinaryOperation(Box::new(left), op, Box::new(right))
+        AlgebraicBinaryOperation::new(left, op, right).into()
+    }
+
+    pub fn new_unary(op: AlgebraicUnaryOperator, expr: Self) -> Self {
+        AlgebraicUnaryOperation::new(op, expr).into()
     }
 
     /// @returns true if the expression contains a reference to a next value of a
@@ -985,15 +1303,13 @@ impl<T> From<T> for AlgebraicExpression<T> {
     }
 }
 
+/// Reference to a symbol with optional type arguments.
+/// Named `PolynomialReference` for historical reasons, it can reference
+/// any symbol.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PolynomialReference {
-    /// Name of the polynomial - just for informational purposes.
-    /// Comparisons are based on polynomial ID.
+    /// Absolute name of the symbol.
     pub name: String,
-    /// Identifier for a polynomial reference.
-    /// Optional because it is filled in in a second stage of analysis.
-    /// TODO make this non-optional
-    pub poly_id: Option<PolyID>,
     /// The type arguments if the symbol is generic.
     /// Guaranteed to be Some(_) after type checking is completed.
     pub type_args: Option<Vec<Type>>,
@@ -1051,7 +1367,10 @@ impl Display for PolynomialType {
 
 #[cfg(test)]
 mod tests {
-    use crate::SourceRef;
+    use powdr_number::DegreeType;
+    use powdr_parser_util::SourceRef;
+
+    use crate::analyzed::{AlgebraicReference, DegreeRange, PolyID, PolynomialType};
 
     use super::{AlgebraicExpression, Analyzed};
 
@@ -1091,5 +1410,58 @@ mod tests {
         pil_result.identities[1].id = 6;
         assert_eq!(pil.identities, pil_result.identities);
         assert_eq!(pil.source_order, pil_result.source_order);
+    }
+
+    #[test]
+    fn test_degree() {
+        let column = AlgebraicExpression::<i32>::Reference(AlgebraicReference {
+            name: "column".to_string(),
+            poly_id: PolyID {
+                id: 0,
+                ptype: PolynomialType::Committed,
+            },
+            next: false,
+        });
+        let one = AlgebraicExpression::Number(1);
+
+        let expr = one.clone() + one.clone() * one.clone();
+        assert_eq!(expr.degree(), 0);
+
+        let expr = column.clone() + one.clone() * one.clone();
+        assert_eq!(expr.degree(), 1);
+
+        let expr = column.clone() + one.clone() * column.clone();
+        assert_eq!(expr.degree(), 1);
+
+        let expr = column.clone() + column.clone() * column.clone();
+        assert_eq!(expr.degree(), 2);
+
+        let expr = column.clone() + column.clone() * (column.clone() + one.clone());
+        assert_eq!(expr.degree(), 2);
+
+        let expr = column.clone() * column.clone() * column.clone();
+        assert_eq!(expr.degree(), 3);
+    }
+
+    #[test]
+    fn degree_range() {
+        assert_eq!(
+            DegreeRange { min: 4, max: 4 }.iter().collect::<Vec<_>>(),
+            vec![4]
+        );
+        assert_eq!(
+            DegreeRange { min: 4, max: 16 }.iter().collect::<Vec<_>>(),
+            vec![4, 8, 16]
+        );
+        assert_eq!(
+            DegreeRange { min: 3, max: 15 }.iter().collect::<Vec<_>>(),
+            vec![4, 8, 16]
+        );
+        assert_eq!(
+            DegreeRange { min: 15, max: 3 }
+                .iter()
+                .collect::<Vec<DegreeType>>(),
+            Vec::<DegreeType>::new()
+        );
     }
 }

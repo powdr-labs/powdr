@@ -1,3 +1,5 @@
+use powdr_ast::parsed::asm::Instruction;
+
 /// Values which are common to many steps from asm to PIL
 use crate::utils::parse_instruction;
 
@@ -26,10 +28,7 @@ pub fn output_at(i: usize) -> String {
 }
 
 /// The return instruction for `output_count` outputs and `pc_name` the name of the pc
-pub fn return_instruction(
-    output_count: usize,
-    pc_name: &str,
-) -> powdr_ast::asm_analysis::Instruction {
+pub fn return_instruction(output_count: usize, pc_name: &str) -> Instruction {
     parse_instruction(&format!(
         "{} {{ {pc_name}' = 0 }}",
         output_registers(output_count).join(", ")

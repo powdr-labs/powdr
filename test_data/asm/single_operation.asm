@@ -9,8 +9,8 @@ machine SingleOperation with
     w = w * w;
 }
 
-machine Main {
+machine Main with degree: 8 {
     SingleOperation m;
 
-    link 1 => m.nothing;
+    link => m.nothing();
 }

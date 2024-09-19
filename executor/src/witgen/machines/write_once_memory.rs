@@ -2,18 +2,18 @@ use std::collections::{BTreeMap, HashMap};
 
 use itertools::{Either, Itertools};
 
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
-    PolynomialType,
-};
+use powdr_ast::analyzed::{IdentityKind, PolyID, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
-use crate::witgen::{
-    affine_expression::AffineExpression, util::try_to_simple_poly, EvalError, EvalResult,
-    EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
+use crate::{
+    witgen::{
+        rows::RowPair, util::try_to_simple_poly, EvalError, EvalResult, EvalValue, FixedData,
+        IncompleteCause, MutableState, QueryCallback,
+    },
+    Identity,
 };
 
-use super::{FixedLookup, Machine};
+use super::{Machine, MachineParts};
 
 /// A memory machine with a fixed address space, and each address can only have one
 /// value during the lifetime of the program.
@@ -22,19 +22,17 @@ use super::{FixedLookup, Machine};
 /// let ADDR = |i| i;
 /// let v;
 /// // Stores a value, fails if the cell already has a value that's different
-/// instr mstore X, Y -> { {X, Y} in {ADDR, v} }
+/// instr mstore X, Y -> { [X, Y] in [ADDR, v] }
 /// // Loads a value. If the cell is empty, the prover can choose a value.
 /// // Note that this is the same lookup, only Y is considered an output instead
 /// // of an input.
-/// instr mload X -> Y { {X, Y} in {ADDR, v} }
+/// instr mload X -> Y { [X, Y] in [ADDR, v] }
 /// ```
 pub struct WriteOnceMemory<'a, T: FieldElement> {
-    connecting_identities: Vec<u64>,
+    degree: DegreeType,
+    connecting_identities: BTreeMap<u64, &'a Identity<T>>,
     /// The fixed data
     fixed_data: &'a FixedData<'a, T>,
-    /// The right-hand side of the connecting identity
-    /// (if there are several, they must all be the same)
-    rhs_expressions: &'a [Expression<T>],
     /// The polynomials that are used as values (witness polynomials on the RHS)
     value_polys: Vec<PolyID>,
     /// A map from keys to row indices
@@ -48,22 +46,22 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
     pub fn try_new(
         name: String,
         fixed_data: &'a FixedData<'a, T>,
-        connecting_identities: &[&'a Identity<Expression<T>>],
-        identities: &[&Identity<Expression<T>>],
+        parts: &MachineParts<'a, T>,
     ) -> Option<Self> {
-        if !identities.is_empty() {
+        if !parts.identities.is_empty() {
             return None;
         }
 
-        if !connecting_identities
-            .iter()
+        if !parts
+            .connecting_identities
+            .values()
             .all(|i| i.kind == IdentityKind::Plookup)
         {
             return None;
         }
 
         // All connecting identities should have no selector or a selector of 1
-        if connecting_identities.iter().any(|i| {
+        if parts.connecting_identities.values().any(|i| {
             i.right
                 .selector
                 .as_ref()
@@ -74,15 +72,18 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         }
 
         // All RHS expressions should be the same
-        let rhs_expressions = &connecting_identities[0].right.expressions;
-        if connecting_identities
-            .iter()
-            .any(|i| i.right.expressions != *rhs_expressions)
-        {
+        let rhs_exprs = parts
+            .connecting_identities
+            .values()
+            .map(|i| &i.right.expressions)
+            .collect_vec();
+        if !rhs_exprs.iter().all_equal() {
             return None;
         }
 
-        let rhs_polys = rhs_expressions
+        let rhs_polys = rhs_exprs
+            .first()
+            .unwrap()
             .iter()
             .map(|e| try_to_simple_poly(e))
             .collect::<Option<Vec<_>>>();
@@ -100,11 +101,13 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             }
         });
 
+        let degree = parts.common_degree_range().max;
+
         let mut key_to_index = BTreeMap::new();
-        for row in 0..fixed_data.degree {
+        for row in 0..degree {
             let key = key_polys
                 .iter()
-                .map(|k| fixed_data.fixed_cols[k].values[row as usize])
+                .map(|k| fixed_data.fixed_cols[k].values(degree)[row as usize])
                 .collect::<Vec<_>>();
             if key_to_index.insert(key, row).is_some() {
                 // Duplicate keys, can't be a write-once memory
@@ -112,11 +115,19 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             }
         }
 
+        if !parts.prover_functions.is_empty() {
+            log::warn!(
+                "WriteOnceMemory machine does not support prover functions.\
+                The following prover functions are ignored:\n{}",
+                parts.prover_functions.iter().format("\n")
+            );
+        }
+
         Some(Self {
-            connecting_identities: connecting_identities.iter().map(|&i| i.id).collect(),
+            degree,
+            connecting_identities: parts.connecting_identities.clone(),
             name,
             fixed_data,
-            rhs_expressions,
             value_polys,
             key_to_index,
             data: BTreeMap::new(),
@@ -125,11 +136,19 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
 
     fn process_plookup_internal(
         &mut self,
-        args: &[AffineExpression<&'a AlgebraicReference, T>],
+        identity_id: u64,
+        caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
+        let identity = self.connecting_identities[&identity_id];
+        let args = identity
+            .left
+            .expressions
+            .iter()
+            .map(|e| caller_rows.evaluate(e).unwrap())
+            .collect::<Vec<_>>();
         let (key_expressions, value_expressions): (Vec<_>, Vec<_>) = args
             .iter()
-            .zip(self.rhs_expressions.iter())
+            .zip(identity.right.expressions.iter())
             .partition(|(_, r)| {
                 try_to_simple_poly(r).unwrap().poly_id.ptype == PolynomialType::Constant
             });
@@ -216,7 +235,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
 
 impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
-        self.connecting_identities.clone()
+        self.connecting_identities.keys().copied().collect()
     }
 
     fn name(&self) -> &str {
@@ -226,16 +245,15 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
-        _identity_id: u64,
-        args: &[AffineExpression<&'a AlgebraicReference, T>],
+        identity_id: u64,
+        caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        self.process_plookup_internal(args)
+        self.process_plookup_internal(identity_id, caller_rows)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        _fixed_lookup: &'b mut FixedLookup<T>,
-        _query_callback: &'b mut Q,
+        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         self.value_polys
             .iter()
@@ -246,11 +264,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
                     .cloned()
                     .map(|mut external_values| {
                         // External witness values might only be provided partially.
-                        external_values.resize(self.fixed_data.degree as usize, T::zero());
+                        external_values.resize(self.degree as usize, T::zero());
                         external_values
                     })
                     .unwrap_or_else(|| {
-                        let mut column = vec![T::zero(); self.fixed_data.degree as usize];
+                        let mut column = vec![T::zero(); self.degree as usize];
                         for (row, values) in self.data.iter() {
                             column[*row as usize] = values[value_index].unwrap_or_default();
                         }

@@ -1,28 +1,42 @@
 //! Compilation from powdr assembly to PIL
 
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashMap},
+    iter::once,
+};
 
 use powdr_ast::{
     asm_analysis::{
-        AssignmentStatement, Batch, DebugDirective, FunctionStatement,
-        InstructionDefinitionStatement, InstructionStatement, LabelStatement,
-        LinkDefinitionStatement, Machine, RegisterDeclarationStatement, RegisterTy, Rom,
+        combine_flags, AssignmentStatement, Batch, CallableSymbol, CallableSymbolDefinitions,
+        DebugDirective, FunctionStatement, InstructionDefinitionStatement, InstructionStatement,
+        LabelStatement, LinkDefinition, Machine, MachineDegree, OperationSymbol,
+        RegisterDeclarationStatement, RegisterTy, Rom,
     },
     parsed::{
-        asm::{CallableRef, InstructionBody, InstructionParams},
+        self,
+        asm::{
+            CallableParams, CallableRef, InstructionBody, InstructionParams, LinkDeclaration,
+            OperationId, Param, Params,
+        },
         build::{self, absolute_reference, direct_reference, next_reference},
         visitor::ExpressionVisitable,
         ArrayExpression, BinaryOperation, BinaryOperator, Expression, FunctionCall,
         FunctionDefinition, FunctionKind, LambdaExpression, MatchArm, MatchExpression, Number,
-        Pattern, PilStatement, PolynomialName, SelectedExpressions, UnaryOperation, UnaryOperator,
+        Pattern, PilStatement, PolynomialName, UnaryOperation, UnaryOperator,
     },
-    SourceRef,
 };
 use powdr_number::{BigUint, FieldElement, LargeInt};
+use powdr_parser_util::SourceRef;
 
-use crate::common::{instruction_flag, return_instruction, RETURN_NAME};
+use crate::{
+    common::{instruction_flag, return_instruction, RETURN_NAME},
+    utils::parse_pil_statement,
+};
 
-pub fn convert_machine<T: FieldElement>(machine: Machine, rom: Option<Rom>) -> Machine {
+pub fn convert_machine<T: FieldElement>(
+    machine: Machine,
+    rom: Option<Rom>,
+) -> (Machine, Option<Machine>) {
     let output_count = machine
         .operations()
         .map(|f| f.params.outputs.len())
@@ -42,11 +56,66 @@ pub enum LiteralKind {
     UnsignedConstant,
 }
 
+const ROM_OPERATION_ID: &str = "operation_id";
+const ROM_LATCH: &str = "latch";
+pub const ROM_SUBMACHINE_NAME: &str = "_rom";
+const ROM_ENTRY_POINT: &str = "get_line";
+
+fn rom_machine<'a>(
+    degree: MachineDegree,
+    mut pil: Vec<PilStatement>,
+    mut line_lookup: impl Iterator<Item = &'a str>,
+) -> Machine {
+    Machine {
+        degree,
+        operation_id: Some(ROM_OPERATION_ID.into()),
+        latch: Some(ROM_LATCH.into()),
+        pil: {
+            pil.extend([
+                parse_pil_statement(&format!("pol fixed {ROM_OPERATION_ID} = [0]*;")),
+                parse_pil_statement(&format!("pol fixed {ROM_LATCH} = [1]*;")),
+            ]);
+            pil
+        },
+        callable: CallableSymbolDefinitions(
+            once((
+                ROM_ENTRY_POINT.into(),
+                CallableSymbol::Operation(OperationSymbol {
+                    source: SourceRef::unknown(),
+                    id: OperationId {
+                        id: Some(0u32.into()),
+                    },
+                    params: Params {
+                        inputs: (&mut line_lookup)
+                            .take(1)
+                            .map(|x| Param {
+                                name: x.to_string(),
+                                index: None,
+                                ty: None,
+                            })
+                            .collect(),
+                        outputs: line_lookup
+                            .map(|x| Param {
+                                name: x.to_string(),
+                                index: None,
+                                ty: None,
+                            })
+                            .collect(),
+                    },
+                }),
+            ))
+            .collect(),
+        ),
+        ..Default::default()
+    }
+}
+
 /// Component that turns a virtual machine into a constrained machine.
 /// TODO check if the conversion really depends on the finite field.
 #[derive(Default)]
 struct VMConverter<T> {
     pil: Vec<PilStatement>,
+    rom_pil: Vec<PilStatement>,
     pc_name: Option<String>,
     assignment_register_names: Vec<String>,
     registers: BTreeMap<String, Register>,
@@ -69,10 +138,14 @@ impl<T: FieldElement> VMConverter<T> {
         }
     }
 
-    fn convert_machine(mut self, mut input: Machine, rom: Option<Rom>) -> Machine {
+    fn convert_machine(
+        mut self,
+        mut input: Machine,
+        rom: Option<Rom>,
+    ) -> (Machine, Option<Machine>) {
         if !input.has_pc() {
             assert!(rom.is_none());
-            return input;
+            return (input, None);
         }
 
         // store the names of all assignment registers: we need them to generate assignment columns for other registers.
@@ -130,12 +203,18 @@ impl<T: FieldElement> VMConverter<T> {
                                 // introduce an intermediate witness polynomial to keep the degree of polynomial identities at 2
                                 // this may not be optimal for backends which support higher degree constraints
                                 let pc_update_name = format!("{name}_update");
-
                                 vec![
-                                    PilStatement::PolynomialDefinition(
+                                    witness_column(
                                         SourceRef::unknown(),
-                                        pc_update_name.to_string(),
-                                        rhs,
+                                        pc_update_name.clone(),
+                                        None,
+                                    ),
+                                    PilStatement::Expression(
+                                        SourceRef::unknown(),
+                                        build::identity(
+                                            direct_reference(pc_update_name.clone()),
+                                            rhs,
+                                        ),
                                     ),
                                     PilStatement::Expression(
                                         SourceRef::unknown(),
@@ -176,31 +255,48 @@ impl<T: FieldElement> VMConverter<T> {
 
         self.translate_code_lines();
 
-        self.pil.push(PilStatement::PlookupIdentity(
-            SourceRef::unknown(),
-            SelectedExpressions {
-                selector: None,
-                expressions: self
-                    .line_lookup
-                    .iter()
-                    .map(|x| direct_reference(&x.0))
-                    .collect(),
+        input.links.push(LinkDefinition {
+            source: SourceRef::unknown(),
+            instr_flag: None,
+            link_flag: Expression::from(1u32),
+            to: CallableRef {
+                instance: ROM_SUBMACHINE_NAME.to_string(),
+                callable: ROM_ENTRY_POINT.to_string(),
+                params: CallableParams {
+                    inputs: self.line_lookup[..1]
+                        .iter()
+                        .map(|x| direct_reference(&x.0))
+                        .collect(),
+                    outputs: self.line_lookup[1..]
+                        .iter()
+                        .map(|x| direct_reference(&x.0))
+                        .collect(),
+                },
             },
-            SelectedExpressions {
-                selector: None,
-                expressions: self
-                    .line_lookup
-                    .iter()
-                    .map(|x| direct_reference(&x.1))
-                    .collect(),
-            },
-        ));
+            is_permutation: false,
+        });
 
         if !self.pil.is_empty() {
             input.pil.extend(self.pil);
         }
 
-        input
+        // This is hacky: in the absence of proof objects, we want to support both monolithic proofs and composite proofs.
+        // In the monolithic case, all degrees must be the same, so we align the degree of the rom to that of the vm.
+        // In the composite case, we set the minimum degree for the rom, which is the number of lines in the code.
+        // this can lead to false negatives as we apply expression equality here, so `4` and `2 + 2` would be considered different.
+        let rom_degree = match input.degree.is_static() {
+            true => input.degree.clone(),
+            false => Expression::from(self.code_lines.len().next_power_of_two() as u32).into(),
+        };
+
+        (
+            input,
+            Some(rom_machine(
+                rom_degree,
+                self.rom_pil,
+                self.line_lookup.iter().map(|(_, x)| x.as_ref()),
+            )),
+        )
     }
 
     fn handle_batch(&mut self, batch: Batch) {
@@ -243,7 +339,7 @@ impl<T: FieldElement> VMConverter<T> {
                     .collect();
 
                 match *rhs {
-                    Expression::FunctionCall(c) => {
+                    Expression::FunctionCall(_, c) => {
                         self.handle_functional_instruction(lhs_with_reg, *c.function, c.arguments)
                     }
                     _ => self.handle_non_functional_assignment(source, lhs_with_reg, *rhs),
@@ -320,48 +416,37 @@ impl<T: FieldElement> VMConverter<T> {
 
         let params = s.instruction.params;
 
-        match s.instruction.body {
-            InstructionBody::Local(body) => self.handle_local_instruction_def(
-                s.source,
-                &instruction_name,
-                instruction_flag,
-                &params,
-                body,
-            ),
-            InstructionBody::CallablePlookup(callable) => {
-                let link = self.handle_external_instruction_def(
-                    s.source,
-                    instruction_flag,
-                    &params,
-                    callable,
-                );
-                input.links.push(link);
-            }
-            InstructionBody::CallablePermutation(callable) => {
-                let mut link = self.handle_external_instruction_def(
-                    s.source,
-                    instruction_flag,
-                    &params,
-                    callable,
-                );
-                link.is_permutation = true;
-                input.links.push(link);
-            }
-        }
+        // validate instruction links and add to machine links
+        input.links.extend(s.instruction.links.into_iter().map(|l| {
+            self.handle_instruction_link(s.source.clone(), &instruction_flag, &params, l)
+        }));
+
+        // validate instruction body
+        self.handle_instruction_body(
+            s.source,
+            &instruction_name,
+            &instruction_flag,
+            &params,
+            s.instruction.body,
+        );
 
         let inputs: Vec<_> = params
             .inputs
             .into_iter()
-            .map(|param| match param.ty {
-                Some(ty) if ty == "label" => Input::Literal(param.name, LiteralKind::Label),
-                Some(ty) if ty == "signed" => {
-                    Input::Literal(param.name, LiteralKind::SignedConstant)
+            .map(|param| {
+                match param
+                    .ty
+                    .as_ref()
+                    .map(|ty| ty.try_to_identifier().map(|s| s.as_str()))
+                {
+                    Some(Some("label")) => Input::Literal(param.name, LiteralKind::Label),
+                    Some(Some("signed")) => Input::Literal(param.name, LiteralKind::SignedConstant),
+                    Some(Some("unsigned")) => {
+                        Input::Literal(param.name, LiteralKind::UnsignedConstant)
+                    }
+                    Some(_) => panic!("Invalid param type: {}", param.ty.as_ref().unwrap()),
+                    None => Input::Register(param.name),
                 }
-                Some(ty) if ty == "unsigned" => {
-                    Input::Literal(param.name, LiteralKind::UnsignedConstant)
-                }
-                None => Input::Register(param.name),
-                Some(ty) => panic!("Invalid param type {ty}"),
             })
             .collect();
 
@@ -372,13 +457,13 @@ impl<T: FieldElement> VMConverter<T> {
     }
 
     /// check parameters are valid and extend PIL from the definition
-    fn handle_local_instruction_def(
+    fn handle_instruction_body(
         &mut self,
         source: SourceRef,
-        name: &String,
-        flag: String,
+        name: &str,
+        flag: &str,
         params: &InstructionParams,
-        mut body: Vec<PilStatement>,
+        mut body: InstructionBody,
     ) {
         // check inputs are literals or assignment registers
         let mut literal_arg_names = vec![];
@@ -387,10 +472,13 @@ impl<T: FieldElement> VMConverter<T> {
                 param.index.is_none(),
                 "Cannot use array elements for instruction parameters."
             );
-            match &param.ty {
-                Some(ty) if ty == "label" || ty == "signed" || ty == "unsigned" => {
-                    literal_arg_names.push(&param.name)
-                }
+            match param
+                .ty
+                .as_ref()
+                .map(|ty| ty.try_to_identifier().map(|s| s.as_str()))
+            {
+                Some(Some("label" | "signed" | "unsigned")) => literal_arg_names.push(&param.name),
+                Some(_) => panic!("Invalid param type: {}", param.ty.as_ref().unwrap()),
                 None => {
                     if !self
                         .registers
@@ -403,7 +491,6 @@ impl<T: FieldElement> VMConverter<T> {
                         );
                     }
                 }
-                Some(ty) => panic!("Invalid param type '{ty}'"),
             }
         }
 
@@ -430,9 +517,9 @@ impl<T: FieldElement> VMConverter<T> {
                 (arg_name.clone(), param_col_name)
             })
             .collect::<HashMap<_, _>>();
-        body.iter_mut().for_each(|s| {
+        body.0.iter_mut().for_each(|s| {
             s.post_visit_expressions_mut(&mut |e| {
-                if let Expression::Reference(r) = e {
+                if let Expression::Reference(_, r) = e {
                     if let Some(name) = r.try_to_identifier() {
                         if let Some(sub) = substitutions.get(name) {
                             *r.path.try_last_part_mut().unwrap() = sub.to_string();
@@ -442,149 +529,104 @@ impl<T: FieldElement> VMConverter<T> {
             });
         });
 
-        for mut statement in body {
-            if let PilStatement::Expression(source, expr) = statement {
-                match extract_update(expr) {
-                    (Some(var), expr) => {
-                        let reference = direct_reference(&flag);
+        let instr_flag = direct_reference(flag);
+        for statement in body.0 {
+            let PilStatement::Expression(source, expr) = statement else {
+                panic!("Invalid statement for instruction body: {statement}");
+            };
+            if let Some((var, expr)) = try_extract_update(&expr) {
+                // reduce the update to linear by introducing intermediate variables
+                let expr = self.linearize(&format!("{flag}_{var}_update"), expr);
 
-                        // reduce the update to linear by introducing intermediate variables
-                        let expr = self.linearize(&format!("{flag}_{var}_update"), expr);
-
-                        self.registers
-                            .get_mut(&var)
-                            .unwrap()
-                            .conditioned_updates
-                            .push((reference, expr));
-                    }
-                    (None, expr) => self.pil.push(PilStatement::Expression(
-                        source,
-                        build::identity(direct_reference(&flag) * expr.clone(), 0.into()),
-                    )),
-                }
+                self.registers
+                    .get_mut(&var)
+                    .unwrap()
+                    .conditioned_updates
+                    .push((instr_flag.clone(), expr));
             } else {
-                match &mut statement {
-                    PilStatement::PermutationIdentity(_, left, _)
-                    | PilStatement::PlookupIdentity(_, left, _) => {
-                        assert!(
-                                    left.selector.is_none(),
-                                    "LHS selector not supported, could and-combine with instruction flag later."
-                                );
-                        left.selector = Some(direct_reference(&flag));
-                        self.pil.push(statement)
-                    }
-                    _ => {
-                        panic!("Invalid statement for instruction body: {statement}");
-                    }
-                }
+                let fun_call = Expression::FunctionCall(
+                    source.clone(),
+                    FunctionCall {
+                        function: absolute_reference("::std::constraints::make_conditional").into(),
+                        arguments: vec![expr, instr_flag.clone()],
+                    },
+                );
+                self.pil.push(PilStatement::Expression(source, fun_call))
             }
         }
     }
 
-    /// check parameters on LHS and RHS are valid, and create a link from the definition
-    fn handle_external_instruction_def(
+    /// validade instruction link params and transform it into a link definition
+    fn handle_instruction_link(
         &mut self,
         source: SourceRef,
-        flag: String,
-        params: &InstructionParams,
-        mut callable: CallableRef,
-    ) -> LinkDefinitionStatement {
-        let lhs = params;
-        let rhs = &mut callable.params;
+        instr_flag: &str,
+        instr_params: &InstructionParams,
+        link_decl: LinkDeclaration,
+    ) -> LinkDefinition {
+        let callable: CallableRef = link_decl.link;
+        let lhs = instr_params;
+        let rhs = &callable.params;
 
-        // lhs params must all be assignment registers when mapping instruction to operation
-        lhs.inputs_and_outputs().for_each(|p| {
-            assert!(
-                p.index.is_none(),
-                "Cannot use array elements for lhs params"
-            );
+        let mut rhs_assignment_registers = BTreeSet::new();
+        let mut rhs_next_write_registers = BTreeSet::new();
 
-            let is_assignment_register = self
-                .registers
-                .get(&p.name)
-                .is_some_and(|r| r.ty.is_assignment());
-
-            assert!(
-                p.ty.is_none() && is_assignment_register,
-                "All lhs params must be assignment registers"
-            );
-        });
-
-        if rhs.is_empty() {
-            // we allow declarations with an empty RHS as syntactic sugar for when RHS = LHS.
-            rhs.inputs = lhs
-                .inputs
-                .iter()
-                .map(|p| direct_reference(p.name.clone()))
-                .collect();
-            rhs.outputs = lhs
-                .outputs
-                .iter()
-                .map(|p| direct_reference(p.name.clone()))
-                .collect();
-        } else {
-            let mut rhs_assignment_registers = BTreeSet::new();
-            let mut rhs_next_write_registers = BTreeSet::new();
-
-            // collect assignment registers and next references to write registers used on rhs
-            for expr in rhs.inputs_and_outputs() {
-                expr.pre_visit_expressions(&mut |e| match e {
-                    Expression::Reference(poly) => {
+        // collect assignment registers and next references to write registers used on rhs
+        for expr in rhs.inputs_and_outputs() {
+            expr.pre_visit_expressions(&mut |e| match e {
+                Expression::Reference(_, poly) => {
+                    poly.try_to_identifier()
+                        .and_then(|name| self.registers.get(name).map(|reg| (name, reg)))
+                        .filter(|(_, reg)| reg.ty == RegisterTy::Assignment)
+                        .map(|(name, _)| rhs_assignment_registers.insert(name.clone()));
+                }
+                Expression::UnaryOperation(
+                    _,
+                    UnaryOperation {
+                        op: UnaryOperator::Next,
+                        expr: e,
+                    },
+                ) => {
+                    if let Expression::Reference(_, poly) = e.as_ref() {
                         poly.try_to_identifier()
                             .and_then(|name| self.registers.get(name).map(|reg| (name, reg)))
-                            .filter(|(_, reg)| reg.ty == RegisterTy::Assignment)
-                            .map(|(name, _)| rhs_assignment_registers.insert(name.clone()));
+                            .filter(|(_, reg)| {
+                                [RegisterTy::Write, RegisterTy::Pc].contains(&reg.ty)
+                            })
+                            .map(|(name, _)| rhs_next_write_registers.insert(name.clone()));
                     }
-                    Expression::UnaryOperation(UnaryOperation {
-                        op: UnaryOperator::Next,
-                        expr,
-                    }) => {
-                        if let Expression::Reference(poly) = expr.as_ref() {
-                            poly.try_to_identifier()
-                                .and_then(|name| self.registers.get(name).map(|reg| (name, reg)))
-                                .filter(|(_, reg)| {
-                                    [RegisterTy::Write, RegisterTy::Pc].contains(&reg.ty)
-                                })
-                                .map(|(name, _)| rhs_next_write_registers.insert(name.clone()));
-                        }
-                    }
-                    _ => {}
-                })
-            }
-
-            // any assignment register present on the rhs (input or output) must be present on the lhs
-            for name in &rhs_assignment_registers {
-                assert!(
-                    lhs.inputs_and_outputs().any(|p_lhs| p_lhs.name == *name),
-                    "Assignment register '{name}' used on rhs must be present on lhs params"
-                );
-            }
-
-            // all lhs assignment registers must be used on rhs
-            lhs.inputs_and_outputs().for_each(|p| {
-                assert!(
-                    rhs_assignment_registers.contains(&p.name),
-                    "'{}' is declared on lhs but not used on the rhs",
-                    p.name
-                )
-            });
-
-            // if a write register next reference (R') is used in the instruction mapping,
-            // we must induce a tautology in the update clause (R' = R') when the
-            // instruction is active, to allow the operation plookup to match.
-            for name in rhs_next_write_registers {
-                let reg = self.registers.get_mut(&name).unwrap();
-                let value = next_reference(name);
-                reg.conditioned_updates
-                    .push((direct_reference(&flag), value));
-            }
+                }
+                _ => {}
+            })
         }
 
-        LinkDefinitionStatement {
+        // any assignment register present on the rhs (input or output) must be
+        // present on the instruction params
+        for name in &rhs_assignment_registers {
+            assert!(
+                lhs.inputs_and_outputs().any(|p_lhs| p_lhs.name == *name),
+                "Assignment register '{name}' used in link definition must be present in instruction params"
+            );
+        }
+
+        let instr_flag = direct_reference(instr_flag);
+
+        // if a write register next reference (R') is used in the instruction link,
+        // we must induce a tautology in the update clause (R' = R') when the
+        // link is active, to allow the operation plookup to match.
+        let flag = combine_flags(Some(instr_flag.clone()), link_decl.flag.clone());
+        for name in rhs_next_write_registers {
+            let reg = self.registers.get_mut(&name).unwrap();
+            let value = next_reference(name);
+            reg.conditioned_updates.push((flag.clone(), value));
+        }
+
+        LinkDefinition {
             source,
-            flag: direct_reference(flag),
+            instr_flag: Some(instr_flag),
+            link_flag: link_decl.flag,
             to: callable,
-            is_permutation: false,
+            is_permutation: link_decl.is_permutation,
         }
     }
 
@@ -615,7 +657,7 @@ impl<T: FieldElement> VMConverter<T> {
         function: Expression,
         mut args: Vec<Expression>,
     ) -> CodeLine<T> {
-        let Expression::Reference(reference) = function else {
+        let Expression::Reference(_, reference) = function else {
             panic!("Expected instruction name");
         };
         let instr_name = reference.try_to_identifier().unwrap();
@@ -660,7 +702,7 @@ impl<T: FieldElement> VMConverter<T> {
                             value.insert(reg.clone(), self.process_assignment_value(a));
                         }
                         Input::Literal(_, LiteralKind::Label) => {
-                            if let Expression::Reference(r) = a {
+                            if let Expression::Reference(_, r) = a {
                                 instruction_literal_arg.push(InstructionLiteralArg::LabelRef(
                                     r.try_to_identifier().unwrap().clone(),
                                 ));
@@ -670,11 +712,11 @@ impl<T: FieldElement> VMConverter<T> {
                         }
                         Input::Literal(_, LiteralKind::UnsignedConstant) => {
                             // TODO evaluate expression
-                            if let Expression::Number(Number {value: n, type_: _}) = a {
+                            if let Expression::Number(_, Number {value, ..}) = a {
                                 let half_modulus = T::modulus().to_arbitrary_integer() / BigUint::from(2u64);
-                                assert!(n < half_modulus, "Number passed to unsigned parameter is negative or too large: {n}");
+                                assert!(value < half_modulus, "Number passed to unsigned parameter is negative or too large: {value}");
                                 instruction_literal_arg.push(InstructionLiteralArg::Number(
-                                    T::from(n),
+                                    T::from(value),
                                 ));
                             } else {
                                 panic!("expected unsigned number, received {a}");
@@ -682,13 +724,13 @@ impl<T: FieldElement> VMConverter<T> {
                         }
                         Input::Literal(_, LiteralKind::SignedConstant) => {
                             // TODO evaluate expression
-                            if let Expression::Number(Number {value, ..}) = a {
+                            if let Expression::Number(_, Number {value, ..}) = a {
                                 instruction_literal_arg.push(InstructionLiteralArg::Number(
                                     T::checked_from(value).unwrap(),
                                 ));
-                            } else if let Expression::UnaryOperation(UnaryOperation { op: UnaryOperator::Minus, expr }) = a
+                            } else if let Expression::UnaryOperation(_, UnaryOperation { op: UnaryOperator::Minus, expr }) = a
                             {
-                                if let Expression::Number(Number {value, ..}) = *expr {
+                                if let Expression::Number(_, Number {value, ..}) = *expr {
                                     instruction_literal_arg.push(InstructionLiteralArg::Number(
                                         -T::checked_from(value).unwrap(),
                                     ))
@@ -710,7 +752,7 @@ impl<T: FieldElement> VMConverter<T> {
             .zip(&mut args)
             .map(|(reg, a)| {
                 // Output a value trough assignment register "reg"
-                if let Expression::Reference(r) = a {
+                if let Expression::Reference(_, r) = a {
                     (reg.clone(), vec![r.try_to_identifier().unwrap().clone()])
                 } else {
                     panic!("Expected direct register to assign to in instruction call.");
@@ -730,30 +772,30 @@ impl<T: FieldElement> VMConverter<T> {
 
     fn process_assignment_value(&self, value: Expression) -> Vec<(T, AffineExpressionComponent)> {
         match value {
-            Expression::PublicReference(_) => panic!(),
-            Expression::IndexAccess(_) => panic!(),
-            Expression::FunctionCall(_) => panic!(),
-            Expression::Reference(reference) => {
+            Expression::PublicReference(_, _) => panic!(),
+            Expression::IndexAccess(_, _) => panic!(),
+            Expression::FunctionCall(_, _) => panic!(),
+            Expression::Reference(_, reference) => {
                 // TODO check it actually is a register
                 let name = reference.try_to_identifier().unwrap();
                 vec![(1.into(), AffineExpressionComponent::Register(name.clone()))]
             }
-            Expression::Number(Number { value, .. }) => {
+            Expression::Number(_, Number { value, .. }) => {
                 vec![(T::from(value), AffineExpressionComponent::Constant)]
             }
-            Expression::String(_) => panic!(),
-            Expression::Tuple(_) => panic!(),
-            Expression::ArrayLiteral(_) => panic!(),
-            Expression::MatchExpression(_) => panic!(),
-            Expression::IfExpression(_) => panic!(),
+            Expression::String(_, _) => panic!(),
+            Expression::Tuple(_, _) => panic!(),
+            Expression::ArrayLiteral(_, _) => panic!(),
+            Expression::MatchExpression(_, _) => panic!(),
+            Expression::IfExpression(_, _) => panic!(),
             Expression::BlockExpression(_, _) => panic!(),
-            Expression::FreeInput(expr) => {
+            Expression::FreeInput(_, expr) => {
                 vec![(1.into(), AffineExpressionComponent::FreeInput(*expr))]
             }
-            Expression::LambdaExpression(_) => {
+            Expression::LambdaExpression(_, _) => {
                 unreachable!("lambda expressions should have been removed")
             }
-            Expression::BinaryOperation(BinaryOperation { left, op, right }) => match op {
+            Expression::BinaryOperation(_, BinaryOperation { left, op, right }) => match op {
                 BinaryOperator::Add => self.add_assignment_value(
                     self.process_assignment_value(*left),
                     self.process_assignment_value(*right),
@@ -812,11 +854,15 @@ impl<T: FieldElement> VMConverter<T> {
                 | BinaryOperator::Identity
                 | BinaryOperator::NotEqual
                 | BinaryOperator::GreaterEqual
-                | BinaryOperator::Greater => {
+                | BinaryOperator::Greater
+                | BinaryOperator::Is
+                | BinaryOperator::In
+                | BinaryOperator::Select
+                | BinaryOperator::Connect => {
                     panic!("Invalid operation in expression {left} {op} {right}")
                 }
             },
-            Expression::UnaryOperation(UnaryOperation { op, expr }) => {
+            Expression::UnaryOperation(_, UnaryOperation { op, expr }) => {
                 assert!(op == UnaryOperator::Minus);
                 self.negate_assignment_value(self.process_assignment_value(*expr))
             }
@@ -874,19 +920,20 @@ impl<T: FieldElement> VMConverter<T> {
     /// Translates the code lines to fixed column but also fills
     /// the query hints for the free inputs.
     fn translate_code_lines(&mut self) {
-        self.pil.push(PilStatement::PolynomialConstantDefinition(
-            SourceRef::unknown(),
-            "p_line".to_string(),
-            FunctionDefinition::Array(
-                ArrayExpression::Value(
-                    (0..self.code_lines.len())
-                        .map(|i| BigUint::from(i as u64).into())
-                        .collect(),
-                )
-                .pad_with_last()
-                .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![0.into()])),
-            ),
-        ));
+        self.rom_pil
+            .push(PilStatement::PolynomialConstantDefinition(
+                SourceRef::unknown(),
+                "p_line".to_string(),
+                FunctionDefinition::Array(
+                    ArrayExpression::Value(
+                        (0..self.code_lines.len())
+                            .map(|i| BigUint::from(i as u64).into())
+                            .collect(),
+                    )
+                    .pad_with_last()
+                    .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![0.into()])),
+                ),
+            ));
         // TODO check that all of them are matched against execution trace witnesses.
         let mut rom_constants = self
             .rom_constant_names
@@ -930,7 +977,7 @@ impl<T: FieldElement> VMConverter<T> {
                                 .get_mut(assign_reg)
                                 .unwrap()
                                 .push(MatchArm {
-                                    pattern: Pattern::Number(i.into()),
+                                    pattern: Pattern::Number(SourceRef::unknown(), i.into()),
                                     value: expr.clone(),
                                 });
                         }
@@ -971,14 +1018,19 @@ impl<T: FieldElement> VMConverter<T> {
         let pc_name = self.pc_name.clone();
         let free_value_pil = self
             .assignment_register_names()
-            .map(|reg| {
+            .flat_map(|reg| {
                 let free_value = format!("{reg}_free_value");
                 let prover_query_arms = free_value_query_arms.remove(reg).unwrap();
-                let prover_query = (!prover_query_arms.is_empty()).then_some({
+                let mut statements = vec![witness_column(
+                    SourceRef::unknown(),
+                    free_value.clone(),
+                    None,
+                )];
+                if !prover_query_arms.is_empty() {
                     let mut prover_query_arms = prover_query_arms;
                     prover_query_arms.push(MatchArm {
-                        pattern: Pattern::CatchAll,
-                        value: absolute_reference("::std::prover::Query::None"),
+                        pattern: Pattern::CatchAll(SourceRef::unknown()),
+                        value: absolute_reference("::std::prelude::Query::None"),
                     });
 
                     let scrutinee = Box::new(
@@ -989,22 +1041,30 @@ impl<T: FieldElement> VMConverter<T> {
                         .into(),
                     );
 
-                    let lambda = LambdaExpression {
-                        kind: FunctionKind::Query,
-                        params: vec![Pattern::Variable("__i".to_string())],
-                        body: Box::new(
+                    let call_to_handle_query = FunctionCall {
+                        function: Box::new(absolute_reference("::std::prover::handle_query")),
+                        arguments: vec![
+                            direct_reference(&free_value),
+                            direct_reference("__i"),
                             MatchExpression {
                                 scrutinee,
                                 arms: prover_query_arms,
                             }
                             .into(),
-                        ),
-                    }
-                    .into();
+                        ],
+                    };
+                    let prover_function = LambdaExpression {
+                        kind: FunctionKind::Query,
+                        params: vec![Pattern::Variable(SourceRef::unknown(), "__i".to_string())],
+                        body: Box::new(call_to_handle_query.into()),
+                    };
 
-                    FunctionDefinition::Expression(lambda)
-                });
-                witness_column(SourceRef::unknown(), free_value, prover_query)
+                    statements.push(PilStatement::Expression(
+                        SourceRef::unknown(),
+                        prover_function.into(),
+                    ));
+                }
+                statements
             })
             .collect::<Vec<_>>();
         self.pil.extend(free_value_pil);
@@ -1024,11 +1084,12 @@ impl<T: FieldElement> VMConverter<T> {
                 .pad_with_last()
                 .unwrap_or_else(|| ArrayExpression::RepeatedValue(vec![0.into()]))
             };
-            self.pil.push(PilStatement::PolynomialConstantDefinition(
-                SourceRef::unknown(),
-                name.clone(),
-                FunctionDefinition::Array(array_expression),
-            ));
+            self.rom_pil
+                .push(PilStatement::PolynomialConstantDefinition(
+                    SourceRef::unknown(),
+                    name.clone(),
+                    FunctionDefinition::Array(array_expression),
+                ));
         }
     }
 
@@ -1074,7 +1135,7 @@ impl<T: FieldElement> VMConverter<T> {
             .filter_map(|(n, r)| r.ty.is_read_only().then_some(n))
     }
 
-    fn return_instruction(&self) -> powdr_ast::asm_analysis::Instruction {
+    fn return_instruction(&self) -> parsed::asm::Instruction {
         return_instruction(self.output_count, self.pc_name.as_ref().unwrap())
     }
 
@@ -1092,11 +1153,14 @@ impl<T: FieldElement> VMConverter<T> {
         expr: Expression,
     ) -> (usize, Expression) {
         match expr {
-            Expression::BinaryOperation(BinaryOperation {
-                left,
-                op: operator,
-                right,
-            }) => match operator {
+            Expression::BinaryOperation(
+                _,
+                BinaryOperation {
+                    left,
+                    op: operator,
+                    right,
+                },
+            ) => match operator {
                 BinaryOperator::Add => {
                     let (counter, left) = self.linearize_rec(prefix, counter, *left);
                     let (counter, right) = self.linearize_rec(prefix, counter, *right);
@@ -1121,12 +1185,12 @@ impl<T: FieldElement> VMConverter<T> {
                     );
                     self.pil.push(PilStatement::PolynomialDefinition(
                         SourceRef::unknown(),
-                        intermediate_name.to_string(),
+                        intermediate_name.clone().into(),
                         left * right,
                     ));
                     (counter + 1, direct_reference(intermediate_name))
                 }
-                op => unimplemented!("{op} is not supported when linearizing"),
+                op => unimplemented!("Binary operator \"{op}\" is not supported when linearizing"),
             },
             expr => (counter, expr),
         }
@@ -1225,39 +1289,48 @@ fn witness_column<S: Into<String>>(
     )
 }
 
-fn extract_update(expr: Expression) -> (Option<String>, Expression) {
-    let Expression::BinaryOperation(BinaryOperation {
-        left,
-        op: BinaryOperator::Identity,
-        right,
-    }) = expr
+/// If the expression is of the form "x' = expr", returns x and expr.
+fn try_extract_update(expr: &Expression) -> Option<(String, Expression)> {
+    let Expression::BinaryOperation(
+        _,
+        BinaryOperation {
+            left,
+            op: BinaryOperator::Identity,
+            right,
+        },
+    ) = expr
     else {
-        panic!("Invalid statement for instruction body, expected constraint: {expr}");
+        return None;
     };
     // TODO check that there are no other "next" references in the expression
-    match *left {
-        Expression::UnaryOperation(UnaryOperation {
-            op: UnaryOperator::Next,
-            expr,
-        }) => match *expr {
-            Expression::Reference(column) => {
-                (Some(column.try_to_identifier().unwrap().clone()), *right)
-            }
-            _ => (
-                None,
-                Expression::UnaryOperation(UnaryOperation {
-                    op: UnaryOperator::Next,
-                    expr,
-                }) - *right,
-            ),
+    match left.as_ref() {
+        Expression::UnaryOperation(
+            _,
+            UnaryOperation {
+                op: UnaryOperator::Next,
+                expr: column,
+            },
+        ) => match column.as_ref() {
+            Expression::Reference(_, column) => Some((
+                column.try_to_identifier().unwrap().clone(),
+                (**right).clone(),
+            )),
+            _ => None,
         },
-        _ => (None, *left - *right),
+        _ => None,
     }
 }
 
 #[cfg(test)]
 mod test {
-    use powdr_ast::asm_analysis::AnalysisASMFile;
+    use powdr_ast::{
+        asm_analysis::{AnalysisASMFile, Item},
+        parsed::{
+            asm::{parse_absolute_path, Part, SymbolPath},
+            types::{FunctionType, Type},
+            TraitDeclaration,
+        },
+    };
     use powdr_importer::load_dependencies_and_resolve_str;
     use powdr_number::{FieldElement, GoldilocksField};
 
@@ -1270,45 +1343,9 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected = "All lhs params must be assignment registers")]
-    fn instr_external_lhs_not_assignment_reg() {
-        let asm = r"
-machine Main {
-  reg pc[@pc];
-  reg A;
-
-  instr foo A = vm.foo A;
-
-  function main {
-    foo;
-  }
-}
-";
-        parse_analyze_and_compile::<GoldilocksField>(asm);
-    }
-
-    #[test]
-    #[should_panic(expected = "'X' is declared on lhs but not used on the rhs")]
-    fn instr_external_lhs_register_not_used() {
-        let asm = r"
-machine Main {
-  reg pc[@pc];
-  reg X[<=];
-  reg Y[<=];
-  reg A;
-
-  instr foo X -> Y = vm.foo Y;
-
-  function main {
-    foo;
-  }
-}
-";
-        parse_analyze_and_compile::<GoldilocksField>(asm);
-    }
-
-    #[test]
-    #[should_panic(expected = "Assignment register 'Y' used on rhs must be present on lhs params")]
+    #[should_panic(
+        expected = "Assignment register 'Y' used in link definition must be present in instruction params"
+    )]
     fn instr_external_rhs_register_not_on_lhs() {
         let asm = r"
 machine Main {
@@ -1317,7 +1354,7 @@ machine Main {
   reg Y[<=];
   reg A;
 
-  instr foo X = vm.foo X -> Y;
+  instr foo X link => Y = vm.foo(X);
 
   function main {
     foo;
@@ -1325,5 +1362,52 @@ machine Main {
 }
 ";
         parse_analyze_and_compile::<GoldilocksField>(asm);
+    }
+
+    #[test]
+    fn trait_parsing() {
+        let asm = r"
+        mod types {
+            enum DoubleOpt<T> {
+                None,
+                Some(T, T)
+            }
+
+            trait ArraySum<T> {
+                array_sum: T[4 + 1] -> DoubleOpt<T>,
+            }
+        }
+
+        machine Empty {
+            col witness w;
+            w = w * w;
+        }
+        ";
+
+        let analyzed = parse_analyze_and_compile::<GoldilocksField>(asm);
+        let arraysum = parse_absolute_path("::types::ArraySum");
+        let trait_decl = analyzed.items.get(&arraysum).unwrap();
+        if let Item::TraitDeclaration(TraitDeclaration { functions, .. }) = trait_decl {
+            assert_eq!(functions.len(), 1);
+            let func_ty = &functions.iter().next().unwrap().ty;
+            match func_ty {
+                Type::Function(FunctionType { value, .. }) => {
+                    assert_eq!(
+                        value.as_ref(),
+                        &Type::NamedType(
+                            SymbolPath::from_parts(
+                                ["types", "DoubleOpt"]
+                                    .iter()
+                                    .map(|arg| Part::Named(arg.to_string()))
+                            ),
+                            Some(vec![Type::TypeVar("T".to_string())])
+                        )
+                    );
+                }
+                _ => panic!("Expected function type"),
+            }
+        } else {
+            panic!("Expected trait declaration");
+        }
     }
 }

@@ -4,7 +4,7 @@ use std::utils::force_bool;
 // gaps between accessed memory cells must not be larger than the degree.
 // This test uses two 8-bit digits to represent the diff, so the diff has to be
 // representable in 16 bits.
-machine MemReadWrite {
+machine MemReadWrite with degree: 256 {
     reg pc[@pc];
     reg X[<=];
     reg A;
@@ -42,8 +42,8 @@ machine MemReadWrite {
     col fixed STEP(i) { i };
     col fixed BYTE(i) { i & 0xff };
 
-    {m_diff_lower} in {BYTE};
-    {m_diff_upper} in {BYTE};
+    [m_diff_lower] in [BYTE];
+    [m_diff_upper] in [BYTE];
 
     m_change * (1 - m_change) = 0;
 
@@ -71,8 +71,8 @@ machine MemReadWrite {
     (1 - m_is_write') * m_change * m_value' = 0;
 
     instr assert_zero X { XIsZero = 1 }
-    instr mload -> X { { 0, ADDR, STEP, X } is m_selector1 { m_is_write, m_addr, m_step, m_value } }
-    instr mstore X { { 1, ADDR, STEP, X } is m_selector2 { m_is_write, m_addr, m_step, m_value } }
+    instr mload -> X { [ 0, ADDR, STEP, X ] is m_selector1 $ [ m_is_write, m_addr, m_step, m_value ] }
+    instr mstore X { [ 1, ADDR, STEP, X ] is m_selector2 $ [ m_is_write, m_addr, m_step, m_value ] }
 
     function main {
         ADDR <=X= 4;

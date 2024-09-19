@@ -1,4 +1,4 @@
-machine Main with degree: 256 {
+machine Main with degree: 16 {
     Arith arith;
 
     reg pc[@pc];
@@ -7,8 +7,8 @@ machine Main with degree: 256 {
     reg A;
     reg Z[<=]; // we declare this assignment register last to test that the ordering does not matter
 
-    instr add X, Y -> Z = arith.add;
-    instr mul X, Y -> Z = arith.mul;
+    instr add X, Y -> Z link => Z = arith.add(X, Y);
+    instr mul X, Y -> Z link => Z = arith.mul(X, Y);
     instr assert_eq X, Y { X = Y }
 
     function main {

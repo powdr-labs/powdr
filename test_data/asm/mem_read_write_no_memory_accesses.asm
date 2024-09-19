@@ -1,6 +1,6 @@
 use std::utils::force_bool;
 
-machine MemReadWrite {
+machine MemReadWrite with degree: 256 {
     reg pc[@pc];
     reg X[<=];
     reg A;
@@ -44,7 +44,7 @@ machine MemReadWrite {
 
     // Except for the last row, if m_change is 1, then m_addr has to increase,
     // if it is zero, m_step has to increase.
-    (1 - LAST) { m_change * (m_addr' - m_addr) + (1 - m_change) * (m_step' - m_step) } in POSITIVE;
+    (1 - LAST) $ [ m_change * (m_addr' - m_addr) + (1 - m_change) * (m_step' - m_step) ] in [POSITIVE];
 
     // m_change has to be 1 in the last row, so that a first read on row zero is constrained to return 0
     (1 - m_change) * LAST = 0;
@@ -61,8 +61,8 @@ machine MemReadWrite {
     (1 - m_is_write') * m_change * m_value' = 0;
 
     instr assert_zero X { XIsZero = 1 }
-    instr mload -> X { { 0, ADDR, STEP, X } is m_selector1 { m_is_write, m_addr, m_step, m_value } }
-    instr mstore X { { 1, ADDR, STEP, X } is m_selector2 { m_is_write, m_addr, m_step, m_value } }
+    instr mload -> X { [ 0, ADDR, STEP, X ] is m_selector1 $ [ m_is_write, m_addr, m_step, m_value ] }
+    instr mstore X { [ 1, ADDR, STEP, X ] is m_selector2 $ [ m_is_write, m_addr, m_step, m_value ] }
 
     function main {
         return;

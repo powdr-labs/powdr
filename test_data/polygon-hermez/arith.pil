@@ -19,7 +19,7 @@
 */
 include "global.pil";
 
-namespace Arith(%N);
+namespace Arith(N);
 
     pol constant BYTE2_BIT19;
     pol constant SEL_BYTE2_BIT19;
@@ -256,10 +256,10 @@ namespace Arith(%N);
 	   + q0[0]*Global.CLK32[16] + q0[1]*Global.CLK32[17] + q0[2]*Global.CLK32[18] + q0[3]*Global.CLK32[19] + q0[4]*Global.CLK32[20] + q0[5]*Global.CLK32[21] + q0[6]*Global.CLK32[22] + q0[7]*Global.CLK32[23]
 	   + q0[8]*Global.CLK32[24] + q0[9]*Global.CLK32[25] + q0[10]*Global.CLK32[26] + q0[11]*Global.CLK32[27] + q0[12]*Global.CLK32[28] + q0[13]*Global.CLK32[29] + q0[14]*Global.CLK32[30] + q1[0]*Global.CLK32[31] in Global.BYTE2;
 
-    {Global.CLK32[29] + Global.CLK32[30] + Global.CLK32[31], q1[1]*Global.CLK32[0] + q1[2]*Global.CLK32[1] + q1[3]*Global.CLK32[2] + q1[4]*Global.CLK32[3] + q1[5]*Global.CLK32[4] + q1[6]*Global.CLK32[5] + q1[7]*Global.CLK32[6] + q1[8]*Global.CLK32[7]
+    [Global.CLK32[29] + Global.CLK32[30] + Global.CLK32[31], q1[1]*Global.CLK32[0] + q1[2]*Global.CLK32[1] + q1[3]*Global.CLK32[2] + q1[4]*Global.CLK32[3] + q1[5]*Global.CLK32[4] + q1[6]*Global.CLK32[5] + q1[7]*Global.CLK32[6] + q1[8]*Global.CLK32[7]
 	   + q1[9]*Global.CLK32[8] + q1[10]*Global.CLK32[9] + q1[11]*Global.CLK32[10] + q1[12]*Global.CLK32[11] + q1[13]*Global.CLK32[12] + q1[14]*Global.CLK32[13] + q2[0]*Global.CLK32[14] + q2[1]*Global.CLK32[15]
 	   + q2[2]*Global.CLK32[16] + q2[3]*Global.CLK32[17] + q2[4]*Global.CLK32[18] + q2[5]*Global.CLK32[19] + q2[6]*Global.CLK32[20] + q2[7]*Global.CLK32[21] + q2[8]*Global.CLK32[22] + q2[9]*Global.CLK32[23]
-	   + q2[10]*Global.CLK32[24] + q2[11]*Global.CLK32[25] + q2[12]*Global.CLK32[26] + q2[13]*Global.CLK32[27] + q2[14]*Global.CLK32[28] + q0[15]*Global.CLK32[29] + q1[15]*Global.CLK32[30] + q2[15]*Global.CLK32[31]} in {SEL_BYTE2_BIT19, BYTE2_BIT19};
+	   + q2[10]*Global.CLK32[24] + q2[11]*Global.CLK32[25] + q2[12]*Global.CLK32[26] + q2[13]*Global.CLK32[27] + q2[14]*Global.CLK32[28] + q0[15]*Global.CLK32[29] + q1[15]*Global.CLK32[30] + q2[15]*Global.CLK32[31]] in [SEL_BYTE2_BIT19, BYTE2_BIT19];
 
     /*******
     *

@@ -1,4 +1,7 @@
-use std::{env, path::PathBuf};
+use std::{
+    env,
+    path::{Path, PathBuf},
+};
 
 use powdr_ast::parsed::{
     asm::{
@@ -20,7 +23,7 @@ static MOD_FILE: &str = "mod.asm";
 /// # Panics
 /// If there is an error loading the standard library
 fn load_std() -> ASMModule {
-    let default_std_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    let default_std_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
         .join("std");
@@ -92,16 +95,23 @@ impl Folder for StdAdder {
                     SymbolValue::TypeDeclaration(ty) => {
                         self.fold_type_declaration(ty).map(From::from)
                     }
+                    SymbolValue::TraitDeclaration(trait_decl) => {
+                        self.fold_trait_declaration(trait_decl).map(From::from)
+                    }
                 }
                 .map(|value| ModuleStatement::SymbolDefinition(SymbolDefinition { value, ..d })),
+                ModuleStatement::TraitImplementation(trait_impl) => {
+                    self.fold_trait_implementation(trait_impl).map(From::from)
+                }
             })
             .collect::<Result<Vec<_>, _>>()?;
 
         // Check whether the module already has a definition for `std`
         // (E.g. the main module)
-        let has_std = statements.iter().any(|s| match s {
-            ModuleStatement::SymbolDefinition(d) => d.name == "std",
-        });
+        let has_std = statements
+            .iter()
+            .filter_map(|m| m.defined_names())
+            .any(|n| n == "std");
 
         if !has_std {
             // If not, add `use super::std;`

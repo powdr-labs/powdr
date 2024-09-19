@@ -1,42 +1,12 @@
-machine Binary with
+mod binary4;
+use binary4::Binary4;
+
+machine Binary4x with
     latch: latch,
     operation_id: operation_id,
     call_selectors: sel,
 {
-    col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
-
-    operation or<0> A, B -> C;
-
-    col witness operation_id;
-    col fixed latch(i) { if (i % 4) == 3 { 1 } else { 0 } };
-
-    let a = |i| i % 256;
-    col fixed P_A(i) { a(i) };
-    let b = |i| (i >> 8) % 256;
-    col fixed P_B(i) { b(i) };
-    col fixed P_C(i) { (a(i) | b(i)) & 0xff };
-
-    col witness A_byte;
-    col witness B_byte;
-    col witness C_byte;
-
-    col witness A;
-    col witness B;
-    col witness C;
-
-    A' = A * (1 - latch) + A_byte * FACTOR;
-    B' = B * (1 - latch) + B_byte * FACTOR;
-    C' = C * (1 - latch) + C_byte * FACTOR;
-
-    {A_byte, B_byte, C_byte} in {P_A, P_B, P_C};
-}
-
-machine Binary4 with
-    latch: latch,
-    operation_id: operation_id,
-    call_selectors: sel,
-{
-    Binary bin;
+    Binary4 bin;
 
     operation or4<0> A, B, C, D -> E;
 
@@ -44,9 +14,9 @@ machine Binary4 with
     // Only enable the links in rows that have been 'used' by a call into this machine.
     let used = std::array::sum(sel);
     std::utils::force_bool(used);
-    link used ~> bin.or A, B -> X;
-    link used ~> bin.or C, D -> Y;
-    link used ~> bin.or X, Y -> E;
+    link if used ~> X = bin.or(A, B);
+    link if used ~> Y = bin.or(C, D);
+    link if used ~> E = bin.or(X, Y);
 
     col fixed operation_id = [0]*;
     col fixed latch = [1]*;
@@ -60,7 +30,7 @@ machine Binary4 with
     col witness Y;
 }
 
-machine Main with degree: 65536 {
+machine Main with degree: 256 {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
@@ -70,15 +40,15 @@ machine Main with degree: 65536 {
     reg A;
     reg B;
 
-    Binary bin;
-    Binary4 bin4;
+    Binary4 bin;
+    Binary4x bin4;
 
     // two permutations to machine bin
-    instr or X, Y -> Z ~ bin.or;
-    instr or_into_B X, Y ~ bin.or X, Y -> B';
+    instr or X, Y -> Z link ~> Z = bin.or(X, Y);
+    instr or_into_B X, Y link ~> B' = bin.or(X, Y);
 
     // permutation to machine bin4
-    instr or4 X, Y, Z, W -> R ~ bin4.or4;
+    instr or4 X, Y, Z, W -> R link ~> R = bin4.or4(X, Y, Z, W);
 
     instr assert_eq X, Y { X = Y }
 

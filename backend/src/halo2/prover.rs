@@ -17,7 +17,7 @@ use halo2_proofs::{
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{DegreeType, FieldElement, KnownField};
+use powdr_number::{Bn254Field, DegreeType, FieldElement};
 
 // We use two different EVM verifier libraries.
 // 1. snark_verifier: supports single SNARK verification as well as aggregated proof verification.
@@ -48,19 +48,16 @@ use itertools::Itertools;
 use rand::rngs::OsRng;
 use std::{
     io::{self, Cursor},
+    sync::Arc,
     time::Instant,
 };
 
 /// Create a halo2 proof for a given PIL, fixed column values and witness column
 /// values. We use KZG ([GWC variant](https://eprint.iacr.org/2019/953)) and
 /// Keccak256
-///
-/// This only works with Bn254, so it really shouldn't be generic over the field
-/// element, but without RFC #1210, the only alternative I found is a very ugly
-/// "unsafe" code, and unsafe code is harder to explain and maintain.
-pub struct Halo2Prover<'a, F> {
-    analyzed: &'a Analyzed<F>,
-    fixed: &'a [(String, Vec<F>)],
+pub struct Halo2Prover {
+    analyzed: Arc<Analyzed<Bn254Field>>,
+    fixed: Arc<Vec<(String, Vec<Bn254Field>)>>,
     params: ParamsKZG<Bn256>,
     // Verification key of the proof type we're generating
     vkey: Option<VerifyingKey<G1Affine>>,
@@ -82,15 +79,13 @@ pub fn generate_setup(size: DegreeType) -> ParamsKZG<Bn256> {
     ParamsKZG::<Bn256>::new(std::cmp::max(4, degree_bits(size)))
 }
 
-impl<'a, F: FieldElement> Halo2Prover<'a, F> {
+impl Halo2Prover {
     pub fn new(
-        analyzed: &'a Analyzed<F>,
-        fixed: &'a [(String, Vec<F>)],
+        analyzed: Arc<Analyzed<Bn254Field>>,
+        fixed: Arc<Vec<(String, Vec<Bn254Field>)>>,
         setup: Option<&mut dyn io::Read>,
         proof_type: ProofType,
     ) -> Result<Self, io::Error> {
-        Self::assert_field_is_bn254();
-
         let mut params = setup
             .map(|mut setup| ParamsKZG::<Bn256>::read(&mut setup))
             .transpose()?
@@ -124,12 +119,12 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         TR: TranscriptReadBuffer<Cursor<Vec<u8>>, G1Affine, E>,
     >(
         &self,
-        witness: &[(String, Vec<F>)],
-        witgen_callback: WitgenCallback<F>,
+        witness: &[(String, Vec<Bn254Field>)],
+        witgen_callback: WitgenCallback<Bn254Field>,
     ) -> Result<(Vec<u8>, Vec<Vec<Fr>>), String> {
         log::info!("Starting proof generation...");
 
-        let circuit = PowdrCircuit::new(self.analyzed, self.fixed)
+        let circuit = PowdrCircuit::new(self.analyzed.clone(), &self.fixed)
             .with_witgen_callback(witgen_callback)
             .with_witness(witness);
         let publics = vec![circuit.instance_column()];
@@ -165,18 +160,18 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
     /// One or more of these proofs can be aggregated by `prove_snark_aggr`.
     pub fn prove_poseidon(
         &self,
-        witness: &[(String, Vec<F>)],
-        witgen_callback: WitgenCallback<F>,
-    ) -> Result<(Vec<u8>, Vec<F>), String> {
+        witness: &[(String, Vec<Bn254Field>)],
+        witgen_callback: WitgenCallback<Bn254Field>,
+    ) -> Result<(Vec<u8>, Vec<Bn254Field>), String> {
         assert!(matches!(self.proof_type, ProofType::Poseidon));
 
         let (proof, publics) = self.prove::<_, aggregation::PoseidonTranscript<NativeLoader, _>,  aggregation::PoseidonTranscript<NativeLoader, _>>(witness, witgen_callback)?;
         // Our Halo2 integration always has one instance column `publics[0]`
         // containing the public inputs.
-        let publics: Vec<F> = publics[0]
+        let publics: Vec<Bn254Field> = publics[0]
             .clone()
             .into_iter()
-            .map(|x| F::from_bytes_le(&x.to_repr()))
+            .map(|x| Bn254Field::from_bytes_le(&x.to_repr()))
             .collect();
 
         Ok((proof, publics))
@@ -186,9 +181,9 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
     /// These proofs can be verified directly on Ethereum.
     pub fn prove_snark_single(
         &self,
-        witness: &[(String, Vec<F>)],
-        witgen_callback: WitgenCallback<F>,
-    ) -> Result<(Vec<u8>, Vec<F>), String> {
+        witness: &[(String, Vec<Bn254Field>)],
+        witgen_callback: WitgenCallback<Bn254Field>,
+    ) -> Result<(Vec<u8>, Vec<Bn254Field>), String> {
         assert!(matches!(self.proof_type, ProofType::SnarkSingle));
 
         let (proof, publics) = self
@@ -215,10 +210,10 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
 
         // Our Halo2 integration always has one instance column `publics[0]`
         // containing the public inputs.
-        let publics: Vec<F> = publics[0]
+        let publics: Vec<Bn254Field> = publics[0]
             .clone()
             .into_iter()
-            .map(|x| F::from_bytes_le(&x.to_repr()))
+            .map(|x| Bn254Field::from_bytes_le(&x.to_repr()))
             .collect();
 
         Ok((proof, publics))
@@ -228,17 +223,17 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
     /// These proofs can be verified directly on Ethereum.
     pub fn prove_snark_aggr(
         &self,
-        witness: &[(String, Vec<F>)],
-        witgen_callback: WitgenCallback<F>,
+        witness: &[(String, Vec<Bn254Field>)],
+        witgen_callback: WitgenCallback<Bn254Field>,
         proof: Vec<u8>,
-    ) -> Result<(Vec<u8>, Vec<F>), String> {
+    ) -> Result<(Vec<u8>, Vec<Bn254Field>), String> {
         assert!(matches!(self.proof_type, ProofType::SnarkAggr));
 
         log::info!("Starting proof aggregation...");
 
         log::info!("Generating circuit for app snark...");
 
-        let circuit_app = PowdrCircuit::new(self.analyzed, self.fixed)
+        let circuit_app = PowdrCircuit::new(self.analyzed.clone(), &self.fixed)
             .with_witgen_callback(witgen_callback)
             .with_witness(witness);
 
@@ -309,10 +304,10 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
 
         // Our Halo2 integration always has one instance column `publics[0]`
         // containing the public inputs.
-        let publics: Vec<F> = agg_instances[0]
+        let publics: Vec<Bn254Field> = agg_instances[0]
             .clone()
             .into_iter()
-            .map(|x| F::from_bytes_le(&x.to_repr()))
+            .map(|x| Bn254Field::from_bytes_le(&x.to_repr()))
             .collect();
 
         log::info!("Proof aggregation done.");
@@ -323,7 +318,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
     pub fn add_verification_key(&mut self, mut vkey: &mut dyn io::Read) {
         let vkey = match self.proof_type {
             ProofType::Poseidon | ProofType::SnarkSingle => {
-                VerifyingKey::<G1Affine>::read::<&mut dyn io::Read, PowdrCircuit<F>>(
+                VerifyingKey::<G1Affine>::read::<&mut dyn io::Read, PowdrCircuit<Bn254Field>>(
                     &mut vkey,
                     SerdeFormat::Processed,
                     self.analyzed.clone().into(),
@@ -341,12 +336,13 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
 
     pub fn add_verification_app_key(&mut self, mut vkey: &mut dyn io::Read) {
         assert!(matches!(self.proof_type, ProofType::SnarkAggr));
-        let vkey_app = VerifyingKey::<G1Affine>::read::<&mut dyn io::Read, PowdrCircuit<F>>(
-            &mut vkey,
-            SerdeFormat::Processed,
-            self.analyzed.clone().into(),
-        )
-        .unwrap();
+        let vkey_app =
+            VerifyingKey::<G1Affine>::read::<&mut dyn io::Read, PowdrCircuit<Bn254Field>>(
+                &mut vkey,
+                SerdeFormat::Processed,
+                self.analyzed.clone().into(),
+            )
+            .unwrap();
         self.vkey_app = Some(vkey_app);
     }
 
@@ -362,7 +358,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
     }
 
     fn generate_verification_key_single(&self) -> Result<VerifyingKey<G1Affine>, String> {
-        let circuit = PowdrCircuit::new(self.analyzed, self.fixed);
+        let circuit = PowdrCircuit::new(self.analyzed.clone(), &self.fixed);
         keygen_vk(&self.params, &circuit).map_err(|e| e.to_string())
     }
 
@@ -435,7 +431,7 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
     >(
         &self,
         proof: &[u8],
-        instances: &[Vec<F>],
+        instances: &[Vec<Bn254Field>],
     ) -> Result<(), String> {
         let instances = instances
             .iter()
@@ -450,23 +446,21 @@ impl<'a, F: FieldElement> Halo2Prover<'a, F> {
         self.verify_inner::<_, TR>(self.vkey.as_ref().unwrap(), &self.params, proof, &instances)
     }
 
-    pub fn verify_poseidon(&self, proof: &[u8], instances: &[Vec<F>]) -> Result<(), String> {
+    pub fn verify_poseidon(
+        &self,
+        proof: &[u8],
+        instances: &[Vec<Bn254Field>],
+    ) -> Result<(), String> {
         assert!(matches!(self.proof_type, ProofType::Poseidon));
         self.verify_common::<_, aggregation::PoseidonTranscript<NativeLoader, _>>(proof, instances)
     }
 
-    pub fn verify_snark(&self, proof: &[u8], instances: &[Vec<F>]) -> Result<(), String> {
+    pub fn verify_snark(&self, proof: &[u8], instances: &[Vec<Bn254Field>]) -> Result<(), String> {
         assert!(matches!(
             self.proof_type,
             ProofType::SnarkSingle | ProofType::SnarkAggr
         ));
         self.verify_common::<_, EvmTranscript<G1Affine, _, _, _>>(proof, instances)
-    }
-
-    fn assert_field_is_bn254() {
-        if !matches!(F::known_field(), Some(KnownField::Bn254Field)) {
-            panic!("powdr modulus doesn't match halo2 modulus. Make sure you are using Bn254");
-        }
     }
 
     pub fn export_ethereum_verifier_snark(&self, output: &mut dyn io::Write) -> Result<(), String> {

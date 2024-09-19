@@ -1,6 +1,6 @@
 use std::utils::force_bool;
 
-machine MemReadWrite {
+machine MemReadWrite with degree: 256 {
     reg pc[@pc];
     reg X[<=];
     reg A;
@@ -49,7 +49,7 @@ machine MemReadWrite {
 
     // Except for the last row, if m_change is 1, then m_addr has to increase,
     // if it is zero, m_step has to increase.
-    (1 - LAST) { m_change * (m_addr' - m_addr) + (1 - m_change) * (m_step' - m_step) } in POSITIVE;
+    (1 - LAST) $ [ m_change * (m_addr' - m_addr) + (1 - m_change) * (m_step' - m_step) ] in [POSITIVE];
 
     // m_change has to be 1 in the last row, so that the above constraint is triggered.
     // An exception to this when the last address is -1, which is only possible if there is
@@ -71,9 +71,9 @@ machine MemReadWrite {
 
     instr assert_zero X { XIsZero = 1 }
     let operation_id = m_is_write + 2 * m_is_bootloader_write;
-    instr mload -> X { { 0, ADDR, STEP, X } is m_selector1 { operation_id, m_addr, m_step, m_value } }
-    instr mstore X { { 1, ADDR, STEP, X } is m_selector2 { operation_id, m_addr, m_step, m_value } }
-    instr mstore_bootloader X { { 2, ADDR, STEP, X } is m_selector3 { operation_id, m_addr, m_step, m_value } }
+    instr mload -> X { [ 0, ADDR, STEP, X ] is m_selector1 $ [ operation_id, m_addr, m_step, m_value ] }
+    instr mstore X { [ 1, ADDR, STEP, X ] is m_selector2 $ [ operation_id, m_addr, m_step, m_value ] }
+    instr mstore_bootloader X { [ 2, ADDR, STEP, X ] is m_selector3 $ [ operation_id, m_addr, m_step, m_value ] }
 
     function main {
         ADDR <=X= 4;

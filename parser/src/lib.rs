@@ -6,10 +6,9 @@ use lalrpop_util::*;
 use powdr_ast::parsed::{
     asm::ASMProgram,
     types::{Type, TypeBounds, TypeScheme},
+    Expression, SourceReference,
 };
-use powdr_ast::SourceRef;
-
-use powdr_parser_util::{handle_parse_error, ParseError};
+use powdr_parser_util::{handle_parse_error, Error, SourceRef};
 
 use std::sync::Arc;
 
@@ -24,69 +23,77 @@ lalrpop_mod!(
 
 pub struct ParserContext {
     file_name: Option<Arc<str>>,
-    line_starts: Vec<usize>,
+    file_contents: Option<Arc<str>>,
 }
 
 impl ParserContext {
     pub fn new(file_name: Option<&str>, input: &str) -> Self {
         Self {
             file_name: file_name.map(|s| s.into()),
-            line_starts: powdr_parser_util::lines::compute_line_starts(input),
+            file_contents: Some(input.into()),
         }
     }
 
-    pub fn source_ref(&self, offset: usize) -> SourceRef {
-        let (line, col) = powdr_parser_util::lines::offset_to_line_col(offset, &self.line_starts);
+    pub fn source_ref(&self, start: usize, end: usize) -> SourceRef {
         SourceRef {
-            file: self.file_name.clone(),
-            line,
-            col,
+            file_name: self.file_name.clone(),
+            file_contents: self.file_contents.clone(),
+            start,
+            end,
         }
+    }
+
+    pub fn to_expr_with_source_ref<T: Into<Expression>>(
+        &self,
+        inner_expr: T,
+        start: usize,
+        end: usize,
+    ) -> Box<Expression> {
+        let mut expr = inner_expr.into();
+        *expr.source_reference_mut() = self.source_ref(start, end);
+        Box::new(expr)
     }
 }
 
 lazy_static::lazy_static! {
     static ref PIL_FILE_PARSER: powdr::PILFileParser = powdr::PILFileParser::new();
     static ref ASM_MODULE_PARSER: powdr::ASMModuleParser = powdr::ASMModuleParser::new();
-    static ref TYPE_PARSER: powdr::TypeParser = powdr::TypeParser::new();
+    static ref TYPE_PARSER: powdr::TypeExprParser = powdr::TypeExprParser::new();
     static ref TYPE_VAR_BOUNDS_PARSER: powdr::TypeVarBoundsParser = powdr::TypeVarBoundsParser::new();
 }
 
-pub fn parse<'a>(
-    file_name: Option<&str>,
-    input: &'a str,
-) -> Result<powdr_ast::parsed::PILFile, ParseError<'a>> {
+pub fn parse(file_name: Option<&str>, input: &str) -> Result<powdr_ast::parsed::PILFile, Error> {
     let ctx = ParserContext::new(file_name, input);
     PIL_FILE_PARSER
         .parse(&ctx, input)
         .map_err(|err| handle_parse_error(err, file_name, input))
 }
 
-pub fn parse_asm<'a>(
+pub fn parse_asm(
     file_name: Option<&str>,
-    input: &'a str,
-) -> Result<powdr_ast::parsed::asm::ASMProgram, ParseError<'a>> {
+    input: &str,
+) -> Result<powdr_ast::parsed::asm::ASMProgram, Error> {
     parse_module(file_name, input).map(|main| ASMProgram { main })
 }
 
-pub fn parse_module<'a>(
+pub fn parse_module(
     file_name: Option<&str>,
-    input: &'a str,
-) -> Result<powdr_ast::parsed::asm::ASMModule, ParseError<'a>> {
+    input: &str,
+) -> Result<powdr_ast::parsed::asm::ASMModule, Error> {
     let ctx = ParserContext::new(file_name, input);
     ASM_MODULE_PARSER
         .parse(&ctx, input)
         .map_err(|err| handle_parse_error(err, file_name, input))
 }
 
-pub fn parse_type(input: &str) -> Result<Type<powdr_ast::parsed::Expression>, ParseError<'_>> {
+pub fn parse_type(input: &str) -> Result<Type<powdr_ast::parsed::Expression>, Error> {
     let ctx = ParserContext::new(None, input);
     TYPE_PARSER
         .parse(&ctx, input)
         .map_err(|err| handle_parse_error(err, None, input))
 }
 
-pub fn parse_type_var_bounds(input: &str) -> Result<TypeBounds, ParseError<'_>> {
+pub fn parse_type_var_bounds(input: &str) -> Result<TypeBounds, Error> {
     let ctx = ParserContext::new(None, input);
     // We use GoldilocksField here, because we need to specify a concrete type,
     // even though the grammar for TypeBounds does not depend on the field.
@@ -131,14 +138,12 @@ pub fn unescape_string(s: &str) -> String {
 #[cfg(test)]
 mod test {
     use super::*;
-    use powdr_ast::parsed::{
-        asm::ASMProgram, build::direct_reference, PILFile, PilStatement, PolynomialName,
-        SelectedExpressions,
-    };
+    use powdr_ast::parsed::{PILFile, PilStatement, PolynomialName};
     use powdr_parser_util::UnwrapErrToStderr;
     use pretty_assertions::assert_eq;
     use similar::TextDiff;
     use test_log::test;
+    use test_utils::ClearSourceRefs;
     use walkdir::WalkDir;
 
     #[test]
@@ -157,9 +162,10 @@ mod test {
             parsed,
             PILFile(vec![PilStatement::Include(
                 SourceRef {
-                    file: None,
-                    line: 1,
-                    col: 0,
+                    file_name: None,
+                    file_contents: Some(input.into()),
+                    start: 0,
+                    end: 11,
                 },
                 "x".to_string()
             )])
@@ -176,17 +182,19 @@ mod test {
             PILFile(vec![
                 PilStatement::Include(
                     SourceRef {
-                        file: None,
-                        line: 1,
-                        col: 0,
+                        file_name: None,
+                        file_contents: Some(input.into()),
+                        start: 0,
+                        end: 11,
                     },
                     "x".to_string()
                 ),
                 PilStatement::PolynomialCommitDeclaration(
                     SourceRef {
-                        file: None,
-                        line: 1,
-                        col: 13,
+                        file_name: None,
+                        file_contents: Some(input.into()),
+                        start: 13,
+                        end: 25,
                     },
                     None,
                     vec![PolynomialName {
@@ -196,31 +204,6 @@ mod test {
                     None
                 )
             ])
-        );
-    }
-
-    #[test]
-    fn simple_plookup() {
-        let input = "f in g;";
-        let ctx = ParserContext::new(None, input);
-        let parsed = powdr::PILFileParser::new().parse(&ctx, "f in g;").unwrap();
-        assert_eq!(
-            parsed,
-            PILFile(vec![PilStatement::PlookupIdentity(
-                SourceRef {
-                    file: None,
-                    line: 1,
-                    col: 0,
-                },
-                SelectedExpressions {
-                    selector: None,
-                    expressions: vec![direct_reference("f")]
-                },
-                SelectedExpressions {
-                    selector: None,
-                    expressions: vec![direct_reference("g")]
-                }
-            )])
         );
     }
 
@@ -245,73 +228,10 @@ mod test {
         })
     }
 
-    // helper function to clear SourceRef's inside the AST so we can compare for equality
-    fn asm_clear_source_refs(ast: &mut ASMProgram) {
-        use powdr_ast::parsed::asm::{
-            ASMModule, FunctionStatement, Instruction, InstructionBody, Machine, MachineStatement,
-            Module, ModuleStatement, SymbolDefinition, SymbolValue,
-        };
-
-        fn clear_machine_stmt(stmt: &mut MachineStatement) {
-            use test_utils::pil_statement_clear_source_ref;
-            match stmt {
-                MachineStatement::Submachine(s, _, _)
-                | MachineStatement::RegisterDeclaration(s, _, _)
-                | MachineStatement::OperationDeclaration(s, _, _, _)
-                | MachineStatement::LinkDeclaration(s, _) => {
-                    *s = SourceRef::unknown();
-                }
-                MachineStatement::Pil(s, stmt) => {
-                    *s = SourceRef::unknown();
-                    pil_statement_clear_source_ref(stmt)
-                }
-                MachineStatement::InstructionDeclaration(s, _, Instruction { body, .. }) => {
-                    *s = SourceRef::unknown();
-                    if let InstructionBody::Local(statements) = body {
-                        statements
-                            .iter_mut()
-                            .for_each(pil_statement_clear_source_ref)
-                    }
-                }
-                MachineStatement::FunctionDeclaration(s, _, _, statements) => {
-                    *s = SourceRef::unknown();
-                    for statement in statements {
-                        match statement {
-                            FunctionStatement::Assignment(s, _, _, _)
-                            | FunctionStatement::Instruction(s, _, _)
-                            | FunctionStatement::Label(s, _)
-                            | FunctionStatement::DebugDirective(s, _)
-                            | FunctionStatement::Return(s, _) => *s = SourceRef::unknown(),
-                        }
-                    }
-                }
-            }
-        }
-
-        fn clear_module_stmt(stmt: &mut ModuleStatement) {
-            let ModuleStatement::SymbolDefinition(SymbolDefinition { value, .. }) = stmt;
-            match value {
-                SymbolValue::Machine(Machine { statements, .. }) => {
-                    statements.iter_mut().for_each(clear_machine_stmt)
-                }
-                SymbolValue::Module(Module::Local(ASMModule { statements })) => {
-                    statements.iter_mut().for_each(clear_module_stmt);
-                }
-                SymbolValue::Module(Module::External(_))
-                | SymbolValue::Import(_)
-                | SymbolValue::Expression(_)
-                | SymbolValue::TypeDeclaration(_) => (),
-            }
-        }
-
-        ast.main.statements.iter_mut().for_each(clear_module_stmt);
-    }
-
     #[test]
     /// Test that (source -> AST -> source -> AST) works properly for asm files
     fn parse_write_reparse_asm() {
-        let crate_dir = env!("CARGO_MANIFEST_DIR");
-        let basedir = std::path::PathBuf::from(format!("{crate_dir}/../test_data/"));
+        let basedir = std::path::Path::new("../test_data/").to_owned();
         let asm_files = find_files_with_ext(basedir, "asm".into());
         for (file, orig_string) in asm_files {
             let mut orig_asm = parse_asm(Some(&file), &orig_string).unwrap_err_to_stderr();
@@ -321,8 +241,8 @@ mod test {
                 &orig_asm_to_string,
             )
             .unwrap_err_to_stderr();
-            asm_clear_source_refs(&mut orig_asm);
-            asm_clear_source_refs(&mut reparsed_asm);
+            orig_asm.clear_source_refs();
+            reparsed_asm.clear_source_refs();
             if orig_asm != reparsed_asm {
                 let orig_ast = format!("{orig_asm:#?}");
                 let reparsed_ast = format!("{reparsed_asm:#?}");
@@ -344,9 +264,8 @@ mod test {
     #[test]
     /// Test that (source -> AST -> source -> AST) works properly for pil files
     fn parse_write_reparse_pil() {
-        use test_utils::pil_clear_source_refs;
-        let crate_dir = env!("CARGO_MANIFEST_DIR");
-        let basedir = std::path::PathBuf::from(format!("{crate_dir}/../test_data/"));
+        use test_utils::ClearSourceRefs;
+        let basedir = std::path::Path::new("../test_data/").to_owned();
         let pil_files = find_files_with_ext(basedir, "pil".into());
         for (file, orig_string) in pil_files {
             let mut orig_pil = parse(Some(&file), &orig_string).unwrap_err_to_stderr();
@@ -356,8 +275,8 @@ mod test {
                 &orig_pil_to_string,
             )
             .unwrap_err_to_stderr();
-            pil_clear_source_refs(&mut orig_pil);
-            pil_clear_source_refs(&mut reparsed_pil);
+            orig_pil.clear_source_refs();
+            reparsed_pil.clear_source_refs();
             assert_eq!(orig_pil, reparsed_pil);
             if orig_pil != reparsed_pil {
                 let orig_ast = format!("{orig_pil:#?}");
@@ -382,19 +301,19 @@ mod test {
     #[test]
     fn reparse() {
         let input = r#"
-    constant %N = 16;
-namespace Fibonacci(%N);
-    constant %last_row = %N - 1;
-    let bool: expr -> expr = (|X| X * (1 - X));
-    let one_hot = (|i, which| match i {
+    let N: int = 16;
+namespace Fibonacci(N);
+    let last_row = N - 1;
+    let bool: expr -> expr = |X| X * (1 - X);
+    let one_hot = |i, which| match i {
         which => 1,
         _ => 0,
-    });
+    };
     pol constant ISLAST(i) { one_hot(i, %last_row) };
     pol commit arr[8];
     pol commit x, y;
-    { x + 2, y' } in { ISLAST, 7 };
-    y { x + 2, y' } is ISLAST { ISLAST, 7 };
+    [x + 2, y'] in [ISLAST, 7];
+    y $ [x + 2, y'] is ISLAST $ [ISLAST, 7];
     (x - 2) * y = 8;
     public out = y(%last_row);"#;
         let printed = format!("{}", parse(Some("input"), input).unwrap());
@@ -418,7 +337,7 @@ namespace Fibonacci(%N);
 
     #[test]
     fn reparse_strings_and_tuples() {
-        let input = r#"constant %N = ("abc", 3);"#;
+        let input = r#"let N = ("abc", 3);"#;
         let printed = format!("{}", parse(Some("input"), input).unwrap());
         assert_eq!(input.trim(), printed.trim());
     }
@@ -479,7 +398,7 @@ namespace N(2);
     fn patterns() {
         let input = r#"
 namespace N(2);
-    let x = (|(x, y), [t, r, ..]| (x, y, t, r));
+    let x = |(x, y), [t, r, ..]| (x, y, t, r);
     {
         let (a, b, _, d) = x((1, 2), [3, 4]);
         b
@@ -493,8 +412,8 @@ namespace N(2);
     fn type_args() {
         let input = r#"
 namespace N(2);
-    let<T: Ord> max: T, T -> T = (|a, b| if a < b { b } else { a });
-    let<T1, T2> left: T1, T2 -> T1 = (|a, b| a);
+    let<T: Ord> max: T, T -> T = |a, b| if a < b { b } else { a };
+    let<T1, T2> left: T1, T2 -> T1 = |a, b| a;
     let seven = max::<int>(3, 7);
     let five = left::<int, fe[]>(5, [7]);
     let also_five = five::<>;
@@ -507,13 +426,126 @@ namespace N(2);
     fn type_args_with_space() {
         let input = r#"
 namespace N(2);
-    let<T: Ord> max: T, T -> T = (|a, b| if a < b { b } else { a });
+    let<T: Ord> max: T, T -> T = |a, b| if a < b { b } else { a };
     let seven = max :: <int>(3, 7);
 "#;
         let expected = r#"
 namespace N(2);
-    let<T: Ord> max: T, T -> T = (|a, b| if a < b { b } else { a });
+    let<T: Ord> max: T, T -> T = |a, b| if a < b { b } else { a };
     let seven = max::<int>(3, 7);
+"#;
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn parse_impl() {
+        let input = r#"
+    impl<T> Iterator<ArrayIterator<T>, T> {
+        next_max: |it, max| if pos(it) >= max { None } else { Some(increment(it)) },
+    }"#;
+
+        let expected = r#"
+    impl<T> Iterator<ArrayIterator<T>, T> {
+        next_max: |it, max| if pos(it) >= max { None } else { Some(increment(it)) },
+    }"#;
+
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn parse_impl2() {
+        let input = r#"
+    impl<A, B> Iterator<ArrayIterator<A>, B> {
+        next: |it, pm| if pos(it) >= val(pm) { (it, pos(it)) } else { (it, 0) },
+    }"#;
+
+        let expected = r#"
+    impl<A, B> Iterator<ArrayIterator<A>, B> {
+        next: |it, pm| if pos(it) >= val(pm) { (it, pos(it)) } else { (it, 0) },
+    }"#;
+
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn parse_trait() {
+        let input = r#"
+    trait Add<T> {
+        add: T, T -> T,
+    }"#;
+
+        let expected = r#"
+    trait Add<T> {
+        add: T, T -> T,
+    }"#;
+
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn parse_trait_multi_params() {
+        let input = r#"
+    trait Add<T, Q> {
+        add: T, T -> Q,
+    }"#;
+
+        let expected = r#"
+    trait Add<T, Q> {
+        add: T, T -> Q,
+    }"#;
+
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    #[should_panic = "Parse error"]
+    fn parse_trait_no_type_vars() {
+        let input = r#"
+    trait Add {
+        add: int, int -> int,
+    }"#;
+
+        let _ = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+    }
+
+    #[test]
+    fn parse_trait_multi_params2() {
+        let input = r#"
+    trait Iterator<S, I> {
+        next: S -> (S, Option<I>),
+    }"#;
+
+        let expected = r#"
+    trait Iterator<S, I> {
+        next: S -> (S, Option<I>),
+    }"#;
+
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn empty_namespace() {
+        let input = r#"
+namespace(2);
+    let x = 2;
+namespace;
+    let y = 4;
+namespace N(8);
+    let z = 8;
+"#;
+        let expected = r#"
+namespace (2);
+    let x = 2;
+namespace;
+    let y = 4;
+namespace N(8);
+    let z = 8;
 "#;
         let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
         assert_eq!(expected.trim(), printed.trim());

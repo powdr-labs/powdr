@@ -1,4 +1,4 @@
-use std::prover::Query;
+use std::prelude::Query;
 
 machine Sqrt with
     latch: latch,
@@ -28,13 +28,14 @@ machine Sqrt with
             sqrt_rec((y + x / y) / 2, x)
         };
 
-    col witness y(i) query Query::Hint(sqrt_hint(std::prover::eval(x)));
-    
+    col witness y;
+    query |i| std::prover::provide_value(y, i, sqrt_hint(std::prover::eval(x)));
+
     y * y = x;
     
     // Note that this is required to make the witness unique
     // (y := -y would also satisfy y * y = x, but we want the positive solution).
-    { y } in { range };
+    [ y ] in [ range ];
 }
 
 
@@ -54,7 +55,7 @@ machine Main with degree: 8 {
 
     instr assert_zero X { XIsZero = 1 }
 
-    instr sqrt X -> Y = sqrt.sqrt;
+    instr sqrt X -> Y link => Y = sqrt.sqrt(X);
 
 
     function main {

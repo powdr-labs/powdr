@@ -131,7 +131,7 @@ machine Sqrt {
     };
 
     col witness x;
-    col witness y(i) query std::prover::Query::Hint(sqrt_hint(std::prover::eval(x)));
+    col witness y(i) query std::prelude::Query::Hint(sqrt_hint(std::prover::eval(x)));
 
     y * y = x;
 
@@ -142,7 +142,7 @@ machine Sqrt {
 ### Challenges
 
 ```rust
-let std::prover::challenge: int, int -> expr
+let std::prelude::challenge: int, int -> expr
 ```
 
 Constructs a challenge object, essentially asking the verifier for a random number.
@@ -155,11 +155,26 @@ If you want two challenges to be different, you have to choose different IDs.
 ### Degree
 
 ```rust
+let std::prover::min_degree: -> int
+let std::prover::max_degree: -> int
 let std::prover::degree: -> int
 ```
 
-Returns the current number of rows / the length of the witness columns, also
-known as the degree.
+Returns the number of rows / the length of the witness columns, also
+known as the degree. Outside of fixed column definitions, `degree` fails if `min_degree` and `max_degree` are different.
+
+### Hints
+
+```rust
+let std::prelude::set_hint: expr, (int -> std::prelude::Query) -> ()
+```
+
+This function can be used to set a "query function" for a witness column.
+Query functions are used during witness generation and allow witness column cells
+to receive a value even though they are not uniquely constrained by the constraints.
+
+The first argument must be a witness column and the function can only be called
+once per witness column.
 
 ## Types
 
@@ -179,11 +194,11 @@ enum Constr {
     /// A polynomial identity.
     Identity(expr, expr),
     /// A lookup constraint with selectors.
-    Lookup(Option<expr>, expr[], Option<expr>, expr[]),
+    Lookup((Option<expr>, Option<expr>), (expr, expr)[]),
     /// A permutation constraint with selectors.
-    Permutation(Option<expr>, expr[], Option<expr>, expr[]),
+    Permutation((Option<expr>, Option<expr>), (expr, expr)[]),
     /// A connection constraint (copy constraint).
-    Connection(expr[], expr[])
+    Connection((expr, expr)[])
 }
 ```
 

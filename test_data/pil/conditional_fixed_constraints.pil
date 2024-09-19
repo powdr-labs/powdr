@@ -11,19 +11,19 @@ namespace Main(N);
     let X_b3;
     let X_b2;
     let X_b1;
-    { X_b4 } in { bytes };
-    { X_b3 } in { bytes };
-    { X_b2 } in { bytes };
-    { X_b1 } in { bytes };
+    [ X_b4 ] in [ bytes ];
+    [ X_b3 ] in [ bytes ];
+    [ X_b2 ] in [ bytes ];
+    [ X_b1 ] in [ bytes ];
 
     let cond;
 
-    cond { Z } in { two_bits };
+    cond $ [ Z ] in [ two_bits ];
     let two_bits: col = |i| i % 4;
 
     0 = cond * (Y - (wrap_bit * 2**32 + X_b4 * 0x1000000 + X_b3 * 0x10000 + X_b2 * 0x100 + X_b1 * 4 + Z));
     let six_bits: col = |i| i % 2**6;
-    cond { X_b1 } in { six_bits };
+    cond $ [ X_b1 ] in [ six_bits ];
 
     let odd: col = |i| i % 2;
     cond = odd;

@@ -1,14 +1,14 @@
-constant %N = 65536;
+let N: int = 65536;
 
 // Like block_lookup_or.pil, but using a permutation to connect the Main and Or machine
 
-namespace std::convert(%N);
+namespace std::convert(N);
     // Due to its name, the semantics of this function will be overridden.
     // We ensure that this happens by making it diverge in its given semantics.
     let int = [|i| int(i)];
 
 // ORs two 32-bit numbers, byte-by-byte.
-namespace Or(%N);
+namespace Or(N);
     col fixed RESET(i) { if (i % 4) == 3 { 1 } else { 0 } };
     col fixed FACTOR(i) { 1 << (((i + 1) % 4) * 8) };
 
@@ -46,14 +46,14 @@ namespace Or(%N);
     B' = B * (1 - RESET) + B_byte * FACTOR;
     C' = C * (1 - RESET) + C_byte * FACTOR;
 
-    {A_byte, B_byte, C_byte} in {P_A, P_B, P_C};
+    [A_byte, B_byte, C_byte] in [P_A, P_B, P_C];
 
-namespace Main(%N);
+namespace Main(N);
     col fixed a(i) { (i + 13) & 0xffffffff };
     col fixed b(i) { ((i + 19) * 17) & 0xffffffff };
     col witness c;
     col fixed NTH(i) { if i % 32 == 16 { 1 } else { 0 } };
 
-    NTH {a, b, c} is (Or.selector1 * Or.RESET) {Or.A, Or.B, Or.C};
-    NTH' {a, b, c} is (Or.selector2 * Or.RESET) {Or.A, Or.B, Or.C};
+    NTH $ [a, b, c] is (Or::selector1 * Or::RESET) $ [Or::A, Or::B, Or::C];
+    NTH' $ [a, b, c] is (Or::selector2 * Or::RESET) $ [Or::A, Or::B, Or::C];
 

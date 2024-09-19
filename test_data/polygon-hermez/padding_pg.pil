@@ -9,7 +9,7 @@
 include "global.pil";
 include "poseidong.pil";
 
-namespace PaddingPG(%N);
+namespace PaddingPG(N);
 
     // Polynomials that are used to compute a hash chunk
     pol commit acc[8];
@@ -67,7 +67,7 @@ namespace PaddingPG(%N);
     acc[6]' = acc6C*(1-lastBlock);
     acc[7]' = acc7C*(1-lastBlock);
 
-    lastBlock {
+    lastBlock $ [
         acc0C,
         acc1C,
         acc2C,
@@ -84,7 +84,7 @@ namespace PaddingPG(%N);
         curHash1,
         curHash2,
         curHash3
-     } in PoseidonG.LATCH {
+     ] in PoseidonG.LATCH $ [
         PoseidonG.in0,
         PoseidonG.in1,
         PoseidonG.in2,
@@ -101,7 +101,7 @@ namespace PaddingPG(%N);
         PoseidonG.hash1,
         PoseidonG.hash2,
         PoseidonG.hash3
-     };
+     ];
 
     pol commit curHash0, curHash1, curHash2, curHash3;
     curHash0' * (1-lastBlock) = curHash0*(1-lastBlock);
@@ -147,10 +147,10 @@ namespace PaddingPG(%N);
 
     pol commit crF0, crF1, crF2, crF3, crF4, crF5, crF6, crF7;
 
-    { crOffset, crF0, crF1, crF2, crF3,
-                crF4, crF5, crF6, crF7} in
-    { Global.STEP32, Global.BYTE_FACTOR[0], Global.BYTE_FACTOR[1], Global.BYTE_FACTOR[2], Global.BYTE_FACTOR[3],
-                     Global.BYTE_FACTOR[4], Global.BYTE_FACTOR[5], Global.BYTE_FACTOR[6], Global.BYTE_FACTOR[7] };
+    [ crOffset, crF0, crF1, crF2, crF3,
+                crF4, crF5, crF6, crF7] in
+    [ Global.STEP32, Global.BYTE_FACTOR[0], Global.BYTE_FACTOR[1], Global.BYTE_FACTOR[2], Global.BYTE_FACTOR[3],
+                     Global.BYTE_FACTOR[4], Global.BYTE_FACTOR[5], Global.BYTE_FACTOR[6], Global.BYTE_FACTOR[7] ];
 
 
     pol commit crV0, crV1, crV2, crV3, crV4, crV5, crV6, crV7;

@@ -1,5 +1,5 @@
+use std::machines::split::ByteCompare;
 use std::machines::split::split_gl::SplitGL;
-
 
 machine Main with degree: 65536 {
     reg pc[@pc];
@@ -9,9 +9,10 @@ machine Main with degree: 65536 {
     reg low;
     reg high;
 
-    SplitGL split_machine;
+    ByteCompare byte_compare;
+    SplitGL split_machine(byte_compare);
 
-    instr split X0 -> X1, X2 ~ split_machine.split;
+    instr split X0 -> X1, X2 link ~> (X1, X2) = split_machine.split(X0);
 
     instr assert_eq X0, X1 {
         X0 = X1

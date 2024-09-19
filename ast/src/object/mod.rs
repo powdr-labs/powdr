@@ -2,9 +2,12 @@ use std::collections::BTreeMap;
 
 use powdr_number::BigUint;
 
-use crate::parsed::{
-    asm::{AbsoluteSymbolPath, CallableParams, OperationParams},
-    EnumDeclaration, Expression, PilStatement, TypedExpression,
+use crate::{
+    asm_analysis::MachineDegree,
+    parsed::{
+        asm::{AbsoluteSymbolPath, CallableParams, OperationParams},
+        EnumDeclaration, Expression, PilStatement, TypedExpression,
+    },
 };
 
 mod display;
@@ -19,6 +22,15 @@ impl Location {
         Self {
             limbs: vec!["main".into()],
         }
+    }
+
+    pub fn parent(&self) -> Option<Self> {
+        if self.limbs.is_empty() {
+            return None;
+        }
+        let mut parent = self.clone();
+        parent.limbs.pop();
+        Some(parent)
     }
 
     pub fn join<S: Into<String>>(mut self, limb: S) -> Self {
@@ -43,7 +55,7 @@ pub enum TypeOrExpression {
 
 #[derive(Default, Clone)]
 pub struct Object {
-    pub degree: Option<Expression>,
+    pub degree: MachineDegree,
     /// the pil identities for this machine
     pub pil: Vec<PilStatement>,
     /// the links from this machine to its children
@@ -56,14 +68,7 @@ pub struct Object {
     pub has_pc: bool,
 }
 
-impl Object {
-    pub fn with_degree<D: Into<Expression>>(mut self, degree: Option<D>) -> Self {
-        self.degree = degree.map(Into::into);
-        self
-    }
-}
-
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 /// A link between two machines
 pub struct Link {
     /// the link source, i.e. a flag and some arguments
@@ -74,13 +79,17 @@ pub struct Link {
     pub is_permutation: bool,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct LinkFrom {
-    pub flag: Expression,
+    /// the instruction flag, if this is an instruction link
+    pub instr_flag: Option<Expression>,
+    /// the link flag
+    pub link_flag: Expression,
+    /// lhs arguments of the link
     pub params: CallableParams,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialOrd, Ord, Eq, PartialEq)]
 pub struct LinkTo {
     /// the machine we link to
     pub machine: Machine,
@@ -90,7 +99,7 @@ pub struct LinkTo {
     pub selector_idx: Option<u64>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialOrd, Ord, Eq, PartialEq)]
 pub struct Machine {
     /// the location of this instance
     pub location: Location,
@@ -102,7 +111,7 @@ pub struct Machine {
     pub operation_id: Option<String>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialOrd, Ord, Eq, PartialEq)]
 pub struct Operation {
     /// the name of the operation
     pub name: String,

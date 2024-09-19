@@ -21,6 +21,10 @@ pub fn infer(file: AnalysisASMFile) -> Result<AnalysisASMFile, Vec<String>> {
             },
             Item::Expression(e) => Some((name, Item::Expression(e))),
             Item::TypeDeclaration(enum_decl) => Some((name, Item::TypeDeclaration(enum_decl))),
+            Item::TraitImplementation(trait_impl) => {
+                Some((name, Item::TraitImplementation(trait_impl)))
+            }
+            Item::TraitDeclaration(trait_decl) => Some((name, Item::TraitDeclaration(trait_decl))),
         })
         .collect();
 
@@ -39,9 +43,9 @@ fn infer_machine(mut machine: Machine) -> Result<Machine, Vec<String>> {
             if let FunctionStatement::Assignment(a) = s {
                 // Map function calls to the list of assignment registers and all other expressions to a list of None.
                 let expr_regs = match &*a.rhs {
-                    Expression::FunctionCall(c) => {
+                    Expression::FunctionCall(_, c) => {
                         let instr_name =
-                            if let Expression::Reference(reference) = c.function.as_ref() {
+                            if let Expression::Reference(_, reference) = c.function.as_ref() {
                                 reference.try_to_identifier().unwrap()
                             } else {
                                 panic!("Only instructions allowed.");

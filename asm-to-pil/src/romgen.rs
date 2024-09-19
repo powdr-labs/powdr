@@ -12,8 +12,8 @@ use powdr_ast::parsed::{
     asm::{OperationId, Param, Params},
     Expression,
 };
-use powdr_ast::SourceRef;
 use powdr_number::{BigUint, FieldElement};
+use powdr_parser_util::SourceRef;
 
 use crate::common::{instruction_flag, RETURN_NAME};
 use crate::{
@@ -32,7 +32,7 @@ fn substitute_name_in_statement_expressions(
     substitution: &HashMap<String, String>,
 ) {
     fn substitute(e: &mut Expression, substitution: &HashMap<String, String>) {
-        if let Expression::Reference(r) = e {
+        if let Expression::Reference(_, r) = e {
             if let Some(n) = r.try_to_identifier() {
                 if let Some(v) = substitution.get(n).cloned() {
                     *r = NamespacedPolynomialReference::from_identifier(v);
@@ -219,8 +219,9 @@ pub fn generate_machine_rom<T: FieldElement>(mut machine: Machine) -> (Machine, 
 
         machine.pil.extend([
             // inject the operation_id
+            parse_pil_statement(&format!("let {operation_id};")),
             parse_pil_statement(&format!(
-                "col witness {operation_id}(i) query std::prover::Query::Hint({sink_id});"
+                "query |__i| std::prover::provide_if_unknown({operation_id}, __i, || {sink_id});"
             )),
             // inject last step
             parse_pil_statement(&format!("col constant {last_step} = [0]* + [1];")),
@@ -267,7 +268,10 @@ mod tests {
             .into_iter()
             .filter_map(|(name, m)| match m {
                 Item::Machine(m) => Some((name, generate_machine_rom::<T>(m))),
-                Item::Expression(_) | Item::TypeDeclaration(_) => None,
+                Item::Expression(_)
+                | Item::TypeDeclaration(_)
+                | Item::TraitDeclaration(_)
+                | Item::TraitImplementation(_) => None,
             })
             .collect()
     }

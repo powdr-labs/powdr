@@ -7,7 +7,7 @@
  */
 
 include "global.pil";
-namespace MemAlign(%N);
+namespace MemAlign(N);
 
     /*
     * OPERATIONS
@@ -112,16 +112,16 @@ namespace MemAlign(%N);
     wr8 * wr256 = 0;
 
     // RangeCheck
-    {inM[1], inM[0]} in {Global.BYTE_2A, Global.BYTE};
+    [inM[1], inM[0]] in [Global.BYTE_2A, Global.BYTE];
 
     // Plookup
-    {
+    [
         Global.STEP32, offset', wr256', wr8', selM1, inV,
         factorV[0], factorV[1], factorV[2], factorV[3], factorV[4], factorV[5], factorV[6], factorV[7]
-    } in {
+    ] in [
         Global.STEP32, OFFSET, WR256, WR8, SELM1, BYTE_C4096,
         FACTORV[0], FACTORV[1], FACTORV[2], FACTORV[3], FACTORV[4], FACTORV[5], FACTORV[6], FACTORV[7]
-    };
+    ];
 
     m0[0]' = (1-RESET) * m0[0] + FACTOR[0] * inM[0];
     m0[1]' = (1-RESET) * m0[1] + FACTOR[1] * inM[0];

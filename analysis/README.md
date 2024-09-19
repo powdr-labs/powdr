@@ -211,7 +211,7 @@ The diff for our example program is as follows:
 +               pol constant p_instr_return = [0, 0, 1, 1, 1, 0] + [0]*;
 +               pol constant p_read__output_0__input_0 = [0, 0, 1, 0, 0, 0] + [0]*;
 +               pol constant p_read__output_0_pc = [0, 0, 0, 0, 0, 0] + [0]*;
-+               { pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return, _output_0_const, _output_0_read_free, read__output_0_pc, read__output_0__input_0 } in { p_line, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p__output_0_const, p__output_0_read_free, p_read__output_0_pc, p_read__output_0__input_0 };
++               [ pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return, _output_0_const, _output_0_read_free, read__output_0_pc, read__output_0__input_0 ] in [ p_line, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p__output_0_const, p__output_0_read_free, p_read__output_0_pc, p_read__output_0__input_0 ];
 -       function one -> field {
 -               return 1;
 -               // END BATCH
@@ -290,7 +290,7 @@ The diff for our example program is as follows:
 +               pol constant p_read_Y_pc = [0, 0, 0, 0, 0] + [0]*;
 +               pol constant p_reg_write_X_A = [0, 0, 0, 0, 0] + [0]*;
 +               pol constant p_reg_write_Y_A = [0, 0, 1, 0, 0] + [0]*;
-+               { pc, reg_write_X_A, reg_write_Y_A, instr_identity, instr_one, instr_nothing, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_pc } in { p_line, p_reg_write_X_A, p_reg_write_Y_A, p_instr_identity, p_instr_one, p_instr_nothing, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_pc, p_Y_const, p_Y_read_free, p_read_Y_A, p_read_Y_pc };
++               [ pc, reg_write_X_A, reg_write_Y_A, instr_identity, instr_one, instr_nothing, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_pc ] in [ p_line, p_reg_write_X_A, p_reg_write_Y_A, p_instr_identity, p_instr_one, p_instr_nothing, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_pc, p_Y_const, p_Y_read_free, p_read_Y_A, p_read_Y_pc ];
 +       }
 +
 +
@@ -359,7 +359,7 @@ machine DifferentSignatures with latch: instr_return, operation_id: _operation_i
                 pol constant p_instr_return = [0, 0, 1, 1, 1, 0] + [0]*;
                 pol constant p_read__output_0__input_0 = [0, 0, 1, 0, 0, 0] + [0]*;
                 pol constant p_read__output_0_pc = [0, 0, 0, 0, 0, 0] + [0]*;
-                { pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return, _output_0_const, _output_0_read_free, read__output_0_pc, read__output_0__input_0 } in { p_line, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p__output_0_const, p__output_0_read_free, p_read__output_0_pc, p_read__output_0__input_0 };
+                [ pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return, _output_0_const, _output_0_read_free, read__output_0_pc, read__output_0__input_0 ] in [ p_line, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p__output_0_const, p__output_0_read_free, p_read__output_0_pc, p_read__output_0__input_0 ];
         }
 
         constraints {
@@ -429,7 +429,7 @@ machine Main with degree: 16, latch: instr_return, operation_id: _operation_id {
                 pol constant p_read_Y_pc = [0, 0, 0, 0, 0] + [0]*;
                 pol constant p_reg_write_X_A = [0, 0, 0, 0, 0] + [0]*;
                 pol constant p_reg_write_Y_A = [0, 0, 1, 0, 0] + [0]*;
-                { pc, reg_write_X_A, reg_write_Y_A, instr_identity, instr_one, instr_nothing, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_pc } in { p_line, p_reg_write_X_A, p_reg_write_Y_A, p_instr_identity, p_instr_one, p_instr_nothing, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_pc, p_Y_const, p_Y_read_free, p_read_Y_A, p_read_Y_pc };
+                [ pc, reg_write_X_A, reg_write_Y_A, instr_identity, instr_one, instr_nothing, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_pc ] in [ p_line, p_reg_write_X_A, p_reg_write_Y_A, p_instr_identity, p_instr_one, p_instr_nothing, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_pc, p_Y_const, p_Y_read_free, p_read_Y_A, p_read_Y_pc ];
         }
 
         constraints {
@@ -503,7 +503,7 @@ pol constant p_read_Y_A = [0, 0, 0, 0, 0] + [0]*;
 pol constant p_read_Y_pc = [0, 0, 0, 0, 0] + [0]*;
 pol constant p_reg_write_X_A = [0, 0, 0, 0, 0] + [0]*;
 pol constant p_reg_write_Y_A = [0, 0, 1, 0, 0] + [0]*;
-{ pc, reg_write_X_A, reg_write_Y_A, instr_identity, instr_one, instr_nothing, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_pc } in { p_line, p_reg_write_X_A, p_reg_write_Y_A, p_instr_identity, p_instr_one, p_instr_nothing, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_pc, p_Y_const, p_Y_read_free, p_read_Y_A, p_read_Y_pc };
+[ pc, reg_write_X_A, reg_write_Y_A, instr_identity, instr_one, instr_nothing, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_pc ] in [ p_line, p_reg_write_X_A, p_reg_write_Y_A, p_instr_identity, p_instr_one, p_instr_nothing, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_pc, p_Y_const, p_Y_read_free, p_read_Y_A, p_read_Y_pc ];
 pol constant _block_enforcer_last_step = [0]* + [1];
 pol commit _operation_id_no_change;
 _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
@@ -545,7 +545,7 @@ pol constant p_instr__reset = [1, 0, 0, 0, 0, 0] + [0]*;
 pol constant p_instr_return = [0, 0, 1, 1, 1, 0] + [0]*;
 pol constant p_read__output_0__input_0 = [0, 0, 1, 0, 0, 0] + [0]*;
 pol constant p_read__output_0_pc = [0, 0, 0, 0, 0, 0] + [0]*;
-{ pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return, _output_0_const, _output_0_read_free, read__output_0_pc, read__output_0__input_0 } in { p_line, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p__output_0_const, p__output_0_read_free, p_read__output_0_pc, p_read__output_0__input_0 };
+[ pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return, _output_0_const, _output_0_read_free, read__output_0_pc, read__output_0__input_0 ] in [ p_line, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p__output_0_const, p__output_0_read_free, p_read__output_0_pc, p_read__output_0__input_0 ];
 pol constant _block_enforcer_last_step = [0]* + [1];
 pol commit _operation_id_no_change;
 _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
@@ -611,14 +611,14 @@ pol constant p_read_Y_A = [0, 0, 0, 0, 0] + [0]*;
 pol constant p_read_Y_pc = [0, 0, 0, 0, 0] + [0]*;
 pol constant p_reg_write_X_A = [0, 0, 0, 0, 0] + [0]*;
 pol constant p_reg_write_Y_A = [0, 0, 1, 0, 0] + [0]*;
-{ pc, reg_write_X_A, reg_write_Y_A, instr_identity, instr_one, instr_nothing, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_pc } in { p_line, p_reg_write_X_A, p_reg_write_Y_A, p_instr_identity, p_instr_one, p_instr_nothing, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_pc, p_Y_const, p_Y_read_free, p_read_Y_A, p_read_Y_pc };
+[ pc, reg_write_X_A, reg_write_Y_A, instr_identity, instr_one, instr_nothing, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_pc, Y_const, Y_read_free, read_Y_A, read_Y_pc ] in [ p_line, p_reg_write_X_A, p_reg_write_Y_A, p_instr_identity, p_instr_one, p_instr_nothing, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p_X_const, p_X_read_free, p_read_X_A, p_read_X_pc, p_Y_const, p_Y_read_free, p_read_Y_A, p_read_Y_pc ];
 pol constant _block_enforcer_last_step = [0]* + [1];
 pol commit _operation_id_no_change;
 _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));
 (_operation_id_no_change * (_operation_id' - _operation_id)) = 0;
-instr_identity { 2, X, Y } in main_sub.instr_return { main_sub._operation_id, main_sub._input_0, main_sub._output_0 };
-instr_one { 4, Y } in main_sub.instr_return { main_sub._operation_id, main_sub._output_0 };
-instr_nothing { 3 } in main_sub.instr_return { main_sub._operation_id };
+instr_identity $ [ 2, X, Y ] in main_sub::instr_return $ [ main_sub::_operation_id, main_sub::_input_0, main_sub::_output_0 ];
+instr_one $ [ 4, Y ] in main_sub::instr_return $ [ main_sub::_operation_id, main_sub::_output_0 ];
+instr_nothing $ [ 3 ] in main_sub::instr_return $ [ main_sub::_operation_id ];
 pol constant _linker_first_step = [1] + [0]*;
 (_linker_first_step * (_operation_id - 2)) = 0;
 namespace main_sub(16);
@@ -652,7 +652,7 @@ pol constant p_instr__reset = [1, 0, 0, 0, 0, 0] + [0]*;
 pol constant p_instr_return = [0, 0, 1, 1, 1, 0] + [0]*;
 pol constant p_read__output_0__input_0 = [0, 0, 1, 0, 0, 0] + [0]*;
 pol constant p_read__output_0_pc = [0, 0, 0, 0, 0, 0] + [0]*;
-{ pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return, _output_0_const, _output_0_read_free, read__output_0_pc, read__output_0__input_0 } in { p_line, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p__output_0_const, p__output_0_read_free, p_read__output_0_pc, p_read__output_0__input_0 };
+[ pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return, _output_0_const, _output_0_read_free, read__output_0_pc, read__output_0__input_0 ] in [ p_line, p_instr__jump_to_operation, p_instr__reset, p_instr__loop, p_instr_return, p__output_0_const, p__output_0_read_free, p_read__output_0_pc, p_read__output_0__input_0 ];
 pol constant _block_enforcer_last_step = [0]* + [1];
 pol commit _operation_id_no_change;
 _operation_id_no_change = ((1 - _block_enforcer_last_step) * (1 - instr_return));

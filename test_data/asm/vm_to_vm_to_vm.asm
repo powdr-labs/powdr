@@ -1,4 +1,6 @@
-machine Main with degree: 256 {
+let N: int = 64;
+
+machine Main with degree: N {
     Pythagoras pythagoras;
 
     reg pc[@pc];
@@ -7,7 +9,7 @@ machine Main with degree: 256 {
     reg Z[<=];
     reg A;
 
-    instr pythagoras X, Y -> Z = pythagoras.pythagoras;
+    instr pythagoras X, Y -> Z link => Z = pythagoras.pythagoras(X, Y);
     instr assert_eq X, Y { X = Y }
 
     function main {
@@ -24,7 +26,7 @@ machine Main with degree: 256 {
     }
 }
 
-machine Pythagoras {
+machine Pythagoras with degree: N {
 
     Arith arith;
 
@@ -36,8 +38,8 @@ machine Pythagoras {
     reg B;
 
 
-    instr add X, Y -> Z = arith.add;
-    instr mul X, Y -> Z = arith.mul;
+    instr add X, Y -> Z link => Z = arith.add(X, Y);
+    instr mul X, Y -> Z link => Z = arith.mul(X, Y);
 
     function pythagoras a: field, b: field -> field {
         A <== mul(a, a);
@@ -47,7 +49,7 @@ machine Pythagoras {
     }
 }
 
-machine Arith {
+machine Arith with degree: N {
 
     reg pc[@pc];
     reg X[<=];

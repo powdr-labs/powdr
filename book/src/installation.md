@@ -30,10 +30,10 @@ You will also need the following build time dependencies:
 
 ## Building *powdr*
 
-Using a single Cargo command (enable the Halo2 backend to use it with the cli):
+Using a single Cargo command (enable the Halo2 & Plonky3 backends to use it with the cli):
 
 ```sh
-cargo install --git https://github.com/powdr-labs/powdr --features halo2 powdr-cli
+RUSTFLAGS='-C target-cpu=native' cargo install --git https://github.com/powdr-labs/powdr --features halo2,plonky3 powdr-cli
 ```
 
 Or, by manually building from a local copy of the [powdr repository](https://github.com/powdr-labs/powdr):
@@ -43,15 +43,17 @@ Or, by manually building from a local copy of the [powdr repository](https://git
 git clone https://github.com/powdr-labs/powdr.git
 cd powdr
 # install powdr-cli
-cargo install --features halo2 --path ./cli
+RUSTFLAGS='-C target-cpu=native' cargo install --features halo2,plonky3 --path ./cli
 ```
+
+Note that setting `RUSTFLAGS='-C target-cpu=native'` builds a binary optimized for the host CPU.
 
 ## Building *powdr-rs*
 
 Using a single Cargo command:
 
 ```sh
-cargo install --git https://github.com/powdr-labs/powdr powdr-rs-cli
+RUSTFLAGS='-C target-cpu=native' cargo install --git https://github.com/powdr-labs/powdr powdr-rs-cli
 ```
 
 Or, by manually building from a local copy of the [powdr repository](https://github.com/powdr-labs/powdr):
@@ -61,5 +63,5 @@ Or, by manually building from a local copy of the [powdr repository](https://git
 git clone https://github.com/powdr-labs/powdr.git
 cd powdr
 # install powdr-rs-cli
-cargo install --path ./cli-rs
+RUSTFLAGS='-C target-cpu=native' cargo install --path ./cli-rs
 ```

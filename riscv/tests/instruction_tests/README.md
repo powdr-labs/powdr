@@ -9,65 +9,59 @@ kind of arithmetic over `.text` label and addresses, nor alignment or spacing
 directives in `.text` sections. Most unsupported instructions are related to
 this limitation.
 
+As a consequence, we have limited support for the instructions `auipc` and
+`lui`: they can only be used to refer to a `.text` label if they can be fused
+with the next instruction, making use of the loaded address immediately (e.g.
+`addi` or `jalr`). Furthermore, the register used to store the high bits of the
+text address will not be modified, as required by a conformant implementation!
+For instance, the `tail` pseudoinstruction, which expands to `auipc` + `jarl`,
+is supposed to leave the high bits of the return address in `x6`. This does not
+happen in Powdr!
+
 Following there is a list of tests from the test suite that we do not support:
 
 ## From the basic instruction set (rv32ui):
 
-- auipc
+- `auipc`: this test is not supported because we don't support any kind of arithmetic over
+`.text` label and addresses, nor the `lla` pseudoinstruction;
 
-This test is not supported because we don't support any kind of arithmetic over
-`.text` label and addresses, nor the `lla` pseudoinstruction.
+- `fence_i`: this test is not supported because our zkVM "text" is static: we don't support
+dynamic binary code or self modifying programs, so we don't support instruction `fence.i`;
 
-- fence_i
+- `jalr`: our support for `jalr` instruction is partial: either offset must be zero,
+or the target register `rs` must be `x0`. This is because we don't support arithmetic
+over text labels, as they are opaque;
 
-This test is not supported because our zkVM "text" is static: we don't support
-dynamic binary code or self modifying programs. Thus, our `fence.i` instruction
-is just a nop.
+- `lui`: instruction `sra` not yet implemented;
 
-- jalr
+- `ma_data`: we don't yet support misaligned data access;
 
-Tries to load the address of a `.text` label, which we don't support.
-
-- lui
-
-Instruction `sra` not yet implemented.
-
-- ma_data
-
-We don't yet support misaligned data access.
-
-- sra
-
-Not yet implemented.
+- `sra`: not yet implemented.
 
 ## From the "M" (multiplication) extension (rv32um):
 
-- div
-- rem
+- `div`
+- `rem`
 
 These instructions are not yet implemented.
 
 ## From the "A" (atomic) extension (rv32ua):
 
-- amoand_w
-- amomax_w
-- amomaxu_w
-- amomin_w
-- amominu_w
-- amoor_w
-- amoswap_w
-- amoxor_w
+- `amoand_w`
+- `amomax_w`
+- `amomaxu_w`
+- `amomin_w`
+- `amominu_w`
+- `amoor_w`
+- `amoswap_w`
+- `amoxor_w`
 
 We do not (yet) support the instructions of these tests, but should be easy to
-implement, following amoadd_w suit.
+implement, following `amoadd_w` suit.
 
 ## From the "C" (compressed) extension (rv32uc):
 
-- rvc
+- `rvc`
 
-This RISC-V "C" extension doesn't make much sense for Powdr, as we execute
-directly the assembly file, not the binary format. All the alignment and precise
-spacing of the `.text` section in this test doesn't make sense for Powdr.
-
-We just compile to riscv32imac instead of riscv32ima because the later is not
-supported by rust.
+The RISC-V "C" test file is only partially supported when converting from the
+ELF executable. Some tests that we don't support were disabled.

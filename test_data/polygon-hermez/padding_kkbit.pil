@@ -80,7 +80,7 @@
 
 include "nine2one.pil";
 
-namespace PaddingKKBit(%N);
+namespace PaddingKKBit(N);
     pol commit rBit, sOutBit;
 
     // Input connection                                                          rBit -> 1 1 0 1  0  1  1   1   X
@@ -135,4 +135,4 @@ namespace PaddingKKBit(%N);
 
     pol constant ConnSOutBit, ConnSInBit, ConnNine2OneBit;
 
-    {sOutBit, sInBit, Nine2One.bit} connect {ConnSOutBit, ConnSInBit, ConnNine2OneBit};
+    [sOutBit, sInBit, Nine2One.bit] connect [ConnSOutBit, ConnSInBit, ConnNine2OneBit];

@@ -1,14 +1,17 @@
-use std::collections::{BTreeMap, HashMap};
-use std::rc::Rc;
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
+use itertools::Itertools;
+use machines::MachineParts;
 use powdr_ast::analyzed::{
-    AlgebraicExpression, AlgebraicReference, Analyzed, Expression, FunctionValueDefinition, PolyID,
-    PolynomialType, SymbolKind, TypedExpression,
+    AlgebraicExpression, AlgebraicReference, Analyzed, DegreeRange, Expression,
+    FunctionValueDefinition, IdentityKind, PolyID, PolynomialType, SymbolKind, TypedExpression,
 };
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_number::{DegreeType, FieldElement};
+
+use crate::constant_evaluator::VariablySizedColumn;
 
 use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{
@@ -20,7 +23,7 @@ use self::global_constraints::GlobalConstraints;
 use self::identity_processor::Machines;
 use self::machines::machine_extractor::ExtractionOutput;
 use self::machines::profiling::{record_end, record_start, reset_and_print_profile_summary};
-use self::machines::{FixedLookup, Machine};
+use self::machines::Machine;
 
 mod affine_expression;
 mod block_processor;
@@ -44,20 +47,47 @@ mod vm_processor;
 
 static OUTER_CODE_NAME: &str = "witgen (outer code)";
 
+// TODO change this so that it has functions
+// get_input, get_input_from_channel, output_byte
+// instead of processing strings.
+// but we can only do that once we have fully removed the old query functions.
 pub trait QueryCallback<T>: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 impl<T, F> QueryCallback<T> for F where F: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 
+type WitgenCallbackFn<T> =
+    Arc<dyn Fn(&[(String, Vec<T>)], BTreeMap<u64, T>, u8) -> Vec<(String, Vec<T>)> + Send + Sync>;
+
 #[derive(Clone)]
-pub struct WitgenCallback<T> {
-    analyzed: Rc<Analyzed<T>>,
-    fixed_col_values: Rc<Vec<(String, Vec<T>)>>,
+pub struct WitgenCallback<T>(WitgenCallbackFn<T>);
+
+impl<T: FieldElement> WitgenCallback<T> {
+    pub fn new(f: WitgenCallbackFn<T>) -> Self {
+        WitgenCallback(f)
+    }
+
+    /// Computes the next-stage witness, given the current witness and challenges.
+    pub fn next_stage_witness(
+        &self,
+        current_witness: &[(String, Vec<T>)],
+        challenges: BTreeMap<u64, T>,
+        stage: u8,
+    ) -> Vec<(String, Vec<T>)> {
+        (self.0)(current_witness, challenges, stage)
+    }
+}
+
+pub struct WitgenCallbackContext<T> {
+    /// TODO: all these fields probably don't need to be Arc anymore, since the
+    /// Arc was moved one level up... but I have to investigate this further.
+    analyzed: Arc<Analyzed<T>>,
+    fixed_col_values: Arc<Vec<(String, VariablySizedColumn<T>)>>,
     query_callback: Arc<dyn QueryCallback<T>>,
 }
 
-impl<T: FieldElement> WitgenCallback<T> {
+impl<T: FieldElement> WitgenCallbackContext<T> {
     pub fn new(
-        analyzed: Rc<Analyzed<T>>,
-        fixed_col_values: Rc<Vec<(String, Vec<T>)>>,
+        analyzed: Arc<Analyzed<T>>,
+        fixed_col_values: Arc<Vec<(String, VariablySizedColumn<T>)>>,
         query_callback: Option<Arc<dyn QueryCallback<T>>>,
     ) -> Self {
         let query_callback = query_callback.unwrap_or_else(|| Arc::new(unused_query_callback()));
@@ -100,14 +130,13 @@ pub fn unused_query_callback<T>() -> impl QueryCallback<T> {
 
 /// Everything [Generator] needs to mutate in order to compute a new row.
 pub struct MutableState<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
-    pub fixed_lookup: &'b mut FixedLookup<T>,
     pub machines: Machines<'a, 'b, T>,
     pub query_callback: &'b mut Q,
 }
 
 pub struct WitnessGenerator<'a, 'b, T: FieldElement> {
     analyzed: &'a Analyzed<T>,
-    fixed_col_values: &'b [(String, Vec<T>)],
+    fixed_col_values: &'b Vec<(String, VariablySizedColumn<T>)>,
     query_callback: &'b dyn QueryCallback<T>,
     external_witness_values: &'b [(String, Vec<T>)],
     stage: u8,
@@ -117,7 +146,7 @@ pub struct WitnessGenerator<'a, 'b, T: FieldElement> {
 impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
     pub fn new(
         analyzed: &'a Analyzed<T>,
-        fixed_col_values: &'b [(String, Vec<T>)],
+        fixed_col_values: &'b Vec<(String, VariablySizedColumn<T>)>,
         query_callback: &'b dyn QueryCallback<T>,
     ) -> Self {
         WitnessGenerator {
@@ -181,48 +210,65 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             })
             .collect::<Vec<_>>();
 
-        // Removes identities like X * (X - 1) = 0 or { A } in { BYTES }
+        // Removes identities like X * (X - 1) = 0 or [ A ] in [ BYTES ]
         // These are already captured in the range constraints.
         let (fixed, retained_identities) =
             global_constraints::set_global_constraints(fixed, &identities);
         let ExtractionOutput {
-            mut fixed_lookup,
             mut machines,
-            base_identities,
-            base_witnesses,
-        } = machines::machine_extractor::split_out_machines(&fixed, retained_identities);
+            base_parts,
+        } = if self.stage == 0 {
+            machines::machine_extractor::split_out_machines(&fixed, retained_identities, self.stage)
+        } else {
+            // We expect later-stage witness columns to be accumulators for lookup and permutation arguments.
+            // These don't behave like normal witness columns (e.g. in a block machine), and they might depend
+            // on witness columns of more than one machine.
+            // Therefore, we treat everything as one big machine. Also, we remove lookups and permutations,
+            // as they are assumed to be handled in stage 0.
+            let polynomial_identities = identities
+                .iter()
+                .filter(|identity| identity.kind == IdentityKind::Polynomial)
+                .collect::<Vec<_>>();
+            ExtractionOutput {
+                machines: Vec::new(),
+                base_parts: MachineParts::new(
+                    &fixed,
+                    Default::default(),
+                    polynomial_identities,
+                    fixed.witness_cols.keys().collect::<HashSet<_>>(),
+                    fixed.analyzed.prover_functions.iter().collect(),
+                ),
+            }
+        };
+
         let mut query_callback = self.query_callback;
         let mut mutable_state = MutableState {
-            fixed_lookup: &mut fixed_lookup,
             machines: Machines::from(machines.iter_mut()),
             query_callback: &mut query_callback,
         };
-        let mut generator = Generator::new(
-            "Main Machine".to_string(),
-            &fixed,
-            &[], // No connecting identities
-            base_identities,
-            base_witnesses,
-            // We could set the latch of the main VM here, but then we would have to detect it.
-            // Instead, the main VM will be computed in one block, directly continuing into the
-            // infinite loop after the first return.
-            None,
-        );
 
-        generator.run(&mut mutable_state);
+        let generator = (!base_parts.witnesses.is_empty()).then(|| {
+            let mut generator = Generator::new(
+                "Main Machine".to_string(),
+                &fixed,
+                base_parts,
+                // We could set the latch of the main VM here, but then we would have to detect it.
+                // Instead, the main VM will be computed in one block, directly continuing into the
+                // infinite loop after the first return.
+                None,
+            );
+
+            generator.run(&mut mutable_state);
+            generator
+        });
 
         // Get columns from machines
-        let main_columns = generator
-            .take_witness_col_values(mutable_state.fixed_lookup, mutable_state.query_callback);
         let mut columns = mutable_state
             .machines
-            .iter_mut()
-            .flat_map(|m| {
-                m.take_witness_col_values(mutable_state.fixed_lookup, mutable_state.query_callback)
-                    .into_iter()
-            })
-            .chain(main_columns)
-            .collect::<BTreeMap<_, _>>();
+            .take_witness_col_values(mutable_state.query_callback);
+        if let Some(mut generator) = generator {
+            columns.extend(generator.take_witness_col_values(&mut mutable_state));
+        }
 
         record_end(OUTER_CODE_NAME);
         reset_and_print_profile_summary();
@@ -271,7 +317,6 @@ pub fn extract_publics<T: FieldElement>(
 /// Data that is fixed for witness generation.
 pub struct FixedData<'a, T: FieldElement> {
     analyzed: &'a Analyzed<T>,
-    degree: DegreeType,
     fixed_cols: FixedColumnMap<FixedColumn<'a, T>>,
     witness_cols: WitnessColumnMap<WitnessColumn<'a, T>>,
     column_by_name: HashMap<String, PolyID>,
@@ -280,9 +325,39 @@ pub struct FixedData<'a, T: FieldElement> {
 }
 
 impl<'a, T: FieldElement> FixedData<'a, T> {
+    /// Returns the common degree of a set or polynomials
+    ///
+    /// # Panics
+    ///
+    /// Panics if:
+    /// - the degree is not unique
+    /// - the set of polynomials is empty
+    /// - a declared polynomial does not have an explicit degree
+    fn common_degree_range<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> DegreeRange {
+        let ids: HashSet<_> = ids.into_iter().collect();
+
+        self.analyzed
+            // get all definitions
+            .definitions
+            .iter()
+            // only keep polynomials
+            .filter_map(|(_, (symbol, _))| {
+                matches!(symbol.kind, SymbolKind::Poly(_)).then_some(symbol)
+            })
+            // get all array elements and their degrees
+            .flat_map(|symbol| symbol.array_elements().map(|(_, id)| (id, symbol.degree)))
+            // only keep the ones matching our set
+            .filter_map(|(id, degree)| ids.contains(&id).then_some(degree))
+            // get the common degree
+            .unique()
+            .exactly_one()
+            .unwrap_or_else(|_| panic!("expected all polynomials to have the same degree"))
+            .unwrap()
+    }
+
     pub fn new(
         analyzed: &'a Analyzed<T>,
-        fixed_col_values: &'a [(String, Vec<T>)],
+        fixed_col_values: &'a [(String, VariablySizedColumn<T>)],
         external_witness_values: &'a [(String, Vec<T>)],
         challenges: BTreeMap<u64, T>,
         stage: u8,
@@ -298,25 +373,18 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                     poly.array_elements()
                         .map(|(name, poly_id)| {
                             let external_values = external_witness_values.remove(name.as_str());
-                            if let Some(external_values) = &external_values {
-                                if external_values.len() != analyzed.degree() as usize {
-                                    log::debug!(
-                                        "External witness values for column {} were only partially provided \
-                                        (length is {} but the degree is {})",
-                                        name,
-                                        external_values.len(),
-                                        analyzed.degree()
-                                    );
-                                }
-                            }
                             // Remove any hint for witness columns of a later stage
                             // (because it might reference a challenge that is not available yet)
-                            let value = if poly.stage.unwrap_or_default() <= stage.into() { value.as_ref() } else { None };
+                            let value = if poly.stage.unwrap_or_default() <= stage.into() {
+                                value.as_ref()
+                            } else {
+                                None
+                            };
                             WitnessColumn::new(poly_id.id as usize, &name, value, external_values)
                         })
                         .collect::<Vec<_>>()
                 },
-        ));
+            ));
 
         if !external_witness_values.is_empty() {
             let available_columns = witness_cols
@@ -341,7 +409,6 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
 
         FixedData {
             analyzed,
-            degree: analyzed.degree(),
             fixed_cols,
             witness_cols,
             column_by_name: analyzed
@@ -395,23 +462,34 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     }
 
     fn external_witness(&self, row: DegreeType, column: &PolyID) -> Option<T> {
-        let row = row % self.degree;
         self.witness_cols[column]
             .external_values
             .as_ref()
-            .and_then(|v| v.get(row as usize).cloned())
+            .and_then(|v| {
+                let row = row % v.len() as u64;
+                v.get(row as usize).cloned()
+            })
     }
 }
 
 pub struct FixedColumn<'a, T> {
     name: String,
-    values: &'a Vec<T>,
+    values: &'a VariablySizedColumn<T>,
 }
 
 impl<'a, T> FixedColumn<'a, T> {
-    pub fn new(name: &'a str, values: &'a Vec<T>) -> FixedColumn<'a, T> {
+    pub fn new(name: &'a str, values: &'a VariablySizedColumn<T>) -> FixedColumn<'a, T> {
         let name = name.to_string();
         FixedColumn { name, values }
+    }
+
+    pub fn values(&self, size: DegreeType) -> &[T] {
+        self.values.get_by_size(size).unwrap()
+    }
+
+    pub fn values_max_size(&self) -> &[T] {
+        let max_size = self.values.available_sizes().into_iter().max().unwrap() as DegreeType;
+        self.values(max_size)
     }
 }
 
@@ -440,10 +518,13 @@ impl<'a, T> WitnessColumn<'a, T> {
     ) -> WitnessColumn<'a, T> {
         let query = if let Some(FunctionValueDefinition::Expression(TypedExpression {
             e:
-                query @ Expression::LambdaExpression(LambdaExpression {
-                    kind: FunctionKind::Query,
-                    ..
-                }),
+                query @ Expression::LambdaExpression(
+                    _,
+                    LambdaExpression {
+                        kind: FunctionKind::Query,
+                        ..
+                    },
+                ),
             ..
         })) = value
         {

@@ -6,9 +6,10 @@ use std::{
 
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, Compress, Validate};
 use csv::{Reader, Writer};
+use serde::{de::DeserializeOwned, Serialize};
 use serde_with::{DeserializeAs, SerializeAs};
 
-use crate::{DegreeType, FieldElement};
+use crate::FieldElement;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum CsvRenderMode {
@@ -28,29 +29,31 @@ const ROW_NAME: &str = "Row";
 pub fn write_polys_csv_file<T: FieldElement>(
     file: impl Write,
     render_mode: CsvRenderMode,
-    polys: &[&(String, Vec<T>)],
+    polys: &[(&String, &[T])],
 ) {
     let mut writer = Writer::from_writer(file);
 
     // Write headers, adding a "Row" column
     let mut headers = vec![ROW_NAME];
     headers.extend(polys.iter().map(|(name, _)| {
-        assert!(name != ROW_NAME);
+        assert!(*name != ROW_NAME);
         name.as_str()
     }));
     writer.write_record(&headers).unwrap();
 
-    let len = polys[0].1.len();
-    for row_index in 0..len {
+    let max_len = polys.iter().map(|p| p.1.len()).max().unwrap();
+    for row_index in 0..max_len {
         let mut row = Vec::new();
         row.push(format!("{row_index}"));
         for (_, values) in polys {
-            assert!(values.len() == len);
-            let value = match render_mode {
-                CsvRenderMode::SignedBase10 => format!("{}", values[row_index]),
-                CsvRenderMode::UnsignedBase10 => format!("{}", values[row_index].to_integer()),
-                CsvRenderMode::Hex => format!("0x{:x}", values[row_index].to_integer()),
-            };
+            let value = values
+                .get(row_index)
+                .map(|v| match render_mode {
+                    CsvRenderMode::SignedBase10 => format!("{v}"),
+                    CsvRenderMode::UnsignedBase10 => format!("{}", v.to_integer()),
+                    CsvRenderMode::Hex => format!("0x{:x}", v.to_integer()),
+                })
+                .unwrap_or_default();
             row.push(value);
         }
         writer.write_record(&row).unwrap();
@@ -89,10 +92,6 @@ pub fn read_polys_csv_file<T: FieldElement>(file: impl Read) -> Vec<(String, Vec
         .collect()
 }
 
-fn ceil_div(num: usize, div: usize) -> usize {
-    (num + div - 1) / div
-}
-
 pub fn buffered_write_file<R>(
     path: &Path,
     do_write: impl FnOnce(&mut BufWriter<File>) -> R,
@@ -104,71 +103,18 @@ pub fn buffered_write_file<R>(
     Ok(result)
 }
 
-pub fn write_polys_file<F: FieldElement>(
-    path: &Path,
-    polys: &[(String, Vec<F>)],
-) -> Result<(), io::Error> {
-    buffered_write_file(path, |writer| write_polys_stream(writer, polys))??;
-
-    Ok(())
+pub trait ReadWrite {
+    fn read(file: &mut impl Read) -> Self;
+    fn write(&self, path: &Path) -> Result<(), serde_cbor::Error>;
 }
 
-fn write_polys_stream<T: FieldElement>(
-    file: &mut impl Write,
-    polys: &[(String, Vec<T>)],
-) -> Result<(), io::Error> {
-    let width = ceil_div(T::BITS as usize, 64) * 8;
-
-    if polys.is_empty() {
-        return Ok(());
+impl<T: DeserializeOwned + Serialize> ReadWrite for T {
+    fn read(file: &mut impl Read) -> Self {
+        serde_cbor::from_reader(file).unwrap()
     }
-
-    // TODO maybe the witness should have a proper type that
-    // explicitly has a degree or length?
-    let degree = polys[0].1.len();
-    for (_, values) in polys {
-        assert_eq!(values.len(), degree);
-    }
-
-    for i in 0..degree {
-        for (_name, constant) in polys {
-            let bytes = constant[i].to_bytes_le();
-            assert_eq!(bytes.len(), width);
-            file.write_all(&bytes)?;
-        }
-    }
-
-    Ok(())
-}
-
-pub fn read_polys_file<T: FieldElement>(
-    file: &mut impl Read,
-    columns: &[String],
-) -> (Vec<(String, Vec<T>)>, DegreeType) {
-    assert!(!columns.is_empty());
-    let width = ceil_div(T::BITS as usize, 64) * 8;
-
-    let bytes_to_read = width * columns.len();
-
-    let mut result: Vec<(_, Vec<T>)> = columns
-        .iter()
-        .map(|name| (name.to_string(), vec![]))
-        .collect();
-    let mut degree = 0;
-
-    loop {
-        let mut buf = vec![0u8; bytes_to_read];
-        match file.read_exact(&mut buf) {
-            Ok(()) => {}
-            Err(_) => return (result, degree),
-        }
-        degree += 1;
-        result
-            .iter_mut()
-            .zip(buf.chunks(width))
-            .for_each(|((_, values), bytes)| {
-                values.push(T::from_bytes_le(bytes));
-            });
+    fn write(&self, path: &Path) -> Result<(), serde_cbor::Error> {
+        buffered_write_file(path, |writer| serde_cbor::to_writer(writer, &self))??;
+        Ok(())
     }
 }
 
@@ -201,40 +147,35 @@ mod tests {
     use super::*;
     use test_log::test;
 
-    fn test_polys() -> (Vec<(String, Vec<Bn254Field>)>, u64) {
-        (
-            vec![
-                ("a".to_string(), (0..16).map(Bn254Field::from).collect()),
-                ("b".to_string(), (-16..0).map(Bn254Field::from).collect()),
-            ],
-            16,
-        )
+    fn test_polys() -> Vec<(String, Vec<Bn254Field>)> {
+        vec![
+            ("a".to_string(), (0..16).map(Bn254Field::from).collect()),
+            ("b".to_string(), (-16..0).map(Bn254Field::from).collect()),
+        ]
     }
 
     #[test]
     fn write_read() {
         let mut buf: Vec<u8> = vec![];
 
-        let (polys, degree) = test_polys();
+        let polys = test_polys();
 
-        write_polys_stream(&mut buf, &polys).unwrap();
-        let (read_polys, read_degree) = read_polys_file::<Bn254Field>(
-            &mut Cursor::new(buf),
-            &["a".to_string(), "b".to_string()],
-        );
+        serde_cbor::to_writer(&mut buf, &polys).unwrap();
+        let read_polys: Vec<(String, Vec<Bn254Field>)> = ReadWrite::read(&mut Cursor::new(buf));
 
         assert_eq!(read_polys, polys);
-        assert_eq!(read_degree, degree);
     }
 
     #[test]
     fn write_read_csv() {
         let polys = test_polys()
-            .0
             .into_iter()
             .map(|(name, values)| (name.to_string(), values))
             .collect::<Vec<_>>();
-        let polys_ref = polys.iter().collect::<Vec<_>>();
+        let polys_ref = polys
+            .iter()
+            .map(|(name, values)| (name, values.as_slice()))
+            .collect::<Vec<_>>();
 
         for render_mode in &[
             CsvRenderMode::SignedBase10,

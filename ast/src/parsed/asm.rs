@@ -8,13 +8,15 @@ use itertools::Itertools;
 use powdr_number::BigUint;
 
 use derive_more::From;
+use powdr_parser_util::{Error, SourceRef};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::SourceRef;
+use crate::parsed::{BinaryOperation, BinaryOperator};
 
 use super::{
-    visitor::Children, EnumDeclaration, EnumVariant, Expression, PilStatement, TypedExpression,
+    visitor::Children, EnumDeclaration, EnumVariant, Expression, PilStatement, SourceReference,
+    TraitDeclaration, TraitImplementation, TypedExpression,
 };
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
@@ -29,8 +31,9 @@ pub struct ASMModule {
 
 impl ASMModule {
     pub fn symbol_definitions(&self) -> impl Iterator<Item = &SymbolDefinition> {
-        self.statements.iter().map(|s| match s {
-            ModuleStatement::SymbolDefinition(d) => d,
+        self.statements.iter().filter_map(|s| match s {
+            ModuleStatement::SymbolDefinition(d) => Some(d),
+            ModuleStatement::TraitImplementation(_) => None,
         })
     }
 }
@@ -38,6 +41,16 @@ impl ASMModule {
 #[derive(Debug, Clone, PartialEq, Eq, From)]
 pub enum ModuleStatement {
     SymbolDefinition(SymbolDefinition),
+    TraitImplementation(TraitImplementation<Expression>),
+}
+
+impl ModuleStatement {
+    pub fn defined_names(&self) -> Option<&String> {
+        match self {
+            ModuleStatement::SymbolDefinition(d) => Some(&d.name),
+            ModuleStatement::TraitImplementation(_) => None,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,6 +71,8 @@ pub enum SymbolValue {
     Expression(TypedExpression),
     /// A type declaration (currently only enums)
     TypeDeclaration(EnumDeclaration<Expression>),
+    /// A trait declaration
+    TraitDeclaration(TraitDeclaration<Expression>),
 }
 
 impl SymbolValue {
@@ -68,6 +83,7 @@ impl SymbolValue {
             SymbolValue::Module(m) => SymbolValueRef::Module(m.as_ref()),
             SymbolValue::Expression(e) => SymbolValueRef::Expression(e),
             SymbolValue::TypeDeclaration(t) => SymbolValueRef::TypeDeclaration(t),
+            SymbolValue::TraitDeclaration(t) => SymbolValueRef::TraitDeclaration(t),
         }
     }
 }
@@ -86,6 +102,8 @@ pub enum SymbolValueRef<'a> {
     TypeDeclaration(&'a EnumDeclaration<Expression>),
     /// A type constructor of an enum.
     TypeConstructor(&'a EnumVariant<Expression>),
+    /// A trait declaration
+    TraitDeclaration(&'a TraitDeclaration<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, From)]
@@ -119,7 +137,7 @@ pub struct Import {
 /// It can contain the special word `super`, which goes up a level.
 /// If it does not start with `::`, it is relative.
 #[derive(
-    Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+    Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
 )]
 pub struct SymbolPath {
     /// The parts between each `::`.
@@ -142,13 +160,6 @@ impl SymbolPath {
     pub fn join<P: Into<Self>>(mut self, other: P) -> Self {
         self.parts.extend(other.into().parts);
         self
-    }
-
-    /// Formats the path and uses `.` as separator if
-    /// there are at most two components.
-    pub fn to_dotted_string(&self) -> String {
-        let separator = if self.parts.len() <= 2 { "." } else { "::" };
-        self.parts.iter().format(separator).to_string()
     }
 
     pub fn try_to_identifier(&self) -> Option<&String> {
@@ -180,19 +191,19 @@ impl SymbolPath {
     pub fn parts(&self) -> impl DoubleEndedIterator + ExactSizeIterator<Item = &Part> {
         self.parts.iter()
     }
+
+    pub fn into_parts(self) -> impl DoubleEndedIterator + ExactSizeIterator<Item = Part> {
+        self.parts.into_iter()
+    }
 }
 
 impl FromStr for SymbolPath {
     type Err = String;
 
-    /// Parses a symbol path both in the "a.b" and the "a::b" notation.
+    /// Parses a symbol path using the "::" notation.
     fn from_str(s: &str) -> Result<Self, String> {
-        let (dots, double_colons) = (s.matches('.').count(), s.matches("::").count());
-        if dots != 0 && double_colons != 0 {
-            Err(format!("Path mixes \"::\" and \".\" separators: {s}"))?
-        }
         let parts = s
-            .split(if double_colons > 0 { "::" } else { "." })
+            .split("::")
             .map(|s| {
                 if s == "super" {
                     Part::Super
@@ -339,13 +350,6 @@ impl AbsoluteSymbolPath {
         parts.push(part.to_string());
         Self { parts }
     }
-
-    /// Formats the path without leading `::` and uses `.` as separator if
-    /// there are at most two components.
-    pub fn to_dotted_string(&self) -> String {
-        let separator = if self.parts.len() <= 2 { "." } else { "::" };
-        self.parts.join(separator)
-    }
 }
 
 impl Display for AbsoluteSymbolPath {
@@ -354,7 +358,9 @@ impl Display for AbsoluteSymbolPath {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Hash, Serialize, Deserialize, JsonSchema,
+)]
 pub enum Part {
     Super,
     Named(String),
@@ -383,7 +389,7 @@ impl Display for Part {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Machine {
-    pub arguments: MachineArguments,
+    pub params: MachineParams,
     pub properties: MachineProperties,
     pub statements: Vec<MachineStatement>,
 }
@@ -396,48 +402,46 @@ impl Machine {
                 .iter()
                 .flat_map(|s| -> Box<dyn Iterator<Item = &String> + '_> {
                     match s {
-                        MachineStatement::RegisterDeclaration(_, name, _) => Box::new(once(name)),
+                        MachineStatement::Submachine(_, _, name, _)
+                        | MachineStatement::RegisterDeclaration(_, name, _) => Box::new(once(name)),
                         MachineStatement::Pil(_, statement) => {
                             Box::new(statement.symbol_definition_names().map(|(s, _)| s))
                         }
-                        MachineStatement::Submachine(_, _, _)
-                        | MachineStatement::InstructionDeclaration(_, _, _)
+                        MachineStatement::InstructionDeclaration(_, _, _)
                         | MachineStatement::LinkDeclaration(_, _)
                         | MachineStatement::FunctionDeclaration(_, _, _, _)
                         | MachineStatement::OperationDeclaration(_, _, _, _) => Box::new(empty()),
                     }
                 })
-                .chain(self.arguments.defined_names())
+                .chain(self.params.defined_names())
                 .chain(self.properties.defined_names()),
         )
     }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
-pub struct MachineArguments(pub Vec<Param>);
+pub struct MachineParams(pub Vec<Param>);
 
-impl MachineArguments {
+impl MachineParams {
     pub fn defined_names(&self) -> impl Iterator<Item = &String> {
         self.0.iter().map(|p| &p.name)
     }
-}
 
-impl TryFrom<Vec<Param>> for MachineArguments {
-    type Error = String;
-
-    fn try_from(params: Vec<Param>) -> Result<Self, Self::Error> {
+    pub fn try_from_params(source_ref: SourceRef, params: Vec<Param>) -> Result<Self, Error> {
         for p in &params {
             if p.index.is_some() || p.ty.is_none() || p.name.is_empty() {
-                return Err(format!("invalid machine argument: `{p}`"));
+                return Err(source_ref.with_error(format!("invalid machine argument: `{p}`")));
             }
         }
-        Ok(MachineArguments(params))
+        Ok(MachineParams(params))
     }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Default, Clone)]
 pub struct MachineProperties {
     pub degree: Option<Expression>,
+    pub min_degree: Option<Expression>,
+    pub max_degree: Option<Expression>,
     pub latch: Option<String>,
     pub operation_id: Option<String>,
     pub call_selectors: Option<String>,
@@ -447,47 +451,66 @@ impl MachineProperties {
     pub fn defined_names(&self) -> impl Iterator<Item = &String> {
         self.call_selectors.iter()
     }
-}
 
-impl TryFrom<Vec<(String, Expression)>> for MachineProperties {
-    type Error = String;
-
-    fn try_from(prop_list: Vec<(String, Expression)>) -> Result<Self, Self::Error> {
+    pub fn try_from_prop_list(
+        source_ref: SourceRef,
+        prop_list: Vec<(String, Expression)>,
+    ) -> Result<Self, Error> {
         let mut props: Self = Default::default();
         for (name, value) in prop_list {
+            let mut already_defined = false;
             match name.as_str() {
                 "degree" => {
                     if props.degree.replace(value).is_some() {
-                        return Err(format!("`{name}` already defined"));
+                        already_defined = true;
+                    }
+                }
+                "min_degree" => {
+                    if props.min_degree.replace(value).is_some() {
+                        already_defined = true;
+                    }
+                }
+                "max_degree" => {
+                    if props.max_degree.replace(value).is_some() {
+                        already_defined = true;
                     }
                 }
                 "latch" => {
                     let id = value.try_to_identifier().ok_or_else(|| {
-                        format!("`{name}` machine property expects a local column name")
+                        source_ref.with_error(format!(
+                            "`{name}` machine property expects a local column name"
+                        ))
                     })?;
                     if props.latch.replace(id.clone()).is_some() {
-                        return Err(format!("`{name}` already defined"));
+                        already_defined = true;
                     }
                 }
                 "operation_id" => {
                     let id = value.try_to_identifier().ok_or_else(|| {
-                        format!("`{name}` machine property expects a local column name")
+                        source_ref.with_error(format!(
+                            "`{name}` machine property expects a local column name"
+                        ))
                     })?;
                     if props.operation_id.replace(id.clone()).is_some() {
-                        return Err(format!("`{name}` already defined"));
+                        already_defined = true;
                     }
                 }
                 "call_selectors" => {
                     let id = value.try_to_identifier().ok_or_else(|| {
-                        format!("`{name}` machine property expects a new column name")
+                        source_ref.with_error(format!(
+                            "`{name}` machine property expects a new column name"
+                        ))
                     })?;
                     if props.call_selectors.replace(id.clone()).is_some() {
-                        return Err(format!("`{name}` already defined"));
+                        already_defined = true;
                     }
                 }
                 _ => {
-                    return Err(format!("unknown machine property `{name}`"));
+                    return Err(source_ref.with_error(format!("unknown machine property `{name}`")));
                 }
+            }
+            if already_defined {
+                return Err(source_ref.with_error(format!("`{name}` already defined")));
             }
         }
         Ok(props)
@@ -545,14 +568,36 @@ pub struct OperationId {
 
 #[derive(Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
 pub struct Instruction {
-    pub params: Params<Param>,
+    pub params: InstructionParams,
+    pub links: Vec<LinkDeclaration>,
     pub body: InstructionBody,
+}
+
+impl Children<Expression> for Instruction {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(
+            self.body
+                .0
+                .iter()
+                .flat_map(|s| s.children())
+                .chain(self.links.iter().flat_map(|d| d.children())),
+        )
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(
+            self.body
+                .0
+                .iter_mut()
+                .flat_map(|s| s.children_mut())
+                .chain(self.links.iter_mut().flat_map(|d| d.children_mut())),
+        )
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub enum MachineStatement {
     Pil(SourceRef, PilStatement),
-    Submachine(SourceRef, SymbolPath, String),
+    Submachine(SourceRef, SymbolPath, String, Vec<Expression>),
     RegisterDeclaration(SourceRef, String, Option<RegisterFlag>),
     InstructionDeclaration(SourceRef, String, Instruction),
     LinkDeclaration(SourceRef, LinkDeclaration),
@@ -563,8 +608,17 @@ pub enum MachineStatement {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct LinkDeclaration {
     pub flag: Expression,
-    pub to: CallableRef,
+    pub link: CallableRef,
     pub is_permutation: bool,
+}
+
+impl Children<Expression> for LinkDeclaration {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(once(&self.flag).chain(self.link.params.inputs_and_outputs()))
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(once(&mut self.flag).chain(self.link.params.inputs_and_outputs_mut()))
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
@@ -574,12 +628,66 @@ pub struct CallableRef {
     pub params: CallableParams,
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub enum InstructionBody {
-    Local(Vec<PilStatement>),
-    CallablePlookup(CallableRef),
-    CallablePermutation(CallableRef),
+/// RHS of instruction link definitions are parsed as `Expression`s which should conform to:
+/// `OUT = submachine.operation(IN1, IN2, ..., INn)`
+/// or
+/// `(OUT1, OUT2, ..., OUTn) = submachine.operation(IN1, IN2, ..., INn)`
+impl TryFrom<Expression> for CallableRef {
+    type Error = Error;
+
+    fn try_from(value: Expression) -> Result<Self, Self::Error> {
+        let mut outputs = vec![];
+        let rhs = match value {
+            Expression::BinaryOperation(
+                _,
+                BinaryOperation {
+                    left,
+                    op: BinaryOperator::Identity,
+                    right,
+                },
+            ) => {
+                outputs = if let Expression::Tuple(_, elements) = *left {
+                    elements
+                } else {
+                    vec![*left]
+                };
+                *right
+            }
+            expr => expr,
+        };
+
+        let source_ref = match rhs {
+            Expression::FunctionCall(_, call) => {
+                let inputs = call.arguments;
+                match *call.function {
+                    Expression::Reference(source_ref, reference)
+                        if reference.path.parts().len() == 2 =>
+                    {
+                        if reference.type_args.is_some() {
+                            return Err(source_ref
+                                .with_error("types not expected in link definition".to_string()));
+                        }
+                        let (l, r) = reference.path.into_parts().next_tuple().unwrap();
+                        let instance = l.try_into().unwrap();
+                        let callable = r.try_into().unwrap();
+                        return Ok(CallableRef {
+                            instance,
+                            callable,
+                            params: CallableParams { inputs, outputs },
+                        });
+                    }
+                    expr => expr.source_reference().clone(),
+                }
+            }
+            expr => expr.source_reference().clone(),
+        };
+        Err(source_ref
+            .with_error("link definition RHS must be a call to `submachine.operation`".to_string()))
+    }
 }
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
+pub struct InstructionBody(pub Vec<PilStatement>);
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum AssignmentRegister {
@@ -651,7 +759,7 @@ pub enum RegisterFlag {
 pub struct Param {
     pub name: String,
     pub index: Option<BigUint>,
-    pub ty: Option<String>,
+    pub ty: Option<SymbolPath>,
 }
 
 #[cfg(test)]

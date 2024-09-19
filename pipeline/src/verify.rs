@@ -5,7 +5,7 @@ pub fn verify(temp_dir: &Path) -> Result<(), String> {
         .expect("Please set the PILCOM environment variable to the path to the pilcom repository.");
 
     let constants_file = format!("{}/constants_estark.bin", temp_dir.to_str().unwrap());
-    let commits_file = format!("{}/commits.bin", temp_dir.to_str().unwrap());
+    let commits_file = format!("{}/commits_estark.bin", temp_dir.to_str().unwrap());
     let constraints_file = format!("{}/constraints.json", temp_dir.to_str().unwrap());
 
     let verifier_output = Command::new("node")

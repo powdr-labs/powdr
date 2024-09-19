@@ -1,11 +1,9 @@
-use std::convert::int;
-use std::utils::cross_product;
-use std::utils::unchanged_until;
 use std::array;
+use std::machines::range::Byte2;
 
 // A read/write memory, similar to that of Polygon:
 // https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/mem.pil
-machine Memory with
+machine Memory(byte2: Byte2) with
     latch: LATCH,
     operation_id: m_is_write,
     call_selectors: selectors,
@@ -23,13 +21,13 @@ machine Memory with
     // in the next row.
     // Note that these column names are used by witgen to detect
     // this machine...
-    col witness m_addr;
-    col witness m_step;
-    col witness m_change;
-    col witness m_value;
+    let m_addr;
+    let m_step;
+    let m_change;
+    let m_value;
 
     // Memory operation flags
-    col witness m_is_write;
+    let m_is_write;
     std::utils::force_bool(m_is_write);
 
     // is_write can only be 1 if a selector is active
@@ -48,16 +46,14 @@ machine Memory with
     // value cannot change.
     (1 - m_is_write') * (1 - m_change) * (m_value' - m_value) = 0;
 
-    col witness m_diff_lower;
-    col witness m_diff_upper;
+    let m_diff_lower;
+    let m_diff_upper;
 
     col fixed FIRST = [1] + [0]*;
     let LAST = FIRST';
-    col fixed STEP(i) { i };
-    col fixed BIT16(i) { i & 0xffff };
 
-    {m_diff_lower} in {BIT16};
-    {m_diff_upper} in {BIT16};
+    link => byte2.check(m_diff_lower);
+    link => byte2.check(m_diff_upper);
 
     std::utils::force_bool(m_change);
 

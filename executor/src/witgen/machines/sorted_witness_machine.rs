@@ -1,29 +1,33 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap};
 
 use itertools::Itertools;
 
 use super::super::affine_expression::AffineExpression;
 use super::{EvalResult, FixedData};
-use super::{FixedLookup, Machine};
+use super::{Machine, MachineParts};
+use crate::witgen::rows::RowPair;
 use crate::witgen::{
     expression_evaluator::ExpressionEvaluator, fixed_evaluator::FixedEvaluator,
     symbolic_evaluator::SymbolicEvaluator,
 };
 use crate::witgen::{EvalValue, IncompleteCause, MutableState, QueryCallback};
+use crate::Identity;
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, IdentityKind, PolyID,
+    AlgebraicExpression as Expression, AlgebraicReference, IdentityKind, PolyID,
 };
-use powdr_number::FieldElement;
+use powdr_number::{DegreeType, FieldElement};
 
 /// A machine that can support a lookup in a set of columns that are sorted
 /// by one specific column and values in that column have to be unique.
 /// This means there is a column A and a constraint of the form
-/// NOTLAST { A' - A } in { POSITIVE }
+/// NOTLAST $ [ A' - A ] in [ POSITIVE ]
 /// Where
 ///  - NOTLAST is zero only on the last row
 ///  - POSITIVE has all values from 1 to half of the field size.
 pub struct SortedWitnesses<'a, T: FieldElement> {
+    degree: DegreeType,
     rhs_references: BTreeMap<u64, Vec<&'a AlgebraicReference>>,
+    connecting_identities: BTreeMap<u64, &'a Identity<T>>,
     key_col: PolyID,
     /// Position of the witness columns in the data.
     witness_positions: HashMap<PolyID, usize>,
@@ -35,16 +39,18 @@ pub struct SortedWitnesses<'a, T: FieldElement> {
 impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
     pub fn try_new(
         name: String,
-        fixed_data: &'a FixedData<T>,
-        connecting_identities: &[&'a Identity<Expression<T>>],
-        identities: &[&Identity<Expression<T>>],
-        witnesses: &HashSet<PolyID>,
+        fixed_data: &'a FixedData<'a, T>,
+        parts: &MachineParts<'a, T>,
     ) -> Option<Self> {
-        if identities.len() != 1 {
+        if parts.identities.len() != 1 {
             return None;
         }
-        check_identity(fixed_data, identities.first().unwrap()).and_then(|key_col| {
-            let witness_positions = witnesses
+
+        let degree = parts.common_degree_range().max;
+
+        check_identity(fixed_data, parts.identities.first().unwrap(), degree).and_then(|key_col| {
+            let witness_positions = parts
+                .witnesses
                 .iter()
                 .filter(|&w| *w != key_col)
                 .sorted()
@@ -52,8 +58,9 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                 .map(|(i, &x)| (x, i))
                 .collect();
 
-            let rhs_references = connecting_identities
-                .iter()
+            let rhs_references = parts
+                .connecting_identities
+                .values()
                 .filter_map(|&id| {
                     let rhs_expressions = id
                         .right
@@ -70,13 +77,23 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                 })
                 .collect::<BTreeMap<_, _>>();
 
-            if rhs_references.len() != connecting_identities.len() {
+            if rhs_references.len() != parts.connecting_identities.len() {
                 // Not all connected identities meet the criteria above, so this is not a DoubleSortedWitnesses machine.
                 return None;
             }
 
+            if !parts.prover_functions.is_empty() {
+                log::warn!(
+                    "SortedWitness machine does not support prover functions.\
+                    The following prover functions are ignored:\n{}",
+                    parts.prover_functions.iter().format("\n")
+                );
+            }
+
             Some(SortedWitnesses {
+                degree,
                 rhs_references,
+                connecting_identities: parts.connecting_identities.clone(),
                 name,
                 key_col,
                 witness_positions,
@@ -89,9 +106,10 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
 
 fn check_identity<T: FieldElement>(
     fixed_data: &FixedData<T>,
-    id: &Identity<Expression<T>>,
+    id: &Identity<T>,
+    degree: DegreeType,
 ) -> Option<PolyID> {
-    // Looking for NOTLAST { A' - A } in { POSITIVE }
+    // Looking for NOTLAST $ [ A' - A ] in [ POSITIVE ]
     if id.kind != IdentityKind::Plookup
         || id.right.selector.is_some()
         || id.left.expressions.len() != 1
@@ -107,9 +125,9 @@ fn check_identity<T: FieldElement>(
 
     // TODO this could be rather slow. We should check the code for identity instead
     // of evaluating it.
-    let degree = fixed_data.degree as usize;
-    for row in 0..(degree) {
-        let ev = ExpressionEvaluator::new(FixedEvaluator::new(fixed_data, row));
+    for row in 0..(degree as usize) {
+        let ev = ExpressionEvaluator::new(FixedEvaluator::new(fixed_data, row, degree));
+        let degree = degree as usize;
         let nl = ev.evaluate(not_last).ok()?.constant_value()?;
         if (row == degree - 1 && !nl.is_zero()) || (row < degree - 1 && !nl.is_one()) {
             return None;
@@ -169,15 +187,14 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
         &mut self,
         _mutable_state: &mut MutableState<'a, '_, T, Q>,
         identity_id: u64,
-        args: &[AffineExpression<&'a AlgebraicReference, T>],
+        caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        self.process_plookup_internal(identity_id, args)
+        self.process_plookup_internal(identity_id, caller_rows)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        _fixed_lookup: &'b mut FixedLookup<T>,
-        _query_callback: &'b mut Q,
+        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         let mut result = HashMap::new();
 
@@ -185,7 +202,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
             std::mem::take(&mut self.data).into_iter().unzip();
 
         let mut last_key = keys.last().cloned().unwrap_or_default();
-        while keys.len() < self.fixed_data.degree as usize {
+        while keys.len() < self.degree as usize {
             last_key += 1u64.into();
             keys.push(last_key);
         }
@@ -196,7 +213,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
                 .iter_mut()
                 .map(|row| std::mem::take(&mut row[i]).unwrap_or_default())
                 .collect::<Vec<_>>();
-            col_values.resize(self.fixed_data.degree as usize, 0.into());
+            col_values.resize(self.degree as usize, 0.into());
             result.insert(self.fixed_data.column_name(col).to_string(), col_values);
         }
 
@@ -208,8 +225,14 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
     fn process_plookup_internal(
         &mut self,
         identity_id: u64,
-        left: &[AffineExpression<&'a AlgebraicReference, T>],
+        caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
+        let left = self.connecting_identities[&identity_id]
+            .left
+            .expressions
+            .iter()
+            .map(|e| caller_rows.evaluate(e).unwrap())
+            .collect::<Vec<_>>();
         let rhs = self.rhs_references.get(&identity_id).unwrap();
         let key_index = rhs.iter().position(|&x| x.poly_id == self.key_col).unwrap();
 

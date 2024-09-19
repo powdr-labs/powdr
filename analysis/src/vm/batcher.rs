@@ -134,7 +134,10 @@ impl RomBatcher {
     pub fn batch(&mut self, mut asm_file: AnalysisASMFile) -> AnalysisASMFile {
         for (name, machine) in asm_file.items.iter_mut().filter_map(|(n, m)| match m {
             Item::Machine(m) => Some((n, m)),
-            Item::Expression(_) | Item::TypeDeclaration(_) => None,
+            Item::Expression(_)
+            | Item::TypeDeclaration(_)
+            | Item::TraitDeclaration(_)
+            | Item::TraitImplementation(_) => None,
         }) {
             self.extract_batches(name, machine);
         }
@@ -146,7 +149,7 @@ impl RomBatcher {
 #[cfg(test)]
 mod tests {
 
-    use std::{fs, path::PathBuf};
+    use std::{fs, path::Path};
 
     use powdr_ast::asm_analysis::AnalysisASMFile;
     use pretty_assertions::assert_eq;
@@ -155,10 +158,7 @@ mod tests {
     use crate::vm::test_utils::batch_str;
 
     fn test_batching(path: &str) {
-        let base_path = PathBuf::from(format!(
-            "{}/../test_data/asm/batching",
-            env!("CARGO_MANIFEST_DIR")
-        ));
+        let base_path = Path::new("../test_data/asm/batching");
         let file_name = base_path.join(path);
         let expected = fs::read_to_string(file_name).unwrap();
 

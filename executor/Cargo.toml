@@ -13,13 +13,14 @@ powdr-number.workspace = true
 powdr-parser-util.workspace = true
 powdr-pil-analyzer.workspace = true
 
-itertools = "^0.10"
+itertools = "0.13"
 log = { version = "0.4.17" }
 rayon = "1.7.0"
 bit-vec = "0.6.3"
 num-traits = "0.2.15"
 lazy_static = "1.4.0"
 indicatif = "0.17.7"
+serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }
 
 [dev-dependencies]
 test-log = "0.2.12"

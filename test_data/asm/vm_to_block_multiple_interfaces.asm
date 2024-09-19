@@ -26,8 +26,8 @@ machine Main with degree: 8 {
     reg Z[<=];
     reg A;
 
-    instr add X, Y -> Z = arith.add;
-    instr sub X, Y -> Z = arith.sub;
+    instr add X, Y -> Z link => Z = arith.add(X, Y);
+    instr sub X, Y -> Z link => Z = arith.sub(X, Y);
     instr assert_eq X, Y { X = Y }
 
     function main {

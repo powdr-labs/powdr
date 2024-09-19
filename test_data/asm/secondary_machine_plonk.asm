@@ -9,7 +9,7 @@ machine Main with
     reg Z[<=];
     reg RES;
 
-    instr c_squared X, Y -> Z = pythagoras.c_squared;
+    instr c_squared X, Y -> Z link => Z = pythagoras.c_squared(X, Y);
     instr assert_eq X, Y { X = Y }
 
     function main {

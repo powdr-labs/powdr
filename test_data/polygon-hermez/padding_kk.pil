@@ -8,7 +8,7 @@
 
 include "padding_kkbit.pil";
 
-namespace PaddingKK(%N);
+namespace PaddingKK(N);
 
     // Polynomials that are used to compute a hash chunk
     pol commit freeIn;
@@ -47,14 +47,14 @@ namespace PaddingKK(%N);
     firstHash' = lastHash;
 
     pol aFreeIn = (1 - (remIsZero + spare))*freeIn + remIsZero + lastHash*0x80;
-    r8valid {aFreeIn, r8Id, connected} in { PaddingKKBit.r8, PaddingKKBit.r8Id, PaddingKKBit.connected };
+    r8valid $ [aFreeIn, r8Id, connected] in [ PaddingKKBit.r8, PaddingKKBit.r8Id, PaddingKKBit.connected ];
 
     connected' * ( 1-lastBlock) = connected * (1-lastBlock);
     connected'*lastBlock = (1 - lastHash)*lastBlock;
 
     pol constant sOutId;
 
-    lastHashLatch {
+    lastHashLatch $ [
         hash0,
         hash1,
         hash2,
@@ -64,7 +64,7 @@ namespace PaddingKK(%N);
         hash6,
         hash7,
         sOutId
-     } in {
+     ] in [
         PaddingKKBit.sOut0,
         PaddingKKBit.sOut1,
         PaddingKKBit.sOut2,
@@ -74,7 +74,7 @@ namespace PaddingKK(%N);
         PaddingKKBit.sOut6,
         PaddingKKBit.sOut7,
         PaddingKKBit.sOutId
-     };
+     ];
 
     pol constant forceLastHash;
     (1-lastHash)*forceLastHash = 0;   // Force first block to be the beggining
@@ -118,10 +118,10 @@ namespace PaddingKK(%N);
 
     pol commit crF0, crF1, crF2, crF3, crF4, crF5, crF6, crF7;
 
-    { crOffset, crF0, crF1, crF2, crF3,
-                crF4, crF5, crF6, crF7} in
-    { Global.STEP32, Global.BYTE_FACTOR[0], Global.BYTE_FACTOR[1], Global.BYTE_FACTOR[2], Global.BYTE_FACTOR[3],
-                     Global.BYTE_FACTOR[4], Global.BYTE_FACTOR[5], Global.BYTE_FACTOR[6], Global.BYTE_FACTOR[7] };
+    [ crOffset, crF0, crF1, crF2, crF3,
+                crF4, crF5, crF6, crF7] in
+    [ Global.STEP32, Global.BYTE_FACTOR[0], Global.BYTE_FACTOR[1], Global.BYTE_FACTOR[2], Global.BYTE_FACTOR[3],
+                     Global.BYTE_FACTOR[4], Global.BYTE_FACTOR[5], Global.BYTE_FACTOR[6], Global.BYTE_FACTOR[7] ];
 
 
     pol commit crV0, crV1, crV2, crV3, crV4, crV5, crV6, crV7;

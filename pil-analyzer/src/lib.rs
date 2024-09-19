@@ -7,6 +7,7 @@ pub mod expression_processor;
 mod pil_analyzer;
 mod side_effect_checker;
 mod statement_processor;
+mod traits_resolver;
 mod type_builtins;
 mod type_inference;
 mod type_processor;
@@ -28,7 +29,9 @@ pub use pil_analyzer::{analyze_ast, analyze_file, analyze_string};
 pub trait AnalysisDriver: Clone + Copy {
     /// Turns a declaration into an absolute name.
     fn resolve_decl(&self, name: &String) -> String {
-        self.resolve_namespaced_decl(&[name]).to_dotted_string()
+        self.resolve_namespaced_decl(&[name])
+            .relative_to(&Default::default())
+            .to_string()
     }
     /// Turns a nested declaration into an absolute name.
     fn resolve_namespaced_decl(&self, path: &[&String]) -> AbsoluteSymbolPath;

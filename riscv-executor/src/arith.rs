@@ -121,3 +121,38 @@ pub fn affine_256<F: FieldElement>(a: &[F], b: &[F], c: &[F]) -> ([F; 8], [F; 8]
 
     (hi, lo)
 }
+
+/// Calculates (2 ** 256 * a + b) % c for 256 bit values.
+/// Result (the remainder) is returned as a 256 bit value.
+pub fn mod_256<F: FieldElement>(a: &[F], b: &[F], c: &[F]) -> [F; 8] {
+    assert_eq!(a.len(), 8);
+    assert_eq!(b.len(), 8);
+    assert_eq!(c.len(), 8);
+
+    let a: BigUint = a
+        .iter()
+        .enumerate()
+        .map(|(i, fe)| fe.to_arbitrary_integer() << (i * 32))
+        .reduce(|acc, b| acc + b)
+        .unwrap();
+    let b: BigUint = b
+        .iter()
+        .enumerate()
+        .map(|(i, fe)| fe.to_arbitrary_integer() << (i * 32))
+        .reduce(|acc, b| acc + b)
+        .unwrap();
+    let c: BigUint = c
+        .iter()
+        .enumerate()
+        .map(|(i, fe)| fe.to_arbitrary_integer() << (i * 32))
+        .reduce(|acc, b| acc + b)
+        .unwrap();
+
+    let res = ((a << 256) + b) % c; // big-endian, should be 256 bits max
+    let mut remainder: [F; 8] = Default::default();
+    for (i, r) in remainder.iter_mut().enumerate() {
+        *r = F::from((res.clone() >> (i * 32)) & 0xffffffffu64);
+    }
+
+    remainder
+}

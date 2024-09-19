@@ -1,43 +1,49 @@
+use core::panic;
 use std::collections::{HashMap, HashSet};
 
 use std::fs;
 use std::iter::once;
 use std::path::{Path, PathBuf};
-use std::str::FromStr;
+use std::sync::Arc;
 
 use itertools::Itertools;
 use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, ModuleStatement, SymbolPath,
 };
-use powdr_ast::parsed::types::Type;
-use powdr_ast::parsed::visitor::Children;
+use powdr_ast::parsed::types::{ArrayType, Type};
+use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_ast::parsed::{
-    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SymbolCategory,
+    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions,
+    SymbolCategory, TraitImplementation,
 };
-use powdr_number::{DegreeType, FieldElement, GoldilocksField};
+use powdr_number::{FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
-    type_from_definition, Analyzed, Expression, FunctionValueDefinition, Identity, IdentityKind,
-    PolynomialType, PublicDeclaration, StatementIdentifier, Symbol, SymbolKind, TypedExpression,
+    type_from_definition, Analyzed, DegreeRange, Expression, FunctionValueDefinition, Identity,
+    IdentityKind, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
+    StatementIdentifier, Symbol, SymbolKind, TypedExpression,
 };
 use powdr_parser::{parse, parse_module, parse_type};
+use powdr_parser_util::Error;
 
-use crate::type_inference::{infer_types, ExpectedType};
+use crate::traits_resolver::TraitsResolver;
+use crate::type_builtins::constr_function_statement_type;
+use crate::type_inference::infer_types;
 use crate::{side_effect_checker, AnalysisDriver};
 
 use crate::statement_processor::{Counters, PILItem, StatementProcessor};
 use crate::{condenser, evaluator, expression_processor::ExpressionProcessor};
 
-pub fn analyze_file<T: FieldElement>(path: &Path) -> Analyzed<T> {
+pub fn analyze_file<T: FieldElement>(path: &Path) -> Result<Analyzed<T>, Vec<Error>> {
     let files = import_all_dependencies(path);
-    analyze::<T>(files)
+    analyze(files)
 }
 
-pub fn analyze_ast<T: FieldElement>(pil_file: PILFile) -> Analyzed<T> {
-    analyze::<T>(vec![pil_file])
+pub fn analyze_ast<T: FieldElement>(pil_file: PILFile) -> Result<Analyzed<T>, Vec<Error>> {
+    analyze(vec![pil_file])
 }
 
-pub fn analyze_string<T: FieldElement>(contents: &str) -> Analyzed<T> {
+pub fn analyze_string<T: FieldElement>(contents: &str) -> Result<Analyzed<T>, Vec<Error>> {
     let pil_file = powdr_parser::parse(Some("input"), contents).unwrap_or_else(|err| {
         eprintln!("Error parsing .pil file:");
         err.output_to_stderr();
@@ -46,12 +52,14 @@ pub fn analyze_string<T: FieldElement>(contents: &str) -> Analyzed<T> {
     analyze(vec![pil_file])
 }
 
-fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
+fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Result<Analyzed<T>, Vec<Error>> {
     let mut analyzer = PILAnalyzer::new();
-    analyzer.process(files);
-    analyzer.side_effect_check();
-    analyzer.type_check();
-    analyzer.condense::<T>()
+    analyzer.process(files)?;
+    analyzer.side_effect_check()?;
+    analyzer.type_check()?;
+    // TODO should use Result here as well.
+    let solved_impls = analyzer.resolve_trait_impls();
+    analyzer.condense(solved_impls)
 }
 
 #[derive(Default)]
@@ -59,17 +67,19 @@ struct PILAnalyzer {
     /// Known symbols by name and category, determined in the first step.
     known_symbols: HashMap<String, SymbolCategory>,
     current_namespace: AbsoluteSymbolPath,
-    polynomial_degree: Option<DegreeType>,
+    polynomial_degree: Option<DegreeRange>,
     /// Map of definitions, gradually being built up here.
     definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     public_declarations: HashMap<String, PublicDeclaration>,
-    identities: Vec<Identity<Expression>>,
+    identities: Vec<Identity<SelectedExpressions<Expression>>>,
     /// The order in which definitions and identities
     /// appear in the source.
     source_order: Vec<StatementIdentifier>,
     symbol_counters: Option<Counters>,
     /// Symbols from the core that were added automatically but will not be printed.
     auto_added_symbols: HashSet<String>,
+    /// All trait implementations found, organized according to their associated trait name.
+    implementations: HashMap<String, Vec<TraitImplementation<Expression>>>,
 }
 
 /// Reads and parses the given path and all its imports.
@@ -123,7 +133,7 @@ impl PILAnalyzer {
         }
     }
 
-    pub fn process(&mut self, mut files: Vec<PILFile>) {
+    pub fn process(&mut self, mut files: Vec<PILFile>) -> Result<(), Vec<Error>> {
         for PILFile(file) in &files {
             self.current_namespace = Default::default();
             for statement in file {
@@ -147,6 +157,7 @@ impl PILAnalyzer {
                 self.handle_statement(statement);
             }
         }
+        Ok(())
     }
 
     /// Adds core types if they are not present in the input.
@@ -154,14 +165,22 @@ impl PILAnalyzer {
     fn core_types_if_not_present(&self) -> Option<PILFile> {
         // We are extracting some specific symbols from the prelude file.
         let prelude = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/../std/prelude.asm"));
-        let missing_symbols = ["Constr", "Option"]
-            .into_iter()
-            .filter(|symbol| {
-                !self
-                    .known_symbols
-                    .contains_key(&format!("std::prelude::{symbol}"))
-            })
-            .collect::<Vec<_>>();
+        let missing_symbols = [
+            "Constr",
+            "Option",
+            "challenge",
+            "set_hint",
+            "Query",
+            "true",
+            "false",
+        ]
+        .into_iter()
+        .filter(|symbol| {
+            !self
+                .known_symbols
+                .contains_key(&format!("std::prelude::{symbol}"))
+        })
+        .collect::<Vec<_>>();
         (!missing_symbols.is_empty()).then(|| {
             let module = parse_module(None, prelude).unwrap();
             let missing_symbols = module
@@ -171,6 +190,7 @@ impl PILAnalyzer {
                     ModuleStatement::SymbolDefinition(s) => missing_symbols
                         .contains(&s.name.as_str())
                         .then_some(format!("{s}")),
+                    ModuleStatement::TraitImplementation(_) => None,
                 })
                 .join("\n");
             parse(None, &format!("namespace std::prelude;\n{missing_symbols}")).unwrap()
@@ -178,8 +198,9 @@ impl PILAnalyzer {
     }
 
     /// Check that query and constr functions are used in the correct contexts.
-    pub fn side_effect_check(&self) {
-        for (name, (symbol, value)) in &self.definitions {
+    pub fn side_effect_check(&self) -> Result<(), Vec<Error>> {
+        let mut errors = vec![];
+        for (symbol, value) in self.definitions.values() {
             let Some(value) = value else { continue };
             let context = match symbol.kind {
                 // Witness column value is query function
@@ -189,7 +210,7 @@ impl PILAnalyzer {
                 SymbolKind::Other() => match value {
                     // Otherwise, just take the kind of the lambda expression.
                     FunctionValueDefinition::Expression(TypedExpression { type_scheme: _, e }) => {
-                        if let Expression::LambdaExpression(LambdaExpression { kind, .. }) = e {
+                        if let Expression::LambdaExpression(_, LambdaExpression { kind, .. }) = e {
                             *kind
                         } else {
                             FunctionKind::Constr
@@ -203,7 +224,18 @@ impl PILAnalyzer {
             value
                 .children()
                 .try_for_each(|e| side_effect_checker::check(&self.definitions, context, e))
-                .unwrap_or_else(|err| panic!("Error checking side-effects of {name}: {err}"))
+                .unwrap_or_else(|err| errors.push(err));
+        }
+
+        for v in self.implementations.values() {
+            for impl_ in v {
+                impl_
+                    .children()
+                    .try_for_each(|e| {
+                        side_effect_checker::check(&self.definitions, FunctionKind::Pure, e)
+                    })
+                    .unwrap_or_else(|err| errors.push(err));
+            }
         }
 
         // for all identities, check that they call pure or constr functions
@@ -212,22 +244,60 @@ impl PILAnalyzer {
                 .try_for_each(|e| {
                     side_effect_checker::check(&self.definitions, FunctionKind::Constr, e)
                 })
-                .unwrap_or_else(|err| panic!("Error checking side-effects of identity {id}: {err}"))
+                .unwrap_or_else(|err| errors.push(err))
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
         }
     }
 
-    pub fn type_check(&mut self) {
-        let query_type: Type = parse_type("int -> std::prover::Query").unwrap().into();
+    pub fn type_check(&mut self) -> Result<(), Vec<Error>> {
+        let query_type: Type = parse_type("int -> std::prelude::Query").unwrap().into();
         let mut expressions = vec![];
-        // Collect all definitions with their types and expressions.
+        // Collect all definitions and traits implementations with their types and expressions.
         // We filter out enum type declarations (the constructor functions have been added
         // by the statement processor already).
         // For Arrays, we also collect the inner expressions and expect them to be field elements.
+
+        for (name, trait_impls) in self.implementations.iter_mut() {
+            let (_, def) = self
+                .definitions
+                .get(name)
+                .expect("Trait definition not found");
+
+            let Some(FunctionValueDefinition::TraitDeclaration(trait_decl)) = def else {
+                continue;
+            };
+            for impl_ in trait_impls {
+                let specialized_types: Vec<_> = impl_
+                    .functions
+                    .iter()
+                    .map(|named_expr| impl_.type_of_function(trait_decl, &named_expr.name))
+                    .collect();
+
+                for (named_expr, specialized_type) in
+                    impl_.functions.iter_mut().zip(specialized_types)
+                {
+                    expressions.push((
+                        Arc::get_mut(&mut named_expr.body).unwrap(),
+                        specialized_type.into(),
+                    ));
+                }
+            }
+        }
+
         let definitions = self
             .definitions
             .iter_mut()
             .filter(|(_name, (_symbol, value))| {
-                !matches!(value, Some(FunctionValueDefinition::TypeDeclaration(_)))
+                !matches!(
+                    value,
+                    Some(FunctionValueDefinition::TypeDeclaration(_))
+                        | Some(FunctionValueDefinition::TraitDeclaration(_))
+                )
             })
             .flat_map(|(name, (symbol, value))| {
                 let (type_scheme, expr) = match (symbol.kind, value) {
@@ -256,12 +326,7 @@ impl PILAnalyzer {
 
                         if let Some(FunctionValueDefinition::Array(items)) = value {
                             // Expect all items in the arrays to be field elements.
-                            expressions.extend(
-                                items
-                                    .iter_mut()
-                                    .flat_map(|item| item.pattern_mut())
-                                    .map(|e| (e, Type::Fe.into())),
-                            );
+                            expressions.extend(items.children_mut().map(|e| (e, Type::Fe.into())));
                         }
 
                         (type_scheme, None)
@@ -270,32 +335,32 @@ impl PILAnalyzer {
                 Some((name.clone(), (type_scheme, expr)))
             })
             .collect();
-        // Collect all expressions in identities.
-        let statement_type = ExpectedType {
-            ty: Type::NamedType(SymbolPath::from_str("std::prelude::Constr").unwrap(), None),
-            allow_array: true,
-        };
         for id in &mut self.identities {
             if id.kind == IdentityKind::Polynomial {
-                // At statement level, we allow Constr or Constr[].
-                expressions.push((id.expression_for_poly_id_mut(), statement_type.clone()));
+                // At statement level, we allow Constr, Constr[] or ().
+                expressions.push((
+                    id.expression_for_poly_id_mut(),
+                    constr_function_statement_type(),
+                ));
             } else {
                 for part in [&mut id.left, &mut id.right] {
                     if let Some(selector) = &mut part.selector {
                         expressions.push((selector, Type::Expr.into()))
                     }
-                    for e in &mut part.expressions {
-                        expressions.push((e, Type::Expr.into()))
-                    }
+
+                    expressions.push((
+                        part.expressions.as_mut(),
+                        Type::Array(ArrayType {
+                            base: Box::new(Type::Expr),
+                            length: None,
+                        })
+                        .into(),
+                    ))
                 }
             }
         }
-        let inferred_types = infer_types(definitions, &mut expressions, &statement_type)
-            .map_err(|e| {
-                eprintln!("\nError during type inference:\n{e}");
-                e
-            })
-            .unwrap();
+
+        let inferred_types = infer_types(definitions, &mut expressions)?;
         // Store the inferred types.
         for (name, ty) in inferred_types {
             let Some(FunctionValueDefinition::Expression(TypedExpression {
@@ -307,17 +372,69 @@ impl PILAnalyzer {
             };
             *ts = Some(ty.into());
         }
+        Ok(())
     }
 
-    pub fn condense<T: FieldElement>(self) -> Analyzed<T> {
-        condenser::condense::<T>(
-            self.polynomial_degree,
+    /// Creates and returns a map for every referenced trait and every concrete type to the
+    /// corresponding trait implementation function.
+    fn resolve_trait_impls(&mut self) -> HashMap<String, HashMap<Vec<Type>, Arc<Expression>>> {
+        let mut trait_solver = TraitsResolver::new(&self.implementations);
+
+        let mut resolve_references = |expr: &Expression| {
+            expr.all_children().for_each(|expr| {
+                if let Expression::Reference(
+                    _,
+                    Reference::Poly(
+                        reference @ PolynomialReference {
+                            type_args: Some(_), ..
+                        },
+                    ),
+                ) = expr
+                {
+                    let _ = trait_solver.resolve_trait_function_reference(reference);
+                }
+            });
+        };
+
+        for (_, def) in self.definitions.values() {
+            match def {
+                Some(FunctionValueDefinition::Expression(TypedExpression { e, .. })) => {
+                    resolve_references(e);
+                }
+                Some(FunctionValueDefinition::Array(items)) => {
+                    items.all_children().for_each(&mut resolve_references);
+                }
+                _ => {}
+            }
+        }
+
+        for identity in &self.identities {
+            for expr in identity.all_children() {
+                resolve_references(expr);
+            }
+        }
+
+        for impls in self.implementations.values() {
+            for impl_ in impls {
+                impl_.all_children().for_each(&mut resolve_references);
+            }
+        }
+
+        trait_solver.solved_impls()
+    }
+
+    pub fn condense<T: FieldElement>(
+        self,
+        solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
+    ) -> Result<Analyzed<T>, Vec<Error>> {
+        Ok(condenser::condense(
             self.definitions,
+            solved_impls,
             self.public_declarations,
             &self.identities,
             self.source_order,
             self.auto_added_symbols,
-        )
+        ))
     }
 
     /// A step to collect all defined names in the statement.
@@ -338,7 +455,8 @@ impl PILAnalyzer {
                                 Some(sub_name) => self
                                     .driver()
                                     .resolve_namespaced_decl(&[name, sub_name])
-                                    .to_dotted_string(),
+                                    .relative_to(&Default::default())
+                                    .to_string(),
                             },
                             symbol_category,
                         )
@@ -392,34 +510,38 @@ impl PILAnalyzer {
                             self.source_order.push(StatementIdentifier::Identity(index));
                             self.identities.push(identity)
                         }
+                        PILItem::TraitImplementation(trait_impl) => self
+                            .implementations
+                            .entry(trait_impl.name.to_string())
+                            .or_default()
+                            .push(trait_impl),
                     }
                 }
             }
         }
     }
 
-    fn handle_namespace(&mut self, name: SymbolPath, degree: Option<parsed::Expression>) {
-        if let Some(degree) = degree {
-            let degree = ExpressionProcessor::new(self.driver(), &Default::default())
-                .process_expression(degree);
-            // TODO we should maybe implement a separate evaluator that is able to run before type checking
-            // and is field-independent (only uses integers)?
-            let namespace_degree: u64 = u64::try_from(
-                evaluator::evaluate_expression::<GoldilocksField>(&degree, &self.definitions)
-                    .unwrap()
-                    .try_to_integer()
-                    .unwrap(),
+    fn handle_namespace(&mut self, name: SymbolPath, degree: Option<parsed::NamespaceDegree>) {
+        let evaluate_degree_bound = |e| {
+            let e =
+                ExpressionProcessor::new(self.driver(), &Default::default()).process_expression(e);
+            u64::try_from(
+                evaluator::evaluate_expression::<GoldilocksField>(
+                    &e,
+                    &self.definitions,
+                    &Default::default(),
+                )
+                .unwrap()
+                .try_to_integer()
+                .unwrap(),
             )
-            .unwrap();
-            if let Some(degree) = self.polynomial_degree {
-                assert_eq!(
-                    degree, namespace_degree,
-                    "all namespaces must have the same degree"
-                );
-            } else {
-                self.polynomial_degree = Some(namespace_degree);
-            }
-        }
+            .unwrap()
+        };
+
+        self.polynomial_degree = degree.map(|degree| DegreeRange {
+            min: evaluate_degree_bound(degree.min),
+            max: evaluate_degree_bound(degree.max),
+        });
         self.current_namespace = AbsoluteSymbolPath::default().join(name);
     }
 
@@ -435,13 +557,7 @@ impl<'a> AnalysisDriver for Driver<'a> {
     fn resolve_namespaced_decl(&self, path: &[&String]) -> AbsoluteSymbolPath {
         path.iter()
             .fold(self.0.current_namespace.clone(), |path, part| {
-                if part.starts_with('%') {
-                    // Constants are not namespaced
-                    AbsoluteSymbolPath::default()
-                } else {
-                    path
-                }
-                .with_part(part)
+                path.with_part(part)
             })
     }
 
@@ -455,7 +571,10 @@ impl<'a> AnalysisDriver for Driver<'a> {
             .iter_to_root()
             .chain(once(parse_absolute_path("::std::prelude")))
             .find_map(|prefix| {
-                let path = prefix.join(path.clone()).to_dotted_string();
+                let path = prefix
+                    .join(path.clone())
+                    .relative_to(&Default::default())
+                    .to_string();
                 self.0.known_symbols.get(&path).map(|cat| (path, *cat))
             })
     }

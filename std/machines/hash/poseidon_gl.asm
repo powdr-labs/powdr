@@ -16,7 +16,7 @@ machine PoseidonGL with
     // hash functions.
     operation poseidon_permutation<0> state[0], state[1], state[2], state[3], state[4], state[5], state[6], state[7], state[8], state[9], state[10], state[11] -> output[0], output[1], output[2], output[3];
 
-    col witness operation_id;
+    let operation_id;
 
     // Ported from:
     // - https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/poseidong.pil
@@ -32,7 +32,6 @@ machine PoseidonGL with
     let PARTIAL_ROUNDS: int = 22;
     let ROWS_PER_HASH = FULL_ROUNDS + PARTIAL_ROUNDS + 1;
 
-    pol constant L0 = [1] + [0]*;
     pol constant FIRSTBLOCK(i) { if i % ROWS_PER_HASH == 0 { 1 } else { 0 } };
     pol constant LASTBLOCK(i) { if i % ROWS_PER_HASH == ROWS_PER_HASH - 1 { 1 } else { 0 } };
     // Like LASTBLOCK, but also 1 in the last row of the table
@@ -58,23 +57,23 @@ machine PoseidonGL with
     let C = [C_0, C_1, C_2, C_3, C_4, C_5, C_6, C_7, C_8, C_9, C_10, C_11];
 
     // State of the Poseidon permutation (8 rate elements and 4 capacity elements)
-    pol commit state[STATE_SIZE];
+    let state: col[STATE_SIZE];
 
     // The first OUTPUT_SIZE elements of the *final* state
     // (constrained to be constant within the block and equal to parts of the state in the last row)
-    pol commit output[OUTPUT_SIZE];
+    let output: col[OUTPUT_SIZE];
 
     // Add round constants
-    let a: expr[STATE_SIZE] = array::zip(state, C, |state, C| state + C);
+    let a = array::zip(state, C, |state, C| state + C);
 
-    // Compute S-Boxes (x^7)
-    let x2: expr[STATE_SIZE] = array::map(a, |a| a * a);
-    let x4: expr[STATE_SIZE] = array::map(x2, |x2| x2 * x2);
-    let x6: expr[STATE_SIZE] = array::zip(x4, x2, |x4, x2| x4 * x2);
-    let x7: expr[STATE_SIZE] = array::zip(x6, a, |x6, a| x6 * a);
+    // Compute S-Boxes (x^7) (using a degree bound of 3)
+    let x3: col[STATE_SIZE];
+    array::zip(x3, array::map(a, |a| a * a * a), |x3, expected| x3 = expected);
+    let x7: col[STATE_SIZE];
+    array::zip(x7, array::zip(x3, a, |x3, a| x3 * x3 * a), |x7, expected| x7 = expected);
 
     // Apply S-Boxes on the first element and otherwise if it is a full round.
-    let b: expr[STATE_SIZE] = array::new(STATE_SIZE, |i| if i == 0 {
+    let b = array::new(STATE_SIZE, |i| if i == 0 {
         x7[i]
     } else {
         PARTIAL * (a[i] - x7[i]) + x7[i]
@@ -98,13 +97,14 @@ machine PoseidonGL with
 
     // Multiply with MDS Matrix
     let dot_product = |v1, v2| array::sum(array::zip(v1, v2, |v1_i, v2_i| v1_i * v2_i));
-    let c: expr[STATE_SIZE] = array::map(M, |M_row_i| dot_product(M_row_i, b));
+    let c = array::map(M, |M_row_i| dot_product(M_row_i, b));
 
     // Copy c to state in the next row
     array::zip(state, c, |state, c| (state' - c) * (1-LAST) = 0);
 
     // In the last row, the first OUTPUT_SIZE elements of the state should equal output
-    array::zip(output, state, |output, state| LASTBLOCK * (output - state) = 0);
+    let output_state = array::sub_array(state, 0, OUTPUT_SIZE);
+    array::zip(output, output_state, |output, state| LASTBLOCK * (output - state) = 0);
 
     // The output should stay constant in the block
     array::map(output, |c| unchanged_until(c, LAST));

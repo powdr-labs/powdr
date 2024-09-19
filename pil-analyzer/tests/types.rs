@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use powdr_ast::parsed::display::format_type_scheme_around_name;
 use powdr_number::GoldilocksField;
 use powdr_parser::parse_type_scheme;
@@ -6,7 +7,18 @@ use powdr_pil_analyzer::analyze_string;
 use pretty_assertions::assert_eq;
 
 fn type_check(input: &str, expected: &[(&str, &str, &str)]) {
-    let analyzed = analyze_string::<GoldilocksField>(input);
+    let analyzed = analyze_string::<GoldilocksField>(input)
+        .map_err(|errors| {
+            errors
+                .into_iter()
+                .map(|e| {
+                    e.output_to_stderr();
+                    e.to_string()
+                })
+                .format("\n")
+        })
+        .expect("Failed to analyze test input.");
+
     for (name, bounds, ty) in expected {
         let type_scheme = analyzed.type_of_symbol(name);
         assert_eq!(
@@ -40,14 +52,14 @@ fn type_scheme_simplify_type_vars() {
 }
 
 #[test]
-#[should_panic = "Error checking sub-expression N.id:\\nExpected type: expr\\n"]
+#[should_panic = "Expected type: expr\\n"]
 fn use_fun_in_expr_context() {
     let input = r#"namespace N(16);
     let id = |i| i;
     let w;
     w = id;
 "#;
-    analyze_string::<GoldilocksField>(input);
+    type_check(input, &[]);
 }
 
 #[test]
@@ -197,7 +209,7 @@ fn constraints() {
     let input = "
         let a;
         let BYTE: col = |i| std::convert::fe(i & 0xff);
-        { a + 1 } in {BYTE};
+        [ a + 1 ] in [BYTE];
         namespace std::convert(8);
         let fe = 18;
     ";
@@ -252,7 +264,7 @@ fn type_check_arrays() {
 }
 
 #[test]
-#[should_panic = "Error type checking the symbol x = (|i| (i, \\\"abc\\\")):\\nExpected either int -> int or int -> fe, but got: int -> (int, string).\\nCannot unify types (int, string) and fe"]
+#[should_panic = "Expected either int -> int or int -> fe, but got: int -> (int, string).\\nCannot unify types (int, string) and fe"]
 fn error_for_column_type() {
     let input = "
         let x: col = |i| (i, \"abc\");
@@ -327,7 +339,7 @@ fn enum_is_not_constr() {
 }
 
 #[test]
-#[should_panic = "Expected type: int -> std::prover::Query"]
+#[should_panic = "Expected type int -> std::prelude::Query"]
 fn query_with_wrong_type() {
     let input = "col witness w(i) query i;";
     type_check(input, &[]);
@@ -479,7 +491,7 @@ fn multi_ellipsis() {
 }
 
 #[test]
-#[should_panic = "Expected enum variant for pattern X::A but got int -> X - maybe you forgot the parentheses?"]
+#[should_panic = "Expected enum variant for pattern but got int -> X - maybe you forgot the parentheses?"]
 fn enum_no_paren_for_paren() {
     let input = "
     enum X { A(int) }
@@ -492,7 +504,7 @@ fn enum_no_paren_for_paren() {
 }
 
 #[test]
-#[should_panic = "Enum variant X::A does not have fields, but is used with parentheses in X::A()"]
+#[should_panic = "Enum variant X::A does not have fields, but is used with parentheses in pattern"]
 fn enum_paren_for_no_paren() {
     let input = "
     enum X { A }
@@ -515,4 +527,210 @@ fn enum_too_many_fields() {
     };
     ";
     type_check(input, &[]);
+}
+
+#[test]
+fn empty_function() {
+    let input = "
+    let f: int -> () = |i| { };
+    let g: int -> () = |i| {
+        f(i);
+    };
+    
+    let h: () = g(4);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn empty_match() {
+    let input = "
+    let h: int -> int = |i| i;
+    let f: int -> () = |i| match i {
+        5 => { 
+            let _ = h(4);
+        },
+        _ => { }
+    };
+
+    let g: () = f(4);
+    let k: () = f(5);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn empty_conditional() {
+    let input = "
+    let h: int -> int = |i| i;
+    let f: int -> () = |i| if i == 5 {
+        let _ = h(4);
+    } else { };
+
+    let g: () = f(4);
+    let k: () = f(5);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn defined_trait() {
+    let input = "
+    trait Add<T> {
+        add: T, T -> T,
+    }
+    impl Add<fe> {
+        add: |a, b| a + b,
+    }
+    let r: fe = Add::add(3, 4);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn cols_in_func() {
+    let input = "
+    namespace Main(104);
+    let h: -> () = constr || {
+        let w: col;
+        let f: col = |j| j + 1;
+        w = f;
+    };
+    h();
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn type_vars_in_block_let() {
+    let input = "
+    let<T> f: T -> T[] = |i| [i];
+    let<Q> x: Q -> Q[][] = |i| {
+        let y: Q[] = f(i);
+        [y]
+    };
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Expected type: int -> T\\nInferred type: int\\n"]
+fn new_fixed_column_wrong_value_type() {
+    let input = r#"namespace N(16);
+        let f = constr |j| {
+            let k: int = 2;
+            let fi: col = k;
+            fi
+        };
+        let ev = f(2);
+        let x;
+        x = ev;
+    "#;
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Let-declared variables without value must have type 'col'"]
+fn new_fixed_column_wrong_type() {
+    let input = r#"namespace N(16);
+        let f = constr || {
+            let fi: int;
+        };
+        f();
+    "#;
+    type_check(input, &[]);
+}
+
+#[test]
+fn trait_multi_generics() {
+    let input = "
+    trait ToTuple<S, I> {
+        get: S -> (S, I),
+    }
+    impl ToTuple<int, (int, int)> {
+        get: |n| (n, (1, n+2)),
+    }
+    let r: (int, (int, int)) = ToTuple::get(3);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn trait_with_user_defined_enum() {
+    let input = "
+    enum Bool { True, False }
+    
+    trait Not<T> {
+        not: T -> T,
+    }
+    
+    impl Not<Bool> {
+        not: |b| match b {
+            Bool::True => Bool::False,
+            Bool::False => Bool::True,
+        },
+    }
+    let b = Not::not(Bool::True);
+    ";
+    type_check(input, &[("b", "", "Bool")]);
+}
+
+#[test]
+fn trait_with_user_defined_enum2() {
+    let input = "
+    enum V1 { A1, B1 }
+    enum V2 { A2, B2 }
+
+    trait Convert<T, U> {
+        convert: T -> U,
+    }
+
+    impl Convert<V1, V2> {
+        convert: |x| match x {
+            V1::A1 => V2::A2,
+            V1::B1 => V2::B2,
+        },
+    }
+    impl Convert<V2, V1> {
+        convert: |x| match x {
+            V2::B2 => V1::B1,
+            V2::A2 => V1::A1,
+        },
+    }
+
+    let r1: V2 = Convert::convert(V1::A1);
+    let r2: V1 = Convert::convert(V2::B2);
+    ";
+    type_check(input, &[("r1", "", "V2"), ("r2", "", "V1")]);
+}
+
+#[test]
+#[should_panic = "Could not derive a concrete type for symbol r1."]
+fn trait_user_defined_enum_wrong_type() {
+    let input = "
+    enum V1 { A1, B1 }
+    enum V2 { A2, B2 }
+
+    trait Convert<T, U> {
+        convert: T -> U,
+    }
+
+    let n: int = 7;
+    let r1 = Convert::convert(n);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn prover_functions() {
+    let input = "
+        let a = 9;
+        let b = [];
+        query |i| if a == i {
+            b[0]
+        } else {
+            b[0]
+        };
+    ";
+    type_check(input, &[("a", "", "int"), ("b", "", "()[]")]);
 }

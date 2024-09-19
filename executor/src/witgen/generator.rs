@@ -1,59 +1,54 @@
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, Identity, PolyID,
-};
-use powdr_ast::parsed::SelectedExpressions;
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference};
 use powdr_number::{DegreeType, FieldElement};
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::HashMap;
 
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::machines::profiling::{record_end, record_start};
 use crate::witgen::processor::OuterQuery;
-use crate::witgen::rows::CellValue;
 use crate::witgen::EvalValue;
 
-use super::affine_expression::AffineExpression;
 use super::block_processor::BlockProcessor;
-use super::data_structures::column_map::WitnessColumnMap;
-use super::machines::{FixedLookup, Machine};
-use super::rows::{Row, RowIndex};
+use super::machines::{Machine, MachineParts};
+use super::rows::{Row, RowIndex, RowPair};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use super::vm_processor::VmProcessor;
 use super::{EvalResult, FixedData, MutableState, QueryCallback};
 
 struct ProcessResult<'a, T: FieldElement> {
     eval_value: EvalValue<&'a AlgebraicReference, T>,
-    block: FinalizableData<'a, T>,
+    block: FinalizableData<T>,
 }
 
 pub struct Generator<'a, T: FieldElement> {
-    connecting_rhs: BTreeMap<u64, &'a SelectedExpressions<Expression<T>>>,
     fixed_data: &'a FixedData<'a, T>,
-    identities: Vec<&'a Identity<Expression<T>>>,
-    witnesses: HashSet<PolyID>,
-    data: FinalizableData<'a, T>,
+    parts: MachineParts<'a, T>,
+    data: FinalizableData<T>,
     latch: Option<Expression<T>>,
     name: String,
+    degree: DegreeType,
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
-        self.connecting_rhs.keys().cloned().collect()
+        self.parts.identity_ids()
     }
 
     fn name(&self) -> &str {
         &self.name
     }
 
-    fn process_plookup<Q: QueryCallback<T>>(
+    fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &mut MutableState<'a, '_, T, Q>,
+        mutable_state: &mut MutableState<'a, 'b, T, Q>,
         identity_id: u64,
-        args: &[AffineExpression<&'a AlgebraicReference, T>],
+        caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
+        let identity = self.parts.connecting_identities.get(&identity_id).unwrap();
+        let outer_query = OuterQuery::new(caller_rows, identity);
+
         log::trace!("Start processing secondary VM '{}'", self.name());
         log::trace!("Arguments:");
-        let right = &self.connecting_rhs.get(&identity_id).unwrap();
-        for (r, l) in right.expressions.iter().zip(args) {
+        for (r, l) in identity.right.expressions.iter().zip(&outer_query.left) {
             log::trace!("  {r} = {l}");
         }
 
@@ -63,10 +58,6 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
             .cloned()
             .unwrap_or_else(|| self.compute_partial_first_row(mutable_state));
 
-        let outer_query = OuterQuery {
-            left: args.to_vec(),
-            right,
-        };
         let ProcessResult { eval_value, block } =
             self.process(first_row, 0, mutable_state, Some(outer_query), false);
 
@@ -87,19 +78,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        fixed_lookup: &'b mut FixedLookup<T>,
-        query_callback: &'b mut Q,
+        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         log::debug!("Finalizing VM: {}", self.name());
 
-        // In this stage, we don't have access to other machines, as they might already be finalized.
-        let mut mutable_state_no_machines = MutableState {
-            fixed_lookup,
-            machines: [].into_iter().into(),
-            query_callback,
-        };
-
-        self.fill_remaining_rows(&mut mutable_state_no_machines);
+        self.fill_remaining_rows(mutable_state);
         self.fix_first_row();
 
         self.data
@@ -113,21 +96,16 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     pub fn new(
         name: String,
         fixed_data: &'a FixedData<'a, T>,
-        connecting_identities: &[&'a Identity<Expression<T>>],
-        identities: Vec<&'a Identity<Expression<T>>>,
-        witnesses: HashSet<PolyID>,
+        parts: MachineParts<'a, T>,
         latch: Option<Expression<T>>,
     ) -> Self {
-        let data = FinalizableData::new(&witnesses);
+        let data = FinalizableData::new(&parts.witnesses);
+
         Self {
-            connecting_rhs: connecting_identities
-                .iter()
-                .map(|&identity| (identity.id, &identity.right))
-                .collect(),
+            degree: parts.common_degree_range().max,
             name,
             fixed_data,
-            identities,
-            witnesses,
+            parts,
             data,
             latch,
         }
@@ -146,7 +124,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         &mut self,
         mutable_state: &mut MutableState<'a, '_, T, Q>,
     ) {
-        if self.data.len() < self.fixed_data.degree as usize + 1 {
+        if self.data.len() < self.degree as usize + 1 {
             assert!(self.latch.is_some());
 
             let first_row = self.data.pop().unwrap();
@@ -168,7 +146,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     fn compute_partial_first_row<Q: QueryCallback<T>>(
         &self,
         mutable_state: &mut MutableState<'a, '_, T, Q>,
-    ) -> Row<'a, T> {
+    ) -> Row<T> {
         // Use `BlockProcessor` + `DefaultSequenceIterator` using a "block size" of 0. Because `BlockProcessor`
         // expects `data` to include the row before and after the block, this means we'll run the
         // solver on exactly one row pair.
@@ -176,16 +154,10 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         // it does not assert that the row is "complete" afterwards (i.e., that all identities
         // are satisfied assuming 0 for unknown values).
         let data = FinalizableData::with_initial_rows_in_progress(
-            &self.witnesses,
+            &self.parts.witnesses,
             [
-                Row::fresh(
-                    self.fixed_data,
-                    RowIndex::from_i64(-1, self.fixed_data.degree),
-                ),
-                Row::fresh(
-                    self.fixed_data,
-                    RowIndex::from_i64(0, self.fixed_data.degree),
-                ),
+                Row::fresh(self.fixed_data, RowIndex::from_i64(-1, self.degree)),
+                Row::fresh(self.fixed_data, RowIndex::from_i64(0, self.degree)),
             ]
             .into_iter(),
         );
@@ -194,48 +166,45 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         // are irrelevant.
         // Also, they can lead to problems in the case where some witness columns are provided
         // externally, e.g. if the last row happens to call into a stateful machine like memory.
-        let identities_with_next_reference = self
-            .identities
-            .iter()
-            .filter_map(|identity| identity.contains_next_ref().then_some(*identity))
-            .collect::<Vec<_>>();
+        let next_parts = self.parts.restricted_to_identities_with_next_references();
         let mut processor = BlockProcessor::new(
-            RowIndex::from_i64(-1, self.fixed_data.degree),
+            RowIndex::from_i64(-1, self.degree),
             data,
             mutable_state,
-            &identities_with_next_reference,
             self.fixed_data,
-            &self.witnesses,
+            &next_parts,
+            self.degree,
         );
         let mut sequence_iterator = ProcessingSequenceIterator::Default(
-            DefaultSequenceIterator::new(0, identities_with_next_reference.len(), None),
+            DefaultSequenceIterator::new(0, next_parts.identities.len(), None),
         );
         processor.solve(&mut sequence_iterator).unwrap();
-        let first_row = processor.finish().remove(1);
 
-        first_row
+        processor.finish().remove(1)
     }
 
-    fn process<Q: QueryCallback<T>>(
-        &self,
-        first_row: Row<'a, T>,
+    fn process<'b, Q: QueryCallback<T>>(
+        &mut self,
+        first_row: Row<T>,
         row_offset: DegreeType,
-        mutable_state: &mut MutableState<'a, '_, T, Q>,
-        outer_query: Option<OuterQuery<'a, T>>,
+        mutable_state: &mut MutableState<'a, 'b, T, Q>,
+        outer_query: Option<OuterQuery<'a, 'b, T>>,
         is_main_run: bool,
     ) -> ProcessResult<'a, T> {
         log::trace!(
-            "Running main machine from row {row_offset} with the following initial values in the first row:\n{}", first_row.render_values(false, None)
+            "Running main machine from row {row_offset} with the following initial values in the first row:\n{}",
+            first_row.render_values(false, &self.parts)
         );
         let data = FinalizableData::with_initial_rows_in_progress(
-            &self.witnesses,
+            &self.parts.witnesses,
             [first_row].into_iter(),
         );
+
         let mut processor = VmProcessor::new(
-            RowIndex::from_degree(row_offset, self.fixed_data.degree),
+            self.name().to_string(),
+            RowIndex::from_degree(row_offset, self.degree),
             self.fixed_data,
-            &self.identities,
-            &self.witnesses,
+            &self.parts,
             data,
             mutable_state,
         );
@@ -243,25 +212,27 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             processor = processor.with_outer_query(outer_query);
         }
         let eval_value = processor.run(is_main_run);
-        let block = processor.finish();
+        let (block, degree) = processor.finish();
+
+        // The processor might have detected a loop, in which case the degree has changed
+        self.degree = degree;
+
         ProcessResult { eval_value, block }
     }
 
     /// At the end of the solving algorithm, we'll have computed the first row twice
     /// (as row 0 and as row <degree>). This function merges the two versions.
     fn fix_first_row(&mut self) {
-        assert_eq!(self.data.len() as DegreeType, self.fixed_data.degree + 1);
+        assert_eq!(self.data.len() as DegreeType, self.degree + 1);
 
         let last_row = self.data.pop().unwrap();
-        self.data[0] = WitnessColumnMap::from(self.data[0].values().zip(last_row.values()).map(
-            |(cell1, cell2)| match (&cell1.value, &cell2.value) {
-                (CellValue::Known(v1), CellValue::Known(v2)) => {
-                    assert_eq!(v1, v2);
-                    cell1.clone()
-                }
-                (CellValue::Known(_), _) => cell1.clone(),
-                _ => cell2.clone(),
-            },
-        ));
+        if self.data[0].merge_with(&last_row).is_err() {
+            log::error!("{}", self.data[0].render("First row", false, &self.parts));
+            log::error!("{}", last_row.render("Last row", false, &self.parts));
+            panic!(
+                "Failed to merge the first and last row of the VM '{}'",
+                self.name()
+            );
+        }
     }
 }

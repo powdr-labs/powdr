@@ -1,33 +1,32 @@
 use std::collections::HashMap;
 
-use powdr_ast::{
-    parsed::types::{ArrayType, Type, TypeScheme},
-    parsed::{BinaryOperator, UnaryOperator},
+use powdr_ast::parsed::{
+    asm::SymbolPath,
+    types::{ArrayType, Type, TypeScheme},
+    BinaryOperator, UnaryOperator,
 };
 use powdr_parser::parse_type_scheme;
+use std::str::FromStr;
 
 use lazy_static::lazy_static;
+
+use crate::type_inference::ExpectedType;
 
 /// Returns the type used for a reference to a declaration.
 pub fn type_for_reference(declared: &Type) -> Type {
     match declared {
         // References to columns are exprs
         Type::Col => Type::Expr,
-        // Similar for arrays of columns
-        Type::Array(ArrayType { base, length: _ }) if base.as_ref() == &Type::Col => {
+        Type::Inter => Type::Expr,
+        // Similarly to arrays of columns, we ignore the length.
+        Type::Array(ArrayType { base, length: _ })
+            if matches!(base.as_ref(), &Type::Col | &Type::Inter) =>
+        {
             Type::Array(ArrayType {
                 base: Type::Expr.into(),
                 length: None,
             })
         }
-        // Arrays of intermediate columns lose their length.
-        Type::Array(ArrayType {
-            base,
-            length: Some(_),
-        }) if base.as_ref() == &Type::Expr => Type::Array(ArrayType {
-            base: base.clone(),
-            length: None,
-        }),
         t => t.clone(),
     }
 }
@@ -40,18 +39,36 @@ lazy_static! {
         ("std::convert::fe", ("T: FromLiteral", "T -> fe")),
         ("std::convert::int", ("T: FromLiteral", "T -> int")),
         ("std::convert::expr", ("T: FromLiteral", "T -> expr")),
-        (
-            "std::debug::print",
-            ("T: ToString", "T -> std::prelude::Constr[]")
-        ),
+        ("std::debug::print", ("T: ToString", "T -> ()")),
         ("std::field::modulus", ("", "-> int")),
+        ("std::prelude::challenge", ("", "int, int -> expr")),
+        (
+            "std::prover::new_witness_col_at_stage",
+            ("", "string, int -> expr")
+        ),
+        ("std::prover::min_degree", ("", "-> int")),
         (
             "std::prover::capture_stage",
             ("", "(-> int) -> std::prelude::Constr[]")
         ),
-        ("std::prover::challenge", ("", "int, int -> expr")),
+        ("std::prover::max_degree", ("", "-> int")),
         ("std::prover::degree", ("", "-> int")),
+        (
+            "std::prelude::set_hint",
+            ("", "expr, (int -> std::prelude::Query) -> ()")
+        ),
         ("std::prover::eval", ("", "expr -> fe")),
+        (
+            "std::prover::try_eval",
+            ("", "expr -> std::prelude::Option<fe>")
+        ),
+        ("std::prover::provide_value", ("", "expr, int, fe -> ()")),
+        ("std::prover::get_input", ("", "int -> fe")),
+        (
+            "std::prover::get_input_from_channel",
+            ("", "int, int -> fe")
+        ),
+        ("std::prover::output_byte", ("", "int, int -> ()"))
     ]
     .into_iter()
     .map(|(name, (vars, ty))| { (name.to_string(), parse_type_scheme(vars, ty)) })
@@ -80,6 +97,28 @@ lazy_static! {
         (BinaryOperator::Greater, ("T: Ord", "T, T -> bool")),
         (BinaryOperator::LogicalOr, ("", "bool, bool -> bool")),
         (BinaryOperator::LogicalAnd, ("", "bool, bool -> bool")),
+        (
+            BinaryOperator::In,
+            (
+                "T: ToSelectedExprs, U: ToSelectedExprs",
+                "T, U -> std::prelude::Constr"
+            )
+        ),
+        (
+            BinaryOperator::Is,
+            (
+                "T: ToSelectedExprs, U: ToSelectedExprs",
+                "T, U -> std::prelude::Constr"
+            )
+        ),
+        (
+            BinaryOperator::Connect,
+            ("", "expr[], expr[] -> std::prelude::Constr")
+        ),
+        (
+            BinaryOperator::Select,
+            ("", "expr, expr[] -> std::prelude::SelectedExprs")
+        )
     ]
     .into_iter()
     .map(|(op, (vars, ty))| { (op, parse_type_scheme(vars, ty)) })
@@ -92,6 +131,12 @@ lazy_static! {
     .into_iter()
     .map(|(op, (vars, ty))| (op, parse_type_scheme(vars, ty)))
     .collect();
+    static ref CONSTR_FUNCTION_STATEMENT_TYPE: ExpectedType = ExpectedType {
+        ty: Type::NamedType(SymbolPath::from_str("std::prelude::Constr").unwrap(), None),
+        allow_int_to_empty_fun: true,
+        allow_array: true,
+        allow_empty: true,
+    };
 }
 
 pub fn builtin_schemes() -> &'static HashMap<String, TypeScheme> {
@@ -104,6 +149,11 @@ pub fn binary_operator_scheme(op: BinaryOperator) -> TypeScheme {
 
 pub fn unary_operator_scheme(op: UnaryOperator) -> TypeScheme {
     UNARY_OPERATOR_SCHEMES[&op].clone()
+}
+
+/// Returns the type allowed at statement level in `constr` functions.
+pub fn constr_function_statement_type() -> ExpectedType {
+    CONSTR_FUNCTION_STATEMENT_TYPE.clone()
 }
 
 pub fn elementary_type_bounds(ty: &Type) -> &'static [&'static str] {
@@ -145,7 +195,8 @@ pub fn elementary_type_bounds(ty: &Type) -> &'static [&'static str] {
             "Neg",
             "Eq",
         ],
-        Type::Col => &[],
+        Type::Col | Type::Inter => &[],
+        Type::Array(t) if *t.base == Type::Expr => &["Add", "ToSelectedExprs"],
         Type::Array(_) => &["Add"],
         Type::Tuple(_) => &[],
         Type::Function(_) => &[],

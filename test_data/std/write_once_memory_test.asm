@@ -8,9 +8,8 @@ machine Main with degree: 256 {
     reg Y[<=];
     reg A;
 
-
-    instr mload X -> Y = memory.access X, Y ->;
-    instr mstore X, Y -> = memory.access X, Y ->;
+    instr mload X -> Y link => memory.access(X, Y);
+    instr mstore X, Y -> link => memory.access(X, Y);
 
     instr assert_eq X, Y { X = Y }
 
