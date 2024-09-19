@@ -43,14 +43,12 @@ fn poseidon_gl_memory_test() {
     gen_estark_proof(pipeline);
 }
 
-/*
 #[test]
 #[ignore = "Too slow"]
 fn poseidon_bb_test() {
     let f = "std/poseidon_bb_test.asm";
     test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
 }
-*/
 
 #[test]
 #[ignore = "Too slow"]

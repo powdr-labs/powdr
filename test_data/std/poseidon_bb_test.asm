@@ -2,7 +2,7 @@ use std::machines::hash::poseidon_bb::PoseidonBB;
 use std::machines::range::Byte2;
 use std::machines::memory_bb::Memory;
 use std::machines::split::ByteCompare;
-use std::machines::split::split_gl::SplitGL;
+use std::machines::split::split_bb::SplitBB;
 
 machine Main with degree: 65536 {
     reg pc[@pc];
@@ -12,7 +12,7 @@ machine Main with degree: 65536 {
     reg ADDR2[<=];
 
     ByteCompare byte_compare;
-    SplitGL split(byte_compare);
+    SplitBB split(byte_compare);
 
     // Increase the time step by 2 in each row, so that the poseidon machine
     // can read in the given time step and write in the next time step.
