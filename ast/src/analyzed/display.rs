@@ -63,10 +63,10 @@ impl<T: Display> Display for Analyzed<T> {
                     if let Some((symbol, definition)) = self.definitions.get(name) {
                         if matches!(
                             definition,
-                            Some(FunctionValueDefinition::TypeConstructor(_))
+                            Some(FunctionValueDefinition::TypeConstructor(_, _))
                                 | Some(FunctionValueDefinition::TraitFunction(_, _))
                         ) {
-                            // These are printed as part of the enum / struct / trait.
+                            // These are printed as part of the enum / trait.
                             continue;
                         }
                         let (name, _) = update_namespace(name, symbol.degree, f)?;
@@ -252,7 +252,7 @@ impl Display for FunctionValueDefinition {
                 write!(f, ": {} = {e}", ts.ty)
             }
             FunctionValueDefinition::TypeDeclaration(_)
-            | FunctionValueDefinition::TypeConstructor(_)
+            | FunctionValueDefinition::TypeConstructor(_, _)
             | FunctionValueDefinition::TraitDeclaration(_)
             | FunctionValueDefinition::TraitFunction(_, _) => {
                 panic!("Should not use this formatting function.")

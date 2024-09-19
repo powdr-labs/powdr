@@ -9,7 +9,7 @@ use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Expression, FunctionValueDefinition,
     IdentityKind, PolyID, PolynomialReference, PolynomialType, Reference, SymbolKind,
-    TypeConstructor, TypeDeclaration, TypedExpression,
+    TypeDeclaration, TypedExpression,
 };
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
@@ -103,12 +103,9 @@ impl ReferencedSymbols for FunctionValueDefinition {
             FunctionValueDefinition::TypeDeclaration(TypeDeclaration::Struct(struct_decl)) => {
                 struct_decl.symbols()
             }
-            FunctionValueDefinition::TypeConstructor(TypeConstructor::Enum(enum_decl, _)) => {
+            FunctionValueDefinition::TypeConstructor(enum_decl, _) => {
                 // This is the type constructor of an enum variant, it references the enum itself.
                 Box::new(once(enum_decl.name.as_str().into()))
-            }
-            FunctionValueDefinition::TypeConstructor(TypeConstructor::Struct(struct_decl, _)) => {
-                Box::new(once(struct_decl.name.as_str().into()))
             }
             FunctionValueDefinition::Expression(TypedExpression {
                 type_scheme: Some(type_scheme),
@@ -256,7 +253,7 @@ fn constant_value(function: &FunctionValueDefinition) -> Option<BigUint> {
         }
         FunctionValueDefinition::Expression(_)
         | FunctionValueDefinition::TypeDeclaration(_)
-        | FunctionValueDefinition::TypeConstructor(_)
+        | FunctionValueDefinition::TypeConstructor(_, _)
         | FunctionValueDefinition::TraitDeclaration(_)
         | FunctionValueDefinition::TraitFunction(_, _) => None,
     }

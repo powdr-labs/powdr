@@ -468,16 +468,9 @@ pub fn type_from_definition(
             FunctionValueDefinition::TypeDeclaration(_) => {
                 panic!("Requested type of type declaration.")
             }
-            FunctionValueDefinition::TypeConstructor(TypeConstructor::Enum(enum_decl, variant)) => {
+            FunctionValueDefinition::TypeConstructor(enum_decl, variant) => {
                 Some(variant.constructor_type(enum_decl))
             }
-            FunctionValueDefinition::TypeConstructor(TypeConstructor::Struct(
-                struct_decl,
-                field,
-            )) => Some(TypeScheme {
-                vars: struct_decl.type_vars.clone(),
-                ty: field.1.clone(),
-            }),
             FunctionValueDefinition::TraitDeclaration(_) => {
                 panic!("Requested type of trait declaration.")
             }
@@ -629,7 +622,7 @@ pub enum FunctionValueDefinition {
     Array(ArrayExpression<Reference>),
     Expression(TypedExpression),
     TypeDeclaration(TypeDeclaration),
-    TypeConstructor(TypeConstructor),
+    TypeConstructor(Arc<EnumDeclaration>, EnumVariant),
     TraitDeclaration(TraitDeclaration),
     TraitFunction(Arc<TraitDeclaration>, TraitFunction),
 }
@@ -656,28 +649,6 @@ impl Children<Expression> for TypeDeclaration {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
-pub enum TypeConstructor {
-    Enum(Arc<EnumDeclaration>, EnumVariant),
-    Struct(Arc<StructDeclaration>, (String, Type)),
-}
-
-impl Children<Expression> for TypeConstructor {
-    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
-        match self {
-            TypeConstructor::Enum(_, variant) => variant.children(),
-            TypeConstructor::Struct(_, _) => Box::new(empty()),
-        }
-    }
-
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
-        match self {
-            TypeConstructor::Enum(_, variant) => variant.children_mut(),
-            TypeConstructor::Struct(_, _) => Box::new(empty()),
-        }
-    }
-}
-
 impl Children<Expression> for FunctionValueDefinition {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
         match self {
@@ -688,9 +659,7 @@ impl Children<Expression> for FunctionValueDefinition {
             FunctionValueDefinition::TypeDeclaration(enum_declaration) => {
                 enum_declaration.children()
             }
-            FunctionValueDefinition::TypeConstructor(type_constructor) => {
-                type_constructor.children()
-            }
+            FunctionValueDefinition::TypeConstructor(_, variant) => variant.children(),
             FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children(),
             FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children(),
         }
@@ -705,9 +674,7 @@ impl Children<Expression> for FunctionValueDefinition {
             FunctionValueDefinition::TypeDeclaration(enum_declaration) => {
                 enum_declaration.children_mut()
             }
-            FunctionValueDefinition::TypeConstructor(type_constructor) => {
-                type_constructor.children_mut()
-            }
+            FunctionValueDefinition::TypeConstructor(_, variant) => variant.children_mut(),
             FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children_mut(),
             FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children_mut(),
         }

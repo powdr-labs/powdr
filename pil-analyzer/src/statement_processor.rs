@@ -5,9 +5,7 @@ use std::sync::Arc;
 use itertools::Itertools;
 
 use powdr_ast::analyzed::{DegreeRange, TypedExpression};
-use powdr_ast::analyzed::{
-    Expression, TypeConstructor, TypeDeclaration as TypeDeclarationAnalyzed,
-};
+use powdr_ast::analyzed::{Expression, TypeDeclaration as TypeDeclarationAnalyzed};
 use powdr_ast::parsed::asm::SymbolPath;
 use powdr_ast::parsed::types::TupleType;
 use powdr_ast::parsed::{
@@ -489,23 +487,23 @@ where
             fields,
         };
 
-        let inner_items = struct_decl
-            .fields
-            .iter()
-            .map(|(field_name, ty)| {
-                (
-                    self.driver
-                        .resolve_namespaced_decl(&[&name, &field_name])
-                        .relative_to(&Default::default())
-                        .to_string(),
-                    FunctionValueDefinition::TypeConstructor(TypeConstructor::Struct(
-                        Arc::new(struct_decl.clone()),
-                        (field_name.clone(), ty.clone()),
-                    )),
-                )
-            })
-            .collect();
-        let field_items = self.process_inner_definitions(source, inner_items);
+        // let inner_items = struct_decl
+        //     .fields
+        //     .iter()
+        //     .map(|(field_name, ty)| {
+        //         (
+        //             self.driver
+        //                 .resolve_namespaced_decl(&[&name, &field_name])
+        //                 .relative_to(&Default::default())
+        //                 .to_string(),
+        //             FunctionValueDefinition::TypeConstructor(TypeConstructor::Struct(
+        //                 Arc::new(struct_decl.clone()),
+        //                 (field_name.clone(), ty.clone()),
+        //             )),
+        //         )
+        //     })
+        //     .collect();
+        // let field_items = self.process_inner_definitions(source, inner_items);
 
         iter::once(PILItem::Definition(
             symbol,
@@ -513,7 +511,7 @@ where
                 TypeDeclarationAnalyzed::Struct(struct_decl.clone()),
             )),
         ))
-        .chain(field_items)
+        //.chain(field_items)
         .collect()
     }
 
@@ -712,10 +710,10 @@ where
                         .resolve_namespaced_decl(&[&name, &variant.name])
                         .relative_to(&Default::default())
                         .to_string(),
-                    FunctionValueDefinition::TypeConstructor(TypeConstructor::Enum(
+                    FunctionValueDefinition::TypeConstructor(
                         Arc::new(enum_decl.clone()),
                         variant.clone(),
-                    )),
+                    ),
                 )
             })
             .collect();

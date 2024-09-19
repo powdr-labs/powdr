@@ -11,15 +11,15 @@ use powdr_ast::{
     analyzed::{
         AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
         AlgebraicUnaryOperation, AlgebraicUnaryOperator, Challenge, Expression,
-        FunctionValueDefinition, Reference, Symbol, SymbolKind, TypeConstructor, TypedExpression,
+        FunctionValueDefinition, Reference, Symbol, SymbolKind, TypedExpression,
     },
     parsed::{
         display::quote,
         types::{ArrayType, Type, TypeScheme},
-        ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
-        IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression,
-        NamedExpression, Number, Pattern, StatementInsideBlock, StructExpression, UnaryOperation,
-        UnaryOperator,
+        ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, EnumDeclaration,
+        FunctionCall, IfExpression, IndexAccess, LambdaExpression, LetStatementInsideBlock,
+        MatchArm, MatchExpression, NamedExpression, Number, Pattern, StatementInsideBlock,
+        StructExpression, UnaryOperation, UnaryOperator,
     },
 };
 use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
@@ -145,8 +145,8 @@ pub enum Value<'a, T> {
     Tuple(Vec<Arc<Self>>),
     Array(Vec<Arc<Self>>),
     Closure(Closure<'a, T>),
-    TypeConstructor(&'a str),
-    Enum(&'a str, Option<Vec<Arc<Self>>>),
+    TypeConstructor(TypeConstructorValue<'a>),
+    Enum(EnumValue<'a, T>),
     Struct(&'a str, Vec<(&'a str, Arc<Self>)>),
     BuiltinFunction(BuiltinFunction),
     Expression(AlgebraicExpression<T>),
@@ -223,8 +223,9 @@ impl<'a, T: FieldElement> Value<'a, T> {
                 )
             }
             Value::Closure(c) => c.type_formatted(),
-            Value::TypeConstructor(name) => format!("{name}_constructor"),
-            Value::Enum(name, _) | Value::Struct(name, _) => name.to_string(),
+            Value::TypeConstructor(tc) => tc.type_formatted(),
+            Value::Enum(enum_val) => enum_val.type_formatted(),
+            Value::Struct(name, _) => format!("{name}"), // TODO type formatted
             Value::BuiltinFunction(b) => format!("builtin_{b:?}"),
             Value::Expression(_) => "expr".to_string(),
         }
@@ -288,14 +289,14 @@ impl<'a, T: FieldElement> Value<'a, T> {
             }
             Pattern::Variable(_, _) => Some(vec![v.clone()]),
             Pattern::Enum(_, name, fields_pattern) => {
-                let Value::Enum(n, data) = v.as_ref() else {
+                let Value::Enum(enum_value) = v.as_ref() else {
                     panic!()
                 };
-                if name.name() != n {
+                if name.name() != enum_value.variant {
                     return None;
                 }
                 if let Some(fields) = fields_pattern {
-                    Value::try_match_pattern_list(data.as_ref().unwrap(), fields)
+                    Value::try_match_pattern_list(enum_value.data.as_ref().unwrap(), fields)
                 } else {
                     Some(vec![])
                 }
@@ -318,6 +319,86 @@ impl<'a, T: FieldElement> Value<'a, T> {
                 })
             })
     }
+}
+
+/// An enum variant with its data as a value.
+/// The enum declaration is provided to allow proper printing and other functions.
+#[derive(Clone, Debug)]
+pub struct EnumValue<'a, T> {
+    pub enum_decl: &'a EnumDeclaration,
+    pub variant: &'a str,
+    pub data: Option<Vec<Arc<Value<'a, T>>>>,
+}
+
+impl<'a, T: Display> EnumValue<'a, T> {
+    pub fn type_formatted(&self) -> String {
+        self.enum_decl.name.to_string()
+    }
+}
+
+impl<'a, T: Display> Display for EnumValue<'a, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}::{}", self.enum_decl.name, self.variant)?;
+        if let Some(data) = &self.data {
+            write!(f, "({})", data.iter().format(", "))?;
+        }
+        Ok(())
+    }
+}
+
+/// An enum type constructor value, i.e. the value arising from referencing an
+/// enum variant that takes data.
+#[derive(Clone, Debug)]
+pub struct TypeConstructorValue<'a> {
+    pub enum_decl: &'a EnumDeclaration,
+    pub variant: &'a str,
+}
+
+impl<'a> TypeConstructorValue<'a> {
+    pub fn type_formatted(&self) -> String {
+        self.enum_decl.name.to_string()
+    }
+
+    pub fn to_enum_value<T>(&self, data: Vec<Arc<Value<'a, T>>>) -> EnumValue<'a, T> {
+        EnumValue {
+            enum_decl: self.enum_decl,
+            variant: self.variant,
+            data: Some(data),
+        }
+    }
+}
+
+impl<'a> Display for TypeConstructorValue<'a> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}::{}", self.enum_decl.name, self.variant)
+    }
+}
+
+// Some enums from the prelude. We can remove this once we implement the
+// `$`, `in`, `is` and `connect` operators using traits.
+// The declarations are wrong, but we only need their name for now.
+lazy_static::lazy_static! {
+    static ref OPTION: EnumDeclaration = EnumDeclaration { name: "std::prelude::Option".to_string(), type_vars: Default::default(), variants: Default::default() };
+    static ref SELECTED_EXPRS: EnumDeclaration = EnumDeclaration { name: "std::prelude::SelectedExprs".to_string(), type_vars: Default::default(), variants: Default::default() };
+    static ref CONSTR: EnumDeclaration = EnumDeclaration { name: "std::prelude::Constr".to_string(), type_vars: Default::default(), variants: Default::default() };
+}
+
+/// Convenience functions to build an Option::Some value.
+fn some_value<T>(data: Arc<Value<'_, T>>) -> Value<'_, T> {
+    Value::Enum(EnumValue {
+        enum_decl: &OPTION,
+        variant: "Some",
+        data: Some(vec![data]),
+    })
+}
+
+/// Convenience functions to build an Option::None value.
+fn none_value<'a, T>() -> Value<'a, T> {
+    Value::Enum(EnumValue {
+        enum_decl: &OPTION,
+        variant: "None",
+        data: None,
+    })
 }
 
 const BUILTINS: [(&str, BuiltinFunction); 20] = [
@@ -403,14 +484,8 @@ impl<'a, T: Display> Display for Value<'a, T> {
             Value::Tuple(items) => write!(f, "({})", items.iter().format(", ")),
             Value::Array(elements) => write!(f, "[{}]", elements.iter().format(", ")),
             Value::Closure(closure) => write!(f, "{closure}"),
-            Value::TypeConstructor(name) => write!(f, "{name}_constructor"),
-            Value::Enum(name, data) => {
-                write!(f, "{name}")?;
-                if let Some(data) = data {
-                    write!(f, "({})", data.iter().format(", "))?;
-                }
-                Ok(())
-            }
+            Value::TypeConstructor(tc) => write!(f, "{tc}"),
+            Value::Enum(enum_value) => write!(f, "{enum_value}"),
             Value::Struct(name, data) => {
                 write!(f, "{name} {{")?;
                 for (field, value) in data {
@@ -501,20 +576,22 @@ impl<'a> Definitions<'a> {
                     let type_args = type_arg_mapping(type_scheme, type_args);
                     evaluate_generic(value, &type_args, symbols)?
                 }
-                Some(FunctionValueDefinition::TypeConstructor(TypeConstructor::Enum(
-                    _type_name,
-                    variant,
-                ))) => {
+                Some(FunctionValueDefinition::TypeConstructor(type_name, variant)) => {
                     if variant.fields.is_none() {
-                        Value::Enum(&variant.name, None).into()
+                        Value::Enum(EnumValue {
+                            enum_decl: type_name.as_ref(),
+                            variant: &variant.name,
+                            data: None,
+                        })
+                        .into()
                     } else {
-                        Value::TypeConstructor(&variant.name).into()
+                        Value::TypeConstructor(TypeConstructorValue {
+                            enum_decl: type_name.as_ref(),
+                            variant: &variant.name,
+                        })
+                        .into()
                     }
                 }
-                Some(FunctionValueDefinition::TypeConstructor(TypeConstructor::Struct(
-                    struct_decl,
-                    _fields,
-                ))) => Value::TypeConstructor(&struct_decl.name).into(),
                 Some(FunctionValueDefinition::TraitFunction(_, _)) => {
                     let type_arg = type_args.as_ref().unwrap();
                     let Expression::LambdaExpression(_, lambda) =
@@ -1088,9 +1165,9 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 self.value_stack
                     .push(evaluate_builtin_function(*b, arguments, self.symbols)?)
             }
-            Value::TypeConstructor(name) => self
+            Value::TypeConstructor(type_constructor) => self
                 .value_stack
-                .push(Value::Enum(name, Some(arguments)).into()),
+                .push(Value::Enum(type_constructor.to_enum_value(arguments)).into()),
             Value::Closure(Closure {
                 lambda,
                 environment,
@@ -1217,7 +1294,12 @@ fn evaluate_binary_operation<'a, T: FieldElement>(
             }
         }
         (l @ Value::Expression(_), BinaryOperator::Identity, r @ Value::Expression(_)) => {
-            Value::Enum("Identity", Some(vec![l.clone().into(), r.clone().into()])).into()
+            Value::Enum(EnumValue {
+                enum_decl: &CONSTR,
+                variant: "Identity",
+                data: Some(vec![l.clone().into(), r.clone().into()]),
+            })
+            .into()
         }
         (Value::Expression(l), op, Value::Expression(r)) => match (l, r) {
             (AlgebraicExpression::Number(l), AlgebraicExpression::Number(r)) => {
@@ -1234,9 +1316,12 @@ fn evaluate_binary_operation<'a, T: FieldElement>(
             ))
             .into(),
         },
-        (Value::Expression(_), BinaryOperator::Select, Value::Array(_)) => {
-            Value::Enum("SelectedExprs", Some(vec![left, right])).into()
-        }
+        (Value::Expression(_), BinaryOperator::Select, Value::Array(_)) => Value::Enum(EnumValue {
+            enum_decl: &SELECTED_EXPRS,
+            variant: "SelectedExprs",
+            data: Some(vec![left, right]),
+        })
+        .into(),
         (_, BinaryOperator::In | BinaryOperator::Is, _) => {
             let (left_sel, left_exprs) = to_selected_exprs_expanded(&left);
             let (right_sel, right_exprs) = to_selected_exprs_expanded(&right);
@@ -1247,11 +1332,21 @@ fn evaluate_binary_operation<'a, T: FieldElement>(
             };
             let selectors = Value::Tuple(vec![left_sel, right_sel]).into();
             let expr_pairs = zip_expressions_for_op(op, left_exprs, right_exprs)?;
-            Value::Enum(name, Some(vec![selectors, expr_pairs])).into()
+            Value::Enum(EnumValue {
+                enum_decl: &CONSTR,
+                variant: name,
+                data: Some(vec![selectors, expr_pairs]),
+            })
+            .into()
         }
         (Value::Array(left), BinaryOperator::Connect, Value::Array(right)) => {
             let expr_pairs = zip_expressions_for_op(op, left, right)?;
-            Value::Enum("Connection", Some(vec![expr_pairs])).into()
+            Value::Enum(EnumValue {
+                enum_decl: &CONSTR,
+                variant: "Connection",
+                data: Some(vec![expr_pairs]),
+            })
+            .into()
         }
         (l, op, r) => Err(EvalError::TypeError(format!(
             "Operator \"{op}\" not supported on types: {l}: {}, {r}: {}",
@@ -1289,17 +1384,23 @@ fn to_selected_exprs_expanded<'a, 'b, T>(
 ) -> (Arc<Value<'b, T>>, &'a Vec<Arc<Value<'b, T>>>) {
     match selected_exprs {
         // An array of expressions or a selected expressions without selector.
-        Value::Array(items) | Value::Enum("JustExprs", Some(items)) => {
-            (Value::Enum("None", None).into(), &items)
-        }
+        Value::Array(items)
+        | Value::Enum(EnumValue {
+            variant: "JustExprs",
+            data: Some(items),
+            ..
+        }) => (none_value().into(), items),
         // A selected expressions
-        Value::Enum("SelectedExprs", Some(items)) => {
+        Value::Enum(EnumValue {
+            variant: "SelectedExprs",
+            data: Some(items),
+            ..
+        }) => {
             let [sel, exprs] = &items[..] else { panic!() };
-            let selector = Value::Enum("Some", Some(vec![sel.clone()])).into();
             let Value::Array(exprs) = exprs.as_ref() else {
                 panic!();
             };
-            (selector, exprs)
+            (some_value(sel.clone()).into(), exprs)
         }
         _ => panic!(),
     }
@@ -1476,8 +1577,8 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
                 ),
             };
             match result {
-                Ok(v) => Value::Enum("Some", Some(vec![v])),
-                Err(EvalError::DataNotAvailable) => Value::Enum("None", None),
+                Ok(v) => some_value(v),
+                Err(EvalError::DataNotAvailable) => none_value(),
                 Err(e) => return Err(e),
             }
             .into()

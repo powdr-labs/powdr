@@ -36,8 +36,10 @@ let<T: Add + FromLiteral> sum: T[] -> T = |arr| fold(arr, 0, |a, b| a + b);
 let<T: Mul + FromLiteral> product: T[] -> T = |arr| fold(arr, 1, |a, b| a * b);
 
 /// Zips two arrays
-/// TODO: Assert that lengths are equal when expressions are supported.
-let<T1, T2, T3> zip: T1[], T2[], (T1, T2 -> T3) -> T3[] = |array1, array2, fn| new(len(array1), |i| fn(array1[i], array2[i]));
+let<T1, T2, T3> zip: T1[], T2[], (T1, T2 -> T3) -> T3[] = |array1, array2, fn| {
+    std::check::assert(len(array1) == len(array2), || "Array lengths do not match");
+    new(len(array1), |i| fn(array1[i], array2[i]))
+};
 
 /// Returns f(i, arr[i]) for the first i where this is not None, or None if no such i exists.
 let<T1, T2> find_map_enumerated: T1[], (int, T1 -> Option<T2>) -> Option<T2> =
