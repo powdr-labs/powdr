@@ -41,7 +41,7 @@ pub fn create_full_code<T: FieldElement>(
     .into();
     for sym in symbols {
         let ty = analyzed.type_of_symbol(sym);
-        if &ty != &int_int_fun {
+        if ty != int_int_fun {
             return Err(format!(
                 "Only (int -> int) functions are supported, but requested {}",
                 format_type_scheme_around_name(sym, &Some(ty)),
