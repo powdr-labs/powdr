@@ -56,14 +56,14 @@ machine Main with degree: 65536 {
 
         poseidon 0, 0;
 
-        assert_eq 0, 1660083390;
-        assert_eq 4, 822822994;
-        assert_eq 8, 1459131013;
-        assert_eq 12, 1160269290;
-        assert_eq 16, 1288171012;
-        assert_eq 20, 317805207;
-        assert_eq 24, 737788224;
-        assert_eq 28, 1834068177;
+        assert_eq 0, 958909011;
+        assert_eq 4, 1204189760;
+        assert_eq 8, 1051708848;
+        assert_eq 12, 538282630;
+        assert_eq 16, 129608908;
+        assert_eq 20, 219931460;
+        assert_eq 24, 1794729453;
+        assert_eq 28, 1386481683;
 
         // All ones:
         mstore_le 0, 0, 1;
@@ -85,14 +85,14 @@ machine Main with degree: 65536 {
 
         poseidon 0, 0;
 
-        assert_eq 0, 1011739672;
-        assert_eq 4, 1842770587;
-        assert_eq 8, 597411354;
-        assert_eq 12, 1738754754;
-        assert_eq 16, 1241091968;
-        assert_eq 20, 1909530106;
-        assert_eq 24, 1537366805;
-        assert_eq 28, 1323132177;
+        assert_eq 0, 605188316;
+        assert_eq 4, 179227070;
+        assert_eq 8, 987768411;
+        assert_eq 12, 743435232;
+        assert_eq 16, 1037675772;
+        assert_eq 20, 926267312;
+        assert_eq 24, 842954441;
+        assert_eq 28, 1311415732;
 
         // All elements are -1 (in BabyBear, 0x78000000)
         mstore_le 0, 30720, 0;
@@ -114,14 +114,14 @@ machine Main with degree: 65536 {
 
         poseidon 0, 0;
 
-        assert_eq 0, 1231911417;
-        assert_eq 4, 1457704645;
-        assert_eq 8, 482354127;
-        assert_eq 12, 1107490518;
-        assert_eq 16, 1908524417;
-        assert_eq 20, 505286822;
-        assert_eq 24, 872747879;
-        assert_eq 28, 820943313;
+        assert_eq 0, 1100602725;
+        assert_eq 4, 287073314;
+        assert_eq 8, 1141334375;
+        assert_eq 12, 212177781;
+        assert_eq 16, 1688593373;
+        assert_eq 20, 1515905513;
+        assert_eq 24, 1635387847;
+        assert_eq 28, 693019811;
 
         // Some other values (ported from poseidon_gl test):
         mstore_le 0, 14, 6474;
@@ -143,14 +143,14 @@ machine Main with degree: 65536 {
 
         poseidon 0, 0;
 
-        assert_eq 0, 493586113;
-        assert_eq 4, 1137126664;
-        assert_eq 8, 283902149;
-        assert_eq 12, 244408331;
-        assert_eq 16, 1254081394;
-        assert_eq 20, 268224531;
-        assert_eq 24, 429035219;
-        assert_eq 28, 1897473309;
+        assert_eq 0, 731906575;
+        assert_eq 4, 1685915147;
+        assert_eq 8, 1200872284;
+        assert_eq 12, 1493840138;
+        assert_eq 16, 404883058;
+        assert_eq 20, 1229250173;
+        assert_eq 24, 1012016786;
+        assert_eq 28, 481888550;
 
         // Repeat the first test, but be fancy with the memory pointers being passed:
         mstore_le 100, 0, 0;
@@ -173,14 +173,14 @@ machine Main with degree: 65536 {
         // This will read bytes [100, 164) and write the result to bytes [104, 136)
         poseidon 100, 104;
 
-        assert_eq 104, 1660083390;
-        assert_eq 108, 822822994;
-        assert_eq 112, 1459131013;
-        assert_eq 116, 1160269290;
-        assert_eq 120, 1288171012;
-        assert_eq 124, 317805207;
-        assert_eq 128, 737788224;
-        assert_eq 132, 1834068177;
+        assert_eq 104, 958909011;
+        assert_eq 108, 1204189760;
+        assert_eq 112, 1051708848;
+        assert_eq 116, 538282630;
+        assert_eq 120, 129608908;
+        assert_eq 124, 219931460;
+        assert_eq 128, 1794729453;
+        assert_eq 132, 1386481683;
 
         return;
     }

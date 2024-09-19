@@ -3,7 +3,7 @@ use p3_baby_bear::{BabyBear, MdsMatrixBabyBear};
 use p3_field::{AbstractField, PrimeField32};
 use p3_poseidon::Poseidon;
 use p3_symmetric::Permutation;
-use powdr_plonky3::baby_bear::{ROUNDS_F, ROUNDS_P, WIDTH};
+use powdr_plonky3::baby_bear::WIDTH;
 use rand::{distributions::Standard, Rng, SeedableRng};
 
 fn extract_matrix(mat: impl Permutation<[BabyBear; WIDTH]>) -> Vec<[BabyBear; WIDTH]> {
@@ -29,11 +29,14 @@ fn extract_matrix(mat: impl Permutation<[BabyBear; WIDTH]>) -> Vec<[BabyBear; WI
     rows
 }
 
+// If this was Poseidon2, we would need 8 full rounds and 13 partial rounds to
+// achieve 128-bit security. But due to restrictions in our current PIL
+// implementation, we need at least 24 rounds, so we are using the numbers
+// below:
+const ROUNDS_F: usize = 8;
+const ROUNDS_P: usize = 16;
+
 fn main() {
-    // We use for Poseidon the same number of internal and external rounds as
-    // for Poseidon2, as it should give us at least the same security of
-    // Poseidon2 (except for the algebraic attack addressed in Poseidon2, for
-    // which our other Poseidon implementations are not safe against, anyway).
     let constants: Vec<[BabyBear; ROUNDS_F + ROUNDS_P]> =
         rand_chacha::ChaCha8Rng::seed_from_u64(42)
             .sample_iter(Standard)
