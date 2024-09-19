@@ -164,7 +164,7 @@ fn format_fixed_column(
     assert_eq!(symbol.kind, SymbolKind::Poly(PolynomialType::Constant));
     let stage = symbol
         .stage
-        .map(|s| format!("stage({s}) "))
+        .and_then(|s| (s > 0).then(|| format!("stage({s}) ")))
         .unwrap_or_default();
     if let Some(TypedExpression { type_scheme, e }) = try_to_simple_expression(definition) {
         assert!(symbol.stage.is_none());
@@ -199,7 +199,7 @@ fn format_witness_column(
     assert_eq!(symbol.kind, SymbolKind::Poly(PolynomialType::Committed));
     let stage = symbol
         .stage
-        .map(|s| format!("stage({s}) "))
+        .and_then(|s| (s > 0).then(|| format!("stage({s}) ")))
         .unwrap_or_default();
     let length = symbol
         .length

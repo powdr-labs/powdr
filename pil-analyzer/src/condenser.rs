@@ -623,48 +623,33 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         creator: Arc<Value<'a, T>>,
         processor: Arc<Value<'a, T>>,
     ) -> Result<(), EvalError> {
-        let stored_constrainst = std::mem::take(&mut self.new_constraints);
+        let stored_constraints = std::mem::take(&mut self.new_constraints);
         let result = evaluate_function_call(creator, vec![], self)?;
         if !matches!(result.as_ref(), Value::Tuple(items) if items.is_empty()) {
             return Err(EvalError::TypeError(format!(
-                "Call to \"capture_stage\" returned {result}, but expected an empty tuple."
+                "Call to first argument of \"capture_stage\" returned {result}, but expected an empty tuple."
             )));
         }
 
-        // let created_constrainst = self.new_constraints.into_iter().map(|c| c.into()).collect();
-        // self.new_constraints = stored_constrainst;
+        let created_constraints = Value::Array(
+            std::mem::replace(&mut self.new_constraints, stored_constraints)
+                .into_iter()
+                .map(|c| c.into())
+                .map(Arc::new)
+                .collect(),
+        );
 
-        // TODO store self.new_constraints.
-        // call constraint_creator,
-        // extract constraints. - maybe reset the counters?
-        // increment stage
-        // call constraint_processor with the extracted constraints.
-        // decrement stage
-        // return nothing.
-        // let degree = evaluate_function_call(fun, vec![], self)?;
-        // let Value::Integer(degree) = degree.as_ref() else {
-        //     panic!("Type error")
-        // };
-        // let degree: u64 = degree.try_into().unwrap();
-        // if self.degree.is_some() && self.degree != Some(degree) {
-        //     return Err(EvalError::InvalidState(format!(
-        //             "Call to \"capture_stage\" returned degree {degree}, but the degree has already been set to {}.",
-        //             self.degree.unwrap()
-        //         )));
-        // } else {
-        //     self.degree = Some(degree);
-        // }
-        // self.stage += 1;
-        // self.stage_is_fresh = true;
+        // TODO modify identity counters?
 
-        // Ok(Value::Array(
-        //     self.extract_new_constraints()
-        //         .into_iter()
-        //         .map(Into::into)
-        //         .map(Arc::new)
-        //         .collect(),
-        // )
-        // .into())
+        self.stage += 1;
+        let result = evaluate_function_call(processor, vec![Arc::new(created_constraints)], self);
+        self.stage -= 1;
+        let result = result?;
+        if !matches!(result.as_ref(), Value::Tuple(items) if items.is_empty()) {
+            return Err(EvalError::TypeError(format!(
+                "Call to second argument of \"capture_stage\" returned {result}, but expected an empty tuple."
+            )));
+        }
         Ok(())
     }
 }

@@ -838,31 +838,46 @@ pub fn capture_stage_set_different_degree() {
 pub fn capture_stage_working() {
     let input = r#"
         namespace std::prover;
-            let capture_stage: (-> int) -> Constr[] = 9;
+            let capture_stage: (-> ()), (Constr[] -> ()) -> () = 9;
 
         namespace Main;
-            let f = constr || { let x; let y; x + y = 2; x = 8; 1024 };
-            // Just use the second constraint.
-            std::prover::capture_stage(f)[1];
+            let gen = constr || { let x; let y; x + y = 2; x = 8; };
+            let process = constr |constrs| {
+                // Just use the second constraint.
+                constrs[1];
+                // Create a new column at the higher stage
+                let y;
+                y = 18;
+            };
+            std::prover::capture_stage(gen, process);
+            // now this should be stage zero again.
             let w;
             w = 10;
     "#;
     let formatted = analyze_string(input).to_string();
-    let expected = "namespace std::prover(1024);
-    let capture_stage: (-> int) -> std::prelude::Constr[] = 9;
-namespace Main(1024);
-    let f: -> int = (constr || {
-        let x;
-        let y;
+    let expected = "namespace std::prover;
+    let capture_stage: (-> ()), (std::prelude::Constr[] -> ()) -> () = 9;
+namespace Main;
+    let gen: -> () = constr || {
+        let x: col;
+        let y: col;
         x + y = 2;
         x = 8;
-        1024
-    });
+    };
+    let process: std::prelude::Constr[] -> () = constr |constrs| {
+        constrs[1];
+        let y: col;
+        y = 18;
+    };
     col witness x;
     col witness y;
-    Main.x = 8;
-    col witness stage(1) w;
-    Main.w = 10;
+    col witness stage(1) y_1;
+    Main::x = 8;
+    Main::y_1 = 18;
+    col witness w;
+    Main::w = 10;
 ";
     assert_eq!(formatted, expected);
 }
+
+// TODO test calling capture stage inside each of the two functions.

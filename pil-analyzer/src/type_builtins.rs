@@ -49,7 +49,7 @@ lazy_static! {
         ("std::prover::min_degree", ("", "-> int")),
         (
             "std::prover::capture_stage",
-            ("", "(-> int) -> std::prelude::Constr[]")
+            ("", "(-> ()), (std::prelude::Constr[] -> ()) -> ()")
         ),
         ("std::prover::max_degree", ("", "-> int")),
         ("std::prover::degree", ("", "-> int")),
