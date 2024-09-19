@@ -33,7 +33,7 @@ use powdr_parser_util::SourceRef;
 
 use crate::{
     evaluator::{
-        self, Closure, Definitions, EvalError, SymbolLookup, Value,
+        self, evaluate_function_call, Closure, Definitions, EvalError, SymbolLookup, Value,
     },
     statement_processor::Counters,
 };
@@ -221,7 +221,7 @@ pub struct Condenser<'a, T> {
     new_symbols: HashSet<String>,
     new_constraints: Vec<AnalyzedIdentity<T>>,
     new_prover_functions: Vec<Expression>,
-    /// The current stage.
+    /// The current stage. New columns are created at that stage.
     stage: u32,
 }
 
@@ -286,12 +286,6 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     ) {
         self.namespace = namespace;
         self.degree = degree;
-    }
-
-    /// Returns the current stage (index).
-    /// TODO needed?
-    pub fn stage(&self) -> u32 {
-        self.stage
     }
 
     /// Returns columns generated since the last call to this function.
@@ -429,7 +423,6 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         &mut self,
         name: &str,
         ty: Option<&Type>,
-        // TODO remove?
         stage: Option<u32>,
         value: Option<Arc<Value<'a, T>>>,
         source: SourceRef,
@@ -500,11 +493,18 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             self.new_column_values.insert(name.clone(), value);
         }
 
+        if self.stage != 0 && stage.is_some() {
+            return Err(EvalError::TypeError(format!(
+                "Tried to create a column with an explicit stage ({}) while the current stage was not zero, but {}.",
+                stage.unwrap(), self.stage
+            )));
+        }
+
         let symbol = Symbol {
             id: self.counters.dispense_symbol_id(kind, length),
             source,
             absolute_name: name.clone(),
-            stage: Some(stage.unwrap_or_else(|| self.stage())),
+            stage: Some(stage.unwrap_or_else(|| self.stage)),
             kind,
             length,
             degree: self.degree,
@@ -620,9 +620,20 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
 
     fn capture_stage(
         &mut self,
-        _creator: Arc<Value<'a, T>>,
-        _processor: Arc<Value<'a, T>>,
+        creator: Arc<Value<'a, T>>,
+        processor: Arc<Value<'a, T>>,
     ) -> Result<(), EvalError> {
+        let stored_constrainst = std::mem::take(&mut self.new_constraints);
+        let result = evaluate_function_call(creator, vec![], self)?;
+        if !matches!(result.as_ref(), Value::Tuple(items) if items.is_empty()) {
+            return Err(EvalError::TypeError(format!(
+                "Call to \"capture_stage\" returned {result}, but expected an empty tuple."
+            )));
+        }
+
+        // let created_constrainst = self.new_constraints.into_iter().map(|c| c.into()).collect();
+        // self.new_constraints = stored_constrainst;
+
         // TODO store self.new_constraints.
         // call constraint_creator,
         // extract constraints. - maybe reset the counters?
@@ -674,45 +685,78 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     }
 }
 
-// impl<'a, T: FieldElement> From<IdentityWithoutID<AlgebraicExpression<T>>> for Value<'a, T> {
-//     fn from(id: IdentityWithoutID<AlgebraicExpression<T>>) -> Self {
-//         match id.kind {
-//             IdentityKind::Polynomial => {
-//                 let id = id.into_identity(0);
-//                 let (left, right) = id.as_polynomial_identity();
-//                 let right = right
-//                     .cloned()
-//                     .unwrap_or_else(|| AlgebraicExpression::Number(0.into()));
-//                 let fields = vec![Arc::new(left.clone().into()), Arc::new(right.into())];
+impl<'a, T: FieldElement> From<AnalyzedIdentity<T>> for Value<'a, T> {
+    fn from(constraint: AnalyzedIdentity<T>) -> Self {
+        match constraint.kind {
+            IdentityKind::Polynomial => {
+                let (left, right) = constraint.as_polynomial_identity();
+                let right = right
+                    .cloned()
+                    .unwrap_or_else(|| AlgebraicExpression::Number(0.into()));
+                let fields = vec![Arc::new(left.clone().into()), Arc::new(right.into())];
 
-//                 Value::Enum("Identity", Some(fields))
-//             }
-//             IdentityKind::Plookup | IdentityKind::Permutation => {
-//                 let name = if id.kind == IdentityKind::Plookup {
-//                     "Lookup"
-//                 } else {
-//                     "Permutation"
-//                 };
-//                 Value::Enum(
-//                     name,
-//                     Some(vec![
-//                         to_option_expr_value(id.left.selector),
-//                         to_vec_expr_value(id.left.expressions),
-//                         to_option_expr_value(id.right.selector),
-//                         to_vec_expr_value(id.right.expressions),
-//                     ]),
-//                 )
-//             }
-//             IdentityKind::Connect => Value::Enum(
-//                 "Connection",
-//                 Some(vec![
-//                     to_vec_expr_value(id.left.expressions),
-//                     to_vec_expr_value(id.right.expressions),
-//                 ]),
-//             ),
-//         }
-//     }
-// }
+                Value::Enum("Identity", Some(fields))
+            }
+            IdentityKind::Plookup | IdentityKind::Permutation => {
+                let variant = if constraint.kind == IdentityKind::Plookup {
+                    "Lookup"
+                } else {
+                    "Permutation"
+                };
+                let selectors = Arc::new(Value::Tuple(vec![
+                    Arc::new(constraint.left.selector.into()),
+                    Arc::new(constraint.right.selector.into()),
+                ]));
+                let exprs =
+                    to_expr_pairs(constraint.left.expressions, constraint.right.expressions);
+
+                Value::Enum(variant, Some(vec![selectors, Arc::new(exprs)]))
+            }
+            IdentityKind::Connect => Value::Enum(
+                "Connection",
+                Some(vec![Arc::new(to_expr_pairs(
+                    constraint.left.expressions,
+                    constraint.right.expressions,
+                ))]),
+            ),
+        }
+    }
+}
+
+/// Turns a pair of vectors of algebraic expressions to a runtime value
+/// containing an array of pairs of `expr`s.
+fn to_expr_pairs<'a, T>(
+    left: Vec<AlgebraicExpression<T>>,
+    right: Vec<AlgebraicExpression<T>>,
+) -> Value<'a, T> {
+    assert_eq!(left.len(), right.len());
+    Value::Array(
+        left.into_iter()
+            .zip(right)
+            .map(|(left, right)| {
+                Arc::new(Value::Tuple(vec![
+                    Arc::new(left.into()),
+                    Arc::new(right.into()),
+                ]))
+            })
+            .collect(),
+    )
+}
+
+impl<'a, T> From<Option<AlgebraicExpression<T>>> for Value<'a, T> {
+    fn from(expr: Option<AlgebraicExpression<T>>) -> Self {
+        match expr {
+            None => Value::Enum("None", None),
+            Some(expr) => Value::Enum("Some", Some(vec![Arc::new(expr.into())])),
+        }
+    }
+}
+
+impl<'a, T> From<Vec<AlgebraicExpression<T>>> for Value<'a, T> {
+    fn from(exprs: Vec<AlgebraicExpression<T>>) -> Self {
+        Value::Array(exprs.into_iter().map(|e| Arc::new(e.into())).collect())
+    }
+}
 
 fn to_constraint<T: FieldElement>(
     constraint: &Value<'_, T>,
