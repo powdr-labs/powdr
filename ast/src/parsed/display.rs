@@ -68,15 +68,6 @@ impl Display for SymbolDefinition {
     }
 }
 
-impl Display for asm::TypeDeclaration {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            asm::TypeDeclaration::Enum(e) => write!(f, "{e}"),
-            asm::TypeDeclaration::Struct(s) => write!(f, "{s}"),
-        }
-    }
-}
-
 impl Display for Module {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
@@ -687,15 +678,11 @@ impl<E: Display> Display for EnumVariant<E> {
 
 impl<E: Display> Display for StructDeclaration<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        let name = self.name.to_string();
-        let type_vars = if self.type_vars.is_empty() {
-            Default::default()
-        } else {
-            format!("<{}>", self.type_vars)
-        };
         write!(
             f,
-            "struct {name}{type_vars} {{\n{}}}",
+            "struct {}{} {{\n{}}}",
+            self.name,
+            type_vars_to_string(&self.type_vars),
             indent(
                 self.fields
                     .iter()
@@ -1057,6 +1044,14 @@ pub fn format_type_args<E: Display>(args: &[Type<E>]) -> String {
     )
 }
 
+pub fn type_vars_to_string(type_vars: &TypeBounds) -> String {
+    if type_vars.is_empty() {
+        Default::default()
+    } else {
+        format!("<{}>", type_vars)
+    }
+}
+
 pub fn format_type_scheme_around_name<E: Display, N: Display>(
     name: &N,
     type_scheme: &Option<TypeScheme<E>>,
@@ -1064,7 +1059,7 @@ pub fn format_type_scheme_around_name<E: Display, N: Display>(
     if let Some(type_scheme) = type_scheme {
         format!(
             "{} {name}: {}",
-            type_scheme.type_vars_to_string(),
+            type_vars_to_string(&type_scheme.vars),
             type_scheme.ty
         )
     } else {

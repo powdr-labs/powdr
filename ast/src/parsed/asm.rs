@@ -106,7 +106,7 @@ pub enum SymbolValueRef<'a> {
     TraitDeclaration(&'a TraitDeclaration<Expression>),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display)]
 pub enum TypeDeclaration {
     Enum(EnumDeclaration<Expression>),
     Struct(StructDeclaration<Expression>),
