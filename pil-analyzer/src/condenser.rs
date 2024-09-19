@@ -54,7 +54,6 @@ pub fn condense<T: FieldElement>(
     let mut intermediate_columns = HashMap::new();
     let mut new_columns = vec![];
     let mut new_values = HashMap::new();
-    let mut stages_to_set = vec![];
     // Condense identities and intermediate columns and update the source order.
     let source_order = source_order
         .into_iter()
@@ -107,7 +106,6 @@ pub fn condense<T: FieldElement>(
                         vec![condenser.condense_to_algebraic_expression(&e.e)]
                     };
                     intermediate_columns.insert(name.clone(), (symbol.clone(), value));
-                    condenser.set_non_fresh();
                     Some(StatementIdentifier::Definition(name))
                 }
                 StatementIdentifier::Definition(name)
@@ -116,10 +114,6 @@ pub fn condense<T: FieldElement>(
                         SymbolKind::Poly(PolynomialType::Committed)
                     ) =>
                 {
-                    if condenser.stage() != 0 {
-                        stages_to_set.push((name.clone(), condenser.stage()));
-                    }
-                    condenser.set_non_fresh();
                     Some(StatementIdentifier::Definition(name))
                 }
                 s => Some(s),
@@ -180,14 +174,9 @@ pub fn condense<T: FieldElement>(
         })
         .collect();
 
-    let degree = condenser.degree();
-
     definitions.retain(|name, _| !intermediate_columns.contains_key(name));
     for symbol in new_columns {
         definitions.insert(symbol.absolute_name.clone(), (symbol, None));
-    }
-    for (name, stage) in stages_to_set {
-        definitions.get_mut(&name).unwrap().0.set_stage(stage);
     }
     for (name, new_value) in new_values {
         if let Some((_, value)) = definitions.get_mut(&name) {
@@ -240,8 +229,6 @@ pub struct Condenser<'a, T> {
     new_prover_functions: Vec<Expression>,
     /// The current stage.
     stage: u32,
-    /// If the stage is still empty, i.e. has neither constraints nor witness columns.
-    stage_is_fresh: bool,
 }
 
 impl<'a, T: FieldElement> Condenser<'a, T> {
@@ -264,7 +251,6 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             new_constraints: vec![],
             new_prover_functions: vec![],
             stage: 0,
-            stage_is_fresh: true,
         }
     }
 
@@ -308,34 +294,26 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         self.degree = degree;
     }
 
-    /// Sets the current stage to be "not fresh", i.e. there is at least one witness column
-    /// or constraint in the current stage.
-    pub fn set_non_fresh(&mut self) {
-        self.stage_is_fresh = false;
-    }
-
     /// Returns the current stage (index).
+    /// TODO needed?
     pub fn stage(&self) -> u32 {
         self.stage
     }
 
     /// Returns the degree (potentially modified through the "capture_stage" builtin).
+    /// TODO needed?
     pub fn degree(&self) -> Option<u64> {
         self.degree
     }
 
-    /// Sets the current stage to be "not fresh", i.e. there is at least one witness column
-    /// or constraint in the current stage.
-    pub fn set_non_fresh(&mut self) {
-        self.stage_is_fresh = false;
-    }
-
     /// Returns the current stage (index).
+    /// TODO needed?
     pub fn stage(&self) -> u32 {
         self.stage
     }
 
     /// Returns the degree (potentially modified through the "capture_stage" builtin).
+    /// TODO needed?
     pub fn degree(&self) -> Option<u64> {
         self.degree
     }
@@ -475,6 +453,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         &mut self,
         name: &str,
         ty: Option<&Type>,
+        // TODO remove?
         stage: Option<u32>,
         value: Option<Arc<Value<'a, T>>>,
         source: SourceRef,
@@ -549,7 +528,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             id: self.counters.dispense_symbol_id(kind, length),
             source,
             absolute_name: name.clone(),
-            stage,
+            stage: Some(stage.unwrap_or_else(self.stage())),
             kind,
             length,
             degree: self.degree,
