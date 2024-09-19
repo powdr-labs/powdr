@@ -30,8 +30,29 @@ pub struct FibInput {
 }
 
 // Evaluation structure for wide Fibonacci computation.
+#[derive(Debug)]
 pub struct WideFibonacciEval<const N: usize> {
     pub log_n_rows: u32,
+}
+
+impl<const N: usize> FrameworkEval for WideFibonacciEval<N> {
+    fn log_size(&self) -> u32 {
+        self.log_n_rows
+    }
+    fn max_constraint_log_degree_bound(&self) -> u32 {
+        self.log_n_rows + 1
+    }
+    fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
+        let mut a = eval.next_trace_mask();
+        let mut b = eval.next_trace_mask();
+        for _ in 2..N {
+            let c = eval.next_trace_mask();
+            eval.add_constraint(c - (a + b));
+            a = b;
+            b = c;
+        }
+        eval
+    }
 }
 
 // Circuit structure for POWDR.

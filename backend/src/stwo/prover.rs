@@ -18,15 +18,22 @@ use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement, KnownField};
 use super::circuit_builder::PowdrCircuit;
 use super::circuit_builder::generate_stwo_trace;
+use super::circuit_builder::WideFibonacciComponent;
+use super::circuit_builder::WideFibonacciEval;
 
 use stwo_prover::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
+use stwo_prover::core::air::Component;
 use stwo_prover::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::backend::{Col, Column};
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::FieldExpOps;
 use stwo_prover::core::channel::Blake2sChannel;
+use stwo_prover::constraint_framework::{
+    assert_constraints, AssertEvaluator, TraceLocationAllocator,
+};
 
+use stwo_prover::core::prover;
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::ColumnVec;
 use stwo_prover::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig, TreeVec};
@@ -127,7 +134,8 @@ impl<F: FieldElement> StwoProver<F> {
         witgen_callback: WitgenCallback<F>,
     ) {
 
-        const LOG_N_INSTANCES: u32 = 6;
+        const LOG_N_INSTANCES: u32 = 5;
+        const FIB_SEQUENCE_LENGTH: usize=32;
 
        
 
@@ -141,17 +149,63 @@ impl<F: FieldElement> StwoProver<F> {
         );
 
          // Setup protocol.
-         let prover_channel = &mut Blake2sChannel::default();
-         let commitment_scheme =
-             &mut CommitmentSchemeProver::<SimdBackend, Blake2sMerkleChannel>::new(
-                 config, &twiddles,
-             );
-        
-             let circuit = PowdrCircuit::new(&self.analyzed)
+        let prover_channel = &mut Blake2sChannel::default();
+        let commitment_scheme =
+            &mut CommitmentSchemeProver::<SimdBackend, Blake2sMerkleChannel>::new(
+             config, &twiddles,
+            );
+
+        //Trace
+        let circuit = PowdrCircuit::new(&self.analyzed)
              .with_witgen_callback(witgen_callback)
              .with_witness(witness);
+
+        let trace = generate_stwo_trace(witness,LOG_N_INSTANCES);
+
+        println!("this is from the generate stwo trace in circle domain \n {:?}",generate_stwo_trace(witness,LOG_N_INSTANCES));
+
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals(trace);
+        tree_builder.commit(prover_channel);
+
+    
+
+
+
+
+        //Constraints that are to be proved
+        let component = WideFibonacciComponent::new(
+            &mut TraceLocationAllocator::default(),
+            WideFibonacciEval::<FIB_SEQUENCE_LENGTH> {
+                log_n_rows: LOG_N_INSTANCES,
+            },
+        );
+
+        println!("created component!");
+
+        println!("component eval is like this  \n {} ",component.log_n_rows);
+        
+       
+
+        let proof = stwo_prover::core::prover::prove::<SimdBackend, Blake2sMerkleChannel>(
+            &[&component],
+            prover_channel,
+            commitment_scheme,
+        )
+        .unwrap();
+        
+        println!("proof generated!");
+
+        // Verify.
+        let verifier_channel = &mut Blake2sChannel::default();
+        let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
+
+        // Retrieve the expected column sizes in each commitment interaction, from the AIR.
+        let sizes = component.trace_log_degree_bounds();
+        commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
+        stwo_prover::core::prover::verify(&[&component], verifier_channel, commitment_scheme, proof).unwrap();
          
-         println!("this is from the generate stwo trace in circle domain \n {:?}",generate_stwo_trace(witness,LOG_N_INSTANCES));
+         
  
          println!("{:?}", witness);
 
