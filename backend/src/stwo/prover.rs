@@ -18,6 +18,7 @@ use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement, KnownField};
 use super::circuit_builder::PowdrCircuit;
 use super::circuit_builder::generate_stwo_trace;
+use super::circuit_builder::generate_parallel_stwo_trace_by_witness_repitition;
 use super::circuit_builder::WideFibonacciComponent;
 use super::circuit_builder::WideFibonacciEval;
 
@@ -135,7 +136,7 @@ impl<F: FieldElement> StwoProver<F> {
     ) {
 
         const LOG_N_INSTANCES: u32 = 5;
-        const FIB_SEQUENCE_LENGTH: usize=32;
+        const FIB_SEQUENCE_LENGTH: usize=6;
 
        
 
@@ -159,10 +160,12 @@ impl<F: FieldElement> StwoProver<F> {
         let circuit = PowdrCircuit::new(&self.analyzed)
              .with_witgen_callback(witgen_callback)
              .with_witness(witness);
+        print!("witness from powdr {:?}", witness );
 
-        let trace = generate_stwo_trace(witness,LOG_N_INSTANCES);
+        //let trace = generate_stwo_trace(witness,LOG_N_INSTANCES);
+        let trace=generate_parallel_stwo_trace_by_witness_repitition(witness, LOG_N_INSTANCES);
 
-        println!("this is from the generate stwo trace in circle domain \n {:?}",generate_stwo_trace(witness,LOG_N_INSTANCES));
+        println!("this is from the generate stwo trace in repitition \n {:?}",generate_parallel_stwo_trace_by_witness_repitition(witness,LOG_N_INSTANCES));
 
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals(trace);

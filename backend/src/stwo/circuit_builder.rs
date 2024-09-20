@@ -148,3 +148,88 @@ pub fn generate_stwo_trace<T>(witness: &[(String, Vec<T>)], log_n_instances: u32
 
         
 }
+
+pub fn generate_parallel_stwo_trace_by_witness_repitition<T: Clone>(witness: &[(String, Vec<T>)], log_n_instances: u32
+)-> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
+
+    let trace: Vec<PackedBaseField> = witness
+    .iter()
+    .flat_map(|(_, vec)| {
+        vec.iter().flat_map(|mersenne| {
+
+            let ptr = mersenne as *const T as *const u32;
+
+            let value = unsafe {
+                *ptr // Dereference the pointer to get the u32 value
+            };
+
+            // Repeat the value 32 times
+            let repeated = vec![value; 32];
+
+            // Split the repeated vector into two chunks of 16 elements each
+            let chunk1: [u32; N_LANES] = repeated[0..16]
+                .try_into()
+                .expect("Chunk should be of size N_LANES");
+            let chunk2: [u32; N_LANES] = repeated[16..32]
+                .try_into()
+                .expect("Chunk should be of size N_LANES");
+
+            // Convert chunks to PackedBaseField
+            // Note: We use unsafe block because PackedBaseField::load is unsafe
+            unsafe {
+                vec![
+                    PackedBaseField::load(chunk1.as_ptr()),
+                    PackedBaseField::load(chunk2.as_ptr()),
+                ]
+            }
+        })
+    })
+    .collect(); // Collect the flattened iterator into a Vec<PackedBaseField>
+
+
+        println!("from generate stwo trace trace");
+        println!("{:?}", trace);
+
+        let mut trace_stwo= (0..6)//fibonacci length
+        .map(|_| Col::<SimdBackend, BaseField>::zeros(1 << log_n_instances))
+        .collect_vec();
+
+        
+        // column x
+        trace_stwo[0].data[0]= trace[0];
+        trace_stwo[0].data[1]= trace[1];
+
+        println!("from generate stwo trace trace 64 ......");
+        println!("{:?}", trace[64]);
+
+        println!("from generate stwo trace trace 65 ......");
+        println!("{:?}", trace[65]);
+
+        trace_stwo[1].data[0]= trace[64];
+        trace_stwo[1].data[1]= trace[65];
+
+        trace_stwo[2].data[0]= trace[66];
+        trace_stwo[2].data[1]= trace[67];
+
+        trace_stwo[3].data[0]= trace[68];
+        trace_stwo[3].data[1]= trace[69];
+
+        trace_stwo[4].data[0]= trace[70];
+        trace_stwo[4].data[1]= trace[71];
+
+        trace_stwo[5].data[0]= trace[72];
+        trace_stwo[5].data[1]= trace[73];
+
+        println!("from generate stwo trace trace_stwo repititions");
+        println!("{:?}", trace_stwo);
+
+        let domain = CanonicCoset::new(5).circle_domain();
+        trace_stwo
+        .into_iter()
+        .map(|eval| CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(domain, eval))
+        .collect_vec()  
+
+      
+
+        
+}
