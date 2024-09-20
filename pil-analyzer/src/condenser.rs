@@ -311,19 +311,6 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         std::mem::take(&mut self.new_prover_functions)
     }
 
-    fn condense_selected_expressions(
-        &mut self,
-        sel_expr: &'a parsed::SelectedExpressions<Expression>,
-    ) -> SelectedExpressions<AlgebraicExpression<T>> {
-        SelectedExpressions {
-            selector: sel_expr
-                .selector
-                .as_ref()
-                .map(|expr| self.condense_to_algebraic_expression(expr)),
-            expressions: self.condense_to_array_of_algebraic_expressions(&sel_expr.expressions),
-        }
-    }
-
     /// Evaluates the expression and expects it to result in an algebraic expression.
     fn condense_to_algebraic_expression(&mut self, e: &'a Expression) -> AlgebraicExpression<T> {
         let result = evaluator::evaluate(e, self).unwrap_or_else(|err| {
@@ -616,8 +603,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         let constrs = self
             .new_constraints
             .drain(existing_constraints..)
-            .map(|c| c.into())
-            .map(Arc::new)
+            .map(|(c, _)| c)
             .collect();
         // TODO we could now subtract constrs.len() from the identity counter.
         let result = result?;
@@ -653,79 +639,6 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             })
             .find(|name| !self.symbols.contains_key(name) && !self.new_symbols.contains(name))
             .unwrap()
-    }
-}
-
-impl<'a, T: FieldElement> From<AnalyzedIdentity<T>> for Value<'a, T> {
-    fn from(constraint: AnalyzedIdentity<T>) -> Self {
-        match constraint.kind {
-            IdentityKind::Polynomial => {
-                let (left, right) = constraint.as_polynomial_identity();
-                let right = right
-                    .cloned()
-                    .unwrap_or_else(|| AlgebraicExpression::Number(0.into()));
-                let fields = vec![Arc::new(left.clone().into()), Arc::new(right.into())];
-
-                Value::Enum("Identity", Some(fields))
-            }
-            IdentityKind::Plookup | IdentityKind::Permutation => {
-                let variant = if constraint.kind == IdentityKind::Plookup {
-                    "Lookup"
-                } else {
-                    "Permutation"
-                };
-                let selectors = Arc::new(Value::Tuple(vec![
-                    Arc::new(constraint.left.selector.into()),
-                    Arc::new(constraint.right.selector.into()),
-                ]));
-                let exprs =
-                    to_expr_pairs(constraint.left.expressions, constraint.right.expressions);
-
-                Value::Enum(variant, Some(vec![selectors, Arc::new(exprs)]))
-            }
-            IdentityKind::Connect => Value::Enum(
-                "Connection",
-                Some(vec![Arc::new(to_expr_pairs(
-                    constraint.left.expressions,
-                    constraint.right.expressions,
-                ))]),
-            ),
-        }
-    }
-}
-
-/// Turns a pair of vectors of algebraic expressions to a runtime value
-/// containing an array of pairs of `expr`s.
-fn to_expr_pairs<'a, T>(
-    left: Vec<AlgebraicExpression<T>>,
-    right: Vec<AlgebraicExpression<T>>,
-) -> Value<'a, T> {
-    assert_eq!(left.len(), right.len());
-    Value::Array(
-        left.into_iter()
-            .zip(right)
-            .map(|(left, right)| {
-                Arc::new(Value::Tuple(vec![
-                    Arc::new(left.into()),
-                    Arc::new(right.into()),
-                ]))
-            })
-            .collect(),
-    )
-}
-
-impl<'a, T> From<Option<AlgebraicExpression<T>>> for Value<'a, T> {
-    fn from(expr: Option<AlgebraicExpression<T>>) -> Self {
-        match expr {
-            None => Value::Enum("None", None),
-            Some(expr) => Value::Enum("Some", Some(vec![Arc::new(expr.into())])),
-        }
-    }
-}
-
-impl<'a, T> From<Vec<AlgebraicExpression<T>>> for Value<'a, T> {
-    fn from(exprs: Vec<AlgebraicExpression<T>>) -> Self {
-        Value::Array(exprs.into_iter().map(|e| Arc::new(e.into())).collect())
     }
 }
 
