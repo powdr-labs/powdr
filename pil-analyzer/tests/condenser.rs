@@ -792,54 +792,140 @@ pub fn capture_constraints_empty() {
     let formatted = analyze_string(input).to_string();
     let expected = "namespace std::prover;
     let capture_constraints: (-> ()) -> std::prelude::Constr[] = 9;
+namespace Main;
+    let gen: -> () = || { };
+    col witness a;
+    col witness b;
+    Main::a = 1;
+    Main::b = 2;
 ";
     assert_eq!(formatted, expected);
 }
 
 #[test]
-pub fn capture_stage_working() {
+pub fn capture_constraints_new_col_and_constr() {
     let input = r#"
         namespace std::prover;
-            let capture_stage: (-> ()), (Constr[] -> ()) -> () = 9;
+            let capture_constraints: (-> ()) -> Constr[] = 9;
 
         namespace Main;
-            let gen = constr || { let x; let y; x + y = 2; x = 8; };
-            let process = constr |constrs| {
-                // Just use the second constraint.
-                constrs[1];
-                // Create a new column at the higher stage
-                let y;
-                y = 18;
+            let gen = constr || {
+                let x;
+                [x = 1, x = 2];
+                x = 3;
             };
-            std::prover::capture_stage(gen, process);
-            // now this should be stage zero again.
-            let w;
-            w = 10;
+            let a;
+            let b;
+            a = 1;
+            let constrs = std::prover::capture_constraints(gen);
+            // Ignore the second constraint
+            [constrs[0], constrs[2]];
+            b = 2;
     "#;
     let formatted = analyze_string(input).to_string();
     let expected = "namespace std::prover;
-    let capture_stage: (-> ()), (std::prelude::Constr[] -> ()) -> () = 9;
+    let capture_constraints: (-> ()) -> std::prelude::Constr[] = 9;
 namespace Main;
     let gen: -> () = constr || {
         let x: col;
-        let y: col;
-        x + y = 2;
-        x = 8;
+        [x = 1, x = 2];
+        x = 3;
     };
-    let process: std::prelude::Constr[] -> () = constr |constrs| {
-        constrs[1];
-        let y: col;
-        y = 18;
-    };
+    col witness a;
+    col witness b;
+    Main::a = 1;
+    let constrs: std::prelude::Constr[] = std::prover::capture_constraints(Main::gen);
     col witness x;
-    col witness y;
-    col witness stage(1) y_1;
-    Main::x = 8;
-    Main::y_1 = 18;
-    col witness w;
-    Main::w = 10;
+    Main::x = 1;
+    Main::x = 3;
+    Main::b = 2;
 ";
     assert_eq!(formatted, expected);
 }
 
-// TODO test calling capture stage inside each of the two functions.
+#[test]
+pub fn capture_constraints_recursive() {
+    let input = r#"
+        namespace std::prover;
+            let capture_constraints: (-> ()) -> Constr[] = 9;
+
+        namespace Main;
+            let a;
+            [a] in [b];
+            let constrs = std::prover::capture_constraints(constr || {
+                let x;
+                [x = 1, x = 2];
+                std::prover::capture_constraints(constr || {
+                    let y;
+                    [y = 1, [y] in [x]];
+                    y = 3;
+                })[1];
+                x = 3;
+            });
+            // Ignore the second constraint
+            [constrs[0], constrs[2], constrs[3]];
+            let b;
+            b = 2;
+    "#;
+    let formatted = analyze_string(input).to_string();
+    let expected = "namespace std::prover;
+    let capture_constraints: (-> ()) -> std::prelude::Constr[] = 9;
+namespace Main;
+    col witness a;
+    [Main::a] in [Main::b];
+    let constrs: std::prelude::Constr[] = std::prover::capture_constraints(constr || {
+        let x: col;
+        [x = 1, x = 2];
+        std::prover::capture_constraints(constr || {
+            let y: col;
+            [y = 1, [y] in [x]];
+            y = 3;
+        })[1];
+        x = 3;
+    });
+    col witness x;
+    col witness y;
+    Main::x = 1;
+    [Main::y] in [Main::x];
+    Main::x = 3;
+    col witness b;
+    Main::b = 2;
+";
+    assert_eq!(formatted, expected);
+}
+
+#[test]
+pub fn at_next_stage() {
+    let input = r#"
+        namespace std::prover;
+            let at_next_stage: (-> ()) -> () = 9;
+
+        namespace Main;
+            let a;
+            std::prover::at_next_stage(constr || {
+                let x;
+                std::prover::at_next_stage(constr || {
+                    let y;
+                    x = 1;
+                    y = 2;
+                });
+                let c;
+                x = a + c;
+            });
+            let b;
+    "#;
+    let formatted = analyze_string(input).to_string();
+    let expected = "namespace std::prover;
+    let at_next_stage: (-> ()) -> () = 9;
+namespace Main;
+    col witness a;
+    col witness stage(1) x;
+    col witness stage(2) y;
+    col witness stage(1) c;
+    Main::x = 1;
+    Main::y = 2;
+    Main::x = Main::a + Main::c;
+    col witness b;
+";
+    assert_eq!(formatted, expected);
+}
