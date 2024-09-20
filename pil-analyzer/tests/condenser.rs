@@ -776,62 +776,24 @@ namespace N(16);
 }
 
 #[test]
-#[should_panic = "There are pre-existing constraints or witness columns"]
-pub fn capture_stage_non_fresh_wit() {
+pub fn capture_constraints_empty() {
     let input = r#"
         namespace std::prover;
-            let capture_stage: (-> int) -> Constr[] = 9;
+            let capture_constraints: (-> ()) -> Constr[] = 9;
 
-        namespace Main(1024);
-            col witness x;
-            let f = constr || { x = 2; 1024 };
-            std::prover::capture_stage(f);
+        namespace Main;
+            let gen = || { };
+            let a;
+            let b;
+            a = 1;
+            std::prover::capture_constraints(gen);
+            b = 2;
     "#;
-    analyze_string(input);
-}
-
-#[test]
-#[should_panic = "There are pre-existing constraints or witness columns"]
-pub fn capture_stage_non_fresh_inter() {
-    let input = r#"
-        namespace std::prover;
-            let capture_stage: (-> int) -> Constr[] = 9;
-
-        namespace Main(1024);
-            col x = 3;
-            let f = constr || { x = 2; 1024 };
-            std::prover::capture_stage(f);
-    "#;
-    analyze_string(input);
-}
-
-#[test]
-#[should_panic = "There are pre-existing constraints or witness columns"]
-pub fn capture_stage_non_fresh_constr() {
-    let input = r#"
-        namespace std::prover;
-            let capture_stage: (-> int) -> Constr[] = 9;
-
-        namespace Main(1024);
-            4 = 5;
-            let f = constr || 1024;
-            std::prover::capture_stage(f);
-    "#;
-    analyze_string(input);
-}
-
-#[test]
-#[should_panic = "returned degree 2048, but the degree has already been set to 1024."]
-pub fn capture_stage_set_different_degree() {
-    let input = r#"
-        namespace std::prover;
-            let capture_stage: (-> int) -> Constr[] = 9;
-
-        namespace Main(1024);
-            let f = constr || 2048;
-            std::prover::capture_stage(f);
-    "#;
-    analyze_string(input);
+    let formatted = analyze_string(input).to_string();
+    let expected = "namespace std::prover;
+    let capture_constraints: (-> ()) -> std::prelude::Constr[] = 9;
+";
+    assert_eq!(formatted, expected);
 }
 
 #[test]

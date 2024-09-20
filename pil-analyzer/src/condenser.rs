@@ -266,6 +266,11 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
                     )
                 });
         } else {
+            // TODO once this branch is removed, it might be good to change
+            // Condenser::new_constraints to a Vec<Arc<Value<'a, T>>,
+            // and do the conversion to Identity only in extract_new_constraints.
+            // The benefit is that we do not need to convert back and forth
+            // in capture_constraints.
             let left = self.condense_selected_expressions(&identity.left);
             let right = self.condense_selected_expressions(&identity.right);
             self.new_constraints.push(Identity {
@@ -504,7 +509,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             id: self.counters.dispense_symbol_id(kind, length),
             source,
             absolute_name: name.clone(),
-            stage: Some(stage.unwrap_or_else(|| self.stage)),
+            stage: Some(stage.unwrap_or(self.stage)),
             kind,
             length,
             degree: self.degree,
@@ -618,37 +623,34 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         Ok(())
     }
 
-    fn capture_stage(
+    fn capture_constraints(
         &mut self,
-        creator: Arc<Value<'a, T>>,
-        processor: Arc<Value<'a, T>>,
-    ) -> Result<(), EvalError> {
-        let stored_constraints = std::mem::take(&mut self.new_constraints);
-        let result = evaluate_function_call(creator, vec![], self)?;
+        fun: Arc<Value<'a, T>>,
+    ) -> Result<Arc<Value<'a, T>>, EvalError> {
+        let existing_constraints = self.new_constraints.len();
+        let result = evaluate_function_call(fun, vec![], self);
+        let constrs = self
+            .new_constraints
+            .drain(existing_constraints..)
+            .map(|c| c.into())
+            .map(Arc::new)
+            .collect();
+        // TODO we could now subtract constrs.len() from the identity counter.
+        let result = result?;
         if !matches!(result.as_ref(), Value::Tuple(items) if items.is_empty()) {
-            return Err(EvalError::TypeError(format!(
-                "Call to first argument of \"capture_stage\" returned {result}, but expected an empty tuple."
-            )));
+            panic!();
         }
 
-        let created_constraints = Value::Array(
-            std::mem::replace(&mut self.new_constraints, stored_constraints)
-                .into_iter()
-                .map(|c| c.into())
-                .map(Arc::new)
-                .collect(),
-        );
+        Ok(Arc::new(Value::Array(constrs)))
+    }
 
-        // TODO modify identity counters?
-
+    fn at_next_stage(&mut self, fun: Arc<Value<'a, T>>) -> Result<(), EvalError> {
         self.stage += 1;
-        let result = evaluate_function_call(processor, vec![Arc::new(created_constraints)], self);
+        let result = evaluate_function_call(fun, vec![], self);
         self.stage -= 1;
         let result = result?;
         if !matches!(result.as_ref(), Value::Tuple(items) if items.is_empty()) {
-            return Err(EvalError::TypeError(format!(
-                "Call to second argument of \"capture_stage\" returned {result}, but expected an empty tuple."
-            )));
+            panic!();
         }
         Ok(())
     }

@@ -153,7 +153,8 @@ lazy_static! {
         ("std::convert::expr", FunctionKind::Pure),
         ("std::debug::print", FunctionKind::Pure),
         ("std::field::modulus", FunctionKind::Pure),
-        ("std::prover::capture_stage", FunctionKind::Constr),
+        ("std::prover::capture_constraints", FunctionKind::Constr),
+        ("std::prover::at_next_stage", FunctionKind::Constr),
         ("std::prelude::challenge", FunctionKind::Constr), // strictly, only new_challenge would need "constr"
         ("std::prover::min_degree", FunctionKind::Pure),
         ("std::prover::max_degree", FunctionKind::Pure),

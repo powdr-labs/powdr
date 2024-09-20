@@ -326,7 +326,11 @@ const BUILTINS: [(&str, BuiltinFunction); 21] = [
     ("std::convert::int", BuiltinFunction::ToInt),
     ("std::debug::print", BuiltinFunction::Print),
     ("std::field::modulus", BuiltinFunction::Modulus),
-    ("std::prover::capture_stage", BuiltinFunction::CaptureStage),
+    (
+        "std::prover::capture_constraints",
+        BuiltinFunction::CaptureConstraints,
+    ),
+    ("std::prover::at_next_stage", BuiltinFunction::AtNextStage),
     ("std::prelude::challenge", BuiltinFunction::Challenge),
     (
         "std::prover::new_witness_col_at_stage",
@@ -338,7 +342,6 @@ const BUILTINS: [(&str, BuiltinFunction); 21] = [
     ("std::prover::max_degree", BuiltinFunction::MaxDegree),
     ("std::prover::degree", BuiltinFunction::Degree),
     ("std::prover::eval", BuiltinFunction::Eval),
-    ("std::prover::try_eval", BuiltinFunction::TryEval),
     ("std::prover::try_eval", BuiltinFunction::TryEval),
     ("std::prover::get_input", BuiltinFunction::GetInput),
     (
@@ -366,10 +369,13 @@ pub enum BuiltinFunction {
     ToInt,
     /// std::convert::fe: int/fe -> fe, converts int to fe
     ToFe,
-    /// std::prover::capture_stage: (-> ()), (Constr[] -> ()) -> (),
-    /// calls the first argument, and then increments the stage and calls the second argument with the constraints that
-    /// the first argument added to the global set. Resets the stage again.
-    CaptureStage,
+    /// std::prover::capture_constraints: (-> ()) -> Constr[]
+    /// Calls the argument and returns all constraints that it added to the global set
+    /// (Those are removed from the global set).
+    CaptureConstraints,
+    /// std::prover::at_next_stage: (-> ()) -> (), calls the argument at the next proof stage
+    /// and resets the stage again.
+    AtNextStage,
     /// std::prover::challenge: int, int -> expr, constructs a challenge with a given stage and ID.
     Challenge,
     /// std::prover::new_witness_col_at_stage: string, int -> expr, creates a new witness column at a certain proof stage.
@@ -645,13 +651,18 @@ pub trait SymbolLookup<'a, T: FieldElement> {
         ))
     }
 
-    fn capture_stage(
+    fn capture_constraints(
         &mut self,
-        _creator: Arc<Value<'a, T>>,
-        _processor: Arc<Value<'a, T>>,
-    ) -> Result<(), EvalError> {
+        _fun: Arc<Value<'a, T>>,
+    ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Err(EvalError::Unsupported(
-            "The function capture_stage is not allowed at this point.".to_string(),
+            "The function capture_constraints is not allowed at this point.".to_string(),
+        ))
+    }
+
+    fn at_next_stage(&mut self, _fun: Arc<Value<'a, T>>) -> Result<(), EvalError> {
+        Err(EvalError::Unsupported(
+            "The function at_next_stage is not allowed at this point.".to_string(),
         ))
     }
 
@@ -1308,7 +1319,8 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
         BuiltinFunction::MinDegree => 0,
         BuiltinFunction::MaxDegree => 0,
         BuiltinFunction::Degree => 0,
-        BuiltinFunction::CaptureStage => 2,
+        BuiltinFunction::CaptureConstraints => 1,
+        BuiltinFunction::AtNextStage => 1,
         BuiltinFunction::Eval => 1,
         BuiltinFunction::TryEval => 1,
         BuiltinFunction::GetInput => 1,
@@ -1439,10 +1451,13 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
         BuiltinFunction::MaxDegree => symbols.max_degree()?,
         BuiltinFunction::MinDegree => symbols.min_degree()?,
         BuiltinFunction::Degree => symbols.degree()?,
-        BuiltinFunction::CaptureStage => {
-            let processor = arguments.pop().unwrap();
-            let creator = arguments.pop().unwrap();
-            symbols.capture_stage(creator, processor)?;
+        BuiltinFunction::CaptureConstraints => {
+            let fun = arguments.pop().unwrap();
+            symbols.capture_constraints(fun)?
+        }
+        BuiltinFunction::AtNextStage => {
+            let fun = arguments.pop().unwrap();
+            symbols.at_next_stage(fun)?;
             Value::Tuple(vec![]).into()
         }
         BuiltinFunction::Eval => {
