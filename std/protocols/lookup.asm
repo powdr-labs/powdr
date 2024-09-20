@@ -54,8 +54,9 @@ let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr, expr -> fe[] = quer
     unpack_ext_array(res)
 };
     
-/// Adds constraints that enforce that rhs is the lookup for lhs.
-/// The implementation uses an accumulator and challenges.
+/// Transfroms a single lookup constraint to identity constraint, challenges and
+/// higher-stage witness columns.
+/// Use this function if the backend does not support lookup constraints natively.
 /// WARNING: This function can currently not be used multiple times since
 /// the used challenges would overlap.
 /// TODO: Implement this for an array of constraints.
