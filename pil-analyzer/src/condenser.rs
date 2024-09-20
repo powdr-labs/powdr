@@ -32,7 +32,7 @@ use powdr_number::{BigUint, FieldElement};
 use powdr_parser_util::SourceRef;
 
 use crate::{
-    evaluator::{self, Closure, Definitions, EvalError, SymbolLookup, Value},
+    evaluator::{self, Closure, Definitions, EnumValue, EvalError, SymbolLookup, Value},
     statement_processor::Counters,
 };
 
@@ -625,8 +625,18 @@ fn to_constraint<T: FieldElement>(
     source: SourceRef,
     counters: &mut Counters,
 ) -> AnalyzedIdentity<T> {
-    match constraint {
-        Value::Enum(_, "Identity", Some(fields)) => {
+    let Value::Enum(EnumValue {
+        enum_decl,
+        variant,
+        data,
+    }) = constraint
+    else {
+        panic!("Expected constraint but got {constraint}")
+    };
+    assert_eq!(enum_decl.name, "std::prelude::Constr");
+    let fields = data.as_ref().unwrap();
+    match &**variant {
+        "Identity" => {
             assert_eq!(fields.len(), 2);
             AnalyzedIdentity::from_polynomial_identity(
                 counters.dispense_identity_id(),
@@ -634,9 +644,9 @@ fn to_constraint<T: FieldElement>(
                 to_expr(&fields[0]) - to_expr(&fields[1]),
             )
         }
-        Value::Enum(_, kind @ "Lookup" | kind @ "Permutation", Some(fields)) => {
+        "Lookup" | "Permutation" => {
             assert_eq!(fields.len(), 2);
-            let kind = if *kind == "Lookup" {
+            let kind = if variant == &"Lookup" {
                 IdentityKind::Plookup
             } else {
                 IdentityKind::Permutation
@@ -672,7 +682,7 @@ fn to_constraint<T: FieldElement>(
                 right: to_selected_exprs(sel_to, to),
             }
         }
-        Value::Enum(_, "Connection", Some(fields)) => {
+        "Connection" => {
             assert_eq!(fields.len(), 1);
 
             let (from, to): (Vec<_>, Vec<_>) = if let Value::Array(a) = fields[0].as_ref() {
@@ -719,9 +729,14 @@ fn to_selected_exprs<'a, T: Clone + Debug>(
 }
 
 fn to_option_expr<T: Clone + Debug>(value: &Value<'_, T>) -> Option<AlgebraicExpression<T>> {
-    match value {
-        Value::Enum(_, "None", None) => None,
-        Value::Enum(_, "Some", Some(fields)) => {
+    let Value::Enum(enum_value) = value else {
+        panic!("Expected option but got {value:?}")
+    };
+    assert_eq!(enum_value.enum_decl.name, "std::prelude::Option");
+    match enum_value.variant {
+        "None" => None,
+        "Some" => {
+            let fields = enum_value.data.as_ref().unwrap();
             assert_eq!(fields.len(), 1);
             Some(to_expr(&fields[0]))
         }
@@ -940,22 +955,21 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
         }
         .into(),
         Value::Closure(c) => try_closure_to_expression(c)?,
-        Value::TypeConstructor(enum_, c) => {
+        Value::TypeConstructor(type_constructor) => {
             return Err(EvalError::TypeError(format!(
-                "Type constructor as captured value not supported: {}::{c}.",
-                enum_.name
+                "Type constructor as captured value not supported: {type_constructor}.",
             )))
         }
-        Value::Enum(enum_, variant, items) => {
+        Value::Enum(enum_value) => {
             let variant_ref = Expression::Reference(
                 SourceRef::unknown(),
                 Reference::Poly(PolynomialReference {
-                    name: format!("{}::{variant}", enum_.name),
+                    name: format!("{}::{}", enum_value.enum_decl.name, enum_value.variant),
                     // We do not know the type args here.
                     type_args: None,
                 }),
             );
-            match items {
+            match &enum_value.data {
                 None => variant_ref,
                 Some(items) => FunctionCall {
                     function: Box::new(variant_ref),

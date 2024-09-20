@@ -14,6 +14,32 @@ let try_eval: expr -> Option<fe> = [];
 /// This function is only valid in query functions.
 let provide_value: expr, int, fe -> () = [];
 
+/// Provide a value to a column only if it has not been set yet.
+let provide_if_unknown: expr, int, (-> fe) -> () = query |column, row, f| match try_eval(column) {
+    Option::None => provide_value(column, row, f()),
+    _ => (),
+};
+
+/// Retrieves a byte from a prover-provided (untrusted and not committed) input.
+/// The parameter is the index of the byte.
+let get_input: int -> fe = [];
+
+/// Retrieves a byte from a prover-provided (untrusted and not committed) input channel.
+/// The parameters are the index of the channel and the index in the channel.
+/// Index zero is the length of the channel (number of bytes) and index 1 is the first byte.
+let get_input_from_channel: int, int -> fe = [];
+
+/// Outputs a byte to a file descriptor.
+let output_byte: int, int -> () = [];
+
+let handle_query: expr, int, std::prelude::Query -> () = query |column, row, v| match v {
+    Query::Hint(h) => provide_if_unknown(column, row, || h),
+    Query::Input(i) => provide_if_unknown(column, row, || get_input(i)),
+    Query::DataIdentifier(i, j) => provide_if_unknown(column, row, || get_input_from_channel(i, j)),
+    Query::Output(fd, b) => provide_if_unknown(column, row, || { output_byte(fd, b); 0 }),
+    Query::None => (),
+};
+
 /// Constructs a challenge object.
 /// The arguments are the proof stage and the id of the challenge, in this order.
 let challenge: int, int -> expr = constr |st, id| std::prelude::challenge(st, id);

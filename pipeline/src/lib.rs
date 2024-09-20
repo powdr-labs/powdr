@@ -91,26 +91,6 @@ pub fn parse_query(query: &str) -> Result<(&str, Vec<&str>), String> {
     }
 }
 
-pub fn access_element<T: FieldElement>(
-    name: &str,
-    elements: &[T],
-    index_str: &str,
-) -> Result<Option<T>, String> {
-    let index = index_str
-        .parse::<usize>()
-        .map_err(|e| format!("Error parsing index: {e})"))?;
-    let value = elements.get(index).cloned();
-    if let Some(value) = value {
-        log::trace!("Query for {name}: Index {index} -> {value}");
-        Ok(Some(value))
-    } else {
-        Err(format!(
-            "Error accessing {name}: Index {index} out of bounds {}",
-            elements.len()
-        ))
-    }
-}
-
 pub fn serde_data_to_query_callback<T: FieldElement>(
     channel: u32,
     bytes: Vec<u8>,
@@ -118,7 +98,6 @@ pub fn serde_data_to_query_callback<T: FieldElement>(
     move |query: &str| -> Result<Option<T>, String> {
         let (id, data) = parse_query(query)?;
         match id {
-            "None" => Ok(None),
             "DataIdentifier" => {
                 let [index, cb_channel] = data[..] else {
                     panic!()
@@ -152,7 +131,6 @@ pub fn dict_data_to_query_callback<T: FieldElement>(
     move |query: &str| -> Result<Option<T>, String> {
         let (id, data) = parse_query(query)?;
         match id {
-            "None" => Ok(None),
             "DataIdentifier" => {
                 let [index, cb_channel] = data[..] else {
                     panic!()
@@ -161,7 +139,7 @@ pub fn dict_data_to_query_callback<T: FieldElement>(
                     .parse::<u32>()
                     .map_err(|e| format!("Error parsing callback data channel: {e})"))?;
 
-                let Some(bytes) = dict.get(&cb_channel) else {
+                let Some(elems) = dict.get(&cb_channel) else {
                     return Err("Callback channel mismatch".to_string());
                 };
 
@@ -171,9 +149,25 @@ pub fn dict_data_to_query_callback<T: FieldElement>(
 
                 // query index 0 means the length
                 Ok(Some(match index {
-                    0 => (bytes.len() as u64).into(),
-                    index => bytes[index - 1],
+                    0 => (elems.len() as u64).into(),
+                    index => elems[index - 1],
                 }))
+            }
+            "Input" => {
+                assert_eq!(data.len(), 1);
+                let index = data[0]
+                    .parse::<usize>()
+                    .map_err(|e| format!("Error parsing index: {e})"))?;
+
+                let Some(elems) = dict.get(&0) else {
+                    return Err("No prover inputs given".to_string());
+                };
+
+                elems
+                    .get(index)
+                    .cloned()
+                    .map(Some)
+                    .ok_or_else(|| format!("Index out of bounds: {index}"))
             }
             _ => Err(format!("Unsupported query: {query}")),
         }
@@ -181,17 +175,9 @@ pub fn dict_data_to_query_callback<T: FieldElement>(
 }
 
 pub fn inputs_to_query_callback<T: FieldElement>(inputs: Vec<T>) -> impl QueryCallback<T> {
-    move |query: &str| -> Result<Option<T>, String> {
-        let (id, data) = parse_query(query)?;
-        match id {
-            "None" => Ok(None),
-            "Input" => {
-                assert_eq!(data.len(), 1);
-                access_element("prover inputs", &inputs, data[0])
-            }
-            _ => Err(format!("Unsupported query: {query}")),
-        }
-    }
+    let mut dict = BTreeMap::new();
+    dict.insert(0, inputs);
+    dict_data_to_query_callback(dict)
 }
 
 #[allow(clippy::print_stdout)]
