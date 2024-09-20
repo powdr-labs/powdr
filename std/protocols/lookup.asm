@@ -1,3 +1,4 @@
+use std::array;
 use std::array::fold;
 use std::array::len;
 use std::array::map;
@@ -15,6 +16,8 @@ use std::math::fp2::eval_ext;
 use std::math::fp2::from_base;
 use std::math::fp2::fp2_from_array;
 use std::math::fp2::constrain_eq_ext;
+use std::math::fp2::required_extension_size;
+use std::math::fp2::needs_extension;
 use std::protocols::fingerprint::fingerprint;
 use std::utils::unwrap_or_else;
 
@@ -51,21 +54,28 @@ let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr, expr -> fe[] = quer
     unpack_ext_array(res)
 };
     
-/// Adds constraints that enforce that rhs is the lookup for lhs
+/// Adds constraints that enforce that rhs is the lookup for lhs.
+/// The implementation uses an accumulator and challenges.
+/// WARNING: This function can currently not be used multiple times since
+/// the used challenges would overlap.
+/// TODO: Implement this for an array of constraints.
 /// Arguments:
-/// - acc: A phase-2 witness column to be used as the accumulator. If 2 are provided, computations
-///        are done on the F_{p^2} extension field.
-/// - alpha: A challenge used to compress the LHS and RHS values
-/// - beta: A challenge used to update the accumulator
 /// - lookup_constraint: The lookup constraint
-/// - multiplicities: The multiplicities which shows how many times each RHS value appears in the LHS                  
-let lookup: expr[], Fp2<expr>, Fp2<expr>, Constr, expr -> () = constr |acc, alpha, beta, lookup_constraint, multiplicities| {
+/// - multiplicities: A multiplicities column which shows how many times each row of the RHS value appears in the LHS                  
+let lookup: Constr, expr -> () = constr |lookup_constraint, multiplicities| {
+    std::check::assert(required_extension_size() <= 2, || "Invalid extension size");
+    // Alpha is used to compress the LHS and RHS arrays.
+    let alpha = fp2_from_array(array::new(required_extension_size(), |i| challenge(0, i + 1)));
+    // Beta is used to update the accumulator.
+    let beta = fp2_from_array(array::new(required_extension_size(), |i| challenge(0, i + 3)));
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_lookup_constraint(lookup_constraint);
 
     let lhs_denom = sub_ext(beta, fingerprint(lhs, alpha));
     let rhs_denom = sub_ext(beta, fingerprint(rhs, alpha));
     let m_ext = from_base(multiplicities);
+
+    let acc = array::new(required_extension_size(), |i| std::prover::new_witness_col_at_stage("acc", 1));
     let acc_ext = fp2_from_array(acc);
     let next_acc = next_ext(acc_ext);
 
@@ -102,7 +112,7 @@ let lookup: expr[], Fp2<expr>, Fp2<expr>, Constr, expr -> () = constr |acc, alph
     constrain_eq_ext(update_expr, from_base(0));
 
     // In the extension field, we need a prover function for the accumulator.
-    if std::array::len(acc) > 1 {
+    if needs_extension() {
         // TODO: Helper columns, because we can't access the previous row in hints
         let acc_next_col = std::array::map(acc, |_| std::prover::new_witness_col_at_stage("acc_next", 1));
         query |i| {
