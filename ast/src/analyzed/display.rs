@@ -167,7 +167,7 @@ fn format_fixed_column(
         .and_then(|s| (s > 0).then(|| format!("stage({s}) ")))
         .unwrap_or_default();
     if let Some(TypedExpression { type_scheme, e }) = try_to_simple_expression(definition) {
-        assert!(symbol.stage.is_none());
+        assert!(symbol.stage.is_none() || symbol.stage == Some(0));
         if symbol.length.is_some() {
             assert!(matches!(
                 type_scheme,

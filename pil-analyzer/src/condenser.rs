@@ -482,11 +482,21 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             )));
         }
 
+        let stage = if matches!(
+            kind,
+            SymbolKind::Poly(PolynomialType::Constant | PolynomialType::Intermediate)
+        ) {
+            assert!(stage.is_none());
+            None
+        } else {
+            Some(stage.unwrap_or(self.stage))
+        };
+
         let symbol = Symbol {
             id: self.counters.dispense_symbol_id(kind, length),
             source,
             absolute_name: name.clone(),
-            stage: Some(stage.unwrap_or(self.stage)),
+            stage,
             kind,
             length,
             degree: self.degree,

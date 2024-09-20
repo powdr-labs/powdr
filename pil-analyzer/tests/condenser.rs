@@ -764,7 +764,7 @@ namespace N(16);
     let v: expr = std::prover::new_witness_col_at_stage("y", 2);
     let unused: expr = std::prover::new_witness_col_at_stage("z", 10);
     col witness y;
-    col witness stage(0) x_1;
+    col witness x_1;
     col witness stage(1) x_2;
     col witness stage(2) x_3;
     col witness stage(1) y_1;
