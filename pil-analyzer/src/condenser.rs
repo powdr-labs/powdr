@@ -477,7 +477,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             let value = try_to_function_value_definition(value.as_ref(), FunctionKind::Pure)
                 .map_err(|e| match e {
                     EvalError::TypeError(e) => {
-                        EvalError::TypeError(format!("Error creating fixed column {name}: {e}"))
+                        EvalError::TypeError(format!("Error creating fixed column {name}:\n{e}"))
                     }
                     _ => e,
                 })?;
@@ -558,7 +558,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             try_to_function_value_definition(expr.as_ref(), FunctionKind::Query).map_err(|e| {
                 match e {
                     EvalError::TypeError(e) => {
-                        EvalError::TypeError(format!("Error setting hint for column {col}: {e}"))
+                        EvalError::TypeError(format!("Error setting hint for column {col}:\n{e}"))
                     }
                     _ => e,
                 }
@@ -591,7 +591,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             }
             Value::Closure(..) => {
                 let e = try_value_to_expression(&constraints).map_err(|e| {
-                    EvalError::TypeError(format!("Error adding prover function: {e}"))
+                    EvalError::TypeError(format!("Error adding prover function:\n{e}"))
                 })?;
 
                 self.new_prover_functions.push(e);
@@ -819,7 +819,11 @@ fn try_closure_to_expression<T: FieldElement>(
     let statements = env_map
         .values()
         .map(|(new_id, name, value)| {
-            let mut expr = try_value_to_expression(value.as_ref())?;
+            let mut expr = try_value_to_expression(value.as_ref()).map_err(|e| {
+                EvalError::TypeError(format!(
+                    "Error converting captured variable {name} to expression:\n{e}",
+                ))
+            })?;
             // The call to try_value_to_expression assumed a fresh environment,
             // but we already have `new_id` let statements at this point,
             // so we adjust the local variable references inside `expr` accordingly.
@@ -957,7 +961,7 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
         Value::Closure(c) => try_closure_to_expression(c)?,
         Value::TypeConstructor(type_constructor) => {
             return Err(EvalError::TypeError(format!(
-                "Type constructor as captured value not supported: {type_constructor}.",
+                "Converting type constructor to expression not supported: {type_constructor}.",
             )))
         }
         Value::Enum(enum_value) => {
@@ -983,7 +987,7 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
         }
         Value::BuiltinFunction(_) => {
             return Err(EvalError::TypeError(
-                "Builtin function as captured value not supported.".to_string(),
+                "Converting builtin functions to expressions not supported.".to_string(),
             ))
         }
         Value::Expression(e) => match e {
@@ -1026,7 +1030,7 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
             .into(),
             _ => {
                 return Err(EvalError::TypeError(format!(
-                    "Algebraic expression as captured value not supported: {e}."
+                    "Converting complex algebraic expressions to expressions not supported: {e}."
                 )))
             }
         },
