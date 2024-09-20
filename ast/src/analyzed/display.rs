@@ -162,12 +162,8 @@ fn format_fixed_column(
     definition: &Option<FunctionValueDefinition>,
 ) -> String {
     assert_eq!(symbol.kind, SymbolKind::Poly(PolynomialType::Constant));
-    let stage = symbol
-        .stage
-        .and_then(|s| (s > 0).then(|| format!("stage({s}) ")))
-        .unwrap_or_default();
+    assert!(symbol.stage.is_none());
     if let Some(TypedExpression { type_scheme, e }) = try_to_simple_expression(definition) {
-        assert!(symbol.stage.is_none() || symbol.stage == Some(0));
         if symbol.length.is_some() {
             assert!(matches!(
                 type_scheme,
@@ -187,7 +183,7 @@ fn format_fixed_column(
             .as_ref()
             .map(ToString::to_string)
             .unwrap_or_default();
-        format!("col fixed {stage}{name}{value};",)
+        format!("col fixed {name}{value};",)
     }
 }
 

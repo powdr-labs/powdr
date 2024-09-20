@@ -602,15 +602,6 @@ impl Symbol {
             None => self.absolute_name.to_string(),
         }
     }
-
-    /// Sets the stage. Asserts that it is not set and non-zero.
-    pub fn set_stage(&mut self, stage: u32) {
-        assert!(self.stage.is_none());
-        // We assert it is not zero because we want to avoid
-        // printing "stage(0)".
-        assert!(stage > 0);
-        self.stage = Some(stage);
-    }
 }
 
 /// The "kind" of a symbol. In the future, this will be mostly
