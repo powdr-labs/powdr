@@ -487,6 +487,8 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             kind,
             SymbolKind::Poly(PolynomialType::Constant | PolynomialType::Intermediate)
         ) {
+            // Fixed columns are pre-stage 0 and the stage of an intermediate column
+            // is the max of the stages in the value, so we omit it in both cases.
             assert!(stage.is_none());
             None
         } else {

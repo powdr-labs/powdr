@@ -1047,3 +1047,31 @@ namespace Main;
 ";
     assert_eq!(formatted, expected);
 }
+
+#[test]
+pub fn at_next_stage_intermediate() {
+    let input = r#"
+        namespace std::prover;
+            let at_next_stage: (-> ()) -> () = 9;
+
+        namespace Main;
+            let a;
+            std::prover::at_next_stage(constr || {
+                let b: inter = a * a;
+                let c;
+                let d: inter = a + c;
+            });
+            let x;
+    "#;
+    let formatted = analyze_string(input).to_string();
+    let expected = "namespace std::prover;
+    let at_next_stage: (-> ()) -> () = 9;
+namespace Main;
+    col witness a;
+    col b = Main::a * Main::a;
+    col witness stage(1) c;
+    col d = Main::a + Main::c;
+    col witness x;
+";
+    assert_eq!(formatted, expected);
+}
