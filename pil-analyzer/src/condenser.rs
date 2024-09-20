@@ -219,7 +219,7 @@ pub struct Condenser<'a, T> {
     new_intermediate_column_values: HashMap<String, Vec<AlgebraicExpression<T>>>,
     /// The names of all new columns ever generated, to avoid duplicates.
     new_symbols: HashSet<String>,
-    new_constraints: Vec<AnalyzedIdentity<T>>,
+    new_constraints: Vec<(Arc<Value<'a, T>>, SourceRef)>,
     new_prover_functions: Vec<Expression>,
     /// The current stage. New columns are created at that stage.
     stage: u32,
@@ -266,20 +266,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
                     )
                 });
         } else {
-            // TODO once this branch is removed, it might be good to change
-            // Condenser::new_constraints to a Vec<Arc<Value<'a, T>>,
-            // and do the conversion to Identity only in extract_new_constraints.
-            // The benefit is that we do not need to convert back and forth
-            // in capture_constraints.
-            let left = self.condense_selected_expressions(&identity.left);
-            let right = self.condense_selected_expressions(&identity.right);
-            self.new_constraints.push(Identity {
-                id: self.counters.dispense_identity_id(),
-                kind: identity.kind,
-                source: identity.source.clone(),
-                left,
-                right,
-            })
+            unreachable!();
         }
     }
 
@@ -313,7 +300,10 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
 
     /// Returns the new constraints generated since the last call to this function.
     pub fn extract_new_constraints(&mut self) -> Vec<AnalyzedIdentity<T>> {
-        std::mem::take(&mut self.new_constraints)
+        self.new_constraints
+            .drain(..)
+            .map(|(item, source)| to_constraint(item.as_ref(), source, &mut self.counters))
+            .collect()
     }
 
     /// Returns the new prover functions generated since the last call to this function.
@@ -602,11 +592,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         match constraints.as_ref() {
             Value::Array(items) => {
                 for item in items {
-                    self.new_constraints.push(to_constraint(
-                        item,
-                        source.clone(),
-                        &mut self.counters,
-                    ))
+                    self.new_constraints.push((item.clone(), source.clone()));
                 }
             }
             Value::Closure(..) => {
@@ -616,9 +602,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
 
                 self.new_prover_functions.push(e);
             }
-            _ => self
-                .new_constraints
-                .push(to_constraint(&constraints, source, &mut self.counters)),
+            _ => self.new_constraints.push((constraints, source)),
         }
         Ok(())
     }
