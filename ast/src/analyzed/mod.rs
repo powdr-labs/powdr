@@ -474,6 +474,10 @@ pub fn type_from_definition(
             FunctionValueDefinition::TraitDeclaration(_) => {
                 panic!("Requested type of trait declaration.")
             }
+            FunctionValueDefinition::StructField(struct_decl, field) => Some(TypeScheme {
+                vars: struct_decl.type_vars.clone(),
+                ty: field.ty.clone(),
+            }),
             FunctionValueDefinition::TraitFunction(trait_decl, trait_func) => {
                 let vars = trait_decl
                     .type_vars
@@ -623,6 +627,7 @@ pub enum FunctionValueDefinition {
     Expression(TypedExpression),
     TypeDeclaration(TypeDeclaration),
     TypeConstructor(Arc<EnumDeclaration>, EnumVariant),
+    StructField(Arc<StructDeclaration>, TraitFunction), // renamed to named type
     TraitDeclaration(TraitDeclaration),
     TraitFunction(Arc<TraitDeclaration>, TraitFunction),
 }
@@ -662,6 +667,7 @@ impl Children<Expression> for FunctionValueDefinition {
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children(),
             FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children(),
             FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children(),
+            FunctionValueDefinition::StructField(_, struct_field) => struct_field.children(),
         }
     }
 
@@ -677,6 +683,7 @@ impl Children<Expression> for FunctionValueDefinition {
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children_mut(),
             FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children_mut(),
             FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children_mut(),
+            FunctionValueDefinition::StructField(_, struct_field) => struct_field.children_mut(),
         }
     }
 }

@@ -225,7 +225,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
             Value::Closure(c) => c.type_formatted(),
             Value::TypeConstructor(tc) => tc.type_formatted(),
             Value::Enum(enum_val) => enum_val.type_formatted(),
-            Value::Struct(name, _) => format!("{name}"), // TODO type formatted
+            Value::Struct(name, _) => name.to_string(), // TODO GZ change this
             Value::BuiltinFunction(b) => format!("builtin_{b:?}"),
             Value::Expression(_) => "expr".to_string(),
         }

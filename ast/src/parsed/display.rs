@@ -1048,7 +1048,7 @@ pub fn type_vars_to_string(type_vars: &TypeBounds) -> String {
     if type_vars.is_empty() {
         Default::default()
     } else {
-        format!("<{}>", type_vars)
+        format!("<{type_vars}>")
     }
 }
 

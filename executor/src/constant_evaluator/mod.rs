@@ -130,6 +130,7 @@ fn generate_values<T: FieldElement>(
         }
         FunctionValueDefinition::TypeDeclaration(_)
         | FunctionValueDefinition::TypeConstructor(_, _)
+        | FunctionValueDefinition::StructField(_, _)
         | FunctionValueDefinition::TraitDeclaration(_)
         | FunctionValueDefinition::TraitFunction(_, _) => panic!(),
     };

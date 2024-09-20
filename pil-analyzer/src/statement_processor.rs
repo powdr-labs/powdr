@@ -487,23 +487,26 @@ where
             fields,
         };
 
-        // let inner_items = struct_decl
-        //     .fields
-        //     .iter()
-        //     .map(|(field_name, ty)| {
-        //         (
-        //             self.driver
-        //                 .resolve_namespaced_decl(&[&name, &field_name])
-        //                 .relative_to(&Default::default())
-        //                 .to_string(),
-        //             FunctionValueDefinition::TypeConstructor(TypeConstructor::Struct(
-        //                 Arc::new(struct_decl.clone()),
-        //                 (field_name.clone(), ty.clone()),
-        //             )),
-        //         )
-        //     })
-        //     .collect();
-        // let field_items = self.process_inner_definitions(source, inner_items);
+        let inner_items = struct_decl
+            .fields
+            .iter()
+            .map(|(field_name, ty)| {
+                (
+                    self.driver
+                        .resolve_namespaced_decl(&[&name, &field_name])
+                        .relative_to(&Default::default())
+                        .to_string(),
+                    FunctionValueDefinition::StructField(
+                        Arc::new(struct_decl.clone()),
+                        TraitFunction {
+                            name: field_name.clone(),
+                            ty: ty.clone(),
+                        },
+                    ),
+                )
+            })
+            .collect();
+        let field_items = self.process_inner_definitions(source, inner_items);
 
         iter::once(PILItem::Definition(
             symbol,
@@ -511,7 +514,7 @@ where
                 TypeDeclarationAnalyzed::Struct(struct_decl.clone()),
             )),
         ))
-        //.chain(field_items)
+        .chain(field_items)
         .collect()
     }
 
