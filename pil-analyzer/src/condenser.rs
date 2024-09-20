@@ -13,8 +13,8 @@ use num_traits::sign::Signed;
 
 use powdr_ast::{
     analyzed::{
-        self, AlgebraicExpression, AlgebraicReference, Analyzed, DegreeRange, Expression,
-        FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialReference,
+        self, AlgebraicExpression, AlgebraicReference, Analyzed, Challenge, DegreeRange,
+        Expression, FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialReference,
         PolynomialType, PublicDeclaration, Reference, SelectedExpressions, StatementIdentifier,
         Symbol, SymbolKind,
     },
@@ -24,8 +24,8 @@ use powdr_ast::{
         display::format_type_scheme_around_name,
         types::{ArrayType, Type},
         visitor::{AllChildren, ExpressionVisitable},
-        ArrayLiteral, BlockExpression, FunctionKind, LambdaExpression, LetStatementInsideBlock,
-        Number, Pattern, TypedExpression, UnaryOperation,
+        ArrayLiteral, BlockExpression, FunctionCall, FunctionKind, LambdaExpression,
+        LetStatementInsideBlock, Number, Pattern, TypedExpression, UnaryOperation,
     },
 };
 use powdr_number::{BigUint, FieldElement};
@@ -33,7 +33,8 @@ use powdr_parser_util::SourceRef;
 
 use crate::{
     evaluator::{
-        self, evaluate_function_call, Closure, Definitions, EvalError, SymbolLookup, Value,
+        self, evaluate_function_call, Closure, Definitions, EnumValue, EvalError, SymbolLookup,
+        Value,
     },
     statement_processor::Counters,
 };
@@ -467,7 +468,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             let value = try_to_function_value_definition(value.as_ref(), FunctionKind::Pure)
                 .map_err(|e| match e {
                     EvalError::TypeError(e) => {
-                        EvalError::TypeError(format!("Error creating fixed column {name}: {e}"))
+                        EvalError::TypeError(format!("Error creating fixed column {name}:\n{e}"))
                     }
                     _ => e,
                 })?;
@@ -565,7 +566,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             try_to_function_value_definition(expr.as_ref(), FunctionKind::Query).map_err(|e| {
                 match e {
                     EvalError::TypeError(e) => {
-                        EvalError::TypeError(format!("Error setting hint for column {col}: {e}"))
+                        EvalError::TypeError(format!("Error setting hint for column {col}:\n{e}"))
                     }
                     _ => e,
                 }
@@ -594,7 +595,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             }
             Value::Closure(..) => {
                 let e = try_value_to_expression(&constraints).map_err(|e| {
-                    EvalError::TypeError(format!("Error adding prover function: {e}"))
+                    EvalError::TypeError(format!("Error adding prover function:\n{e}"))
                 })?;
 
                 self.new_prover_functions.push(e);
@@ -657,8 +658,18 @@ fn to_constraint<T: FieldElement>(
     source: SourceRef,
     counters: &mut Counters,
 ) -> AnalyzedIdentity<T> {
-    match constraint {
-        Value::Enum("Identity", Some(fields)) => {
+    let Value::Enum(EnumValue {
+        enum_decl,
+        variant,
+        data,
+    }) = constraint
+    else {
+        panic!("Expected constraint but got {constraint}")
+    };
+    assert_eq!(enum_decl.name, "std::prelude::Constr");
+    let fields = data.as_ref().unwrap();
+    match &**variant {
+        "Identity" => {
             assert_eq!(fields.len(), 2);
             AnalyzedIdentity::from_polynomial_identity(
                 counters.dispense_identity_id(),
@@ -666,9 +677,9 @@ fn to_constraint<T: FieldElement>(
                 to_expr(&fields[0]) - to_expr(&fields[1]),
             )
         }
-        Value::Enum(kind @ "Lookup" | kind @ "Permutation", Some(fields)) => {
+        "Lookup" | "Permutation" => {
             assert_eq!(fields.len(), 2);
-            let kind = if *kind == "Lookup" {
+            let kind = if variant == &"Lookup" {
                 IdentityKind::Plookup
             } else {
                 IdentityKind::Permutation
@@ -704,7 +715,7 @@ fn to_constraint<T: FieldElement>(
                 right: to_selected_exprs(sel_to, to),
             }
         }
-        Value::Enum("Connection", Some(fields)) => {
+        "Connection" => {
             assert_eq!(fields.len(), 1);
 
             let (from, to): (Vec<_>, Vec<_>) = if let Value::Array(a) = fields[0].as_ref() {
@@ -751,9 +762,14 @@ fn to_selected_exprs<'a, T: Clone + Debug>(
 }
 
 fn to_option_expr<T: Clone + Debug>(value: &Value<'_, T>) -> Option<AlgebraicExpression<T>> {
-    match value {
-        Value::Enum("None", None) => None,
-        Value::Enum("Some", Some(fields)) => {
+    let Value::Enum(enum_value) = value else {
+        panic!("Expected option but got {value:?}")
+    };
+    assert_eq!(enum_value.enum_decl.name, "std::prelude::Option");
+    match enum_value.variant {
+        "None" => None,
+        "Some" => {
+            let fields = enum_value.data.as_ref().unwrap();
             assert_eq!(fields.len(), 1);
             Some(to_expr(&fields[0]))
         }
@@ -836,7 +852,11 @@ fn try_closure_to_expression<T: FieldElement>(
     let statements = env_map
         .values()
         .map(|(new_id, name, value)| {
-            let mut expr = try_value_to_expression(value.as_ref())?;
+            let mut expr = try_value_to_expression(value.as_ref()).map_err(|e| {
+                EvalError::TypeError(format!(
+                    "Error converting captured variable {name} to expression:\n{e}",
+                ))
+            })?;
             // The call to try_value_to_expression assumed a fresh environment,
             // but we already have `new_id` let statements at this point,
             // so we adjust the local variable references inside `expr` accordingly.
@@ -972,20 +992,35 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
         }
         .into(),
         Value::Closure(c) => try_closure_to_expression(c)?,
-        Value::TypeConstructor(c) => {
+        Value::TypeConstructor(type_constructor) => {
             return Err(EvalError::TypeError(format!(
-                "Type constructor as captured value not supported: {c}."
+                "Converting type constructor to expression not supported: {type_constructor}.",
             )))
         }
-        Value::Enum(variant, _items) => {
-            // The main problem is that we do not know the type of the enum.
-            return Err(EvalError::TypeError(format!(
-                "Enum as captured value not supported: {variant}."
-            )));
+        Value::Enum(enum_value) => {
+            let variant_ref = Expression::Reference(
+                SourceRef::unknown(),
+                Reference::Poly(PolynomialReference {
+                    name: format!("{}::{}", enum_value.enum_decl.name, enum_value.variant),
+                    // We do not know the type args here.
+                    type_args: None,
+                }),
+            );
+            match &enum_value.data {
+                None => variant_ref,
+                Some(items) => FunctionCall {
+                    function: Box::new(variant_ref),
+                    arguments: items
+                        .iter()
+                        .map(|i| try_value_to_expression(i))
+                        .collect::<Result<_, _>>()?,
+                }
+                .into(),
+            }
         }
         Value::BuiltinFunction(_) => {
             return Err(EvalError::TypeError(
-                "Builtin function as captured value not supported.".to_string(),
+                "Converting builtin functions to expressions not supported.".to_string(),
             ))
         }
         Value::Expression(e) => match e {
@@ -1000,9 +1035,35 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
                     type_args: None,
                 }),
             ),
+            AlgebraicExpression::Challenge(Challenge { id, stage }) => {
+                let function = Expression::Reference(
+                    SourceRef::unknown(),
+                    Reference::Poly(PolynomialReference {
+                        name: "std::prelude::challenge".to_string(),
+                        type_args: None,
+                    }),
+                )
+                .into();
+                let arguments = [*stage as u64, *id]
+                    .into_iter()
+                    .map(|x| BigUint::from(x).into())
+                    .collect();
+                Expression::FunctionCall(
+                    SourceRef::unknown(),
+                    FunctionCall {
+                        function,
+                        arguments,
+                    },
+                )
+            }
+            AlgebraicExpression::Number(n) => Number {
+                value: n.to_arbitrary_integer(),
+                type_: Some(Type::Expr),
+            }
+            .into(),
             _ => {
                 return Err(EvalError::TypeError(format!(
-                    "Algebraic expression as captured value not supported: {e}."
+                    "Converting complex algebraic expressions to expressions not supported: {e}."
                 )))
             }
         },
