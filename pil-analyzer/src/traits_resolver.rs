@@ -141,6 +141,8 @@ impl<'a> TraitsResolver<'a> {
         solved_impls
     }
 
+    /// Creates a HashMap that associates each child reference with a generic type along with the references that called it
+    /// From this HashMap, it resolves the parent/child relationships to obtain the value of the generic type
     fn build_reference_path<'b>(
         definitions: impl Iterator<Item = (&'b Symbol, &'b Expression)>,
     ) -> HashMap<String, Vec<Type>> {
@@ -187,6 +189,8 @@ impl<'a> TraitsResolver<'a> {
         result
     }
 
+    /// Solve the initial asociation and builds a HashMap that maps the
+    /// names of traits containing generic types to their represented types.
     fn combine_type_vars_paths(
         input: HashMap<String, Vec<(&String, &Vec<Type>)>>,
     ) -> HashMap<String, Vec<Type>> {
