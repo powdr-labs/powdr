@@ -1,7 +1,11 @@
 use powdr_ast::{
-    analyzed::{Expression, PolynomialReference},
+    analyzed::{
+        Expression, FunctionValueDefinition, PolynomialReference, Reference, Symbol,
+        TypedExpression,
+    },
     parsed::{
         types::{TupleType, Type},
+        visitor::AllChildren,
         TraitImplementation,
     },
 };
@@ -17,21 +21,29 @@ type SolvedImpl = ((String, Vec<Type>), Arc<Expression>);
 pub struct TraitsResolver<'a> {
     trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
     solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
-    trait_typevars_mapping: &'a HashMap<String, Vec<Type>>,
+    trait_typevars_mapping: HashMap<String, Vec<Type>>,
 }
 
 impl<'a> TraitsResolver<'a> {
     pub fn new(
         trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
-        trait_typevars_mapping: &'a HashMap<String, Vec<Type>>,
+        definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     ) -> Self {
+        let filtered = definitions.values().filter_map(|(s, def)| {
+            if let Some(FunctionValueDefinition::Expression(TypedExpression { e, .. })) = def {
+                Some((s, e))
+            } else {
+                None
+            }
+        });
+        let trait_typevars_mapping = Self::build_reference_path(filtered);
+
         Self {
             trait_impls,
             solved_impls: HashMap::new(),
             trait_typevars_mapping,
         }
     }
-
     /// Resolves a trait function reference for a given polynomial reference.
     /// If successful, it stores the resolved implementation to be returned via `solved_impls()`.
     pub fn resolve_trait_function_reference(
@@ -127,5 +139,68 @@ impl<'a> TraitsResolver<'a> {
         }
 
         solved_impls
+    }
+
+    fn build_reference_path<'b>(
+        definitions: impl Iterator<Item = (&'b Symbol, &'b Expression)>,
+    ) -> HashMap<String, Vec<Type>> {
+        let mut result = HashMap::new();
+
+        for (s, e) in definitions {
+            let mut references = Vec::new();
+            e.all_children().for_each(|expr| {
+                if let Expression::Reference(
+                    _,
+                    Reference::Poly(PolynomialReference {
+                        name,
+                        type_args: Some(type_args),
+                        ..
+                    }),
+                ) = expr
+                {
+                    if !type_args.is_empty() {
+                        references.push((name.clone(), type_args.clone()));
+                    }
+                }
+            });
+            if !references.is_empty() {
+                result.insert(s.absolute_name.clone(), references);
+            }
+        }
+
+        Self::combine_type_vars_paths(result)
+    }
+
+    fn get_types_for_child(
+        input: &HashMap<String, Vec<(String, Vec<Type>)>>,
+        target: &str,
+    ) -> Vec<Type> {
+        let mut result = Vec::new();
+
+        for children in input.values() {
+            for (child, types) in children {
+                if child == target {
+                    result.extend(types.clone());
+                }
+            }
+        }
+        result
+    }
+
+    fn combine_type_vars_paths(
+        input: HashMap<String, Vec<(String, Vec<Type>)>>,
+    ) -> HashMap<String, Vec<Type>> {
+        let mut result: HashMap<String, Vec<Type>> = HashMap::new();
+
+        for (parent, children) in &input {
+            for (child, types) in children {
+                if types.iter().any(|t| matches!(t, Type::TypeVar(_))) {
+                    let types = Self::get_types_for_child(&input, parent);
+                    result.insert(child.to_string(), types);
+                }
+            }
+        }
+
+        result
     }
 }
