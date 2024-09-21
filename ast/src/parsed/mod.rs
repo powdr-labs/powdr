@@ -156,7 +156,7 @@ impl PilStatement {
                 once((name, None, SymbolCategory::Type)).chain(
                     fields
                         .iter()
-                        .map(move |f| (name, Some(&f.0), SymbolCategory::TypeConstructor)),
+                        .map(move |f| (name, Some(&f.0), SymbolCategory::Value)),
                 ),
             ),
             PilStatement::TraitDeclaration(

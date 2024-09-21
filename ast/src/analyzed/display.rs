@@ -254,8 +254,7 @@ impl Display for FunctionValueDefinition {
             FunctionValueDefinition::TypeDeclaration(_)
             | FunctionValueDefinition::TypeConstructor(_, _)
             | FunctionValueDefinition::TraitDeclaration(_)
-            | FunctionValueDefinition::TraitFunction(_, _)
-            | FunctionValueDefinition::StructField(_, _) => {
+            | FunctionValueDefinition::TraitFunction(_, _) => {
                 panic!("Should not use this formatting function.")
             }
         }
