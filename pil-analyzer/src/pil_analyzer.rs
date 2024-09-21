@@ -441,7 +441,7 @@ impl PILAnalyzer {
     /// Creates and returns a map for every referenced trait and every concrete type to the
     /// corresponding trait implementation function.
     fn resolve_trait_impls(&mut self) -> HashMap<String, HashMap<Vec<Type>, Arc<Expression>>> {
-        let mut trait_typevars_mapping = self.build_reference_path();
+        let trait_typevars_mapping = self.build_reference_path();
 
         let mut trait_solver = TraitsResolver::new(&self.implementations, &trait_typevars_mapping);
 
