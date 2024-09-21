@@ -443,8 +443,7 @@ impl PILAnalyzer {
     fn resolve_trait_impls(&mut self) -> HashMap<String, HashMap<Vec<Type>, Arc<Expression>>> {
         let mut trait_typevars_mapping = self.build_reference_path();
 
-        let mut trait_solver =
-            TraitsResolver::new(&self.implementations, &mut trait_typevars_mapping);
+        let mut trait_solver = TraitsResolver::new(&self.implementations, &trait_typevars_mapping);
 
         let mut resolve_references = |expr: &Expression| {
             expr.all_children().for_each(|expr| {
