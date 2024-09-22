@@ -668,3 +668,41 @@ fn traits_generic_function() {
     assert_eq!(parse_and_evaluate_symbol(input, "F::r1"), "7".to_string());
     assert_eq!(parse_and_evaluate_symbol(input, "F::r2"), "11".to_string());
 }
+
+#[test]
+fn traits_generic_multilevel_functions() {
+    let input = "
+        namespace std::convert(4);
+            let fe = || fe();
+        namespace F(4);
+            trait Add<T> {
+                add: T, T -> T,
+            }
+
+            impl Add<int> {
+                add: |a, b| a + b,
+            }
+
+            impl Add<fe> {
+                add: |a, b| a + b,
+            }
+
+            trait Cast<T, Q> {
+                cast: T -> Q,
+            }
+
+            impl Cast<int, fe> {
+                cast: |a| std::convert::fe(a),
+            }
+
+            let<T> generic_add: T, T -> T = |a, b| Add::add(a, b);
+            
+            let<T, Q> generic_add2: T, T -> Q = |a, b| Cast::cast(generic_add(a, b));
+
+            let six: int = 6;
+            let five: int = 5;
+            let r: fe = generic_add2(five, six);
+        ";
+
+    assert_eq!(parse_and_evaluate_symbol(input, "F::r"), "11".to_string());
+}

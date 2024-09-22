@@ -9,7 +9,10 @@ use powdr_ast::{
         TraitImplementation,
     },
 };
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    sync::Arc,
+};
 
 use crate::type_unifier::Unifier;
 
@@ -21,7 +24,7 @@ type SolvedImpl = ((String, Vec<Type>), Arc<Expression>);
 pub struct TraitsResolver<'a> {
     trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
     solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
-    trait_typevars_mapping: HashMap<String, Vec<Type>>,
+    trait_typevars_mapping: HashMap<String, HashSet<Vec<Type>>>,
 }
 
 impl<'a> TraitsResolver<'a> {
@@ -36,6 +39,7 @@ impl<'a> TraitsResolver<'a> {
                 None
             }
         });
+        // Maybe this is a lot here but its better to do it again for every reference
         let trait_typevars_mapping = Self::build_reference_path(filtered);
 
         Self {
@@ -112,9 +116,7 @@ impl<'a> TraitsResolver<'a> {
                     match type_vars {
                         Some(type_vars) => {
                             for t in type_vars {
-                                let tuple_args = Type::Tuple(TupleType {
-                                    items: vec![t.clone()],
-                                });
+                                let tuple_args = Type::Tuple(TupleType { items: t.clone() });
 
                                 let mut unifier: Unifier = Default::default();
 
@@ -123,7 +125,7 @@ impl<'a> TraitsResolver<'a> {
                                 if res.is_ok() {
                                     if let Some(expr) = impl_.function_by_name(trait_fn_name) {
                                         solved_impls.push((
-                                            (reference.name.clone(), vec![t.clone()]),
+                                            (reference.name.clone(), t.clone()),
                                             Arc::clone(&expr.body),
                                         ));
                                     }
@@ -141,11 +143,11 @@ impl<'a> TraitsResolver<'a> {
         solved_impls
     }
 
-    /// Creates a HashMap that associates each child reference with a generic type along with the references that called it
-    /// From this HashMap, it resolves the parent/child relationships to obtain the value of the generic type
+    /// Creates a dictionary that associates each child reference with a generic type along with the references that called it
+    /// From this dictionary, it resolves the parent/child relationships to obtain the value of the generic type
     fn build_reference_path<'b>(
         definitions: impl Iterator<Item = (&'b Symbol, &'b Expression)>,
-    ) -> HashMap<String, Vec<Type>> {
+    ) -> HashMap<String, HashSet<Vec<Type>>> {
         let mut result = HashMap::new();
 
         for (s, e) in definitions {
@@ -175,34 +177,62 @@ impl<'a> TraitsResolver<'a> {
 
     fn get_types_for_child(
         input: &HashMap<String, Vec<(&String, &Vec<Type>)>>,
+        size: usize,
         target: &str,
-    ) -> Vec<Type> {
-        let mut result = Vec::new();
-
-        for children in input.values() {
-            for (child, types) in children {
-                if *child == target {
-                    result.extend(types.iter().cloned());
+        result: &mut HashMap<String, HashSet<Vec<Type>>>,
+    ) -> bool {
+        let mut temp = HashSet::new();
+        let mut updated = false;
+        for child in input.values() {
+            for (child, types) in child {
+                if result.contains_key(&child.to_string())
+                    || (*child == target && types.iter().all(|t| !matches!(t, Type::TypeVar(_))))
+                {
+                    let selected_types: Vec<Type> = types.iter().take(size).cloned().collect();
+                    temp.insert(selected_types);
                 }
             }
         }
-        result
+
+        if !temp.is_empty() {
+            result.insert(target.to_string(), temp);
+            updated = true;
+        }
+
+        updated
     }
 
-    /// Solve the initial asociation and builds a HashMap that maps the
+    /// Solve the initial asociation and builds a dictionary that maps the
     /// names of traits containing generic types to their represented types.
     fn combine_type_vars_paths(
         input: HashMap<String, Vec<(&String, &Vec<Type>)>>,
-    ) -> HashMap<String, Vec<Type>> {
-        let mut result: HashMap<String, Vec<Type>> = HashMap::new();
+    ) -> HashMap<String, HashSet<Vec<Type>>> {
+        let mut result: HashMap<String, HashSet<Vec<Type>>> = HashMap::new();
+        let mut to_process: VecDeque<&String> = input.keys().collect();
 
-        for (parent, children) in &input {
-            for (child, types) in children {
-                if types.iter().any(|t| matches!(t, Type::TypeVar(_))) {
-                    let types = Self::get_types_for_child(&input, parent);
-                    result.insert(child.to_string(), types);
+        let mut pointer = to_process.pop_front();
+        while pointer.is_some() {
+            let parent = pointer.unwrap();
+
+            if let Some(children) = input.get(parent) {
+                for (child, types) in children {
+                    if types.iter().any(|t| matches!(t, Type::TypeVar(_))) {
+                        let updated =
+                            Self::get_types_for_child(&input, types.len(), child, &mut result);
+                        if !updated {
+                            to_process.push_back(parent);
+                        }
+                    } else {
+                        if result.contains_key(*child) {
+                            result.get_mut(*child).unwrap().insert(types.to_vec());
+                        } else {
+                            result.insert(child.to_string(), HashSet::from([types.to_vec()]));
+                        }
+                    }
                 }
             }
+
+            pointer = to_process.pop_front();
         }
 
         result
