@@ -222,12 +222,10 @@ impl<'a> TraitsResolver<'a> {
                         if !updated {
                             to_process.push_back(parent);
                         }
+                    } else if result.contains_key(*child) {
+                        result.get_mut(*child).unwrap().insert(types.to_vec());
                     } else {
-                        if result.contains_key(*child) {
-                            result.get_mut(*child).unwrap().insert(types.to_vec());
-                        } else {
-                            result.insert(child.to_string(), HashSet::from([types.to_vec()]));
-                        }
+                        result.insert(child.to_string(), HashSet::from([types.to_vec()]));
                     }
                 }
             }
