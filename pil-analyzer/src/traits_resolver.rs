@@ -150,9 +150,14 @@ impl<'a> TraitsResolver<'a> {
     ) -> HashMap<String, HashSet<Vec<Type>>> {
         let mut result = HashMap::new();
 
-        for (s, e) in definitions {
+        // Compute all pairs of references (Reference, Type) for each child and store them associated with the parent's name
+        // ["Parent": [
+        //      ("Child1", [Some(type_args)]),
+        //      ("Child2", [Some(type_args)])
+        // ],...]
+        for (symbol, expr) in definitions {
             let mut references = Vec::new();
-            e.all_children().for_each(|expr| {
+            expr.all_children().for_each(|e| {
                 if let Expression::Reference(
                     _,
                     Reference::Poly(PolynomialReference {
@@ -160,7 +165,7 @@ impl<'a> TraitsResolver<'a> {
                         type_args: Some(type_args),
                         ..
                     }),
-                ) = expr
+                ) = e
                 {
                     if !type_args.is_empty() {
                         references.push((name, type_args));
@@ -168,14 +173,16 @@ impl<'a> TraitsResolver<'a> {
                 }
             });
             if !references.is_empty() {
-                result.insert(s.absolute_name.clone(), references);
+                result.insert(symbol.absolute_name.clone(), references);
             }
         }
 
         Self::combine_type_vars_paths(result)
     }
 
-    fn get_types_for_child(
+    /// Updates the type dictionary for each child based on input.
+    /// Returns true if the dictionary was updated, false otherwise.
+    fn set_types_for_child(
         input: &HashMap<String, Vec<(&String, &Vec<Type>)>>,
         size: usize,
         target: &str,
@@ -214,12 +221,21 @@ impl<'a> TraitsResolver<'a> {
         while pointer.is_some() {
             let parent = pointer.unwrap();
 
+            // ["Parent": [
+            //      ("Child1", [Some(type_args)]),
+            //      ("Child2", [Some(type_args)])
+            // ],...]
+            //
+            // For each child, if it has any type variables, use it as a parent and attempt to resolve.
+            // If it can't be resolved, put it back in the queue to try again later.
+
+            // If the child has no type variables, add it directly to the result so it can be used to resolve other values.
+            // Repeat until there are no more elements in the queue
+
             if let Some(children) = input.get(parent) {
                 for (child, types) in children {
                     if types.iter().any(|t| matches!(t, Type::TypeVar(_))) {
-                        let updated =
-                            Self::get_types_for_child(&input, types.len(), child, &mut result);
-                        if !updated {
+                        if !Self::set_types_for_child(&input, types.len(), child, &mut result) {
                             to_process.push_back(parent);
                         }
                     } else if result.contains_key(*child) {
