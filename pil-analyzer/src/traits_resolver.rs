@@ -177,36 +177,15 @@ impl<'a> TraitsResolver<'a> {
             }
         }
 
+        // If all types are generic, there's nothing to solve
+        if result.iter().all(|(_p, c)| {
+            c.iter()
+                .all(|(_, type_args)| type_args.iter().all(|t| matches!(t, Type::TypeVar(_))))
+        }) {
+            return Default::default();
+        }
+
         Self::combine_type_vars_paths(result)
-    }
-
-    /// Updates the type dictionary for each child based on input.
-    /// Returns true if the dictionary was updated, false otherwise.
-    fn set_types_for_child(
-        input: &HashMap<String, Vec<(&String, &Vec<Type>)>>,
-        size: usize,
-        target: &str,
-        result: &mut HashMap<String, HashSet<Vec<Type>>>,
-    ) -> bool {
-        let mut temp = HashSet::new();
-        let mut updated = false;
-        for child in input.values() {
-            for (child, types) in child {
-                if result.contains_key(&child.to_string())
-                    || (*child == target && types.iter().all(|t| !matches!(t, Type::TypeVar(_))))
-                {
-                    let selected_types: Vec<Type> = types.iter().take(size).cloned().collect();
-                    temp.insert(selected_types);
-                }
-            }
-        }
-
-        if !temp.is_empty() {
-            result.insert(target.to_string(), temp);
-            updated = true;
-        }
-
-        updated
     }
 
     /// Solve the initial asociation and builds a dictionary that maps the
@@ -250,5 +229,34 @@ impl<'a> TraitsResolver<'a> {
         }
 
         result
+    }
+
+    /// Updates the type dictionary for each child based on input.
+    /// Returns true if the dictionary was updated, false otherwise.
+    fn set_types_for_child(
+        input: &HashMap<String, Vec<(&String, &Vec<Type>)>>,
+        size: usize,
+        target: &str,
+        result: &mut HashMap<String, HashSet<Vec<Type>>>,
+    ) -> bool {
+        let mut temp = HashSet::new();
+        let mut updated = false;
+        for child in input.values() {
+            for (child, types) in child {
+                if result.contains_key(&child.to_string())
+                    || (*child == target && types.iter().all(|t| !matches!(t, Type::TypeVar(_))))
+                {
+                    let selected_types: Vec<Type> = types.iter().take(size).cloned().collect();
+                    temp.insert(selected_types);
+                }
+            }
+        }
+
+        if !temp.is_empty() {
+            result.insert(target.to_string(), temp);
+            updated = true;
+        }
+
+        updated
     }
 }

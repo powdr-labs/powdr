@@ -457,7 +457,7 @@ let g: int = f({ });
 }
 
 #[test]
-fn traits_and_refs() {
+fn test_traits_and_refs() {
     let input = "
     namespace std::convert(4);
         let fe = || fe();
@@ -493,7 +493,7 @@ fn traits_and_refs() {
 }
 
 #[test]
-fn traits_multiple_fns() {
+fn test_traits_multiple_fns() {
     let input = "
     namespace std::convert(4);
         let fe = || fe();
@@ -532,7 +532,7 @@ fn traits_multiple_fns() {
 }
 
 #[test]
-fn traits_multiple_impls() {
+fn test_traits_multiple_impls() {
     let input = "
     namespace std::convert(4);
         let fe = || fe();
@@ -639,7 +639,7 @@ fn test_trait_function_call_cross_impl() {
 }
 
 #[test]
-fn traits_generic_function() {
+fn test_traits_generic_function() {
     let input = "
         namespace std::convert(4);
             let fe = || fe();
@@ -670,7 +670,7 @@ fn traits_generic_function() {
 }
 
 #[test]
-fn traits_generic_multilevel_functions() {
+fn test_traits_generic_multilevel_functions() {
     let input = "
         namespace std::convert(4);
             let fe = || fe();
