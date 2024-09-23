@@ -41,6 +41,9 @@ use stwo_prover::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, P
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
 
+
+
+
 // We use two different EVM verifier libraries.
 // 1. snark_verifier: supports single SNARK verification as well as aggregated proof verification.
 // However the generated smart contract code size is often larger than the limit on Ethereum for complex VMs.
@@ -136,7 +139,7 @@ impl<F: FieldElement> StwoProver<F> {
     ) {
 
         const LOG_N_INSTANCES: u32 = 5;
-        const FIB_SEQUENCE_LENGTH: usize=6;
+        const FIB_SEQUENCE_LENGTH: usize=262144;
 
        
 
@@ -160,12 +163,20 @@ impl<F: FieldElement> StwoProver<F> {
         let circuit = PowdrCircuit::new(&self.analyzed)
              .with_witgen_callback(witgen_callback)
              .with_witness(witness);
-        print!("witness from powdr {:?}", witness );
+       // print!("witness from powdr {:?}", witness );
+
+        let fibonacci_y_length = witness
+        .iter()
+        .find(|(key, _)| key == "Fibonacci::y")
+        .map(|(_, values)| values.len())
+        .unwrap_or(0);
+           
+        
 
         //let trace = generate_stwo_trace(witness,LOG_N_INSTANCES);
-        let trace=generate_parallel_stwo_trace_by_witness_repitition(witness, LOG_N_INSTANCES);
+        let trace=generate_parallel_stwo_trace_by_witness_repitition(fibonacci_y_length, witness, LOG_N_INSTANCES);
 
-        println!("this is from the generate stwo trace in repitition \n {:?}",generate_parallel_stwo_trace_by_witness_repitition(witness,LOG_N_INSTANCES));
+        
 
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals(trace);
@@ -186,10 +197,10 @@ impl<F: FieldElement> StwoProver<F> {
 
         println!("created component!");
 
-        println!("component eval is like this  \n {} ",component.log_n_rows);
+       // println!("component eval is like this  \n {} ",component.log_n_rows);
         
        
-
+        let start = Instant::now();
         let proof = stwo_prover::core::prover::prove::<SimdBackend, Blake2sMerkleChannel>(
             &[&component],
             prover_channel,
@@ -198,6 +209,9 @@ impl<F: FieldElement> StwoProver<F> {
         .unwrap();
         
         println!("proof generated!");
+        let duration = start.elapsed();
+
+        println!("proving time for fibo length of {:?} is {:?}",fibonacci_y_length, duration);
 
         // Verify.
         let verifier_channel = &mut Blake2sChannel::default();
@@ -209,8 +223,6 @@ impl<F: FieldElement> StwoProver<F> {
         stwo_prover::core::prover::verify(&[&component], verifier_channel, commitment_scheme, proof).unwrap();
          
          
- 
-         println!("{:?}", witness);
 
         
 
