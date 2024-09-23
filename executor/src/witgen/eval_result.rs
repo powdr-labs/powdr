@@ -1,9 +1,8 @@
 use std::fmt::{self, Debug};
 
-use powdr_ast::analyzed::AlgebraicReference;
 use powdr_number::FieldElement;
 
-use super::range_constraints::RangeConstraint;
+use super::{affine_expression::AlgebraicVariable, range_constraints::RangeConstraint};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum IncompleteCause<K = usize> {
@@ -160,7 +159,7 @@ impl<K, T: FieldElement> EvalValue<K, T> {
 
 /// Result of evaluating an expression / lookup.
 /// New assignments or constraints for witness columns identified by an ID.
-pub type EvalResult<'a, T, K = &'a AlgebraicReference> = Result<EvalValue<K, T>, EvalError<T>>;
+pub type EvalResult<'a, T, K = AlgebraicVariable<'a>> = Result<EvalValue<K, T>, EvalError<T>>;
 
 #[derive(Clone, PartialEq)]
 pub enum EvalError<T: FieldElement> {
