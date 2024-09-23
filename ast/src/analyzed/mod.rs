@@ -20,7 +20,7 @@ use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
-    self, ArrayExpression, EnumDeclaration, EnumVariant, TraitDeclaration, TraitFunction,
+    self, ArrayExpression, EnumDeclaration, EnumVariant, NamedType, TraitDeclaration,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -623,7 +623,7 @@ pub enum FunctionValueDefinition {
     TypeDeclaration(EnumDeclaration),
     TypeConstructor(Arc<EnumDeclaration>, EnumVariant),
     TraitDeclaration(TraitDeclaration),
-    TraitFunction(Arc<TraitDeclaration>, TraitFunction),
+    TraitFunction(Arc<TraitDeclaration>, NamedType),
 }
 
 impl Children<Expression> for FunctionValueDefinition {
@@ -667,7 +667,7 @@ impl Children<Expression> for TraitDeclaration {
     }
 }
 
-impl Children<Expression> for TraitFunction {
+impl Children<Expression> for NamedType {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
         Box::new(empty())
     }
