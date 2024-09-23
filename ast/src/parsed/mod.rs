@@ -436,15 +436,15 @@ pub struct NamedExpression<Expr> {
 pub struct TraitDeclaration<E = u64> {
     pub name: String,
     pub type_vars: Vec<String>,
-    pub functions: Vec<TraitFunction<E>>,
+    pub functions: Vec<NamedType<E>>,
 }
 
 impl TraitDeclaration<u64> {
-    pub fn function_by_name(&self, name: &str) -> Option<&TraitFunction> {
+    pub fn function_by_name(&self, name: &str) -> Option<&NamedType> {
         self.functions.iter().find(|f| f.name == name)
     }
 
-    pub fn function_by_name_mut(&mut self, name: &str) -> Option<&mut TraitFunction> {
+    pub fn function_by_name_mut(&mut self, name: &str) -> Option<&mut NamedType> {
         self.functions.iter_mut().find(|f| f.name == name)
     }
 }
@@ -459,12 +459,12 @@ impl<R> Children<Expression<R>> for TraitDeclaration<Expression<R>> {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct TraitFunction<E = u64> {
+pub struct NamedType<E = u64> {
     pub name: String,
     pub ty: Type<E>,
 }
 
-impl<R> Children<Expression<R>> for TraitFunction<Expression<R>> {
+impl<R> Children<Expression<R>> for NamedType<Expression<R>> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
         self.ty.children()
     }

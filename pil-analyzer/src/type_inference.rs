@@ -32,7 +32,7 @@ use crate::{
 /// The parameter `statement_type` is the expected type for expressions at statement level.
 /// Sets the generic arguments for references and the literal types in all expressions.
 /// Returns the types for symbols without explicit type.
-pub fn infer_types<'a>(
+pub fn infer_types(
     definitions: HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
     expressions: &mut [(&mut Expression, ExpectedType)],
     struct_declarations: HashMap<String, StructDeclaration>,

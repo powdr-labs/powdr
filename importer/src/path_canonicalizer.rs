@@ -16,9 +16,8 @@ use powdr_ast::parsed::{
     visitor::{Children, ExpressionVisitable},
     ArrayLiteral, BinaryOperation, BlockExpression, EnumDeclaration, EnumVariant, Expression,
     FunctionCall, IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm,
-    MatchExpression, NamedExpression, Pattern, PilStatement, StatementInsideBlock,
-    StructDeclaration, StructExpression, TraitDeclaration, TraitFunction, TypedExpression,
-    UnaryOperation,
+    MatchExpression, NamedExpression, NamedType, Pattern, PilStatement, StatementInsideBlock,
+    StructDeclaration, StructExpression, TraitDeclaration, TypedExpression, UnaryOperation,
 };
 use powdr_parser_util::{Error, SourceRef};
 
@@ -1023,14 +1022,11 @@ fn check_trait_declaration(
     trait_decl
         .functions
         .iter()
-        .try_fold(
-            BTreeSet::default(),
-            |mut acc, TraitFunction { name, .. }| {
-                acc.insert(name.clone()).then_some(acc).ok_or(format!(
-                    "Duplicate method `{name}` defined in trait `{location}`"
-                ))
-            },
-        )
+        .try_fold(BTreeSet::default(), |mut acc, NamedType { name, .. }| {
+            acc.insert(name.clone()).then_some(acc).ok_or(format!(
+                "Duplicate method `{name}` defined in trait `{location}`"
+            ))
+        })
         .map_err(|e| SourceRef::unknown().with_error(e))?;
 
     let type_vars = trait_decl.type_vars.iter().collect();

@@ -25,8 +25,8 @@ use powdr_ast::{
         types::{ArrayType, Type},
         visitor::{AllChildren, ExpressionVisitable},
         ArrayLiteral, BlockExpression, FunctionCall, FunctionKind, LambdaExpression,
-        LetStatementInsideBlock, NamedExpression, Number, Pattern, StructExpression,
-        TypedExpression, UnaryOperation,
+        LetStatementInsideBlock, NamedExpression, Number, Pattern, SourceReference,
+        StructExpression, TypedExpression, UnaryOperation,
     },
 };
 use powdr_number::{BigUint, FieldElement};
@@ -37,14 +37,13 @@ use crate::{
     statement_processor::Counters,
 };
 
-type ParsedIdentity = Identity<parsed::SelectedExpressions<Expression>>;
 type AnalyzedIdentity<T> = Identity<SelectedExpressions<AlgebraicExpression<T>>>;
 
 pub fn condense<T: FieldElement>(
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
     public_declarations: HashMap<String, PublicDeclaration>,
-    identities: &[ParsedIdentity],
+    proof_items: &[Expression],
     source_order: Vec<StatementIdentifier>,
     auto_added_symbols: HashSet<String>,
 ) -> Analyzed<T> {
@@ -66,8 +65,8 @@ pub fn condense<T: FieldElement>(
                 condenser.set_namespace_and_degree(namespace, definitions[name].0.degree);
             }
             let statement = match s {
-                StatementIdentifier::Identity(index) => {
-                    condenser.condense_identity(&identities[index]);
+                StatementIdentifier::ProofItem(index) => {
+                    condenser.condense_proof_item(&proof_items[index]);
                     None
                 }
                 StatementIdentifier::Definition(name)
@@ -136,7 +135,7 @@ pub fn condense<T: FieldElement>(
                 .map(|identity| {
                     let index = condensed_identities.len();
                     condensed_identities.push(identity);
-                    StatementIdentifier::Identity(index)
+                    StatementIdentifier::ProofItem(index)
                 })
                 .collect::<Vec<_>>();
 
@@ -241,34 +240,21 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         }
     }
 
-    pub fn condense_identity(&mut self, identity: &'a ParsedIdentity) {
-        if identity.kind == IdentityKind::Polynomial {
-            let expr = identity.expression_for_poly_id();
-            evaluator::evaluate(expr, self)
-                .and_then(|expr| {
-                    if let Value::Tuple(items) = expr.as_ref() {
-                        assert!(items.is_empty());
-                        Ok(())
-                    } else {
-                        self.add_constraints(expr, identity.source.clone())
-                    }
-                })
-                .unwrap_or_else(|err| {
-                    panic!(
-                        "Error reducing expression to constraint:\nExpression: {expr}\nError: {err:?}"
-                    )
-                });
-        } else {
-            let left = self.condense_selected_expressions(&identity.left);
-            let right = self.condense_selected_expressions(&identity.right);
-            self.new_constraints.push(Identity {
-                id: self.counters.dispense_identity_id(),
-                kind: identity.kind,
-                source: identity.source.clone(),
-                left,
-                right,
+    pub fn condense_proof_item(&mut self, item: &'a Expression) {
+        evaluator::evaluate(item, self)
+            .and_then(|expr| {
+                if let Value::Tuple(items) = expr.as_ref() {
+                    assert!(items.is_empty());
+                    Ok(())
+                } else {
+                    self.add_proof_items(expr, item.source_reference().clone())
+                }
             })
-        }
+            .unwrap_or_else(|err| {
+                panic!(
+                    "Error reducing expression to constraint:\nExpression: {item}\nError: {err:?}"
+                )
+            });
     }
 
     /// Sets the current namespace which will be used for newly generated witness columns.
@@ -307,19 +293,6 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     /// Returns the new prover functions generated since the last call to this function.
     pub fn extract_new_prover_functions(&mut self) -> Vec<Expression> {
         std::mem::take(&mut self.new_prover_functions)
-    }
-
-    fn condense_selected_expressions(
-        &mut self,
-        sel_expr: &'a parsed::SelectedExpressions<Expression>,
-    ) -> SelectedExpressions<AlgebraicExpression<T>> {
-        SelectedExpressions {
-            selector: sel_expr
-                .selector
-                .as_ref()
-                .map(|expr| self.condense_to_algebraic_expression(expr)),
-            expressions: self.condense_to_array_of_algebraic_expressions(&sel_expr.expressions),
-        }
     }
 
     /// Evaluates the expression and expects it to result in an algebraic expression.
@@ -478,7 +451,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             let value = try_to_function_value_definition(value.as_ref(), FunctionKind::Pure)
                 .map_err(|e| match e {
                     EvalError::TypeError(e) => {
-                        EvalError::TypeError(format!("Error creating fixed column {name}: {e}"))
+                        EvalError::TypeError(format!("Error creating fixed column {name}:\n{e}"))
                     }
                     _ => e,
                 })?;
@@ -559,7 +532,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             try_to_function_value_definition(expr.as_ref(), FunctionKind::Query).map_err(|e| {
                 match e {
                     EvalError::TypeError(e) => {
-                        EvalError::TypeError(format!("Error setting hint for column {col}: {e}"))
+                        EvalError::TypeError(format!("Error setting hint for column {col}:\n{e}"))
                     }
                     _ => e,
                 }
@@ -575,12 +548,12 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         Ok(())
     }
 
-    fn add_constraints(
+    fn add_proof_items(
         &mut self,
-        constraints: Arc<Value<'a, T>>,
+        items: Arc<Value<'a, T>>,
         source: SourceRef,
     ) -> Result<(), EvalError> {
-        match constraints.as_ref() {
+        match items.as_ref() {
             Value::Array(items) => {
                 for item in items {
                     self.new_constraints.push(to_constraint(
@@ -591,15 +564,15 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
                 }
             }
             Value::Closure(..) => {
-                let e = try_value_to_expression(&constraints).map_err(|e| {
-                    EvalError::TypeError(format!("Error adding prover function: {e}"))
+                let e = try_value_to_expression(&items).map_err(|e| {
+                    EvalError::TypeError(format!("Error adding prover function:\n{e}"))
                 })?;
 
                 self.new_prover_functions.push(e);
             }
             _ => self
                 .new_constraints
-                .push(to_constraint(&constraints, source, &mut self.counters)),
+                .push(to_constraint(&items, source, &mut self.counters)),
         }
         Ok(())
     }
@@ -820,7 +793,11 @@ fn try_closure_to_expression<T: FieldElement>(
     let statements = env_map
         .values()
         .map(|(new_id, name, value)| {
-            let mut expr = try_value_to_expression(value.as_ref())?;
+            let mut expr = try_value_to_expression(value.as_ref()).map_err(|e| {
+                EvalError::TypeError(format!(
+                    "Error converting captured variable {name} to expression:\n{e}",
+                ))
+            })?;
             // The call to try_value_to_expression assumed a fresh environment,
             // but we already have `new_id` let statements at this point,
             // so we adjust the local variable references inside `expr` accordingly.
@@ -958,7 +935,7 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
         Value::Closure(c) => try_closure_to_expression(c)?,
         Value::TypeConstructor(type_constructor) => {
             return Err(EvalError::TypeError(format!(
-                "Type constructor as captured value not supported: {type_constructor}.",
+                "Converting type constructor to expression not supported: {type_constructor}.",
             )))
         }
         Value::Enum(enum_value) => {
@@ -984,7 +961,7 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
         }
         Value::BuiltinFunction(_) => {
             return Err(EvalError::TypeError(
-                "Builtin function as captured value not supported.".to_string(),
+                "Converting builtin functions to expressions not supported.".to_string(),
             ))
         }
         Value::Struct(name, fields) => StructExpression {
@@ -1044,7 +1021,7 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
             .into(),
             _ => {
                 return Err(EvalError::TypeError(format!(
-                    "Algebraic expression as captured value not supported: {e}."
+                    "Converting complex algebraic expressions to expressions not supported: {e}."
                 )))
             }
         },
