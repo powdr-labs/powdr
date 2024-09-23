@@ -291,7 +291,7 @@ impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>> Symbol
         channel: u32,
         index: usize,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        if let Some(v) = (self.query_callback)(&format!("DataIdentifier({channel},{index})"))
+        if let Some(v) = (self.query_callback)(&format!("Input({channel},{index})"))
             .map_err(EvalError::ProverError)?
         {
             Ok(Value::FieldElement(v).into())

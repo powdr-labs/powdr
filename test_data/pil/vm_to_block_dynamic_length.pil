@@ -5,7 +5,7 @@ namespace std::prover;
     enum Query {
         Output(int, int),
         Hint(fe),
-        DataIdentifier(int, int),
+        Input(int, int),
         None,
     }
 namespace main(256);

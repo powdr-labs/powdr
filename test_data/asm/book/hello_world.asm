@@ -20,7 +20,7 @@ machine HelloWorld with degree: 8 {
 
     // the main function assigns the first prover input to A, increments it, decrements it, and loops forever
     function main {
-        A <=X= ${ std::prelude::Query::DataIdentifier(1, 0) };
+        A <=X= ${ std::prelude::Query::Input(1, 0) };
         A <== incr(A);
         A <== decr(A);
         assert_zero A;

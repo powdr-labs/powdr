@@ -97,7 +97,7 @@ pub fn serde_data_to_query_callback<T: FieldElement>(
     move |query: &str| -> Result<Option<T>, String> {
         let (id, data) = parse_query(query)?;
         match id {
-            "DataIdentifier" => {
+            "Input" => {
                 let [index, cb_channel] = data[..] else {
                     panic!()
                 };
@@ -130,7 +130,7 @@ pub fn dict_data_to_query_callback<T: FieldElement>(
     move |query: &str| -> Result<Option<T>, String> {
         let (id, data) = parse_query(query)?;
         match id {
-            "DataIdentifier" => {
+            "Input" => {
                 let [index, cb_channel] = data[..] else {
                     panic!()
                 };

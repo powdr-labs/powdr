@@ -40,14 +40,14 @@ machine Palindrome with degree: 32 {
 
     function main {
         // TOOD somehow this is not properly resolved here without "std::prover::"
-        CNT <=X= ${ Query::DataIdentifier(1, 0) };
+        CNT <=X= ${ Query::Input(1, 0) };
         ADDR <=X= 0;
         mstore CNT;
 
         store_values:
         jmpz CNT, check_start;
         ADDR <=X= CNT;
-        mstore ${ Query::DataIdentifier(int(std::prover::eval(CNT)) + 1, 0) };
+        mstore ${ Query::Input(int(std::prover::eval(CNT)) + 1, 0) };
         CNT <=X= CNT - 1;
         jmp store_values;
 

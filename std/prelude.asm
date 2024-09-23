@@ -42,7 +42,7 @@ enum Query {
     /// Generate a hint to fill a witness column with.
     Hint(fe),
     /// Query a prover input element by index and data id.
-    DataIdentifier(int, int),
+    Input(int, int),
     /// This value is not (additionally) constrained by the query.
     None,
 }

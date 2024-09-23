@@ -234,11 +234,11 @@ impl Runtime {
 
         // Base syscalls
         r.add_syscall(
-            Syscall::DataIdentifier,
+            Syscall::Input,
             [
                 "query_arg_1 <== get_reg(10);",
                 "query_arg_2 <== get_reg(11);",
-                "set_reg 10, ${ std::prelude::Query::DataIdentifier(std::convert::int(std::prover::eval(query_arg_2)), std::convert::int(std::prover::eval(query_arg_1))) };",
+                "set_reg 10, ${ std::prelude::Query::Input(std::convert::int(std::prover::eval(query_arg_2)), std::convert::int(std::prover::eval(query_arg_1))) };",
             ]
         );
 

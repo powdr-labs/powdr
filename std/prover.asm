@@ -30,7 +30,7 @@ let output_byte: int, int -> () = [];
 
 let handle_query: expr, int, std::prelude::Query -> () = query |column, row, v| match v {
     Query::Hint(h) => provide_if_unknown(column, row, || h),
-    Query::DataIdentifier(i, j) => provide_if_unknown(column, row, || get_input_from_channel(i, j)),
+    Query::Input(i, j) => provide_if_unknown(column, row, || get_input_from_channel(i, j)),
     Query::Output(fd, b) => provide_if_unknown(column, row, || { output_byte(fd, b); 0 }),
     Query::None => (),
 };

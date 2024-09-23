@@ -5,14 +5,14 @@ namespace std::convert(16);
 
 namespace std::prover(16);
     enum Query {
-        DataIdentifier(int, int),
+        Input(int, int),
     }
 
 namespace Quad(N);
     col fixed id(i) { i };
     col fixed double(i) { i * 2 };
 
-    col witness input(i) query std::prelude::Query::DataIdentifier(i + 1, 0);
+    col witness input(i) query std::prelude::Query::Input(i + 1, 0);
     col witness wdouble;
     col witness quadruple;
 
