@@ -51,7 +51,7 @@ machine Arith with
     col witness stage(1) acc2;
     let acc = Fp2::Fp2(acc1, acc2);
 
-    bus_receive(is_first, ARITH_INTERACTION_ID, [0, x, y, z], latch * used, [acc1, acc2], alpha, beta);
+    bus_receive(ARITH_INTERACTION_ID, [0, x, y, z], latch * used, [acc1, acc2], alpha, beta);
 
     col witness stage(1) acc1_next;
     col witness stage(1) acc2_next;
@@ -118,7 +118,7 @@ machine Main with
     col witness stage(1) acc2;
     let acc = Fp2::Fp2(acc1, acc2);
 
-    bus_send(is_first, ARITH_INTERACTION_ID, [0, x, y, z], instr_add, [acc1, acc2], alpha, beta);
+    bus_send(ARITH_INTERACTION_ID, [0, x, y, z], instr_add, [acc1, acc2], alpha, beta);
 
     col witness stage(1) acc1_next;
     col witness stage(1) acc2_next;

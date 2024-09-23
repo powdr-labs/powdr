@@ -47,6 +47,10 @@ mod vm_processor;
 
 static OUTER_CODE_NAME: &str = "witgen (outer code)";
 
+// TODO change this so that it has functions
+// get_input, get_input_from_channel, output_byte
+// instead of processing strings.
+// but we can only do that once we have fully removed the old query functions.
 pub trait QueryCallback<T>: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 impl<T, F> QueryCallback<T> for F where F: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 

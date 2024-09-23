@@ -28,10 +28,7 @@ machine Main with degree: 8 {
     };
     col fixed m = [0, 1, 0, 0, 2, 0, 1, 0];
 
-    let lookup_constraint = Constr::Lookup(
-        (Option::Some(a_sel), Option::Some(b_sel)),
-        [(a1, b1), (a2, b2), (a3, b3)]
-    );
+    let lookup_constraint = a_sel $ [a1, a2, a3] in b_sel $ [b1, b2, b3];
 
     // TODO: Functions currently cannot add witness columns at later stages,
     // so we have to manually create it here and pass it to lookup(). 
@@ -39,8 +36,7 @@ machine Main with degree: 8 {
     col witness stage(1) z2;
     let z = Fp2::Fp2(z1, z2);
 
-    let is_first: col = std::well_known::is_first;
-    lookup(is_first, [z1, z2], alpha, beta, lookup_constraint, m);
+    lookup([z1, z2], alpha, beta, lookup_constraint, m);
 
     // TODO: Helper columns, because we can't access the previous row in hints
     col witness stage(1) z1_next;

@@ -46,10 +46,12 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
             rows,
             size: self.size,
             updates: Constraints::new(),
+            query_callback: self.query_callback,
         };
-        let res = match evaluator::evaluate(fun, &mut symbols)
-            .and_then(|fun| evaluator::evaluate_function_call(fun, arguments, &mut symbols))
-        {
+        let res = evaluator::evaluate(fun, &mut symbols)
+            .and_then(|fun| evaluator::evaluate_function_call(fun, arguments, &mut symbols));
+
+        let res = match res {
             Ok(res) => res,
             Err(e) => {
                 return match e {
@@ -123,7 +125,7 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
     }
 
     fn interpolate_query(
-        &self,
+        &mut self,
         query: &'a Expression,
         rows: &RowPair<T>,
     ) -> Result<String, EvalError> {
@@ -135,21 +137,26 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
             rows,
             size: self.size,
             updates: Constraints::new(),
+            query_callback: self.query_callback,
         };
         let fun = evaluator::evaluate(query, &mut symbols)?;
-        evaluator::evaluate_function_call(fun, arguments, &mut symbols).map(|v| v.to_string())
+        let res =
+            evaluator::evaluate_function_call(fun, arguments, &mut symbols).map(|v| v.to_string());
+        res
     }
 }
 
-#[derive(Clone)]
-struct Symbols<'a, 'b, T: FieldElement> {
+struct Symbols<'a, 'b, 'c, T: FieldElement, QueryCallback: Send + Sync> {
     fixed_data: &'a FixedData<'a, T>,
     rows: &'b RowPair<'b, 'a, T>,
     size: DegreeType,
     updates: Constraints<&'a AlgebraicReference, T>,
+    query_callback: &'c mut QueryCallback,
 }
 
-impl<'a, 'b, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, 'b, T> {
+impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>> SymbolLookup<'a, T>
+    for Symbols<'a, 'b, 'c, T, QueryCallback>
+{
     fn lookup(
         &mut self,
         name: &'a str,
@@ -278,9 +285,46 @@ impl<'a, 'b, T: FieldElement> SymbolLookup<'a, T> for Symbols<'a, 'b, T> {
 
         Ok(())
     }
+
+    fn get_input(&mut self, index: usize) -> Result<Arc<Value<'a, T>>, EvalError> {
+        if let Some(v) =
+            (self.query_callback)(&format!("Input({index})")).map_err(EvalError::ProverError)?
+        {
+            Ok(Value::FieldElement(v).into())
+        } else {
+            Err(EvalError::DataNotAvailable)
+        }
+    }
+
+    fn get_input_from_channel(
+        &mut self,
+        channel: u32,
+        index: usize,
+    ) -> Result<Arc<Value<'a, T>>, EvalError> {
+        if let Some(v) = (self.query_callback)(&format!("DataIdentifier({channel},{index})"))
+            .map_err(EvalError::ProverError)?
+        {
+            Ok(Value::FieldElement(v).into())
+        } else {
+            Err(EvalError::DataNotAvailable)
+        }
+    }
+
+    fn output_byte(&mut self, fd: u32, byte: u8) -> Result<(), EvalError> {
+        if ((self.query_callback)(&format!("Output({fd},{byte})"))
+            .map_err(EvalError::ProverError)?)
+        .is_some()
+        {
+            Ok(())
+        } else {
+            Err(EvalError::DataNotAvailable)
+        }
+    }
 }
 
-impl<'a, 'b, T: FieldElement> Symbols<'a, 'b, T> {
+impl<'a, 'b, 'c, T: FieldElement, QueryCallback: Send + Sync>
+    Symbols<'a, 'b, 'c, T, QueryCallback>
+{
     fn updates(self) -> Constraints<&'a AlgebraicReference, T> {
         self.updates
     }
