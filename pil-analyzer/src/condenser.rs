@@ -219,7 +219,9 @@ pub struct Condenser<'a, T> {
     new_intermediate_column_values: HashMap<String, Vec<AlgebraicExpression<T>>>,
     /// The names of all new columns ever generated, to avoid duplicates.
     new_symbols: HashSet<String>,
+    /// Constraints added since the last extraction. The values should be enums of type `std::prelude::Constr`.
     new_constraints: Vec<(Arc<Value<'a, T>>, SourceRef)>,
+    /// Prover functions added since the last extraction.
     new_prover_functions: Vec<Expression>,
     /// The current stage. New columns are created at that stage.
     stage: u32,
@@ -614,7 +616,10 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             .collect();
         // TODO we could now subtract constrs.len() from the identity counter.
         let result = result?;
-        assert!(matches!(result.as_ref(), Value::Tuple(items) if items.is_empty()), "Function should return ()");
+        assert!(
+            matches!(result.as_ref(), Value::Tuple(items) if items.is_empty()),
+            "Function should return ()"
+        );
 
         Ok(Arc::new(Value::Array(constrs)))
     }
