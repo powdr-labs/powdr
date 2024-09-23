@@ -149,19 +149,13 @@ fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<PolyI
         Err(_) => return None,
     };
     let mut coeff = sort_constraint.nonzero_coefficients();
-    let first = match coeff.next()? {
-        (AlgebraicVariable::Column(r), v) => (r, v),
-        _ => return None,
-    };
-    let second = match coeff.next()? {
-        (AlgebraicVariable::Column(r), v) => (r, v),
-        _ => return None,
-    };
+    let first = coeff.next().and_then(|(k, v)| k.column().map(|k| (k, v)))?;
+    let second = coeff.next().and_then(|(k, v)| k.column().map(|k| (k, v)))?;
     if coeff.next().is_some() {
         return None;
     }
     let key_column_id = match (first, second) {
-        ((key, _), _) | (_, (key, _)) if !key.next => *key,
+        ((key, _), _) | (_, (key, _)) if !key.next => key,
         _ => return None,
     };
     if key_column_id.next || key_column_id.is_fixed() {

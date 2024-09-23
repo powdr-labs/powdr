@@ -41,11 +41,11 @@ impl Display for AlgebraicVariable<'_> {
 }
 
 impl AlgebraicVariable<'_> {
-    /// Returns the column reference if the variable is a column, otherwise panics.
-    pub fn column(&self) -> &AlgebraicReference {
+    /// Returns the column reference if the variable is a column, otherwise None.
+    pub fn column(&self) -> Option<&AlgebraicReference> {
         match self {
-            AlgebraicVariable::Column(r) => r,
-            _ => panic!("Expected a column"),
+            AlgebraicVariable::Column(r) => Some(r),
+            AlgebraicVariable::Public(_) => None,
         }
     }
 }

@@ -27,7 +27,7 @@ impl<'a, T: FieldElement> SymbolicVariables<T> for FixedEvaluator<'a, T> {
             AlgebraicVariable::Column(poly) => {
                 assert!(
                     poly.is_fixed(),
-                    "Can only access fixed columns in the fixed evaluator."
+                    "Can only access fixed columns in the fixed evaluator, got column of type {:?}.", poly.poly_id.ptype
                 );
                 let col_data = self.fixed_data.fixed_cols[&poly.poly_id].values(self.size);
                 let degree = col_data.len();
@@ -38,7 +38,11 @@ impl<'a, T: FieldElement> SymbolicVariables<T> for FixedEvaluator<'a, T> {
                 };
                 Ok(col_data[row].into())
             }
-            _ => panic!("A fixed column should not depend on a public!"),
+            AlgebraicVariable::Public(public_name) => {
+                panic!(
+                    "Can only access fixed columns in the fixed evaluator, got public: {public_name}"
+                )
+            }
         }
     }
 }

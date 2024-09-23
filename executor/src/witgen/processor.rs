@@ -365,7 +365,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         }
 
         for (var, _) in &input_updates.constraints {
-            let poly = var.column();
+            let poly = var.column().expect("Expected column");
             let poly_id = &poly.poly_id;
             if let Some(start_row) = self.previously_set_inputs.remove(poly_id) {
                 log::trace!(
@@ -378,7 +378,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             }
         }
         for (var, _) in &input_updates.constraints {
-            let poly = var.column();
+            let poly = var.column().expect("Expected column");
             self.previously_set_inputs.insert(poly.poly_id, row_index);
         }
         self.apply_updates(row_index, &input_updates, || "inputs".to_string())
