@@ -35,17 +35,17 @@ machine Main with degree: 16 {
     instr assert_zero X { XIsZero = 1 }
 
     function main {
-        CNT <=X= ${ Query::Input(2, 0) };
+        CNT <=X= ${ Query::Input(0, 2) };
 
         start:
         jmpz CNT, check;
-        A <=X= A + ${ Query::Input(std::convert::int(std::prover::eval(CNT) + 2), 0) };
+        A <=X= A + ${ Query::Input(0, std::convert::int(std::prover::eval(CNT) + 2)) };
         // Could use "CNT <=X= CNT - 1", but that would need X.
         dec_CNT;
         jmp start;
 
         check:
-        A <=X= A - ${ Query::Input(1, 0) };
+        A <=X= A - ${ Query::Input(0, 1) };
         assert_zero A;
         return;
     }

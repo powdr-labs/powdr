@@ -98,7 +98,7 @@ pub fn serde_data_to_query_callback<T: FieldElement>(
         let (id, data) = parse_query(query)?;
         match id {
             "Input" => {
-                let [index, cb_channel] = data[..] else {
+                let [cb_channel, index] = data[..] else {
                     panic!()
                 };
                 let cb_channel = cb_channel
@@ -131,7 +131,7 @@ pub fn dict_data_to_query_callback<T: FieldElement>(
         let (id, data) = parse_query(query)?;
         match id {
             "Input" => {
-                let [index, cb_channel] = data[..] else {
+                let [cb_channel, index] = data[..] else {
                     panic!()
                 };
                 let cb_channel = cb_channel

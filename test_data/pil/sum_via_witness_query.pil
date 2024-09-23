@@ -15,9 +15,9 @@ namespace Sum(N);
 
     col witness input(i) query match i {
         // A non-exhaustive match statement is the only way to return "None"
-        0 => std::prelude::Query::Input(1, 0),
-        1 => std::prelude::Query::Input(2, 0),
-        2 => std::prelude::Query::Input(3, 0),
+        0 => std::prelude::Query::Input(0, 1),
+        1 => std::prelude::Query::Input(0, 2),
+        2 => std::prelude::Query::Input(0, 3),
         // No response in the case of i == 3
         _ => std::prelude::Query::None,
     };
