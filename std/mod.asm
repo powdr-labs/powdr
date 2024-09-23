@@ -1,6 +1,7 @@
 mod array;
 mod btree;
 mod check;
+mod constraints;
 mod convert;
 mod debug;
 mod field;

@@ -775,7 +775,8 @@ impl<T: FieldElement> Pipeline<T> {
         let linked = self.artifact.parsed_pil_file.take().unwrap();
 
         self.log("Analyzing PIL and computing constraints...");
-        let analyzed = powdr_pil_analyzer::analyze_ast(linked);
+        let analyzed =
+            powdr_pil_analyzer::analyze_ast(linked).map_err(output_pil_analysis_errors)?;
         self.maybe_write_pil(&analyzed, "_analyzed")?;
         self.log("done.");
 
@@ -789,7 +790,8 @@ impl<T: FieldElement> Pipeline<T> {
         };
 
         self.log("Analyzing PIL and computing constraints...");
-        let analyzed = powdr_pil_analyzer::analyze_file(pil_file);
+        let analyzed =
+            powdr_pil_analyzer::analyze_file(pil_file).map_err(output_pil_analysis_errors)?;
         self.maybe_write_pil(&analyzed, "_analyzed")?;
         self.log("done.");
 
@@ -803,7 +805,8 @@ impl<T: FieldElement> Pipeline<T> {
         };
 
         self.log("Analyzing PIL and computing constraints...");
-        let analyzed = powdr_pil_analyzer::analyze_string(pil_string);
+        let analyzed =
+            powdr_pil_analyzer::analyze_string(pil_string).map_err(output_pil_analysis_errors)?;
         self.maybe_write_pil(&analyzed, "_analyzed")?;
         self.log("done.");
 
@@ -1101,4 +1104,15 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn host_context(&self) -> &HostContext {
         &self.host_context
     }
+}
+
+fn output_pil_analysis_errors(errors: Vec<powdr_parser_util::Error>) -> Vec<String> {
+    eprintln!("Error analyzing PIL file:");
+    errors
+        .into_iter()
+        .map(|e| {
+            e.output_to_stderr();
+            e.to_string()
+        })
+        .collect()
 }

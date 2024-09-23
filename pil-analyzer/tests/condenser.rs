@@ -1,8 +1,26 @@
+use itertools::Itertools;
+use powdr_ast::{
+    analyzed::{Analyzed, Expression, Reference},
+    parsed::visitor::AllChildren,
+};
 use powdr_number::GoldilocksField;
-use powdr_pil_analyzer::analyze_string;
 use test_log::test;
 
 use pretty_assertions::assert_eq;
+
+fn analyze_string(input: &str) -> Analyzed<GoldilocksField> {
+    powdr_pil_analyzer::analyze_string(input)
+        .map_err(|errors| {
+            errors
+                .into_iter()
+                .map(|e| {
+                    e.output_to_stderr();
+                    e.to_string()
+                })
+                .format("\n")
+        })
+        .unwrap()
+}
 
 #[test]
 fn new_witness_column() {
@@ -38,7 +56,7 @@ fn new_witness_column() {
     col witness x_2;
     N::x_2 = N::x_2;
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
 }
 
@@ -58,7 +76,7 @@ fn new_witness_column_name_clash() {
     col witness x_2;
     N::x = N::x_1 + N::x_2;
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
 }
 
@@ -105,7 +123,7 @@ fn create_constraints() {
     N::x_is_zero_1 * N::x = 0;
     N::y = N::x_is_zero_1 + 2;
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
 }
 
@@ -128,7 +146,7 @@ pub fn degree() {
             col witness w;
             w = 8;
     "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     let expected = r#"namespace std::convert;
     let expr = [];
 namespace std::prover;
@@ -161,7 +179,7 @@ pub fn degree_unset() {
             let w;
             w = std::convert::expr(d);
     "#;
-    analyze_string::<GoldilocksField>(input);
+    analyze_string(input);
 }
 
 #[test]
@@ -176,7 +194,7 @@ pub fn constructed_constraints() {
             Constr::Permutation((Option::None, Option::Some(x)), [(x, y), (3, z)]);
             Constr::Connection([(x, z), (y, 3)]);
     "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     let expected = r#"namespace Main(1024);
     col witness x;
     col witness y;
@@ -197,7 +215,7 @@ fn next() {
         x * y = 1';
         x * y = (1 + x)';
     "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     let expected = r#"namespace N(16);
     col witness x;
     col witness y;
@@ -215,7 +233,7 @@ fn double_next() {
         col witness y;
         x * y = (1 + x')';
     "#;
-    analyze_string::<GoldilocksField>(input).to_string();
+    analyze_string(input).to_string();
 }
 
 #[test]
@@ -229,7 +247,7 @@ fn new_fixed_column() {
         let x;
         x = ev;
     "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     let expected = r#"namespace N(16);
     let f: -> expr = constr || {
         let even: col = |i| i * 2;
@@ -244,7 +262,6 @@ fn new_fixed_column() {
 }
 
 #[test]
-#[should_panic = "Error creating fixed column N::fi: Lambda expression must not reference outer variables: |i| (i + j) * 2"]
 fn new_fixed_column_as_closure() {
     let input = r#"namespace N(16);
         let f = constr |j| {
@@ -255,7 +272,21 @@ fn new_fixed_column_as_closure() {
         let x;
         x = ev;
     "#;
-    analyze_string::<GoldilocksField>(input);
+    let formatted = analyze_string(input).to_string();
+    let expected = r#"namespace N(16);
+    let f: int -> expr = constr |j| {
+        let fi: col = |i| (i + j) * 2;
+        fi
+    };
+    let ev: expr = N::f(2);
+    col witness x;
+    let fi = {
+        let j = 2;
+        |i| (i + j) * 2
+    };
+    N::x = N::fi;
+"#;
+    assert_eq!(formatted, expected);
 }
 
 #[test]
@@ -286,7 +317,7 @@ namespace N(16);
     col witness z;
     std::prelude::set_hint(N::z, query |_| std::prelude::Query::Hint(1));
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
 }
 
@@ -301,7 +332,7 @@ fn set_hint_invalid_function() {
         let x;
         std::prelude::set_hint(x, query |_, _| std::prelude::Query::Hint(1));
     "#;
-    analyze_string::<GoldilocksField>(input);
+    analyze_string(input);
 }
 
 #[test]
@@ -325,7 +356,7 @@ namespace N(16);
     col witness x(_) query std::prelude::Query::Hint(1);
     col witness y(i) query std::prelude::Query::Hint(std::prover::eval(N::x));
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
 }
 
@@ -340,7 +371,7 @@ fn set_hint_no_col() {
         let y: inter = x;
         std::prelude::set_hint(y, query |_| std::prelude::Query::Hint(1));
     "#;
-    analyze_string::<GoldilocksField>(input);
+    analyze_string(input);
 }
 
 #[test]
@@ -354,7 +385,7 @@ fn set_hint_twice() {
         std::prelude::set_hint(x, query |_| std::prelude::Query::Hint(1));
         std::prelude::set_hint(x, query |_| std::prelude::Query::Hint(2));
     "#;
-    analyze_string::<GoldilocksField>(input);
+    analyze_string(input);
 }
 
 #[test]
@@ -371,7 +402,7 @@ fn set_hint_twice_in_constr() {
             std::prelude::set_hint(x, query |_| std::prelude::Query::Hint(2));
         };
     "#;
-    analyze_string::<GoldilocksField>(input);
+    analyze_string(input);
 }
 
 #[test]
@@ -412,7 +443,7 @@ namespace N(16);
     col witness w;
     std::prelude::set_hint(N::w, query |_| std::prelude::Query::Hint(8));
 "#;
-    let formatted = analyze_string::<GoldilocksField>(input).to_string();
+    let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
 }
 
@@ -423,7 +454,7 @@ fn intermediate_syntax() {
     let inter: inter = x[2];
     let inter_arr: inter[5] = x;
 "#;
-    let analyzed = analyze_string::<GoldilocksField>(input);
+    let analyzed = analyze_string(input);
     assert_eq!(analyzed.intermediate_count(), 6);
     let expected = r#"namespace N(65536);
     col witness x[5];
@@ -444,7 +475,7 @@ fn intermediate_dynamic() {
         inter_arr[3] = 9;
     };
 "#;
-    let analyzed = analyze_string::<GoldilocksField>(input);
+    let analyzed = analyze_string(input);
     assert_eq!(analyzed.intermediate_count(), 6);
     let expected = r#"namespace N(65536);
     col witness x[5];
@@ -464,7 +495,7 @@ fn intermediate_arr_no_length() {
         let inte: inter[] = x;
     };
 "#;
-    let analyzed = analyze_string::<GoldilocksField>(input);
+    let analyzed = analyze_string(input);
     assert_eq!(analyzed.intermediate_count(), 5);
     let expected = r#"namespace N(65536);
     col witness x[5];
@@ -482,5 +513,382 @@ fn intermediate_arr_wrong_length() {
         let inte: inter[6] = x;
     };
 "#;
-    analyze_string::<GoldilocksField>(input);
+    analyze_string(input);
+}
+
+#[test]
+fn closure() {
+    let input = r#"
+    namespace std::prover;
+        let eval = 8;
+    namespace N(16);
+        col witness x;
+        let y = |a, b, c| Query::Hint(a + c());
+        {
+            let r = 9;
+            set_hint(x, |i| y(1, i, || 9 + r));
+        };
+"#;
+    let analyzed = analyze_string(input);
+    let expected = r#"namespace std::prover;
+    let eval = 8;
+namespace N(16);
+    col witness x;
+    std::prelude::set_hint(N::x, {
+        let r = 9;
+        |i| N::y(1, i, || 9 + r)
+    });
+    let y: fe, int, (-> fe) -> std::prelude::Query = |a, b, c| std::prelude::Query::Hint(a + c());
+"#;
+    assert_eq!(analyzed.to_string(), expected);
+}
+
+#[test]
+fn closure_complex() {
+    let input = r#"
+    namespace std::prover;
+        let eval = 8;
+    namespace std::convert;
+        let fe = 9;
+    namespace N(16);
+        col witness x;
+        let y = |a, b, c| Query::Hint(a + c());
+        {
+            let r = 9;
+            let k: int[] = [-2];
+            let v: int = 9; // not captured
+            let q = "" != "";
+            let b = (|a, s, t| || "" == s)("a", "", "t");
+            set_hint(x, |i| {
+                y(1, i, || if b() && q { 9 + r } else { std::convert::fe(k[0]) })
+            });
+        };
+"#;
+    let analyzed = analyze_string(input);
+    let expected = r#"namespace std::prover;
+    let eval = 8;
+namespace std::convert;
+    let fe = 9;
+namespace N(16);
+    col witness x;
+    std::prelude::set_hint(N::x, {
+        let r = 9;
+        let k = [-2];
+        let q = std::prelude::false;
+        let b = {
+            let s = "";
+            || "" == s
+        };
+        |i| { N::y(1, i, || if b() && q { 9 + r } else { std::convert::fe::<int>(k[0]) }) }
+    });
+    let y: fe, int, (-> fe) -> std::prelude::Query = |a, b, c| std::prelude::Query::Hint(a + c());
+"#;
+    assert_eq!(analyzed.to_string(), expected);
+
+    let expected_analyzed = analyze_string(expected);
+    // Check that the LocalVar ref IDs are assigned correctly. This cannot be tested by printing
+    // since the IDs are ignored. Another way to test would be to execute, but it is difficult
+    // to execute code where values are turned into expressions like that.
+    // We extract the IDs of the analized and the re-parsed expected PIL.
+    // They should both match.
+    let refs = [analyzed, expected_analyzed]
+        .into_iter()
+        .map(|a| {
+            let def = a.definitions.get("N::x").as_ref().unwrap().1.as_ref();
+            def.unwrap()
+                .all_children()
+                .filter_map(|e| match e {
+                    Expression::Reference(_, Reference::LocalVar(id, name)) => Some((id, name)),
+                    _ => None,
+                })
+                .map(|(id, name)| format!("{name}: {id}"))
+                .format(", ")
+                .to_string()
+        })
+        .format("\n")
+        .to_string();
+    let expected_ids = "s: 3, i: 4, b: 3, q: 2, r: 0, k: 1";
+    assert_eq!(refs, format!("{expected_ids}\n{expected_ids}"));
+}
+
+#[test]
+fn simple_lookup() {
+    let input = r#"namespace N(16);
+    let x;
+    let y;
+    let a = [x];
+    let b = [y]; 
+    a in b;
+    "#;
+    let expected = r#"namespace N(16);
+    col witness x;
+    col witness y;
+    let a: expr[] = [N::x];
+    let b: expr[] = [N::y];
+    [N::x] in [N::y];
+"#;
+    let formatted = analyze_string(input).to_string();
+    assert_eq!(formatted, expected);
+}
+
+#[test]
+fn selected_lookup() {
+    let input = r#"namespace N(16);
+    let a;
+    let b;
+    let x;
+    let y;
+    let k = [x];
+    let t = a $ k;
+    t in b $ [y];
+    "#;
+    let expected = r#"namespace N(16);
+    col witness a;
+    col witness b;
+    col witness x;
+    col witness y;
+    let k: expr[] = [N::x];
+    let t: std::prelude::SelectedExprs = N::a $ N::k;
+    N::a $ [N::x] in N::b $ [N::y];
+"#;
+    let formatted = analyze_string(input).to_string();
+    assert_eq!(formatted, expected);
+}
+
+#[test]
+fn prover_functions() {
+    let input = "
+    namespace std::convert;
+        let fe = 8;
+    namespace std::prover;
+        let provide_value = 9;
+    namespace N(16);
+        let x;
+        let y;
+        x = y;
+        query |i| {
+            std::prover::provide_value(x, i, std::convert::fe(i % 2));
+            std::prover::provide_value(y, i, std::convert::fe(i % 2));
+        };
+    ";
+    let analyzed = analyze_string(input);
+    let expected = r#"namespace std::convert;
+    let fe = 8;
+namespace std::prover;
+    let provide_value = 9;
+namespace N(16);
+    col witness x;
+    col witness y;
+    N::x = N::y;
+    query |i| {
+        std::prover::provide_value(N::x, i, std::convert::fe::<int>(i % 2));
+        std::prover::provide_value(N::y, i, std::convert::fe::<int>(i % 2));
+    };
+"#;
+    assert_eq!(analyzed.to_string(), expected);
+}
+
+#[test]
+fn prover_functions_dynamic() {
+    let input = "
+    namespace std::convert;
+        let fe = 8;
+    namespace std::prover;
+        let provide_value = 9;
+    namespace N(16);
+        let gen = constr || {
+            let x;
+            let y;
+            x = y;
+            query |i| {
+                std::prover::provide_value(x, i, std::convert::fe(i % 2));
+                std::prover::provide_value(y, i, std::convert::fe(i % 2));
+            };
+        };
+        gen();
+    ";
+    let analyzed = analyze_string(input);
+    let expected = r#"namespace std::convert;
+    let fe = 8;
+namespace std::prover;
+    let provide_value = 9;
+namespace N(16);
+    let gen: -> () = constr || {
+        let x: col;
+        let y: col;
+        x = y;
+        query |i| {
+            std::prover::provide_value(x, i, std::convert::fe::<int>(i % 2));
+            std::prover::provide_value(y, i, std::convert::fe::<int>(i % 2));
+        };
+    };
+    col witness x;
+    col witness y;
+    N::x = N::y;
+    {
+        let x = N::x;
+        let y = N::y;
+        query |i| {
+            std::prover::provide_value(x, i, std::convert::fe::<int>(i % 2));
+            std::prover::provide_value(y, i, std::convert::fe::<int>(i % 2));
+        }
+    };
+"#;
+    assert_eq!(analyzed.to_string(), expected);
+}
+
+#[test]
+fn new_cols_at_stage() {
+    let input = r#"
+    namespace std::prover;
+        let new_witness_col_at_stage: string, int -> expr = [];
+    namespace N(16);
+        let x;
+        let r = std::prover::new_witness_col_at_stage("x", 0);
+        let s = std::prover::new_witness_col_at_stage("x", 1);
+        let t = std::prover::new_witness_col_at_stage("x", 2);
+        let u = std::prover::new_witness_col_at_stage("y", 1);
+        let v = std::prover::new_witness_col_at_stage("y", 2);
+        let unused = std::prover::new_witness_col_at_stage("z", 10);
+        let y;
+        r + s + t + u + v = y;
+    "#;
+    let expected = r#"namespace std::prover;
+    let new_witness_col_at_stage: string, int -> expr = [];
+namespace N(16);
+    col witness x;
+    let r: expr = std::prover::new_witness_col_at_stage("x", 0);
+    let s: expr = std::prover::new_witness_col_at_stage("x", 1);
+    let t: expr = std::prover::new_witness_col_at_stage("x", 2);
+    let u: expr = std::prover::new_witness_col_at_stage("y", 1);
+    let v: expr = std::prover::new_witness_col_at_stage("y", 2);
+    let unused: expr = std::prover::new_witness_col_at_stage("z", 10);
+    col witness y;
+    col witness stage(0) x_1;
+    col witness stage(1) x_2;
+    col witness stage(2) x_3;
+    col witness stage(1) y_1;
+    col witness stage(2) y_2;
+    N::x_1 + N::x_2 + N::x_3 + N::y_1 + N::y_2 = N::y;
+"#;
+    let formatted = analyze_string(input).to_string();
+    assert_eq!(formatted, expected);
+}
+
+#[test]
+fn capture_enums() {
+    let input = r#"
+    namespace N(16);
+        enum E<T> { A(T), B, C(T, int), D() }
+        (|| {
+            let x = E::A("abc");
+            let y = E::B::<int[][]>;
+            let z: E<int[]> = E::C([1, 2], 9);
+            let w: E<fe> = E::D();
+            query |_| {
+                let t = (x, y, z, w);
+            }
+        })();
+
+    "#;
+    let expected = r#"namespace N(16);
+    enum E<T> {
+        A(T),
+        B,
+        C(T, int),
+        D(),
+    }
+    {
+        let x = N::E::A("abc");
+        let y = N::E::B;
+        let z = N::E::C([1, 2], 9);
+        let w = N::E::D();
+        query |_| {
+            let t: (N::E<string>, N::E<int[][]>, N::E<int[]>, N::E<fe>) = (x, y, z, w);
+        }
+    };
+"#;
+    let formatted = analyze_string(input).to_string();
+    assert_eq!(formatted, expected);
+    let re_analyzed = analyze_string(&formatted);
+    assert_eq!(re_analyzed.to_string(), expected);
+}
+
+#[test]
+fn capture_challenges_and_numbers() {
+    let input = r#"
+    namespace std::prelude;
+        let challenge = 8;
+    namespace std::prover;
+        let provide_value = 9;
+        let eval = -1;
+    namespace N(16);
+        (constr || {
+            let x = std::prelude::challenge(0, 4);
+            let y;
+            let t = 2;
+            query |i| {
+                std::prover::provide_value(y, i, std::prover::eval(x) + t);
+            }
+        })();
+
+    "#;
+    let expected = r#"namespace std::prelude;
+    let challenge = 8;
+namespace std::prover;
+    let provide_value = 9;
+    let eval = -1;
+    col witness y;
+    {
+        let x = std::prelude::challenge(0, 4);
+        let y = std::prover::y;
+        let t = 2;
+        query |i| {
+            std::prover::provide_value(y, i, std::prover::eval(x) + t);
+        }
+    };
+"#;
+    let formatted = analyze_string(input).to_string();
+    assert_eq!(formatted, expected);
+    let re_analyzed = analyze_string(&formatted);
+    assert_eq!(re_analyzed.to_string(), expected);
+}
+
+#[test]
+#[should_panic = "Converting complex algebraic expressions to expressions not supported: std::prover::x + std::prover::y"]
+fn capture_not_supported() {
+    let input = r#"
+    namespace std::prover;
+        let provide_value = 9;
+        let eval = -1;
+    namespace N(16);
+        (constr || {
+            let x;
+            let y;
+            let t = x + y;
+            query |i| {
+                let _ = std::prover::eval(t);
+            }
+        })();
+
+    "#;
+    let expected = r#"namespace std::prelude;
+    let challenge = 8;
+namespace std::prover;
+    let provide_value = 9;
+    let eval = -1;
+    col witness y;
+    {
+        let x = std::prelude::challenge(0, 4);
+        let y = std::prover::y;
+        let t = 2;
+        query |i| {
+            std::prover::provide_value(y, i, std::prover::eval(x) + t);
+        }
+    };
+"#;
+    let formatted = analyze_string(input).to_string();
+    assert_eq!(formatted, expected);
+    let re_analyzed = analyze_string(&formatted);
+    assert_eq!(re_analyzed.to_string(), expected);
 }

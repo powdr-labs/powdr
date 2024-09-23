@@ -39,7 +39,11 @@ fn simple_sum_asm() {
     let f = "asm/simple_sum.asm";
     let i = [16, 4, 1, 2, 8, 5];
     regular_test(f, &i);
-    test_plonky3_with_backend_variant(f, slice_to_vec(&i), BackendVariant::Composite);
+    test_plonky3_with_backend_variant::<GoldilocksField>(
+        f,
+        slice_to_vec(&i),
+        BackendVariant::Composite,
+    );
 }
 
 #[test]
@@ -509,10 +513,7 @@ fn keccak() {
     use std::{fs, sync::Arc};
 
     // Set up the file to test
-    let code_path = format!(
-        "{}/../test_data/asm/keccakf.asm",
-        env!("CARGO_MANIFEST_DIR"),
-    );
+    let code_path = "../test_data/asm/keccakf.asm";
     let code = fs::read_to_string(code_path).unwrap();
     let mut pipeline = Pipeline::<GoldilocksField>::default().from_asm_string(code, None);
     let analyzed = pipeline.compute_analyzed_pil().unwrap().clone();

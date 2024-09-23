@@ -450,7 +450,7 @@ namespace Global(2**20);
     [ D ] in [ BYTE ];
     [ D ] in [ SHIFTED ];
 ";
-        let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(pil_source);
+        let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(pil_source).unwrap();
         let constants = crate::constant_evaluator::generate(&analyzed);
         let constants = get_uniquely_sized(&constants).unwrap();
         let fixed_polys = (0..constants.len())
@@ -514,7 +514,7 @@ namespace Global(1024);
     let X;
     [ X * 4 ] in [ bytes ];
 ";
-        let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(pil_source);
+        let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(pil_source).unwrap();
         let known_constraints = vec![(constant_poly_id(0), RangeConstraint::from_max_bit(7))]
             .into_iter()
             .collect();

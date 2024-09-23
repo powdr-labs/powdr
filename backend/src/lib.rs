@@ -7,6 +7,7 @@ mod halo2;
 mod plonky3;
 
 mod composite;
+mod field_filter;
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
