@@ -184,7 +184,7 @@ fn split_by_namespace<F: FieldElement>(
                 // add `statement` to `namespace`
                 Some((namespace, statement))
             }
-            StatementIdentifier::Identity(i) => {
+            StatementIdentifier::ProofItem(i) => {
                 let identity = &pil.identities[*i];
                 let namespaces = referenced_namespaces(identity);
 
@@ -213,6 +213,7 @@ fn split_by_namespace<F: FieldElement>(
                     },
                 }
             }
+            StatementIdentifier::ProverFunction(_) => None,
         })
         // collect into a map
         .fold(Default::default(), |mut acc, (namespace, statement)| {
@@ -271,7 +272,7 @@ fn build_machine_pil<F: FieldElement>(
     };
     let pil_string = add_dummy_witness_column(&pil.to_string());
     let parsed_string = powdr_parser::parse(None, &pil_string).unwrap();
-    powdr_pil_analyzer::analyze_ast(parsed_string)
+    powdr_pil_analyzer::analyze_ast(parsed_string).unwrap()
 }
 
 /// Insert a dummy witness column and identity into the PIL string, just after the namespace.

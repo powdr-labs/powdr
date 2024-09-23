@@ -142,17 +142,13 @@ impl Display for InstructionBody {
 }
 
 fn format_instruction_statement(stmt: &PilStatement) -> String {
-    match stmt {
-        PilStatement::Expression(_, _)
-        | PilStatement::PlookupIdentity(_, _, _)
-        | PilStatement::PermutationIdentity(_, _, _)
-        | PilStatement::ConnectIdentity(_, _, _) => {
-            // statements inside instruction definition don't end in semicolon
-            let mut s = format!("{stmt}");
-            assert_eq!(s.pop(), Some(';'));
-            s
-        }
-        _ => panic!("invalid statement inside instruction body: {stmt}"),
+    if let PilStatement::Expression(_, _) = stmt {
+        // statements inside instruction definition don't end in semicolon
+        let mut s = format!("{stmt}");
+        assert_eq!(s.pop(), Some(';'));
+        s
+    } else {
+        panic!("invalid statement inside instruction body: {stmt}")
     }
 }
 
@@ -526,21 +522,6 @@ impl Display for PilStatement {
                 ),
                 1,
             ),
-            PilStatement::PlookupIdentity(_, left, right) => {
-                write_indented_by(f, format!("{left} in {right};"), 1)
-            }
-            PilStatement::PermutationIdentity(_, left, right) => {
-                write_indented_by(f, format!("{left} is {right};"), 1)
-            }
-            PilStatement::ConnectIdentity(_, left, right) => write_indented_by(
-                f,
-                format!(
-                    "[ {} ] connect [ {} ];",
-                    format_list(left),
-                    format_list(right)
-                ),
-                1,
-            ),
             PilStatement::Expression(_, e) => write_indented_by(f, format!("{e};"), 1),
             PilStatement::EnumDeclaration(_, enum_decl) => write_indented_by(f, enum_decl, 1),
             PilStatement::TraitImplementation(_, trait_impl) => write_indented_by(f, trait_impl, 1),
@@ -606,7 +587,7 @@ impl<E: Display> Display for TraitDeclaration<E> {
     }
 }
 
-impl<E: Display> Display for TraitFunction<E> {
+impl<E: Display> Display for NamedType<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}: {}", self.name, self.ty)
     }
@@ -870,6 +851,10 @@ impl Display for BinaryOperator {
                 BinaryOperator::NotEqual => "!=",
                 BinaryOperator::GreaterEqual => ">=",
                 BinaryOperator::Greater => ">",
+                BinaryOperator::In => "in",
+                BinaryOperator::Is => "is",
+                BinaryOperator::Connect => "connect",
+                BinaryOperator::Select => "$",
             }
         )
     }

@@ -143,8 +143,11 @@ impl<T: Display> Display for Analyzed<T> {
                         is_local.into(),
                     )?;
                 }
-                StatementIdentifier::Identity(i) => {
+                StatementIdentifier::ProofItem(i) => {
                     writeln_indented(f, &self.identities[*i])?;
+                }
+                StatementIdentifier::ProverFunction(i) => {
+                    writeln_indented(f, format!("{};", &self.prover_functions[*i]))?;
                 }
             }
         }
@@ -311,24 +314,6 @@ impl<Expr: Display> Display for SelectedExpressions<Expr> {
                 .unwrap_or_default(),
             self.expressions.iter().format(", ")
         )
-    }
-}
-
-impl Display for Identity<parsed::SelectedExpressions<Expression>> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self.kind {
-            IdentityKind::Polynomial => {
-                let (left, right) = self.as_polynomial_identity();
-                let right = right
-                    .as_ref()
-                    .map(|r| r.to_string())
-                    .unwrap_or_else(|| "0".into());
-                write!(f, "{left} = {right};")
-            }
-            IdentityKind::Plookup => write!(f, "{} in {};", self.left, self.right),
-            IdentityKind::Permutation => write!(f, "{} is {};", self.left, self.right),
-            IdentityKind::Connect => write!(f, "{} connect {};", self.left, self.right),
-        }
     }
 }
 
@@ -504,7 +489,7 @@ mod test {
         };
 
         let (input, expected) = &(&wrap(input), &wrap(expected));
-        let analyzed = analyze_string::<GoldilocksField>(input);
+        let analyzed = analyze_string::<GoldilocksField>(input).unwrap();
         let printed = analyzed.to_string();
 
         assert_eq!(expected.trim(), printed.trim());

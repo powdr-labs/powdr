@@ -80,7 +80,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                     name: name.clone(),
                 });
             }
-            StatementIdentifier::Identity(id) => {
+            StatementIdentifier::ProofItem(id) => {
                 let identity = &analyzed.identities[*id];
                 // PILCOM strips the path from filenames, we do the same here for compatibility
                 let file_name = identity
@@ -141,6 +141,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                     }
                 }
             }
+            StatementIdentifier::ProverFunction(_) => {}
         }
     }
     PIL {

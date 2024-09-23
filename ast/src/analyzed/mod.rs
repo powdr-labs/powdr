@@ -20,8 +20,7 @@ use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
-    self, ArrayExpression, ArrayLiteral, EnumDeclaration, EnumVariant, TraitDeclaration,
-    TraitFunction,
+    self, ArrayExpression, EnumDeclaration, EnumVariant, NamedType, TraitDeclaration,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -29,16 +28,20 @@ pub enum StatementIdentifier {
     /// Either an intermediate column or a definition.
     Definition(String),
     PublicDeclaration(String),
-    /// Index into the vector of identities.
-    Identity(usize),
+    /// Index into the vector of proof items.
+    ProofItem(usize),
+    /// Index into the vector of prover functions.
+    ProverFunction(usize),
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct Analyzed<T> {
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    pub solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
     pub intermediate_columns: HashMap<String, (Symbol, Vec<AlgebraicExpression<T>>)>,
     pub identities: Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>>,
+    pub prover_functions: Vec<Expression>,
     /// The order in which definitions and identities
     /// appear in the source.
     pub source_order: Vec<StatementIdentifier>,
@@ -204,7 +207,7 @@ impl<T> Analyzed<T> {
             ),
         );
         self.source_order
-            .push(StatementIdentifier::Identity(self.identities.len() - 1));
+            .push(StatementIdentifier::ProofItem(self.identities.len() - 1));
         id
     }
 
@@ -213,7 +216,7 @@ impl<T> Analyzed<T> {
     pub fn remove_identities(&mut self, to_remove: &BTreeSet<usize>) {
         let mut shift = 0;
         self.source_order.retain_mut(|s| {
-            if let StatementIdentifier::Identity(index) = s {
+            if let StatementIdentifier::ProofItem(index) = s {
                 if to_remove.contains(index) {
                     shift += 1;
                     return false;
@@ -620,7 +623,7 @@ pub enum FunctionValueDefinition {
     TypeDeclaration(EnumDeclaration),
     TypeConstructor(Arc<EnumDeclaration>, EnumVariant),
     TraitDeclaration(TraitDeclaration),
-    TraitFunction(Arc<TraitDeclaration>, TraitFunction),
+    TraitFunction(Arc<TraitDeclaration>, NamedType),
 }
 
 impl Children<Expression> for FunctionValueDefinition {
@@ -664,7 +667,7 @@ impl Children<Expression> for TraitDeclaration {
     }
 }
 
-impl Children<Expression> for TraitFunction {
+impl Children<Expression> for NamedType {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
         Box::new(empty())
     }
@@ -731,6 +734,7 @@ pub struct Identity<SelectedExpressions> {
     pub right: SelectedExpressions,
 }
 
+// TODO This is the only version of Identity left.
 impl<T> Identity<SelectedExpressions<AlgebraicExpression<T>>> {
     /// Constructs an Identity from a polynomial identity (expression assumed to be identical zero).
     pub fn from_polynomial_identity(
@@ -790,74 +794,12 @@ impl<T> Identity<SelectedExpressions<AlgebraicExpression<T>>> {
     }
 }
 
-impl<R> Identity<parsed::SelectedExpressions<parsed::Expression<R>>> {
-    /// Constructs an Identity from a polynomial identity (expression assumed to be identical zero).
-    pub fn from_polynomial_identity(
-        id: u64,
-        source: SourceRef,
-        identity: parsed::Expression<R>,
-    ) -> Self {
-        Identity {
-            id,
-            kind: IdentityKind::Polynomial,
-            source,
-            left: parsed::SelectedExpressions {
-                selector: Some(identity),
-                expressions: Box::new(ArrayLiteral { items: vec![] }.into()),
-            },
-            right: Default::default(),
-        }
-    }
-    /// Returns the expression in case this is a polynomial identity.
-    pub fn expression_for_poly_id(&self) -> &parsed::Expression<R> {
-        assert_eq!(self.kind, IdentityKind::Polynomial);
-        self.left.selector.as_ref().unwrap()
-    }
-
-    /// Returns the expression in case this is a polynomial identity.
-    pub fn expression_for_poly_id_mut(&mut self) -> &mut parsed::Expression<R> {
-        assert_eq!(self.kind, IdentityKind::Polynomial);
-        self.left.selector.as_mut().unwrap()
-    }
-    /// Either returns (a, Some(b)) if this is a - b or (a, None)
-    /// if it is a polynomial identity of a different structure.
-    /// Panics if it is a different kind of constraint.
-    pub fn as_polynomial_identity(
-        &self,
-    ) -> (&parsed::Expression<R>, Option<&parsed::Expression<R>>) {
-        assert_eq!(self.kind, IdentityKind::Polynomial);
-        match self.expression_for_poly_id() {
-            parsed::Expression::BinaryOperation(
-                _,
-                parsed::BinaryOperation {
-                    left,
-                    op: BinaryOperator::Sub,
-                    right,
-                },
-            ) => (left.as_ref(), Some(right.as_ref())),
-            a => (a, None),
-        }
-    }
-}
-
 impl<T> Children<AlgebraicExpression<T>> for Identity<SelectedExpressions<AlgebraicExpression<T>>> {
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
         Box::new(self.left.children_mut().chain(self.right.children_mut()))
     }
 
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
-        Box::new(self.left.children().chain(self.right.children()))
-    }
-}
-
-impl<R> Children<parsed::Expression<R>>
-    for Identity<parsed::SelectedExpressions<parsed::Expression<R>>>
-{
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut parsed::Expression<R>> + '_> {
-        Box::new(self.left.children_mut().chain(self.right.children_mut()))
-    }
-
-    fn children(&self) -> Box<dyn Iterator<Item = &parsed::Expression<R>> + '_> {
         Box::new(self.left.children().chain(self.right.children()))
     }
 }
@@ -1182,7 +1124,7 @@ impl TryFrom<BinaryOperator> for AlgebraicBinaryOperator {
             BinaryOperator::Mul => Ok(AlgebraicBinaryOperator::Mul),
             BinaryOperator::Pow => Ok(AlgebraicBinaryOperator::Pow),
             _ => Err(format!(
-                "Binary operator {op} not allowed in algebraic expression."
+                "Binary operator \"{op}\" not allowed in algebraic expression."
             )),
         }
     }
@@ -1219,7 +1161,7 @@ impl TryFrom<UnaryOperator> for AlgebraicUnaryOperator {
         match op {
             UnaryOperator::Minus => Ok(AlgebraicUnaryOperator::Minus),
             _ => Err(format!(
-                "Unary operator {op} not allowed in algebraic expression."
+                "Unary operator \"{op}\" not allowed in algebraic expression."
             )),
         }
     }

@@ -21,7 +21,7 @@ use powdr_number::BabyBearField;
 
 const D: u64 = 7;
 // params directly taken from plonky3's poseidon2_round_numbers_128 function
-// to guarentee 128-bit security.
+// to guarantee 128-bit security.
 const ROUNDS_F: usize = 8;
 const ROUNDS_P: usize = 13;
 const WIDTH: usize = 16;

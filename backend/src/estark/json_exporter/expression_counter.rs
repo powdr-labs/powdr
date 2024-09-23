@@ -28,7 +28,8 @@ pub fn compute_intermediate_expression_ids<T>(analyzed: &Analyzed<T>) -> HashMap
             StatementIdentifier::PublicDeclaration(name) => {
                 analyzed.public_declarations[name].expression_count()
             }
-            StatementIdentifier::Identity(id) => analyzed.identities[*id].expression_count(),
+            StatementIdentifier::ProofItem(id) => analyzed.identities[*id].expression_count(),
+            StatementIdentifier::ProverFunction(_) => 0,
         }
     }
     ids

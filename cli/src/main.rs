@@ -8,7 +8,9 @@ use env_logger::{Builder, Target};
 use log::{max_level, LevelFilter};
 use powdr_backend::BackendType;
 use powdr_number::{buffered_write_file, read_polys_csv_file, CsvRenderMode};
-use powdr_number::{BabyBearField, BigUint, Bn254Field, FieldElement, GoldilocksField};
+use powdr_number::{
+    BabyBearField, BigUint, Bn254Field, FieldElement, GoldilocksField, Mersenne31Field,
+};
 use powdr_pipeline::Pipeline;
 use std::io;
 use std::path::PathBuf;
@@ -61,6 +63,8 @@ fn bind_cli_args<F: FieldElement>(
 pub enum FieldArgument {
     #[strum(serialize = "bb")]
     Bb,
+    #[strum(serialize = "m31")]
+    M31,
     #[strum(serialize = "gl")]
     Gl,
     #[strum(serialize = "bn254")]
@@ -749,10 +753,7 @@ mod test {
         let output_dir = tempfile::tempdir().unwrap();
         let output_dir_str = output_dir.path().to_string_lossy().to_string();
 
-        let file = format!(
-            "{}/../test_data/asm/simple_sum.asm",
-            env!("CARGO_MANIFEST_DIR")
-        );
+        let file = "../test_data/asm/simple_sum.asm".to_string();
         let pil_command = Commands::Pil {
             file,
             field: FieldArgument::Bn254,
