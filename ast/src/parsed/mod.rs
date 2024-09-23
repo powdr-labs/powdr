@@ -156,7 +156,7 @@ impl PilStatement {
                 once((name, None, SymbolCategory::Type)).chain(
                     fields
                         .iter()
-                        .map(move |f| (name, Some(&f.0), SymbolCategory::Value)),
+                        .map(move |named| (name, Some(&named.name), SymbolCategory::Value)),
                 ),
             ),
             PilStatement::TraitDeclaration(
@@ -253,23 +253,23 @@ impl Children<Expression> for PilStatement {
 pub struct StructDeclaration<E = u64> {
     pub name: String,
     pub type_vars: TypeBounds,
-    pub fields: Vec<(String, Type<E>)>,
+    pub fields: Vec<NamedType<E>>,
 }
 
 impl<E> StructDeclaration<E> {
     pub fn type_of_field(&self, name: &str) -> Option<&Type<E>> {
         self.fields
             .iter()
-            .find_map(|(n, t)| (n == name).then_some(t))
+            .find_map(|named| (named.name == name).then_some(&named.ty))
     }
 }
 
 impl<R> Children<Expression<R>> for StructDeclaration<Expression<R>> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
-        Box::new(self.fields.iter().flat_map(|f| f.1.children()))
+        Box::new(self.fields.iter().flat_map(|f| f.ty.children()))
     }
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
-        Box::new(self.fields.iter_mut().flat_map(|f| f.1.children_mut()))
+        Box::new(self.fields.iter_mut().flat_map(|f| f.ty.children_mut()))
     }
 }
 

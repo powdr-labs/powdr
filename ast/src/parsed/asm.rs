@@ -129,7 +129,7 @@ impl Children<Expression> for TypeDeclaration {
         match self {
             TypeDeclaration::Enum(e) => Box::new(e.variants.iter().flat_map(|v| v.children())),
             TypeDeclaration::Struct(s) => {
-                Box::new(s.fields.iter().flat_map(|(_f, ty)| ty.children()))
+                Box::new(s.fields.iter().flat_map(|named| named.ty.children()))
             }
         }
     }
@@ -139,9 +139,11 @@ impl Children<Expression> for TypeDeclaration {
             TypeDeclaration::Enum(e) => {
                 Box::new(e.variants.iter_mut().flat_map(|v| v.children_mut()))
             }
-            TypeDeclaration::Struct(s) => {
-                Box::new(s.fields.iter_mut().flat_map(|(_f, ty)| ty.children_mut()))
-            }
+            TypeDeclaration::Struct(s) => Box::new(
+                s.fields
+                    .iter_mut()
+                    .flat_map(|named| named.ty.children_mut()),
+            ),
         }
     }
 }

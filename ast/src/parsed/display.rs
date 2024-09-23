@@ -686,7 +686,7 @@ impl<E: Display> Display for StructDeclaration<E> {
             indent(
                 self.fields
                     .iter()
-                    .map(|v| format!("{}: {},\n", v.0, v.1))
+                    .map(|named| format!("{}: {},\n", named.name, named.ty))
                     .format(""),
                 1
             )

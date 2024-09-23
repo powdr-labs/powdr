@@ -784,20 +784,8 @@ EnumVariant: EnumVariant<Expression> = {
 }
 
 StructDeclaration: StructDeclaration<Expression> = {
-    "struct" <name:Identifier> <type_vars:("<" <TypeVarBounds> ">")?> "{" <fields:StructFields> "}"
+    "struct" <name:Identifier> <type_vars:("<" <TypeVarBounds> ">")?> "{" <fields:NamedTypes> "}"
         => StructDeclaration{name, type_vars: type_vars.unwrap_or_default(), fields}
-}
-
-StructFields: Vec<(String, Type<Expression>)> = {
-    => Vec::new(),
-    <mut fields:(<StructField> "," )*> <end:StructField> ","? => {
-        fields.push(end);
-        fields
-    }
-}
-
-StructField: (String, Type<Expression>) = {
-    <name:Identifier> ":" <type_:TypeTerm<Expression>> => (name, type_)
 }
 
 // ---------------------------- Type Names -----------------------------

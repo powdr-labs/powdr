@@ -130,7 +130,7 @@ impl ReferencedSymbols for EnumDeclaration {
 
 impl ReferencedSymbols for StructDeclaration {
     fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
-        Box::new(self.fields.iter().flat_map(|t| t.1.symbols()))
+        Box::new(self.fields.iter().flat_map(|named| named.ty.symbols()))
     }
 }
 
