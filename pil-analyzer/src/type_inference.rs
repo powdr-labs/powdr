@@ -13,7 +13,7 @@ use powdr_ast::{
         visitor::ExpressionVisitable,
         ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall, FunctionKind, IndexAccess,
         LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number, Pattern,
-        SourceReference, StatementInsideBlock, UnaryOperation,
+        SourceReference, StatementInsideBlock, StructDeclaration, UnaryOperation,
     },
 };
 use powdr_parser_util::{Error, SourceRef};
@@ -32,11 +32,12 @@ use crate::{
 /// The parameter `statement_type` is the expected type for expressions at statement level.
 /// Sets the generic arguments for references and the literal types in all expressions.
 /// Returns the types for symbols without explicit type.
-pub fn infer_types(
+pub fn infer_types<'a>(
     definitions: HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
     expressions: &mut [(&mut Expression, ExpectedType)],
+    struct_declarations: HashMap<String, StructDeclaration>,
 ) -> Result<Vec<(String, Type)>, Vec<Error>> {
-    TypeChecker::new().infer_types(definitions, expressions)
+    TypeChecker::new(struct_declarations).infer_types(definitions, expressions)
 }
 
 /// A type to expect with a bit of flexibility.
@@ -76,16 +77,19 @@ struct TypeChecker {
     unifier: Unifier,
     /// Keeps track of the kind of lambda we are currently type-checking.
     lambda_kind: FunctionKind,
+    /// Declared structs.
+    struct_declarations: HashMap<String, StructDeclaration>,
 }
 
 impl TypeChecker {
-    pub fn new() -> Self {
+    pub fn new(struct_declarations: HashMap<String, StructDeclaration>) -> Self {
         Self {
             local_var_types: Default::default(),
             declared_types: Default::default(),
             declared_type_vars: Default::default(),
             unifier: Default::default(),
             lambda_kind: FunctionKind::Constr,
+            struct_declarations,
         }
     }
 
@@ -719,19 +723,31 @@ impl TypeChecker {
                 result?
             }
             Expression::StructExpression(sr, struct_expr) => {
-                // for named_expr in struct_expr.fields.iter_mut() {
-                //     let name = format!("{}::{}", struct_expr.name, named_expr.name);
-                //     // let expr_ty = match self.declared_types.get(&name) {
-                //     //     Some(declared_type) => declared_type.1.ty.clone(),
-                //     //     None => {
-                //     //         return Err(sr.with_error(format!(
-                //     //             "Struct {} has not been declared or has not a field {}.",
-                //     //             struct_expr.name, named_expr.name
-                //     //         )));
-                //     //     }
-                //     // };
-                //     self.expect_type(&expr_ty, named_expr.body.as_mut())?;
-                // }
+                let struct_decl = self
+                    .struct_declarations
+                    .get(&struct_expr.name)
+                    .cloned()
+                    .ok_or_else(|| {
+                        sr.with_error(format!(
+                            "Struct '{}' has not been declared.",
+                            struct_expr.name
+                        ))
+                    })?;
+
+                for named_expr in struct_expr.fields.iter_mut() {
+                    let expr_ty = struct_decl.type_of_field(&named_expr.name);
+                    match expr_ty {
+                        Some(ty) => {
+                            self.expect_type(ty, named_expr.body.as_mut())?;
+                        }
+                        None => {
+                            return Err(sr.with_error(format!(
+                                "Field '{}' not found in struct '{}'",
+                                named_expr.name, struct_expr.name
+                            )));
+                        }
+                    }
+                }
 
                 match SymbolPath::from_str(&struct_expr.name) {
                     Ok(named_type) => Ok(Type::NamedType(named_type, None)),

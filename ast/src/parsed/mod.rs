@@ -256,6 +256,14 @@ pub struct StructDeclaration<E = u64> {
     pub fields: Vec<(String, Type<E>)>,
 }
 
+impl<E> StructDeclaration<E> {
+    pub fn type_of_field(&self, name: &str) -> Option<&Type<E>> {
+        self.fields
+            .iter()
+            .find_map(|(n, t)| (n == name).then_some(t))
+    }
+}
+
 impl<R> Children<Expression<R>> for StructDeclaration<Expression<R>> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
         Box::new(self.fields.iter().flat_map(|f| f.1.children()))

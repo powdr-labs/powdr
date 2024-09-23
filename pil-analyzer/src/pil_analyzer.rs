@@ -14,14 +14,14 @@ use powdr_ast::parsed::types::{ArrayType, Type};
 use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_ast::parsed::{
     self, FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions,
-    SymbolCategory, TraitImplementation,
+    StructDeclaration, SymbolCategory, TraitImplementation,
 };
 use powdr_number::{FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
     type_from_definition, Analyzed, DegreeRange, Expression, FunctionValueDefinition, Identity,
     IdentityKind, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
-    StatementIdentifier, Symbol, SymbolKind, TypedExpression,
+    StatementIdentifier, Symbol, SymbolKind, TypeDeclaration, TypedExpression,
 };
 use powdr_parser::{parse, parse_module, parse_type};
 use powdr_parser_util::Error;
@@ -289,6 +289,21 @@ impl PILAnalyzer {
             }
         }
 
+        let struct_declarations: HashMap<String, StructDeclaration> = self
+            .definitions
+            .iter()
+            .filter_map(|(name, (_, value))| {
+                if let Some(FunctionValueDefinition::TypeDeclaration(TypeDeclaration::Struct(
+                    struct_decl,
+                ))) = value
+                {
+                    Some((name.clone(), struct_decl.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
         let definitions = self
             .definitions
             .iter_mut()
@@ -360,7 +375,7 @@ impl PILAnalyzer {
             }
         }
 
-        let inferred_types = infer_types(definitions, &mut expressions)?;
+        let inferred_types = infer_types(definitions, &mut expressions, struct_declarations)?;
         // Store the inferred types.
         for (name, ty) in inferred_types {
             let Some(FunctionValueDefinition::Expression(TypedExpression {
