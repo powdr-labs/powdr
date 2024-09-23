@@ -42,7 +42,7 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     // Reads happen at the provided time step; writes happen at the next time step.
     operation poseidon_permutation<0> input_addr, output_addr, time_step ->;
 
-    col witness operation_id;
+    let operation_id;
 
     // Ported from:
     // - https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/poseidong.pil
@@ -69,14 +69,14 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     std::utils::force_bool(used);
 
     // Repeat the input state in the whole block
-    col witness input[STATE_SIZE];
+    let input: col[STATE_SIZE];
     array::map(input, |c| unchanged_until(c, LAST));
     array::zip(input, state, |i, s| CLK[0] * (i - s) = 0);
 
     // Repeat the time step and input / output address in the whole block
-    col witness time_step;
-    col witness input_addr;
-    col witness output_addr;
+    let time_step;
+    let input_addr;
+    let output_addr;
     unchanged_until(time_step, LAST);
     unchanged_until(input_addr, LAST);
     unchanged_until(output_addr, LAST);
@@ -86,7 +86,8 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     let CLK: col[STATE_SIZE + OUTPUT_SIZE] = array::new(STATE_SIZE + OUTPUT_SIZE, |i| |row| if row % ROWS_PER_HASH == i { 1 } else { 0 });
     let CLK_0 = CLK[0];
 
-    col witness word_low, word_high;
+    let word_low;
+    let word_high;
 
     // Do *two* memory reads in each of the first STATE_SIZE rows
     // For input i, we expect the low word at address input_addr + 8 * i and
@@ -145,20 +146,20 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     let C = [C_0, C_1, C_2, C_3, C_4, C_5, C_6, C_7, C_8, C_9, C_10, C_11];
 
     // State of the Poseidon permutation (8 rate elements and 4 capacity elements)
-    pol commit state[STATE_SIZE];
+    let state: col[STATE_SIZE];
 
     // The first OUTPUT_SIZE elements of the *final* state
     // (constrained to be constant within the block and equal to parts of the state in the last row)
-    pol commit output[OUTPUT_SIZE];
+    let output: col[OUTPUT_SIZE];
 
     // Add round constants
     // TODO should these be intermediate?
     let a = array::zip(state, C, |state, C| state + C);
 
     // Compute S-Boxes (x^7) (using a degree bound of 3)
-    col witness x3[STATE_SIZE];
+    let x3: col[STATE_SIZE];
     array::zip(x3, array::map(a, |a| a * a * a), |x3, expected| x3 = expected);
-    col witness x7[STATE_SIZE];
+    let x7: col[STATE_SIZE];
     array::zip(x7, array::zip(x3, a, |x3, a| x3 * x3 * a), |x7, expected| x7 = expected);
 
     // Apply S-Boxes on the first element and otherwise if it is a full round.
@@ -192,7 +193,8 @@ machine PoseidonGLMemory(mem: Memory, split_gl: SplitGL) with
     array::zip(state, c, |state, c| (state' - c) * (1-LAST) = 0);
 
     // In the last row, the first OUTPUT_SIZE elements of the state should equal output
-    array::zip(output, state, |output, state| LASTBLOCK * (output - state) = 0);
+    let output_state = array::sub_array(state, 0, OUTPUT_SIZE);
+    array::zip(output, output_state, |output, state| LASTBLOCK * (output - state) = 0);
 
     // The output should stay constant in the block
     array::map(output, |c| unchanged_until(c, LAST));
