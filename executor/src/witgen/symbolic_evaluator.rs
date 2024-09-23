@@ -11,12 +11,9 @@ pub struct SymbolicEvaluator;
 
 impl<T: FieldElement> SymbolicVariables<T> for SymbolicEvaluator {
     fn value<'b>(&self, var: AlgebraicVariable<'b>) -> AffineResult<AlgebraicVariable<'b>, T> {
-        match var {
-            AlgebraicVariable::Column(poly) => {
-                assert!(poly.is_fixed() || poly.is_witness());
-                // TODO arrays
-            }
-            _ => {}
+        if let AlgebraicVariable::Column(poly) = var {
+            assert!(poly.is_fixed() || poly.is_witness());
+            // TODO arrays
         }
         Ok(AffineExpression::from_variable_id(var))
     }

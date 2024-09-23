@@ -5,6 +5,7 @@ use powdr_ast::indent;
 use powdr_number::{DegreeType, FieldElement};
 use std::cmp::max;
 
+use std::collections::BTreeMap;
 use std::time::Instant;
 
 use crate::witgen::identity_processor::{self};
@@ -126,7 +127,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         Self { processor, ..self }
     }
 
-    pub fn finish(self) -> (FinalizableData<T>, DegreeType) {
+    pub fn finish(self) -> ((FinalizableData<T>, BTreeMap<&'a str, T>), DegreeType) {
         (self.processor.finish(), self.degree)
     }
 

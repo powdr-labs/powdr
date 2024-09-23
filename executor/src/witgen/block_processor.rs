@@ -117,7 +117,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         }
     }
 
-    pub fn finish(self) -> FinalizableData<T> {
+    pub fn finish(self) -> (FinalizableData<T>, BTreeMap<&'a str, T>) {
         self.processor.finish()
     }
 }
@@ -231,7 +231,7 @@ mod tests {
                 assert!(outer_updates.is_complete());
                 assert!(outer_updates.is_empty());
 
-                let data = processor.finish();
+                let (data, _) = processor.finish();
 
                 for &(i, name, expected) in asserted_values.iter() {
                     let poly_id = poly_ids[name];
@@ -258,6 +258,9 @@ mod tests {
 
                 (1-ISLAST) * (x' - y) = 0;
                 (1-ISLAST) * (y' - (x + y)) = 0;
+
+                public out = y(N-1);
+                ISLAST * (:out - y) = 0;
         "#;
 
         solve_and_assert::<GoldilocksField>(src, &[(7, "Fibonacci::y", 34)]);

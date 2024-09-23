@@ -173,8 +173,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             .unwrap_or(true)
     }
 
-    pub fn finish(self) -> FinalizableData<T> {
-        self.data
+    pub fn finish(self) -> (FinalizableData<T>, BTreeMap<&'a str, T>) {
+        (self.data, self.publics)
     }
 
     pub fn latch_value(&self, row_index: usize) -> Option<bool> {
@@ -426,28 +426,38 @@ Known values in current row (local: {row_index}, global {global_row_index}):
 
         let mut progress = false;
         for (var, c) in &updates.constraints {
-            let poly = match var {
-                AlgebraicVariable::Column(poly) => poly,
-                _ => unimplemented!(),
-            };
-            if self.parts.witnesses.contains(&poly.poly_id) {
-                // Build RowUpdater
-                // (a bit complicated, because we need two mutable
-                // references to elements of the same vector)
-                let (current, next) = self.data.mutable_row_pair(row_index);
-                let mut row_updater =
-                    RowUpdater::new(current, next, self.row_offset + row_index as u64);
-                row_updater.apply_update(poly, c);
-                progress = true;
-                self.propagate_along_copy_constraints(row_index, poly, c);
-            } else if let Constraint::Assignment(v) = c {
-                let left = &mut self.outer_query.as_mut().unwrap().left;
-                log::trace!("      => {} (outer) = {}", poly, v);
-                for l in left.iter_mut() {
-                    l.assign(*var, *v);
+            match var {
+                AlgebraicVariable::Public(name) => {
+                    if let Constraint::Assignment(v) = c {
+                        // There should be only few publics, so this can be logged with info.
+                        log::info!("      => {} (public) = {}", name, v);
+                        assert!(
+                            self.publics.insert(name, *v).is_none(),
+                            "value was already set!"
+                        );
+                    }
                 }
-                progress = true;
-            };
+                AlgebraicVariable::Column(poly) => {
+                    if self.parts.witnesses.contains(&poly.poly_id) {
+                        // Build RowUpdater
+                        // (a bit complicated, because we need two mutable
+                        // references to elements of the same vector)
+                        let (current, next) = self.data.mutable_row_pair(row_index);
+                        let mut row_updater =
+                            RowUpdater::new(current, next, self.row_offset + row_index as u64);
+                        row_updater.apply_update(poly, c);
+                        progress = true;
+                        self.propagate_along_copy_constraints(row_index, poly, c);
+                    } else if let Constraint::Assignment(v) = c {
+                        let left = &mut self.outer_query.as_mut().unwrap().left;
+                        log::trace!("      => {} (outer) = {}", poly, v);
+                        for l in left.iter_mut() {
+                            l.assign(*var, *v);
+                        }
+                        progress = true;
+                    };
+                }
+            }
         }
 
         progress

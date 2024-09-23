@@ -151,7 +151,8 @@ fn referenced_namespaces<F: FieldElement>(
                 AlgebraicExpression::Reference(reference) => {
                     namespaces.insert(extract_namespace(&reference.name));
                 }
-                AlgebraicExpression::PublicReference(_) => unimplemented!(),
+                // Publics are not currently namespaced
+                AlgebraicExpression::PublicReference(_) => {}
                 AlgebraicExpression::Challenge(_) => {}
                 AlgebraicExpression::Number(_) => {}
                 AlgebraicExpression::BinaryOperation(_) => {}

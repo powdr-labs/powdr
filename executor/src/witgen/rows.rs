@@ -470,7 +470,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
                     row.value(&poly.poly_id)
                 }
             }
-            _ => todo!(),
+            AlgebraicVariable::Public(public_name) => self.publics.get(public_name).copied(),
         }
     }
 

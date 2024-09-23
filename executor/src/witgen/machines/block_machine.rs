@@ -24,14 +24,22 @@ use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_number::{DegreeType, FieldElement};
 
 enum ProcessResult<'a, T: FieldElement> {
-    Success(FinalizableData<T>, EvalValue<AlgebraicVariable<'a>, T>),
+    Success(
+        FinalizableData<T>,
+        BTreeMap<&'a str, T>,
+        EvalValue<AlgebraicVariable<'a>, T>,
+    ),
     Incomplete(EvalValue<AlgebraicVariable<'a>, T>),
 }
 
 impl<'a, T: FieldElement> ProcessResult<'a, T> {
-    fn new(data: FinalizableData<T>, updates: EvalValue<AlgebraicVariable<'a>, T>) -> Self {
+    fn new(
+        data: FinalizableData<T>,
+        publics: BTreeMap<&'a str, T>,
+        updates: EvalValue<AlgebraicVariable<'a>, T>,
+    ) -> Self {
         match updates.is_complete() {
-            true => ProcessResult::Success(data, updates),
+            true => ProcessResult::Success(data, publics, updates),
             false => ProcessResult::Incomplete(updates),
         }
     }
@@ -367,7 +375,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 DefaultSequenceIterator::new(self.block_size, self.parts.identities.len(), None),
             );
             processor.solve(&mut sequence_iterator).unwrap();
-            let mut dummy_block = processor.finish();
+            let (mut dummy_block, _) = processor.finish();
 
             // Replace the dummy block, discarding first and last row
             dummy_block.pop().unwrap();
@@ -517,12 +525,13 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             self.process(mutable_state, &mut sequence_iterator, outer_query.clone())?;
 
         match process_result {
-            ProcessResult::Success(new_block, updates) => {
+            ProcessResult::Success(new_block, new_publics, updates) => {
                 log::trace!(
                     "End processing block machine '{}' (successfully)",
                     self.name()
                 );
                 self.append_block(new_block)?;
+                self.publics.extend(new_publics);
 
                 let updates = updates.report_side_effect();
 
@@ -569,9 +578,13 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         .with_outer_query(outer_query);
 
         let outer_assignments = processor.solve(sequence_iterator)?;
-        let new_block = processor.finish();
+        let (new_block, new_publics) = processor.finish();
 
-        Ok(ProcessResult::new(new_block, outer_assignments))
+        Ok(ProcessResult::new(
+            new_block,
+            new_publics,
+            outer_assignments,
+        ))
     }
 
     /// Takes a block of rows, which contains the last row of its previous block

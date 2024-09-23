@@ -18,6 +18,7 @@ use super::{EvalResult, FixedData, MutableState, QueryCallback};
 struct ProcessResult<'a, T: FieldElement> {
     eval_value: EvalValue<AlgebraicVariable<'a>, T>,
     block: FinalizableData<T>,
+    publics: BTreeMap<&'a str, T>,
 }
 
 pub struct Generator<'a, T: FieldElement> {
@@ -60,8 +61,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
             .cloned()
             .unwrap_or_else(|| self.compute_partial_first_row(mutable_state));
 
-        let ProcessResult { eval_value, block } =
-            self.process(first_row, 0, mutable_state, Some(outer_query), false);
+        let ProcessResult {
+            eval_value,
+            publics,
+            block,
+        } = self.process(first_row, 0, mutable_state, Some(outer_query), false);
 
         let eval_value = if eval_value.is_complete() {
             log::trace!("End processing VM '{}' (successfully)", self.name());
@@ -69,6 +73,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
             // block.
             self.data.pop();
             self.data.extend(block);
+            self.publics.extend(publics);
 
             eval_value.report_side_effect()
         } else {
@@ -131,7 +136,11 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             assert!(self.latch.is_some());
 
             let first_row = self.data.pop().unwrap();
-            let ProcessResult { block, eval_value } = self.process(
+            let ProcessResult {
+                block,
+                publics,
+                eval_value,
+            } = self.process(
                 first_row,
                 self.data.len() as DegreeType,
                 mutable_state,
@@ -141,6 +150,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             assert!(eval_value.is_complete());
 
             self.data.extend(block);
+            self.publics.extend(publics);
         }
     }
 
@@ -185,7 +195,9 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         );
         processor.solve(&mut sequence_iterator).unwrap();
 
-        processor.finish().remove(1)
+        // Ignore any updates to the publics at this point, as we'll re-visit the last row again.
+        let (mut block, _) = processor.finish();
+        block.remove(1)
     }
 
     fn process<'b, Q: QueryCallback<T>>(
@@ -217,12 +229,16 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             processor = processor.with_outer_query(outer_query);
         }
         let eval_value = processor.run(is_main_run);
-        let (block, degree) = processor.finish();
+        let ((block, publics), degree) = processor.finish();
 
         // The processor might have detected a loop, in which case the degree has changed
         self.degree = degree;
 
-        ProcessResult { eval_value, block }
+        ProcessResult {
+            eval_value,
+            block,
+            publics,
+        }
     }
 
     /// At the end of the solving algorithm, we'll have computed the first row twice
