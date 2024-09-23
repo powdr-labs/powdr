@@ -115,9 +115,12 @@ let<T> unpack_ext_array: Fp2<T> -> T[] = |a| match a {
 };
 
 /// Whether we need to operate on the F_{p^2} extension field (because the current field is too small).
-let needs_extension: -> bool = || match known_field() {
-    Option::Some(KnownField::Goldilocks) => true,
-    Option::Some(KnownField::BN254) => false,
+let needs_extension: -> bool = || required_extension_size() > 1;
+
+/// How many field elements / field extensions are recommended for the current base field.
+let required_extension_size: -> int = || match known_field() {
+    Option::Some(KnownField::Goldilocks) => 2,
+    Option::Some(KnownField::BN254) => 1,
     None => panic("The permutation/lookup argument is not implemented for the current field!")
 };
 
