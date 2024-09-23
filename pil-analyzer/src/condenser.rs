@@ -25,7 +25,7 @@ use powdr_ast::{
         types::{ArrayType, Type},
         visitor::{AllChildren, ExpressionVisitable},
         ArrayLiteral, BlockExpression, FunctionCall, FunctionKind, LambdaExpression,
-        LetStatementInsideBlock, Number, Pattern, TypedExpression, UnaryOperation,
+        LetStatementInsideBlock, Number, Pattern, SourceReference, TypedExpression, UnaryOperation,
     },
 };
 use powdr_number::{BigUint, FieldElement};
@@ -39,14 +39,13 @@ use crate::{
     statement_processor::Counters,
 };
 
-type ParsedIdentity = Identity<parsed::SelectedExpressions<Expression>>;
 type AnalyzedIdentity<T> = Identity<SelectedExpressions<AlgebraicExpression<T>>>;
 
 pub fn condense<T: FieldElement>(
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
     public_declarations: HashMap<String, PublicDeclaration>,
-    identities: &[ParsedIdentity],
+    proof_items: &[Expression],
     source_order: Vec<StatementIdentifier>,
     auto_added_symbols: HashSet<String>,
 ) -> Analyzed<T> {
@@ -71,8 +70,8 @@ pub fn condense<T: FieldElement>(
 
             // Condense identities and definitions.
             let statement = match s {
-                StatementIdentifier::Identity(index) => {
-                    condenser.condense_identity(&identities[index]);
+                StatementIdentifier::ProofItem(index) => {
+                    condenser.condense_proof_item(&proof_items[index]);
                     None
                 }
                 StatementIdentifier::Definition(name)
@@ -141,7 +140,7 @@ pub fn condense<T: FieldElement>(
                 .map(|identity| {
                     let index = condensed_identities.len();
                     condensed_identities.push(identity);
-                    StatementIdentifier::Identity(index)
+                    StatementIdentifier::ProofItem(index)
                 })
                 .collect::<Vec<_>>();
 
@@ -249,26 +248,21 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         }
     }
 
-    pub fn condense_identity(&mut self, identity: &'a ParsedIdentity) {
-        if identity.kind == IdentityKind::Polynomial {
-            let expr = identity.expression_for_poly_id();
-            evaluator::evaluate(expr, self)
-                .and_then(|expr| {
-                    if let Value::Tuple(items) = expr.as_ref() {
-                        assert!(items.is_empty());
-                        Ok(())
-                    } else {
-                        self.add_constraints(expr, identity.source.clone())
-                    }
-                })
-                .unwrap_or_else(|err| {
-                    panic!(
-                        "Error reducing expression to constraint:\nExpression: {expr}\nError: {err:?}"
-                    )
-                });
-        } else {
-            unreachable!();
-        }
+    pub fn condense_proof_item(&mut self, item: &'a Expression) {
+        evaluator::evaluate(item, self)
+            .and_then(|expr| {
+                if let Value::Tuple(items) = expr.as_ref() {
+                    assert!(items.is_empty());
+                    Ok(())
+                } else {
+                    self.add_proof_items(expr, item.source_reference().clone())
+                }
+            })
+            .unwrap_or_else(|err| {
+                panic!(
+                    "Error reducing expression to constraint:\nExpression: {item}\nError: {err:?}"
+                )
+            });
     }
 
     /// Sets the current namespace which will be used for newly generated witness columns.
@@ -584,25 +578,25 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         Ok(())
     }
 
-    fn add_constraints(
+    fn add_proof_items(
         &mut self,
-        constraints: Arc<Value<'a, T>>,
+        items: Arc<Value<'a, T>>,
         source: SourceRef,
     ) -> Result<(), EvalError> {
-        match constraints.as_ref() {
+        match items.as_ref() {
             Value::Array(items) => {
                 for item in items {
                     self.new_constraints.push((item.clone(), source.clone()));
                 }
             }
             Value::Closure(..) => {
-                let e = try_value_to_expression(&constraints).map_err(|e| {
+                let e = try_value_to_expression(&items).map_err(|e| {
                     EvalError::TypeError(format!("Error adding prover function:\n{e}"))
                 })?;
 
                 self.new_prover_functions.push(e);
             }
-            _ => self.new_constraints.push((constraints, source)),
+            _ => self.new_constraints.push((items, source)),
         }
         Ok(())
     }
