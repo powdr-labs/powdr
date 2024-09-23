@@ -597,13 +597,17 @@ machine Keccakf16 with
     //         F::from_canonical_u16(row.a_prime_prime[0][0][limb].as_canonical_u64() as u16 ^ rc_lo);
     // }
 
-    let query_a_prime_prime_prime_0_0_limbs: int -> int = query |limb| 
+    let query_a_prime_prime_prime_0_0_limbs: int, int -> int = query |round, limb| 
         int(eval(a_prime_prime[limb])) ^ 
-        ((int(eval(utils::sum(NUM_ROUNDS, |r| expr(RC[r]) * step_flags[r]))) >> (limb * 16)) & 0xffff);
+        ((RC[round] >> (limb * 16)) & 0xffff);
 
     query |row| {
         let _ = array::new(4, |limb| {
-            provide_value(a_prime_prime_prime_0_0_limbs[limb], row, fe(query_a_prime_prime_prime_0_0_limbs(limb)));
+            provide_value(
+                a_prime_prime_prime_0_0_limbs[limb], 
+                row, 
+                fe(query_a_prime_prime_prime_0_0_limbs(row % NUM_ROUNDS, limb)
+            ));
         });
     };
 }
