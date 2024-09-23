@@ -59,11 +59,8 @@ lazy_static! {
             ("", "expr -> std::prelude::Option<fe>")
         ),
         ("std::prover::provide_value", ("", "expr, int, fe -> ()")),
-        (
-            "std::prover::get_input_from_channel",
-            ("", "int, int -> fe")
-        ),
-        ("std::prover::output_byte", ("", "int, int -> ()"))
+        ("std::prover::input_from_channel", ("", "int, int -> fe")),
+        ("std::prover::output_to_channel", ("", "int, fe -> ()"))
     ]
     .into_iter()
     .map(|(name, (vars, ty))| { (name.to_string(), parse_type_scheme(vars, ty)) })

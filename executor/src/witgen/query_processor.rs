@@ -286,7 +286,7 @@ impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>> Symbol
         Ok(())
     }
 
-    fn get_input_from_channel(
+    fn input_from_channel(
         &mut self,
         channel: u32,
         index: usize,
@@ -300,8 +300,8 @@ impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>> Symbol
         }
     }
 
-    fn output_byte(&mut self, fd: u32, byte: u8) -> Result<(), EvalError> {
-        if ((self.query_callback)(&format!("Output({fd},{byte})"))
+    fn output_to_channel(&mut self, fd: u32, elem: T) -> Result<(), EvalError> {
+        if ((self.query_callback)(&format!("Output({fd},{elem})"))
             .map_err(EvalError::ProverError)?)
         .is_some()
         {
