@@ -47,6 +47,11 @@ lazy_static! {
             ("", "string, int -> expr")
         ),
         ("std::prover::min_degree", ("", "-> int")),
+        (
+            "std::prover::capture_constraints",
+            ("", "(-> ()) -> std::prelude::Constr[]")
+        ),
+        ("std::prover::at_next_stage", ("", "(-> ()) -> ()")),
         ("std::prover::max_degree", ("", "-> int")),
         ("std::prover::degree", ("", "-> int")),
         (

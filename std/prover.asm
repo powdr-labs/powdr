@@ -61,3 +61,11 @@ let require_min_degree: int -> () = |m| std::check::assert(degree() >= m, || "De
 
 /// Asserts that the current degree or row count is at most m;
 let require_max_degree: int -> () = |m| std::check::assert(degree() <= m, || "Degree too large.");
+
+/// Calls the argument and returns all constraints that were generated during the call.
+/// If the constraints are not added to the global set again, they are ignored.
+let capture_constraints: (-> ()) -> Constr[] = [];
+
+/// Calls the argument with the current stage counter incremented. This means that columns created during
+/// the call will be next-stage columns. The stage counter is reset afterwards.
+let at_next_stage: (-> ()) -> () = [];

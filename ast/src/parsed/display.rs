@@ -516,7 +516,9 @@ impl Display for PilStatement {
                 f,
                 format!(
                     "pol commit {}{}{};",
-                    stage.map(|s| format!("stage({s}) ")).unwrap_or_default(),
+                    stage
+                        .and_then(|s| (s > 0).then(|| format!("stage({s}) ")))
+                        .unwrap_or_default(),
                     names.iter().format(", "),
                     value.as_ref().map(|v| format!("{v}")).unwrap_or_default()
                 ),
