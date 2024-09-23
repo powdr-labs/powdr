@@ -614,7 +614,6 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             .drain(existing_constraints..)
             .map(|(c, _)| c)
             .collect();
-        // TODO we could now subtract constrs.len() from the identity counter.
         let result = result?;
         assert!(
             matches!(result.as_ref(), Value::Tuple(items) if items.is_empty()),
