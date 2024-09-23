@@ -21,7 +21,7 @@ pub enum AffineExpression<K, T> {
 }
 
 /// A variable in an affine expression.
-#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Copy)]
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Copy, derive_more::Display)]
 pub enum AlgebraicVariable<'a> {
     /// Reference to a (witness) column
     Column(&'a AlgebraicReference),
@@ -31,18 +31,9 @@ pub enum AlgebraicVariable<'a> {
     Public(&'a str),
 }
 
-impl Display for AlgebraicVariable<'_> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            AlgebraicVariable::Column(r) => write!(f, "{r}"),
-            AlgebraicVariable::Public(p) => write!(f, "{p}"),
-        }
-    }
-}
-
 impl AlgebraicVariable<'_> {
     /// Returns the column reference if the variable is a column, otherwise None.
-    pub fn column(&self) -> Option<&AlgebraicReference> {
+    pub fn try_as_column(&self) -> Option<&AlgebraicReference> {
         match self {
             AlgebraicVariable::Column(r) => Some(r),
             AlgebraicVariable::Public(_) => None,

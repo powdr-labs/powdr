@@ -332,16 +332,13 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         let outer_assignments = updates
             .constraints
             .into_iter()
-            .filter(|(var, update)| match update {
-                Constraint::Assignment(_) => {
-                    let poly = match var {
-                        AlgebraicVariable::Column(poly) => poly,
-                        _ => unimplemented!(),
-                    };
+            .filter(|(var, update)| match (var, update) {
+                (AlgebraicVariable::Column(poly), Constraint::Assignment(_)) => {
                     !self.is_relevant_witness[&poly.poly_id]
                 }
+                (AlgebraicVariable::Public(_), Constraint::Assignment(_)) => unimplemented!(),
                 // Range constraints are currently not communicated between callee and caller.
-                Constraint::RangeConstraint(_) => false,
+                (_, Constraint::RangeConstraint(_)) => false,
             })
             .collect::<Vec<_>>();
 
@@ -365,7 +362,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         }
 
         for (var, _) in &input_updates.constraints {
-            let poly = var.column().expect("Expected column");
+            let poly = var.try_as_column().expect("Expected column");
             let poly_id = &poly.poly_id;
             if let Some(start_row) = self.previously_set_inputs.remove(poly_id) {
                 log::trace!(
@@ -378,7 +375,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             }
         }
         for (var, _) in &input_updates.constraints {
-            let poly = var.column().expect("Expected column");
+            let poly = var.try_as_column().expect("Expected column");
             self.previously_set_inputs.insert(poly.poly_id, row_index);
         }
         self.apply_updates(row_index, &input_updates, || "inputs".to_string())

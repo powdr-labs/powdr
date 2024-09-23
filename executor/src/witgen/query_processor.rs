@@ -205,7 +205,7 @@ impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>> Symbol
                 if let Some((_, update)) = self
                     .updates
                     .iter()
-                    .find(|(p, _)| p.column().map(|p| p == poly_ref).unwrap_or_default())
+                    .find(|(p, _)| p.try_as_column().map(|p| p == poly_ref).unwrap_or_default())
                 {
                     let Constraint::Assignment(value) = update else {
                         unreachable!()

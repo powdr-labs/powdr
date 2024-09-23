@@ -149,8 +149,12 @@ fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<PolyI
         Err(_) => return None,
     };
     let mut coeff = sort_constraint.nonzero_coefficients();
-    let first = coeff.next().and_then(|(k, v)| k.column().map(|k| (k, v)))?;
-    let second = coeff.next().and_then(|(k, v)| k.column().map(|k| (k, v)))?;
+    let first = coeff
+        .next()
+        .and_then(|(k, v)| k.try_as_column().map(|k| (k, v)))?;
+    let second = coeff
+        .next()
+        .and_then(|(k, v)| k.try_as_column().map(|k| (k, v)))?;
     if coeff.next().is_some() {
         return None;
     }
