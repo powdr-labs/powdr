@@ -13,12 +13,16 @@ use powdr_ast::parsed::{
     EnumDeclaration, EnumVariant, FunctionDefinition, FunctionKind, LambdaExpression, NamedType,
     PilStatement, PolynomialName, TraitDeclaration,
 };
-use powdr_ast::parsed::{ArrayExpression, NamedExpression, SymbolCategory, TraitImplementation};
+use powdr_ast::parsed::{
+    ArrayExpression, NamedExpression, StructDeclaration, SymbolCategory, TraitImplementation,
+    TypeDeclaration,
+};
 use powdr_parser_util::SourceRef;
 use std::str::FromStr;
 
 use powdr_ast::analyzed::{
     Expression, FunctionValueDefinition, PolynomialType, PublicDeclaration, Symbol, SymbolKind,
+    TypeDeclaration as TypeDeclarationAnalyzed,
 };
 
 use crate::type_processor::TypeProcessor;
@@ -192,8 +196,19 @@ where
                     SymbolKind::Other(),
                     None,
                     None,
-                    Some(FunctionDefinition::TypeDeclaration(
+                    Some(FunctionDefinition::TypeDeclaration(TypeDeclaration::Enum(
                         enum_declaration.clone(),
+                    ))),
+                ),
+            PilStatement::StructDeclaration(source, struct_declaration) => self
+                .handle_symbol_definition(
+                    source,
+                    struct_declaration.name.clone(),
+                    SymbolKind::Other(),
+                    None,
+                    None,
+                    Some(FunctionDefinition::TypeDeclaration(
+                        TypeDeclaration::Struct(struct_declaration.clone()),
                     )),
                 ),
             PilStatement::TraitDeclaration(source, trait_decl) => self.handle_symbol_definition(
@@ -400,9 +415,13 @@ where
         };
 
         match value {
-            Some(FunctionDefinition::TypeDeclaration(enum_decl)) => {
+            Some(FunctionDefinition::TypeDeclaration(TypeDeclaration::Enum(enum_decl))) => {
                 assert_eq!(symbol_kind, SymbolKind::Other());
                 self.process_enum_declaration(source, name, symbol, enum_decl)
+            }
+            Some(FunctionDefinition::TypeDeclaration(TypeDeclaration::Struct(struct_decl))) => {
+                assert_eq!(symbol_kind, SymbolKind::Other());
+                self.process_struct_declaration(symbol, struct_decl)
             }
             Some(FunctionDefinition::TraitDeclaration(trait_decl)) => {
                 self.process_trait_declaration(source, name, symbol, trait_decl)
@@ -415,6 +434,35 @@ where
             }
             None => vec![PILItem::Definition(symbol, None)],
         }
+    }
+
+    fn process_struct_declaration(
+        &mut self,
+        symbol: Symbol,
+        struct_decl: StructDeclaration<parsed::Expression>,
+    ) -> Vec<PILItem> {
+        let type_vars = struct_decl.type_vars.vars().collect();
+        let fields = struct_decl
+            .fields
+            .into_iter()
+            .map(|named| NamedType {
+                name: named.name.to_string(),
+                ty: self.type_processor(&type_vars).process_type(named.ty),
+            })
+            .collect();
+        let struct_decl = StructDeclaration {
+            name: self.driver.resolve_decl(&struct_decl.name),
+            type_vars: struct_decl.type_vars,
+            fields,
+        };
+
+        iter::once(PILItem::Definition(
+            symbol,
+            Some(FunctionValueDefinition::TypeDeclaration(
+                TypeDeclarationAnalyzed::Struct(struct_decl.clone()),
+            )),
+        ))
+        .collect()
     }
 
     fn process_trait_declaration(
@@ -623,7 +671,9 @@ where
 
         iter::once(PILItem::Definition(
             symbol,
-            Some(FunctionValueDefinition::TypeDeclaration(enum_decl.clone())),
+            Some(FunctionValueDefinition::TypeDeclaration(
+                TypeDeclarationAnalyzed::Enum(enum_decl.clone()),
+            )),
         ))
         .chain(var_items)
         .collect()

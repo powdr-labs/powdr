@@ -403,15 +403,6 @@ impl<E: Clone> TypeScheme<E> {
         }
     }
 }
-impl<E> TypeScheme<E> {
-    pub fn type_vars_to_string(&self) -> String {
-        if self.vars.is_empty() {
-            String::new()
-        } else {
-            format!("<{}>", self.vars)
-        }
-    }
-}
 
 impl From<Type> for TypeScheme {
     fn from(value: Type) -> Self {

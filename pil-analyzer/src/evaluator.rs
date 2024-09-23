@@ -982,6 +982,9 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             Expression::FreeInput(_, _) => Err(EvalError::Unsupported(
                 "Cannot evaluate free input.".to_string(),
             ))?,
+            Expression::StructExpression(_, _) => {
+                unimplemented!("Struct expressions are not yet supported.")
+            }
         };
         Ok(())
     }

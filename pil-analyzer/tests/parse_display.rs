@@ -887,6 +887,17 @@ fn reparse_type_args_generic_enum() {
 }
 
 #[test]
+fn simple_struct() {
+    let input = "    struct Point {
+        x: int,
+        y: int,
+    }
+";
+    let formatted = analyze_string(input).to_string();
+    assert_eq!(formatted, input);
+}
+
+#[test]
 fn intermediate_syntax() {
     let input = r#"namespace X(16);
     let w;
