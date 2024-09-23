@@ -674,6 +674,15 @@ NamedExpression: NamedExpression<Expression> = {
     <name:Identifier> ":" <body:Expression> => NamedExpression { name, body }
 }
 
+NamedTypes: Vec<NamedType<Expression>> = {
+    => vec![],
+    <mut list:( <NamedType> "," )*> <end:NamedType> ","  => { list.push(end); list }
+}
+
+NamedType: NamedType<Expression> = {
+    <name:Identifier> ":" <ty:TypeTerm<Expression>> => NamedType { name, ty }
+}
+
 // ---------------------------- Pattern -----------------------------
 
 Pattern: Pattern = {
@@ -726,12 +735,12 @@ TraitVars: Vec<String> = {
     <mut list:( <TypeVar> "," )*> <end:TypeVar> ","?  => { list.push(end); list }
 }
 
-NamedTypes: Vec<NamedType<Expression>> = {
+TraitFunctions: Vec<NamedType<Expression>> = {
     => vec![],
-    <mut list:( <NamedType> "," )*> <end:NamedType> ","  => { list.push(end); list }
+    <mut list:( <TraitFunction> "," )*> <end:TraitFunction> ","  => { list.push(end); list }
 }
 
-NamedType: NamedType<Expression> = {
+TraitFunction: NamedType<Expression> = {
     <name:Identifier> ":" <params:TypeTermList<Expression>> "->" <value:TypeTermBox<Expression>> => NamedType { name, ty: Type::Function(FunctionType{params, value}) }
 }
 
