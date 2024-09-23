@@ -575,7 +575,7 @@ impl<E: Display> Display for TraitDeclaration<E> {
     }
 }
 
-impl<E: Display> Display for TraitFunction<E> {
+impl<E: Display> Display for NamedType<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}: {}", self.name, self.ty)
     }
