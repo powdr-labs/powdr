@@ -53,14 +53,13 @@ let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr, expr -> fe[] = quer
     
 /// Adds constraints that enforce that rhs is the lookup for lhs
 /// Arguments:
-/// - is_first: A column that is 1 for the first row and 0 for the rest
 /// - acc: A phase-2 witness column to be used as the accumulator. If 2 are provided, computations
 ///        are done on the F_{p^2} extension field.
 /// - alpha: A challenge used to compress the LHS and RHS values
 /// - beta: A challenge used to update the accumulator
 /// - lookup_constraint: The lookup constraint
 /// - multiplicities: The multiplicities which shows how many times each RHS value appears in the LHS                  
-let lookup: expr, expr[], Fp2<expr>, Fp2<expr>, Constr, expr -> Constr[] = |is_first, acc, alpha, beta, lookup_constraint, multiplicities| {
+let lookup: expr[], Fp2<expr>, Fp2<expr>, Constr, expr -> () = constr |acc, alpha, beta, lookup_constraint, multiplicities| {
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_lookup_constraint(lookup_constraint);
 
@@ -93,12 +92,12 @@ let lookup: expr, expr[], Fp2<expr>, Fp2<expr>, Constr, expr -> Constr[] = |is_f
         )
     );
 
-    let (acc_1, acc_2) = unpack_ext(acc_ext);
+    let is_first: col = std::well_known::is_first;
 
-    [
-        // First and last acc needs to be 0
-        // (because of wrapping, the acc[0] and acc[N] are the same)
-        is_first * acc_1 = 0,
-        is_first * acc_2 = 0
-    ] + constrain_eq_ext(update_expr, from_base(0))
+    let (acc_1, acc_2) = unpack_ext(acc_ext);
+    // First and last acc needs to be 0
+    // (because of wrapping, the acc[0] and acc[N] are the same)
+    is_first * acc_1 = 0;
+    is_first * acc_2 = 0;
+    constrain_eq_ext(update_expr, from_base(0));
 };

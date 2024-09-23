@@ -142,17 +142,13 @@ impl Display for InstructionBody {
 }
 
 fn format_instruction_statement(stmt: &PilStatement) -> String {
-    match stmt {
-        PilStatement::Expression(_, _)
-        | PilStatement::PlookupIdentity(_, _, _)
-        | PilStatement::PermutationIdentity(_, _, _)
-        | PilStatement::ConnectIdentity(_, _, _) => {
-            // statements inside instruction definition don't end in semicolon
-            let mut s = format!("{stmt}");
-            assert_eq!(s.pop(), Some(';'));
-            s
-        }
-        _ => panic!("invalid statement inside instruction body: {stmt}"),
+    if let PilStatement::Expression(_, _) = stmt {
+        // statements inside instruction definition don't end in semicolon
+        let mut s = format!("{stmt}");
+        assert_eq!(s.pop(), Some(';'));
+        s
+    } else {
+        panic!("invalid statement inside instruction body: {stmt}")
     }
 }
 
@@ -523,21 +519,6 @@ impl Display for PilStatement {
                     stage.map(|s| format!("stage({s}) ")).unwrap_or_default(),
                     names.iter().format(", "),
                     value.as_ref().map(|v| format!("{v}")).unwrap_or_default()
-                ),
-                1,
-            ),
-            PilStatement::PlookupIdentity(_, left, right) => {
-                write_indented_by(f, format!("{left} in {right};"), 1)
-            }
-            PilStatement::PermutationIdentity(_, left, right) => {
-                write_indented_by(f, format!("{left} is {right};"), 1)
-            }
-            PilStatement::ConnectIdentity(_, left, right) => write_indented_by(
-                f,
-                format!(
-                    "[ {} ] connect [ {} ];",
-                    format_list(left),
-                    format_list(right)
                 ),
                 1,
             ),

@@ -26,18 +26,15 @@ machine Main with degree: 8 {
         std::prover::provide_value(b2, i, fe(7 - i + 42));
     };
 
-    let permutation_constraint = Constr::Permutation(
-        (Option::Some(first_four), Option::Some(1 - first_four)),
-        [(a1, b1), (a2, b2)]
-    );
+    let permutation_constraint = first_four $ [a1, a2] is (1 - first_four) $ [b1, b2];
 
     // TODO: Functions currently cannot add witness columns at later stages,
     // so we have to manually create it here and pass it to permutation(). 
     col witness stage(1) z1;
     col witness stage(1) z2;
     let z = Fp2::Fp2(z1, z2);
-    let is_first: col = std::well_known::is_first;
-    permutation(is_first, [z1, z2], alpha, beta, permutation_constraint);
+
+    permutation([z1, z2], alpha, beta, permutation_constraint);
 
     // TODO: Helper columns, because we can't access the previous row in hints
     col witness stage(1) z1_next;
@@ -50,5 +47,4 @@ machine Main with degree: 8 {
 
     z1' = z1_next;
     z2' = z2_next;
-
 }
