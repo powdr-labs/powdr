@@ -329,7 +329,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "not implemented: Unexpected expression: :oldstate"]
+    #[should_panic = "not yet implemented"]
     fn public_reference() {
         let content = r#"
         namespace Global(8);
