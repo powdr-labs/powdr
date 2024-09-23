@@ -59,7 +59,6 @@ lazy_static! {
             ("", "expr -> std::prelude::Option<fe>")
         ),
         ("std::prover::provide_value", ("", "expr, int, fe -> ()")),
-        ("std::prover::get_input", ("", "int -> fe")),
         (
             "std::prover::get_input_from_channel",
             ("", "int, int -> fe")

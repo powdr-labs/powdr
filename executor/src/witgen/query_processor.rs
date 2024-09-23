@@ -286,16 +286,6 @@ impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>> Symbol
         Ok(())
     }
 
-    fn get_input(&mut self, index: usize) -> Result<Arc<Value<'a, T>>, EvalError> {
-        if let Some(v) =
-            (self.query_callback)(&format!("Input({index})")).map_err(EvalError::ProverError)?
-        {
-            Ok(Value::FieldElement(v).into())
-        } else {
-            Err(EvalError::DataNotAvailable)
-        }
-    }
-
     fn get_input_from_channel(
         &mut self,
         channel: u32,

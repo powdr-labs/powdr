@@ -504,9 +504,9 @@ namespace main_sub__rom(16);
     pc' = (1 - first_step') * pc_update;
     pol commit X_free_value;
     query |__i| std::prover::handle_query(X_free_value, __i, match std::prover::eval(pc) {
-        2 => std::prelude::Query::Input(1),
-        4 => std::prelude::Query::Input(std::convert::int(std::prover::eval(CNT) + 1)),
-        7 => std::prelude::Query::Input(0),
+        2 => std::prelude::Query::DataIdentifier(2, 0),
+        4 => std::prelude::Query::DataIdentifier(std::convert::int(std::prover::eval(CNT) + 2), 0),
+        7 => std::prelude::Query::DataIdentifier(1, 0),
         _ => std::prelude::Query::None,
     });
     1 $ [0, pc, reg_write_X_A, reg_write_X_CNT, instr_jmpz, instr_jmpz_param_l, instr_jmp, instr_jmp_param_l, instr_dec_CNT, instr_assert_zero, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_CNT, read_X_pc] in main__rom::latch $ [main__rom::operation_id, main__rom::p_line, main__rom::p_reg_write_X_A, main__rom::p_reg_write_X_CNT, main__rom::p_instr_jmpz, main__rom::p_instr_jmpz_param_l, main__rom::p_instr_jmp, main__rom::p_instr_jmp_param_l, main__rom::p_instr_dec_CNT, main__rom::p_instr_assert_zero, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return, main__rom::p_X_const, main__rom::p_X_read_free, main__rom::p_read_X_A, main__rom::p_read_X_CNT, main__rom::p_read_X_pc];

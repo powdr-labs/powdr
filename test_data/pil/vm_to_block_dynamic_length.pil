@@ -3,7 +3,6 @@
 
 namespace std::prover;
     enum Query {
-        Input(int),
         Output(int, int),
         Hint(fe),
         DataIdentifier(int, int),

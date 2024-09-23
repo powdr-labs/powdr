@@ -7,11 +7,11 @@ use powdr_riscv_syscalls::Syscall;
 use alloc::vec;
 use alloc::vec::Vec;
 
-/// Reads a single u32 from the file descriptor fd.
-pub fn read_u32(fd: u32) -> u32 {
+/// A single u32 from input channel 0.
+pub fn read_u32(idx: u32) -> u32 {
     let mut value: u32;
     unsafe {
-        asm!("ecall", lateout("a0") value, in("a0") fd, in("t0") u32::from(Syscall::Input));
+        asm!("ecall", lateout("a0") value, in("a0") 0, in("a1") fd + 1, in("t0") u32::from(Syscall::DataIdentifier));
     }
     value
 }

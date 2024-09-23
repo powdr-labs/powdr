@@ -12,7 +12,7 @@ machine Square with degree: 8 {
     }
 	
     function main {
-        A <=X= ${ std::prelude::Query::Input(0) };
+        A <=X= ${ std::prelude::Query::DataIdentifier(1, 0) };
         A <== square(A);
     }
 }

@@ -61,9 +61,9 @@ namespace T(65536);
     T::A' = T::first_step' * 0 + T::reg_write_X_A * T::X + (1 - (T::first_step' + T::reg_write_X_A)) * T::A;
     col witness X_free_value;
     std::prelude::set_hint(T::X_free_value, query |_| match std::prover::eval(T::pc) {
-        0 => std::prelude::Query::Input(1),
-        3 => std::prelude::Query::Input(std::convert::int::<fe>(std::prover::eval(T::CNT) + 1)),
-        7 => std::prelude::Query::Input(0),
+        0 => std::prelude::Query::DataIdentifier(2, 0),
+        3 => std::prelude::Query::DataIdentifier(std::convert::int::<fe>(std::prover::eval(T::CNT) + 2), 0),
+        7 => std::prelude::Query::DataIdentifier(1, 0),
         _ => std::prelude::Query::None,
     });
     col fixed p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;

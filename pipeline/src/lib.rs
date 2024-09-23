@@ -152,22 +152,6 @@ pub fn dict_data_to_query_callback<T: FieldElement>(
                     index => elems[index - 1],
                 }))
             }
-            "Input" => {
-                assert_eq!(data.len(), 1);
-                let index = data[0]
-                    .parse::<usize>()
-                    .map_err(|e| format!("Error parsing index: {e})"))?;
-
-                let Some(elems) = dict.get(&0) else {
-                    return Err("No prover inputs given".to_string());
-                };
-
-                elems
-                    .get(index)
-                    .cloned()
-                    .map(Some)
-                    .ok_or_else(|| format!("Index out of bounds: {index}"))
-            }
             _ => Err(format!("Unsupported query: {query}")),
         }
     }
