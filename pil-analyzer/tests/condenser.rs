@@ -1049,7 +1049,7 @@ namespace Main;
 }
 
 #[test]
-pub fn at_next_stage_intermediate() {
+pub fn at_next_stage_intermediate_and_fixed() {
     let input = r#"
         namespace std::prover;
             let at_next_stage: (-> ()) -> () = 9;
@@ -1059,7 +1059,9 @@ pub fn at_next_stage_intermediate() {
             std::prover::at_next_stage(constr || {
                 let b: inter = a * a;
                 let c;
+                let first: col = |i| if i == 0 { 1 } else { 0 };
                 let d: inter = a + c;
+                c' = first;
             });
             let x;
     "#;
@@ -1070,7 +1072,9 @@ namespace Main;
     col witness a;
     col b = Main::a * Main::a;
     col witness stage(1) c;
+    col fixed first(i) { if i == 0 { 1 } else { 0 } };
     col d = Main::a + Main::c;
+    Main::c' = Main::first;
     col witness x;
 ";
     assert_eq!(formatted, expected);
