@@ -714,13 +714,13 @@ pub trait SymbolLookup<'a, T: FieldElement> {
         ))
     }
 
-    fn add_constraints(
+    fn add_proof_items(
         &mut self,
-        _constraints: Arc<Value<'a, T>>,
+        _items: Arc<Value<'a, T>>,
         _source: SourceRef,
     ) -> Result<(), EvalError> {
         Err(EvalError::Unsupported(
-            "Tried to add constraints outside of statement context.".to_string(),
+            "Tried to add proof items outside of statement context.".to_string(),
         ))
     }
 
@@ -772,7 +772,7 @@ enum Operation<'a, T> {
     /// Evaluate a let statement, adding matched pattern variables to the local variables.
     LetStatement(&'a LetStatementInsideBlock<Expression>),
     /// Add a constraint to the constraint set.
-    AddConstraint,
+    AddProofItem,
 }
 
 /// We use a non-recursive algorithm to evaluate potentially recursive expressions.
@@ -832,11 +832,11 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     self.type_args = new_type_args;
                 }
                 Operation::LetStatement(s) => self.evaluate_let_statement(s)?,
-                Operation::AddConstraint => {
+                Operation::AddProofItem => {
                     let result = self.value_stack.pop().unwrap();
                     match result.as_ref() {
                         Value::Tuple(t) if t.is_empty() => {}
-                        _ => self.symbols.add_constraints(result, SourceRef::unknown())?,
+                        _ => self.symbols.add_proof_items(result, SourceRef::unknown())?,
                     }
                 }
             };
@@ -947,7 +947,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                             }
                         }
                         StatementInsideBlock::Expression(expr) => {
-                            self.op_stack.push(Operation::AddConstraint);
+                            self.op_stack.push(Operation::AddProofItem);
                             self.op_stack.push(Operation::Expand(expr));
                         }
                     }
