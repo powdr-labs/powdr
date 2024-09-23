@@ -292,7 +292,7 @@ mod test {
     use super::CodeGenerator;
 
     fn compile(input: &str, syms: &[&str]) -> String {
-        let analyzed = analyze_string::<GoldilocksField>(input);
+        let analyzed = analyze_string::<GoldilocksField>(input).unwrap();
         let mut compiler = CodeGenerator::new(&analyzed);
         for s in syms {
             compiler.request_symbol(s).unwrap();
@@ -309,10 +309,7 @@ mod test {
     #[test]
     fn simple_fun() {
         let result = compile("let c: int -> int = |i| i;", &["c"]);
-        assert_eq!(
-            result,
-            "fn c(i: ibig::IBig) -> ibig::IBig { i }\n"
-        );
+        assert_eq!(result, "fn c(i: ibig::IBig) -> ibig::IBig { i }\n");
     }
 
     #[test]

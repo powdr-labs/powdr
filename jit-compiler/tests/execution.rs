@@ -4,7 +4,7 @@ use powdr_number::GoldilocksField;
 use powdr_pil_analyzer::analyze_string;
 
 fn compile(input: &str, symbol: &str) -> fn(u64) -> u64 {
-    let analyzed = analyze_string::<GoldilocksField>(input);
+    let analyzed = analyze_string::<GoldilocksField>(input).unwrap();
     powdr_jit_compiler::compile(&analyzed, &[symbol]).unwrap()[symbol]
 }
 
