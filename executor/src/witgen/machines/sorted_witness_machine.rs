@@ -1,10 +1,9 @@
 use std::collections::{BTreeMap, HashMap};
 
-use itertools::Itertools;
-
 use super::super::affine_expression::AffineExpression;
 use super::{EvalResult, FixedData};
 use super::{Machine, MachineParts};
+use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::rows::RowPair;
 use crate::witgen::{
     expression_evaluator::ExpressionEvaluator, fixed_evaluator::FixedEvaluator,
@@ -12,6 +11,7 @@ use crate::witgen::{
 };
 use crate::witgen::{EvalValue, IncompleteCause, MutableState, QueryCallback};
 use crate::Identity;
+use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicExpression as Expression, AlgebraicReference, IdentityKind, PolyID,
 };
@@ -149,13 +149,17 @@ fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<PolyI
         Err(_) => return None,
     };
     let mut coeff = sort_constraint.nonzero_coefficients();
-    let first = coeff.next()?;
-    let second = coeff.next()?;
+    let first = coeff
+        .next()
+        .and_then(|(k, v)| k.try_as_column().map(|k| (k, v)))?;
+    let second = coeff
+        .next()
+        .and_then(|(k, v)| k.try_as_column().map(|k| (k, v)))?;
     if coeff.next().is_some() {
         return None;
     }
     let key_column_id = match (first, second) {
-        ((key, _), _) | (_, (key, _)) if !key.next => *key,
+        ((key, _), _) | (_, (key, _)) if !key.next => key,
         _ => return None,
     };
     if key_column_id.next || key_column_id.is_fixed() {
@@ -165,8 +169,8 @@ fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<PolyI
         next: true,
         ..key_column_id.clone()
     };
-    let pattern = AffineExpression::from_variable_id(&poly_next)
-        - AffineExpression::from_variable_id(key_column_id);
+    let pattern = AffineExpression::from_variable_id(AlgebraicVariable::Column(&poly_next))
+        - AffineExpression::from_variable_id(AlgebraicVariable::Column(key_column_id));
     if sort_constraint != pattern {
         return None;
     }
