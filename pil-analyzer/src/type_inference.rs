@@ -715,7 +715,7 @@ impl TypeChecker {
                 result?
             }
             Expression::StructExpression(_sr, _struct_expr) => {
-                unimplemented!("Struct expressions are not yet supported jeje")
+                unimplemented!("Struct expressions are not yet supported")
             }
         })
     }
