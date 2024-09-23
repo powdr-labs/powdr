@@ -614,9 +614,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             .collect();
         // TODO we could now subtract constrs.len() from the identity counter.
         let result = result?;
-        if !matches!(result.as_ref(), Value::Tuple(items) if items.is_empty()) {
-            panic!();
-        }
+        assert!(matches!(result.as_ref(), Value::Tuple(items) if items.is_empty()), "Function should return ()");
 
         Ok(Arc::new(Value::Array(constrs)))
     }
