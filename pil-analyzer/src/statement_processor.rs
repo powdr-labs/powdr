@@ -10,8 +10,8 @@ use powdr_ast::parsed::types::TupleType;
 use powdr_ast::parsed::{
     self,
     types::{ArrayType, Type, TypeScheme},
-    EnumDeclaration, EnumVariant, FunctionDefinition, FunctionKind, LambdaExpression, PilStatement,
-    PolynomialName, TraitDeclaration, TraitFunction,
+    EnumDeclaration, EnumVariant, FunctionDefinition, FunctionKind, LambdaExpression, NamedType,
+    PilStatement, PolynomialName, TraitDeclaration,
 };
 use powdr_ast::parsed::{ArrayExpression, NamedExpression, SymbolCategory, TraitImplementation};
 use powdr_parser_util::SourceRef;
@@ -428,7 +428,7 @@ where
         let functions = trait_decl
             .functions
             .into_iter()
-            .map(|f| TraitFunction {
+            .map(|f| NamedType {
                 name: f.name,
                 ty: self.type_processor(&type_vars).process_type(f.ty),
             })
