@@ -1,5 +1,4 @@
 use std::array::map;
-use std::array::len;
 use std::check::assert;
 use std::check::panic;
 use std::math::fp2::Fp2;
@@ -14,6 +13,8 @@ use std::math::fp2::eval_ext;
 use std::math::fp2::from_base;
 use std::math::fp2::fp2_from_array;
 use std::math::fp2::constrain_eq_ext;
+use std::math::fp2::required_extension_size;
+use std::math::fp2::needs_extension;
 use std::protocols::fingerprint::fingerprint;
 use std::utils::unwrap_or_else;
 
@@ -53,12 +54,11 @@ let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr -> fe[] = query |acc
 };
 
 /// Returns constraints that enforce that lhs is a permutation of rhs
+/// WARNING: This function can currently not be used multiple times since
+/// the used challenges would overlap
+/// TODO: Implement this for an array of constraints
 ///
 /// # Arguments:
-/// - acc: A phase-2 witness column to be used as the accumulator. If 2 are provided, computations
-///        are done on the F_{p^2} extension field.
-/// - alpha: A challenge used to compress the LHS and RHS values
-/// - beta: A challenge used to update the accumulator
 /// - permutation_constraint: The permutation constraint
 ///
 /// # Returns:
@@ -79,7 +79,12 @@ let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr -> fe[] = query |acc
 /// the wrapping behavior: The first accumulator is constrained to be 1, and the last
 /// accumulator is the same as the first one, because of wrapping.
 /// For small fields, this computation should happen in the extension field.
-let permutation: expr[], Fp2<expr>, Fp2<expr>, Constr -> () = constr |acc, alpha, beta, permutation_constraint| {
+let permutation: Constr -> () = constr |permutation_constraint| {
+    std::check::assert(required_extension_size() <= 2, || "Invalid extension size");
+    // Alpha is used to compress the LHS and RHS arrays
+    let alpha = fp2_from_array(std::array::new(required_extension_size(), |i| challenge(0, i + 1)));
+    // Beta is used to update the accumulator
+    let beta = fp2_from_array(std::array::new(required_extension_size(), |i| challenge(0, i + 3)));
 
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_permutation_constraint(permutation_constraint);
 
@@ -88,6 +93,8 @@ let permutation: expr[], Fp2<expr>, Fp2<expr>, Constr -> () = constr |acc, alpha
     // Implemented as: folded = selector * (beta - fingerprint(values) - 1) + 1;
     let lhs_folded = selected_or_one(lhs_selector, sub_ext(beta, fingerprint(lhs, alpha)));
     let rhs_folded = selected_or_one(rhs_selector, sub_ext(beta, fingerprint(rhs, alpha)));
+
+    let acc = std::array::new(required_extension_size(), |i| std::prover::new_witness_col_at_stage("acc", 1));
     let acc_ext = fp2_from_array(acc);
     let next_acc = next_ext(acc_ext);
 
@@ -108,4 +115,21 @@ let permutation: expr[], Fp2<expr>, Fp2<expr>, Constr -> () = constr |acc, alpha
     is_first * (acc_1 - 1) = 0;
     is_first * acc_2 = 0;
     constrain_eq_ext(update_expr, from_base(0));
+
+    // In the extension field, we need a prover function for the accumulator.
+    if needs_extension() {
+        // TODO: Helper columns, because we can't access the previous row in hints
+        let acc_next_col = std::array::map(acc, |_| std::prover::new_witness_col_at_stage("acc_next", 1));
+        query |i| {
+            let _ = std::array::zip(
+                acc_next_col,
+                compute_next_z(acc_ext, alpha, beta, permutation_constraint),
+                |acc_next, hint_val| std::prover::provide_value(acc_next, i, hint_val)
+            );
+        };
+        std::array::zip(acc, acc_next_col, |acc_col, acc_next| {
+            acc_col' = acc_next
+        });
+    } else {
+    }
 };
