@@ -1288,15 +1288,9 @@ pub enum FunctionDefinition {
     /// Generic expression
     Expression(Expression),
     /// A type declaration.
-    TypeDeclaration(TypeDeclaration),
+    TypeDeclaration(EnumDeclaration<Expression>),
     /// A trait declaration.
     TraitDeclaration(TraitDeclaration<Expression>),
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub enum TypeDeclaration {
-    Enum(EnumDeclaration<Expression>),
-    Struct(StructDeclaration<Expression>),
 }
 
 impl Children<Expression> for FunctionDefinition {

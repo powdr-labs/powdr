@@ -5,10 +5,9 @@
 use std::collections::BTreeMap;
 
 use powdr_ast::{
-    asm_analysis::{self, combine_flags, AnalysisASMFile, Item, LinkDefinition, TypeDeclaration},
+    asm_analysis::{self, combine_flags, AnalysisASMFile, Item, LinkDefinition},
     object::{
-        Link, LinkFrom, LinkTo, Location, Machine, Object, Operation, PILGraph, Type,
-        TypeOrExpression,
+        Link, LinkFrom, LinkTo, Location, Machine, Object, Operation, PILGraph, TypeOrExpression,
     },
     parsed::{
         asm::{parse_absolute_path, AbsoluteSymbolPath, CallableRef, MachineParams},
@@ -185,11 +184,11 @@ fn utility_functions(asm_file: AnalysisASMFile) -> BTreeMap<AbsoluteSymbolPath, 
         .into_iter()
         .filter_map(|(n, v)| match v {
             Item::Expression(e) => Some((n, TypeOrExpression::Expression(e))),
-            Item::TypeDeclaration(TypeDeclaration::Enum(enum_decl)) => {
-                Some((n, TypeOrExpression::Type(Type::Enum(enum_decl))))
+            Item::TypeDeclaration(asm_analysis::TypeDeclaration::Enum(enum_decl)) => {
+                Some((n, TypeOrExpression::Type(enum_decl)))
             }
-            Item::TypeDeclaration(TypeDeclaration::Struct(struct_decl)) => {
-                Some((n, TypeOrExpression::Type(Type::Struct(struct_decl))))
+            Item::TypeDeclaration(asm_analysis::TypeDeclaration::Struct(_struct_decl)) => {
+                unimplemented!("Structs are not supported yet")
             }
             _ => None,
         })
