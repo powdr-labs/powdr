@@ -77,7 +77,7 @@ edition = "2021"
 crate-type = ["dylib"]
 
 [dependencies]
-ibig = { version = "0.3.6", features = [] }
+ibig = { version = "0.3.6", features = [], default-features = false }
 "#;
 
 /// Compiles the given code and returns the path to the
