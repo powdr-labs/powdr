@@ -184,7 +184,7 @@ fn split_by_namespace<F: FieldElement>(
                 // add `statement` to `namespace`
                 Some((namespace, statement))
             }
-            StatementIdentifier::Identity(i) => {
+            StatementIdentifier::ProofItem(i) => {
                 let identity = &pil.identities[*i];
                 let namespaces = referenced_namespaces(identity);
 
