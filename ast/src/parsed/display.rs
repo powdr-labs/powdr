@@ -516,7 +516,9 @@ impl Display for PilStatement {
                 f,
                 format!(
                     "pol commit {}{}{};",
-                    stage.map(|s| format!("stage({s}) ")).unwrap_or_default(),
+                    stage
+                        .and_then(|s| (s > 0).then(|| format!("stage({s}) ")))
+                        .unwrap_or_default(),
                     names.iter().format(", "),
                     value.as_ref().map(|v| format!("{v}")).unwrap_or_default()
                 ),
@@ -587,7 +589,7 @@ impl<E: Display> Display for TraitDeclaration<E> {
     }
 }
 
-impl<E: Display> Display for TraitFunction<E> {
+impl<E: Display> Display for NamedType<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}: {}", self.name, self.ty)
     }

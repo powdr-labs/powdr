@@ -7,6 +7,7 @@ use powdr_ast::parsed::types::Type;
 use powdr_number::{BigInt, DegreeType, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Definitions, EvalError, SymbolLookup, Value};
 
+use super::affine_expression::AlgebraicVariable;
 use super::Constraints;
 use super::{rows::RowPair, Constraint, EvalResult, EvalValue, FixedData, IncompleteCause};
 
@@ -114,7 +115,10 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
             if let Some(value) =
                 (self.query_callback)(&query_str).map_err(super::EvalError::ProverQueryError)?
             {
-                EvalValue::complete(vec![(poly, Constraint::Assignment(value))])
+                EvalValue::complete(vec![(
+                    AlgebraicVariable::Column(poly),
+                    Constraint::Assignment(value),
+                )])
             } else {
                 EvalValue::incomplete(IncompleteCause::NoQueryAnswer(
                     query_str,
@@ -150,7 +154,7 @@ struct Symbols<'a, 'b, 'c, T: FieldElement, QueryCallback: Send + Sync> {
     fixed_data: &'a FixedData<'a, T>,
     rows: &'b RowPair<'b, 'a, T>,
     size: DegreeType,
-    updates: Constraints<&'a AlgebraicReference, T>,
+    updates: Constraints<AlgebraicVariable<'a>, T>,
     query_callback: &'c mut QueryCallback,
 }
 
@@ -198,14 +202,18 @@ impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>> Symbol
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Ok(Value::FieldElement(match poly_ref.poly_id.ptype {
             PolynomialType::Committed | PolynomialType::Intermediate => {
-                if let Some((_, update)) = self.updates.iter().find(|(p, _)| p == &poly_ref) {
+                if let Some((_, update)) = self
+                    .updates
+                    .iter()
+                    .find(|(p, _)| p.try_as_column().map(|p| p == poly_ref).unwrap_or_default())
+                {
                     let Constraint::Assignment(value) = update else {
                         unreachable!()
                     };
                     *value
                 } else {
                     self.rows
-                        .get_value(poly_ref)
+                        .get_value(AlgebraicVariable::Column(poly_ref))
                         .ok_or(EvalError::DataNotAvailable)?
                 }
             }
@@ -241,6 +249,7 @@ impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>> Symbol
         value: Arc<Value<'a, T>>,
     ) -> Result<(), EvalError> {
         // TODO allow "next: true" in the future.
+        // TODO allow assigning to publics in the future
         let Value::Expression(AlgebraicExpression::Reference(AlgebraicReference {
             poly_id,
             next: false,
@@ -278,7 +287,10 @@ impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>> Symbol
                 }
             }
             Err(EvalError::DataNotAvailable) => {
-                self.updates.push((col, Constraint::Assignment(*value)));
+                self.updates.push((
+                    AlgebraicVariable::Column(col),
+                    Constraint::Assignment(*value),
+                ));
             }
             Err(e) => return Err(e),
         }
@@ -315,7 +327,7 @@ impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>> Symbol
 impl<'a, 'b, 'c, T: FieldElement, QueryCallback: Send + Sync>
     Symbols<'a, 'b, 'c, T, QueryCallback>
 {
-    fn updates(self) -> Constraints<&'a AlgebraicReference, T> {
+    fn updates(self) -> Constraints<AlgebraicVariable<'a>, T> {
         self.updates
     }
 }
