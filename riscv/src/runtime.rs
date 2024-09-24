@@ -251,7 +251,7 @@ impl Runtime {
             [
                 "query_arg_1 <== get_reg(10);",
                 "query_arg_2 <== get_reg(11);",
-                "set_reg 0, ${ std::prelude::Query::Output(std::convert::int(std::prover::eval(query_arg_1)), std::convert::int(std::prover::eval(query_arg_2))) };"
+                "set_reg 0, ${ std::prelude::Query::Output(std::convert::int(std::prover::eval(query_arg_1)), std::prover::eval(query_arg_2)) };"
             ]
         );
 
