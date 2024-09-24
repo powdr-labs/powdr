@@ -96,22 +96,6 @@ pub enum TypeDeclaration<'a> {
     Struct(&'a StructDeclaration<Expression>),
 }
 
-// impl<'a> Children<Expression> for TypeDeclaration<'a> {
-//     fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
-//         match self {
-//             TypeDeclaration::Enum(e) => e.children(),
-//             TypeDeclaration::Struct(s) => s.children(),
-//         }
-//     }
-
-//     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
-//         match self {
-//             TypeDeclaration::Enum(e) => e.children_mut(),
-//             TypeDeclaration::Struct(s) => s.children_mut(),
-//         }
-//     }
-// }
-
 #[derive(Debug, Clone, PartialEq, Eq, From)]
 pub enum Module {
     External(String),
