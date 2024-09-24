@@ -127,23 +127,15 @@ impl From<StructDeclaration<Expression>> for SymbolValue {
 impl Children<Expression> for TypeDeclaration {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
         match self {
-            TypeDeclaration::Enum(e) => Box::new(e.variants.iter().flat_map(|v| v.children())),
-            TypeDeclaration::Struct(s) => {
-                Box::new(s.fields.iter().flat_map(|named| named.ty.children()))
-            }
+            TypeDeclaration::Enum(e) => e.children(),
+            TypeDeclaration::Struct(s) => s.children(),
         }
     }
 
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
         match self {
-            TypeDeclaration::Enum(e) => {
-                Box::new(e.variants.iter_mut().flat_map(|v| v.children_mut()))
-            }
-            TypeDeclaration::Struct(s) => Box::new(
-                s.fields
-                    .iter_mut()
-                    .flat_map(|named| named.ty.children_mut()),
-            ),
+            TypeDeclaration::Enum(e) => e.children_mut(),
+            TypeDeclaration::Struct(s) => Box::new(s.children_mut()),
         }
     }
 }

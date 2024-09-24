@@ -15,7 +15,7 @@ use powdr_parser_util::SourceRef;
 
 use crate::parsed::{
     asm::{
-        AbsoluteSymbolPath, AssignmentRegister, CallableRef, FunctionParams, Instruction,
+        self, AbsoluteSymbolPath, AssignmentRegister, CallableRef, FunctionParams, Instruction,
         MachineParams, OperationId, OperationParams,
     },
     visitor::{ExpressionVisitable, VisitOrder},
@@ -700,6 +700,15 @@ impl From<EnumDeclaration<Expression>> for TypeDeclaration {
 impl From<StructDeclaration<Expression>> for TypeDeclaration {
     fn from(value: StructDeclaration<Expression>) -> Self {
         TypeDeclaration::Struct(value)
+    }
+}
+
+impl From<asm::TypeDeclaration> for TypeDeclaration {
+    fn from(value: asm::TypeDeclaration) -> Self {
+        match value {
+            asm::TypeDeclaration::Enum(e) => TypeDeclaration::Enum(e),
+            asm::TypeDeclaration::Struct(s) => TypeDeclaration::Struct(s),
+        }
     }
 }
 

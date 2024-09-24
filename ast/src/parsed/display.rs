@@ -689,15 +689,9 @@ impl<E: Display> Display for StructExpression<E> {
             "{}{}",
             self.name,
             if self.fields.is_empty() {
-                "".to_string()
+                "{}".to_string()
             } else {
-                format!(
-                    "{{ {} }}",
-                    self.fields
-                        .iter()
-                        .map(|named_expr| format!("{named_expr}"))
-                        .format(", ")
-                )
+                format!("{{ {} }}", self.fields.iter().join(", "))
             }
         )
     }
@@ -1053,7 +1047,7 @@ pub fn format_type_scheme_around_name<E: Display, N: Display>(
     if let Some(type_scheme) = type_scheme {
         format!(
             "{} {name}: {}",
-            type_vars_to_string(&type_scheme.vars),
+            type_scheme.type_vars_to_string(),
             type_scheme.ty
         )
     } else {

@@ -355,24 +355,10 @@ impl TypeChecker {
                         asm::SymbolValue::Expression(e) => {
                             res.insert(ctx.clone().with_part(&name), Item::Expression(e));
                         }
-                        asm::SymbolValue::TypeDeclaration(asm::TypeDeclaration::Enum(
-                            enum_decl,
-                        )) => {
+                        asm::SymbolValue::TypeDeclaration(type_decl) => {
                             res.insert(
                                 ctx.clone().with_part(&name),
-                                Item::TypeDeclaration(
-                                    powdr_ast::asm_analysis::TypeDeclaration::Enum(enum_decl),
-                                ),
-                            );
-                        }
-                        asm::SymbolValue::TypeDeclaration(asm::TypeDeclaration::Struct(
-                            enum_decl,
-                        )) => {
-                            res.insert(
-                                ctx.clone().with_part(&name),
-                                Item::TypeDeclaration(
-                                    powdr_ast::asm_analysis::TypeDeclaration::Struct(enum_decl),
-                                ),
+                                Item::TypeDeclaration(type_decl.into()),
                             );
                         }
                         asm::SymbolValue::TraitDeclaration(trait_decl) => {

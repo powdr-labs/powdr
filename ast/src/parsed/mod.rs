@@ -152,13 +152,12 @@ impl PilStatement {
                         .map(move |v| (name, Some(&v.name), SymbolCategory::TypeConstructor)),
                 ),
             ),
-            PilStatement::StructDeclaration(_, StructDeclaration { name, fields, .. }) => Box::new(
-                once((name, None, SymbolCategory::Type)).chain(
-                    fields
-                        .iter()
-                        .map(move |named| (name, Some(&named.name), SymbolCategory::Value)),
-                ),
-            ),
+            PilStatement::StructDeclaration(
+                _,
+                StructDeclaration {
+                    name, fields: _, ..
+                },
+            ) => Box::new(once((name, None, SymbolCategory::Type))),
             PilStatement::TraitDeclaration(
                 _,
                 TraitDeclaration {
@@ -256,11 +255,15 @@ pub struct StructDeclaration<E = u64> {
     pub fields: Vec<NamedType<E>>,
 }
 
-impl<E> StructDeclaration<E> {
-    pub fn type_of_field(&self, name: &str) -> Option<&Type<E>> {
+impl<E: Clone> StructDeclaration<E> {
+    pub fn type_of_field(&self, name: &str) -> Option<TypeScheme<E>> {
         self.fields
             .iter()
-            .find_map(|named| (named.name == name).then_some(&named.ty))
+            .find(|named| named.name == name)
+            .map(|named| TypeScheme {
+                vars: self.type_vars.clone(),
+                ty: named.ty.clone(),
+            })
     }
 }
 
@@ -279,24 +282,6 @@ impl<R> Children<Expression<R>> for StructDeclaration<u64> {
     }
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
         Box::new(empty())
-    }
-}
-
-impl<R> Children<Expression<R>> for NamedExpression<Box<Expression<R>>> {
-    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
-        Box::new(once(self.body.as_ref()))
-    }
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
-        Box::new(once(self.body.as_mut()))
-    }
-}
-
-impl<R> Children<Expression<R>> for NamedExpression<Arc<Expression<R>>> {
-    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
-        Box::new(once(self.body.as_ref()))
-    }
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
-        Box::new(once(Arc::get_mut(&mut self.body).unwrap()))
     }
 }
 
@@ -430,6 +415,24 @@ impl<R> Children<Expression<R>> for TraitImplementation<Expression<R>> {
 pub struct NamedExpression<Expr> {
     pub name: String,
     pub body: Expr,
+}
+
+impl<R> Children<Expression<R>> for NamedExpression<Box<Expression<R>>> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        Box::new(once(self.body.as_ref()))
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        Box::new(once(self.body.as_mut()))
+    }
+}
+
+impl<R> Children<Expression<R>> for NamedExpression<Arc<Expression<R>>> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        Box::new(once(self.body.as_ref()))
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        Box::new(once(Arc::get_mut(&mut self.body).unwrap()))
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
