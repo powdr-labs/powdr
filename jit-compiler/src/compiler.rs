@@ -103,7 +103,7 @@ pub fn call_cargo(code: &str) -> Result<(Temp, String), String> {
     let lib_path = dir
         .join("target")
         .join("release")
-        .join(&format!("libpowdr_jit_compiled.{extension}"));
+        .join(format!("libpowdr_jit_compiled.{extension}"));
     Ok((dir, lib_path.to_str().unwrap().to_string()))
 }
 
