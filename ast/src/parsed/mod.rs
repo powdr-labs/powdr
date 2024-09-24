@@ -1217,7 +1217,7 @@ impl<E> Children<E> for IfExpression<E> {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct StructExpression<E = Expression<NamespacedPolynomialReference>> {
-    pub name: String,
+    pub name: SymbolPath,
     pub fields: Vec<NamedExpression<Box<E>>>,
 }
 

@@ -656,7 +656,7 @@ IfExpression: Box<Expression> = {
 }
 
 StructExpression: Box<Expression> = {	
-    <start:@L> <name:Identifier> "{" <fields:NamedExpressions> "}" <end:@R> => ctx.to_expr_with_source_ref(StructExpression{name, fields}, start, end),
+    <start:@L> <name:SymbolPath> "{" <fields:NamedExpressions> "}" <end:@R> => ctx.to_expr_with_source_ref(StructExpression{name, fields}, start, end),
 }
 
 BlockExpression: Box<Expression> = {
