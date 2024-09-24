@@ -68,7 +68,7 @@ version = "0.1.0"
 edition = "2021"
 
 [lib]
-crate-type = ["dylib"]
+crate-type = ["cdylib"]
 
 [dependencies]
 ibig = { version = "0.3.6", features = [], default-features = false }
@@ -93,10 +93,17 @@ pub fn call_cargo(code: &str) -> Result<(Temp, String), String> {
         let stderr = from_utf8(&out.stderr).unwrap_or("UTF-8 error in error message.");
         return Err(format!("Failed to compile: {stderr}."));
     }
+    let extension = if cfg!(target_os = "windows") {
+        "dll"
+    } else if cfg!(target_os = "macos") {
+        "dylib"
+    } else {
+        "so"
+    };
     let lib_path = dir
         .join("target")
         .join("release")
-        .join("libpowdr_jit_compiled.so");
+        .join(&format!("libpowdr_jit_compiled.{extension}"));
     Ok((dir, lib_path.to_str().unwrap().to_string()))
 }
 
