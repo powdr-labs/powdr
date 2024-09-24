@@ -29,7 +29,7 @@ p3-maybe-rayon = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "
     "parallel",
 ] }
 
-p3-mds = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "mai" }
+p3-mds = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
 p3-merkle-tree = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
 p3-mersenne-31 = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
 p3-circle = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
