@@ -40,7 +40,7 @@ pub fn generate_glue_code<T: FieldElement>(
         let ty = analyzed.type_of_symbol(sym);
         if ty != int_int_fun && ty.ty != Type::Col {
             return Err(format!(
-                "Only (int -> int) functions and columns are supported, but requested {}",
+                "Only (int -> int) functions and columns are supported, but requested{}",
                 format_type_scheme_around_name(sym, &Some(ty)),
             ));
         }
