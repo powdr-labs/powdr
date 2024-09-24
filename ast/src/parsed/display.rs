@@ -5,7 +5,7 @@ use itertools::Itertools;
 use crate::{
     indent,
     parsed::{BinaryOperator, UnaryOperator},
-    write_indented_by, write_items, write_items_indented,
+    write_indented_by, write_items, write_items_indented, writeln_indented,
 };
 
 use self::types::{ArrayType, FunctionType, TupleType, TypeBounds};
@@ -14,7 +14,13 @@ use super::{asm::*, *};
 
 impl Display for PILFile {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write_items(f, &self.0)
+        for statement in &self.0 {
+            match statement {
+                PilStatement::Namespace(..) => writeln!(f, "{statement}")?,
+                _ => writeln_indented(f, statement.to_string())?,
+            }
+        }
+        Ok(())
     }
 }
 
@@ -34,7 +40,7 @@ impl Display for ModuleStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             ModuleStatement::SymbolDefinition(symbol_def) => write!(f, "{symbol_def}"),
-            ModuleStatement::TraitImplementation(trait_impl) => write!(f, "{trait_impl}"),
+            ModuleStatement::PilStatement(s) => write!(f, "{s}"),
         }
     }
 }
@@ -55,15 +61,6 @@ impl Display for SymbolDefinition {
             SymbolValue::Module(m @ Module::Local(_)) => {
                 write!(f, "mod {name} {m}")
             }
-            SymbolValue::Expression(TypedExpression { e, type_scheme }) => {
-                write!(
-                    f,
-                    "let{} = {e};",
-                    format_type_scheme_around_name(name, type_scheme)
-                )
-            }
-            SymbolValue::TypeDeclaration(ty) => write!(f, "{ty}"),
-            SymbolValue::TraitDeclaration(trait_decl) => write!(f, "{trait_decl}"),
         }
     }
 }
@@ -478,57 +475,48 @@ impl Display for PilStatement {
                     }
                 }
             }
-            PilStatement::LetStatement(_, pattern, type_scheme, value) => write_indented_by(
+            PilStatement::LetStatement(_, pattern, type_scheme, value) => write!(
                 f,
-                format!(
-                    "let{}{};",
-                    format_type_scheme_around_name(pattern, type_scheme),
-                    value
-                        .as_ref()
-                        .map(|value| format!(" = {value}"))
-                        .unwrap_or_default()
-                ),
-                1,
+                "let{}{};",
+                format_type_scheme_around_name(pattern, type_scheme),
+                value
+                    .as_ref()
+                    .map(|value| format!(" = {value}"))
+                    .unwrap_or_default()
             ),
             PilStatement::PolynomialDefinition(_, name, value) => {
-                write_indented_by(f, format!("pol {name} = {value};"), 1)
+                write!(f, "pol {name} = {value};")
             }
             PilStatement::PublicDeclaration(_, name, poly, array_index, index) => {
-                write_indented_by(
+                write!(
                     f,
-                    format!(
-                        "public {name} = {poly}{}({index});",
-                        array_index
-                            .as_ref()
-                            .map(|i| format!("[{i}]"))
-                            .unwrap_or_default()
-                    ),
-                    1,
+                    "public {name} = {poly}{}({index});",
+                    array_index
+                        .as_ref()
+                        .map(|i| format!("[{i}]"))
+                        .unwrap_or_default()
                 )
             }
             PilStatement::PolynomialConstantDeclaration(_, names) => {
-                write_indented_by(f, format!("pol constant {};", names.iter().format(", ")), 1)
+                write!(f, "pol constant {};", names.iter().format(", "))
             }
             PilStatement::PolynomialConstantDefinition(_, name, definition) => {
-                write_indented_by(f, format!("pol constant {name}{definition};"), 1)
+                write!(f, "pol constant {name}{definition};")
             }
-            PilStatement::PolynomialCommitDeclaration(_, stage, names, value) => write_indented_by(
+            PilStatement::PolynomialCommitDeclaration(_, stage, names, value) => write!(
                 f,
-                format!(
-                    "pol commit {}{}{};",
-                    stage
-                        .and_then(|s| (s > 0).then(|| format!("stage({s}) ")))
-                        .unwrap_or_default(),
-                    names.iter().format(", "),
-                    value.as_ref().map(|v| format!("{v}")).unwrap_or_default()
-                ),
-                1,
+                "pol commit {}{}{};",
+                stage
+                    .and_then(|s| (s > 0).then(|| format!("stage({s}) ")))
+                    .unwrap_or_default(),
+                names.iter().format(", "),
+                value.as_ref().map(|v| format!("{v}")).unwrap_or_default()
             ),
-            PilStatement::Expression(_, e) => write_indented_by(f, format!("{e};"), 1),
-            PilStatement::EnumDeclaration(_, enum_decl) => write_indented_by(f, enum_decl, 1),
-            PilStatement::StructDeclaration(_, struct_decl) => write_indented_by(f, struct_decl, 1),
-            PilStatement::TraitImplementation(_, trait_impl) => write_indented_by(f, trait_impl, 1),
-            PilStatement::TraitDeclaration(_, trait_decl) => write_indented_by(f, trait_decl, 1),
+            PilStatement::Expression(_, e) => write!(f, "{e};"),
+            PilStatement::EnumDeclaration(_, enum_decl) => write!(f, "{enum_decl}"),
+            PilStatement::StructDeclaration(_, struct_decl) => write!(f, "{struct_decl}"),
+            PilStatement::TraitImplementation(_, trait_impl) => write!(f, "{trait_impl}"),
+            PilStatement::TraitDeclaration(_, trait_decl) => write!(f, "{trait_decl}"),
         }
     }
 }

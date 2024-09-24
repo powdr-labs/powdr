@@ -6,77 +6,59 @@ use std::{
 use itertools::Itertools;
 
 use crate::{
-    asm_analysis::combine_flags,
+    asm_analysis::{combine_flags, Module, StatementReference},
     indent,
-    parsed::{
-        asm::{AbsoluteSymbolPath, Part},
-        display::format_type_scheme_around_name,
-        TypedExpression,
-    },
-    write_indented_by, write_items_indented,
+    parsed::asm::{AbsoluteSymbolPath, SymbolPath},
+    write_indented_by, write_items_indented, writeln_indented_by,
 };
 
 use super::{
     AnalysisASMFile, AssignmentStatement, CallableSymbol, CallableSymbolDefinitionRef,
     DebugDirective, FunctionBody, FunctionStatement, FunctionStatements, Incompatible,
-    IncompatibleSet, InstructionDefinitionStatement, InstructionStatement, Item, LabelStatement,
+    IncompatibleSet, InstructionDefinitionStatement, InstructionStatement, LabelStatement,
     LinkDefinition, Machine, MachineDegree, RegisterDeclarationStatement, RegisterTy, Return, Rom,
-    SubmachineDeclaration, TypeDeclaration,
+    SubmachineDeclaration,
 };
 
 impl Display for AnalysisASMFile {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        let mut current_path = AbsoluteSymbolPath::default();
-
-        for (path, item) in &self.items {
-            let relative_path = path.relative_to(&current_path);
-            let name = relative_path.name();
-            // Skip the name (last) part
-            for part in relative_path.parts().rev().skip(1).rev() {
-                match part {
-                    Part::Super => {
-                        current_path.pop();
-                        write_indented_by(f, "}\n", current_path.len())?;
-                    }
-                    Part::Named(m) => {
-                        write_indented_by(f, format!("mod {m} {{\n"), current_path.len())?;
-                        current_path.push(m.clone());
-                    }
-                }
-            }
-
-            match item {
-                Item::Machine(machine) => {
-                    write_indented_by(f, format!("machine {name}{machine}"), current_path.len())?;
-                }
-                Item::Expression(TypedExpression { e, type_scheme }) => write_indented_by(
-                    f,
-                    format!(
-                        "let{} = {e};\n",
-                        format_type_scheme_around_name(name, type_scheme)
-                    ),
-                    current_path.len(),
-                )?,
-                Item::TypeDeclaration(TypeDeclaration::Enum(enum_decl)) => {
-                    write_indented_by(f, enum_decl, current_path.len())?
-                }
-                Item::TypeDeclaration(TypeDeclaration::Struct(struct_decl)) => {
-                    write_indented_by(f, struct_decl, current_path.len())?
-                }
-                Item::TraitImplementation(trait_impl) => {
-                    write_indented_by(f, trait_impl, current_path.len())?
-                }
-                Item::TraitDeclaration(trait_decl) => {
-                    write_indented_by(f, trait_decl, current_path.len())?
-                }
-            }
-        }
-        for i in (0..current_path.len()).rev() {
-            write_indented_by(f, "}\n", i)?;
-        }
-
-        Ok(())
+        write_module(f, self, &AbsoluteSymbolPath::default(), 0)
     }
+}
+
+fn write_module(
+    f: &mut Formatter<'_>,
+    file: &AnalysisASMFile,
+    module_path: &AbsoluteSymbolPath,
+    indentation: usize,
+) -> Result {
+    let module: &Module = &file.modules[module_path];
+    let mut pil = module.statements.iter();
+
+    for r in &module.ordering {
+        match r {
+            StatementReference::MachineDeclaration(name) => write_indented_by(
+                f,
+                format!("machine {name}{}", module.machines[name]),
+                indentation,
+            ),
+            StatementReference::Pil => {
+                writeln_indented_by(f, format!("{}", pil.next().unwrap()), indentation)
+            }
+            StatementReference::Module(name) => {
+                let path = module_path
+                    .clone()
+                    .join(SymbolPath::from_identifier(name.to_string()));
+                writeln_indented_by(f, format!("mod {name} {{"), indentation)?;
+                write_module(f, file, &path, indentation + 1)?;
+                writeln_indented_by(f, "}", indentation)
+            }
+        }?;
+    }
+
+    assert!(pil.next().is_none());
+
+    Ok(())
 }
 
 impl Display for MachineDegree {
@@ -324,23 +306,74 @@ impl Display for IncompatibleSet {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::parsed::asm::parse_absolute_path;
+    use crate::{
+        asm_analysis::{Module, StatementReference},
+        parsed::asm::parse_absolute_path,
+    };
     use pretty_assertions::assert_eq;
 
     #[test]
     fn display_asm_analysis_file() {
         let file = AnalysisASMFile {
-            items: [
-                "::x::Y",
-                "::x::r::T",
-                "::x::f::Y",
-                "::M",
-                "::t::x::y::R",
-                "::t::F",
-                "::X",
+            modules: [
+                (
+                    "::",
+                    vec![
+                        StatementReference::MachineDeclaration("M".into()),
+                        StatementReference::MachineDeclaration("X".into()),
+                        StatementReference::Module("t".into()),
+                        StatementReference::Module("x".into()),
+                    ],
+                ),
+                (
+                    "::t",
+                    vec![
+                        StatementReference::MachineDeclaration("F".into()),
+                        StatementReference::Module("x".into()),
+                    ],
+                ),
+                (
+                    "::x",
+                    vec![
+                        StatementReference::MachineDeclaration("Y".into()),
+                        StatementReference::Module("f".into()),
+                        StatementReference::Module("r".into()),
+                    ],
+                ),
+                ("::t::x", vec![StatementReference::Module("y".into())]),
+                (
+                    "::t::x::y",
+                    vec![StatementReference::MachineDeclaration("R".into())],
+                ),
+                (
+                    "::x::f",
+                    vec![StatementReference::MachineDeclaration("Y".into())],
+                ),
+                (
+                    "::x::r",
+                    vec![StatementReference::MachineDeclaration("T".into())],
+                ),
             ]
             .into_iter()
-            .map(|s| (parse_absolute_path(s), Item::Machine(Machine::default())))
+            .map(|(path, ordering)| {
+                (
+                    parse_absolute_path(path),
+                    Module {
+                        machines: ordering
+                            .iter()
+                            .filter_map(|r| match r {
+                                StatementReference::MachineDeclaration(name) => {
+                                    Some((name.clone(), Machine::default()))
+                                }
+                                StatementReference::Pil => unimplemented!(),
+                                StatementReference::Module(_) => None,
+                            })
+                            .collect(),
+                        ordering,
+                        ..Default::default()
+                    },
+                )
+            })
             .collect(),
         };
         assert_eq!(

@@ -19,11 +19,10 @@ use builder::TraceBuilder;
 
 use itertools::Itertools;
 use powdr_ast::{
-    asm_analysis::{
-        AnalysisASMFile, CallableSymbol, FunctionStatement, Item, LabelStatement, Machine,
-    },
+    asm_analysis::{AnalysisASMFile, CallableSymbol, FunctionStatement, LabelStatement, Machine},
     parsed::{
-        asm::DebugDirective, BinaryOperation, Expression, FunctionCall, Number, UnaryOperation,
+        asm::{parse_absolute_path, DebugDirective},
+        BinaryOperation, Expression, FunctionCall, Number, UnaryOperation,
     },
 };
 use powdr_number::{FieldElement, LargeInt};
@@ -551,15 +550,7 @@ mod builder {
 }
 
 pub fn get_main_machine(program: &AnalysisASMFile) -> &Machine {
-    for (name, m) in program.items.iter() {
-        if name.len() == 1 && name.parts().next() == Some("Main") {
-            let Item::Machine(m) = m else {
-                panic!();
-            };
-            return m;
-        }
-    }
-    panic!();
+    program.get_machine(&parse_absolute_path("::Main")).unwrap()
 }
 
 struct PreprocessedMain<'a, T: FieldElement> {

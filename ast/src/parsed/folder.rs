@@ -1,9 +1,9 @@
 use super::{
     asm::{
         ASMModule, ASMProgram, Import, Machine, Module, ModuleStatement, SymbolDefinition,
-        SymbolValue, TypeDeclaration,
+        SymbolValue,
     },
-    EnumDeclaration, Expression, StructDeclaration, TraitDeclaration, TraitImplementation,
+    PilStatement,
 };
 
 pub trait Folder {
@@ -24,21 +24,9 @@ pub trait Folder {
                     SymbolValue::Machine(machine) => self.fold_machine(machine).map(From::from),
                     SymbolValue::Import(import) => self.fold_import(import).map(From::from),
                     SymbolValue::Module(module) => self.fold_module(module).map(From::from),
-                    SymbolValue::Expression(e) => Ok(SymbolValue::Expression(e)),
-                    SymbolValue::TypeDeclaration(TypeDeclaration::Enum(enum_decl)) => {
-                        self.fold_enum_declaration(enum_decl).map(From::from)
-                    }
-                    SymbolValue::TypeDeclaration(TypeDeclaration::Struct(struct_decl)) => {
-                        self.fold_struct_declaration(struct_decl).map(From::from)
-                    }
-                    SymbolValue::TraitDeclaration(trait_decl) => {
-                        self.fold_trait_declaration(trait_decl).map(From::from)
-                    }
                 }
                 .map(|value| ModuleStatement::SymbolDefinition(SymbolDefinition { value, ..d })),
-                ModuleStatement::TraitImplementation(trait_impl) => {
-                    self.fold_trait_implementation(trait_impl).map(From::from)
-                }
+                ModuleStatement::PilStatement(s) => self.fold_pil_statement(s).map(From::from),
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -60,31 +48,7 @@ pub trait Folder {
         Ok(import)
     }
 
-    fn fold_enum_declaration(
-        &mut self,
-        ty: EnumDeclaration<Expression>,
-    ) -> Result<EnumDeclaration<Expression>, Self::Error> {
-        Ok(ty)
-    }
-
-    fn fold_struct_declaration(
-        &mut self,
-        ty: StructDeclaration<Expression>,
-    ) -> Result<StructDeclaration<Expression>, Self::Error> {
-        Ok(ty)
-    }
-
-    fn fold_trait_implementation(
-        &mut self,
-        trait_impl: TraitImplementation<Expression>,
-    ) -> Result<TraitImplementation<Expression>, Self::Error> {
-        Ok(trait_impl)
-    }
-
-    fn fold_trait_declaration(
-        &mut self,
-        trait_decl: TraitDeclaration<Expression>,
-    ) -> Result<TraitDeclaration<Expression>, Self::Error> {
-        Ok(trait_decl)
+    fn fold_pil_statement(&mut self, statement: PilStatement) -> Result<PilStatement, Self::Error> {
+        Ok(statement)
     }
 }
