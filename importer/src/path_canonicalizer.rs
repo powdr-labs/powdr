@@ -12,7 +12,7 @@ use powdr_ast::parsed::{
         SymbolValue, SymbolValueRef,
     },
     folder::Folder,
-    types::{ArrayLength, Type, TypeScheme},
+    types::{ExpressionInArrayLength, Type, TypeScheme},
     visitor::{Children, ExpressionVisitable},
     ArrayLiteral, BinaryOperation, BlockExpression, EnumDeclaration, EnumVariant, Expression,
     FunctionCall, IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm,
@@ -339,7 +339,7 @@ fn canonicalize_inside_pattern(
     }
 }
 
-fn canonicalize_inside_type_scheme<E: ArrayLength>(
+fn canonicalize_inside_type_scheme<E: ExpressionInArrayLength>(
     type_scheme: &mut TypeScheme<E>,
     path: &AbsoluteSymbolPath,
     paths: &'_ PathMap,
@@ -352,7 +352,7 @@ fn canonicalize_inside_type_scheme<E: ArrayLength>(
     );
 }
 
-fn canonicalize_inside_type<E: ArrayLength>(
+fn canonicalize_inside_type<E: ExpressionInArrayLength>(
     ty: &mut Type<E>,
     type_vars: &HashSet<&String>,
     path: &AbsoluteSymbolPath,
@@ -983,7 +983,7 @@ fn check_type_declaration(
         .try_for_each(|ty| check_type(location, ty, state, &type_vars, &Default::default()))
 }
 
-fn check_type_scheme<E: ArrayLength>(
+fn check_type_scheme<E: ExpressionInArrayLength>(
     location: &AbsoluteSymbolPath,
     type_scheme: &TypeScheme<E>,
     state: &mut State<'_>,
@@ -999,7 +999,7 @@ fn check_type_scheme<E: ArrayLength>(
     )
 }
 
-fn check_type<E: ArrayLength>(
+fn check_type<E: ExpressionInArrayLength>(
     location: &AbsoluteSymbolPath,
     ty: &Type<E>,
     state: &mut State<'_>,

@@ -137,7 +137,7 @@ impl<E> Type<E> {
     }
 }
 
-impl<E: ArrayLength> Type<E> {
+impl<E: ExpressionInArrayLength> Type<E> {
     pub fn contained_expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
         match self {
             Type::Array(ArrayType { base, length }) => Box::new(
@@ -166,13 +166,13 @@ impl<E: ArrayLength> Type<E> {
 }
 
 /// A trait to operate over the possible types for the array type lengths
-pub trait ArrayLength: std::fmt::Display + std::fmt::Debug {
+pub trait ExpressionInArrayLength: std::fmt::Display + std::fmt::Debug {
     fn try_to_expression_mut(&mut self) -> Option<&mut Expression>;
 
     fn try_to_expression(&self) -> Option<&Expression>;
 }
 
-impl ArrayLength for Expression {
+impl ExpressionInArrayLength for Expression {
     fn try_to_expression_mut(&mut self) -> Option<&mut Expression> {
         Some(self)
     }
@@ -182,7 +182,7 @@ impl ArrayLength for Expression {
     }
 }
 
-impl ArrayLength for u64 {
+impl ExpressionInArrayLength for u64 {
     fn try_to_expression_mut(&mut self) -> Option<&mut Expression> {
         None
     }
