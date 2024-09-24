@@ -234,6 +234,8 @@ impl Runtime {
 
         // Base syscalls
         r.add_syscall(
+            // TODO this is a quite inefficient way of getting prover inputs.
+            // We need to be able to access the register memory within PIL functions.
             Syscall::Input,
             [
                 "query_arg_1 <== get_reg(10);",

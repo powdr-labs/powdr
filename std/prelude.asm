@@ -36,13 +36,13 @@ enum SelectedExprs {
 
 /// The return type of a prover query function.
 enum Query {
+    /// Generate a hint to fill a witness column with.
+    Hint(fe),
+    /// Query a prover input (field element) by channel id and index.
+    Input(int, int),
     /// Writes a field element (second argument) to an output channel (first argument).
     /// Channel 1 is stdout, 2 is stderr.
     Output(int, fe),
-    /// Generate a hint to fill a witness column with.
-    Hint(fe),
-    /// Query a prover input element by channel id and index.
-    Input(int, int),
     /// This value is not (additionally) constrained by the query.
     None,
 }

@@ -3,9 +3,9 @@
 
 namespace std::prover;
     enum Query {
-        Output(int, int),
         Hint(fe),
         Input(int, int),
+        Output(int, int),
         None,
     }
 namespace main(256);

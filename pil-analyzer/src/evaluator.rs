@@ -661,9 +661,9 @@ pub trait SymbolLookup<'a, T: FieldElement> {
         ))
     }
 
-    fn output_to_channel(&mut self, _fd: u32, _byte: T) -> Result<(), EvalError> {
+    fn output_to_channel(&mut self, _channel: u32, _elem: T) -> Result<(), EvalError> {
         Err(EvalError::Unsupported(
-            "Tried to output byte outside of prover function.".to_string(),
+            "Tried to output to channel outside of prover function.".to_string(),
         ))
     }
 }
@@ -1392,14 +1392,14 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
             )?
         }
         BuiltinFunction::OutputToChannel => {
-            let byte = arguments.pop().unwrap();
-            let fd = arguments.pop().unwrap();
-            let Value::Integer(fd) = fd.as_ref() else {
+            let elem = arguments.pop().unwrap();
+            let channel = arguments.pop().unwrap();
+            let Value::Integer(channel) = channel.as_ref() else {
                 panic!()
             };
             symbols.output_to_channel(
-                u32::try_from(fd).unwrap(),
-                byte.try_to_field_element().unwrap(),
+                u32::try_from(channel).unwrap(),
+                elem.try_to_field_element().unwrap(),
             )?;
             Value::Tuple(vec![]).into()
         }
