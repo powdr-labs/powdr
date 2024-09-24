@@ -18,7 +18,7 @@ use powdr_ast::{
 use powdr_number::FieldElement;
 
 use crate::{
-    codegen::{escape_symbol, CodeGenerator},
+    codegen::{escape_symbol},
     SymbolMap,
 };
 

@@ -21,7 +21,7 @@ pub fn compile<T: FieldElement>(
 
     let mut codegen = CodeGenerator::new(analyzed);
     let successful_symbols = requested_symbols
-        .into_iter()
+        .iter()
         .filter_map(|&sym| {
             if let Err(e) = codegen.request_symbol(sym) {
                 log::warn!("Unable to generate code for symbol {sym}: {e}");

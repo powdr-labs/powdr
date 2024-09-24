@@ -122,7 +122,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
             params
                 .iter()
                 .zip(param_types)
-                .map(|(p, t)| format!("{}: {}", p, map_type(&t)))
+                .map(|(p, t)| format!("{p}: {}", map_type(t)))
                 .format(", "),
             map_type(return_type),
             self.format_expr(body)?
