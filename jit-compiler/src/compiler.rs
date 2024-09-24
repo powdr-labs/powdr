@@ -5,6 +5,7 @@ use std::{
     ffi::CString,
     fs::{self},
     process::Command,
+    str::from_utf8,
 };
 
 use powdr_ast::{
@@ -41,9 +42,9 @@ pub fn create_full_code<T: FieldElement>(
     .into();
     for sym in symbols {
         let ty = analyzed.type_of_symbol(sym);
-        if ty != int_int_fun {
+        if ty != int_int_fun && ty.ty != Type::Col {
             return Err(format!(
-                "Only (int -> int) functions are supported, but requested {}",
+                "Only (int -> int) functions and columns are supported, but requested {}",
                 format_type_scheme_around_name(sym, &Some(ty)),
             ));
         }
@@ -83,7 +84,7 @@ ibig = { version = "0.3.6", features = [], default-features = false }
 /// Compiles the given code and returns the path to the
 /// temporary directory containing the compiled library
 /// and the path to the compiled library.
-pub fn call_cargo(code: &str) -> (Temp, String) {
+pub fn call_cargo(code: &str) -> Result<(Temp, String), String> {
     let dir = mktemp::Temp::new_dir().unwrap();
     fs::write(dir.join("Cargo.toml"), CARGO_TOML).unwrap();
     fs::create_dir(dir.join("src")).unwrap();
@@ -95,15 +96,15 @@ pub fn call_cargo(code: &str) -> (Temp, String) {
         .current_dir(dir.clone())
         .output()
         .unwrap();
-    out.stderr.iter().for_each(|b| print!("{}", *b as char));
     if !out.status.success() {
-        panic!("Failed to compile.");
+        let stderr = from_utf8(&out.stderr).unwrap_or("UTF-8 error in error message.");
+        return Err(format!("Failed to compile: {stderr}."));
     }
     let lib_path = dir
         .join("target")
         .join("release")
         .join("libpowdr_jit_compiled.so");
-    (dir, lib_path.to_str().unwrap().to_string())
+    Ok((dir, lib_path.to_str().unwrap().to_string()))
 }
 
 /// Loads the given library and creates funtion pointers for the given symbols.

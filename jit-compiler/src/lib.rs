@@ -19,7 +19,7 @@ pub fn compile<T: FieldElement>(
     log::info!("JIT-compiling {} symbols...", symbols.len());
     let code = create_full_code(analyzed, symbols)?;
 
-    let (dir, lib_path) = call_cargo(&code);
+    let (dir, lib_path) = call_cargo(&code)?;
     let metadata = fs::metadata(&lib_path).unwrap();
 
     log::info!(

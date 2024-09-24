@@ -83,26 +83,19 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                         value: return_type,
                     }),
             } => {
-                let Expression::LambdaExpression(_, LambdaExpression { params, body, .. }) =
-                    &value.e
-                else {
-                    return Err(format!(
-                        "Expected lambda expression for {symbol}, got {}",
-                        value.e
-                    ));
-                };
                 assert!(vars.is_empty());
-                format!(
-                    "fn {}({}) -> {} {{ {} }}\n",
-                    escape_symbol(symbol),
-                    params
-                        .iter()
-                        .zip(param_types)
-                        .map(|(p, t)| format!("{}: {}", p, map_type(&t)))
-                        .format(", "),
-                    map_type(return_type.as_ref()),
-                    self.format_expr(body)?
-                )
+                self.try_format_function(symbol, &param_types, return_type.as_ref(), &value.e)?
+            }
+            TypeScheme {
+                vars,
+                ty: Type::Col,
+            } => {
+                assert!(vars.is_empty());
+                // TODO we assume it is an int -> int function.
+                // The type inference algorithm should store the derived type.
+                // Alternatively, we insert a trait conversion function and store the type
+                // in the trait vars.
+                self.try_format_function(symbol, &[Type::Int], &Type::Int, &value.e)?
             }
             _ => format!(
                 "const {}: {} = {};\n",
@@ -111,6 +104,29 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 self.format_expr(&value.e)?
             ),
         })
+    }
+
+    fn try_format_function(
+        &mut self,
+        name: &str,
+        param_types: &[Type],
+        return_type: &Type,
+        expr: &Expression,
+    ) -> Result<String, String> {
+        let Expression::LambdaExpression(_, LambdaExpression { params, body, .. }) = expr else {
+            return Err(format!("Expected lambda expression for {name}, got {expr}",));
+        };
+        Ok(format!(
+            "fn {}({}) -> {} {{ {} }}\n",
+            escape_symbol(name),
+            params
+                .iter()
+                .zip(param_types)
+                .map(|(p, t)| format!("{}: {}", p, map_type(&t)))
+                .format(", "),
+            map_type(return_type),
+            self.format_expr(body)?
+        ))
     }
 
     fn try_generate_builtin(&self, symbol: &str) -> Option<String> {
