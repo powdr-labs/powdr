@@ -42,7 +42,7 @@ pub fn compile<T: FieldElement>(
     let metadata = fs::metadata(&lib_path).unwrap();
 
     log::info!(
-        "Loading library with size {} MB...",
+        "Loading library of size {} MB...",
         metadata.len() as f64 / 1000000.0
     );
 
