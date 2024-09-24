@@ -71,6 +71,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 ibig = { version = "0.3.6", features = [], default-features = false }
+lazy_static = "1.4.0"
 "#;
 
 pub struct PathInTempDir {
