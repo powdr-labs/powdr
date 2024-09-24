@@ -7,11 +7,11 @@ use powdr_riscv_syscalls::Syscall;
 use alloc::vec;
 use alloc::vec::Vec;
 
-/// Reads a single u32 from the file descriptor fd.
-pub fn read_u32(fd: u32) -> u32 {
+/// A single u32 from input channel 0.
+pub fn read_u32(idx: u32) -> u32 {
     let mut value: u32;
     unsafe {
-        asm!("ecall", lateout("a0") value, in("a0") fd, in("t0") u32::from(Syscall::Input));
+        asm!("ecall", lateout("a0") value, in("a0") 0, in("a1") idx + 1, in("t0") u32::from(Syscall::Input));
     }
     value
 }
@@ -20,7 +20,7 @@ pub fn read_u32(fd: u32) -> u32 {
 pub fn read_slice(fd: u32, data: &mut [u32]) {
     for (i, d) in data.iter_mut().enumerate() {
         unsafe {
-            asm!("ecall", lateout("a0") *d, in("a0") fd, in("a1") (i+1) as u32, in("t0") u32::from(Syscall::DataIdentifier))
+            asm!("ecall", lateout("a0") *d, in("a0") fd, in("a1") (i+1) as u32, in("t0") u32::from(Syscall::Input))
         };
     }
 }
@@ -29,7 +29,7 @@ pub fn read_slice(fd: u32, data: &mut [u32]) {
 pub fn read_data_len(fd: u32) -> usize {
     let mut out: u32;
     unsafe {
-        asm!("ecall", lateout("a0") out, in("a0") fd, in("a1") 0, in("t0") u32::from(Syscall::DataIdentifier))
+        asm!("ecall", lateout("a0") out, in("a0") fd, in("a1") 0, in("t0") u32::from(Syscall::Input))
     };
     out as usize
 }
