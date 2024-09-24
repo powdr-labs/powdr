@@ -17,10 +17,7 @@ use powdr_ast::{
 };
 use powdr_number::FieldElement;
 
-use crate::{
-    codegen::{escape_symbol},
-    SymbolMap,
-};
+use crate::{codegen::escape_symbol, SymbolMap};
 
 // TODO make this depend on T
 
