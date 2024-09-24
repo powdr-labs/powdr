@@ -298,22 +298,12 @@ impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>> Symbol
         Ok(())
     }
 
-    fn get_input(&mut self, index: usize) -> Result<Arc<Value<'a, T>>, EvalError> {
-        if let Some(v) =
-            (self.query_callback)(&format!("Input({index})")).map_err(EvalError::ProverError)?
-        {
-            Ok(Value::FieldElement(v).into())
-        } else {
-            Err(EvalError::DataNotAvailable)
-        }
-    }
-
-    fn get_input_from_channel(
+    fn input_from_channel(
         &mut self,
         channel: u32,
         index: usize,
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
-        if let Some(v) = (self.query_callback)(&format!("DataIdentifier({channel},{index})"))
+        if let Some(v) = (self.query_callback)(&format!("Input({channel},{index})"))
             .map_err(EvalError::ProverError)?
         {
             Ok(Value::FieldElement(v).into())
@@ -322,8 +312,8 @@ impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>> Symbol
         }
     }
 
-    fn output_byte(&mut self, fd: u32, byte: u8) -> Result<(), EvalError> {
-        if ((self.query_callback)(&format!("Output({fd},{byte})"))
+    fn output_to_channel(&mut self, fd: u32, elem: T) -> Result<(), EvalError> {
+        if ((self.query_callback)(&format!("Output({fd},{elem})"))
             .map_err(EvalError::ProverError)?)
         .is_some()
         {

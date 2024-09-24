@@ -144,6 +144,7 @@ pub fn bootloader_preamble() -> String {
 }
 
 /// The bootloader: An assembly program that can be executed at the beginning of RISC-V execution.
+///
 /// It lets the prover provide arbitrary memory pages and writes them to memory, as well as values for
 /// the registers (including the PC, which is set last).
 /// This can be used to implement continuations. Note that this is completely non-sound. Progress to
@@ -740,6 +741,7 @@ pub const REGISTER_NAMES: [&str; 37] = [
 pub const PC_INDEX: usize = REGISTER_NAMES.len() - 1;
 
 /// The default PC that can be used in first chunk, will just continue with whatever comes after the bootloader.
+///
 /// The value is 3, because we added a jump instruction at the beginning of the code.
 /// Specifically, the first instructions are:
 /// 0: reset
