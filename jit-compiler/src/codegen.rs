@@ -7,7 +7,8 @@ use powdr_ast::{
         display::{format_type_args, quote},
         types::{ArrayType, FunctionType, Type, TypeScheme},
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
-        IndexAccess, LambdaExpression, Number, StatementInsideBlock, UnaryOperation,
+        IndexAccess, LambdaExpression, MatchArm, MatchExpression, Number, Pattern,
+        StatementInsideBlock, UnaryOperation,
     },
 };
 use powdr_number::FieldElement;
@@ -279,6 +280,22 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                         .unwrap_or_default()
                 )
             }
+            Expression::MatchExpression(_, MatchExpression { scrutinee, arms }) => {
+                format!(
+                    "match {} {{\n{}\n}}",
+                    self.format_expr(scrutinee)?,
+                    arms.iter()
+                        .map(|MatchArm { pattern, value }| {
+                            Ok(format!(
+                                "{} => {},",
+                                format_pattern(pattern),
+                                self.format_expr(value)?,
+                            ))
+                        })
+                        .collect::<Result<Vec<_>, String>>()?
+                        .join("\n")
+                )
+            }
             _ => return Err(format!("Implement {e}")),
         })
     }
@@ -287,6 +304,31 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
         Err(format!(
             "Compiling statements inside blocks is not yet implemented: {s}"
         ))
+    }
+}
+
+fn format_pattern(pattern: &Pattern) -> String {
+    match pattern {
+        Pattern::CatchAll(_) => "_".to_string(),
+        Pattern::Ellipsis(_) => "..".to_string(),
+        Pattern::Number(_, n) => {
+            // TODO this should probably fail if the number is too large.
+            n.to_string()
+        }
+        Pattern::String(_, s) => quote(s),
+        Pattern::Tuple(_, items) => {
+            format!("({})", items.iter().map(format_pattern).join(", "))
+        }
+        Pattern::Array(_, items) => {
+            format!("[{}]", items.iter().map(format_pattern).join(", "))
+        }
+        Pattern::Variable(_, var) => var.clone(),
+        Pattern::Enum(_, name, None) => escape_symbol(&name.to_string()),
+        Pattern::Enum(_, name, Some(fields)) => format!(
+            "{}({})",
+            escape_symbol(&name.to_string()),
+            fields.iter().map(format_pattern).join(", ")
+        ),
     }
 }
 
@@ -307,10 +349,12 @@ fn map_type(ty: &Type) -> String {
         Type::Function(ft) => todo!("Type {ft}"),
         Type::TypeVar(tv) => tv.to_string(),
         Type::NamedType(path, type_args) => {
-            if type_args.is_some() {
-                unimplemented!()
+            let name = escape_symbol(&path.to_string());
+            if let Some(type_args) = type_args {
+                format!("{name}::<{}>", type_args.iter().map(map_type).join(", "))
+            } else {
+                name
             }
-            escape_symbol(&path.to_string())
         }
         Type::Col | Type::Inter => unreachable!(),
     }
