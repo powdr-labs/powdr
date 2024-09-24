@@ -1,6 +1,7 @@
 use itertools::Itertools;
-use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
-use p3_field::AbstractField;
+use p3_baby_bear::{BabyBear, BabyBearDiffusionMatrixParameters, BabyBearParameters};
+use p3_field::{AbstractField, PrimeField32, PrimeField64};
+use p3_monty_31::{DiffusionMatrixParameters, MontyParameters};
 use p3_poseidon2::Poseidon2ExternalMatrixGeneral;
 use p3_symmetric::Permutation;
 use powdr_plonky3::{
@@ -55,10 +56,25 @@ fn main() {
     }
     println!("];");
 
-    println!("INTERNAL_MATRIX = [");
-    let diffusion = extract_matrix(DiffusionMatrixBabyBear::default());
-    for row in diffusion {
-        println!("    [{}],", row.into_iter().format(", "));
-    }
-    println!("];");
+    let inv_monty =
+        BabyBear::new(((1u64 << BabyBearParameters::MONTY_BITS) % BabyBear::ORDER_U64) as u32);
+    println!("INV_MONTY = {};", inv_monty);
+
+    let internal_diag: &[BabyBear; 16] = &BabyBearDiffusionMatrixParameters::INTERNAL_DIAG_MONTY;
+    println!(
+        "INTERNAL_DIAG = [{}];",
+        internal_diag
+            .iter()
+            .map(|val| {
+                // All this code to write -2 instead of 2013265919:
+                let val = val.as_canonical_u32();
+                let val: i32 = if val > BabyBear::ORDER_U32 / 2 {
+                    -((BabyBear::ORDER_U32 - val) as i32)
+                } else {
+                    val as i32
+                };
+                val
+            })
+            .format(", ")
+    );
 }
