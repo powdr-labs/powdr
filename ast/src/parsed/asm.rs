@@ -69,7 +69,7 @@ pub enum SymbolValue {
     Module(Module),
     /// A generic symbol / function.
     Expression(TypedExpression),
-    /// A type declaration (currently only enums or structs)
+    /// A type declaration (enums or struct)
     TypeDeclaration(TypeDeclaration),
     /// A trait declaration
     TraitDeclaration(TraitDeclaration<Expression>),
