@@ -14,7 +14,11 @@ fn identity_function() {
 
     assert_eq!(f(10), 10);
 }
-
+#[test]
+#[should_panic = "Only (int -> int) functions and columns are supported, but requested  c: int -> bool"]
+fn invalid_function() {
+    let _ = compile("let c: int -> bool = |i| true;", "c");
+}
 #[test]
 fn sqrt() {
     let f = compile(
