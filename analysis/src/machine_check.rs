@@ -1,6 +1,6 @@
 #![deny(clippy::print_stdout)]
 
-use std::collections::BTreeMap;
+use std::{cell::RefCell, collections::BTreeMap};
 
 use powdr_ast::{
     asm_analysis::{
@@ -13,9 +13,10 @@ use powdr_ast::{
         self,
         asm::{
             self, ASMModule, ASMProgram, AbsoluteSymbolPath, AssignmentRegister, FunctionStatement,
-            Instruction, LinkDeclaration, MachineProperties, MachineStatement, ModuleStatement,
-            RegisterFlag, SymbolDefinition,
+            Instruction, LinkDeclaration, MachineProperties, MachineStatement, Module,
+            ModuleStatement, RegisterFlag, SymbolDefinition, SymbolValue,
         },
+        EnumDeclaration, TraitDeclaration,
     },
 };
 
@@ -23,21 +24,79 @@ use powdr_ast::{
 /// Also transfers generic PIL definitions but does not verify anything about them.
 pub fn check(file: ASMProgram) -> Result<AnalysisASMFile, Vec<String>> {
     let ctx = AbsoluteSymbolPath::default();
-    let machines = TypeChecker::default().check_module(file.main, &ctx)?;
+    let checker = TypeChecker::new(file.main);
+    checker.check_path(&ctx)?;
     Ok(AnalysisASMFile {
-        items: machines.into_iter().collect(),
+        items: checker
+            .analyzed
+            .into_inner()
+            .into_iter()
+            .filter_map(|(k, v)| match v {
+                Some(ItemOrModule::Item(i)) => Some((k, i)),
+                Some(ItemOrModule::Module) => None,
+                None => unreachable!(),
+            })
+            .collect(),
     })
 }
 
-#[derive(Default)]
-struct TypeChecker {}
+enum ItemOrModule {
+    Item(Item),
+    Module,
+}
+
+struct TypeChecker {
+    /// The parsed AST as a single [SymbolValue::Module]
+    ast: SymbolValue,
+    /// The checked items
+    /// We use [RefCell] because we want to mutate this while borrowing from `parsed`
+    analyzed: RefCell<BTreeMap<AbsoluteSymbolPath, Option<ItemOrModule>>>,
+}
 
 impl TypeChecker {
+    fn new(root: ASMModule) -> Self {
+        Self {
+            ast: SymbolValue::Module(Module::Local(root)),
+            analyzed: Default::default(),
+        }
+    }
+
+    fn check_path(&self, ctx: &AbsoluteSymbolPath) -> Result<(), Vec<String>> {
+        // check if the path is already checked
+        if self.analyzed.borrow().contains_key(ctx) {
+            return Ok(());
+        }
+
+        // insert `None` in the map to keep track of circular dependencies
+        self.analyzed.borrow_mut().entry(ctx.clone()).or_default();
+
+        let symbol = ctx.parts().fold(&self.ast, |acc, part| match acc {
+            SymbolValue::Module(Module::Local(m)) => m
+                .statements
+                .iter()
+                .find_map(|s| match s {
+                    ModuleStatement::SymbolDefinition(s) if s.name == part => Some(&s.value),
+                    _ => None,
+                })
+                .unwrap(),
+            s => s,
+        });
+
+        match symbol {
+            SymbolValue::Module(Module::Local(module)) => self.check_module(module, ctx),
+            SymbolValue::Machine(machine) => self.check_machine_type(machine.clone(), ctx),
+            SymbolValue::Expression(e) => self.check_expression(e.clone(), ctx),
+            SymbolValue::TypeDeclaration(d) => self.check_type_declaration(d.clone(), ctx),
+            SymbolValue::TraitDeclaration(d) => self.check_trait_declaration(d.clone(), ctx),
+            _ => unreachable!(),
+        }
+    }
+
     fn check_machine_type(
-        &mut self,
+        &self,
         machine: asm::Machine,
         ctx: &AbsoluteSymbolPath,
-    ) -> Result<Machine, Vec<String>> {
+    ) -> Result<(), Vec<String>> {
         let mut errors = vec![];
 
         let mut registers = vec![];
@@ -86,17 +145,19 @@ impl TypeChecker {
                     pil.push(statement);
                 }
                 MachineStatement::Submachine(_, ty, name, args) => {
+                    let ty = AbsoluteSymbolPath::default().join(ty);
+
+                    if let Err(e) = self.assert_type(&ty, Type::Machine) {
+                        errors.extend(e);
+                    }
+
                     args.iter().for_each(|arg| {
                         if arg.try_to_identifier().is_none() {
                             errors
                                 .push(format!("submachine argument not a machine instance: {arg}"))
                         }
                     });
-                    submachines.push(SubmachineDeclaration {
-                        name,
-                        ty: AbsoluteSymbolPath::default().join(ty),
-                        args,
-                    });
+                    submachines.push(SubmachineDeclaration { name, ty, args });
                 }
                 MachineStatement::FunctionDeclaration(source, name, params, statements) => {
                     let mut function_statements = vec![];
@@ -304,82 +365,70 @@ impl TypeChecker {
         if !errors.is_empty() {
             Err(errors)
         } else {
-            Ok(machine)
+            self.insert_item(ctx, Item::Machine(machine));
+            Ok(())
         }
     }
 
     fn check_module(
-        &mut self,
-        module: ASMModule,
+        &self,
+        module: &ASMModule,
         ctx: &AbsoluteSymbolPath,
-    ) -> Result<BTreeMap<AbsoluteSymbolPath, Item>, Vec<String>> {
+    ) -> Result<(), Vec<String>> {
         let mut errors = vec![];
 
-        let mut res: BTreeMap<AbsoluteSymbolPath, Item> = BTreeMap::default();
-
-        for m in module.statements {
+        for m in &module.statements {
             match m {
-                ModuleStatement::SymbolDefinition(SymbolDefinition { name, value }) => {
-                    match value {
-                        asm::SymbolValue::Machine(m) => {
-                            match self.check_machine_type(m, &ctx.with_part(&name)) {
-                                Err(e) => {
-                                    errors.extend(e);
-                                }
-                                Ok(machine) => {
-                                    res.insert(ctx.with_part(&name), Item::Machine(machine));
-                                }
-                            };
-                        }
-                        asm::SymbolValue::Import(_) => {
-                            unreachable!("Imports should have been removed")
-                        }
-                        asm::SymbolValue::Module(m) => {
-                            // add the name of this module to the context
-                            let ctx = ctx.with_part(&name);
-
-                            let m = match m {
-                                asm::Module::External(_) => unreachable!(),
-                                asm::Module::Local(m) => m,
-                            };
-
-                            match self.check_module(m, &ctx) {
-                                Err(err) => {
-                                    errors.extend(err);
-                                }
-                                Ok(m) => {
-                                    res.extend(m);
-                                }
-                            };
-                        }
-                        asm::SymbolValue::Expression(e) => {
-                            res.insert(ctx.clone().with_part(&name), Item::Expression(e));
-                        }
-                        asm::SymbolValue::TypeDeclaration(enum_decl) => {
-                            res.insert(
-                                ctx.clone().with_part(&name),
-                                Item::TypeDeclaration(enum_decl),
-                            );
-                        }
-                        asm::SymbolValue::TraitDeclaration(trait_decl) => {
-                            res.insert(
-                                ctx.clone().with_part(&name),
-                                Item::TraitDeclaration(trait_decl),
-                            );
-                        }
+                ModuleStatement::SymbolDefinition(SymbolDefinition { name, .. }) => {
+                    if let Err(e) = self.check_path(&ctx.with_part(name)) {
+                        errors.extend(e);
                     }
                 }
                 ModuleStatement::TraitImplementation(trait_impl) => {
-                    res.insert(ctx.clone(), Item::TraitImplementation(trait_impl));
+                    // treat trait implementations as items whose path is the module they are defined in
+                    // see [https://github.com/powdr-labs/powdr/issues/1697]
+                    self.insert_item(ctx, Item::TraitImplementation(trait_impl.clone()));
                 }
             }
         }
 
+        self.insert_module(ctx);
+
         if !errors.is_empty() {
             Err(errors)
         } else {
-            Ok(res)
+            Ok(())
         }
+    }
+
+    fn check_expression(
+        &self,
+        e: parsed::TypedExpression,
+        ctx: &AbsoluteSymbolPath,
+    ) -> Result<(), Vec<String>> {
+        // TODO: actually check the expression?
+        self.insert_item(ctx, Item::Expression(e));
+        Ok(())
+    }
+
+    fn check_type_declaration(
+        &self,
+        enum_decl: EnumDeclaration<parsed::Expression>,
+        ctx: &AbsoluteSymbolPath,
+    ) -> Result<(), Vec<String>> {
+        // TODO: actually check the type declaration?
+        self.insert_item(ctx, Item::TypeDeclaration(enum_decl));
+        Ok(())
+    }
+
+    fn check_trait_declaration(
+        &self,
+        trait_decl: TraitDeclaration<parsed::Expression>,
+        ctx: &AbsoluteSymbolPath,
+    ) -> Result<(), Vec<String>> {
+        // TODO: actually check the trait declaration?
+        self.insert_item(ctx, Item::TraitDeclaration(trait_decl.clone()));
+        Ok(())
     }
 
     fn check_instruction(
@@ -413,6 +462,68 @@ impl TypeChecker {
             links: instruction.links,
         })
     }
+
+    /// Get the type of a path. If required, check the path first.
+    fn type_of(&self, path: &AbsoluteSymbolPath) -> Result<Type, Vec<String>> {
+        self.check_path(path)?;
+
+        let item = &self.analyzed.borrow()[path];
+
+        item.as_ref()
+            .map(|item| match item {
+                ItemOrModule::Item(item) => match item {
+                    Item::Machine(_) => Type::Machine,
+                    Item::Expression(_) => Type::Expression,
+                    Item::TypeDeclaration(_) => Type::Ty,
+                    Item::TraitImplementation(_) => unreachable!(),
+                    Item::TraitDeclaration(_) => Type::Trait,
+                },
+                ItemOrModule::Module => Type::Module,
+            })
+            .ok_or_else(|| {
+                vec![format!(
+                    "Cyclic dependency detected in the definition of {path}"
+                )]
+            })
+    }
+
+    fn assert_type(&self, path: &AbsoluteSymbolPath, expected: Type) -> Result<(), Vec<String>> {
+        let found = self.type_of(path)?;
+        if found != expected {
+            Err(vec![format!(
+                "Expected {path} to be of type {expected:?}, found type {found:?}"
+            )])
+        } else {
+            Ok(())
+        }
+    }
+
+    fn insert_module(&self, path: &AbsoluteSymbolPath) {
+        assert!(self
+            .analyzed
+            .borrow_mut()
+            .insert(path.clone(), Some(ItemOrModule::Module))
+            .unwrap()
+            .is_none());
+    }
+
+    fn insert_item(&self, path: &AbsoluteSymbolPath, item: Item) {
+        assert!(self
+            .analyzed
+            .borrow_mut()
+            .insert(path.clone(), Some(ItemOrModule::Item(item)))
+            .unwrap()
+            .is_none());
+    }
+}
+
+#[derive(PartialEq, Eq, Debug)]
+enum Type {
+    Machine,
+    Module,
+    Expression,
+    Ty,
+    Trait,
 }
 
 #[cfg(test)]
@@ -432,9 +543,7 @@ mod tests {
         )
     }
 
-    // TODO: remove `should_panic` below by detecting that `A` is not a `Machine`
     #[test]
-    #[should_panic = "Ok"]
     fn submachine_is_not_a_machine() {
         let src = r#"
         mod A {
@@ -445,7 +554,7 @@ mod tests {
         expect_check_str(
             src,
             Err(vec![
-                "Expected A to be of type Machine, but found type module",
+                "Expected ::A to be of type Machine, found type Module",
             ]),
         );
     }
