@@ -32,7 +32,7 @@ fn write_module(
     module_path: &AbsoluteSymbolPath,
     indentation: usize,
 ) -> Result {
-    let module: &Module = &file.modules[&module_path];
+    let module: &Module = &file.modules[module_path];
     let mut pil = module.statements.iter();
 
     for r in &module.ordering {

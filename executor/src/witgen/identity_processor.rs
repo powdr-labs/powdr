@@ -4,7 +4,7 @@ use std::{
 };
 
 use lazy_static::lazy_static;
-use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, IdentityKind};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, IdentityKind};
 use powdr_number::FieldElement;
 
 use crate::{
@@ -13,8 +13,8 @@ use crate::{
 };
 
 use super::{
-    machines::KnownMachine, processor::OuterQuery, rows::RowPair, EvalResult, EvalValue,
-    IncompleteCause, MutableState, QueryCallback,
+    affine_expression::AlgebraicVariable, machines::KnownMachine, processor::OuterQuery,
+    rows::RowPair, EvalResult, EvalValue, IncompleteCause, MutableState, QueryCallback,
 };
 
 /// A list of mutable references to machines.
@@ -243,7 +243,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         &self,
         left_selector: &'a Expression<T>,
         rows: &RowPair<T>,
-    ) -> Option<EvalValue<&'a AlgebraicReference, T>> {
+    ) -> Option<EvalValue<AlgebraicVariable<'a>, T>> {
         let value = match rows.evaluate(left_selector) {
             Err(incomplete_cause) => return Some(EvalValue::incomplete(incomplete_cause)),
             Ok(value) => value,
