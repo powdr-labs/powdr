@@ -412,7 +412,7 @@ mod tests {
             public out = y(N - 1);
         "#;
         let malicious_publics = Some(vec![GoldilocksField::from(0)]);
-        run_test_goldilocks_publics(content, malicious_publics);
+        run_test_publics::<GoldilocksField>(content, malicious_publics);
     }
 
     #[test]
