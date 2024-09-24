@@ -13,6 +13,7 @@ use powdr_number::FieldElement;
 use crate::witgen::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 use crate::Identity;
 
+use super::affine_expression::AlgebraicVariable;
 use super::expression_evaluator::ExpressionEvaluator;
 use super::range_constraints::RangeConstraint;
 use super::symbolic_evaluator::SymbolicEvaluator;
@@ -28,12 +29,17 @@ pub struct SimpleRangeConstraintSet<'a, T: FieldElement> {
     range_constraints: &'a BTreeMap<PolyID, RangeConstraint<T>>,
 }
 
-impl<'a, T: FieldElement> RangeConstraintSet<&AlgebraicReference, T>
+impl<'a, T: FieldElement> RangeConstraintSet<AlgebraicVariable<'a>, T>
     for SimpleRangeConstraintSet<'a, T>
 {
-    fn range_constraint(&self, id: &AlgebraicReference) -> Option<RangeConstraint<T>> {
-        assert!(!id.next);
-        self.range_constraints.get(&id.poly_id).cloned()
+    fn range_constraint(&self, id: AlgebraicVariable<'a>) -> Option<RangeConstraint<T>> {
+        match id {
+            AlgebraicVariable::Column(id) => {
+                assert!(!id.next);
+                self.range_constraints.get(&id.poly_id).cloned()
+            }
+            AlgebraicVariable::Public(_) => unimplemented!(),
+        }
     }
 }
 
@@ -301,11 +307,15 @@ fn is_binary_constraint<T: FieldElement>(expr: &Expression<T>) -> Option<PolyID>
         if let ([(id1, Constraint::Assignment(value1))], [(id2, Constraint::Assignment(value2))]) =
             (&left_root.constraints[..], &right_root.constraints[..])
         {
-            if id1 != id2 || !id2.is_witness() {
-                return None;
-            }
-            if (value1.is_zero() && value2.is_one()) || (value1.is_one() && value2.is_zero()) {
-                return Some(id1.poly_id);
+            // We expect range constraints only on columns, because the verifier could easily
+            // check range constraints on publics themselves.
+            if let (AlgebraicVariable::Column(id1), AlgebraicVariable::Column(id2)) = (id1, id2) {
+                if id1 != id2 || !id2.is_witness() {
+                    return None;
+                }
+                if (value1.is_zero() && value2.is_one()) || (value1.is_one() && value2.is_zero()) {
+                    return Some(id1.poly_id);
+                }
             }
         }
     }
@@ -338,13 +348,16 @@ fn try_transfer_constraints<T: FieldElement>(
     result
         .constraints
         .into_iter()
-        .flat_map(|(poly, cons)| {
-            if let Constraint::RangeConstraint(cons) = cons {
-                assert!(!poly.next);
-                Some((poly.poly_id, cons))
-            } else {
-                None
+        .flat_map(|(poly, cons)| match poly {
+            AlgebraicVariable::Column(poly) => {
+                if let Constraint::RangeConstraint(cons) = cons {
+                    assert!(!poly.next);
+                    Some((poly.poly_id, cons))
+                } else {
+                    None
+                }
             }
+            AlgebraicVariable::Public(_) => unimplemented!(),
         })
         .collect()
 }
