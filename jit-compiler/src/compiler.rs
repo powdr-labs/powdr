@@ -1,8 +1,7 @@
-use libc::{c_void, dlopen, dlsym, RTLD_NOW};
+use libloading::{Library, Symbol};
 use mktemp::Temp;
 use std::{
     collections::HashMap,
-    ffi::CString,
     fs::{self},
     process::Command,
     str::from_utf8,
@@ -109,25 +108,19 @@ pub fn call_cargo(code: &str) -> Result<(Temp, String), String> {
 
 /// Loads the given library and creates funtion pointers for the given symbols.
 pub fn load_library(path: &str, symbols: &[&str]) -> Result<SymbolMap, String> {
-    let c_path = CString::new(path).unwrap();
-    let lib = unsafe { dlopen(c_path.as_ptr(), RTLD_NOW) };
-    if lib.is_null() {
-        return Err(format!("Failed to load library: {path:?}"));
-    }
+    let lib = unsafe { Library::new(path).map_err(|e| format!("Failed to load library: {}", e))? };
     let mut result = HashMap::new();
     for sym in symbols {
         let extern_sym = extern_symbol_name(sym);
-        let sym_cstr = CString::new(extern_sym).unwrap();
-        let fun_ptr = unsafe { dlsym(lib, sym_cstr.as_ptr()) };
-        if fun_ptr.is_null() {
-            return Err(format!("Failed to load symbol: {fun_ptr:?}"));
-        }
-        let fun = unsafe { std::mem::transmute::<*mut c_void, fn(u64) -> u64>(fun_ptr) };
-        result.insert(sym.to_string(), fun);
+        let fun: Symbol<unsafe extern "C" fn(u64) -> u64> = unsafe {
+            lib.get(extern_sym.as_bytes())
+                .map_err(|e| format!("Failed to load symbol {}: {}", extern_sym, e))?
+        };
+        let safe_fun = unsafe { std::mem::transmute::<_, fn(u64) -> u64>(*fun) };
+        result.insert(sym.to_string(), safe_fun);
     }
     Ok(result)
 }
-
 fn extern_symbol_name(sym: &str) -> String {
     format!("extern_{}", escape_symbol(sym))
 }
