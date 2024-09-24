@@ -3,7 +3,8 @@ mod compiler;
 
 use std::{collections::HashMap, fs};
 
-use compiler::{call_cargo, create_full_code, load_library};
+use codegen::CodeGenerator;
+use compiler::{call_cargo, generate_glue_code, load_library};
 use powdr_ast::analyzed::Analyzed;
 use powdr_number::FieldElement;
 
@@ -14,12 +15,30 @@ pub type SymbolMap = HashMap<String, fn(u64) -> u64>;
 /// Only functions of type (int -> int) are supported for now.
 pub fn compile<T: FieldElement>(
     analyzed: &Analyzed<T>,
-    symbols: &[&str],
+    requested_symbols: &[&str],
 ) -> Result<SymbolMap, String> {
-    log::info!("JIT-compiling {} symbols...", symbols.len());
-    let code = create_full_code(analyzed, symbols)?;
+    log::info!("JIT-compiling {} symbols...", requested_symbols.len());
 
-    let (dir, lib_path) = call_cargo(&code)?;
+    let mut codegen = CodeGenerator::new(analyzed);
+    let successful_symbols = requested_symbols
+        .into_iter()
+        .filter_map(|&sym| {
+            if let Err(e) = codegen.request_symbol(sym) {
+                log::warn!("Unable to generate code for symbol {sym}: {e}");
+                None
+            } else {
+                Some(sym)
+            }
+        })
+        .collect::<Vec<_>>();
+
+    if successful_symbols.is_empty() {
+        return Ok(Default::default());
+    };
+
+    let glue_code = generate_glue_code(&successful_symbols, analyzed)?;
+
+    let (dir, lib_path) = call_cargo(&format!("{glue_code}\n{}\n", codegen.compiled_symbols()))?;
     let metadata = fs::metadata(&lib_path).unwrap();
 
     log::info!(
@@ -27,7 +46,7 @@ pub fn compile<T: FieldElement>(
         metadata.len() as f64 / 1000000.0
     );
 
-    let result = load_library(&lib_path, symbols);
+    let result = load_library(&lib_path, &successful_symbols);
     log::info!("Done.");
 
     drop(dir);

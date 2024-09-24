@@ -29,11 +29,10 @@ const PREAMBLE: &str = r#"
 //type FieldElement = powdr_number::GoldilocksField;
 "#;
 
-pub fn create_full_code<T: FieldElement>(
-    analyzed: &Analyzed<T>,
+pub fn generate_glue_code<T: FieldElement>(
     symbols: &[&str],
+    analyzed: &Analyzed<T>,
 ) -> Result<String, String> {
-    let mut codegen = CodeGenerator::new(analyzed);
     let mut glue = String::new();
     let int_int_fun: TypeScheme = Type::Function(FunctionType {
         params: vec![Type::Int],
@@ -48,7 +47,7 @@ pub fn create_full_code<T: FieldElement>(
                 format_type_scheme_around_name(sym, &Some(ty)),
             ));
         }
-        codegen.request_symbol(sym)?;
+
         // TODO we should use big int instead of u64
         let name = escape_symbol(sym);
         glue.push_str(&format!(
@@ -62,10 +61,7 @@ pub fn create_full_code<T: FieldElement>(
         ));
     }
 
-    Ok(format!(
-        "{PREAMBLE}\n{}\n{glue}\n",
-        codegen.compiled_symbols()
-    ))
+    Ok(format!("{PREAMBLE}\n{glue}\n",))
 }
 
 const CARGO_TOML: &str = r#"

@@ -293,7 +293,12 @@ fn map_type(ty: &Type) -> String {
         Type::Tuple(_) => todo!(),
         Type::Function(ft) => todo!("Type {ft}"),
         Type::TypeVar(tv) => tv.to_string(),
-        Type::NamedType(_path, _type_args) => todo!(),
+        Type::NamedType(path, type_args) => {
+            if type_args.is_some() {
+                unimplemented!()
+            }
+            escape_symbol(&path.to_string())
+        }
         Type::Col | Type::Inter => unreachable!(),
     }
 }
@@ -335,11 +340,11 @@ mod test {
             &["c", "d"],
         );
         assert_eq!(
-        result,
-        "fn c(i: ibig::IBig) -> ibig::IBig { ((i).clone() + (ibig::IBig::from(20_u64)).clone()) }
-
-fn d(k: ibig::IBig) -> ibig::IBig { (c)(((k).clone() * (ibig::IBig::from(20_u64)).clone()).clone()) }
-"
-    );
+            result,
+            "fn c(i: ibig::IBig) -> ibig::IBig { ((i).clone() + (ibig::IBig::from(20_u64)).clone()) }\n\
+            \n\
+            fn d(k: ibig::IBig) -> ibig::IBig { (c)(((k).clone() * (ibig::IBig::from(20_u64)).clone()).clone()) }\n\
+            "
+        );
     }
 }
