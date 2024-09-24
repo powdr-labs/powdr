@@ -410,7 +410,7 @@ where
         self.constraint_system.stage_widths.len()
     }
 
-    fn stage_width(&self, stage: u32) -> usize {
+    fn stage_trace_width(&self, stage: u32) -> usize {
         self.constraint_system.stage_widths[stage as usize]
     }
 

@@ -408,7 +408,7 @@ mod tests {
         namespace Global(N); 
             let alpha: expr = std::prelude::challenge(0, 41);
             let beta: expr = std::prelude::challenge(0, 42);
-            col witness stage(0) x;
+            col witness x;
             col witness stage(1) y;
             x = y + beta * alpha;
         "#;
