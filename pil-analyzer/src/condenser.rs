@@ -1055,6 +1055,7 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
                     },
                 )
             }
+            .into(),
 
             AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
                 Expression::UnaryOperation(
@@ -1069,6 +1070,7 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
                     },
                 )
             }
+            .into(),
 
             AlgebraicExpression::Challenge(Challenge { id, stage }) => {
                 let function = Expression::Reference(
