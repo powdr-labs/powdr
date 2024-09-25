@@ -9,6 +9,16 @@ use powdr_pipeline::test_util::{evaluate_function, evaluate_integer_function, st
 
 use criterion::{criterion_group, criterion_main, Criterion};
 
+const SQRT_CODE: &str = "
+    let sqrt: int -> int = |x| sqrt_rec(x, x);
+    let sqrt_rec: int, int -> int = |y, x|
+        if y * y <= x && (y + 1) * (y + 1) > x {
+            y
+        } else {
+            sqrt_rec((y + x / y) / 2, x)
+        };
+";
+
 fn evaluator_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("evaluator-benchmark");
 
@@ -67,17 +77,7 @@ fn evaluator_benchmark(c: &mut Criterion) {
     });
 
     let sqrt_analyzed: Analyzed<GoldilocksField> = {
-        let code = "
-            let sqrt: int -> int = |x| sqrt_rec(x, x);
-            let sqrt_rec: int, int -> int = |y, x|
-                if y * y <= x && (y + 1) * (y + 1) > x {
-                    y
-                } else {
-                    sqrt_rec((y + x / y) / 2, x)
-                };
-        "
-        .to_string();
-        let mut pipeline = Pipeline::default().from_asm_string(code, None);
+        let mut pipeline = Pipeline::default().from_asm_string(SQRT_CODE.to_string(), None);
         pipeline.compute_analyzed_pil().unwrap().clone()
     };
 
@@ -118,17 +118,7 @@ fn jit_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("jit-benchmark");
 
     let sqrt_analyzed: Analyzed<GoldilocksField> = {
-        let code = "
-            let sqrt: int -> int = |x| sqrt_rec(x, x);
-            let sqrt_rec: int, int -> int = |y, x|
-                if y * y <= x && (y + 1) * (y + 1) > x {
-                    y
-                } else {
-                    sqrt_rec((y + x / y) / 2, x)
-                };
-        "
-        .to_string();
-        let mut pipeline = Pipeline::default().from_asm_string(code, None);
+        let mut pipeline = Pipeline::default().from_asm_string(SQRT_CODE.to_string(), None);
         pipeline.compute_analyzed_pil().unwrap().clone()
     };
 
