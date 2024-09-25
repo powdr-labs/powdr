@@ -50,7 +50,7 @@ pub fn generate_glue_code<T: FieldElement>(
         glue.push_str(&format!(
             r#"
             #[no_mangle]
-            pub extern fn {}(i: u64) -> u64 {{
+            pub extern "C" fn {}(i: u64) -> u64 {{
                 u64::try_from({name}(ibig::IBig::from(i))).unwrap()
             }}
             "#,
