@@ -950,7 +950,7 @@ fn convert_to_binary_operation<T: FieldElement>(
         SourceRef::unknown(),
         BinaryOperation {
             left: Box::new(try_value_to_expression(&Value::<T>::Expression(left.clone())).unwrap()),
-            op: op.clone().into(),
+            op: (*op).into(),
             right: Box::new(
                 try_value_to_expression(&Value::<T>::Expression(right.clone())).unwrap(),
             ),
@@ -965,7 +965,7 @@ fn convert_to_unary_operation<T: FieldElement>(
     Expression::UnaryOperation(
         SourceRef::unknown(),
         UnaryOperation {
-            op: op.clone().into(),
+            op: (*op).into(),
             expr: Box::new(try_value_to_expression(&Value::<T>::Expression(expr.clone())).unwrap()),
         },
     )
