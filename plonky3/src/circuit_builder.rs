@@ -41,6 +41,7 @@ struct ConstraintSystem<T> {
     constant_count: usize,
     // for each stage, the number of witness columns
     stage_widths: Vec<usize>,
+    challenges: BTreeSet<Challenge>,
 }
 
 impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
@@ -61,7 +62,7 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
                     .sum()
             })
             .collect();
-        let columns = analyzed
+        let (_, columns) = analyzed
             .definitions_in_source_order(PolynomialType::Constant)
             .iter()
             .chain(
@@ -70,29 +71,36 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
                     .iter(),
             )
             .fold(
-                (vec![], HashMap::default()),
-                |(mut counts, mut map), (s, _)| {
-                    let stage = match s.kind {
+                (HashMap::default(), HashMap::default()),
+                |(mut next_index_in_stage, mut map): (HashMap<isize, usize>, _), (s, _)| {
+                    // the stage for this column, -1 for preprocessed
+                    let stage: isize = match s.kind {
                         SymbolKind::Poly(PolynomialType::Committed) => {
-                            s.stage.unwrap_or_default() + 1
+                            s.stage.unwrap_or_default() as isize
                         }
                         SymbolKind::Poly(PolynomialType::Constant) => {
                             assert!(s.stage.is_none());
-                            0
+                            -1
                         }
                         _ => unreachable!(),
-                    } as usize;
-                    if counts.len() <= stage {
-                        counts.resize(stage + 1, 0);
-                    }
+                    };
+                    let index_in_stage = next_index_in_stage.entry(stage).or_default();
                     for (_, id) in s.array_elements() {
-                        map.insert(id, (stage as isize - 1, counts[stage]));
-                        counts[stage] += 1;
+                        map.insert(id, (stage, *index_in_stage));
+                        *index_in_stage += 1;
                     }
-                    (counts, map)
+                    (next_index_in_stage, map)
                 },
-            )
-            .1;
+            );
+
+        let mut challenges = BTreeSet::default();
+        for identity in &identities {
+            identity.pre_visit_expressions(&mut |expr| {
+                if let AlgebraicExpression::Challenge(challenge) = expr {
+                    challenges.insert(*challenge);
+                }
+            });
+        }
 
         Self {
             identities,
@@ -101,6 +109,7 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
             constant_count,
             stage_widths,
             columns,
+            challenges,
         }
     }
 }
@@ -196,19 +205,6 @@ where
             witgen_callback: Some(witgen_callback),
             ..self
         }
-    }
-
-    /// Returns the set of all challenges.
-    pub(crate) fn get_challenges(&self) -> BTreeSet<Challenge> {
-        let mut challenges = BTreeSet::default();
-        for identity in &self.constraint_system.identities {
-            identity.pre_visit_expressions(&mut |expr| {
-                if let AlgebraicExpression::Challenge(challenge) = expr {
-                    challenges.insert(*challenge);
-                }
-            });
-        }
-        challenges
     }
 
     #[cfg(debug_assertions)]
@@ -319,14 +315,15 @@ where
 {
     fn eval(&self, builder: &mut AB) {
         let stage_count = <Self as MultiStageAir<AB>>::stage_count(self);
-        let stages: Vec<AB::M> = (0..stage_count).map(|i| builder.stage_trace(i)).collect();
+        let trace_by_stage: Vec<AB::M> = (0..stage_count).map(|i| builder.stage_trace(i)).collect();
         let fixed = builder.preprocessed();
         let pi = builder.public_values();
 
         // for each stage, the ids of the challenges drawn at the end of that stage
         let challenges: BTreeMap<u32, Vec<u64>> =
-            self.get_challenges()
-                .into_iter()
+            self.constraint_system
+                .challenges
+                .iter()
                 .fold(Default::default(), |mut map, c| {
                     map.entry(c.stage).or_default().push(c.id);
                     map
@@ -342,7 +339,7 @@ where
             .collect();
         assert_eq!(self.constraint_system.publics.len(), pi.len());
 
-        let stage_0_local = stages[0].row_slice(0);
+        let stage_0_local = trace_by_stage[0].row_slice(0);
 
         // public constraints
         let public_vals_by_id = self
@@ -361,7 +358,10 @@ where
             |(index, (pub_id, poly_id, _))| {
                 let selector = fixed_local[public_offset + index];
                 let (stage, index) = self.constraint_system.columns[poly_id];
-                assert_eq!(stage, 0);
+                assert_eq!(
+                    stage, 0,
+                    "public inputs are only allowed in the first stage"
+                );
                 let witness_col = stage_0_local[index];
                 let public_value = public_vals_by_id[pub_id];
 
@@ -380,7 +380,7 @@ where
 
                     let left = self.to_plonky3_expr::<AB>(
                         identity.left.selector.as_ref().unwrap(),
-                        &stages,
+                        &trace_by_stage,
                         &fixed,
                         &public_vals_by_id,
                         &challenges,
@@ -415,7 +415,8 @@ where
     }
 
     fn stage_challenge_count(&self, stage: u32) -> usize {
-        self.get_challenges()
+        self.constraint_system
+            .challenges
             .iter()
             .filter(|c| c.stage == stage)
             .count()
@@ -440,9 +441,11 @@ where
         let mut witness = witness.borrow_mut();
 
         let previous_stage_challenges: BTreeSet<Challenge> = self
-            .get_challenges()
-            .into_iter()
+            .constraint_system
+            .challenges
+            .iter()
             .filter(|c| c.stage == trace_stage - 1)
+            .cloned()
             .collect();
         assert_eq!(
             previous_stage_challenges.len(),
