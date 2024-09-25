@@ -57,7 +57,7 @@ pub fn compile<T: FieldElement>(
 
     log::info!(
         "Loading library of size {} MB...",
-        metadata.len() as f64 / 1000000.0
+        metadata.len() as f64 / (1024.0 * 1024.0)
     );
 
     let result = load_library(&lib_file.path, &successful_symbols);
