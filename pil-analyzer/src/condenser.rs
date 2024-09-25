@@ -13,11 +13,11 @@ use num_traits::sign::Signed;
 
 use powdr_ast::{
     analyzed::{
-        self, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression,
-        AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Challenge,
-        DegreeRange, Expression, FunctionValueDefinition, Identity, IdentityKind, PolyID,
-        PolynomialReference, PolynomialType, PublicDeclaration, Reference, SelectedExpressions,
-        StatementIdentifier, Symbol, SymbolKind,
+        self, AlgebraicBinaryOperation, AlgebraicExpression, AlgebraicReference,
+        AlgebraicUnaryOperation, Analyzed, Challenge, DegreeRange, Expression,
+        FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialReference,
+        PolynomialType, PublicDeclaration, Reference, SelectedExpressions, StatementIdentifier,
+        Symbol, SymbolKind,
     },
     parsed::{
         self,
@@ -1043,34 +1043,25 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
                         left: Box::new(try_value_to_expression(&Value::<T>::Expression(
                             (**left).clone(),
                         ))?),
-                        op: match op {
-                            AlgebraicBinaryOperator::Add => parsed::BinaryOperator::Add,
-                            AlgebraicBinaryOperator::Sub => parsed::BinaryOperator::Sub,
-                            AlgebraicBinaryOperator::Mul => parsed::BinaryOperator::Mul,
-                            AlgebraicBinaryOperator::Pow => parsed::BinaryOperator::Pow,
-                        },
+                        op: (*op).into(),
                         right: Box::new(try_value_to_expression(&Value::<T>::Expression(
                             (**right).clone(),
                         ))?),
                     },
                 )
             }
-            .into(),
 
             AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
                 Expression::UnaryOperation(
                     SourceRef::unknown(),
                     UnaryOperation {
-                        op: match op {
-                            AlgebraicUnaryOperator::Minus => parsed::UnaryOperator::Minus,
-                        },
+                        op: (*op).into(),
                         expr: Box::new(try_value_to_expression(&Value::<T>::Expression(
                             (**expr).clone(),
                         ))?),
                     },
                 )
             }
-            .into(),
 
             AlgebraicExpression::Challenge(Challenge { id, stage }) => {
                 let function = Expression::Reference(
