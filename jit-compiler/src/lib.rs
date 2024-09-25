@@ -62,7 +62,5 @@ pub fn compile<T: FieldElement>(
 
     let result = load_library(&lib_path, &successful_symbols);
     log::info!("Done.");
-
-    drop(dir);
     result
 }
