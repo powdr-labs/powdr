@@ -39,8 +39,11 @@ impl<'a> TraitsResolver<'a> {
                 None
             }
         });
-        // Maybe this is a lot here but its better to do it again for every reference
-        let trait_typevars_mapping = Self::build_reference_path(filtered);
+        let trait_typevars_mapping = if trait_impls.is_empty() {
+            Default::default()
+        } else {
+            Self::build_reference_path(filtered)
+        };
 
         Self {
             trait_impls,
@@ -155,6 +158,7 @@ impl<'a> TraitsResolver<'a> {
         //      ("Child1", [Some(type_args)]),
         //      ("Child2", [Some(type_args)])
         // ],...]
+        let mut all_type_vars = true;
         for (symbol, expr) in definitions {
             let mut references = Vec::new();
             expr.all_children().for_each(|e| {
@@ -168,6 +172,10 @@ impl<'a> TraitsResolver<'a> {
                 ) = e
                 {
                     if !type_args.is_empty() {
+                        if all_type_vars && type_args.iter().any(|t| !matches!(t, Type::TypeVar(_)))
+                        {
+                            all_type_vars = false;
+                        }
                         references.push((name, type_args));
                     }
                 }
@@ -178,10 +186,14 @@ impl<'a> TraitsResolver<'a> {
         }
 
         // If all types are generic, there's nothing to solve
-        if result.iter().all(|(_p, c)| {
-            c.iter()
-                .all(|(_, type_args)| type_args.iter().all(|t| matches!(t, Type::TypeVar(_))))
-        }) {
+        //if result.iter().all(|(_p, c)| {
+        //    c.iter()
+        //        .all(|(_, type_args)| type_args.iter().all(|t| matches!(t, Type::TypeVar(_))))
+        //}) {
+        //    return Default::default();
+        //}
+
+        if all_type_vars {
             return Default::default();
         }
 
