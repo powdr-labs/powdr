@@ -21,5 +21,5 @@ mod check_constraints;
 mod circuit_builder;
 mod params;
 mod stark;
-pub use params::{Commitment, FieldElementMap, ProverData};
+pub use params::{baby_bear, Commitment, FieldElementMap, ProverData};
 pub use stark::Plonky3Prover;
