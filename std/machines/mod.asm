@@ -12,3 +12,4 @@ mod shift;
 mod shift16;
 mod split;
 mod write_once_memory;
+mod write_once_memory16;
