@@ -13,10 +13,11 @@ use num_traits::sign::Signed;
 
 use powdr_ast::{
     analyzed::{
-        self, AlgebraicExpression, AlgebraicReference, Analyzed, Challenge, DegreeRange,
-        Expression, FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialReference,
-        PolynomialType, PublicDeclaration, Reference, SelectedExpressions, StatementIdentifier,
-        Symbol, SymbolKind,
+        self, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression,
+        AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Challenge,
+        DegreeRange, Expression, FunctionValueDefinition, Identity, IdentityKind, PolyID,
+        PolynomialReference, PolynomialType, PublicDeclaration, Reference, SelectedExpressions,
+        StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
         self,
@@ -24,8 +25,9 @@ use powdr_ast::{
         display::format_type_scheme_around_name,
         types::{ArrayType, Type},
         visitor::{AllChildren, ExpressionVisitable},
-        ArrayLiteral, BlockExpression, FunctionCall, FunctionKind, LambdaExpression,
-        LetStatementInsideBlock, Number, Pattern, SourceReference, TypedExpression, UnaryOperation,
+        ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall, FunctionKind,
+        LambdaExpression, LetStatementInsideBlock, Number, Pattern, SourceReference,
+        TypedExpression, UnaryOperation,
     },
 };
 use powdr_number::{BigUint, FieldElement};
@@ -939,6 +941,36 @@ fn shift_local_var_refs(e: &mut Expression, shift: u64) {
         .for_each(|e| shift_local_var_refs(e, shift));
 }
 
+fn convert_to_binary_operation<T: FieldElement>(
+    left: &AlgebraicExpression<T>,
+    op: &AlgebraicBinaryOperator,
+    right: &AlgebraicExpression<T>,
+) -> Expression {
+    Expression::BinaryOperation(
+        SourceRef::unknown(),
+        BinaryOperation {
+            left: Box::new(try_value_to_expression(&Value::<T>::Expression(left.clone())).unwrap()),
+            op: (*op).into(),
+            right: Box::new(
+                try_value_to_expression(&Value::<T>::Expression(right.clone())).unwrap(),
+            ),
+        },
+    )
+}
+
+fn convert_to_unary_operation<T: FieldElement>(
+    op: &AlgebraicUnaryOperator,
+    expr: &AlgebraicExpression<T>,
+) -> Expression {
+    Expression::UnaryOperation(
+        SourceRef::unknown(),
+        UnaryOperation {
+            op: (*op).into(),
+            expr: Box::new(try_value_to_expression(&Value::<T>::Expression(expr.clone())).unwrap()),
+        },
+    )
+}
+
 /// Tries to convert an evaluator value to an expression with the same value.
 fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expression, EvalError> {
     Ok(match value {
@@ -1033,6 +1065,15 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
                     type_args: None,
                 }),
             ),
+
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+                convert_to_binary_operation(left, op, right)
+            }
+
+            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
+                convert_to_unary_operation(op, expr)
+            }
+
             AlgebraicExpression::Challenge(Challenge { id, stage }) => {
                 let function = Expression::Reference(
                     SourceRef::unknown(),
@@ -1054,6 +1095,7 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
                     },
                 )
             }
+
             AlgebraicExpression::Number(n) => Number {
                 value: n.to_arbitrary_integer(),
                 type_: Some(Type::Expr),
