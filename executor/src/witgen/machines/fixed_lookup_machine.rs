@@ -227,7 +227,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             // No fixed column, so this FixedLookup instance does nothing
             .unwrap_or(0) as u64;
 
-        // This currenlty just takes one element with the correct name
+        // This currently just takes one element with the correct name
         // When we support more than one element, we need to have a vector of logup_multiplicity_columns: Vec<Option<PolyId>>
         let logup_multiplicity_column: Option<PolyID> = fixed_data
             .witness_cols
