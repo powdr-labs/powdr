@@ -4,7 +4,6 @@
 use core::fmt::Debug;
 use std::{
     collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
-    convert,
     iter::once,
     str::FromStr,
     sync::Arc,
@@ -1057,6 +1056,7 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
             }
 
             // TODO: Implement for UnaryOperation
+            
             AlgebraicExpression::Challenge(Challenge { id, stage }) => {
                 let function = Expression::Reference(
                     SourceRef::unknown(),
