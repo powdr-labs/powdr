@@ -815,41 +815,6 @@ fn capture_enums() {
 }
 
 #[test]
-fn capture_binary_operations() {
-    let input = r#"
-    namespace std::prover;
-        let provide_value = 9;
-        let eval = -1;
-    namespace N(16);
-        (constr || {
-            let x;
-            let y;
-            let t = x + y;
-            query |i| {
-                let _ = std::prover::eval(t);
-            }
-        })();
-
-    "#;
-    let expected = r#"namespace std::prover;
-    let provide_value = 9;
-    let eval = -1;
-    col witness x;
-    col witness y;
-    {
-        let t = std::prover::x + std::prover::y;
-        query |i| {
-            let _: fe = std::prover::eval(t);
-        }
-    };
-"#;
-    let formatted = analyze_string(input).to_string();
-    assert_eq!(formatted, expected);
-    let re_analyzed = analyze_string(&formatted);
-    assert_eq!(re_analyzed.to_string(), expected);
-}
-
-#[test]
 fn capture_challenges_and_numbers() {
     let input = r#"
     namespace std::prelude;
@@ -880,6 +845,41 @@ namespace std::prover;
         let t = 2;
         query |i| {
             std::prover::provide_value(y, i, std::prover::eval(x) + t);
+        }
+    };
+"#;
+    let formatted = analyze_string(input).to_string();
+    assert_eq!(formatted, expected);
+    let re_analyzed = analyze_string(&formatted);
+    assert_eq!(re_analyzed.to_string(), expected);
+}
+
+#[test]
+fn capture_binary_operations() {
+    let input = r#"
+    namespace std::prover;
+        let provide_value = 9;
+        let eval = -1;
+    namespace N(16);
+        (constr || {
+            let x;
+            let y;
+            let t = x + y;
+            query |i| {
+                let _ = std::prover::eval(t);
+            }
+        })();
+
+    "#;
+    let expected = r#"namespace std::prover;
+    let provide_value = 9;
+    let eval = -1;
+    col witness x;
+    col witness y;
+    {
+        let t = std::prover::x + std::prover::y;
+        query |i| {
+            let _: fe = std::prover::eval(t);
         }
     };
 "#;
