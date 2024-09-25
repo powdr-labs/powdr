@@ -284,7 +284,9 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
     }
 
     fn format_statement(&mut self, s: &StatementInsideBlock<Expression>) -> Result<String, String> {
-        Err(format!("Implement {s}"))
+        Err(format!(
+            "Compiling statements inside blocks is not yet implemented: {s}"
+        ))
     }
 }
 
