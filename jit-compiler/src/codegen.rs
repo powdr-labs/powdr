@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
 use itertools::Itertools;
 use powdr_ast::{
@@ -14,45 +14,56 @@ use powdr_number::FieldElement;
 
 pub struct CodeGenerator<'a, T> {
     analyzed: &'a Analyzed<T>,
-    requested: HashSet<String>,
-    failed: HashMap<String, String>,
-    symbols: HashMap<String, String>,
+    /// Symbols mapping to either their code or an error message explaining
+    /// why they could not be compiled.
+    /// While the code is still being generated, this contains `None`.
+    symbols: HashMap<String, Result<Option<String>, String>>,
 }
 
 impl<'a, T: FieldElement> CodeGenerator<'a, T> {
     pub fn new(analyzed: &'a Analyzed<T>) -> Self {
         Self {
             analyzed,
-            requested: Default::default(),
-            failed: Default::default(),
             symbols: Default::default(),
         }
     }
 
+    /// Request a symbol to be compiled. The code can later be retrieved
+    /// via `compiled_symbols`.
+    /// In the error case, `self` can still be used to compile other symbols.
     pub fn request_symbol(&mut self, name: &str) -> Result<(), String> {
-        if let Some(err) = self.failed.get(name) {
-            return Err(err.clone());
-        }
-        if self.requested.contains(name) {
-            return Ok(());
-        }
-        self.requested.insert(name.to_string());
-        match self.generate_code(name) {
-            Ok(code) => {
-                self.symbols.insert(name.to_string(), code);
-                Ok(())
-            }
-            Err(err) => {
-                let err = format!("Failed to compile {name}: {err}");
-                self.failed.insert(name.to_string(), err.clone());
-                Err(err)
+        match self.symbols.get(name) {
+            Some(Ok(_)) => Ok(()),
+            Some(Err(e)) => Err(e.clone()),
+            None => {
+                let name = name.to_string();
+                self.symbols.insert(name.clone(), Ok(None));
+                let to_insert;
+                let to_return;
+                match self.generate_code(&name) {
+                    Ok(code) => {
+                        to_insert = Ok(Some(code));
+                        to_return = Ok(());
+                    }
+                    Err(err) => {
+                        to_insert = Err(err.clone());
+                        to_return = Err(err);
+                    }
+                }
+                self.symbols.insert(name, to_insert);
+                to_return
             }
         }
     }
 
+    /// Returns the concatenation of all successfully compiled symbols.
     pub fn compiled_symbols(self) -> String {
         self.symbols
             .into_iter()
+            .filter_map(|(s, r)| match r {
+                Ok(Some(code)) => Some((s, code)),
+                _ => None,
+            })
             .sorted()
             .map(|(_, code)| code)
             .format("\n")
