@@ -36,7 +36,7 @@ jobs:
           ~/.cargo/git/db/
           target/
           Cargo.lock
-        key: ${{ runner.os }}-cargo-pr-tests-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-cargo-pr-tests
         restore-keys: |
           ${{ runner.os }}-cargo-pr-tests-
     - name: Install Rust toolchain 1.77 (with clippy and rustfmt)
@@ -119,7 +119,7 @@ jobs:
           ~/.cargo/git/db/
           target/
           Cargo.lock
-        key: ${{ runner.os }}-cargo-pr-tests-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-cargo-pr-tests
         restore-keys: |
           ${{ runner.os }}-cargo-pr-tests-
     - name: Install Rust toolchain 1.77 (with clippy and rustfmt)
