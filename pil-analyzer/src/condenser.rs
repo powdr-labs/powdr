@@ -14,9 +14,10 @@ use num_traits::sign::Signed;
 use powdr_ast::{
     analyzed::{
         self, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression,
-        AlgebraicReference, Analyzed, Challenge, DegreeRange, Expression, FunctionValueDefinition,
-        Identity, IdentityKind, PolyID, PolynomialReference, PolynomialType, PublicDeclaration,
-        Reference, SelectedExpressions, StatementIdentifier, Symbol, SymbolKind,
+        AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Challenge,
+        DegreeRange, Expression, FunctionValueDefinition, Identity, IdentityKind, PolyID,
+        PolynomialReference, PolynomialType, PublicDeclaration, Reference, SelectedExpressions,
+        StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
         self,
@@ -1055,8 +1056,20 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
                 )
             }
 
-            // TODO: Implement for UnaryOperation
-            
+            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
+                Expression::UnaryOperation(
+                    SourceRef::unknown(),
+                    UnaryOperation {
+                        op: match op {
+                            AlgebraicUnaryOperator::Minus => parsed::UnaryOperator::Minus,
+                        },
+                        expr: Box::new(try_value_to_expression(&Value::<T>::Expression(
+                            (**expr).clone(),
+                        ))?),
+                    },
+                )
+            }
+
             AlgebraicExpression::Challenge(Challenge { id, stage }) => {
                 let function = Expression::Reference(
                     SourceRef::unknown(),
