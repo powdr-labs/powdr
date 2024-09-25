@@ -1,22 +1,36 @@
 mod codegen;
 mod compiler;
 
-use std::{collections::HashMap, fs};
+use std::{collections::HashMap, fs, sync::Arc};
 
 use codegen::CodeGenerator;
 use compiler::{call_cargo, generate_glue_code, load_library};
+
 use powdr_ast::analyzed::Analyzed;
 use powdr_number::FieldElement;
 
-pub type SymbolMap = HashMap<String, fn(u64) -> u64>;
+/// Wrapper around a dynamically loaded function.
+/// Prevents the dynamically loaded library to be unloaded while the function is still in use.
+#[derive(Clone)]
+pub struct LoadedFunction {
+    #[allow(dead_code)]
+    library: Arc<libloading::Library>,
+    function: fn(u64) -> u64,
+}
+
+impl LoadedFunction {
+    pub fn call(&self, arg: u64) -> u64 {
+        (self.function)(arg)
+    }
+}
 
 /// Compiles the given symbols (and their dependencies) and returns them as a map
-/// from symbol name to function pointer.
+/// from symbol name to function.
 /// Only functions of type (int -> int) are supported for now.
 pub fn compile<T: FieldElement>(
     analyzed: &Analyzed<T>,
     requested_symbols: &[&str],
-) -> Result<SymbolMap, String> {
+) -> Result<HashMap<String, LoadedFunction>, String> {
     log::info!("JIT-compiling {} symbols...", requested_symbols.len());
 
     let mut codegen = CodeGenerator::new(analyzed);

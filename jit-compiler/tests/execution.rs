@@ -1,18 +1,19 @@
+use powdr_jit_compiler::LoadedFunction;
 use test_log::test;
 
 use powdr_number::GoldilocksField;
 use powdr_pil_analyzer::analyze_string;
 
-fn compile(input: &str, symbol: &str) -> fn(u64) -> u64 {
+fn compile(input: &str, symbol: &str) -> LoadedFunction {
     let analyzed = analyze_string::<GoldilocksField>(input).unwrap();
-    powdr_jit_compiler::compile(&analyzed, &[symbol]).unwrap()[symbol]
+    powdr_jit_compiler::compile(&analyzed, &[symbol]).unwrap()[symbol].clone()
 }
 
 #[test]
 fn identity_function() {
     let f = compile("let c: int -> int = |i| i;", "c");
 
-    assert_eq!(f(10), 10);
+    assert_eq!(f.call(10), 10);
 }
 
 #[test]
@@ -30,12 +31,12 @@ fn sqrt() {
         "sqrt",
     );
 
-    assert_eq!(f(9), 3);
-    assert_eq!(f(100), 10);
-    assert_eq!(f(8), 2);
-    assert_eq!(f(101), 10);
-    assert_eq!(f(99), 9);
-    assert_eq!(f(0), 0);
+    assert_eq!(f.call(9), 3);
+    assert_eq!(f.call(100), 10);
+    assert_eq!(f.call(8), 2);
+    assert_eq!(f.call(101), 10);
+    assert_eq!(f.call(99), 9);
+    assert_eq!(f.call(0), 0);
 }
 
 #[test]
