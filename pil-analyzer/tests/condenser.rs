@@ -855,7 +855,6 @@ namespace std::prover;
 }
 
 #[test]
-#[should_panic = "Converting complex algebraic expressions to expressions not supported: std::prover::x + std::prover::y"]
 fn capture_not_supported() {
     let input = r#"
     namespace std::prover;
