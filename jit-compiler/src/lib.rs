@@ -52,17 +52,15 @@ pub fn compile<T: FieldElement>(
 
     let glue_code = generate_glue_code(&successful_symbols, analyzed)?;
 
-    let (dir, lib_path) = call_cargo(&format!("{glue_code}\n{}\n", codegen.compiled_symbols()))?;
-    let metadata = fs::metadata(&lib_path).unwrap();
+    let lib_file = call_cargo(&format!("{glue_code}\n{}\n", codegen.compiled_symbols()))?;
+    let metadata = fs::metadata(&lib_file.path).unwrap();
 
     log::info!(
         "Loading library of size {} MB...",
         metadata.len() as f64 / 1000000.0
     );
 
-    let result = load_library(&lib_path, &successful_symbols);
+    let result = load_library(&lib_file.path, &successful_symbols);
     log::info!("Done.");
-
-    dir.release();
     result
 }

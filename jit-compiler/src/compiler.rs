@@ -73,10 +73,17 @@ crate-type = ["cdylib"]
 ibig = { version = "0.3.6", features = [], default-features = false }
 "#;
 
+pub struct PathInTempDir {
+    #[allow(dead_code)]
+    dir: Temp,
+    /// The absolute path
+    pub path: String,
+}
+
 /// Compiles the given code and returns the path to the
 /// temporary directory containing the compiled library
 /// and the path to the compiled library.
-pub fn call_cargo(code: &str) -> Result<(Temp, String), String> {
+pub fn call_cargo(code: &str) -> Result<PathInTempDir, String> {
     let dir = mktemp::Temp::new_dir().unwrap();
     fs::write(dir.join("Cargo.toml"), CARGO_TOML).unwrap();
     fs::create_dir(dir.join("src")).unwrap();
@@ -103,7 +110,10 @@ pub fn call_cargo(code: &str) -> Result<(Temp, String), String> {
         .join("target")
         .join("release")
         .join(format!("libpowdr_jit_compiled.{extension}"));
-    Ok((dir, lib_path.to_str().unwrap().to_string()))
+    Ok(PathInTempDir {
+        dir,
+        path: lib_path.to_str().unwrap().to_string(),
+    })
 }
 
 /// Loads the given library and creates function pointers for the given symbols.
