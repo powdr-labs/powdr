@@ -185,14 +185,6 @@ impl<'a> TraitsResolver<'a> {
             }
         }
 
-        // If all types are generic, there's nothing to solve
-        //if result.iter().all(|(_p, c)| {
-        //    c.iter()
-        //        .all(|(_, type_args)| type_args.iter().all(|t| matches!(t, Type::TypeVar(_))))
-        //}) {
-        //    return Default::default();
-        //}
-
         if all_type_vars {
             return Default::default();
         }
