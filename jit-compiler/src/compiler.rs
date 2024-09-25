@@ -106,7 +106,7 @@ pub fn call_cargo(code: &str) -> Result<(Temp, String), String> {
     Ok((dir, lib_path.to_str().unwrap().to_string()))
 }
 
-/// Loads the given library and creates funtion pointers for the given symbols.
+/// Loads the given library and creates function pointers for the given symbols.
 pub fn load_library(
     path: &str,
     symbols: &[&str],
