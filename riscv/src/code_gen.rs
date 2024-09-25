@@ -579,7 +579,6 @@ fn preamble<T: FieldElement>(runtime: &Runtime, with_bootloader: bool) -> String
     // Stores val(X) * Z + W in register Y.
     instr affine XL, YL, ZH, ZL, WH, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
-        // the mul machine is currently implemented as big endian, should change to match the rest
         link ~> (tmp3_h, tmp3_l, tmp2_h, tmp2_l) = arith_mul.mul(tmp1_h, tmp1_l, ZH, ZL)
         // we ignore tmp3 because that's the high 32 bits of the 64 bits multiplication result
         link ~> (tmp4_h, tmp4_l) = arith_bb.add(tmp2_h, tmp2_l, WH, WL)
