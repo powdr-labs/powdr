@@ -244,23 +244,14 @@ impl Runtime {
 
         // Base syscalls
         r.add_syscall(
+            // TODO this is a quite inefficient way of getting prover inputs.
+            // We need to be able to access the register memory within PIL functions.
             Syscall::Input,
-            [
-                // TODO this is a quite inefficient way of getting prover inputs.
-                // We need to be able to access the register memory within PIL functions.
-                "query_arg_1_h, query_arg_1_l <== get_reg(10);",
-                // TODO fix for BabyBear
-                "set_reg 10, 0, ${ std::prelude::Query::Input(std::convert::int(std::prover::eval(query_arg_1_l))) };",
-            ],
-        );
-
-        r.add_syscall(
-            Syscall::DataIdentifier,
             [
                 "query_arg_1_h, query_arg_1_l <== get_reg(10);",
                 "query_arg_2_h, query_arg_2_l <== get_reg(11);",
                 // TODO fix for BabyBear
-                "set_reg 10, 0, ${ std::prelude::Query::DataIdentifier(std::convert::int(std::prover::eval(query_arg_2_l)), std::convert::int(std::prover::eval(query_arg_1_l))) };",
+                "set_reg 10, 0, ${ std::prelude::Query::Input(std::convert::int(std::prover::eval(query_arg_1_l)), std::convert::int(std::prover::eval(query_arg_2_l))) };",
             ]
         );
 
@@ -271,7 +262,7 @@ impl Runtime {
             [
                 "query_arg_1_h, query_arg_1_l <== get_reg(10);",
                 "query_arg_2_h, query_arg_2_l <== get_reg(11);",
-                "set_reg 0, 0, ${ std::prelude::Query::Output(std::convert::int(std::prover::eval(query_arg_1_l)), std::convert::int(std::prover::eval(query_arg_2_l))) };"
+                "set_reg 0, 0, ${ std::prelude::Query::Output(std::convert::int(std::prover::eval(query_arg_1_l)), std::prover::eval(query_arg_2_l)) };"
             ]
         );
 
