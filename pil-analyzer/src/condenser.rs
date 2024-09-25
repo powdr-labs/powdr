@@ -3,17 +3,31 @@
 
 use core::fmt::Debug;
 use std::{
-    collections::{hash_map::Entry, BTreeMap, HashMap, HashSet}, convert, iter::once, str::FromStr, sync::Arc
+    collections::{hash_map::Entry, BTreeMap, HashMap, HashSet},
+    convert,
+    iter::once,
+    str::FromStr,
+    sync::Arc,
 };
 
 use num_traits::sign::Signed;
 
 use powdr_ast::{
     analyzed::{
-        self, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference, Analyzed, Challenge, DegreeRange, Expression, FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialReference, PolynomialType, PublicDeclaration, Reference, SelectedExpressions, StatementIdentifier, Symbol, SymbolKind
+        self, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression,
+        AlgebraicReference, Analyzed, Challenge, DegreeRange, Expression, FunctionValueDefinition,
+        Identity, IdentityKind, PolyID, PolynomialReference, PolynomialType, PublicDeclaration,
+        Reference, SelectedExpressions, StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
-        self, asm::{AbsoluteSymbolPath, SymbolPath}, display::format_type_scheme_around_name, types::{ArrayType, Type}, visitor::{AllChildren, ExpressionVisitable}, ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall, FunctionKind, LambdaExpression, LetStatementInsideBlock, Number, Pattern, SourceReference, TypedExpression, UnaryOperation
+        self,
+        asm::{AbsoluteSymbolPath, SymbolPath},
+        display::format_type_scheme_around_name,
+        types::{ArrayType, Type},
+        visitor::{AllChildren, ExpressionVisitable},
+        ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall, FunctionKind,
+        LambdaExpression, LetStatementInsideBlock, Number, Pattern, SourceReference,
+        TypedExpression, UnaryOperation,
     },
 };
 use powdr_number::{BigUint, FieldElement};
@@ -1022,26 +1036,27 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
                 }),
             ),
 
-            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                left,
-                op,
-                right,
-            }) => Expression::BinaryOperation(
-                SourceRef::unknown(),
-                BinaryOperation {
-                    left: Box::new(try_value_to_expression(&Value::<T>::Expression((**left).clone()))?),
-                    op: match op {
-                        AlgebraicBinaryOperator::Add => parsed::BinaryOperator::Add,
-                        AlgebraicBinaryOperator::Sub => parsed::BinaryOperator::Sub,
-                        AlgebraicBinaryOperator::Mul => parsed::BinaryOperator::Mul,
-                        AlgebraicBinaryOperator::Pow => parsed::BinaryOperator::Pow,
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+                Expression::BinaryOperation(
+                    SourceRef::unknown(),
+                    BinaryOperation {
+                        left: Box::new(try_value_to_expression(&Value::<T>::Expression(
+                            (**left).clone(),
+                        ))?),
+                        op: match op {
+                            AlgebraicBinaryOperator::Add => parsed::BinaryOperator::Add,
+                            AlgebraicBinaryOperator::Sub => parsed::BinaryOperator::Sub,
+                            AlgebraicBinaryOperator::Mul => parsed::BinaryOperator::Mul,
+                            AlgebraicBinaryOperator::Pow => parsed::BinaryOperator::Pow,
+                        },
+                        right: Box::new(try_value_to_expression(&Value::<T>::Expression(
+                            (**right).clone(),
+                        ))?),
                     },
-                    right: Box::new(try_value_to_expression(&Value::<T>::Expression((**right).clone()))?),
-                },
-            ),
+                )
+            }
 
             // TODO: Implement for UnaryOperation
-            
             AlgebraicExpression::Challenge(Challenge { id, stage }) => {
                 let function = Expression::Reference(
                     SourceRef::unknown(),
