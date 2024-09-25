@@ -15,12 +15,12 @@ use powdr_number::FieldElement;
 pub struct LoadedFunction {
     #[allow(dead_code)]
     library: Arc<libloading::Library>,
-    function: fn(u64) -> u64,
+    function: unsafe extern "C" fn(u64) -> u64,
 }
 
 impl LoadedFunction {
     pub fn call(&self, arg: u64) -> u64 {
-        (self.function)(arg)
+        unsafe { (self.function)(arg) }
     }
 }
 
