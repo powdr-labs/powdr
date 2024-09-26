@@ -329,6 +329,7 @@ fn check_pattern(pattern: &Pattern) -> Result<(String, String), String> {
         ),
         Pattern::Tuple(_, items) => {
             let mut vars = vec![];
+            // TODO we need to de-structure s!
             let inner_code = items
                 .iter()
                 .enumerate()
