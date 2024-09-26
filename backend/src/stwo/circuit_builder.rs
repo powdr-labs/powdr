@@ -95,59 +95,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     }
 }
 
-// Generates the STWO trace.
-pub fn generate_stwo_trace<T>(witness: &[(String, Vec<T>)], log_n_instances: u32
-)-> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
-    let trace: Vec<PackedBaseField> = witness
-        .iter()
-        .flat_map(|(_, vec)| {
-            vec.chunks_exact(N_LANES)
-                .map(|chunk| {
-                    // Convert each chunk of Mersenne31 to an array of u32 values.
-                    let array: [u32; N_LANES] = chunk
-                        .iter()
-                        .map(|mersenne| {
-                            // Obtain a raw pointer to the `Mersenne31` value and cast it to a `*const u32`.
-                            let ptr = mersenne as *const T as *const u32;
 
-                            // Dereference the raw pointer to get the u32 value.
-                            unsafe { *ptr }
-                        })
-                        .collect::<Vec<u32>>()
-                        .try_into()
-                        .expect("Chunk should be of size N_LANES");
-
-                    // Load the array into a PackedBaseField.
-                    unsafe { PackedBaseField::load(array.as_ptr()) }
-                })
-        })
-        .collect(); // Collect the flattened iterator into a Vec<PackedBaseField>.
-       // println!("from generate stwo trace trace");
-        //println!("{:?}", trace);
-    
-        let mut trace_stwo= (0..2)
-        .map(|_| Col::<SimdBackend, BaseField>::zeros(1 << 5))
-        .collect_vec();
-        // column x
-        trace_stwo[0].data[0]= trace[0];
-        trace_stwo[0].data[1]= trace[1];
-
-        trace_stwo[1].data[0]= trace[2];
-        trace_stwo[1].data[1]= trace[3];
-
-        println!("from generate stwo trace trace_stwo");
-        println!("{:?}", trace_stwo);
-
-        let domain = CanonicCoset::new(5).circle_domain();
-        trace_stwo
-        .into_iter()
-        .map(|eval| CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(domain, eval))
-        .collect_vec()  
-
-      
-
-        
-}
 
 pub fn generate_parallel_stwo_trace_by_witness_repitition<T: Clone>(length: usize, witness: &[(String, Vec<T>)], log_n_instances: u32
 )-> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {

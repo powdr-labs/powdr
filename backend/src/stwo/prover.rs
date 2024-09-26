@@ -9,15 +9,14 @@ use halo2_proofs::{
             strategy::AccumulatorStrategy,
         },
         VerificationStrategy,
-    },
-    transcript::{EncodedChallenge, TranscriptReadBuffer, TranscriptWriterBuffer},
+    }
 };
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement, KnownField};
 use super::circuit_builder::PowdrCircuit;
-use super::circuit_builder::generate_stwo_trace;
+
 use super::circuit_builder::generate_parallel_stwo_trace_by_witness_repitition;
 use super::circuit_builder::WideFibonacciComponent;
 use super::circuit_builder::WideFibonacciEval;
@@ -40,28 +39,9 @@ use stwo_prover::core::ColumnVec;
 use stwo_prover::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig, TreeVec};
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
-
-
-
-
-// We use two different EVM verifier libraries.
-// 1. snark_verifier: supports single SNARK verification as well as aggregated proof verification.
-// However the generated smart contract code size is often larger than the limit on Ethereum for complex VMs.
-// This is mitigated in (2).
-// 2. halo2_solidity_verifier: supports single SNARK verification only. The generated smart contract
-// code size is reasonable.
-
-use snark_verifier::{
-    loader::{
-        evm::{deploy_and_call, encode_calldata as encode_calldata_snark_verifier},
-        native::NativeLoader,
-    },
-    system::halo2::{compile, transcript::evm::EvmTranscript, Config},
-};
-
-
-
-
+use stwo_prover::core::fri::FriConfig;
+use stwo_prover::core::channel::Poseidon252Channel;
+use stwo_prover::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
 
 
 use std::{
@@ -70,13 +50,9 @@ use std::{
     time::Instant,
 };
 
-/// Create a halo2 proof for a given PIL, fixed column values and witness column
-/// values. We use KZG ([GWC variant](https://eprint.iacr.org/2019/953)) and
-/// Keccak256
-///
-/// This only works with Bn254, so it really shouldn't be generic over the field
-/// element, but without RFC #1210, the only alternative I found is a very ugly
-/// "unsafe" code, and unsafe code is harder to explain and maintain.
+/// Create a stwo proof for a given PIL, fixed column values and witness column
+/// values. 
+
 pub struct StwoProver<F> {
     analyzed: Arc<Analyzed<F>>,
     fixed: Arc<Vec<(String, Vec<F>)>>,
@@ -143,7 +119,11 @@ impl<F: FieldElement> StwoProver<F> {
 
        
 
-        let config = PcsConfig::default();
+
+        let config = PcsConfig {
+            pow_bits: 16,  // Any value you want to set for pow_bits
+            fri_config: FriConfig::new(2, 1, 100),  // Using different numbers for FriConfig
+        };
 
         // Precompute twiddles.
         let twiddles = SimdBackend::precompute_twiddles(
@@ -153,17 +133,17 @@ impl<F: FieldElement> StwoProver<F> {
         );
 
          // Setup protocol.
-        let prover_channel = &mut Blake2sChannel::default();
+        let prover_channel = &mut Poseidon252Channel::default();
         let commitment_scheme =
-            &mut CommitmentSchemeProver::<SimdBackend, Blake2sMerkleChannel>::new(
-             config, &twiddles,
+            &mut CommitmentSchemeProver::<SimdBackend, Poseidon252MerkleChannel>::new(
+                config, &twiddles,
             );
 
         //Trace
         let circuit = PowdrCircuit::new(&self.analyzed)
              .with_witgen_callback(witgen_callback)
              .with_witness(witness);
-       // print!("witness from powdr {:?}", witness );
+        //print!("witness from powdr {:?}", witness );
 
         let fibonacci_y_length = witness
         .iter()
@@ -201,7 +181,7 @@ impl<F: FieldElement> StwoProver<F> {
         
        
         let start = Instant::now();
-        let proof = stwo_prover::core::prover::prove::<SimdBackend, Blake2sMerkleChannel>(
+        let proof = stwo_prover::core::prover::prove::<SimdBackend, Poseidon252MerkleChannel>(
             &[&component],
             prover_channel,
             commitment_scheme,
@@ -211,16 +191,28 @@ impl<F: FieldElement> StwoProver<F> {
         println!("proof generated!");
         let duration = start.elapsed();
 
-        println!("proving time for fibo length of {:?} is {:?}",fibonacci_y_length, duration);
+        
 
         // Verify.
-        let verifier_channel = &mut Blake2sChannel::default();
-        let commitment_scheme = &mut CommitmentSchemeVerifier::<Blake2sMerkleChannel>::new(config);
+        let verifier_channel = &mut Poseidon252Channel::default();
+        let commitment_scheme =
+            &mut CommitmentSchemeVerifier::<Poseidon252MerkleChannel>::new(config);
+
 
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.
         let sizes = component.trace_log_degree_bounds();
         commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
+
+        println!("proving time for fibo length of {:?} is {:?}",fibonacci_y_length, duration);
+        println!("proof size is {:?} bytes",proof.size_estimate());
+        
+        let verifystart = Instant::now();
         stwo_prover::core::prover::verify(&[&component], verifier_channel, commitment_scheme, proof).unwrap();
+        let verifyduration = verifystart.elapsed();
+        println!("verify time is {:?} ",verifyduration);
+
+
+        
          
          
 
