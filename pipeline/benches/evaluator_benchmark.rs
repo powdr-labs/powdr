@@ -19,6 +19,14 @@ const SQRT_CODE: &str = "
         };
 ";
 
+/// Just some numbers to test the sqrt function on.
+fn sqrt_inputs() -> Vec<(String, u64)> {
+    [879882356, 1882356, 1187956, 56]
+        .into_iter()
+        .map(|x| (x.to_string(), (x as u64) * 112655675_u64))
+        .collect()
+}
+
 fn evaluator_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("evaluator-benchmark");
 
@@ -81,11 +89,10 @@ fn evaluator_benchmark(c: &mut Criterion) {
         pipeline.compute_analyzed_pil().unwrap().clone()
     };
 
-    for x in [879882356, 1882356, 1187956, 56] {
-        group.bench_with_input(format!("sqrt_{x}"), &x, |b, &x| {
+    for (name, val) in sqrt_inputs() {
+        group.bench_with_input(format!("sqrt_{name}"), &val, |b, val| {
             b.iter(|| {
-                let y = BigInt::from(x) * BigInt::from(112655675);
-                evaluate_integer_function(&sqrt_analyzed, "sqrt", vec![y.clone()]);
+                evaluate_integer_function(&sqrt_analyzed, "sqrt", vec![BigInt::from(*val)]);
             });
         });
     }
@@ -124,11 +131,10 @@ fn jit_benchmark(c: &mut Criterion) {
 
     let sqrt_fun = &powdr_jit_compiler::compile(&sqrt_analyzed, &["sqrt"]).unwrap()["sqrt"];
 
-    for x in [879882356, 1882356, 1187956, 56] {
-        group.bench_with_input(format!("sqrt_{x}"), &x, |b, &x| {
+    for (name, val) in sqrt_inputs() {
+        group.bench_with_input(format!("sqrt_{name}"), &val, |b, val| {
             b.iter(|| {
-                let y = (x as u64) * 112655675;
-                sqrt_fun.call(y);
+                sqrt_fun.call(*val);
             });
         });
     }
