@@ -40,6 +40,24 @@ fn sqrt() {
 }
 
 #[test]
+fn match_expr() {
+    let f = compile(
+        "let f: int -> int = |x| match (x, [1, x, 3]) {
+            (0, [.., 3]) => 1,
+            (1, [1, ..]) => 2,
+            (2, [1, 2, 3]) => 3,
+            (_, [1, _, 3]) => 0,
+        };",
+        "f",
+    );
+
+    assert_eq!(f.call(0), 1);
+    assert_eq!(f.call(1), 2);
+    assert_eq!(f.call(2), 3);
+    assert_eq!(f.call(3), 0);
+}
+
+#[test]
 #[should_panic = "Only (int -> int) functions and columns are supported, but requested c: int -> bool"]
 fn invalid_function() {
     let _ = compile("let c: int -> bool = |i| true;", "c");
