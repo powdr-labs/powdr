@@ -314,10 +314,14 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
     }
 }
 
-/// Returns string of tuples with var names (capturing) and code.
-/// TODO
-/// the ellipsis represents code that tries to match the given pattern.
-/// This function is used when generating code for match expressions.
+/// Used for patterns in match and let statements:
+/// `value_name` is an expression string that is to be matched against `pattern`.
+/// Returns a rust pattern string (tuple of new variables, might be nested) and a code string
+/// that, when executed, returns an Option with the values for the new variables if the pattern
+/// matched `value_name` and `None` otherwise.
+///
+/// So if `let (vars, code) = check_pattern("x", pattern)?;`, then the return value
+/// can be used like this: `if let Some({vars}) = ({code}) {{ .. }}`
 fn check_pattern(value_name: &str, pattern: &Pattern) -> Result<(String, String), String> {
     Ok(match pattern {
         Pattern::CatchAll(_) => ("()".to_string(), "Some(())".to_string()),
