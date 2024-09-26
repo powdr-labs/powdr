@@ -127,8 +127,10 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         Self { processor, ..self }
     }
 
-    pub fn finish(self) -> ((FinalizableData<T>, BTreeMap<&'a str, T>), DegreeType) {
-        (self.processor.finish(), self.degree)
+    /// Returns the updated data & publics, and the length of the block.
+    pub fn finish(self) -> (FinalizableData<T>, BTreeMap<&'a str, T>, DegreeType) {
+        let (data, publics) = self.processor.finish();
+        (data, publics, self.degree)
     }
 
     /// Starting out with a single row (at a given offset), iteratively append rows

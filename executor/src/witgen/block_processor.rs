@@ -117,6 +117,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         }
     }
 
+    /// Returns the updated data and publics
     pub fn finish(self) -> (FinalizableData<T>, BTreeMap<&'a str, T>) {
         self.processor.finish()
     }
@@ -258,9 +259,6 @@ mod tests {
 
                 (1-ISLAST) * (x' - y) = 0;
                 (1-ISLAST) * (y' - (x + y)) = 0;
-
-                public out = y(N-1);
-                ISLAST * (:out - y) = 0;
         "#;
 
         solve_and_assert::<GoldilocksField>(src, &[(7, "Fibonacci::y", 34)]);

@@ -173,6 +173,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             .unwrap_or(true)
     }
 
+    /// Returns the updated data and publics
     pub fn finish(self) -> (FinalizableData<T>, BTreeMap<&'a str, T>) {
         (self.data, self.publics)
     }
@@ -439,9 +440,6 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                 }
                 AlgebraicVariable::Column(poly) => {
                     if self.parts.witnesses.contains(&poly.poly_id) {
-                        // Build RowUpdater
-                        // (a bit complicated, because we need two mutable
-                        // references to elements of the same vector)
                         let (current, next) = self.data.mutable_row_pair(row_index);
                         let mut row_updater =
                             RowUpdater::new(current, next, self.row_offset + row_index as u64);

@@ -229,7 +229,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             processor = processor.with_outer_query(outer_query);
         }
         let eval_value = processor.run(is_main_run);
-        let ((block, publics), degree) = processor.finish();
+        let (block, publics, degree) = processor.finish();
 
         // The processor might have detected a loop, in which case the degree has changed
         self.degree = degree;
