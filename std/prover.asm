@@ -20,23 +20,19 @@ let provide_if_unknown: expr, int, (-> fe) -> () = query |column, row, f| match 
     _ => (),
 };
 
-/// Retrieves a byte from a prover-provided (untrusted and not committed) input.
-/// The parameter is the index of the byte.
-let get_input: int -> fe = [];
+/// Retrieves a field element from a prover-provided (untrusted and not committed) input channel.
+/// The parameters are the channel id and the index in the channel.
+/// Index zero is the length of the channel (number of bytes) and index 1 is the first element.
+let input_from_channel: int, int -> fe = [];
 
-/// Retrieves a byte from a prover-provided (untrusted and not committed) input channel.
-/// The parameters are the index of the channel and the index in the channel.
-/// Index zero is the length of the channel (number of bytes) and index 1 is the first byte.
-let get_input_from_channel: int, int -> fe = [];
-
-/// Outputs a byte to a file descriptor.
-let output_byte: int, int -> () = [];
+/// Writes a field element to the given output channel.
+/// The first parameter is the channel id, the second is the element to write.
+let output_to_channel: int, fe -> () = [];
 
 let handle_query: expr, int, std::prelude::Query -> () = query |column, row, v| match v {
     Query::Hint(h) => provide_if_unknown(column, row, || h),
-    Query::Input(i) => provide_if_unknown(column, row, || get_input(i)),
-    Query::DataIdentifier(i, j) => provide_if_unknown(column, row, || get_input_from_channel(i, j)),
-    Query::Output(fd, b) => provide_if_unknown(column, row, || { output_byte(fd, b); 0 }),
+    Query::Input(i, j) => provide_if_unknown(column, row, || input_from_channel(i, j)),
+    Query::Output(channel, e) => provide_if_unknown(column, row, || { output_to_channel(channel, e); 0 }),
     Query::None => (),
 };
 
@@ -61,3 +57,11 @@ let require_min_degree: int -> () = |m| std::check::assert(degree() >= m, || "De
 
 /// Asserts that the current degree or row count is at most m;
 let require_max_degree: int -> () = |m| std::check::assert(degree() <= m, || "Degree too large.");
+
+/// Calls the argument and returns all constraints that were generated during the call.
+/// If the constraints are not added to the global set again, they are ignored.
+let capture_constraints: (-> ()) -> Constr[] = [];
+
+/// Calls the argument with the current stage counter incremented. This means that columns created during
+/// the call will be next-stage columns. The stage counter is reset afterwards.
+let at_next_stage: (-> ()) -> () = [];

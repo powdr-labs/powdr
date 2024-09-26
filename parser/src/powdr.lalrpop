@@ -29,16 +29,7 @@ pub ASMModule: ASMModule = {
 
 ModuleStatement: ModuleStatement = {
     <MachineDefinition> => ModuleStatement::SymbolDefinition(<>),
-    <LetStatementAtModuleLevel> => ModuleStatement::SymbolDefinition(<>),
-    <EnumDeclaration> => ModuleStatement::SymbolDefinition(SymbolDefinition {
-            name: <>.name.clone(),
-            value: SymbolValue::TypeDeclaration(<>),
-        }),
-    <TraitImplementation> => ModuleStatement::TraitImplementation(<>),
-    <TraitDeclaration> => ModuleStatement::SymbolDefinition(SymbolDefinition {
-            name: <>.name.clone(),
-            value: SymbolValue::TraitDeclaration(<>),
-        }),
+    <PilStatementAtModuleLevel> => ModuleStatement::PilStatement(<>),
     <Import> => ModuleStatement::SymbolDefinition(<>),
     <ModuleDefinition> => ModuleStatement::SymbolDefinition(<>),
 }
@@ -100,15 +91,14 @@ TypeSymbolPathPart: Part = {
     <name:NonSpecialIdentifier> => Part::Named(name),
 }
 
-LetStatementAtModuleLevel: SymbolDefinition = {
-    "let" <name:GenericTypedName>  "=" <value:Expression> ";" =>
-        SymbolDefinition {
-            name: name.0,
-            value: SymbolValue::Expression(TypedExpression{ e: value, type_scheme: name.1 })
-        }
-}
-
 // ---------------------------- PIL part -----------------------------
+
+pub PilStatementAtModuleLevel = {
+    LetStatement,
+    <start:@L> <decl:EnumDeclaration> <end:@R> => PilStatement::EnumDeclaration(ctx.source_ref(start, end), decl),
+    <start:@L> <impl_:TraitImplementation> <end:@R> => PilStatement::TraitImplementation(ctx.source_ref(start, end), impl_),
+    <start:@L> <decl:TraitDeclaration> <end:@R> => PilStatement::TraitDeclaration(ctx.source_ref(start, end), decl),
+}
 
 pub PilStatement = {
     Include,
@@ -674,6 +664,15 @@ NamedExpression: NamedExpression<Expression> = {
     <name:Identifier> ":" <body:Expression> => NamedExpression { name, body }
 }
 
+NamedTypes: Vec<NamedType<Expression>> = {
+    => vec![],
+    <mut list:( <NamedType> "," )*> <end:NamedType> ","  => { list.push(end); list }
+}
+
+NamedType: NamedType<Expression> = {
+    <name:Identifier> ":" <ty:TypeTerm<Expression>> => NamedType { name, ty }
+}
+
 // ---------------------------- Pattern -----------------------------
 
 Pattern: Pattern = {
@@ -726,13 +725,13 @@ TraitVars: Vec<String> = {
     <mut list:( <TypeVar> "," )*> <end:TypeVar> ","?  => { list.push(end); list }
 }
 
-TraitFunctions: Vec<TraitFunction<Expression>> = {
+TraitFunctions: Vec<NamedType<Expression>> = {
     => vec![],
     <mut list:( <TraitFunction> "," )*> <end:TraitFunction> ","  => { list.push(end); list }
 }
 
-TraitFunction: TraitFunction<Expression> = {
-    <name:Identifier> ":" <params:TypeTermList<Expression>> "->" <value:TypeTermBox<Expression>> => TraitFunction { name, ty: Type::Function(FunctionType{params, value}) }
+TraitFunction: NamedType<Expression> = {
+    <name:Identifier> ":" <params:TypeTermList<Expression>> "->" <value:TypeTermBox<Expression>> => NamedType { name, ty: Type::Function(FunctionType{params, value}) }
 }
 
 TraitImplementation: TraitImplementation<Expression> = {

@@ -45,6 +45,13 @@ fn poseidon_gl_memory_test() {
 
 #[test]
 #[ignore = "Too slow"]
+fn keccakf16_test() {
+    let f = "std/keccakf16_test.asm";
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn split_bn254_test() {
     let f = "std/split_bn254_test.asm";
     test_halo2(make_simple_prepared_pipeline(f));
@@ -56,6 +63,14 @@ fn split_gl_test() {
     let f = "std/split_gl_test.asm";
     test_pilcom(make_simple_prepared_pipeline(f));
     gen_estark_proof(make_simple_prepared_pipeline(f));
+}
+
+#[cfg(feature = "plonky3")]
+#[test]
+#[ignore = "Too slow"]
+fn split_bb_test() {
+    let f = "std/split_bb_test.asm";
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
 }
 
 #[test]

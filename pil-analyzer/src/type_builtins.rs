@@ -47,6 +47,11 @@ lazy_static! {
             ("", "string, int -> expr")
         ),
         ("std::prover::min_degree", ("", "-> int")),
+        (
+            "std::prover::capture_constraints",
+            ("", "(-> ()) -> std::prelude::Constr[]")
+        ),
+        ("std::prover::at_next_stage", ("", "(-> ()) -> ()")),
         ("std::prover::max_degree", ("", "-> int")),
         ("std::prover::degree", ("", "-> int")),
         (
@@ -59,12 +64,8 @@ lazy_static! {
             ("", "expr -> std::prelude::Option<fe>")
         ),
         ("std::prover::provide_value", ("", "expr, int, fe -> ()")),
-        ("std::prover::get_input", ("", "int -> fe")),
-        (
-            "std::prover::get_input_from_channel",
-            ("", "int, int -> fe")
-        ),
-        ("std::prover::output_byte", ("", "int, int -> ()"))
+        ("std::prover::input_from_channel", ("", "int, int -> fe")),
+        ("std::prover::output_to_channel", ("", "int, fe -> ()"))
     ]
     .into_iter()
     .map(|(name, (vars, ty))| { (name.to_string(), parse_type_scheme(vars, ty)) })

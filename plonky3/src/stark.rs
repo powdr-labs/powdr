@@ -254,43 +254,25 @@ mod tests {
     use std::sync::Arc;
 
     use powdr_executor::constant_evaluator::get_uniquely_sized_cloned;
-    use powdr_number::{BabyBearField, GoldilocksField};
+    use powdr_number::{BabyBearField, GoldilocksField, Mersenne31Field};
     use powdr_pipeline::Pipeline;
     use test_log::test;
 
-    use crate::Plonky3Prover;
+    use crate::{Commitment, FieldElementMap, Plonky3Prover, ProverData};
 
-    /// Prove and verify execution
-    fn run_test_goldilocks(pil: &str) {
-        run_test_goldilocks_publics(pil, None)
+    /// Prove and verify execution over all supported fields
+    fn run_test(pil: &str) {
+        run_test_publics::<GoldilocksField>(pil, None);
+        run_test_publics::<BabyBearField>(pil, None);
+        run_test_publics::<Mersenne31Field>(pil, None);
     }
 
-    fn run_test_goldilocks_publics(pil: &str, malicious_publics: Option<Vec<GoldilocksField>>) {
-        let mut pipeline = Pipeline::<GoldilocksField>::default().from_pil_string(pil.to_string());
-
-        let pil = pipeline.compute_optimized_pil().unwrap();
-        let witness_callback = pipeline.witgen_callback().unwrap();
-        let witness = pipeline.compute_witness().unwrap();
-        let fixed = pipeline.compute_fixed_cols().unwrap();
-        let fixed = Arc::new(get_uniquely_sized_cloned(&fixed).unwrap());
-
-        let mut prover = Plonky3Prover::new(pil, fixed);
-        prover.setup();
-        let proof = prover.prove(&witness, witness_callback);
-
-        assert!(proof.is_ok());
-
-        if let Some(publics) = malicious_publics {
-            prover.verify(&proof.unwrap(), &[publics]).unwrap()
-        }
-    }
-
-    fn run_test_baby_bear(pil: &str) {
-        run_test_baby_bear_publics(pil, None)
-    }
-
-    fn run_test_baby_bear_publics(pil: &str, malicious_publics: Option<Vec<BabyBearField>>) {
-        let mut pipeline = Pipeline::<BabyBearField>::default().from_pil_string(pil.to_string());
+    fn run_test_publics<F: FieldElementMap>(pil: &str, malicious_publics: Option<Vec<F>>)
+    where
+        ProverData<F>: Send,
+        Commitment<F>: Send,
+    {
+        let mut pipeline = Pipeline::<F>::default().from_pil_string(pil.to_string());
 
         let pil = pipeline.compute_optimized_pil().unwrap();
         let witness_callback = pipeline.witgen_callback().unwrap();
@@ -318,14 +300,13 @@ mod tests {
             col witness z;
             x + y = z;
         "#;
-        run_test_baby_bear(content);
+        run_test_publics::<BabyBearField>(content, None);
     }
 
     #[test]
     fn public_values() {
         let content = "namespace Global(8); pol witness x; x * (x - 1) = 0; public out = x(7);";
-        run_test_goldilocks(content);
-        run_test_baby_bear(content);
+        run_test(content);
     }
 
     #[test]
@@ -339,8 +320,7 @@ mod tests {
             x = 0;
             y = 1 + :oldstate;
         "#;
-        run_test_goldilocks(content);
-        run_test_baby_bear(content);
+        run_test(content);
     }
 
     #[test]
@@ -358,18 +338,20 @@ mod tests {
             public outz = z(7);
         "#;
         let gl_malicious_publics = Some(vec![GoldilocksField::from(0)]);
-        run_test_goldilocks_publics(content, gl_malicious_publics);
+        run_test_publics(content, gl_malicious_publics);
 
         let bb_malicious_publics = Some(vec![BabyBearField::from(0)]);
-        run_test_baby_bear_publics(content, bb_malicious_publics);
+        run_test_publics(content, bb_malicious_publics);
+
+        let m31_malicious_publics = Some(vec![Mersenne31Field::from(0)]);
+        run_test_publics(content, m31_malicious_publics);
     }
 
     #[test]
     #[should_panic = "assertion `left == right` failed: Not a power of two: 0\n  left: 0\n right: 1"]
     fn empty() {
         let content = "namespace Global(8);";
-        run_test_goldilocks(content);
-        run_test_baby_bear(content);
+        run_test(content);
     }
 
     #[test]
@@ -381,8 +363,7 @@ mod tests {
             col witness z;
             x + y = z;
         "#;
-        run_test_goldilocks(content);
-        run_test_baby_bear(content);
+        run_test(content);
     }
 
     #[test]
@@ -393,8 +374,7 @@ mod tests {
             col fixed y = [1, 0]*;
             x * y = y;
         "#;
-        run_test_goldilocks(content);
-        run_test_baby_bear(content);
+        run_test(content);
     }
 
     #[test]
@@ -405,26 +385,23 @@ mod tests {
         
         namespace Global(N); 
             let beta: expr = std::prelude::challenge(0, 42);
-            col witness stage(0) x;
+            col witness x;
             col witness stage(1) y;
             x = y + beta;
         "#;
-        run_test_goldilocks(content);
-        run_test_baby_bear(content);
+        run_test(content);
     }
 
     #[test]
     fn polynomial_identity() {
         let content = "namespace Global(8); pol fixed z = [1, 2]*; pol witness a; a = z + 1;";
-        run_test_goldilocks(content);
-        run_test_baby_bear(content);
+        run_test(content);
     }
 
     #[test]
     #[should_panic = "not implemented"]
     fn lookup() {
         let content = "namespace Global(8); pol fixed z = [0, 1]*; pol witness a; [a] in [z];";
-        run_test_goldilocks(content);
-        run_test_baby_bear(content);
+        run_test(content);
     }
 }

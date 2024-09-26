@@ -3,6 +3,7 @@ use std::fmt::Display;
 use itertools::{Either, Itertools};
 
 use num_traits::Zero;
+use powdr_ast::analyzed::AlgebraicReference;
 use powdr_number::{FieldElement, LargeInt};
 
 use super::global_constraints::RangeConstraintSet;
@@ -19,6 +20,27 @@ pub enum AffineExpression<K, T> {
     ManyVars(Vec<(K, T)>, T),
 }
 
+/// A variable in an affine expression.
+#[derive(Debug, Clone, PartialEq, PartialOrd, Eq, Ord, Copy, derive_more::Display)]
+pub enum AlgebraicVariable<'a> {
+    /// Reference to a (witness) column
+    Column(&'a AlgebraicReference),
+    /// Reference to a public value
+    // TODO: This should be using the ID instead of the name, but we
+    //       currently store the name in AlgebraicExpression::PublicReference.
+    Public(&'a str),
+}
+
+impl AlgebraicVariable<'_> {
+    /// Returns the column reference if the variable is a column, otherwise None.
+    pub fn try_as_column(&self) -> Option<&AlgebraicReference> {
+        match self {
+            AlgebraicVariable::Column(r) => Some(r),
+            AlgebraicVariable::Public(_) => None,
+        }
+    }
+}
+
 pub type AffineResult<K, T> = Result<AffineExpression<K, T>, IncompleteCause<K>>;
 
 impl<K, T> From<T> for AffineExpression<K, T> {
@@ -30,7 +52,7 @@ impl<K, T> From<T> for AffineExpression<K, T> {
 
 impl<K, T> AffineExpression<K, T>
 where
-    K: Copy + Ord,
+    K: Ord,
     T: FieldElement,
 {
     pub fn from_variable_id(var_id: K) -> AffineExpression<K, T> {
@@ -514,7 +536,7 @@ where
 
 impl<K, T> std::ops::Neg for AffineExpression<K, T>
 where
-    K: Copy + Ord,
+    K: Ord,
     T: FieldElement,
 {
     type Output = Self;
@@ -569,7 +591,7 @@ impl<K, T: FieldElement> std::ops::Mul<T> for AffineExpression<K, T> {
 
 impl<K, T: FieldElement> Display for AffineExpression<K, T>
 where
-    K: Copy + Ord + Display,
+    K: Ord + Display,
 {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         if self.is_constant() {

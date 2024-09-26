@@ -240,10 +240,7 @@ pub fn generate_machine_rom<T: FieldElement>(mut machine: Machine) -> (Machine, 
 mod tests {
     use std::collections::BTreeMap;
 
-    use powdr_ast::{
-        asm_analysis::Item,
-        parsed::asm::{parse_absolute_path, AbsoluteSymbolPath},
-    };
+    use powdr_ast::parsed::asm::{parse_absolute_path, AbsoluteSymbolPath};
     use powdr_number::Bn254Field;
     use pretty_assertions::assert_eq;
 
@@ -254,15 +251,8 @@ mod tests {
         let parsed = powdr_parser::parse_asm(None, src).unwrap();
         let checked = powdr_analysis::machine_check::check(parsed).unwrap();
         checked
-            .items
-            .into_iter()
-            .filter_map(|(name, m)| match m {
-                Item::Machine(m) => Some((name, generate_machine_rom::<T>(m))),
-                Item::Expression(_)
-                | Item::TypeDeclaration(_)
-                | Item::TraitDeclaration(_)
-                | Item::TraitImplementation(_) => None,
-            })
+            .into_machines()
+            .map(|(name, m)| (name, generate_machine_rom::<T>(m)))
             .collect()
     }
 

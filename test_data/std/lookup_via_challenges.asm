@@ -5,10 +5,6 @@ use std::math::fp2::from_base;
 use std::prover::challenge;
 
 machine Main with degree: 8 {
-
-    let alpha =  from_base(challenge(0, 1));
-    let beta = from_base(challenge(0, 2));
-
     col fixed random_six = [1, 1, 1, 0, 1, 1, 1, 0];
     col fixed first_seven = [1, 1, 1, 1, 1, 1, 1, 0];
 
@@ -25,9 +21,5 @@ machine Main with degree: 8 {
 
     let lookup_constraint = random_six $ [a1, a2, a3] in first_seven $ [b1, b2, b3];
 
-    // TODO: Functions currently cannot add witness columns at later stages,
-    // so we have to manually create it here and pass it to permutation(). 
-    col witness stage(1) z;
-    lookup([z], alpha, beta, lookup_constraint, m);
-    
+    lookup(lookup_constraint, m);
 }
