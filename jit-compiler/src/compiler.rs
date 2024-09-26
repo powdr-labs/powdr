@@ -88,6 +88,11 @@ pub fn call_cargo(code: &str) -> Result<PathInTempDir, String> {
     fs::write(dir.join("Cargo.toml"), CARGO_TOML).unwrap();
     fs::create_dir(dir.join("src")).unwrap();
     fs::write(dir.join("src").join("lib.rs"), code).unwrap();
+    Command::new("cargo")
+        .arg("fmt")
+        .current_dir(dir.clone())
+        .output()
+        .unwrap();
     let out = Command::new("cargo")
         .env("RUSTFLAGS", "-C target-cpu=native")
         .arg("build")

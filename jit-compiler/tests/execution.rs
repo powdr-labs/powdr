@@ -46,7 +46,7 @@ fn sqrt() {
 }
 
 #[test]
-fn simple_match() {
+fn match_number() {
     let f = compile(
         r#"let f: int -> int = |x| match x {
             0 => 1,
@@ -64,6 +64,21 @@ fn simple_match() {
 }
 
 #[test]
+fn match_string() {
+    let f = compile(
+        r#"let f: int -> int = |x| match "abc" {
+            "ab" => 1,
+            "abc" => 2,
+            _ => 0,
+        };"#,
+        "f",
+    );
+
+    assert_eq!(f.call(0), 2);
+    assert_eq!(f.call(1), 2);
+}
+
+#[test]
 fn match_expr() {
     let f = compile(
         r#"let f: int -> int = |x| match (x, ("abc", x + 3)) {
@@ -76,9 +91,9 @@ fn match_expr() {
     );
 
     assert_eq!(f.call(0), 1);
-    assert_eq!(f.call(1), 2);
-    assert_eq!(f.call(2), 3);
-    assert_eq!(f.call(3), 0);
+    assert_eq!(f.call(1), 4);
+    assert_eq!(f.call(2), 7);
+    assert_eq!(f.call(3), 9);
 }
 
 #[test]

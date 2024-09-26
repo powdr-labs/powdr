@@ -262,8 +262,8 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 "({})",
                 items
                     .iter()
-                    .map(|i| self.format_expr(i))
-                    .collect::<Result<Vec<_>, _>>()?
+                    .map(|i| Ok(format!("{}.clone()", self.format_expr(i)?)))
+                    .collect::<Result<Vec<_>, String>>()?
                     .join(", ")
             ),
             Expression::BlockExpression(_, BlockExpression { statements, expr }) => {
@@ -283,14 +283,15 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
             Expression::MatchExpression(_, MatchExpression { scrutinee, arms }) => {
                 // TODO try to find a solution where we do not introduce a variable
                 // or at least make it unique.
+                let var_name = "scrutinee__";
                 format!(
-                    "{{\nlet scrutinee__ = {};\n{}\n}}\n",
+                    "{{\nlet {var_name} = {};\n{}\n}}\n",
                     self.format_expr(scrutinee)?,
                     arms.iter()
                         .map(|MatchArm { pattern, value }| {
-                            let (vars, code) = check_pattern(pattern)?;
+                            let (vars, code) = check_pattern(var_name, pattern)?;
                             Ok(format!(
-                                "if let Some({vars}) = ({code})(scrutinee__.clone()) {{\n{}\n}}",
+                                "if let Some({vars}) = ({code}) {{\n{}\n}}",
                                 self.format_expr(value)?,
                             ))
                         })
@@ -314,47 +315,41 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
 /// TODO
 /// the ellipsis represents code that tries to match the given pattern.
 /// This function is used when generating code for match expressions.
-fn check_pattern(pattern: &Pattern) -> Result<(String, String), String> {
+fn check_pattern(value_name: &str, pattern: &Pattern) -> Result<(String, String), String> {
     Ok(match pattern {
-        Pattern::CatchAll(_) => ("()".to_string(), "|_| Some(())".to_string()),
+        Pattern::CatchAll(_) => ("()".to_string(), "Some(())".to_string()),
         Pattern::Number(_, n) => {
             // TODO format large n properly.
             (
                 "_".to_string(),
-                format!("|s| (s == ibig::IBig::from({n})).then_some(())"),
+                format!("({value_name} == ibig::IBig::from({n})).then_some(())"),
             )
         }
         Pattern::String(_, s) => (
             "_".to_string(),
-            format!("|s| (&s == {}).then_some(())", quote(s)),
+            format!("({value_name} == {}).then_some(())", quote(s)),
         ),
         Pattern::Tuple(_, items) => {
             let mut vars = vec![];
-            // TODO we need to de-structure s!
             let inner_code = items
                 .iter()
                 .enumerate()
                 .map(|(i, item)| {
-                    let (v, code) = check_pattern(item)?;
+                    let (v, code) = check_pattern(&format!("{value_name}.{i}"), item)?;
                     vars.push(v.clone());
-                    Ok(format!("let r_{i} = ({code})(s.clone())?;"))
+                    Ok(format!("({code})?"))
                 })
                 .collect::<Result<Vec<_>, String>>()?
-                .join("\n");
-            let code = format!(
-                "|s| {{\n{inner_code}\nSome(({}))\n}}",
-                items
-                    .iter()
-                    .enumerate()
-                    .map(|(i, _)| format!("r_{i}"))
-                    .format(", ")
-            );
-            (format!("({})", vars.join(", ")), code)
+                .join(", ");
+            (
+                format!("({})", vars.join(", ")),
+                format!("(|| Some(({inner_code})))()"),
+            )
         }
         Pattern::Array(..) => {
             return Err(format!("Arrays as patterns not yet implemented: {pattern}"));
         }
-        Pattern::Variable(_, var) => (format!("{var}"), "|s| Some(s)".to_string()),
+        Pattern::Variable(_, var) => (format!("{var}"), format!("Some({value_name}.clone())")),
         Pattern::Enum(..) => {
             return Err(format!("Enums as patterns not yet implemented: {pattern}"));
         }
