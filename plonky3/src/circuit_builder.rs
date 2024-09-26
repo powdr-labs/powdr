@@ -6,6 +6,7 @@
 //! everywhere save for at row j is constructed to constrain s * (pub - x) on
 //! every row.
 
+use itertools::Itertools;
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -18,7 +19,7 @@ use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Challenge, Identity, IdentityKind,
-    PolyID, PolynomialType, SelectedExpressions, SymbolKind,
+    PolyID, PolynomialType, SelectedExpressions,
 };
 
 use p3_uni_stark::{CallbackResult, MultiStageAir, MultistageAirBuilder, NextStageTraceCallback};
@@ -33,8 +34,10 @@ type Witness<T> = Mutex<RefCell<Vec<(String, Vec<T>)>>>;
 /// All of the data is derived from the analyzed PIL, but is materialized
 /// here for performance reasons.
 struct ConstraintSystem<T> {
-    // for each column, the stage (-1 for fixed) and index of this column in this stage
-    columns: HashMap<PolyID, (isize, usize)>,
+    // for each witness column, the stage and index of this column in this stage
+    witness_columns: HashMap<PolyID, (usize, usize)>,
+    // for each fixed column, the index of this column in the fixed columns
+    fixed_columns: HashMap<PolyID, usize>,
     identities: Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>>,
     publics: Vec<(String, PolyID, usize)>,
     commitment_count: usize,
@@ -62,29 +65,24 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
                     .sum()
             })
             .collect();
-        let (_, columns) = analyzed
+
+        let fixed_columns = analyzed
             .definitions_in_source_order(PolynomialType::Constant)
             .iter()
-            .chain(
-                analyzed
-                    .definitions_in_source_order(PolynomialType::Committed)
-                    .iter(),
-            )
+            .flat_map(|(symbol, _)| symbol.array_elements())
+            .enumerate()
+            .map(|(index, (_, id))| (id, index))
+            .collect();
+
+        let (_, witness_columns) = analyzed
+            .definitions_in_source_order(PolynomialType::Committed)
+            .iter()
             .fold(
-                (HashMap::default(), HashMap::default()),
-                |(mut next_index_in_stage, mut map): (HashMap<isize, usize>, _), (s, _)| {
+                (vec![0, analyzed.stage_count()], HashMap::default()),
+                |(mut next_index_in_stage, mut map), (s, _)| {
                     // the stage for this column, -1 for preprocessed
-                    let stage: isize = match s.kind {
-                        SymbolKind::Poly(PolynomialType::Committed) => {
-                            s.stage.unwrap_or_default() as isize
-                        }
-                        SymbolKind::Poly(PolynomialType::Constant) => {
-                            assert!(s.stage.is_none());
-                            -1
-                        }
-                        _ => unreachable!(),
-                    };
-                    let index_in_stage = next_index_in_stage.entry(stage).or_default();
+                    let stage = s.stage.unwrap_or_default() as usize;
+                    let index_in_stage = next_index_in_stage.get_mut(stage).unwrap();
                     for (_, id) in s.array_elements() {
                         map.insert(id, (stage, *index_in_stage));
                         *index_in_stage += 1;
@@ -108,7 +106,8 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
             commitment_count,
             constant_count,
             stage_widths,
-            columns,
+            witness_columns,
+            fixed_columns,
             challenges,
         }
     }
@@ -121,7 +120,7 @@ where
 {
     /// The constraint system description
     constraint_system: ConstraintSystem<T>,
-    // the values of the witness, in a [RefCell] as it gets mutated as we go through stages
+    /// The values of the witness, in a [RefCell] as it gets mutated as we go through stages
     witness_so_far: Witness<T>,
     /// Callback to augment the witness in the later stages
     witgen_callback: Option<WitgenCallback<T>>,
@@ -220,7 +219,7 @@ where
     fn to_plonky3_expr<AB: AirBuilder<F = Plonky3Field<T>> + MultistageAirBuilder>(
         &self,
         e: &AlgebraicExpression<T>,
-        stages: &[AB::M],
+        traces_by_stage: &[AB::M],
         fixed: &AB::M,
         publics: &BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>,
         challenges: &BTreeMap<u32, BTreeMap<u64, <AB as MultistageAirBuilder>::Challenge>>,
@@ -232,13 +231,12 @@ where
                 match poly_id.ptype {
                     PolynomialType::Committed => {
                         // find the stage and index in that stage
-                        let (stage, index) = self.constraint_system.columns[&poly_id];
-                        stages[stage as usize].row_slice(r.next as usize)[index].into()
+                        let (stage, index) = self.constraint_system.witness_columns[&poly_id];
+                        traces_by_stage[stage].row_slice(r.next as usize)[index].into()
                     }
                     PolynomialType::Constant => {
-                        // find index in the fixed columns
-                        let (stage, index) = self.constraint_system.columns[&poly_id];
-                        assert_eq!(stage, -1);
+                        // find the index in the fixed columns
+                        let index = self.constraint_system.fixed_columns[&poly_id];
                         fixed.row_slice(r.next as usize)[index].into()
                     }
                     PolynomialType::Intermediate => {
@@ -252,8 +250,10 @@ where
             .into(),
             AlgebraicExpression::Number(n) => AB::Expr::from(n.into_p3_field()),
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-                let left = self.to_plonky3_expr::<AB>(left, stages, fixed, publics, challenges);
-                let right = self.to_plonky3_expr::<AB>(right, stages, fixed, publics, challenges);
+                let left =
+                    self.to_plonky3_expr::<AB>(left, traces_by_stage, fixed, publics, challenges);
+                let right =
+                    self.to_plonky3_expr::<AB>(right, traces_by_stage, fixed, publics, challenges);
 
                 match op {
                     AlgebraicBinaryOperator::Add => left + right,
@@ -266,7 +266,7 @@ where
             }
             AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
                 let expr: <AB as AirBuilder>::Expr =
-                    self.to_plonky3_expr::<AB>(expr, stages, fixed, publics, challenges);
+                    self.to_plonky3_expr::<AB>(expr, traces_by_stage, fixed, publics, challenges);
 
                 match op {
                     AlgebraicUnaryOperator::Minus => -expr,
@@ -319,17 +319,13 @@ where
         let fixed = builder.preprocessed();
         let pi = builder.public_values();
 
-        // for each stage, the ids of the challenges drawn at the end of that stage
-        let challenges: BTreeMap<u32, Vec<u64>> =
-            self.constraint_system
-                .challenges
-                .iter()
-                .fold(Default::default(), |mut map, c| {
-                    map.entry(c.stage).or_default().push(c.id);
-                    map
-                });
         // for each stage, the values of the challenges drawn at the end of that stage
-        let challenges: BTreeMap<u32, BTreeMap<u64, _>> = challenges
+        let challenges: BTreeMap<u32, BTreeMap<u64, _>> = self
+            .constraint_system
+            .challenges
+            .iter()
+            .map(|c| (c.stage, c.id))
+            .into_group_map()
             .into_iter()
             .map(|(stage, ids)| {
                 let p3_challenges = builder.stage_challenges(stage as usize).to_vec();
@@ -357,7 +353,7 @@ where
         self.constraint_system.publics.iter().enumerate().for_each(
             |(index, (pub_id, poly_id, _))| {
                 let selector = fixed_local[public_offset + index];
-                let (stage, index) = self.constraint_system.columns[poly_id];
+                let (stage, index) = self.constraint_system.witness_columns[poly_id];
                 assert_eq!(
                     stage, 0,
                     "public inputs are only allowed in the first stage"
@@ -430,12 +426,15 @@ where
 {
     // this wraps the witgen callback to make it compatible with p3:
     // - p3 passes its local challenge values and the stage id
-    // - it receives the trace for the next stage in the expected format, as well as the public values for this stage and the updated challenges for the previous stage
-    // - internally, the full witness is accumulated in [Self] as it's needed in order to call the witgen callback
+    // - it receives the trace for the next stage in the expected format,
+    // as well as the public values for this stage and the updated challenges
+    // for the previous stage
+    // - internally, the full witness is accumulated in [Self] as it's needed
+    // in order to call the witgen callback
     fn compute_stage(
         &self,
         trace_stage: u32,
-        previous_stage_challenge_values: &[Plonky3Field<T>],
+        new_challenge_values: &[Plonky3Field<T>],
     ) -> CallbackResult<Plonky3Field<T>> {
         let witness = self.witness_so_far.lock().unwrap();
         let mut witness = witness.borrow_mut();
@@ -447,13 +446,10 @@ where
             .filter(|c| c.stage == trace_stage - 1)
             .cloned()
             .collect();
-        assert_eq!(
-            previous_stage_challenges.len(),
-            previous_stage_challenge_values.len()
-        );
+        assert_eq!(previous_stage_challenges.len(), new_challenge_values.len());
         let challenge_map = previous_stage_challenges
             .into_iter()
-            .zip(previous_stage_challenge_values)
+            .zip(new_challenge_values)
             .map(|(c, v)| (c.id, T::from_p3_field(*v)))
             .collect();
 
@@ -470,7 +466,9 @@ where
         };
 
         // generate the next trace in the format p3 expects
-        // TODO: since the current witgen callback returns the entire witness so far, we filter out the columns we already know about. Instead, return only the new witness in the witgen callback.
+        // TODO: since the current witgen callback returns the entire witness so far,
+        // we filter out the columns we already know about. Instead, return only the
+        // new witness in the witgen callback.
         let trace = generate_matrix(
             witness
                 .iter()
@@ -480,7 +478,7 @@ where
 
         // return the next trace
         // later stage publics are not supported, so we return an empty vector. TODO: change this
-        // shared challenges are unsuportted so we return the local challenges. TODO: change this
-        CallbackResult::new(trace, vec![], previous_stage_challenge_values.to_vec())
+        // shared challenges are unsupported so we return the local challenges. TODO: change this
+        CallbackResult::new(trace, vec![], new_challenge_values.to_vec())
     }
 }
