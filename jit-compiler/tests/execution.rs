@@ -14,7 +14,7 @@ fn compile(input: &str, symbol: &str) -> LoadedFunction {
         .unwrap()[symbol]
         .clone()
 }
-
+add test
 #[test]
 fn identity_function() {
     let f = compile("let c: int -> int = |i| i;", "c");
