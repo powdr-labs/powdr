@@ -294,6 +294,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                                 self.format_expr(value)?,
                             ))
                         })
+                        .chain(std::iter::once(Ok("{ panic!(\"No match\"); }".to_string())))
                         .collect::<Result<Vec<_>, String>>()?
                         .join(" else ")
                 )
