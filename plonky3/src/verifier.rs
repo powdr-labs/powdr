@@ -11,8 +11,7 @@ use p3_matrix::stack::VerticalPair;
 use tracing::instrument;
 
 use crate::symbolic_builder::{get_log_quotient_degree, SymbolicAirBuilder};
-use crate::traits::MultiStageAir;
-use crate::{Proof, StarkVerifyingKey, VerifierConstraintFolder};
+use crate::{MultiStageAir, Proof, StarkVerifyingKey, VerifierConstraintFolder};
 use p3_uni_stark::{PcsError, StarkGenericConfig, Val};
 
 #[instrument(skip_all)]

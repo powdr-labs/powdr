@@ -22,10 +22,7 @@ use powdr_ast::analyzed::{
     PolyID, PolynomialType, SelectedExpressions,
 };
 
-use crate::{
-    prover::{CallbackResult, NextStageTraceCallback},
-    traits::{MultiStageAir, MultistageAirBuilder},
-};
+use crate::{CallbackResult, MultiStageAir, MultistageAirBuilder, NextStageTraceCallback};
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 
 use powdr_executor::witgen::WitgenCallback;
