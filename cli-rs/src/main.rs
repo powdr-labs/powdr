@@ -7,8 +7,9 @@ use env_logger::fmt::Color;
 use env_logger::{Builder, Target};
 use log::LevelFilter;
 
-use powdr_number::{BabyBearField, BigUint, Bn254Field, FieldElement, GoldilocksField};
+use powdr_number::{BabyBearField, BigUint, Bn254Field, FieldElement, GoldilocksField, KnownField};
 use powdr_pipeline::Pipeline;
+use powdr_riscv::{Runtime, RuntimeEnum};
 use powdr_riscv_executor::ProfilerOptions;
 
 use std::ffi::OsStr;
@@ -24,6 +25,16 @@ pub enum FieldArgument {
     Gl,
     #[strum(serialize = "bn254")]
     Bn254,
+}
+
+impl FieldArgument {
+    pub fn as_known_field(&self) -> KnownField {
+        match self {
+            FieldArgument::Bb => KnownField::BabyBearField,
+            FieldArgument::Gl => KnownField::GoldilocksField,
+            FieldArgument::Bn254 => KnownField::Bn254Field,
+        }
+    }
 }
 
 #[derive(Parser)]
@@ -228,15 +239,14 @@ fn run_command(command: Commands) {
             coprocessors,
             asm,
             continuations,
-        } => {
-            call_with_field!(compile_rust::<field>(
-                &file,
-                Path::new(&output_directory),
-                coprocessors,
-                !asm,
-                continuations
-            ))
-        }
+        } => compile_rust(
+            &file,
+            field.as_known_field(),
+            Path::new(&output_directory),
+            coprocessors,
+            !asm,
+            continuations,
+        ),
         Commands::RiscvAsm {
             files,
             field,
@@ -251,13 +261,14 @@ fn run_command(command: Commands) {
                 Cow::Borrowed("output")
             };
 
-            call_with_field!(compile_riscv_asm::<field>(
+            compile_riscv_asm(
                 &name,
                 files.into_iter(),
+                field.as_known_field(),
                 Path::new(&output_directory),
                 coprocessors,
-                continuations
-            ))
+                continuations,
+            )
         }
         Commands::RiscvElf {
             file,
@@ -265,14 +276,13 @@ fn run_command(command: Commands) {
             output_directory,
             coprocessors,
             continuations,
-        } => {
-            call_with_field!(compile_riscv_elf::<field>(
-                &file,
-                Path::new(&output_directory),
-                coprocessors,
-                continuations
-            ))
-        }
+        } => compile_riscv_elf(
+            &file,
+            field.as_known_field(),
+            Path::new(&output_directory),
+            coprocessors,
+            continuations,
+        ),
         Commands::Execute {
             file,
             field,
@@ -315,31 +325,46 @@ fn run_command(command: Commands) {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn compile_rust<F: FieldElement>(
+fn compile_rust(
     file_name: &str,
+    field: KnownField,
     output_dir: &Path,
     coprocessors: Option<String>,
     via_elf: bool,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
-    let mut runtime = match coprocessors {
-        Some(list) => {
-            powdr_riscv::Runtime::try_from(list.split(',').collect::<Vec<_>>().as_ref()).unwrap()
-        }
-        None => powdr_riscv::Runtime::base(),
-    };
+    let mut runtime = coprocessors_to_runtime(coprocessors, field.clone());
 
     if continuations {
-        if runtime.has_submachine("poseidon_gl") {
-            return Err(vec![
+        match field {
+            KnownField::BabyBearField => {
+                if runtime.has_submachine("poseidon_bb") {
+                    return Err(vec![
                 "Poseidon continuations mode is chosen automatically and incompatible with the chosen standard Poseidon coprocessor".to_string(),
             ]);
+                }
+            }
+            KnownField::Mersenne31Field => {
+                if runtime.has_submachine("poseidon_m31") {
+                    return Err(vec![
+                "Poseidon continuations mode is chosen automatically and incompatible with the chosen standard Poseidon coprocessor".to_string(),
+            ]);
+                }
+            }
+            KnownField::GoldilocksField | KnownField::Bn254Field => {
+                if runtime.has_submachine("poseidon_gl") {
+                    return Err(vec![
+                "Poseidon continuations mode is chosen automatically and incompatible with the chosen standard Poseidon coprocessor".to_string(),
+            ]);
+                }
+            }
         }
         runtime = runtime.with_poseidon_for_continuations();
     }
 
-    powdr_riscv::compile_rust::<F>(
+    powdr_riscv::compile_rust(
         file_name,
+        field,
         output_dir,
         true,
         &runtime,
@@ -353,21 +378,17 @@ fn compile_rust<F: FieldElement>(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn compile_riscv_asm<F: FieldElement>(
+fn compile_riscv_asm(
     original_file_name: &str,
     file_names: impl Iterator<Item = String>,
+    field: KnownField,
     output_dir: &Path,
     coprocessors: Option<String>,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
-    let runtime = match coprocessors {
-        Some(list) => {
-            powdr_riscv::Runtime::try_from(list.split(',').collect::<Vec<_>>().as_ref()).unwrap()
-        }
-        None => powdr_riscv::Runtime::base(),
-    };
+    let runtime = coprocessors_to_runtime(coprocessors, field.clone());
 
-    powdr_riscv::compile_riscv_asm_bundle::<F>(
+    powdr_riscv::compile_riscv_asm_bundle(
         original_file_name,
         file_names
             .map(|name| {
@@ -375,6 +396,7 @@ fn compile_riscv_asm<F: FieldElement>(
                 (name, contents)
             })
             .collect(),
+        field,
         output_dir,
         true,
         &runtime,
@@ -385,22 +407,19 @@ fn compile_riscv_asm<F: FieldElement>(
     Ok(())
 }
 
-fn compile_riscv_elf<F: FieldElement>(
+fn compile_riscv_elf(
     input_file: &str,
+    field: KnownField,
     output_dir: &Path,
     coprocessors: Option<String>,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
-    let runtime = match coprocessors {
-        Some(list) => {
-            powdr_riscv::Runtime::try_from(list.split(',').collect::<Vec<_>>().as_ref()).unwrap()
-        }
-        None => powdr_riscv::Runtime::base(),
-    };
+    let runtime = coprocessors_to_runtime(coprocessors, field.clone());
 
-    powdr_riscv::compile_riscv_elf::<F>(
+    powdr_riscv::compile_riscv_elf(
         input_file,
         Path::new(input_file),
+        field,
         output_dir,
         true,
         &runtime,
@@ -457,4 +476,31 @@ fn execute<F: FieldElement>(
     }
 
     Ok(())
+}
+
+fn coprocessors_to_runtime(coprocessors: Option<String>, field: KnownField) -> RuntimeEnum {
+    match coprocessors {
+        Some(list) => match field {
+            KnownField::BabyBearField | KnownField::Mersenne31Field => RuntimeEnum::Runtime16(
+                powdr_riscv::runtime_16::Runtime16::try_from(
+                    list.split(',').collect::<Vec<_>>().as_ref(),
+                )
+                .unwrap(),
+            ),
+            KnownField::GoldilocksField | KnownField::Bn254Field => RuntimeEnum::Runtime32(
+                powdr_riscv::runtime_32::Runtime32::try_from(
+                    list.split(',').collect::<Vec<_>>().as_ref(),
+                )
+                .unwrap(),
+            ),
+        },
+        None => match field {
+            KnownField::BabyBearField | KnownField::Mersenne31Field => {
+                RuntimeEnum::Runtime16(powdr_riscv::runtime_16::Runtime16::base())
+            }
+            KnownField::GoldilocksField | KnownField::Bn254Field => {
+                RuntimeEnum::Runtime32(powdr_riscv::runtime_32::Runtime32::base())
+            }
+        },
+    }
 }

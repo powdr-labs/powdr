@@ -1,8 +1,9 @@
 use ::powdr_pipeline::Pipeline;
-use powdr_number::GoldilocksField;
+use powdr_number::{GoldilocksField, KnownField};
 
 use powdr_riscv::{
     asm, compile_rust_crate_to_riscv_asm, continuations::bootloader::default_input, Runtime,
+    RuntimeEnum,
 };
 
 use criterion::{criterion_group, criterion_main, Criterion};
@@ -18,7 +19,12 @@ fn executor_benchmark(c: &mut Criterion) {
     let tmp_dir = Temp::new_dir().unwrap();
     let riscv_asm_files =
         compile_rust_crate_to_riscv_asm("./tests/riscv_data/keccak/Cargo.toml", &tmp_dir, None);
-    let contents = asm::compile::<T>(riscv_asm_files, &Runtime::base(), false);
+    let contents = asm::compile(
+        riscv_asm_files,
+        powdr_number::KnownField::GoldilocksField,
+        &RuntimeEnum::base_32(),
+        false,
+    );
     let mut pipeline = Pipeline::<T>::default().from_asm_string(contents, None);
     pipeline.compute_optimized_pil().unwrap();
     pipeline.compute_fixed_cols().unwrap();
@@ -33,9 +39,10 @@ fn executor_benchmark(c: &mut Criterion) {
         &tmp_dir,
         None,
     );
-    let contents = asm::compile::<T>(
+    let contents = asm::compile(
         riscv_asm_files,
-        &Runtime::base().with_poseidon_for_continuations(),
+        KnownField::GoldilocksField,
+        &RuntimeEnum::base_32().with_poseidon_for_continuations(),
         true,
     );
     let mut pipeline = Pipeline::<T>::default().from_asm_string(contents, None);

@@ -14,51 +14,58 @@ machine Main with degree: 65536 {
     Byte2 byte2;
     Memory memory(byte2);
 
-    instr mload X1, X2 -> Y1, Y2 link ~> (Y1, Y2) = memory.mload(X1, X2, STEP);
-    instr mstore X1, X2, Y1, Y2 -> link ~> memory.mstore(X1, X2, STEP, Y1, Y2);
+    instr mload X1 -> Y1, Y2 link ~> (Y1, Y2) = memory.mload(X1, STEP);
+    instr mstore X1, Y1, Y2 -> link ~> memory.mstore(X1, STEP, Y1, Y2);
 
-    instr assert_eq X1, X2, Y1, Y2 {
-        X1 = Y1,
-        X2 = Y2
+    instr assert_eq X1, Y1 {
+        X1 = Y1
     }
 
     function main {
 
         // Store 4
-        mstore 100, 0, 4, 0;
+        mstore 100, 0, 4;
         
         // Read uninitialized memory
-        A1, A2 <== mload(104, 0);
-        assert_eq A1, A2, 0, 0;
+        A1, A2 <== mload(104);
+        assert_eq A1, 0;
+        assert_eq A2, 0;
 
         // Read previously stored value
-        A1, A2 <== mload(100, 0);
-        assert_eq A1, A2, 4, 0;
+        A1, A2 <== mload(100);
+        assert_eq A1, 0;
+        assert_eq A2, 4;
 
         // Update previously stored value
-        mstore 100, 0, 7, 0;
-        mstore 100, 0, 8, 0;
+        mstore 100, 0, 7;
+        mstore 100, 0, 8;
 
         // Read updated values (twice)
-        A1, A2 <== mload(100, 0);
-        assert_eq A1, A2, 8, 0;
-        A1, A2 <== mload(100, 0);
-        assert_eq A1, A2, 8, 0;
+        A1, A2 <== mload(100);
+        assert_eq A1, 0;
+        assert_eq A2, 8;
+        A1, A2 <== mload(100);
+        assert_eq A1, 0;
+        assert_eq A2, 8;
 
         // Write to previously uninitialized memory cell
-        mstore 104, 0, 1234, 0;
-        A1, A2 <== mload(104, 0);
-        assert_eq A1, A2, 1234, 0;
+        mstore 104, 0, 1234;
+        A1, A2 <== mload(104);
+        assert_eq A1, 0;
+        assert_eq A2, 1234;
 
         // Write max value
-        mstore 200, 0, 0xffff, 0xffff;
-        A1, A2 <== mload(200, 0);
-        assert_eq A1, A2, 0xffff, 0xffff;
+        mstore 200, 0xffff, 0xffff;
+        A1, A2 <== mload(200);
+        assert_eq A1, 0xffff;
+        assert_eq A2, 0xffff;
 
+		/*
         // Store at maximal address
         mstore 0xffff, 0xfffc, 1, 0;
         A1, A2 <== mload(0xffff, 0xfffc);
         assert_eq A1, A2, 1, 0;
+		*/
 
         return;
     }

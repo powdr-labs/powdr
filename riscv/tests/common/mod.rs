@@ -1,5 +1,5 @@
 use mktemp::Temp;
-use powdr_number::{BabyBearField, FieldElement /*GoldilocksField*/};
+use powdr_number::{FieldElement, GoldilocksField, KnownField};
 use powdr_pipeline::{
     test_util::{
         /*run_pilcom_with_backend_variant*/ test_plonky3_pipeline_with_backend_variant,
@@ -7,7 +7,7 @@ use powdr_pipeline::{
     },
     Pipeline,
 };
-use powdr_riscv::Runtime;
+use powdr_riscv::RuntimeEnum;
 use std::{
     path::{Path, PathBuf},
     process::Command,
@@ -58,7 +58,7 @@ fn find_assembler() -> &'static str {
     panic!("No RISC-V assembler found");
 }
 
-pub fn verify_riscv_asm_file(asm_file: &Path, runtime: &Runtime, use_pie: bool) {
+pub fn verify_riscv_asm_file(asm_file: &Path, runtime: &RuntimeEnum, use_pie: bool) {
     let tmp_dir = Temp::new_dir().unwrap();
     let executable = tmp_dir.join("executable");
     let obj_file = tmp_dir.join("obj.o");
@@ -94,9 +94,9 @@ pub fn verify_riscv_asm_file(asm_file: &Path, runtime: &Runtime, use_pie: bool) 
 
     let case_name = asm_file.file_stem().unwrap().to_str().unwrap();
 
-    let powdr_asm = powdr_riscv::elf::translate::<BabyBearField>(&executable, runtime, false);
-    //println!("{powdr_asm}");
-    verify_riscv_asm_string::<BabyBearField, ()>(
+    let powdr_asm =
+        powdr_riscv::elf::translate(&executable, KnownField::GoldilocksField, runtime, false);
+    verify_riscv_asm_string::<GoldilocksField, ()>(
         &format!("{case_name}.asm"),
         &powdr_asm,
         &[],
