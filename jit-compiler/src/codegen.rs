@@ -323,11 +323,14 @@ fn check_pattern(value_name: &str, pattern: &Pattern) -> Result<(String, String)
         Pattern::CatchAll(_) => ("()".to_string(), "Some(())".to_string()),
         Pattern::Number(_, n) => (
             "_".to_string(),
-            format!("({value_name} == {})).then_some(())", format_number(&n)),
+            format!(
+                "({value_name}.clone() == {}).then_some(())",
+                format_signed_number(n)
+            ),
         ),
         Pattern::String(_, s) => (
             "_".to_string(),
-            format!("({value_name} == {}).then_some(())", quote(s)),
+            format!("({value_name}.clone() == {}).then_some(())", quote(s)),
         ),
         Pattern::Tuple(_, items) => {
             let mut vars = vec![];
@@ -336,7 +339,7 @@ fn check_pattern(value_name: &str, pattern: &Pattern) -> Result<(String, String)
                 .enumerate()
                 .map(|(i, item)| {
                     let (v, code) = check_pattern(&format!("{value_name}.{i}"), item)?;
-                    vars.push(v.clone());
+                    vars.push(v);
                     Ok(format!("({code})?"))
                 })
                 .collect::<Result<Vec<_>, String>>()?
@@ -346,8 +349,40 @@ fn check_pattern(value_name: &str, pattern: &Pattern) -> Result<(String, String)
                 format!("(|| Some(({inner_code})))()"),
             )
         }
-        Pattern::Array(..) => {
-            return Err(format!("Arrays as patterns not yet implemented: {pattern}"));
+        Pattern::Array(_, items) => {
+            let mut vars = vec![];
+            let mut ellipsis_seen = false;
+            let inner_code = items
+                .iter()
+                .enumerate()
+                .filter_map(|(i, item)| {
+                    if matches!(item, Pattern::Ellipsis(_)) {
+                        ellipsis_seen = true;
+                        return None;
+                    }
+                    Some(if ellipsis_seen {
+                        let i_rev = items.len() - i;
+                        (format!("({value_name}[{value_name}.len() - {i_rev}]"), item)
+                    } else {
+                        (format!("{value_name}[{i}]"), item)
+                    })
+                })
+                .map(|(access_name, item)| {
+                    let (v, code) = check_pattern(&access_name, item)?;
+                    vars.push(v);
+                    Ok(format!("({code})?"))
+                })
+                .collect::<Result<Vec<_>, String>>()?
+                .join(", ");
+            let length_check = if ellipsis_seen {
+                format!("{value_name}.len() >= {}", items.len() - 1)
+            } else {
+                format!("{value_name}.len() == {}", items.len())
+            };
+            (
+                format!("({})", items.iter().map(|_| "_").join(", ")),
+                format!("({length_check}).then(|| Some(({inner_code})))"),
+            )
         }
         Pattern::Variable(_, var) => (format!("{var}"), format!("Some({value_name}.clone())")),
         Pattern::Enum(..) => {
@@ -366,12 +401,13 @@ fn format_number(n: &BigUint) -> String {
     if let Ok(n) = u64::try_from(n) {
         format!("ibig::IBig::from({n}_u64)")
     } else {
-        let bytes = n
-            .to_le_bytes()
-            .iter()
-            .map(|b| format!("{b}_u8"))
-            .format(", ");
-        format!("ibig::IBig::from_le_bytes(&[{bytes}])")
+        format!(
+            "ibig::IBig::from_le_bytes(&[{}])",
+            n.to_le_bytes()
+                .iter()
+                .map(|b| format!("{b}_u8"))
+                .format(", ")
+        )
     }
 }
 
