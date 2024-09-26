@@ -23,6 +23,8 @@ where
 
     fn into_p3_field(self) -> Plonky3Field<Self>;
 
+    fn from_p3_field(_: Plonky3Field<Self>) -> Self;
+
     fn get_challenger() -> Challenger<Self>;
 
     fn get_config() -> Self::Config;
