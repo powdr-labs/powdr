@@ -1,3 +1,8 @@
+// this is required to please clippy which finds dome dead code in the
+// generated parser
+// this might be fixed by upgrading lalrpop
+#![allow(dead_code)]
+
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use itertools::Itertools;
@@ -50,11 +55,11 @@ impl RiscVProgram for AsmProgram {
 
     fn take_executable_statements(
         &mut self,
-    ) -> impl Iterator<Item = code_gen::Statement<&str, &[Argument]>> {
+    ) -> impl Iterator<Item = code_gen::Statement<'_, impl AsRef<str>, impl InstructionArgs>> {
         self.statements.iter().filter_map(process_statement)
     }
 
-    fn start_function(&self) -> &str {
+    fn start_function(&self) -> impl AsRef<str> {
         START_FUNCTION
     }
 }
@@ -62,7 +67,7 @@ impl RiscVProgram for AsmProgram {
 impl InstructionArgs for &[Argument] {
     type Error = &'static str;
 
-    fn l(&self) -> Result<&str, &'static str> {
+    fn l(&self) -> Result<impl AsRef<str>, <Self as InstructionArgs>::Error> {
         const ERR: &str = "Expected: label";
         match self {
             [l] => Ok(argument_to_symbol(l).ok_or(ERR)?),
@@ -116,7 +121,12 @@ impl InstructionArgs for &[Argument] {
         }
     }
 
-    fn rrl(&self) -> Result<(Register, Register, &str), &'static str> {
+    fn rrl(
+        &self,
+    ) -> Result<
+        (code_gen::Register, code_gen::Register, impl AsRef<str>),
+        <Self as InstructionArgs>::Error,
+    > {
         const ERR: &str = "Expected: register, register, label";
         match self {
             [Argument::Register(r1), Argument::Register(r2), l] => {
@@ -126,7 +136,9 @@ impl InstructionArgs for &[Argument] {
         }
     }
 
-    fn rl(&self) -> Result<(Register, &str), &'static str> {
+    fn rl(
+        &self,
+    ) -> Result<(code_gen::Register, impl AsRef<str>), <Self as InstructionArgs>::Error> {
         const ERR: &str = "Expected: register, label";
         match self {
             [Argument::Register(r1), l] => Ok((*r1, argument_to_symbol(l).ok_or(ERR)?)),

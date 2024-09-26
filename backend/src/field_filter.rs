@@ -34,10 +34,10 @@ macro_rules! generalize_factory {
                             unsafe {
                                 let result = <$restricted_factory as BackendFactory<$supported_type>>::create(
                                     &$restricted_factory,
-                                    std::mem::transmute(pil), std::mem::transmute(fixed), output_dir, setup,
+                                    std::mem::transmute::<std::sync::Arc<powdr_ast::analyzed::Analyzed<F>>, std::sync::Arc<powdr_ast::analyzed::Analyzed<$supported_type>>>(pil), std::mem::transmute::<std::sync::Arc<std::vec::Vec<(std::string::String, powdr_executor::constant_evaluator::VariablySizedColumn<F>)>>, std::sync::Arc<std::vec::Vec<(std::string::String, powdr_executor::constant_evaluator::VariablySizedColumn<$supported_type>)>>>(fixed), output_dir, setup,
                                     verification_key, verification_app_key, backend_options)?;
                                 let result: Box<dyn Backend<$supported_type>> = result;
-                                std::mem::transmute(result)
+                                std::mem::transmute::<std::boxed::Box<dyn Backend<$supported_type>>, std::boxed::Box<dyn Backend<F>>>(result)
                             }
                         }
                     )*
