@@ -157,7 +157,7 @@ impl<'a, T: FieldElement> From<T> for Value<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement> From<AlgebraicExpression<T>> for Value<'a, T> {
+impl<'a, T> From<AlgebraicExpression<T>> for Value<'a, T> {
     fn from(value: AlgebraicExpression<T>) -> Self {
         Value::Expression(value)
     }
@@ -407,6 +407,11 @@ const BUILTINS: [(&str, BuiltinFunction); 20] = [
     ("std::convert::int", BuiltinFunction::ToInt),
     ("std::debug::print", BuiltinFunction::Print),
     ("std::field::modulus", BuiltinFunction::Modulus),
+    (
+        "std::prover::capture_constraints",
+        BuiltinFunction::CaptureConstraints,
+    ),
+    ("std::prover::at_next_stage", BuiltinFunction::AtNextStage),
     ("std::prelude::challenge", BuiltinFunction::Challenge),
     (
         "std::prover::new_witness_col_at_stage",
@@ -419,13 +424,14 @@ const BUILTINS: [(&str, BuiltinFunction); 20] = [
     ("std::prover::degree", BuiltinFunction::Degree),
     ("std::prover::eval", BuiltinFunction::Eval),
     ("std::prover::try_eval", BuiltinFunction::TryEval),
-    ("std::prover::try_eval", BuiltinFunction::TryEval),
-    ("std::prover::get_input", BuiltinFunction::GetInput),
     (
-        "std::prover::get_input_from_channel",
-        BuiltinFunction::GetInputFromChannel,
+        "std::prover::input_from_channel",
+        BuiltinFunction::InputFromChannel,
     ),
-    ("std::prover::output_byte", BuiltinFunction::OutputByte),
+    (
+        "std::prover::output_to_channel",
+        BuiltinFunction::OutputToChannel,
+    ),
 ];
 
 #[derive(Clone, Copy, Debug)]
@@ -446,6 +452,13 @@ pub enum BuiltinFunction {
     ToInt,
     /// std::convert::fe: int/fe -> fe, converts int to fe
     ToFe,
+    /// std::prover::capture_constraints: (-> ()) -> Constr[]
+    /// Calls the argument and returns all constraints that it added to the global set
+    /// (Those are removed from the global set).
+    CaptureConstraints,
+    /// std::prover::at_next_stage: (-> ()) -> (), calls the argument at the next proof stage
+    /// and resets the stage again.
+    AtNextStage,
     /// std::prover::challenge: int, int -> expr, constructs a challenge with a given stage and ID.
     Challenge,
     /// std::prover::new_witness_col_at_stage: string, int -> expr, creates a new witness column at a certain proof stage.
@@ -464,12 +477,10 @@ pub enum BuiltinFunction {
     Eval,
     /// std::prover::try_eval: expr -> std::prelude::Option<fe>, evaluates an expression on the current row
     TryEval,
-    /// std::prover::get_input: int -> fe, returns the value of a prover-provided and uncommitted input
-    GetInput,
-    /// std::prover::get_input_from_channel: int, int -> fe, returns the value of a prover-provided and uncommitted input from a certain channel
-    GetInputFromChannel,
-    /// std::prover::output_byte: int, int -> (), outputs a byte to a file descriptor
-    OutputByte,
+    /// std::prover::input_from_channel: int, int -> fe, returns the value of a prover-provided and uncommitted input from a certain channel
+    InputFromChannel,
+    /// std::prover::output_to_channel: int, fe -> (), outputs a field element to an output channel
+    OutputToChannel,
 }
 
 impl<'a, T: Display> Display for Value<'a, T> {
@@ -724,6 +735,21 @@ pub trait SymbolLookup<'a, T: FieldElement> {
         ))
     }
 
+    fn capture_constraints(
+        &mut self,
+        _fun: Arc<Value<'a, T>>,
+    ) -> Result<Arc<Value<'a, T>>, EvalError> {
+        Err(EvalError::Unsupported(
+            "The function capture_constraints is not allowed at this point.".to_string(),
+        ))
+    }
+
+    fn at_next_stage(&mut self, _fun: Arc<Value<'a, T>>) -> Result<(), EvalError> {
+        Err(EvalError::Unsupported(
+            "The function at_next_stage is not allowed at this point.".to_string(),
+        ))
+    }
+
     fn provide_value(
         &mut self,
         _col: Arc<Value<'a, T>>,
@@ -735,13 +761,7 @@ pub trait SymbolLookup<'a, T: FieldElement> {
         ))
     }
 
-    fn get_input(&mut self, _index: usize) -> Result<Arc<Value<'a, T>>, EvalError> {
-        Err(EvalError::Unsupported(
-            "Tried to get input outside of prover function.".to_string(),
-        ))
-    }
-
-    fn get_input_from_channel(
+    fn input_from_channel(
         &mut self,
         _channel: u32,
         _index: usize,
@@ -751,9 +771,9 @@ pub trait SymbolLookup<'a, T: FieldElement> {
         ))
     }
 
-    fn output_byte(&mut self, _fd: u32, _byte: u8) -> Result<(), EvalError> {
+    fn output_to_channel(&mut self, _channel: u32, _elem: T) -> Result<(), EvalError> {
         Err(EvalError::Unsupported(
-            "Tried to output byte outside of prover function.".to_string(),
+            "Tried to output to channel outside of prover function.".to_string(),
         ))
     }
 }
@@ -1401,11 +1421,12 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
         BuiltinFunction::MinDegree => 0,
         BuiltinFunction::MaxDegree => 0,
         BuiltinFunction::Degree => 0,
+        BuiltinFunction::CaptureConstraints => 1,
+        BuiltinFunction::AtNextStage => 1,
         BuiltinFunction::Eval => 1,
         BuiltinFunction::TryEval => 1,
-        BuiltinFunction::GetInput => 1,
-        BuiltinFunction::GetInputFromChannel => 2,
-        BuiltinFunction::OutputByte => 2,
+        BuiltinFunction::InputFromChannel => 2,
+        BuiltinFunction::OutputToChannel => 2,
     };
 
     if arguments.len() != params {
@@ -1492,14 +1513,7 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
             symbols.provide_value(col, row, value)?;
             Value::Tuple(vec![]).into()
         }
-        BuiltinFunction::GetInput => {
-            let index = arguments.pop().unwrap();
-            let Value::Integer(index) = index.as_ref() else {
-                panic!()
-            };
-            symbols.get_input(usize::try_from(index).unwrap())?
-        }
-        BuiltinFunction::GetInputFromChannel => {
+        BuiltinFunction::InputFromChannel => {
             let index = arguments.pop().unwrap();
             let channel = arguments.pop().unwrap();
             let Value::Integer(index) = index.as_ref() else {
@@ -1508,18 +1522,21 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
             let Value::Integer(channel) = channel.as_ref() else {
                 panic!()
             };
-            symbols.get_input_from_channel(
+            symbols.input_from_channel(
                 u32::try_from(channel).unwrap(),
                 usize::try_from(index).unwrap(),
             )?
         }
-        BuiltinFunction::OutputByte => {
-            let byte = arguments.pop().unwrap();
-            let fd = arguments.pop().unwrap();
-            let (Value::Integer(fd), Value::Integer(byte)) = (fd.as_ref(), byte.as_ref()) else {
+        BuiltinFunction::OutputToChannel => {
+            let elem = arguments.pop().unwrap();
+            let channel = arguments.pop().unwrap();
+            let Value::Integer(channel) = channel.as_ref() else {
                 panic!()
             };
-            symbols.output_byte(u32::try_from(fd).unwrap(), u8::try_from(byte).unwrap())?;
+            symbols.output_to_channel(
+                u32::try_from(channel).unwrap(),
+                elem.try_to_field_element().unwrap(),
+            )?;
             Value::Tuple(vec![]).into()
         }
         BuiltinFunction::SetHint => {
@@ -1531,6 +1548,15 @@ fn evaluate_builtin_function<'a, T: FieldElement>(
         BuiltinFunction::MaxDegree => symbols.max_degree()?,
         BuiltinFunction::MinDegree => symbols.min_degree()?,
         BuiltinFunction::Degree => symbols.degree()?,
+        BuiltinFunction::CaptureConstraints => {
+            let fun = arguments.pop().unwrap();
+            symbols.capture_constraints(fun)?
+        }
+        BuiltinFunction::AtNextStage => {
+            let fun = arguments.pop().unwrap();
+            symbols.at_next_stage(fun)?;
+            Value::Tuple(vec![]).into()
+        }
         BuiltinFunction::Eval => {
             let arg = arguments.pop().unwrap();
             match arg.as_ref() {
