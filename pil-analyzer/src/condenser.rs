@@ -812,85 +812,6 @@ fn try_to_function_value_definition<T: FieldElement>(
     }))
 }
 
-fn try_algebraic_expression_to_expression<T: FieldElement>(
-    e: &AlgebraicExpression<T>,
-) -> Result<Expression, EvalError> {
-    Ok(match e {
-        AlgebraicExpression::Reference(AlgebraicReference {
-            name,
-            poly_id: _,
-            next: false,
-        }) => Expression::Reference(
-            SourceRef::unknown(),
-            Reference::Poly(PolynomialReference {
-                name: name.clone(),
-                type_args: None,
-            }),
-        ),
-
-        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-            Expression::BinaryOperation(
-                SourceRef::unknown(),
-                BinaryOperation {
-                    left: Box::new(
-                        try_value_to_expression(&Value::<T>::Expression((**left).clone())).unwrap(),
-                    ),
-                    op: (*op).into(),
-                    right: Box::new(
-                        try_value_to_expression(&Value::<T>::Expression((**right).clone()))
-                            .unwrap(),
-                    ),
-                },
-            )
-        }
-
-        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
-            Expression::UnaryOperation(
-                SourceRef::unknown(),
-                UnaryOperation {
-                    op: (*op).into(),
-                    expr: Box::new(
-                        try_value_to_expression(&Value::<T>::Expression((**expr).clone())).unwrap(),
-                    ),
-                },
-            )
-        }
-
-        AlgebraicExpression::Challenge(Challenge { id, stage }) => {
-            let function = Expression::Reference(
-                SourceRef::unknown(),
-                Reference::Poly(PolynomialReference {
-                    name: "std::prelude::challenge".to_string(),
-                    type_args: None,
-                }),
-            )
-            .into();
-            let arguments = [*stage as u64, *id]
-                .into_iter()
-                .map(|x| BigUint::from(x).into())
-                .collect();
-            Expression::FunctionCall(
-                SourceRef::unknown(),
-                FunctionCall {
-                    function,
-                    arguments,
-                },
-            )
-        }
-
-        AlgebraicExpression::Number(n) => Number {
-            value: n.to_arbitrary_integer(),
-            type_: Some(Type::Expr),
-        }
-        .into(),
-        _ => {
-            return Err(EvalError::TypeError(format!(
-                "Converting complex algebraic expressions to expressions not supported: {e}."
-            )))
-        }
-    })
-}
-
 /// Turns a closure back into a (source) expression by prefixing
 /// potentially captured variables as let statements.
 fn try_closure_to_expression<T: FieldElement>(
@@ -1018,6 +939,78 @@ fn shift_local_var_refs(e: &mut Expression, shift: u64) {
 
     e.children_mut()
         .for_each(|e| shift_local_var_refs(e, shift));
+}
+
+fn try_algebraic_expression_to_expression<T: FieldElement>(
+    e: &AlgebraicExpression<T>,
+) -> Result<Expression, EvalError> {
+    Ok(match e {
+        AlgebraicExpression::Reference(AlgebraicReference {
+            name,
+            poly_id: _,
+            next: false,
+        }) => Expression::Reference(
+            SourceRef::unknown(),
+            Reference::Poly(PolynomialReference {
+                name: name.clone(),
+                type_args: None,
+            }),
+        ),
+
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+            BinaryOperation {
+                left: Box::new(
+                    try_algebraic_expression_to_expression(left)?
+                ),
+                op: (*op).into(),
+                right: Box::new(
+                    try_algebraic_expression_to_expression(right)?
+                ),
+            }.into()
+        }
+
+        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
+            UnaryOperation {
+                op: (*op).into(),
+                expr: Box::new(
+                    try_algebraic_expression_to_expression(expr)?
+                ),
+            }.into()
+        }
+
+        AlgebraicExpression::Challenge(Challenge { id, stage }) => {
+            let function = Expression::Reference(
+                SourceRef::unknown(),
+                Reference::Poly(PolynomialReference {
+                    name: "std::prelude::challenge".to_string(),
+                    type_args: None,
+                }),
+            )
+            .into();
+            let arguments = [*stage as u64, *id]
+                .into_iter()
+                .map(|x| BigUint::from(x).into())
+                .collect();
+            Expression::FunctionCall(
+                SourceRef::unknown(),
+                FunctionCall {
+                    function,
+                    arguments,
+                },
+            )
+        }
+
+        AlgebraicExpression::Number(n) => Number {
+            value: n.to_arbitrary_integer(),
+            type_: Some(Type::Expr),
+        }
+        .into(),
+        _ => {
+            return Err(EvalError::TypeError(format!(
+                "Converting AlgebraicExpression::PublicReferences to expressions not supported yet {e}."
+            )))
+        }
+    })
 }
 
 /// Tries to convert an evaluator value to an expression with the same value.
