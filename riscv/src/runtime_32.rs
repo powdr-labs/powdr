@@ -13,6 +13,7 @@ use crate::runtime::{
 
 /// RISCV powdr assembly runtime.
 /// Determines submachines, instructions and syscalls available to the main machine.
+#[derive(Clone)]
 pub struct Runtime32 {
     submachines: BTreeMap<String, SubMachine>,
     syscalls: BTreeMap<Syscall, SyscallImpl>,

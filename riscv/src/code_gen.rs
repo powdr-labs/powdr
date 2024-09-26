@@ -3,7 +3,7 @@ use std::fmt;
 use powdr_asm_utils::data_storage::SingleDataValue;
 use powdr_number::KnownField;
 
-use crate::runtime::RuntimeEnum;
+use crate::CompilerOptions;
 
 use crate::code_gen_16;
 use crate::code_gen_32;
@@ -128,18 +128,19 @@ pub trait RiscVProgram {
 /// Will call each of the methods in the `RiscVProgram` just once.
 pub fn translate_program(
     program: impl RiscVProgram,
-    field: KnownField,
-    runtime: &RuntimeEnum,
+    options: CompilerOptions,
     with_bootloader: bool,
 ) -> String {
-    match field {
+    match options.field {
         KnownField::BabyBearField | KnownField::Mersenne31Field => {
-            // Try to downcast to Runtime16
-            code_gen_16::translate_program(program, runtime.as_runtime16(), with_bootloader)
+            code_gen_16::translate_program(program, options.runtime.as_runtime16(), with_bootloader)
         }
-        KnownField::GoldilocksField | KnownField::Bn254Field => {
-            code_gen_32::translate_program(program, field, runtime.as_runtime32(), with_bootloader)
-        }
+        KnownField::GoldilocksField | KnownField::Bn254Field => code_gen_32::translate_program(
+            program,
+            options.field,
+            options.runtime.as_runtime32(),
+            with_bootloader,
+        ),
     }
 }
 

@@ -29,21 +29,52 @@ pub mod runtime_32;
 static TARGET_STD: &str = "riscv32im-risc0-zkvm-elf";
 static TARGET_NO_STD: &str = "riscv32imac-unknown-none-elf";
 
+#[derive(Clone)]
+pub struct CompilerOptions {
+    pub field: KnownField,
+    pub runtime: RuntimeEnum,
+}
+
+impl CompilerOptions {
+    pub fn new(field: KnownField, runtime: RuntimeEnum) -> Self {
+        Self { field, runtime }
+    }
+
+    pub fn new_16() -> Self {
+        Self {
+            field: KnownField::BabyBearField,
+            runtime: RuntimeEnum::base_16(),
+        }
+    }
+
+    pub fn new_32() -> Self {
+        Self {
+            field: KnownField::GoldilocksField,
+            runtime: RuntimeEnum::base_32(),
+        }
+    }
+
+    pub fn with_poseidon_for_continuations(self) -> Self {
+        Self {
+            field: self.field,
+            runtime: self.runtime.with_poseidon_for_continuations(),
+        }
+    }
+}
+
 /// Compiles a rust file to Powdr asm.
 #[allow(clippy::print_stderr)]
-#[allow(clippy::too_many_arguments)]
 pub fn compile_rust(
     file_name: &str,
-    field: KnownField,
+    options: CompilerOptions,
     output_dir: &Path,
     force_overwrite: bool,
-    runtime: &RuntimeEnum,
     via_elf: bool,
     with_bootloader: bool,
     features: Option<Vec<String>>,
 ) -> Option<(PathBuf, String)> {
     if with_bootloader {
-        match field {
+        match options.field {
             KnownField::BabyBearField => {
                 // TODO uncomment this when the bootloader is ready
                 /*
@@ -64,7 +95,7 @@ pub fn compile_rust(
             }
             KnownField::GoldilocksField | KnownField::Bn254Field => {
                 assert!(
-                    runtime.has_submachine("poseidon_gl"),
+                    options.runtime.has_submachine("poseidon_gl"),
                     "PoseidonGL coprocessor is required for bootloader"
                 );
             }
@@ -85,10 +116,9 @@ pub fn compile_rust(
         compile_riscv_elf(
             file_name,
             &elf_path,
-            field,
+            options,
             output_dir,
             force_overwrite,
-            runtime,
             with_bootloader,
         )
     } else {
@@ -120,25 +150,22 @@ pub fn compile_rust(
         compile_riscv_asm_bundle(
             file_name,
             riscv_asm,
-            field,
+            options,
             output_dir,
             force_overwrite,
-            runtime,
             with_bootloader,
         )
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn compile_program<P>(
     original_file_name: &str,
     input_program: P,
-    field: KnownField,
+    options: CompilerOptions,
     output_dir: &Path,
     force_overwrite: bool,
-    runtime: &RuntimeEnum,
     with_bootloader: bool,
-    translator: impl FnOnce(P, KnownField, &RuntimeEnum, bool) -> String,
+    translator: impl FnOnce(P, CompilerOptions, bool) -> String,
 ) -> Option<(PathBuf, String)> {
     let powdr_asm_file_name = output_dir.join(format!(
         "{}.asm",
@@ -156,7 +183,7 @@ fn compile_program<P>(
         return None;
     }
 
-    let powdr_asm = translator(input_program, field, runtime, with_bootloader);
+    let powdr_asm = translator(input_program, options, with_bootloader);
 
     fs::write(powdr_asm_file_name.clone(), &powdr_asm).unwrap();
     log::info!("Wrote {}", powdr_asm_file_name.to_str().unwrap());
@@ -167,19 +194,17 @@ fn compile_program<P>(
 pub fn compile_riscv_asm_bundle(
     original_file_name: &str,
     riscv_asm_files: BTreeMap<String, String>,
-    field: KnownField,
+    options: CompilerOptions,
     output_dir: &Path,
     force_overwrite: bool,
-    runtime: &RuntimeEnum,
     with_bootloader: bool,
 ) -> Option<(PathBuf, String)> {
     compile_program::<BTreeMap<String, String>>(
         original_file_name,
         riscv_asm_files,
-        field,
+        options,
         output_dir,
         force_overwrite,
-        runtime,
         with_bootloader,
         asm::compile,
     )
@@ -189,19 +214,17 @@ pub fn compile_riscv_asm_bundle(
 pub fn compile_riscv_elf(
     original_file_name: &str,
     input_file: &Path,
-    field: KnownField,
+    options: CompilerOptions,
     output_dir: &Path,
     force_overwrite: bool,
-    runtime: &RuntimeEnum,
     with_bootloader: bool,
 ) -> Option<(PathBuf, String)> {
     compile_program::<&Path>(
         original_file_name,
         input_file,
-        field,
+        options,
         output_dir,
         force_overwrite,
-        runtime,
         with_bootloader,
         elf::translate,
     )

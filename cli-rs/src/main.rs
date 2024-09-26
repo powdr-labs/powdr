@@ -9,7 +9,7 @@ use log::LevelFilter;
 
 use powdr_number::{BabyBearField, BigUint, Bn254Field, FieldElement, GoldilocksField, KnownField};
 use powdr_pipeline::Pipeline;
-use powdr_riscv::{Runtime, RuntimeEnum};
+use powdr_riscv::{CompilerOptions, Runtime, RuntimeEnum};
 use powdr_riscv_executor::ProfilerOptions;
 
 use std::ffi::OsStr;
@@ -362,12 +362,12 @@ fn compile_rust(
         runtime = runtime.with_poseidon_for_continuations();
     }
 
+    let options = CompilerOptions::new(field, runtime);
     powdr_riscv::compile_rust(
         file_name,
-        field,
+        options,
         output_dir,
         true,
-        &runtime,
         via_elf,
         continuations,
         None,
@@ -388,6 +388,7 @@ fn compile_riscv_asm(
 ) -> Result<(), Vec<String>> {
     let runtime = coprocessors_to_runtime(coprocessors, field.clone());
 
+    let options = CompilerOptions::new(field, runtime);
     powdr_riscv::compile_riscv_asm_bundle(
         original_file_name,
         file_names
@@ -396,10 +397,9 @@ fn compile_riscv_asm(
                 (name, contents)
             })
             .collect(),
-        field,
+        options,
         output_dir,
         true,
-        &runtime,
         continuations,
     )
     .ok_or_else(|| vec!["could not compile RISC-V assembly".to_string()])?;
@@ -416,13 +416,13 @@ fn compile_riscv_elf(
 ) -> Result<(), Vec<String>> {
     let runtime = coprocessors_to_runtime(coprocessors, field.clone());
 
+    let options = CompilerOptions::new(field, runtime);
     powdr_riscv::compile_riscv_elf(
         input_file,
         Path::new(input_file),
-        field,
+        options,
         output_dir,
         true,
-        &runtime,
         continuations,
     )
     .ok_or_else(|| vec!["could not translate RISC-V executable".to_string()])?;

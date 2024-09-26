@@ -26,6 +26,7 @@ pub fn parse_function_statement(input: &str) -> FunctionStatement {
         .expect("invalid function statement")
 }
 
+#[derive(Clone)]
 pub struct SubMachine {
     /// Full path to machine (e.g, `path::to::Machine`)
     pub path: SymbolPath,
@@ -67,11 +68,13 @@ impl SubMachine {
 /// Sequence of asm function statements.
 /// Any of the registers used as input/output to the syscall should be usable without issue.
 /// Other registers should be saved/restored from memory, as LLVM doesn't know about their usage here.
+#[derive(Clone)]
 pub struct SyscallImpl(pub Vec<FunctionStatement>);
 
 use crate::runtime_16::Runtime16;
 use crate::runtime_32::Runtime32;
 
+#[derive(Clone)]
 pub enum RuntimeEnum {
     Runtime16(Runtime16),
     Runtime32(Runtime32),
