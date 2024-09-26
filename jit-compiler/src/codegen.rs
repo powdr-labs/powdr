@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use itertools::Itertools;
+use itertools::{multiunzip, Itertools};
 use powdr_ast::{
     analyzed::{Analyzed, Expression, FunctionValueDefinition, PolynomialReference, Reference},
     parsed::{
@@ -281,19 +281,21 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 )
             }
             Expression::MatchExpression(_, MatchExpression { scrutinee, arms }) => {
+                // TODO try to find a solution where we do not introduce a variable
+                // or at least make it unique.
                 format!(
-                    "match {} {{\n{}\n}}",
+                    "{{\nlet scrutinee__ = {};\n{}\n}}\n",
                     self.format_expr(scrutinee)?,
                     arms.iter()
                         .map(|MatchArm { pattern, value }| {
+                            let (vars, code) = check_pattern(pattern)?;
                             Ok(format!(
-                                "{} => {},",
-                                format_pattern(pattern),
+                                "if let Some({vars}) = ({code})(scrutinee__.clone()) {{\n{}\n}}",
                                 self.format_expr(value)?,
                             ))
                         })
                         .collect::<Result<Vec<_>, String>>()?
-                        .join("\n")
+                        .join(" else ")
                 )
             }
             _ => return Err(format!("Implement {e}")),
@@ -307,29 +309,55 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
     }
 }
 
-fn format_pattern(pattern: &Pattern) -> String {
-    match pattern {
-        Pattern::CatchAll(_) => "_".to_string(),
-        Pattern::Ellipsis(_) => "..".to_string(),
+/// Returns string of tuples with var names (capturing) and code.
+/// TODO
+/// the ellipsis represents code that tries to match the given pattern.
+/// This function is used when generating code for match expressions.
+fn check_pattern(pattern: &Pattern) -> Result<(String, String), String> {
+    Ok(match pattern {
+        Pattern::CatchAll(_) => ("()".to_string(), "|_| Some(())".to_string()),
         Pattern::Number(_, n) => {
-            // TODO this should probably fail if the number is too large.
-            n.to_string()
+            // TODO format large n properly.
+            (
+                "_".to_string(),
+                format!("|s| (s == ibig::IBig::from({n})).then_some(())"),
+            )
         }
-        Pattern::String(_, s) => quote(s),
-        Pattern::Tuple(_, items) => {
-            format!("({})", items.iter().map(format_pattern).join(", "))
-        }
-        Pattern::Array(_, items) => {
-            format!("[{}]", items.iter().map(format_pattern).join(", "))
-        }
-        Pattern::Variable(_, var) => var.clone(),
-        Pattern::Enum(_, name, None) => escape_symbol(&name.to_string()),
-        Pattern::Enum(_, name, Some(fields)) => format!(
-            "{}({})",
-            escape_symbol(&name.to_string()),
-            fields.iter().map(format_pattern).join(", ")
+        Pattern::String(_, s) => (
+            "_".to_string(),
+            format!("|s| (&s == {}).then_some(())", quote(s)),
         ),
-    }
+        Pattern::Tuple(_, items) => {
+            let mut vars = vec![];
+            let inner_code = items
+                .iter()
+                .enumerate()
+                .map(|(i, item)| {
+                    let (v, code) = check_pattern(item)?;
+                    vars.push(v.clone());
+                    Ok(format!("let r_{i} = ({code})(s.clone())?;"))
+                })
+                .collect::<Result<Vec<_>, String>>()?
+                .join("\n");
+            let code = format!(
+                "|s| {{\n{inner_code}\nSome(({}))\n}}",
+                items
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| format!("r_{i}"))
+                    .format(", ")
+            );
+            (format!("({})", vars.join(", ")), code)
+        }
+        Pattern::Array(..) => {
+            return Err(format!("Arrays as patterns not yet implemented: {pattern}"));
+        }
+        Pattern::Variable(_, var) => (format!("{var}"), "|s| Some(s)".to_string()),
+        Pattern::Enum(..) => {
+            return Err(format!("Enums as patterns not yet implemented: {pattern}"));
+        }
+        Pattern::Ellipsis(_) => unreachable!(),
+    })
 }
 
 pub fn escape_symbol(s: &str) -> String {
@@ -402,6 +430,43 @@ mod test {
             \n\
             fn d(k: ibig::IBig) -> ibig::IBig { (c)(((k).clone() * (ibig::IBig::from(20_u64)).clone()).clone()) }\n\
             "
+        );
+    }
+
+    #[test]
+    fn match_exprs() {
+        let result = compile(
+            r#"let c: int -> int = |i| match (i, "abc") { (_, "") => 1, (8, v) => 2, (x, _) => x, _ => 5 };"#,
+            &["c"],
+        );
+        assert_eq!(
+            result,
+            r#"fn c(i: ibig::IBig) -> ibig::IBig { {
+let scrutinee__ = (i, "abc");
+if let Some(((), _)) = (|s| {
+let r_0 = (|_| Some(()))(s.clone())?;
+let r_1 = (|s| (&s == "").then_some(()))(s.clone())?;
+Some((r_0, r_1))
+})(scrutinee__.clone()) {
+ibig::IBig::from(1_u64)
+} else if let Some((_, v)) = (|s| {
+let r_0 = (|s| s == ibig::IBig::from(8).then_some(()))(s.clone())?;
+let r_1 = (|s| Some(s))(s.clone())?;
+Some((r_0, r_1))
+})(scrutinee__.clone()) {
+ibig::IBig::from(2_u64)
+} else if let Some((x, ())) = (|s| {
+let r_0 = (|s| Some(s))(s.clone())?;
+let r_1 = (|_| Some(()))(s.clone())?;
+Some((r_0, r_1))
+})(scrutinee__.clone()) {
+x
+} else if let Some(()) = (|_| Some(()))(scrutinee__.clone()) {
+ibig::IBig::from(5_u64)
+}
+}
+ }
+"#
         );
     }
 }

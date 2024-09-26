@@ -6,7 +6,13 @@ use powdr_pil_analyzer::analyze_string;
 
 fn compile(input: &str, symbol: &str) -> LoadedFunction {
     let analyzed = analyze_string::<GoldilocksField>(input).unwrap();
-    powdr_jit_compiler::compile(&analyzed, &[symbol]).unwrap()[symbol].clone()
+    powdr_jit_compiler::compile(&analyzed, &[symbol])
+        .map_err(|e| {
+            eprintln!("{e}");
+            e
+        })
+        .unwrap()[symbol]
+        .clone()
 }
 
 #[test]
@@ -42,12 +48,12 @@ fn sqrt() {
 #[test]
 fn match_expr() {
     let f = compile(
-        "let f: int -> int = |x| match (x, [1, x, 3]) {
-            (0, [.., 3]) => 1,
-            (1, [1, ..]) => 2,
-            (2, [1, 2, 3]) => 3,
-            (_, [1, _, 3]) => 0,
-        };",
+        r#"let f: int -> int = |x| match (x, ("abc", x + 3)) {
+            (0, _) => 1,
+            (1, ("ab", _)) => 2,
+            (1, ("abc", t)) => t,
+            (a, (_, b)) => a + b,
+        };"#,
         "f",
     );
 
