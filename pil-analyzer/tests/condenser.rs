@@ -871,9 +871,7 @@ fn capture_binary_operations() {
         })();
 
     "#;
-    let expected = r#"namespace std::prelude;
-    let challenge = 8;
-namespace std::prover;
+    let expected = r#"namespace std::prover;
     let provide_value = 9;
     let eval = -1;
     col witness x;
