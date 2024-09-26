@@ -362,7 +362,7 @@ fn check_pattern(value_name: &str, pattern: &Pattern) -> Result<(String, String)
                     }
                     Some(if ellipsis_seen {
                         let i_rev = items.len() - i;
-                        (format!("({value_name}[{value_name}.len() - {i_rev}]"), item)
+                        (format!("{value_name}[{value_name}.len() - {i_rev}]"), item)
                     } else {
                         (format!("{value_name}[{i}]"), item)
                     })
