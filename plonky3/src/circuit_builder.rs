@@ -74,22 +74,21 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
             .map(|(index, (_, id))| (id, index))
             .collect();
 
-        let (_, witness_columns) = analyzed
+        let witness_columns = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
             .iter()
-            .fold(
-                (vec![0, analyzed.stage_count()], HashMap::default()),
-                |(mut next_index_in_stage, mut map), (s, _)| {
-                    // the stage for this column, -1 for preprocessed
-                    let stage = s.stage.unwrap_or_default() as usize;
-                    let index_in_stage = next_index_in_stage.get_mut(stage).unwrap();
-                    for (_, id) in s.array_elements() {
-                        map.insert(id, (stage, *index_in_stage));
-                        *index_in_stage += 1;
-                    }
-                    (next_index_in_stage, map)
-                },
-            );
+            .into_group_map_by(|(s, _)| s.stage.unwrap_or_default())
+            .into_iter()
+            .flat_map(|(stage, symbols)| {
+                symbols
+                    .into_iter()
+                    .flat_map(|(s, _)| s.array_elements())
+                    .enumerate()
+                    .map(move |(index_in_stage, (_, poly_id))| {
+                        (poly_id, (stage as usize, index_in_stage))
+                    })
+            })
+            .collect();
 
         let mut challenges = BTreeSet::default();
         for identity in &identities {
