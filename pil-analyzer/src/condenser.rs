@@ -948,14 +948,27 @@ fn try_algebraic_expression_to_expression<T: FieldElement>(
         AlgebraicExpression::Reference(AlgebraicReference {
             name,
             poly_id: _,
-            next: false,
-        }) => Expression::Reference(
-            SourceRef::unknown(),
-            Reference::Poly(PolynomialReference {
-                name: name.clone(),
-                type_args: None,
-            }),
-        ),
+            next,
+        }) => {
+            let e = Expression::Reference(
+                SourceRef::unknown(),
+                Reference::Poly(PolynomialReference {
+                    name: name.clone(),
+                    type_args: None,
+                }),
+            );
+            if *next {
+                Expression::UnaryOperation(
+                    SourceRef::unknown(),
+                    UnaryOperation {
+                        op: parsed::UnaryOperator::Next,
+                        expr: Box::new(e),
+                    },
+                )
+            } else {
+                e
+            }
+        }
 
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
             BinaryOperation {
