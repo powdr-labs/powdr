@@ -10,37 +10,96 @@ use std::{
 };
 
 use mktemp::Temp;
-use powdr_number::FieldElement;
+use powdr_number::KnownField;
 use serde_json::Value as JsonValue;
 use std::fs;
 
-pub use crate::runtime::Runtime;
+pub use crate::runtime::{Runtime, RuntimeEnum};
 
 pub mod asm;
 mod code_gen;
+mod code_gen_16;
+mod code_gen_32;
 pub mod continuations;
 pub mod elf;
 pub mod runtime;
+pub mod runtime_16;
+pub mod runtime_32;
 
 static TARGET_STD: &str = "riscv32im-risc0-zkvm-elf";
 static TARGET_NO_STD: &str = "riscv32imac-unknown-none-elf";
 
+#[derive(Clone)]
+pub struct CompilerOptions {
+    pub field: KnownField,
+    pub runtime: RuntimeEnum,
+}
+
+impl CompilerOptions {
+    pub fn new(field: KnownField, runtime: RuntimeEnum) -> Self {
+        Self { field, runtime }
+    }
+
+    pub fn new_16() -> Self {
+        Self {
+            field: KnownField::BabyBearField,
+            runtime: RuntimeEnum::base_16(),
+        }
+    }
+
+    pub fn new_32() -> Self {
+        Self {
+            field: KnownField::GoldilocksField,
+            runtime: RuntimeEnum::base_32(),
+        }
+    }
+
+    pub fn with_poseidon_for_continuations(self) -> Self {
+        Self {
+            field: self.field,
+            runtime: self.runtime.with_poseidon_for_continuations(),
+        }
+    }
+}
+
 /// Compiles a rust file to Powdr asm.
 #[allow(clippy::print_stderr)]
-pub fn compile_rust<T: FieldElement>(
+pub fn compile_rust(
     file_name: &str,
+    options: CompilerOptions,
     output_dir: &Path,
     force_overwrite: bool,
-    runtime: &Runtime,
     via_elf: bool,
     with_bootloader: bool,
     features: Option<Vec<String>>,
 ) -> Option<(PathBuf, String)> {
     if with_bootloader {
-        assert!(
-            runtime.has_submachine("poseidon_gl"),
-            "PoseidonGL coprocessor is required for bootloader"
-        );
+        match options.field {
+            KnownField::BabyBearField => {
+                // TODO uncomment this when the bootloader is ready
+                /*
+                                assert!(
+                                    runtime.has_submachine("poseidon_bb"),
+                                    "PoseidonBB coprocessor is required for bootloader"
+                                );
+                */
+            }
+            KnownField::Mersenne31Field => {
+                // TODO uncomment this when the bootloader is ready
+                /*
+                                assert!(
+                                    runtime.has_submachine("poseidon_m31"),
+                                    "PoseidonM31 coprocessor is required for bootloader"
+                                );
+                */
+            }
+            KnownField::GoldilocksField | KnownField::Bn254Field => {
+                assert!(
+                    options.runtime.has_submachine("poseidon_gl"),
+                    "PoseidonGL coprocessor is required for bootloader"
+                );
+            }
+        }
     }
 
     let file_path = if file_name.ends_with("Cargo.toml") {
@@ -54,12 +113,12 @@ pub fn compile_rust<T: FieldElement>(
     if via_elf {
         let elf_path = compile_rust_crate_to_riscv_bin(&file_path, output_dir, features);
 
-        compile_riscv_elf::<T>(
+        compile_riscv_elf(
             file_name,
             &elf_path,
+            options,
             output_dir,
             force_overwrite,
-            runtime,
             with_bootloader,
         )
     } else {
@@ -88,12 +147,12 @@ pub fn compile_rust<T: FieldElement>(
             log::info!("Wrote {}", riscv_asm_file_name.to_str().unwrap());
         }
 
-        compile_riscv_asm_bundle::<T>(
+        compile_riscv_asm_bundle(
             file_name,
             riscv_asm,
+            options,
             output_dir,
             force_overwrite,
-            runtime,
             with_bootloader,
         )
     }
@@ -102,11 +161,11 @@ pub fn compile_rust<T: FieldElement>(
 fn compile_program<P>(
     original_file_name: &str,
     input_program: P,
+    options: CompilerOptions,
     output_dir: &Path,
     force_overwrite: bool,
-    runtime: &Runtime,
     with_bootloader: bool,
-    translator: impl FnOnce(P, &Runtime, bool) -> String,
+    translator: impl FnOnce(P, CompilerOptions, bool) -> String,
 ) -> Option<(PathBuf, String)> {
     let powdr_asm_file_name = output_dir.join(format!(
         "{}.asm",
@@ -124,7 +183,7 @@ fn compile_program<P>(
         return None;
     }
 
-    let powdr_asm = translator(input_program, runtime, with_bootloader);
+    let powdr_asm = translator(input_program, options, with_bootloader);
 
     fs::write(powdr_asm_file_name.clone(), &powdr_asm).unwrap();
     log::info!("Wrote {}", powdr_asm_file_name.to_str().unwrap());
@@ -132,42 +191,42 @@ fn compile_program<P>(
     Some((powdr_asm_file_name, powdr_asm))
 }
 
-pub fn compile_riscv_asm_bundle<T: FieldElement>(
+pub fn compile_riscv_asm_bundle(
     original_file_name: &str,
     riscv_asm_files: BTreeMap<String, String>,
+    options: CompilerOptions,
     output_dir: &Path,
     force_overwrite: bool,
-    runtime: &Runtime,
     with_bootloader: bool,
 ) -> Option<(PathBuf, String)> {
     compile_program::<BTreeMap<String, String>>(
         original_file_name,
         riscv_asm_files,
+        options,
         output_dir,
         force_overwrite,
-        runtime,
         with_bootloader,
-        asm::compile::<T>,
+        asm::compile,
     )
 }
 
 /// Translates a RISC-V ELF file to powdr asm.
-pub fn compile_riscv_elf<T: FieldElement>(
+pub fn compile_riscv_elf(
     original_file_name: &str,
     input_file: &Path,
+    options: CompilerOptions,
     output_dir: &Path,
     force_overwrite: bool,
-    runtime: &Runtime,
     with_bootloader: bool,
 ) -> Option<(PathBuf, String)> {
     compile_program::<&Path>(
         original_file_name,
         input_file,
+        options,
         output_dir,
         force_overwrite,
-        runtime,
         with_bootloader,
-        elf::translate::<T>,
+        elf::translate,
     )
 }
 

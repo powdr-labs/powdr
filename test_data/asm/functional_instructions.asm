@@ -26,7 +26,7 @@ machine FunctionalInstructions with degree: 32 {
     instr assert_zero X { XIsZero = 1 }
 
     function main {
-        B <=X= ${ std::prelude::Query::Input(0) };
+        B <=X= ${ std::prelude::Query::Input(0, 1) };
         A <=X= wrap(B + 0xffffffec);
         assert_zero A;
         return;

@@ -113,6 +113,8 @@ pub enum Error {
     NoVariableDegreeAvailable,
     #[error("internal backend error")]
     BackendError(String),
+    #[error("the backend does not support public values which rely on later stage witnesses")]
+    NoLaterStagePublicAvailable,
 }
 
 impl From<String> for Error {

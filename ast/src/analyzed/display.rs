@@ -143,7 +143,7 @@ impl<T: Display> Display for Analyzed<T> {
                         is_local.into(),
                     )?;
                 }
-                StatementIdentifier::Identity(i) => {
+                StatementIdentifier::ProofItem(i) => {
                     writeln_indented(f, &self.identities[*i])?;
                 }
                 StatementIdentifier::ProverFunction(i) => {
@@ -162,12 +162,8 @@ fn format_fixed_column(
     definition: &Option<FunctionValueDefinition>,
 ) -> String {
     assert_eq!(symbol.kind, SymbolKind::Poly(PolynomialType::Constant));
-    let stage = symbol
-        .stage
-        .map(|s| format!("stage({s}) "))
-        .unwrap_or_default();
+    assert!(symbol.stage.is_none());
     if let Some(TypedExpression { type_scheme, e }) = try_to_simple_expression(definition) {
-        assert!(symbol.stage.is_none());
         if symbol.length.is_some() {
             assert!(matches!(
                 type_scheme,
@@ -187,7 +183,7 @@ fn format_fixed_column(
             .as_ref()
             .map(ToString::to_string)
             .unwrap_or_default();
-        format!("col fixed {stage}{name}{value};",)
+        format!("col fixed {name}{value};",)
     }
 }
 
@@ -199,7 +195,7 @@ fn format_witness_column(
     assert_eq!(symbol.kind, SymbolKind::Poly(PolynomialType::Committed));
     let stage = symbol
         .stage
-        .map(|s| format!("stage({s}) "))
+        .and_then(|s| (s > 0).then(|| format!("stage({s}) ")))
         .unwrap_or_default();
     let length = symbol
         .length
@@ -314,24 +310,6 @@ impl<Expr: Display> Display for SelectedExpressions<Expr> {
                 .unwrap_or_default(),
             self.expressions.iter().format(", ")
         )
-    }
-}
-
-impl Display for Identity<parsed::SelectedExpressions<Expression>> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self.kind {
-            IdentityKind::Polynomial => {
-                let (left, right) = self.as_polynomial_identity();
-                let right = right
-                    .as_ref()
-                    .map(|r| r.to_string())
-                    .unwrap_or_else(|| "0".into());
-                write!(f, "{left} = {right};")
-            }
-            IdentityKind::Plookup => write!(f, "{} in {};", self.left, self.right),
-            IdentityKind::Permutation => write!(f, "{} is {};", self.left, self.right),
-            IdentityKind::Connect => write!(f, "{} connect {};", self.left, self.right),
-        }
     }
 }
 

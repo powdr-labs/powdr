@@ -4,6 +4,7 @@ use std::iter::{self, once};
 
 use super::{EvalResult, FixedData, MachineParts};
 
+use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::processor::{OuterQuery, Processor};
@@ -17,19 +18,18 @@ use crate::witgen::{MutableState, QueryCallback};
 use crate::Identity;
 use itertools::Itertools;
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, DegreeRange, IdentityKind, PolyID,
-    PolynomialType,
+    AlgebraicExpression as Expression, DegreeRange, IdentityKind, PolyID, PolynomialType,
 };
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_number::{DegreeType, FieldElement};
 
 enum ProcessResult<'a, T: FieldElement> {
-    Success(FinalizableData<T>, EvalValue<&'a AlgebraicReference, T>),
-    Incomplete(EvalValue<&'a AlgebraicReference, T>),
+    Success(FinalizableData<T>, EvalValue<AlgebraicVariable<'a>, T>),
+    Incomplete(EvalValue<AlgebraicVariable<'a>, T>),
 }
 
 impl<'a, T: FieldElement> ProcessResult<'a, T> {
-    fn new(data: FinalizableData<T>, updates: EvalValue<&'a AlgebraicReference, T>) -> Self {
+    fn new(data: FinalizableData<T>, updates: EvalValue<AlgebraicVariable<'a>, T>) -> Self {
         match updates.is_complete() {
             true => ProcessResult::Success(data, updates),
             false => ProcessResult::Incomplete(updates),

@@ -1,9 +1,9 @@
-use powdr_ast::analyzed::AlgebraicReference;
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::Identity;
 
 use super::{
+    affine_expression::AlgebraicVariable,
     data_structures::finalizable_data::FinalizableData,
     machines::MachineParts,
     processor::{OuterQuery, Processor},
@@ -63,7 +63,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
     pub fn solve(
         &mut self,
         sequence_iterator: &mut ProcessingSequenceIterator,
-    ) -> Result<EvalValue<&'a AlgebraicReference, T>, EvalError<T>> {
+    ) -> Result<EvalValue<AlgebraicVariable<'a>, T>, EvalError<T>> {
         let mut outer_assignments = vec![];
 
         let mut is_identity_complete =

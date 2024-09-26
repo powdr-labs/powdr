@@ -10,18 +10,18 @@ use itertools::Itertools;
 use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, ModuleStatement, SymbolPath,
 };
-use powdr_ast::parsed::types::{ArrayType, Type};
+use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_ast::parsed::{
-    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions,
-    SymbolCategory, TraitImplementation,
+    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SymbolCategory,
+    TraitImplementation,
 };
 use powdr_number::{FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
-    type_from_definition, Analyzed, DegreeRange, Expression, FunctionValueDefinition, Identity,
-    IdentityKind, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
-    StatementIdentifier, Symbol, SymbolKind, TypedExpression,
+    type_from_definition, Analyzed, DegreeRange, Expression, FunctionValueDefinition,
+    PolynomialReference, PolynomialType, PublicDeclaration, Reference, StatementIdentifier, Symbol,
+    SymbolKind, TypedExpression,
 };
 use powdr_parser::{parse, parse_module, parse_type};
 use powdr_parser_util::Error;
@@ -71,7 +71,8 @@ struct PILAnalyzer {
     /// Map of definitions, gradually being built up here.
     definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     public_declarations: HashMap<String, PublicDeclaration>,
-    identities: Vec<Identity<SelectedExpressions<Expression>>>,
+    /// The list of proof items, i.e. statements that evaluate to constraints or prover functions.
+    proof_items: Vec<Expression>,
     /// The order in which definitions and identities
     /// appear in the source.
     source_order: Vec<StatementIdentifier>,
@@ -186,12 +187,18 @@ impl PILAnalyzer {
             let missing_symbols = module
                 .statements
                 .into_iter()
-                .filter_map(|s| match s {
-                    ModuleStatement::SymbolDefinition(s) => missing_symbols
-                        .contains(&s.name.as_str())
-                        .then_some(format!("{s}")),
-                    ModuleStatement::TraitImplementation(_) => None,
+                .filter_map(|s| {
+                    match &s {
+                        ModuleStatement::SymbolDefinition(s) => {
+                            missing_symbols.contains(&s.name.as_str())
+                        }
+                        ModuleStatement::PilStatement(s) => s
+                            .symbol_definition_names()
+                            .any(|(name, _)| missing_symbols.contains(&name.as_str())),
+                    }
+                    .then_some(vec![format!("{s}")])
                 })
+                .flatten()
                 .join("\n");
             parse(None, &format!("namespace std::prelude;\n{missing_symbols}")).unwrap()
         })
@@ -238,14 +245,10 @@ impl PILAnalyzer {
             }
         }
 
-        // for all identities, check that they call pure or constr functions
-        for id in &self.identities {
-            id.children()
-                .try_for_each(|e| {
-                    side_effect_checker::check(&self.definitions, FunctionKind::Constr, e)
-                })
-                .unwrap_or_else(|err| errors.push(err))
-        }
+        // for all proof items, check that they call pure or constr functions
+        errors.extend(self.proof_items.iter().filter_map(|e| {
+            side_effect_checker::check(&self.definitions, FunctionKind::Constr, e).err()
+        }));
 
         if errors.is_empty() {
             Ok(())
@@ -335,29 +338,9 @@ impl PILAnalyzer {
                 Some((name.clone(), (type_scheme, expr)))
             })
             .collect();
-        for id in &mut self.identities {
-            if id.kind == IdentityKind::Polynomial {
-                // At statement level, we allow Constr, Constr[] or ().
-                expressions.push((
-                    id.expression_for_poly_id_mut(),
-                    constr_function_statement_type(),
-                ));
-            } else {
-                for part in [&mut id.left, &mut id.right] {
-                    if let Some(selector) = &mut part.selector {
-                        expressions.push((selector, Type::Expr.into()))
-                    }
-
-                    expressions.push((
-                        part.expressions.as_mut(),
-                        Type::Array(ArrayType {
-                            base: Box::new(Type::Expr),
-                            length: None,
-                        })
-                        .into(),
-                    ))
-                }
-            }
+        for expr in &mut self.proof_items {
+            // At statement level, we allow Constr, Constr[], (int -> ()) or ().
+            expressions.push((expr, constr_function_statement_type()));
         }
 
         let inferred_types = infer_types(definitions, &mut expressions)?;
@@ -408,7 +391,7 @@ impl PILAnalyzer {
             }
         }
 
-        for identity in &self.identities {
+        for identity in &self.proof_items {
             for expr in identity.all_children() {
                 resolve_references(expr);
             }
@@ -431,7 +414,7 @@ impl PILAnalyzer {
             self.definitions,
             solved_impls,
             self.public_declarations,
-            &self.identities,
+            &self.proof_items,
             self.source_order,
             self.auto_added_symbols,
         ))
@@ -505,10 +488,11 @@ impl PILAnalyzer {
                             self.source_order
                                 .push(StatementIdentifier::PublicDeclaration(name));
                         }
-                        PILItem::Identity(identity) => {
-                            let index = self.identities.len();
-                            self.source_order.push(StatementIdentifier::Identity(index));
-                            self.identities.push(identity)
+                        PILItem::ProofItem(item) => {
+                            let index = self.proof_items.len();
+                            self.source_order
+                                .push(StatementIdentifier::ProofItem(index));
+                            self.proof_items.push(item)
                         }
                         PILItem::TraitImplementation(trait_impl) => self
                             .implementations

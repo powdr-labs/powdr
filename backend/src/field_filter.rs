@@ -5,10 +5,8 @@
 /// the macro will forward the calls to the restricted factory. Otherwise, it will
 /// panic.
 ///
-/// # Example
-/// ```
+/// Example:
 /// generalize_factory!(Factory <- RestrictedFactory, [GoldilocksField, BabyBearField]);
-/// ```
 macro_rules! generalize_factory {
     ($general_factory:ident <- $restricted_factory:ident, [$($supported_type:ty),*]) => {
         pub(crate) struct $general_factory;

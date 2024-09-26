@@ -47,9 +47,12 @@ macro_rules! powdr_field_plonky3 {
                 self.0.as_canonical_u32()
             }
 
-            #[allow(dead_code)]
             pub fn into_inner(self) -> $p3_type {
                 self.0
+            }
+
+            pub fn from_inner(e: $p3_type) -> Self {
+                Self(e)
             }
         }
 

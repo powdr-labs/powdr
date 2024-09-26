@@ -221,9 +221,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     let mut register_values = default_register_values();
 
     let program = pipeline.compute_analyzed_asm().unwrap().clone();
-    let main_machine = program.items[&parse_absolute_path("::Main")]
-        .try_to_machine()
-        .unwrap();
+    let main_machine = program.get_machine(&parse_absolute_path("::Main")).unwrap();
     sanity_check(main_machine);
 
     log::info!("Initializing memory merkle tree...");

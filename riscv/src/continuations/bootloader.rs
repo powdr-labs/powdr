@@ -61,20 +61,29 @@ pub fn bootloader_preamble() -> String {
     let mut preamble = r#"
     // ============== bootloader-specific instructions =======================
     // Write-once memory
-    std::machines::write_once_memory::WriteOnceMemory bootloader_inputs;
+    std::machines::write_once_memory16::WriteOnceMemory bootloader_inputs;
 
-    instr load_bootloader_input X, Y, Z, W
-        link ~> tmp1_col = regs.mload(X, STEP)
-        link => bootloader_inputs.access(tmp1_col * Z + W, tmp3_col)
-        link ~> regs.mstore(Y, STEP + 2, tmp3_col);
+    instr load_bootloader_input XL, YL, ZH, ZL, WH, WL
+        link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
+        link ~> (tmp3_h, tmp3_l, tmp2_h, tmp2_l) = arith_mul.mul(tmp1_h, tmp1_l, ZH, ZL)
+        link ~> (tmp4_h, tmp4_l) = arith_bb.add(tmp2_h, tmp2_l, WH, WL)
+        link => bootloader_inputs.access(tmp4_h * 2**16 + tmp4_l, tmp5_h, tmp5_l)
+        link ~> regs.mstore(YL, STEP + 2, tmp5_h, tmp5_l);
 
-    instr assert_bootloader_input X, Y, Z, W
-        link ~> tmp1_col = regs.mload(X, STEP)
-        link ~> tmp2_col = regs.mload(Y, STEP + 1)
-        link => bootloader_inputs.access(tmp1_col * Z + W, tmp2_col);
+    instr assert_bootloader_input XL, YL, ZH, ZL, WH, WL
+        link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
+        link ~> (tmp5_h, tmp5_l) = regs.mload(XL, STEP)
+        link ~> (tmp3_h, tmp3_l, tmp2_h, tmp2_l) = arith_mul.mul(tmp1_h, tmp1_l, ZH, ZL)
+        link ~> (tmp4_h, tmp4_l) = arith_bb.add(tmp2_h, tmp2_l, WH, WL)
+        link => bootloader_inputs.access(tmp4_h * 2**16 + tmp4_l, tmp5_h, tmp5_l);
 
     // Sets the PC to the bootloader input at the provided index
-    instr jump_to_bootloader_input X link => bootloader_inputs.access(X, pc');
+    instr jump_to_bootloader_input XH, XL
+        link => bootloader_inputs.access(XH * 2**16 + XL, tmp1_h, tmp1_l)
+        link => byte.check(tmp1_h)
+    {
+        pc' = tmp1_h * 2**16 + tmp1_l
+    }
 
     // ============== Shutdown routine constraints =======================
     // Insert a `jump_to_shutdown_routine` witness column, which will let the prover indicate that

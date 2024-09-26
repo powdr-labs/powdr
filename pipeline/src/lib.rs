@@ -77,6 +77,7 @@ impl HostContext {
 // TODO at some point, we could also just pass evaluator::Values around - would be much faster.
 pub fn parse_query(query: &str) -> Result<(&str, Vec<&str>), String> {
     // We are expecting an enum value
+    let query = query.strip_prefix("std::prelude::Query::").unwrap_or(query);
     if let Some(paren) = query.find('(') {
         let name = &query[..paren];
         let data = query[paren + 1..].strip_suffix(')').ok_or_else(|| {
@@ -97,8 +98,8 @@ pub fn serde_data_to_query_callback<T: FieldElement>(
     move |query: &str| -> Result<Option<T>, String> {
         let (id, data) = parse_query(query)?;
         match id {
-            "DataIdentifier" => {
-                let [index, cb_channel] = data[..] else {
+            "Input" => {
+                let [cb_channel, index] = data[..] else {
                     panic!()
                 };
                 let cb_channel = cb_channel
@@ -130,8 +131,8 @@ pub fn dict_data_to_query_callback<T: FieldElement>(
     move |query: &str| -> Result<Option<T>, String> {
         let (id, data) = parse_query(query)?;
         match id {
-            "DataIdentifier" => {
-                let [index, cb_channel] = data[..] else {
+            "Input" => {
+                let [cb_channel, index] = data[..] else {
                     panic!()
                 };
                 let cb_channel = cb_channel
@@ -151,22 +152,6 @@ pub fn dict_data_to_query_callback<T: FieldElement>(
                     0 => (elems.len() as u64).into(),
                     index => elems[index - 1],
                 }))
-            }
-            "Input" => {
-                assert_eq!(data.len(), 1);
-                let index = data[0]
-                    .parse::<usize>()
-                    .map_err(|e| format!("Error parsing index: {e})"))?;
-
-                let Some(elems) = dict.get(&0) else {
-                    return Err("No prover inputs given".to_string());
-                };
-
-                elems
-                    .get(index)
-                    .cloned()
-                    .map(Some)
-                    .ok_or_else(|| format!("Index out of bounds: {index}"))
             }
             _ => Err(format!("Unsupported query: {query}")),
         }

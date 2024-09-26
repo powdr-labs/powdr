@@ -181,7 +181,7 @@ impl EStark {
 impl Backend<GoldilocksField> for EStark {
     fn verify(&self, proof: &[u8], instances: &[Vec<GoldilocksField>]) -> Result<(), Error> {
         let proof: StarkProof<MerkleTreeGL> =
-            serde_json::from_str(&String::from_utf8(proof.to_vec()).unwrap()).unwrap();
+            serde_json::from_str(core::str::from_utf8(proof).unwrap()).unwrap();
         self.verify_stark_gl_with_publics(&proof, instances)
     }
 

@@ -11,13 +11,12 @@ use powdr_asm_utils::{
     utils::{argument_to_number, argument_to_symbol, expression_to_number},
     Architecture,
 };
-use powdr_number::FieldElement;
 
 use crate::{
     code_gen::{
         self, FunctionKind, InstructionArgs, MemEntry, Register, RiscVProgram, SourceFileInfo,
     },
-    Runtime,
+    CompilerOptions,
 };
 
 mod disambiguator;
@@ -159,14 +158,14 @@ impl InstructionArgs for &[Argument] {
 }
 
 /// Compiles riscv assembly to a powdr assembly file. Adds required library routines.
-pub fn compile<F: FieldElement>(
+pub fn compile(
     assemblies: BTreeMap<String, String>,
-    runtime: &Runtime,
+    options: CompilerOptions,
     with_bootloader: bool,
 ) -> String {
     let asm_program = compile_internal(assemblies);
 
-    code_gen::translate_program::<F>(asm_program, runtime, with_bootloader)
+    code_gen::translate_program(asm_program, options, with_bootloader)
 }
 
 fn compile_internal(mut assemblies: BTreeMap<String, String>) -> AsmProgram {

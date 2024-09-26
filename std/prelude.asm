@@ -36,15 +36,13 @@ enum SelectedExprs {
 
 /// The return type of a prover query function.
 enum Query {
-    /// Query a prover input element by index.
-    Input(int),
-    /// Writes a byte (second argument) to a file descriptor (first argument).
-    /// fd 1 is stdout, fd 2 is stderr.
-    Output(int, int),
     /// Generate a hint to fill a witness column with.
     Hint(fe),
-    /// Query a prover input element by index and data id.
-    DataIdentifier(int, int),
+    /// Query a prover input (field element) by channel id and index.
+    Input(int, int),
+    /// Writes a field element (second argument) to an output channel (first argument).
+    /// Channel 1 is stdout, 2 is stderr.
+    Output(int, fe),
     /// This value is not (additionally) constrained by the query.
     None,
 }

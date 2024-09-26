@@ -13,7 +13,7 @@ see [this](https://github.com/powdr-labs/powdr/issues/814).
 Let's use as example test `many chunks` from the `riscv` crate:
 
 ```rust
-{{#include ../../../riscv/tests/riscv_data/many_chunks/src/lib.rs}}
+{{#include ../../../riscv/tests/riscv_data/many_chunks/src/main.rs}}
 ```
 
 First we need to compile the Rust code to powdr-asm:

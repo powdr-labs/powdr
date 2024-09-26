@@ -1,41 +1,29 @@
 //! Infer assignment registers in asm statements
 
 use powdr_ast::{
-    asm_analysis::{AnalysisASMFile, Expression, FunctionStatement, Item, Machine},
+    asm_analysis::{AnalysisASMFile, Expression, FunctionStatement, Machine},
     parsed::asm::AssignmentRegister,
 };
 
-pub fn infer(file: AnalysisASMFile) -> Result<AnalysisASMFile, Vec<String>> {
+pub fn infer(mut file: AnalysisASMFile) -> Result<AnalysisASMFile, Vec<String>> {
     let mut errors = vec![];
 
-    let items = file
-        .items
-        .into_iter()
-        .filter_map(|(name, m)| match m {
-            Item::Machine(m) => match infer_machine(m) {
-                Ok(m) => Some((name, Item::Machine(m))),
-                Err(e) => {
-                    errors.extend(e);
-                    None
-                }
-            },
-            Item::Expression(e) => Some((name, Item::Expression(e))),
-            Item::TypeDeclaration(enum_decl) => Some((name, Item::TypeDeclaration(enum_decl))),
-            Item::TraitImplementation(trait_impl) => {
-                Some((name, Item::TraitImplementation(trait_impl)))
+    file.machines_mut()
+        .for_each(|(_, m)| match infer_machine(m) {
+            Ok(()) => {}
+            Err(e) => {
+                errors.extend(e);
             }
-            Item::TraitDeclaration(trait_decl) => Some((name, Item::TraitDeclaration(trait_decl))),
-        })
-        .collect();
+        });
 
     if !errors.is_empty() {
         Err(errors)
     } else {
-        Ok(AnalysisASMFile { items })
+        Ok(file)
     }
 }
 
-fn infer_machine(mut machine: Machine) -> Result<Machine, Vec<String>> {
+fn infer_machine(machine: &mut Machine) -> Result<(), Vec<String>> {
     let mut errors = vec![];
 
     for f in machine.callable.functions_mut() {
@@ -96,7 +84,7 @@ fn infer_machine(mut machine: Machine) -> Result<Machine, Vec<String>> {
     if !errors.is_empty() {
         Err(errors)
     } else {
-        Ok(machine)
+        Ok(())
     }
 }
 
@@ -127,9 +115,7 @@ mod tests {
 
         let file = infer_str(file).unwrap();
 
-        let machine = &file.items[&parse_absolute_path("::Machine")]
-            .try_to_machine()
-            .unwrap();
+        let machine = &file.get_machine(&parse_absolute_path("::Machine")).unwrap();
         if let FunctionStatement::Assignment(AssignmentStatement { lhs_with_reg, .. }) = machine
             .functions()
             .next()
@@ -168,9 +154,7 @@ mod tests {
 
         let file = infer_str(file).unwrap();
 
-        let machine = &file.items[&parse_absolute_path("::Machine")]
-            .try_to_machine()
-            .unwrap();
+        let machine = &file.get_machine(&parse_absolute_path("::Machine")).unwrap();
         if let FunctionStatement::Assignment(AssignmentStatement { lhs_with_reg, .. }) = &machine
             .functions()
             .next()

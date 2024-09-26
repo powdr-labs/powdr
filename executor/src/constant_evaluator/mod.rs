@@ -686,7 +686,7 @@ mod test {
             let f: -> () = || ();
             let g: col = |i| {
                 // This returns an empty tuple, we check that this does not lead to
-                // a call to add_constraints()
+                // a call to add_proof_items()
                 f();
                 i
             };

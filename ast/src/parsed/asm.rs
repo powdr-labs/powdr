@@ -15,8 +15,8 @@ use serde::{Deserialize, Serialize};
 use crate::parsed::{BinaryOperation, BinaryOperator};
 
 use super::{
-    visitor::Children, EnumDeclaration, EnumVariant, Expression, PilStatement, SourceReference,
-    TraitDeclaration, TraitImplementation, TypedExpression,
+    types::TypeScheme, visitor::Children, EnumDeclaration, EnumVariant, Expression, PilStatement,
+    SourceReference, TraitDeclaration,
 };
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
@@ -29,26 +29,19 @@ pub struct ASMModule {
     pub statements: Vec<ModuleStatement>,
 }
 
-impl ASMModule {
-    pub fn symbol_definitions(&self) -> impl Iterator<Item = &SymbolDefinition> {
-        self.statements.iter().filter_map(|s| match s {
-            ModuleStatement::SymbolDefinition(d) => Some(d),
-            ModuleStatement::TraitImplementation(_) => None,
-        })
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq, From)]
 pub enum ModuleStatement {
     SymbolDefinition(SymbolDefinition),
-    TraitImplementation(TraitImplementation<Expression>),
+    PilStatement(PilStatement),
 }
 
 impl ModuleStatement {
-    pub fn defined_names(&self) -> Option<&String> {
+    pub fn defined_names(&self) -> Box<dyn Iterator<Item = &String> + '_> {
         match self {
-            ModuleStatement::SymbolDefinition(d) => Some(&d.name),
-            ModuleStatement::TraitImplementation(_) => None,
+            ModuleStatement::SymbolDefinition(d) => Box::new(once(&d.name)),
+            ModuleStatement::PilStatement(s) => {
+                Box::new(s.symbol_definition_names().map(|(name, _)| name))
+            }
         }
     }
 }
@@ -67,12 +60,6 @@ pub enum SymbolValue {
     Import(Import),
     /// A module definition
     Module(Module),
-    /// A generic symbol / function.
-    Expression(TypedExpression),
-    /// A type declaration (currently only enums)
-    TypeDeclaration(EnumDeclaration<Expression>),
-    /// A trait declaration
-    TraitDeclaration(TraitDeclaration<Expression>),
 }
 
 impl SymbolValue {
@@ -81,9 +68,6 @@ impl SymbolValue {
             SymbolValue::Machine(machine) => SymbolValueRef::Machine(machine),
             SymbolValue::Import(i) => SymbolValueRef::Import(i),
             SymbolValue::Module(m) => SymbolValueRef::Module(m.as_ref()),
-            SymbolValue::Expression(e) => SymbolValueRef::Expression(e),
-            SymbolValue::TypeDeclaration(t) => SymbolValueRef::TypeDeclaration(t),
-            SymbolValue::TraitDeclaration(t) => SymbolValueRef::TraitDeclaration(t),
         }
     }
 }
@@ -97,7 +81,7 @@ pub enum SymbolValueRef<'a> {
     /// A module definition
     Module(ModuleRef<'a>),
     /// A generic symbol / function.
-    Expression(&'a TypedExpression),
+    Expression(&'a Option<Expression>, &'a Option<TypeScheme<Expression>>),
     /// A type declaration (currently only enums)
     TypeDeclaration(&'a EnumDeclaration<Expression>),
     /// A type constructor of an enum.

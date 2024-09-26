@@ -10,16 +10,15 @@ use powdr_ast::parsed::types::TupleType;
 use powdr_ast::parsed::{
     self,
     types::{ArrayType, Type, TypeScheme},
-    ArrayLiteral, EnumDeclaration, EnumVariant, FunctionDefinition, FunctionKind, LambdaExpression,
-    PilStatement, PolynomialName, SelectedExpressions, TraitDeclaration, TraitFunction,
+    EnumDeclaration, EnumVariant, FunctionDefinition, FunctionKind, LambdaExpression, NamedType,
+    PilStatement, PolynomialName, TraitDeclaration,
 };
 use powdr_ast::parsed::{ArrayExpression, NamedExpression, SymbolCategory, TraitImplementation};
 use powdr_parser_util::SourceRef;
 use std::str::FromStr;
 
 use powdr_ast::analyzed::{
-    Expression, FunctionValueDefinition, Identity, IdentityKind, PolynomialType, PublicDeclaration,
-    Symbol, SymbolKind,
+    Expression, FunctionValueDefinition, PolynomialType, PublicDeclaration, Symbol, SymbolKind,
 };
 
 use crate::type_processor::TypeProcessor;
@@ -30,7 +29,7 @@ use crate::expression_processor::ExpressionProcessor;
 pub enum PILItem {
     Definition(Symbol, Option<FunctionValueDefinition>),
     PublicDeclaration(PublicDeclaration),
-    Identity(Identity<SelectedExpressions<Expression>>),
+    ProofItem(Expression),
     TraitImplementation(TraitImplementation<Expression>),
 }
 
@@ -209,7 +208,10 @@ where
                 let trait_impl = self.process_trait_implementation(trait_impl);
                 vec![PILItem::TraitImplementation(trait_impl)]
             }
-            _ => self.handle_identity_statement(statement),
+            PilStatement::Expression(_, expr) => vec![PILItem::ProofItem(
+                self.expression_processor(&Default::default())
+                    .process_expression(expr),
+            )],
         }
     }
 
@@ -338,35 +340,6 @@ where
         }
     }
 
-    fn handle_identity_statement(&mut self, statement: PilStatement) -> Vec<PILItem> {
-        let (source, kind, left, right) = match statement {
-            PilStatement::Expression(source, expression) => (
-                source,
-                IdentityKind::Polynomial,
-                SelectedExpressions {
-                    selector: Some(
-                        self.expression_processor(&Default::default())
-                            .process_expression(expression),
-                    ),
-                    expressions: Box::new(ArrayLiteral { items: vec![] }.into()),
-                },
-                SelectedExpressions::default(),
-            ),
-            // TODO at some point, these should all be caught by the type checker.
-            _ => {
-                panic!("Only identities allowed at this point.")
-            }
-        };
-
-        vec![PILItem::Identity(Identity {
-            id: self.counters.dispense_identity_id(),
-            kind,
-            source,
-            left,
-            right,
-        })]
-    }
-
     fn handle_polynomial_declarations(
         &mut self,
         source: SourceRef,
@@ -455,7 +428,7 @@ where
         let functions = trait_decl
             .functions
             .into_iter()
-            .map(|f| TraitFunction {
+            .map(|f| NamedType {
                 name: f.name,
                 ty: self.type_processor(&type_vars).process_type(f.ty),
             })
