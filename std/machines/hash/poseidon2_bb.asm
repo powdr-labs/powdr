@@ -167,7 +167,7 @@ machine PoseidonGLMemory(mem: Memory, split_BB: SplitBB) with
     });
 
     // The rounds:
-    col witness rounds[1 + 2*HALF_EXTERNAL_ROUNDS + INTERNAL_ROUNDS][STATE_SIZE];
+    col witness rounds[2*HALF_EXTERNAL_ROUNDS + INTERNAL_ROUNDS][STATE_SIZE];
 
     // Perform the inital MDS step
     rounds[0] = apply_mds(input, STATE_SIZE);
@@ -192,19 +192,25 @@ machine PoseidonGLMemory(mem: Memory, split_BB: SplitBB) with
         constr |i, (in, out)| internal_round(i, in, out)
     );
 
-    // Perform the second half of the external rounds
+    // Perform the second half of the external rounds, except the last one
     let second_external_start = HALF_EXTERNAL_ROUNDS + INTERNAL_ROUNDS;
     array::map_enumerated(
         array::zip(
-            array::sub_array(rounds, second_external_start, HALF_EXTERNAL_ROUNDS),
-            array::sub_array(rounds, second_external_start + 1, HALF_EXTERNAL_ROUNDS),
+            array::sub_array(rounds, second_external_start, HALF_EXTERNAL_ROUNDS - 1),
+            array::sub_array(rounds, second_external_start + 1, HALF_EXTERNAL_ROUNDS - 1),
             |in_out| in_out,
         ),
         constr |i, (in, out)| external_round(i + HALF_EXTERNAL_ROUNDS, in, out)
     );
 
+    // Perform the last external round
+    // It is special because the output is smaller than the entire state,
+    // so the MDS matrix multiplication is only partial.
+    col witness output[OUTPUT_SIZE];
+    external_round(2 * HALF_EXTERNAL_ROUNDS - 1, rounds[second_external_start + HALF_EXTERNAL_ROUNDS - 1], output);
+
     // Write the output in the second time step
-    array::map_enumerated(rounds[second_external_start + HALF_EXTERNAL_ROUNDS], constr |i, val| {
+    array::map_enumerated(output, constr |i, val| {
         col witness word_low, word_high;
         [word_low, word_high] in split_bb.split(val);
         [] = mem.mstore(output_addr + 4 * i, time_step + 1, word_high, word_low); //what is the syntax here???
