@@ -131,7 +131,7 @@ pub fn load_library(
         .map(|&sym| {
             let extern_sym = extern_symbol_name(sym);
             let function =
-                *unsafe { library.get::<unsafe extern "C" fn(u64) -> u64>(extern_sym.as_bytes()) }
+                *unsafe { library.get::<extern "C" fn(u64) -> u64>(extern_sym.as_bytes()) }
                     .map_err(|e| format!("Error accessing symbol {sym}: {e}"))?;
             let fun = LoadedFunction {
                 library: library.clone(),
