@@ -22,7 +22,10 @@ use powdr_ast::analyzed::{
     PolyID, PolynomialType, SelectedExpressions,
 };
 
-use p3_uni_stark::{CallbackResult, MultiStageAir, MultistageAirBuilder, NextStageTraceCallback};
+use crate::{
+    prover::{CallbackResult, NextStageTraceCallback},
+    traits::{MultiStageAir, MultistageAirBuilder},
+};
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 
 use powdr_executor::witgen::WitgenCallback;
@@ -290,10 +293,6 @@ where
         self.constraint_system.commitment_count
     }
 
-    fn preprocessed_width(&self) -> usize {
-        self.constraint_system.constant_count + self.constraint_system.publics.len()
-    }
-
     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<Plonky3Field<T>>> {
         #[cfg(debug_assertions)]
         {
@@ -401,6 +400,10 @@ where
     ProverData<T>: Send,
     Commitment<T>: Send,
 {
+    fn preprocessed_width(&self) -> usize {
+        self.constraint_system.constant_count + self.constraint_system.publics.len()
+    }
+
     fn stage_count(&self) -> usize {
         self.constraint_system.stage_widths.len()
     }
