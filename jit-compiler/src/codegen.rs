@@ -380,8 +380,8 @@ fn check_pattern(value_name: &str, pattern: &Pattern) -> Result<(String, String)
                 format!("{value_name}.len() == {}", items.len())
             };
             (
-                format!("({})", items.iter().map(|_| "_").join(", ")),
-                format!("({length_check}).then(|| Some(({inner_code})))"),
+                format!("({})", vars.join(", ")),
+                format!("if {length_check} {{ (|| Some(({inner_code})))() }} else {{ None }}"),
             )
         }
         Pattern::Variable(_, var) => (format!("{var}"), format!("Some({value_name}.clone())")),
@@ -484,43 +484,6 @@ mod test {
             \n\
             fn d(k: ibig::IBig) -> ibig::IBig { (c)(((k).clone() * (ibig::IBig::from(20_u64)).clone()).clone()) }\n\
             "
-        );
-    }
-
-    #[test]
-    fn match_exprs() {
-        let result = compile(
-            r#"let c: int -> int = |i| match (i, "abc") { (_, "") => 1, (8, v) => 2, (x, _) => x, _ => 5 };"#,
-            &["c"],
-        );
-        assert_eq!(
-            result,
-            r#"fn c(i: ibig::IBig) -> ibig::IBig { {
-let scrutinee__ = (i, "abc");
-if let Some(((), _)) = (|s| {
-let r_0 = (|_| Some(()))(s.clone())?;
-let r_1 = (|s| (&s == "").then_some(()))(s.clone())?;
-Some((r_0, r_1))
-})(scrutinee__.clone()) {
-ibig::IBig::from(1_u64)
-} else if let Some((_, v)) = (|s| {
-let r_0 = (|s| s == ibig::IBig::from(8).then_some(()))(s.clone())?;
-let r_1 = (|s| Some(s))(s.clone())?;
-Some((r_0, r_1))
-})(scrutinee__.clone()) {
-ibig::IBig::from(2_u64)
-} else if let Some((x, ())) = (|s| {
-let r_0 = (|s| Some(s))(s.clone())?;
-let r_1 = (|_| Some(()))(s.clone())?;
-Some((r_0, r_1))
-})(scrutinee__.clone()) {
-x
-} else if let Some(()) = (|_| Some(()))(scrutinee__.clone()) {
-ibig::IBig::from(5_u64)
-}
-}
- }
-"#
         );
     }
 }

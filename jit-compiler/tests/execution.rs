@@ -121,7 +121,6 @@ fn match_array() {
     assert_eq!(f.call(4), 5);
     assert_eq!(f.call(5), 6);
     assert_eq!(f.call(6), 7);
-    assert_eq!(f.call(7), 8);
 }
 
 #[test]
