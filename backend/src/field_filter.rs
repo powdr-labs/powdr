@@ -26,7 +26,9 @@ macro_rules! generalize_factory {
                 backend_options: crate::BackendOptions,
             ) -> std::result::Result<Box<dyn crate::Backend<F>>, crate::Error> {
                 use crate::Backend;
-                use std::{any::TypeId, boxed::Box, result::Result::Ok};
+                use powdr_ast::analyzed::Analyzed;
+                use powdr_executor::constant_evaluator::VariablySizedColumn;
+                use std::{any::TypeId, boxed::Box, result::Result::Ok, sync::Arc, string::String};
 
                 let result = match TypeId::of::<F>() {
                     $(
@@ -34,10 +36,15 @@ macro_rules! generalize_factory {
                             unsafe {
                                 let result = <$restricted_factory as BackendFactory<$supported_type>>::create(
                                     &$restricted_factory,
-                                    std::mem::transmute::<std::sync::Arc<powdr_ast::analyzed::Analyzed<F>>, std::sync::Arc<powdr_ast::analyzed::Analyzed<$supported_type>>>(pil), std::mem::transmute::<std::sync::Arc<std::vec::Vec<(std::string::String, powdr_executor::constant_evaluator::VariablySizedColumn<F>)>>, std::sync::Arc<std::vec::Vec<(std::string::String, powdr_executor::constant_evaluator::VariablySizedColumn<$supported_type>)>>>(fixed), output_dir, setup,
-                                    verification_key, verification_app_key, backend_options)?;
-                                let result: Box<dyn Backend<$supported_type>> = result;
-                                std::mem::transmute::<std::boxed::Box<dyn Backend<$supported_type>>, std::boxed::Box<dyn Backend<F>>>(result)
+                                    std::mem::transmute::<Arc<Analyzed<F>>, Arc<Analyzed<$supported_type>>>(pil),
+                                    std::mem::transmute::<Arc<Vec<(String, VariablySizedColumn<F>)>>, Arc<Vec<(String, VariablySizedColumn<$supported_type>)>>>(fixed),
+                                    output_dir,
+                                    setup,
+                                    verification_key,
+                                    verification_app_key,
+                                    backend_options
+                                )?;
+                                std::mem::transmute::<Box<dyn Backend<$supported_type>>, Box<dyn Backend<F>>>(result)
                             }
                         }
                     )*
