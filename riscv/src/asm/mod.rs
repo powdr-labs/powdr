@@ -50,7 +50,7 @@ impl RiscVProgram for AsmProgram {
 
     fn take_executable_statements(
         &mut self,
-    ) -> impl Iterator<Item = code_gen::Statement<'_, impl AsRef<str>, impl InstructionArgs>> {
+    ) -> impl Iterator<Item = code_gen::Statement<impl AsRef<str>, impl InstructionArgs>> {
         self.statements.iter().filter_map(process_statement)
     }
 

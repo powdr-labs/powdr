@@ -305,7 +305,7 @@ impl RiscVProgram for ElfProgram {
 
     fn take_executable_statements(
         &mut self,
-    ) -> impl Iterator<Item = code_gen::Statement<'_, impl AsRef<str>, impl InstructionArgs>> {
+    ) -> impl Iterator<Item = code_gen::Statement<impl AsRef<str>, impl InstructionArgs>> {
         // In the output, the precedence is labels, locations, and then instructions.
         // We merge the 3 iterators with this operations: merge(labels, merge(locs, instructions)), where each is sorted by address.
 
