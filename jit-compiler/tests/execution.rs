@@ -6,7 +6,13 @@ use powdr_pil_analyzer::analyze_string;
 
 fn compile(input: &str, symbol: &str) -> LoadedFunction {
     let analyzed = analyze_string::<GoldilocksField>(input).unwrap();
-    powdr_jit_compiler::compile(&analyzed, &[symbol]).unwrap()[symbol].clone()
+    powdr_jit_compiler::compile(&analyzed, &[symbol])
+        .map_err(|e| {
+            eprintln!("Error jit-compiling:\n{e}");
+            e
+        })
+        .unwrap()[symbol]
+        .clone()
 }
 
 #[test]
@@ -66,4 +72,23 @@ fn assigned_functions() {
 
     let d = compile(input, "main::d");
     assert_eq!(d.call(0), 1);
+}
+
+#[test]
+fn simple_field() {
+    let f = compile(
+        "
+        namespace std::array;
+            let len = 8;
+        namespace main;
+            let a: fe[] = [1, 2, 3];
+            let q: col = |i| a[i % std::array::len(a)];
+        ",
+        "main::q",
+    );
+
+    assert_eq!(f.call(0), 1);
+    assert_eq!(f.call(1), 2);
+    assert_eq!(f.call(2), 3);
+    assert_eq!(f.call(3), 1);
 }

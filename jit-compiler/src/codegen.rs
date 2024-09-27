@@ -111,11 +111,11 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 },
             ) => {
                 assert!(vars.is_empty());
-                // TODO we assume it is an int -> int function.
+                // TODO we assume it is an int -> fe function.
                 // The type inference algorithm should store the derived type.
                 // Alternatively, we insert a trait conversion function and store the type
                 // in the trait vars.
-                self.try_format_function(symbol, &[Type::Int], &Type::Int, &value.e)?
+                self.try_format_function(symbol, &[Type::Int], &Type::Fe, &value.e)?
             }
             _ => {
                 let type_scheme = value.type_scheme.as_ref().unwrap();
@@ -344,7 +344,7 @@ fn map_type(ty: &Type) -> String {
 fn is_builtin(symbol: &str) -> bool {
     matches!(
         symbol,
-        "std::check::panic" | "std::field::modulus" | "std::convert::fe"
+        "std::array::len" | "std::check::panic" | "std::field::modulus" | "std::convert::fe"
     )
 }
 
