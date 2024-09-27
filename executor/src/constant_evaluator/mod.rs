@@ -13,7 +13,17 @@ mod jit_compiler;
 /// Arrays of columns are flattened, the name of the `i`th array element
 /// is `name[i]`.
 pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, VariablySizedColumn<T>)> {
-    let mut fixed_cols = jit_compiler::generate_values(analyzed);
+    let max_degree = analyzed
+        .constant_polys_in_source_order()
+        .iter()
+        .map(|(poly, _)| poly.degree.unwrap().max)
+        .max()
+        .unwrap_or_default();
+
+    let mut fixed_cols = Default::default();
+    if max_degree > (1 << 18) {
+        fixed_cols = jit_compiler::generate_values(analyzed);
+    }
     for (poly, value) in analyzed.constant_polys_in_source_order() {
         if let Some(value) = value {
             // For arrays, generate values for each index,
