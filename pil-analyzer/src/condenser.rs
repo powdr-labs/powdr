@@ -1014,7 +1014,7 @@ fn try_algebraic_expression_to_expression<T: FieldElement>(
         .into(),
 
         AlgebraicExpression::PublicReference(s) => {
-            Expression::PublicReference(SourceRef::unknown(), s.clone()).into()
+            Expression::PublicReference(SourceRef::unknown(), s.clone())
         }
     })
 }
