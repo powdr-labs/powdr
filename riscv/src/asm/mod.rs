@@ -1,8 +1,3 @@
-// this is required to please clippy which finds dome dead code in the
-// generated parser
-// this might be fixed by upgrading lalrpop
-#![allow(dead_code)]
-
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use itertools::Itertools;
