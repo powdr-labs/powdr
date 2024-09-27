@@ -170,7 +170,7 @@ impl<T: FieldElement> IndexedColumns<T> {
 }
 
 fn split_column_name(name: &str) -> (&str, &str) {
-    let mut limbs = name.split('.');
+    let mut limbs = name.split("::");
     let namespace = limbs.next().unwrap();
     let col = limbs.next().unwrap();
     (namespace, col)
