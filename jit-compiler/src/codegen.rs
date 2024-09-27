@@ -83,7 +83,10 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
             ));
         };
 
-        let type_scheme = value.type_scheme.clone().unwrap();
+        let type_scheme = value
+            .type_scheme
+            .clone()
+            .ok_or_else(|| format!("Symbol does not have a type: {symbol}"))?;
 
         Ok(match type_scheme {
             TypeScheme {
@@ -180,7 +183,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     Type::Int => format!("ibig::IBig::from({value}_u64)"),
                     Type::Fe => format!("FieldElement::from({value}_u64)"),
                     Type::Expr => format!("Expr::from({value}_u64)"),
-                    _ => unreachable!(),
+                    _ => return Err(format!("Unexpected type for literal number: {type_}")),
                 }
             }
             Expression::FunctionCall(
