@@ -958,13 +958,11 @@ fn try_algebraic_expression_to_expression<T: FieldElement>(
                 }),
             );
             if *next {
-                Expression::UnaryOperation(
-                    SourceRef::unknown(),
-                    UnaryOperation {
-                        op: parsed::UnaryOperator::Next,
-                        expr: Box::new(e),
-                    },
-                )
+                UnaryOperation {
+                    op: parsed::UnaryOperator::Next,
+                    expr: Box::new(e),
+                }
+                .into()
             } else {
                 e
             }
@@ -972,23 +970,19 @@ fn try_algebraic_expression_to_expression<T: FieldElement>(
 
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
             BinaryOperation {
-                left: Box::new(
-                    try_algebraic_expression_to_expression(left)?
-                ),
+                left: Box::new(try_algebraic_expression_to_expression(left)?),
                 op: (*op).into(),
-                right: Box::new(
-                    try_algebraic_expression_to_expression(right)?
-                ),
-            }.into()
+                right: Box::new(try_algebraic_expression_to_expression(right)?),
+            }
+            .into()
         }
 
         AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
             UnaryOperation {
                 op: (*op).into(),
-                expr: Box::new(
-                    try_algebraic_expression_to_expression(expr)?
-                ),
-            }.into()
+                expr: Box::new(try_algebraic_expression_to_expression(expr)?),
+            }
+            .into()
         }
 
         AlgebraicExpression::Challenge(Challenge { id, stage }) => {
@@ -1018,10 +1012,9 @@ fn try_algebraic_expression_to_expression<T: FieldElement>(
             type_: Some(Type::Expr),
         }
         .into(),
-        _ => {
-            return Err(EvalError::TypeError(format!(
-                "Converting AlgebraicExpression::PublicReferences to expressions not supported yet {e}."
-            )))
+
+        AlgebraicExpression::PublicReference(s) => {
+            Expression::PublicReference(SourceRef::unknown(), s.clone()).into()
         }
     })
 }
