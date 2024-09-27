@@ -856,10 +856,10 @@ namespace std::prover;
 
 #[test]
 fn capture_binary_operations() {
-    let input = r#"
+    let input = r#"namespace std::prelude;
     namespace std::prover;
-        let provide_value = 9;
-        let eval = -1;
+    let provide_value = 9;
+    let eval = -1;
     namespace N(16);
         (constr || {
             let x;

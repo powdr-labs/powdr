@@ -13,11 +13,10 @@ use num_traits::sign::Signed;
 
 use powdr_ast::{
     analyzed::{
-        self, AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression,
-        AlgebraicReference, AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Challenge,
-        DegreeRange, Expression, FunctionValueDefinition, Identity, IdentityKind, PolyID,
-        PolynomialReference, PolynomialType, PublicDeclaration, Reference, SelectedExpressions,
-        StatementIdentifier, Symbol, SymbolKind,
+        self, AlgebraicExpression, AlgebraicReference, Analyzed, Challenge, DegreeRange,
+        Expression, FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialReference,
+        PolynomialType, PublicDeclaration, Reference, SelectedExpressions, StatementIdentifier,
+        Symbol, SymbolKind,
     },
     parsed::{
         self,
@@ -941,34 +940,82 @@ fn shift_local_var_refs(e: &mut Expression, shift: u64) {
         .for_each(|e| shift_local_var_refs(e, shift));
 }
 
-fn convert_to_binary_operation<T: FieldElement>(
-    left: &AlgebraicExpression<T>,
-    op: &AlgebraicBinaryOperator,
-    right: &AlgebraicExpression<T>,
-) -> Expression {
-    Expression::BinaryOperation(
-        SourceRef::unknown(),
-        BinaryOperation {
-            left: Box::new(try_value_to_expression(&Value::<T>::Expression(left.clone())).unwrap()),
-            op: (*op).into(),
-            right: Box::new(
-                try_value_to_expression(&Value::<T>::Expression(right.clone())).unwrap(),
-            ),
-        },
-    )
-}
+fn try_algebraic_expression_to_expression<T: FieldElement>(
+    e: &AlgebraicExpression<T>,
+) -> Result<Expression, EvalError> {
+    Ok(match e {
+        AlgebraicExpression::Reference(AlgebraicReference {
+            name,
+            poly_id: _,
+            next,
+        }) => {
+            let e = Expression::Reference(
+                SourceRef::unknown(),
+                Reference::Poly(PolynomialReference {
+                    name: name.clone(),
+                    type_args: None,
+                }),
+            );
+            if *next {
+                UnaryOperation {
+                    op: parsed::UnaryOperator::Next,
+                    expr: Box::new(e),
+                }
+                .into()
+            } else {
+                e
+            }
+        }
 
-fn convert_to_unary_operation<T: FieldElement>(
-    op: &AlgebraicUnaryOperator,
-    expr: &AlgebraicExpression<T>,
-) -> Expression {
-    Expression::UnaryOperation(
-        SourceRef::unknown(),
-        UnaryOperation {
-            op: (*op).into(),
-            expr: Box::new(try_value_to_expression(&Value::<T>::Expression(expr.clone())).unwrap()),
-        },
-    )
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+            BinaryOperation {
+                left: Box::new(try_algebraic_expression_to_expression(left)?),
+                op: (*op).into(),
+                right: Box::new(try_algebraic_expression_to_expression(right)?),
+            }
+            .into()
+        }
+
+        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
+            UnaryOperation {
+                op: (*op).into(),
+                expr: Box::new(try_algebraic_expression_to_expression(expr)?),
+            }
+            .into()
+        }
+
+        AlgebraicExpression::Challenge(Challenge { id, stage }) => {
+            let function = Expression::Reference(
+                SourceRef::unknown(),
+                Reference::Poly(PolynomialReference {
+                    name: "std::prelude::challenge".to_string(),
+                    type_args: None,
+                }),
+            )
+            .into();
+            let arguments = [*stage as u64, *id]
+                .into_iter()
+                .map(|x| BigUint::from(x).into())
+                .collect();
+            Expression::FunctionCall(
+                SourceRef::unknown(),
+                FunctionCall {
+                    function,
+                    arguments,
+                },
+            )
+        }
+
+        AlgebraicExpression::Number(n) => Number {
+            value: n.to_arbitrary_integer(),
+            type_: Some(Type::Expr),
+        }
+        .into(),
+
+        AlgebraicExpression::PublicReference(s) => {
+            Expression::PublicReference(SourceRef::unknown(), s.clone())
+        }
+    })
 }
 
 /// Tries to convert an evaluator value to an expression with the same value.
@@ -1065,15 +1112,6 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
                     type_args: None,
                 }),
             ),
-
-            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-                convert_to_binary_operation(left, op, right)
-            }
-
-            AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
-                convert_to_unary_operation(op, expr)
-            }
-
             AlgebraicExpression::Challenge(Challenge { id, stage }) => {
                 let function = Expression::Reference(
                     SourceRef::unknown(),
@@ -1095,7 +1133,6 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
                     },
                 )
             }
-
             AlgebraicExpression::Number(n) => Number {
                 value: n.to_arbitrary_integer(),
                 type_: Some(Type::Expr),

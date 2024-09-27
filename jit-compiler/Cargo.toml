@@ -1,0 +1,27 @@
+[package]
+name = "powdr-jit-compiler"
+description = "powdr just-in-time compiler"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }
+
+[dependencies]
+powdr-ast.workspace = true
+powdr-number.workspace = true
+powdr-parser.workspace = true
+
+log = "0.4.18"
+mktemp = "0.5.0"
+itertools = "0.13"
+libloading = "0.8"
+
+[dev-dependencies]
+powdr-pil-analyzer.workspace = true
+pretty_assertions = "1.4.0"
+test-log = "0.2.12"
+env_logger = "0.10.0"
+
+[lints.clippy]
+uninlined_format_args = "deny"

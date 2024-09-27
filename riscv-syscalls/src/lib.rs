@@ -46,8 +46,7 @@ macro_rules! syscalls {
 
 // Generate `Syscall` enum with supported syscalls and their numbers.
 syscalls!(
-    (0, Input, "input"),
-    (1, DataIdentifier, "data_identifier"),
+    (1, Input, "input"),
     (2, Output, "output"),
     (3, PoseidonGL, "poseidon_gl"),
     (4, Affine256, "affine_256"),
