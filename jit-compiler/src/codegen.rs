@@ -149,7 +149,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
         let code = match symbol {
             "std::check::panic" => Some("(s: &str) -> ! { panic!(\"{s}\"); }".to_string()),
             "std::field::modulus" => {
-                Some(format!("() -> ibig::IBig {{ {} }}", format_number(&T::modulus().to_arbitrary_integer())))
+                Some(format!("() -> ibig::IBig {{ {} }}", format_unsigned_integer(&T::modulus().to_arbitrary_integer())))
             }
             "std::convert::fe" => Some("(n: ibig::IBig) -> FieldElement {\n    <FieldElement as PrimeField>::BigInt::try_from(n.to_biguint().unwrap()).unwrap().into()\n}"
                 .to_string()),
@@ -178,18 +178,20 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     value,
                     type_: Some(type_),
                 },
-            ) => {
-                if *type_ == Type::Int {
-                    format_number(value)
-                } else {
-                    let value = u64::try_from(value).unwrap_or_else(|_| unimplemented!());
-                    match type_ {
-                        Type::Fe => format!("FieldElement::from({value}_u64)"),
-                        Type::Expr => format!("Expr::from({value}_u64)"),
-                        _ => unreachable!(),
-                    }
+            ) => match type_ {
+                Type::Int => format_unsigned_integer(value),
+                Type::Fe => {
+                    let val = u64::try_from(value)
+                        .map_err(|_| "Large numbers for fe not yet implemented.".to_string())?;
+                    format!("FieldElement::from({val}_u64)",)
                 }
-            }
+                Type::Expr => {
+                    let val = u64::try_from(value)
+                        .map_err(|_| "Large numbers for fe not yet implemented.".to_string())?;
+                    format!("Expr::from({val}_u64)")
+                }
+                _ => unreachable!(),
+            },
             Expression::FunctionCall(
                 _,
                 FunctionCall {
@@ -300,7 +302,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
     }
 }
 
-fn format_number(n: &BigUint) -> String {
+fn format_unsigned_integer(n: &BigUint) -> String {
     if let Ok(n) = u64::try_from(n) {
         format!("ibig::IBig::from({n}_u64)")
     } else {
