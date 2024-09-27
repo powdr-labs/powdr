@@ -13,8 +13,9 @@ use num_traits::sign::Signed;
 
 use powdr_ast::{
     analyzed::{
-        self, AlgebraicExpression, AlgebraicReference, Analyzed, Challenge, DegreeRange,
-        Expression, FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialReference,
+        self, AlgebraicBinaryOperation, AlgebraicExpression, AlgebraicReference,
+        AlgebraicUnaryOperation, Analyzed, Challenge, DegreeRange, Expression,
+        FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialReference,
         PolynomialType, PublicDeclaration, Reference, SelectedExpressions, StatementIdentifier,
         Symbol, SymbolKind,
     },
@@ -1100,49 +1101,6 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
                 "Converting builtin functions to expressions not supported.".to_string(),
             ))
         }
-        Value::Expression(e) => match e {
-            AlgebraicExpression::Reference(AlgebraicReference {
-                name,
-                poly_id: _,
-                next: false,
-            }) => Expression::Reference(
-                SourceRef::unknown(),
-                Reference::Poly(PolynomialReference {
-                    name: name.clone(),
-                    type_args: None,
-                }),
-            ),
-            AlgebraicExpression::Challenge(Challenge { id, stage }) => {
-                let function = Expression::Reference(
-                    SourceRef::unknown(),
-                    Reference::Poly(PolynomialReference {
-                        name: "std::prelude::challenge".to_string(),
-                        type_args: None,
-                    }),
-                )
-                .into();
-                let arguments = [*stage as u64, *id]
-                    .into_iter()
-                    .map(|x| BigUint::from(x).into())
-                    .collect();
-                Expression::FunctionCall(
-                    SourceRef::unknown(),
-                    FunctionCall {
-                        function,
-                        arguments,
-                    },
-                )
-            }
-            AlgebraicExpression::Number(n) => Number {
-                value: n.to_arbitrary_integer(),
-                type_: Some(Type::Expr),
-            }
-            .into(),
-            _ => {
-                return Err(EvalError::TypeError(format!(
-                    "Converting complex algebraic expressions to expressions not supported: {e}."
-                )))
-            }
-        },
+        Value::Expression(e) => try_algebraic_expression_to_expression(e)?,
     })
 }
