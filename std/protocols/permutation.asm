@@ -58,12 +58,6 @@ let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr -> fe[] = query |acc
 /// the used challenges would overlap
 /// TODO: Implement this for an array of constraints
 ///
-/// # Arguments:
-/// - permutation_constraint: The permutation constraint
-///
-/// # Returns:
-/// - Constraints to be added to enforce the permutation
-///
 /// # Implementation:
 /// This function implements a permutation argument described e.g. in
 /// https://people.cs.georgetown.edu/jthaler/ProofsArgsAndZK.pdf, section 6.6.2,
