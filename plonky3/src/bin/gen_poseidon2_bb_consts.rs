@@ -9,13 +9,11 @@ use powdr_plonky3::{
     poseidon2,
 };
 
-fn extract_matrix(
-    mat: impl Permutation<[BabyBear; baby_bear::WIDTH]>,
-) -> Vec<[BabyBear; baby_bear::WIDTH]> {
-    let zeroed = [BabyBear::zero(); baby_bear::WIDTH];
+fn extract_matrix(mat: impl Permutation<[BabyBear; WIDTH]>) -> Vec<[BabyBear; WIDTH]> {
+    let zeroed = [BabyBear::zero(); WIDTH];
 
-    let mut cols = Vec::with_capacity(baby_bear::WIDTH);
-    for i in 0..baby_bear::WIDTH {
+    let mut cols = Vec::with_capacity(WIDTH);
+    for i in 0..WIDTH {
         let mut col = zeroed;
         col[i] = BabyBear::one();
         mat.permute_mut(&mut col);
@@ -23,10 +21,10 @@ fn extract_matrix(
     }
 
     // Transpose to row-major order for easier printing.
-    let mut rows = Vec::with_capacity(baby_bear::WIDTH);
-    for i in 0..baby_bear::WIDTH {
-        let mut row = [BabyBear::zero(); baby_bear::WIDTH];
-        for j in 0..baby_bear::WIDTH {
+    let mut rows = Vec::with_capacity(WIDTH);
+    for i in 0..WIDTH {
+        let mut row = [BabyBear::zero(); WIDTH];
+        for j in 0..WIDTH {
             row[j] = cols[j][i];
         }
         rows.push(row);
@@ -77,4 +75,58 @@ fn main() {
             })
             .format(", ")
     );
+
+    println!("\n\nTESTS:");
+    let poseidon2 = baby_bear::Perm::new(
+        *baby_bear::ROUNDS_F,
+        poseidon2::external_constants::<BabyBear, WIDTH>(*ROUNDS_F),
+        Poseidon2ExternalMatrixGeneral,
+        *baby_bear::ROUNDS_P,
+        poseidon2::internal_constants::<BabyBear>(*ROUNDS_P),
+        p3_baby_bear::DiffusionMatrixBabyBear::default(),
+    );
+
+    let test_vectors = [
+        [BabyBear::zero(); WIDTH],
+        [BabyBear::one(); WIDTH],
+        [-BabyBear::one(); WIDTH],
+        // The test vector from goldilocks, that I don't know where it came from.
+        [
+            923978,
+            235763497586,
+            9827635653498,
+            112870,
+            289273673480943876,
+            230295874986745876,
+            6254867324987,
+            2087,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+        ]
+        .map(|x: u64| BabyBear::new((x % BabyBear::ORDER_U32 as u64) as u32)),
+    ];
+
+    for (test_num, mut test_vector) in test_vectors.into_iter().enumerate() {
+        println!("\n        // Test vector {}:\n", test_num);
+        for (i, val) in test_vector.iter().enumerate() {
+            let val = val.as_canonical_u32();
+            println!(
+                "        mstore_le {}, {}, {};",
+                i * 4,
+                val >> 16,
+                val & 0xffff,
+            );
+        }
+        println!("\n        poseidon2 0, 0;\n");
+        poseidon2.permute_mut(&mut test_vector);
+        for (i, val) in test_vector[..8].iter().enumerate() {
+            println!("        assert_eq {}, {val};", i * 4);
+        }
+    }
 }

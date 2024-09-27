@@ -22,7 +22,8 @@ use powdr_number::BabyBearField;
 
 const D: u64 = 7;
 pub const WIDTH: usize = 16;
-type Perm = Poseidon2<BabyBear, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, WIDTH, D>;
+pub type Perm =
+    Poseidon2<BabyBear, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, WIDTH, D>;
 
 const DEGREE: usize = 4;
 type FriChallenge = BinomialExtensionField<BabyBear, DEGREE>;
