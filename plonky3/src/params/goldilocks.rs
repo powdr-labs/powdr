@@ -7,7 +7,7 @@ use crate::params::{Challenger, FieldElementMap, Plonky3Field};
 use p3_challenger::DuplexChallenger;
 use p3_commit::ExtensionMmcs;
 use p3_dft::Radix2DitParallel;
-use p3_field::{extension::BinomialExtensionField, AbstractField, Field};
+use p3_field::{extension::BinomialExtensionField, AbstractField, Field, PrimeField64};
 use p3_fri::{FriConfig, TwoAdicFriPcs};
 use p3_goldilocks::{Goldilocks, MdsMatrixGoldilocks};
 use p3_merkle_tree::FieldMerkleTreeMmcs;
@@ -74,6 +74,10 @@ impl FieldElementMap for GoldilocksField {
 
     fn into_p3_field(self) -> Plonky3Field<Self> {
         Goldilocks::from_canonical_u64(self.to_integer().try_into_u64().unwrap())
+    }
+
+    fn from_p3_field(e: Plonky3Field<Self>) -> Self {
+        Self::from(e.as_canonical_u64())
     }
 
     fn get_challenger() -> Challenger<Self> {

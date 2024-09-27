@@ -3,6 +3,7 @@
 use p3_matrix::dense::RowMajorMatrix;
 
 use core::fmt;
+use std::iter::{once, repeat};
 use std::sync::Arc;
 
 use powdr_ast::analyzed::Analyzed;
@@ -14,7 +15,7 @@ use p3_uni_stark::{
 };
 
 use crate::{
-    circuit_builder::PowdrCircuit,
+    circuit_builder::{generate_matrix, PowdrCircuit},
     params::{Challenger, Commitment, FieldElementMap, Plonky3Field, ProverData},
 };
 
@@ -85,27 +86,15 @@ where
                     .collect::<Vec<T>>();
                 (name, selector)
             })
-            .collect::<Vec<(String, Vec<T>)>>();
+            .collect::<Vec<_>>();
 
-        match self.fixed.len() + publics.len() {
-            0 => RowMajorMatrix::new(Vec::<Plonky3Field<T>>::new(), 0),
-            _ => RowMajorMatrix::new(
-                // write fixed row by row
-                (0..self.analyzed.degree())
-                    .flat_map(|i| {
-                        self.fixed
-                            .iter()
-                            .map(move |(_, values)| values[i as usize].into_p3_field())
-                            .chain(
-                                publics
-                                    .iter()
-                                    .map(move |(_, values)| values[i as usize].into_p3_field()),
-                            )
-                    })
-                    .collect(),
-                self.fixed.len() + publics.len(),
-            ),
-        }
+        let fixed_with_public_selectors = self
+            .fixed
+            .iter()
+            .chain(publics.iter())
+            .map(|(name, values)| (name, values.as_ref()));
+
+        generate_matrix(fixed_with_public_selectors)
     }
 }
 
@@ -180,16 +169,17 @@ where
         witness: &[(String, Vec<T>)],
         witgen_callback: WitgenCallback<T>,
     ) -> Result<Vec<u8>, String> {
-        let circuit: PowdrCircuit<T> = PowdrCircuit::new(&self.analyzed)
+        let stage_0_trace =
+            generate_matrix(witness.iter().map(|(name, value)| (name, value.as_ref())));
+
+        let circuit = PowdrCircuit::new(&self.analyzed)
             .with_witgen_callback(witgen_callback)
-            .with_witness(witness);
+            .with_phase_0_witness(witness);
 
         #[cfg(debug_assertions)]
         let circuit = circuit.with_preprocessed(self.get_preprocessed_matrix());
 
-        let publics = circuit.get_public_values();
-
-        let trace = circuit.generate_trace_rows();
+        let stage_0_publics = circuit.public_values_so_far();
 
         let config = T::get_config();
 
@@ -202,13 +192,20 @@ where
             proving_key,
             &circuit,
             &mut challenger,
-            trace,
-            &publics,
+            stage_0_trace,
+            &circuit,
+            &stage_0_publics,
         );
 
         let mut challenger = T::get_challenger();
 
         let verifying_key = self.verifying_key.as_ref();
+
+        let empty_public = vec![];
+        let public_values = once(&stage_0_publics)
+            .chain(repeat(&empty_public))
+            .take(self.analyzed.stage_count())
+            .collect();
 
         verify_with_key(
             &config,
@@ -216,7 +213,7 @@ where
             &circuit,
             &mut challenger,
             &proof,
-            &publics,
+            public_values,
         )
         .unwrap();
         Ok(bincode::serialize(&proof).unwrap())
@@ -237,13 +234,19 @@ where
 
         let verifying_key = self.verifying_key.as_ref();
 
+        let empty_public = vec![];
+        let public_values = once(&publics)
+            .chain(repeat(&empty_public))
+            .take(self.analyzed.stage_count())
+            .collect();
+
         verify_with_key(
             &config,
             verifying_key,
             &PowdrCircuit::new(&self.analyzed),
             &mut challenger,
             &proof,
-            &publics,
+            public_values,
         )
         .map_err(|e| format!("Failed to verify proof: {e:?}"))
     }
@@ -254,43 +257,25 @@ mod tests {
     use std::sync::Arc;
 
     use powdr_executor::constant_evaluator::get_uniquely_sized_cloned;
-    use powdr_number::{BabyBearField, GoldilocksField};
+    use powdr_number::{BabyBearField, GoldilocksField, Mersenne31Field};
     use powdr_pipeline::Pipeline;
     use test_log::test;
 
-    use crate::Plonky3Prover;
+    use crate::{Commitment, FieldElementMap, Plonky3Prover, ProverData};
 
-    /// Prove and verify execution
-    fn run_test_goldilocks(pil: &str) {
-        run_test_goldilocks_publics(pil, None)
+    /// Prove and verify execution over all supported fields
+    fn run_test(pil: &str) {
+        run_test_publics::<GoldilocksField>(pil, None);
+        run_test_publics::<BabyBearField>(pil, None);
+        run_test_publics::<Mersenne31Field>(pil, None);
     }
 
-    fn run_test_goldilocks_publics(pil: &str, malicious_publics: Option<Vec<GoldilocksField>>) {
-        let mut pipeline = Pipeline::<GoldilocksField>::default().from_pil_string(pil.to_string());
-
-        let pil = pipeline.compute_optimized_pil().unwrap();
-        let witness_callback = pipeline.witgen_callback().unwrap();
-        let witness = pipeline.compute_witness().unwrap();
-        let fixed = pipeline.compute_fixed_cols().unwrap();
-        let fixed = Arc::new(get_uniquely_sized_cloned(&fixed).unwrap());
-
-        let mut prover = Plonky3Prover::new(pil, fixed);
-        prover.setup();
-        let proof = prover.prove(&witness, witness_callback);
-
-        assert!(proof.is_ok());
-
-        if let Some(publics) = malicious_publics {
-            prover.verify(&proof.unwrap(), &[publics]).unwrap()
-        }
-    }
-
-    fn run_test_baby_bear(pil: &str) {
-        run_test_baby_bear_publics(pil, None)
-    }
-
-    fn run_test_baby_bear_publics(pil: &str, malicious_publics: Option<Vec<BabyBearField>>) {
-        let mut pipeline = Pipeline::<BabyBearField>::default().from_pil_string(pil.to_string());
+    fn run_test_publics<F: FieldElementMap>(pil: &str, malicious_publics: Option<Vec<F>>)
+    where
+        ProverData<F>: Send,
+        Commitment<F>: Send,
+    {
+        let mut pipeline = Pipeline::<F>::default().from_pil_string(pil.to_string());
 
         let pil = pipeline.compute_optimized_pil().unwrap();
         let witness_callback = pipeline.witgen_callback().unwrap();
@@ -318,14 +303,13 @@ mod tests {
             col witness z;
             x + y = z;
         "#;
-        run_test_baby_bear(content);
+        run_test_publics::<BabyBearField>(content, None);
     }
 
     #[test]
     fn public_values() {
         let content = "namespace Global(8); pol witness x; x * (x - 1) = 0; public out = x(7);";
-        run_test_goldilocks(content);
-        run_test_baby_bear(content);
+        run_test(content);
     }
 
     #[test]
@@ -339,8 +323,7 @@ mod tests {
             x = 0;
             y = 1 + :oldstate;
         "#;
-        run_test_goldilocks(content);
-        run_test_baby_bear(content);
+        run_test(content);
     }
 
     #[test]
@@ -358,18 +341,20 @@ mod tests {
             public outz = z(7);
         "#;
         let gl_malicious_publics = Some(vec![GoldilocksField::from(0)]);
-        run_test_goldilocks_publics(content, gl_malicious_publics);
+        run_test_publics(content, gl_malicious_publics);
 
         let bb_malicious_publics = Some(vec![BabyBearField::from(0)]);
-        run_test_baby_bear_publics(content, bb_malicious_publics);
+        run_test_publics(content, bb_malicious_publics);
+
+        let m31_malicious_publics = Some(vec![Mersenne31Field::from(0)]);
+        run_test_publics(content, m31_malicious_publics);
     }
 
     #[test]
     #[should_panic = "assertion `left == right` failed: Not a power of two: 0\n  left: 0\n right: 1"]
     fn empty() {
         let content = "namespace Global(8);";
-        run_test_goldilocks(content);
-        run_test_baby_bear(content);
+        run_test(content);
     }
 
     #[test]
@@ -381,8 +366,7 @@ mod tests {
             col witness z;
             x + y = z;
         "#;
-        run_test_goldilocks(content);
-        run_test_baby_bear(content);
+        run_test(content);
     }
 
     #[test]
@@ -393,38 +377,54 @@ mod tests {
             col fixed y = [1, 0]*;
             x * y = y;
         "#;
-        run_test_goldilocks(content);
-        run_test_baby_bear(content);
+        run_test(content);
     }
 
     #[test]
-    #[should_panic = "not implemented"]
     fn challenge() {
         let content = r#"
         let N: int = 8;
         
         namespace Global(N); 
+            let alpha: expr = std::prelude::challenge(0, 41);
+            let beta: expr = std::prelude::challenge(0, 42);
+            col witness x;
+            col witness stage(1) y;
+            x = y + beta * alpha;
+        "#;
+        run_test(content);
+    }
+
+    #[test]
+    #[should_panic = "no entry found for key"]
+    fn stage_1_public() {
+        // this currently fails because we try to extract the public values from the stage 0 witness only
+        let content = r#"
+        let N: int = 8;
+        
+        namespace Global(N); 
+            let alpha: expr = std::prelude::challenge(0, 41);
             let beta: expr = std::prelude::challenge(0, 42);
             col witness stage(0) x;
             col witness stage(1) y;
-            x = y + beta;
+            x = y + beta * alpha;
+
+            public out = y(N - 1);
         "#;
-        run_test_goldilocks(content);
-        run_test_baby_bear(content);
+        let malicious_publics = Some(vec![GoldilocksField::from(0)]);
+        run_test_publics::<GoldilocksField>(content, malicious_publics);
     }
 
     #[test]
     fn polynomial_identity() {
         let content = "namespace Global(8); pol fixed z = [1, 2]*; pol witness a; a = z + 1;";
-        run_test_goldilocks(content);
-        run_test_baby_bear(content);
+        run_test(content);
     }
 
     #[test]
     #[should_panic = "not implemented"]
     fn lookup() {
         let content = "namespace Global(8); pol fixed z = [0, 1]*; pol witness a; [a] in [z];";
-        run_test_goldilocks(content);
-        run_test_baby_bear(content);
+        run_test(content);
     }
 }
