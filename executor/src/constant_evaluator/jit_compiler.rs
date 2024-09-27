@@ -33,14 +33,13 @@ pub fn generate_values<T: FieldElement>(
                 .unwrap()
                 .iter()
                 .map(|degree| {
-                    let values = (0..degree)
+                    (0..degree)
                         .into_par_iter()
                         .map(|i| {
-                            let result = fun.call(i as u64);
+                            let result = fun.call(i);
                             T::from(result)
                         })
-                        .collect();
-                    values
+                        .collect()
                 })
                 .collect();
 
