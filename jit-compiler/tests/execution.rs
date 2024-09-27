@@ -52,6 +52,13 @@ fn invalid_function() {
 }
 
 #[test]
+fn gigantic_number() {
+    let f = compile("let c: int -> int = |i| (i * 0x1000000000000000000000000000000000000000000000000000000000000000000000000000000000) >> (81 * 4);", "c");
+
+    assert_eq!(f.call(10), 10);
+}
+
+#[test]
 fn assigned_functions() {
     let input = r#"
         namespace std::array;
