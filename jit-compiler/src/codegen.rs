@@ -52,12 +52,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 }
             }
         }
-        let reference = if self.symbol_needs_deref(name) {
-            format!("(*{})", escape_symbol(name))
-        } else {
-            escape_symbol(name)
-        };
-        Ok(reference)
+        Ok(self.symbol_reference(name))
     }
 
     /// Returns the concatenation of all successfully compiled symbols.
@@ -285,16 +280,24 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
         ))
     }
 
-    /// Returns true if a reference to the symbol needs a deref operation or not.
-    fn symbol_needs_deref(&self, symbol: &str) -> bool {
-        if is_builtin(symbol) {
-            return false;
-        }
-        let (_, def) = self.analyzed.definitions.get(symbol).as_ref().unwrap();
-        if let Some(FunctionValueDefinition::Expression(typed_expr)) = def {
-            !matches!(typed_expr.e, Expression::LambdaExpression(..))
-        } else {
+    /// Returns a string expression evaluating to the value of the symbol.
+    /// This is either the escaped name of the symbol or a deref operator
+    /// applied to it.
+    fn symbol_reference(&self, symbol: &str) -> String {
+        let needs_deref = if is_builtin(symbol) {
             false
+        } else {
+            let (_, def) = self.analyzed.definitions.get(symbol).as_ref().unwrap();
+            if let Some(FunctionValueDefinition::Expression(typed_expr)) = def {
+                !matches!(typed_expr.e, Expression::LambdaExpression(..))
+            } else {
+                false
+            }
+        };
+        if needs_deref {
+            format!("(*{})", escape_symbol(symbol))
+        } else {
+            escape_symbol(symbol)
         }
     }
 }
