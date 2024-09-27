@@ -10,7 +10,7 @@ use powdr_ast::{
         IndexAccess, LambdaExpression, Number, StatementInsideBlock, UnaryOperation,
     },
 };
-use powdr_number::FieldElement;
+use powdr_number::{BigUint, FieldElement, LargeInt};
 
 pub struct CodeGenerator<'a, T> {
     analyzed: &'a Analyzed<T>,
@@ -18,6 +18,11 @@ pub struct CodeGenerator<'a, T> {
     /// why they could not be compiled.
     /// While the code is still being generated, this contains `None`.
     symbols: HashMap<String, Result<Option<String>, String>>,
+}
+
+pub fn escape_symbol(s: &str) -> String {
+    // TODO better escaping
+    s.replace('.', "_").replace("::", "_")
 }
 
 impl<'a, T: FieldElement> CodeGenerator<'a, T> {
@@ -144,8 +149,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
         let code = match symbol {
             "std::check::panic" => Some("(s: &str) -> ! { panic!(\"{s}\"); }".to_string()),
             "std::field::modulus" => {
-                let modulus = T::modulus();
-                Some(format!("() -> ibig::IBig {{ ibig::IBig::from(\"{modulus}\") }}"))
+                Some(format!("() -> ibig::IBig {{ {} }}", format_number(&T::modulus().to_arbitrary_integer())))
             }
             "std::convert::fe" => Some("(n: ibig::IBig) -> FieldElement {\n    <FieldElement as PrimeField>::BigInt::try_from(n.to_biguint().unwrap()).unwrap().into()\n}"
                 .to_string()),
@@ -175,12 +179,15 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     type_: Some(type_),
                 },
             ) => {
-                let value = u64::try_from(value).unwrap_or_else(|_| unimplemented!());
-                match type_ {
-                    Type::Int => format!("ibig::IBig::from({value}_u64)"),
-                    Type::Fe => format!("FieldElement::from({value}_u64)"),
-                    Type::Expr => format!("Expr::from({value}_u64)"),
-                    _ => unreachable!(),
+                if *type_ == Type::Int {
+                    format_number(value)
+                } else {
+                    let value = u64::try_from(value).unwrap_or_else(|_| unimplemented!());
+                    match type_ {
+                        Type::Fe => format!("FieldElement::from({value}_u64)"),
+                        Type::Expr => format!("Expr::from({value}_u64)"),
+                        _ => unreachable!(),
+                    }
                 }
             }
             Expression::FunctionCall(
@@ -210,6 +217,9 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 match op {
                     BinaryOperator::ShiftLeft => {
                         format!("(({left}).clone() << u32::try_from(({right}).clone()).unwrap())")
+                    }
+                    BinaryOperator::ShiftRight => {
+                        format!("(({left}).clone() >> usize::try_from(({right}).clone()).unwrap())")
                     }
                     _ => format!("(({left}).clone() {op} ({right}).clone())"),
                 }
@@ -290,9 +300,18 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
     }
 }
 
-pub fn escape_symbol(s: &str) -> String {
-    // TODO better escaping
-    s.replace('.', "_").replace("::", "_")
+fn format_number(n: &BigUint) -> String {
+    if let Ok(n) = u64::try_from(n) {
+        format!("ibig::IBig::from({n}_u64)")
+    } else {
+        format!(
+            "ibig::IBig::from(ibig::UBig::from_le_bytes(&[{}]))",
+            n.to_le_bytes()
+                .iter()
+                .map(|b| format!("{b}_u8"))
+                .format(", ")
+        )
+    }
 }
 
 fn map_type(ty: &Type) -> String {

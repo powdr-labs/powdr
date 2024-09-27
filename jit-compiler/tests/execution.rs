@@ -44,3 +44,10 @@ fn sqrt() {
 fn invalid_function() {
     let _ = compile("let c: int -> bool = |i| true;", "c");
 }
+
+#[test]
+fn gigantic_number() {
+    let f = compile("let c: int -> int = |i| (i * 0x1000000000000000000000000000000000000000000000000000000000000000000000000000000000) >> (81 * 4);", "c");
+
+    assert_eq!(f.call(10), 10);
+}
