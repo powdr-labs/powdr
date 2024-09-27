@@ -187,7 +187,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 }
                 Type::Expr => {
                     let val = u64::try_from(value)
-                        .map_err(|_| "Large numbers for fe not yet implemented.".to_string())?;
+                        .map_err(|_| "Large numbers for expr not yet implemented.".to_string())?;
                     format!("Expr::from({val}_u64)")
                 }
                 _ => unreachable!(),
