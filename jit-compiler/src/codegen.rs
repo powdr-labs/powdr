@@ -368,7 +368,10 @@ fn try_generate_builtin<T: FieldElement>(symbol: &str) -> Option<String> {
         }
         "std::check::panic" => "(s: &str) -> ! { panic!(\"{s}\"); }".to_string(),
         "std::field::modulus" => {
-            format!("() -> ibig::IBig {{ {} }}", format_unsigned_integer(&T::modulus().to_arbitrary_integer()))
+            format!(
+                "() -> ibig::IBig {{ {} }}",
+                format_unsigned_integer(&T::modulus().to_arbitrary_integer())
+            )
         }
         "std::convert::fe" => {
             "(n: ibig::IBig) -> FieldElement { u64::try_from(n).unwrap().into() }".to_string()
