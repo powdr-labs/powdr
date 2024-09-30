@@ -266,8 +266,8 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 "({})",
                 items
                     .iter()
-                    .map(|i| self.format_expr(i))
-                    .collect::<Result<Vec<_>, _>>()?
+                    .map(|i| Ok(format!("({}.clone())", self.format_expr(i)?)))
+                    .collect::<Result<Vec<_>, String>>()?
                     .join(", ")
             ),
             Expression::BlockExpression(_, BlockExpression { statements, expr }) => {
