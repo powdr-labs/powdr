@@ -10,7 +10,6 @@ fn main() {
     let exclude = if let Ok(ignore) = std::env::var("POWDR_IGNORE_REPARSE_TESTS") {
         ignore
             .split(',')
-            .into_iter()
             .map(|s| s.to_string())
             .collect()
     } else {
