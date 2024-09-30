@@ -18,16 +18,17 @@ use powdr_number::FieldElement;
 
 use crate::{codegen::escape_symbol, LoadedFunction};
 
+// TODO make this depend on T
+
+const PREAMBLE: &str = r#"
+#![allow(unused_parens)]
+//type FieldElement = powdr_number::GoldilocksField;
+"#;
+
 pub fn generate_glue_code<T: FieldElement>(
     symbols: &[&str],
     analyzed: &Analyzed<T>,
 ) -> Result<String, String> {
-    if T::BITS > 64 {
-        return Err(format!(
-            "Fields with more than 64 bits not supported, but requested {}",
-            T::BITS,
-        ));
-    }
     let mut glue = String::new();
     let int_int_fun: TypeScheme = Type::Function(FunctionType {
         params: vec![Type::Int],
@@ -58,23 +59,6 @@ pub fn generate_glue_code<T: FieldElement>(
 
     Ok(format!("{PREAMBLE}\n{glue}\n",))
 }
-
-const PREAMBLE: &str = r#"
-#![allow(unused_parens)]
-
-#[derive(Clone, Copy)]
-struct FieldElement(u64);
-impl From<u64> for FieldElement {
-    fn from(x: u64) -> Self {
-        FieldElement(x)
-    }
-}
-impl From<FieldElement> for u64 {
-    fn from(x: FieldElement) -> u64 {
-        x.0
-    }
-}
-"#;
 
 const CARGO_TOML: &str = r#"
 [package]
