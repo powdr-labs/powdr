@@ -42,7 +42,7 @@ fn build_instruction_tests() {
 #[test]
 #[ignore = "Too slow"]
 fn {file_name}() {{
-    run_instruction_test(Path::new(r#"{file}"#), r#"{file_name}"#);
+    run_instruction_test(Path::new(r#"{file}"#));
 }}
 "##,
                 file = file.path().to_str().unwrap(),
