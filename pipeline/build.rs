@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::env;
 use std::fs::File;
 use std::io::{BufWriter, Write};
@@ -8,21 +9,28 @@ use walkdir::WalkDir;
 fn main() {
     build_book_tests("asm");
     build_book_tests("pil");
-    build_reparse_test("asm", "asm");
-    build_reparse_test("pil", "pil");
-    build_reparse_test("asm", "std");
+    build_reparse_test("asm", "asm", Default::default());
+    build_reparse_test("pil", "pil", Default::default());
+    let exclude = if std::env::var("CI").is_ok() {
+        Default::default()
+    } else {
+        // Skip keccakf16_test.asm because it needs too much stack space.
+        // It works with the pr-tests build profile.
+        ["keccakf16_test.asm"].into()
+    };
+    build_reparse_test("asm", "std", exclude);
 }
 
 fn build_book_tests(kind: &str) {
-    build_tests(kind, kind, "book", "book")
+    build_tests(kind, kind, "book", "book", Default::default())
 }
 
-fn build_reparse_test(kind: &str, dir: &str) {
-    build_tests(kind, dir, "", "reparse")
+fn build_reparse_test(kind: &str, dir: &str, exclude: HashSet<&'static str>) {
+    build_tests(kind, dir, "", "reparse", exclude)
 }
 
 #[allow(clippy::print_stdout)]
-fn build_tests(kind: &str, dir: &str, sub_dir: &str, name: &str) {
+fn build_tests(kind: &str, dir: &str, sub_dir: &str, name: &str, exclude: HashSet<&'static str>) {
     let sub_dir = if sub_dir.is_empty() {
         "".to_string()
     } else {
@@ -42,6 +50,9 @@ fn build_tests(kind: &str, dir: &str, sub_dir: &str, name: &str) {
             .to_str()
             .unwrap()
             .to_string();
+        if exclude.contains(relative_name.as_str()) {
+            continue;
+        }
         if let Some(test_name) = relative_name
             .replace('/', "_sub_")
             .strip_suffix(&format!(".{kind}"))
