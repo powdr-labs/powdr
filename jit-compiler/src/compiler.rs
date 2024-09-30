@@ -24,7 +24,7 @@ pub fn generate_glue_code<T: FieldElement>(
 ) -> Result<String, String> {
     if T::BITS > 64 {
         return Err(format!(
-            "Fields with more than 64 bits not supported, but requested {}",
+            "Fields with more than 64 bits not supported, requested {}",
             T::BITS,
         ));
     }

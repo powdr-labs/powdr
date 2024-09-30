@@ -10,7 +10,7 @@ use powdr_ast::{
         IndexAccess, LambdaExpression, Number, StatementInsideBlock, UnaryOperation,
     },
 };
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, LargeInt};
 
 pub struct CodeGenerator<'a, T> {
     analyzed: &'a Analyzed<T>,
@@ -335,20 +335,26 @@ fn map_type(ty: &Type) -> String {
 fn is_builtin(symbol: &str) -> bool {
     matches!(
         symbol,
-        "std::check::panic" | "std::field::modulus" | "std::convert::fe"
+        "std::check::panic" | "std::field::modulus" | "std::convert::fe" | "std::convert::int"
     )
 }
 
 fn try_generate_builtin<T: FieldElement>(symbol: &str) -> Option<String> {
     let code = match symbol {
-        "std::array::len" => "<T>(a: Vec<T>) -> ibig::IBig { ibig::IBig::from(a.len()) }".to_string(),
+        "std::array::len" => {
+            "<T>(a: Vec<T>) -> ibig::IBig { ibig::IBig::from(a.len()) }".to_string()
+        }
         "std::check::panic" => "(s: &str) -> ! { panic!(\"{s}\"); }".to_string(),
         "std::field::modulus" => {
             let modulus = T::modulus();
             format!("() -> ibig::IBig {{ ibig::IBig::from(\"{modulus}\") }}")
         }
-        "std::convert::fe" => "(n: ibig::IBig) -> FieldElement {\n    <FieldElement as PrimeField>::BigInt::try_from(n.to_biguint().unwrap()).unwrap().into()\n}"
-            .to_string(),
+        "std::convert::fe" => {
+            "(n: ibig::IBig) -> FieldElement { u64::try_from(n).unwrap().into() }".to_string()
+        }
+        "std::convert::int" => {
+            "(n: FieldElement) -> ibig::IBig {{ u64::try_from(n).into() }}".to_string()
+        }
         _ => return None,
     };
     Some(format!("fn {}{code}", escape_symbol(symbol)))
