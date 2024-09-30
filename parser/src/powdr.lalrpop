@@ -96,6 +96,7 @@ TypeSymbolPathPart: Part = {
 pub PilStatementAtModuleLevel = {
     LetStatement,
     <start:@L> <decl:EnumDeclaration> <end:@R> => PilStatement::EnumDeclaration(ctx.source_ref(start, end), decl),
+    <start:@L> <decl:StructDeclaration> <end:@R> => PilStatement::StructDeclaration(ctx.source_ref(start, end), decl),
     <start:@L> <impl_:TraitImplementation> <end:@R> => PilStatement::TraitImplementation(ctx.source_ref(start, end), impl_),
     <start:@L> <decl:TraitDeclaration> <end:@R> => PilStatement::TraitDeclaration(ctx.source_ref(start, end), decl),
 }
@@ -110,7 +111,6 @@ pub PilStatement = {
     PolynomialConstantDefinition,
     PolynomialCommitDeclaration,
     <start:@L> <decl:EnumDeclaration> <end:@R> => PilStatement::EnumDeclaration(ctx.source_ref(start, end), decl),
-    <start:@L> <decl:StructDeclaration> <end:@R> => PilStatement::StructDeclaration(ctx.source_ref(start, end), decl),
     <start:@L> <impl_:TraitImplementation> <end:@R> => PilStatement::TraitImplementation(ctx.source_ref(start, end), impl_),
     <start:@L> <decl:TraitDeclaration> <end:@R> => PilStatement::TraitDeclaration(ctx.source_ref(start, end), decl),
     ExpressionStatement,
@@ -642,7 +642,7 @@ IfExpression: Box<Expression> = {
 }
 
 StructExpression: Box<Expression> = {	
-    <start:@L> <name:SymbolPath> "{" <fields:NamedExpressions> "}" <end:@R> => ctx.to_expr_with_source_ref(StructExpression{name, fields}, start, end),
+    <start:@L> <name:NamespacedPolynomialReference> "{" <fields:NamedExpressions> "}" <end:@R> => ctx.to_expr_with_source_ref(StructExpression{name, fields}, start, end),
 }
 
 BlockExpression: Box<Expression> = {

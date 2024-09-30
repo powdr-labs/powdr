@@ -270,6 +270,12 @@ fn canonicalize_inside_pil_statement(
                 canonicalize_inside_type(&mut f.ty, &type_vars, path, paths);
             }
         }
+        PilStatement::StructDeclaration(_, struct_decl) => {
+            let type_vars = struct_decl.type_vars.vars().collect();
+            for f in &mut struct_decl.fields {
+                canonicalize_inside_type(&mut f.ty, &type_vars, path, paths);
+            }
+        }
         _ => unreachable!("unexpected at module level, make this enum more strict"),
     }
 }
@@ -913,11 +919,17 @@ fn check_expression(
                 None => Ok(()),
             }
         }
-        Expression::StructExpression(_, StructExpression { name: _, fields }) => fields
-            .iter()
-            .try_for_each(|NamedExpression { name: _, body }| {
-                check_expression(location, body, state, type_vars, local_variables)
-            }),
+        Expression::StructExpression(source_ref, StructExpression { name, fields }) => {
+            let path_to_check = location.clone().join(name.path.clone());
+            match check_path(path_to_check.clone(), state) {
+                Ok(()) => fields
+                    .iter()
+                    .try_for_each(|NamedExpression { name: _, body }| {
+                        check_expression(location, body, state, type_vars, local_variables)
+                    }),
+                Err(e) => Err(source_ref.with_error(e)),
+            }
+        }
     }
 }
 
@@ -1249,5 +1261,10 @@ mod tests {
     #[test]
     fn trait_implementation() {
         expect("trait_implementation", Ok(()))
+    }
+
+    #[test]
+    fn struct_expression() {
+        expect("struct_expression", Ok(()))
     }
 }

@@ -152,12 +152,9 @@ impl PilStatement {
                         .map(move |v| (name, Some(&v.name), SymbolCategory::TypeConstructor)),
                 ),
             ),
-            PilStatement::StructDeclaration(
-                _,
-                StructDeclaration {
-                    name, fields: _, ..
-                },
-            ) => Box::new(once((name, None, SymbolCategory::Type))),
+            PilStatement::StructDeclaration(_, StructDeclaration { name, .. }) => {
+                Box::new(once((name, None, SymbolCategory::Type)))
+            }
             PilStatement::TraitDeclaration(
                 _,
                 TraitDeclaration {
@@ -525,7 +522,7 @@ pub enum Expression<Ref = NamespacedPolynomialReference> {
     MatchExpression(SourceRef, MatchExpression<Self>),
     IfExpression(SourceRef, IfExpression<Self>),
     BlockExpression(SourceRef, BlockExpression<Self>),
-    StructExpression(SourceRef, StructExpression<Self>),
+    StructExpression(SourceRef, StructExpression<Ref>),
 }
 
 /// Comparison function for expressions that ignore source information.
@@ -1216,18 +1213,18 @@ impl<E> Children<E> for IfExpression<E> {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct StructExpression<E = Expression<NamespacedPolynomialReference>> {
-    pub name: SymbolPath,
-    pub fields: Vec<NamedExpression<Box<E>>>,
+pub struct StructExpression<E = NamespacedPolynomialReference> {
+    pub name: E,
+    pub fields: Vec<NamedExpression<Box<Expression<E>>>>,
 }
 
-impl<Ref> From<StructExpression<Expression<Ref>>> for Expression<Ref> {
-    fn from(call: StructExpression<Expression<Ref>>) -> Self {
+impl<Ref> From<StructExpression<Ref>> for Expression<Ref> {
+    fn from(call: StructExpression<Ref>) -> Self {
         Expression::StructExpression(SourceRef::unknown(), call)
     }
 }
 
-impl<R> Children<Expression<R>> for StructExpression<Expression<R>> {
+impl<R> Children<Expression<R>> for StructExpression<R> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
         Box::new(self.fields.iter().flat_map(|f| f.children()))
     }
