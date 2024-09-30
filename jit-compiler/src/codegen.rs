@@ -10,7 +10,7 @@ use powdr_ast::{
         IndexAccess, LambdaExpression, Number, StatementInsideBlock, UnaryOperation,
     },
 };
-use powdr_number::{FieldElement, LargeInt};
+use powdr_number::FieldElement;
 
 pub struct CodeGenerator<'a, T> {
     analyzed: &'a Analyzed<T>,
