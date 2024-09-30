@@ -10,7 +10,7 @@ use powdr_ast::{
         IndexAccess, LambdaExpression, Number, StatementInsideBlock, UnaryOperation,
     },
 };
-use powdr_number::{BigUint, FieldElement};
+use powdr_number::{BigUint, FieldElement, LargeInt};
 
 pub struct CodeGenerator<'a, T> {
     analyzed: &'a Analyzed<T>,
@@ -292,6 +292,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
             "Compiling statements inside blocks is not yet implemented: {s}"
         ))
     }
+
     /// Returns a string expression evaluating to the value of the symbol.
     /// This is either the escaped name of the symbol or a deref operator
     /// applied to it.
@@ -365,8 +366,7 @@ fn try_generate_builtin<T: FieldElement>(symbol: &str) -> Option<String> {
         "std::array::len" => "<T>(a: Vec<T>) -> ibig::IBig { ibig::IBig::from(a.len()) }".to_string(),
         "std::check::panic" => "(s: &str) -> ! { panic!(\"{s}\"); }".to_string(),
         "std::field::modulus" => {
-            let modulus = T::modulus();
-            format!("() -> ibig::IBig {{ ibig::IBig::from(\"{modulus}\") }}")
+            format!("() -> ibig::IBig {{ {} }}", format_unsigned_integer(&T::modulus().to_arbitrary_integer()))
         }
         "std::convert::fe" => "(n: ibig::IBig) -> FieldElement {\n    <FieldElement as PrimeField>::BigInt::try_from(n.to_biguint().unwrap()).unwrap().into()\n}"
             .to_string(),
