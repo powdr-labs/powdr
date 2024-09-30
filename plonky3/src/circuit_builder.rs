@@ -39,7 +39,7 @@ struct ConstraintSystem<T> {
     // for each fixed column, the index of this column in the fixed columns
     fixed_columns: HashMap<PolyID, usize>,
     identities: Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>>,
-    publics: Vec<(String, PolyID, usize)>,
+    publics: Vec<(String, PolyID, usize, u32)>,
     commitment_count: usize,
     constant_count: usize,
     // for each stage, the number of witness columns
@@ -182,7 +182,7 @@ where
         self.constraint_system
             .publics
             .iter()
-            .filter_map(|(col_name, _, idx)| {
+            .filter_map(|(col_name, _, idx, _)| {
                 witness
                     .get(&col_name)
                     .map(|column| column[*idx].into_p3_field())
@@ -338,7 +338,7 @@ where
             .publics
             .iter()
             .zip(pi.to_vec())
-            .map(|((id, _, _), val)| (id, val))
+            .map(|((id, _, _, _), val)| (id, val))
             .collect::<BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>>();
 
         // constrain public inputs using witness columns in stage 0
@@ -346,7 +346,7 @@ where
         let public_offset = self.constraint_system.constant_count;
 
         self.constraint_system.publics.iter().enumerate().for_each(
-            |(index, (pub_id, poly_id, _))| {
+            |(index, (pub_id, poly_id, _, _))| {
                 let selector = fixed_local[public_offset + index];
                 let (stage, index) = self.constraint_system.witness_columns[poly_id];
                 assert_eq!(
@@ -397,6 +397,14 @@ where
     ProverData<T>: Send,
     Commitment<T>: Send,
 {
+    fn stage_public_count(&self, stage: u32) -> usize {
+        self.constraint_system
+            .publics
+            .iter()
+            .filter(|(_, _, _, s)| *s == stage)
+            .count()
+    }
+
     fn preprocessed_width(&self) -> usize {
         self.constraint_system.constant_count + self.constraint_system.publics.len()
     }

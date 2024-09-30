@@ -80,7 +80,7 @@ where
             .analyzed
             .get_publics()
             .into_iter()
-            .map(|(name, _, row_id)| {
+            .map(|(name, _, row_id, _)| {
                 let selector = (0..self.analyzed.degree())
                     .map(move |i| T::from(i == row_id as u64))
                     .collect::<Vec<T>>();
@@ -112,7 +112,7 @@ where
             .analyzed
             .get_publics()
             .into_iter()
-            .map(|(name, _, row_id)| {
+            .map(|(name, _, row_id, _)| {
                 let selector = (0..self.analyzed.degree())
                     .map(move |i| T::from(i == row_id as u64))
                     .collect::<Vec<T>>();
@@ -187,40 +187,42 @@ where
 
         let proving_key = self.proving_key.as_ref();
 
-        let proof = prove_with_key(
-            &config,
-            proving_key,
-            &circuit,
-            &mut challenger,
-            stage_0_trace,
-            &circuit,
-            &stage_0_publics,
-        );
+        unimplemented!();
 
-        let mut challenger = T::get_challenger();
+        // let proof = prove_with_key(
+        //     &config,
+        //     proving_key,
+        //     &circuit,
+        //     &mut challenger,
+        //     stage_0_trace,
+        //     &circuit,
+        //     &stage_0_publics,
+        // );
 
-        let verifying_key = self.verifying_key.as_ref();
+        // let mut challenger = T::get_challenger();
 
-        let empty_public = vec![];
-        let public_values = once(&stage_0_publics)
-            .chain(repeat(&empty_public))
-            .take(self.analyzed.stage_count())
-            .collect();
+        // let verifying_key = self.verifying_key.as_ref();
 
-        verify_with_key(
-            &config,
-            verifying_key,
-            &circuit,
-            &mut challenger,
-            &proof,
-            public_values,
-        )
-        .unwrap();
-        Ok(bincode::serialize(&proof).unwrap())
+        // let empty_public = vec![];
+        // let public_values = once(&stage_0_publics)
+        //     .chain(repeat(&empty_public))
+        //     .take(self.analyzed.stage_count())
+        //     .collect();
+
+        // verify_with_key(
+        //     &config,
+        //     verifying_key,
+        //     &circuit,
+        //     &mut challenger,
+        //     &proof,
+        //     public_values,
+        // )
+        // .unwrap();
+        // Ok(bincode::serialize(&proof).unwrap())
     }
 
     pub fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), String> {
-        let proof: Proof<_> =
+        let proof: Proof<T::Config> =
             bincode::deserialize(proof).map_err(|e| format!("Failed to deserialize proof: {e}"))?;
         let publics = instances
             .iter()
@@ -235,20 +237,22 @@ where
         let verifying_key = self.verifying_key.as_ref();
 
         let empty_public = vec![];
-        let public_values = once(&publics)
+        let public_values: Vec<_> = once(&publics)
             .chain(repeat(&empty_public))
             .take(self.analyzed.stage_count())
             .collect();
 
-        verify_with_key(
-            &config,
-            verifying_key,
-            &PowdrCircuit::new(&self.analyzed),
-            &mut challenger,
-            &proof,
-            public_values,
-        )
-        .map_err(|e| format!("Failed to verify proof: {e:?}"))
+        unimplemented!();
+
+        // verify_with_key(
+        //     &config,
+        //     verifying_key,
+        //     &PowdrCircuit::new(&self.analyzed),
+        //     &mut challenger,
+        //     &proof,
+        //     public_values,
+        // )
+        // .map_err(|e| format!("Failed to verify proof: {e:?}"))
     }
 }
 

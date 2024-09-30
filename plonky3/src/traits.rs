@@ -19,6 +19,8 @@ pub trait MultistageAirBuilder: AirBuilderWithPublicValues {
 }
 
 pub trait MultiStageAir<AB: AirBuilder>: Air<AB> {
+    fn stage_public_count(&self, stage: u32) -> usize;
+
     fn preprocessed_width(&self) -> usize;
 
     fn stage_count(&self) -> usize {

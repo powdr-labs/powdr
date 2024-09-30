@@ -1,16 +1,15 @@
 use alloc::vec::Vec;
 
 use p3_commit::Pcs;
-use p3_matrix::dense::RowMajorMatrix;
 use serde::{Deserialize, Serialize};
 
 use p3_uni_stark::{StarkGenericConfig, Val};
 
-type Com<SC> = <<SC as StarkGenericConfig>::Pcs as Pcs<
+pub type Com<SC> = <<SC as StarkGenericConfig>::Pcs as Pcs<
     <SC as StarkGenericConfig>::Challenge,
     <SC as StarkGenericConfig>::Challenger,
 >>::Commitment;
-type PcsProof<SC> = <<SC as StarkGenericConfig>::Pcs as Pcs<
+pub type PcsProof<SC> = <<SC as StarkGenericConfig>::Pcs as Pcs<
     <SC as StarkGenericConfig>::Challenge,
     <SC as StarkGenericConfig>::Challenger,
 >>::Proof;
@@ -23,9 +22,8 @@ pub type PcsProverData<SC> = <<SC as StarkGenericConfig>::Pcs as Pcs<
 #[serde(bound = "")]
 pub struct Proof<SC: StarkGenericConfig> {
     pub(crate) commitments: Commitments<Com<SC>>,
-    pub(crate) opened_values: OpenedValues<SC::Challenge>,
+    pub(crate) opened_values: Vec<ChipOpenedValues<SC::Challenge>>,
     pub(crate) opening_proof: PcsProof<SC>,
-    pub(crate) degree_bits: usize,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -35,12 +33,13 @@ pub struct Commitments<Com> {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct OpenedValues<Challenge> {
+pub struct ChipOpenedValues<Challenge> {
     pub(crate) preprocessed_local: Vec<Challenge>,
     pub(crate) preprocessed_next: Vec<Challenge>,
     pub(crate) traces_by_stage_local: Vec<Vec<Challenge>>,
     pub(crate) traces_by_stage_next: Vec<Vec<Challenge>>,
     pub(crate) quotient_chunks: Vec<Vec<Challenge>>,
+    pub(crate) log_degree: usize,
 }
 
 pub struct StarkProvingKey<SC: StarkGenericConfig> {
@@ -58,7 +57,7 @@ pub struct ProcessedStage<SC: StarkGenericConfig> {
     pub(crate) commitment: Com<SC>,
     pub(crate) prover_data: PcsProverData<SC>,
     pub(crate) challenge_values: Vec<Val<SC>>,
-    pub(crate) public_values: Vec<Val<SC>>,
-    #[cfg(debug_assertions)]
-    pub(crate) trace: RowMajorMatrix<Val<SC>>,
+    pub(crate) public_values: Vec<Vec<Val<SC>>>,
+    // #[cfg(debug_assertions)]
+    // pub(crate) trace: RowMajorMatrix<Val<SC>>,
 }
