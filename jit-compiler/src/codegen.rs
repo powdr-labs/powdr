@@ -357,7 +357,11 @@ fn map_type(ty: &Type) -> String {
 fn is_builtin(symbol: &str) -> bool {
     matches!(
         symbol,
-        "std::check::panic" | "std::field::modulus" | "std::convert::fe" | "std::convert::int"
+        "std::array::len"
+            | "std::check::panic"
+            | "std::field::modulus"
+            | "std::convert::fe"
+            | "std::convert::int"
     )
 }
 
