@@ -8,10 +8,7 @@ use walkdir::WalkDir;
 
 fn main() {
     let exclude = if let Ok(ignore) = std::env::var("POWDR_IGNORE_REPARSE_TESTS") {
-        ignore
-            .split(',')
-            .map(|s| s.to_string())
-            .collect()
+        ignore.split(',').map(|s| s.to_string()).collect()
     } else {
         Default::default()
     };
