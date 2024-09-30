@@ -921,7 +921,7 @@ fn check_expression(
         }
         Expression::StructExpression(source_ref, StructExpression { name, fields }) => {
             let path_to_check = location.clone().join(name.path.clone());
-            match check_path(path_to_check.clone(), state) {
+            match check_path(path_to_check, state) {
                 Ok(()) => fields
                     .iter()
                     .try_for_each(|NamedExpression { name: _, body }| {
