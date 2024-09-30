@@ -8,15 +8,7 @@ use std::path::Path;
 extern crate lalrpop;
 
 fn main() {
-    build_lalrpop();
     build_instruction_tests();
-}
-
-fn build_lalrpop() {
-    lalrpop::Configuration::new()
-        .emit_rerun_directives(true)
-        .process_current_dir()
-        .unwrap();
 }
 
 #[allow(clippy::print_stdout)]
