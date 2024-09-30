@@ -73,3 +73,10 @@ fn assigned_functions() {
     let d = compile(input, "main::d");
     assert_eq!(d.call(0), 1);
 }
+
+#[test]
+fn gigantic_number() {
+    let f = compile("let c: int -> int = |i| (i * 0x1000000000000000000000000000000000000000000000000000000000000000000000000000000000) >> (81 * 4);", "c");
+
+    assert_eq!(f.call(10), 10);
+}

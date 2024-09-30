@@ -10,7 +10,7 @@ use powdr_ast::{
         IndexAccess, LambdaExpression, Number, StatementInsideBlock, UnaryOperation,
     },
 };
-use powdr_number::{FieldElement, LargeInt};
+use powdr_number::{BigUint, FieldElement, LargeInt};
 
 pub struct CodeGenerator<'a, T> {
     analyzed: &'a Analyzed<T>,
@@ -170,18 +170,20 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     value,
                     type_: Some(type_),
                 },
-            ) => {
-                if *type_ == Type::Int {
-                    format_number(value)
-                } else {
-                    let value = u64::try_from(value).unwrap_or_else(|_| unimplemented!());
-                    match type_ {
-                        Type::Fe => format!("FieldElement::from({value}_u64)"),
-                        Type::Expr => format!("Expr::from({value}_u64)"),
-                        _ => unreachable!(),
-                    }
+            ) => match type_ {
+                Type::Int => format_unsigned_integer(value),
+                Type::Fe => {
+                    let val = u64::try_from(value)
+                        .map_err(|_| "Large numbers for fe not yet implemented.".to_string())?;
+                    format!("FieldElement::from({val}_u64)",)
                 }
-            }
+                Type::Expr => {
+                    let val = u64::try_from(value)
+                        .map_err(|_| "Large numbers for expr not yet implemented.".to_string())?;
+                    format!("Expr::from({val}_u64)")
+                }
+                _ => unreachable!(),
+            },
             Expression::FunctionCall(
                 _,
                 FunctionCall {
@@ -208,7 +210,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 let right = self.format_expr(right)?;
                 match op {
                     BinaryOperator::ShiftLeft => {
-                        format!("(({left}).clone() << u32::try_from(({right}).clone()).unwrap())")
+                        format!("(({left}).clone() << usize::try_from(({right}).clone()).unwrap())")
                     }
                     BinaryOperator::ShiftRight => {
                         format!("(({left}).clone() >> usize::try_from(({right}).clone()).unwrap())")
@@ -313,6 +315,20 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
     }
 }
 
+fn format_unsigned_integer(n: &BigUint) -> String {
+    if let Ok(n) = u64::try_from(n) {
+        format!("ibig::IBig::from({n}_u64)")
+    } else {
+        format!(
+            "ibig::IBig::from(ibig::UBig::from_le_bytes(&[{}]))",
+            n.to_le_bytes()
+                .iter()
+                .map(|b| format!("{b}_u8"))
+                .format(", ")
+        )
+    }
+}
+
 fn map_type(ty: &Type) -> String {
     match ty {
         Type::Bottom | Type::Bool => format!("{ty}"),
@@ -354,7 +370,7 @@ fn get_builtins<T: FieldElement>() -> &'static HashMap<String, String> {
                 "std::field::modulus",
                 format!(
                     "() -> ibig::IBig {{ {} }}",
-                    format_number(&T::modulus().to_arbitrary_integer())
+                    format_unsigned_integer(&T::modulus().to_arbitrary_integer())
                 ),
             ),
         ]
