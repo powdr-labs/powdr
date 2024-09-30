@@ -28,7 +28,13 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     //
     // Reads happen at the provided time step; writes happen at the next time step.
     operation poseidon_permutation<0> input_addr, output_addr, time_step ->;
+
+    col witness CLK_0; // apparently just declaring this is not enough
     let operation_id;
+
+    let input_addr;
+    let output_addr;
+    let time_step;
 
     // Poseidon2 parameters, compatible with our powdr-plonky3 implementation.
     //
@@ -153,13 +159,36 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     };
 
     // Load all the inputs in the first time step
+    //
+    // TODO: when link is availailable inside functions, we can do something like this:
+    /*
     let input: col[STATE_SIZE];
     array::map_enumerated(input, constr |i, val| {
         let word_low;
         let word_high;
-        [word_high, word_low] in mem.mload(input_addr + 4 * i, time_step);
+        link ~> (word_high, word_low) = mem.mload(input_addr + 4 * i, time_step);
         input[i] = word_low + word_high * 2**16;
     });
+    */
+    let input: col[STATE_SIZE];
+    let input_low: col[STATE_SIZE];
+    let input_high: col[STATE_SIZE];
+    link ~> (input_low[0], input_high[0]) = mem.mload(input_addr, time_step);
+    link ~> (input_low[1], input_high[1]) = mem.mload(input_addr + 4, time_step);
+    link ~> (input_low[2], input_high[2]) = mem.mload(input_addr + 8, time_step);
+    link ~> (input_low[3], input_high[3]) = mem.mload(input_addr + 12, time_step);
+    link ~> (input_low[4], input_high[4]) = mem.mload(input_addr + 16, time_step);
+    link ~> (input_low[5], input_high[5]) = mem.mload(input_addr + 20, time_step);
+    link ~> (input_low[6], input_high[6]) = mem.mload(input_addr + 24, time_step);
+    link ~> (input_low[7], input_high[7]) = mem.mload(input_addr + 28, time_step);
+    link ~> (input_low[8], input_high[8]) = mem.mload(input_addr + 32, time_step);
+    link ~> (input_low[9], input_high[9]) = mem.mload(input_addr + 36, time_step);
+    link ~> (input_low[10], input_high[10]) = mem.mload(input_addr + 40, time_step);
+    link ~> (input_low[11], input_high[11]) = mem.mload(input_addr + 44, time_step);
+    link ~> (input_low[12], input_high[12]) = mem.mload(input_addr + 48, time_step);
+    link ~> (input_low[13], input_high[13]) = mem.mload(input_addr + 52, time_step);
+    link ~> (input_low[14], input_high[14]) = mem.mload(input_addr + 56, time_step);
+    link ~> (input_low[15], input_high[15]) = mem.mload(input_addr + 60, time_step);
 
     // The rounds:
     let rounds: col[2*HALF_EXTERNAL_ROUNDS + INTERNAL_ROUNDS][STATE_SIZE];
@@ -205,10 +234,34 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     external_round(2 * HALF_EXTERNAL_ROUNDS - 1, rounds[second_external_start + HALF_EXTERNAL_ROUNDS - 1], output);
 
     // Write the output in the second time step
+    //
+    // TODO: when link is availailable inside functions, we can do something like this:
+    /*
     array::map_enumerated(output, constr |i, val| {
         let word_low;
         let word_high;
-        [word_low, word_high] in split_bb.split(val);
-        [] = mem.mstore(output_addr + 4 * i, time_step + 1, word_high, word_low); //what is the syntax here???
+        link ~> (word_low, word_high) = split_bb.split(val);
+        link ~> mem.mstore(output_addr + 4 * i, time_step + 1, word_high, word_low);
     });
+    */
+
+    let output_low: col[OUTPUT_SIZE];
+    let output_high: col[OUTPUT_SIZE];
+    link ~> (output_high[0], output_low[0]) = split_BB.split(output[0]);
+    link ~> (output_high[1], output_low[1]) = split_BB.split(output[1]);
+    link ~> (output_high[2], output_low[2]) = split_BB.split(output[2]);
+    link ~> (output_high[3], output_low[3]) = split_BB.split(output[3]);
+    link ~> (output_high[4], output_low[4]) = split_BB.split(output[4]);
+    link ~> (output_high[5], output_low[5]) = split_BB.split(output[5]);
+    link ~> (output_high[6], output_low[6]) = split_BB.split(output[6]);
+    link ~> (output_high[7], output_low[7]) = split_BB.split(output[7]);
+
+    link ~> mem.mstore(output_addr, time_step + 1, output_low[0], output_high[0]);
+    link ~> mem.mstore(output_addr + 4, time_step + 1, output_low[1], output_high[1]);
+    link ~> mem.mstore(output_addr + 8, time_step + 1, output_low[2], output_high[2]);
+    link ~> mem.mstore(output_addr + 12, time_step + 1, output_low[3], output_high[3]);
+    link ~> mem.mstore(output_addr + 16, time_step + 1, output_low[4], output_high[4]);
+    link ~> mem.mstore(output_addr + 20, time_step + 1, output_low[5], output_high[5]);
+    link ~> mem.mstore(output_addr + 24, time_step + 1, output_low[6], output_high[6]);
+    link ~> mem.mstore(output_addr + 28, time_step + 1, output_low[7], output_high[7]);
 }
