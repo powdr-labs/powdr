@@ -10,7 +10,7 @@ use powdr_ast::{
         IndexAccess, LambdaExpression, Number, StatementInsideBlock, UnaryOperation,
     },
 };
-use powdr_number::{BigUint, FieldElement, LargeInt};
+use powdr_number::{BigUint, FieldElement};
 
 pub struct CodeGenerator<'a, T> {
     analyzed: &'a Analyzed<T>,
@@ -210,7 +210,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 let right = self.format_expr(right)?;
                 match op {
                     BinaryOperator::ShiftLeft => {
-                        format!("(({left}).clone() << u32::try_from(({right}).clone()).unwrap())")
+                        format!("(({left}).clone() << usize::try_from(({right}).clone()).unwrap())")
                     }
                     BinaryOperator::ShiftRight => {
                         format!("(({left}).clone() >> usize::try_from(({right}).clone()).unwrap())")
