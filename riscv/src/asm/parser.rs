@@ -6,6 +6,7 @@ use powdr_parser_util::handle_parse_error;
 use super::Statement;
 
 lalrpop_mod!(
+    #[allow(dead_code)]
     #[allow(clippy::all)]
     #[allow(clippy::uninlined_format_args)]
     riscv_asm,

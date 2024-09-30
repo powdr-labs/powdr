@@ -15,12 +15,12 @@ use powdr_number::FieldElement;
 pub struct LoadedFunction {
     #[allow(dead_code)]
     library: Arc<libloading::Library>,
-    function: unsafe extern "C" fn(u64) -> u64,
+    function: extern "C" fn(u64) -> u64,
 }
 
 impl LoadedFunction {
     pub fn call(&self, arg: u64) -> u64 {
-        unsafe { (self.function)(arg) }
+        (self.function)(arg)
     }
 }
 
@@ -52,7 +52,7 @@ pub fn compile<T: FieldElement>(
 
     let glue_code = generate_glue_code(&successful_symbols, analyzed)?;
 
-    let lib_file = call_cargo(&format!("{glue_code}\n{}\n", codegen.compiled_symbols()))?;
+    let lib_file = call_cargo(&format!("{glue_code}\n{}\n", codegen.generated_code()))?;
     let metadata = fs::metadata(&lib_file.path).unwrap();
 
     log::info!(

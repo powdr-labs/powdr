@@ -71,6 +71,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 ibig = { version = "0.3.6", features = [], default-features = false }
+lazy_static = "1.4.0"
 "#;
 
 pub struct PathInTempDir {
@@ -88,11 +89,6 @@ pub fn call_cargo(code: &str) -> Result<PathInTempDir, String> {
     fs::write(dir.join("Cargo.toml"), CARGO_TOML).unwrap();
     fs::create_dir(dir.join("src")).unwrap();
     fs::write(dir.join("src").join("lib.rs"), code).unwrap();
-    Command::new("cargo")
-        .arg("fmt")
-        .current_dir(dir.clone())
-        .output()
-        .unwrap();
     let out = Command::new("cargo")
         .env("RUSTFLAGS", "-C target-cpu=native")
         .arg("build")
@@ -135,7 +131,7 @@ pub fn load_library(
         .map(|&sym| {
             let extern_sym = extern_symbol_name(sym);
             let function =
-                *unsafe { library.get::<unsafe extern "C" fn(u64) -> u64>(extern_sym.as_bytes()) }
+                *unsafe { library.get::<extern "C" fn(u64) -> u64>(extern_sym.as_bytes()) }
                     .map_err(|e| format!("Error accessing symbol {sym}: {e}"))?;
             let fun = LoadedFunction {
                 library: library.clone(),
