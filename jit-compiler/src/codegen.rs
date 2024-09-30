@@ -4,13 +4,13 @@ use itertools::Itertools;
 use powdr_ast::{
     analyzed::{Analyzed, Expression, FunctionValueDefinition, PolynomialReference, Reference},
     parsed::{
-        display::{format_type_args, quote},
+        display::quote,
         types::{ArrayType, FunctionType, Type, TypeScheme},
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
         IndexAccess, LambdaExpression, Number, StatementInsideBlock, UnaryOperation,
     },
 };
-use powdr_number::FieldElement;
+use powdr_number::{BigUint, FieldElement, LargeInt};
 
 pub struct CodeGenerator<'a, T> {
     analyzed: &'a Analyzed<T>,
@@ -18,6 +18,11 @@ pub struct CodeGenerator<'a, T> {
     /// why they could not be compiled.
     /// While the code is still being generated, this contains `None`.
     symbols: HashMap<String, Result<Option<String>, String>>,
+}
+
+pub fn escape_symbol(s: &str) -> String {
+    // TODO better escaping
+    s.replace('.', "_").replace("::", "_")
 }
 
 impl<'a, T: FieldElement> CodeGenerator<'a, T> {
@@ -28,36 +33,35 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
         }
     }
 
-    /// Request a symbol to be compiled. The code can later be retrieved
-    /// via `compiled_symbols`.
-    /// In the error case, `self` can still be used to compile other symbols.
-    pub fn request_symbol(&mut self, name: &str) -> Result<(), String> {
+    /// Tries to generate code for the symbol and all its dependencies.
+    /// On success, returns an expression string for referencing the symbol,
+    /// i.e. it evaluates to the value of the symbol.
+    /// On failure, returns an error string.
+    /// After a failure, `self` can still be used to request other symbols.
+    /// The code can later be retrieved via `generated_code`.
+    pub fn request_symbol(&mut self, name: &str) -> Result<String, String> {
         match self.symbols.get(name) {
-            Some(Ok(_)) => Ok(()),
-            Some(Err(e)) => Err(e.clone()),
+            Some(Err(e)) => return Err(e.clone()),
+            Some(_) => {}
             None => {
                 let name = name.to_string();
                 self.symbols.insert(name.clone(), Ok(None));
-                let to_insert;
-                let to_return;
                 match self.generate_code(&name) {
                     Ok(code) => {
-                        to_insert = Ok(Some(code));
-                        to_return = Ok(());
+                        self.symbols.insert(name.clone(), Ok(Some(code)));
                     }
                     Err(err) => {
-                        to_insert = Err(err.clone());
-                        to_return = Err(err);
+                        self.symbols.insert(name.clone(), Err(err.clone()));
+                        return Err(err);
                     }
                 }
-                self.symbols.insert(name, to_insert);
-                to_return
             }
         }
+        Ok(self.symbol_reference(name))
     }
 
     /// Returns the concatenation of all successfully compiled symbols.
-    pub fn compiled_symbols(self) -> String {
+    pub fn generated_code(self) -> String {
         self.symbols
             .into_iter()
             .filter_map(|(s, r)| match r {
@@ -71,7 +75,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
     }
 
     fn generate_code(&mut self, symbol: &str) -> Result<String, String> {
-        if let Some(code) = self.try_generate_builtin(symbol) {
+        if let Some(code) = try_generate_builtin::<T>(symbol) {
             return Ok(code);
         }
 
@@ -85,51 +89,58 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
 
         let type_scheme = value
             .type_scheme
-            .clone()
+            .as_ref()
             .ok_or_else(|| format!("Symbol does not have a type: {symbol}"))?;
 
-        Ok(match type_scheme {
-            TypeScheme {
-                vars,
-                ty:
+        Ok(match (&value.e, type_scheme) {
+            (Expression::LambdaExpression(_, expr), TypeScheme { vars, ty }) => {
+                assert!(vars.is_empty());
+                self.try_format_function(symbol, expr, ty)?
+            }
+            _ => {
+                let type_scheme = value.type_scheme.as_ref().unwrap();
+                assert!(type_scheme.vars.is_empty());
+                let ty = if type_scheme.ty == Type::Col {
                     Type::Function(FunctionType {
-                        params: param_types,
-                        value: return_type,
-                    }),
-            } => {
-                assert!(vars.is_empty());
-                self.try_format_function(symbol, &param_types, return_type.as_ref(), &value.e)?
+                        params: vec![Type::Int],
+                        value: Box::new(Type::Fe),
+                    })
+                } else {
+                    type_scheme.ty.clone()
+                };
+                // We need a lazy static here because we want symbols to only be
+                // evaluated once and the code is not `const` in the general case.
+                format!(
+                    "lazy_static::lazy_static! {{\n\
+                    static ref {}: {} = {};\n\
+                    }}\n",
+                    escape_symbol(symbol),
+                    map_type(&ty),
+                    self.format_expr(&value.e)?
+                )
             }
-            TypeScheme {
-                vars,
-                ty: Type::Col,
-            } => {
-                assert!(vars.is_empty());
-                // TODO we assume it is an int -> int function.
-                // The type inference algorithm should store the derived type.
-                // Alternatively, we insert a trait conversion function and store the type
-                // in the trait vars.
-                self.try_format_function(symbol, &[Type::Int], &Type::Int, &value.e)?
-            }
-            _ => format!(
-                "const {}: {} = {};\n",
-                escape_symbol(symbol),
-                map_type(&value.type_scheme.as_ref().unwrap().ty),
-                self.format_expr(&value.e)?
-            ),
         })
     }
 
     fn try_format_function(
         &mut self,
         name: &str,
-        param_types: &[Type],
-        return_type: &Type,
-        expr: &Expression,
+        LambdaExpression { params, body, .. }: &LambdaExpression<Expression>,
+        ty: &Type,
     ) -> Result<String, String> {
-        let Expression::LambdaExpression(_, LambdaExpression { params, body, .. }) = expr else {
-            return Err(format!("Expected lambda expression for {name}, got {expr}",));
+        let (param_types, return_type) = &match ty {
+            Type::Function(FunctionType { params, value }) => (params.clone(), (**value).clone()),
+            Type::Col => {
+                // TODO we assume it is an int -> fe function, even though other
+                // types are possible.
+                // At some point, the type inference algorithm should store the derived type.
+                // Alternatively, we could insert a trait conversion function and store the type
+                // in the trait vars.
+                (vec![Type::Int], Type::Fe)
+            }
+            _ => return Err(format!("Expected function type, got {ty}")),
         };
+
         Ok(format!(
             "fn {}({}) -> {} {{ {} }}\n",
             escape_symbol(name),
@@ -143,31 +154,16 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
         ))
     }
 
-    fn try_generate_builtin(&self, symbol: &str) -> Option<String> {
-        let code = match symbol {
-            "std::check::panic" => Some("(s: &str) -> ! { panic!(\"{s}\"); }".to_string()),
-            "std::field::modulus" => {
-                let modulus = T::modulus();
-                Some(format!("() -> ibig::IBig {{ ibig::IBig::from(\"{modulus}\") }}"))
-            }
-            "std::convert::fe" => Some("(n: ibig::IBig) -> FieldElement {\n    <FieldElement as PrimeField>::BigInt::try_from(n.to_biguint().unwrap()).unwrap().into()\n}"
-                .to_string()),
-            _ => None,
-        }?;
-        Some(format!("fn {}{code}", escape_symbol(symbol)))
-    }
-
     fn format_expr(&mut self, e: &Expression) -> Result<String, String> {
         Ok(match e {
             Expression::Reference(_, Reference::LocalVar(_id, name)) => name.clone(),
             Expression::Reference(_, Reference::Poly(PolynomialReference { name, type_args })) => {
-                self.request_symbol(name)?;
+                let reference = self.request_symbol(name)?;
                 let ta = type_args.as_ref().unwrap();
                 format!(
-                    "{}{}",
-                    escape_symbol(name),
+                    "{reference}{}",
                     (!ta.is_empty())
-                        .then(|| format!("::{}", format_type_args(ta)))
+                        .then(|| format!("::<{}>", ta.iter().map(map_type).join(", ")))
                         .unwrap_or_default()
                 )
             }
@@ -177,15 +173,20 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     value,
                     type_: Some(type_),
                 },
-            ) => {
-                let value = u64::try_from(value).unwrap_or_else(|_| unimplemented!());
-                match type_ {
-                    Type::Int => format!("ibig::IBig::from({value}_u64)"),
-                    Type::Fe => format!("FieldElement::from({value}_u64)"),
-                    Type::Expr => format!("Expr::from({value}_u64)"),
-                    _ => return Err(format!("Unexpected type for literal number: {type_}")),
+            ) => match type_ {
+                Type::Int => format_unsigned_integer(value),
+                Type::Fe => {
+                    let val = u64::try_from(value)
+                        .map_err(|_| "Large numbers for fe not yet implemented.".to_string())?;
+                    format!("FieldElement::from({val}_u64)",)
                 }
-            }
+                Type::Expr => {
+                    let val = u64::try_from(value)
+                        .map_err(|_| "Large numbers for expr not yet implemented.".to_string())?;
+                    format!("Expr::from({val}_u64)")
+                }
+                _ => return Err(format!("Unexpected type for literal number: {type_}")),
+            },
             Expression::FunctionCall(
                 _,
                 FunctionCall {
@@ -212,7 +213,10 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 let right = self.format_expr(right)?;
                 match op {
                     BinaryOperator::ShiftLeft => {
-                        format!("(({left}).clone() << u32::try_from(({right}).clone()).unwrap())")
+                        format!("(({left}).clone() << usize::try_from(({right}).clone()).unwrap())")
+                    }
+                    BinaryOperator::ShiftRight => {
+                        format!("(({left}).clone() >> usize::try_from(({right}).clone()).unwrap())")
                     }
                     _ => format!("(({left}).clone() {op} ({right}).clone())"),
                 }
@@ -291,11 +295,41 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
             "Compiling statements inside blocks is not yet implemented: {s}"
         ))
     }
+
+    /// Returns a string expression evaluating to the value of the symbol.
+    /// This is either the escaped name of the symbol or a deref operator
+    /// applied to it.
+    fn symbol_reference(&self, symbol: &str) -> String {
+        let needs_deref = if is_builtin(symbol) {
+            false
+        } else {
+            let (_, def) = self.analyzed.definitions.get(symbol).as_ref().unwrap();
+            if let Some(FunctionValueDefinition::Expression(typed_expr)) = def {
+                !matches!(typed_expr.e, Expression::LambdaExpression(..))
+            } else {
+                false
+            }
+        };
+        if needs_deref {
+            format!("(*{})", escape_symbol(symbol))
+        } else {
+            escape_symbol(symbol)
+        }
+    }
 }
 
-pub fn escape_symbol(s: &str) -> String {
-    // TODO better escaping
-    s.replace('.', "_").replace("::", "_")
+fn format_unsigned_integer(n: &BigUint) -> String {
+    if let Ok(n) = u64::try_from(n) {
+        format!("ibig::IBig::from({n}_u64)")
+    } else {
+        format!(
+            "ibig::IBig::from(ibig::UBig::from_le_bytes(&[{}]))",
+            n.to_le_bytes()
+                .iter()
+                .map(|b| format!("{b}_u8"))
+                .format(", ")
+        )
+    }
 }
 
 fn map_type(ty: &Type) -> String {
@@ -307,7 +341,11 @@ fn map_type(ty: &Type) -> String {
         Type::Expr => "Expr".to_string(),
         Type::Array(ArrayType { base, length: _ }) => format!("Vec<{}>", map_type(base)),
         Type::Tuple(_) => todo!(),
-        Type::Function(ft) => todo!("Type {ft}"),
+        Type::Function(ft) => format!(
+            "fn({}) -> {}",
+            ft.params.iter().map(map_type).join(", "),
+            map_type(&ft.value)
+        ),
         Type::TypeVar(tv) => tv.to_string(),
         Type::NamedType(path, type_args) => {
             if type_args.is_some() {
@@ -317,6 +355,27 @@ fn map_type(ty: &Type) -> String {
         }
         Type::Col | Type::Inter => unreachable!(),
     }
+}
+
+fn is_builtin(symbol: &str) -> bool {
+    matches!(
+        symbol,
+        "std::check::panic" | "std::field::modulus" | "std::convert::fe"
+    )
+}
+
+fn try_generate_builtin<T: FieldElement>(symbol: &str) -> Option<String> {
+    let code = match symbol {
+        "std::array::len" => "<T>(a: Vec<T>) -> ibig::IBig { ibig::IBig::from(a.len()) }".to_string(),
+        "std::check::panic" => "(s: &str) -> ! { panic!(\"{s}\"); }".to_string(),
+        "std::field::modulus" => {
+            format!("() -> ibig::IBig {{ {} }}", format_unsigned_integer(&T::modulus().to_arbitrary_integer()))
+        }
+        "std::convert::fe" => "(n: ibig::IBig) -> FieldElement {\n    <FieldElement as PrimeField>::BigInt::try_from(n.to_biguint().unwrap()).unwrap().into()\n}"
+            .to_string(),
+        _ => return None,
+    };
+    Some(format!("fn {}{code}", escape_symbol(symbol)))
 }
 
 #[cfg(test)]
@@ -334,7 +393,7 @@ mod test {
         for s in syms {
             compiler.request_symbol(s).unwrap();
         }
-        compiler.compiled_symbols()
+        compiler.generated_code()
     }
 
     #[test]
