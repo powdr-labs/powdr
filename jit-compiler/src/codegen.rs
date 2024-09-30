@@ -10,7 +10,7 @@ use powdr_ast::{
         IndexAccess, LambdaExpression, Number, StatementInsideBlock, UnaryOperation,
     },
 };
-use powdr_number::FieldElement;
+use powdr_number::{BigUint, FieldElement, LargeInt};
 
 pub struct CodeGenerator<'a, T> {
     analyzed: &'a Analyzed<T>,
@@ -18,6 +18,11 @@ pub struct CodeGenerator<'a, T> {
     /// why they could not be compiled.
     /// While the code is still being generated, this contains `None`.
     symbols: HashMap<String, Result<Option<String>, String>>,
+}
+
+pub fn escape_symbol(s: &str) -> String {
+    // TODO better escaping
+    s.replace('.', "_").replace("::", "_")
 }
 
 impl<'a, T: FieldElement> CodeGenerator<'a, T> {
@@ -165,15 +170,20 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     value,
                     type_: Some(type_),
                 },
-            ) => {
-                let value = u64::try_from(value).unwrap_or_else(|_| unimplemented!());
-                match type_ {
-                    Type::Int => format!("ibig::IBig::from({value}_u64)"),
-                    Type::Fe => format!("FieldElement::from({value}_u64)"),
-                    Type::Expr => format!("Expr::from({value}_u64)"),
-                    _ => unreachable!(),
+            ) => match type_ {
+                Type::Int => format_unsigned_integer(value),
+                Type::Fe => {
+                    let val = u64::try_from(value)
+                        .map_err(|_| "Large numbers for fe not yet implemented.".to_string())?;
+                    format!("FieldElement::from({val}_u64)",)
                 }
-            }
+                Type::Expr => {
+                    let val = u64::try_from(value)
+                        .map_err(|_| "Large numbers for expr not yet implemented.".to_string())?;
+                    format!("Expr::from({val}_u64)")
+                }
+                _ => unreachable!(),
+            },
             Expression::FunctionCall(
                 _,
                 FunctionCall {
@@ -200,7 +210,10 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 let right = self.format_expr(right)?;
                 match op {
                     BinaryOperator::ShiftLeft => {
-                        format!("(({left}).clone() << u32::try_from(({right}).clone()).unwrap())")
+                        format!("(({left}).clone() << usize::try_from(({right}).clone()).unwrap())")
+                    }
+                    BinaryOperator::ShiftRight => {
+                        format!("(({left}).clone() >> usize::try_from(({right}).clone()).unwrap())")
                     }
                     _ => format!("(({left}).clone() {op} ({right}).clone())"),
                 }
@@ -302,9 +315,18 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
     }
 }
 
-pub fn escape_symbol(s: &str) -> String {
-    // TODO better escaping
-    s.replace('.', "_").replace("::", "_")
+fn format_unsigned_integer(n: &BigUint) -> String {
+    if let Ok(n) = u64::try_from(n) {
+        format!("ibig::IBig::from({n}_u64)")
+    } else {
+        format!(
+            "ibig::IBig::from(ibig::UBig::from_le_bytes(&[{}]))",
+            n.to_le_bytes()
+                .iter()
+                .map(|b| format!("{b}_u8"))
+                .format(", ")
+        )
+    }
 }
 
 fn map_type(ty: &Type) -> String {
@@ -344,8 +366,7 @@ fn try_generate_builtin<T: FieldElement>(symbol: &str) -> Option<String> {
         "std::array::len" => "<T>(a: Vec<T>) -> ibig::IBig { ibig::IBig::from(a.len()) }".to_string(),
         "std::check::panic" => "(s: &str) -> ! { panic!(\"{s}\"); }".to_string(),
         "std::field::modulus" => {
-            let modulus = T::modulus();
-            format!("() -> ibig::IBig {{ ibig::IBig::from(\"{modulus}\") }}")
+            format!("() -> ibig::IBig {{ {} }}", format_unsigned_integer(&T::modulus().to_arbitrary_integer()))
         }
         "std::convert::fe" => "(n: ibig::IBig) -> FieldElement {\n    <FieldElement as PrimeField>::BigInt::try_from(n.to_biguint().unwrap()).unwrap().into()\n}"
             .to_string(),
