@@ -312,6 +312,13 @@ fn canonicalize_inside_expression(
                     canonicalize_inside_pattern(pattern, path, paths);
                 })
             }
+            Expression::StructExpression(_, StructExpression { name, .. }) => {
+                if let Some(n) = paths.get(&path.clone().join(name.path.clone())) {
+                    name.path = n.relative_to(&Default::default());
+                } else {
+                    assert!(name.path.try_to_identifier().is_some());
+                }
+            }
             _ => {}
         }
     });
