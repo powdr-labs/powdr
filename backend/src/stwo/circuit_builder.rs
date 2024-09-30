@@ -95,6 +95,36 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     }
 }
 
+impl<'a, T: FieldElement> FrameworkEval for PowdrCircuit<'a, T> {
+    fn log_size(&self) -> u32 {
+        // Assuming the log size is based on the analyzed data.
+        // Modify this logic as per the specific requirements.
+        self.analyzed.degree().ilog2()
+    }
+
+    fn max_constraint_log_degree_bound(&self) -> u32 {
+        // Assuming the max constraint log degree is calculated based on the analyzed data.
+        // Modify this logic as per the specific requirements.
+        self.analyzed.degree().ilog2()
+    }
+
+    fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
+        // Assuming we are evaluating constraints based on the witness data.
+        // This is an example, modify according to the specific logic of the circuit.
+        if let Some(witness) = self.witness {
+            for (name, values) in witness.iter() {
+                for value in values {
+                    let trace_mask = eval.next_trace_mask();
+                    eval.add_constraint(trace_mask - *value);
+                }
+            }
+        }
+        eval
+    }
+}
+
+
+
 
 
 pub fn generate_parallel_stwo_trace_by_witness_repitition<T: Clone>(length: usize, witness: &[(String, Vec<T>)], log_n_instances: u32
