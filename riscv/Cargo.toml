@@ -15,7 +15,7 @@ estark-polygon = ["powdr-pipeline/estark-polygon"]
 
 [dependencies]
 powdr-ast.workspace = true
-powdr-asm-utils.workspace = true
+powdr-isa-utils.workspace = true
 powdr-executor.workspace = true
 powdr-linker.workspace = true
 powdr-number.workspace = true

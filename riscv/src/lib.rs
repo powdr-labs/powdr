@@ -3,20 +3,16 @@
 
 use std::{
     borrow::Cow,
-    collections::BTreeMap,
     ffi::OsStr,
     path::{Path, PathBuf},
     process::Command,
 };
 
-use mktemp::Temp;
 use powdr_number::FieldElement;
-use serde_json::Value as JsonValue;
 use std::fs;
 
 pub use crate::runtime::Runtime;
 
-pub mod asm;
 mod code_gen;
 pub mod continuations;
 pub mod elf;
@@ -32,7 +28,6 @@ pub fn compile_rust<T: FieldElement>(
     output_dir: &Path,
     force_overwrite: bool,
     runtime: &Runtime,
-    via_elf: bool,
     with_bootloader: bool,
     features: Option<Vec<String>>,
 ) -> Option<(PathBuf, String)> {
@@ -51,52 +46,16 @@ pub fn compile_rust<T: FieldElement>(
         panic!("input must be a crate directory or `Cargo.toml` file");
     };
 
-    if via_elf {
-        let elf_path = compile_rust_crate_to_riscv_bin(&file_path, output_dir, features);
+    let elf_path = compile_rust_crate_to_riscv(&file_path, output_dir, features);
 
-        compile_riscv_elf::<T>(
-            file_name,
-            &elf_path,
-            output_dir,
-            force_overwrite,
-            runtime,
-            with_bootloader,
-        )
-    } else {
-        let riscv_asm = compile_rust_crate_to_riscv_asm(&file_path, output_dir, features);
-        if !output_dir.exists() {
-            fs::create_dir_all(output_dir).unwrap()
-        }
-        for (asm_file_name, contents) in &riscv_asm {
-            let riscv_asm_file_name = output_dir.join(format!(
-                "{}_riscv_{asm_file_name}.asm",
-                Path::new(file_path.as_ref())
-                    .file_stem()
-                    .unwrap()
-                    .to_str()
-                    .unwrap(),
-            ));
-            if riscv_asm_file_name.exists() && !force_overwrite {
-                eprintln!(
-                    "Target file {} already exists. Not overwriting.",
-                    riscv_asm_file_name.to_str().unwrap()
-                );
-                return None;
-            }
-
-            fs::write(riscv_asm_file_name.clone(), contents).unwrap();
-            log::info!("Wrote {}", riscv_asm_file_name.to_str().unwrap());
-        }
-
-        compile_riscv_asm_bundle::<T>(
-            file_name,
-            riscv_asm,
-            output_dir,
-            force_overwrite,
-            runtime,
-            with_bootloader,
-        )
-    }
+    compile_riscv_elf::<T>(
+        file_name,
+        &elf_path,
+        output_dir,
+        force_overwrite,
+        runtime,
+        with_bootloader,
+    )
 }
 
 fn compile_program<P>(
@@ -132,25 +91,6 @@ fn compile_program<P>(
     Some((powdr_asm_file_name, powdr_asm))
 }
 
-pub fn compile_riscv_asm_bundle<T: FieldElement>(
-    original_file_name: &str,
-    riscv_asm_files: BTreeMap<String, String>,
-    output_dir: &Path,
-    force_overwrite: bool,
-    runtime: &Runtime,
-    with_bootloader: bool,
-) -> Option<(PathBuf, String)> {
-    compile_program::<BTreeMap<String, String>>(
-        original_file_name,
-        riscv_asm_files,
-        output_dir,
-        force_overwrite,
-        runtime,
-        with_bootloader,
-        asm::compile::<T>,
-    )
-}
-
 /// Translates a RISC-V ELF file to powdr asm.
 pub fn compile_riscv_elf<T: FieldElement>(
     original_file_name: &str,
@@ -179,164 +119,98 @@ macro_rules! as_ref [
     };
 ];
 
-pub struct CompilationResult {
-    pub executable: Option<PathBuf>,
-    assemblies: BTreeMap<String, PathBuf>,
-}
-
-impl CompilationResult {
-    pub fn load_asm_files(self) -> BTreeMap<String, String> {
-        self.assemblies
-            .into_iter()
-            .map(|(name, filename)| {
-                let contents = fs::read_to_string(filename).unwrap();
-                (name, contents)
-            })
-            .collect()
-    }
-}
-
 pub fn compile_rust_crate_to_riscv(
     input_dir: &str,
     output_dir: &Path,
     features: Option<Vec<String>>,
-) -> CompilationResult {
+) -> PathBuf {
     const CARGO_TARGET_DIR: &str = "cargo_target";
     let target_dir = output_dir.join(CARGO_TARGET_DIR);
 
-    let use_std = is_std_enabled_in_runtime(input_dir);
+    let metadata = CargoMetadata::from_input_dir(input_dir);
 
-    // We call cargo twice, once to perform the actual building, and once to get
-    // the build plan json, so we know exactly which object files to use.
-
-    // Real build run.
-    let build_status =
-        build_cargo_command(input_dir, &target_dir, use_std, features.clone(), false)
-            .status()
-            .unwrap();
+    // Run build.
+    let build_status = build_cargo_command(
+        input_dir,
+        &target_dir,
+        metadata.use_std,
+        features.clone(),
+        false,
+    )
+    .status()
+    .unwrap();
     assert!(build_status.success());
 
-    // Build plan run. We must set the target dir to a temporary directory,
-    // otherwise cargo will screw up the build done previously.
-    let (build_plan, plan_dir): (JsonValue, PathBuf) = {
-        let plan_dir = Temp::new_dir().unwrap();
-        let build_plan_run = build_cargo_command(input_dir, &plan_dir, use_std, features, true)
+    let target = if metadata.use_std {
+        TARGET_STD
+    } else {
+        TARGET_NO_STD
+    };
+
+    // TODO: support more than one executable per crate.
+    assert_eq!(metadata.bins.len(), 1);
+    target_dir
+        .join(target)
+        .join("release")
+        .join(&metadata.bins[0])
+}
+
+struct CargoMetadata {
+    bins: Vec<String>,
+    use_std: bool,
+}
+
+impl CargoMetadata {
+    fn from_input_dir(input_dir: &str) -> Self {
+        // Calls `cargo metadata --format-version 1 --no-deps --manifest-path <input_dir>` to determine
+        // if the `std` feature is enabled in the dependency crate `powdr-riscv-runtime`.
+        let metadata = Command::new("cargo")
+            .args(as_ref![
+                OsStr;
+                "metadata",
+                "--format-version",
+                "1",
+                "--no-deps",
+                "--manifest-path",
+                input_dir,
+            ])
             .output()
             .unwrap();
-        assert!(build_plan_run.status.success());
 
-        (
-            serde_json::from_slice(&build_plan_run.stdout).unwrap(),
-            plan_dir.to_path_buf(),
-        )
-    };
+        let metadata: serde_json::Value = serde_json::from_slice(&metadata.stdout).unwrap();
+        let packages = metadata["packages"].as_array().unwrap();
 
-    let mut assemblies = BTreeMap::new();
+        // Is the `std` feature enabled in the `powdr-riscv-runtime` crate?
+        let use_std = packages.iter().any(|package| {
+            package["dependencies"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|dependency| {
+                    dependency["name"] == "powdr-riscv-runtime"
+                        && dependency["features"]
+                            .as_array()
+                            .unwrap()
+                            .contains(&"std".into())
+                })
+        });
 
-    let JsonValue::Array(invocations) = &build_plan["invocations"] else {
-        panic!("no invocations in cargo build plan");
-    };
-
-    let mut executable = None;
-
-    log::debug!("RISC-V assembly files of this build:");
-    let target = Path::new(if use_std { TARGET_STD } else { TARGET_NO_STD });
-    for i in invocations {
-        let JsonValue::Array(outputs) = &i["outputs"] else {
-            panic!("no outputs in cargo build plan");
-        };
-        for output in outputs {
-            let output = Path::new(output.as_str().unwrap());
-            // Replace the plan_dir with the target_dir, because the later is
-            // where the files actually are.
-            let parent = target_dir.join(output.parent().unwrap().strip_prefix(&plan_dir).unwrap());
-            if parent.ends_with(target.join("release/deps")) {
-                let extension = output.extension();
-                let name_stem = if Some(OsStr::new("rmeta")) == extension {
-                    // Have to convert to string to remove the "lib" prefix:
-                    output
-                        .file_stem()
-                        .unwrap()
-                        .to_str()
-                        .unwrap()
-                        .strip_prefix("lib")
-                        .unwrap()
-                } else if extension.is_none() {
-                    assert!(executable.is_none(), "Multiple executables found");
-                    let file_stem = output.file_stem().unwrap();
-                    executable = Some(parent.join(file_stem));
-                    file_stem.to_str().unwrap()
-                } else {
-                    continue;
-                };
-
-                let mut asm_name = parent.join(name_stem);
-                asm_name.set_extension("s");
-
-                log::debug!(" - {}", asm_name.to_string_lossy());
-                assert!(
-                    assemblies.insert(name_stem.to_string(), asm_name).is_none(),
-                    "Duplicate assembly file name: {name_stem}",
-                );
-            }
-        }
-    }
-
-    CompilationResult {
-        executable,
-        assemblies,
-    }
-}
-
-pub fn compile_rust_crate_to_riscv_asm(
-    input_dir: &str,
-    output_dir: &Path,
-    features: Option<Vec<String>>,
-) -> BTreeMap<String, String> {
-    compile_rust_crate_to_riscv(input_dir, output_dir, features).load_asm_files()
-}
-
-pub fn compile_rust_crate_to_riscv_bin(
-    input_dir: &str,
-    output_dir: &Path,
-    features: Option<Vec<String>>,
-) -> PathBuf {
-    compile_rust_crate_to_riscv(input_dir, output_dir, features)
-        .executable
-        .unwrap()
-}
-
-fn is_std_enabled_in_runtime(input_dir: &str) -> bool {
-    // Calls `cargo metadata --format-version 1 --no-deps --manifest-path <input_dir>` to determine
-    // if the `std` feature is enabled in the dependency crate `powdr-riscv-runtime`.
-    let metadata = Command::new("cargo")
-        .args(as_ref![
-            OsStr;
-            "metadata",
-            "--format-version",
-            "1",
-            "--no-deps",
-            "--manifest-path",
-            input_dir,
-        ])
-        .output()
-        .unwrap();
-
-    let metadata: serde_json::Value = serde_json::from_slice(&metadata.stdout).unwrap();
-    let packages = metadata["packages"].as_array().unwrap();
-    packages.iter().any(|package| {
-        package["dependencies"]
-            .as_array()
-            .unwrap()
+        let bins = packages
             .iter()
-            .any(|dependency| {
-                dependency["name"] == "powdr-riscv-runtime"
-                    && dependency["features"]
-                        .as_array()
-                        .unwrap()
-                        .contains(&"std".into())
+            .filter_map(|package| {
+                let targets = package["targets"].as_array().unwrap();
+                targets.iter().find_map(|target| {
+                    if target["kind"] == "bin" {
+                        Some(target["name"].as_str().unwrap().to_string())
+                    } else {
+                        None
+                    }
+                })
             })
-    })
+            .collect();
+
+        Self { bins, use_std }
+    }
 }
 
 fn build_cargo_command(
