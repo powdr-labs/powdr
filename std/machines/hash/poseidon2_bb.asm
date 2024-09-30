@@ -4,7 +4,7 @@ use std::utils::unchanged_until;
 use std::utils::force_bool;
 use std::utils::sum;
 use std::convert::expr;
-use std::machines::memory::Memory;
+use std::machines::memory_bb::Memory;
 use std::machines::split::split_bb::SplitBB;
 
 // Implements the Poseidon2 permutation for the BabyBear.
@@ -28,7 +28,7 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     //
     // Reads happen at the provided time step; writes happen at the next time step.
     operation poseidon_permutation<0> input_addr, output_addr, time_step ->;
-    col witness operation_id;
+    let operation_id;
 
     // Poseidon2 parameters, compatible with our powdr-plonky3 implementation.
     //
@@ -122,10 +122,8 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
         let step_a = array::zip(input, EXTERNAL_ROUND_CONSTANTS[c_idx], |v, c| v + c);
 
         // Apply S-box
-        col witness x3[STATE_SIZE];
-        array::zip(x3, array::map(step_a, |v| v * v * v), |x3, expected| x3 = expected);
-        col witness x7[STATE_SIZE];
-        array::zip(x7, array::zip(x3, step_a, |x3, v| x3 * x3 * v), |x7, expected| x7 = expected);
+        let x3 = array::map(step_a, constr |x| { let x3; x3 = x * x * x; x3});
+        let x7 = array::zip(x3, step_a, constr |x3, x| { let x7; x7 = x3 * x3 * x; x7 });
 
         // Multiply with MDS Matrix
         output = apply_mds(x7, array::len(output));
@@ -137,37 +135,34 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
         let step_a = input[0] + INTERNAL_ROUND_CONSTANTS[c_idx];
 
         // Apply S-box
-        col witness x3;
-        x3 = step_a * step_a * step_a;
-        col witness x7;
-        x7 = x3 * x3 * step_a;
+        let x3 = step_a * step_a * step_a;
+        let x7 = x3 * x3 * step_a;
 
         // Multiply with the diffusion matrix
         let line_sum = x7 + array::sum(array::sub_array(input, 1, STATE_SIZE - 1));
-        output[0] = (line_sum + DIFF_DIAGONAL[0]) * x7 * DIFF_MULTIPLIER;
-        
-        )
+        output[0] = (line_sum + DIFF_DIAGONAL[0] * x7) * DIFF_MULTIPLIER;
         array::zip(
             array::zip(
                 array::sub_array(input, 1, STATE_SIZE - 1),
                 array::sub_array(output, 1, STATE_SIZE - 1),
-                |in_out| in_out
+                constr |in_out| in_out
             ),
             array::sub_array(DIFF_DIAGONAL, 1, STATE_SIZE - 1),
-            |(in_v, out_v), diff| out_v = (line_sum + diff) * in_v * DIFF_MULTIPLIER;
+            constr |(in_v, out_v), diag| out_v = (line_sum + diag * in_v) * DIFF_MULTIPLIER
         );
-    }
+    };
 
     // Load all the inputs in the first time step
-    col witness input[STATE_SIZE];
+    let input: col[STATE_SIZE];
     array::map_enumerated(input, constr |i, val| {
-        col witness word_low, word_high;
+        let word_low;
+        let word_high;
         [word_high, word_low] in mem.mload(input_addr + 4 * i, time_step);
         input[i] = word_low + word_high * 2**16;
     });
 
     // The rounds:
-    col witness rounds[2*HALF_EXTERNAL_ROUNDS + INTERNAL_ROUNDS][STATE_SIZE];
+    let rounds: col[2*HALF_EXTERNAL_ROUNDS + INTERNAL_ROUNDS][STATE_SIZE];
 
     // Perform the inital MDS step
     rounds[0] = apply_mds(input, STATE_SIZE);
@@ -177,9 +172,9 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
         array::zip(
             array::sub_array(rounds, 0, HALF_EXTERNAL_ROUNDS),
             array::sub_array(rounds, 1, HALF_EXTERNAL_ROUNDS),
-            |in_out| in_out,
+            |in_out| in_out
         ),
-        constr |i, (in, out)| external_round(i, in, out)
+        constr |i, (in_v, out_v)| external_round(i, in_v, out_v)
     );
 
     // Perform the internal rounds
@@ -187,9 +182,9 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
         array::zip(
             array::sub_array(rounds, HALF_EXTERNAL_ROUNDS, INTERNAL_ROUNDS),
             array::sub_array(rounds, HALF_EXTERNAL_ROUNDS + 1, INTERNAL_ROUNDS),
-            |in_out| in_out,
+            |in_out| in_out
         ),
-        constr |i, (in, out)| internal_round(i, in, out)
+        constr |i, (in_v, out_v)| internal_round(i, in_v, out_v)
     );
 
     // Perform the second half of the external rounds, except the last one
@@ -198,20 +193,21 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
         array::zip(
             array::sub_array(rounds, second_external_start, HALF_EXTERNAL_ROUNDS - 1),
             array::sub_array(rounds, second_external_start + 1, HALF_EXTERNAL_ROUNDS - 1),
-            |in_out| in_out,
+            |in_out| in_out
         ),
-        constr |i, (in, out)| external_round(i + HALF_EXTERNAL_ROUNDS, in, out)
+        constr |i, (in_v, out_v)| external_round(i + HALF_EXTERNAL_ROUNDS, in_v, out_v)
     );
 
     // Perform the last external round
     // It is special because the output is smaller than the entire state,
     // so the MDS matrix multiplication is only partial.
-    col witness output[OUTPUT_SIZE];
+    let output: col[OUTPUT_SIZE];
     external_round(2 * HALF_EXTERNAL_ROUNDS - 1, rounds[second_external_start + HALF_EXTERNAL_ROUNDS - 1], output);
 
     // Write the output in the second time step
     array::map_enumerated(output, constr |i, val| {
-        col witness word_low, word_high;
+        let word_low;
+        let word_high;
         [word_low, word_high] in split_bb.split(val);
         [] = mem.mstore(output_addr + 4 * i, time_step + 1, word_high, word_low); //what is the syntax here???
     });
