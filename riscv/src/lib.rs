@@ -197,15 +197,20 @@ impl CargoMetadata {
 
         let bins = packages
             .iter()
-            .filter_map(|package| {
-                let targets = package["targets"].as_array().unwrap();
-                targets.iter().find_map(|target| {
-                    if target["kind"] == "bin" {
-                        Some(target["name"].as_str().unwrap().to_string())
-                    } else {
-                        None
-                    }
-                })
+            .flat_map(|package| {
+                package["targets"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .filter_map(|target| {
+                        target["kind"].as_array().and_then(|kind| {
+                            if kind.contains(&"bin".into()) {
+                                Some(target["name"].as_str().unwrap().to_string())
+                            } else {
+                                None
+                            }
+                        })
+                    })
             })
             .collect();
 
