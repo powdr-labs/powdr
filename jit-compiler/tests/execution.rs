@@ -75,6 +75,13 @@ fn assigned_functions() {
 }
 
 #[test]
+fn gigantic_number() {
+    let f = compile("let c: int -> int = |i| (i * 0x1000000000000000000000000000000000000000000000000000000000000000000000000000000000) >> (81 * 4);", "c");
+
+    assert_eq!(f.call(10), 10);
+}
+
+#[test]
 fn simple_field() {
     let input = "
         namespace std::convert;
