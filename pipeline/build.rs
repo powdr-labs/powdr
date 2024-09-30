@@ -7,30 +7,32 @@ use std::path::Path;
 use walkdir::WalkDir;
 
 fn main() {
+    let exclude = if let Ok(ignore) = std::env::var("POWDR_IGNORE_REPARSE_TESTS") {
+        ignore
+            .split(',')
+            .into_iter()
+            .map(|s| s.to_string())
+            .collect()
+    } else {
+        Default::default()
+    };
     build_book_tests("asm");
     build_book_tests("pil");
-    build_reparse_test("asm", "asm", Default::default());
-    build_reparse_test("pil", "pil", Default::default());
-    let exclude = if std::env::var("CI").is_ok() {
-        Default::default()
-    } else {
-        // Skip keccakf16_test.asm because it needs too much stack space.
-        // It works with the pr-tests build profile.
-        ["keccakf16_test.asm"].into()
-    };
-    build_reparse_test("asm", "std", exclude);
+    build_reparse_test("asm", "asm", &exclude);
+    build_reparse_test("pil", "pil", &exclude);
+    build_reparse_test("asm", "std", &exclude);
 }
 
 fn build_book_tests(kind: &str) {
-    build_tests(kind, kind, "book", "book", Default::default())
+    build_tests(kind, kind, "book", "book", &Default::default())
 }
 
-fn build_reparse_test(kind: &str, dir: &str, exclude: HashSet<&'static str>) {
+fn build_reparse_test(kind: &str, dir: &str, exclude: &HashSet<String>) {
     build_tests(kind, dir, "", "reparse", exclude)
 }
 
 #[allow(clippy::print_stdout)]
-fn build_tests(kind: &str, dir: &str, sub_dir: &str, name: &str, exclude: HashSet<&'static str>) {
+fn build_tests(kind: &str, dir: &str, sub_dir: &str, name: &str, exclude: &HashSet<String>) {
     let sub_dir = if sub_dir.is_empty() {
         "".to_string()
     } else {
