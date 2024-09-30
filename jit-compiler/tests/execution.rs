@@ -52,13 +52,6 @@ fn invalid_function() {
 }
 
 #[test]
-fn gigantic_number() {
-    let f = compile("let c: int -> int = |i| (i * 0x1000000000000000000000000000000000000000000000000000000000000000000000000000000000) >> (81 * 4);", "c");
-
-    assert_eq!(f.call(10), 10);
-}
-
-#[test]
 fn assigned_functions() {
     let input = r#"
         namespace std::array;
@@ -79,23 +72,4 @@ fn assigned_functions() {
 
     let d = compile(input, "main::d");
     assert_eq!(d.call(0), 1);
-}
-
-#[test]
-fn simple_field() {
-    let f = compile(
-        "
-        namespace std::array;
-            let len = 8;
-        namespace main;
-            let a: fe[] = [1, 2, 3];
-            let q: col = |i| a[i % std::array::len(a)];
-        ",
-        "main::q",
-    );
-
-    assert_eq!(f.call(0), 1);
-    assert_eq!(f.call(1), 2);
-    assert_eq!(f.call(2), 3);
-    assert_eq!(f.call(3), 1);
 }

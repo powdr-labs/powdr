@@ -1,7 +1,5 @@
 use std::{collections::HashMap, sync::OnceLock};
 
-
-
 use itertools::Itertools;
 use powdr_ast::{
     analyzed::{Analyzed, Expression, FunctionValueDefinition, PolynomialReference, Reference},
@@ -12,7 +10,7 @@ use powdr_ast::{
         IndexAccess, LambdaExpression, Number, StatementInsideBlock, UnaryOperation,
     },
 };
-use powdr_number::{BigUint, FieldElement, LargeInt};
+use powdr_number::{FieldElement, LargeInt};
 
 pub struct CodeGenerator<'a, T> {
     analyzed: &'a Analyzed<T>,
@@ -35,11 +33,12 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
         }
     }
 
-    /// Requests code for the symbol to be generated and returns the
-    /// code that returns the value of the symbol, which is either
-    /// the escaped name of the symbol or a dereferenced name of a lazy static.
-    /// The code can later be retrieved via `compiled_symbols`.
-    /// In the error case, `self` can still be used to compile other symbols.
+    /// Tries to generate code for the symbol and all its dependencies.
+    /// On success, returns an expression string for referencing the symbol,
+    /// i.e. it evaluates to the value of the symbol.
+    /// On failure, returns an error string.
+    /// After a failure, `self` can still be used to request other symbols.
+    /// The code can later be retrieved via `generated_code`.
     pub fn request_symbol(&mut self, name: &str) -> Result<String, String> {
         match self.symbols.get(name) {
             Some(Err(e)) => return Err(e.clone()),
@@ -58,16 +57,11 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 }
             }
         }
-        let reference = if self.symbol_needs_deref(name) {
-            format!("(*{})", escape_symbol(name))
-        } else {
-            escape_symbol(name)
-        };
-        Ok(reference)
+        Ok(self.symbol_reference(name))
     }
 
     /// Returns the concatenation of all successfully compiled symbols.
-    pub fn compiled_symbols(self) -> String {
+    pub fn generated_code(self) -> String {
         self.symbols
             .into_iter()
             .filter_map(|(s, r)| match r {
@@ -93,36 +87,12 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
             ));
         };
 
-        let type_scheme = value.type_scheme.clone().unwrap();
+        let type_scheme = value.type_scheme.as_ref().unwrap();
 
         Ok(match (&value.e, type_scheme) {
-            (
-                Expression::LambdaExpression(..),
-                TypeScheme {
-                    vars,
-                    ty:
-                        Type::Function(FunctionType {
-                            params: param_types,
-                            value: return_type,
-                        }),
-                },
-            ) => {
+            (Expression::LambdaExpression(_, expr), TypeScheme { vars, ty }) => {
                 assert!(vars.is_empty());
-                self.try_format_function(symbol, &param_types, return_type.as_ref(), &value.e)?
-            }
-            (
-                Expression::LambdaExpression(..),
-                TypeScheme {
-                    vars,
-                    ty: Type::Col,
-                },
-            ) => {
-                assert!(vars.is_empty());
-                // TODO we assume it is an int -> fe function.
-                // The type inference algorithm should store the derived type.
-                // Alternatively, we insert a trait conversion function and store the type
-                // in the trait vars.
-                self.try_format_function(symbol, &[Type::Int], &Type::Fe, &value.e)?
+                self.try_format_function(symbol, expr, ty)?
             }
             _ => {
                 let type_scheme = value.type_scheme.as_ref().unwrap();
@@ -135,6 +105,8 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 } else {
                     type_scheme.ty.clone()
                 };
+                // We need a lazy static here because we want symbols to only be
+                // evaluated once and the code is not `const` in the general case.
                 format!(
                     "lazy_static::lazy_static! {{\n\
                     static ref {}: {} = {};\n\
@@ -150,13 +122,22 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
     fn try_format_function(
         &mut self,
         name: &str,
-        param_types: &[Type],
-        return_type: &Type,
-        expr: &Expression,
+        LambdaExpression { params, body, .. }: &LambdaExpression<Expression>,
+        ty: &Type,
     ) -> Result<String, String> {
-        let Expression::LambdaExpression(_, LambdaExpression { params, body, .. }) = expr else {
-            panic!();
+        let (param_types, return_type) = &match ty {
+            Type::Function(FunctionType { params, value }) => (params.clone(), (**value).clone()),
+            Type::Col => {
+                // TODO we assume it is an int -> fe function, even though other
+                // types are possible.
+                // At some point, the type inference algorithm should store the derived type.
+                // Alternatively, we could insert a trait conversion function and store the type
+                // in the trait vars.
+                (vec![Type::Int], Type::Fe)
+            }
+            _ => return Err(format!("Expected function type, got {ty}")),
         };
+
         Ok(format!(
             "fn {}({}) -> {} {{ {} }}\n",
             escape_symbol(name),
@@ -310,31 +291,25 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
         ))
     }
 
-    /// Returns true if a reference to the symbol needs a deref operation or not.
-    fn symbol_needs_deref(&self, symbol: &str) -> bool {
-        if is_builtin::<T>(symbol) {
-            return false;
-        }
-        let (_, def) = self.analyzed.definitions.get(symbol).as_ref().unwrap();
-        if let Some(FunctionValueDefinition::Expression(typed_expr)) = def {
-            !matches!(typed_expr.e, Expression::LambdaExpression(..))
-        } else {
+    /// Returns a string expression evaluating to the value of the symbol.
+    /// This is either the escaped name of the symbol or a deref operator
+    /// applied to it.
+    fn symbol_reference(&self, symbol: &str) -> String {
+        let needs_deref = if is_builtin::<T>(symbol) {
             false
+        } else {
+            let (_, def) = self.analyzed.definitions.get(symbol).as_ref().unwrap();
+            if let Some(FunctionValueDefinition::Expression(typed_expr)) = def {
+                !matches!(typed_expr.e, Expression::LambdaExpression(..))
+            } else {
+                false
+            }
+        };
+        if needs_deref {
+            format!("(*{})", escape_symbol(symbol))
+        } else {
+            escape_symbol(symbol)
         }
-    }
-}
-
-fn format_number(n: &BigUint) -> String {
-    if let Ok(n) = u64::try_from(n) {
-        format!("ibig::IBig::from({n}_u64)")
-    } else {
-        format!(
-            "ibig::IBig::from(ibig::UBig::from_le_bytes(&[{}]))",
-            n.to_le_bytes()
-                .iter()
-                .map(|b| format!("{b}_u8"))
-                .format(", ")
-        )
     }
 }
 
@@ -417,7 +392,7 @@ mod test {
         for s in syms {
             compiler.request_symbol(s).unwrap();
         }
-        compiler.compiled_symbols()
+        compiler.generated_code()
     }
 
     #[test]

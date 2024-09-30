@@ -6,9 +6,6 @@ use std::prover::challenge;
 
 machine Main with degree: 8 {
 
-    let alpha = from_base(challenge(0, 1));
-    let beta = from_base(challenge(0, 2));
-
     col fixed first_four = [1, 1, 1, 1, 0, 0, 0, 0];
 
     // Two pairs of witness columns, claimed to be permutations of one another
@@ -23,8 +20,5 @@ machine Main with degree: 8 {
 
     let permutation_constraint = first_four $ [a1, a2] is (1 - first_four) $ [b1, b2];
 
-    // TODO: Functions currently cannot add witness columns at later stages,
-    // so we have to manually create it here and pass it to permutation(). 
-    col witness stage(1) z;
-    permutation([z], alpha, beta, permutation_constraint);
+    permutation(permutation_constraint);
 }
