@@ -103,8 +103,8 @@ fn simple_field() {
     assert_eq!(q.call(3), 1);
 
     let r = compile(input, "main::r");
-    assert_eq!(r.call(0), 99);
-    assert_eq!(r.call(1), 100);
-    assert_eq!(r.call(2), 99);
-    assert_eq!(r.call(3), 100);
+    assert_eq!(r.call(0), 0);
+    assert_eq!(r.call(1), 1);
+    assert_eq!(r.call(2), 2);
+    assert_eq!(r.call(3), 3);
 }

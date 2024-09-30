@@ -74,6 +74,18 @@ impl From<FieldElement> for u64 {
         x.0
     }
 }
+impl From<ibig::IBig> for FieldElement {
+    fn from(x: ibig::IBig) -> Self {
+        FieldElement(u64::try_from(x).unwrap())
+    }
+}
+impl From<FieldElement> for ibig::IBig {
+    fn from(x: FieldElement) -> Self {
+        // TODO once we support proper field element operations,
+        // this might be more complicated.
+        ibig::IBig::from(x.0)
+    }
+}
 "#;
 
 const CARGO_TOML: &str = r#"

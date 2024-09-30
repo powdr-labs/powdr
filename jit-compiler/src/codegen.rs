@@ -378,10 +378,10 @@ fn try_generate_builtin<T: FieldElement>(symbol: &str) -> Option<String> {
             )
         }
         "std::convert::fe" => {
-            "(n: ibig::IBig) -> FieldElement { u64::try_from(n).unwrap().into() }".to_string()
+            "<T: Into<FieldElement>>(n: T) -> FieldElement { n.into() }".to_string()
         }
         "std::convert::int" => {
-            "(n: FieldElement) -> ibig::IBig {{ u64::try_from(n).into() }}".to_string()
+            "<T: Into<ibig::Ibig>>(n: T) -> ibig::IBig {{ n.into() }}".to_string()
         }
         _ => return None,
     };
