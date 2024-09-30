@@ -13,8 +13,9 @@ use num_traits::sign::Signed;
 
 use powdr_ast::{
     analyzed::{
-        self, AlgebraicExpression, AlgebraicReference, Analyzed, Challenge, DegreeRange,
-        Expression, FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialReference,
+        self, AlgebraicBinaryOperation, AlgebraicExpression, AlgebraicReference,
+        AlgebraicUnaryOperation, Analyzed, Challenge, DegreeRange, Expression,
+        FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialReference,
         PolynomialType, PublicDeclaration, Reference, SelectedExpressions, StatementIdentifier,
         Symbol, SymbolKind,
     },
@@ -24,15 +25,19 @@ use powdr_ast::{
         display::format_type_scheme_around_name,
         types::{ArrayType, Type},
         visitor::{AllChildren, ExpressionVisitable},
-        ArrayLiteral, BlockExpression, FunctionCall, FunctionKind, LambdaExpression,
-        LetStatementInsideBlock, Number, Pattern, SourceReference, TypedExpression, UnaryOperation,
+        ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall, FunctionKind,
+        LambdaExpression, LetStatementInsideBlock, Number, Pattern, SourceReference,
+        TypedExpression, UnaryOperation,
     },
 };
 use powdr_number::{BigUint, FieldElement};
 use powdr_parser_util::SourceRef;
 
 use crate::{
-    evaluator::{self, Closure, Definitions, EnumValue, EvalError, SymbolLookup, Value},
+    evaluator::{
+        self, evaluate_function_call, Closure, Definitions, EnumValue, EvalError, SymbolLookup,
+        Value,
+    },
     statement_processor::Counters,
 };
 
@@ -57,12 +62,15 @@ pub fn condense<T: FieldElement>(
     let source_order = source_order
         .into_iter()
         .flat_map(|s| {
+            // Potentially modify the current namespace.
             if let StatementIdentifier::Definition(name) = &s {
                 let mut namespace =
                     AbsoluteSymbolPath::default().join(SymbolPath::from_str(name).unwrap());
                 namespace.pop();
                 condenser.set_namespace_and_degree(namespace, definitions[name].0.degree);
             }
+
+            // Condense identities and definitions.
             let statement = match s {
                 StatementIdentifier::ProofItem(index) => {
                     condenser.condense_proof_item(&proof_items[index]);
@@ -213,8 +221,12 @@ pub struct Condenser<'a, T> {
     new_intermediate_column_values: HashMap<String, Vec<AlgebraicExpression<T>>>,
     /// The names of all new columns ever generated, to avoid duplicates.
     new_symbols: HashSet<String>,
-    new_constraints: Vec<AnalyzedIdentity<T>>,
+    /// Constraints added since the last extraction. The values should be enums of type `std::prelude::Constr`.
+    new_constraints: Vec<(Arc<Value<'a, T>>, SourceRef)>,
+    /// Prover functions added since the last extraction.
     new_prover_functions: Vec<Expression>,
+    /// The current stage. New columns are created at that stage.
+    stage: u32,
 }
 
 impl<'a, T: FieldElement> Condenser<'a, T> {
@@ -236,6 +248,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
             new_symbols: HashSet::new(),
             new_constraints: vec![],
             new_prover_functions: vec![],
+            stage: 0,
         }
     }
 
@@ -286,7 +299,10 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
 
     /// Returns the new constraints generated since the last call to this function.
     pub fn extract_new_constraints(&mut self) -> Vec<AnalyzedIdentity<T>> {
-        std::mem::take(&mut self.new_constraints)
+        self.new_constraints
+            .drain(..)
+            .map(|(item, source)| to_constraint(item.as_ref(), source, &mut self.counters))
+            .collect()
     }
 
     /// Returns the new prover functions generated since the last call to this function.
@@ -458,6 +474,25 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             self.new_column_values.insert(name.clone(), value);
         }
 
+        if self.stage != 0 && stage.is_some() {
+            return Err(EvalError::TypeError(format!(
+                "Tried to create a column with an explicit stage ({}) while the current stage was not zero, but {}.",
+                stage.unwrap(), self.stage
+            )));
+        }
+
+        let stage = if matches!(
+            kind,
+            SymbolKind::Poly(PolynomialType::Constant | PolynomialType::Intermediate)
+        ) {
+            // Fixed columns are pre-stage 0 and the stage of an intermediate column
+            // is the max of the stages in the value, so we omit it in both cases.
+            assert!(stage.is_none());
+            None
+        } else {
+            Some(stage.unwrap_or(self.stage))
+        };
+
         let symbol = Symbol {
             id: self.counters.dispense_symbol_id(kind, length),
             source,
@@ -555,11 +590,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         match items.as_ref() {
             Value::Array(items) => {
                 for item in items {
-                    self.new_constraints.push(to_constraint(
-                        item,
-                        source.clone(),
-                        &mut self.counters,
-                    ))
+                    self.new_constraints.push((item.clone(), source.clone()));
                 }
             }
             Value::Closure(..) => {
@@ -569,9 +600,38 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
 
                 self.new_prover_functions.push(e);
             }
-            _ => self
-                .new_constraints
-                .push(to_constraint(&items, source, &mut self.counters)),
+            _ => self.new_constraints.push((items, source)),
+        }
+        Ok(())
+    }
+
+    fn capture_constraints(
+        &mut self,
+        fun: Arc<Value<'a, T>>,
+    ) -> Result<Arc<Value<'a, T>>, EvalError> {
+        let existing_constraints = self.new_constraints.len();
+        let result = evaluate_function_call(fun, vec![], self);
+        let constrs = self
+            .new_constraints
+            .drain(existing_constraints..)
+            .map(|(c, _)| c)
+            .collect();
+        let result = result?;
+        assert!(
+            matches!(result.as_ref(), Value::Tuple(items) if items.is_empty()),
+            "Function should return ()"
+        );
+
+        Ok(Arc::new(Value::Array(constrs)))
+    }
+
+    fn at_next_stage(&mut self, fun: Arc<Value<'a, T>>) -> Result<(), EvalError> {
+        self.stage += 1;
+        let result = evaluate_function_call(fun, vec![], self);
+        self.stage -= 1;
+        let result = result?;
+        if !matches!(result.as_ref(), Value::Tuple(items) if items.is_empty()) {
+            panic!();
         }
         Ok(())
     }
@@ -881,6 +941,84 @@ fn shift_local_var_refs(e: &mut Expression, shift: u64) {
         .for_each(|e| shift_local_var_refs(e, shift));
 }
 
+fn try_algebraic_expression_to_expression<T: FieldElement>(
+    e: &AlgebraicExpression<T>,
+) -> Result<Expression, EvalError> {
+    Ok(match e {
+        AlgebraicExpression::Reference(AlgebraicReference {
+            name,
+            poly_id: _,
+            next,
+        }) => {
+            let e = Expression::Reference(
+                SourceRef::unknown(),
+                Reference::Poly(PolynomialReference {
+                    name: name.clone(),
+                    type_args: None,
+                }),
+            );
+            if *next {
+                UnaryOperation {
+                    op: parsed::UnaryOperator::Next,
+                    expr: Box::new(e),
+                }
+                .into()
+            } else {
+                e
+            }
+        }
+
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+            BinaryOperation {
+                left: Box::new(try_algebraic_expression_to_expression(left)?),
+                op: (*op).into(),
+                right: Box::new(try_algebraic_expression_to_expression(right)?),
+            }
+            .into()
+        }
+
+        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
+            UnaryOperation {
+                op: (*op).into(),
+                expr: Box::new(try_algebraic_expression_to_expression(expr)?),
+            }
+            .into()
+        }
+
+        AlgebraicExpression::Challenge(Challenge { id, stage }) => {
+            let function = Expression::Reference(
+                SourceRef::unknown(),
+                Reference::Poly(PolynomialReference {
+                    name: "std::prelude::challenge".to_string(),
+                    type_args: None,
+                }),
+            )
+            .into();
+            let arguments = [*stage as u64, *id]
+                .into_iter()
+                .map(|x| BigUint::from(x).into())
+                .collect();
+            Expression::FunctionCall(
+                SourceRef::unknown(),
+                FunctionCall {
+                    function,
+                    arguments,
+                },
+            )
+        }
+
+        AlgebraicExpression::Number(n) => Number {
+            value: n.to_arbitrary_integer(),
+            type_: Some(Type::Expr),
+        }
+        .into(),
+
+        AlgebraicExpression::PublicReference(s) => {
+            Expression::PublicReference(SourceRef::unknown(), s.clone())
+        }
+    })
+}
+
 /// Tries to convert an evaluator value to an expression with the same value.
 fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expression, EvalError> {
     Ok(match value {
@@ -963,49 +1101,6 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
                 "Converting builtin functions to expressions not supported.".to_string(),
             ))
         }
-        Value::Expression(e) => match e {
-            AlgebraicExpression::Reference(AlgebraicReference {
-                name,
-                poly_id: _,
-                next: false,
-            }) => Expression::Reference(
-                SourceRef::unknown(),
-                Reference::Poly(PolynomialReference {
-                    name: name.clone(),
-                    type_args: None,
-                }),
-            ),
-            AlgebraicExpression::Challenge(Challenge { id, stage }) => {
-                let function = Expression::Reference(
-                    SourceRef::unknown(),
-                    Reference::Poly(PolynomialReference {
-                        name: "std::prelude::challenge".to_string(),
-                        type_args: None,
-                    }),
-                )
-                .into();
-                let arguments = [*stage as u64, *id]
-                    .into_iter()
-                    .map(|x| BigUint::from(x).into())
-                    .collect();
-                Expression::FunctionCall(
-                    SourceRef::unknown(),
-                    FunctionCall {
-                        function,
-                        arguments,
-                    },
-                )
-            }
-            AlgebraicExpression::Number(n) => Number {
-                value: n.to_arbitrary_integer(),
-                type_: Some(Type::Expr),
-            }
-            .into(),
-            _ => {
-                return Err(EvalError::TypeError(format!(
-                    "Converting complex algebraic expressions to expressions not supported: {e}."
-                )))
-            }
-        },
+        Value::Expression(e) => try_algebraic_expression_to_expression(e)?,
     })
 }

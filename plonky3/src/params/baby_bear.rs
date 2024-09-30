@@ -80,6 +80,10 @@ impl FieldElementMap for BabyBearField {
         self.into_inner()
     }
 
+    fn from_p3_field(e: Plonky3Field<Self>) -> Self {
+        BabyBearField::from_inner(e)
+    }
+
     fn get_challenger() -> Challenger<Self> {
         FriChallenger::new(PERM_BB.clone())
     }
