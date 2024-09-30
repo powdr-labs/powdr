@@ -326,9 +326,9 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 let (vars, code) = check_pattern(var_name, pattern)?;
                 // TODO if we want to explicitly specify the type, we need to exchange the non-captured
                 // parts by `()`.
-                format!("let {vars} = (|{var_name}{ty}| {code})({value}).unwrap();\n",)
+                format!("let {vars} = (|{var_name}{ty}| {code})({value}).unwrap();",)
             }
-            StatementInsideBlock::Expression(e) => format!("{};\n", self.format_expr(e)?),
+            StatementInsideBlock::Expression(e) => format!("{};", self.format_expr(e)?),
         })
     }
 
