@@ -20,7 +20,7 @@ env:
 
 jobs:
   build:
-    runs-on: buildjet-4vcpu-ubuntu-2204
+    runs-on: warp-ubuntu-2404-x64-4x
 
     steps:
     - uses: actions/checkout@v4
@@ -28,7 +28,7 @@ jobs:
         submodules: recursive
     - name: ⚡ Restore rust cache
       id: cache
-      uses: buildjet/cache/restore@v4
+      uses: WarpBuilds/cache@v1
       with:
         path: |
           ~/.cargo/registry/index/
