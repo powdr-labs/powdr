@@ -16,7 +16,7 @@ use std::machines::split::split_bb::SplitBB;
 // As it stands, it can not be used in a Sponge construction, because we don't
 // output the entire state.
 machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
-    latch: CKL_0,
+    latch: latch,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
@@ -29,7 +29,7 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     // Reads happen at the provided time step; writes happen at the next time step.
     operation poseidon_permutation<0> input_addr, output_addr, time_step ->;
 
-    let CLK_0 =  |_| 1;
+    let latch =  |_| 1;
     let operation_id;
 
     let input_addr;
