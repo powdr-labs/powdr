@@ -10,7 +10,7 @@ use p3_commit::ExtensionMmcs;
 use p3_dft::Radix2DitParallel;
 use p3_field::{extension::BinomialExtensionField, Field};
 use p3_fri::{FriConfig, TwoAdicFriPcs};
-use p3_merkle_tree::FieldMerkleTreeMmcs;
+use p3_merkle_tree::MerkleTreeMmcs;
 use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
 use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
 use p3_uni_stark::StarkConfig;
@@ -39,7 +39,7 @@ const N: usize = 2;
 const CHUNK: usize = 8;
 type Compress = TruncatedPermutation<Perm, N, CHUNK, WIDTH>;
 const DIGEST_ELEMS: usize = 8;
-type ValMmcs = FieldMerkleTreeMmcs<
+type ValMmcs = MerkleTreeMmcs<
     <BabyBear as Field>::Packing,
     <BabyBear as Field>::Packing,
     Hash,
@@ -78,6 +78,10 @@ impl FieldElementMap for BabyBearField {
     type Config = StarkConfig<MyPcs, FriChallenge, FriChallenger>;
     fn into_p3_field(self) -> Plonky3Field<Self> {
         self.into_inner()
+    }
+
+    fn from_p3_field(e: Plonky3Field<Self>) -> Self {
+        BabyBearField::from_inner(e)
     }
 
     fn get_challenger() -> Challenger<Self> {

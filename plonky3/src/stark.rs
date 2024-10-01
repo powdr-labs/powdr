@@ -3,18 +3,19 @@
 use p3_matrix::dense::RowMajorMatrix;
 
 use core::fmt;
+use std::iter::{once, repeat};
 use std::sync::Arc;
 
 use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
 
-use p3_uni_stark::{
-    prove_with_key, verify_with_key, Proof, StarkGenericConfig, StarkProvingKey, StarkVerifyingKey,
-};
+use crate::{prove_with_key, verify_with_key, Proof, StarkProvingKey, StarkVerifyingKey};
+
+use p3_uni_stark::StarkGenericConfig;
 
 use crate::{
-    circuit_builder::PowdrCircuit,
+    circuit_builder::{generate_matrix, PowdrCircuit},
     params::{Challenger, Commitment, FieldElementMap, Plonky3Field, ProverData},
 };
 
@@ -85,27 +86,15 @@ where
                     .collect::<Vec<T>>();
                 (name, selector)
             })
-            .collect::<Vec<(String, Vec<T>)>>();
+            .collect::<Vec<_>>();
 
-        match self.fixed.len() + publics.len() {
-            0 => RowMajorMatrix::new(Vec::<Plonky3Field<T>>::new(), 0),
-            _ => RowMajorMatrix::new(
-                // write fixed row by row
-                (0..self.analyzed.degree())
-                    .flat_map(|i| {
-                        self.fixed
-                            .iter()
-                            .map(move |(_, values)| values[i as usize].into_p3_field())
-                            .chain(
-                                publics
-                                    .iter()
-                                    .map(move |(_, values)| values[i as usize].into_p3_field()),
-                            )
-                    })
-                    .collect(),
-                self.fixed.len() + publics.len(),
-            ),
-        }
+        let fixed_with_public_selectors = self
+            .fixed
+            .iter()
+            .chain(publics.iter())
+            .map(|(name, values)| (name, values.as_ref()));
+
+        generate_matrix(fixed_with_public_selectors)
     }
 }
 
@@ -180,16 +169,17 @@ where
         witness: &[(String, Vec<T>)],
         witgen_callback: WitgenCallback<T>,
     ) -> Result<Vec<u8>, String> {
-        let circuit: PowdrCircuit<T> = PowdrCircuit::new(&self.analyzed)
+        let stage_0_trace =
+            generate_matrix(witness.iter().map(|(name, value)| (name, value.as_ref())));
+
+        let circuit = PowdrCircuit::new(&self.analyzed)
             .with_witgen_callback(witgen_callback)
-            .with_witness(witness);
+            .with_phase_0_witness(witness);
 
         #[cfg(debug_assertions)]
         let circuit = circuit.with_preprocessed(self.get_preprocessed_matrix());
 
-        let publics = circuit.get_public_values();
-
-        let trace = circuit.generate_trace_rows();
+        let stage_0_publics = circuit.public_values_so_far();
 
         let config = T::get_config();
 
@@ -202,13 +192,20 @@ where
             proving_key,
             &circuit,
             &mut challenger,
-            trace,
-            &publics,
+            stage_0_trace,
+            &circuit,
+            &stage_0_publics,
         );
 
         let mut challenger = T::get_challenger();
 
         let verifying_key = self.verifying_key.as_ref();
+
+        let empty_public = vec![];
+        let public_values = once(&stage_0_publics)
+            .chain(repeat(&empty_public))
+            .take(self.analyzed.stage_count())
+            .collect();
 
         verify_with_key(
             &config,
@@ -216,7 +213,7 @@ where
             &circuit,
             &mut challenger,
             &proof,
-            &publics,
+            public_values,
         )
         .unwrap();
         Ok(bincode::serialize(&proof).unwrap())
@@ -237,13 +234,19 @@ where
 
         let verifying_key = self.verifying_key.as_ref();
 
+        let empty_public = vec![];
+        let public_values = once(&publics)
+            .chain(repeat(&empty_public))
+            .take(self.analyzed.stage_count())
+            .collect();
+
         verify_with_key(
             &config,
             verifying_key,
             &PowdrCircuit::new(&self.analyzed),
             &mut challenger,
             &proof,
-            &publics,
+            public_values,
         )
         .map_err(|e| format!("Failed to verify proof: {e:?}"))
     }
@@ -378,18 +381,38 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "not implemented"]
     fn challenge() {
         let content = r#"
         let N: int = 8;
         
         namespace Global(N); 
+            let alpha: expr = std::prelude::challenge(0, 41);
             let beta: expr = std::prelude::challenge(0, 42);
             col witness x;
             col witness stage(1) y;
-            x = y + beta;
+            x = y + beta * alpha;
         "#;
         run_test(content);
+    }
+
+    #[test]
+    #[should_panic = "no entry found for key"]
+    fn stage_1_public() {
+        // this currently fails because we try to extract the public values from the stage 0 witness only
+        let content = r#"
+        let N: int = 8;
+        
+        namespace Global(N); 
+            let alpha: expr = std::prelude::challenge(0, 41);
+            let beta: expr = std::prelude::challenge(0, 42);
+            col witness stage(0) x;
+            col witness stage(1) y;
+            x = y + beta * alpha;
+
+            public out = y(N - 1);
+        "#;
+        let malicious_publics = Some(vec![GoldilocksField::from(0)]);
+        run_test_publics::<GoldilocksField>(content, malicious_publics);
     }
 
     #[test]

@@ -1,6 +1,5 @@
 use powdr_number::FieldElement;
 use powdr_number::LargeInt;
-use powdr_riscv_executor::Elem;
 
 use super::memory_merkle_tree::MerkleTree;
 use crate::code_gen::Register;
@@ -760,7 +759,7 @@ where
     F: FieldElement,
     Pages: ExactSizeIterator<Item = InputPage<'a, F>>,
 {
-    register_values: Vec<Elem<F>>,
+    register_values: Vec<F>,
     merkle_tree_root_hash: &'a [F; 4],
     pages: Pages,
 }
@@ -778,27 +777,19 @@ where
     F: powdr_number::FieldElement,
     I: ExactSizeIterator<Item = InputPage<'a, F>>,
 {
-    fn into_input(self) -> Vec<Elem<F>> {
+    fn into_input(self) -> Vec<F> {
         let mut inputs = self.register_values;
         inputs.extend_from_within(..);
-        inputs.extend(
-            self.merkle_tree_root_hash
-                .iter()
-                .flat_map(|v| split_fe_as_elem(*v)),
-        );
-        inputs.extend(
-            self.merkle_tree_root_hash
-                .iter()
-                .flat_map(|v| split_fe_as_elem(*v)),
-        );
+        inputs.extend(self.merkle_tree_root_hash.iter().flat_map(|v| split_fe(*v)));
+        inputs.extend(self.merkle_tree_root_hash.iter().flat_map(|v| split_fe(*v)));
 
-        inputs.push(Elem::Binary(self.pages.len() as i64));
+        inputs.push((self.pages.len() as i64).into());
         for page in self.pages {
             inputs.push(page.page_idx.into());
-            inputs.extend(page.data.map(|v| Elem::new_from_fe_as_bin(&v)));
-            inputs.extend(page.hash.iter().flat_map(|v| split_fe_as_elem(*v)));
+            inputs.extend(page.data);
+            inputs.extend(page.hash.iter().flat_map(|v| split_fe(*v)));
             for sibling in page.proof {
-                inputs.extend(sibling.iter().flat_map(|v| split_fe_as_elem(*v)));
+                inputs.extend(sibling.iter().flat_map(|v| split_fe(*v)));
             }
         }
         inputs
@@ -806,10 +797,10 @@ where
 }
 
 pub fn create_input<F: FieldElement, Pages: ExactSizeIterator<Item = u32>>(
-    register_values: Vec<Elem<F>>,
+    register_values: Vec<F>,
     merkle_tree: &MerkleTree<F>,
     accessed_pages: Pages,
-) -> Vec<Elem<F>> {
+) -> Vec<F> {
     InputCreator {
         register_values,
         merkle_tree_root_hash: merkle_tree.root_hash(),
@@ -826,9 +817,9 @@ pub fn create_input<F: FieldElement, Pages: ExactSizeIterator<Item = u32>>(
     .into_input()
 }
 
-pub fn default_register_values<T: FieldElement>() -> Vec<Elem<T>> {
-    let mut register_values = vec![Elem::Binary(0); REGISTER_NAMES.len()];
-    register_values[PC_INDEX] = Elem::Binary(DEFAULT_PC as i64);
+pub fn default_register_values<F: FieldElement>() -> Vec<F> {
+    let mut register_values = vec![0.into(); REGISTER_NAMES.len()];
+    register_values[PC_INDEX] = DEFAULT_PC.into();
     register_values
 }
 
@@ -836,10 +827,10 @@ pub fn default_register_values<T: FieldElement>() -> Vec<Elem<T>> {
 /// - No pages are initialized
 /// - All registers are set to 0 (including the PC, which causes the bootloader to do nothing)
 /// - The state at the end of the execution is the same as the beginning
-pub fn default_input<T: FieldElement>(accessed_pages: &[u64]) -> Vec<Elem<T>> {
+pub fn default_input<F: FieldElement>(accessed_pages: &[u64]) -> Vec<F> {
     // Set all registers and the number of pages to zero
     let register_values = default_register_values();
-    let merkle_tree = MerkleTree::<T>::new();
+    let merkle_tree = MerkleTree::<F>::new();
 
     // TODO: We don't have a way to know the memory state *after* the execution.
     // For now, we'll just claim that the memory doesn't change.
@@ -853,10 +844,7 @@ pub fn default_input<T: FieldElement>(accessed_pages: &[u64]) -> Vec<Elem<T>> {
     )
 }
 
-pub fn split_fe_as_elem<T: FieldElement>(v: T) -> [Elem<T>; 2] {
+pub fn split_fe<F: FieldElement>(v: F) -> [F; 2] {
     let v = v.to_integer().try_into_u64().unwrap();
-    [
-        Elem::from((v & 0xffffffff) as u32),
-        Elem::from((v >> 32) as u32),
-    ]
+    [((v & 0xffffffff) as u32).into(), ((v >> 32) as u32).into()]
 }
