@@ -6,7 +6,13 @@ use powdr_pil_analyzer::analyze_string;
 
 fn compile(input: &str, symbol: &str) -> LoadedFunction {
     let analyzed = analyze_string::<GoldilocksField>(input).unwrap();
-    powdr_jit_compiler::compile(&analyzed, &[symbol]).unwrap()[symbol].clone()
+    powdr_jit_compiler::compile(&analyzed, &[symbol])
+        .map_err(|e| {
+            eprintln!("Error jit-compiling:\n{e}");
+            e
+        })
+        .unwrap()[symbol]
+        .clone()
 }
 
 #[test]
