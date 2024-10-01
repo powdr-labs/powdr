@@ -10,7 +10,7 @@ use p3_dft::Radix2DitParallel;
 use p3_field::{extension::BinomialExtensionField, AbstractField, Field, PrimeField64};
 use p3_fri::{FriConfig, TwoAdicFriPcs};
 use p3_goldilocks::{Goldilocks, MdsMatrixGoldilocks};
-use p3_merkle_tree::FieldMerkleTreeMmcs;
+use p3_merkle_tree::MerkleTreeMmcs;
 use p3_poseidon::Poseidon;
 use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
 use p3_uni_stark::StarkConfig;
@@ -32,7 +32,7 @@ const CHUNK: usize = 4;
 type Compress = TruncatedPermutation<Perm, N, CHUNK, WIDTH>;
 
 const DIGEST_ELEMS: usize = 4;
-type ValMmcs = FieldMerkleTreeMmcs<
+type ValMmcs = MerkleTreeMmcs<
     <Goldilocks as Field>::Packing,
     <Goldilocks as Field>::Packing,
     Hash,
