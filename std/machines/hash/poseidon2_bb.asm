@@ -129,7 +129,7 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
 
         // Apply S-box
         let x3 = array::map(step_a, constr |x| { let x3; x3 = x * x * x; x3});
-        let x7 = array::zip(x3, step_a, constr |x3, x| { let x7; x7 = x3 * x3 * x; x7 });
+        let x7 = array::zip(x3, step_a, constr |x_3, x| { let x7; x7 = x_3 * x_3 * x; x7 });
 
         // Multiply with MDS Matrix
         output = apply_mds(x7, array::len(output));
