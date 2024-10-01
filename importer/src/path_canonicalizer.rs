@@ -313,11 +313,8 @@ fn canonicalize_inside_expression(
                 })
             }
             Expression::StructExpression(_, StructExpression { name, .. }) => {
-                if let Some(n) = paths.get(&path.clone().join(name.path.clone())) {
-                    name.path = n.relative_to(&Default::default());
-                } else {
-                    assert!(name.path.try_to_identifier().is_some());
-                }
+                let n = paths.get(&path.clone().join(name.path.clone())).unwrap();
+                name.path = n.relative_to(&Default::default());
             }
             _ => {}
         }
@@ -927,8 +924,7 @@ fn check_expression(
             }
         }
         Expression::StructExpression(source_ref, StructExpression { name, fields }) => {
-            let path_to_check = location.clone().join(name.path.clone());
-            match check_path(path_to_check, state) {
+            match check_path_try_prelude(location.clone(), name.path.clone(), state) {
                 Ok(()) => fields
                     .iter()
                     .try_for_each(|NamedExpression { name: _, body }| {

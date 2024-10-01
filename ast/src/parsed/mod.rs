@@ -1213,9 +1213,9 @@ impl<E> Children<E> for IfExpression<E> {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct StructExpression<E = NamespacedPolynomialReference> {
-    pub name: E,
-    pub fields: Vec<NamedExpression<Box<Expression<E>>>>,
+pub struct StructExpression<Ref = NamespacedPolynomialReference> {
+    pub name: Ref,
+    pub fields: Vec<NamedExpression<Box<Expression<Ref>>>>,
 }
 
 impl<Ref> From<StructExpression<Ref>> for Expression<Ref> {

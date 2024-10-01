@@ -1,3 +1,11 @@
+mod std {
+    mod prelude {
+        enum Option<T> {
+            None,
+            Some(T),
+        }
+    }
+}
 mod other {
     enum E1 {
         A,
@@ -6,5 +14,10 @@ mod other {
         a: int,
         b: other::E1,
     }
+    struct S2 {
+        x: std::prelude::Option<int>,
+        y: other::S1,
+    }
 }
 let s1 = other::S1{ a: 1, b: other::E1::A };
+let s2 = other::S2{ x: std::prelude::Option::Some(1), y: s1 };
