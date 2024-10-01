@@ -28,7 +28,7 @@ jobs:
         submodules: recursive
     - name: ⚡ Restore rust cache
       id: cache
-      uses: WarpBuilds/cache@v1
+      uses: WarpBuilds/cache/restore@v1
       with:
         path: |
           ~/.cargo/registry/index/
@@ -36,9 +36,7 @@ jobs:
           ~/.cargo/git/db/
           target/
           Cargo.lock
-        key: ${{ runner.os }}-cargo-pr-tests-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-pr-tests-
+        key: ${{ runner.os }}-cargo-pr-tests
     - name: Install Rust toolchain 1.81 (with clippy and rustfmt)
       run: rustup toolchain install 1.81-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.81-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.81-x86_64-unknown-linux-gnu
     - name: Install EStarkPolygon prover dependencies
@@ -103,7 +101,7 @@ jobs:
         POWDR_STD: ${{ github.workspace }}/std/
 
   run_examples:
-    runs-on: ubuntu-latest
+    runs-on: warp-ubuntu-2404-x64-4x
 
     steps:
     - uses: actions/checkout@v4
@@ -111,7 +109,7 @@ jobs:
         submodules: recursive
     - name: ⚡ Restore rust cache
       id: cache
-      uses: actions/cache/restore@v4
+      uses: WarpBuilds/cache/restore@v1
       with:
         path: |
           ~/.cargo/registry/index/
@@ -119,9 +117,7 @@ jobs:
           ~/.cargo/git/db/
           target/
           Cargo.lock
-        key: ${{ runner.os }}-cargo-pr-tests-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-pr-tests-
+        key: ${{ runner.os }}-cargo-pr-tests
     - name: Install Rust toolchain 1.81 (with clippy and rustfmt)
       run: rustup toolchain install 1.81-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.81-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.81-x86_64-unknown-linux-gnu
     - name: Run examples

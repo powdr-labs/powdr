@@ -29,7 +29,7 @@ jobs:
       run: cargo build --all-targets --all --all-features --profile pr-tests
     - name: Check without Halo2
       run: cargo check --all --no-default-features --profile pr-tests
-    - name: ⚡ Save rust cache
+    - name: Delete previous cache
       uses: WarpBuilds/cache@v1
       with:
         path: |
@@ -38,4 +38,15 @@ jobs:
           ~/.cargo/git/db/
           target/
           Cargo.lock
-        key: ${{ runner.os }}-cargo-pr-tests-${{ hashFiles('**/Cargo.lock') }}
+        key: ${{ runner.os }}-cargo-pr-tests
+        delete-cache: true
+    - name: ⚡ Save rust cache
+      uses: WarpBuilds/cache/save@v1
+      with:
+        path: |
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          target/
+          Cargo.lock
+        key: ${{ runner.os }}-cargo-pr-tests
