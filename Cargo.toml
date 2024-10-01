@@ -10,6 +10,7 @@ members = [
     "cli",
     "cli-rs",
     "executor",
+    "jit-compiler",
     "riscv",
     "parser-util",
     "pil-analyzer",
@@ -48,6 +49,7 @@ powdr-analysis = { path = "./analysis", version = "0.1.0-alpha.2" }
 powdr-backend = { path = "./backend", version = "0.1.0-alpha.2" }
 powdr-executor = { path = "./executor", version = "0.1.0-alpha.2" }
 powdr-importer = { path = "./importer", version = "0.1.0-alpha.2" }
+powdr-jit-compiler = { path = "./jit-compiler", version = "0.1.0-alpha.2" }
 powdr-linker = { path = "./linker", version = "0.1.0-alpha.2" }
 powdr-number = { path = "./number", version = "0.1.0-alpha.2" }
 powdr-parser = { path = "./parser", version = "0.1.0-alpha.2" }

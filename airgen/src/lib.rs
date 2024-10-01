@@ -400,6 +400,7 @@ impl<'a> ASMPILConverter<'a> {
     /// - they target the same instance.operation
     /// - they are of the same kind (permutation/lookup)
     /// - their flags are mutually exclusive
+    ///
     /// Right now we only consider links from different instructions,
     /// as a single instruction can be active at a time.
     fn process_and_merge_links(&self, defs: &[LinkDefinition]) -> Vec<Link> {

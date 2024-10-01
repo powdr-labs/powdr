@@ -82,6 +82,16 @@ impl<T> Analyzed<T> {
             .collect::<HashSet<_>>()
     }
 
+    /// Returns the number of stages based on the maximum stage number of all definitions
+    pub fn stage_count(&self) -> usize {
+        self.definitions
+            .iter()
+            .map(|(_, (s, _))| s.stage.unwrap_or_default())
+            .max()
+            .unwrap_or_default() as usize
+            + 1
+    }
+
     /// @returns the number of committed polynomials (with multiplicities for arrays)
     pub fn commitment_count(&self) -> usize {
         self.declaration_type_count(PolynomialType::Committed)
@@ -325,22 +335,23 @@ impl<T> Analyzed<T> {
             .for_each(|definition| definition.post_visit_expressions_mut(f))
     }
 
-    /// Retrieves (col_name, col_idx, offset) of each public witness in the trace.
-    pub fn get_publics(&self) -> Vec<(String, usize, usize)> {
+    /// Retrieves (col_name, poly_id, offset) of each public witness in the trace.
+    pub fn get_publics(&self) -> Vec<(String, PolyID, usize)> {
         let mut publics = self
             .public_declarations
             .values()
             .map(|public_declaration| {
                 let column_name = public_declaration.referenced_poly_name();
-                let column_idx = {
-                    let base = self.definitions[&public_declaration.polynomial.name].0.id;
-                    match public_declaration.array_index {
-                        Some(array_idx) => base + array_idx as u64,
-                        None => base,
-                    }
+                let poly_id = {
+                    let symbol = &self.definitions[&public_declaration.polynomial.name].0;
+                    symbol
+                        .array_elements()
+                        .nth(public_declaration.array_index.unwrap_or_default())
+                        .unwrap()
+                        .1
                 };
                 let row_offset = public_declaration.index as usize;
-                (column_name, column_idx as usize, row_offset)
+                (column_name, poly_id, row_offset)
             })
             .collect::<Vec<_>>();
 
@@ -1085,7 +1096,9 @@ impl<T> AlgebraicExpression<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize, Deserialize, JsonSchema,
+)]
 pub struct Challenge {
     /// Challenge ID
     pub id: u64,

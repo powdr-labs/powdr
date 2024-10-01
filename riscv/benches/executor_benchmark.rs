@@ -44,10 +44,7 @@ fn executor_benchmark(c: &mut Criterion) {
 
     let pipeline = pipeline.add_external_witness_values(vec![(
         "main_bootloader_inputs::value".to_string(),
-        default_input(&[63, 64, 65])
-            .into_iter()
-            .map(|e| e.into_fe())
-            .collect(),
+        default_input(&[63, 64, 65]),
     )]);
     group.bench_function("many_chunks_chunk_0", |b| {
         b.iter(|| pipeline.clone().compute_witness().unwrap())
