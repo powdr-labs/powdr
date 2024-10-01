@@ -285,6 +285,9 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 )
             }
             Expression::MatchExpression(_, MatchExpression { scrutinee, arms }) => {
+                // We cannot use rust match expressions directly.
+                // Instead, we compile to a sequence of `if let Some(...)` statements.
+
                 // TODO try to find a solution where we do not introduce a variable
                 // or at least make it unique.
                 let var_name = "scrutinee__";
@@ -293,9 +296,9 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     self.format_expr(scrutinee)?,
                     arms.iter()
                         .map(|MatchArm { pattern, value }| {
-                            let (vars, code) = check_pattern(var_name, pattern)?;
+                            let (bound_vars, arm_test) = check_pattern(var_name, pattern)?;
                             Ok(format!(
-                                "if let Some({vars}) = ({code}) {{\n{}\n}}",
+                                "if let Some({bound_vars}) = ({arm_test}) {{\n{}\n}}",
                                 self.format_expr(value)?,
                             ))
                         })
@@ -338,8 +341,8 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
 
 /// Used for patterns in match and let statements:
 /// `value_name` is an expression string that is to be matched against `pattern`.
-/// Returns a rust pattern string (tuple of new variables, might be nested) and a code string
-/// that, when executed, returns an Option with the values for the new variables if the pattern
+/// Returns a rust pattern string (tuple of bound variables, might be nested) and a code string
+/// that, when executed, returns an Option with the values for the bound variables if the pattern
 /// matched `value_name` and `None` otherwise.
 ///
 /// So if `let (vars, code) = check_pattern("x", pattern)?;`, then the return value
@@ -378,6 +381,7 @@ fn check_pattern(value_name: &str, pattern: &Pattern) -> Result<(String, String)
         Pattern::Array(_, items) => {
             let mut vars = vec![];
             let mut ellipsis_seen = false;
+            // This will be code to check the individual items in the array pattern.
             let inner_code = items
                 .iter()
                 .enumerate()
@@ -386,6 +390,7 @@ fn check_pattern(value_name: &str, pattern: &Pattern) -> Result<(String, String)
                         ellipsis_seen = true;
                         return None;
                     }
+                    // Compute an expression to access the item.
                     Some(if ellipsis_seen {
                         let i_rev = items.len() - i;
                         (format!("{value_name}[{value_name}.len() - {i_rev}]"), item)
