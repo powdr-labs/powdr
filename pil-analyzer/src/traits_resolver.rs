@@ -211,12 +211,16 @@ impl<'a> TraitsResolver<'a> {
         let mut result: HashMap<String, HashSet<Vec<Type>>> = HashMap::new();
 
         for t in defined_traits {
-            let children = input.get(t).unwrap();
-            for (father, type_arg) in children {
-                if type_arg.iter().any(|ty| matches!(ty, Type::TypeVar(_))) {
-                    let new_type = Self::solve_type_vars(input.clone(), father, type_arg);
-                    result.insert(t.to_string(), new_type);
+            match input.get(t) {
+                Some(children) => {
+                    for (father, type_arg) in children {
+                        if type_arg.iter().any(|ty| matches!(ty, Type::TypeVar(_))) {
+                            let new_type = Self::solve_type_vars(input.clone(), father, type_arg);
+                            result.insert(t.to_string(), new_type);
+                        }
+                    }
                 }
+                None => continue,
             }
         }
 
