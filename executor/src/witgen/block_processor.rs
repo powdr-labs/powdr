@@ -1,12 +1,9 @@
-use std::collections::BTreeMap;
-
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::Identity;
 
 use super::{
     affine_expression::AlgebraicVariable,
-    data_structures::finalizable_data::FinalizableData,
     machines::MachineParts,
     processor::{MutableData, OuterQuery, Processor},
     rows::{RowIndex, UnknownStrategy},
@@ -29,8 +26,7 @@ pub struct BlockProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c, T, Q> {
     pub fn new(
         row_offset: RowIndex,
-        data: FinalizableData<T>,
-        publics: BTreeMap<&'a str, T>,
+        mutable_data: MutableData<'a, T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
         fixed_data: &'a FixedData<'a, T>,
         parts: &'c MachineParts<'a, T>,
@@ -38,8 +34,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
     ) -> Self {
         let processor = Processor::new(
             row_offset,
-            data,
-            publics,
+            mutable_data,
             mutable_state,
             fixed_data,
             parts,
@@ -137,6 +132,7 @@ mod tests {
             data_structures::finalizable_data::FinalizableData,
             identity_processor::Machines,
             machines::MachineParts,
+            processor::MutableData,
             rows::{Row, RowIndex},
             sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator},
             unused_query_callback, FixedData, MutableState, QueryCallback,
@@ -204,8 +200,7 @@ mod tests {
 
         let processor = BlockProcessor::new(
             row_offset,
-            data,
-            Default::default(),
+            MutableData::without_publics(data),
             &mut mutable_state,
             &fixed_data,
             &machine_parts,

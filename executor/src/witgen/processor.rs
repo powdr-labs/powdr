@@ -32,6 +32,19 @@ pub(crate) struct MutableData<'a, T: FieldElement> {
     pub publics: BTreeMap<&'a str, T>,
 }
 
+impl<'a, T: FieldElement> MutableData<'a, T> {
+    pub fn new(block: FinalizableData<T>, publics: BTreeMap<&'a str, T>) -> Self {
+        Self { block, publics }
+    }
+
+    pub fn without_publics(block: FinalizableData<T>) -> Self {
+        Self {
+            block,
+            publics: BTreeMap::new(),
+        }
+    }
+}
+
 /// Data needed to handle an outer query.
 #[derive(Clone)]
 pub struct OuterQuery<'a, 'b, T: FieldElement> {
@@ -82,6 +95,7 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     row_offset: RowIndex,
     /// The rows that are being processed.
     data: FinalizableData<T>,
+    /// The values of the publics
     publics: BTreeMap<&'a str, T>,
     /// The mutable state
     mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
@@ -106,8 +120,7 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, Q> {
     pub fn new(
         row_offset: RowIndex,
-        data: FinalizableData<T>,
-        publics: BTreeMap<&'a str, T>,
+        mutable_data: MutableData<'a, T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
         fixed_data: &'a FixedData<'a, T>,
         parts: &'c MachineParts<'a, T>,
@@ -128,8 +141,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
 
         Self {
             row_offset,
-            data,
-            publics,
+            data: mutable_data.block,
+            publics: mutable_data.publics,
             mutable_state,
             fixed_data,
             parts,

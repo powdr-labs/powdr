@@ -341,8 +341,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             let row_offset = RowIndex::from_i64(-1, self.degree);
             let mut processor = Processor::new(
                 row_offset,
-                dummy_block,
-                self.publics.clone(),
+                MutableData::new(dummy_block, self.publics.clone()),
                 mutable_state,
                 self.fixed_data,
                 &self.parts,
@@ -560,8 +559,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         );
         let mut processor = BlockProcessor::new(
             row_offset,
-            block,
-            self.publics.clone(),
+            MutableData::new(block, self.publics.clone()),
             mutable_state,
             self.fixed_data,
             &self.parts,

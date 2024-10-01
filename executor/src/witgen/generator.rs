@@ -183,9 +183,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         let next_parts = self.parts.restricted_to_identities_with_next_references();
         let mut processor = BlockProcessor::new(
             RowIndex::from_i64(-1, self.degree),
-            data,
             // Shouldn't need any publics at this point
-            Default::default(),
+            MutableData::without_publics(data),
             mutable_state,
             self.fixed_data,
             &next_parts,
@@ -223,7 +222,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             RowIndex::from_degree(row_offset, self.degree),
             self.fixed_data,
             &self.parts,
-            data,
+            MutableData::new(data, self.publics.clone()),
             mutable_state,
         );
         if let Some(outer_query) = outer_query {

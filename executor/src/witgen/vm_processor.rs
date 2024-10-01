@@ -12,7 +12,6 @@ use crate::witgen::IncompleteCause;
 use crate::Identity;
 
 use super::affine_expression::AlgebraicVariable;
-use super::data_structures::finalizable_data::FinalizableData;
 use super::machines::MachineParts;
 use super::processor::{MutableData, OuterQuery, Processor};
 
@@ -76,7 +75,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         row_offset: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
         parts: &'c MachineParts<'a, T>,
-        data: FinalizableData<T>,
+        mutable_data: MutableData<'a, T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
     ) -> Self {
         let degree_range = parts.common_degree_range();
@@ -89,8 +88,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             .partition(|identity| identity.contains_next_ref());
         let processor = Processor::new(
             row_offset,
-            data,
-            Default::default(),
+            mutable_data,
             mutable_state,
             fixed_data,
             parts,
