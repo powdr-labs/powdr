@@ -20,7 +20,7 @@ env:
 
 jobs:
   build:
-    runs-on: warp-ubuntu-2404-x64-4x
+    runs-on: warp-ubuntu-latest-x64-4x
 
     steps:
     - uses: actions/checkout@v4
@@ -101,7 +101,7 @@ jobs:
         POWDR_STD: ${{ github.workspace }}/std/
 
   run_examples:
-    runs-on: warp-ubuntu-2404-x64-4x
+    runs-on: warp-ubuntu-latest-x64-4x
 
     steps:
     - uses: actions/checkout@v4
