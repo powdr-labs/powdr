@@ -100,6 +100,24 @@ fn match_number() {
 }
 
 #[test]
+fn match_negative() {
+    let f = compile(
+        r#"let f: int -> int = |x| match -x {
+            -0 => 1,
+            -1 => 2,
+            -2 => 3,
+            _ => 9,
+        };"#,
+        "f",
+    );
+
+    assert_eq!(f.call(0), 1);
+    assert_eq!(f.call(1), 2);
+    assert_eq!(f.call(2), 3);
+    assert_eq!(f.call(3), 9);
+}
+
+#[test]
 fn match_string() {
     let f = compile(
         r#"let f: int -> int = |x| match "abc" {

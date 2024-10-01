@@ -436,7 +436,7 @@ fn format_signed_integer(n: &BigInt) -> String {
     if let Ok(n) = BigUint::try_from(n) {
         format_unsigned_integer(&n)
     } else {
-        format_signed_integer(&-(n.clone()))
+        format!("-{}", format_signed_integer(&-(n.clone())))
     }
 }
 
