@@ -10,7 +10,7 @@ use powdr_ast::{
     },
 };
 use std::{
-    collections::{HashMap, HashSet, VecDeque},
+    collections::{HashMap, HashSet},
     sync::Arc,
 };
 
@@ -32,18 +32,23 @@ impl<'a> TraitsResolver<'a> {
         trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
         definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     ) -> Self {
-        let filtered = definitions.values().filter_map(|(s, def)| {
-            if let Some(FunctionValueDefinition::Expression(TypedExpression { e, .. })) = def {
-                Some((s, e))
-            } else {
-                None
-            }
-        });
-        let trait_typevars_mapping = if trait_impls.is_empty() {
-            Default::default()
-        } else {
-            Self::build_reference_path(filtered)
-        };
+        let (expressions, trait_functions): (Vec<_>, HashSet<_>) = definitions.values().fold(
+            (Vec::new(), HashSet::new()),
+            |(mut exprs, mut traits), (s, def)| {
+                if let Some(FunctionValueDefinition::Expression(TypedExpression { e, .. })) = def {
+                    exprs.push((s.absolute_name.clone(), e));
+                } else if let Some(FunctionValueDefinition::TraitFunction(_, _)) = def {
+                    traits.insert(s.absolute_name.clone());
+                }
+                (exprs, traits)
+            },
+        );
+
+        //let trait_typevars_mapping = if trait_impls.is_empty() {
+        //    Default::default()
+        //} else {
+        let trait_typevars_mapping = Self::build_reference_path(expressions, &trait_functions);
+        //};
 
         Self {
             trait_impls,
@@ -99,6 +104,7 @@ impl<'a> TraitsResolver<'a> {
                 items: type_args.clone(),
             });
 
+            // TODO: This code is a bit ugly.
             if tuple_args.is_concrete_type() {
                 for impl_ in impls.iter() {
                     let mut unifier: Unifier = Default::default();
@@ -142,14 +148,15 @@ impl<'a> TraitsResolver<'a> {
                 }
             }
         }
-
         solved_impls
     }
 
     /// Creates a dictionary that associates each child reference with a generic type along with the references that called it
     /// From this dictionary, it resolves the parent/child relationships to obtain the value of the generic type
-    fn build_reference_path<'b>(
-        definitions: impl Iterator<Item = (&'b Symbol, &'b Expression)>,
+    fn build_reference_path(
+        //definitions: impl Iterator<Item = (&'b Symbol, &'b Expression)>,
+        definitions: Vec<(String, &Expression)>,
+        defined_traits: &HashSet<String>,
     ) -> HashMap<String, HashSet<Vec<Type>>> {
         let mut result = HashMap::new();
 
@@ -171,7 +178,7 @@ impl<'a> TraitsResolver<'a> {
                     }),
                 ) = e
                 {
-                    if !type_args.is_empty() {
+                    if (!type_args.is_empty()) && (*name != symbol) {
                         if all_type_vars && type_args.iter().any(|t| !matches!(t, Type::TypeVar(_)))
                         {
                             all_type_vars = false;
@@ -180,8 +187,11 @@ impl<'a> TraitsResolver<'a> {
                     }
                 }
             });
-            if !references.is_empty() {
-                result.insert(symbol.absolute_name.clone(), references);
+            for (name, type_args) in references {
+                result
+                    .entry(name)
+                    .or_insert_with(Vec::new)
+                    .push((symbol.clone(), type_args));
             }
         }
 
@@ -189,78 +199,60 @@ impl<'a> TraitsResolver<'a> {
             return Default::default();
         }
 
-        Self::combine_type_vars_paths(result)
+        Self::combine_type_vars_paths(result, defined_traits)
     }
 
     /// Solve the initial asociation and builds a dictionary that maps the
     /// names of traits containing generic types to their represented types.
     fn combine_type_vars_paths(
-        input: HashMap<String, Vec<(&String, &Vec<Type>)>>,
+        input: HashMap<&String, Vec<(String, &Vec<Type>)>>,
+        defined_traits: &HashSet<String>,
     ) -> HashMap<String, HashSet<Vec<Type>>> {
         let mut result: HashMap<String, HashSet<Vec<Type>>> = HashMap::new();
-        let mut to_process: VecDeque<&String> = input.keys().collect();
 
-        let mut pointer = to_process.pop_front();
-        while pointer.is_some() {
-            let parent = pointer.unwrap();
-
-            // ["Parent": [
-            //      ("Child1", [Some(type_args)]),
-            //      ("Child2", [Some(type_args)])
-            // ],...]
-            //
-            // For each child, if it has any type variables, use it as a parent and attempt to resolve.
-            // If it can't be resolved, put it back in the queue to try again later.
-
-            // If the child has no type variables, add it directly to the result so it can be used to resolve other values.
-            // Repeat until there are no more elements in the queue
-
-            if let Some(children) = input.get(parent) {
-                for (child, types) in children {
-                    if types.iter().any(|t| matches!(t, Type::TypeVar(_))) {
-                        if !Self::set_types_for_child(&input, types.len(), child, &mut result) {
-                            to_process.push_back(parent);
-                        }
-                    } else if result.contains_key(*child) {
-                        result.get_mut(*child).unwrap().insert(types.to_vec());
-                    } else {
-                        result.insert(child.to_string(), HashSet::from([types.to_vec()]));
-                    }
+        for t in defined_traits {
+            let children = input.get(t).unwrap();
+            for (father, type_arg) in children {
+                if type_arg.iter().any(|ty| matches!(ty, Type::TypeVar(_))) {
+                    let new_type = Self::solve_type_vars(input.clone(), father, type_arg);
+                    result.insert(t.to_string(), new_type);
                 }
             }
-
-            pointer = to_process.pop_front();
         }
 
         result
     }
 
-    /// Updates the type dictionary for each child based on input.
-    /// Returns true if the dictionary was updated, false otherwise.
-    fn set_types_for_child(
-        input: &HashMap<String, Vec<(&String, &Vec<Type>)>>,
-        size: usize,
-        target: &str,
-        result: &mut HashMap<String, HashSet<Vec<Type>>>,
-    ) -> bool {
-        let mut temp = HashSet::new();
-        let mut updated = false;
-        for child in input.values() {
-            for (child, types) in child {
-                if result.contains_key(&child.to_string())
-                    || (*child == target && types.iter().all(|t| !matches!(t, Type::TypeVar(_))))
-                {
-                    let selected_types: Vec<Type> = types.iter().take(size).cloned().collect();
-                    temp.insert(selected_types);
+    fn solve_type_vars(
+        input: HashMap<&String, Vec<(String, &Vec<Type>)>>,
+        parent: &String,
+        type_args: &[Type],
+    ) -> HashSet<Vec<Type>> {
+        let mut result = HashSet::new();
+        match input.get(parent) {
+            Some(children) => {
+                for (child, c_type_arg) in children {
+                    let new_type_arg = c_type_arg
+                        .iter()
+                        .take(type_args.len())
+                        .cloned()
+                        .collect::<Vec<Type>>();
+
+                    let mut res = Self::solve_type_vars(input.clone(), child, &new_type_arg);
+                    if new_type_arg
+                        .iter()
+                        .all(|ty| !matches!(ty, Type::TypeVar(_)))
+                    {
+                        res.insert(new_type_arg);
+                    }
+                    result.extend(res);
                 }
+            }
+            None => {
+                result.insert(type_args.to_vec());
             }
         }
 
-        if !temp.is_empty() {
-            result.insert(target.to_string(), temp);
-            updated = true;
-        }
-
-        updated
+        result
     }
 }
