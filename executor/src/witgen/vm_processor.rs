@@ -5,7 +5,6 @@ use powdr_ast::indent;
 use powdr_number::{DegreeType, FieldElement};
 use std::cmp::max;
 
-use std::collections::BTreeMap;
 use std::time::Instant;
 
 use crate::witgen::identity_processor::{self};
@@ -15,7 +14,7 @@ use crate::Identity;
 use super::affine_expression::AlgebraicVariable;
 use super::data_structures::finalizable_data::FinalizableData;
 use super::machines::MachineParts;
-use super::processor::{OuterQuery, Processor};
+use super::processor::{MutableData, OuterQuery, Processor};
 
 use super::rows::{Row, RowIndex, UnknownStrategy};
 use super::{Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCallback};
@@ -128,9 +127,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
     }
 
     /// Returns the updated data & publics, and the length of the block.
-    pub fn finish(self) -> (FinalizableData<T>, BTreeMap<&'a str, T>, DegreeType) {
-        let (data, publics) = self.processor.finish();
-        (data, publics, self.degree)
+    pub fn finish(self) -> (MutableData<'a, T>, DegreeType) {
+        (self.processor.finish(), self.degree)
     }
 
     /// Starting out with a single row (at a given offset), iteratively append rows

@@ -7,7 +7,7 @@ use super::{EvalResult, FixedData, MachineParts};
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
-use crate::witgen::processor::{OuterQuery, Processor};
+use crate::witgen::processor::{MutableData, OuterQuery, Processor};
 use crate::witgen::rows::{Row, RowIndex, RowPair};
 use crate::witgen::sequence_iterator::{
     DefaultSequenceIterator, ProcessingSequenceCache, ProcessingSequenceIterator,
@@ -24,22 +24,14 @@ use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_number::{DegreeType, FieldElement};
 
 enum ProcessResult<'a, T: FieldElement> {
-    Success(
-        FinalizableData<T>,
-        BTreeMap<&'a str, T>,
-        EvalValue<AlgebraicVariable<'a>, T>,
-    ),
+    Success(MutableData<'a, T>, EvalValue<AlgebraicVariable<'a>, T>),
     Incomplete(EvalValue<AlgebraicVariable<'a>, T>),
 }
 
 impl<'a, T: FieldElement> ProcessResult<'a, T> {
-    fn new(
-        data: FinalizableData<T>,
-        publics: BTreeMap<&'a str, T>,
-        updates: EvalValue<AlgebraicVariable<'a>, T>,
-    ) -> Self {
+    fn new(data: MutableData<'a, T>, updates: EvalValue<AlgebraicVariable<'a>, T>) -> Self {
         match updates.is_complete() {
-            true => ProcessResult::Success(data, publics, updates),
+            true => ProcessResult::Success(data, updates),
             false => ProcessResult::Incomplete(updates),
         }
     }
@@ -375,7 +367,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 DefaultSequenceIterator::new(self.block_size, self.parts.identities.len(), None),
             );
             processor.solve(&mut sequence_iterator).unwrap();
-            let (mut dummy_block, _) = processor.finish();
+            let mut dummy_block = processor.finish().block;
 
             // Replace the dummy block, discarding first and last row
             dummy_block.pop().unwrap();
@@ -525,13 +517,13 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             self.process(mutable_state, &mut sequence_iterator, outer_query.clone())?;
 
         match process_result {
-            ProcessResult::Success(new_block, new_publics, updates) => {
+            ProcessResult::Success(updated_data, updates) => {
                 log::trace!(
                     "End processing block machine '{}' (successfully)",
                     self.name()
                 );
-                self.append_block(new_block)?;
-                self.publics.extend(new_publics);
+                self.append_block(updated_data.block)?;
+                self.publics.extend(updated_data.publics);
 
                 let updates = updates.report_side_effect();
 
@@ -578,13 +570,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         .with_outer_query(outer_query);
 
         let outer_assignments = processor.solve(sequence_iterator)?;
-        let (new_block, new_publics) = processor.finish();
+        let updated_data = processor.finish();
 
-        Ok(ProcessResult::new(
-            new_block,
-            new_publics,
-            outer_assignments,
-        ))
+        Ok(ProcessResult::new(updated_data, outer_assignments))
     }
 
     /// Takes a block of rows, which contains the last row of its previous block

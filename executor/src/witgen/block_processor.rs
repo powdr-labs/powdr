@@ -8,7 +8,7 @@ use super::{
     affine_expression::AlgebraicVariable,
     data_structures::finalizable_data::FinalizableData,
     machines::MachineParts,
-    processor::{OuterQuery, Processor},
+    processor::{MutableData, OuterQuery, Processor},
     rows::{RowIndex, UnknownStrategy},
     sequence_iterator::{Action, ProcessingSequenceIterator, SequenceStep},
     EvalError, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
@@ -118,7 +118,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
     }
 
     /// Returns the updated data and publics
-    pub fn finish(self) -> (FinalizableData<T>, BTreeMap<&'a str, T>) {
+    pub fn finish(self) -> MutableData<'a, T> {
         self.processor.finish()
     }
 }
@@ -232,7 +232,7 @@ mod tests {
                 assert!(outer_updates.is_complete());
                 assert!(outer_updates.is_empty());
 
-                let (data, _) = processor.finish();
+                let data = processor.finish().block;
 
                 for &(i, name, expected) in asserted_values.iter() {
                     let poly_id = poly_ids[name];

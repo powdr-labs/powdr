@@ -24,6 +24,14 @@ use super::{
 
 type Left<'a, T> = Vec<AffineExpression<AlgebraicVariable<'a>, T>>;
 
+/// The data mutated by the processor
+pub(crate) struct MutableData<'a, T: FieldElement> {
+    /// The block of trace cells
+    pub block: FinalizableData<T>,
+    /// The values of publics
+    pub publics: BTreeMap<&'a str, T>,
+}
+
 /// Data needed to handle an outer query.
 #[derive(Clone)]
 pub struct OuterQuery<'a, 'b, T: FieldElement> {
@@ -174,8 +182,11 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
     }
 
     /// Returns the updated data and publics
-    pub fn finish(self) -> (FinalizableData<T>, BTreeMap<&'a str, T>) {
-        (self.data, self.publics)
+    pub fn finish(self) -> MutableData<'a, T> {
+        MutableData {
+            block: self.data,
+            publics: self.publics,
+        }
     }
 
     pub fn latch_value(&self, row_index: usize) -> Option<bool> {

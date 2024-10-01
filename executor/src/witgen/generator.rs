@@ -10,6 +10,7 @@ use crate::witgen::EvalValue;
 use super::affine_expression::AlgebraicVariable;
 use super::block_processor::BlockProcessor;
 use super::machines::{Machine, MachineParts};
+use super::processor::MutableData;
 use super::rows::{Row, RowIndex, RowPair};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use super::vm_processor::VmProcessor;
@@ -17,8 +18,7 @@ use super::{EvalResult, FixedData, MutableState, QueryCallback};
 
 struct ProcessResult<'a, T: FieldElement> {
     eval_value: EvalValue<AlgebraicVariable<'a>, T>,
-    block: FinalizableData<T>,
-    publics: BTreeMap<&'a str, T>,
+    updated_data: MutableData<'a, T>,
 }
 
 pub struct Generator<'a, T: FieldElement> {
@@ -63,8 +63,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
 
         let ProcessResult {
             eval_value,
-            publics,
-            block,
+            updated_data,
         } = self.process(first_row, 0, mutable_state, Some(outer_query), false);
 
         let eval_value = if eval_value.is_complete() {
@@ -72,8 +71,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
             // Remove the last row of the previous block, as it is the first row of the current
             // block.
             self.data.pop();
-            self.data.extend(block);
-            self.publics.extend(publics);
+            self.data.extend(updated_data.block);
+            self.publics.extend(updated_data.publics);
 
             eval_value.report_side_effect()
         } else {
@@ -124,7 +123,10 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         record_start(self.name());
         assert!(self.data.is_empty());
         let first_row = self.compute_partial_first_row(mutable_state);
-        self.data = self.process(first_row, 0, mutable_state, None, true).block;
+        self.data = self
+            .process(first_row, 0, mutable_state, None, true)
+            .updated_data
+            .block;
         record_end(self.name());
     }
 
@@ -137,8 +139,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
 
             let first_row = self.data.pop().unwrap();
             let ProcessResult {
-                block,
-                publics,
+                updated_data,
                 eval_value,
             } = self.process(
                 first_row,
@@ -149,8 +150,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             );
             assert!(eval_value.is_complete());
 
-            self.data.extend(block);
-            self.publics.extend(publics);
+            self.data.extend(updated_data.block);
+            self.publics.extend(updated_data.publics);
         }
     }
 
@@ -196,7 +197,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         processor.solve(&mut sequence_iterator).unwrap();
 
         // Ignore any updates to the publics at this point, as we'll re-visit the last row again.
-        let (mut block, _) = processor.finish();
+        let mut block = processor.finish().block;
         block.remove(1)
     }
 
@@ -229,15 +230,14 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             processor = processor.with_outer_query(outer_query);
         }
         let eval_value = processor.run(is_main_run);
-        let (block, publics, degree) = processor.finish();
+        let (updated_data, degree) = processor.finish();
 
         // The processor might have detected a loop, in which case the degree has changed
         self.degree = degree;
 
         ProcessResult {
             eval_value,
-            block,
-            publics,
+            updated_data,
         }
     }
 
