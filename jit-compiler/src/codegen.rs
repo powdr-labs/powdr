@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::OnceLock};
 
 use itertools::Itertools;
 use powdr_ast::{
@@ -77,7 +77,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
 
     fn generate_code(&mut self, symbol: &str) -> Result<String, String> {
         if let Some(code) = try_generate_builtin::<T>(symbol) {
-            return Ok(code);
+            return Ok(code.clone());
         }
 
         let Some((_, Some(FunctionValueDefinition::Expression(value)))) =
@@ -321,7 +321,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
     /// This is either the escaped name of the symbol or a deref operator
     /// applied to it.
     fn symbol_reference(&self, symbol: &str) -> String {
-        let needs_deref = if is_builtin(symbol) {
+        let needs_deref = if is_builtin::<T>(symbol) {
             false
         } else {
             let (_, def) = self.analyzed.definitions.get(symbol).as_ref().unwrap();
@@ -470,25 +470,43 @@ fn map_type(ty: &Type) -> String {
     }
 }
 
-fn is_builtin(symbol: &str) -> bool {
-    matches!(
-        symbol,
-        "std::check::panic" | "std::field::modulus" | "std::convert::fe"
-    )
+fn get_builtins<T: FieldElement>() -> &'static HashMap<String, String> {
+    static BUILTINS: OnceLock<HashMap<String, String>> = OnceLock::new();
+    BUILTINS.get_or_init(|| {
+        [
+            (
+                "std::array::len",
+                "<T>(a: Vec<T>) -> ibig::IBig { ibig::IBig::from(a.len()) }".to_string(),
+            ),
+            (
+                "std::check::panic",
+                "(s: &str) -> ! { panic!(\"{s}\"); }".to_string(),
+            ),
+            (
+                "std::field::modulus",
+                format!(
+                    "() -> ibig::IBig {{ {} }}",
+                    format_unsigned_integer(&T::modulus().to_arbitrary_integer())
+                ),
+            ),
+        ]
+        .into_iter()
+        .map(|(name, code)| {
+            (
+                name.to_string(),
+                format!("fn {}{code}", escape_symbol(name)),
+            )
+        })
+        .collect()
+    })
 }
 
-fn try_generate_builtin<T: FieldElement>(symbol: &str) -> Option<String> {
-    let code = match symbol {
-        "std::array::len" => "<T>(a: Vec<T>) -> ibig::IBig { ibig::IBig::from(a.len()) }".to_string(),
-        "std::check::panic" => "(s: &str) -> ! { panic!(\"{s}\"); }".to_string(),
-        "std::field::modulus" => {
-            format!("() -> ibig::IBig {{ {} }}", format_unsigned_integer(&T::modulus().to_arbitrary_integer()))
-        }
-        "std::convert::fe" => "(n: ibig::IBig) -> FieldElement {\n    <FieldElement as PrimeField>::BigInt::try_from(n.to_biguint().unwrap()).unwrap().into()\n}"
-            .to_string(),
-        _ => return None,
-    };
-    Some(format!("fn {}{code}", escape_symbol(symbol)))
+fn is_builtin<T: FieldElement>(symbol: &str) -> bool {
+    get_builtins::<T>().contains_key(symbol)
+}
+
+fn try_generate_builtin<T: FieldElement>(symbol: &str) -> Option<&String> {
+    get_builtins::<T>().get(symbol)
 }
 
 #[cfg(test)]
