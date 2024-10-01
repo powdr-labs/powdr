@@ -18,6 +18,7 @@ use std::{
 use crate::{type_processor::TypeProcessor, AnalysisDriver};
 
 /// The ExpressionProcessor turns parsed expressions into analyzed expressions.
+///
 /// Its main job is to resolve references:
 /// It turns simple references into fully namespaced references and resolves local function variables.
 pub struct ExpressionProcessor<'a, D: AnalysisDriver> {

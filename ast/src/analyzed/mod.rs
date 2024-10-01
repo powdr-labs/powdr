@@ -20,8 +20,7 @@ use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
-    self, ArrayExpression, ArrayLiteral, EnumDeclaration, EnumVariant, TraitDeclaration,
-    TraitFunction,
+    self, ArrayExpression, EnumDeclaration, EnumVariant, NamedType, TraitDeclaration,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -29,8 +28,8 @@ pub enum StatementIdentifier {
     /// Either an intermediate column or a definition.
     Definition(String),
     PublicDeclaration(String),
-    /// Index into the vector of identities.
-    Identity(usize),
+    /// Index into the vector of proof items.
+    ProofItem(usize),
     /// Index into the vector of prover functions.
     ProverFunction(usize),
 }
@@ -81,6 +80,16 @@ impl<T> Analyzed<T> {
             .filter_map(|(symbol, _)| symbol.degree)
             .map(|d| d.try_into_unique().unwrap())
             .collect::<HashSet<_>>()
+    }
+
+    /// Returns the number of stages based on the maximum stage number of all definitions
+    pub fn stage_count(&self) -> usize {
+        self.definitions
+            .iter()
+            .map(|(_, (s, _))| s.stage.unwrap_or_default())
+            .max()
+            .unwrap_or_default() as usize
+            + 1
     }
 
     /// @returns the number of committed polynomials (with multiplicities for arrays)
@@ -208,7 +217,7 @@ impl<T> Analyzed<T> {
             ),
         );
         self.source_order
-            .push(StatementIdentifier::Identity(self.identities.len() - 1));
+            .push(StatementIdentifier::ProofItem(self.identities.len() - 1));
         id
     }
 
@@ -217,7 +226,7 @@ impl<T> Analyzed<T> {
     pub fn remove_identities(&mut self, to_remove: &BTreeSet<usize>) {
         let mut shift = 0;
         self.source_order.retain_mut(|s| {
-            if let StatementIdentifier::Identity(index) = s {
+            if let StatementIdentifier::ProofItem(index) = s {
                 if to_remove.contains(index) {
                     shift += 1;
                     return false;
@@ -326,22 +335,23 @@ impl<T> Analyzed<T> {
             .for_each(|definition| definition.post_visit_expressions_mut(f))
     }
 
-    /// Retrieves (col_name, col_idx, offset) of each public witness in the trace.
-    pub fn get_publics(&self) -> Vec<(String, usize, usize)> {
+    /// Retrieves (col_name, poly_id, offset) of each public witness in the trace.
+    pub fn get_publics(&self) -> Vec<(String, PolyID, usize)> {
         let mut publics = self
             .public_declarations
             .values()
             .map(|public_declaration| {
                 let column_name = public_declaration.referenced_poly_name();
-                let column_idx = {
-                    let base = self.definitions[&public_declaration.polynomial.name].0.id;
-                    match public_declaration.array_index {
-                        Some(array_idx) => base + array_idx as u64,
-                        None => base,
-                    }
+                let poly_id = {
+                    let symbol = &self.definitions[&public_declaration.polynomial.name].0;
+                    symbol
+                        .array_elements()
+                        .nth(public_declaration.array_index.unwrap_or_default())
+                        .unwrap()
+                        .1
                 };
                 let row_offset = public_declaration.index as usize;
-                (column_name, column_idx as usize, row_offset)
+                (column_name, poly_id, row_offset)
             })
             .collect::<Vec<_>>();
 
@@ -624,7 +634,7 @@ pub enum FunctionValueDefinition {
     TypeDeclaration(EnumDeclaration),
     TypeConstructor(Arc<EnumDeclaration>, EnumVariant),
     TraitDeclaration(TraitDeclaration),
-    TraitFunction(Arc<TraitDeclaration>, TraitFunction),
+    TraitFunction(Arc<TraitDeclaration>, NamedType),
 }
 
 impl Children<Expression> for FunctionValueDefinition {
@@ -668,7 +678,7 @@ impl Children<Expression> for TraitDeclaration {
     }
 }
 
-impl Children<Expression> for TraitFunction {
+impl Children<Expression> for NamedType {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
         Box::new(empty())
     }
@@ -735,6 +745,7 @@ pub struct Identity<SelectedExpressions> {
     pub right: SelectedExpressions,
 }
 
+// TODO This is the only version of Identity left.
 impl<T> Identity<SelectedExpressions<AlgebraicExpression<T>>> {
     /// Constructs an Identity from a polynomial identity (expression assumed to be identical zero).
     pub fn from_polynomial_identity(
@@ -794,74 +805,12 @@ impl<T> Identity<SelectedExpressions<AlgebraicExpression<T>>> {
     }
 }
 
-impl<R> Identity<parsed::SelectedExpressions<parsed::Expression<R>>> {
-    /// Constructs an Identity from a polynomial identity (expression assumed to be identical zero).
-    pub fn from_polynomial_identity(
-        id: u64,
-        source: SourceRef,
-        identity: parsed::Expression<R>,
-    ) -> Self {
-        Identity {
-            id,
-            kind: IdentityKind::Polynomial,
-            source,
-            left: parsed::SelectedExpressions {
-                selector: Some(identity),
-                expressions: Box::new(ArrayLiteral { items: vec![] }.into()),
-            },
-            right: Default::default(),
-        }
-    }
-    /// Returns the expression in case this is a polynomial identity.
-    pub fn expression_for_poly_id(&self) -> &parsed::Expression<R> {
-        assert_eq!(self.kind, IdentityKind::Polynomial);
-        self.left.selector.as_ref().unwrap()
-    }
-
-    /// Returns the expression in case this is a polynomial identity.
-    pub fn expression_for_poly_id_mut(&mut self) -> &mut parsed::Expression<R> {
-        assert_eq!(self.kind, IdentityKind::Polynomial);
-        self.left.selector.as_mut().unwrap()
-    }
-    /// Either returns (a, Some(b)) if this is a - b or (a, None)
-    /// if it is a polynomial identity of a different structure.
-    /// Panics if it is a different kind of constraint.
-    pub fn as_polynomial_identity(
-        &self,
-    ) -> (&parsed::Expression<R>, Option<&parsed::Expression<R>>) {
-        assert_eq!(self.kind, IdentityKind::Polynomial);
-        match self.expression_for_poly_id() {
-            parsed::Expression::BinaryOperation(
-                _,
-                parsed::BinaryOperation {
-                    left,
-                    op: BinaryOperator::Sub,
-                    right,
-                },
-            ) => (left.as_ref(), Some(right.as_ref())),
-            a => (a, None),
-        }
-    }
-}
-
 impl<T> Children<AlgebraicExpression<T>> for Identity<SelectedExpressions<AlgebraicExpression<T>>> {
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
         Box::new(self.left.children_mut().chain(self.right.children_mut()))
     }
 
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
-        Box::new(self.left.children().chain(self.right.children()))
-    }
-}
-
-impl<R> Children<parsed::Expression<R>>
-    for Identity<parsed::SelectedExpressions<parsed::Expression<R>>>
-{
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut parsed::Expression<R>> + '_> {
-        Box::new(self.left.children_mut().chain(self.right.children_mut()))
-    }
-
-    fn children(&self) -> Box<dyn Iterator<Item = &parsed::Expression<R>> + '_> {
         Box::new(self.left.children().chain(self.right.children()))
     }
 }
@@ -1147,7 +1096,9 @@ impl<T> AlgebraicExpression<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize, Deserialize, JsonSchema,
+)]
 pub struct Challenge {
     /// Challenge ID
     pub id: u64,

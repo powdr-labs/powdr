@@ -450,7 +450,17 @@ let h: () = g(1);
 fn called_with_empty_block() {
     let input = "
 let<T1, T2: FromLiteral> f: T1 -> T2 = |_| 7;
-let g: int = f({ });
+let g: int = f({});
+";
+
+    assert_eq!(parse_and_evaluate_symbol(input, "g"), "7".to_string());
+}
+
+#[test]
+fn called_with_spaced_empty_block() {
+    let input = "
+let<T1, T2: FromLiteral> f: T1 -> T2 = |_| 7;
+let g: int = f({  });
 ";
 
     assert_eq!(parse_and_evaluate_symbol(input, "g"), "7".to_string());

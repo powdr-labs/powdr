@@ -7,7 +7,7 @@ use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicReference, IdentityKind, PolyID, PolynomialType};
 use powdr_number::FieldElement;
 
-use crate::witgen::affine_expression::AffineExpression;
+use crate::witgen::affine_expression::{AffineExpression, AlgebraicVariable};
 use crate::witgen::global_constraints::{GlobalConstraints, RangeConstraintSet};
 use crate::witgen::processor::OuterQuery;
 use crate::witgen::range_constraints::RangeConstraint;
@@ -77,7 +77,7 @@ impl<T: FieldElement> IndexedColumns<T> {
     /// `input_fixed_columns` is assumed to be sorted
     fn ensure_index(&mut self, fixed_data: &FixedData<T>, sorted_fixed_columns: &Application) {
         // we do not use the Entry API here because we want to clone `sorted_input_fixed_columns` only on index creation
-        if self.indices.get(sorted_fixed_columns).is_some() {
+        if self.indices.contains_key(sorted_fixed_columns) {
             return;
         }
 
@@ -208,7 +208,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
     fn process_plookup_internal(
         &mut self,
         rows: &RowPair<'_, '_, T>,
-        left: &[AffineExpression<&'a AlgebraicReference, T>],
+        left: &[AffineExpression<AlgebraicVariable<'a>, T>],
         mut right: Peekable<impl Iterator<Item = &'a AlgebraicReference>>,
     ) -> EvalResult<'a, T> {
         if left.len() == 1
@@ -216,7 +216,11 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             && right.peek().unwrap().poly_id.ptype == PolynomialType::Constant
         {
             // Lookup of the form "c $ [ X ] in [ B ]". Might be a conditional range check.
-            return self.process_range_check(rows, left.first().unwrap(), right.peek().unwrap());
+            return self.process_range_check(
+                rows,
+                left.first().unwrap(),
+                AlgebraicVariable::Column(right.peek().unwrap()),
+            );
         }
 
         // split the fixed columns depending on whether their associated lookup variable is constant or not. Preserve the value of the constant arguments.
@@ -292,8 +296,8 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
     fn process_range_check<'b>(
         &self,
         rows: &RowPair<'_, '_, T>,
-        lhs: &AffineExpression<&'b AlgebraicReference, T>,
-        rhs: &'b AlgebraicReference,
+        lhs: &AffineExpression<AlgebraicVariable<'b>, T>,
+        rhs: AlgebraicVariable<'b>,
     ) -> EvalResult<'b, T> {
         // Use AffineExpression::solve_with_range_constraints to transfer range constraints
         // from the rhs to the lhs.
@@ -309,7 +313,12 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             updates
                 .constraints
                 .into_iter()
-                .filter(|(poly, _)| poly.poly_id.ptype == PolynomialType::Committed)
+                .filter(|(poly, _)| match poly {
+                    AlgebraicVariable::Column(poly) => {
+                        poly.poly_id.ptype == PolynomialType::Committed
+                    }
+                    _ => unimplemented!(),
+                })
                 .collect(),
             IncompleteCause::NotConcrete,
         ))
@@ -362,12 +371,16 @@ pub struct UnifiedRangeConstraints<'a, T: FieldElement> {
     global_constraints: &'a GlobalConstraints<T>,
 }
 
-impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T>
+impl<'a, T: FieldElement> RangeConstraintSet<AlgebraicVariable<'a>, T>
     for UnifiedRangeConstraints<'_, T>
 {
-    fn range_constraint(&self, poly: &AlgebraicReference) -> Option<RangeConstraint<T>> {
+    fn range_constraint(&self, var: AlgebraicVariable<'a>) -> Option<RangeConstraint<T>> {
+        let poly = match var {
+            AlgebraicVariable::Column(poly) => poly,
+            _ => unimplemented!(),
+        };
         match poly.poly_id.ptype {
-            PolynomialType::Committed => self.witness_constraints.range_constraint(poly),
+            PolynomialType::Committed => self.witness_constraints.range_constraint(var),
             PolynomialType::Constant => self.global_constraints.range_constraint(poly),
             PolynomialType::Intermediate => unimplemented!(),
         }
