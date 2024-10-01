@@ -3,8 +3,9 @@
 use p3_matrix::dense::RowMajorMatrix;
 
 use core::fmt;
-use std::iter::{once, repeat};
 use std::sync::Arc;
+use std::iter::{once, repeat};
+use std::time::Instant;
 
 use powdr_ast::analyzed::Analyzed;
 
@@ -187,6 +188,7 @@ where
 
         let proving_key = self.proving_key.as_ref();
 
+        let start = Instant::now();
         let proof = prove_with_key(
             &config,
             proving_key,
@@ -196,17 +198,20 @@ where
             &circuit,
             &stage_0_publics,
         );
+        let duration = start.elapsed();
+        println!("plonky3 prove duration is  {:?}", duration);
 
         let mut challenger = T::get_challenger();
 
         let verifying_key = self.verifying_key.as_ref();
-
+        
         let empty_public = vec![];
         let public_values = once(&stage_0_publics)
             .chain(repeat(&empty_public))
             .take(self.analyzed.stage_count())
             .collect();
 
+        let verificationstart = Instant::now();
         verify_with_key(
             &config,
             verifying_key,
@@ -216,6 +221,8 @@ where
             public_values,
         )
         .unwrap();
+        let verifyduration = verificationstart.elapsed();
+        println!("plonky3 verification duration is  {:?}", verifyduration);
         Ok(bincode::serialize(&proof).unwrap())
     }
 

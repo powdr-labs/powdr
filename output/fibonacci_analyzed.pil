@@ -1,0 +1,11 @@
+    let N: int = 262144;
+namespace Fibonacci(262144);
+    col fixed ISLAST(i) { if i == N - 1 { 1 } else { 0 } };
+    col witness x;
+    col witness y;
+    Fibonacci::ISLAST * (Fibonacci::y' - 1) = 0;
+    Fibonacci::ISLAST * (Fibonacci::x' - 1) = 0;
+    (1 - Fibonacci::ISLAST) * (Fibonacci::x' - Fibonacci::y) = 0;
+    (1 - Fibonacci::ISLAST) * (Fibonacci::y' - (Fibonacci::x + Fibonacci::y)) = 0;
+namespace ;
+public out = Fibonacci::y(262143);
