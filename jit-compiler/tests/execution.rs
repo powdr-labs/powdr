@@ -208,13 +208,15 @@ fn enums() {
             };
             let c = |i| match i {
                 0 => a(Op::Some(i)),
-                1 => b(Items::Multiple([1, 2, i])),
+                1 => a(Op::None),
+                2 => b(Items::Multiple([1, 2, i])),
                 _ => 99,
             };
         "#;
     let c = compile(input, "main::c");
 
     assert_eq!(c.call(0), 0);
-    assert_eq!(c.call(1), 1);
-    assert_eq!(c.call(2), 99);
+    assert_eq!(c.call(1), 0);
+    assert_eq!(c.call(2), 1);
+    assert_eq!(c.call(3), 99);
 }
