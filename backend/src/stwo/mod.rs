@@ -44,15 +44,6 @@ impl From<BackendOptions> for ProofType {
         }
     }
 }
-#[derive(Serialize, Deserialize)]
-struct StwoProof {
-    #[serde(
-        serialize_with = "serialize_as_hex",
-        deserialize_with = "deserialize_from_hex"
-    )]
-    proof: Vec<u8>,
-    publics: Vec<String>,
-}
 
 fn serialize_as_hex<S>(bytes: &Vec<u8>, serializer: S) -> Result<S::Ok, S::Error>
 where
@@ -109,8 +100,7 @@ fn fe_slice_to_string<F: FieldElement>(fe: &[F]) -> Vec<String> {
 
 impl<T: FieldElement> Backend<T> for StwoProver<T> {
     fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
-        let proof: StwoProof = bincode::deserialize(proof).unwrap();
-        // TODO should do a verification refactoring making it a 1d vec
+        
         assert!(instances.len() == 1);
         Ok(())
     }

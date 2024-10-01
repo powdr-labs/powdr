@@ -5,8 +5,8 @@ use powdr_ast::analyzed::{
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, IdentityKind, PolynomialType,
 };
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::{DegreeType, FieldElement, KnownField, Mersenne31Field};
-use p3_mersenne_31::Mersenne31;
+use powdr_number::{FieldElement, KnownField};
+
 use stwo_prover::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 use stwo_prover::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use stwo_prover::core::backend::simd::SimdBackend;
@@ -17,7 +17,6 @@ use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::ColumnVec;
 use stwo_prover::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig, TreeVec};
-
 
 // Type alias for a wide Fibonacci component with a constant size.
 pub type WideFibonacciComponent<const N: usize> = FrameworkComponent<WideFibonacciEval<N>>;
@@ -95,6 +94,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     }
 }
 
+/// FrameworkEval is a trait that stwo uses to define constraints
 impl<'a, T: FieldElement> FrameworkEval for PowdrCircuit<'a, T> {
     fn log_size(&self) -> u32 {
         // Assuming the log size is based on the analyzed data.
@@ -111,17 +111,79 @@ impl<'a, T: FieldElement> FrameworkEval for PowdrCircuit<'a, T> {
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
         // Assuming we are evaluating constraints based on the witness data.
         // This is an example, modify according to the specific logic of the circuit.
-        if let Some(witness) = self.witness {
-            for (name, values) in witness.iter() {
-                for value in values {
-                    let trace_mask = eval.next_trace_mask();
-                    eval.add_constraint(trace_mask - *value);
-                }
-            }
-        }
+        
         eval
     }
 }
+
+
+/// Generate execution trace
+pub fn generate_trace<T: Clone>(length: usize, witness: &[(String, Vec<T>)], log_n_instances: u32
+)-> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
+
+    let trace: Vec<PackedBaseField> = witness
+    .iter()
+    .flat_map(|(_, vec)| {
+        vec.iter().flat_map(|mersenne| {
+
+            let ptr = mersenne as *const T as *const u32;
+
+            let value = unsafe {
+                *ptr // Dereference the pointer to get the u32 value
+            };
+
+            // Repeat the value 32 times
+            let repeated = vec![value; 32];
+
+            // Split the repeated vector into two chunks of 16 elements each
+            let chunk1: [u32; N_LANES] = repeated[0..16]
+                .try_into()
+                .expect("Chunk should be of size N_LANES");
+            let chunk2: [u32; N_LANES] = repeated[16..32]
+                .try_into()
+                .expect("Chunk should be of size N_LANES");
+
+            // Convert chunks to PackedBaseField
+            // Note: We use unsafe block because PackedBaseField::load is unsafe
+            unsafe {
+                vec![
+                    PackedBaseField::load(chunk1.as_ptr()),
+                    PackedBaseField::load(chunk2.as_ptr()),
+                ]
+            }
+        })
+    })
+    .collect(); // Collect the flattened iterator into a Vec<PackedBaseField>
+
+
+       // println!("from generate stwo trace trace");
+       // println!("{:?}", trace);
+
+        let mut trace_stwo= (0..length)//fibonacci length
+        .map(|_| Col::<SimdBackend, BaseField>::zeros(1 << log_n_instances))
+        .collect_vec();
+
+        
+        // column x
+        trace_stwo[0].data[0]= trace[0]; //x
+        trace_stwo[0].data[1]= trace[1]; //y
+
+
+        for i in 1..length {
+            trace_stwo[i].data[0] = trace[2*length + 2 * (i - 1)];
+            trace_stwo[i].data[1] = trace[2*length + 2 * (i - 1) + 1];
+        }
+
+       // println!("from generate stwo trace trace_stwo repititions");
+       // println!("{:?}", trace_stwo);
+
+        let domain = CanonicCoset::new(5).circle_domain();
+        trace_stwo
+        .into_iter()
+        .map(|eval| CircleEvaluation::<SimdBackend, BaseField, BitReversedOrder>::new(domain, eval))
+        .collect_vec()  
+}
+
 
 
 

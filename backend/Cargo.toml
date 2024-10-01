@@ -24,6 +24,7 @@ powdr-parser-util.workspace = true
 
 powdr-plonky3 = { path = "../plonky3", optional = true }
 
+
 starky = { git = "https://github.com/0xEigenLabs/eigen-zkvm.git", rev = "cf405b2e2cecb8567cfd083a55936b71722276d5" }
 pil-stark-prover = { git = "https://github.com/powdr-labs/pil-stark-prover.git", rev = "769b1153f3ae2d7cbab4c8acf33865ed13f8a823", optional = true }
 
@@ -36,7 +37,7 @@ halo2_curves = { version = "0.6.1", package = "halo2curves", optional = true}
 snark-verifier = { git = "https://github.com/powdr-labs/snark-verifier", branch = "powdr-halo2", optional = true }
 halo2_solidity_verifier = { git = "https://github.com/powdr-labs/halo2-solidity-verifier", branch = "main", features = ["evm"], optional = true }
 
-stwo-prover = { git= "https://github.com/starkware-libs/stwo.git",optional=true}
+stwo-prover = { git= "https://github.com/starkware-libs/stwo.git",optional=true, branch = "andrew/dev/update-toolchain" }
 p3-mersenne-31 = { git = "https://github.com/powdr-labs/Plonky3.git", branch = "main" }
 
 strum = { version = "0.24.1", features = ["derive"] }
@@ -62,3 +63,5 @@ development = ["env_logger"]
 
 [lints.clippy]
 uninlined_format_args = "deny"
+
+
