@@ -29,7 +29,7 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     // Reads happen at the provided time step; writes happen at the next time step.
     operation poseidon_permutation<0> input_addr, output_addr, time_step ->;
 
-    col witness CLK_0; // apparently just declaring this is not enough
+    let CLK_0 =  |_| 1;
     let operation_id;
 
     let input_addr;
