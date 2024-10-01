@@ -112,7 +112,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         }
     }
 
-    /// Returns the updated data and publics
+    /// Returns the updated data and values for publics
     pub fn finish(self) -> MutableData<'a, T> {
         self.processor.finish()
     }

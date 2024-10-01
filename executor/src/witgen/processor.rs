@@ -194,7 +194,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             .unwrap_or(true)
     }
 
-    /// Returns the updated data and publics
+    /// Returns the updated data and values for publics
     pub fn finish(self) -> MutableData<'a, T> {
         MutableData {
             block: self.data,

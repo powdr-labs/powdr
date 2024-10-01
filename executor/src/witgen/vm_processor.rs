@@ -124,7 +124,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         Self { processor, ..self }
     }
 
-    /// Returns the updated data & publics, and the length of the block.
+    /// Returns the updated data, values for publics, and the length of the block.
     pub fn finish(self) -> (MutableData<'a, T>, DegreeType) {
         (self.processor.finish(), self.degree)
     }
