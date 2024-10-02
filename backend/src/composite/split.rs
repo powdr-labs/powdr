@@ -46,7 +46,7 @@ pub(crate) fn machine_witness_columns<F: FieldElement>(
 ) -> Vec<(String, Vec<F>)> {
     let machine_columns = select_machine_columns(
         all_witness_columns,
-        machine_pil.committed_polys_in_source_order().collect(),
+        machine_pil.committed_polys_in_source_order(),
     );
     let size = machine_columns
         .iter()
@@ -77,7 +77,7 @@ pub(crate) fn machine_fixed_columns<F: FieldElement>(
 ) -> BTreeMap<DegreeType, Vec<(String, VariablySizedColumn<F>)>> {
     let machine_columns = select_machine_columns(
         all_fixed_columns,
-        machine_pil.constant_polys_in_source_order().collect(),
+        machine_pil.constant_polys_in_source_order(),
     );
     let sizes = machine_columns
         .iter()
@@ -119,12 +119,11 @@ pub(crate) fn machine_fixed_columns<F: FieldElement>(
 }
 
 /// Filter the given columns to only include those that are referenced by the given symbols.
-fn select_machine_columns<'a, T, C>(
+fn select_machine_columns<'a, T: 'a, C>(
     columns: &'a [(String, C)],
-    symbols: Vec<&(Symbol, T)>,
+    symbols: impl Iterator<Item = &'a (Symbol, T)>,
 ) -> Vec<&'a (String, C)> {
     let names = symbols
-        .into_iter()
         .flat_map(|(symbol, _)| symbol.array_elements().map(|(name, _)| name))
         .collect::<BTreeSet<_>>();
     columns
