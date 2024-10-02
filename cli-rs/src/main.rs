@@ -74,8 +74,8 @@ enum Commands {
         output_directory: String,
 
         /// Comma-separated list of coprocessors.
-        #[arg(long)]
-        coprocessors: Option<String>,
+        #[arg(long, value_delimiter = ',')]
+        coprocessors: Option<Vec<String>>,
 
         /// Run a long execution in chunks (Experimental and not sound!)
         #[arg(short, long)]
@@ -100,8 +100,8 @@ enum Commands {
         output_directory: String,
 
         /// Comma-separated list of coprocessors.
-        #[arg(long)]
-        coprocessors: Option<String>,
+        #[arg(long, value_delimiter = ',')]
+        coprocessors: Option<Vec<String>>,
 
         /// Run a long execution in chunks (Experimental and not sound!)
         #[arg(short, long)]
@@ -120,9 +120,8 @@ enum Commands {
         field: FieldArgument,
 
         /// Comma-separated list of free inputs (numbers).
-        #[arg(short, long)]
-        #[arg(default_value_t = String::new())]
-        inputs: String,
+        #[arg(short, long, value_delimiter = ',')]
+        inputs: Vec<String>,
 
         /// Directory for output files.
         #[arg(short, long)]
@@ -191,15 +190,6 @@ fn main() -> Result<(), io::Error> {
     }
 }
 
-fn split_inputs<T: FieldElement>(inputs: &str) -> Vec<T> {
-    inputs
-        .split(',')
-        .map(|x| x.trim())
-        .filter(|x| !x.is_empty())
-        .map(|x| x.parse::<BigUint>().unwrap().into())
-        .collect()
-}
-
 #[allow(clippy::print_stderr)]
 fn run_command(command: Commands) {
     let result = match command {
@@ -255,7 +245,7 @@ fn run_command(command: Commands) {
             call_with_field!(execute::<field>(
                 Path::new(&file),
                 field.as_known_field(),
-                split_inputs(&inputs),
+                inputs,
                 Path::new(&output_directory),
                 continuations,
                 witness,
@@ -276,7 +266,7 @@ fn compile_rust(
     file_name: &str,
     field: KnownField,
     output_dir: &Path,
-    coprocessors: Option<String>,
+    coprocessors: Option<Vec<String>>,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
     let mut runtime = coprocessors_to_runtime(coprocessors, field.clone());
@@ -319,7 +309,7 @@ fn compile_riscv_elf(
     input_file: &str,
     field: KnownField,
     output_dir: &Path,
-    coprocessors: Option<String>,
+    coprocessors: Option<Vec<String>>,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
     let runtime = coprocessors_to_runtime(coprocessors, field.clone());
@@ -342,12 +332,18 @@ fn compile_riscv_elf(
 fn execute<F: FieldElement>(
     file_name: &Path,
     field: KnownField,
-    inputs: Vec<F>,
+    inputs: Vec<String>,
     output_dir: &Path,
     continuations: bool,
     witness: bool,
     profiling: Option<ProfilerOptions>,
 ) -> Result<(), Vec<String>> {
+    let inputs = inputs
+        .into_iter()
+        .filter(|x| !x.is_empty())
+        .map(|x| x.parse::<BigUint>().unwrap().into())
+        .collect();
+
     let mut pipeline = Pipeline::<F>::default()
         .from_file(file_name.to_path_buf())
         .with_prover_inputs(inputs)
@@ -390,20 +386,14 @@ fn execute<F: FieldElement>(
     Ok(())
 }
 
-fn coprocessors_to_runtime(coprocessors: Option<String>, field: KnownField) -> RuntimeEnum {
+fn coprocessors_to_runtime(coprocessors: Option<Vec<String>>, field: KnownField) -> RuntimeEnum {
     match coprocessors {
         Some(list) => match field {
             KnownField::BabyBearField | KnownField::Mersenne31Field => RuntimeEnum::Runtime16(
-                powdr_riscv::runtime_16::Runtime16::try_from(
-                    list.split(',').collect::<Vec<_>>().as_ref(),
-                )
-                .unwrap(),
+                powdr_riscv::runtime_16::Runtime16::try_from(list.as_ref()).unwrap(),
             ),
             KnownField::GoldilocksField | KnownField::Bn254Field => RuntimeEnum::Runtime32(
-                powdr_riscv::runtime_32::Runtime32::try_from(
-                    list.split(',').collect::<Vec<_>>().as_ref(),
-                )
-                .unwrap(),
+                powdr_riscv::runtime_32::Runtime32::try_from(list.as_ref()).unwrap(),
             ),
         },
         None => match field {

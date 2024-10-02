@@ -583,16 +583,16 @@ impl Runtime for Runtime16 {
     }
 }
 
-impl TryFrom<&[&str]> for Runtime16 {
+impl TryFrom<&[String]> for Runtime16 {
     type Error = String;
 
-    fn try_from(names: &[&str]) -> Result<Self, Self::Error> {
+    fn try_from(names: &[String]) -> Result<Self, Self::Error> {
         let mut runtime = Runtime16::base();
         for name in names {
             if runtime.has_submachine(name) {
                 continue;
             }
-            match *name {
+            match name.as_str() {
                 "poseidon_gl" => runtime = runtime.with_poseidon_no_continuations(),
                 "keccakf" => runtime = runtime.with_keccak(),
                 "arith" => runtime = runtime.with_arith(),
