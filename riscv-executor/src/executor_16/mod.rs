@@ -847,7 +847,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 todo!()
             }
             instr => {
-                panic!("unknown instruction: {instr}");
+                panic!("unknown instruction: {instr}. Make sure the program was compiled using the same field");
             }
         }
     }
