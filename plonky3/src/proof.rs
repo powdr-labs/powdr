@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+
 use alloc::vec::Vec;
 
 use p3_commit::Pcs;
@@ -22,7 +24,7 @@ pub type PcsProverData<SC> = <<SC as StarkGenericConfig>::Pcs as Pcs<
 #[serde(bound = "")]
 pub struct Proof<SC: StarkGenericConfig> {
     pub(crate) commitments: Commitments<Com<SC>>,
-    pub(crate) opened_values: Vec<ChipOpenedValues<SC::Challenge>>,
+    pub(crate) opened_values: BTreeMap<String, TableOpenedValues<SC::Challenge>>,
     pub(crate) opening_proof: PcsProof<SC>,
 }
 
@@ -33,7 +35,7 @@ pub struct Commitments<Com> {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ChipOpenedValues<Challenge> {
+pub struct TableOpenedValues<Challenge> {
     pub(crate) preprocessed_local: Vec<Challenge>,
     pub(crate) preprocessed_next: Vec<Challenge>,
     pub(crate) traces_by_stage_local: Vec<Vec<Challenge>>,
@@ -43,14 +45,15 @@ pub struct ChipOpenedValues<Challenge> {
 }
 
 pub struct StarkProvingKey<SC: StarkGenericConfig> {
-    pub preprocessed_commit: Com<SC>,
-    pub preprocessed_data: PcsProverData<SC>,
+    // for each table, for each possible size, the commitment and prover data
+    pub preprocessed: BTreeMap<String, BTreeMap<usize, (Com<SC>, PcsProverData<SC>)>>,
 }
 
 #[derive(Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct StarkVerifyingKey<SC: StarkGenericConfig> {
-    pub preprocessed_commit: Com<SC>,
+    // for each table, for each possible size, the commitment
+    pub preprocessed: BTreeMap<String, BTreeMap<usize, Com<SC>>>,
 }
 
 pub struct ProcessedStage<SC: StarkGenericConfig> {

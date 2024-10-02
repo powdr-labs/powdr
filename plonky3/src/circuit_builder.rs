@@ -13,7 +13,10 @@ use std::{
     sync::Mutex,
 };
 
-use crate::params::{Commitment, FieldElementMap, Plonky3Field, ProverData};
+use crate::{
+    params::{Commitment, FieldElementMap, Plonky3Field, ProverData},
+    AirStage,
+};
 use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir, PairBuilder};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use powdr_ast::analyzed::{
@@ -476,16 +479,25 @@ where
         // TODO: since the current witgen callback returns the entire witness so far,
         // we filter out the columns we already know about. Instead, return only the
         // new witness in the witgen callback.
-        let trace = generate_matrix(
-            witness
-                .iter()
-                .filter(|(name, _)| !columns_before.contains(name))
-                .map(|(name, values)| (name, values.as_ref())),
-        );
+        let air_stages = witness
+            .iter()
+            .filter(|(name, _)| !columns_before.contains(name))
+            .map(|(name, values)| (name, values.as_ref()))
+            .into_group_map_by(|(name, _)| name.split("::").next().unwrap())
+            .into_iter()
+            .map(|(table_name, columns)| {
+                (
+                    table_name.to_string(),
+                    AirStage {
+                        trace: generate_matrix(columns.into_iter()),
+                        public_values: vec![],
+                    },
+                )
+            })
+            .collect();
 
-        // return the next trace
+        // return the next stage for each table
         // later stage publics are not supported, so we return an empty vector. TODO: change this
-        // shared challenges are unsupported so we return the local challenges. TODO: change this
-        CallbackResult::new(trace, vec![], new_challenge_values.to_vec())
+        CallbackResult { air_stages }
     }
 }

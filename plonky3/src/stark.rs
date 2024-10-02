@@ -1,8 +1,11 @@
 //! A plonky3 prover using FRI and Poseidon
 
+use itertools::Itertools;
 use p3_matrix::dense::RowMajorMatrix;
+use powdr_executor::constant_evaluator::VariablySizedColumn;
 
 use core::fmt;
+use std::collections::BTreeMap;
 use std::iter::{once, repeat};
 use std::sync::Arc;
 
@@ -10,13 +13,13 @@ use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
 
-use crate::{prove_with_key, verify_with_key, Proof, StarkProvingKey, StarkVerifyingKey};
+use crate::{Proof, StarkProvingKey, StarkVerifyingKey};
 
 use p3_uni_stark::StarkGenericConfig;
 
 use crate::{
     circuit_builder::{generate_matrix, PowdrCircuit},
-    params::{Challenger, Commitment, FieldElementMap, Plonky3Field, ProverData},
+    params::{Challenger, Commitment, FieldElementMap, ProverData},
 };
 
 pub struct Plonky3Prover<T: FieldElementMap>
@@ -27,7 +30,7 @@ where
     /// The analyzed PIL
     analyzed: Arc<Analyzed<T>>,
     /// The value of the fixed columns
-    fixed: Arc<Vec<(String, Vec<T>)>>,
+    fixed: Arc<Vec<(String, VariablySizedColumn<T>)>>,
     /// Proving key
     proving_key: Option<StarkProvingKey<T::Config>>,
     /// Verifying key
@@ -51,7 +54,10 @@ where
     ProverData<T>: Send,
     Commitment<T>: Send,
 {
-    pub fn new(analyzed: Arc<Analyzed<T>>, fixed: Arc<Vec<(String, Vec<T>)>>) -> Self {
+    pub fn new(
+        analyzed: Arc<Analyzed<T>>,
+        fixed: Arc<Vec<(String, VariablySizedColumn<T>)>>,
+    ) -> Self {
         Self {
             analyzed,
             fixed,
@@ -73,29 +79,29 @@ where
         .unwrap())
     }
 
-    /// Returns preprocessed matrix based on the fixed inputs [`Plonky3Prover<T>`].
-    /// This is used when running the setup phase
-    pub fn get_preprocessed_matrix(&self) -> RowMajorMatrix<Plonky3Field<T>> {
-        let publics = self
-            .analyzed
-            .get_publics()
-            .into_iter()
-            .map(|(name, _, row_id, _)| {
-                let selector = (0..self.analyzed.degree())
-                    .map(move |i| T::from(i == row_id as u64))
-                    .collect::<Vec<T>>();
-                (name, selector)
-            })
-            .collect::<Vec<_>>();
+    // /// Returns preprocessed matrix based on the fixed inputs [`Plonky3Prover<T>`].
+    // /// This is used in debug mode
+    // pub fn get_preprocessed_matrix(&self) -> RowMajorMatrix<Plonky3Field<T>> {
+    //     let publics = self
+    //         .analyzed
+    //         .get_publics()
+    //         .into_iter()
+    //         .map(|(name, _, row_id, _)| {
+    //             let selector = (0..self.analyzed.degree())
+    //                 .map(move |i| T::from(i == row_id as u64))
+    //                 .collect::<Vec<T>>();
+    //             (name, selector)
+    //         })
+    //         .collect::<Vec<_>>();
 
-        let fixed_with_public_selectors = self
-            .fixed
-            .iter()
-            .chain(publics.iter())
-            .map(|(name, values)| (name, values.as_ref()));
+    //     let fixed_with_public_selectors = self
+    //         .fixed
+    //         .iter()
+    //         .chain(publics.iter())
+    //         .map(|(name, values)| (name, values.as_ref()));
 
-        generate_matrix(fixed_with_public_selectors)
-    }
+    //     generate_matrix(fixed_with_public_selectors)
+    // }
 }
 
 impl<T: FieldElementMap> Plonky3Prover<T>
@@ -105,60 +111,84 @@ where
 {
     pub fn setup(&mut self) {
         // get fixed columns
-        let fixed = &self.fixed;
+        let fixed_by_table = self
+            .fixed
+            .iter()
+            .into_group_map_by(|(name, _)| name.split("::").next().unwrap());
 
-        // get selector columns for public values
-        let publics = self
-            .analyzed
-            .get_publics()
-            .into_iter()
-            .map(|(name, _, row_id, _)| {
-                let selector = (0..self.analyzed.degree())
-                    .map(move |i| T::from(i == row_id as u64))
-                    .collect::<Vec<T>>();
-                (name, selector)
-            })
-            .collect::<Vec<(String, Vec<T>)>>();
+        let preprocessed: BTreeMap<String, BTreeMap<usize, (_, _)>> =
+            fixed_by_table
+                .into_iter()
+                .map(|(namespace, fixed_columns)| {
+                    // assumption: all columns within a namespace have the same degree range
+                    (namespace.to_string(), fixed_columns[0].1.available_sizes().iter().map(|size| {
+                    // get selector columns for public values
+                    let publics = self
+                        .analyzed
+                        .get_publics()
+                        .into_iter()
+                        .map(|(name, _, row_id, _)| {
+                            let selector = (0..*size)
+                                .map(move |i| T::from(i == row_id as u64))
+                                .collect::<Vec<T>>();
+                            (name, selector)
+                        })
+                        .collect::<Vec<(String, Vec<T>)>>();
 
-        if fixed.is_empty() && publics.is_empty() {
-            return;
-        }
+                    // get the config
+                    let config = T::get_config();
 
-        // get the config
-        let config = T::get_config();
+                    // commit to the fixed columns
+                    let pcs = config.pcs();
+                    let domain = <_ as p3_commit::Pcs<_, Challenger<T>>>::natural_domain_for_degree(
+                        pcs,
+                        *size as usize,
+                    );
+                    // write fixed into matrix row by row
+                    let matrix = RowMajorMatrix::new(
+                        (0..*size)
+                            .flat_map(|i| {
+                                fixed_columns
+                                    .iter()
+                                    .map(|(name, column)| {
+                                        (name, column.get_by_size(*size).unwrap())
+                                    })
+                                    .chain(
+                                        publics
+                                            .iter()
+                                            .map(|(name, values)| (name, values.as_ref())),
+                                    )
+                                    .map(move |(_, values)| values[i as usize].into_p3_field())
+                            })
+                            .collect(),
+                        self.fixed.len() + publics.len(),
+                    );
 
-        // commit to the fixed columns
-        let pcs = config.pcs();
-        let domain = <_ as p3_commit::Pcs<_, Challenger<T>>>::natural_domain_for_degree(
-            pcs,
-            self.analyzed.degree() as usize,
-        );
-        // write fixed into matrix row by row
-        let matrix = RowMajorMatrix::new(
-            (0..self.analyzed.degree())
-                .flat_map(|i| {
-                    fixed
-                        .iter()
-                        .chain(publics.iter())
-                        .map(move |(_, values)| values[i as usize].into_p3_field())
+                    let evaluations = vec![(domain, matrix)];
+
+                    // commit to the evaluations
+                    (
+                        *size as usize,
+                        <_ as p3_commit::Pcs<_, Challenger<T>>>::commit(pcs, evaluations),
+                    )
+                }).collect::<BTreeMap<usize, (_, _)>>())
+                })
+                .collect();
+
+        let verifying_key = StarkVerifyingKey {
+            preprocessed: preprocessed
+                .iter()
+                .map(|(table, data)| {
+                    (
+                        table.clone(),
+                        data.iter()
+                            .map(|(size, (commit, _))| (*size, commit.clone()))
+                            .collect(),
+                    )
                 })
                 .collect(),
-            self.fixed.len() + publics.len(),
-        );
-
-        let evaluations = vec![(domain, matrix)];
-
-        // commit to the evaluations
-        let (fixed_commit, fixed_data) =
-            <_ as p3_commit::Pcs<_, Challenger<T>>>::commit(pcs, evaluations);
-
-        let proving_key = StarkProvingKey {
-            preprocessed_commit: fixed_commit.clone(),
-            preprocessed_data: fixed_data,
         };
-        let verifying_key = StarkVerifyingKey {
-            preprocessed_commit: fixed_commit,
-        };
+        let proving_key = StarkProvingKey { preprocessed };
 
         self.proving_key = Some(proving_key);
         self.verifying_key = Some(verifying_key);
@@ -176,14 +206,14 @@ where
             .with_witgen_callback(witgen_callback)
             .with_phase_0_witness(witness);
 
-        #[cfg(debug_assertions)]
-        let circuit = circuit.with_preprocessed(self.get_preprocessed_matrix());
+        // #[cfg(debug_assertions)]
+        // let circuit = circuit.with_preprocessed(self.get_preprocessed_matrix());
 
         let stage_0_publics = circuit.public_values_so_far();
 
         let config = T::get_config();
 
-        let mut challenger = T::get_challenger();
+        let challenger = T::get_challenger();
 
         let proving_key = self.proving_key.as_ref();
 
@@ -232,7 +262,7 @@ where
 
         let config = T::get_config();
 
-        let mut challenger = T::get_challenger();
+        let challenger = T::get_challenger();
 
         let verifying_key = self.verifying_key.as_ref();
 
@@ -258,9 +288,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
+    
 
-    use powdr_executor::constant_evaluator::get_uniquely_sized_cloned;
+    
     use powdr_number::{BabyBearField, GoldilocksField, Mersenne31Field};
     use powdr_pipeline::Pipeline;
     use test_log::test;
@@ -285,7 +315,6 @@ mod tests {
         let witness_callback = pipeline.witgen_callback().unwrap();
         let witness = pipeline.compute_witness().unwrap();
         let fixed = pipeline.compute_fixed_cols().unwrap();
-        let fixed = Arc::new(get_uniquely_sized_cloned(&fixed).unwrap());
 
         let mut prover = Plonky3Prover::new(pil, fixed);
         prover.setup();

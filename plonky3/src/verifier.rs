@@ -1,6 +1,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
 use core::iter;
+use std::collections::BTreeMap;
 
 use itertools::{izip, Itertools};
 use p3_challenger::{CanObserve, CanSample, FieldChallenger};
@@ -11,34 +12,8 @@ use p3_matrix::stack::VerticalPair;
 use tracing::instrument;
 
 use crate::symbolic_builder::{get_log_quotient_degree, SymbolicAirBuilder};
-use crate::{ChipOpenedValues, MultiStageAir, Proof, StarkVerifyingKey, VerifierConstraintFolder};
+use crate::{MultiStageAir, Proof, StarkVerifyingKey, TableOpenedValues, VerifierConstraintFolder};
 use p3_uni_stark::{PcsError, StarkGenericConfig, Val};
-
-#[instrument(skip_all)]
-pub fn verify<SC, A>(
-    config: &SC,
-    air: &A,
-    challenger: &mut SC::Challenger,
-    proof: &Proof<SC>,
-    public_values: &Vec<Val<SC>>,
-) -> Result<(), VerificationError<PcsError<SC>>>
-where
-    SC: StarkGenericConfig,
-    A: MultiStageAir<SymbolicAirBuilder<Val<SC>>>
-        + for<'a> MultiStageAir<VerifierConstraintFolder<'a, SC>>,
-{
-    verify_with_key(
-        config,
-        None,
-        vec![Table {
-            air,
-            public_values_by_stage: vec![public_values],
-        }],
-        challenger,
-        proof,
-        vec![vec![public_values]],
-    )
-}
 
 /// A sub-table to be proven, in the form of an air and values for the public inputs
 struct Table<
@@ -52,10 +27,10 @@ struct Table<
 }
 
 #[instrument(skip_all)]
-pub fn verify_with_key<SC, A>(
+pub fn verify<SC, A>(
     config: &SC,
     verifying_key: Option<&StarkVerifyingKey<SC>>,
-    inputs: Vec<Table<SC, A>>,
+    inputs: BTreeMap<String, Table<SC, A>>,
     challenger: &mut SC::Challenger,
     proof: &Proof<SC>,
     public_values_by_stage: Vec<Vec<&Vec<Val<SC>>>>,
@@ -78,13 +53,19 @@ where
     } = proof;
 
     if let Some(vk) = verifying_key {
-        challenger.observe(vk.preprocessed_commit.clone());
+        for commit in vk
+            .preprocessed
+            .iter()
+            .map(|(name, map)| &map[&(1 << opened_values[name].log_degree)])
+        {
+            challenger.observe(commit.clone());
+        }
     }
 
     // loop through stages observing the trace and issuing challenges
 
     // Observe the instances.
-    for opened_values in opened_values {
+    for opened_values in opened_values.values() {
         challenger.observe(Val::<SC>::from_canonical_usize(opened_values.log_degree));
     }
     // TODO: Might be best practice to include other instance data here in the transcript, like some
@@ -94,7 +75,7 @@ where
     // collision, since most such changes would completely change the set of satisfying witnesses.
 
     let stage_count = inputs
-        .iter()
+        .values()
         .map(|i| i.air)
         .map(|air| <A as MultiStageAir<SymbolicAirBuilder<_>>>::stage_count(air))
         .max()
@@ -103,7 +84,7 @@ where
     let challenge_count_by_stage: Vec<usize> = (0..stage_count)
         .map(|stage_id| {
             inputs
-                .iter()
+                .values()
                 .map(|table| {
                     <A as MultiStageAir<SymbolicAirBuilder<_>>>::stage_challenge_count(
                         table.air, stage_id,
@@ -136,7 +117,7 @@ where
     // maybe these need to be in the vk, right now the prover can mess with them
     let trace_domains = proof
         .opened_values
-        .iter()
+        .values()
         .map(|opened_values| {
             let degree = 1 << opened_values.log_degree;
             pcs.natural_domain_for_degree(degree)
@@ -144,8 +125,8 @@ where
         .collect::<Vec<_>>();
 
     let quotient_domains = inputs
-        .iter()
-        .zip(&proof.opened_values)
+        .values()
+        .zip(proof.opened_values.values())
         .map(|(input, opened_values)| {
             let degree = 1 << opened_values.log_degree;
             let trace_domain = pcs.natural_domain_for_degree(degree);
@@ -176,7 +157,7 @@ where
 
     let verify_input: Vec<_> = proof
         .opened_values
-        .iter()
+        .values()
         .zip_eq(trace_domains.iter().zip(quotient_domains.iter()))
         .flat_map(|(opened_values, (trace_domain, quotient_chunks_domains))| {
             let zeta_next = trace_domain.next_point(zeta).unwrap();
@@ -185,19 +166,27 @@ where
                 .chain(
                     verifying_key
                         .map(|verifying_key| {
-                            vec![(
-                                verifying_key.preprocessed_commit.clone(),
-                                vec![(
-                                    *trace_domain,
-                                    vec![
-                                        (zeta, opened_values.preprocessed_local.clone()),
-                                        (zeta_next, opened_values.preprocessed_next.clone()),
-                                    ],
-                                )],
-                            )]
+                            verifying_key.preprocessed.values().map(|map| {
+                                (
+                                    // choose the correct preprocessed commitment based on the degree in the proof
+                                    // this could be optimized by putting the preproccessed commitments in a merkle tree
+                                    // and have the prover prove that it used commitments matching the lengths of the traces
+                                    // this way the verifier does not need to have all the preprocessed commitments for all sizes
+                                    map[&(1 << opened_values.log_degree)].clone(),
+                                    vec![(
+                                        *trace_domain,
+                                        vec![
+                                            (zeta, opened_values.preprocessed_local.clone()),
+                                            (zeta_next, opened_values.preprocessed_next.clone()),
+                                        ],
+                                    )],
+                                )
+                            })
                         })
                         .into_iter()
-                        .flatten(),
+                        .flatten()
+                        .collect_vec()
+                        .into_iter(),
                 )
                 .chain(
                     izip!(
@@ -243,10 +232,10 @@ where
 
     // Verify the constraint evaluations.
     for (table, trace_domain, quotient_chunks_domains, opened_values, public_values_by_stage) in izip!(
-        inputs.iter(),
+        inputs.values(),
         trace_domains,
         quotient_domains,
-        opened_values.iter(),
+        opened_values.values(),
         public_values,
     ) {
         // Verify the shape of the opening arguments matches the expected values.
@@ -330,7 +319,7 @@ fn verify_opening_shape<
         + for<'b> MultiStageAir<VerifierConstraintFolder<'b, SC>>,
 >(
     table: &Table<'a, SC, A>,
-    opened_values: &ChipOpenedValues<SC::Challenge>,
+    opened_values: &TableOpenedValues<SC::Challenge>,
 ) -> Result<(), VerificationError<PcsError<SC>>> {
     let log_quotient_degree = get_log_quotient_degree::<Val<SC>, A>(
         table.air,
