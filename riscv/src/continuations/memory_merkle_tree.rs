@@ -8,7 +8,7 @@ use super::bootloader::{
 };
 
 use powdr_number::{FieldElement, GoldilocksField};
-use powdr_riscv_executor::poseidon_gl::poseidon_gl;
+use powdr_riscv_executor::executor_32::poseidon_gl::poseidon_gl;
 
 const N_LEVELS_DEFAULT: usize = N_LEAVES_LOG + 1;
 
