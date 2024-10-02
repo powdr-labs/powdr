@@ -29,18 +29,17 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, Variabl
             // For arrays, generate values for each index,
             // for non-arrays, set index to None.
             for (index, (name, id)) in poly.array_elements().enumerate() {
-                if !fixed_cols.contains_key(&(name.clone(), id)) {
+                fixed_cols.entry((name.clone(), id)).or_insert_with(|| {
                     let index = poly.is_array().then_some(index as u64);
                     let range = poly.degree.unwrap();
-                    let values = range
+                    range
                         .iter()
                         .map(|degree| {
                             interpreter::generate_values(analyzed, degree, &name, value, index)
                         })
                         .collect::<Vec<_>>()
-                        .into();
-                    fixed_cols.insert((name, id), values);
-                }
+                        .into()
+                });
             }
         }
     }

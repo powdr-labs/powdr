@@ -8,7 +8,7 @@ use super::VariablySizedColumn;
 
 /// Tries to just-in-time compile all fixed columns in `analyzed`
 /// and then evaluates those functions to return `VariablySizedColumn`s.
-/// Ignoreds all columns where the compilation fails.
+/// Ignores all columns where the compilation fails.
 pub fn generate_values<T: FieldElement>(
     analyzed: &Analyzed<T>,
 ) -> HashMap<(String, PolyID), VariablySizedColumn<T>> {
