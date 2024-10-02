@@ -8,7 +8,7 @@ use std::iter::once;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Expression, FunctionValueDefinition,
-    IdentityKind, PolyID, PolynomialReference, PolynomialType, Reference, SymbolKind,
+    Identity, IdentityKind, PolyID, PolynomialReference, PolynomialType, Reference, SymbolKind,
     TypedExpression,
 };
 use powdr_ast::parsed::types::Type;
@@ -22,6 +22,7 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     remove_constant_fixed_columns(&mut pil_file);
     simplify_identities(&mut pil_file);
     extract_constant_lookups(&mut pil_file);
+    extract_empty_permutations(&mut pil_file);
     remove_constant_witness_columns(&mut pil_file);
     simplify_identities(&mut pil_file);
     remove_trivial_selectors(&mut pil_file);
@@ -382,6 +383,7 @@ fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .identities
         .iter_mut()
         .filter(|id| id.kind == IdentityKind::Plookup)
+        .filter(|id| id.right.selector.is_some())
     {
         let mut extracted = HashSet::new();
         for (i, (l, r)) in identity
@@ -429,6 +431,31 @@ fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     }
     for (identity, source) in new_identities {
         pil_file.append_polynomial_identity(identity, source);
+    }
+}
+
+/// Extracts constraints from lookups where the LHS' selector = 0.
+fn extract_empty_permutations<T: FieldElement>(pil_file: &mut Analyzed<T>) {
+    for identity in &mut pil_file
+        .identities
+        .iter_mut()
+        .filter(|id| id.kind == IdentityKind::Permutation)
+        .filter(|id| {
+            if let Some(AlgebraicExpression::Number(n)) = id.left.selector {
+                n.is_zero()
+            } else {
+                false
+            }
+        })
+    {
+        let new_expr = identity
+            .right
+            .selector
+            .clone()
+            .unwrap_or_else(|| AlgebraicExpression::from(T::one()));
+
+        *identity =
+            Identity::from_polynomial_identity(identity.id, identity.source.clone(), new_expr);
     }
 }
 
@@ -542,7 +569,17 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                     identity.left.expressions.len(),
                     identity.right.expressions.len()
                 );
-                identity.left.expressions.is_empty().then_some(index)
+                if identity.left.expressions.is_empty() {
+                    return Some(index);
+                }
+
+                if let Some(AlgebraicExpression::Number(n)) = identity.left.selector {
+                    if n.is_zero() {
+                        return Some(index);
+                    }
+                }
+
+                None
             }
             IdentityKind::Permutation => None,
             IdentityKind::Connect => None,
@@ -626,6 +663,75 @@ mod test {
     N::Z = (1 + N::A) * 2;
     N::A = 1 + N::A;
     N::Z = 1 + N::A;
+"#;
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+        assert_eq!(optimized, expectation);
+    }
+
+    #[test]
+    fn remove_tautology_lookup() {
+        let input = r#"namespace N(65536);
+    col fixed one = [1]*;
+    col fixed zero = [0]*;
+    col fixed two = [2]*;
+    col fixed cnt(i) { i };
+    col witness X;
+    col witness Y;
+    col witness A;
+    (1 - one) $ [ X, Y, A ] in [ zero, one, cnt ];
+    X = Y * 2;
+"#;
+        let expectation = r#"namespace N(65536);
+    col witness X;
+    col witness Y;
+    N::X = N::Y * 2;
+"#;
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+        assert_eq!(optimized, expectation);
+    }
+
+    #[test]
+    fn replace_empty_permutation() {
+        let input = r#"namespace N(65536);
+    col fixed one = [1]*;
+    col fixed zero = [0]*;
+    col fixed two = [2]*;
+    col fixed cnt(i) { i };
+    col witness X;
+    col witness Y;
+    col witness A;
+    (1 - one) $ [ X, Y, A ] is (A * 2) $ [ zero, one, cnt ];
+    X =  Y * 2;
+"#;
+        let expectation = r#"namespace N(65536);
+    col witness X;
+    col witness Y;
+    col witness A;
+    N::A * 2 = 0;
+    N::X = N::Y * 2;
+"#;
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+        assert_eq!(optimized, expectation);
+    }
+
+    #[test]
+    fn replace_empty_permutation_default_selector() {
+        let input = r#"namespace N(65536);
+    col fixed one = [1]*;
+    col fixed zero = [0]*;
+    col fixed two = [2]*;
+    col fixed cnt(i) { i };
+    col witness X;
+    col witness Y;
+    col witness A;
+    (1 - one) $ [ X, Y, A ] is [ zero, one, cnt ];
+    X =  Y * 2;
+"#;
+        let expectation = r#"namespace N(65536);
+    col witness X;
+    col witness Y;
+    1 = 0;
+    N::X = N::Y * 2;
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
         assert_eq!(optimized, expectation);
