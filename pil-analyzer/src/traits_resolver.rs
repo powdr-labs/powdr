@@ -229,7 +229,7 @@ impl<'a> TraitsResolver<'a> {
     fn solve_type_vars(
         input: &HashMap<&String, Vec<(&String, &Vec<Type>)>>,
         parent: &String,
-        type_args: &Vec<Type>,
+        type_args: &[Type],
     ) -> HashSet<Vec<Type>> {
         let mut result = HashSet::new();
         match input.get(parent) {
@@ -247,7 +247,7 @@ impl<'a> TraitsResolver<'a> {
 
                     let res = unifier.unify_types(tuple_args, c_tuple_arg);
                     if res.is_ok() {
-                        let new_type_arg = c_type_arg
+                        let new_type_arg: Vec<Type> = c_type_arg
                             .iter()
                             .zip(type_args.iter())
                             .map(|(a, b)| match (a, b) {
