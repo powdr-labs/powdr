@@ -283,3 +283,33 @@ fn closures() {
     assert_eq!(q.call(2), 4);
     assert_eq!(q.call(3), 6);
 }
+
+#[test]
+fn generic() {
+    let input = "
+        namespace std::convert;
+            let fe = 99;
+            let int = 100;
+        namespace std::array;
+            let len = 8;
+        namespace main;
+            let<T> new: int, (int -> T) -> T[] = |length, f| fold(length, f, [], |acc, e| (acc + [e]));
+            let<T1, T2>
+                fold: int, (int -> T1), T2, (T2, T1 -> T2) -> T2 = |length, f, initial, folder|
+                    if length <= 0 {
+                        initial
+                    } else {
+                        folder(fold((length - 1), f, initial, folder), f((length - 1)))
+                    };
+            let<T1, T2> map: T1[], (T1 -> T2) -> T2[] = |arr, f| new(std::array::len(arr), |i| f(arr[i]));
+            let a: int[] = [1, 2, 3];
+            let b = map(a, |x| std::convert::fe(x + 10));
+            let q: col = |i| b[i];
+        ";
+    let q = compile(input, "main::q");
+
+    assert_eq!(q.call(0), 1);
+    assert_eq!(q.call(1), 2);
+    assert_eq!(q.call(2), 3);
+    assert_eq!(q.call(3), 1);
+}

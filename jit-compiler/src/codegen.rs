@@ -122,9 +122,8 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     .ok_or_else(|| format!("Symbol does not have a type: {symbol}"))?;
 
                 Ok(match (&value.e, type_scheme) {
-                    (Expression::LambdaExpression(_, expr), TypeScheme { vars, ty }) => {
-                        assert!(vars.is_empty());
-                        self.try_format_function(symbol, expr, ty)?
+                    (Expression::LambdaExpression(_, expr), type_scheme) => {
+                                self.try_format_function(symbol, expr, type_scheme)?
                     }
                     _ => {
                         let type_scheme = value.type_scheme.as_ref().unwrap();
@@ -160,11 +159,12 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
         &mut self,
         name: &str,
         LambdaExpression { params, body, .. }: &LambdaExpression<Expression>,
-        ty: &Type,
+        TypeScheme { vars, ty }: &TypeScheme,
     ) -> Result<String, String> {
         let (param_types, return_type) = &match ty {
             Type::Function(FunctionType { params, value }) => (params.clone(), (**value).clone()),
             Type::Col => {
+                assert!(vars.is_empty());
                 // TODO we assume it is an int -> fe function, even though other
                 // types are possible.
                 // At some point, the type inference algorithm should store the derived type.
@@ -177,8 +177,24 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
 
         let var_height = params.iter().map(|p| p.variables().count()).sum::<usize>();
 
+        let generics = if vars.is_empty() {
+            String::new()
+        } else {
+            // TODO support actual bounds
+            format!(
+                "<{}>",
+                vars.bounds()
+                    .map(|(var, bounds)| {
+                        format!(
+                            "{var}: Clone{}",
+                            bounds.iter().map(|b| format!(" + {b}")).format("")
+                        )
+                    })
+                    .format(", ")
+            )
+        };
         Ok(format!(
-            "fn {}(({}): ({})) -> {} {{ {} }}\n",
+            "fn {}{generics}(({}): ({})) -> {} {{ {} }}\n",
             escape_symbol(name),
             params.iter().format(", "),
             param_types.iter().map(map_type).format(", "),
