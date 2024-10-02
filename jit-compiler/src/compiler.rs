@@ -89,9 +89,11 @@ impl From<FieldElement> for ibig::IBig {
     }
 }
 
+trait Closure<Args, Ret>: Fn(Args) -> Ret + Send + Sync + Clone {}
+
 enum Callable<Args, Ret> {
     Fn(fn(Args) -> Ret),
-    Closure(Box<dyn (Fn(Args) -> Ret) + Send + Sync>),
+    Closure(Box<dyn Closure>),
 }
 impl<Args, Ret> Callable<Args, Ret> {
     #[inline(always)]
@@ -102,6 +104,17 @@ impl<Args, Ret> Callable<Args, Ret> {
         }
     }
 }
+
+impl<Args, Ret> Clone for Callable<Args, Ret> {
+    fn clone(&self) -> Self {
+        match self {
+            Callable::Fn(f) => Callable::Fn(*f),
+            Callable::Closure(f) => Callable::Closure(Box::new(f.clone())),
+        }
+    }
+}
+
+
 
 
 "#;
