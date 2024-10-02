@@ -37,7 +37,7 @@ pub fn compile<T: FieldElement>(
     let successful_symbols = requested_symbols
         .iter()
         .filter_map(|&sym| {
-            if let Err(e) = codegen.request_symbol(sym) {
+            if let Err(e) = codegen.request_symbol(sym, &[]) {
                 log::warn!("Unable to generate code for symbol {sym}: {e}");
                 None
             } else {

@@ -40,7 +40,9 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
     /// On failure, returns an error string.
     /// After a failure, `self` can still be used to request other symbols.
     /// The code can later be retrieved via `generated_code`.
-    pub fn request_symbol(&mut self, name: &str) -> Result<String, String> {
+    pub fn request_symbol(&mut self, name: &str, type_args: &[Type]) -> Result<String, String> {
+        // For now, code generation is generic, only the reference uses the type args.
+        // If that changes at some point, we need to store the type args in the symbol map as well.
         match self.symbols.get(name) {
             Some(Err(e)) => return Err(e.clone()),
             Some(_) => {}
@@ -58,7 +60,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 }
             }
         }
-        Ok(self.symbol_reference(name))
+        Ok(self.symbol_reference(name, type_args))
     }
 
     /// Returns the concatenation of all successfully compiled symbols.
@@ -140,13 +142,10 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
         };
 
         Ok(format!(
-            "fn {}({}) -> {} {{ {} }}\n",
+            "fn {}(({}): ({})) -> {} {{ {} }}\n",
             escape_symbol(name),
-            params
-                .iter()
-                .zip(param_types)
-                .map(|(p, t)| format!("{p}: {}", map_type(t)))
-                .format(", "),
+            params.iter().format(", "),
+            param_types.iter().map(map_type).format(", "),
             map_type(return_type),
             self.format_expr(body)?
         ))
@@ -156,14 +155,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
         Ok(match e {
             Expression::Reference(_, Reference::LocalVar(_id, name)) => name.clone(),
             Expression::Reference(_, Reference::Poly(PolynomialReference { name, type_args })) => {
-                let reference = self.request_symbol(name)?;
-                let ta = type_args.as_ref().unwrap();
-                format!(
-                    "{reference}{}",
-                    (!ta.is_empty())
-                        .then(|| format!("::<{}>", ta.iter().map(map_type).join(", ")))
-                        .unwrap_or_default()
-                )
+                self.request_symbol(name, type_args.as_ref().unwrap())?
             }
             Expression::Number(
                 _,
@@ -193,7 +185,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 },
             ) => {
                 format!(
-                    "({})({})",
+                    "({}).call(({}))",
                     self.format_expr(function)?,
                     arguments
                         .iter()
@@ -320,21 +312,24 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
     /// Returns a string expression evaluating to the value of the symbol.
     /// This is either the escaped name of the symbol or a deref operator
     /// applied to it.
-    fn symbol_reference(&self, symbol: &str) -> String {
-        let needs_deref = if is_builtin::<T>(symbol) {
-            false
+    fn symbol_reference(&self, symbol: &str, type_args: &[Type]) -> String {
+        let type_args = if type_args.is_empty() {
+            "".to_string()
         } else {
-            let (_, def) = self.analyzed.definitions.get(symbol).as_ref().unwrap();
-            if let Some(FunctionValueDefinition::Expression(typed_expr)) = def {
-                !matches!(typed_expr.e, Expression::LambdaExpression(..))
-            } else {
-                false
-            }
+            format!("::<{}>", type_args.iter().map(map_type).join(", "))
         };
-        if needs_deref {
-            format!("(*{})", escape_symbol(symbol))
+        if is_builtin::<T>(symbol) {
+            return format!("Callable::Fn({}{type_args})", escape_symbol(symbol));
+        }
+        let (_, def) = self.analyzed.definitions.get(symbol).as_ref().unwrap();
+        if let Some(FunctionValueDefinition::Expression(typed_expr)) = def {
+            if matches!(typed_expr.e, Expression::LambdaExpression(..)) {
+                format!("Callable::Fn({}{type_args})", escape_symbol(symbol))
+            } else {
+                format!("(*{}{type_args})", escape_symbol(symbol))
+            }
         } else {
-            escape_symbol(symbol)
+            format!("(*{}{type_args})", escape_symbol(symbol))
         }
     }
 }
@@ -458,7 +453,7 @@ fn map_type(ty: &Type) -> String {
         Type::Array(ArrayType { base, length: _ }) => format!("Vec<{}>", map_type(base)),
         Type::Tuple(_) => todo!(),
         Type::Function(ft) => format!(
-            "fn({}) -> {}",
+            "Callable<({}), {}>",
             ft.params.iter().map(map_type).join(", "),
             map_type(&ft.value)
         ),
@@ -533,7 +528,7 @@ mod test {
         let analyzed = analyze_string::<GoldilocksField>(input).unwrap();
         let mut compiler = CodeGenerator::new(&analyzed);
         for s in syms {
-            compiler.request_symbol(s).unwrap();
+            compiler.request_symbol(s, &[]).unwrap();
         }
         compiler.generated_code()
     }

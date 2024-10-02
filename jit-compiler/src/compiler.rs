@@ -44,6 +44,8 @@ pub fn generate_glue_code<T: FieldElement>(
         }
 
         // TODO we should use big int instead of u64
+        // TODO we actually don't know how we have to access this symbol. It might be a closure,
+        // which needs to be accessed differently.
         let name = escape_symbol(sym);
         glue.push_str(&format!(
             r#"
@@ -86,6 +88,22 @@ impl From<FieldElement> for ibig::IBig {
         ibig::IBig::from(x.0)
     }
 }
+
+enum Callable<Args, Ret> {
+    Fn(fn(Args) -> Ret),
+    Closure(Box<dyn (Fn(Args) -> Ret) + Send + Sync>),
+}
+impl<Args, Ret> Callable<Args, Ret> {
+    #[inline(always)]
+    fn call(&self, args: Args) -> Ret {
+        match self {
+            Callable::Fn(f) => f(args),
+            Callable::Closure(f) => f(args),
+        }
+    }
+}
+
+
 "#;
 
 const CARGO_TOML: &str = r#"
@@ -117,6 +135,15 @@ pub fn call_cargo(code: &str) -> Result<PathInTempDir, String> {
     fs::write(dir.join("Cargo.toml"), CARGO_TOML).unwrap();
     fs::create_dir(dir.join("src")).unwrap();
     fs::write(dir.join("src").join("lib.rs"), code).unwrap();
+    Command::new("cargo")
+        .arg("fmt")
+        .current_dir(dir.clone())
+        .output()
+        .unwrap();
+    println!(
+        "{}",
+        fs::read_to_string(dir.join("src").join("lib.rs")).unwrap()
+    );
     let out = Command::new("cargo")
         .env("RUSTFLAGS", "-C target-cpu=native")
         .arg("build")
