@@ -192,7 +192,7 @@ pub fn set_global_constraints<'a, T: FieldElement>(
 /// TODO do this on the symbolic definition instead of the values.
 fn process_fixed_column<T: FieldElement>(fixed: &[T]) -> Option<(RangeConstraint<T>, bool)> {
     if let Some(bit) = smallest_period_candidate(fixed) {
-        let mask = T::Integer::from(((1 << bit) - 1) as u64);
+        let mask = T::Integer::from((1u64 << bit) - 1);
         if fixed
             .iter()
             .enumerate()
@@ -366,6 +366,12 @@ fn smallest_period_candidate<T: FieldElement>(fixed: &[T]) -> Option<u64> {
     if fixed.first() != Some(&0.into()) {
         return None;
     }
+
+    // Handle the special case where last == 0 in Mersenne31 field, which is equivalent to 2^31 - 1
+    if fixed.last() == Some(&0.into()) {
+        return None;
+    }
+
     (1..63).find(|bit| fixed.last() == Some(&((1u64 << bit) - 1).into()))
 }
 
