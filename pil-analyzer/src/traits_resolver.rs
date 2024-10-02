@@ -164,7 +164,6 @@ impl<'a> TraitsResolver<'a> {
         //      ("Parent1", [Some(type_args)]),
         //      ("Parent2", [Some(type_args)])
         // ],...]
-        let mut all_type_vars = true;
         for (symbol, expr) in definitions {
             let mut references = Vec::new();
             expr.all_children().for_each(|e| {
@@ -178,10 +177,6 @@ impl<'a> TraitsResolver<'a> {
                 ) = e
                 {
                     if (!type_args.is_empty()) && (name != *symbol) {
-                        if all_type_vars && type_args.iter().any(|t| !matches!(t, Type::TypeVar(_)))
-                        {
-                            all_type_vars = false;
-                        }
                         references.push((name, type_args));
                     }
                 }
@@ -192,10 +187,6 @@ impl<'a> TraitsResolver<'a> {
                     .or_insert_with(Vec::new)
                     .push((*symbol, type_args));
             }
-        }
-
-        if all_type_vars {
-            return Default::default();
         }
 
         Self::combine_type_vars_paths(&result, defined_traits)
@@ -235,38 +226,34 @@ impl<'a> TraitsResolver<'a> {
         match input.get(parent) {
             Some(children) => {
                 for (child, c_type_arg) in children {
-                    let mut unifier: Unifier = Default::default();
+                    let new_type_arg: Vec<Type> = c_type_arg
+                        .iter()
+                        .zip(type_args.iter())
+                        .map(|(a, b)| {
+                            let mut unifier: Unifier = Default::default();
+                            let unified = unifier.unify_types(a.clone(), b.clone());
+                            if unified.is_ok() {
+                                match (a, b) {
+                                    (Type::TypeVar(_), Type::TypeVar(_)) => a.clone(),
+                                    (Type::TypeVar(_), _) => b.clone(),
+                                    (_, Type::TypeVar(_)) => a.clone(),
+                                    _ => a.clone(),
+                                }
+                            } else {
+                                a.clone()
+                            }
+                        })
+                        .collect();
 
-                    let tuple_args = Type::Tuple(TupleType {
-                        items: type_args.to_vec(),
-                    });
-
-                    let c_tuple_arg = Type::Tuple(TupleType {
-                        items: c_type_arg.to_vec(),
-                    });
-
-                    let res = unifier.unify_types(tuple_args, c_tuple_arg);
-                    if res.is_ok() {
-                        let new_type_arg: Vec<Type> = c_type_arg
-                            .iter()
-                            .zip(type_args.iter())
-                            .map(|(a, b)| match (a, b) {
-                                (Type::TypeVar(_), Type::TypeVar(_)) => a.clone(),
-                                (Type::TypeVar(_), _) => b.clone(),
-                                (_, Type::TypeVar(_)) => a.clone(),
-                                _ => a.clone(),
-                            })
-                            .collect();
-
-                        let mut res = Self::solve_type_vars(input, child, &new_type_arg);
-                        if new_type_arg
-                            .iter()
-                            .all(|ty| !matches!(ty, Type::TypeVar(_)))
-                        {
-                            res.insert(new_type_arg);
-                        }
-                        result.extend(res);
+                    if new_type_arg
+                        .iter()
+                        .all(|ty| !matches!(ty, Type::TypeVar(_)))
+                    {
+                        result.insert(new_type_arg.clone());
                     }
+
+                    let res = Self::solve_type_vars(input, child, &new_type_arg);
+                    result.extend(res);
                 }
             }
             None => {
