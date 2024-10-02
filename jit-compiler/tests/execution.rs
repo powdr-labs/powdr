@@ -235,3 +235,20 @@ fn let_complex() {
     assert_eq!(f.call(0), 8);
     assert_eq!(f.call(1), 9);
 }
+
+#[test]
+fn closures() {
+    let input = "
+        namespace std::convert;
+            let fe = 99;
+        namespace main;
+            let eval_on: (int -> int), int -> int = |f, x| f(x);
+            let q: col = |i| std::convert::fe(eval_on(|j| i + j, i));
+        ";
+    let q = compile(input, "main::q");
+
+    assert_eq!(q.call(0), 0);
+    assert_eq!(q.call(1), 2);
+    assert_eq!(q.call(2), 4);
+    assert_eq!(q.call(3), 6);
+}
