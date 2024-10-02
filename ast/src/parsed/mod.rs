@@ -1488,3 +1488,306 @@ pub struct TypedExpression<Ref = NamespacedPolynomialReference, E = Expression<R
     pub e: Expression<Ref>,
     pub type_scheme: Option<TypeScheme<E>>,
 }
+
+#[derive(Debug)]
+pub struct MatchAnalysisReport {
+    pub is_exhaustive: bool,
+    pub redundant_patterns: Vec<usize>,
+}
+
+#[derive(Debug)]
+enum PatternSpace {
+    Contained(Vec<PatternSpace>, bool),
+    Finite(Box<FinitePatternSpace>),
+    Infinite,
+}
+
+#[derive(Debug)]
+enum FinitePatternSpace {
+    Enum(String, Option<PatternSpace>),
+    Bool(bool),
+}
+
+// pub fn analyze_match_patterns(
+//     patterns: &[Pattern],
+//     enums: HashMap<String, Vec<(String, bool)>>,
+// ) -> MatchAnalysisReport {
+//     let (is_exhaustive, redundant_indices, _remaining_space) = analyze_patterns(patterns, &enums);
+
+//     MatchAnalysisReport {
+//         is_exhaustive,
+//         redundant_patterns: redundant_indices,
+//     }
+// }
+
+fn compute_covered_space(
+    patterns: &[Pattern],
+    enums: HashMap<String, Vec<(String, Option<Vec<Type>>)>>,
+) -> Vec<PatternSpace> {
+    let mut result = Vec::with_capacity(patterns.len());
+
+    for pattern in patterns {
+        let expanded = expand_pattern(pattern, &enums);
+        result.extend(expanded);
+    }
+
+    result
+}
+
+fn expand_pattern(
+    pattern: &Pattern,
+    enums: &HashMap<String, Vec<(String, Option<Vec<Type>>)>>,
+) -> Vec<PatternSpace> {
+    match pattern {
+        Pattern::CatchAll(_) => vec![PatternSpace::Infinite],
+        Pattern::Ellipsis(_) => vec![PatternSpace::Infinite],
+        Pattern::Number(_, _) => vec![PatternSpace::Infinite],
+        Pattern::String(_, _) => vec![PatternSpace::Infinite],
+        Pattern::Variable(_, _) => vec![PatternSpace::Infinite],
+        Pattern::Tuple(_, p) => {
+            let inner_space: Vec<Vec<Pattern>> =
+                p.iter().map(|p| expand_pattern(p, enums)).collect();
+            let product = cartesian_product(inner_space);
+            product
+                .into_iter()
+                .map(|inner_vec| PatternSpace::Contained(inner_vec, false))
+                .collect()
+        }
+        Pattern::Array(_, p) => {
+            let inner_space = p.iter().map(|p| expand_pattern(p, enums)).collect();
+            let product = cartesian_product(inner_space);
+            product
+                .into_iter()
+                .map(|inner_vec| PatternSpace::Contained(inner_vec, false))
+                .collect()
+        }
+        Pattern::Enum(_, name, fields) => match fields {
+            Some(patterns) => {
+                let inner_space = patterns.iter().map(|p| expand_pattern(p, enums)).collect();
+                let product = cartesian_product(inner_space);
+                product // check
+            }
+            None => FinitePatternSpace::Enum(name.to_string(), None),
+        },
+    }
+}
+
+fn cartesian_product(patterns: Vec<Vec<Pattern>>) -> Vec<Vec<PatternSpace>> {
+    patterns.into_iter().fold(vec![vec![]], |acc, patterns| {
+        acc.into_iter()
+            .flat_map(|v| {
+                patterns.iter().map(move |p| {
+                    let mut new_v = v.clone();
+                    new_v.push(p.clone());
+                    new_v
+                })
+            })
+            .collect()
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use powdr_parser_util::SourceRef;
+
+    fn dummy_sr() -> SourceRef {
+        SourceRef::unknown()
+    }
+
+    #[test]
+    fn test_expand_pattern_enum() {
+        let enums = {
+            let mut map = HashMap::new();
+            map.insert(
+                "Option".to_string(),
+                vec![
+                    ("Some".to_string(), Some(vec![Type::String])),
+                    ("None".to_string(), None),
+                ],
+            );
+            map
+        };
+
+        let pattern = Pattern::Enum(
+            dummy_sr(),
+            SymbolPath::from_parts(vec![
+                Part::Named("Option".to_string()),
+                Part::Named("Some".to_string()),
+            ]),
+            Some(vec![Pattern::String(dummy_sr(), "x".to_string())]),
+        );
+
+        let expanded = expand_pattern(&pattern, &enums);
+        println!("{:?}", expanded);
+    }
+
+    #[test]
+    fn test_expand_pattern_tuple() {
+        let enums = HashMap::new();
+        let pattern = Pattern::Tuple(
+            dummy_sr(),
+            vec![
+                Pattern::Number(dummy_sr(), BigInt::from(1)),
+                Pattern::Variable(dummy_sr(), "x".to_string()),
+            ],
+        );
+
+        let expanded = expand_pattern(&pattern, &enums);
+        println!("{:?}", expanded);
+    }
+
+    #[test]
+    fn test_expand_pattern_tuple_enum() {
+        let enums = {
+            let mut map = HashMap::new();
+            map.insert(
+                "Option".to_string(),
+                vec![
+                    ("Some".to_string(), Some(vec![Type::String])),
+                    ("None".to_string(), None),
+                ],
+            );
+            map
+        };
+
+        let pattern = Pattern::Tuple(
+            dummy_sr(),
+            vec![
+                Pattern::Number(dummy_sr(), BigInt::from(1)),
+                Pattern::Enum(
+                    dummy_sr(),
+                    SymbolPath::from_parts(vec![
+                        Part::Named("Option".to_string()),
+                        Part::Named("None".to_string()),
+                    ]),
+                    None,
+                ),
+            ],
+        );
+
+        let expanded = expand_pattern(&pattern, &enums);
+        println!("{:?}", expanded);
+    }
+
+    // #[test]
+    // fn test_expand_pattern_tuple_double_enum() {
+    //     let enums = {
+    //         let mut map = HashMap::new();
+    //         map.insert(
+    //             "Option".to_string(),
+    //             vec![
+    //                 (
+    //                     "Some".to_string(),
+    //                     EnumVariant {
+    //                         name: "Some".to_string(),
+    //                         fields: Some(vec![Type::NamedType(SymbolPath::from_parts(vec![
+    //                             Part::Named("Option".to_string()),
+    //                             Part::Named("Some".to_string()),
+    //                         ]))]),
+    //                     },
+    //                 ),
+    //                 (
+    //                     "None".to_string(),
+    //                     EnumVariant {
+    //                         name: "None".to_string(),
+    //                         fields: None,
+    //                     },
+    //                 ),
+    //             ],
+    //         );
+    //         map
+    //     };
+
+    //     let pattern = Pattern::Tuple(
+    //         dummy_sr(),
+    //         vec![
+    //             Pattern::Number(dummy_sr(), BigInt::from(1)),
+    //             Pattern::Enum(
+    //                 dummy_sr(),
+    //                 SymbolPath::from_parts(vec![
+    //                     Part::Named("Option".to_string()),
+    //                     Part::Named("None".to_string()),
+    //                 ]),
+    //                 None,
+    //             ),
+    //         ],
+    //     );
+
+    //     let expanded = expand_pattern(&pattern, &enums);
+    //     println!("{:?}", expanded);
+    // }
+
+    // #[test]
+    // fn test_expand_pattern_array() {
+    //     let enums = HashMap::new();
+    //     let pattern = Pattern::Array(
+    //         dummy_sr(),
+    //         vec![
+    //             Pattern::Number(dummy_sr(), BigInt::from(1)),
+    //             Pattern::Number(dummy_sr(), BigInt::from(2)),
+    //         ],
+    //     );
+
+    //     let expanded = expand_pattern(&pattern, &enums);
+    //     assert_eq!(expanded.len(), 1);
+    //     assert!(matches!(expanded[0], Pattern::Array(_, ref items) if items.len() == 2));
+    // }
+
+    // #[test]
+    // fn test_expand_pattern_catchall() {
+    //     let enums = HashMap::new();
+    //     let pattern = Pattern::CatchAll(dummy_sr());
+
+    //     let expanded = expand_pattern(&pattern, &enums);
+    //     assert_eq!(expanded.len(), 1);
+    //     assert!(matches!(expanded[0], Pattern::CatchAll(_)));
+    // }
+
+    // #[test]
+    // fn test_cartesian_product() {
+    //     let patterns = vec![
+    //         vec![
+    //             Pattern::Number(dummy_sr(), BigInt::from(1)),
+    //             Pattern::Number(dummy_sr(), BigInt::from(2)),
+    //         ],
+    //         vec![
+    //             Pattern::Variable(dummy_sr(), "x".to_string()),
+    //             Pattern::Variable(dummy_sr(), "y".to_string()),
+    //         ],
+    //     ];
+
+    //     let product = cartesian_product(patterns);
+    //     assert_eq!(product.len(), 4);
+    //     assert!(product.iter().all(|v| v.len() == 2));
+    // }
+
+    // #[test]
+    // fn test_expand_pattern_nested_enum() {
+    //     let enums = {
+    //         let mut map = HashMap::new();
+    //         map.insert(
+    //             "Option".to_string(),
+    //             vec![("Some".to_string(), false), ("None".to_string(), false)],
+    //         );
+    //         map.insert(
+    //             "Result".to_string(),
+    //             vec![("Ok".to_string(), false), ("Err".to_string(), false)],
+    //         );
+    //         map
+    //     };
+
+    //     let pattern = Pattern::Enum(
+    //         dummy_sr(),
+    //         SymbolPath::from_str("Result").unwrap(),
+    //         Some(vec![Pattern::Enum(
+    //             dummy_sr(),
+    //             SymbolPath::from_str("Option").unwrap(),
+    //             Some(vec![Pattern::Variable(dummy_sr(), "x".to_string())]),
+    //         )]),
+    //     );
+
+    //     let expanded = expand_pattern(&pattern, &enums);
+    //     assert_eq!(expanded.len(), 4);
+    // }
+}

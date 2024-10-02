@@ -13,8 +13,8 @@ use powdr_ast::parsed::asm::{
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_ast::parsed::{
-    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SymbolCategory,
-    TraitImplementation,
+    self, EnumVariant, FunctionKind, LambdaExpression, PILFile, Pattern, PilStatement,
+    SymbolCategory, TraitImplementation,
 };
 use powdr_number::{FieldElement, GoldilocksField};
 
@@ -57,6 +57,7 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Result<Analyzed<T>, Vec<Erro
     analyzer.process(files)?;
     analyzer.side_effect_check()?;
     analyzer.type_check()?;
+    //analyzer.match_exhaustiveness_check();
     // TODO should use Result here as well.
     let solved_impls = analyzer.resolve_trait_impls();
     analyzer.condense(solved_impls)
@@ -356,6 +357,56 @@ impl PILAnalyzer {
             *ts = Some(ty.into());
         }
         Ok(())
+    }
+
+    pub fn match_exhaustiveness_check(&self) {
+        let enums: HashMap<String, Vec<(String, Option<Vec<Type>>)>> = self
+            .definitions
+            .iter()
+            .filter_map(|(_, (_, def))| {
+                if let Some(FunctionValueDefinition::TypeDeclaration(enum_decl)) = def {
+                    Some((
+                        enum_decl.name.clone(),
+                        enum_decl
+                            .variants
+                            .iter()
+                            .map(|v| (v.name.clone(), v.fields.clone()))
+                            .collect::<Vec<_>>(),
+                    ))
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let all_patterns: Vec<_> = self
+            .definitions
+            .iter()
+            .filter_map(|(_, (_, def))| {
+                if let Some(FunctionValueDefinition::Expression(TypedExpression {
+                    type_scheme: _,
+                    e: Expression::MatchExpression(_, match_expr),
+                })) = def
+                {
+                    Some(
+                        match_expr
+                            .arms
+                            .iter()
+                            .map(|arm| arm.pattern.clone())
+                            .collect::<Vec<_>>(),
+                    )
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        for patterns in all_patterns {
+
+            //let report = analyze_match_patterns(&patterns, new_enums);
+            //if report.is_exhaustive {
+            //    panic!("Match exhaustiveness check failed"); // TODO GZ: report error
+            //}
+        }
     }
 
     /// Creates and returns a map for every referenced trait and every concrete type to the
