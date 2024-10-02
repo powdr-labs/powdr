@@ -22,7 +22,7 @@ use powdr_ast::analyzed::{
     PolyID, PolynomialType, SelectedExpressions,
 };
 
-use p3_uni_stark::{CallbackResult, MultiStageAir, MultistageAirBuilder, NextStageTraceCallback};
+use crate::{CallbackResult, MultiStageAir, MultistageAirBuilder, NextStageTraceCallback};
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 
 use powdr_executor::witgen::WitgenCallback;
@@ -57,7 +57,6 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
             .map(|stage| {
                 analyzed
                     .definitions_in_source_order(PolynomialType::Committed)
-                    .iter()
                     .filter_map(|(s, _)| {
                         let symbol_stage = s.stage.unwrap_or_default();
                         (stage == symbol_stage).then(|| s.array_elements().count())
@@ -68,7 +67,6 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
 
         let fixed_columns = analyzed
             .definitions_in_source_order(PolynomialType::Constant)
-            .iter()
             .flat_map(|(symbol, _)| symbol.array_elements())
             .enumerate()
             .map(|(index, (_, id))| (id, index))
@@ -76,7 +74,6 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
 
         let witness_columns = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
-            .iter()
             .into_group_map_by(|(s, _)| s.stage.unwrap_or_default())
             .into_iter()
             .flat_map(|(stage, symbols)| {
@@ -290,10 +287,6 @@ where
         self.constraint_system.commitment_count
     }
 
-    fn preprocessed_width(&self) -> usize {
-        self.constraint_system.constant_count + self.constraint_system.publics.len()
-    }
-
     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<Plonky3Field<T>>> {
         #[cfg(debug_assertions)]
         {
@@ -401,6 +394,10 @@ where
     ProverData<T>: Send,
     Commitment<T>: Send,
 {
+    fn preprocessed_width(&self) -> usize {
+        self.constraint_system.constant_count + self.constraint_system.publics.len()
+    }
+
     fn stage_count(&self) -> usize {
         self.constraint_system.stage_widths.len()
     }
