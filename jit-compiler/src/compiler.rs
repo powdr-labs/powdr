@@ -91,9 +91,10 @@ impl From<FieldElement> for ibig::IBig {
 
 trait Closure<Args, Ret>: Fn(Args) -> Ret + Send + Sync + Clone {}
 
+#[derive(Clone)]
 enum Callable<Args, Ret> {
     Fn(fn(Args) -> Ret),
-    Closure(Box<dyn Closure>),
+    Closure(Arc<dyn Closure>),
 }
 impl<Args, Ret> Callable<Args, Ret> {
     #[inline(always)]
