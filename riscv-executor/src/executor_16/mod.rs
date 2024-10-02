@@ -39,7 +39,7 @@ impl Elem {
         Self(f.to_integer().try_into_u32().unwrap())
     }
 
-    pub fn from_limbs(hi: Elem, lo: Elem) -> Self {
+    pub fn from_limbs(hi: &Elem, lo: &Elem) -> Self {
         assert!(hi.0 <= 0xffff);
         assert!(lo.0 <= 0xffff);
         Self((hi.0 << 16) | lo.0)
@@ -334,18 +334,18 @@ mod builder {
             *self.mem.get(&addr).unwrap_or(&0)
         }
 
-        pub(crate) fn set_reg_mem(&mut self, addr: u32, val: Elem) {
-            if addr != 0 {
-                self.reg_mem.last.insert(addr, val);
+        pub(crate) fn set_reg_mem(&mut self, addr: &Elem, val: Elem) {
+            if !addr.is_zero() {
+                self.reg_mem.last.insert(addr.u(), val);
             }
         }
 
-        pub(crate) fn get_reg_mem(&mut self, addr: u32) -> Elem {
+        pub(crate) fn get_reg_mem(&mut self, addr: &Elem) -> Elem {
             let zero: Elem = 0u32.into();
-            if addr == 0 {
+            if addr.is_zero() {
                 zero
             } else {
-                *self.reg_mem.last.get(&addr).unwrap_or(&zero)
+                *self.reg_mem.last.get(&addr.u()).unwrap_or(&zero)
             }
         }
 
@@ -498,84 +498,71 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
         self.proc.backup_reg_mem();
 
-        match name {
-            "get_reg" => {
-                let addr = args[0].u();
-                let val = self.proc.get_reg_mem(addr);
+        match (name, args.as_slice()) {
+            ("get_reg", [reg]) => {
+                let val = self.proc.get_reg_mem(reg);
 
                 vec![val]
             }
-            "set_reg" => {
-                let addr = args[0].u();
-                self.proc
-                    .set_reg_mem(addr, Elem::from_limbs(args[1], args[2]));
+            ("set_reg", [wreg, hi, lo]) => {
+                self.proc.set_reg_mem(wreg, Elem::from_limbs(hi, lo));
 
                 Vec::new()
             }
-            "load_label" => {
-                let write_reg = args[0].u();
-                self.proc.set_reg_mem(write_reg, args[1]);
+            ("load_label", [wreg, label]) => {
+                self.proc.set_reg_mem(wreg, *label);
 
                 Vec::new()
             }
-            "jump" => {
+            ("jump", [label, wreg]) => {
                 let next_pc = self.proc.get_pc().u() + 1;
-                let write_reg = args[1].u();
-
-                self.proc.set_reg_mem(write_reg, next_pc.into());
-
-                self.proc.set_pc(args[0]);
+                self.proc.set_reg_mem(wreg, next_pc.into());
+                self.proc.set_pc(*label);
 
                 Vec::new()
             }
-            "jump_dyn" => {
-                let addr = self.proc.get_reg_mem(args[0].u());
+            ("jump_dyn", [reg, wreg]) => {
                 let next_pc = self.proc.get_pc().u() + 1;
-                let write_reg = args[1].u();
-
-                self.proc.set_reg_mem(write_reg, next_pc.into());
-
+                self.proc.set_reg_mem(wreg, next_pc.into());
+                let addr = self.proc.get_reg_mem(reg);
                 self.proc.set_pc(addr);
 
                 Vec::new()
             }
-            "jump_to_bootloader_input" => {
-                let bootloader_input_idx = args[0].u() as usize;
-                let addr = self.bootloader_inputs[bootloader_input_idx];
+            ("jump_to_bootloader_input", [idx]) => {
+                let addr = self.bootloader_inputs[idx.u() as usize];
                 self.proc.set_pc(addr);
 
                 Vec::new()
             }
-            "branch_if_diff_nonzero" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
-                let val2 = self.proc.get_reg_mem(args[1].u());
+            ("branch_if_diff_nonzero", [reg1, reg2, label]) => {
+                let val1 = self.proc.get_reg_mem(reg1);
+                let val2 = self.proc.get_reg_mem(reg2);
 
                 let val: Elem = val1.sub(&val2);
                 if !val.is_zero() {
-                    self.proc.set_pc(args[2]);
+                    self.proc.set_pc(*label);
                 }
 
                 Vec::new()
             }
-            "branch_if_diff_equal" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
-                let val2 = self.proc.get_reg_mem(args[1].u());
-                let offset = Elem::from_limbs(args[2], args[3]);
-                let label = args[4];
+            ("branch_if_diff_equal", [reg1, reg2, offset_hi, offset_lo, label]) => {
+                let val1 = self.proc.get_reg_mem(reg1);
+                let val2 = self.proc.get_reg_mem(reg2);
+                let offset = Elem::from_limbs(offset_hi, offset_lo);
 
                 let val: Elem = val1.sub(&val2).sub(&offset);
                 if val.is_zero() {
-                    self.proc.set_pc(label);
+                    self.proc.set_pc(*label);
                 }
 
                 Vec::new()
             }
-            "skip_if_equal" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
-                let val2 = self.proc.get_reg_mem(args[1].u());
-                let offset = Elem::from_limbs(args[2], args[3]);
+            ("skip_if_equal", [reg1, reg2, offset_hi, offset_lo, skip]) => {
+                let val1 = self.proc.get_reg_mem(reg1);
+                let val2 = self.proc.get_reg_mem(reg2);
+                let offset = Elem::from_limbs(offset_hi, offset_lo);
                 let val: Elem = val1.sub(&val2).add(&offset);
-                let skip = args[4];
 
                 if val.is_zero() {
                     let pc = self.proc.get_pc().s();
@@ -584,125 +571,111 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-            "branch_if_greater_or_equal" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
-                let val2 = self.proc.get_reg_mem(args[1].u());
+            ("branch_if_greater_or_equal", [reg1, reg2, label]) => {
+                let val1 = self.proc.get_reg_mem(reg1);
+                let val2 = self.proc.get_reg_mem(reg2);
                 if val1.u() >= val2.u() {
-                    self.proc.set_pc(args[2]);
+                    self.proc.set_pc(*label);
                 }
 
                 Vec::new()
             }
-            "branch_if_greater_or_equal_signed" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
-                let val2 = self.proc.get_reg_mem(args[1].u());
+            ("branch_if_greater_or_equal_signed", [reg1, reg2, label]) => {
+                let val1 = self.proc.get_reg_mem(reg1);
+                let val2 = self.proc.get_reg_mem(reg2);
                 if val1.s() >= val2.s() {
-                    self.proc.set_pc(args[2]);
+                    self.proc.set_pc(*label);
                 }
 
                 Vec::new()
             }
-            "is_greater_or_equal" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
-                let val2 = self.proc.get_reg_mem(args[1].u());
+            ("is_greater_or_equal", [reg1, reg2, wreg]) => {
+                let val1 = self.proc.get_reg_mem(reg1);
+                let val2 = self.proc.get_reg_mem(reg2);
 
                 let r = if val1.u() >= val2.u() { 1 } else { 0 };
-                self.proc.set_reg_mem(args[2].u(), r.into());
+                self.proc.set_reg_mem(wreg, r.into());
 
                 Vec::new()
             }
-            "is_greater_or_equal_signed" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
-                let val2 = self.proc.get_reg_mem(args[1].u());
+            ("is_greater_or_equal_signed", [reg1, reg2, wreg]) => {
+                let val1 = self.proc.get_reg_mem(reg1);
+                let val2 = self.proc.get_reg_mem(reg2);
 
                 let r = if val1.s() >= val2.s() { 1 } else { 0 };
-                self.proc.set_reg_mem(args[2].u(), r.into());
+                self.proc.set_reg_mem(wreg, r.into());
 
                 Vec::new()
             }
-            "affine" => {
-                let val = self.proc.get_reg_mem(args[0].u());
-                let write_reg = args[1].u();
-                let factor = Elem::from_limbs(args[2], args[3]);
-                let offset = Elem::from_limbs(args[4], args[5]);
+            ("affine", [reg, wreg, factor_hi, factor_lo, offset_hi, offset_lo]) => {
+                let val = self.proc.get_reg_mem(reg);
+                let factor = Elem::from_limbs(factor_hi, factor_lo);
+                let offset = Elem::from_limbs(offset_hi, offset_lo);
 
                 let (hi_word, lo_word) = val.mul(&factor);
                 assert!(hi_word.is_zero());
                 let val = lo_word.add(&offset);
 
-                self.proc.set_reg_mem(write_reg, val);
+                self.proc.set_reg_mem(wreg, val);
 
                 Vec::new()
             }
-            "add_wrap" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
-                let val2 = self.proc.get_reg_mem(args[1].u());
-                let offset = Elem::from_limbs(args[2], args[3]);
-                let write_reg = args[4].u();
+            ("add_wrap", [reg1, reg2, offset_hi, offset_lo, wreg]) => {
+                let val1 = self.proc.get_reg_mem(reg1);
+                let val2 = self.proc.get_reg_mem(reg2);
+                let offset = Elem::from_limbs(offset_hi, offset_lo);
 
                 let val = val1.add(&val2).add(&offset);
-                self.proc.set_reg_mem(write_reg, val);
+                self.proc.set_reg_mem(wreg, val);
 
                 Vec::new()
             }
-            "sub_wrap_with_offset" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
-                let val2 = self.proc.get_reg_mem(args[1].u());
-                let offset = Elem::from_limbs(args[2], args[3]);
-                let write_reg = args[4].u();
+            ("sub_wrap_with_offset", [reg1, reg2, offset_hi, offset_lo, wreg]) => {
+                let val1 = self.proc.get_reg_mem(reg1);
+                let val2 = self.proc.get_reg_mem(reg2);
+                let offset = Elem::from_limbs(offset_hi, offset_lo);
                 let val = val1.sub(&val2).add(&offset);
 
-                self.proc.set_reg_mem(write_reg, val);
+                self.proc.set_reg_mem(wreg, val);
 
                 Vec::new()
             }
-            "is_equal_zero" => {
-                let val = self.proc.get_reg_mem(args[0].u());
-                let write_reg = args[1].u();
-
+            ("is_equal_zero", [reg, wreg]) => {
+                let val = self.proc.get_reg_mem(reg);
                 let r = if val.is_zero() { 1 } else { 0 };
-                self.proc.set_reg_mem(write_reg, r.into());
+                self.proc.set_reg_mem(wreg, r.into());
 
                 Vec::new()
             }
-            "is_not_equal" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
-                let val2 = self.proc.get_reg_mem(args[1].u());
-                let write_reg = args[2].u();
-
+            ("is_not_equal", [reg1, reg2, wreg]) => {
+                let val1 = self.proc.get_reg_mem(reg1);
+                let val2 = self.proc.get_reg_mem(reg2);
                 let r = if val1.u() != val2.u() { 1 } else { 0 };
-                self.proc.set_reg_mem(write_reg, r.into());
+                self.proc.set_reg_mem(wreg, r.into());
 
                 Vec::new()
             }
-            "sign_extend_byte" => {
-                let val = self.proc.get_reg_mem(args[0].u());
-                let write_reg = args[1].u();
-
+            ("sign_extend_byte", [reg, wreg]) => {
+                let val = self.proc.get_reg_mem(reg);
                 let r = val.u() as i8 as u32;
-                self.proc.set_reg_mem(write_reg, r.into());
+                self.proc.set_reg_mem(wreg, r.into());
 
                 Vec::new()
             }
-            "sign_extend_16_bits" => {
-                let val = self.proc.get_reg_mem(args[0].u());
-                let write_reg = args[1].u();
-
+            ("sign_extend_16_bits", [reg, wreg]) => {
+                let val = self.proc.get_reg_mem(reg);
                 let r = val.u() as i16 as u32;
-
-                self.proc.set_reg_mem(write_reg, r.into());
+                self.proc.set_reg_mem(wreg, r.into());
 
                 Vec::new()
             }
-            "fail" => {
+            ("fail", []) => {
                 // TODO: handle it better
                 panic!("reached a fail instruction")
             }
-            "divremu" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
-                let val2 = self.proc.get_reg_mem(args[1].u());
-                let write_reg1 = args[2].u();
-                let write_reg2 = args[3].u();
+            ("divremu", [reg1, reg2, wreg_div, wreg_rem]) => {
+                let val1 = self.proc.get_reg_mem(reg1);
+                let val2 = self.proc.get_reg_mem(reg2);
 
                 let y = val1.u();
                 let x = val2.u();
@@ -716,29 +689,26 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     rem = y;
                 }
 
-                self.proc.set_reg_mem(write_reg1, div.into());
-                self.proc.set_reg_mem(write_reg2, rem.into());
+                self.proc.set_reg_mem(wreg_div, div.into());
+                self.proc.set_reg_mem(wreg_rem, rem.into());
 
                 Vec::new()
             }
-            "mul" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
-                let val2 = self.proc.get_reg_mem(args[1].u());
-                let write_reg1 = args[2].u();
-                let write_reg2 = args[3].u();
+            ("mul", [reg1, reg2, wreg_lo, wreg_hi]) => {
+                let val1 = self.proc.get_reg_mem(reg1);
+                let val2 = self.proc.get_reg_mem(reg2);
 
                 let (hi_word, lo_word) = val1.mul(&val2);
 
-                self.proc.set_reg_mem(write_reg1, lo_word);
-                self.proc.set_reg_mem(write_reg2, hi_word);
+                self.proc.set_reg_mem(wreg_lo, lo_word);
+                self.proc.set_reg_mem(wreg_hi, hi_word);
 
                 Vec::new()
             }
-            "and" | "or" | "xor" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
-                let val2 = self.proc.get_reg_mem(args[1].u());
-                let offset = Elem::from_limbs(args[2], args[3]);
-                let write_reg = args[4].u();
+            ("and" | "or" | "xor", [reg1, reg2, offset_hi, offset_lo, wreg]) => {
+                let val1 = self.proc.get_reg_mem(reg1);
+                let val2 = self.proc.get_reg_mem(reg2);
+                let offset = Elem::from_limbs(offset_hi, offset_lo);
 
                 let val2 = val2.add(&offset);
                 let r = match name {
@@ -748,15 +718,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     _ => unreachable!(),
                 };
 
-                self.proc.set_reg_mem(write_reg, r.into());
+                self.proc.set_reg_mem(wreg, r.into());
 
                 Vec::new()
             }
-            "shl" | "shr" => {
-                let val1 = self.proc.get_reg_mem(args[0].u());
-                let val2 = self.proc.get_reg_mem(args[1].u());
-                let offset = Elem::from_limbs(args[2], args[3]);
-                let write_reg = args[4].u();
+            ("shl" | "shr", [reg1, reg2, offset_hi, offset_lo, wreg]) => {
+                let val1 = self.proc.get_reg_mem(reg1);
+                let val2 = self.proc.get_reg_mem(reg2);
+                let offset = Elem::from_limbs(offset_hi, offset_lo);
 
                 let val2: Elem = val2.add(&offset);
                 assert!(val2.u() < 32, "shl with overflow");
@@ -766,15 +735,15 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     _ => unreachable!(),
                 };
 
-                self.proc.set_reg_mem(write_reg, r.into());
+                self.proc.set_reg_mem(wreg, r.into());
 
                 Vec::new()
             }
-            "mstore" | "mstore_bootloader" => {
-                let addr1 = self.proc.get_reg_mem(args[0].u());
-                let addr2 = self.proc.get_reg_mem(args[1].u());
-                let offset = Elem::from_limbs(args[2], args[3]);
-                let value = self.proc.get_reg_mem(args[4].u());
+            ("mstore" | "mstore_bootloader", [reg1, reg2, offset_hi, offset_lo, reg_value]) => {
+                let addr1 = self.proc.get_reg_mem(reg1);
+                let addr2 = self.proc.get_reg_mem(reg2);
+                let offset = Elem::from_limbs(offset_hi, offset_lo);
+                let value = self.proc.get_reg_mem(reg_value);
 
                 let addr = addr1.sub(&addr2).add(&offset);
                 assert_eq!(addr.u() % 4, 0);
@@ -782,42 +751,42 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-            "mload" => {
-                let addr1 = self.proc.get_reg_mem(args[0].u());
-                let offset = Elem::from_limbs(args[1], args[2]);
-                let write_reg_val = args[3].u();
-                let write_reg_rem = args[4].u();
+            ("mload", [reg1, offset_hi, offset_lo, wreg, wreg_rem]) => {
+                let addr1 = self.proc.get_reg_mem(reg1);
+                let offset = Elem::from_limbs(offset_hi, offset_lo);
 
                 let addr = addr1.add(&offset);
 
                 let val = self.proc.get_mem(addr.u() & 0xfffffffc);
                 let rem = addr.u() % 4;
 
-                self.proc.set_reg_mem(write_reg_val, val.into());
-                self.proc.set_reg_mem(write_reg_rem, rem.into());
+                self.proc.set_reg_mem(wreg, val.into());
+                self.proc.set_reg_mem(wreg_rem, rem.into());
 
                 Vec::new()
             }
-            "load_bootloader_input" => {
-                let addr = self.proc.get_reg_mem(args[0].u());
-                let write_addr = args[1].u();
-                let factor = Elem::from_limbs(args[2], args[3]);
-                let offset = Elem::from_limbs(args[4], args[5]);
+            ("load_bootloader_input", [reg, wreg, factor_hi, factor_lo, offset_hi, offset_lo]) => {
+                let addr = self.proc.get_reg_mem(reg);
+                let factor = Elem::from_limbs(factor_hi, factor_lo);
+                let offset = Elem::from_limbs(offset_hi, offset_lo);
 
                 let (addr_hi, addr_lo) = addr.mul(&factor);
                 assert!(addr_hi.is_zero());
                 let addr = addr_lo.add(&offset);
                 let val = self.bootloader_inputs[addr.u() as usize];
 
-                self.proc.set_reg_mem(write_addr, val);
+                self.proc.set_reg_mem(wreg, val);
 
                 Vec::new()
             }
-            "assert_bootloader_input" => {
-                let addr = self.proc.get_reg_mem(args[0].u());
-                let val = self.proc.get_reg_mem(args[1].u());
-                let factor = Elem::from_limbs(args[2], args[3]);
-                let offset = Elem::from_limbs(args[4], args[5]);
+            (
+                "assert_bootloader_input",
+                [reg1, reg2, factor_hi, factor_lo, offset_hi, offset_lo],
+            ) => {
+                let addr = self.proc.get_reg_mem(reg1);
+                let val = self.proc.get_reg_mem(reg2);
+                let factor = Elem::from_limbs(factor_hi, factor_lo);
+                let offset = Elem::from_limbs(offset_hi, offset_lo);
 
                 let (addr_hi, addr_lo) = addr.mul(&factor);
                 assert!(addr_hi.is_zero());
@@ -828,26 +797,28 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-            "split_gl" => {
+            ("split_gl", _) => {
                 todo!()
             }
-            "poseidon_gl" => {
+            ("poseidon_gl", _) => {
                 todo!()
             }
-            "affine_256" => {
+            ("affine_256", _) => {
                 todo!()
             }
-            "mod_256" => {
+            ("mod_256", _) => {
                 todo!()
             }
-            "ec_add" => {
+            ("ec_add", _) => {
                 todo!()
             }
-            "ec_double" => {
+            ("ec_double", _) => {
                 todo!()
             }
-            instr => {
-                panic!("unknown instruction: {instr}. Make sure the program was compiled using the same field");
+            (instr, args) => {
+                panic!("invalid instruction `{instr}` or wrong number of arguments ({})\nMake sure the program was also compiled for the {} field",
+                       args.len(),
+                       F::known_field().unwrap());
             }
         }
     }

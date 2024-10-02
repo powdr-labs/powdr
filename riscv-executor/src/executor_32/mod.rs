@@ -1033,7 +1033,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 vec![]
             }
             instr => {
-                panic!("unknown instruction: {instr}. Make sure the program was compiled using the same field");
+                panic!("unknown instruction: {instr}. Make sure the program was also compiled for the {} field", F::known_field().unwrap());
             }
         }
     }

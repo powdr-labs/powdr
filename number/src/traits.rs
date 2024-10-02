@@ -70,6 +70,17 @@ pub enum KnownField {
     Bn254Field,
 }
 
+impl fmt::Display for KnownField {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            KnownField::BabyBearField => write!(f, "BabyBear"),
+            KnownField::Mersenne31Field => write!(f, "Mersenne31"),
+            KnownField::GoldilocksField => write!(f, "Goldilocks"),
+            KnownField::Bn254Field => write!(f, "BN254"),
+        }
+    }
+}
+
 /// A field element
 pub trait FieldElement:
     'static
