@@ -223,7 +223,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
             }
             Expression::LambdaExpression(_, LambdaExpression { params, body, .. }) => {
                 format!(
-                    "Callable::Closure(|{}| {{ {} }})",
+                    "Callable::Closure(std::sync::Arc::new(|{}| {{ {} }}))",
                     params.iter().format(", "),
                     self.format_expr(body)?
                 )
