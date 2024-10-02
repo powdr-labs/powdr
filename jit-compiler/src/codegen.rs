@@ -221,10 +221,19 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     self.format_expr(index)?
                 )
             }
-            Expression::LambdaExpression(_, LambdaExpression { params, body, .. }) => {
+            Expression::LambdaExpression(
+                _,
+                LambdaExpression {
+                    params,
+                    body,
+                    param_types,
+                    ..
+                },
+            ) => {
                 format!(
-                    "Callable::Closure(std::sync::Arc::new(|{}| {{ {} }}))",
+                    "Callable::Closure(std::sync::Arc::new(move |({}): ({})| {{ {} }}))",
                     params.iter().format(", "),
+                    param_types.iter().map(map_type).format(", "),
                     self.format_expr(body)?
                 )
             }

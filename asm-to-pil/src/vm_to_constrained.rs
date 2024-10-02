@@ -1057,6 +1057,7 @@ impl<T: FieldElement> VMConverter<T> {
                         kind: FunctionKind::Query,
                         params: vec![Pattern::Variable(SourceRef::unknown(), "__i".to_string())],
                         body: Box::new(call_to_handle_query.into()),
+                        param_types: vec![],
                     };
 
                     statements.push(PilStatement::Expression(
