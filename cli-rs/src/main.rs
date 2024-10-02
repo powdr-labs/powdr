@@ -115,7 +115,6 @@ enum Commands {
 
         /// The field to use
         #[arg(long)]
-        #[arg(default_value_t = FieldArgument::Gl)]
         #[arg(value_parser = clap_enum_variants!(FieldArgument))]
         field: FieldArgument,
 
