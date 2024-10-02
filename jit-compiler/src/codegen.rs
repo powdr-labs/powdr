@@ -483,6 +483,14 @@ fn get_builtins<T: FieldElement>() -> &'static HashMap<String, String> {
                 "(s: &str) -> ! { panic!(\"{s}\"); }".to_string(),
             ),
             (
+                "std::convert::fe",
+                "<T: Into<FieldElement>>(n: T) -> FieldElement { n.into() }".to_string(),
+            ),
+            (
+                "std::convert::int",
+                "<T: Into<ibig::Ibig>>(n: T) -> ibig::IBig {{ n.into() }}".to_string(),
+            ),
+            (
                 "std::field::modulus",
                 format!(
                     "() -> ibig::IBig {{ {} }}",
