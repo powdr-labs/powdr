@@ -114,70 +114,63 @@ impl<T> Analyzed<T> {
 
     pub fn constant_polys_in_source_order(
         &self,
-    ) -> Vec<&(Symbol, Option<FunctionValueDefinition>)> {
+    ) -> impl Iterator<Item = &(Symbol, Option<FunctionValueDefinition>)> {
         self.definitions_in_source_order(PolynomialType::Constant)
     }
 
     pub fn committed_polys_in_source_order(
         &self,
-    ) -> Vec<&(Symbol, Option<FunctionValueDefinition>)> {
+    ) -> impl Iterator<Item = &(Symbol, Option<FunctionValueDefinition>)> {
         self.definitions_in_source_order(PolynomialType::Committed)
     }
 
     pub fn intermediate_polys_in_source_order(
         &self,
-    ) -> Vec<&(Symbol, Vec<AlgebraicExpression<T>>)> {
-        self.source_order
-            .iter()
-            .filter_map(move |statement| {
-                if let StatementIdentifier::Definition(name) = statement {
-                    if let Some(definition) = self.intermediate_columns.get(name) {
-                        return Some(definition);
-                    }
+    ) -> impl Iterator<Item = &(Symbol, Vec<AlgebraicExpression<T>>)> {
+        self.source_order.iter().filter_map(move |statement| {
+            if let StatementIdentifier::Definition(name) = statement {
+                if let Some(definition) = self.intermediate_columns.get(name) {
+                    return Some(definition);
                 }
-                None
-            })
-            .collect()
+            }
+            None
+        })
     }
 
     pub fn definitions_in_source_order(
         &self,
         poly_type: PolynomialType,
-    ) -> Vec<&(Symbol, Option<FunctionValueDefinition>)> {
+    ) -> impl Iterator<Item = &(Symbol, Option<FunctionValueDefinition>)> {
         assert!(
             poly_type != PolynomialType::Intermediate,
             "Use intermediate_polys_in_source_order to get intermediate polys."
         );
-        self.source_order
-            .iter()
-            .filter_map(move |statement| {
-                if let StatementIdentifier::Definition(name) = statement {
-                    if let Some(definition) = self.definitions.get(name) {
-                        match definition.0.kind {
-                            SymbolKind::Poly(ptype) if ptype == poly_type => {
-                                return Some(definition);
-                            }
-                            _ => {}
+        self.source_order.iter().filter_map(move |statement| {
+            if let StatementIdentifier::Definition(name) = statement {
+                if let Some(definition) = self.definitions.get(name) {
+                    match definition.0.kind {
+                        SymbolKind::Poly(ptype) if ptype == poly_type => {
+                            return Some(definition);
                         }
+                        _ => {}
                     }
                 }
-                None
-            })
-            .collect()
+            }
+            None
+        })
     }
 
-    pub fn public_declarations_in_source_order(&self) -> Vec<(&String, &PublicDeclaration)> {
-        self.source_order
-            .iter()
-            .filter_map(move |statement| {
-                if let StatementIdentifier::PublicDeclaration(name) = statement {
-                    if let Some(public_declaration) = self.public_declarations.get(name) {
-                        return Some((name, public_declaration));
-                    }
+    pub fn public_declarations_in_source_order(
+        &self,
+    ) -> impl Iterator<Item = (&String, &PublicDeclaration)> {
+        self.source_order.iter().filter_map(move |statement| {
+            if let StatementIdentifier::PublicDeclaration(name) = statement {
+                if let Some(public_declaration) = self.public_declarations.get(name) {
+                    return Some((name, public_declaration));
                 }
-                None
-            })
-            .collect()
+            }
+            None
+        })
     }
 
     fn declaration_type_count(&self, poly_type: PolynomialType) -> usize {
@@ -279,13 +272,10 @@ impl<T> Analyzed<T> {
 
         // Create and update the replacement map for all polys.
         self.committed_polys_in_source_order()
-            .iter()
             .fold(0, |new_id, (poly, _def)| handle_symbol(new_id, poly));
         self.constant_polys_in_source_order()
-            .iter()
             .fold(0, |new_id, (poly, _def)| handle_symbol(new_id, poly));
         self.intermediate_polys_in_source_order()
-            .iter()
             .fold(0, |new_id, (poly, _def)| handle_symbol(new_id, poly));
 
         self.definitions.values_mut().for_each(|(poly, _def)| {
@@ -368,7 +358,6 @@ impl<T: FieldElement> Analyzed<T> {
     ) -> Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>> {
         let intermediates = &self
             .intermediate_polys_in_source_order()
-            .iter()
             .flat_map(|(symbol, def)| {
                 symbol
                     .array_elements()

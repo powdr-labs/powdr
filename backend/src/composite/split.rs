@@ -46,7 +46,7 @@ pub(crate) fn machine_witness_columns<F: FieldElement>(
 ) -> Vec<(String, Vec<F>)> {
     let machine_columns = select_machine_columns(
         all_witness_columns,
-        machine_pil.committed_polys_in_source_order(),
+        machine_pil.committed_polys_in_source_order().collect(),
     );
     let size = machine_columns
         .iter()
@@ -77,7 +77,7 @@ pub(crate) fn machine_fixed_columns<F: FieldElement>(
 ) -> BTreeMap<DegreeType, Vec<(String, VariablySizedColumn<F>)>> {
     let machine_columns = select_machine_columns(
         all_fixed_columns,
-        machine_pil.constant_polys_in_source_order(),
+        machine_pil.constant_polys_in_source_order().collect(),
     );
     let sizes = machine_columns
         .iter()

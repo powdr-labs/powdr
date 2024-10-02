@@ -23,7 +23,7 @@ impl<T: Serialize + DeserializeOwned> PolySet<Vec<(String, VariablySizedColumn<T
     const FILE_NAME: &'static str = "constants.bin";
 
     fn get_polys(pil: &Analyzed<T>) -> Vec<&(Symbol, Option<FunctionValueDefinition>)> {
-        pil.constant_polys_in_source_order()
+        pil.constant_polys_in_source_order().collect()
     }
 }
 
@@ -34,6 +34,6 @@ impl<T: Serialize + DeserializeOwned> PolySet<Vec<(String, Vec<T>)>, T> for Witn
     const FILE_NAME: &'static str = "commits.bin";
 
     fn get_polys(pil: &Analyzed<T>) -> Vec<&(Symbol, Option<FunctionValueDefinition>)> {
-        pil.committed_polys_in_source_order()
+        pil.committed_polys_in_source_order().collect()
     }
 }

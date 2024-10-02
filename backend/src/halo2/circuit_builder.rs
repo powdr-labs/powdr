@@ -180,7 +180,6 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
 
         let advice = analyzed
             .committed_polys_in_source_order()
-            .iter()
             .flat_map(|(symbol, _)| {
                 symbol
                     .array_elements()
@@ -201,7 +200,6 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
         let first_step = meta.fixed_column();
         let fixed = analyzed
             .constant_polys_in_source_order()
-            .iter()
             .flat_map(|(symbol, _)| symbol.array_elements())
             .map(|(name, _)| (name.clone(), meta.fixed_column()))
             .chain(iter::once((FIRST_STEP_NAME.to_string(), first_step)))
