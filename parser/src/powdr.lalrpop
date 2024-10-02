@@ -641,6 +641,7 @@ IfExpression: Box<Expression> = {
 }
 
 BlockExpression: Box<Expression> = {
+    <start:@L> "{}" <end:@R> => ctx.to_expr_with_source_ref(BlockExpression{statements: vec![], expr: None}, start, end),
     <start:@L> "{" <statements:StatementInsideBlock*> <expr:BoxedExpression?> "}" <end:@R> => ctx.to_expr_with_source_ref(BlockExpression{statements, expr}, start, end),
 }
 

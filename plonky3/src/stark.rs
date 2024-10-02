@@ -10,9 +10,9 @@ use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
 
-use p3_uni_stark::{
-    prove_with_key, verify_with_key, Proof, StarkGenericConfig, StarkProvingKey, StarkVerifyingKey,
-};
+use crate::{prove_with_key, verify_with_key, Proof, StarkProvingKey, StarkVerifyingKey};
+
+use p3_uni_stark::StarkGenericConfig;
 
 use crate::{
     circuit_builder::{generate_matrix, PowdrCircuit},
