@@ -154,16 +154,15 @@ impl<'a> TraitsResolver<'a> {
     /// Creates a dictionary that associates each child reference with a generic type along with the references that called it
     /// From this dictionary, it resolves the parent/child relationships to obtain the value of the generic type
     fn build_reference_path(
-        //definitions: impl Iterator<Item = (&'b Symbol, &'b Expression)>,
         definitions: &Vec<(&String, &Expression)>,
         defined_traits: &HashSet<&String>,
     ) -> HashMap<String, HashSet<Vec<Type>>> {
         let mut result = HashMap::new();
 
-        // Compute all pairs of references (Reference, Type) for each child and store them associated with the parent's name
-        // ["Parent": [
-        //      ("Child1", [Some(type_args)]),
-        //      ("Child2", [Some(type_args)])
+        // Compute all pairs of references (name, type) for each child and store them associated with the parent's name
+        // ["Child": [
+        //      ("Parent1", [Some(type_args)]),
+        //      ("Parent2", [Some(type_args)])
         // ],...]
         let mut all_type_vars = true;
         for (symbol, expr) in definitions {
@@ -230,27 +229,44 @@ impl<'a> TraitsResolver<'a> {
     fn solve_type_vars(
         input: &HashMap<&String, Vec<(&String, &Vec<Type>)>>,
         parent: &String,
-        type_args: &[Type],
+        type_args: &Vec<Type>,
     ) -> HashSet<Vec<Type>> {
         let mut result = HashSet::new();
         match input.get(parent) {
             Some(children) => {
                 for (child, c_type_arg) in children {
-                    // TODO Unify
-                    let new_type_arg = c_type_arg
-                        .iter()
-                        .take(type_args.len())
-                        .cloned()
-                        .collect::<Vec<Type>>();
+                    let mut unifier: Unifier = Default::default();
 
-                    let mut res = Self::solve_type_vars(input, child, &new_type_arg);
-                    if new_type_arg
-                        .iter()
-                        .all(|ty| !matches!(ty, Type::TypeVar(_)))
-                    {
-                        res.insert(new_type_arg);
+                    let tuple_args = Type::Tuple(TupleType {
+                        items: type_args.to_vec(),
+                    });
+
+                    let c_tuple_arg = Type::Tuple(TupleType {
+                        items: c_type_arg.to_vec(),
+                    });
+
+                    let res = unifier.unify_types(tuple_args, c_tuple_arg);
+                    if res.is_ok() {
+                        let new_type_arg = c_type_arg
+                            .iter()
+                            .zip(type_args.iter())
+                            .map(|(a, b)| match (a, b) {
+                                (Type::TypeVar(_), Type::TypeVar(_)) => a.clone(),
+                                (Type::TypeVar(_), _) => b.clone(),
+                                (_, Type::TypeVar(_)) => a.clone(),
+                                _ => a.clone(),
+                            })
+                            .collect();
+
+                        let mut res = Self::solve_type_vars(input, child, &new_type_arg);
+                        if new_type_arg
+                            .iter()
+                            .all(|ty| !matches!(ty, Type::TypeVar(_)))
+                        {
+                            res.insert(new_type_arg);
+                        }
+                        result.extend(res);
                     }
-                    result.extend(res);
                 }
             }
             None => {
