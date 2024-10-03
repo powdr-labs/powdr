@@ -76,7 +76,7 @@ fn poseidon2_external_constants() -> Vec<[BabyBear; WIDTH]> {
 }
 
 fn poseidon2_internal_constants() -> Vec<BabyBear> {
-    // Use a different seed here so number don't repeat.
+    // Use a different seed here so numbers don't repeat.
     rand_chacha::ChaCha8Rng::seed_from_u64(RNG_SEED + 1)
         .sample_iter(Standard)
         .take(ROUNDS_P)
