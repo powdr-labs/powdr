@@ -113,9 +113,12 @@ pub fn translate_program(
     with_bootloader: bool,
 ) -> String {
     match options.field {
-        KnownField::BabyBearField | KnownField::Mersenne31Field => {
-            code_gen_16::translate_program(program, options.runtime.as_runtime16(), with_bootloader)
-        }
+        KnownField::BabyBearField | KnownField::Mersenne31Field => code_gen_16::translate_program(
+            program,
+            options.field,
+            options.runtime.as_runtime16(),
+            with_bootloader,
+        ),
         KnownField::GoldilocksField | KnownField::Bn254Field => code_gen_32::translate_program(
             program,
             options.field,

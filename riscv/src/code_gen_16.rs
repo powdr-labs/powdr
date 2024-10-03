@@ -4,6 +4,8 @@ use itertools::Itertools;
 use powdr_isa_utils::SingleDataValue;
 use powdr_isa_utils::{escape_label, quote};
 
+use powdr_number::KnownField;
+
 use crate::continuations::bootloader::{bootloader_and_shutdown_routine, bootloader_preamble};
 use crate::runtime::Runtime;
 use crate::runtime_16::Runtime16;
@@ -18,15 +20,17 @@ use crate::code_gen::{
 /// Will call each of the methods in the `RiscVProgram` just once.
 pub fn translate_program(
     program: impl RiscVProgram,
+    field: KnownField,
     runtime: &Runtime16,
     with_bootloader: bool,
 ) -> String {
     // Do this in a separate function to avoid most of the code being generic on F.
-    let (initial_mem, instructions) = translate_program_impl(program, runtime, with_bootloader);
+    let (initial_mem, instructions) =
+        translate_program_impl(program, field.clone(), runtime, with_bootloader);
 
     riscv_machine(
         runtime,
-        &preamble(runtime, with_bootloader),
+        &preamble(field, runtime, with_bootloader),
         initial_mem,
         instructions,
     )
@@ -34,6 +38,7 @@ pub fn translate_program(
 
 fn translate_program_impl(
     mut program: impl RiscVProgram,
+    field: KnownField,
     runtime: &Runtime16,
     with_bootloader: bool,
 ) -> (Vec<String>, Vec<String>) {
@@ -122,7 +127,8 @@ fn translate_program_impl(
 
     let submachines_init = runtime.submachines_init();
     let bootloader_and_shutdown_routine_lines = if with_bootloader {
-        let bootloader_and_shutdown_routine = bootloader_and_shutdown_routine(&submachines_init);
+        let bootloader_and_shutdown_routine =
+            bootloader_and_shutdown_routine(field, &submachines_init);
         log::debug!("Adding Bootloader:\n{}", bootloader_and_shutdown_routine);
         bootloader_and_shutdown_routine
             .split('\n')
@@ -233,9 +239,9 @@ let initial_memory: (fe, fe)[] = [
     )
 }
 
-fn preamble(runtime: &Runtime16, with_bootloader: bool) -> String {
+fn preamble(field: KnownField, runtime: &Runtime16, with_bootloader: bool) -> String {
     let bootloader_preamble_if_included = if with_bootloader {
-        bootloader_preamble()
+        bootloader_preamble(field)
     } else {
         "".to_string()
     };

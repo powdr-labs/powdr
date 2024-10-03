@@ -24,7 +24,8 @@ pub fn translate_program(
     with_bootloader: bool,
 ) -> String {
     // Do this in a separate function to avoid most of the code being generic on F.
-    let (initial_mem, instructions) = translate_program_impl(program, runtime, with_bootloader);
+    let (initial_mem, instructions) =
+        translate_program_impl(program, field.clone(), runtime, with_bootloader);
 
     riscv_machine(
         runtime,
@@ -36,6 +37,7 @@ pub fn translate_program(
 
 fn translate_program_impl(
     mut program: impl RiscVProgram,
+    field: KnownField,
     runtime: &Runtime32,
     with_bootloader: bool,
 ) -> (Vec<String>, Vec<String>) {
@@ -116,7 +118,8 @@ fn translate_program_impl(
 
     let submachines_init = runtime.submachines_init();
     let bootloader_and_shutdown_routine_lines = if with_bootloader {
-        let bootloader_and_shutdown_routine = bootloader_and_shutdown_routine(&submachines_init);
+        let bootloader_and_shutdown_routine =
+            bootloader_and_shutdown_routine(field, &submachines_init);
         log::debug!("Adding Bootloader:\n{}", bootloader_and_shutdown_routine);
         bootloader_and_shutdown_routine
             .split('\n')
@@ -225,7 +228,7 @@ let initial_memory: (fe, fe)[] = [
 
 fn preamble(field: KnownField, runtime: &Runtime32, with_bootloader: bool) -> String {
     let bootloader_preamble_if_included = if with_bootloader {
-        bootloader_preamble()
+        bootloader_preamble(field.clone())
     } else {
         "".to_string()
     };

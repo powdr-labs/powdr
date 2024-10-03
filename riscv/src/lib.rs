@@ -71,6 +71,7 @@ pub fn compile_rust(
     if with_bootloader {
         match options.field {
             KnownField::BabyBearField => {
+                todo!()
                 // TODO uncomment this when the bootloader is ready
                 /*
                                 assert!(
@@ -80,6 +81,7 @@ pub fn compile_rust(
                 */
             }
             KnownField::Mersenne31Field => {
+                todo!()
                 // TODO uncomment this when the bootloader is ready
                 /*
                                 assert!(
