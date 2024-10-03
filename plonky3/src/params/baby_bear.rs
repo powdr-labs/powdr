@@ -60,18 +60,27 @@ const RNG_SEED: u64 = 42;
 lazy_static! {
     static ref PERM_BB: Perm = Perm::new(
         ROUNDS_F,
-        rand_chacha::ChaCha8Rng::seed_from_u64(RNG_SEED)
-            .sample_iter(Standard)
-            .take(ROUNDS_F)
-            .collect::<Vec<[BabyBear; WIDTH]>>(),
+        poseidon2_external_constants(),
         Poseidon2ExternalMatrixGeneral,
         ROUNDS_P,
-        rand_chacha::ChaCha8Rng::seed_from_u64(RNG_SEED)
-            .sample_iter(Standard)
-            .take(ROUNDS_P)
-            .collect(),
+        poseidon2_internal_constants(),
         DiffusionMatrixBabyBear::default()
     );
+}
+
+fn poseidon2_external_constants() -> Vec<[BabyBear; WIDTH]> {
+    rand_chacha::ChaCha8Rng::seed_from_u64(RNG_SEED)
+        .sample_iter(Standard)
+        .take(ROUNDS_F)
+        .collect()
+}
+
+fn poseidon2_internal_constants() -> Vec<BabyBear> {
+    // Use a different seed here so number don't repeat.
+    rand_chacha::ChaCha8Rng::seed_from_u64(RNG_SEED + 1)
+        .sample_iter(Standard)
+        .take(ROUNDS_P)
+        .collect()
 }
 
 impl FieldElementMap for BabyBearField {
