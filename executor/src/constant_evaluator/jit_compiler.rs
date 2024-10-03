@@ -22,7 +22,6 @@ pub fn generate_values<T: FieldElement>(
 
     analyzed
         .constant_polys_in_source_order()
-        .into_iter()
         .filter_map(|(symbol, _)| {
             let fun = fun_map.get(symbol.absolute_name.as_str())?;
             Some((symbol, fun))
@@ -54,7 +53,6 @@ pub fn generate_values<T: FieldElement>(
 fn symbols_to_compile<T>(analyzed: &Analyzed<T>) -> Vec<&str> {
     analyzed
         .constant_polys_in_source_order()
-        .into_iter()
         .filter_map(|(symbol, value)| {
             (!symbol.is_array() && value.is_some()).then_some(symbol.absolute_name.as_str())
         })

@@ -15,7 +15,6 @@ mod jit_compiler;
 pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, VariablySizedColumn<T>)> {
     let max_degree = analyzed
         .constant_polys_in_source_order()
-        .iter()
         .map(|(poly, _)| poly.degree.unwrap().max)
         .max()
         .unwrap_or_default();

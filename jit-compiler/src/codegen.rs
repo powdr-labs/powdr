@@ -7,10 +7,11 @@ use powdr_ast::{
         display::quote,
         types::{ArrayType, FunctionType, Type, TypeScheme},
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
-        IndexAccess, LambdaExpression, Number, StatementInsideBlock, UnaryOperation,
+        IndexAccess, LambdaExpression, MatchArm, MatchExpression, Number, Pattern,
+        StatementInsideBlock, UnaryOperation,
     },
 };
-use powdr_number::{BigUint, FieldElement, LargeInt};
+use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
 
 pub struct CodeGenerator<'a, T> {
     analyzed: &'a Analyzed<T>,
@@ -268,8 +269,8 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 "({})",
                 items
                     .iter()
-                    .map(|i| self.format_expr(i))
-                    .collect::<Result<Vec<_>, _>>()?
+                    .map(|i| Ok(format!("({}.clone())", self.format_expr(i)?)))
+                    .collect::<Result<Vec<_>, String>>()?
                     .join(", ")
             ),
             Expression::BlockExpression(_, BlockExpression { statements, expr }) => {
@@ -284,6 +285,29 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                         .map(|e| self.format_expr(e.as_ref()))
                         .transpose()?
                         .unwrap_or_default()
+                )
+            }
+            Expression::MatchExpression(_, MatchExpression { scrutinee, arms }) => {
+                // We cannot use rust match expressions directly.
+                // Instead, we compile to a sequence of `if let Some(...)` statements.
+
+                // TODO try to find a solution where we do not introduce a variable
+                // or at least make it unique.
+                let var_name = "scrutinee__";
+                format!(
+                    "{{\nlet {var_name} = ({}).clone();\n{}\n}}\n",
+                    self.format_expr(scrutinee)?,
+                    arms.iter()
+                        .map(|MatchArm { pattern, value }| {
+                            let (bound_vars, arm_test) = check_pattern(var_name, pattern)?;
+                            Ok(format!(
+                                "if let Some({bound_vars}) = ({arm_test}) {{\n{}\n}}",
+                                self.format_expr(value)?,
+                            ))
+                        })
+                        .chain(std::iter::once(Ok("{ panic!(\"No match\"); }".to_string())))
+                        .collect::<Result<Vec<_>, String>>()?
+                        .join(" else ")
                 )
             }
             _ => return Err(format!("Implement {e}")),
@@ -318,6 +342,90 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
     }
 }
 
+/// Used for patterns in match and let statements:
+/// `value_name` is an expression string that is to be matched against `pattern`.
+/// Returns a rust pattern string (tuple of bound variables, might be nested) and a code string
+/// that, when executed, returns an Option with the values for the bound variables if the pattern
+/// matched `value_name` and `None` otherwise.
+///
+/// So if `let (vars, code) = check_pattern("x", pattern)?;`, then the return value
+/// can be used like this: `if let Some({vars}) = ({code}) {{ .. }}`
+fn check_pattern(value_name: &str, pattern: &Pattern) -> Result<(String, String), String> {
+    Ok(match pattern {
+        Pattern::CatchAll(_) => ("()".to_string(), "Some(())".to_string()),
+        Pattern::Number(_, n) => (
+            "_".to_string(),
+            format!(
+                "({value_name}.clone() == {}).then_some(())",
+                format_signed_integer(n)
+            ),
+        ),
+        Pattern::String(_, s) => (
+            "_".to_string(),
+            format!("({value_name}.clone() == {}).then_some(())", quote(s)),
+        ),
+        Pattern::Tuple(_, items) => {
+            let mut vars = vec![];
+            let inner_code = items
+                .iter()
+                .enumerate()
+                .map(|(i, item)| {
+                    let (v, code) = check_pattern(&format!("{value_name}.{i}"), item)?;
+                    vars.push(v);
+                    Ok(format!("({code})?"))
+                })
+                .collect::<Result<Vec<_>, String>>()?
+                .join(", ");
+            (
+                format!("({})", vars.join(", ")),
+                format!("(|| Some(({inner_code})))()"),
+            )
+        }
+        Pattern::Array(_, items) => {
+            let mut vars = vec![];
+            let mut ellipsis_seen = false;
+            // This will be code to check the individual items in the array pattern.
+            let inner_code = items
+                .iter()
+                .enumerate()
+                .filter_map(|(i, item)| {
+                    if matches!(item, Pattern::Ellipsis(_)) {
+                        ellipsis_seen = true;
+                        return None;
+                    }
+                    // Compute an expression to access the item.
+                    Some(if ellipsis_seen {
+                        let i_rev = items.len() - i;
+                        (format!("{value_name}[{value_name}.len() - {i_rev}]"), item)
+                    } else {
+                        (format!("{value_name}[{i}]"), item)
+                    })
+                })
+                .map(|(access_name, item)| {
+                    let (v, code) = check_pattern(&access_name, item)?;
+                    vars.push(v);
+                    Ok(format!("({code})?"))
+                })
+                .collect::<Result<Vec<_>, String>>()?
+                .join(", ");
+            let length_check = if ellipsis_seen {
+                format!("{value_name}.len() >= {}", items.len() - 1)
+            } else {
+                format!("{value_name}.len() == {}", items.len())
+            };
+            (
+                format!("({})", vars.join(", ")),
+                format!("if {length_check} {{ (|| Some(({inner_code})))() }} else {{ None }}"),
+            )
+        }
+        Pattern::Variable(_, var) => (var.to_string(), format!("Some({value_name}.clone())")),
+        Pattern::Enum(..) => {
+            return Err(format!("Enums as patterns not yet implemented: {pattern}"));
+        }
+        Pattern::Ellipsis(_) => unreachable!(),
+    })
+}
+
 fn format_unsigned_integer(n: &BigUint) -> String {
     if let Ok(n) = u64::try_from(n) {
         format!("ibig::IBig::from({n}_u64)")
@@ -328,6 +436,17 @@ fn format_unsigned_integer(n: &BigUint) -> String {
                 .iter()
                 .map(|b| format!("{b}_u8"))
                 .format(", ")
+        )
+    }
+}
+
+fn format_signed_integer(n: &BigInt) -> String {
+    if let Ok(n) = BigUint::try_from(n) {
+        format_unsigned_integer(&n)
+    } else {
+        format!(
+            "-{}",
+            format_unsigned_integer(&BigUint::try_from(-n).unwrap())
         )
     }
 }
