@@ -6,6 +6,7 @@ use powdr_ast::{
     parsed::{
         display::quote,
         types::{ArrayType, FunctionType, Type, TypeScheme},
+        visitor::AllChildren,
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
         IndexAccess, LambdaExpression, MatchArm, MatchExpression, Number, Pattern,
         StatementInsideBlock, UnaryOperation,
@@ -116,7 +117,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     }}\n",
                     escape_symbol(symbol),
                     map_type(&ty),
-                    self.format_expr(&value.e)?
+                    self.format_expr(&value.e, 0)?
                 )
             }
         })
@@ -141,17 +142,19 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
             _ => return Err(format!("Expected function type, got {ty}")),
         };
 
+        let var_height = params.iter().map(|p| p.variables().count()).sum::<usize>();
+
         Ok(format!(
             "fn {}(({}): ({})) -> {} {{ {} }}\n",
             escape_symbol(name),
             params.iter().format(", "),
             param_types.iter().map(map_type).format(", "),
             map_type(return_type),
-            self.format_expr(body)?
+            self.format_expr(body, var_height)?
         ))
     }
 
-    fn format_expr(&mut self, e: &Expression) -> Result<String, String> {
+    fn format_expr(&mut self, e: &Expression, var_height: usize) -> Result<String, String> {
         Ok(match e {
             Expression::Reference(_, Reference::LocalVar(_id, name)) => name.clone(),
             Expression::Reference(_, Reference::Poly(PolynomialReference { name, type_args })) => {
@@ -186,10 +189,10 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
             ) => {
                 format!(
                     "({}).call(({}))",
-                    self.format_expr(function)?,
+                    self.format_expr(function, var_height)?,
                     arguments
                         .iter()
-                        .map(|a| self.format_expr(a))
+                        .map(|a| self.format_expr(a, var_height))
                         .collect::<Result<Vec<_>, _>>()?
                         .into_iter()
                         // TODO these should all be refs -> turn all types to arc
@@ -199,8 +202,8 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 )
             }
             Expression::BinaryOperation(_, BinaryOperation { left, op, right }) => {
-                let left = self.format_expr(left)?;
-                let right = self.format_expr(right)?;
+                let left = self.format_expr(left, var_height)?;
+                let right = self.format_expr(right, var_height)?;
                 match op {
                     BinaryOperator::ShiftLeft => {
                         format!("(({left}).clone() << usize::try_from(({right}).clone()).unwrap())")
@@ -212,13 +215,13 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 }
             }
             Expression::UnaryOperation(_, UnaryOperation { op, expr }) => {
-                format!("({op} ({}).clone())", self.format_expr(expr)?)
+                format!("({op} ({}).clone())", self.format_expr(expr, var_height)?)
             }
             Expression::IndexAccess(_, IndexAccess { array, index }) => {
                 format!(
                     "{}[usize::try_from({}).unwrap()].clone()",
-                    self.format_expr(array)?,
-                    self.format_expr(index)?
+                    self.format_expr(array, var_height)?,
+                    self.format_expr(index, var_height)?
                 )
             }
             Expression::LambdaExpression(
@@ -230,11 +233,26 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     ..
                 },
             ) => {
+                // Number of new variables introduced in the parameters.
+                let new_vars = params.iter().map(|p| p.variables().count()).sum::<usize>();
+                // We create clones of the captured variables so that we can move them into the closure.
+                let captured_vars = body
+                    .all_children()
+                    .filter_map(|e| {
+                        if let Expression::Reference(_, Reference::LocalVar(id, name)) = e {
+                            (*id < var_height as u64).then_some(name)
+                        } else {
+                            None
+                        }
+                    })
+                    .unique()
+                    .map(|v| format!("let {v} = {v}.clone();"))
+                    .format("\n");
                 format!(
-                    "Callable::Closure(std::sync::Arc::new(move |({}): ({})| {{ {} }}))",
+                    "Callable::Closure(std::sync::Arc::new({{\n{captured_vars}\nmove |({}): ({})| {{ {} }}\n}}))",
                     params.iter().format(", "),
                     param_types.iter().map(map_type).format(", "),
-                    self.format_expr(body)?
+                    self.format_expr(body, var_height + new_vars)?
                 )
             }
             Expression::IfExpression(
@@ -247,9 +265,9 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
             ) => {
                 format!(
                     "if {} {{ {} }} else {{ {} }}",
-                    self.format_expr(condition)?,
-                    self.format_expr(body)?,
-                    self.format_expr(else_body)?
+                    self.format_expr(condition, var_height)?,
+                    self.format_expr(body, var_height)?,
+                    self.format_expr(else_body, var_height)?
                 )
             }
             Expression::ArrayLiteral(_, ArrayLiteral { items }) => {
@@ -257,7 +275,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     "vec![{}]",
                     items
                         .iter()
-                        .map(|i| self.format_expr(i))
+                        .map(|i| self.format_expr(i, var_height))
                         .collect::<Result<Vec<_>, _>>()?
                         .join(", ")
                 )
@@ -267,7 +285,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 "({})",
                 items
                     .iter()
-                    .map(|i| Ok(format!("({}.clone())", self.format_expr(i)?)))
+                    .map(|i| Ok(format!("({}.clone())", self.format_expr(i, var_height)?)))
                     .collect::<Result<Vec<_>, String>>()?
                     .join(", ")
             ),
@@ -280,7 +298,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                         .collect::<Result<Vec<_>, _>>()?
                         .join("\n"),
                     expr.as_ref()
-                        .map(|e| self.format_expr(e.as_ref()))
+                        .map(|e| self.format_expr(e.as_ref(), var_height))
                         .transpose()?
                         .unwrap_or_default()
                 )
@@ -294,13 +312,14 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 let var_name = "scrutinee__";
                 format!(
                     "{{\nlet {var_name} = ({}).clone();\n{}\n}}\n",
-                    self.format_expr(scrutinee)?,
+                    self.format_expr(scrutinee, var_height)?,
                     arms.iter()
                         .map(|MatchArm { pattern, value }| {
+                            let new_vars = pattern.variables().count();
                             let (bound_vars, arm_test) = check_pattern(var_name, pattern)?;
                             Ok(format!(
                                 "if let Some({bound_vars}) = ({arm_test}) {{\n{}\n}}",
-                                self.format_expr(value)?,
+                                self.format_expr(value, var_height + new_vars)?,
                             ))
                         })
                         .chain(std::iter::once(Ok("{ panic!(\"No match\"); }".to_string())))
@@ -551,7 +570,7 @@ mod test {
     #[test]
     fn simple_fun() {
         let result = compile("let c: int -> int = |i| i;", &["c"]);
-        assert_eq!(result, "fn c(i: ibig::IBig) -> ibig::IBig { i }\n");
+        assert_eq!(result, "fn c((i): (ibig::IBig)) -> ibig::IBig { i }\n");
     }
 
     #[test]
@@ -562,9 +581,9 @@ mod test {
         );
         assert_eq!(
             result,
-            "fn c(i: ibig::IBig) -> ibig::IBig { ((i).clone() + (ibig::IBig::from(20_u64)).clone()) }\n\
+            "fn c((i): (ibig::IBig)) -> ibig::IBig { ((i).clone() + (ibig::IBig::from(20_u64)).clone()) }\n\
             \n\
-            fn d(k: ibig::IBig) -> ibig::IBig { (c)(((k).clone() * (ibig::IBig::from(20_u64)).clone()).clone()) }\n\
+            fn d((k): (ibig::IBig)) -> ibig::IBig { (Callable::Fn(c)).call((((k).clone() * (ibig::IBig::from(20_u64)).clone()).clone())) }\n\
             "
         );
     }
