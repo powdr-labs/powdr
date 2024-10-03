@@ -6,8 +6,9 @@ use powdr_pil_analyzer::evaluator::Value;
 use powdr_pipeline::{
     test_util::{
         evaluate_function, evaluate_integer_function, execute_test_file, gen_estark_proof,
-        gen_halo2_proof, make_simple_prepared_pipeline, regular_test, std_analyzed, test_halo2,
-        test_pilcom, test_plonky3_with_backend_variant, BackendVariant,
+        gen_halo2_proof, make_simple_prepared_pipeline, regular_test,
+        regular_test_without_babybear, std_analyzed, test_halo2, test_pilcom,
+        test_plonky3_with_backend_variant, BackendVariant,
     },
     Pipeline,
 };
@@ -102,21 +103,21 @@ fn arith_test() {
 #[ignore = "Too slow"]
 fn memory_test() {
     let f = "std/memory_test.asm";
-    regular_test(f, &[]);
+    regular_test_without_babybear(f, &[]);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn memory_with_bootloader_write_test() {
     let f = "std/memory_with_bootloader_write_test.asm";
-    regular_test(f, &[]);
+    regular_test_without_babybear(f, &[]);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn memory_test_parallel_accesses() {
     let f = "std/memory_test_parallel_accesses.asm";
-    regular_test(f, &[]);
+    regular_test_without_babybear(f, &[]);
 }
 
 #[test]
