@@ -1,5 +1,4 @@
 use std::{
-    borrow::Cow,
     cell::Cell,
     cmp::Ordering,
     collections::{btree_map::Entry, BTreeMap, BTreeSet},
@@ -14,7 +13,8 @@ use goblin::elf::{
     Elf, ProgramHeader,
 };
 use itertools::{Either, Itertools};
-use powdr_asm_utils::data_storage::SingleDataValue;
+use powdr_isa_utils::SingleDataValue;
+use powdr_number::FieldElement;
 use raki::{
     decode::Decode,
     instruction::{Extensions, Instruction as Ins, OpcodeKind as Op},
@@ -301,7 +301,7 @@ impl RiscVProgram for ElfProgram {
 
     fn take_executable_statements(
         &mut self,
-    ) -> impl Iterator<Item = crate::code_gen::Statement<impl AsRef<str>, WrappedArgs>> {
+    ) -> impl Iterator<Item = code_gen::Statement<impl AsRef<str>, impl InstructionArgs>> {
         // In the output, the precedence is labels, locations, and then instructions.
         // We merge the 3 iterators with this operations: merge(labels, merge(locs, instructions)), where each is sorted by address.
 
@@ -365,7 +365,7 @@ impl RiscVProgram for ElfProgram {
             })
     }
 
-    fn start_function(&self) -> Cow<str> {
+    fn start_function(&self) -> impl AsRef<str> {
         self.dbg.symbols.get_one(self.entry_point)
     }
 }
@@ -380,14 +380,14 @@ struct WrappedArgs<'a> {
 impl<'a> InstructionArgs for WrappedArgs<'a> {
     type Error = String;
 
-    fn l(&self) -> Result<String, Self::Error> {
+    fn l(&self) -> Result<impl AsRef<str>, Self::Error> {
         match self.args {
             HighLevelArgs {
                 imm: HighLevelImmediate::CodeLabel(addr),
                 rd: None,
                 rs1: None,
                 rs2: None,
-            } => Ok(self.symbol_table.get_one(*addr).into()),
+            } => Ok(self.symbol_table.get_one(*addr).to_string()),
             _ => Err(format!("Expected: label, got {:?}", self.args)),
         }
     }
@@ -476,7 +476,9 @@ impl<'a> InstructionArgs for WrappedArgs<'a> {
         }
     }
 
-    fn rrl(&self) -> Result<(Register, Register, String), Self::Error> {
+    fn rrl(
+        &self,
+    ) -> Result<(Register, Register, impl AsRef<str>), <Self as InstructionArgs>::Error> {
         match self.args {
             HighLevelArgs {
                 imm: HighLevelImmediate::CodeLabel(addr),
@@ -486,13 +488,13 @@ impl<'a> InstructionArgs for WrappedArgs<'a> {
             } => Ok((
                 Register::new(*rs1 as u8),
                 Register::new(*rs2 as u8),
-                self.symbol_table.get_one(*addr).into(),
+                self.symbol_table.get_one(*addr).to_string(),
             )),
             _ => Err(format!("Expected: rs1, rs2, label, got {:?}", self.args)),
         }
     }
 
-    fn rl(&self) -> Result<(Register, String), Self::Error> {
+    fn rl(&self) -> Result<(Register, impl AsRef<str>), Self::Error> {
         match self.args {
             HighLevelArgs {
                 imm: HighLevelImmediate::CodeLabel(addr),
@@ -501,7 +503,7 @@ impl<'a> InstructionArgs for WrappedArgs<'a> {
                 rs2: None,
             } => Ok((
                 Register::new(*rs1 as u8),
-                self.symbol_table.get_one(*addr).into(),
+                self.symbol_table.get_one(*addr).to_string(),
             )),
             HighLevelArgs {
                 imm: HighLevelImmediate::CodeLabel(addr),

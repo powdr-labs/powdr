@@ -7,14 +7,14 @@ use powdr_ast::{
     asm_analysis::{AnalysisASMFile, Machine},
     parsed::{asm::parse_absolute_path, Expression, Number, PilStatement},
 };
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, LargeInt};
 use powdr_pipeline::Pipeline;
-use powdr_riscv_executor::{get_main_machine, Elem, ExecutionTrace, MemoryState, ProfilerOptions};
+use powdr_riscv_executor::{get_main_machine, ExecutionTrace, MemoryState, ProfilerOptions};
 
 pub mod bootloader;
 mod memory_merkle_tree;
 
-use bootloader::split_fe_as_elem;
+use bootloader::split_fe;
 use bootloader::{default_input, PAGE_SIZE_BYTES_LOG, PC_INDEX, REGISTER_NAMES};
 use memory_merkle_tree::MerkleTree;
 
@@ -26,8 +26,8 @@ use crate::continuations::bootloader::{
 
 use crate::code_gen::Register;
 
-fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace<F>) -> HashMap<String, Vec<Elem<F>>> {
-    let mut reg_values: HashMap<&str, Vec<Elem<F>>> = HashMap::with_capacity(trace.reg_map.len());
+fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace<F>) -> HashMap<String, Vec<F>> {
+    let mut reg_values: HashMap<&str, Vec<F>> = HashMap::with_capacity(trace.reg_map.len());
 
     let mut rows = trace.replay();
     while let Some(row) = rows.next_row() {
@@ -45,11 +45,15 @@ fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace<F>) -> HashMap<Strin
         .collect()
 }
 
-fn render_hash<F: FieldElement>(hash: &[Elem<F>]) -> String {
+fn render_memory_hash<F: FieldElement>(hash: &[F]) -> String {
+    // Main memory values must fit into u32
     hash.iter()
-        .map(|&f| match f {
-            Elem::Field(_) => panic!(),
-            Elem::Binary(b) => format!("{b:08x}"),
+        .map(|&f| {
+            let v = f
+                .to_integer()
+                .try_into_u32()
+                .expect("memory value larger than u32");
+            format!("{v:08x}")
         })
         .collect::<Vec<_>>()
         .join("")
@@ -262,7 +266,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     let (first_real_execution_row, _) = full_trace["main::pc"]
         .iter()
         .enumerate()
-        .find(|(_, &pc)| pc.bin() as u64 == DEFAULT_PC)
+        .find(|(_, &pc)| pc == DEFAULT_PC.into())
         .unwrap();
 
     // The number of rows of the full trace that we consider proven.
@@ -337,7 +341,9 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         log::info!("Bootloader inputs length: {}", bootloader_inputs.len());
         log::info!(
             "Initial memory root hash: {}",
-            render_hash(&bootloader_inputs[MEMORY_HASH_START_INDEX..MEMORY_HASH_START_INDEX + 8])
+            render_memory_hash(
+                &bootloader_inputs[MEMORY_HASH_START_INDEX..MEMORY_HASH_START_INDEX + 8]
+            )
         );
 
         log::info!("Simulating chunk execution...");
@@ -356,7 +362,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             (
                 transposed_trace(&trace),
                 memory_snapshot_update,
-                register_memory_snapshot.second_last,
+                register_memory_snapshot,
             )
         };
 
@@ -374,7 +380,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
                     .copy_from_slice(
                         &sibling
                             .iter()
-                            .flat_map(|e| split_fe_as_elem(*e))
+                            .flat_map(|e| split_fe(*e))
                             .collect::<Vec<_>>(),
                     );
             }
@@ -395,7 +401,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
                     &bootloader_inputs[proof_start_index + j * 8..proof_start_index + j * 8 + 8],
                     sibling
                         .iter()
-                        .flat_map(|e| split_fe_as_elem(*e))
+                        .flat_map(|e| split_fe(*e))
                         .collect::<Vec<_>>()
                 );
             }
@@ -407,7 +413,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
                 .copy_from_slice(
                     &page_hash
                         .iter()
-                        .flat_map(|e| split_fe_as_elem(*e))
+                        .flat_map(|e| split_fe(*e))
                         .collect::<Vec<_>>(),
                 );
         }
@@ -434,34 +440,34 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             &merkle_tree
                 .root_hash()
                 .iter()
-                .flat_map(|e| split_fe_as_elem(*e))
+                .flat_map(|e| split_fe(*e))
                 .collect::<Vec<_>>(),
         );
 
         log::info!(
             "Initial memory root hash: {}",
-            render_hash(&bootloader_inputs[MEMORY_HASH_START_INDEX..MEMORY_HASH_START_INDEX + 8])
+            render_memory_hash(
+                &bootloader_inputs[MEMORY_HASH_START_INDEX..MEMORY_HASH_START_INDEX + 8]
+            )
         );
         log::info!(
             "Final memory root hash: {}",
-            render_hash(
+            render_memory_hash(
                 &bootloader_inputs[MEMORY_HASH_START_INDEX + 8..MEMORY_HASH_START_INDEX + 16]
             )
         );
 
         let actual_num_rows = chunk_trace["main::pc"].len();
-        bootloader_inputs_and_num_rows.push((
-            bootloader_inputs.iter().map(|e| e.into_fe()).collect(),
-            actual_num_rows as u64,
-        ));
+        let bootloader_pc = bootloader_inputs[PC_INDEX];
+        bootloader_inputs_and_num_rows.push((bootloader_inputs, actual_num_rows as u64));
 
         log::info!("Chunk trace length: {}", chunk_trace["main::pc"].len());
         log::info!("Validating chunk...");
-        log::info!("Looking for pc = {}...", bootloader_inputs[PC_INDEX]);
+        log::info!("Looking for pc = {}...", bootloader_pc);
         let (start, _) = chunk_trace["main::pc"]
             .iter()
             .enumerate()
-            .find(|(_, &pc)| pc == bootloader_inputs[PC_INDEX])
+            .find(|(_, &pc)| pc == bootloader_pc)
             .unwrap();
         log::info!("Bootloader used {} rows.", start);
         log::info!(

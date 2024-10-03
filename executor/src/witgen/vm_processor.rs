@@ -395,6 +395,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
     /// Arguments:
     /// * `identities`: Identities to process. Completed identities are removed from the list.
     /// * `unknown_strategy`: How to process unknown variables. Either use zero or keep it symbolic.
+    ///
     /// Returns:
     /// * `Ok(true)`: If progress was made.
     /// * `Ok(false)`: If no progress was made.
