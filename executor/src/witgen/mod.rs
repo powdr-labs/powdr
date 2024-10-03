@@ -336,6 +336,10 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     fn common_degree_range<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> DegreeRange {
         let ids: HashSet<_> = ids.into_iter().collect();
 
+        println!("\n\n\n\nColumns in same degree range:\n");
+        for id in &ids {
+            println!("id = {}", self.column_name(id));
+        }
         self.analyzed
             // get all definitions
             .definitions
@@ -347,7 +351,10 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             // get all array elements and their degrees
             .flat_map(|symbol| symbol.array_elements().map(|(_, id)| (id, symbol.degree)))
             // only keep the ones matching our set
-            .filter_map(|(id, degree)| ids.contains(&id).then_some(degree))
+            .filter_map(|(id, degree)| {
+                println!("checking id = {}", self.column_name(&id));
+                ids.contains(&id).then_some(degree)
+            })
             // get the common degree
             .unique()
             .exactly_one()

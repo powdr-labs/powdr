@@ -190,6 +190,7 @@ fn log_machine_stats<T: FieldElement>(machine_name: &str, pil: &Analyzed<T>) {
     for (kind, count) in num_identities_by_kind {
         log::info!("    * {:?}: {}", kind, count);
     }
+    log::info!("* Entire pil\n{pil}");
 }
 
 struct MachineData<F> {
