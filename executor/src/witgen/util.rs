@@ -4,6 +4,7 @@ use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference}
 /// - a polynomial
 /// - not part of a polynomial array
 /// - not shifted with `'`
+///
 /// and return the polynomial if so
 pub fn try_to_simple_poly<T>(expr: &Expression<T>) -> Option<&AlgebraicReference> {
     if let Expression::Reference(p @ AlgebraicReference { next: false, .. }) = expr {

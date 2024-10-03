@@ -2,8 +2,8 @@ use ::powdr_pipeline::Pipeline;
 use powdr_number::{GoldilocksField, KnownField};
 
 use powdr_riscv::{
-    asm, compile_rust_crate_to_riscv_asm, continuations::bootloader::default_input,
-    CompilerOptions, Runtime, RuntimeEnum,
+    compile_rust_crate_to_riscv, continuations::bootloader::default_input, elf, CompilerOptions,
+    Runtime, RuntimeEnum,
 };
 
 use criterion::{criterion_group, criterion_main, Criterion};
@@ -17,11 +17,10 @@ fn executor_benchmark(c: &mut Criterion) {
 
     // Keccak
     let tmp_dir = Temp::new_dir().unwrap();
-    let riscv_asm_files =
-        compile_rust_crate_to_riscv_asm("./tests/riscv_data/keccak/Cargo.toml", &tmp_dir, None);
+    let executable =
+        compile_rust_crate_to_riscv("./tests/riscv_data/keccak/Cargo.toml", &tmp_dir, None);
     let options = CompilerOptions::new(KnownField::GoldilocksField, RuntimeEnum::base_32());
-
-    let contents = asm::compile(riscv_asm_files, options, false);
+    let contents = elf::translate(&executable, options, false);
     let mut pipeline = Pipeline::<T>::default().from_asm_string(contents, None);
     pipeline.compute_optimized_pil().unwrap();
     pipeline.compute_fixed_cols().unwrap();
@@ -31,27 +30,20 @@ fn executor_benchmark(c: &mut Criterion) {
     });
 
     // The first chunk of `many_chunks`, with Poseidon co-processor & bootloader
-    let riscv_asm_files = compile_rust_crate_to_riscv_asm(
-        "./tests/riscv_data/many_chunks/Cargo.toml",
-        &tmp_dir,
-        None,
-    );
-
+    let executable =
+        compile_rust_crate_to_riscv("./tests/riscv_data/many_chunks/Cargo.toml", &tmp_dir, None);
     let options = CompilerOptions::new(
         KnownField::GoldilocksField,
         RuntimeEnum::base_32().with_poseidon_for_continuations(),
     );
-    let contents = asm::compile(riscv_asm_files, options, true);
+    let contents = elf::translate(&executable, options, true);
     let mut pipeline = Pipeline::<T>::default().from_asm_string(contents, None);
     pipeline.compute_optimized_pil().unwrap();
     pipeline.compute_fixed_cols().unwrap();
 
     let pipeline = pipeline.add_external_witness_values(vec![(
         "main_bootloader_inputs::value".to_string(),
-        default_input(&[63, 64, 65])
-            .into_iter()
-            .map(|e| e.into_fe())
-            .collect(),
+        default_input(&[63, 64, 65]),
     )]);
     group.bench_function("many_chunks_chunk_0", |b| {
         b.iter(|| pipeline.clone().compute_witness().unwrap())

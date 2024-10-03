@@ -24,7 +24,7 @@ fn slice_to_vec<T: FieldElement>(arr: &[i32]) -> Vec<T> {
 fn sqrt_asm() {
     let f = "asm/sqrt.asm";
     let i = [3];
-    regular_test(f, &i);
+    regular_test_without_babybear(f, &i);
 }
 
 #[test]
@@ -57,7 +57,7 @@ fn secondary_machine_plonk() {
 #[test]
 fn secondary_block_machine_add2() {
     let f = "asm/secondary_block_machine_add2.asm";
-    regular_test(f, Default::default());
+    regular_test_without_babybear(f, Default::default());
 }
 
 #[test]
@@ -91,14 +91,14 @@ fn mem_write_once_external_write() {
 #[test]
 fn block_machine_cache_miss() {
     let f = "asm/block_machine_cache_miss.asm";
-    regular_test(f, Default::default());
+    regular_test_without_babybear(f, Default::default());
 }
 
 #[test]
 fn palindrome() {
     let f = "asm/palindrome.asm";
     let i = [7, 1, 7, 3, 9, 3, 7, 1];
-    regular_test(f, &i);
+    regular_test_without_babybear(f, &i);
 }
 
 #[test]
@@ -128,7 +128,7 @@ fn empty_vm() {
 #[test]
 fn vm_to_block_unique_interface() {
     let f = "asm/vm_to_block_unique_interface.asm";
-    regular_test(f, &[]);
+    regular_test_without_babybear(f, &[]);
 }
 
 #[test]
@@ -305,7 +305,7 @@ fn bit_access() {
 #[test]
 fn sqrt() {
     let f = "asm/sqrt.asm";
-    regular_test(f, Default::default());
+    regular_test_without_babybear(f, Default::default());
 }
 
 #[test]
@@ -376,13 +376,13 @@ fn enum_in_asm() {
 #[test]
 fn pass_range_constraints() {
     let f = "asm/pass_range_constraints.asm";
-    regular_test(f, Default::default());
+    regular_test_without_babybear(f, Default::default());
 }
 
 #[test]
 fn side_effects() {
     let f = "asm/side_effects.asm";
-    regular_test(f, Default::default());
+    regular_test_without_babybear(f, Default::default());
 }
 
 #[test]

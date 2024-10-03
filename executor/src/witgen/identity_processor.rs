@@ -196,6 +196,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
     /// - `left`: The evaluation of the left side of the lookup (symbolic for unknown values).
     /// - `right`: The expressions on the right side of the lookup.
     /// - `current_rows`: The [RowPair] needed to evaluate the right side of the lookup.
+    ///
     /// Returns:
     /// - `Ok(updates)`: The updates for the lookup.
     /// - `Err(e)`: If the constraint system is not satisfiable.
