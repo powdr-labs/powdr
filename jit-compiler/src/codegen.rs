@@ -92,12 +92,16 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
 
         Ok(match (&value.e, type_scheme) {
             (Expression::LambdaExpression(_, expr), TypeScheme { vars, ty }) => {
-                assert!(vars.is_empty());
+                if !vars.is_empty() {
+                    return Err(format!("Generic symbols not yet supported: {symbol}"));
+                }
                 self.try_format_function(symbol, expr, ty)?
             }
             _ => {
                 let type_scheme = value.type_scheme.as_ref().unwrap();
-                assert!(type_scheme.vars.is_empty());
+                if !type_scheme.vars.is_empty() {
+                    return Err(format!("Generic symbols not yet supported: {symbol}"));
+                }
                 let ty = if type_scheme.ty == Type::Col {
                     Type::Function(FunctionType {
                         params: vec![Type::Int],
