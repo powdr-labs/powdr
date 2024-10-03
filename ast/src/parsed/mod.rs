@@ -17,6 +17,7 @@ use std::{
 
 use auto_enums::auto_enum;
 use derive_more::Display;
+use itertools::Itertools;
 use powdr_number::{BigInt, BigUint, DegreeType};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -1497,31 +1498,45 @@ pub struct MatchAnalysisReport {
     pub redundant_patterns: Vec<usize>,
 }
 
+// TODO: after adding InfinitePatternSpace, this is probably not needed anymore
+// and we can use patterns directly
 #[derive(Debug, Clone)]
 enum PatternSpace {
     Contained(Vec<PatternSpace>, bool),
     Finite(FinitePatternSpace),
-    Infinite,
+    Infinite(InfinitePatternSpace),
     Covered,
 }
 
 #[derive(Debug, Clone)]
 enum FinitePatternSpace {
     Enum(String, Option<Vec<PatternSpace>>),
-    Bool(bool),
+    Bool(Option<bool>),
+}
+
+#[derive(Debug, Clone)]
+enum InfinitePatternSpace {
+    String(Option<String>),
+    Number(Option<BigInt>),
 }
 
 impl PatternSpace {
     fn is_covered_by_pattern(&self, pattern: &Pattern) -> bool {
         match (self, pattern) {
             (_, Pattern::CatchAll(_)) | (_, Pattern::Variable(_, _)) => true, // Covered already covered here :P
-            //(PatternSpace::Infinite, _) => false,
+            (
+                PatternSpace::Infinite(InfinitePatternSpace::String(Some(ss))),
+                Pattern::String(_, ps),
+            ) => ss == ps,
+            (
+                PatternSpace::Infinite(InfinitePatternSpace::Number(Some(sn))),
+                Pattern::Number(_, pn),
+            ) => sn == pn,
             (PatternSpace::Contained(spaces, _), Pattern::Tuple(_, items))
             | (PatternSpace::Contained(spaces, _), Pattern::Array(_, items)) => spaces
                 .iter()
                 .zip(items)
                 .all(|(space, p)| space.is_covered_by_pattern(p)),
-            //(PatternSpace::Contained(spaces, _), _) => false,
             (
                 PatternSpace::Finite(FinitePatternSpace::Enum(sname, inner_space)),
                 Pattern::Enum(_, symbol, inner_pattern),
@@ -1549,9 +1564,9 @@ pub fn analyze_match_patterns(
     patterns: &[Pattern],
     enums: HashMap<String, Vec<(String, Option<Vec<Type>>)>>,
 ) -> MatchAnalysisReport {
-    let covered_space = compute_covered_space(patterns, enums);
+    let mut covered_space = compute_covered_space(patterns, enums);
     let (is_exhaustive, redundant_indices, _remaining_space) =
-        analyze_patterns(patterns, covered_space);
+        analyze_patterns(patterns, &mut covered_space);
 
     MatchAnalysisReport {
         is_exhaustive,
@@ -1561,22 +1576,48 @@ pub fn analyze_match_patterns(
 
 fn analyze_patterns(
     patterns: &[Pattern],
-    covered_space: Vec<PatternSpace>,
+    covered_space: &mut Vec<PatternSpace>,
 ) -> (bool, Vec<usize>, Vec<PatternSpace>) {
-    let mut removed_patterns = Vec::new();
     let mut redundant_patterns = Vec::new();
-    for (index, space) in covered_space.iter().enumerate() {
-        for pattern in patterns {
-            if space.is_covered_by_pattern(pattern) {
-                removed_patterns.push(index);
+    let mut needed_patterns = Vec::new();
+    for (pattern_index, pattern) in patterns.iter().enumerate() {
+        let mut removed_space = Vec::new();
+        let mut mutated_space = false;
+        for (space_index, space) in covered_space.iter().enumerate() {
+            if removed_space.contains(&space_index) {
+                continue;
             }
+            if space.is_covered_by_pattern(pattern) {
+                removed_space.push(space_index);
+                mutated_space = true;
+            }
+        }
+
+        if mutated_space {
+            needed_patterns.push(pattern);
+            removed_space.sort();
+            removed_space.reverse();
+            println!(
+                "Removed spaces: [{:?}] from {:?} using {:?}",
+                removed_space, covered_space, pattern
+            );
+            for &index in &removed_space {
+                covered_space.remove(index);
+            }
+        } else {
+            redundant_patterns.push(pattern_index);
         }
     }
 
-    println!("Removed patterns: {:?}", removed_patterns);
+    println!("Covered space: {:?}", covered_space);
+    println!("Redundant patterns: {:?}", redundant_patterns);
+    println!("Needed patterns: {:?}", needed_patterns);
 
-    let remaining_space = Vec::new();
-    (true, redundant_patterns, remaining_space)
+    (
+        check_exhastiveness(needed_patterns), // TODO: Only check if covered is empty
+        redundant_patterns,
+        covered_space.to_vec(), // TODO: Covered space needs to be transformed back to Patterns
+    )
 }
 
 fn compute_covered_space(
@@ -1593,6 +1634,94 @@ fn compute_covered_space(
     result
 }
 
+fn check_exhastiveness(patterns: Vec<&Pattern>) -> bool {
+    if patterns.is_empty() {
+        return true;
+    }
+    if patterns
+        .iter()
+        .any(|p| matches!(p, Pattern::CatchAll(_)) || matches!(p, Pattern::Variable(_, _)))
+    {
+        return true;
+    }
+
+    if patterns
+        .iter()
+        .any(|p| matches!(p, Pattern::Number(_, _)) || matches!(p, Pattern::String(_, _)))
+    {
+        return false;
+    }
+
+    if patterns.iter().any(|p| matches!(p, Pattern::Enum(_, _, _))) {
+        let vectors: Vec<&Vec<Pattern>> = patterns
+            .iter()
+            .filter_map(|pattern| {
+                if let Pattern::Enum(_, _, Some(vec)) = pattern {
+                    Some(vec)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        check_exhastiveness_inner(vectors);
+    }
+
+    if patterns
+        .iter()
+        .any(|p| matches!(p, Pattern::Tuple(_, inner)))
+    {
+        let vectors: Vec<&Vec<Pattern>> = patterns
+            .iter()
+            .filter_map(|pattern| {
+                if let Pattern::Tuple(_, vec) = pattern {
+                    Some(vec)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        return check_exhastiveness_inner(vectors);
+    }
+
+    if patterns
+        .iter()
+        .any(|p| matches!(p, Pattern::Array(_, inner)))
+    {
+        let vectors: Vec<&Vec<Pattern>> = patterns
+            .iter()
+            .filter_map(|pattern| {
+                if let Pattern::Array(_, vec) = pattern {
+                    Some(vec)
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        return check_exhastiveness_inner(vectors);
+    }
+
+    false
+}
+
+fn check_exhastiveness_inner(vectors: Vec<&Vec<Pattern>>) -> bool {
+    let mut iterators = vectors.iter().map(|v| v.iter()).collect::<Vec<_>>();
+
+    while let Some(elements) = iterators
+        .iter_mut()
+        .map(|it| it.next())
+        .collect::<Option<Vec<_>>>()
+    {
+        if !check_exhastiveness(elements) {
+            return false;
+        }
+    }
+
+    true
+}
+
 fn process_pattern(
     pattern: &Pattern,
     enums: &HashMap<String, Vec<(String, Option<Vec<Type>>)>>,
@@ -1606,9 +1735,13 @@ fn process_pattern(
 fn create_pattern_space(pattern: &Pattern) -> PatternSpace {
     match pattern {
         Pattern::CatchAll(_) => PatternSpace::Covered,
-        Pattern::Ellipsis(_) => PatternSpace::Infinite,
-        Pattern::Number(_, _) => PatternSpace::Infinite,
-        Pattern::String(_, _) => PatternSpace::Infinite,
+        Pattern::Ellipsis(_) => unreachable!(),
+        Pattern::Number(_, n) => {
+            PatternSpace::Infinite(InfinitePatternSpace::Number(Some(n.clone())))
+        }
+        Pattern::String(_, s) => {
+            PatternSpace::Infinite(InfinitePatternSpace::String(Some(s.to_string())))
+        }
         Pattern::Variable(_, _) => PatternSpace::Covered,
         Pattern::Tuple(_, p) => {
             let inner_space = p.iter().map(|p| create_pattern_space(p)).collect();
@@ -1647,6 +1780,7 @@ fn expand_pattern_space(
                 .collect()
         }
         PatternSpace::Finite(FinitePatternSpace::Enum(p_name, _)) => {
+            // TODO I should process the specified enum and use it to modify the None values for more precision?
             let (enum_name, _variant_name) = p_name.rsplit_once("::").unwrap();
             enums
                 .get(enum_name)
@@ -1687,12 +1821,11 @@ fn expand_pattern_space(
         }
         PatternSpace::Finite(FinitePatternSpace::Bool(_)) => {
             vec![
-                PatternSpace::Finite(FinitePatternSpace::Bool(true)),
-                PatternSpace::Finite(FinitePatternSpace::Bool(false)),
+                PatternSpace::Finite(FinitePatternSpace::Bool(Some(true))),
+                PatternSpace::Finite(FinitePatternSpace::Bool(Some(false))),
             ]
         }
-        PatternSpace::Infinite => vec![PatternSpace::Infinite],
-        PatternSpace::Covered => vec![PatternSpace::Covered],
+        PatternSpace::Infinite(_) | PatternSpace::Covered => vec![pattern],
     };
 
     vec
@@ -1705,15 +1838,14 @@ fn process_variant_type(variant: &Option<Vec<Type>>) -> Option<Vec<PatternSpace>
             let mut pattern_space = Vec::with_capacity(types.len());
             for ty in types {
                 let new_pattern = match ty {
-                    Type::Bool
-                    | Type::Bottom
-                    | Type::Col
-                    | Type::Expr
-                    | Type::Function(_)
-                    | Type::Int
-                    | Type::Fe
-                    | Type::String
-                    | Type::Inter => PatternSpace::Infinite,
+                    Type::Bottom | Type::Col | Type::Expr | Type::Function(_) | Type::Inter => {
+                        unreachable!()
+                    }
+                    Type::Int | Type::Fe => {
+                        PatternSpace::Infinite(InfinitePatternSpace::Number(None))
+                    }
+                    Type::Bool => PatternSpace::Finite(FinitePatternSpace::Bool(None)),
+                    Type::String => PatternSpace::Infinite(InfinitePatternSpace::String(None)),
                     Type::Array(array_type) => todo!(),
                     Type::Tuple(tuple_type) => todo!(),
                     Type::TypeVar(_) => todo!(),
@@ -1754,8 +1886,8 @@ mod tests {
     #[test]
     fn test_carteian_product() {
         let patterns = vec![
-            vec![PatternSpace::Finite(FinitePatternSpace::Bool(true))],
-            vec![PatternSpace::Finite(FinitePatternSpace::Bool(false))],
+            vec![PatternSpace::Finite(FinitePatternSpace::Bool(Some(true)))],
+            vec![PatternSpace::Finite(FinitePatternSpace::Bool(Some(false)))],
         ];
 
         let res = cartesian_product(patterns);
@@ -1766,12 +1898,14 @@ mod tests {
     fn test_carteian_product_enum() {
         let patterns = vec![
             vec![
-                PatternSpace::Finite(FinitePatternSpace::Bool(true)),
-                PatternSpace::Finite(FinitePatternSpace::Bool(false)),
+                PatternSpace::Finite(FinitePatternSpace::Bool(Some(true))),
+                PatternSpace::Finite(FinitePatternSpace::Bool(Some(false))),
             ],
             vec![PatternSpace::Finite(FinitePatternSpace::Enum(
                 "Option::Some".to_string(),
-                Some(vec![PatternSpace::Finite(FinitePatternSpace::Bool(true))]),
+                Some(vec![PatternSpace::Finite(FinitePatternSpace::Bool(Some(
+                    true,
+                )))]),
             ))],
         ];
 
