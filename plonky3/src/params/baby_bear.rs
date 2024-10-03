@@ -22,9 +22,9 @@ use powdr_number::BabyBearField;
 const D: u64 = 7;
 // params directly taken from plonky3's poseidon2_round_numbers_128 function
 // to guarantee 128-bit security.
-pub const ROUNDS_F: usize = 8;
-pub const ROUNDS_P: usize = 13;
-pub const WIDTH: usize = 16;
+const ROUNDS_F: usize = 8;
+const ROUNDS_P: usize = 13;
+const WIDTH: usize = 16;
 type Perm = Poseidon2<BabyBear, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, WIDTH, D>;
 
 const DEGREE: usize = 4;
@@ -60,26 +60,18 @@ const RNG_SEED: u64 = 42;
 lazy_static! {
     static ref PERM_BB: Perm = Perm::new(
         ROUNDS_F,
-        poseidon2_external_constants(),
+        rand_chacha::ChaCha8Rng::seed_from_u64(RNG_SEED)
+            .sample_iter(Standard)
+            .take(ROUNDS_F)
+            .collect::<Vec<[BabyBear; WIDTH]>>(),
         Poseidon2ExternalMatrixGeneral,
         ROUNDS_P,
-        poseidon2_internal_constants(),
+        rand_chacha::ChaCha8Rng::seed_from_u64(RNG_SEED)
+            .sample_iter(Standard)
+            .take(ROUNDS_P)
+            .collect(),
         DiffusionMatrixBabyBear::default()
     );
-}
-
-pub fn poseidon2_external_constants() -> Vec<[BabyBear; WIDTH]> {
-    rand_chacha::ChaCha8Rng::seed_from_u64(RNG_SEED)
-        .sample_iter(Standard)
-        .take(ROUNDS_F)
-        .collect()
-}
-
-pub fn poseidon2_internal_constants() -> Vec<BabyBear> {
-    rand_chacha::ChaCha8Rng::seed_from_u64(RNG_SEED + 1)
-        .sample_iter(Standard)
-        .take(ROUNDS_P)
-        .collect()
 }
 
 impl FieldElementMap for BabyBearField {
