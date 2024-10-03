@@ -57,21 +57,21 @@ pub fn make_prepared_pipeline<T: FieldElement>(
     pipeline
 }
 
-/// Tests witness generation, pilcom, halo2 and estark.
-/// Does NOT test plonky3.
+/// Tests witness generation, pilcom, halo2, estark and plonky3.
 pub fn regular_test(file_name: &str, inputs: &[i32]) {
     let inputs_gl = inputs.iter().map(|x| GoldilocksField::from(*x)).collect();
     let pipeline_gl = make_prepared_pipeline(file_name, inputs_gl, vec![]);
     test_pilcom(pipeline_gl.clone());
-    gen_estark_proof(pipeline_gl);
+    gen_estark_proof(pipeline_gl.clone());
+    test_plonky3_pipeline(pipeline_gl);
 
     let inputs_bn = inputs.iter().map(|x| Bn254Field::from(*x)).collect();
     let pipeline_bn = make_prepared_pipeline(file_name, inputs_bn, vec![]);
     test_halo2(pipeline_bn);
 
     let inputs_bb = inputs.iter().map(|x| BabyBearField::from(*x)).collect();
-    let mut pipeline_bb = make_prepared_pipeline(file_name, inputs_bb, vec![]);
-    pipeline_bb.compute_witness().unwrap();
+    let pipeline_bb = make_prepared_pipeline(file_name, inputs_bb, vec![]);
+    test_plonky3_pipeline(pipeline_bb);
 }
 
 pub fn regular_test_without_babybear(file_name: &str, inputs: &[i32]) {
@@ -332,18 +332,14 @@ pub fn test_plonky3_with_backend_variant<T: FieldElement>(
 }
 
 #[cfg(feature = "plonky3")]
-pub fn test_plonky3_pipeline_with_backend_variant<T: FieldElement>(
-    pipeline: Pipeline<T>,
-    inputs: Vec<T>,
-    backend: BackendVariant,
-) {
-    let backend = match backend {
-        BackendVariant::Monolithic => powdr_backend::BackendType::Plonky3,
-        BackendVariant::Composite => powdr_backend::BackendType::Plonky3Composite,
-    };
-    let mut pipeline = pipeline
-        .with_prover_inputs(inputs)
-        .with_backend(backend, None);
+pub fn test_plonky3_pipeline<T: FieldElement>(pipeline: Pipeline<T>) {
+    let mut pipeline = pipeline.with_backend(powdr_backend::BackendType::Plonky3Composite, None);
+
+    pipeline.compute_witness().unwrap();
+
+    if !should_generate_proofs() {
+        return;
+    }
 
     // Generate a proof
     let proof = pipeline.compute_proof().cloned().unwrap();

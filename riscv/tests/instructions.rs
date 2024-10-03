@@ -12,13 +12,11 @@ mod instruction_tests {
     use test_log::test;
 
     fn run_instruction_test(path: &Path, name: &str) {
-        /*
-                let options_16 = CompilerOptions {
-                    field: KnownField::BabyBearField,
-                    runtime: RuntimeEnum::base_16(),
-                };
-                run_instruction_test_with_options(path, name, options_16);
-        */
+        let options_16 = CompilerOptions {
+            field: KnownField::BabyBearField,
+            runtime: RuntimeEnum::base_16(),
+        };
+        run_instruction_test_with_options(path, name, options_16);
 
         let options_32 = CompilerOptions {
             field: KnownField::GoldilocksField,

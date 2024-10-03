@@ -1,9 +1,7 @@
 use mktemp::Temp;
 use powdr_number::{BabyBearField, FieldElement, GoldilocksField, KnownField};
 use powdr_pipeline::{
-    test_util::{
-        run_pilcom_with_backend_variant, test_plonky3_pipeline_with_backend_variant, BackendVariant,
-    },
+    test_util::{run_pilcom_with_backend_variant, test_plonky3_pipeline, BackendVariant},
     Pipeline,
 };
 use powdr_riscv::CompilerOptions;
@@ -48,7 +46,7 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
         run_pilcom_with_backend_variant(pipeline_gl, BackendVariant::Composite).unwrap();
     }
 
-    test_plonky3_pipeline_with_backend_variant::<T>(pipeline, vec![], BackendVariant::Composite);
+    test_plonky3_pipeline::<T>(pipeline);
 }
 
 fn find_assembler() -> &'static str {
