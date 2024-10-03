@@ -14,7 +14,6 @@ use goblin::elf::{
 };
 use itertools::{Either, Itertools};
 use powdr_isa_utils::SingleDataValue;
-use powdr_number::FieldElement;
 use raki::{
     decode::Decode,
     instruction::{Extensions, Instruction as Ins, OpcodeKind as Op},

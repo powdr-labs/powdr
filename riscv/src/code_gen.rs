@@ -1,8 +1,7 @@
 use std::fmt;
 
-use itertools::Itertools;
-use powdr_isa_utils::{escape_label, quote, SingleDataValue};
-use powdr_number::{FieldElement, KnownField};
+use powdr_isa_utils::SingleDataValue;
+use powdr_number::KnownField;
 
 use crate::CompilerOptions;
 

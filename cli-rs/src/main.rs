@@ -209,14 +209,13 @@ fn run_command(command: Commands) {
             output_directory,
             coprocessors,
             continuations,
-        } => {
-            call_with_field!(compile_rust::<field>(
-                &file,
-                Path::new(&output_directory),
-                coprocessors,
-                continuations
-            ))
-        }
+        } => compile_rust(
+            &file,
+            field.as_known_field(),
+            Path::new(&output_directory),
+            coprocessors,
+            continuations,
+        ),
         Commands::RiscvElf {
             file,
             field,
@@ -308,7 +307,8 @@ fn compile_rust(
         runtime = runtime.with_poseidon_for_continuations();
     }
 
-    powdr_riscv::compile_rust::<F>(file_name, output_dir, true, &runtime, continuations, None)
+    let options = CompilerOptions::new(field, runtime);
+    powdr_riscv::compile_rust(file_name, options, output_dir, true, continuations, None)
         .ok_or_else(|| vec!["could not compile rust".to_string()])?;
 
     Ok(())

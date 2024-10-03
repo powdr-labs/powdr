@@ -8,7 +8,7 @@ use std::{
     process::Command,
 };
 
-use powdr_number::FieldElement;
+use powdr_number::KnownField;
 use std::fs;
 
 pub use crate::runtime::{Runtime, RuntimeEnum};
@@ -65,7 +65,6 @@ pub fn compile_rust(
     options: CompilerOptions,
     output_dir: &Path,
     force_overwrite: bool,
-    runtime: &Runtime,
     with_bootloader: bool,
     features: Option<Vec<String>>,
 ) -> Option<(PathBuf, String)> {
@@ -108,12 +107,12 @@ pub fn compile_rust(
 
     let elf_path = compile_rust_crate_to_riscv(&file_path, output_dir, features);
 
-    compile_riscv_elf::<T>(
+    compile_riscv_elf(
         file_name,
         &elf_path,
+        options,
         output_dir,
         force_overwrite,
-        runtime,
         with_bootloader,
     )
 }

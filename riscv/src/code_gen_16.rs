@@ -1,8 +1,8 @@
 use std::vec;
 
 use itertools::Itertools;
-use powdr_asm_utils::data_storage::SingleDataValue;
-use powdr_asm_utils::utils::{escape_label, quote};
+use powdr_isa_utils::SingleDataValue;
+use powdr_isa_utils::{escape_label, quote};
 
 use crate::continuations::bootloader::{bootloader_and_shutdown_routine, bootloader_preamble};
 use crate::runtime::Runtime;
