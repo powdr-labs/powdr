@@ -1,5 +1,6 @@
 use std::array;
 use std::check::assert;
+use std::utils;
 use std::utils::unchanged_until;
 use std::utils::force_bool;
 use std::utils::sum;
@@ -119,7 +120,7 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     // Doesn't have to be a complete matrix multiplication, as the last round discards
     // part of the state, so we can skip the corresponding rows in the matrix.
     let apply_mds = constr |input, output_len|{
-        let dot_product = |v1, v2| array::sum(array::new(v1, v2, |v1_i, v2_i| v1_i * v2_i));
+        let dot_product = |v1, v2| array::sum(array::zip(v1, v2, |v1_i, v2_i| v1_i * v2_i));
         array::map(array::sub_array(MDS, 0, output_len), |row| dot_product(row, input))
     };
 
@@ -151,7 +152,7 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
             array::zip(
                 array::sub_array(input, 1, STATE_SIZE - 1),
                 array::sub_array(output, 1, STATE_SIZE - 1),
-                constr |in_out| in_out
+                constr |in_v, out_v| (in_v, out_v)
             ),
             array::sub_array(DIFF_DIAGONAL, 1, STATE_SIZE - 1),
             constr |(in_v, out_v), diag| out_v = (line_sum + diag * in_v) * DIFF_MULTIPLIER
@@ -190,48 +191,52 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     link ~> (input_low[14], input_high[14]) = mem.mload(input_addr + 56, time_step);
     link ~> (input_low[15], input_high[15]) = mem.mload(input_addr + 60, time_step);
 
-    // The rounds:
-    let rounds: col[2*HALF_EXTERNAL_ROUNDS + INTERNAL_ROUNDS][STATE_SIZE];
-
     // Perform the inital MDS step
-    rounds[0] = apply_mds(input, STATE_SIZE);
+    let pre_rounds = apply_mds(input, STATE_SIZE);
 
-    // Perform the first half of the external rounds
-    array::map_enumerated(
-        array::zip(
-            array::sub_array(rounds, 0, HALF_EXTERNAL_ROUNDS),
-            array::sub_array(rounds, 1, HALF_EXTERNAL_ROUNDS),
-            |in_out| in_out
-        ),
-        constr |i, (in_v, out_v)| external_round(i, in_v, out_v)
-    );
+    // Perform most of the rounds
+    let final_full_state: col[STATE_SIZE];
+    (constr || {
+        // Perform the first half of the external rounds
+        final_full_state = utils::fold(
+            HALF_EXTERNAL_ROUNDS, |round_idx| round_idx, pre_rounds,
+            constr |pre_state, round_idx| {
+                let post_state;
+                external_round(round_idx, pre_state, post_state);
+                post_state
+            }
+        );
 
-    // Perform the internal rounds
-    array::map_enumerated(
-        array::zip(
-            array::sub_array(rounds, HALF_EXTERNAL_ROUNDS, INTERNAL_ROUNDS),
-            array::sub_array(rounds, HALF_EXTERNAL_ROUNDS + 1, INTERNAL_ROUNDS),
-            |in_out| in_out
-        ),
-        constr |i, (in_v, out_v)| internal_round(i, in_v, out_v)
-    );
+        // Perform the internal rounds
+        let after_internal_rounds = utils::fold(
+            INTERNAL_ROUNDS, |round_idx| round_idx, after_initial_rounds,
+            constr |pre_state, round_idx| {
+                let post_state;
+                internal_round(round_idx, pre_state, post_state);
+                post_state
+            }
+        );
 
-    // Perform the second half of the external rounds, except the last one
-    let second_external_start = HALF_EXTERNAL_ROUNDS + INTERNAL_ROUNDS;
-    array::map_enumerated(
-        array::zip(
-            array::sub_array(rounds, second_external_start, HALF_EXTERNAL_ROUNDS - 1),
-            array::sub_array(rounds, second_external_start + 1, HALF_EXTERNAL_ROUNDS - 1),
-            |in_out| in_out
-        ),
-        constr |i, (in_v, out_v)| external_round(i + HALF_EXTERNAL_ROUNDS, in_v, out_v)
-    );
+        // Perform the second half of the external rounds, except the last one
+        let final_full_state = utils::fold(
+            HALF_EXTERNAL_ROUNDS - 1,
+            |round_idx| round_idx + HALF_EXTERNAL_ROUNDS,
+            after_internal_rounds,
+            constr |pre_state, round_idx| {
+                let post_state;
+                external_round(round_idx, pre_state, post_state);
+                post_state
+            }
+        );
+
+        final_full_state
+    })();
 
     // Perform the last external round
     // It is special because the output is smaller than the entire state,
     // so the MDS matrix multiplication is only partial.
     let output: col[OUTPUT_SIZE];
-    external_round(2 * HALF_EXTERNAL_ROUNDS - 1, rounds[second_external_start + HALF_EXTERNAL_ROUNDS - 1], output);
+    external_round(2 * HALF_EXTERNAL_ROUNDS - 1, final_full_state, output);
 
     // Write the output in the second time step
     //
