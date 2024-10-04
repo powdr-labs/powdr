@@ -6,6 +6,13 @@ license.workspace = true
 homepage.workspace = true
 repository.workspace = true
 
+[lib]
+name = "powdr_plonky3"
+
+[[bin]]
+name = "gen_poseidon2_bb_consts"
+path = "src/bin/gen_poseidon2_bb_consts.rs" 
+
 [dependencies]
 powdr-ast.workspace = true
 powdr-number.workspace = true
@@ -32,6 +39,7 @@ p3-maybe-rayon = { git = "https://github.com/plonky3/Plonky3.git", features = [
 p3-mds = { git = "https://github.com/plonky3/Plonky3.git" }
 p3-merkle-tree = { git = "https://github.com/plonky3/Plonky3.git" }
 p3-mersenne-31 = { git = "https://github.com/plonky3/Plonky3.git" }
+p3-monty-31 = { git = "https://github.com/plonky3/Plonky3.git" }
 p3-circle = { git = "https://github.com/plonky3/Plonky3.git" }
 p3-baby-bear = { git = "https://github.com/plonky3/Plonky3.git" }
 p3-goldilocks = { git = "https://github.com/plonky3/Plonky3.git" }
