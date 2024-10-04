@@ -1,16 +1,23 @@
-use powdr_number::GoldilocksField;
-use powdr_pil_analyzer::analyze_string;
+use powdr_number::{FieldElement, GoldilocksField};
+use powdr_pipeline::pipeline::Columns;
 use powdr_pipeline::Pipeline;
+use std::sync::Arc;
+
+fn run_witgen_pil<T: FieldElement>(pil: &str) -> Arc<Columns<T>> {
+    env_logger::init();
+
+    Pipeline::default()
+        .from_pil_string(pil.to_string())
+        .compute_witness()
+        .unwrap()
+}
 
 #[test]
 fn two_machines_conflicting_public() {
-    env_logger::init();
-
     // This test *should* fail, because two machines access the same
     // public, but assign different values to it.
     // The current implementation ignores scalar publics though, so this
     // is not caught.
-
     let src = r#"
     namespace Machine1(4);
         col witness y;
@@ -26,8 +33,5 @@ fn two_machines_conflicting_public() {
         // x will be 42 on all rows
         x - :public = 0;
     "#;
-    let witness = Pipeline::<GoldilocksField>::default()
-        .from_pil_string(src.to_string())
-        .compute_witness()
-        .unwrap();
+    run_witgen_pil::<GoldilocksField>(src);
 }
