@@ -15,14 +15,11 @@ use std::machines::range::Byte2;
 // Arithmetic machine, inspired by Polygon's 256-Bit Arith machine: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/arith.pil
 machine Arith16(byte: Byte, byte2: Byte2) with
     latch: CLK8_7,
-    operation_id: operation_id,
+    operation_id: is_division,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
-    col witness operation_id;
-
-    // operation_id has to be either mul or div.
-    force_bool(operation_id);
+    col witness is_division;
 
     // Computes x1 * y1 + x2, where all inputs / outputs are 32-bit words (represented as 16-bit limbs in big-endian order).
     // More precisely, affine(x1, y1, x2) = (y2, y3), where x1 * y1 + x2 = 2**16 * y2 + y3
@@ -35,11 +32,11 @@ machine Arith16(byte: Byte, byte2: Byte2) with
     operation div<1> y3c[1], y3c[0], x1c[1], x1c[0] -> y1c[1], y1c[0], x2c[1], x2c[0];
 
     // Constrain that y2 = 0 when operation is div.
-    array::new(4, |i| operation_id * y2[i] = 0);
+    array::new(4, |i| is_division * y2[i] = 0);
 
     // We need to provide hints for the quotient and remainder, because they are not unique under our current constraints.
     // They are unique given additional main machine constraints, but it's still good to provide hints for the solver.
-    let quotient_hint = query |limb| match(eval(operation_id)) {
+    let quotient_hint = query |limb| match(eval(is_division)) {
         1 => {
             if x1_int() == 0 {
                 // Quotient is unconstrained, use zero.
@@ -61,7 +58,7 @@ machine Arith16(byte: Byte, byte2: Byte2) with
     
     let y1: expr[] = [y1_0, y1_1, y1_2, y1_3];
 
-    let remainder_hint = query |limb| match(eval(operation_id)) {
+    let remainder_hint = query |limb| match(eval(is_division)) {
         1 => {
             let y3 = y3_int();
             let x1 = x1_int();
