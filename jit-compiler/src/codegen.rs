@@ -88,7 +88,10 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
             ));
         };
 
-        let type_scheme = value.type_scheme.as_ref().unwrap();
+        let type_scheme = value
+            .type_scheme
+            .as_ref()
+            .ok_or_else(|| format!("Symbol does not have a type: {symbol}"))?;
 
         Ok(match (&value.e, type_scheme) {
             (Expression::LambdaExpression(_, expr), TypeScheme { vars, ty }) => {
@@ -183,7 +186,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                         .map_err(|_| "Large numbers for expr not yet implemented.".to_string())?;
                     format!("Expr::from({val}_u64)")
                 }
-                _ => unreachable!(),
+                _ => return Err(format!("Unexpected type for literal number: {type_}")),
             },
             Expression::FunctionCall(
                 _,
