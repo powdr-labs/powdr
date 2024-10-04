@@ -198,7 +198,7 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     let final_full_state: col[STATE_SIZE];
     (constr || {
         // Perform the first half of the external rounds
-        final_full_state = utils::fold(
+        let after_initial_rounds = utils::fold(
             HALF_EXTERNAL_ROUNDS, |round_idx| round_idx, pre_rounds,
             constr |pre_state, round_idx| {
                 let post_state;
@@ -218,7 +218,7 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
         );
 
         // Perform the second half of the external rounds, except the last one
-        let final_full_state = utils::fold(
+        final_full_state = utils::fold(
             HALF_EXTERNAL_ROUNDS - 1,
             |round_idx| round_idx + HALF_EXTERNAL_ROUNDS,
             after_internal_rounds,
@@ -228,8 +228,6 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
                 post_state
             }
         );
-
-        final_full_state
     })();
 
     // Perform the last external round
