@@ -13,6 +13,7 @@ use folder::*;
 use proof::*;
 use prover::*;
 use traits::*;
+use verifier::*;
 
 #[cfg(debug_assertions)]
 mod check_constraints;

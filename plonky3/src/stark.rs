@@ -6,19 +6,18 @@ use powdr_executor::constant_evaluator::VariablySizedColumn;
 
 use core::fmt;
 use std::collections::BTreeMap;
-use std::iter::{once, repeat};
 use std::sync::Arc;
 
 use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
 
-use crate::{Proof, StarkProvingKey, StarkVerifyingKey};
+use crate::{prove, verify, Proof, StarkProvingKey, StarkVerifyingKey};
 
 use p3_uni_stark::StarkGenericConfig;
 
 use crate::{
-    circuit_builder::{generate_matrix, PowdrCircuit},
+    circuit_builder::PowdrCircuit,
     params::{Challenger, Commitment, FieldElementMap, ProverData},
 };
 
@@ -117,18 +116,20 @@ where
             .into_group_map_by(|(name, _)| name.split("::").next().unwrap());
 
         let preprocessed: BTreeMap<String, BTreeMap<usize, (_, _)>> =
-            fixed_by_table
-                .into_iter()
-                .map(|(namespace, fixed_columns)| {
-                    // assumption: all columns within a namespace have the same degree range
-                    (namespace.to_string(), fixed_columns[0].1.available_sizes().iter().map(|size| {
+            powdr_backend_utils::split_pil(&self.analyzed).iter()
+                .filter_map(|(namespace, pil)| {
+                    // if we have neither fixed columns nor publics, we don't need to commit to anything
+                    if pil.constant_count() + pil.publics_count() == 0 {
+                        None
+                    } else {
+                        let fixed = fixed_by_table.get(namespace.as_str());
+                    Some((namespace.to_string(), pil.committed_polys_in_source_order().iter().find_map(|(s, _)| s.degree).unwrap().iter().map(|size| {
                     // get selector columns for public values
-                    let publics = self
-                        .analyzed
+                    let publics = pil
                         .get_publics()
                         .into_iter()
                         .map(|(name, _, row_id, _)| {
-                            let selector = (0..*size)
+                            let selector = (0..size)
                                 .map(move |i| T::from(i == row_id as u64))
                                 .collect::<Vec<T>>();
                             (name, selector)
@@ -142,17 +143,17 @@ where
                     let pcs = config.pcs();
                     let domain = <_ as p3_commit::Pcs<_, Challenger<T>>>::natural_domain_for_degree(
                         pcs,
-                        *size as usize,
+                        size as usize,
                     );
                     // write fixed into matrix row by row
                     let matrix = RowMajorMatrix::new(
-                        (0..*size)
+                        (0..size)
                             .flat_map(|i| {
-                                fixed_columns
-                                    .iter()
+                                fixed.iter().flat_map(|columns|
+                                    columns.iter()
                                     .map(|(name, column)| {
-                                        (name, column.get_by_size(*size).unwrap())
-                                    })
+                                        (name, column.get_by_size(size).unwrap())
+                                    })).collect_vec().into_iter()
                                     .chain(
                                         publics
                                             .iter()
@@ -161,18 +162,18 @@ where
                                     .map(move |(_, values)| values[i as usize].into_p3_field())
                             })
                             .collect(),
-                        self.fixed.len() + publics.len(),
+                            fixed.map(|f| f.len()).unwrap_or_default() + publics.len(),
                     );
 
                     let evaluations = vec![(domain, matrix)];
 
                     // commit to the evaluations
                     (
-                        *size as usize,
+                        size as usize,
                         <_ as p3_commit::Pcs<_, Challenger<T>>>::commit(pcs, evaluations),
                     )
-                }).collect::<BTreeMap<usize, (_, _)>>())
-                })
+                }).collect::<BTreeMap<usize, (_, _)>>()))
+    }})
                 .collect();
 
         let verifying_key = StarkVerifyingKey {
@@ -199,98 +200,103 @@ where
         witness: &[(String, Vec<T>)],
         witgen_callback: WitgenCallback<T>,
     ) -> Result<Vec<u8>, String> {
-        let stage_0_trace =
-            generate_matrix(witness.iter().map(|(name, value)| (name, value.as_ref())));
-
-        let circuit = PowdrCircuit::new(&self.analyzed)
+        let circuit = PowdrCircuit::new((*self.analyzed).clone())
             .with_witgen_callback(witgen_callback)
             .with_phase_0_witness(witness);
 
         // #[cfg(debug_assertions)]
         // let circuit = circuit.with_preprocessed(self.get_preprocessed_matrix());
 
-        let stage_0_publics = circuit.public_values_so_far();
+        // assert!(stage_0_publics.is_empty());
 
-        let config = T::get_config();
-
-        let challenger = T::get_challenger();
+        let mut challenger = T::get_challenger();
 
         let proving_key = self.proving_key.as_ref();
 
-        unimplemented!();
-
-        // let proof = prove_with_key(
-        //     &config,
-        //     proving_key,
-        //     &circuit,
-        //     &mut challenger,
-        //     stage_0_trace,
-        //     &circuit,
-        //     &stage_0_publics,
-        // );
-
-        // let mut challenger = T::get_challenger();
-
-        // let verifying_key = self.verifying_key.as_ref();
-
-        // let empty_public = vec![];
-        // let public_values = once(&stage_0_publics)
-        //     .chain(repeat(&empty_public))
-        //     .take(self.analyzed.stage_count())
+        // let stage_0 = witness
+        //     .iter()
+        //     .into_group_map_by(|(name, _)| name.split("::").next().unwrap())
+        //     .into_iter()
+        //     .map(|(name, values)| {
+        //         (
+        //             name.to_string(),
+        //             AirStage {
+        //                 trace: generate_matrix(
+        //                     values
+        //                         .into_iter()
+        //                         .map(|(name, values)| (name, values.as_ref())),
+        //                 ),
+        //                 public_values: vec![],
+        //             },
+        //         )
+        //     })
         //     .collect();
 
-        // verify_with_key(
-        //     &config,
-        //     verifying_key,
-        //     &circuit,
-        //     &mut challenger,
-        //     &proof,
-        //     public_values,
-        // )
-        // .unwrap();
-        // Ok(bincode::serialize(&proof).unwrap())
-    }
+        let proof = prove(proving_key, &circuit, witness, &mut challenger, &circuit);
 
-    pub fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), String> {
-        let proof: Proof<T::Config> =
-            bincode::deserialize(proof).map_err(|e| format!("Failed to deserialize proof: {e}"))?;
-        let publics = instances
-            .iter()
-            .flatten()
-            .map(|v| v.into_p3_field())
-            .collect();
-
-        let config = T::get_config();
-
-        let challenger = T::get_challenger();
+        let mut challenger = T::get_challenger();
 
         let verifying_key = self.verifying_key.as_ref();
 
-        let empty_public = vec![];
-        let public_values: Vec<_> = once(&publics)
-            .chain(repeat(&empty_public))
-            .take(self.analyzed.stage_count())
+        let public_values = circuit.public_values_so_far();
+
+        let public_values = public_values
+            .into_iter()
+            .map(|(name, values)| {
+                (
+                    name,
+                    values
+                        .into_iter()
+                        .map(|v| {
+                            v.into_iter()
+                                .map(|v| v.expect("public value should be known"))
+                                .collect()
+                        })
+                        .collect(),
+                )
+            })
             .collect();
 
-        unimplemented!();
+        verify(
+            verifying_key,
+            &circuit,
+            &mut challenger,
+            &proof,
+            public_values,
+        )
+        .unwrap();
+        Ok(bincode::serialize(&proof).unwrap())
+    }
 
-        // verify_with_key(
-        //     &config,
-        //     verifying_key,
-        //     &PowdrCircuit::new(&self.analyzed),
-        //     &mut challenger,
-        //     &proof,
-        //     public_values,
-        // )
-        // .map_err(|e| format!("Failed to verify proof: {e:?}"))
+    // verify the proof given the instances for each table, for each stage
+    pub fn verify(
+        &self,
+        proof: &[u8],
+        instances: BTreeMap<String, Vec<Vec<T>>>,
+    ) -> Result<(), String> {
+        let proof: Proof<T::Config> =
+            bincode::deserialize(proof).map_err(|e| format!("Failed to deserialize proof: {e}"))?;
+
+        let mut challenger = T::get_challenger();
+
+        let verifying_key = self.verifying_key.as_ref();
+
+        verify(
+            verifying_key,
+            &PowdrCircuit::new((*self.analyzed).clone()),
+            &mut challenger,
+            &proof,
+            instances,
+        )
+        .map_err(|e| format!("Failed to verify proof: {e:?}"))
     }
 }
 
 #[cfg(test)]
 mod tests {
-    
 
-    
+    use std::iter::once;
+
     use powdr_number::{BabyBearField, GoldilocksField, Mersenne31Field};
     use powdr_pipeline::Pipeline;
     use test_log::test;
@@ -318,12 +324,14 @@ mod tests {
 
         let mut prover = Plonky3Prover::new(pil, fixed);
         prover.setup();
+
         let proof = prover.prove(&witness, witness_callback);
 
         assert!(proof.is_ok());
 
         if let Some(publics) = malicious_publics {
-            prover.verify(&proof.unwrap(), &[publics]).unwrap()
+            let publics = once(("Main".to_string(), vec![publics])).collect();
+            prover.verify(&proof.unwrap(), publics).unwrap()
         }
     }
 
@@ -384,7 +392,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "assertion `left == right` failed: Not a power of two: 0\n  left: 0\n right: 1"]
+    #[should_panic = "No tables to prove"]
     fn empty() {
         let content = "namespace Global(8);";
         run_test(content);
@@ -409,6 +417,24 @@ mod tests {
             col witness x;
             col fixed y = [1, 0]*;
             x * y = y;
+        "#;
+        run_test(content);
+    }
+
+    #[test]
+    fn two_tables() {
+        let content = r#"
+        namespace Add(8);
+            col witness x;
+            col witness y;
+            col witness z;
+            x + y = z;
+
+        namespace Mul(8);
+            col witness x;
+            col witness y;
+            col witness z;
+            x * y = z;
         "#;
         run_test(content);
     }

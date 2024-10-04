@@ -50,11 +50,7 @@ where
             return Err(Error::NoLaterStagePublicAvailable);
         }
 
-        let fixed = Arc::new(
-            get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
-        );
-
-        let mut p3 = Box::new(Plonky3Prover::new(pil.clone(), fixed.clone()));
+        let mut p3 = Box::new(Plonky3Prover::new(pil.clone(), fixed));
 
         if let Some(verification_key) = verification_key {
             p3.set_verifying_key(verification_key);

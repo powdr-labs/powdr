@@ -36,16 +36,19 @@ type Witness<T> = Mutex<RefCell<Vec<(String, Vec<T>)>>>;
 /// A description of the constraint system.
 /// All of the data is derived from the analyzed PIL, but is materialized
 /// here for performance reasons.
-struct ConstraintSystem<T> {
+// TODO: remove clone
+#[derive(Debug, Clone)]
+pub struct ConstraintSystem<T> {
     // for each witness column, the stage and index of this column in this stage
     witness_columns: HashMap<PolyID, (usize, usize)>,
     // for each fixed column, the index of this column in the fixed columns
     fixed_columns: HashMap<PolyID, usize>,
     identities: Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>>,
-    publics: Vec<(String, PolyID, usize, u32)>,
+    // for each public column, the name, poly_id, index in the witness columns, and stage
+    pub publics: Vec<(String, PolyID, usize, u32)>,
     commitment_count: usize,
     constant_count: usize,
-    // for each stage, the number of witness columns
+    // for each stage, the number of witness columns. There is always a least one stage, possibly empty
     stage_widths: Vec<usize>,
     challenges: BTreeSet<Challenge>,
 }
@@ -120,12 +123,80 @@ where
     ProverData<T>: Send,
     Commitment<T>: Send,
 {
-    /// The constraint system description
-    constraint_system: ConstraintSystem<T>,
-    /// The values of the witness, in a [RefCell] as it gets mutated as we go through stages
-    witness_so_far: Witness<T>,
+    /// The split program
+    pub split: BTreeMap<String, (Analyzed<T>, ConstraintSystem<T>)>,
     /// Callback to augment the witness in the later stages
     witgen_callback: Option<WitgenCallback<T>>,
+    /// The values of the witness, in a [RefCell] as it gets mutated as we go through stages
+    witness_so_far: Witness<T>,
+}
+
+impl<T: FieldElementMap> PowdrCircuit<T>
+where
+    ProverData<T>: Send,
+    Commitment<T>: Send,
+{
+    pub(crate) fn new(analyzed: Analyzed<T>) -> Self {
+        Self {
+            split: powdr_backend_utils::split_pil(&analyzed)
+                .iter()
+                .map(|(name, analyzed)| (name.clone(), (analyzed.clone(), analyzed.into())))
+                .collect(),
+            witgen_callback: None,
+            witness_so_far: Default::default(),
+        }
+    }
+
+    /// Calculates public values from generated witness values.
+    /// For stages in which there are no public values, return an empty vector
+    pub(crate) fn public_values_so_far(&self) -> BTreeMap<String, Vec<Vec<Option<T>>>> {
+        let binding = &self.witness_so_far.lock().unwrap();
+        let witness = binding.borrow();
+
+        let witness = witness
+            .iter()
+            .map(|(name, values)| (name, values))
+            .collect::<BTreeMap<_, _>>();
+
+        self.split
+            .iter()
+            .map(|(name, (_, table))| {
+                let mut res = vec![vec![]; table.stage_widths.len()];
+
+                for (name, poly_id, _, _) in &table.publics {
+                    let (stage, index) = table.witness_columns[poly_id];
+                    res[stage].push(witness.get(name).map(|column| column[index]));
+                }
+
+                (name.clone(), res)
+            })
+            .collect()
+    }
+
+    pub(crate) fn with_witgen_callback(self, witgen_callback: WitgenCallback<T>) -> Self {
+        Self {
+            witgen_callback: Some(witgen_callback),
+            ..self
+        }
+    }
+
+    pub(crate) fn with_phase_0_witness(self, witness: &[(String, Vec<T>)]) -> Self {
+        assert!(self.witness_so_far.lock().unwrap().borrow().is_empty());
+        Self {
+            witness_so_far: RefCell::new(witness.to_vec()).into(),
+            ..self
+        }
+    }
+}
+
+#[derive(Debug)]
+pub(crate) struct PowdrTable<'a, T: FieldElementMap>
+where
+    ProverData<T>: Send,
+    Commitment<T>: Send,
+{
+    /// The constraint system description
+    constraint_system: &'a ConstraintSystem<T>,
     /// The matrix of preprocessed values, used in debug mode to check the constraints before proving
     #[cfg(debug_assertions)]
     preprocessed: Option<RowMajorMatrix<Plonky3Field<T>>>,
@@ -157,54 +228,16 @@ where
     RowMajorMatrix::new(values, width)
 }
 
-impl<T: FieldElementMap> PowdrCircuit<T>
+impl<'a, T: FieldElementMap> PowdrTable<'a, T>
 where
     ProverData<T>: Send,
     Commitment<T>: Send,
 {
-    pub(crate) fn new(analyzed: &Analyzed<T>) -> Self {
+    pub(crate) fn new(constraint_system: &'a ConstraintSystem<T>) -> Self {
         Self {
-            constraint_system: analyzed.into(),
-            witgen_callback: None,
-            witness_so_far: Default::default(),
+            constraint_system,
             #[cfg(debug_assertions)]
             preprocessed: None,
-        }
-    }
-
-    /// Calculates public values from generated witness values.
-    pub(crate) fn public_values_so_far(&self) -> Vec<Plonky3Field<T>> {
-        let binding = &self.witness_so_far.lock().unwrap();
-        let witness = binding.borrow();
-
-        let witness = witness
-            .iter()
-            .map(|(name, values)| (name, values))
-            .collect::<BTreeMap<_, _>>();
-
-        self.constraint_system
-            .publics
-            .iter()
-            .filter_map(|(col_name, _, idx, _)| {
-                witness
-                    .get(&col_name)
-                    .map(|column| column[*idx].into_p3_field())
-            })
-            .collect()
-    }
-
-    pub(crate) fn with_phase_0_witness(self, witness: &[(String, Vec<T>)]) -> Self {
-        assert!(self.witness_so_far.lock().unwrap().borrow().is_empty());
-        Self {
-            witness_so_far: RefCell::new(witness.to_vec()).into(),
-            ..self
-        }
-    }
-
-    pub(crate) fn with_witgen_callback(self, witgen_callback: WitgenCallback<T>) -> Self {
-        Self {
-            witgen_callback: Some(witgen_callback),
-            ..self
         }
     }
 
@@ -284,13 +317,13 @@ where
 
 /// An extension of [Air] allowing access to the number of fixed columns
 
-impl<T: FieldElementMap> BaseAir<Plonky3Field<T>> for PowdrCircuit<T>
+impl<'a, T: FieldElementMap> BaseAir<Plonky3Field<T>> for PowdrTable<'a, T>
 where
     ProverData<T>: Send,
     Commitment<T>: Send,
 {
     fn width(&self) -> usize {
-        self.constraint_system.commitment_count
+        unreachable!("use MultiStageAir method instead")
     }
 
     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<Plonky3Field<T>>> {
@@ -304,9 +337,10 @@ where
 }
 
 impl<
+        'a,
         T: FieldElementMap,
         AB: AirBuilderWithPublicValues<F = Plonky3Field<T>> + PairBuilder + MultistageAirBuilder,
-    > Air<AB> for PowdrCircuit<T>
+    > Air<AB> for PowdrTable<'a, T>
 where
     ProverData<T>: Send,
     Commitment<T>: Send,
@@ -315,7 +349,7 @@ where
         let stage_count = <Self as MultiStageAir<AB>>::stage_count(self);
         let trace_by_stage: Vec<AB::M> = (0..stage_count).map(|i| builder.stage_trace(i)).collect();
         let fixed = builder.preprocessed();
-        let pi = builder.public_values();
+        let pi = builder.stage_public_values(0);
 
         // for each stage, the values of the challenges drawn at the end of that stage
         let challenges: BTreeMap<u32, BTreeMap<u64, _>> = self
@@ -393,9 +427,10 @@ where
 }
 
 impl<
+        'a,
         T: FieldElementMap,
         AB: AirBuilderWithPublicValues<F = Plonky3Field<T>> + PairBuilder + MultistageAirBuilder,
-    > MultiStageAir<AB> for PowdrCircuit<T>
+    > MultiStageAir<AB> for PowdrTable<'a, T>
 where
     ProverData<T>: Send,
     Commitment<T>: Send,
@@ -429,7 +464,7 @@ where
     }
 }
 
-impl<T: FieldElementMap> NextStageTraceCallback<T::Config> for PowdrCircuit<T>
+impl<T: FieldElementMap> NextStageTraceCallback<T> for PowdrCircuit<T>
 where
     ProverData<T>: Send,
     Commitment<T>: Send,
@@ -450,12 +485,18 @@ where
         let mut witness = witness.borrow_mut();
 
         let previous_stage_challenges: BTreeSet<Challenge> = self
-            .constraint_system
-            .challenges
-            .iter()
-            .filter(|c| c.stage == trace_stage - 1)
-            .cloned()
+            .split
+            .values()
+            .flat_map(|(_, constraint_system)| {
+                constraint_system
+                    .challenges
+                    .iter()
+                    .filter(|c| c.stage == trace_stage - 1)
+                    .cloned()
+            })
             .collect();
+
+        // let previous_stage_challenges: BTreeSet<Challenge> = unimplemented!();
         assert_eq!(previous_stage_challenges.len(), new_challenge_values.len());
         let challenge_map = previous_stage_challenges
             .into_iter()

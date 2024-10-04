@@ -1,13 +1,13 @@
 use alloc::vec;
 use alloc::vec::Vec;
 use core::iter::{self, once};
-use core::marker::PhantomData;
+use powdr_backend_utils::machine_witness_columns;
 use std::collections::BTreeMap;
 
 use itertools::Itertools;
 use p3_air::Air;
 use p3_challenger::{CanObserve, CanSample, FieldChallenger};
-use p3_commit::{Pcs, PolynomialSpace};
+use p3_commit::{Pcs as _, PolynomialSpace};
 use p3_field::{AbstractExtensionField, AbstractField, PackedValue};
 use p3_matrix::dense::{DenseMatrix, RowMajorMatrix};
 use p3_matrix::Matrix;
@@ -15,29 +15,28 @@ use p3_maybe_rayon::prelude::*;
 use p3_util::log2_strict_usize;
 use tracing::{info_span, instrument};
 
+use crate::circuit_builder::{generate_matrix, PowdrCircuit, PowdrTable};
+use crate::params::{Challenge, Challenger, Pcs, Plonky3Field};
 use crate::symbolic_builder::{get_log_quotient_degree, SymbolicAirBuilder};
 use crate::traits::MultiStageAir;
 use crate::{
-    Com, Commitments, PcsProof, PcsProverData, ProcessedStage, Proof, ProverConstraintFolder,
-    StarkProvingKey, TableOpenedValues,
+    Com, Commitment, Commitments, FieldElementMap, PcsProof, PcsProverData, ProcessedStage, Proof,
+    ProverConstraintFolder, ProverData, StarkProvingKey, TableOpenedValues,
 };
 use p3_uni_stark::{Domain, PackedChallenge, PackedVal, StarkGenericConfig, Val};
 
-/// A sub-table to be proven, in the form of an air, a proving key, a stage 0 trace and stage 0 publics
-struct MultiTable<'a, SC, A> {
-    tables: BTreeMap<String, Table<'a, SC, A>>,
+pub(crate) struct MultiTable<'a, T: FieldElementMap>
+where
+    ProverData<T>: Send,
+    Commitment<T>: Send,
+{
+    pub(crate) tables: BTreeMap<String, Table<'a, T>>,
 }
 
-impl<
-        'a,
-        SC,
-        #[cfg(debug_assertions)] A: for<'b> Air<crate::check_constraints::DebugConstraintBuilder<'b, Val<SC>>>,
-        #[cfg(not(debug_assertions))] A,
-    > MultiTable<'a, SC, A>
+impl<'a, T: FieldElementMap> MultiTable<'a, T>
 where
-    SC: StarkGenericConfig,
-    A: MultiStageAir<SymbolicAirBuilder<Val<SC>>>
-        + for<'b> MultiStageAir<ProverConstraintFolder<'b, SC>>,
+    ProverData<T>: Send,
+    Commitment<T>: Send,
 {
     fn table_count(&self) -> usize {
         self.tables.len()
@@ -55,14 +54,14 @@ where
     fn stage_count(&self) -> u32 {
         self.tables
             .values()
-            .map(|i| i.air)
-            .map(|air| <A as MultiStageAir<SymbolicAirBuilder<_>>>::stage_count(air))
+            .map(|i| &i.air)
+            .map(<_ as MultiStageAir<SymbolicAirBuilder<_>>>::stage_count)
             .max()
-            .unwrap() as u32
+            .expect("expected at least one table") as u32
     }
 
     /// Observe the instance for each table.
-    fn observe_instances(&self, challenger: &mut SC::Challenger) {
+    fn observe_instances(&self, challenger: &mut Challenger<T>) {
         for input in self.tables.values() {
             input.observe_instance(challenger);
         }
@@ -80,17 +79,19 @@ where
     /// Returns a single commitment and the prover data.
     fn commit_to_quotient(
         &self,
-        state: &mut ProverState<'a, SC, A>,
-        proving_key: Option<&StarkProvingKey<SC>>,
-    ) -> (Com<SC>, PcsProverData<SC>) {
-        let alpha: SC::Challenge = state.challenger.sample_ext_element();
+        state: &mut ProverState<'a, T>,
+        proving_key: Option<&StarkProvingKey<T::Config>>,
+    ) -> (Com<T::Config>, PcsProverData<T::Config>) {
+        let alpha: Challenge<T> = state.challenger.sample_ext_element();
 
         // get the quotient domains and chunks for each table
         let quotient_domains_and_chunks: Vec<_> = self
             .tables
-            .values()
+            .iter()
             .enumerate()
-            .flat_map(|(index, i)| i.quotient_domains_and_chunks(index, state, proving_key, alpha))
+            .flat_map(|(index, (name, i))| {
+                i.quotient_domains_and_chunks(name, index, state, proving_key, alpha)
+            })
             .collect();
 
         assert_eq!(
@@ -114,27 +115,29 @@ where
     /// Panics if .
     fn open(
         &self,
-        state: &mut ProverState<SC, A>,
-        proving_key: Option<&StarkProvingKey<SC>>,
-        quotient_data: PcsProverData<SC>,
+        state: &mut ProverState<T>,
+        proving_key: Option<&StarkProvingKey<T::Config>>,
+        quotient_data: PcsProverData<T::Config>,
     ) -> (
-        BTreeMap<String, TableOpenedValues<SC::Challenge>>,
-        PcsProof<SC>,
+        BTreeMap<String, TableOpenedValues<Challenge<T>>>,
+        PcsProof<T::Config>,
     ) {
-        let zeta: SC::Challenge = state.challenger.sample();
+        let zeta: Challenge<T> = state.challenger.sample();
 
         let preprocessed_data_and_opening_points = proving_key
             .as_ref()
             .map(|key| {
-                self.tables.iter().map(|(name, table)| {
-                    (
-                        // pick the preprocessed data for this table in the correct size
-                        &key.preprocessed[name][&(1 << table.log_degree())].1,
-                        vec![vec![
-                            zeta,
-                            table.trace_domain(state.pcs).next_point(zeta).unwrap(),
-                        ]],
-                    )
+                self.tables.iter().filter_map(|(name, table)| {
+                    key.preprocessed.get(name).map(|preprocessed| {
+                        (
+                            // pick the preprocessed data for this table in the correct size
+                            &preprocessed[&(1 << table.log_degree())].1,
+                            vec![vec![
+                                zeta,
+                                table.trace_domain(state.pcs).next_point(zeta).unwrap(),
+                            ]],
+                        )
+                    })
                 })
             })
             .into_iter()
@@ -173,20 +176,19 @@ where
         let mut opened_values = opened_values.into_iter();
 
         // maybe get values for the preprocessed columns
-        let (preprocessed_local, preprocessed_next) = if proving_key.is_some() {
-            self.tables
-                .iter()
-                .zip(&mut opened_values)
-                .map(|((name, table), value)| {
-                    assert_eq!(value.len(), 1);
-                    (value[0][0].clone(), value[0][1].clone())
+        let preprocessed: Vec<_> = if let Some(proving_key) = proving_key {
+            state
+                .program
+                .tables.keys().map(|name| {
+                    proving_key.preprocessed.contains_key(name).then(|| {
+                        let value = opened_values.next().unwrap();
+                        assert_eq!(value.len(), 1);
+                        (value[0][0].clone(), value[0][1].clone())
+                    })
                 })
                 .collect()
         } else {
-            (
-                vec![vec![]; state.program.table_count()],
-                vec![vec![]; state.program.table_count()],
-            )
+            vec![None; state.program.table_count()]
         };
 
         // for each stage, for each table
@@ -217,7 +219,7 @@ where
 
         // get values for the quotient
         let mut value = opened_values.next().unwrap().into_iter();
-        let quotient_chunks: Vec<Vec<Vec<SC::Challenge>>> = self
+        let quotient_chunks: Vec<Vec<Vec<Challenge<T>>>> = self
             .tables
             .values()
             .map(|i| {
@@ -233,6 +235,8 @@ where
             })
             .collect();
 
+        assert!(opened_values.next().is_none());
+
         let log_degrees: Vec<_> = state
             .program
             .tables
@@ -244,7 +248,7 @@ where
             .program
             .tables
             .keys()
-            .zip_eq(preprocessed_local.into_iter().zip_eq(preprocessed_next))
+            .zip_eq(preprocessed)
             .zip_eq(
                 traces_by_stage_local
                     .into_iter()
@@ -255,10 +259,7 @@ where
             .map(
                 |(
                     (
-                        (
-                            (name, (preprocessed_local, preprocessed_next)),
-                            (traces_by_stage_local, traces_by_stage_next),
-                        ),
+                        ((name, preprocessed), (traces_by_stage_local, traces_by_stage_next)),
                         quotient_chunks,
                     ),
                     log_degree,
@@ -266,8 +267,8 @@ where
                     (
                         name.clone(),
                         TableOpenedValues {
-                            preprocessed_local,
-                            preprocessed_next,
+                            preprocessed_local: preprocessed.as_ref().map(|p| p.0.clone()),
+                            preprocessed_next: preprocessed.as_ref().map(|p| p.1.clone()),
                             traces_by_stage_local,
                             traces_by_stage_next,
                             quotient_chunks,
@@ -290,8 +291,8 @@ where
         self.tables
             .values()
             .map(|table| {
-                <A as MultiStageAir<SymbolicAirBuilder<_>>>::stage_challenge_count(
-                    table.air, stage_id,
+                <_ as MultiStageAir<SymbolicAirBuilder<_>>>::stage_challenge_count(
+                    &table.air, stage_id,
                 )
             })
             .max()
@@ -300,37 +301,33 @@ where
 }
 
 /// A sub-table to be proven, in the form of an air and a degree
-struct Table<'a, SC, A> {
-    air: &'a A,
-    name: String,
+pub(crate) struct Table<'a, T: FieldElementMap>
+where
+    ProverData<T>: Send,
+    Commitment<T>: Send,
+{
+    air: PowdrTable<'a, T>,
     degree: usize,
-    marker: PhantomData<SC>,
 }
 
-impl<
-        'a,
-        SC,
-        #[cfg(debug_assertions)] A: for<'b> Air<crate::check_constraints::DebugConstraintBuilder<'b, Val<SC>>>,
-        #[cfg(not(debug_assertions))] A,
-    > Table<'a, SC, A>
+impl<'a, T: FieldElementMap> Table<'a, T>
 where
-    SC: StarkGenericConfig,
-    A: MultiStageAir<SymbolicAirBuilder<Val<SC>>>
-        + for<'b> MultiStageAir<ProverConstraintFolder<'b, SC>>,
+    ProverData<T>: Send,
+    Commitment<T>: Send,
 {
     fn log_degree(&self) -> usize {
         log2_strict_usize(self.degree)
     }
 
-    fn trace_domain(&self, pcs: &SC::Pcs) -> Domain<SC> {
+    fn trace_domain(&self, pcs: &Pcs<T>) -> Domain<T::Config> {
         pcs.natural_domain_for_degree(self.degree)
     }
 
     fn public_input_count_per_stage(&self) -> Vec<usize> {
-        (0..<A as MultiStageAir<SymbolicAirBuilder<_>>>::stage_count(self.air))
+        (0..<_ as MultiStageAir<SymbolicAirBuilder<_>>>::stage_count(&self.air))
             .map(|stage| {
-                <A as MultiStageAir<SymbolicAirBuilder<_>>>::stage_public_count(
-                    self.air,
+                <_ as MultiStageAir<SymbolicAirBuilder<_>>>::stage_public_count(
+                    &self.air,
                     stage as u32,
                 )
             })
@@ -338,11 +335,11 @@ where
     }
 
     fn log_quotient_degree(&self) -> usize {
-        get_log_quotient_degree(self.air, &self.public_input_count_per_stage())
+        get_log_quotient_degree(&self.air, &self.public_input_count_per_stage())
     }
 
-    fn observe_instance(&self, challenger: &mut SC::Challenger) {
-        challenger.observe(Val::<SC>::from_canonical_usize(self.log_degree()));
+    fn observe_instance(&self, challenger: &mut Challenger<T>) {
+        challenger.observe(Val::<T::Config>::from_canonical_usize(self.log_degree()));
         // TODO: Might be best practice to include other instance data here; see verifier comment.
     }
 
@@ -354,22 +351,25 @@ where
     ///    * `alpha`: The challenge value for the quotient polynomial.
     fn quotient_domains_and_chunks(
         &self,
+        table_name: &str,
         index: usize,
-        state: &ProverState<SC, A>,
-        proving_key: Option<&StarkProvingKey<SC>>,
-        alpha: SC::Challenge,
-    ) -> Vec<(Domain<SC>, DenseMatrix<Val<SC>>)> {
+        state: &ProverState<T>,
+        proving_key: Option<&StarkProvingKey<T::Config>>,
+        alpha: Challenge<T>,
+    ) -> Vec<(Domain<T::Config>, DenseMatrix<Val<T::Config>>)> {
         let quotient_domain = self
             .trace_domain(state.pcs)
             .create_disjoint_domain(1 << (self.log_degree() + self.log_quotient_degree()));
 
-        let preprocessed_on_quotient_domain = proving_key.map(|proving_key| {
-            state.pcs.get_evaluations_on_domain(
-                &proving_key.preprocessed[&self.name][&(1 << self.log_degree())].1,
-                index,
-                quotient_domain,
-            )
-        });
+        let preprocessed_on_quotient_domain = proving_key
+            .and_then(|proving_key| proving_key.preprocessed.get(table_name))
+            .map(|preprocessed| {
+                state.pcs.get_evaluations_on_domain(
+                    &preprocessed[&(1 << self.log_degree())].1,
+                    index,
+                    quotient_domain,
+                )
+            });
 
         let traces_on_quotient_domain = state
             .processed_stages
@@ -393,8 +393,8 @@ where
             .map(|stage| stage.public_values[index].clone())
             .collect();
 
-        let quotient_values = quotient_values(
-            self.air,
+        let quotient_values = quotient_values::<T::Config, _, _>(
+            &self.air,
             &public_values_by_stage,
             self.trace_domain(state.pcs),
             quotient_domain,
@@ -415,25 +415,62 @@ where
 
 #[instrument(skip_all)]
 #[allow(clippy::multiple_bound_locations)] // cfg not supported in where clauses?
-pub fn prove<
-    SC,
-    #[cfg(debug_assertions)] A: for<'a> Air<crate::check_constraints::DebugConstraintBuilder<'a, Val<SC>>>,
-    #[cfg(not(debug_assertions))] A,
-    C,
->(
-    config: &SC,
-    proving_key: Option<&StarkProvingKey<SC>>,
-    program: MultiTable<SC, A>,
-    stage_0: BTreeMap<String, AirStage<Val<SC>>>,
-    challenger: &mut SC::Challenger,
+pub fn prove<T: FieldElementMap, C>(
+    proving_key: Option<&StarkProvingKey<T::Config>>,
+    program: &PowdrCircuit<T>,
+    stage_0: &[(String, Vec<T>)],
+    challenger: &mut Challenger<T>,
     next_stage_trace_callback: &C,
-) -> Proof<SC>
+) -> Proof<T::Config>
 where
-    SC: StarkGenericConfig,
-    A: MultiStageAir<SymbolicAirBuilder<Val<SC>>>
-        + for<'a> MultiStageAir<ProverConstraintFolder<'a, SC>>,
-    C: NextStageTraceCallback<SC>,
+    ProverData<T>: Send,
+    Commitment<T>: Send,
+    C: NextStageTraceCallback<T>,
 {
+    let (tables, stage_0): (BTreeMap<_, _>, BTreeMap<_, _>) = program
+        .split
+        .iter()
+        .map(|(name, (pil, constraint_system))| {
+            let columns = machine_witness_columns(stage_0, pil, name);
+            let degree = columns[0].1.len();
+
+            (
+                (
+                    name.clone(),
+                    Table {
+                        air: PowdrTable::new(constraint_system),
+                        degree,
+                    },
+                ),
+                (
+                    name.clone(),
+                    AirStage {
+                        trace: generate_matrix(
+                            columns.iter().map(|(name, values)| (name, values.as_ref())),
+                        ),
+                        public_values: constraint_system
+                            .publics
+                            .iter()
+                            .filter(|&(_, _, _, stage)| (*stage == 0)).map(|(name, _, row, _)| stage_0
+                                        .iter()
+                                        .find_map(|(n, v)| (n == name).then(|| v[*row]))
+                                        .unwrap()
+                                        .into_p3_field())
+                            .collect(),
+                    },
+                ),
+            )
+        })
+        .unzip();
+
+    if tables.is_empty() {
+        panic!("No tables to prove");
+    }
+
+    let program = MultiTable { tables };
+
+    let config = T::get_config();
+
     assert_eq!(stage_0.keys().collect_vec(), program.table_names());
 
     let stage_count = program.stage_count();
@@ -600,7 +637,7 @@ where
                         trace_on_quotient_domain.width(),
                     )
                 })
-                .collect();
+                .collect_vec();
 
             let accumulator = PackedChallenge::<SC>::zero();
             let mut folder = ProverConstraintFolder {
@@ -630,37 +667,26 @@ where
         .collect()
 }
 
-struct ProverState<
-    'a,
-    SC,
-    #[cfg(debug_assertions)] A: for<'b> Air<crate::check_constraints::DebugConstraintBuilder<'b, Val<SC>>>,
-    #[cfg(not(debug_assertions))] A,
-> where
-    SC: StarkGenericConfig,
-    A: MultiStageAir<SymbolicAirBuilder<Val<SC>>>
-        + for<'b> MultiStageAir<ProverConstraintFolder<'b, SC>>,
+struct ProverState<'a, T: FieldElementMap>
+where
+    ProverData<T>: Send,
+    Commitment<T>: Send,
 {
-    pub(crate) program: &'a MultiTable<'a, SC, A>,
-    pub(crate) processed_stages: Vec<ProcessedStage<SC>>,
-    pub(crate) challenger: &'a mut SC::Challenger,
-    pub(crate) pcs: &'a <SC>::Pcs,
+    pub(crate) program: &'a MultiTable<'a, T>,
+    pub(crate) processed_stages: Vec<ProcessedStage<T::Config>>,
+    pub(crate) challenger: &'a mut Challenger<T>,
+    pub(crate) pcs: &'a Pcs<T>,
 }
 
-impl<
-        'a,
-        SC,
-        #[cfg(debug_assertions)] A: for<'b> Air<crate::check_constraints::DebugConstraintBuilder<'b, Val<SC>>>,
-        #[cfg(not(debug_assertions))] A,
-    > ProverState<'a, SC, A>
+impl<'a, T: FieldElementMap> ProverState<'a, T>
 where
-    SC: StarkGenericConfig,
-    A: MultiStageAir<SymbolicAirBuilder<Val<SC>>>
-        + for<'b> MultiStageAir<ProverConstraintFolder<'b, SC>>,
+    ProverData<T>: Send,
+    Commitment<T>: Send,
 {
     pub(crate) fn new(
-        program: &'a MultiTable<'a, SC, A>,
-        pcs: &'a <SC as StarkGenericConfig>::Pcs,
-        challenger: &'a mut <SC as StarkGenericConfig>::Challenger,
+        program: &'a MultiTable<'a, T>,
+        pcs: &'a <T::Config as StarkGenericConfig>::Pcs,
+        challenger: &'a mut <T::Config as StarkGenericConfig>::Challenger,
     ) -> Self {
         Self {
             program,
@@ -670,7 +696,7 @@ where
         }
     }
 
-    pub(crate) fn run_stage(mut self, stage: Stage<Val<SC>>) -> Self {
+    pub(crate) fn run_stage(mut self, stage: Stage<Val<T::Config>>) -> Self {
         // #[cfg(debug_assertions)]
         // let trace = stage.trace.clone();
 
@@ -736,7 +762,15 @@ pub struct CallbackResult<T> {
     pub(crate) air_stages: BTreeMap<String, AirStage<T>>,
 }
 
-pub trait NextStageTraceCallback<SC: StarkGenericConfig> {
+pub trait NextStageTraceCallback<T: FieldElementMap>
+where
+    ProverData<T>: Send,
+    Commitment<T>: Send,
+{
     /// Computes the stage number `trace_stage` based on `challenges` drawn at the end of stage `trace_stage - 1`
-    fn compute_stage(&self, stage: u32, challenges: &[Val<SC>]) -> CallbackResult<Val<SC>>;
+    fn compute_stage(
+        &self,
+        stage: u32,
+        challenges: &[Plonky3Field<T>],
+    ) -> CallbackResult<Plonky3Field<T>>;
 }

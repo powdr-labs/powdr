@@ -13,13 +13,11 @@ use powdr_ast::analyzed::Analyzed;
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
 use powdr_number::{DegreeType, FieldElement};
 use serde::{Deserialize, Serialize};
-use split::{machine_fixed_columns, machine_witness_columns};
+use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
 use self::sub_prover::RunStatus;
-
-mod split;
 
 /// Maps each size to the corresponding verification key.
 type VerificationKeyBySize = BTreeMap<DegreeType, Vec<u8>>;
@@ -76,7 +74,7 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
             unimplemented!();
         }
 
-        let pils = split::split_pil(&pil);
+        let pils = powdr_backend_utils::split_pil(&pil);
 
         // Read the setup once (if any) to pass to all backends.
         let setup_bytes = setup.map(|setup| {

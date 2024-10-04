@@ -36,8 +36,8 @@ pub struct Commitments<Com> {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TableOpenedValues<Challenge> {
-    pub(crate) preprocessed_local: Vec<Challenge>,
-    pub(crate) preprocessed_next: Vec<Challenge>,
+    pub(crate) preprocessed_local: Option<Vec<Challenge>>,
+    pub(crate) preprocessed_next: Option<Vec<Challenge>>,
     pub(crate) traces_by_stage_local: Vec<Vec<Challenge>>,
     pub(crate) traces_by_stage_next: Vec<Vec<Challenge>>,
     pub(crate) quotient_chunks: Vec<Vec<Challenge>>,

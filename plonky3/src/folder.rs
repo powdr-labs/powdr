@@ -73,7 +73,7 @@ impl<'a, SC: StarkGenericConfig> AirBuilderWithPublicValues for ProverConstraint
     type PublicVar = Val<SC>;
 
     fn public_values(&self) -> &[Self::PublicVar] {
-        self.stage_public_values(0)
+        unreachable!("use MultistageAirBuilder::stage_public_values")
     }
 }
 
