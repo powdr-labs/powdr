@@ -201,7 +201,7 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
         let after_initial_rounds = utils::fold(
             HALF_EXTERNAL_ROUNDS, |round_idx| round_idx, pre_rounds,
             constr |pre_state, round_idx| {
-                let post_state;
+                let post_state: col[STATE_SIZE];
                 external_round(round_idx, pre_state, post_state);
                 post_state
             }
@@ -211,7 +211,7 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
         let after_internal_rounds = utils::fold(
             INTERNAL_ROUNDS, |round_idx| round_idx, after_initial_rounds,
             constr |pre_state, round_idx| {
-                let post_state;
+                let post_state: col[STATE_SIZE];
                 internal_round(round_idx, pre_state, post_state);
                 post_state
             }
@@ -223,7 +223,7 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
             |round_idx| round_idx + HALF_EXTERNAL_ROUNDS,
             after_internal_rounds,
             constr |pre_state, round_idx| {
-                let post_state;
+                let post_state: col[STATE_SIZE];
                 external_round(round_idx, pre_state, post_state);
                 post_state
             }
