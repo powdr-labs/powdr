@@ -1516,22 +1516,29 @@ enum FinitePatternSpace {
 
 #[derive(Debug, Clone)]
 enum InfinitePatternSpace {
-    String(Option<String>),
-    Number(Option<BigInt>),
+    String(Option<Vec<String>>),
+    Number(Option<Vec<BigInt>>),
 }
 
 impl PatternSpace {
     fn is_covered_by_pattern(&self, pattern: &Pattern) -> bool {
+        println!("is_covered_by_pattern: {:?} {:?}", self, pattern);
         match (self, pattern) {
             (_, Pattern::CatchAll(_)) | (_, Pattern::Variable(_, _)) => true, // Covered already covered here :P
             (
                 PatternSpace::Infinite(InfinitePatternSpace::String(Some(ss))),
                 Pattern::String(_, ps),
-            ) => ss == ps,
+            ) => !ss.contains(ps),
             (
                 PatternSpace::Infinite(InfinitePatternSpace::Number(Some(sn))),
                 Pattern::Number(_, pn),
-            ) => sn == pn,
+            ) => !sn.contains(pn),
+            (PatternSpace::Infinite(InfinitePatternSpace::String(None)), Pattern::String(_, _)) => {
+                true
+            }
+            (PatternSpace::Infinite(InfinitePatternSpace::Number(None)), Pattern::Number(_, _)) => {
+                true
+            }
             (PatternSpace::Contained(spaces, _), Pattern::Tuple(_, items))
             | (PatternSpace::Contained(spaces, _), Pattern::Array(_, items)) => spaces
                 .iter()
@@ -1595,14 +1602,11 @@ fn analyze_patterns(
 
         if mutated_space {
             needed_patterns.push(pattern);
-            removed_space.sort();
-            removed_space.reverse();
-            println!(
-                "Removed spaces: [{:?}] from {:?} using {:?}",
-                removed_space, covered_space, pattern
-            );
+            //removed_space.sort();
+            //removed_space.reverse();
             for &index in &removed_space {
-                covered_space.remove(index);
+                let to_remove = covered_space.get_mut(index).unwrap();
+                update_covered_space(to_remove, pattern);
             }
         } else {
             redundant_patterns.push(pattern_index);
@@ -1614,10 +1618,51 @@ fn analyze_patterns(
     println!("Needed patterns: {:?}", needed_patterns);
 
     (
-        check_exhastiveness(needed_patterns), // TODO: Only check if covered is empty
+        covered_space.is_empty()
+            || covered_space
+                .iter()
+                .any(|p| matches!(p, PatternSpace::Covered)),
         redundant_patterns,
         covered_space.to_vec(), // TODO: Covered space needs to be transformed back to Patterns
     )
+}
+
+fn update_covered_space(space: &mut PatternSpace, pattern: &Pattern) {
+    if matches!(pattern, Pattern::CatchAll(_) | Pattern::Variable(_, _)) {
+        *space = PatternSpace::Covered;
+    } else if let PatternSpace::Infinite(InfinitePatternSpace::String(ref mut ns)) = space {
+        if let Pattern::String(_, ss) = pattern {
+            ns.get_or_insert_with(Vec::new).push(ss.to_string());
+        }
+    } else if let PatternSpace::Infinite(InfinitePatternSpace::Number(ref mut nn)) = space {
+        if let Pattern::Number(_, sn) = pattern {
+            nn.get_or_insert_with(Vec::new).push(sn.clone());
+        }
+    } else if let PatternSpace::Contained(ref mut inner_spaces, _) = space {
+        if let Pattern::Tuple(_, inner_patterns) | Pattern::Array(_, inner_patterns) = pattern {
+            for (space, pattern) in inner_spaces.iter_mut().zip(inner_patterns) {
+                update_covered_space(space, pattern);
+            }
+        }
+
+        let all_covered = inner_spaces
+            .iter()
+            .all(|s| matches!(s, PatternSpace::Covered));
+        if all_covered {
+            *space = PatternSpace::Covered;
+        }
+    } else if let PatternSpace::Finite(FinitePatternSpace::Enum(name, inner_spaces)) = space {
+        // TODO: To check if the enum is fully covered, we need to check if all the variants are covered.
+        if let Pattern::Enum(_, path, inner_patterns) = pattern {
+            if name == &path.to_string() {
+                if let (Some(ref mut spaces), Some(patterns)) = (inner_spaces, inner_patterns) {
+                    for (space, pattern) in spaces.iter_mut().zip(patterns) {
+                        update_covered_space(space, pattern);
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn compute_covered_space(
@@ -1634,93 +1679,93 @@ fn compute_covered_space(
     result
 }
 
-fn check_exhastiveness(patterns: Vec<&Pattern>) -> bool {
-    if patterns.is_empty() {
-        return true;
-    }
-    if patterns
-        .iter()
-        .any(|p| matches!(p, Pattern::CatchAll(_)) || matches!(p, Pattern::Variable(_, _)))
-    {
-        return true;
-    }
+// fn check_exhastiveness(patterns: Vec<&Pattern>) -> bool {
+//     if patterns.is_empty() {
+//         return true;
+//     }
+//     if patterns
+//         .iter()
+//         .any(|p| matches!(p, Pattern::CatchAll(_)) || matches!(p, Pattern::Variable(_, _)))
+//     {
+//         return true;
+//     }
 
-    if patterns
-        .iter()
-        .any(|p| matches!(p, Pattern::Number(_, _)) || matches!(p, Pattern::String(_, _)))
-    {
-        return false;
-    }
+//     if patterns
+//         .iter()
+//         .any(|p| matches!(p, Pattern::Number(_, _)) || matches!(p, Pattern::String(_, _)))
+//     {
+//         return false;
+//     }
 
-    if patterns.iter().any(|p| matches!(p, Pattern::Enum(_, _, _))) {
-        let vectors: Vec<&Vec<Pattern>> = patterns
-            .iter()
-            .filter_map(|pattern| {
-                if let Pattern::Enum(_, _, Some(vec)) = pattern {
-                    Some(vec)
-                } else {
-                    None
-                }
-            })
-            .collect();
+//     if patterns.iter().any(|p| matches!(p, Pattern::Enum(_, _, _))) {
+//         let vectors: Vec<&Vec<Pattern>> = patterns
+//             .iter()
+//             .filter_map(|pattern| {
+//                 if let Pattern::Enum(_, _, Some(vec)) = pattern {
+//                     Some(vec)
+//                 } else {
+//                     None
+//                 }
+//             })
+//             .collect();
 
-        check_exhastiveness_inner(vectors);
-    }
+//         return check_exhastiveness_inner(vectors);
+//     }
 
-    if patterns
-        .iter()
-        .any(|p| matches!(p, Pattern::Tuple(_, inner)))
-    {
-        let vectors: Vec<&Vec<Pattern>> = patterns
-            .iter()
-            .filter_map(|pattern| {
-                if let Pattern::Tuple(_, vec) = pattern {
-                    Some(vec)
-                } else {
-                    None
-                }
-            })
-            .collect();
+//     if patterns
+//         .iter()
+//         .any(|p| matches!(p, Pattern::Tuple(_, inner)))
+//     {
+//         let vectors: Vec<&Vec<Pattern>> = patterns
+//             .iter()
+//             .filter_map(|pattern| {
+//                 if let Pattern::Tuple(_, vec) = pattern {
+//                     Some(vec)
+//                 } else {
+//                     None
+//                 }
+//             })
+//             .collect();
 
-        return check_exhastiveness_inner(vectors);
-    }
+//         return check_exhastiveness_inner(vectors);
+//     }
 
-    if patterns
-        .iter()
-        .any(|p| matches!(p, Pattern::Array(_, inner)))
-    {
-        let vectors: Vec<&Vec<Pattern>> = patterns
-            .iter()
-            .filter_map(|pattern| {
-                if let Pattern::Array(_, vec) = pattern {
-                    Some(vec)
-                } else {
-                    None
-                }
-            })
-            .collect();
+//     if patterns
+//         .iter()
+//         .any(|p| matches!(p, Pattern::Array(_, inner)))
+//     {
+//         let vectors: Vec<&Vec<Pattern>> = patterns
+//             .iter()
+//             .filter_map(|pattern| {
+//                 if let Pattern::Array(_, vec) = pattern {
+//                     Some(vec)
+//                 } else {
+//                     None
+//                 }
+//             })
+//             .collect();
 
-        return check_exhastiveness_inner(vectors);
-    }
+//         return check_exhastiveness_inner(vectors);
+//     }
 
-    false
-}
+//     false
+// }
 
-fn check_exhastiveness_inner(vectors: Vec<&Vec<Pattern>>) -> bool {
-    let mut iterators = vectors.iter().map(|v| v.iter()).collect::<Vec<_>>();
+// fn check_exhastiveness_inner(vectors: Vec<&Vec<Pattern>>) -> bool {
+//     let mut iterators = vectors.iter().map(|v| v.iter()).collect::<Vec<_>>();
 
-    while let Some(elements) = iterators
-        .iter_mut()
-        .map(|it| it.next())
-        .collect::<Option<Vec<_>>>()
-    {
-        if !check_exhastiveness(elements) {
-            return false;
-        }
-    }
+//     while let Some(elements) = iterators
+//         .iter_mut()
+//         .map(|it| it.next())
+//         .collect::<Option<Vec<_>>>()
+//     {
+//         if !check_exhastiveness(elements) {
+//             return false;
+//         }
+//     }
 
-    true
-}
+//     true
+// }
 
 fn process_pattern(
     pattern: &Pattern,
@@ -1736,12 +1781,8 @@ fn create_pattern_space(pattern: &Pattern) -> PatternSpace {
     match pattern {
         Pattern::CatchAll(_) => PatternSpace::Covered,
         Pattern::Ellipsis(_) => unreachable!(),
-        Pattern::Number(_, n) => {
-            PatternSpace::Infinite(InfinitePatternSpace::Number(Some(n.clone())))
-        }
-        Pattern::String(_, s) => {
-            PatternSpace::Infinite(InfinitePatternSpace::String(Some(s.to_string())))
-        }
+        Pattern::Number(_, n) => PatternSpace::Infinite(InfinitePatternSpace::Number(None)),
+        Pattern::String(_, s) => PatternSpace::Infinite(InfinitePatternSpace::String(None)),
         Pattern::Variable(_, _) => PatternSpace::Covered,
         Pattern::Tuple(_, p) => {
             let inner_space = p.iter().map(|p| create_pattern_space(p)).collect();
@@ -1884,96 +1925,6 @@ mod tests {
     }
 
     #[test]
-    fn test_carteian_product() {
-        let patterns = vec![
-            vec![PatternSpace::Finite(FinitePatternSpace::Bool(Some(true)))],
-            vec![PatternSpace::Finite(FinitePatternSpace::Bool(Some(false)))],
-        ];
-
-        let res = cartesian_product(patterns);
-        println!("{:?}", res);
-    }
-
-    #[test]
-    fn test_carteian_product_enum() {
-        let patterns = vec![
-            vec![
-                PatternSpace::Finite(FinitePatternSpace::Bool(Some(true))),
-                PatternSpace::Finite(FinitePatternSpace::Bool(Some(false))),
-            ],
-            vec![PatternSpace::Finite(FinitePatternSpace::Enum(
-                "Option::Some".to_string(),
-                Some(vec![PatternSpace::Finite(FinitePatternSpace::Bool(Some(
-                    true,
-                )))]),
-            ))],
-        ];
-
-        let res = cartesian_product(patterns);
-        println!("{:?}", res);
-    }
-
-    #[test]
-    fn test_process_pattern_enum() {
-        let enums = {
-            let mut map = HashMap::new();
-            map.insert(
-                "Option".to_string(),
-                vec![
-                    ("Some".to_string(), Some(vec![Type::String])),
-                    ("None".to_string(), None),
-                ],
-            );
-            map
-        };
-
-        let pattern = Pattern::Enum(
-            dummy_sr(),
-            SymbolPath::from_parts(vec![
-                Part::Named("Option".to_string()),
-                Part::Named("Some".to_string()),
-            ]),
-            Some(vec![Pattern::String(dummy_sr(), "x".to_string())]),
-        );
-
-        let processed = process_pattern(&pattern, &enums);
-        println!("{:?}", processed);
-    }
-
-    #[test]
-    fn test_process_pattern_contained() {
-        let enums = {
-            let mut map = HashMap::new();
-            map.insert(
-                "Option".to_string(),
-                vec![
-                    ("Some".to_string(), Some(vec![Type::String])),
-                    ("None".to_string(), None),
-                ],
-            );
-            map
-        };
-
-        let pattern = Pattern::Tuple(
-            dummy_sr(),
-            vec![
-                Pattern::Enum(
-                    dummy_sr(),
-                    SymbolPath::from_parts(vec![
-                        Part::Named("Option".to_string()),
-                        Part::Named("Some".to_string()),
-                    ]),
-                    Some(vec![Pattern::String(dummy_sr(), "x".to_string())]),
-                ),
-                Pattern::CatchAll(dummy_sr()),
-            ],
-        );
-
-        let processed = process_pattern(&pattern, &enums);
-        println!("{:?}", processed);
-    }
-
-    #[test]
     fn test_basic_usefullness() {
         let patterns = vec![
             Pattern::String(dummy_sr(), "A".to_string()),
@@ -1981,9 +1932,9 @@ mod tests {
         ];
         let enums = HashMap::new();
         let report = analyze_match_patterns(&patterns, enums);
-        println!("{:?}", report);
-        //assert_eq!(report.is_exhaustive, false);
-        //assert_eq!(report.redundant_patterns.is_empty(), true);
+        //println!("{:?}", report);
+        assert_eq!(report.is_exhaustive, false);
+        assert_eq!(report.redundant_patterns.is_empty(), true);
     }
 
     #[test]
@@ -1996,8 +1947,339 @@ mod tests {
 
         let enums = HashMap::new();
         let report = analyze_match_patterns(&patterns, enums);
+        //println!("{:?}", report);
+        assert_eq!(report.is_exhaustive, false);
+        assert_eq!(report.redundant_patterns, vec![1, 2]);
+    }
+
+    #[test]
+    fn test_usefullness_new_catchall() {
+        let patterns = vec![
+            Pattern::String(SourceRef::unknown(), "A".to_string()),
+            Pattern::String(SourceRef::unknown(), "B".to_string()),
+            Pattern::String(SourceRef::unknown(), "B".to_string()),
+        ];
+        let enums = HashMap::new();
+        let report = analyze_match_patterns(&patterns, enums);
         println!("{:?}", report);
-        //assert_eq!(report.is_exhaustive, false);
-        //assert_eq!(report.redundant_patterns, vec![1, 2]);
+        assert_eq!(report.is_exhaustive, false);
+        assert_eq!(report.redundant_patterns, vec![2]);
+    }
+
+    #[test]
+    fn test_usefullness_already_exhaustive_patterns() {
+        let patterns = vec![
+            Pattern::String(SourceRef::unknown(), "A".to_string()),
+            Pattern::String(SourceRef::unknown(), "A".to_string()),
+            Pattern::CatchAll(SourceRef::unknown()),
+        ];
+        let enums = HashMap::new();
+        let report = analyze_match_patterns(&patterns, enums);
+        println!("{:?}", report);
+        assert_eq!(report.is_exhaustive, true);
+        assert_eq!(report.redundant_patterns, vec![1]);
+    }
+
+    #[test]
+    fn test_usefullness_tuples() {
+        let patterns = vec![
+            Pattern::Tuple(
+                SourceRef::unknown(),
+                vec![
+                    Pattern::Number(SourceRef::unknown(), 1.into()),
+                    Pattern::Number(SourceRef::unknown(), 2.into()),
+                ],
+            ),
+            Pattern::Tuple(
+                SourceRef::unknown(),
+                vec![
+                    Pattern::Number(SourceRef::unknown(), 9.into()),
+                    Pattern::Number(SourceRef::unknown(), 8.into()),
+                ],
+            ),
+        ];
+        let enums = HashMap::new();
+        let report = analyze_match_patterns(&patterns, enums);
+        println!("{:?}", report);
+        assert_eq!(report.is_exhaustive, false);
+        assert_eq!(report.redundant_patterns.is_empty(), true);
+    }
+
+    #[test]
+    fn test_usefullness_tuples_catchall() {
+        let patterns = vec![
+            Pattern::Tuple(
+                SourceRef::unknown(),
+                vec![
+                    Pattern::Number(SourceRef::unknown(), 1.into()),
+                    Pattern::Number(SourceRef::unknown(), 3.into()),
+                ],
+            ),
+            Pattern::Tuple(
+                SourceRef::unknown(),
+                vec![
+                    Pattern::Number(SourceRef::unknown(), 1.into()),
+                    Pattern::CatchAll(SourceRef::unknown()),
+                ],
+            ),
+            Pattern::Tuple(
+                SourceRef::unknown(),
+                vec![
+                    Pattern::Number(SourceRef::unknown(), 1.into()),
+                    Pattern::Number(SourceRef::unknown(), 4.into()),
+                ],
+            ),
+        ];
+        let enums = HashMap::new();
+        let report = analyze_match_patterns(&patterns, enums);
+        println!("{:?}", report);
+        assert_eq!(report.is_exhaustive, false);
+        assert_eq!(report.redundant_patterns, vec![2]);
+    }
+
+    #[test]
+    fn test_usefullness_enums() {
+        let patterns = vec![
+            Pattern::Enum(
+                SourceRef::unknown(),
+                SymbolPath::from_parts(vec![
+                    Part::Named("A".to_string()),
+                    Part::Named("X".to_string()),
+                ]),
+                Some(vec![
+                    Pattern::Number(SourceRef::unknown(), 1.into()),
+                    Pattern::Number(SourceRef::unknown(), 2.into()),
+                ]),
+            ),
+            Pattern::Enum(
+                SourceRef::unknown(),
+                SymbolPath::from_parts(vec![
+                    Part::Named("A".to_string()),
+                    Part::Named("Y".to_string()),
+                ]),
+                Some(vec![
+                    Pattern::Number(SourceRef::unknown(), 1.into()),
+                    Pattern::Number(SourceRef::unknown(), 2.into()),
+                ]),
+            ),
+        ];
+        let enums = {
+            let mut map = HashMap::new();
+            map.insert(
+                "A".to_string(),
+                vec![
+                    ("X".to_string(), Some(vec![Type::Int, Type::Int])),
+                    ("Y".to_string(), Some(vec![Type::Int, Type::Int])),
+                ],
+            );
+            map
+        };
+        let report = analyze_match_patterns(&patterns, enums);
+        println!("{:?}", report);
+        assert_eq!(report.is_exhaustive, false);
+        assert_eq!(report.redundant_patterns.is_empty(), true);
+    }
+
+    #[test]
+    fn test_usefullness_enums_catchall() {
+        let patterns = vec![
+            Pattern::Enum(
+                SourceRef::unknown(),
+                SymbolPath::from_parts(vec![
+                    Part::Named("A".to_string()),
+                    Part::Named("X".to_string()),
+                ]),
+                Some(vec![
+                    Pattern::Number(SourceRef::unknown(), 1.into()),
+                    Pattern::Number(SourceRef::unknown(), 2.into()),
+                ]),
+            ),
+            Pattern::CatchAll(SourceRef::unknown()),
+        ];
+        let enums = {
+            let mut map = HashMap::new();
+            map.insert(
+                "A".to_string(),
+                vec![
+                    ("X".to_string(), Some(vec![Type::Int, Type::Int])),
+                    ("Y".to_string(), Some(vec![Type::Int, Type::Int])),
+                ],
+            );
+            map
+        };
+        let report = analyze_match_patterns(&patterns, enums);
+        println!("{:?}", report);
+        assert_eq!(report.is_exhaustive, true);
+        assert_eq!(report.redundant_patterns.is_empty(), true);
+    }
+
+    #[test]
+    fn test_usefullness_enums_none() {
+        let patterns = vec![
+            Pattern::Enum(
+                SourceRef::unknown(),
+                SymbolPath::from_parts(vec![
+                    Part::Named("A".to_string()),
+                    Part::Named("X".to_string()),
+                ]),
+                None,
+            ),
+            Pattern::Enum(
+                SourceRef::unknown(),
+                SymbolPath::from_parts(vec![
+                    Part::Named("A".to_string()),
+                    Part::Named("Y".to_string()),
+                ]),
+                Some(vec![
+                    Pattern::Number(SourceRef::unknown(), 1.into()),
+                    Pattern::Number(SourceRef::unknown(), 2.into()),
+                ]),
+            ),
+        ];
+        let enums = {
+            let mut map = HashMap::new();
+            map.insert(
+                "A".to_string(),
+                vec![
+                    ("X".to_string(), None),
+                    ("Y".to_string(), Some(vec![Type::Int, Type::Int])),
+                ],
+            );
+            map
+        };
+        let report = analyze_match_patterns(&patterns, enums);
+        println!("{:?}", report);
+        assert_eq!(report.is_exhaustive, false);
+        assert_eq!(report.redundant_patterns.is_empty(), true);
+    }
+
+    #[test]
+    fn test_usefullness_enums_symbolpath_catchall() {
+        let patterns = vec![
+            Pattern::Enum(
+                SourceRef::unknown(),
+                SymbolPath::from_parts(vec![
+                    Part::Named("A".to_string()),
+                    Part::Named("X".to_string()),
+                ]),
+                Some(vec![
+                    Pattern::CatchAll(SourceRef::unknown()),
+                    Pattern::CatchAll(SourceRef::unknown()),
+                ]),
+            ),
+            Pattern::Enum(
+                SourceRef::unknown(),
+                SymbolPath::from_parts(vec![
+                    Part::Named("A".to_string()),
+                    Part::Named("X".to_string()),
+                ]),
+                Some(vec![
+                    Pattern::Number(SourceRef::unknown(), 1.into()),
+                    Pattern::Number(SourceRef::unknown(), 3.into()),
+                ]),
+            ),
+        ];
+        let enums = {
+            let mut map = HashMap::new();
+            map.insert(
+                "A".to_string(),
+                vec![("X".to_string(), Some(vec![Type::Int, Type::Int]))],
+            );
+            map
+        };
+        let report = analyze_match_patterns(&patterns, enums);
+        println!("{:?}", report);
+        assert_eq!(report.is_exhaustive, true);
+        assert_eq!(report.redundant_patterns, vec![1]);
+    }
+
+    #[test]
+    fn test_usefullness_tuples_and_enums() {
+        // ((_, None), _)
+        // (_, (_, None))
+        // (('l_short', Some('l_last')), ('r_short', Some('r_last'))
+        let elem1 = Pattern::Tuple(
+            SourceRef::unknown(),
+            vec![
+                Pattern::CatchAll(SourceRef::unknown()),
+                Pattern::Enum(
+                    SourceRef::unknown(),
+                    SymbolPath::from_parts(vec![
+                        Part::Named("Option".to_string()),
+                        Part::Named("None".to_string()),
+                    ]),
+                    None,
+                ),
+            ],
+        );
+        let elem2 = Pattern::CatchAll(SourceRef::unknown());
+        let arm1 = Pattern::Tuple(SourceRef::unknown(), vec![elem1, elem2]);
+
+        let elem1 = Pattern::CatchAll(SourceRef::unknown());
+        let elem2 = Pattern::Tuple(
+            SourceRef::unknown(),
+            vec![
+                Pattern::CatchAll(SourceRef::unknown()),
+                Pattern::Enum(
+                    SourceRef::unknown(),
+                    SymbolPath::from_parts(vec![
+                        Part::Named("Option".to_string()),
+                        Part::Named("None".to_string()),
+                    ]),
+                    None,
+                ),
+            ],
+        );
+        let arm2 = Pattern::Tuple(SourceRef::unknown(), vec![elem1, elem2]);
+
+        let elem1 = Pattern::Tuple(
+            SourceRef::unknown(),
+            vec![
+                Pattern::Variable(SourceRef::unknown(), "l_short".to_string()),
+                Pattern::Enum(
+                    SourceRef::unknown(),
+                    SymbolPath::from_parts(vec![
+                        Part::Named("Option".to_string()),
+                        Part::Named("Some".to_string()),
+                    ]),
+                    Some(vec![Pattern::Variable(
+                        SourceRef::unknown(),
+                        "l_last".to_string(),
+                    )]),
+                ),
+            ],
+        );
+        let elem2 = Pattern::Tuple(
+            SourceRef::unknown(),
+            vec![
+                Pattern::Variable(SourceRef::unknown(), "r_short".to_string()),
+                Pattern::Enum(
+                    SourceRef::unknown(),
+                    SymbolPath::from_parts(vec![
+                        Part::Named("Option".to_string()),
+                        Part::Named("Some".to_string()),
+                    ]),
+                    Some(vec![Pattern::Variable(
+                        SourceRef::unknown(),
+                        "r_last".to_string(),
+                    )]),
+                ),
+            ],
+        );
+        let arm3 = Pattern::Tuple(SourceRef::unknown(), vec![elem1, elem2]);
+
+        let patterns = vec![arm1, arm2, arm3];
+        let mut enums = HashMap::new();
+        enums.insert(
+            "Option".to_string(),
+            vec![
+                ("None".to_string(), None),
+                ("Some".to_string(), Some(vec![Type::String])),
+            ],
+        );
+        let report = analyze_match_patterns(&patterns, enums);
+        println!("{:?}", report);
+        assert_eq!(report.is_exhaustive, false);
+        assert_eq!(report.redundant_patterns.is_empty(), true);
     }
 }
