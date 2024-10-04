@@ -503,7 +503,8 @@ impl<'a, T: FieldElement> RangeConstraintSet<AlgebraicVariable<'a>, T> for RowPa
             AlgebraicVariable::Column(poly) => {
                 self.get_row(poly.next).range_constraint(&poly.poly_id)
             }
-            _ => todo!(),
+            // No range constraints stored for publics.
+            AlgebraicVariable::Public(_) => None,
         }
     }
 }

@@ -38,7 +38,8 @@ impl<'a, T: FieldElement> RangeConstraintSet<AlgebraicVariable<'a>, T>
                 assert!(!id.next);
                 self.range_constraints.get(&id.poly_id).cloned()
             }
-            AlgebraicVariable::Public(_) => unimplemented!(),
+            // No range constraints stored for publics.
+            AlgebraicVariable::Public(_) => None,
         }
     }
 }

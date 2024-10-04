@@ -24,6 +24,7 @@ indicatif = "0.17.7"
 serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }
 
 [dev-dependencies]
+powdr-pipeline.workspace = true
 test-log = "0.2.12"
 env_logger = "0.10.0"
 pretty_assertions = "1.4.0"
