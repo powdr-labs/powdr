@@ -2,7 +2,7 @@ mod common;
 
 use common::{verify_riscv_asm_file, verify_riscv_asm_string};
 use mktemp::Temp;
-use powdr_number::{GoldilocksField, KnownField};
+use powdr_number::{BabyBearField, FieldElement, GoldilocksField, KnownField};
 use powdr_pipeline::{
     test_util::{run_pilcom_with_backend_variant, BackendVariant},
     Pipeline,
@@ -536,23 +536,29 @@ fn many_chunks_memory() {
     test_continuations("many_chunks_memory")
 }
 
-fn verify_riscv_crate(case: &str, inputs: Vec<GoldilocksField>, runtime: &RuntimeEnum) {
-    verify_riscv_crate_impl::<()>(case, inputs, runtime, None)
+fn verify_riscv_crate_gl(case: &str, inputs: Vec<GoldilocksField>) {
+    let options = CompilerOptions::new_32();
+    verify_riscv_crate_impl::<GoldilocksField, ()>(case, options, inputs, None)
+}
+
+fn verify_riscv_crate_bb(case: &str, inputs: Vec<BabyBearField>) {
+    let options = CompilerOptions::new_16();
+    verify_riscv_crate_impl::<BabyBearField, ()>(case, options, inputs, None)
 }
 
 fn verify_riscv_crate_with_data<S: serde::Serialize + Send + Sync + 'static>(
     case: &str,
     inputs: Vec<GoldilocksField>,
-    runtime: &RuntimeEnum,
     data: Vec<(u32, S)>,
 ) {
-    verify_riscv_crate_impl(case, inputs, runtime, Some(data))
+    let options = CompilerOptions::new_32();
+    verify_riscv_crate_impl(case, options, inputs, Some(data))
 }
 
-fn verify_riscv_crate_impl<S: serde::Serialize + Send + Sync + 'static>(
+fn verify_riscv_crate_impl<T: FieldElement, S: serde::Serialize + Send + Sync + 'static>(
     case: &str,
-    inputs: Vec<GoldilocksField>,
-    runtime: &RuntimeEnum,
+    options: CompilerOptions,
+    inputs: Vec<T>,
     data: Option<Vec<(u32, S)>>,
 ) {
     let temp_dir = Temp::new_dir().unwrap();
@@ -561,8 +567,6 @@ fn verify_riscv_crate_impl<S: serde::Serialize + Send + Sync + 'static>(
         &temp_dir,
         None,
     );
-
-    let options = CompilerOptions::new(KnownField::GoldilocksField, runtime.clone());
 
     log::info!("Verifying {case}");
     let from_elf = powdr_riscv::elf::translate(&executable, options, false);
