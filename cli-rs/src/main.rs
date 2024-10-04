@@ -7,8 +7,9 @@ use env_logger::fmt::Color;
 use env_logger::{Builder, Target};
 use log::LevelFilter;
 
-use powdr_number::{BabyBearField, BigUint, Bn254Field, FieldElement, GoldilocksField, KnownField};
+use powdr_number::{BigUint, GoldilocksField, KnownField};
 use powdr_pipeline::Pipeline;
+use powdr_riscv::continuations::{MerkleTypes, MerkleTypesImpl};
 use powdr_riscv::{CompilerOptions, Runtime, RuntimeEnum};
 use powdr_riscv_executor::ProfilerOptions;
 
@@ -241,15 +242,15 @@ fn run_command(command: Commands) {
             } else {
                 None
             };
-            call_with_field!(execute::<field>(
+            execute(
                 Path::new(&file),
                 field.as_known_field(),
                 inputs,
                 Path::new(&output_directory),
                 continuations,
                 witness,
-                profiling
-            ))
+                profiling,
+            )
         }
     };
     if let Err(errors) = result {
@@ -328,7 +329,33 @@ fn compile_riscv_elf(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn execute<F: FieldElement>(
+fn execute(
+    file_name: &Path,
+    field: KnownField,
+    inputs: Vec<String>,
+    output_dir: &Path,
+    continuations: bool,
+    witness: bool,
+    profiling: Option<ProfilerOptions>,
+) -> Result<(), Vec<String>> {
+    match field {
+        KnownField::BabyBearField | KnownField::Mersenne31Field | KnownField::Bn254Field => {
+            unimplemented!();
+        }
+        KnownField::GoldilocksField => execute_inner::<MerkleTypesImpl<GoldilocksField>>(
+            file_name,
+            field,
+            inputs,
+            output_dir,
+            continuations,
+            witness,
+            profiling,
+        ),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn execute_inner<M: MerkleTypes>(
     file_name: &Path,
     field: KnownField,
     inputs: Vec<String>,
@@ -343,23 +370,27 @@ fn execute<F: FieldElement>(
         .map(|x| x.parse::<BigUint>().unwrap().into())
         .collect();
 
-    let mut pipeline = Pipeline::<F>::default()
+    let mut pipeline = Pipeline::<M::Fe>::default()
         .from_file(file_name.to_path_buf())
         .with_prover_inputs(inputs)
         .with_output(output_dir.into(), true);
 
-    let generate_witness = |mut pipeline: Pipeline<F>| -> Result<(), Vec<String>> {
+    let generate_witness = |mut pipeline: Pipeline<M::Fe>| -> Result<(), Vec<String>> {
         pipeline.compute_witness().unwrap();
         Ok(())
     };
 
     match (witness, continuations) {
         (false, true) => {
-            powdr_riscv::continuations::rust_continuations_dry_run(&mut pipeline, field, profiling);
+            powdr_riscv::continuations::rust_continuations_dry_run::<M>(
+                &mut pipeline,
+                field,
+                profiling,
+            );
         }
         (false, false) => {
             let program = pipeline.compute_asm_string().unwrap().clone();
-            let (trace, _mem, _reg_mem) = powdr_riscv_executor::execute::<F>(
+            let (trace, _mem, _reg_mem) = powdr_riscv_executor::execute::<M::Fe>(
                 &program.1,
                 powdr_riscv_executor::MemoryState::new(),
                 pipeline.data_callback().unwrap(),
@@ -370,7 +401,7 @@ fn execute<F: FieldElement>(
             log::info!("Execution trace length: {}", trace.len);
         }
         (true, true) => {
-            let dry_run = powdr_riscv::continuations::rust_continuations_dry_run(
+            let dry_run = powdr_riscv::continuations::rust_continuations_dry_run::<M>(
                 &mut pipeline,
                 field,
                 profiling,

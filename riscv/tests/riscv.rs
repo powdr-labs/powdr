@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use test_log::test;
 
 use powdr_riscv::{
-    continuations::{rust_continuations, rust_continuations_dry_run},
+    continuations::{rust_continuations, rust_continuations_dry_run, MerkleTypesImpl},
     CompilerOptions, Runtime, RuntimeEnum,
 };
 
@@ -48,7 +48,7 @@ fn run_continuations_test(case: &str, powdr_asm: String) {
 
         Ok(())
     };
-    let bootloader_inputs = rust_continuations_dry_run(
+    let bootloader_inputs = rust_continuations_dry_run::<MerkleTypesImpl<GoldilocksField>>(
         &mut pipeline,
         KnownField::GoldilocksField,
         Default::default(),
@@ -474,7 +474,7 @@ fn many_chunks_dry() {
     let mut pipeline = Pipeline::default()
         .from_asm_string(powdr_asm, Some(PathBuf::from(case)))
         .with_prover_inputs(Default::default());
-    rust_continuations_dry_run::<GoldilocksField>(
+    rust_continuations_dry_run::<MerkleTypesImpl<GoldilocksField>>(
         &mut pipeline,
         KnownField::GoldilocksField,
         Default::default(),

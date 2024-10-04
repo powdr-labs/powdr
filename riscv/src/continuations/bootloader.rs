@@ -2,7 +2,7 @@ use powdr_number::FieldElement;
 use powdr_number::LargeInt;
 
 use super::memory_merkle_tree::MerkleTree;
-use super::memory_merkle_tree::MerkleTreeImpl;
+use super::memory_merkle_tree::MerkleTypes;
 
 use powdr_number::KnownField;
 
@@ -152,59 +152,58 @@ pub const SHUTDOWN_START: u64 = 4;
 
 /// Helper struct to construct the bootloader inputs, placing each element in
 /// its correct position.
-struct InputCreator<'a, F, Pages>
+struct InputCreator<'a, M: MerkleTypes + 'a, Pages>
 where
-    F: FieldElement + MerkleTreeImpl,
-    Pages: ExactSizeIterator<Item = InputPage<'a, F>>,
+    Pages: ExactSizeIterator<Item = InputPage<'a, M>>,
 {
-    register_values: Vec<F>,
-    merkle_tree_root_hash: &'a F::Hash,
+    register_values: Vec<M::Fe>,
+    merkle_tree_root_hash: &'a M::Hash,
     pages: Pages,
 }
 
 /// Pages of memory, each with its hash and proof.
-struct InputPage<'a, F: FieldElement + MerkleTreeImpl> {
+struct InputPage<'a, M: MerkleTypes + 'a> {
     page_idx: u32,
-    data: &'a F::Page,
-    hash: &'a F::Hash,
-    proof: Vec<&'a F::Hash>,
+    data: &'a M::Page,
+    hash: &'a M::Hash,
+    proof: Vec<&'a M::Hash>,
 }
 
-impl<'a, F, I> InputCreator<'a, F, I>
+impl<'a, M, I> InputCreator<'a, M, I>
 where
-    F: FieldElement + MerkleTreeImpl,
-    I: ExactSizeIterator<Item = InputPage<'a, F>>,
+    M: MerkleTypes,
+    I: ExactSizeIterator<Item = InputPage<'a, M>>,
 {
-    fn into_input(self) -> Vec<F> {
+    fn into_input(self) -> Vec<M::Fe> {
         let mut inputs = self.register_values;
         inputs.extend_from_within(..);
-        inputs.extend(F::iter_hash_as_fe(self.merkle_tree_root_hash));
-        inputs.extend(F::iter_hash_as_fe(self.merkle_tree_root_hash));
+        inputs.extend(M::iter_hash_as_fe(self.merkle_tree_root_hash));
+        inputs.extend(M::iter_hash_as_fe(self.merkle_tree_root_hash));
 
         inputs.push((self.pages.len() as i64).into());
         for page in self.pages {
-            inputs.extend(F::iter_word_as_fe(page.page_idx));
-            inputs.extend(F::iter_page_as_fe(page.data));
-            inputs.extend(F::iter_hash_as_fe(page.hash));
+            inputs.extend(M::iter_word_as_fe(page.page_idx));
+            inputs.extend(M::iter_page_as_fe(page.data));
+            inputs.extend(M::iter_hash_as_fe(page.hash));
             for sibling in page.proof {
-                inputs.extend(F::iter_hash_as_fe(sibling));
+                inputs.extend(M::iter_hash_as_fe(sibling));
             }
         }
         inputs
     }
 }
 
-pub fn create_input<F: FieldElement + MerkleTreeImpl, Pages: ExactSizeIterator<Item = u32>>(
-    register_values: Vec<F>,
-    merkle_tree: &MerkleTree<F>,
+pub fn create_input<M: MerkleTypes, Pages: ExactSizeIterator<Item = u32>>(
+    register_values: Vec<M::Fe>,
+    merkle_tree: &MerkleTree<M>,
     accessed_pages: Pages,
-) -> Vec<F> {
+) -> Vec<M::Fe> {
     InputCreator {
         register_values,
         merkle_tree_root_hash: merkle_tree.root_hash(),
         pages: accessed_pages.map(|page_index| {
             let (page, page_hash, proof) = merkle_tree.get(page_index as usize);
-            InputPage {
+            InputPage::<M> {
                 page_idx: page_index,
                 data: page,
                 hash: page_hash,
@@ -225,10 +224,10 @@ pub fn default_register_values<F: FieldElement>() -> Vec<F> {
 /// - No pages are initialized
 /// - All registers are set to 0 (including the PC, which causes the bootloader to do nothing)
 /// - The state at the end of the execution is the same as the beginning
-pub fn default_input<F: FieldElement + MerkleTreeImpl>(accessed_pages: &[u64]) -> Vec<F> {
+pub fn default_input<M: MerkleTypes>(accessed_pages: &[u64]) -> Vec<M::Fe> {
     // Set all registers and the number of pages to zero
     let register_values = default_register_values();
-    let merkle_tree = MerkleTree::<F>::new();
+    let merkle_tree = MerkleTree::<M>::new();
 
     // TODO: We don't have a way to know the memory state *after* the execution.
     // For now, we'll just claim that the memory doesn't change.
