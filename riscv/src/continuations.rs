@@ -16,7 +16,6 @@ mod bootloader_16;
 mod bootloader_32;
 mod memory_merkle_tree;
 
-use bootloader::split_fe;
 use bootloader::{default_input, PAGE_SIZE_BYTES_LOG, PC_INDEX, REGISTER_NAMES};
 use memory_merkle_tree::MerkleTree;
 
@@ -26,6 +25,8 @@ use crate::continuations::bootloader::{
 };
 
 use crate::code_gen::Register;
+
+use self::memory_merkle_tree::MerkleTreeImpl;
 
 fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace<F>) -> HashMap<String, Vec<F>> {
     let mut reg_values: HashMap<&str, Vec<F>> = HashMap::with_capacity(trace.reg_map.len());
@@ -215,7 +216,7 @@ pub struct DryRunResult<F: FieldElement> {
 /// Runs the entire execution using the RISC-V executor. For each chunk, it collects:
 /// - The inputs to the bootloader, needed to restore the correct state.
 /// - The number of rows after which the prover should jump to the shutdown routine.
-pub fn rust_continuations_dry_run<F: FieldElement>(
+pub fn rust_continuations_dry_run<F: FieldElement + MerkleTreeImpl>(
     pipeline: &mut Pipeline<F>,
     field: KnownField,
     profiler_opt: Option<ProfilerOptions>,
@@ -379,12 +380,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
                 PAGE_INPUTS_OFFSET + BOOTLOADER_INPUTS_PER_PAGE * i + 1 + WORDS_PER_PAGE + 8;
             for (j, sibling) in proof.into_iter().enumerate() {
                 bootloader_inputs[proof_start_index + j * 8..proof_start_index + j * 8 + 8]
-                    .copy_from_slice(
-                        &sibling
-                            .iter()
-                            .flat_map(|e| split_fe(*e))
-                            .collect::<Vec<_>>(),
-                    );
+                    .copy_from_slice(&F::iter_hash_as_fe(sibling).collect::<Vec<_>>());
             }
 
             // Update one child of the Merkle tree
@@ -401,10 +397,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             for (j, sibling) in proof.into_iter().enumerate() {
                 assert_eq!(
                     &bootloader_inputs[proof_start_index + j * 8..proof_start_index + j * 8 + 8],
-                    sibling
-                        .iter()
-                        .flat_map(|e| split_fe(*e))
-                        .collect::<Vec<_>>()
+                    F::iter_hash_as_fe(sibling).collect::<Vec<_>>()
                 );
             }
 
@@ -412,12 +405,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             let updated_page_hash_index =
                 PAGE_INPUTS_OFFSET + BOOTLOADER_INPUTS_PER_PAGE * i + 1 + WORDS_PER_PAGE;
             bootloader_inputs[updated_page_hash_index..updated_page_hash_index + 8]
-                .copy_from_slice(
-                    &page_hash
-                        .iter()
-                        .flat_map(|e| split_fe(*e))
-                        .collect::<Vec<_>>(),
-                );
+                .copy_from_slice(&F::iter_hash_as_fe(page_hash).collect::<Vec<_>>());
         }
 
         // Go over all registers except the PC
@@ -438,13 +426,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
 
         // Replace the updated root hash
         let updated_root_hash_index = MEMORY_HASH_START_INDEX + 8;
-        bootloader_inputs[updated_root_hash_index..updated_root_hash_index + 8].copy_from_slice(
-            &merkle_tree
-                .root_hash()
-                .iter()
-                .flat_map(|e| split_fe(*e))
-                .collect::<Vec<_>>(),
-        );
+        bootloader_inputs[updated_root_hash_index..updated_root_hash_index + 8]
+            .copy_from_slice(&F::iter_hash_as_fe(merkle_tree.root_hash()).collect::<Vec<_>>());
 
         log::info!(
             "Initial memory root hash: {}",

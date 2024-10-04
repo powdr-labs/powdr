@@ -2,6 +2,7 @@ use powdr_number::FieldElement;
 use powdr_number::LargeInt;
 
 use super::memory_merkle_tree::MerkleTree;
+use super::memory_merkle_tree::MerkleTreeImpl;
 
 use powdr_number::KnownField;
 
@@ -153,47 +154,47 @@ pub const SHUTDOWN_START: u64 = 4;
 /// its correct position.
 struct InputCreator<'a, F, Pages>
 where
-    F: FieldElement,
+    F: FieldElement + MerkleTreeImpl,
     Pages: ExactSizeIterator<Item = InputPage<'a, F>>,
 {
     register_values: Vec<F>,
-    merkle_tree_root_hash: &'a [F; 4],
+    merkle_tree_root_hash: &'a F::Hash,
     pages: Pages,
 }
 
 /// Pages of memory, each with its hash and proof.
-struct InputPage<'a, F: FieldElement> {
+struct InputPage<'a, F: FieldElement + MerkleTreeImpl> {
     page_idx: u32,
-    data: &'a [F; WORDS_PER_PAGE],
-    hash: &'a [F; 4],
-    proof: Vec<&'a [F; 4]>,
+    data: &'a F::Page,
+    hash: &'a F::Hash,
+    proof: Vec<&'a F::Hash>,
 }
 
 impl<'a, F, I> InputCreator<'a, F, I>
 where
-    F: powdr_number::FieldElement,
+    F: FieldElement + MerkleTreeImpl,
     I: ExactSizeIterator<Item = InputPage<'a, F>>,
 {
     fn into_input(self) -> Vec<F> {
         let mut inputs = self.register_values;
         inputs.extend_from_within(..);
-        inputs.extend(self.merkle_tree_root_hash.iter().flat_map(|v| split_fe(*v)));
-        inputs.extend(self.merkle_tree_root_hash.iter().flat_map(|v| split_fe(*v)));
+        inputs.extend(F::iter_hash_as_fe(self.merkle_tree_root_hash));
+        inputs.extend(F::iter_hash_as_fe(self.merkle_tree_root_hash));
 
         inputs.push((self.pages.len() as i64).into());
         for page in self.pages {
-            inputs.push(page.page_idx.into());
-            inputs.extend(page.data);
-            inputs.extend(page.hash.iter().flat_map(|v| split_fe(*v)));
+            inputs.extend(F::iter_word_as_fe(page.page_idx));
+            inputs.extend(F::iter_page_as_fe(page.data));
+            inputs.extend(F::iter_hash_as_fe(page.hash));
             for sibling in page.proof {
-                inputs.extend(sibling.iter().flat_map(|v| split_fe(*v)));
+                inputs.extend(F::iter_hash_as_fe(sibling));
             }
         }
         inputs
     }
 }
 
-pub fn create_input<F: FieldElement, Pages: ExactSizeIterator<Item = u32>>(
+pub fn create_input<F: FieldElement + MerkleTreeImpl, Pages: ExactSizeIterator<Item = u32>>(
     register_values: Vec<F>,
     merkle_tree: &MerkleTree<F>,
     accessed_pages: Pages,
@@ -224,7 +225,7 @@ pub fn default_register_values<F: FieldElement>() -> Vec<F> {
 /// - No pages are initialized
 /// - All registers are set to 0 (including the PC, which causes the bootloader to do nothing)
 /// - The state at the end of the execution is the same as the beginning
-pub fn default_input<F: FieldElement>(accessed_pages: &[u64]) -> Vec<F> {
+pub fn default_input<F: FieldElement + MerkleTreeImpl>(accessed_pages: &[u64]) -> Vec<F> {
     // Set all registers and the number of pages to zero
     let register_values = default_register_values();
     let merkle_tree = MerkleTree::<F>::new();
