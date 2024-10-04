@@ -21,6 +21,8 @@ use super::{EvalResult, FixedData, MutableState, QueryCallback};
 
 mod block_machine;
 mod double_sorted_witness_machine;
+mod double_sorted_witness_machine_16;
+mod double_sorted_witness_machine_32;
 mod fixed_lookup_machine;
 pub mod machine_extractor;
 pub mod profiling;
