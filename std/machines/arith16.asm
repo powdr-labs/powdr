@@ -63,7 +63,7 @@ machine Arith16(byte: Byte, byte2: Byte2) with
             let y3 = y3_int();
             let x1 = x1_int();
             if x1 == 0 {
-                // Remainder is unconstrained, use zero.
+                // To satisfy x1 * y1 + x2 = y3, we need to set x2 = y3.
                 Query::Hint(fe(select_limb(y3, limb)))
             } else {
                 let remainder = y3 % x1;
