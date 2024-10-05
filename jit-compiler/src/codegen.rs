@@ -330,8 +330,10 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     .unwrap_or_default();
 
                 let (vars, code) = check_pattern(var_name, pattern)?;
-                // TODO if we want to explicitly specify the type, we need to exchange the non-captured
-                // parts by `()`.
+                // TODO At some point, Rustc could complain that it needs an explicit type
+                // for `{vars}`. We cannot use `ty` for that because the pattern translation
+                // results in `()` for parts that do not have any captured variables.
+                // The best way is probably to modify `check_pattern` to return the types
                 format!("let {vars} = (|{var_name}{ty}| {code})({value}).unwrap();",)
             }
             StatementInsideBlock::Expression(e) => format!("{};", self.format_expr(e)?),
