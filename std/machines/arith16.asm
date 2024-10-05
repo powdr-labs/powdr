@@ -28,7 +28,7 @@ machine Arith16(byte: Byte, byte2: Byte2) with
     // y3 / x1 = y1 (remainder x2)
     // WARNING: it's not constrained that remainder is less than the divisor.
     // WARNING: For division by zero, the quotient is unconstrained.
-    // Both need to handled by any machine calling into this one.
+    // Both need to be handled by any machine calling into this one.
     operation div<1> y3c[1], y3c[0], x1c[1], x1c[0] -> y1c[1], y1c[0], x2c[1], x2c[0];
 
     // Constrain that y2 = 0 when operation is div.
