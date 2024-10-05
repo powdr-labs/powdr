@@ -51,7 +51,7 @@ pub fn generate_glue_code<T: FieldElement>(
             r#"
             #[no_mangle]
             pub extern "C" fn {}(i: u64) -> u64 {{
-                u64::try_from({name}(ibig::IBig::from(i))).unwrap()
+                u64::try_from(({name}).call(ibig::IBig::from(i))).unwrap()
             }}
             "#,
             extern_symbol_name(sym)

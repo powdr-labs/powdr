@@ -63,13 +63,12 @@ fn assigned_functions() {
             let c = if t { a } else { b };
             let d = |i| c(i);
         "#;
-    // TODO
-    // let c = compile(input, "main::c");
+    let c = compile(input, "main::c");
 
-    // assert_eq!(c.call(0), 1);
-    // assert_eq!(c.call(1), 2);
-    // assert_eq!(c.call(2), 3);
-    // assert_eq!(c.call(3), 4);
+    assert_eq!(c.call(0), 1);
+    assert_eq!(c.call(1), 2);
+    assert_eq!(c.call(2), 3);
+    assert_eq!(c.call(3), 4);
 
     let d = compile(input, "main::d");
     assert_eq!(d.call(0), 1);
