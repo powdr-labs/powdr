@@ -1502,69 +1502,243 @@ pub struct MatchAnalysisReport {
 // and we can use patterns directly
 #[derive(Debug, Clone)]
 enum PatternSpace {
+    Any,
     Contained(Vec<PatternSpace>, bool),
     Finite(FinitePatternSpace),
-    Infinite(InfinitePatternSpace),
-    Covered,
+    Infinite(InfinitePatternSpace, bool),
+    //Covered,
 }
 
 #[derive(Debug, Clone)]
 enum FinitePatternSpace {
-    Enum(String, Option<Vec<PatternSpace>>),
+    Enum(Vec<(String, Option<Vec<PatternSpace>>)>),
     Bool(Option<bool>),
 }
 
 #[derive(Debug, Clone)]
 enum InfinitePatternSpace {
-    String(Option<Vec<String>>),
-    Number(Option<Vec<BigInt>>),
+    String(Vec<String>),
+    Number(Vec<BigInt>),
 }
 
-impl PatternSpace {
-    fn is_covered_by_pattern(&self, pattern: &Pattern) -> bool {
-        println!("is_covered_by_pattern: {:?} {:?}", self, pattern);
-        match (self, pattern) {
-            (_, Pattern::CatchAll(_)) | (_, Pattern::Variable(_, _)) => true, // Covered already covered here :P
-            (
-                PatternSpace::Infinite(InfinitePatternSpace::String(Some(ss))),
-                Pattern::String(_, ps),
-            ) => !ss.contains(ps),
-            (
-                PatternSpace::Infinite(InfinitePatternSpace::Number(Some(sn))),
-                Pattern::Number(_, pn),
-            ) => !sn.contains(pn),
-            (PatternSpace::Infinite(InfinitePatternSpace::String(None)), Pattern::String(_, _)) => {
-                true
+impl PartialEq for PatternSpace {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            //(Self::Covered, Self::Covered) => true,
+            (Self::Contained(a, b1), Self::Contained(c, b2)) => {
+                b1 == b2 && a.len() == c.len() && a.iter().all(|item| c.contains(item))
             }
-            (PatternSpace::Infinite(InfinitePatternSpace::Number(None)), Pattern::Number(_, _)) => {
-                true
-            }
-            (PatternSpace::Contained(spaces, _), Pattern::Tuple(_, items))
-            | (PatternSpace::Contained(spaces, _), Pattern::Array(_, items)) => spaces
-                .iter()
-                .zip(items)
-                .all(|(space, p)| space.is_covered_by_pattern(p)),
-            (
-                PatternSpace::Finite(FinitePatternSpace::Enum(sname, inner_space)),
-                Pattern::Enum(_, symbol, inner_pattern),
-            ) => {
-                if *sname == symbol.to_string() {
-                    match (inner_space, inner_pattern) {
-                        (Some(inner_space), Some(inner_pattern)) => inner_pattern
-                            .iter()
-                            .zip(inner_space.iter())
-                            .all(|(p, space)| space.is_covered_by_pattern(p)),
-                        (None, None) => true,
-                        _ => false,
-                    }
-                } else {
-                    false
-                }
-            }
-            (PatternSpace::Finite(FinitePatternSpace::Bool(_)), _) => false, // Boolean pattern?
+            (Self::Finite(a), Self::Finite(b)) => a == b,
+            (Self::Infinite(a, f1), Self::Infinite(b, f2)) => a == b && f1 == f2,
             _ => false,
         }
     }
+}
+
+impl PartialEq for FinitePatternSpace {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Enum(a), Self::Enum(b)) => {
+                a.len() == b.len() && a.iter().all(|(name, inner)| {
+                    b.iter().any(|(other_name, other_inner)| {
+                        name == other_name && inner == other_inner
+                    })
+                })
+            }
+            (Self::Bool(a), Self::Bool(b)) => a == b,
+            _ => false,
+        }
+    }
+}
+
+impl PartialEq for InfinitePatternSpace {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::String(a), Self::String(b)) => {
+                a.len() == b.len() && a.iter().all(|item| b.contains(item))
+            }
+            (Self::Number(a), Self::Number(b)) => {
+                a.len() == b.len() && a.iter().all(|item| b.contains(item))
+            }
+            _ => false,
+        }
+    }
+}
+
+impl PatternSpace {
+
+    fn substract(&self, other: &Pattern) -> Self {
+        match (self, other) {
+            (p, Pattern::CatchAll(_)) | (p, Pattern::Variable(_, _)) => {
+                p.cover_all_space()
+            },
+            (PatternSpace::Any, _) => self.clone(),
+            (PatternSpace::Contained(ps, b), Pattern::Array(_, items)) | (PatternSpace::Contained(ps, b), Pattern::Tuple(_, items)) => {
+                let new_ps = ps.iter()
+                    .zip(items)
+                    .map(|(p, o)| p.substract(o))
+                    .collect();
+                PatternSpace::Contained(new_ps, *b)
+            }
+            (PatternSpace::Finite(FinitePatternSpace::Enum(enums)), Pattern::Enum(_, symbol, variants)) => {
+                let result: Vec<_> = enums.iter()
+                    .filter_map(|(name, inner)| {
+                        if name == &symbol.to_string() {
+                            match (inner, variants) {
+                                (None, None) => None,
+                                (Some(inner_spaces), Some(variant_patterns)) => {
+                                    let subtracted: Vec<_> = inner_spaces.iter()
+                                        .zip(variant_patterns)
+                                        .map(|(space, pattern)| space.substract(pattern))
+                                        .collect();
+                                    if !subtracted.is_empty() {
+                                        Some((name.clone(), Some(subtracted)))
+                                    } else {
+                                        None
+                                    }
+                                },
+                                (Some(_), None) | (None, Some(_)) => unreachable!(),
+                            }
+                        } else {
+                            Some((name.clone(), inner.clone()))
+                        }
+                    })
+                    .collect();
+                PatternSpace::Finite(FinitePatternSpace::Enum(result))
+            }
+            (PatternSpace::Infinite(InfinitePatternSpace::String(strings), full), Pattern::String(_, o_string)) => {
+                if !strings.contains(&o_string.to_string()) && !full {
+                    let mut new_strings = strings.to_vec();
+                    new_strings.push(o_string.to_string());
+                    PatternSpace::Infinite(InfinitePatternSpace::String(new_strings), *full)
+                } else {
+                    PatternSpace::Infinite(InfinitePatternSpace::String(strings.to_vec()), *full)
+                }
+            }
+            (PatternSpace::Infinite(InfinitePatternSpace::Number(numbers), full), Pattern::Number(_, o_number)) => {
+                if !numbers.contains(o_number) && !full {
+                    let mut new_numbers = numbers.to_vec();
+                    new_numbers.push(o_number.clone());
+                    PatternSpace::Infinite(InfinitePatternSpace::Number(new_numbers), *full)
+                } else {
+                    PatternSpace::Infinite(InfinitePatternSpace::Number(numbers.to_vec()), *full)
+                }
+            }
+            (p1, p2) => {
+                panic!("Cannot substract {:?} from {:?}", p2, p1);
+            }
+        }
+    }
+
+    fn union(self, other: &Self, enums: &HashMap<String, Vec<(String, Option<Vec<Type>>)>>) -> Self {
+        match (self, other) {
+            (p, PatternSpace::Any) => p, //flat_spaces(expand_pattern_space(p.clone(), enums), enums),
+            (PatternSpace::Any, p) => p.clone(), //flat_spaces(expand_pattern_space(p.clone(), enums), enums), // TODO fix this
+            (PatternSpace::Contained(ps, b), PatternSpace::Contained(os, _)) => {
+                let mut new_ps = Vec::new();
+                for (o, p) in os.into_iter().zip(ps.iter()) {
+                    new_ps.push(p.clone().union(o, enums));
+                }
+
+                PatternSpace::Contained(new_ps, b)
+            }
+            (PatternSpace::Infinite(InfinitePatternSpace::Number(ns), full1), PatternSpace::Infinite(InfinitePatternSpace::Number(ns2), full2)) => {
+                let mut ns = ns.into_iter().chain(ns2.clone()).collect::<Vec<_>>();
+                ns.sort();
+                ns.dedup();
+                PatternSpace::Infinite(InfinitePatternSpace::Number(ns),full1 || *full2)
+            }
+            (PatternSpace::Infinite(InfinitePatternSpace::String(ss), full1), PatternSpace::Infinite(InfinitePatternSpace::String(ss2), full2)) => {
+                let mut ss = ss.into_iter().chain(ss2.clone()).collect::<Vec<_>>();
+                ss.sort();
+                ss.dedup();
+                PatternSpace::Infinite(InfinitePatternSpace::String(ss), full1 || *full2)
+            }
+            (s, _) =>{
+                s.clone()
+            }  // enums are already merged
+
+
+        }
+    }
+
+    fn all_covered(&self) -> bool {
+        match self {
+            PatternSpace::Any => false,
+            PatternSpace::Infinite(_, covered) => *covered,
+            PatternSpace::Finite(FinitePatternSpace::Enum(variants)) => {
+                variants.is_empty() || variants.iter().all(|(_, inner_space)| {
+                    inner_space.as_ref().map_or(true, |spaces| spaces.iter().all(|space| space.all_covered()))
+                })
+            }
+            PatternSpace::Contained(items, _) => {
+                items.iter().all(|item| item.all_covered())
+            }
+            _ => unimplemented!(),
+        }
+    }
+
+    fn cover_all_space(&self) -> PatternSpace {
+        match self {
+            PatternSpace::Infinite(infinite, full) => {
+                PatternSpace::Infinite(infinite.clone(), true)
+            }
+            
+            PatternSpace::Finite(FinitePatternSpace::Enum(variants)) => {
+                let mut new_variants = Vec::new();
+                for (name, inner_space) in variants {
+                    let covered_inner_space = inner_space.as_ref().map(|spaces| {
+                        spaces.into_iter().map(|space| space.cover_all_space()).collect()
+                    });
+                    new_variants.push((name.clone(), covered_inner_space));
+                }
+                //new_variants.sort();
+                //new_variants.dedup();
+                PatternSpace::Finite(FinitePatternSpace::Enum(new_variants))
+            }
+            PatternSpace::Contained(spaces, b) => {
+                let processed_spaces: Vec<PatternSpace> = spaces.iter().map(|space| space.cover_all_space()).collect();
+                PatternSpace::Contained(processed_spaces, *b)
+            }
+            _ => self.clone(),
+        }
+    }
+    // fn is_covered_by_pattern(&self, pattern: &Pattern) -> bool {
+    //     //println!("is_covered_by_pattern: {:?} {:?}", self, pattern);
+    //     match (self, pattern) {
+    //         (_, Pattern::CatchAll(_)) | (_, Pattern::Variable(_, _)) => true, // Covered already covered here :P
+    //         (
+    //             PatternSpace::Infinite(InfinitePatternSpace::String(ss)),
+    //             Pattern::String(_, ps),
+    //         ) => !ss.contains(ps),
+    //         (
+    //             PatternSpace::Infinite(InfinitePatternSpace::Number(sn)),
+    //             Pattern::Number(_, pn),
+    //         ) => !sn.contains(pn),
+    //         (PatternSpace::Contained(spaces, _), Pattern::Tuple(_, items))
+    //         | (PatternSpace::Contained(spaces, _), Pattern::Array(_, items)) => spaces
+    //             .iter()
+    //             .zip(items)
+    //             .all(|(space, p)| space.is_covered_by_pattern(p)),
+    //         (PatternSpace::Finite(FinitePatternSpace::Enum(enum_spaces)), Pattern::Enum(_, symbol, inner_pattern)) => {
+    //             let symbol_str = symbol.to_string();
+    //             if let Some((_, inner_space)) = enum_spaces.iter().find(|(name, _)| *name == symbol_str) {
+    //                 match (inner_space, inner_pattern) {
+    //                     (Some(inner_space), Some(inner_pattern)) => inner_pattern
+    //                         .iter()
+    //                         .zip(inner_space.iter())
+    //                         .all(|(p, space)| space.is_covered_by_pattern(p)),
+    //                     (None, None) => true,
+    //                     _ => false,
+    //                 }
+    //             } else {
+    //                 false // unreachable
+    //             }
+    //         }
+    //         (PatternSpace::Finite(FinitePatternSpace::Bool(_)), _) => false, // Boolean pattern?
+    //         _ => false,
+    //     }
+    // }
 }
 
 pub fn analyze_match_patterns(
@@ -1572,6 +1746,7 @@ pub fn analyze_match_patterns(
     enums: HashMap<String, Vec<(String, Option<Vec<Type>>)>>,
 ) -> MatchAnalysisReport {
     let mut covered_space = compute_covered_space(patterns, enums);
+    //println!("covered_space: {:?}", covered_space);
     let (is_exhaustive, redundant_indices, _remaining_space) =
         analyze_patterns(patterns, &mut covered_space);
 
@@ -1583,189 +1758,101 @@ pub fn analyze_match_patterns(
 
 fn analyze_patterns(
     patterns: &[Pattern],
-    covered_space: &mut Vec<PatternSpace>,
-) -> (bool, Vec<usize>, Vec<PatternSpace>) {
+    covered_space: &mut PatternSpace,
+) -> (bool, Vec<usize>, PatternSpace) {
     let mut redundant_patterns = Vec::new();
     let mut needed_patterns = Vec::new();
     for (pattern_index, pattern) in patterns.iter().enumerate() {
-        let mut removed_space = Vec::new();
-        let mut mutated_space = false;
-        for (space_index, space) in covered_space.iter().enumerate() {
-            if removed_space.contains(&space_index) {
-                continue;
-            }
-            if space.is_covered_by_pattern(pattern) {
-                removed_space.push(space_index);
-                mutated_space = true;
-            }
-        }
 
-        if mutated_space {
-            needed_patterns.push(pattern);
-            //removed_space.sort();
-            //removed_space.reverse();
-            for &index in &removed_space {
-                let to_remove = covered_space.get_mut(index).unwrap();
-                update_covered_space(to_remove, pattern);
-            }
-        } else {
+        println!("pattern: {:?}", pattern);
+        println!("covered_space: {:?}", covered_space);
+        let substracted_space = covered_space.substract(pattern);
+        println!("substracted_space: {:?}", substracted_space);
+        if substracted_space == *covered_space {
             redundant_patterns.push(pattern_index);
+        } else {
+            needed_patterns.push(pattern);
+            *covered_space = substracted_space;
         }
     }
 
+    println!();
+    println!("Final results");
     println!("Covered space: {:?}", covered_space);
     println!("Redundant patterns: {:?}", redundant_patterns);
     println!("Needed patterns: {:?}", needed_patterns);
 
     (
-        covered_space.is_empty()
-            || covered_space
-                .iter()
-                .any(|p| matches!(p, PatternSpace::Covered)),
+        covered_space.all_covered(),
         redundant_patterns,
-        covered_space.to_vec(), // TODO: Covered space needs to be transformed back to Patterns
+        covered_space.clone(), // TODO: Covered space needs to be transformed back to Patterns
     )
 }
 
-fn update_covered_space(space: &mut PatternSpace, pattern: &Pattern) {
-    if matches!(pattern, Pattern::CatchAll(_) | Pattern::Variable(_, _)) {
-        *space = PatternSpace::Covered;
-    } else if let PatternSpace::Infinite(InfinitePatternSpace::String(ref mut ns)) = space {
-        if let Pattern::String(_, ss) = pattern {
-            ns.get_or_insert_with(Vec::new).push(ss.to_string());
-        }
-    } else if let PatternSpace::Infinite(InfinitePatternSpace::Number(ref mut nn)) = space {
-        if let Pattern::Number(_, sn) = pattern {
-            nn.get_or_insert_with(Vec::new).push(sn.clone());
-        }
-    } else if let PatternSpace::Contained(ref mut inner_spaces, _) = space {
-        if let Pattern::Tuple(_, inner_patterns) | Pattern::Array(_, inner_patterns) = pattern {
-            for (space, pattern) in inner_spaces.iter_mut().zip(inner_patterns) {
-                update_covered_space(space, pattern);
-            }
-        }
 
-        let all_covered = inner_spaces
-            .iter()
-            .all(|s| matches!(s, PatternSpace::Covered));
-        if all_covered {
-            *space = PatternSpace::Covered;
-        }
-    } else if let PatternSpace::Finite(FinitePatternSpace::Enum(name, inner_spaces)) = space {
-        // TODO: To check if the enum is fully covered, we need to check if all the variants are covered.
-        if let Pattern::Enum(_, path, inner_patterns) = pattern {
-            if name == &path.to_string() {
-                if let (Some(ref mut spaces), Some(patterns)) = (inner_spaces, inner_patterns) {
-                    for (space, pattern) in spaces.iter_mut().zip(patterns) {
-                        update_covered_space(space, pattern);
-                    }
-                }
-            }
-        }
-    }
-}
+// fn update_covered_space(space: &mut PatternSpace, pattern: &Pattern) {
+//     if matches!(pattern, Pattern::CatchAll(_) | Pattern::Variable(_, _)) {
+//         *space = PatternSpace::Any;
+//     } else if let PatternSpace::Infinite(InfinitePatternSpace::String(ref mut ns)) = space {
+//         if let Pattern::String(_, ss) = pattern {
+//             //println!("Updating string space: {:?} {:?}", ns, ss);
+//             ns.push(ss.to_string());
+//         }
+//     } else if let PatternSpace::Infinite(InfinitePatternSpace::Number(ref mut nn)) = space {
+//         if let Pattern::Number(_, sn) = pattern {
+//             nn.push(sn.clone());
+//         }
+//     } else if let PatternSpace::Contained(ref mut inner_spaces, _) = space {
+//         if let Pattern::Tuple(_, inner_patterns) | Pattern::Array(_, inner_patterns) = pattern {
+//             for (space, pattern) in inner_spaces.iter_mut().zip(inner_patterns) {
+//                 update_covered_space(space, pattern);
+//             }
+//         }
+
+//         // let all_covered = inner_spaces
+//         //     .iter()
+//         //     .all(|s| matches!(s, PatternSpace::Covered));
+//         // if all_covered {
+//         //     *space = PatternSpace::Covered;
+//         // }
+//     } else if let PatternSpace::Finite(FinitePatternSpace::Enum(enum_spaces)) = space {
+//         if let Pattern::Enum(_, path, inner_patterns) = pattern {
+//             let path_str = path.to_string();
+//             if let Some((_, enum_space)) = enum_spaces.iter_mut().find(|(name, _)| *name == path_str) {
+//                 if let (Some(spaces), Some(patterns)) = (enum_space, inner_patterns) {
+//                     for (space, pattern) in spaces.iter_mut().zip(patterns) {
+//                         update_covered_space(space, pattern);
+//                     }
+//                 }
+//             }
+//         }
+//     }
+// }
 
 fn compute_covered_space(
     patterns: &[Pattern],
     enums: HashMap<String, Vec<(String, Option<Vec<Type>>)>>,
-) -> Vec<PatternSpace> {
+) -> PatternSpace {
     let mut result = Vec::with_capacity(patterns.len());
 
-    for pattern in patterns {
+    for pattern in patterns.iter() {
         let expanded = process_pattern(pattern, &enums);
         result.extend(expanded);
     }
 
-    result
+    let flattened = flat_spaces(result, &enums);
+
+    flattened
 }
 
-// fn check_exhastiveness(patterns: Vec<&Pattern>) -> bool {
-//     if patterns.is_empty() {
-//         return true;
-//     }
-//     if patterns
-//         .iter()
-//         .any(|p| matches!(p, Pattern::CatchAll(_)) || matches!(p, Pattern::Variable(_, _)))
-//     {
-//         return true;
-//     }
+fn flat_spaces(spaces: Vec<PatternSpace>, enums: &HashMap<String, Vec<(String, Option<Vec<Type>>)>>) -> PatternSpace {
+    let mut final_space = spaces.first().unwrap().clone();
+    for space in spaces.iter().skip(1) {
+        final_space = final_space.union(space, enums);
+    }
 
-//     if patterns
-//         .iter()
-//         .any(|p| matches!(p, Pattern::Number(_, _)) || matches!(p, Pattern::String(_, _)))
-//     {
-//         return false;
-//     }
-
-//     if patterns.iter().any(|p| matches!(p, Pattern::Enum(_, _, _))) {
-//         let vectors: Vec<&Vec<Pattern>> = patterns
-//             .iter()
-//             .filter_map(|pattern| {
-//                 if let Pattern::Enum(_, _, Some(vec)) = pattern {
-//                     Some(vec)
-//                 } else {
-//                     None
-//                 }
-//             })
-//             .collect();
-
-//         return check_exhastiveness_inner(vectors);
-//     }
-
-//     if patterns
-//         .iter()
-//         .any(|p| matches!(p, Pattern::Tuple(_, inner)))
-//     {
-//         let vectors: Vec<&Vec<Pattern>> = patterns
-//             .iter()
-//             .filter_map(|pattern| {
-//                 if let Pattern::Tuple(_, vec) = pattern {
-//                     Some(vec)
-//                 } else {
-//                     None
-//                 }
-//             })
-//             .collect();
-
-//         return check_exhastiveness_inner(vectors);
-//     }
-
-//     if patterns
-//         .iter()
-//         .any(|p| matches!(p, Pattern::Array(_, inner)))
-//     {
-//         let vectors: Vec<&Vec<Pattern>> = patterns
-//             .iter()
-//             .filter_map(|pattern| {
-//                 if let Pattern::Array(_, vec) = pattern {
-//                     Some(vec)
-//                 } else {
-//                     None
-//                 }
-//             })
-//             .collect();
-
-//         return check_exhastiveness_inner(vectors);
-//     }
-
-//     false
-// }
-
-// fn check_exhastiveness_inner(vectors: Vec<&Vec<Pattern>>) -> bool {
-//     let mut iterators = vectors.iter().map(|v| v.iter()).collect::<Vec<_>>();
-
-//     while let Some(elements) = iterators
-//         .iter_mut()
-//         .map(|it| it.next())
-//         .collect::<Option<Vec<_>>>()
-//     {
-//         if !check_exhastiveness(elements) {
-//             return false;
-//         }
-//     }
-
-//     true
-// }
+    final_space
+}
 
 fn process_pattern(
     pattern: &Pattern,
@@ -1779,11 +1866,11 @@ fn process_pattern(
 
 fn create_pattern_space(pattern: &Pattern) -> PatternSpace {
     match pattern {
-        Pattern::CatchAll(_) => PatternSpace::Covered,
+        Pattern::CatchAll(_) => PatternSpace::Any,
         Pattern::Ellipsis(_) => unreachable!(),
-        Pattern::Number(_, n) => PatternSpace::Infinite(InfinitePatternSpace::Number(None)),
-        Pattern::String(_, s) => PatternSpace::Infinite(InfinitePatternSpace::String(None)),
-        Pattern::Variable(_, _) => PatternSpace::Covered,
+        Pattern::Number(_, n) => PatternSpace::Infinite(InfinitePatternSpace::Number(vec![]), false),
+        Pattern::String(_, s) => PatternSpace::Infinite(InfinitePatternSpace::String(vec![]), false),
+        Pattern::Variable(_, _) => PatternSpace::Any,
         Pattern::Tuple(_, p) => {
             let inner_space = p.iter().map(|p| create_pattern_space(p)).collect();
             PatternSpace::Contained(inner_space, false)
@@ -1796,7 +1883,7 @@ fn create_pattern_space(pattern: &Pattern) -> PatternSpace {
             let inner_space = fields
                 .as_ref()
                 .map(|patterns| patterns.iter().map(|p| create_pattern_space(p)).collect());
-            PatternSpace::Finite(FinitePatternSpace::Enum(name.to_string(), inner_space))
+            PatternSpace::Finite(FinitePatternSpace::Enum(vec![(name.to_string(), inner_space)]))
         }
     }
 }
@@ -1820,53 +1907,30 @@ fn expand_pattern_space(
                 .map(|p| PatternSpace::Contained(p.to_vec(), false))
                 .collect()
         }
-        PatternSpace::Finite(FinitePatternSpace::Enum(p_name, _)) => {
-            // TODO I should process the specified enum and use it to modify the None values for more precision?
-            let (enum_name, _variant_name) = p_name.rsplit_once("::").unwrap();
-            enums
-                .get(enum_name)
+        PatternSpace::Finite(FinitePatternSpace::Enum(variants)) => {
+            let (enum_name, _) = variants[0].0.rsplit_once("::").unwrap();
+            let expanded_variants = enums.get(enum_name)
                 .unwrap()
                 .iter()
-                // .filter(|(name, _)| name != variant_name)
-                .map(|(name, types)| {
+                .map(|(variant_name, types)| {
                     let processed_ty = process_variant_type(types);
                     match processed_ty {
                         Some(spaces) => {
-                            let mut all_expanded = Vec::new();
-                            for inner_space in spaces {
-                                let expanded = expand_pattern_space(inner_space, enums);
-                                all_expanded.push(expanded);
-                            }
-
-                            let expanded = cartesian_product(all_expanded);
-                            let res: Vec<_> = expanded
-                                .iter()
-                                .map(|p| {
-                                    PatternSpace::Finite(FinitePatternSpace::Enum(
-                                        format!("{enum_name}::{name}"),
-                                        Some(p.to_vec()),
-                                    ))
-                                })
-                                .collect();
-
-                            res
+                            let expanded = spaces.into_iter()
+                                .map(|space| expand_pattern_space(space, enums))
+                                .flatten()
+                                .collect::<Vec<_>>();
+                            (format!("{}::{}", enum_name, variant_name), Some(expanded))
                         }
-                        None => vec![PatternSpace::Finite(FinitePatternSpace::Enum(
-                            format!("{enum_name}::{name}"),
-                            processed_ty,
-                        ))],
+                        None => (format!("{}::{}", enum_name, variant_name), None),
                     }
                 })
-                .flatten()
-                .collect()
+                .collect();
+
+            vec![PatternSpace::Finite(FinitePatternSpace::Enum(expanded_variants))]
         }
-        PatternSpace::Finite(FinitePatternSpace::Bool(_)) => {
-            vec![
-                PatternSpace::Finite(FinitePatternSpace::Bool(Some(true))),
-                PatternSpace::Finite(FinitePatternSpace::Bool(Some(false))),
-            ]
-        }
-        PatternSpace::Infinite(_) | PatternSpace::Covered => vec![pattern],
+        PatternSpace::Finite(FinitePatternSpace::Bool(_)) => unimplemented!("did you say bool patters? really?"),
+        PatternSpace::Infinite(_, _) | PatternSpace::Any => vec![pattern],
     };
 
     vec
@@ -1883,10 +1947,10 @@ fn process_variant_type(variant: &Option<Vec<Type>>) -> Option<Vec<PatternSpace>
                         unreachable!()
                     }
                     Type::Int | Type::Fe => {
-                        PatternSpace::Infinite(InfinitePatternSpace::Number(None))
+                        PatternSpace::Infinite(InfinitePatternSpace::Number(vec![]), false)
                     }
                     Type::Bool => PatternSpace::Finite(FinitePatternSpace::Bool(None)),
-                    Type::String => PatternSpace::Infinite(InfinitePatternSpace::String(None)),
+                    Type::String => PatternSpace::Infinite(InfinitePatternSpace::String(vec![]), false),
                     Type::Array(array_type) => todo!(),
                     Type::Tuple(tuple_type) => todo!(),
                     Type::TypeVar(_) => todo!(),
@@ -1923,6 +1987,27 @@ mod tests {
     fn dummy_sr() -> SourceRef {
         SourceRef::unknown()
     }
+
+    // #[test]
+    // fn test_update_covered_space_enum() {
+    //     let mut space = PatternSpace::Finite(FinitePatternSpace::Enum(vec![
+    //         ("Option::Some".to_string(), Some(vec![PatternSpace::Infinite(InfinitePatternSpace::Number(vec![]))])),
+    //         ("Option::None".to_string(), None),
+    //     ]));
+    //     let pattern = Pattern::Enum(
+    //         SourceRef::unknown(),
+    //         SymbolPath::from_str("Option::Some").unwrap(),
+    //         Some(vec![Pattern::Number(SourceRef::unknown(), BigInt::from(42))]),
+    //     );
+    //     update_covered_space(&mut space, &pattern);
+    //     assert_eq!(
+    //         space,
+    //         PatternSpace::Finite(FinitePatternSpace::Enum(vec![
+    //             ("Option::Some".to_string(), Some(vec![PatternSpace::Infinite(InfinitePatternSpace::Number(vec![BigInt::from(42)]))])),
+    //             ("Option::None".to_string(), None),
+    //         ]))
+    //     );
+    // }
 
     #[test]
     fn test_basic_usefullness() {
