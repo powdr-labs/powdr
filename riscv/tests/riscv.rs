@@ -2,7 +2,7 @@ mod common;
 
 use common::{verify_riscv_asm_file, verify_riscv_asm_string};
 use mktemp::Temp;
-use powdr_number::{BabyBearField, FieldElement, GoldilocksField, KnownField};
+use powdr_number::{FieldElement, GoldilocksField, KnownField};
 use powdr_pipeline::{
     test_util::{run_pilcom_with_backend_variant, BackendVariant},
     Pipeline,
@@ -12,7 +12,7 @@ use test_log::test;
 
 use powdr_riscv::{
     continuations::{rust_continuations, rust_continuations_dry_run},
-    CompilerOptions, Runtime, RuntimeEnum,
+    CompilerOptions, RuntimeEnum,
 };
 
 /// Compiles and runs a rust program with continuations, runs the full
@@ -100,42 +100,38 @@ fn bn254_sanity_check() {
 #[ignore = "Too slow"]
 fn trivial() {
     let case = "trivial";
-    verify_riscv_crate(case, Default::default(), &RuntimeEnum::base_32())
+    verify_riscv_crate_gl(case, Default::default())
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn halt() {
     let case = "halt";
-    verify_riscv_crate(case, Default::default(), &RuntimeEnum::base_32())
+    verify_riscv_crate_gl(case, Default::default())
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn zero_with_values() {
     let case = "zero_with_values";
-    verify_riscv_crate(case, Default::default(), &RuntimeEnum::base_32())
+    verify_riscv_crate_gl(case, Default::default())
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn runtime_poseidon_gl() {
     let case = "poseidon_gl_via_coprocessor";
-    verify_riscv_crate(
-        case,
-        Default::default(),
-        &RuntimeEnum::base_32().with_poseidon_no_continuations(),
-    );
+    let options = CompilerOptions::new_32().with_poseidon_no_continuations();
+    verify_riscv_crate_gl_with_options(case, Default::default(), options);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn sum() {
     let case = "sum";
-    verify_riscv_crate(
+    verify_riscv_crate_gl(
         case,
         [16, 4, 1, 2, 8, 5].iter().map(|&x| x.into()).collect(),
-        &RuntimeEnum::base_32(),
     );
 }
 
@@ -143,11 +139,7 @@ fn sum() {
 #[ignore = "Too slow"]
 fn byte_access() {
     let case = "byte_access";
-    verify_riscv_crate(
-        case,
-        [0, 104, 707].iter().map(|&x| x.into()).collect(),
-        &RuntimeEnum::base_32(),
-    );
+    verify_riscv_crate_gl(case, [0, 104, 707].iter().map(|&x| x.into()).collect());
 }
 
 #[test]
@@ -159,7 +151,7 @@ fn double_word() {
     let b0 = 0xf100b00fu32;
     let b1 = 0x0100f0f0u32;
     let c = ((a0 as u64) | ((a1 as u64) << 32)).wrapping_mul((b0 as u64) | ((b1 as u64) << 32));
-    verify_riscv_crate(
+    verify_riscv_crate_gl(
         case,
         [
             a0,
@@ -172,7 +164,6 @@ fn double_word() {
         .iter()
         .map(|&x| x.into())
         .collect(),
-        &RuntimeEnum::base_32(),
     );
 }
 
@@ -180,14 +171,14 @@ fn double_word() {
 #[ignore = "Too slow"]
 fn memfuncs() {
     let case = "memfuncs";
-    verify_riscv_crate(case, Default::default(), &RuntimeEnum::base_32());
+    verify_riscv_crate_gl(case, Default::default());
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn keccak() {
     let case = "keccak";
-    verify_riscv_crate(case, Default::default(), &RuntimeEnum::base_32());
+    verify_riscv_crate_gl(case, Default::default());
 }
 
 #[cfg(feature = "estark-polygon")]
@@ -195,13 +186,12 @@ fn keccak() {
 #[ignore = "Too slow"]
 fn vec_median_estark_polygon() {
     let case = "vec_median";
-    verify_riscv_crate(
+    verify_riscv_crate_gl(
         case,
         [5, 11, 15, 75, 6, 5, 1, 4, 7, 3, 2, 9, 2]
             .into_iter()
             .map(|x| x.into())
             .collect(),
-        &RuntimeEnum::base_32(),
     );
 }
 
@@ -209,13 +199,12 @@ fn vec_median_estark_polygon() {
 #[ignore = "Too slow"]
 fn vec_median() {
     let case = "vec_median";
-    verify_riscv_crate(
+    verify_riscv_crate_gl(
         case,
         [5, 11, 15, 75, 6, 5, 1, 4, 7, 3, 2, 9, 2]
             .into_iter()
             .map(|x| x.into())
             .collect(),
-        &RuntimeEnum::base_32(),
     );
 }
 
@@ -223,24 +212,23 @@ fn vec_median() {
 #[ignore = "Too slow"]
 fn password() {
     let case = "password_checker";
-    verify_riscv_crate(case, Default::default(), &RuntimeEnum::base_32());
+    verify_riscv_crate_gl(case, Default::default());
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn std_hello_world() {
     let case = "std_hello_world";
-    verify_riscv_crate(case, vec![], &RuntimeEnum::base_32());
+    verify_riscv_crate_gl(case, vec![]);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn function_pointer() {
     let case = "function_pointer";
-    verify_riscv_crate(
+    verify_riscv_crate_gl(
         case,
         [2734, 735, 1999].into_iter().map(|x| x.into()).collect(),
-        &RuntimeEnum::base_32(),
     );
 }
 
@@ -248,28 +236,32 @@ fn function_pointer() {
 #[ignore = "Too slow"]
 fn runtime_ec_double() {
     let case = "ec_double";
-    verify_riscv_crate(case, vec![], &RuntimeEnum::base_32().with_arith());
+    let options = CompilerOptions::new_32().with_arith();
+    verify_riscv_crate_gl_with_options(case, vec![], options);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn runtime_ec_add() {
     let case = "ec_add";
-    verify_riscv_crate(case, vec![], &RuntimeEnum::base_32().with_arith());
+    let options = CompilerOptions::new_32().with_arith();
+    verify_riscv_crate_gl_with_options(case, vec![], options);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn runtime_affine_256() {
     let case = "affine_256";
-    verify_riscv_crate(case, vec![], &RuntimeEnum::base_32().with_arith());
+    let options = CompilerOptions::new_32().with_arith();
+    verify_riscv_crate_gl_with_options(case, vec![], options);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn runtime_modmul_256() {
     let case = "modmul_256";
-    verify_riscv_crate(case, vec![], &RuntimeEnum::base_32().with_arith());
+    let options = CompilerOptions::new_32().with_arith();
+    verify_riscv_crate_gl_with_options(case, vec![], options);
 }
 
 /*
@@ -286,7 +278,7 @@ fn evm() {
     let case = "evm";
     let bytes = hex::decode(BYTECODE).unwrap();
 
-    verify_riscv_crate_with_data(case, vec![], &RuntimeEnum::base_32(), vec![(666, bytes)]);
+    verify_riscv_crate_gl_with_data(case, vec![], vec![(666, bytes)]);
 }
 
 #[ignore = "Too slow"]
@@ -297,12 +289,7 @@ fn sum_serde() {
     let data: Vec<u32> = vec![1, 2, 8, 5];
     let answer = data.iter().sum::<u32>();
 
-    verify_riscv_crate_with_data(
-        case,
-        vec![answer.into()],
-        &RuntimeEnum::base_32(),
-        vec![(42, data)],
-    );
+    verify_riscv_crate_gl_with_data(case, vec![answer.into()], vec![(42, data)]);
 }
 
 #[test]
@@ -353,12 +340,7 @@ fn two_sums_serde() {
     let data1: Vec<u32> = vec![1, 2, 8, 5];
     let data2 = data1.clone();
 
-    verify_riscv_crate_with_data(
-        case,
-        vec![],
-        &RuntimeEnum::base_32(),
-        vec![(42, data1), (43, data2)],
-    );
+    verify_riscv_crate_gl_with_data(case, vec![], vec![(42, data1), (43, data2)]);
 }
 
 const DISPATCH_TABLE_S: &str = "tests/riscv_data/dispatch_table/dispatch_table.s";
@@ -386,7 +368,7 @@ fn dispatch_table_static_relocation() {
 #[should_panic(expected = "reached a fail instruction")]
 fn print() {
     let case = "print";
-    verify_riscv_crate(case, vec![0.into()], &RuntimeEnum::base_32());
+    verify_riscv_crate_gl(case, vec![0.into()]);
 }
 
 #[test]
@@ -541,12 +523,22 @@ fn verify_riscv_crate_gl(case: &str, inputs: Vec<GoldilocksField>) {
     verify_riscv_crate_impl::<GoldilocksField, ()>(case, options, inputs, None)
 }
 
+fn verify_riscv_crate_gl_with_options(
+    case: &str,
+    inputs: Vec<GoldilocksField>,
+    options: CompilerOptions,
+) {
+    verify_riscv_crate_impl::<GoldilocksField, ()>(case, options, inputs, None)
+}
+
+/*
 fn verify_riscv_crate_bb(case: &str, inputs: Vec<BabyBearField>) {
     let options = CompilerOptions::new_16();
     verify_riscv_crate_impl::<BabyBearField, ()>(case, options, inputs, None)
 }
+*/
 
-fn verify_riscv_crate_with_data<S: serde::Serialize + Send + Sync + 'static>(
+fn verify_riscv_crate_gl_with_data<S: serde::Serialize + Send + Sync + 'static>(
     case: &str,
     inputs: Vec<GoldilocksField>,
     data: Vec<(u32, S)>,

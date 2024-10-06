@@ -1,6 +1,5 @@
 mod add_sub16;
 mod arith;
-mod arith_bb;
 mod arith16;
 mod binary;
 mod binary_bb;

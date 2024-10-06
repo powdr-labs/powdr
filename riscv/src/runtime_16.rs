@@ -37,19 +37,19 @@ impl Runtime16 {
                 r#"instr and XL, YL, ZH, ZL, WL
                             link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
                             link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
-                            link ~> (tmp3_h, tmp3_l) = arith_bb.add(tmp2_h, tmp2_l, ZH, ZL)
+                            link ~> (tmp3_h, tmp3_l) = add_sub.add(tmp2_h, tmp2_l, ZH, ZL)
                             link ~> (tmp4_h, tmp4_l) = binary.and(tmp1_h, tmp1_l, tmp3_h, tmp3_l)
                             link ~> regs.mstore(WL, STEP + 3, tmp4_h, tmp4_l);"#,
                 r#"instr or XL, YL, ZH, ZL, WL
                             link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
                             link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
-                            link ~> (tmp3_h, tmp3_l) = arith_bb.add(tmp2_h, tmp2_l, ZH, ZL)
+                            link ~> (tmp3_h, tmp3_l) = add_sub.add(tmp2_h, tmp2_l, ZH, ZL)
                             link ~> (tmp4_h, tmp4_l) = binary.or(tmp1_h, tmp1_l, tmp3_h, tmp3_l)
                             link ~> regs.mstore(WL, STEP + 3, tmp4_h, tmp4_l);"#,
                 r#"instr xor XL, YL, ZH, ZL, WL
                             link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
                             link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
-                            link ~> (tmp3_h, tmp3_l) = arith_bb.add(tmp2_h, tmp2_l, ZH, ZL)
+                            link ~> (tmp3_h, tmp3_l) = add_sub.add(tmp2_h, tmp2_l, ZH, ZL)
                             link ~> (tmp4_h, tmp4_l) = binary.xor(tmp1_h, tmp1_l, tmp3_h, tmp3_l)
                             link ~> regs.mstore(WL, STEP + 3, tmp4_h, tmp4_l);"#,
             ],
@@ -66,14 +66,14 @@ impl Runtime16 {
                 r#"instr shl XL, YL, ZH, ZL, WL
                     link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
                     link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP)
-                    link ~> (tmp3_h, tmp3_l) = arith_bb.add(tmp2_h, tmp2_l, ZH, ZL)
+                    link ~> (tmp3_h, tmp3_l) = add_sub.add(tmp2_h, tmp2_l, ZH, ZL)
                     link ~> (tmp4_l, tmp4_h) = shift.shl(tmp1_l, tmp1_h, tmp3_l)
                     link ~> regs.mstore(WL, STEP + 3, tmp4_h, tmp4_l);
 "#,
                 r#"instr shr XL, YL, ZH, ZL, WL
                     link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
                     link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP)
-                    link ~> (tmp3_h, tmp3_l) = arith_bb.add(tmp2_h, tmp2_l, ZH, ZL)
+                    link ~> (tmp3_h, tmp3_l) = add_sub.add(tmp2_h, tmp2_l, ZH, ZL)
                     link ~> (tmp4_l, tmp4_h) = shift.shr(tmp1_l, tmp1_h, tmp3_l)
                     link ~> regs.mstore(WL, STEP + 3, tmp4_h, tmp4_l);
 "#,

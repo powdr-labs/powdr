@@ -56,6 +56,20 @@ impl CompilerOptions {
             runtime: self.runtime.with_poseidon_for_continuations(),
         }
     }
+
+    pub fn with_poseidon_no_continuations(self) -> Self {
+        Self {
+            field: self.field,
+            runtime: self.runtime.with_poseidon_no_continuations(),
+        }
+    }
+
+    pub fn with_arith(self) -> Self {
+        Self {
+            field: self.field,
+            runtime: self.runtime.with_arith(),
+        }
+    }
 }
 
 /// Compiles a rust file to Powdr asm.

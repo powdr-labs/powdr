@@ -204,10 +204,10 @@ fn riscv_machine(
     format!(
         r#"
 {}
-use std::machines::arith_bb::ArithBB;
+use std::machines::add_sub16::AddSub16;
 use std::machines::arith16::Arith16;
 machine Main with min_degree: {}, max_degree: {} {{
-ArithBB arith_bb(byte2);
+AddSub16 add_sub(byte2);
 Arith16 arith_mul(byte);
 {}
 
@@ -377,7 +377,7 @@ fn preamble(field: KnownField, runtime: &Runtime16, with_bootloader: bool) -> St
     instr branch_if_diff_nonzero XL, YL, l: label
         link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
-        link ~> (tmp3_h, tmp3_l) = arith_bb.sub(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
+        link ~> (tmp3_h, tmp3_l) = add_sub.sub(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
     {
         XXIsZero = 1 - XX * XX_inv,
         XX = (tmp3_h + tmp3_l),
@@ -388,8 +388,8 @@ fn preamble(field: KnownField, runtime: &Runtime16, with_bootloader: bool) -> St
     instr branch_if_diff_equal XL, YL, ZH, ZL, l: label
         link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
-        link ~> (tmp3_h, tmp3_l) = arith_bb.sub(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
-        link ~> (tmp4_h, tmp4_l) = arith_bb.sub(tmp3_h, tmp3_l, ZH, ZL)
+        link ~> (tmp3_h, tmp3_l) = add_sub.sub(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
+        link ~> (tmp4_h, tmp4_l) = add_sub.sub(tmp3_h, tmp3_l, ZH, ZL)
     {
         XXIsZero = 1 - XX * XX_inv,
         // TODO is this correct?
@@ -402,8 +402,8 @@ fn preamble(field: KnownField, runtime: &Runtime16, with_bootloader: bool) -> St
     instr skip_if_equal XL, YL, ZH, ZL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
-        link ~> (tmp3_h, tmp3_l) = arith_bb.sub(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
-        link ~> (tmp4_h, tmp4_l) = arith_bb.add(tmp3_h, tmp3_l, ZH, ZL)
+        link ~> (tmp3_h, tmp3_l) = add_sub.sub(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
+        link ~> (tmp4_h, tmp4_l) = add_sub.add(tmp3_h, tmp3_l, ZH, ZL)
     {
         XXIsZero = 1 - XX * XX_inv,
         XX = tmp4_h + tmp4_l,
@@ -414,7 +414,7 @@ fn preamble(field: KnownField, runtime: &Runtime16, with_bootloader: bool) -> St
     instr branch_if_greater_or_equal XL, YL, l: label
         link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
-        link ~> wrap_bit = arith_bb.cmp(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
+        link ~> wrap_bit = add_sub.gt(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
     {
         pc' = (1 - wrap_bit) * l + wrap_bit * (pc + 1)
     }
@@ -426,7 +426,7 @@ fn preamble(field: KnownField, runtime: &Runtime16, with_bootloader: bool) -> St
     instr branch_if_greater_or_equal_signed XL, YL, l: label
         link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
-        link ~> wrap_bit_3 = arith_bb.cmp(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
+        link ~> wrap_bit_3 = add_sub.gt(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
     {
         tmp1_h = X_b1 + Y_7bit * 0x100 + wrap_bit * 0x8000,
         tmp2_h = X_b2 + Y_7bit_2 * 0x100 + wrap_bit_2 * 0x8000,
@@ -448,14 +448,14 @@ fn preamble(field: KnownField, runtime: &Runtime16, with_bootloader: bool) -> St
     instr is_greater_or_equal XL, YL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
-        link ~> wrap_bit = arith_bb.cmp(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
+        link ~> wrap_bit = add_sub.gt(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
         link ~> regs.mstore(WL, STEP + 2, 0, 1 - wrap_bit);
 
     // Branches to `l` if val(X) >= val(Y) <=> not(val(X) < val(Y)).
     instr is_greater_or_equal_signed XL, YL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
-        link ~> wrap_bit_3 = arith_bb.cmp(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
+        link ~> wrap_bit_3 = add_sub.gt(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
         link ~> regs.mstore(WL, STEP + 2, 0, X_b3)
     {
         tmp1_h = X_b1 + Y_7bit * 0x100 + wrap_bit * 0x8000,
@@ -477,7 +477,7 @@ fn preamble(field: KnownField, runtime: &Runtime16, with_bootloader: bool) -> St
         link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
         link ~> (tmp3_h, tmp3_l, tmp2_h, tmp2_l) = arith_mul.mul(tmp1_h, tmp1_l, ZH, ZL)
         // we ignore tmp3 because that's the high 32 bits of the 64 bits multiplication result
-        link ~> (tmp4_h, tmp4_l) = arith_bb.add(tmp2_h, tmp2_l, WH, WL)
+        link ~> (tmp4_h, tmp4_l) = add_sub.add(tmp2_h, tmp2_l, WH, WL)
         link ~> regs.mstore(YL, STEP + 1, tmp4_h, tmp4_l);
 
     // ================= wrapping instructions =================
@@ -487,8 +487,8 @@ fn preamble(field: KnownField, runtime: &Runtime16, with_bootloader: bool) -> St
     instr add_wrap XL, YL, ZH, ZL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
-        link ~> (tmp3_h, tmp3_l) = arith_bb.add(tmp2_h, tmp2_l, ZH, ZL)
-        link ~> (tmp4_h, tmp4_l) = arith_bb.add(tmp1_h, tmp1_l, tmp3_h, tmp3_l)
+        link ~> (tmp3_h, tmp3_l) = add_sub.add(tmp2_h, tmp2_l, ZH, ZL)
+        link ~> (tmp4_h, tmp4_l) = add_sub.add(tmp1_h, tmp1_l, tmp3_h, tmp3_l)
         link ~> regs.mstore(WL, STEP + 2, tmp4_h, tmp4_l);
 
     // Computes V = val(X) - val(Y) + Z, wraps it in 32 bits, and stores the result in register W.
@@ -496,8 +496,8 @@ fn preamble(field: KnownField, runtime: &Runtime16, with_bootloader: bool) -> St
     instr sub_wrap_with_offset XL, YL, ZH, ZL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
-        link ~> (tmp3_h, tmp3_l) = arith_bb.sub(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
-        link ~> (tmp4_h, tmp4_l) = arith_bb.add(tmp3_h, tmp3_l, ZH, ZL)
+        link ~> (tmp3_h, tmp3_l) = add_sub.sub(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
+        link ~> (tmp4_h, tmp4_l) = add_sub.add(tmp3_h, tmp3_l, ZH, ZL)
         link ~> regs.mstore(WL, STEP + 2, tmp4_h, tmp4_l);
 
     // ================= logical instructions =================
@@ -516,7 +516,7 @@ fn preamble(field: KnownField, runtime: &Runtime16, with_bootloader: bool) -> St
     instr is_not_equal XL, YL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP)
-        link ~> (tmp3_h, tmp3_l) = arith_bb.sub(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
+        link ~> (tmp3_h, tmp3_l) = add_sub.sub(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
         link ~> regs.mstore(WL, STEP + 2, 0, 1 - XXIsZero)
     {
         XXIsZero = 1 - XX * XX_inv,
@@ -608,8 +608,8 @@ fn preamble(field: KnownField, runtime: &Runtime16, with_bootloader: bool) -> St
         link ~> (tmp1_h, tmp1_l) = regs.mload(YL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(XL, STEP + 1)
         link if (1 - XXIsZero) ~> (tmp4_h, tmp4_l, tmp3_h, tmp3_l) = arith_mul.div(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
-        link if (1 - XXIsZero) ~> wrap_bit = arith_bb.cmp(tmp3_h, tmp3_l, tmp2_h, tmp2_l)
-        link if (1 - XXIsZero) ~> wrap_bit_2 = arith_bb.cmp(tmp3_h, tmp3_l, 0, 0)
+        link if (1 - XXIsZero) ~> wrap_bit = add_sub.gt(tmp3_h, tmp3_l, tmp2_h, tmp2_l)
+        link if (1 - XXIsZero) ~> wrap_bit_2 = add_sub.gt(tmp3_h, tmp3_l, 0, 0)
         link ~> regs.mstore(ZL, STEP + 2, tmp6_h, tmp6_l)
         link ~> regs.mstore(WL, STEP + 3, tmp5_h, tmp5_l)
     {
@@ -683,7 +683,7 @@ fn memory(with_bootloader: bool) -> String {
     instr mload XL, YH, YL, ZL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
 
-        link ~> (tmp2_h, tmp2_l) = arith_bb.add(tmp1_h, tmp1_l, YH, YL)
+        link ~> (tmp2_h, tmp2_l) = add_sub.add(tmp1_h, tmp1_l, YH, YL)
 
         link ~> (tmp3_h, tmp3_l) = memory.mload(tmp2_h * 2**16 + X_b2 * 0x100 + X_b1 * 4, STEP + 1)
         link ~> regs.mstore(ZL, STEP + 2, tmp3_h, tmp3_l)
@@ -702,8 +702,8 @@ fn memory(with_bootloader: bool) -> String {
         link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
         link ~> (tmp3_h, tmp3_l) = regs.mload(WL, STEP + 2)
 
-        link ~> (tmp4_h, tmp4_l) = arith_bb.sub(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
-        link ~> (tmp5_h, tmp5_l) = arith_bb.add(tmp4_h, tmp4_l, ZH, ZL)
+        link ~> (tmp4_h, tmp4_l) = add_sub.sub(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
+        link ~> (tmp5_h, tmp5_l) = add_sub.add(tmp4_h, tmp4_l, ZH, ZL)
 
         link ~> memory.mstore(tmp5_h * 2**16 + tmp5_l, STEP + 3, tmp3_h, tmp3_l);
 
