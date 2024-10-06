@@ -42,7 +42,7 @@ type ValMmcs = MerkleTreeMmcs<
 
 pub type FriChallenger = DuplexChallenger<Goldilocks, Perm, WIDTH, RATE>;
 type ChallengeMmcs = ExtensionMmcs<Goldilocks, FriChallenge, ValMmcs>;
-type Dft = Radix2DitParallel;
+type Dft = Radix2DitParallel<Goldilocks>;
 type MyPcs = TwoAdicFriPcs<Goldilocks, Dft, ValMmcs, ChallengeMmcs>;
 
 const HALF_NUM_FULL_ROUNDS: usize = 4;
@@ -93,7 +93,7 @@ impl FieldElementMap for GoldilocksField {
 
         let challenge_mmcs = ChallengeMmcs::new(val_mmcs.clone());
 
-        let dft = Dft {};
+        let dft = <Dft as std::default::Default>::default();
 
         let fri_config = FriConfig {
             log_blowup: FRI_LOG_BLOWUP,
