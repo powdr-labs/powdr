@@ -10,6 +10,7 @@ use crate::runtime::{
     parse_function_statement, parse_instruction_declaration, Runtime, SubMachine, SyscallImpl,
     EXTRA_REG_PREFIX,
 };
+use crate::CompilerLibs;
 
 /// RISCV powdr assembly runtime.
 /// Determines submachines, instructions and syscalls available to the main machine.
@@ -20,6 +21,20 @@ pub struct Runtime16 {
 }
 
 impl Runtime16 {
+    pub fn new(libs: CompilerLibs, continuations: bool) -> Self {
+        let mut runtime = Runtime16::base();
+        if libs.poseidon {
+            runtime = runtime.with_poseidon(continuations);
+        }
+        if libs.keccak {
+            runtime = runtime.with_keccak();
+        }
+        if libs.arith {
+            runtime = runtime.with_arith();
+        }
+        runtime
+    }
+
     pub fn base() -> Self {
         let mut r = Runtime16 {
             submachines: Default::default(),

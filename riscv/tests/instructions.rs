@@ -4,21 +4,14 @@ mod instruction_tests {
     use std::path::Path;
 
     use crate::common::verify_riscv_asm_file;
-    use powdr_number::KnownField;
-    use powdr_riscv::{CompilerOptions, RuntimeEnum};
+    use powdr_riscv::CompilerOptions;
     use test_log::test;
 
     fn run_instruction_test(path: &Path) {
-        let options_16 = CompilerOptions {
-            field: KnownField::BabyBearField,
-            runtime: RuntimeEnum::base_16(),
-        };
+        let options_16 = CompilerOptions::new_16();
         run_instruction_test_with_options(path, options_16);
 
-        let options_32 = CompilerOptions {
-            field: KnownField::GoldilocksField,
-            runtime: RuntimeEnum::base_32(),
-        };
+        let options_32 = CompilerOptions::new_32();
         run_instruction_test_with_options(path, options_32);
     }
 

@@ -12,7 +12,7 @@ use test_log::test;
 
 use powdr_riscv::{
     continuations::{rust_continuations, rust_continuations_dry_run},
-    CompilerOptions, RuntimeEnum,
+    CompilerLibs, CompilerOptions,
 };
 
 /// Compiles and runs a rust program with continuations, runs the full
@@ -29,8 +29,9 @@ pub fn test_continuations(case: &str) {
     // Test continuations from ELF file.
     let powdr_asm = powdr_riscv::elf::translate(
         &executable,
-        CompilerOptions::new_32().with_poseidon_for_continuations(),
-        true,
+        CompilerOptions::new_32()
+            .with_poseidon()
+            .with_continuations(),
     );
     run_continuations_test(case, powdr_asm);
 }
@@ -71,9 +72,8 @@ fn bn254_sanity_check() {
     );
 
     log::info!("Verifying {case} converted from ELF file");
-    let runtime = RuntimeEnum::base_32();
-    let options = CompilerOptions::new(KnownField::Bn254Field, runtime);
-    let from_elf = powdr_riscv::elf::translate(&executable, options, false);
+    let options = CompilerOptions::new(KnownField::Bn254Field, CompilerLibs::new(), false);
+    let from_elf = powdr_riscv::elf::translate(&executable, options);
 
     let temp_dir = mktemp::Temp::new_dir().unwrap().release();
 
@@ -121,7 +121,7 @@ fn zero_with_values() {
 #[ignore = "Too slow"]
 fn runtime_poseidon_gl() {
     let case = "poseidon_gl_via_coprocessor";
-    let options = CompilerOptions::new_32().with_poseidon_no_continuations();
+    let options = CompilerOptions::new_32().with_poseidon();
     verify_riscv_crate_gl_with_options(case, Default::default(), options);
 }
 
@@ -302,7 +302,7 @@ fn read_slice() {
         &temp_dir,
         None,
     );
-    let powdr_asm = powdr_riscv::elf::translate(&executable, CompilerOptions::new_32(), false);
+    let powdr_asm = powdr_riscv::elf::translate(&executable, CompilerOptions::new_32());
 
     let data: Vec<u32> = vec![];
     let answer = data.iter().sum::<u32>();
@@ -391,7 +391,7 @@ fn features() {
     );
 
     log::info!("Verifying {case} converted from ELF file");
-    let from_elf = powdr_riscv::elf::translate(&executable, CompilerOptions::new_32(), false);
+    let from_elf = powdr_riscv::elf::translate(&executable, CompilerOptions::new_32());
     verify_riscv_asm_string::<GoldilocksField, usize>(
         &format!("{case}_from_elf.asm"),
         &from_elf,
@@ -408,7 +408,7 @@ fn features() {
     );
 
     log::info!("Verifying {case} converted from ELF file");
-    let from_elf = powdr_riscv::elf::translate(&executable, CompilerOptions::new_32(), false);
+    let from_elf = powdr_riscv::elf::translate(&executable, CompilerOptions::new_32());
     verify_riscv_asm_string::<GoldilocksField, usize>(
         &format!("{case}_from_elf.asm"),
         &from_elf,
@@ -425,7 +425,7 @@ fn features() {
     );
 
     log::info!("Verifying {case} converted from ELF file");
-    let from_elf = powdr_riscv::elf::translate(&executable, CompilerOptions::new_32(), false);
+    let from_elf = powdr_riscv::elf::translate(&executable, CompilerOptions::new_32());
     verify_riscv_asm_string::<GoldilocksField, usize>(
         &format!("{case}_from_elf.asm"),
         &from_elf,
@@ -449,8 +449,9 @@ fn many_chunks_dry() {
     );
     let powdr_asm = powdr_riscv::elf::translate(
         &executable,
-        CompilerOptions::new_32().with_poseidon_for_continuations(),
-        true,
+        CompilerOptions::new_32()
+            .with_poseidon()
+            .with_continuations(),
     );
 
     let mut pipeline = Pipeline::default()
@@ -481,7 +482,7 @@ fn output_syscall() {
         &temp_dir,
         None,
     );
-    let powdr_asm = powdr_riscv::elf::translate(&executable, CompilerOptions::new_32(), false);
+    let powdr_asm = powdr_riscv::elf::translate(&executable, CompilerOptions::new_32());
 
     let inputs = vec![1u32, 2, 3]
         .into_iter()
@@ -561,7 +562,7 @@ fn verify_riscv_crate_impl<T: FieldElement, S: serde::Serialize + Send + Sync + 
     );
 
     log::info!("Verifying {case}");
-    let from_elf = powdr_riscv::elf::translate(&executable, options, false);
+    let from_elf = powdr_riscv::elf::translate(&executable, options);
     verify_riscv_asm_string(
         &format!("{case}_from_elf.asm"),
         &from_elf,

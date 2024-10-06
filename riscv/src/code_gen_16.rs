@@ -13,24 +13,27 @@ use crate::runtime_16::Runtime16;
 use crate::code_gen::{
     InstructionArgs, MemEntry, Register, RiscVProgram, SourceFileInfo, Statement,
 };
+use crate::CompilerOptions;
 
 /// Translates a RISC-V program to POWDR ASM
 /// with constraints that work for a field >16 bits.
 ///
 /// Will call each of the methods in the `RiscVProgram` just once.
-pub fn translate_program(
-    program: impl RiscVProgram,
-    field: KnownField,
-    runtime: &Runtime16,
-    with_bootloader: bool,
-) -> String {
+pub fn translate_program(program: impl RiscVProgram, options: CompilerOptions) -> String {
+    let runtime = Runtime16::new(options.libs, options.continuations);
+
     // Do this in a separate function to avoid most of the code being generic on F.
-    let (initial_mem, instructions) =
-        translate_program_impl(program, field.clone(), runtime, with_bootloader);
+    // TODO I think this isn't needed anymore
+    let (initial_mem, instructions) = translate_program_impl(
+        program,
+        options.field.clone(),
+        &runtime,
+        options.continuations,
+    );
 
     riscv_machine(
-        runtime,
-        &preamble(field, runtime, with_bootloader),
+        &runtime,
+        &preamble(options.field, &runtime, options.continuations),
         initial_mem,
         instructions,
     )
@@ -40,7 +43,7 @@ fn translate_program_impl(
     mut program: impl RiscVProgram,
     field: KnownField,
     runtime: &Runtime16,
-    with_bootloader: bool,
+    continuations: bool,
 ) -> (Vec<String>, Vec<String>) {
     let mut initial_mem = Vec::new();
     let mut data_code = Vec::new();
@@ -50,7 +53,7 @@ fn translate_program_impl(
         if let Some(label) = label {
             // This is a comment, so we don't need to escape the label.
             let comment = format!(" // data {label}");
-            if with_bootloader && !matches!(value, SingleDataValue::LabelReference(_)) {
+            if continuations && !matches!(value, SingleDataValue::LabelReference(_)) {
                 &mut initial_mem
             } else {
                 &mut data_code
@@ -59,7 +62,7 @@ fn translate_program_impl(
         }
         match value {
             SingleDataValue::Value(v) => {
-                if with_bootloader {
+                if continuations {
                     // Instead of generating the data loading code, we store it
                     // in the variable that will be used as the initial memory
                     // snapshot, committed by the bootloader.
@@ -126,7 +129,7 @@ fn translate_program_impl(
     }
 
     let submachines_init = runtime.submachines_init();
-    let bootloader_and_shutdown_routine_lines = if with_bootloader {
+    let bootloader_and_shutdown_routine_lines = if continuations {
         let bootloader_and_shutdown_routine =
             bootloader_and_shutdown_routine(field, &submachines_init);
         log::debug!("Adding Bootloader:\n{}", bootloader_and_shutdown_routine);

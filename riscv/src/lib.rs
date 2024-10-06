@@ -11,8 +11,6 @@ use std::{
 use powdr_number::KnownField;
 use std::fs;
 
-pub use crate::runtime::{Runtime, RuntimeEnum};
-
 mod code_gen;
 mod code_gen_16;
 mod code_gen_32;
@@ -25,49 +23,107 @@ pub mod runtime_32;
 static TARGET_STD: &str = "riscv32im-risc0-zkvm-elf";
 static TARGET_NO_STD: &str = "riscv32imac-unknown-none-elf";
 
+#[derive(Default, Clone)]
+pub struct CompilerLibs {
+    pub arith: bool,
+    pub keccak: bool,
+    pub poseidon: bool,
+}
+
+impl CompilerLibs {
+    pub fn new() -> Self {
+        Self {
+            arith: false,
+            keccak: false,
+            poseidon: false,
+        }
+    }
+
+    pub fn with_arith(self) -> Self {
+        Self {
+            arith: true,
+            keccak: self.keccak,
+            poseidon: self.poseidon,
+        }
+    }
+
+    pub fn with_keccak(self) -> Self {
+        Self {
+            arith: self.arith,
+            keccak: true,
+            poseidon: self.poseidon,
+        }
+    }
+
+    pub fn with_poseidon(self) -> Self {
+        Self {
+            arith: self.arith,
+            keccak: self.keccak,
+            poseidon: true,
+        }
+    }
+}
 #[derive(Clone)]
 pub struct CompilerOptions {
     pub field: KnownField,
-    pub runtime: RuntimeEnum,
+    pub libs: CompilerLibs,
+    pub continuations: bool,
 }
 
 impl CompilerOptions {
-    pub fn new(field: KnownField, runtime: RuntimeEnum) -> Self {
-        Self { field, runtime }
+    pub fn new(field: KnownField, libs: CompilerLibs, continuations: bool) -> Self {
+        Self {
+            field,
+            libs,
+            continuations,
+        }
     }
 
     pub fn new_16() -> Self {
         Self {
             field: KnownField::BabyBearField,
-            runtime: RuntimeEnum::base_16(),
+            libs: CompilerLibs::new(),
+            continuations: false,
         }
     }
 
     pub fn new_32() -> Self {
         Self {
             field: KnownField::GoldilocksField,
-            runtime: RuntimeEnum::base_32(),
+            libs: CompilerLibs::new(),
+            continuations: false,
         }
     }
 
-    pub fn with_poseidon_for_continuations(self) -> Self {
+    pub fn with_continuations(self) -> Self {
         Self {
             field: self.field,
-            runtime: self.runtime.with_poseidon_for_continuations(),
-        }
-    }
-
-    pub fn with_poseidon_no_continuations(self) -> Self {
-        Self {
-            field: self.field,
-            runtime: self.runtime.with_poseidon_no_continuations(),
+            libs: self.libs,
+            continuations: true,
         }
     }
 
     pub fn with_arith(self) -> Self {
         Self {
             field: self.field,
-            runtime: self.runtime.with_arith(),
+            libs: self.libs.with_arith(),
+            continuations: self.continuations,
+        }
+    }
+
+    pub fn with_keccak(self) -> Self {
+        Self {
+            field: self.field,
+            libs: self.libs.with_keccak(),
+            continuations: self.continuations,
+        }
+    }
+
+    pub fn with_poseidon(self) -> Self {
+        Self {
+            field: self.field,
+            libs: self.libs.with_poseidon(),
+            continuations: self.continuations,
         }
     }
 }
@@ -79,10 +135,9 @@ pub fn compile_rust(
     options: CompilerOptions,
     output_dir: &Path,
     force_overwrite: bool,
-    with_bootloader: bool,
     features: Option<Vec<String>>,
 ) -> Option<(PathBuf, String)> {
-    if with_bootloader {
+    if options.continuations {
         match options.field {
             KnownField::BabyBearField => {
                 todo!()
@@ -106,7 +161,7 @@ pub fn compile_rust(
             }
             KnownField::GoldilocksField | KnownField::Bn254Field => {
                 assert!(
-                    options.runtime.has_submachine("poseidon_gl"),
+                    options.libs.poseidon,
                     "PoseidonGL coprocessor is required for bootloader"
                 );
             }
@@ -123,14 +178,7 @@ pub fn compile_rust(
 
     let elf_path = compile_rust_crate_to_riscv(&file_path, output_dir, features);
 
-    compile_riscv_elf(
-        file_name,
-        &elf_path,
-        options,
-        output_dir,
-        force_overwrite,
-        with_bootloader,
-    )
+    compile_riscv_elf(file_name, &elf_path, options, output_dir, force_overwrite)
 }
 
 fn compile_program<P>(
@@ -139,8 +187,7 @@ fn compile_program<P>(
     options: CompilerOptions,
     output_dir: &Path,
     force_overwrite: bool,
-    with_bootloader: bool,
-    translator: impl FnOnce(P, CompilerOptions, bool) -> String,
+    translator: impl FnOnce(P, CompilerOptions) -> String,
 ) -> Option<(PathBuf, String)> {
     let powdr_asm_file_name = output_dir.join(format!(
         "{}.asm",
@@ -158,7 +205,7 @@ fn compile_program<P>(
         return None;
     }
 
-    let powdr_asm = translator(input_program, options, with_bootloader);
+    let powdr_asm = translator(input_program, options);
 
     fs::write(powdr_asm_file_name.clone(), &powdr_asm).unwrap();
     log::info!("Wrote {}", powdr_asm_file_name.to_str().unwrap());
@@ -173,7 +220,6 @@ pub fn compile_riscv_elf(
     options: CompilerOptions,
     output_dir: &Path,
     force_overwrite: bool,
-    with_bootloader: bool,
 ) -> Option<(PathBuf, String)> {
     compile_program::<&Path>(
         original_file_name,
@@ -181,7 +227,6 @@ pub fn compile_riscv_elf(
         options,
         output_dir,
         force_overwrite,
-        with_bootloader,
         elf::translate,
     )
 }
