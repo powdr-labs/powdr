@@ -93,7 +93,7 @@ impl FieldElementMap for GoldilocksField {
 
         let challenge_mmcs = ChallengeMmcs::new(val_mmcs.clone());
 
-        let dft = <Dft as std::default::Default>::default();
+        let dft = Dft::default();
 
         let fri_config = FriConfig {
             log_blowup: FRI_LOG_BLOWUP,
