@@ -28,6 +28,8 @@ use powdr_ast::{
 };
 use powdr_number::{FieldElement, LargeInt};
 
+pub mod poseidon_bb;
+
 use crate::profiler::{Profiler, ProfilerOptions};
 use crate::{Callback, ExecMode, ExecutionTrace, MemoryState, RegisterMemoryState, PC_INITIAL_VAL};
 

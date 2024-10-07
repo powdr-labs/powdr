@@ -38,6 +38,10 @@ const MDS_MATRIX: [[u64; 12]; 12] = [
 ///
 /// It's also equivalent to std::machines::hash::poseidon_gl::PoseidonGL from the Powdr standard library.
 pub fn poseidon_gl<F: FieldElement>(inputs: &[F]) -> [F; 4] {
+    assert_eq!(
+        F::known_field().unwrap(),
+        powdr_number::KnownField::GoldilocksField
+    );
     assert_eq!(inputs.len(), 12);
     let mut state = [F::zero(); 12];
     state.copy_from_slice(inputs);
