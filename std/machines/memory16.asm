@@ -1,17 +1,21 @@
 use std::array;
+use std::field::modulus;
+use std::check::assert;
+use std::machines::range::Bit12;
 use std::machines::range::Byte2;
 
 // A read/write memory, similar to that of Polygon:
 // https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/mem.pil
-machine Memory16(byte2: Byte2) with
+machine Memory16(bit12: Bit12, byte2: Byte2) with
     latch: LATCH,
     operation_id: m_is_write,
     call_selectors: selectors,
 {
-    // lower bound degree is 65536
+    // The diff for the step is a 24-Bit value.
+    assert(modulus() > 2**28, || "Memory16 requires a field that fits any 28-Bit value.");
 
-    operation mload<0> m_addr, m_step -> m_value1, m_value2;
-    operation mstore<1> m_addr, m_step, m_value1, m_value2 ->;
+    operation mload<0> m_addr_high, m_addr_low, m_step -> m_value1, m_value2;
+    operation mstore<1> m_addr_high, m_addr_low, m_step, m_value1, m_value2 ->;
 
     let LATCH = 1;
 
@@ -21,7 +25,7 @@ machine Memory16(byte2: Byte2) with
     // in the next row.
     // Note that these column names are used by witgen to detect
     // this machine...
-    col witness m_addr;
+    col witness m_addr_high, m_addr_low;
     col witness m_step;
     col witness m_change;
     col witness m_value1, m_value2;
@@ -51,26 +55,48 @@ machine Memory16(byte2: Byte2) with
     (1 - m_is_write') * (1 - m_change) * (m_value1' - m_value1) = 0;
     (1 - m_is_write') * (1 - m_change) * (m_value2' - m_value2) = 0;
 
-    col witness m_diff_lower;
-    col witness m_diff_upper;
-
     col fixed FIRST = [1] + [0]*;
     let LAST = FIRST';
-
-    link => byte2.check(m_diff_lower);
-    link => byte2.check(m_diff_upper);
 
     std::utils::force_bool(m_change);
 
     // if change is zero, addr has to stay the same.
-    (m_addr' - m_addr) * (1 - m_change) = 0;
+    (m_addr_low' - m_addr_low) * (1 - m_change) = 0;
+    (m_addr_high' - m_addr_high) * (1 - m_change) = 0;
 
-    // Except for the last row, if change is 1, then addr has to increase,
+    // Except for the last row, if m_change is 1, then addr has to increase,
     // if it is zero, step has to increase.
-    // `m_diff_upper * 2**16 + m_diff_lower` has to be equal to the difference **minus one**.
-    // Since we know that both addr and step can only be 32-Bit, this enforces that
-    // the values are strictly increasing.
-    // TODO check this
-    col diff = (m_change * (m_addr' - m_addr)) + (1 - m_change) * (m_step' - m_step);
-    (1 - LAST) * (diff - 1 - m_diff_upper * 2**16 - m_diff_lower) = 0;
+    // The diff has to be equal to the difference **minus one**.
+
+    // These two helper columns have different semantics, depending on
+    // whether we're comparing addresses or time steps.
+    // In both cases, m_tmp2 needs to be of 16 Bits.
+    col witness m_tmp1, m_tmp2;
+    link => byte2.check(m_diff);
+
+    // When comparing time steps, a 28-Bit diff is sufficient assuming a maximum step
+    // of 2**28.
+    // The difference is computed on the field, which is larger than 2**28.
+    let m_diff_upper = m_tmp1;
+    let m_diff_lower = m_tmp2;
+    link if (1 - m_change) => bit12.check(m_diff_upper);
+    let claimed_time_step_diff = m_diff_upper * 2**16 + m_diff_lower;
+    let actual_time_step_diff = (m_step' - m_step);
+    (1 - m_change) * (claimed_time_step_diff + 1 - actual_time_step_diff) = 0;
+
+    // When comparing addresses, we let the prover indicate whether the upper or lower
+    // limb needs to be compared and then assert that the diff is positive.
+    let m_compare_high = m_tmp1;
+    let m_diff = m_tmp2;
+
+    // m_compare_high is binary.
+    m_change * m_compare_high * (m_compare_high - 1) = 0;
+
+    // If m_compare_high is 0, the higher limbs should be equal.
+    m_change * (1 - m_compare_high) * (m_addr_high' - m_addr_high) = 0;
+
+    // Assert that m_diff stores the actual diff - 1.
+    let actual_addr_limb_diff = m_compare_high * (m_addr_high' - m_addr_high)
+                                + (1 - m_compare_high) * (m_addr_low' - m_addr_low);
+    m_change * (m_diff + 1 - actual_addr_limb_diff) = 0;
 }
