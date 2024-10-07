@@ -1504,13 +1504,13 @@ enum PatternSpace {
     Infinite(InfinitePatternSpace, bool),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 enum FinitePatternSpace {
     Enum(Vec<(String, Option<Vec<PatternSpace>>)>),
     Bool(Option<bool>),
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 enum InfinitePatternSpace {
     String(Vec<String>),
     Number(Vec<BigInt>),
@@ -1524,37 +1524,6 @@ impl PartialEq for PatternSpace {
             }
             (Self::Finite(a), Self::Finite(b)) => a == b,
             (Self::Infinite(a, f1), Self::Infinite(b, f2)) => a == b && f1 == f2,
-            _ => false,
-        }
-    }
-}
-
-impl PartialEq for FinitePatternSpace {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Enum(a), Self::Enum(b)) => {
-                a.len() == b.len()
-                    && a.iter().all(|(name, inner)| {
-                        b.iter().any(|(other_name, other_inner)| {
-                            name == other_name && inner == other_inner
-                        })
-                    })
-            }
-            (Self::Bool(a), Self::Bool(b)) => a == b,
-            _ => false,
-        }
-    }
-}
-
-impl PartialEq for InfinitePatternSpace {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::String(a), Self::String(b)) => {
-                a.len() == b.len() && a.iter().all(|item| b.contains(item))
-            }
-            (Self::Number(a), Self::Number(b)) => {
-                a.len() == b.len() && a.iter().all(|item| b.contains(item))
-            }
             _ => false,
         }
     }
@@ -1711,61 +1680,37 @@ impl PatternSpace {
 
 pub fn analyze_match_patterns(
     patterns: &[Pattern],
-    enums: &HashMap<String, Vec<(String, Option<Vec<Type>>)>>,
+    enums: &HashMap<&str, Vec<(&str, Option<Vec<Type>>)>>,
 ) -> MatchAnalysisReport {
-    let mut covered_space = compute_covered_space(patterns, enums);
-    let (is_exhaustive, redundant_indices) = analyze_patterns(patterns, &mut covered_space);
-
-    MatchAnalysisReport {
-        is_exhaustive,
-        redundant_patterns: redundant_indices,
-    }
-}
-
-fn analyze_patterns(patterns: &[Pattern], covered_space: &mut PatternSpace) -> (bool, Vec<usize>) {
     let mut redundant_patterns = Vec::new();
     let mut needed_patterns = Vec::new();
+
+    let mut covered_space = compute_covered_space(patterns, enums);
     for (pattern_index, pattern) in patterns.iter().enumerate() {
         let substracted_space = covered_space.substract(pattern);
-        if substracted_space == *covered_space {
+        if substracted_space == covered_space {
             redundant_patterns.push(pattern_index);
         } else {
             needed_patterns.push(pattern);
-            *covered_space = substracted_space;
+            covered_space = substracted_space;
         }
     }
 
-    (covered_space.all_covered(), redundant_patterns)
+    MatchAnalysisReport {
+        is_exhaustive: covered_space.all_covered(),
+        redundant_patterns,
+    }
 }
 
 fn compute_covered_space(
     patterns: &[Pattern],
-    enums: &HashMap<String, Vec<(String, Option<Vec<Type>>)>>,
+    enums: &HashMap<&str, Vec<(&str, Option<Vec<Type>>)>>,
 ) -> PatternSpace {
-    let mut result = Vec::with_capacity(patterns.len());
-
-    for pattern in patterns.iter() {
-        let processed = create_pattern_space(pattern);
-        let expanded = expand_pattern_space(processed, enums);
-        result.extend(expanded);
-    }
-
-    let flattened = flat_spaces(result);
-
-    flattened
-}
-
-fn flat_spaces(spaces: Vec<PatternSpace>) -> PatternSpace {
-    if spaces.is_empty() {
-        return PatternSpace::Any;
-    }
-
-    let mut final_space = spaces.first().unwrap().clone();
-    for space in spaces.iter().skip(1) {
-        final_space = final_space.union(space);
-    }
-
-    final_space
+    patterns
+        .iter()
+        .map(|pattern| create_pattern_space(pattern))
+        .flat_map(|processed| expand_pattern_space(processed, enums))
+        .fold(PatternSpace::Any, |acc, space| acc.union(&space))
 }
 
 fn create_pattern_space(pattern: &Pattern) -> PatternSpace {
@@ -1801,7 +1746,7 @@ fn create_pattern_space(pattern: &Pattern) -> PatternSpace {
 
 fn expand_pattern_space(
     pattern: PatternSpace,
-    enums: &HashMap<String, Vec<(String, Option<Vec<Type>>)>>,
+    enums: &HashMap<&str, Vec<(&str, Option<Vec<Type>>)>>,
 ) -> Vec<PatternSpace> {
     let vec = match pattern {
         PatternSpace::Contained(inner, _) => {
@@ -1854,7 +1799,7 @@ fn expand_pattern_space(
 
 fn process_variant_type(
     variant: &Option<Vec<Type>>,
-    enums: &HashMap<String, Vec<(String, Option<Vec<Type>>)>>,
+    enums: &HashMap<&str, Vec<(&str, Option<Vec<Type>>)>>,
 ) -> Option<Vec<PatternSpace>> {
     match variant {
         None => None,
@@ -1883,7 +1828,6 @@ fn process_variant_type(
                         };
 
                         let expanded = process_variant_type(&Some(items), enums)?;
-
                         PatternSpace::Contained(expanded, false)
                     }
                     Type::Tuple(TupleType { items }) => {
@@ -2078,10 +2022,10 @@ mod tests {
         let enums = {
             let mut map = HashMap::new();
             map.insert(
-                "A".to_string(),
+                "A",
                 vec![
-                    ("X".to_string(), Some(vec![Type::Int, Type::Int])),
-                    ("Y".to_string(), Some(vec![Type::Int, Type::Int])),
+                    ("X", Some(vec![Type::Int, Type::Int])),
+                    ("Y", Some(vec![Type::Int, Type::Int])),
                 ],
             );
             map
@@ -2110,10 +2054,10 @@ mod tests {
         let enums = {
             let mut map = HashMap::new();
             map.insert(
-                "A".to_string(),
+                "A",
                 vec![
-                    ("X".to_string(), Some(vec![Type::Int, Type::Int])),
-                    ("Y".to_string(), Some(vec![Type::Int, Type::Int])),
+                    ("X", Some(vec![Type::Int, Type::Int])),
+                    ("Y", Some(vec![Type::Int, Type::Int])),
                 ],
             );
             map
@@ -2149,11 +2093,8 @@ mod tests {
         let enums = {
             let mut map = HashMap::new();
             map.insert(
-                "A".to_string(),
-                vec![
-                    ("X".to_string(), None),
-                    ("Y".to_string(), Some(vec![Type::Int, Type::Int])),
-                ],
+                "A",
+                vec![("X", None), ("Y", Some(vec![Type::Int, Type::Int]))],
             );
             map
         };
@@ -2190,10 +2131,7 @@ mod tests {
         ];
         let enums = {
             let mut map = HashMap::new();
-            map.insert(
-                "A".to_string(),
-                vec![("X".to_string(), Some(vec![Type::Int, Type::Int]))],
-            );
+            map.insert("A", vec![("X", Some(vec![Type::Int, Type::Int]))]);
             map
         };
         let report = analyze_match_patterns(&patterns, &enums);
@@ -2279,11 +2217,8 @@ mod tests {
         let patterns = vec![arm1, arm2, arm3];
         let mut enums = HashMap::new();
         enums.insert(
-            "Option".to_string(),
-            vec![
-                ("None".to_string(), None),
-                ("Some".to_string(), Some(vec![Type::String])),
-            ],
+            "Option",
+            vec![("None", None), ("Some", Some(vec![Type::String]))],
         );
         let report = analyze_match_patterns(&patterns, &enums);
         assert_eq!(report.is_exhaustive, false);

@@ -360,17 +360,17 @@ impl PILAnalyzer {
     }
 
     pub fn match_exhaustiveness_check(&self) {
-        let enums: HashMap<String, Vec<(String, Option<Vec<Type>>)>> = self
+        let enums: HashMap<&str, Vec<(&str, Option<Vec<Type>>)>> = self
             .definitions
             .iter()
             .filter_map(|(_, (_, def))| {
                 if let Some(FunctionValueDefinition::TypeDeclaration(enum_decl)) = def {
                     Some((
-                        enum_decl.name.clone(),
+                        enum_decl.name.as_str(),
                         enum_decl
                             .variants
                             .iter()
-                            .map(|v| (v.name.clone(), v.fields.clone()))
+                            .map(|v| (v.name.as_str(), v.fields.clone()))
                             .collect::<Vec<_>>(),
                     ))
                 } else {
