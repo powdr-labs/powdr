@@ -5,6 +5,7 @@ use super::bootloader::{
 };
 
 use powdr_number::{BabyBearField, FieldElement, GoldilocksField, LargeInt};
+use powdr_riscv_executor::executor_16::poseidon_bb::poseidon_bb;
 use powdr_riscv_executor::executor_32::poseidon_gl::poseidon_gl;
 
 pub struct MerkleTypesImpl<F: FieldElement> {
@@ -81,8 +82,8 @@ pub fn bb_split_word(v: u32) -> (BabyBearField, BabyBearField) {
 
 impl MerkleTypes for MerkleTypesImpl<BabyBearField> {
     type Fe = BabyBearField;
-    type Page = [Self::Fe; WORDS_PER_PAGE];
-    type Hash = [Self::Fe; 4];
+    type Page = [Self::Fe; 2 * WORDS_PER_PAGE];
+    type Hash = [Self::Fe; 8];
 
     fn update_page(page: &mut Self::Page, idx: usize, v: u32) {
         let (hi, lo) = bb_split_word(v);
@@ -92,26 +93,26 @@ impl MerkleTypes for MerkleTypesImpl<BabyBearField> {
     }
 
     fn hash_page(page: &Self::Page) -> Self::Hash {
-        let mut hash = [0.into(); 4];
-        for chunk in page.chunks_exact(4) {
+        let mut hash = [0.into(); 8];
+        for chunk in page.chunks_exact(8) {
             hash = Self::hash_two(&hash, chunk.try_into().unwrap());
         }
         hash
     }
 
     fn hash_two(a: &Self::Hash, b: &Self::Hash) -> Self::Hash {
-        let mut buffer = [0.into(); 12];
-        buffer[..4].copy_from_slice(a);
-        buffer[4..8].copy_from_slice(b);
-        poseidon_gl(&buffer)
+        let mut buffer = [0.into(); 16];
+        buffer[..8].copy_from_slice(a);
+        buffer[8..16].copy_from_slice(b);
+        poseidon_bb(&buffer)
     }
 
     fn zero_hash() -> Self::Hash {
-        todo!()
+        [0.into(); 8]
     }
 
     fn zero_page() -> Self::Page {
-        todo!()
+        [0.into(); 2 * WORDS_PER_PAGE]
     }
 
     fn iter_hash_as_fe(h: &Self::Hash) -> impl Iterator<Item = Self::Fe> {
