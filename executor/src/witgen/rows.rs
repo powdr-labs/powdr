@@ -461,16 +461,13 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     }
 
     pub fn get_value(&self, poly: AlgebraicVariable) -> Option<T> {
-        match poly {
-            AlgebraicVariable::Column(poly) => {
-                let row = self.get_row(poly.next);
-                if self.unknown_strategy == UnknownStrategy::Zero {
-                    Some(row.value_or_zero(&poly.poly_id))
-                } else {
-                    row.value(&poly.poly_id)
-                }
-            }
+        let value = match poly {
+            AlgebraicVariable::Column(poly) => self.get_row(poly.next).value(&poly.poly_id),
             AlgebraicVariable::Public(public_name) => self.publics.get(public_name).copied(),
+        };
+        match self.unknown_strategy {
+            UnknownStrategy::Zero => value.or(Some(T::ZERO)),
+            UnknownStrategy::Unknown => value,
         }
     }
 
