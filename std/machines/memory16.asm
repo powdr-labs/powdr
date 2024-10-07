@@ -11,7 +11,7 @@ machine Memory16(bit12: Bit12, byte2: Byte2) with
     operation_id: m_is_write,
     call_selectors: selectors,
 {
-    // The diff for the step is a 24-Bit value.
+    // The diff for the step is a 28-Bit value.
     assert(modulus() > 2**28, || "Memory16 requires a field that fits any 28-Bit value.");
 
     operation mload<0> m_addr_high, m_addr_low, m_step -> m_value1, m_value2;
@@ -77,20 +77,28 @@ machine Memory16(bit12: Bit12, byte2: Byte2) with
     // When comparing time steps, a 28-Bit diff is sufficient assuming a maximum step
     // of 2**28.
     // The difference is computed on the field, which is larger than 2**28.
+    // We prove that m_step' - m_step > 0 by letting the prover provide a 28-Bit value
+    // such that claimed_diff + 1 == m_step' - m_step.
+    // TODO: This does assume that m_step is a 28-Bit value. For rows that come from the
+    //       permutation (i.e., have a matching LHS in the main VM), this is guaranteed,
+    //       because the value comes from a fixed column. However, the prover can
+    //       "insert" reads without a matching LHS at any time (setting the selector to 0).
+    //       This allows the prover to increase the step by 2**28 in each row, over-flowing
+    //       eventually.
     let m_diff_upper = m_tmp1;
     let m_diff_lower = m_tmp2;
     link if (1 - m_change) => bit12.check(m_diff_upper);
     let claimed_time_step_diff = m_diff_upper * 2**16 + m_diff_lower;
-    let actual_time_step_diff = (m_step' - m_step);
+    let actual_time_step_diff = m_step' - m_step;
     (1 - m_change) * (claimed_time_step_diff + 1 - actual_time_step_diff) = 0;
 
     // When comparing addresses, we let the prover indicate whether the upper or lower
     // limb needs to be compared and then assert that the diff is positive.
-    let m_compare_high = m_tmp1;
+    let address_high_unequal = m_tmp1;
     let m_diff = m_tmp2;
 
-    // m_compare_high is binary.
-    m_change * m_compare_high * (m_compare_high - 1) = 0;
+    // address_high_unequal is binary.
+    m_change * address_high_unequal * (address_high_unequal - 1) = 0;
 
     // Whether to do any comparison.
     // We want to compare whenever m_change == 1, but not in the last row.
@@ -99,11 +107,11 @@ machine Memory16(bit12: Bit12, byte2: Byte2) with
     // (`m_change * (1 - LAST)` would be the same, but of higher degree.) 
     let do_comparison = m_change - LAST;
 
-    // If m_compare_high is 0, the higher limbs should be equal.
-    do_comparison * (1 - m_compare_high) * (m_addr_high' - m_addr_high) = 0;
+    // If address_high_unequal is 0, the higher limbs should be equal.
+    do_comparison * (1 - address_high_unequal) * (m_addr_high' - m_addr_high) = 0;
 
     // Assert that m_diff stores the actual diff - 1.
-    let actual_addr_limb_diff = m_compare_high * (m_addr_high' - m_addr_high)
-                                + (1 - m_compare_high) * (m_addr_low' - m_addr_low);
+    let actual_addr_limb_diff = address_high_unequal * (m_addr_high' - m_addr_high)
+                                + (1 - address_high_unequal) * (m_addr_low' - m_addr_low);
     do_comparison * (m_diff + 1 - actual_addr_limb_diff) = 0;
 }
