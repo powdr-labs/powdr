@@ -799,11 +799,31 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-            ("split_gl", _) => {
-                todo!()
-            }
-            ("poseidon_gl", _) => {
-                todo!()
+            ("poseidon_bb", [reg1, reg2]) => {
+                let in_ptr = self.proc.get_reg_mem(reg1).u();
+                assert_eq!(in_ptr % 4, 0);
+                let out_ptr = self.proc.get_reg_mem(reg2).u();
+                assert_eq!(out_ptr % 4, 0);
+
+                // get the input from memory
+                let inputs = (0..16)
+                    .map(|i| self.proc.get_mem(in_ptr + i * 4))
+                    .into_iter()
+                    .map(F::from)
+                    .collect::<Vec<_>>();
+
+                // write the result to memory
+                poseidon_bb::poseidon_bb(&inputs)
+                    .into_iter()
+                    .enumerate()
+                    .for_each(|(i, v)| {
+                        self.proc.set_mem(
+                            out_ptr + (i as u32 * 4),
+                            v.to_integer().try_into_u32().unwrap(),
+                        )
+                    });
+
+                vec![]
             }
             ("affine_256", _) => {
                 todo!()
