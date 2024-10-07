@@ -213,7 +213,7 @@ Arith16 arith_mul(byte);
 
 {}
 
-let initial_memory: (fe, fe)[] = [
+let initial_memory: (int, int)[] = [
 {}
 ];
 
