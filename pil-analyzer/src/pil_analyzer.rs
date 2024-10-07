@@ -13,8 +13,8 @@ use powdr_ast::parsed::asm::{
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_ast::parsed::{
-    self, analyze_match_patterns, FunctionKind, LambdaExpression, PILFile, PilStatement,
-    SymbolCategory, TraitImplementation,
+    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SymbolCategory,
+    TraitImplementation,
 };
 use powdr_number::{FieldElement, GoldilocksField};
 
@@ -26,6 +26,7 @@ use powdr_ast::analyzed::{
 use powdr_parser::{parse, parse_module, parse_type};
 use powdr_parser_util::Error;
 
+use crate::pattern_match_analyzer::analyze_match_patterns;
 use crate::traits_resolver::TraitsResolver;
 use crate::type_builtins::constr_function_statement_type;
 use crate::type_inference::infer_types;
@@ -57,7 +58,7 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Result<Analyzed<T>, Vec<Erro
     analyzer.process(files)?;
     analyzer.side_effect_check()?;
     analyzer.type_check()?;
-    //analyzer.match_exhaustiveness_check();
+    analyzer.match_exhaustiveness_check();
     // TODO should use Result here as well.
     let solved_impls = analyzer.resolve_trait_impls();
     analyzer.condense(solved_impls)
