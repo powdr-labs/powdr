@@ -15,12 +15,13 @@ use powdr_ast::analyzed::{DegreeRange, IdentityKind, PolyID};
 /// If all witnesses of a machine have a name in this list (disregarding the namespace),
 /// we'll consider it to be a double-sorted machine.
 /// This does not include the selectors, which are dynamically added to this list.
-const ALLOWED_WITNESSES: [&str; 10] = [
+const ALLOWED_WITNESSES: [&str; 11] = [
     "m_value1",
     "m_value2",
     "m_addr_high",
     "m_addr_low",
-    "m_step",
+    "m_step_high",
+    "m_step_low",
     "m_change",
     "m_is_write",
     "m_is_bootloader_write",
@@ -383,6 +384,14 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
             .map(|v| (v.0, v.1))
             .unzip::<_, _, Vec<_>, Vec<_>>();
 
+        let (step_high, step_low) = step
+            .into_iter()
+            .map(|s| {
+                let s = s.to_degree();
+                (T::from(s >> 16), T::from(s & 0xffff))
+            })
+            .unzip::<_, _, Vec<_>, Vec<_>>();
+
         let selector_columns = selectors
             .into_iter()
             .map(|(id, v)| (self.parts.column_name(id).to_string(), v))
@@ -393,7 +402,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
             (self.namespaced("m_value2"), value_low),
             (self.namespaced("m_addr_high"), addr_high),
             (self.namespaced("m_addr_low"), addr_low),
-            (self.namespaced("m_step"), step),
+            (self.namespaced("m_step_high"), step_high),
+            (self.namespaced("m_step_low"), step_low),
             (self.namespaced("m_change"), change),
             (self.namespaced("m_is_write"), is_normal_write.clone()),
         ]

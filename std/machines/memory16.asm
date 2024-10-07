@@ -26,9 +26,13 @@ machine Memory16(bit12: Bit12, byte2: Byte2) with
     // Note that these column names are used by witgen to detect
     // this machine...
     col witness m_addr_high, m_addr_low;
-    col witness m_step;
+    col witness m_step_high, m_step_low;
     col witness m_change;
     col witness m_value1, m_value2;
+
+    link => bit12.check(m_step_high);
+    link => byte2.check(m_step_low);
+    let m_step = m_step_high * 2**16 + m_step_low;
 
     link => byte2.check(m_value1);
     link => byte2.check(m_value2);
