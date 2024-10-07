@@ -11,8 +11,8 @@ machine Memory16(bit12: Bit12, byte2: Byte2) with
     operation_id: m_is_write,
     call_selectors: selectors,
 {
-    // The diff for the step is a 28-Bit value.
-    assert(modulus() > 2**28, || "Memory16 requires a field that fits any 28-Bit value.");
+    // We compute m_diff (28-Bit) + m_step (28-Bit) + 1, which fits into 29 Bits.
+    assert(modulus() > 2**29, || "Memory16 requires a field that fits any 29-Bit value.");
 
     operation mload<0> m_addr_high, m_addr_low, m_step -> m_value1, m_value2;
     operation mstore<1> m_addr_high, m_addr_low, m_step, m_value1, m_value2 ->;
@@ -83,12 +83,7 @@ machine Memory16(bit12: Bit12, byte2: Byte2) with
     // The difference is computed on the field, which is larger than 2**28.
     // We prove that m_step' - m_step > 0 by letting the prover provide a 28-Bit value
     // such that claimed_diff + 1 == m_step' - m_step.
-    // TODO: This does assume that m_step is a 28-Bit value. For rows that come from the
-    //       permutation (i.e., have a matching LHS in the main VM), this is guaranteed,
-    //       because the value comes from a fixed column. However, the prover can
-    //       "insert" reads without a matching LHS at any time (setting the selector to 0).
-    //       This allows the prover to increase the step by 2**28 in each row, over-flowing
-    //       eventually.
+    // Because all values are constrained to be 28-Bit, no overflow can occur.
     let m_diff_upper = m_tmp1;
     let m_diff_lower = m_tmp2;
     link if (1 - m_change) => bit12.check(m_diff_upper);
