@@ -351,7 +351,7 @@ where
         let traces_by_stage = opened_values
             .traces_by_stage_local
             .iter()
-            .zip(opened_values.traces_by_stage_next.iter())
+            .zip_eq(opened_values.traces_by_stage_next.iter())
             .map(|(trace_local, trace_next)| {
                 VerticalPair::new(
                     RowMajorMatrixView::new_row(trace_local),
@@ -433,12 +433,12 @@ where
         && opened_values
             .traces_by_stage_local
             .iter()
-            .zip(&air_widths)
+            .zip_eq(&air_widths)
             .all(|(stage, air_width)| stage.len() == *air_width)
         && opened_values
             .traces_by_stage_next
             .iter()
-            .zip(&air_widths)
+            .zip_eq(&air_widths)
             .all(|(stage, air_width)| stage.len() == *air_width)
         && opened_values.quotient_chunks.len() == quotient_degree
         && opened_values

@@ -423,14 +423,18 @@ mod tests {
 
     #[test]
     fn two_tables() {
+        // This test is a bit contrived but witgen wouldn't allow a more direct example
         let content = r#"
         namespace Add(8);
             col witness x;
             col witness y;
             col witness z;
+            x = 0;
+            y = 0;
             x + y = z;
+            1 $ [ x, y, z ] in 1 $ [ Mul::x, Mul::y, Mul::z ];
 
-        namespace Mul(8);
+        namespace Mul(16);
             col witness x;
             col witness y;
             col witness z;

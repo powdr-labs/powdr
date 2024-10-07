@@ -90,7 +90,14 @@ where
             .iter()
             .enumerate()
             .flat_map(|(index, (name, i))| {
-                i.quotient_domains_and_chunks(name, index, state, proving_key, alpha)
+                i.quotient_domains_and_chunks(
+                    index,
+                    state,
+                    proving_key
+                        .as_ref()
+                        .and_then(|proving_key| proving_key.preprocessed.get(name)),
+                    alpha,
+                )
             })
             .collect();
 
@@ -352,25 +359,22 @@ where
     ///    * `alpha`: The challenge value for the quotient polynomial.
     fn quotient_domains_and_chunks(
         &self,
-        table_name: &str,
         index: usize,
         state: &ProverState<T>,
-        proving_key: Option<&StarkProvingKey<T::Config>>,
+        proving_key: Option<&BTreeMap<usize, (Com<T::Config>, PcsProverData<T::Config>)>>,
         alpha: Challenge<T>,
     ) -> Vec<(Domain<T::Config>, DenseMatrix<Val<T::Config>>)> {
         let quotient_domain = self
             .trace_domain(state.pcs)
             .create_disjoint_domain(1 << (self.log_degree() + self.log_quotient_degree()));
 
-        let preprocessed_on_quotient_domain = proving_key
-            .and_then(|proving_key| proving_key.preprocessed.get(table_name))
-            .map(|preprocessed| {
-                state.pcs.get_evaluations_on_domain(
-                    &preprocessed[&(1 << self.log_degree())].1,
-                    index,
-                    quotient_domain,
-                )
-            });
+        let preprocessed_on_quotient_domain = proving_key.map(|preprocessed| {
+            state.pcs.get_evaluations_on_domain(
+                &preprocessed[&(1 << self.log_degree())].1,
+                index,
+                quotient_domain,
+            )
+        });
 
         let traces_on_quotient_domain = state
             .processed_stages
@@ -481,8 +485,6 @@ where
 
     let pcs = config.pcs();
 
-    // Observe the instances.
-    program.observe_instances(challenger);
     if let Some(proving_key) = proving_key {
         for (commit, _) in proving_key
             .preprocessed
@@ -492,6 +494,9 @@ where
             challenger.observe(commit.clone());
         }
     };
+
+    // Observe the instances. TODO: should this come before or after the proving key?
+    program.observe_instances(challenger);
 
     let mut state = ProverState::new(&program, pcs, challenger);
     // assumption: stages are ordered like in airs in `state.tables`. Maybe we can enforce this better.
@@ -617,10 +622,13 @@ where
             let preprocessed = RowMajorMatrix::new(
                 preprocessed_on_quotient_domain
                     .as_ref()
-                    .map(|on_quotient_domain| {
+                    .map(|preprocessed_on_quotient_domain| {
                         iter::empty()
-                            .chain(on_quotient_domain.vertically_packed_row(i_start))
-                            .chain(on_quotient_domain.vertically_packed_row(i_start + next_step))
+                            .chain(preprocessed_on_quotient_domain.vertically_packed_row(i_start))
+                            .chain(
+                                preprocessed_on_quotient_domain
+                                    .vertically_packed_row(i_start + next_step),
+                            )
                             .collect_vec()
                     })
                     .unwrap_or_default(),
