@@ -649,17 +649,21 @@ fn mul_instruction() -> &'static str {
 fn memory(with_bootloader: bool) -> String {
     let memory_machine = if with_bootloader {
         r#"
-    std::machines::memory_with_bootloader_write::MemoryWithBootloaderWrite memory(byte2);
+    // TODO: create and use here MemoryWithBootloaderWrite for baby bear
+    std::machines::memory_bb::Memory memory(byte2);
 
     // Stores val(W) at address (V = val(X) - val(Z) + Y) % 2**32.
     // V can be between 0 and 2**33.
-    instr mstore_bootloader X, Z, Y, W
-        link ~> tmp1_col = regs.mload(X, STEP)
-        link ~> tmp2_col = regs.mload(Z, STEP + 1)
-        link ~> tmp3_col = regs.mload(W, STEP + 2)
-        link ~> memory.mstore_bootloader(X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000, STEP + 3, tmp3_col)
+    instr mstore_bootloader XL, ZL, YH, YL, WL
+        link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
+        link ~> (tmp2_h, tmp2_l) = regs.mload(ZL, STEP + 1)
+        link ~> (tmp3_h, tmp3_l) = regs.mload(WL, STEP + 2)
+        link ~> (tmp4_h, tmp4_l) = arith_bb.sub(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
+        link ~> (tmp5_h, tmp5_l) = arith_bb.add(tmp4_h, tmp4_l, YH, YL)
+        link ~> memory.mstore_bootloader(tmp6_l, STEP + 3, tmp3_h, tmp3_l)
     {
-        tmp1_col - tmp2_col + Y = (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000) + wrap_bit * 2**32
+        // TODO: ensure addr in range
+        tmp6_l = tmp5_l + tmp5_h * 2 ** 16
     }
 "#
     } else {

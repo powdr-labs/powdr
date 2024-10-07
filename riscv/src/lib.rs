@@ -71,14 +71,11 @@ pub fn compile_rust(
     if with_bootloader {
         match options.field {
             KnownField::BabyBearField => {
-                todo!()
                 // TODO uncomment this when the bootloader is ready
-                /*
-                                assert!(
-                                    runtime.has_submachine("poseidon_bb"),
-                                    "PoseidonBB coprocessor is required for bootloader"
-                                );
-                */
+                assert!(
+                    options.runtime.has_submachine("poseidon_bb"),
+                    "PoseidonBB coprocessor is required for bootloader"
+                );
             }
             KnownField::Mersenne31Field => {
                 todo!()

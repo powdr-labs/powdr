@@ -49,7 +49,11 @@ impl Elem {
 
     /// Interprets the value of self as a field element, if the value is smaller than the modulus
     pub fn try_into_fe<F: FieldElement>(self) -> Option<F> {
-        todo!()
+        // TODO: avoid converting the modulus all the time
+        if self.0 as u64 >= F::modulus().try_into_u64().unwrap() {
+            return None;
+        }
+        Some(self.0.into())
     }
 
     fn u(&self) -> u32 {
@@ -808,7 +812,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 // get the input from memory
                 let inputs = (0..16)
                     .map(|i| self.proc.get_mem(in_ptr + i * 4))
-                    .into_iter()
                     .map(F::from)
                     .collect::<Vec<_>>();
 

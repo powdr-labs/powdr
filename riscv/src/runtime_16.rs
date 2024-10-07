@@ -298,51 +298,45 @@ impl Runtime16 {
     fn with_poseidon(mut self, continuations: bool) -> Self {
         let init_call = if continuations {
             vec![
-                "mstore_bootloader 0, 0, 0, 0;",
-                "mstore_bootloader 0, 0, 4, 0;",
-                "mstore_bootloader 0, 0, 8, 0;",
-                "mstore_bootloader 0, 0, 12, 0;",
-                "mstore_bootloader 0, 0, 16, 0;",
-                "mstore_bootloader 0, 0, 20, 0;",
-                "mstore_bootloader 0, 0, 24, 0;",
-                "mstore_bootloader 0, 0, 28, 0;",
-                "mstore_bootloader 0, 0, 32, 0;",
-                "mstore_bootloader 0, 0, 36, 0;",
-                "mstore_bootloader 0, 0, 40, 0;",
-                "mstore_bootloader 0, 0, 44, 0;",
-                "mstore_bootloader 0, 0, 48, 0;",
-                "mstore_bootloader 0, 0, 52, 0;",
-                "mstore_bootloader 0, 0, 56, 0;",
-                "mstore_bootloader 0, 0, 60, 0;",
-                "mstore_bootloader 0, 0, 64, 0;",
-                "mstore_bootloader 0, 0, 68, 0;",
-                "mstore_bootloader 0, 0, 72, 0;",
-                "mstore_bootloader 0, 0, 76, 0;",
-                "mstore_bootloader 0, 0, 80, 0;",
-                "mstore_bootloader 0, 0, 84, 0;",
-                "mstore_bootloader 0, 0, 88, 0;",
-                "mstore_bootloader 0, 0, 92, 0;",
-                "poseidon_gl 0, 0;",
+                "mstore_bootloader 0, 0, 0, 0, 0;",
+                "mstore_bootloader 0, 0, 0, 4, 0;",
+                "mstore_bootloader 0, 0, 0, 8, 0;",
+                "mstore_bootloader 0, 0, 0, 12, 0;",
+                "mstore_bootloader 0, 0, 0, 16, 0;",
+                "mstore_bootloader 0, 0, 0, 20, 0;",
+                "mstore_bootloader 0, 0, 0, 24, 0;",
+                "mstore_bootloader 0, 0, 0, 28, 0;",
+                "mstore_bootloader 0, 0, 0, 32, 0;",
+                "mstore_bootloader 0, 0, 0, 36, 0;",
+                "mstore_bootloader 0, 0, 0, 40, 0;",
+                "mstore_bootloader 0, 0, 0, 44, 0;",
+                "mstore_bootloader 0, 0, 0, 48, 0;",
+                "mstore_bootloader 0, 0, 0, 52, 0;",
+                "mstore_bootloader 0, 0, 0, 56, 0;",
+                "mstore_bootloader 0, 0, 0, 60, 0;",
+                "poseidon_bb 0, 0;",
             ]
         } else {
-            vec!["poseidon_gl 0, 0;"]
+            vec!["poseidon_bb 0, 0;"]
         };
         self.add_submachine(
-            "std::machines::hash::poseidon_gl_memory::PoseidonGLMemory",
+            "std::machines::hash::poseidon_bb::PoseidonBB",
             None,
-            "poseidon_gl",
-            vec!["memory", "split_gl"],
-            [r#"instr poseidon_gl X, Y
-                    link ~> tmp1_col = regs.mload(X, STEP)
-                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
-                    link ~> poseidon_gl.poseidon_permutation(tmp1_col, tmp2_col, STEP)
+            "poseidon_bb",
+            vec!["memory"],
+            [r#"instr poseidon_bb XL, YL
+                    link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
+                    link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
+                    link ~> poseidon_bb.poseidon_permutation(tmp1_h * 2**16 + tmp1_l, tmp2_h * 2**16 + tmp2_l, STEP)
                 {
-                    // make sure tmp1_col and tmp2_col are aligned memory addresses
-                    tmp3_col * 4 = tmp1_col,
-                    tmp4_col * 4 = tmp2_col,
-                    // make sure the factors fit in 32 bits
-                    tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
-                    tmp4_col = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
+                    // TODO: fix the following for BB
+
+                    // // make sure tmp1_col and tmp2_col are aligned memory addresses
+                    // tmp3_col * 4 = tmp1_col,
+                    // tmp4_col * 4 = tmp2_col,
+                    // // make sure the factors fit in 32 bits
+                    // tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
+                    // tmp4_col = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
                 }
             "#],
             0,
@@ -350,9 +344,9 @@ impl Runtime16 {
         );
 
         // The poseidon syscall has a single argument passed on x10, the
-        // memory address of the 12 field element input array. Since the memory
+        // memory address of the 16 field element input array. Since the memory
         // offset is chosen by LLVM, we assume it's properly aligned.
-        let implementation = std::iter::once("poseidon_gl 10, 10;".to_string());
+        let implementation = std::iter::once("poseidon_bb 10, 10;".to_string());
 
         self.add_syscall(Syscall::PoseidonGL, implementation);
         self
@@ -593,7 +587,7 @@ impl TryFrom<&[String]> for Runtime16 {
                 continue;
             }
             match name.as_str() {
-                "poseidon_gl" => runtime = runtime.with_poseidon_no_continuations(),
+                "poseidon_bb" => runtime = runtime.with_poseidon_no_continuations(),
                 "keccakf" => runtime = runtime.with_keccak(),
                 "arith" => runtime = runtime.with_arith(),
                 _ => return Err(format!("Invalid co-processor specified: {name}")),
