@@ -179,7 +179,9 @@ where
         let preprocessed: Vec<_> = if let Some(proving_key) = proving_key {
             state
                 .program
-                .tables.keys().map(|name| {
+                .tables
+                .keys()
+                .map(|name| {
                     proving_key.preprocessed.contains_key(name).then(|| {
                         let value = opened_values.next().unwrap();
                         assert_eq!(value.len(), 1);
@@ -278,7 +280,6 @@ where
                 },
             )
             .collect();
-
         (opened_values, proof)
     }
 
@@ -451,11 +452,14 @@ where
                         public_values: constraint_system
                             .publics
                             .iter()
-                            .filter(|&(_, _, _, stage)| (*stage == 0)).map(|(name, _, row, _)| stage_0
-                                        .iter()
-                                        .find_map(|(n, v)| (n == name).then(|| v[*row]))
-                                        .unwrap()
-                                        .into_p3_field())
+                            .filter(|&(_, _, _, stage)| (*stage == 0))
+                            .map(|(name, _, row, _)| {
+                                stage_0
+                                    .iter()
+                                    .find_map(|(n, v)| (n == name).then(|| v[*row]))
+                                    .unwrap()
+                                    .into_p3_field()
+                            })
                             .collect(),
                     },
                 ),
@@ -476,7 +480,6 @@ where
     let stage_count = program.stage_count();
 
     let pcs = config.pcs();
-    // let trace_domain = pcs.natural_domain_for_degree(degree);
 
     // Observe the instances.
     program.observe_instances(challenger);

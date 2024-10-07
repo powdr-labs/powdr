@@ -2,6 +2,7 @@ use alloc::vec;
 use alloc::vec::Vec;
 use p3_air::Air;
 use std::collections::BTreeMap;
+use std::iter::once;
 
 use itertools::{izip, Itertools};
 use p3_challenger::{CanObserve, CanSample, FieldChallenger};
@@ -57,12 +58,7 @@ where
 
     let mut public_inputs: BTreeMap<String, Vec<&Vec<Plonky3Field<T>>>> = public_inputs
         .iter()
-        .map(|(name, values)| {
-            (
-                name.clone(),
-                values.iter().collect_vec(),
-            )
-        })
+        .map(|(name, values)| (name.clone(), values.iter().collect_vec()))
         .collect();
 
     let inputs: BTreeMap<_, _> = program
@@ -174,9 +170,9 @@ where
         })
         .collect::<Vec<_>>();
 
-    let quotient_domains = inputs
+    let quotient_domains: Vec<Vec<_>> = inputs
         .values()
-        .zip(proof.opened_values.values())
+        .zip_eq(proof.opened_values.values())
         .map(|(input, opened_values)| {
             let degree = 1 << opened_values.log_degree;
             let trace_domain = pcs.natural_domain_for_degree(degree);
@@ -205,70 +201,93 @@ where
         })
         .collect::<Vec<_>>();
 
-    let verify_input: Vec<_> = proof
+    // for preprocessed commitments, we have one commitment per table, opened on the trace domain at zeta and zeta_next
+    let preprocessed_domains_points_and_opens: Vec<(_, Vec<(_, _)>)> = proof
         .opened_values
         .iter()
-        .zip_eq(trace_domains.iter().zip(quotient_domains.iter()))
-        .flat_map(
-            |((table_name, opened_values), (trace_domain, quotient_chunks_domains))| {
-                let zeta_next = trace_domain.next_point(zeta).unwrap();
+        .zip_eq(trace_domains.iter())
+        .flat_map(|((table_name, opened_values), trace_domain)| {
+            let zeta_next = trace_domain.next_point(zeta).unwrap();
 
-                opened_values
-                    .preprocessed_local
-                    .iter()
-                    .map(move |preprocessed_local| {
-                        (
-                            // choose the correct preprocessed commitment based on the degree in the proof
-                            // this could be optimized by putting the preproccessed commitments in a merkle tree
-                            // and have the prover prove that it used commitments matching the lengths of the traces
-                            // this way the verifier does not need to have all the preprocessed commitments for all sizes
-                            verifying_key
-                                .as_ref()
-                                .unwrap()
-                                .preprocessed
-                                .get(table_name)
-                                .unwrap()[&(1 << opened_values.log_degree)]
-                                .clone(),
-                            vec![(
-                                *trace_domain,
-                                vec![
-                                    (zeta, preprocessed_local.clone()),
-                                    (zeta_next, opened_values.preprocessed_next.clone().unwrap()),
-                                ],
-                            )],
-                        )
-                    })
-                    .chain(
-                        izip!(
-                            commitments.traces_by_stage.iter(),
-                            opened_values.traces_by_stage_local.iter(),
-                            opened_values.traces_by_stage_next.iter()
-                        )
-                        .map(
-                            move |(trace_commit, opened_local, opened_next)| {
-                                (
-                                    trace_commit.clone(),
-                                    vec![(
-                                        *trace_domain,
-                                        vec![
-                                            (zeta, opened_local.clone()),
-                                            (zeta_next, opened_next.clone()),
-                                        ],
-                                    )],
-                                )
-                            },
-                        ),
+            opened_values
+                .preprocessed_local
+                .iter()
+                .map(move |preprocessed_local| {
+                    (
+                        // choose the correct preprocessed commitment based on the degree in the proof
+                        // this could be optimized by putting the preproccessed commitments in a merkle tree
+                        // and have the prover prove that it used commitments matching the lengths of the traces
+                        // this way the verifier does not need to have all the preprocessed commitments for all sizes
+                        verifying_key
+                            .as_ref()
+                            .unwrap()
+                            .preprocessed
+                            .get(table_name)
+                            .unwrap()[&(1 << opened_values.log_degree)]
+                            .clone(),
+                        vec![(
+                            *trace_domain,
+                            vec![
+                                (zeta, preprocessed_local.clone()),
+                                (zeta_next, opened_values.preprocessed_next.clone().unwrap()),
+                            ],
+                        )],
                     )
-                    .chain([(
-                        commitments.quotient_chunks.clone(),
-                        quotient_chunks_domains
-                            .iter()
-                            .zip(&opened_values.quotient_chunks)
-                            .map(|(domain, values)| (*domain, vec![(zeta, values.clone())]))
-                            .collect_vec(),
-                    )])
-            },
+                })
+        })
+        .collect();
+
+    // for trace commitments, we have one commitment per stage, opened on each trace domain at zeta and zeta_next
+    let trace_domains_points_and_opens_by_stage: Vec<(_, Vec<(_, _)>)> = izip!(
+        proof.commitments.traces_by_stage.iter(),
+        (0..stage_count as usize).map(|i| opened_values
+            .values()
+            .map(|opened_values| (
+                &opened_values.traces_by_stage_local[i],
+                &opened_values.traces_by_stage_next[i]
+            ))
+            .collect_vec()),
+    )
+    .map(|(commit, openings)| {
+        (
+            commit.clone(),
+            trace_domains
+                .iter()
+                .zip_eq(openings)
+                .map(|(trace_domain, (opened_local, opened_next))| {
+                    let zeta_next = trace_domain.next_point(zeta).unwrap();
+                    (
+                        *trace_domain,
+                        vec![
+                            (zeta, opened_local.clone()),
+                            (zeta_next, opened_next.clone()),
+                        ],
+                    )
+                })
+                .collect_vec(),
         )
+    })
+    .collect();
+
+    // for quotient commitments, we have a single commitment, opened for each quotient domain on many points
+    let quotient_chunks_domain_point_and_opens: (_, Vec<(_, _)>) = (
+        proof.commitments.quotient_chunks.clone(),
+        quotient_domains
+            .iter()
+            .zip_eq(opened_values.values())
+            .flat_map(|(domains, values)| {
+                domains
+                    .iter()
+                    .zip_eq(values.quotient_chunks.iter())
+                    .map(|(domain, chunk)| (*domain, vec![(zeta, chunk.clone())]))
+            })
+            .collect_vec(),
+    );
+
+    let verify_input = preprocessed_domains_points_and_opens
+        .into_iter()
+        .chain(trace_domains_points_and_opens_by_stage)
+        .chain(once(quotient_chunks_domain_point_and_opens))
         .collect();
 
     pcs.verify(verify_input, opening_proof, challenger)
