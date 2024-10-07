@@ -13,7 +13,7 @@ use powdr_ast::parsed::asm::{
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_ast::parsed::{
-    self, EnumVariant, FunctionKind, LambdaExpression, PILFile, Pattern, PilStatement,
+    self, analyze_match_patterns, FunctionKind, LambdaExpression, PILFile, PilStatement,
     SymbolCategory, TraitImplementation,
 };
 use powdr_number::{FieldElement, GoldilocksField};
@@ -401,11 +401,10 @@ impl PILAnalyzer {
             .collect();
 
         for patterns in all_patterns {
-
-            //let report = analyze_match_patterns(&patterns, new_enums);
-            //if report.is_exhaustive {
-            //    panic!("Match exhaustiveness check failed"); // TODO GZ: report error
-            //}
+            let report = analyze_match_patterns(&patterns, &enums);
+            if report.is_exhaustive {
+                panic!("Match exhaustiveness check failed"); // TODO GZ: better error
+            }
         }
     }
 
