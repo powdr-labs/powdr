@@ -535,7 +535,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-            ("jump_to_bootloader_input", [idx]) => {
+            ("jump_to_bootloader_input", [idx_hi, idx_lo]) => {
+                let idx = Elem::from_limbs(idx_hi, idx_lo);
                 let addr = self.bootloader_inputs[idx.u() as usize];
                 self.proc.set_pc(addr);
 
