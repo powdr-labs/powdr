@@ -313,7 +313,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "not implemented"]
+    #[should_panic = "Witness generation failed."]
     fn public_reference() {
         let content = r#"
         namespace Global(8);
