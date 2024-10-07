@@ -92,11 +92,18 @@ machine Memory16(bit12: Bit12, byte2: Byte2) with
     // m_compare_high is binary.
     m_change * m_compare_high * (m_compare_high - 1) = 0;
 
+    // Whether to do any comparison.
+    // We want to compare whenever m_change == 1, but not in the last row.
+    // Because we constrained m_change to be 1 in the last row, this will just
+    // be equal to m_change, except that the last entry is 0.
+    // (`m_change * (1 - LAST)` would be the same, but of higher degree.) 
+    let do_comparison = m_change - LAST;
+
     // If m_compare_high is 0, the higher limbs should be equal.
-    m_change * (1 - m_compare_high) * (m_addr_high' - m_addr_high) = 0;
+    do_comparison * (1 - m_compare_high) * (m_addr_high' - m_addr_high) = 0;
 
     // Assert that m_diff stores the actual diff - 1.
     let actual_addr_limb_diff = m_compare_high * (m_addr_high' - m_addr_high)
                                 + (1 - m_compare_high) * (m_addr_low' - m_addr_low);
-    m_change * (m_diff + 1 - actual_addr_limb_diff) = 0;
+    do_comparison * (m_diff + 1 - actual_addr_limb_diff) = 0;
 }

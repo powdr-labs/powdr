@@ -331,24 +331,35 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
             let (diff_col1, diff_col2): (Vec<T>, Vec<T>) = diff
                 .into_iter()
                 .zip(change.iter())
-                .map(|(diff, address_change)| {
+                .enumerate()
+                .map(|(i, (diff, address_change))| {
                     assert!(diff > 0);
-                    let diff_high = (diff - 1) / diff_columns_base;
-                    let diff_low = (diff - 1) % diff_columns_base;
                     if address_change == &T::zero() {
                         // We are comparing the time step. The diff columns should contain the
                         // high and low limb of the difference - 1.
-                        (T::from(diff_high), T::from(diff_low))
+                        (
+                            T::from((diff - 1) / diff_columns_base),
+                            T::from((diff - 1) % diff_columns_base),
+                        )
                     } else {
                         // We are comparing the address. The first value should store whether the high
                         // 16-Bit limbs are equal; the second value should store the diff - 1 of the
                         // limb being compared
 
-                        if diff_high == 0 {
-                            (T::zero(), T::from(diff_low - 1))
-                        } else {
-                            (T::one(), T::from(diff_high - 1))
-                        }
+                        let current_addr = &addr[i];
+                        let next_addr = addr.get(i + 1);
+
+                        next_addr
+                            .map(|next_addr| {
+                                if current_addr.0 == next_addr.0 {
+                                    assert!(current_addr.1 < next_addr.1);
+                                    (T::zero(), next_addr.1 - current_addr.1 - T::one())
+                                } else {
+                                    assert!(current_addr.0 < next_addr.0);
+                                    (T::one(), next_addr.0 - current_addr.0 - T::one())
+                                }
+                            })
+                            .unwrap_or((T::zero(), T::zero()))
                     }
                 })
                 .unzip();
@@ -471,7 +482,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                 (Some(high), Some(low)) => Word32(high, low),
                 _ => {
                     return Ok(EvalValue::incomplete(
-                        IncompleteCause::NonConstantRequiredArgument("m_value1"),
+                        IncompleteCause::NonConstantRequiredArgument("m_value"),
                     ))
                 }
             };
@@ -521,7 +532,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
                     Operation {
                         is_normal_write,
                         is_bootloader_write,
-                        value: Word32(value_low_fe, value_high_fe),
+                        value: Word32(value_high_fe, value_low_fe),
                         selector_id,
                     },
                 )
