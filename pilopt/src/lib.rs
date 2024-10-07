@@ -206,7 +206,6 @@ fn collect_required_names<'a, T: FieldElement>(
 fn remove_constant_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let constant_polys = pil_file
         .constant_polys_in_source_order()
-        .iter()
         .filter(|(p, _)| !p.is_array())
         .filter_map(|(poly, definition)| {
             let definition = definition.as_ref()?;
@@ -446,7 +445,6 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
     // We cannot remove arrays or array elements, so filter them out.
     let columns = pil_file
         .committed_polys_in_source_order()
-        .iter()
         .filter(|&(s, _)| (!s.is_array()))
         .map(|(s, _)| s.into())
         .collect::<HashSet<PolyID>>();

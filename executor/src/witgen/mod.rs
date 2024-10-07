@@ -277,7 +277,6 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         let witness_cols = self
             .analyzed
             .committed_polys_in_source_order()
-            .into_iter()
             .filter(|(symbol, _)| symbol.stage.unwrap_or_default() <= self.stage.into())
             .flat_map(|(p, _)| p.array_elements())
             .map(|(name, _id)| {
@@ -304,7 +303,6 @@ pub fn extract_publics<T: FieldElement>(
         .map(|(name, col)| (name.clone(), col))
         .collect::<BTreeMap<_, _>>();
     pil.public_declarations_in_source_order()
-        .iter()
         .map(|(name, public_declaration)| {
             let poly_name = &public_declaration.referenced_poly_name();
             let poly_index = public_declaration.index;
@@ -368,7 +366,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             .collect::<BTreeMap<_, _>>();
 
         let witness_cols =
-            WitnessColumnMap::from(analyzed.committed_polys_in_source_order().iter().flat_map(
+            WitnessColumnMap::from(analyzed.committed_polys_in_source_order().flat_map(
                 |(poly, value)| {
                     poly.array_elements()
                         .map(|(name, poly_id)| {

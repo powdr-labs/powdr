@@ -6,7 +6,13 @@ use powdr_pil_analyzer::analyze_string;
 
 fn compile(input: &str, symbol: &str) -> LoadedFunction {
     let analyzed = analyze_string::<GoldilocksField>(input).unwrap();
-    powdr_jit_compiler::compile(&analyzed, &[symbol]).unwrap()[symbol].clone()
+    powdr_jit_compiler::compile(&analyzed, &[symbol])
+        .map_err(|e| {
+            eprintln!("Error jit-compiling:\n{e}");
+            e
+        })
+        .unwrap()[symbol]
+        .clone()
 }
 
 #[test]
@@ -73,4 +79,128 @@ fn gigantic_number() {
     let f = compile("let c: int -> int = |i| (i * 0x1000000000000000000000000000000000000000000000000000000000000000000000000000000000) >> (81 * 4);", "c");
 
     assert_eq!(f.call(10), 10);
+}
+
+#[test]
+fn simple_field() {
+    let input = "
+        namespace std::convert;
+            let fe = 99;
+            let int = 100;
+        namespace std::array;
+            let len = 8;
+        namespace main;
+            let a: fe[] = [1, 2, 3];
+            let k: int -> int = |i| i;
+            let q: col = |i| a[i % std::array::len(a)];
+            let r: col = |i| std::convert::fe(k(i));
+        ";
+    let q = compile(input, "main::q");
+
+    assert_eq!(q.call(0), 1);
+    assert_eq!(q.call(1), 2);
+    assert_eq!(q.call(2), 3);
+    assert_eq!(q.call(3), 1);
+
+    let r = compile(input, "main::r");
+    assert_eq!(r.call(0), 0);
+    assert_eq!(r.call(1), 1);
+    assert_eq!(r.call(2), 2);
+    assert_eq!(r.call(3), 3);
+}
+
+#[test]
+fn match_number() {
+    let f = compile(
+        r#"let f: int -> int = |x| match x {
+            0 => 1,
+            1 => 2,
+            2 => 3,
+            _ => 0,
+        };"#,
+        "f",
+    );
+
+    assert_eq!(f.call(0), 1);
+    assert_eq!(f.call(1), 2);
+    assert_eq!(f.call(2), 3);
+    assert_eq!(f.call(3), 0);
+}
+
+#[test]
+fn match_negative() {
+    let f = compile(
+        r#"let f: int -> int = |x| match -x {
+            -0 => 1,
+            -1 => 2,
+            -2 => 3,
+            _ => 9,
+        };"#,
+        "f",
+    );
+
+    assert_eq!(f.call(0), 1);
+    assert_eq!(f.call(1), 2);
+    assert_eq!(f.call(2), 3);
+    assert_eq!(f.call(3), 9);
+}
+
+#[test]
+fn match_string() {
+    let f = compile(
+        r#"let f: int -> int = |x| match "abc" {
+            "ab" => 1,
+            "abc" => 2,
+            _ => 0,
+        };"#,
+        "f",
+    );
+
+    assert_eq!(f.call(0), 2);
+    assert_eq!(f.call(1), 2);
+}
+
+#[test]
+fn match_tuples() {
+    let f = compile(
+        r#"let f: int -> int = |x| match (x, ("abc", x + 3)) {
+            (0, _) => 1,
+            (1, ("ab", _)) => 2,
+            (1, ("abc", t)) => t,
+            (a, (_, b)) => a + b,
+        };"#,
+        "f",
+    );
+
+    assert_eq!(f.call(0), 1);
+    assert_eq!(f.call(1), 4);
+    assert_eq!(f.call(2), 7);
+    assert_eq!(f.call(3), 9);
+}
+
+#[test]
+fn match_array() {
+    let f = compile(
+        r#"let f: int -> int = |y| match (y, [1, 3, 3, 4]) {
+            (0, _) => 1,
+            (1, [1, 3]) => 20,
+            (1, [.., 2, 4]) => 20,
+            (1, [.., x, 4]) => x - 1,
+            (2, [x, .., 0]) => 22,
+            (2, [x, .., 4]) => x + 2,
+            (3, [1, 3, 3, 4, ..]) => 4,
+            (4, [1, 3, 3, 4]) => 5,
+            (5, [..]) => 6,
+            _ => 7
+        };"#,
+        "f",
+    );
+
+    assert_eq!(f.call(0), 1);
+    assert_eq!(f.call(1), 2);
+    assert_eq!(f.call(2), 3);
+    assert_eq!(f.call(3), 4);
+    assert_eq!(f.call(4), 5);
+    assert_eq!(f.call(5), 6);
+    assert_eq!(f.call(6), 7);
 }

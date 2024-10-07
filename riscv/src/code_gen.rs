@@ -1,8 +1,7 @@
 use std::{fmt, vec};
 
 use itertools::Itertools;
-use powdr_asm_utils::data_storage::SingleDataValue;
-use powdr_asm_utils::utils::{escape_label, quote};
+use powdr_isa_utils::{escape_label, quote, SingleDataValue};
 use powdr_number::{FieldElement, KnownField};
 
 use crate::continuations::bootloader::{bootloader_and_shutdown_routine, bootloader_preamble};
@@ -26,8 +25,6 @@ impl Register {
         self.value
     }
 }
-
-impl powdr_asm_utils::ast::Register for Register {}
 
 impl fmt::Display for Register {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -67,23 +64,6 @@ impl From<&str> for Register {
             Self::new(36)
         } else {
             panic!("Invalid register")
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub enum FunctionKind {
-    HiDataRef,
-    LoDataRef,
-}
-
-impl powdr_asm_utils::ast::FunctionOpKind for FunctionKind {}
-
-impl fmt::Display for FunctionKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            FunctionKind::HiDataRef => write!(f, "%hi"),
-            FunctionKind::LoDataRef => write!(f, "%lo"),
         }
     }
 }

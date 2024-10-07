@@ -119,12 +119,11 @@ pub(crate) fn machine_fixed_columns<F: FieldElement>(
 }
 
 /// Filter the given columns to only include those that are referenced by the given symbols.
-fn select_machine_columns<'a, T, C>(
+fn select_machine_columns<'a, T: 'a, C>(
     columns: &'a [(String, C)],
-    symbols: Vec<&(Symbol, T)>,
+    symbols: impl Iterator<Item = &'a (Symbol, T)>,
 ) -> Vec<&'a (String, C)> {
     let names = symbols
-        .into_iter()
         .flat_map(|(symbol, _)| symbol.array_elements().map(|(name, _)| name))
         .collect::<BTreeSet<_>>();
     columns
