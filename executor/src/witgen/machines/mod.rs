@@ -9,7 +9,8 @@ use powdr_number::FieldElement;
 use crate::Identity;
 
 use self::block_machine::BlockMachine;
-use self::double_sorted_witness_machine::DoubleSortedWitnesses;
+use self::double_sorted_witness_machine_16::DoubleSortedWitnesses16;
+use self::double_sorted_witness_machine_32::DoubleSortedWitnesses32;
 pub use self::fixed_lookup_machine::FixedLookup;
 use self::profiling::{record_end, record_start};
 use self::sorted_witness_machine::SortedWitnesses;
@@ -20,7 +21,6 @@ use super::rows::RowPair;
 use super::{EvalResult, FixedData, MutableState, QueryCallback};
 
 mod block_machine;
-mod double_sorted_witness_machine;
 mod double_sorted_witness_machine_16;
 mod double_sorted_witness_machine_32;
 mod fixed_lookup_machine;
@@ -73,7 +73,8 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
 /// which requires that all lifetime parameters are 'static.
 pub enum KnownMachine<'a, T: FieldElement> {
     SortedWitnesses(SortedWitnesses<'a, T>),
-    DoubleSortedWitnesses(DoubleSortedWitnesses<'a, T>),
+    DoubleSortedWitnesses16(DoubleSortedWitnesses16<'a, T>),
+    DoubleSortedWitnesses32(DoubleSortedWitnesses32<'a, T>),
     WriteOnceMemory(WriteOnceMemory<'a, T>),
     BlockMachine(BlockMachine<'a, T>),
     Vm(Generator<'a, T>),
@@ -91,7 +92,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
             KnownMachine::SortedWitnesses(m) => {
                 m.process_plookup(mutable_state, identity_id, caller_rows)
             }
-            KnownMachine::DoubleSortedWitnesses(m) => {
+            KnownMachine::DoubleSortedWitnesses16(m) => {
+                m.process_plookup(mutable_state, identity_id, caller_rows)
+            }
+            KnownMachine::DoubleSortedWitnesses32(m) => {
                 m.process_plookup(mutable_state, identity_id, caller_rows)
             }
             KnownMachine::WriteOnceMemory(m) => {
@@ -110,7 +114,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
     fn name(&self) -> &str {
         match self {
             KnownMachine::SortedWitnesses(m) => m.name(),
-            KnownMachine::DoubleSortedWitnesses(m) => m.name(),
+            KnownMachine::DoubleSortedWitnesses16(m) => m.name(),
+            KnownMachine::DoubleSortedWitnesses32(m) => m.name(),
             KnownMachine::WriteOnceMemory(m) => m.name(),
             KnownMachine::BlockMachine(m) => m.name(),
             KnownMachine::Vm(m) => m.name(),
@@ -124,7 +129,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
     ) -> HashMap<String, Vec<T>> {
         match self {
             KnownMachine::SortedWitnesses(m) => m.take_witness_col_values(mutable_state),
-            KnownMachine::DoubleSortedWitnesses(m) => m.take_witness_col_values(mutable_state),
+            KnownMachine::DoubleSortedWitnesses16(m) => m.take_witness_col_values(mutable_state),
+            KnownMachine::DoubleSortedWitnesses32(m) => m.take_witness_col_values(mutable_state),
             KnownMachine::WriteOnceMemory(m) => m.take_witness_col_values(mutable_state),
             KnownMachine::BlockMachine(m) => m.take_witness_col_values(mutable_state),
             KnownMachine::Vm(m) => m.take_witness_col_values(mutable_state),
@@ -135,7 +141,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
         match self {
             KnownMachine::SortedWitnesses(m) => m.identity_ids(),
-            KnownMachine::DoubleSortedWitnesses(m) => m.identity_ids(),
+            KnownMachine::DoubleSortedWitnesses16(m) => m.identity_ids(),
+            KnownMachine::DoubleSortedWitnesses32(m) => m.identity_ids(),
             KnownMachine::WriteOnceMemory(m) => m.identity_ids(),
             KnownMachine::BlockMachine(m) => m.identity_ids(),
             KnownMachine::Vm(m) => m.identity_ids(),

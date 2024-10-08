@@ -62,7 +62,7 @@ fn split_column_name(name: &str) -> (&str, &str) {
 
 /// TODO make this generic
 
-pub struct DoubleSortedWitnesses<'a, T: FieldElement> {
+pub struct DoubleSortedWitnesses16<'a, T: FieldElement> {
     degree_range: DegreeRange,
     degree: DegreeType,
     //key_col: String,
@@ -92,7 +92,7 @@ struct Operation<T> {
     pub selector_id: PolyID,
 }
 
-impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
+impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
     fn namespaced(&self, name: &str) -> String {
         format!("{}::{}", self.namespace, name)
     }
@@ -178,7 +178,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
 
         if !parts.prover_functions.is_empty() {
             log::warn!(
-                "DoubleSortedWitness machine does not support prover functions.\
+                "DoubleSortedWitness16 machine does not support prover functions.\
                 The following prover functions are ignored:\n{}",
                 parts.prover_functions.iter().format("\n")
             );
@@ -200,7 +200,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
+impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses16<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
         self.selector_ids.keys().cloned().collect()
     }
@@ -415,7 +415,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement> DoubleSortedWitnesses<'a, T> {
+impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
     pub fn process_plookup_internal(
         &mut self,
         identity_id: u64,
