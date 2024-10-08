@@ -4,7 +4,7 @@ use itertools::Itertools;
 use powdr_ast::{
     analyzed::{Analyzed, Expression, FunctionValueDefinition, PolynomialReference, Reference},
     parsed::{
-        asm::SymbolPath,
+        asm::{Part, SymbolPath},
         display::quote,
         types::{ArrayType, FunctionType, TupleType, Type, TypeScheme},
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, EnumDeclaration,
@@ -475,7 +475,7 @@ fn check_pattern(value_name: &str, pattern: &Pattern) -> Result<(String, String)
             "_".to_string(),
             format!(
                 "(matches!({value_name}, {}).then_some(()))",
-                escape_enum_variant(symbol)
+                escape_enum_variant(symbol.clone())
             ),
         ),
         Pattern::Enum(_, symbol, Some(items)) => {
@@ -498,7 +498,7 @@ fn check_pattern(value_name: &str, pattern: &Pattern) -> Result<(String, String)
                 vars.join(", "),
                 format!(
                     "(|| if let {}({}) = ({value_name}).clone() {{ Some({inner_code}) }} else {{ None }})()",
-                    escape_enum_variant(symbol),
+                    escape_enum_variant(symbol.clone()),
                     (0..items.len()).map(item_name).join(", "),
                 ),
             )
@@ -532,9 +532,12 @@ fn format_signed_integer(n: &BigInt) -> String {
     }
 }
 
-fn escape_enum_variant(s: &SymbolPath) -> String {
-    let (enum_path, variant) = s.try_split_off_last_part().unwrap();
-    format!("{}::{variant}", escape_symbol(&enum_path.to_string()))
+fn escape_enum_variant(mut s: SymbolPath) -> String {
+    if let Some(Part::Named(variant)) = s.pop() {
+        format!("{}::{variant}", escape_symbol(&s.to_string()))
+    } else {
+        panic!("Expected enum variant name.");
+    }
 }
 
 fn map_type(ty: &Type) -> String {

@@ -167,15 +167,9 @@ impl SymbolPath {
         })
     }
 
-    /// Returns the path up to the last part and the last part individually.
-    /// Returns None if the last part is `super` or the path is empty.
-    pub fn try_split_off_last_part(&self) -> Option<(Self, String)> {
-        let mut parts = self.parts.clone();
-        let last_part = parts.pop().and_then(|p| match p {
-            Part::Super => None,
-            Part::Named(n) => Some(n),
-        })?;
-        Some((Self { parts }, last_part))
+    /// Removes and returns the last part unless the path is empty.
+    pub fn pop(&mut self) -> Option<Part> {
+        self.parts.pop()
     }
 
     /// Returns the last part of the path. Panics if it is "super" or if the path is empty.
