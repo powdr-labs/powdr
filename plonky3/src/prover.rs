@@ -507,17 +507,17 @@ where
 
     assert!(stage_count >= 1);
     // generate all stages starting from the second one based on the witgen callback
-    for id in 1..stage_count {
+    for stage_id in 1..stage_count {
         state = state.run_stage(stage);
         // get the challenges drawn at the end of the previous stage
         let local_challenges = &state.processed_stages.last().unwrap().challenge_values;
         let CallbackResult { air_stages } =
-            next_stage_trace_callback.compute_stage(id, local_challenges);
+            next_stage_trace_callback.compute_stage(stage_id, local_challenges);
 
         assert_eq!(air_stages.len(), program.table_count());
 
         // go to the next stage
-        stage = Stage { id, air_stages };
+        stage = Stage { id: stage_id, air_stages };
     }
 
     // run the last stage
@@ -648,7 +648,7 @@ where
                         trace_on_quotient_domain.width(),
                     )
                 })
-                .collect_vec();
+                .collect();
 
             let accumulator = PackedChallenge::<SC>::zero();
             let mut folder = ProverConstraintFolder {

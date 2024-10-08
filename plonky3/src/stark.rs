@@ -123,7 +123,7 @@ where
                         None
                     } else {
                         let fixed = fixed_by_table.get(namespace.as_str());
-                    Some((namespace.to_string(), pil.committed_polys_in_source_order().iter().find_map(|(s, _)| s.degree).unwrap().iter().map(|size| {
+                    Some((namespace.to_string(), pil.committed_polys_in_source_order().find_map(|(s, _)| s.degree).unwrap().iter().map(|size| {
                     // get selector columns for public values
                     let publics = pil
                         .get_publics()

@@ -46,7 +46,6 @@ pub struct ConstraintSystem<T> {
     identities: Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>>,
     // for each public column, the name, poly_id, index in the witness columns, and stage
     pub publics: Vec<(String, PolyID, usize, u32)>,
-    commitment_count: usize,
     constant_count: usize,
     // for each stage, the number of witness columns. There is always a least one stage, possibly empty
     stage_widths: Vec<usize>,
@@ -57,13 +56,11 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
     fn from(analyzed: &Analyzed<T>) -> Self {
         let identities = analyzed.identities_with_inlined_intermediate_polynomials();
         let publics = analyzed.get_publics();
-        let commitment_count = analyzed.commitment_count();
         let constant_count = analyzed.constant_count();
         let stage_widths = (0..analyzed.stage_count() as u32)
             .map(|stage| {
                 analyzed
                     .definitions_in_source_order(PolynomialType::Committed)
-                    .iter()
                     .filter_map(|(s, _)| {
                         let symbol_stage = s.stage.unwrap_or_default();
                         (stage == symbol_stage).then(|| s.array_elements().count())
@@ -74,7 +71,6 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
 
         let fixed_columns = analyzed
             .definitions_in_source_order(PolynomialType::Constant)
-            .iter()
             .flat_map(|(symbol, _)| symbol.array_elements())
             .enumerate()
             .map(|(index, (_, id))| (id, index))
@@ -82,7 +78,6 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
 
         let witness_columns = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
-            .iter()
             .into_group_map_by(|(s, _)| s.stage.unwrap_or_default())
             .into_iter()
             .flat_map(|(stage, symbols)| {
@@ -108,7 +103,6 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
         Self {
             identities,
             publics,
-            commitment_count,
             constant_count,
             stage_widths,
             witness_columns,
