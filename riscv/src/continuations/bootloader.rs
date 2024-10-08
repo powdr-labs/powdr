@@ -180,7 +180,7 @@ where
         inputs.extend(M::iter_hash_as_fe(self.merkle_tree_root_hash));
         inputs.extend(M::iter_hash_as_fe(self.merkle_tree_root_hash));
 
-        inputs.push((self.pages.len() as i64).into());
+        inputs.extend(M::iter_word_as_fe(self.pages.len() as u32));
         for page in self.pages {
             inputs.extend(M::iter_word_as_fe(page.page_idx));
             inputs.extend(M::iter_page_as_fe(page.data));
