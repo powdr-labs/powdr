@@ -204,3 +204,34 @@ fn match_array() {
     assert_eq!(f.call(5), 6);
     assert_eq!(f.call(6), 7);
 }
+
+#[test]
+fn let_simple() {
+    let f = compile(
+        r#"let f: int -> int = |x| {
+            let a = 1;
+            let b = a + 9;
+            b - 9 + x
+        };"#,
+        "f",
+    );
+
+    assert_eq!(f.call(0), 1);
+    assert_eq!(f.call(1), 2);
+    assert_eq!(f.call(2), 3);
+    assert_eq!(f.call(3), 4);
+}
+
+#[test]
+fn let_complex() {
+    let f = compile(
+        r#"let f: int -> int = |x| {
+            let (a, b, (_, d)) = (1, 2, ("abc", [x, 5]));
+            a + b + d[0] + d[1]
+        };"#,
+        "f",
+    );
+
+    assert_eq!(f.call(0), 8);
+    assert_eq!(f.call(1), 9);
+}
