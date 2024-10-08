@@ -376,7 +376,7 @@ impl Runtime {
     }
     pub fn with_arith(mut self) -> Self {
         self.add_submachine(
-            "std::machines::arith::Arith",
+            "std::machines::arith48::Arith48",
             None,
             "arith",
             vec![],

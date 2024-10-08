@@ -1,4 +1,4 @@
-use std::machines::add_sub16::AddSub16;
+use std::machines::add_sub17::AddSub17;
 use std::machines::range::Byte2;
 
 machine Main {
@@ -14,7 +14,7 @@ machine Main {
     reg B;
 
     Byte2 byte2;
-    AddSub16 add_sub(byte2);
+    AddSub17 add_sub(byte2);
 
     instr add A_h, A_l, B_h, B_l -> C_h, C_l
       link ~> (C_h, C_l) = add_sub.add(A_h, A_l, B_h, B_l);

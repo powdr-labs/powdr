@@ -11,9 +11,10 @@ use std::prover::eval;
 use std::prelude::Query;
 use std::machines::range::Byte2;
 
-// Arithmetic machine, ported mainly from Polygon: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/arith.pil
-// Currently only supports "Equation 0", i.e., 256-Bit addition and multiplication.
-machine Arith with
+// Implements 256-Bit addition and multiplication.
+// Ported mainly from Polygon: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/arith.pil
+// Requires the field to contain at least 48 bits.
+machine Arith48 with
     latch: CLK32_31,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation
@@ -23,6 +24,8 @@ machine Arith with
     
     // The operation ID will be bit-decomposed to yield selEq[], controlling which equations are activated.
     col witness operation_id;
+
+    std::check::assert(std::field::modulus() >= 2**49, || "Field too small.");
 
     // Computes x1 * y1 + x2, where all inputs / outputs are 256-bit words (represented as 32-Bit limbs in little-endian order).
     // More precisely, affine_256(x1, y1, x2) = (y2, y3), where x1 * y1 + x2 = 2**256 * y2 + y3
