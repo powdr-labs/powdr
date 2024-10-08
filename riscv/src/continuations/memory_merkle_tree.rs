@@ -14,6 +14,7 @@ pub struct MerkleTypesImpl<F: FieldElement> {
 
 pub trait MerkleTypes {
     type Fe: FieldElement;
+    const FE_PER_WORD: usize;
     type Page;
     type Hash;
     fn update_page(page: &mut Self::Page, idx: usize, word: u32);
@@ -21,8 +22,12 @@ pub trait MerkleTypes {
     fn hash_two(a: &Self::Hash, b: &Self::Hash) -> Self::Hash;
     fn zero_hash() -> Self::Hash;
     fn zero_page() -> Self::Page;
+    // iterate over a hash value as machine words (should be
+    // bootloader::WORDS_PER_HASH!), in their field element representation (FE_PER_WORD)
     fn iter_hash_as_fe(h: &Self::Hash) -> impl Iterator<Item = Self::Fe>;
+    // iterate over the page words, in their field element representation
     fn iter_page_as_fe(p: &Self::Page) -> impl Iterator<Item = Self::Fe>;
+    // iterate over a word value in its field element representation
     fn iter_word_as_fe(w: u32) -> impl Iterator<Item = Self::Fe>;
 }
 
@@ -33,6 +38,7 @@ pub fn gl_split_fe(v: &GoldilocksField) -> [GoldilocksField; 2] {
 
 impl MerkleTypes for MerkleTypesImpl<GoldilocksField> {
     type Fe = GoldilocksField;
+    const FE_PER_WORD: usize = 1;
     type Page = [Self::Fe; WORDS_PER_PAGE];
     type Hash = [Self::Fe; 4];
 
@@ -80,8 +86,14 @@ pub fn bb_split_word(v: u32) -> (BabyBearField, BabyBearField) {
     ((v & 0xffff).into(), (v >> 16).into())
 }
 
+pub fn bb_split_fe(v: &BabyBearField) -> [BabyBearField; 2] {
+    let v = v.to_integer().try_into_u32().unwrap();
+    [(v >> 16).into(), (v & 0xffff).into()]
+}
+
 impl MerkleTypes for MerkleTypesImpl<BabyBearField> {
     type Fe = BabyBearField;
+    const FE_PER_WORD: usize = 2;
     type Page = [Self::Fe; 2 * WORDS_PER_PAGE];
     type Hash = [Self::Fe; 8];
 
@@ -116,7 +128,7 @@ impl MerkleTypes for MerkleTypesImpl<BabyBearField> {
     }
 
     fn iter_hash_as_fe(h: &Self::Hash) -> impl Iterator<Item = Self::Fe> {
-        h.iter().copied()
+        h.iter().flat_map(|f| bb_split_fe(f).into_iter())
     }
 
     fn iter_page_as_fe(p: &Self::Page) -> impl Iterator<Item = Self::Fe> {
