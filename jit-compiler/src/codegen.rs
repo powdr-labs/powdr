@@ -4,11 +4,12 @@ use itertools::Itertools;
 use powdr_ast::{
     analyzed::{Analyzed, Expression, FunctionValueDefinition, PolynomialReference, Reference},
     parsed::{
+        asm::SymbolPath,
         display::quote,
         types::{ArrayType, FunctionType, TupleType, Type, TypeScheme},
-        ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
-        IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number,
-        Pattern, StatementInsideBlock, UnaryOperation,
+        ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, EnumDeclaration,
+        FunctionCall, IfExpression, IndexAccess, LambdaExpression, LetStatementInsideBlock,
+        MatchArm, MatchExpression, Number, Pattern, StatementInsideBlock, UnaryOperation,
     },
 };
 use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
@@ -80,47 +81,74 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
             return Ok(code.clone());
         }
 
-        let Some((_, Some(FunctionValueDefinition::Expression(value)))) =
-            self.analyzed.definitions.get(symbol)
-        else {
-            return Err(format!(
-                "No definition for {symbol}, or not a generic symbol"
-            ));
-        };
+        let definition = self
+            .analyzed
+            .definitions
+            .get(symbol)
+            .and_then(|(_, def)| def.as_ref())
+            .ok_or_else(|| format!("No definition for {symbol}."))?;
 
-        let type_scheme = value
-            .type_scheme
-            .as_ref()
-            .ok_or_else(|| format!("Symbol does not have a type: {symbol}"))?;
-
-        Ok(match (&value.e, type_scheme) {
-            (Expression::LambdaExpression(_, expr), TypeScheme { vars, ty }) => {
-                assert!(vars.is_empty());
-                self.try_format_function(symbol, expr, ty)?
-            }
-            _ => {
-                let type_scheme = value.type_scheme.as_ref().unwrap();
-                assert!(type_scheme.vars.is_empty());
-                let ty = if type_scheme.ty == Type::Col {
-                    Type::Function(FunctionType {
-                        params: vec![Type::Int],
-                        value: Box::new(Type::Fe),
+        match definition {
+            FunctionValueDefinition::TypeDeclaration(EnumDeclaration {
+                type_vars,
+                variants,
+                ..
+            }) => Ok(format!(
+                "#[derive(Clone)]\nenum {}<{type_vars}> {{\n{}\n}}\n",
+                escape_symbol(symbol),
+                variants
+                    .iter()
+                    .map(|v| {
+                        let fields = v
+                            .fields
+                            .as_ref()
+                            .map(|fields| format!("({})", fields.iter().map(map_type).join(", ")))
+                            .unwrap_or_default();
+                        format!("    {}{fields}", v.name)
                     })
-                } else {
-                    type_scheme.ty.clone()
-                };
-                // We need a lazy static here because we want symbols to only be
-                // evaluated once and the code is not `const` in the general case.
-                format!(
-                    "lazy_static::lazy_static! {{\n\
-                    static ref {}: {} = {};\n\
-                    }}\n",
-                    escape_symbol(symbol),
-                    map_type(&ty),
-                    self.format_expr(&value.e)?
-                )
+                    .join(",\n")
+            )),
+            FunctionValueDefinition::TypeConstructor(decl, _) => {
+                self.request_symbol(&decl.name)?;
+                Ok(String::new())
             }
-        })
+            FunctionValueDefinition::Expression(value) => {
+                let type_scheme = value
+                    .type_scheme
+                    .as_ref()
+                    .ok_or_else(|| format!("Symbol does not have a type: {symbol}"))?;
+
+                Ok(match (&value.e, type_scheme) {
+                    (Expression::LambdaExpression(_, expr), TypeScheme { vars, ty }) => {
+                        assert!(vars.is_empty());
+                        self.try_format_function(symbol, expr, ty)?
+                    }
+                    _ => {
+                        let type_scheme = value.type_scheme.as_ref().unwrap();
+                        assert!(type_scheme.vars.is_empty());
+                        let ty = if type_scheme.ty == Type::Col {
+                            Type::Function(FunctionType {
+                                params: vec![Type::Int],
+                                value: Box::new(Type::Fe),
+                            })
+                        } else {
+                            type_scheme.ty.clone()
+                        };
+                        // We need a lazy static here because we want symbols to only be
+                        // evaluated once and the code is not `const` in the general case.
+                        format!(
+                            "lazy_static::lazy_static! {{\n\
+                            static ref {}: {} = {};\n\
+                            }}\n",
+                            escape_symbol(symbol),
+                            map_type(&ty),
+                            self.format_expr(&value.e)?
+                        )
+                    }
+                })
+            }
+            _ => unimplemented!(),
+        }
     }
 
     fn try_format_function(
@@ -342,20 +370,26 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
     /// This is either the escaped name of the symbol or a deref operator
     /// applied to it.
     fn symbol_reference(&self, symbol: &str) -> String {
-        let needs_deref = if is_builtin::<T>(symbol) {
-            false
-        } else {
-            let (_, def) = self.analyzed.definitions.get(symbol).as_ref().unwrap();
-            if let Some(FunctionValueDefinition::Expression(typed_expr)) = def {
-                !matches!(typed_expr.e, Expression::LambdaExpression(..))
-            } else {
-                false
+        if is_builtin::<T>(symbol) {
+            return escape_symbol(symbol);
+        }
+        let (_, def) = self.analyzed.definitions.get(symbol).unwrap();
+        match def.as_ref().unwrap() {
+            FunctionValueDefinition::Expression(typed_expr) => {
+                if matches!(typed_expr.e, Expression::LambdaExpression(..)) {
+                    escape_symbol(symbol)
+                } else {
+                    format!("(*{})", escape_symbol(symbol))
+                }
             }
-        };
-        if needs_deref {
-            format!("(*{})", escape_symbol(symbol))
-        } else {
-            escape_symbol(symbol)
+            FunctionValueDefinition::TypeConstructor(decl, variant) => {
+                format!(
+                    "{}::{}",
+                    escape_symbol(&decl.name),
+                    escape_symbol(&variant.name)
+                )
+            }
+            _ => escape_symbol(symbol),
         }
     }
 }
@@ -437,8 +471,37 @@ fn check_pattern(value_name: &str, pattern: &Pattern) -> Result<(String, String)
             )
         }
         Pattern::Variable(_, var) => (var.to_string(), format!("Some({value_name}.clone())")),
-        Pattern::Enum(..) => {
-            return Err(format!("Enums as patterns not yet implemented: {pattern}"));
+        Pattern::Enum(_, symbol, None) => (
+            "_".to_string(),
+            format!(
+                "(matches!({value_name}, {}).then_some(()))",
+                escape_enum_variant(symbol)
+            ),
+        ),
+        Pattern::Enum(_, symbol, Some(items)) => {
+            // We first match the enum variant and bind all items to variables and
+            // the recursively match the items, even if they are catch-all.
+            let mut vars = vec![];
+            let item_name = |i| format!("item__{i}");
+            let inner_code = items
+                .iter()
+                .enumerate()
+                .map(|(i, item)| {
+                    let (v, code) = check_pattern(&item_name(i), item)?;
+                    vars.push(v);
+                    Ok(format!("({code})?"))
+                })
+                .collect::<Result<Vec<_>, String>>()?
+                .join(", ");
+
+            (
+                vars.join(", "),
+                format!(
+                    "(|| if let {}({}) = ({value_name}).clone() {{ Some({inner_code}) }} else {{ None }})()",
+                    escape_enum_variant(symbol),
+                    (0..items.len()).map(item_name).join(", "),
+                ),
+            )
         }
         Pattern::Ellipsis(_) => unreachable!(),
     })
@@ -469,6 +532,11 @@ fn format_signed_integer(n: &BigInt) -> String {
     }
 }
 
+fn escape_enum_variant(s: &SymbolPath) -> String {
+    let (enum_path, variant) = s.try_split_off_last_part().unwrap();
+    format!("{}::{variant}", escape_symbol(&enum_path.to_string()))
+}
+
 fn map_type(ty: &Type) -> String {
     match ty {
         Type::Bottom | Type::Bool => format!("{ty}"),
@@ -484,11 +552,13 @@ fn map_type(ty: &Type) -> String {
             map_type(&ft.value)
         ),
         Type::TypeVar(tv) => tv.to_string(),
-        Type::NamedType(path, type_args) => {
-            if type_args.is_some() {
-                unimplemented!()
-            }
-            escape_symbol(&path.to_string())
+        Type::NamedType(path, None) => escape_symbol(&path.to_string()),
+        Type::NamedType(path, Some(type_args)) => {
+            format!(
+                "{}::<{}>",
+                escape_symbol(&path.to_string()),
+                type_args.iter().map(map_type).join(", ")
+            )
         }
         Type::Col | Type::Inter => unreachable!(),
     }
