@@ -404,7 +404,14 @@ impl PILAnalyzer {
         for patterns in all_patterns {
             let report = analyze_match_patterns(&patterns, &enums);
             if report.is_exhaustive {
-                panic!("Match exhaustiveness check failed"); // TODO GZ: better error
+                panic!("Match exhaustiveness check failed");
+            }
+
+            if !report.redundant_patterns.is_empty() {
+                println!("Redundant patterns:");
+                for index in report.redundant_patterns {
+                    println!("  {}", patterns[index]);
+                }
             }
         }
     }

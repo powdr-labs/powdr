@@ -31,6 +31,8 @@ enum InfinitePatternSpace {
     Number(Vec<BigInt>),
 }
 
+type EnumDefinitions<'a> = HashMap<&'a str, Vec<(&'a str, Option<Vec<Type>>)>>;
+
 impl PartialEq for PatternSpace {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
@@ -204,7 +206,7 @@ impl PatternSpace {
 /// - A list of indices of redundant patterns (if any)
 pub fn analyze_match_patterns(
     patterns: &[Pattern],
-    enums: &HashMap<&str, Vec<(&str, Option<Vec<Type>>)>>,
+    enums: &EnumDefinitions,
 ) -> MatchAnalysisReport {
     let mut redundant_patterns = Vec::new();
     let mut needed_patterns = Vec::new();
@@ -226,10 +228,7 @@ pub fn analyze_match_patterns(
     }
 }
 
-fn compute_covered_space(
-    patterns: &[Pattern],
-    enums: &HashMap<&str, Vec<(&str, Option<Vec<Type>>)>>,
-) -> PatternSpace {
+fn compute_covered_space(patterns: &[Pattern], enums: &EnumDefinitions) -> PatternSpace {
     patterns
         .iter()
         .map(create_pattern_space)
@@ -268,10 +267,7 @@ fn create_pattern_space(pattern: &Pattern) -> PatternSpace {
     }
 }
 
-fn expand_pattern_space(
-    pattern: PatternSpace,
-    enums: &HashMap<&str, Vec<(&str, Option<Vec<Type>>)>>,
-) -> Vec<PatternSpace> {
+fn expand_pattern_space(pattern: PatternSpace, enums: &EnumDefinitions) -> Vec<PatternSpace> {
     let vec = match pattern {
         PatternSpace::Contained(inner, _) => {
             let mut expanded_enums = Vec::new();
@@ -322,7 +318,7 @@ fn expand_pattern_space(
 
 fn process_variant_type(
     variant: &Option<Vec<Type>>,
-    enums: &HashMap<&str, Vec<(&str, Option<Vec<Type>>)>>,
+    enums: &EnumDefinitions,
 ) -> Option<Vec<PatternSpace>> {
     match variant {
         None => None,
