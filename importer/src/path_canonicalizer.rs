@@ -1107,6 +1107,8 @@ fn check_trait_declaration(
 mod tests {
     use std::path::PathBuf;
 
+    use crate::powdr_std::add_std;
+
     use super::*;
     use pretty_assertions::assert_eq;
 
@@ -1128,6 +1130,35 @@ mod tests {
             .map_err(|s| s.to_string());
 
         assert_eq!(res.map_err(|e| e.message().to_string()), expected);
+    }
+
+    fn expect_with_std(path: &str, expected: Result<(), &str>) {
+        let input_path = PathBuf::from("./test_data/")
+            .join(path)
+            .with_extension("asm");
+        let input_str = std::fs::read_to_string(input_path).unwrap();
+        let parsed = powdr_parser::parse_asm(None, &input_str)
+            .map_err(|e| e.message().to_string())
+            .and_then(add_std)
+            .unwrap();
+
+        let res = canonicalize_paths(parsed).map(|res| res.to_string().replace('\t', "    "));
+        let expected = expected
+            .map(|_| {
+                let expected_input_path = PathBuf::from("./test_data/")
+                    .join(path)
+                    .with_extension("expected.asm");
+                std::fs::read_to_string(expected_input_path).unwrap()
+            })
+            .map_err(|s| s.to_string());
+
+        assert_eq!(
+            res.map_err(|e| e.message().to_string()).map(|s| s
+                .chars()
+                .take(expected.as_ref().map_or(0, |e| e.len()))
+                .collect::<String>()),
+            expected
+        );
     }
 
     #[test]
@@ -1268,6 +1299,11 @@ mod tests {
 
     #[test]
     fn struct_expression() {
-        expect("struct_expression", Ok(()))
+        expect_with_std("struct_expression", Ok(()))
+    }
+
+    #[test]
+    fn struct_expression_prelude() {
+        expect("struct_expression_prelude", Ok(()))
     }
 }

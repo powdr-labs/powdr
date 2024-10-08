@@ -1,14 +1,4 @@
-mod std {
-    mod prelude {
-        enum Option<T> {
-            None, 
-            Some(T),
-        }
-    }
-}
-
 mod other {
-
     enum E1 {
         A,
     }
