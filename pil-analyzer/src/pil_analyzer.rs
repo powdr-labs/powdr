@@ -361,7 +361,7 @@ impl PILAnalyzer {
     }
 
     pub fn match_exhaustiveness_check(&self) {
-        let enums: HashMap<&str, Vec<(&str, Option<Vec<Type>>)>> = self
+        let enums = self
             .definitions
             .iter()
             .filter_map(|(_, (_, def))| {
