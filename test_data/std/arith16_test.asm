@@ -1,5 +1,6 @@
 use std::machines::arith16::Arith16;
 use std::machines::range::Byte;
+use std::machines::range::Byte2;
 
 machine Main with degree: 65536 {
     reg pc[@pc];
@@ -18,11 +19,12 @@ machine Main with degree: 65536 {
     reg t_1_1;
 
     Byte byte;
+    Byte2 byte2;
 
-    Arith16 arith(byte);
+    Arith16 arith(byte, byte2);
 
     instr mul A0, A1, B0, B1 -> C0, C1, D0, D1
-        link ~> (C0, C1, D0, D1) = arith.mul(A0, A1, B0, B1);
+        link ~> (C0, C1, D0, D1) = arith.mul(A0, A1, 0, 0, B0, B1);
 
     instr div A0, A1, B0, B1 -> C0, C1, D0, D1
         link ~> (C0, C1, D0, D1) = arith.div(A0, A1, B0, B1);
@@ -58,5 +60,11 @@ machine Main with degree: 65536 {
         // 0xffffeff / 0xfffff = 0xff (remainder 0xffffe)
         t_0_0, t_0_1, t_1_0, t_1_1 <== div(0xfff, 0xfeff, 0xf, 0xffff);
         assert_eq t_0_0, t_0_1, t_1_0, t_1_1, 0, 0xff, 0xf, 0xfffe;
+
+        // 0xabcdef01 / 0 = 0 (remainder 0xabcdef01)
+        // (note that the quotient is unconstrained though)
+        t_0_0, t_0_1, t_1_0, t_1_1 <== div(0xabcd, 0xef01, 0, 0);
+        assert_eq t_0_0, t_0_1, t_1_0, t_1_1, 0, 0, 0xabcd, 0xef01;
+
     }
 }

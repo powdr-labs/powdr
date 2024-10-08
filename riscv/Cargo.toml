@@ -15,7 +15,7 @@ estark-polygon = ["powdr-pipeline/estark-polygon"]
 
 [dependencies]
 powdr-ast.workspace = true
-powdr-asm-utils.workspace = true
+powdr-isa-utils.workspace = true
 powdr-executor.workspace = true
 powdr-linker.workspace = true
 powdr-number.workspace = true
@@ -29,16 +29,8 @@ gimli = "0.31"
 goblin = "0.8"
 lazy_static = "1.4.0"
 itertools = "0.13"
-lalrpop-util = { version = "^0.19", features = ["lexer"] }
 log = "0.4.17"
-mktemp = "0.5.0"
-num-traits = "0.2.15"
 raki = "0.1.4"
-# This is only here to work around https://github.com/lalrpop/lalrpop/issues/750
-# It should be removed once that workaround is no longer needed.
-regex-syntax = { version = "0.6", default-features = false, features = [
-  "unicode",
-] }
 serde_json = "1.0"
 thiserror = "1.0"
 static_assertions = "1.1.0"
@@ -50,6 +42,7 @@ lalrpop = "^0.19"
 powdr-number.workspace = true
 powdr-backend.workspace = true
 
+mktemp = "0.5.0"
 test-log = "0.2.12"
 env_logger = "0.10.0"
 hex = "0.4.3"

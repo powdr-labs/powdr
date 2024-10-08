@@ -12,6 +12,7 @@ powdr-ast.workspace = true
 powdr-number.workspace = true
 powdr-parser-util.workspace = true
 powdr-pil-analyzer.workspace = true
+powdr-jit-compiler.workspace = true
 
 itertools = "0.13"
 log = { version = "0.4.17" }

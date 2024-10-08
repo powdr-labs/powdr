@@ -48,7 +48,7 @@ type ValMmcs = MerkleTreeMmcs<
 >;
 
 type ChallengeMmcs = ExtensionMmcs<BabyBear, FriChallenge, ValMmcs>;
-type Dft = Radix2DitParallel;
+type Dft = Radix2DitParallel<BabyBear>;
 type MyPcs = TwoAdicFriPcs<BabyBear, Dft, ValMmcs, ChallengeMmcs>;
 
 const FRI_LOG_BLOWUP: usize = 1;
@@ -97,7 +97,7 @@ impl FieldElementMap for BabyBearField {
 
         let challenge_mmcs = ChallengeMmcs::new(val_mmcs.clone());
 
-        let dft = Dft {};
+        let dft = Dft::default();
 
         let fri_config = FriConfig {
             log_blowup: FRI_LOG_BLOWUP,

@@ -57,7 +57,6 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
             .map(|stage| {
                 analyzed
                     .definitions_in_source_order(PolynomialType::Committed)
-                    .iter()
                     .filter_map(|(s, _)| {
                         let symbol_stage = s.stage.unwrap_or_default();
                         (stage == symbol_stage).then(|| s.array_elements().count())
@@ -68,7 +67,6 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
 
         let fixed_columns = analyzed
             .definitions_in_source_order(PolynomialType::Constant)
-            .iter()
             .flat_map(|(symbol, _)| symbol.array_elements())
             .enumerate()
             .map(|(index, (_, id))| (id, index))
@@ -76,7 +74,6 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
 
         let witness_columns = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
-            .iter()
             .into_group_map_by(|(s, _)| s.stage.unwrap_or_default())
             .into_iter()
             .flat_map(|(stage, symbols)| {

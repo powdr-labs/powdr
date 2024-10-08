@@ -13,7 +13,7 @@ use goblin::elf::{
     Elf, ProgramHeader,
 };
 use itertools::{Either, Itertools};
-use powdr_asm_utils::data_storage::SingleDataValue;
+use powdr_isa_utils::SingleDataValue;
 use powdr_number::FieldElement;
 use raki::{
     decode::Decode,
