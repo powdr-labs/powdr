@@ -190,7 +190,7 @@ impl PatternSpace {
     }
 }
 
-/// Analyzes a set of match patterns for exhaustiveness and redundancy.
+/// Analyzes a list of match patterns for exhaustiveness and redundancy.
 ///
 /// This function takes a slice of patterns and a map of enum definitions,
 /// and determines whether the patterns cover all possible cases (exhaustiveness)
