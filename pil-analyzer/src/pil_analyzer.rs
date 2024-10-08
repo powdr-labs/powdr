@@ -407,12 +407,13 @@ impl PILAnalyzer {
                 panic!("Match exhaustiveness check failed");
             }
 
-            if !report.redundant_patterns.is_empty() {
-                println!("Redundant patterns:");
-                for index in report.redundant_patterns {
-                    println!("  {}", patterns[index]);
-                }
-            }
+            // TODO: Warning?
+            // if !report.redundant_patterns.is_empty() {
+            //     println!("Redundant patterns:");
+            //     for index in report.redundant_patterns {
+            //         println!("  {}", patterns[index]);
+            //     }
+            // }
         }
     }
 

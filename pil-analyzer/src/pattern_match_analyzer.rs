@@ -47,6 +47,7 @@ impl PartialEq for PatternSpace {
 }
 
 impl PatternSpace {
+    /// Subtracts the given pattern from the current pattern space, returning a new pattern space.
     fn substract(&self, other: &Pattern) -> Self {
         match (self, other) {
             (p, Pattern::CatchAll(_)) | (p, Pattern::Variable(_, _)) => p.cover_all_space(),
@@ -117,6 +118,7 @@ impl PatternSpace {
         }
     }
 
+    /// Compute the union of two pattern spaces.
     fn union(self, other: &Self) -> Self {
         match (self, other) {
             (p, PatternSpace::Any) => p,
@@ -151,6 +153,7 @@ impl PatternSpace {
         }
     }
 
+    // Returns true if the pattern space is fully covered.
     fn all_covered(&self) -> bool {
         match self {
             PatternSpace::Any => false,
@@ -168,7 +171,8 @@ impl PatternSpace {
         }
     }
 
-    fn cover_all_space(&self) -> PatternSpace {
+    // Returns a new version of the pattern space with all the values covered.
+    fn cover_all_space(&self) -> Self {
         match self {
             PatternSpace::Infinite(infinite, _) => PatternSpace::Infinite(infinite.clone(), true),
 
@@ -228,6 +232,13 @@ pub fn analyze_match_patterns(
     }
 }
 
+/// Computes the PatternSpace representing the coverage of a given list of patterns.
+///
+/// This function takes a slice of patterns and a reference to enum definitions,
+/// and calculates the total space covered by these patterns. It does this by:
+/// 1. Creating a PatternSpace for each individual pattern
+/// 2. Expanding these spaces (based on the provided enum definitions, if needed)
+/// 3. Combining all expanded spaces into a single PatternSpace using union operations
 fn compute_covered_space(patterns: &[Pattern], enums: &EnumDefinitions) -> PatternSpace {
     patterns
         .iter()
@@ -236,6 +247,7 @@ fn compute_covered_space(patterns: &[Pattern], enums: &EnumDefinitions) -> Patte
         .fold(PatternSpace::Any, |acc, space| acc.union(&space))
 }
 
+// Creates a PatternSpace for a given pattern.
 fn create_pattern_space(pattern: &Pattern) -> PatternSpace {
     match pattern {
         Pattern::CatchAll(_) => PatternSpace::Any,
@@ -267,6 +279,7 @@ fn create_pattern_space(pattern: &Pattern) -> PatternSpace {
     }
 }
 
+// Expands a pattern to cover all its variations.
 fn expand_pattern_space(pattern: PatternSpace, enums: &EnumDefinitions) -> Vec<PatternSpace> {
     let vec = match pattern {
         PatternSpace::Contained(inner, _) => {
@@ -316,6 +329,7 @@ fn expand_pattern_space(pattern: PatternSpace, enums: &EnumDefinitions) -> Vec<P
     vec
 }
 
+// Processes an enum variant type to generate its pattern space.
 fn process_variant_type(
     variant: &Option<Vec<Type>>,
     enums: &EnumDefinitions,
