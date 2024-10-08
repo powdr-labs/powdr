@@ -408,12 +408,15 @@ impl PILAnalyzer {
             }
 
             // TODO: Warning?
-            // if !report.redundant_patterns.is_empty() {
-            //     println!("Redundant patterns:");
-            //     for index in report.redundant_patterns {
-            //         println!("  {}", patterns[index]);
-            //     }
-            // }
+            let redundant: Vec<_> = report
+                .redundant_patterns
+                .iter()
+                .map(|index| format!("Pos {}: {}", *index, patterns[*index].clone()))
+                .collect();
+
+            if !redundant.is_empty() {
+                panic!("Redundant patterns: {}", redundant.into_iter().join(", "));
+            }
         }
     }
 
