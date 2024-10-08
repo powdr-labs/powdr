@@ -722,6 +722,38 @@ fn trait_user_defined_enum_wrong_type() {
 }
 
 #[test]
+fn traits_generic_function() {
+    let input = "
+        namespace std::convert(4);
+            let fe = || fe();
+        namespace F(4);
+            trait Add<T> {
+                add: T, T -> T,
+            }
+
+            impl Add<int> {
+                add: |a, b| a + b,
+            }
+
+            impl Add<fe> {
+                add: |a, b| a + b,
+            }
+
+            let<T> generic_add: T, T -> T = |a, b| Add::add(a, b);
+
+            let three: int = 3;
+            let four: int = 4;
+            let r1 = generic_add(three, four);
+
+            let six: int = 6;
+            let five: int = 5;
+            let r2 = generic_add(std::convert::fe(five), std::convert::fe(six));
+        ";
+
+    type_check(input, &[("F::r1", "", "int"), ("F::r2", "", "fe")]);
+}
+
+#[test]
 fn prover_functions() {
     let input = "
         let a = 9;
