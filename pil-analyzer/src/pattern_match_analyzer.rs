@@ -110,7 +110,7 @@ impl PatternSpace {
                 }
             }
             (p1, p2) => {
-                panic!("Cannot substract {:?} from {:?}", p2, p1);
+                panic!("Cannot substract {p2:?} from {p1:?}");
             }
         }
     }
@@ -121,7 +121,7 @@ impl PatternSpace {
             (PatternSpace::Any, p) => p.clone(),
             (PatternSpace::Contained(ps, b), PatternSpace::Contained(os, _)) => {
                 let mut new_ps = Vec::new();
-                for (o, p) in os.into_iter().zip(ps.iter()) {
+                for (o, p) in os.iter().zip(ps.iter()) {
                     new_ps.push(p.clone().union(o));
                 }
 
@@ -173,12 +173,9 @@ impl PatternSpace {
             PatternSpace::Finite(FinitePatternSpace::Enum(variants)) => {
                 let mut new_variants = Vec::new();
                 for (name, inner_space) in variants {
-                    let covered_inner_space = inner_space.as_ref().map(|spaces| {
-                        spaces
-                            .into_iter()
-                            .map(|space| space.cover_all_space())
-                            .collect()
-                    });
+                    let covered_inner_space = inner_space
+                        .as_ref()
+                        .map(|spaces| spaces.iter().map(|space| space.cover_all_space()).collect());
                     new_variants.push((name.clone(), covered_inner_space));
                 }
                 PatternSpace::Finite(FinitePatternSpace::Enum(new_variants))
@@ -235,7 +232,7 @@ fn compute_covered_space(
 ) -> PatternSpace {
     patterns
         .iter()
-        .map(|pattern| create_pattern_space(pattern))
+        .map(create_pattern_space)
         .flat_map(|processed| expand_pattern_space(processed, enums))
         .fold(PatternSpace::Any, |acc, space| acc.union(&space))
 }
@@ -252,17 +249,17 @@ fn create_pattern_space(pattern: &Pattern) -> PatternSpace {
         }
         Pattern::Variable(_, _) => PatternSpace::Any,
         Pattern::Tuple(_, p) => {
-            let inner_space = p.iter().map(|p| create_pattern_space(p)).collect();
+            let inner_space = p.iter().map(create_pattern_space).collect();
             PatternSpace::Contained(inner_space, false)
         }
         Pattern::Array(_, p) => {
-            let inner_space = p.iter().map(|p| create_pattern_space(p)).collect();
+            let inner_space = p.iter().map(create_pattern_space).collect();
             PatternSpace::Contained(inner_space, false)
         }
         Pattern::Enum(_, name, fields) => {
             let inner_space = fields
                 .as_ref()
-                .map(|patterns| patterns.iter().map(|p| create_pattern_space(p)).collect());
+                .map(|patterns| patterns.iter().map(create_pattern_space).collect());
             PatternSpace::Finite(FinitePatternSpace::Enum(vec![(
                 name.to_string(),
                 inner_space,
@@ -301,12 +298,11 @@ fn expand_pattern_space(
                         Some(spaces) => {
                             let expanded = spaces
                                 .into_iter()
-                                .map(|space| expand_pattern_space(space, enums))
-                                .flatten()
+                                .flat_map(|space| expand_pattern_space(space, enums))
                                 .collect::<Vec<_>>();
-                            (format!("{}::{}", enum_name, variant_name), Some(expanded))
+                            (format!("{enum_name}::{variant_name}"), Some(expanded))
                         }
-                        None => (format!("{}::{}", enum_name, variant_name), None),
+                        None => (format!("{enum_name}::{variant_name}"), None),
                     }
                 })
                 .collect();
@@ -422,8 +418,8 @@ mod tests {
         ];
         let enums = HashMap::new();
         let report = analyze_match_patterns(&patterns, &enums);
-        assert_eq!(report.is_exhaustive, false);
-        assert_eq!(report.redundant_patterns.is_empty(), true);
+        assert!(!report.is_exhaustive);
+        assert!(report.redundant_patterns.is_empty());
     }
 
     #[test]
@@ -436,7 +432,7 @@ mod tests {
 
         let enums = HashMap::new();
         let report = analyze_match_patterns(&patterns, &enums);
-        assert_eq!(report.is_exhaustive, false);
+        assert!(!report.is_exhaustive);
         assert_eq!(report.redundant_patterns, vec![1, 2]);
     }
 
@@ -449,7 +445,7 @@ mod tests {
         ];
         let enums = HashMap::new();
         let report = analyze_match_patterns(&patterns, &enums);
-        assert_eq!(report.is_exhaustive, false);
+        assert!(!report.is_exhaustive);
         assert_eq!(report.redundant_patterns, vec![2]);
     }
 
@@ -462,7 +458,7 @@ mod tests {
         ];
         let enums = HashMap::new();
         let report = analyze_match_patterns(&patterns, &enums);
-        assert_eq!(report.is_exhaustive, true);
+        assert!(report.is_exhaustive);
         assert_eq!(report.redundant_patterns, vec![1]);
     }
 
@@ -486,8 +482,8 @@ mod tests {
         ];
         let enums = HashMap::new();
         let report = analyze_match_patterns(&patterns, &enums);
-        assert_eq!(report.is_exhaustive, false);
-        assert_eq!(report.redundant_patterns.is_empty(), true);
+        assert!(!report.is_exhaustive);
+        assert!(report.redundant_patterns.is_empty());
     }
 
     #[test]
@@ -517,7 +513,7 @@ mod tests {
         ];
         let enums = HashMap::new();
         let report = analyze_match_patterns(&patterns, &enums);
-        assert_eq!(report.is_exhaustive, false);
+        assert!(!report.is_exhaustive);
         assert_eq!(report.redundant_patterns, vec![2]);
     }
 
@@ -559,8 +555,8 @@ mod tests {
             map
         };
         let report = analyze_match_patterns(&patterns, &enums);
-        assert_eq!(report.is_exhaustive, false);
-        assert_eq!(report.redundant_patterns.is_empty(), true);
+        assert!(!report.is_exhaustive);
+        assert!(report.redundant_patterns.is_empty());
     }
 
     #[test]
@@ -591,8 +587,8 @@ mod tests {
             map
         };
         let report = analyze_match_patterns(&patterns, &enums);
-        assert_eq!(report.is_exhaustive, true);
-        assert_eq!(report.redundant_patterns.is_empty(), true);
+        assert!(report.is_exhaustive);
+        assert!(report.redundant_patterns.is_empty());
     }
 
     #[test]
@@ -627,8 +623,8 @@ mod tests {
             map
         };
         let report = analyze_match_patterns(&patterns, &enums);
-        assert_eq!(report.is_exhaustive, false);
-        assert_eq!(report.redundant_patterns.is_empty(), true);
+        assert!(!report.is_exhaustive);
+        assert!(report.redundant_patterns.is_empty());
     }
 
     #[test]
@@ -663,7 +659,7 @@ mod tests {
             map
         };
         let report = analyze_match_patterns(&patterns, &enums);
-        assert_eq!(report.is_exhaustive, true);
+        assert!(report.is_exhaustive);
         assert_eq!(report.redundant_patterns, vec![1]);
     }
 
@@ -749,7 +745,7 @@ mod tests {
             vec![("None", None), ("Some", Some(vec![Type::String]))],
         );
         let report = analyze_match_patterns(&patterns, &enums);
-        assert_eq!(report.is_exhaustive, false);
-        assert_eq!(report.redundant_patterns.is_empty(), true);
+        assert!(!report.is_exhaustive);
+        assert!(report.redundant_patterns.is_empty());
     }
 }
