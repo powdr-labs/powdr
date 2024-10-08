@@ -61,7 +61,7 @@ where
         .map(|(name, values)| (name.clone(), values.iter().collect_vec()))
         .collect();
 
-    let inputs: BTreeMap<_, _> = program
+    let inputs: BTreeMap<String, Table<_>> = program
         .split
         .iter()
         .map(|(name, (_, constraints))| {
@@ -74,6 +74,8 @@ where
             )
         })
         .collect();
+
+    assert!(public_inputs.is_empty());
 
     if proof.opened_values.len() != inputs.len() {
         return Err(VerificationError::InvalidProofShape);
@@ -138,9 +140,9 @@ where
         .traces_by_stage
         .iter()
         .zip_eq((0..stage_count).map(|i| {
-            public_inputs
+            inputs
                 .values()
-                .map(|v| v[i as usize].clone())
+                .map(|table| table.public_values_by_stage[i as usize].clone())
                 .collect_vec()
         }))
         .zip_eq(challenge_count_by_stage)

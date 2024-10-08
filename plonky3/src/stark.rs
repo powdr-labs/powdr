@@ -371,7 +371,7 @@ mod tests {
     #[should_panic = "fri err: InvalidPowWitness"]
     fn public_inputs_malicious() {
         let content = r#"
-        namespace Add(8);
+        namespace Main(8);
             col witness x;
             col witness y;
             col witness z;
