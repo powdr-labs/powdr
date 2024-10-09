@@ -2,7 +2,7 @@ use std::machines::range::Byte2;
 
 // Implements 32-bit addition and subtraction using 16-bit limbs.
 // Requires the field to contain at least 17 bits.
-machine AddSub17(byte2: Byte2) with
+machine AddSub(byte2: Byte2) with
     latch: latch,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation
