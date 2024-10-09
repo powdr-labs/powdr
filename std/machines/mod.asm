@@ -6,6 +6,7 @@ mod binary_bb;
 mod range;
 mod hash;
 mod memory;
+mod memory16;
 mod memory_with_bootloader_write;
 mod shift;
 mod shift16;

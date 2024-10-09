@@ -120,6 +120,13 @@ fn memory_test_parallel_accesses() {
 }
 
 #[test]
+#[ignore = "Too slow"]
+fn memory16_test() {
+    let f = "std/memory16_test.asm";
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
+}
+
+#[test]
 fn permutation_via_challenges_bn() {
     let f = "std/permutation_via_challenges.asm";
     test_halo2(make_simple_prepared_pipeline(f));
