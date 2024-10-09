@@ -19,7 +19,7 @@ use powdr_number::{FieldElement, GoldilocksField, LargeInt};
 use rand::{distributions::Standard, Rng, SeedableRng};
 
 const D: u64 = 7;
-const WIDTH: usize = 16;
+const WIDTH: usize = 8;
 type Perm =
     Poseidon2<Goldilocks, Poseidon2ExternalMatrixGeneral, DiffusionMatrixGoldilocks, WIDTH, D>;
 
