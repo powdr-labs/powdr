@@ -1112,12 +1112,21 @@ mod tests {
     use super::*;
     use pretty_assertions::assert_eq;
 
-    fn expect(path: &str, expected: Result<(), &str>) {
+    fn expect(path: &str, expected: Result<(), &str>, include_std: bool) {
         let input_path = PathBuf::from("./test_data/")
             .join(path)
             .with_extension("asm");
         let input_str = std::fs::read_to_string(input_path).unwrap();
-        let parsed = powdr_parser::parse_asm(None, &input_str).unwrap();
+        let parsed = powdr_parser::parse_asm(None, &input_str);
+
+        let parsed = if include_std {
+            parsed
+                .map_err(|e| e.message().to_string())
+                .and_then(add_std)
+                .unwrap()
+        } else {
+            parsed.unwrap()
+        };
 
         let res = canonicalize_paths(parsed).map(|res| res.to_string().replace('\t', "    "));
         let expected = expected
@@ -1129,46 +1138,31 @@ mod tests {
             })
             .map_err(|s| s.to_string());
 
-        assert_eq!(res.map_err(|e| e.message().to_string()), expected);
-    }
-
-    fn expect_with_std(path: &str, expected: Result<(), &str>) {
-        let input_path = PathBuf::from("./test_data/")
-            .join(path)
-            .with_extension("asm");
-        let input_str = std::fs::read_to_string(input_path).unwrap();
-        let parsed = powdr_parser::parse_asm(None, &input_str)
-            .map_err(|e| e.message().to_string())
-            .and_then(add_std)
-            .unwrap();
-
-        let res = canonicalize_paths(parsed).map(|res| res.to_string().replace('\t', "    "));
-        let expected = expected
-            .map(|_| {
-                let expected_input_path = PathBuf::from("./test_data/")
-                    .join(path)
-                    .with_extension("expected.asm");
-                std::fs::read_to_string(expected_input_path).unwrap()
-            })
-            .map_err(|s| s.to_string());
-
-        assert_eq!(
-            res.map_err(|e| e.message().to_string()).map(|s| s
-                .chars()
-                .take(expected.as_ref().map_or(0, |e| e.len()))
-                .collect::<String>()),
-            expected
-        );
+        if include_std {
+            assert_eq!(res.map_err(|e| e.message().to_string()), expected);
+        } else {
+            assert_eq!(
+                res.map_err(|e| e.message().to_string()).map(|s| s
+                    .chars()
+                    .take(expected.as_ref().map_or(0, |e| e.len()))
+                    .collect::<String>()),
+                expected
+            );
+        }
     }
 
     #[test]
     fn empty_module() {
-        expect("empty_module", Ok(()))
+        expect("empty_module", Ok(()), false)
     }
 
     #[test]
     fn duplicate() {
-        expect("duplicate", Err("Duplicate name `Foo` in module `::`"))
+        expect(
+            "duplicate",
+            Err("Duplicate name `Foo` in module `::`"),
+            false,
+        )
     }
 
     #[test]
@@ -1176,12 +1170,13 @@ mod tests {
         expect(
             "duplicate_in_module",
             Err("Duplicate name `Foo` in module `::submodule`"),
+            false,
         )
     }
 
     #[test]
     fn relative_import() {
-        expect("relative_import", Ok(()))
+        expect("relative_import", Ok(()), false)
     }
 
     #[test]
@@ -1189,12 +1184,13 @@ mod tests {
         expect(
             "relative_import_not_found",
             Err("symbol not found in `::submodule`: `Foo`"),
+            false,
         )
     }
 
     #[test]
     fn double_relative_import() {
-        expect("double_relative_import", Ok(()))
+        expect("double_relative_import", Ok(()), false)
     }
 
     #[test]
@@ -1202,12 +1198,13 @@ mod tests {
         expect(
             "double_relative_import_not_found",
             Err("symbol not found in `::submodule::subbbb`: `Foo`"),
+            false,
         )
     }
 
     #[test]
     fn import_of_import() {
-        expect("import_of_import", Ok(()))
+        expect("import_of_import", Ok(()), false)
     }
 
     #[test]
@@ -1215,12 +1212,13 @@ mod tests {
         expect(
             "import_of_import_not_found",
             Err("symbol not found in `::submodule::subbbb`: `Foo`"),
+            false,
         )
     }
 
     #[test]
     fn import_module() {
-        expect("import_module", Ok(()));
+        expect("import_module", Ok(()), false);
     }
 
     #[test]
@@ -1228,12 +1226,13 @@ mod tests {
         expect(
             "submachine_not_found",
             Err("symbol not found in `::`: `Bar`"),
+            false,
         )
     }
 
     #[test]
     fn submachine_found() {
-        expect("submachine_found", Ok(()))
+        expect("submachine_found", Ok(()), false)
     }
 
     #[test]
@@ -1241,37 +1240,38 @@ mod tests {
         expect(
             "symbol_not_found",
             Err("symbol not found in `::submodule::Foo`: `Bar`"),
+            false,
         )
     }
 
     #[test]
     fn import_module_import() {
-        expect("import_module_import", Ok(()))
+        expect("import_module_import", Ok(()), false)
     }
 
     #[test]
     fn import_super() {
-        expect("import_module_import", Ok(()))
+        expect("import_module_import", Ok(()), false)
     }
 
     #[test]
     fn usage_chain() {
-        expect("usage_chain", Ok(()))
+        expect("usage_chain", Ok(()), false)
     }
 
     #[test]
     fn cycle() {
-        expect("cycle", Err("Cycle detected in `use` statements: `::module::Machine` -> `::other_module::submodule::MyMachine` -> `::Machine` -> `::module::Machine`"))
+        expect("cycle", Err("Cycle detected in `use` statements: `::module::Machine` -> `::other_module::submodule::MyMachine` -> `::Machine` -> `::module::Machine`"), false)
     }
 
     #[test]
     fn import_after_usage() {
-        expect("import_after_usage", Ok(()))
+        expect("import_after_usage", Ok(()), false)
     }
 
     #[test]
     fn simple_prelude_ref() {
-        expect("simple_prelude_ref", Ok(()))
+        expect("simple_prelude_ref", Ok(()), false)
     }
 
     #[test]
@@ -1279,31 +1279,31 @@ mod tests {
         expect(
             "prelude_non_local",
             Err("symbol not found in `::module`: `x`"),
+            false,
         )
     }
 
     #[test]
     fn instruction() {
-        expect("instruction", Ok(()))
+        expect("instruction", Ok(()), false)
     }
 
     #[test]
     fn degree_not_found() {
-        expect("degree_not_found", Err("symbol not found in `::`: `N`"))
+        expect(
+            "degree_not_found",
+            Err("symbol not found in `::`: `N`"),
+            false,
+        )
     }
 
     #[test]
     fn trait_implementation() {
-        expect("trait_implementation", Ok(()))
+        expect("trait_implementation", Ok(()), false)
     }
 
     #[test]
     fn struct_expression() {
-        expect_with_std("struct_expression", Ok(()))
-    }
-
-    #[test]
-    fn struct_expression_prelude() {
-        expect("struct_expression_prelude", Ok(()))
+        expect("struct_expression", Ok(()), true)
     }
 }
