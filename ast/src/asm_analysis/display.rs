@@ -17,7 +17,7 @@ use super::{
     DebugDirective, FunctionBody, FunctionStatement, FunctionStatements, Incompatible,
     IncompatibleSet, InstructionDefinitionStatement, InstructionStatement, LabelStatement,
     LinkDefinition, Machine, MachineDegree, RegisterDeclarationStatement, RegisterTy, Return, Rom,
-    SubmachineDeclaration, TypeDeclaration,
+    SubmachineDeclaration,
 };
 
 impl Display for AnalysisASMFile {

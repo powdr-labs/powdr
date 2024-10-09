@@ -1,7 +1,7 @@
 use super::{
     asm::{
         ASMModule, ASMProgram, Import, Machine, Module, ModuleStatement, SymbolDefinition,
-        SymbolValue, TypeDeclaration,
+        SymbolValue,
     },
     PilStatement,
 };

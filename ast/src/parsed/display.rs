@@ -705,51 +705,6 @@ impl<E: Display> Display for EnumVariant<E> {
     }
 }
 
-impl<E: Display> Display for StructDeclaration<E> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "struct {}{} {{\n{}}}",
-            self.name,
-            type_vars_to_string(&self.type_vars),
-            indent(
-                self.fields
-                    .iter()
-                    .map(|named| format!("{}: {},\n", named.name, named.ty))
-                    .format(""),
-                1
-            )
-        )
-    }
-}
-
-impl<E: Display> Display for StructExpression<E> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "{}{}",
-            self.name,
-            if self.fields.is_empty() {
-                "".to_string()
-            } else {
-                format!(
-                    "{{ {} }}",
-                    self.fields
-                        .iter()
-                        .map(|named_expr| format!("{named_expr}"))
-                        .format(", ")
-                )
-            }
-        )
-    }
-}
-
-impl<E: Display> Display for NamedExpression<E> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{}: {}", self.name, self.body)
-    }
-}
-
 fn format_list<L: IntoIterator<Item = I>, I: Display>(list: L) -> String {
     format!("{}", list.into_iter().format(", "))
 }
