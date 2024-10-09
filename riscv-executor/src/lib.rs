@@ -19,11 +19,10 @@ use builder::TraceBuilder;
 
 use itertools::Itertools;
 use powdr_ast::{
-    asm_analysis::{
-        AnalysisASMFile, CallableSymbol, FunctionStatement, Item, LabelStatement, Machine,
-    },
+    asm_analysis::{AnalysisASMFile, CallableSymbol, FunctionStatement, LabelStatement, Machine},
     parsed::{
-        asm::DebugDirective, BinaryOperation, Expression, FunctionCall, Number, UnaryOperation,
+        asm::{parse_absolute_path, DebugDirective},
+        BinaryOperation, Expression, FunctionCall, Number, UnaryOperation,
     },
 };
 use powdr_number::{FieldElement, LargeInt};
@@ -44,7 +43,7 @@ use crate::profiler::Profiler;
 const PC_INITIAL_VAL: usize = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Elem<F: FieldElement> {
+enum Elem<F: FieldElement> {
     /// Only the ranges of i32 and u32 are actually valid for a Binary value.
     /// I.e., [-2**31, 2**32).
     Binary(i64),
@@ -52,45 +51,27 @@ pub enum Elem<F: FieldElement> {
 }
 
 impl<F: FieldElement> Elem<F> {
-    /// Interprets the value of a field as a binary, if it can be represented either as a
+    /// Try to interpret the value of a field as a binary, if it can be represented either as a
     /// u32 or a i32.
-    ///
-    /// Panics otherwise.
-    pub fn new_from_fe_as_bin(value: &F) -> Self {
+    pub fn try_from_fe_as_bin(value: &F) -> Option<Self> {
         if let Some(v) = value.to_integer().try_into_u32() {
-            Self::Binary(v as i64)
-        } else if let Some(v) = value.try_into_i32() {
-            Self::Binary(v as i64)
+            Some(Self::Binary(v as i64))
         } else {
-            panic!("Value does not fit in 32 bits.")
+            value.try_into_i32().map(|v| Self::Binary(v as i64))
         }
     }
 
     /// Interprets the value of self as a field element.
-    pub fn into_fe(&self) -> F {
-        match *self {
+    pub fn into_fe(self) -> F {
+        match self {
             Self::Field(f) => f,
             Self::Binary(b) => b.into(),
-        }
-    }
-
-    pub fn fe(&self) -> F {
-        match self {
-            Self::Field(f) => *f,
-            Self::Binary(_) => panic!(),
         }
     }
 
     pub fn bin(&self) -> i64 {
         match self {
             Self::Binary(b) => *b,
-            Self::Field(_) => panic!(),
-        }
-    }
-
-    fn bin_mut(&mut self) -> &mut i64 {
-        match self {
-            Self::Binary(b) => b,
             Self::Field(_) => panic!(),
         }
     }
@@ -179,6 +160,7 @@ impl<F: FieldElement> Display for Elem<F> {
 }
 
 pub type MemoryState = HashMap<u32, u32>;
+pub type RegisterMemoryState<F> = HashMap<u32, F>;
 
 #[derive(Debug)]
 pub enum MemOperationKind {
@@ -201,7 +183,7 @@ pub struct RegWrite<F: FieldElement> {
     row: usize,
     /// Index of the register in the register bank.
     reg_idx: u16,
-    val: Elem<F>,
+    val: F,
 }
 
 pub struct ExecutionTrace<F: FieldElement> {
@@ -235,7 +217,7 @@ impl<F: FieldElement> ExecutionTrace<F> {
 
 pub struct TraceReplay<'a, F: FieldElement> {
     trace: &'a ExecutionTrace<F>,
-    regs: Vec<Elem<F>>,
+    regs: Vec<F>,
     pc_idx: usize,
     next_write: usize,
     next_r: usize,
@@ -245,14 +227,14 @@ impl<'a, F: FieldElement> TraceReplay<'a, F> {
     /// Returns the next row's registers value.
     ///
     /// Just like an iterator's next(), but returns the value borrowed from self.
-    pub fn next_row(&mut self) -> Option<&[Elem<F>]> {
+    pub fn next_row(&mut self) -> Option<&[F]> {
         if self.next_r == self.trace.len {
             return None;
         }
 
         // we optimistically increment the PC, if it is a jump or special case,
         // one of the writes will overwrite it
-        *self.regs[self.pc_idx].bin_mut() += 1;
+        self.regs[self.pc_idx] += 1.into();
 
         while let Some(next_write) = self.trace.reg_writes.get(self.next_write) {
             if next_write.row > self.next_r {
@@ -270,8 +252,17 @@ impl<'a, F: FieldElement> TraceReplay<'a, F> {
 
 #[derive(Default)]
 pub struct RegisterMemory<F: FieldElement> {
-    pub last: HashMap<u32, Elem<F>>,
-    pub second_last: HashMap<u32, Elem<F>>,
+    last: HashMap<u32, Elem<F>>,
+    second_last: HashMap<u32, Elem<F>>,
+}
+
+impl<F: FieldElement> RegisterMemory<F> {
+    pub fn for_bootloader(&self) -> HashMap<u32, F> {
+        self.second_last
+            .iter()
+            .map(|(k, v)| (*k, v.into_fe()))
+            .collect()
+    }
 }
 
 mod builder {
@@ -282,7 +273,7 @@ mod builder {
 
     use crate::{
         Elem, ExecMode, ExecutionTrace, MemOperation, MemOperationKind, MemoryState, RegWrite,
-        RegisterMemory, PC_INITIAL_VAL,
+        RegisterMemory, RegisterMemoryState, PC_INITIAL_VAL,
     };
 
     fn register_names(main: &Machine) -> Vec<&str> {
@@ -346,7 +337,7 @@ mod builder {
             batch_to_line_map: &'b [u32],
             max_rows_len: usize,
             mode: ExecMode,
-        ) -> Result<Self, Box<(ExecutionTrace<F>, MemoryState, RegisterMemory<F>)>> {
+        ) -> Result<Self, Box<(ExecutionTrace<F>, MemoryState, RegisterMemoryState<F>)>> {
             let reg_map = register_names(main)
                 .into_iter()
                 .enumerate()
@@ -441,7 +432,7 @@ mod builder {
                 self.trace.reg_writes.push(RegWrite {
                     row: self.trace.len,
                     reg_idx: idx,
-                    val: value,
+                    val: value.into_fe(),
                 });
             }
 
@@ -513,8 +504,8 @@ mod builder {
             self.reg_mem.second_last = self.reg_mem.last.clone();
         }
 
-        pub fn finish(self) -> (ExecutionTrace<F>, MemoryState, RegisterMemory<F>) {
-            (self.trace, self.mem, self.reg_mem)
+        pub fn finish(self) -> (ExecutionTrace<F>, MemoryState, RegisterMemoryState<F>) {
+            (self.trace, self.mem, self.reg_mem.for_bootloader())
         }
 
         /// Should we stop the execution because the maximum number of rows has
@@ -551,22 +542,14 @@ mod builder {
 }
 
 pub fn get_main_machine(program: &AnalysisASMFile) -> &Machine {
-    for (name, m) in program.items.iter() {
-        if name.len() == 1 && name.parts().next() == Some("Main") {
-            let Item::Machine(m) = m else {
-                panic!();
-            };
-            return m;
-        }
-    }
-    panic!();
+    program.get_machine(&parse_absolute_path("::Main")).unwrap()
 }
 
-struct PreprocessedMain<'a, T: FieldElement> {
+struct PreprocessedMain<'a, F: FieldElement> {
     /// list of all statements (batches expanded)
     statements: Vec<&'a FunctionStatement>,
     /// label to batch number
-    label_map: HashMap<&'a str, Elem<T>>,
+    label_map: HashMap<&'a str, Elem<F>>,
     /// batch number to its first statement idx
     batch_to_line_map: Vec<u32>,
     /// file number to (dir,name)
@@ -579,7 +562,7 @@ struct PreprocessedMain<'a, T: FieldElement> {
 
 /// Returns the list of instructions, directly indexable by PC, the map from
 /// labels to indices into that list, and the list with the start of each batch.
-fn preprocess_main_function<T: FieldElement>(machine: &Machine) -> PreprocessedMain<T> {
+fn preprocess_main_function<F: FieldElement>(machine: &Machine) -> PreprocessedMain<F> {
     let CallableSymbol::Function(main_function) = &machine.callable.0["main"] else {
         panic!("main function missing")
     };
@@ -655,7 +638,7 @@ struct Executor<'a, 'b, F: FieldElement> {
     proc: TraceBuilder<'b, F>,
     label_map: HashMap<&'a str, Elem<F>>,
     inputs: &'b Callback<'b, F>,
-    bootloader_inputs: &'b [Elem<F>],
+    bootloader_inputs: Vec<Elem<F>>,
     _stdout: io::Stdout,
 }
 
@@ -1300,7 +1283,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     .collect::<Vec<_>>();
                 let query = format!("{variant}({})", values.join(","));
                 match (self.inputs)(&query).unwrap() {
-                    Some(val) => vec![Elem::new_from_fe_as_bin(&val)],
+                    Some(val) => {
+                        let e = Elem::try_from_fe_as_bin(&val)
+                            .expect("field value does not fit into u32 or i32");
+                        vec![e]
+                    }
                     None => {
                         panic!("unknown query command: {query}");
                     }
@@ -1325,15 +1312,15 @@ fn is_jump(e: &Expression) -> bool {
     false
 }
 
-pub fn execute_ast<T: FieldElement>(
+pub fn execute_ast<F: FieldElement>(
     program: &AnalysisASMFile,
     initial_memory: MemoryState,
-    inputs: &Callback<T>,
-    bootloader_inputs: &[Elem<T>],
+    inputs: &Callback<F>,
+    bootloader_inputs: &[F],
     max_steps_to_execute: usize,
     mode: ExecMode,
     profiling: Option<ProfilerOptions>,
-) -> (ExecutionTrace<T>, MemoryState, RegisterMemory<T>) {
+) -> (ExecutionTrace<F>, MemoryState, RegisterMemoryState<F>) {
     let main_machine = get_main_machine(program);
     let PreprocessedMain {
         statements,
@@ -1344,7 +1331,7 @@ pub fn execute_ast<T: FieldElement>(
         location_starts,
     } = preprocess_main_function(main_machine);
 
-    let proc = match TraceBuilder::<'_, T>::new(
+    let proc = match TraceBuilder::<'_, F>::new(
         main_machine,
         initial_memory,
         &batch_to_line_map,
@@ -1354,6 +1341,11 @@ pub fn execute_ast<T: FieldElement>(
         Ok(proc) => proc,
         Err(ret) => return *ret,
     };
+
+    let bootloader_inputs = bootloader_inputs
+        .iter()
+        .map(|v| Elem::try_from_fe_as_bin(v).unwrap_or(Elem::Field(*v)))
+        .collect();
 
     let mut e = Executor {
         proc,
@@ -1482,10 +1474,10 @@ pub fn execute<F: FieldElement>(
     asm_source: &str,
     initial_memory: MemoryState,
     inputs: &Callback<F>,
-    bootloader_inputs: &[Elem<F>],
+    bootloader_inputs: &[F],
     mode: ExecMode,
     profiling: Option<ProfilerOptions>,
-) -> (ExecutionTrace<F>, MemoryState, RegisterMemory<F>) {
+) -> (ExecutionTrace<F>, MemoryState, RegisterMemoryState<F>) {
     log::info!("Parsing...");
     let parsed = powdr_parser::parse_asm(None, asm_source).unwrap();
     log::info!("Resolving imports...");

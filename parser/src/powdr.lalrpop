@@ -29,20 +29,7 @@ pub ASMModule: ASMModule = {
 
 ModuleStatement: ModuleStatement = {
     <MachineDefinition> => ModuleStatement::SymbolDefinition(<>),
-    <LetStatementAtModuleLevel> => ModuleStatement::SymbolDefinition(<>),
-    <EnumDeclaration> => ModuleStatement::SymbolDefinition(SymbolDefinition {
-            name: <>.name.clone(),
-            value: <>.into(),
-        }),
-    <StructDeclaration> => ModuleStatement::SymbolDefinition(SymbolDefinition {
-            name: <>.name.clone(),
-            value: <>.into(),
-        }),
-    <TraitImplementation> => ModuleStatement::TraitImplementation(<>),
-    <TraitDeclaration> => ModuleStatement::SymbolDefinition(SymbolDefinition {
-            name: <>.name.clone(),
-            value: SymbolValue::TraitDeclaration(<>),
-        }),
+    <PilStatementAtModuleLevel> => ModuleStatement::PilStatement(<>),
     <Import> => ModuleStatement::SymbolDefinition(<>),
     <ModuleDefinition> => ModuleStatement::SymbolDefinition(<>),
 }
@@ -104,15 +91,15 @@ TypeSymbolPathPart: Part = {
     <name:NonSpecialIdentifier> => Part::Named(name),
 }
 
-LetStatementAtModuleLevel: SymbolDefinition = {
-    "let" <name:GenericTypedName>  "=" <value:Expression> ";" =>
-        SymbolDefinition {
-            name: name.0,
-            value: SymbolValue::Expression(TypedExpression{ e: value, type_scheme: name.1 })
-        }
-}
-
 // ---------------------------- PIL part -----------------------------
+
+pub PilStatementAtModuleLevel = {
+    LetStatement,
+    <start:@L> <decl:EnumDeclaration> <end:@R> => PilStatement::EnumDeclaration(ctx.source_ref(start, end), decl),
+    <start:@L> <decl:StructDeclaration> <end:@R> => PilStatement::StructDeclaration(ctx.source_ref(start, end), decl),
+    <start:@L> <impl_:TraitImplementation> <end:@R> => PilStatement::TraitImplementation(ctx.source_ref(start, end), impl_),
+    <start:@L> <decl:TraitDeclaration> <end:@R> => PilStatement::TraitDeclaration(ctx.source_ref(start, end), decl),
+}
 
 pub PilStatement = {
     Include,
@@ -644,7 +631,7 @@ MatchArms: Vec<MatchArm> = {
 }
 
 MatchArm: MatchArm = {
-    <pattern:Pattern> "=>" <value:Expression> => MatchArm{pattern, value},
+    <pattern:Pattern> "=>" <value: Expression> => MatchArm{pattern, value},
 }
 
 IfExpression: Box<Expression> = {
@@ -655,11 +642,12 @@ IfExpression: Box<Expression> = {
         <end:@R> => ctx.to_expr_with_source_ref(IfExpression{condition, body, else_body}, start, end),
 }
 
-StructExpression: Box<Expression> = {
-    <start:@L> <name:Identifier> "{" <fields:NamedExpressions> "}" <end:@R> => ctx.to_expr_with_source_ref(StructExpression{name, fields}, start, end),
+StructExpression: Box<Expression> = {	
+    <start:@L> <name:NamespacedPolynomialReference> "{" <fields:NamedExpressions> "}" <end:@R> => ctx.to_expr_with_source_ref(StructExpression{name, fields}, start, end),
 }
 
 BlockExpression: Box<Expression> = {
+    <start:@L> "{}" <end:@R> => ctx.to_expr_with_source_ref(BlockExpression{statements: vec![], expr: None}, start, end),
     <start:@L> "{" <statements:StatementInsideBlock*> <expr:BoxedExpression?> "}" <end:@R> => ctx.to_expr_with_source_ref(BlockExpression{statements, expr}, start, end),
 }
 

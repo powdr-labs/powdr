@@ -45,6 +45,13 @@ fn poseidon_gl_memory_test() {
 
 #[test]
 #[ignore = "Too slow"]
+fn keccakf16_test() {
+    let f = "std/keccakf16_test.asm";
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn split_bn254_test() {
     let f = "std/split_bn254_test.asm";
     test_halo2(make_simple_prepared_pipeline(f));
@@ -63,6 +70,13 @@ fn split_gl_test() {
 #[ignore = "Too slow"]
 fn split_bb_test() {
     let f = "std/split_bb_test.asm";
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn add_sub16_test() {
+    let f = "std/add_sub16_test.asm";
     test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
 }
 
@@ -112,7 +126,6 @@ fn permutation_via_challenges_bn() {
 }
 
 #[test]
-#[should_panic = "Error reducing expression to constraint:\nExpression: std::protocols::permutation::permutation([main::z], main::alpha, main::beta, main::permutation_constraint)\nError: FailedAssertion(\"The field is too small and needs to move to the extension field. Pass two elements instead!\")"]
 fn permutation_via_challenges_gl() {
     let f = "std/permutation_via_challenges.asm";
     make_simple_prepared_pipeline::<GoldilocksField>(f);
@@ -437,10 +450,8 @@ mod reparse {
     /// but these tests panic if the field is too small. This is *probably*
     /// fine, because all of these tests have a similar variant that does
     /// run on Goldilocks.
-    const BLACKLIST: [&str; 6] = [
+    const BLACKLIST: [&str; 4] = [
         "std/bus_permutation_via_challenges.asm",
-        "std/permutation_via_challenges.asm",
-        "std/lookup_via_challenges.asm",
         "std/poseidon_bn254_test.asm",
         "std/split_bn254_test.asm",
         "std/bus_lookup_via_challenges.asm",

@@ -7,10 +7,10 @@ use crate::params::{Challenger, FieldElementMap, Plonky3Field};
 use p3_challenger::DuplexChallenger;
 use p3_commit::ExtensionMmcs;
 use p3_dft::Radix2DitParallel;
-use p3_field::{extension::BinomialExtensionField, AbstractField, Field};
+use p3_field::{extension::BinomialExtensionField, AbstractField, Field, PrimeField64};
 use p3_fri::{FriConfig, TwoAdicFriPcs};
 use p3_goldilocks::{Goldilocks, MdsMatrixGoldilocks};
-use p3_merkle_tree::FieldMerkleTreeMmcs;
+use p3_merkle_tree::MerkleTreeMmcs;
 use p3_poseidon::Poseidon;
 use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
 use p3_uni_stark::StarkConfig;
@@ -32,7 +32,7 @@ const CHUNK: usize = 4;
 type Compress = TruncatedPermutation<Perm, N, CHUNK, WIDTH>;
 
 const DIGEST_ELEMS: usize = 4;
-type ValMmcs = FieldMerkleTreeMmcs<
+type ValMmcs = MerkleTreeMmcs<
     <Goldilocks as Field>::Packing,
     <Goldilocks as Field>::Packing,
     Hash,
@@ -42,7 +42,7 @@ type ValMmcs = FieldMerkleTreeMmcs<
 
 pub type FriChallenger = DuplexChallenger<Goldilocks, Perm, WIDTH, RATE>;
 type ChallengeMmcs = ExtensionMmcs<Goldilocks, FriChallenge, ValMmcs>;
-type Dft = Radix2DitParallel;
+type Dft = Radix2DitParallel<Goldilocks>;
 type MyPcs = TwoAdicFriPcs<Goldilocks, Dft, ValMmcs, ChallengeMmcs>;
 
 const HALF_NUM_FULL_ROUNDS: usize = 4;
@@ -76,6 +76,10 @@ impl FieldElementMap for GoldilocksField {
         Goldilocks::from_canonical_u64(self.to_integer().try_into_u64().unwrap())
     }
 
+    fn from_p3_field(e: Plonky3Field<Self>) -> Self {
+        Self::from(e.as_canonical_u64())
+    }
+
     fn get_challenger() -> Challenger<Self> {
         FriChallenger::new(PERM_GL.clone())
     }
@@ -89,7 +93,7 @@ impl FieldElementMap for GoldilocksField {
 
         let challenge_mmcs = ChallengeMmcs::new(val_mmcs.clone());
 
-        let dft = Dft {};
+        let dft = Dft::default();
 
         let fri_config = FriConfig {
             log_blowup: FRI_LOG_BLOWUP,

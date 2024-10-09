@@ -8,7 +8,7 @@ use itertools::Itertools;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{asm::SymbolPath, visitor::Children, Expression, Number};
+use super::{asm::SymbolPath, display::type_vars_to_string, visitor::Children, Expression, Number};
 
 #[derive(
     Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize, Deserialize, JsonSchema,
@@ -136,6 +136,62 @@ impl<E> Type<E> {
         Type::Tuple(TupleType { items: vec![] })
     }
 }
+
+impl<E: ExpressionInArrayLength> Type<E> {
+    pub fn contained_expressions_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        match self {
+            Type::Array(ArrayType { base, length }) => Box::new(
+                length
+                    .as_mut()
+                    .and_then(|l| l.try_to_expression_mut())
+                    .into_iter()
+                    .chain(base.contained_expressions_mut()),
+            ),
+            t => Box::new(t.children_mut().flat_map(|t| t.contained_expressions_mut())),
+        }
+    }
+
+    pub fn contained_expressions(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        match self {
+            Type::Array(ArrayType { base, length }) => Box::new(
+                length
+                    .as_ref()
+                    .and_then(|l| l.try_to_expression())
+                    .into_iter()
+                    .chain(base.contained_expressions()),
+            ),
+            t => Box::new(t.children().flat_map(|t| t.contained_expressions())),
+        }
+    }
+}
+
+/// A trait to operate over the possible types for the array type lengths
+pub trait ExpressionInArrayLength: std::fmt::Display + std::fmt::Debug {
+    fn try_to_expression_mut(&mut self) -> Option<&mut Expression>;
+
+    fn try_to_expression(&self) -> Option<&Expression>;
+}
+
+impl ExpressionInArrayLength for Expression {
+    fn try_to_expression_mut(&mut self) -> Option<&mut Expression> {
+        Some(self)
+    }
+
+    fn try_to_expression(&self) -> Option<&Expression> {
+        Some(self)
+    }
+}
+
+impl ExpressionInArrayLength for u64 {
+    fn try_to_expression_mut(&mut self) -> Option<&mut Expression> {
+        None
+    }
+
+    fn try_to_expression(&self) -> Option<&Expression> {
+        None
+    }
+}
+
 impl<E: Clone> Type<E> {
     /// Substitutes all occurrences of the given type variables with the given types.
     /// Does not apply the substitutions inside the replacements.
@@ -401,6 +457,11 @@ impl<E: Clone> TypeScheme<E> {
             ),
             ty,
         }
+    }
+}
+impl<E> TypeScheme<E> {
+    pub fn type_vars_to_string(&self) -> String {
+        type_vars_to_string(&self.vars)
     }
 }
 

@@ -11,7 +11,7 @@ use p3_circle::CirclePcs;
 use p3_commit::ExtensionMmcs;
 use p3_field::{extension::BinomialExtensionField, Field};
 use p3_fri::FriConfig;
-use p3_merkle_tree::FieldMerkleTreeMmcs;
+use p3_merkle_tree::MerkleTreeMmcs;
 use p3_mersenne_31::{DiffusionMatrixMersenne31, Mersenne31};
 use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
 use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
@@ -42,7 +42,7 @@ const N: usize = 2;
 const CHUNK: usize = 8;
 type Compress = TruncatedPermutation<Perm, N, CHUNK, WIDTH>;
 const DIGEST_ELEMS: usize = 8;
-type ValMmcs = FieldMerkleTreeMmcs<
+type ValMmcs = MerkleTreeMmcs<
     <Mersenne31 as Field>::Packing,
     <Mersenne31 as Field>::Packing,
     Hash,
@@ -80,6 +80,10 @@ impl FieldElementMap for Mersenne31Field {
     type Config = StarkConfig<Pcs, FriChallenge, FriChallenger>;
     fn into_p3_field(self) -> Plonky3Field<Self> {
         self.into_inner()
+    }
+
+    fn from_p3_field(e: Plonky3Field<Self>) -> Self {
+        Self::from_inner(e)
     }
 
     fn get_challenger() -> Challenger<Self> {
