@@ -1,6 +1,7 @@
 use std::machines::hash::poseidon_bb::PoseidonBB;
 use std::machines::range::Byte2;
-use std::machines::memory_bb::Memory;
+use std::machines::range::Bit12;
+use std::machines::memory16::Memory16;
 use std::machines::split::ByteCompare;
 use std::machines::split::split_bb::SplitBB;
 
@@ -18,16 +19,17 @@ machine Main with degree: 65536 {
     // can read in the given time step and write in the next time step.
     col fixed STEP(i) { 2 * i };
     Byte2 byte2;
-    Memory memory(byte2);
+    Bit12 bit12;
+    Memory16 memory(bit12, byte2);
     instr mstore_le ADDR1, X1, X2 ->
-        link ~> memory.mstore(ADDR1, STEP, X1, X2);
+        link ~> memory.mstore(0, ADDR1, STEP, X1, X2);
 
     PoseidonBB poseidon(memory, split);
     instr poseidon ADDR1, ADDR2 -> link ~> poseidon.poseidon_permutation(ADDR1, ADDR2, STEP);
 
     col witness val_low, val_high;
     instr assert_eq ADDR1, X1 ->
-        link ~> (val_high, val_low) = memory.mload(ADDR1, STEP)
+        link ~> (val_high, val_low) = memory.mload(0, ADDR1, STEP)
     {
         val_low + 2**16 * val_high = X1
     }
