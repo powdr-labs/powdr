@@ -14,7 +14,7 @@ use std::machines::range::Byte2;
 // Implements 256-Bit addition and multiplication.
 // Ported mainly from Polygon: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/arith.pil
 // Requires the field to contain at least 48 bits.
-machine Arith48 with
+machine Arith with
     latch: CLK32_31,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation

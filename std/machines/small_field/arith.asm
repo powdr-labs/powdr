@@ -14,14 +14,14 @@ use std::machines::range::Byte2;
 
 // Implements 32-Bit multiplication and division.
 // Inspired by Polygon's 256-Bit Arith machine: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/arith.pil
-// Requires the field to contain at least 17 bits.
-machine Arith17(byte: Byte, byte2: Byte2) with
+// Requires the field to contain at least 18 bits.
+machine Arith(byte: Byte, byte2: Byte2) with
     latch: CLK8_7,
     operation_id: is_division,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
-    std::check::assert(std::field::modulus() >= 2**18, || "Field too small.");
+    std::check::assert(std::field::modulus() >= 2**19, || "Field too small.");
 
     col witness is_division;
 
