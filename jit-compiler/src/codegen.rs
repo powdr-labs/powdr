@@ -147,7 +147,9 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     }
                 })
             }
-            _ => unimplemented!(),
+            _ => Err(format!(
+                "Definition of this kind not supported: {symbol} - {definition}"
+            )),
         }
     }
 
