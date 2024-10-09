@@ -1028,14 +1028,6 @@ pub fn format_type_args<E: Display>(args: &[Type<E>]) -> String {
     )
 }
 
-pub fn type_vars_to_string(type_vars: &TypeBounds) -> String {
-    if type_vars.is_empty() {
-        Default::default()
-    } else {
-        format!("<{type_vars}>")
-    }
-}
-
 pub fn format_type_scheme_around_name<E: Display, N: Display>(
     name: &N,
     type_scheme: &Option<TypeScheme<E>>,
@@ -1043,7 +1035,7 @@ pub fn format_type_scheme_around_name<E: Display, N: Display>(
     if let Some(type_scheme) = type_scheme {
         format!(
             "{} {name}: {}",
-            type_vars_to_string(&type_scheme.vars),
+            type_scheme.type_vars_to_string(),
             type_scheme.ty
         )
     } else {
