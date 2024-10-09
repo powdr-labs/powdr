@@ -71,7 +71,7 @@ lazy_static! {
             .sample_iter(Standard)
             .take(*ROUNDS_P)
             .collect(),
-        DiffusionMatrixGoldilocks::default()
+        DiffusionMatrixGoldilocks
     );
 }
 
