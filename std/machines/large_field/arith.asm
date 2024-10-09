@@ -3,7 +3,9 @@ use std::utils::unchanged_until;
 use std::utils::force_bool;
 use std::utils::sum;
 use std::math::ff;
+use std::field::modulus;
 use std::check::panic;
+use std::check::assert;
 use std::convert::int;
 use std::convert::fe;
 use std::convert::expr;
@@ -20,12 +22,12 @@ machine Arith with
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
+    assert(modulus() > 2**48, || "Arith requires a field that fits any 48-Bit value.");
+
     Byte2 byte2;
     
     // The operation ID will be bit-decomposed to yield selEq[], controlling which equations are activated.
     col witness operation_id;
-
-    std::check::assert(std::field::modulus() >= 2**49, || "Field too small.");
 
     // Computes x1 * y1 + x2, where all inputs / outputs are 256-bit words (represented as 32-Bit limbs in little-endian order).
     // More precisely, affine_256(x1, y1, x2) = (y2, y3), where x1 * y1 + x2 = 2**256 * y2 + y3

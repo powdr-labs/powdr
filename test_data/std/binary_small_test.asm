@@ -1,5 +1,5 @@
 use std::machines::binary::ByteBinary;
-use std::machines::binary_bb::Binary16;
+use std::machines::small_field::binary::Binary;
 
 machine Main {
     reg pc[@pc];
@@ -13,7 +13,7 @@ machine Main {
     reg A2;
 
     ByteBinary byte_binary;
-    Binary16 binary(byte_binary);
+    Binary binary(byte_binary);
 
     instr and X0_1, X0_2, X1_1, X1_2 -> X2_1, X2_2 link ~> (X2_1, X2_2) = binary.and(X0_1, X0_2, X1_1, X1_2);
     instr or X0_1, X0_2, X1_1, X1_2 -> X2_1, X2_2 link ~> (X2_1, X2_2) = binary.or(X0_1, X0_2, X1_1, X1_2);

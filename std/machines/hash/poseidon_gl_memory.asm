@@ -4,7 +4,7 @@ use std::utils::unchanged_until;
 use std::utils::force_bool;
 use std::utils::sum;
 use std::convert::expr;
-use std::machines::memory::Memory;
+use std::machines::large_field::memory::Memory;
 use std::machines::split::split_gl::SplitGL;
 
 // Implements the Poseidon permutation for the Goldilocks field.

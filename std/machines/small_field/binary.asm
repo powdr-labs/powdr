@@ -1,7 +1,7 @@
-use std::convert::int;
-use std::utils::cross_product;
 use std::utils::unchanged_until;
 use std::machines::binary::ByteBinary;
+use std::field::modulus;
+use std::check::assert;
 
 // Computes bitwise operations on two 32-bit numbers
 // decomposed into 4 bytes each.
@@ -11,6 +11,8 @@ machine Binary8(byte_binary: ByteBinary) with
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
+    assert(modulus() > 2**8, || "Binary8 requires a field that fits any 8-Bit value.");
+
     operation and<0> A1, A2, A3, A4, B1, B2, B3, B4 -> C1, C2, C3, C4;
 
     operation or<1> A1, A2, A3, A4, B1, B2, B3, B4 -> C1, C2, C3, C4;
@@ -42,12 +44,14 @@ machine Binary8(byte_binary: ByteBinary) with
 
 // Computes bitwise operations on two 32-bit numbers
 // decomposed into two 16-bit limbs each.
-machine Binary16(byte_binary: ByteBinary) with
+machine Binary(byte_binary: ByteBinary) with
     latch: latch,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
+    std::check::assert(std::field::modulus() > 2**16, || "Binary8 requires a field that fits any 16-Bit value.");
+
     operation and<0> I1, I2, I3, I4 -> O1, O2;
     operation or<1> I1, I2, I3, I4 -> O1, O2;
     operation xor<2> I1, I2, I3, I4 -> O1, O2;

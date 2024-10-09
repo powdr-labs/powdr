@@ -6,13 +6,13 @@ use std::machines::range::Byte2;
 
 // A read/write memory, similar to that of Polygon:
 // https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/mem.pil
-machine Memory16(bit12: Bit12, byte2: Byte2) with
+machine Memory(bit12: Bit12, byte2: Byte2) with
     latch: LATCH,
     operation_id: m_is_write,
     call_selectors: selectors,
 {
     // We compute m_diff (28-Bit) + m_step (28-Bit) + 1, which fits into 29 Bits.
-    assert(modulus() > 2**29, || "Memory16 requires a field that fits any 29-Bit value.");
+    assert(modulus() > 2**29, || "Memory requires a field that fits any 29-Bit value.");
 
     operation mload<0> m_addr_high, m_addr_low, m_step -> m_value1, m_value2;
     operation mstore<1> m_addr_high, m_addr_low, m_step, m_value1, m_value2 ->;
