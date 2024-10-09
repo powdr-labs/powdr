@@ -34,6 +34,8 @@ pub struct Commitments<Com> {
     pub(crate) quotient_chunks: Com,
 }
 
+pub type OpenedValues<Challenge> = BTreeMap<String, TableOpenedValues<Challenge>>;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TableOpenedValues<Challenge> {
     pub(crate) preprocessed_local: Option<Vec<Challenge>>,
@@ -45,15 +47,26 @@ pub struct TableOpenedValues<Challenge> {
 }
 
 pub struct StarkProvingKey<SC: StarkGenericConfig> {
-    // for each table, for each possible size, the commitment and prover data
-    pub preprocessed: BTreeMap<String, BTreeMap<usize, (Com<SC>, PcsProverData<SC>)>>,
+    // for each table, the preprocessed data
+    pub preprocessed: BTreeMap<String, TableProvingKeyCollection<SC>>,
+}
+
+/// For each possible size, the commitment and prover data
+pub type TableProvingKeyCollection<SC> = BTreeMap<usize, TableProvingKey<SC>>;
+
+/// For each possible size, the commitment
+pub type TableVerifyingKeyCollection<SC> = BTreeMap<usize, Com<SC>>;
+
+pub struct TableProvingKey<SC: StarkGenericConfig> {
+    pub commitment: Com<SC>,
+    pub prover_data: PcsProverData<SC>,
 }
 
 #[derive(Serialize, Deserialize)]
 #[serde(bound = "")]
 pub struct StarkVerifyingKey<SC: StarkGenericConfig> {
     // for each table, for each possible size, the commitment
-    pub preprocessed: BTreeMap<String, BTreeMap<usize, Com<SC>>>,
+    pub preprocessed: BTreeMap<String, TableVerifyingKeyCollection<SC>>,
 }
 
 pub struct ProcessedStage<SC: StarkGenericConfig> {
@@ -61,6 +74,4 @@ pub struct ProcessedStage<SC: StarkGenericConfig> {
     pub(crate) prover_data: PcsProverData<SC>,
     pub(crate) challenge_values: Vec<Val<SC>>,
     pub(crate) public_values: Vec<Vec<Val<SC>>>,
-    // #[cfg(debug_assertions)]
-    // pub(crate) trace: RowMajorMatrix<Val<SC>>,
 }

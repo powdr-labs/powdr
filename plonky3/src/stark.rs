@@ -12,7 +12,10 @@ use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
 
-use crate::{prove, verify, Proof, StarkProvingKey, StarkVerifyingKey};
+use crate::{
+    prove, verify, Proof, StarkProvingKey, StarkVerifyingKey, TableProvingKey,
+    TableProvingKeyCollection,
+};
 
 use p3_uni_stark::StarkGenericConfig;
 
@@ -115,65 +118,90 @@ where
             .iter()
             .into_group_map_by(|(name, _)| name.split("::").next().unwrap());
 
-        let preprocessed: BTreeMap<String, BTreeMap<usize, (_, _)>> =
-            powdr_backend_utils::split_pil(&self.analyzed).iter()
+        let preprocessed: BTreeMap<String, TableProvingKeyCollection<T::Config>> =
+            powdr_backend_utils::split_pil(&self.analyzed)
+                .iter()
                 .filter_map(|(namespace, pil)| {
                     // if we have neither fixed columns nor publics, we don't need to commit to anything
                     if pil.constant_count() + pil.publics_count() == 0 {
                         None
                     } else {
                         let fixed = fixed_by_table.get(namespace.as_str());
-                    Some((namespace.to_string(), pil.committed_polys_in_source_order().find_map(|(s, _)| s.degree).unwrap().iter().map(|size| {
-                    // get selector columns for public values
-                    let publics = pil
-                        .get_publics()
-                        .into_iter()
-                        .map(|(name, _, row_id, _)| {
-                            let selector = (0..size)
-                                .map(move |i| T::from(i == row_id as u64))
-                                .collect::<Vec<T>>();
-                            (name, selector)
-                        })
-                        .collect::<Vec<(String, Vec<T>)>>();
+                        Some((
+                            namespace.to_string(),
+                            pil.committed_polys_in_source_order()
+                                .find_map(|(s, _)| s.degree)
+                                .unwrap()
+                                .iter()
+                                .map(|size| {
+                                    // get selector columns for public values
+                                    let publics = pil
+                                        .get_publics()
+                                        .into_iter()
+                                        .map(|(name, _, row_id, _)| {
+                                            let selector = (0..size)
+                                                .map(move |i| T::from(i == row_id as u64))
+                                                .collect::<Vec<T>>();
+                                            (name, selector)
+                                        })
+                                        .collect::<Vec<(String, Vec<T>)>>();
 
-                    // get the config
-                    let config = T::get_config();
+                                    // get the config
+                                    let config = T::get_config();
 
-                    // commit to the fixed columns
-                    let pcs = config.pcs();
-                    let domain = <_ as p3_commit::Pcs<_, Challenger<T>>>::natural_domain_for_degree(
-                        pcs,
-                        size as usize,
-                    );
-                    // write fixed into matrix row by row
-                    let matrix = RowMajorMatrix::new(
-                        (0..size)
-                            .flat_map(|i| {
-                                fixed.iter().flat_map(|columns|
-                                    columns.iter()
-                                    .map(|(name, column)| {
-                                        (name, column.get_by_size(size).unwrap())
-                                    })).collect_vec().into_iter()
-                                    .chain(
-                                        publics
-                                            .iter()
-                                            .map(|(name, values)| (name, values.as_ref())),
-                                    )
-                                    .map(move |(_, values)| values[i as usize].into_p3_field())
-                            })
-                            .collect(),
-                            fixed.map(|f| f.len()).unwrap_or_default() + publics.len(),
-                    );
+                                    // commit to the fixed columns
+                                    let pcs = config.pcs();
+                                    let domain =
+                                <_ as p3_commit::Pcs<_, Challenger<T>>>::natural_domain_for_degree(
+                                    pcs,
+                                    size as usize,
+                                );
+                                    // write fixed into matrix row by row
+                                    let matrix = RowMajorMatrix::new(
+                                        (0..size)
+                                            .flat_map(|i| {
+                                                fixed
+                                                    .iter()
+                                                    .flat_map(|columns| {
+                                                        columns.iter().map(|(name, column)| {
+                                                            (
+                                                                name,
+                                                                column.get_by_size(size).unwrap(),
+                                                            )
+                                                        })
+                                                    })
+                                                    .collect_vec()
+                                                    .into_iter()
+                                                    .chain(publics.iter().map(|(name, values)| {
+                                                        (name, values.as_ref())
+                                                    }))
+                                                    .map(move |(_, values)| {
+                                                        values[i as usize].into_p3_field()
+                                                    })
+                                            })
+                                            .collect(),
+                                        fixed.map(|f| f.len()).unwrap_or_default() + publics.len(),
+                                    );
 
-                    let evaluations = vec![(domain, matrix)];
+                                    let evaluations = vec![(domain, matrix)];
 
-                    // commit to the evaluations
-                    (
-                        size as usize,
-                        <_ as p3_commit::Pcs<_, Challenger<T>>>::commit(pcs, evaluations),
-                    )
-                }).collect::<BTreeMap<usize, (_, _)>>()))
-    }})
+                                    // commit to the evaluations
+                                    (size as usize, {
+                                        let (commitment, prover_data) =
+                                            <_ as p3_commit::Pcs<_, Challenger<T>>>::commit(
+                                                pcs,
+                                                evaluations,
+                                            );
+                                        TableProvingKey {
+                                            commitment,
+                                            prover_data,
+                                        }
+                                    })
+                                })
+                                .collect::<BTreeMap<usize, _>>(),
+                        ))
+                    }
+                })
                 .collect();
 
         let verifying_key = StarkVerifyingKey {
@@ -183,7 +211,9 @@ where
                     (
                         table.clone(),
                         data.iter()
-                            .map(|(size, (commit, _))| (*size, commit.clone()))
+                            .map(|(size, table_proving_key)| {
+                                (*size, table_proving_key.commitment.clone())
+                            })
                             .collect(),
                     )
                 })
@@ -204,33 +234,9 @@ where
             .with_witgen_callback(witgen_callback)
             .with_phase_0_witness(witness);
 
-        // #[cfg(debug_assertions)]
-        // let circuit = circuit.with_preprocessed(self.get_preprocessed_matrix());
-
-        // assert!(stage_0_publics.is_empty());
-
         let mut challenger = T::get_challenger();
 
         let proving_key = self.proving_key.as_ref();
-
-        // let stage_0 = witness
-        //     .iter()
-        //     .into_group_map_by(|(name, _)| name.split("::").next().unwrap())
-        //     .into_iter()
-        //     .map(|(name, values)| {
-        //         (
-        //             name.to_string(),
-        //             AirStage {
-        //                 trace: generate_matrix(
-        //                     values
-        //                         .into_iter()
-        //                         .map(|(name, values)| (name, values.as_ref())),
-        //                 ),
-        //                 public_values: vec![],
-        //             },
-        //         )
-        //     })
-        //     .collect();
 
         let proof = prove(proving_key, &circuit, witness, &mut challenger, &circuit);
 

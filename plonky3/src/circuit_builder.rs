@@ -191,9 +191,6 @@ where
 {
     /// The constraint system description
     constraint_system: &'a ConstraintSystem<T>,
-    /// The matrix of preprocessed values, used in debug mode to check the constraints before proving
-    #[cfg(debug_assertions)]
-    preprocessed: Option<RowMajorMatrix<Plonky3Field<T>>>,
 }
 
 /// Convert a witness for a stage
@@ -228,20 +225,7 @@ where
     Commitment<T>: Send,
 {
     pub(crate) fn new(constraint_system: &'a ConstraintSystem<T>) -> Self {
-        Self {
-            constraint_system,
-            #[cfg(debug_assertions)]
-            preprocessed: None,
-        }
-    }
-
-    #[cfg(debug_assertions)]
-    pub(crate) fn with_preprocessed(
-        mut self,
-        preprocessed_matrix: RowMajorMatrix<Plonky3Field<T>>,
-    ) -> Self {
-        self.preprocessed = Some(preprocessed_matrix);
-        self
+        Self { constraint_system }
     }
 
     /// Conversion to plonky3 expression
@@ -321,11 +305,6 @@ where
     }
 
     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<Plonky3Field<T>>> {
-        #[cfg(debug_assertions)]
-        {
-            self.preprocessed.clone()
-        }
-        #[cfg(not(debug_assertions))]
         unimplemented!()
     }
 }

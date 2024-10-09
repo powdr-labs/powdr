@@ -56,17 +56,17 @@ where
         })
         .collect::<BTreeMap<_, _>>();
 
-    let mut public_inputs: BTreeMap<String, Vec<&Vec<Plonky3Field<T>>>> = public_inputs
+    let mut public_inputs: BTreeMap<&String, Vec<&Vec<Plonky3Field<T>>>> = public_inputs
         .iter()
-        .map(|(name, values)| (name.clone(), values.iter().collect_vec()))
+        .map(|(name, values)| (name, values.iter().collect_vec()))
         .collect();
 
-    let inputs: BTreeMap<String, Table<_>> = program
+    let inputs: BTreeMap<&String, Table<_>> = program
         .split
         .iter()
         .map(|(name, (_, constraints))| {
             (
-                name.clone(),
+                name,
                 Table {
                     air: PowdrTable::new(constraints),
                     public_values_by_stage: public_inputs.remove(name).unwrap(),
@@ -296,15 +296,14 @@ where
         .map_err(VerificationError::InvalidOpeningArgument)?;
 
     // Verify the constraint evaluations.
-    for (table, trace_domain, quotient_chunks_domains, opened_values, public_values_by_stage) in izip!(
-        inputs.values(),
+    for (table, trace_domain, quotient_chunks_domains, opened_values) in izip!(
+        inputs.into_values(),
         trace_domains,
         quotient_domains,
         opened_values.values(),
-        public_inputs.into_values(),
     ) {
         // Verify the shape of the opening arguments matches the expected values.
-        verify_opening_shape(table, opened_values)?;
+        verify_opening_shape(&table, opened_values)?;
         // Verify the constraint evaluation.
         let zps = quotient_chunks_domains
             .iter()
@@ -366,7 +365,7 @@ where
             challenges: &challenges,
             preprocessed,
             traces_by_stage,
-            public_values_by_stage,
+            public_values_by_stage: table.public_values_by_stage,
             is_first_row: sels.is_first_row,
             is_last_row: sels.is_last_row,
             is_transition: sels.is_transition,
