@@ -54,7 +54,7 @@ const FRI_PROOF_OF_WORK_BITS: usize = 16;
 const RNG_SEED: u64 = 42;
 
 lazy_static! {
-    static ref ROUNDS: (usize, usize) = poseidon2_round_numbers_128::<Goldilocks>(WIDTH, D);
+    static ref ROUNDS: (usize, usize) = poseidon2_round_numbers_128::<BabyBear>(WIDTH, D);
     static ref ROUNDS_F: usize = ROUNDS.0;
     static ref ROUNDS_P: usize = ROUNDS.1;
     static ref PERM_BB: Perm = Perm::new(
