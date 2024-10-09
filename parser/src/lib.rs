@@ -550,4 +550,20 @@ namespace N(8);
         let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
         assert_eq!(expected.trim(), printed.trim());
     }
+
+    #[test]
+    fn simple_struct() {
+        let input = r#"
+    struct A {
+        x: int,
+        y: fe,
+    }"#;
+        let expected = r#"
+    struct A {
+        x: int,
+        y: fe,
+    }"#;
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
 }

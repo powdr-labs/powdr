@@ -189,6 +189,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 self.process_block_expression(statements, expr, src)
             }
             PExpression::FreeInput(_, _) => panic!(),
+            PExpression::StructExpression(_, _) => unimplemented!("Structs are not supported yet"),
         }
     }
 
