@@ -6,7 +6,7 @@ verifier is interested inputs and/or outputs to a public function.
 In the toy example below the prover can show that they know the square root of
 a public value that is published with the proof.
 
-You can also run this example directly in the To run the example in the [powdr
+You can also run this example directly in the [powdr
 repository](https://github.com/powdr-labs/powdr):
 
 ```bash
