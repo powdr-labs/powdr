@@ -5,12 +5,13 @@ use powdr_ast::{
     analyzed::{Analyzed, Expression, FunctionValueDefinition, PolynomialReference, Reference},
     parsed::{
         display::quote,
-        types::{ArrayType, FunctionType, Type, TypeScheme},
+        types::{ArrayType, FunctionType, TupleType, Type, TypeScheme},
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, FunctionCall, IfExpression,
-        IndexAccess, LambdaExpression, Number, StatementInsideBlock, UnaryOperation,
+        IndexAccess, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number,
+        Pattern, StatementInsideBlock, UnaryOperation,
     },
 };
-use powdr_number::{BigUint, FieldElement, LargeInt};
+use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
 
 pub struct CodeGenerator<'a, T> {
     analyzed: &'a Analyzed<T>,
@@ -87,7 +88,10 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
             ));
         };
 
-        let type_scheme = value.type_scheme.as_ref().unwrap();
+        let type_scheme = value
+            .type_scheme
+            .as_ref()
+            .ok_or_else(|| format!("Symbol does not have a type: {symbol}"))?;
 
         Ok(match (&value.e, type_scheme) {
             (Expression::LambdaExpression(_, expr), TypeScheme { vars, ty }) => {
@@ -182,7 +186,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                         .map_err(|_| "Large numbers for expr not yet implemented.".to_string())?;
                     format!("Expr::from({val}_u64)")
                 }
-                _ => unreachable!(),
+                _ => return Err(format!("Unexpected type for literal number: {type_}")),
             },
             Expression::FunctionCall(
                 _,
@@ -260,13 +264,13 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                         .join(", ")
                 )
             }
-            Expression::String(_, s) => quote(s),
+            Expression::String(_, s) => format!("{}.to_string()", quote(s)),
             Expression::Tuple(_, items) => format!(
                 "({})",
                 items
                     .iter()
-                    .map(|i| self.format_expr(i))
-                    .collect::<Result<Vec<_>, _>>()?
+                    .map(|i| Ok(format!("({}.clone())", self.format_expr(i)?)))
+                    .collect::<Result<Vec<_>, String>>()?
                     .join(", ")
             ),
             Expression::BlockExpression(_, BlockExpression { statements, expr }) => {
@@ -283,14 +287,55 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                         .unwrap_or_default()
                 )
             }
+            Expression::MatchExpression(_, MatchExpression { scrutinee, arms }) => {
+                // We cannot use rust match expressions directly.
+                // Instead, we compile to a sequence of `if let Some(...)` statements.
+
+                // TODO try to find a solution where we do not introduce a variable
+                // or at least make it unique.
+                let var_name = "scrutinee__";
+                format!(
+                    "{{\nlet {var_name} = ({}).clone();\n{}\n}}\n",
+                    self.format_expr(scrutinee)?,
+                    arms.iter()
+                        .map(|MatchArm { pattern, value }| {
+                            let (bound_vars, arm_test) = check_pattern(var_name, pattern)?;
+                            Ok(format!(
+                                "if let Some({bound_vars}) = ({arm_test}) {{\n{}\n}}",
+                                self.format_expr(value)?,
+                            ))
+                        })
+                        .chain(std::iter::once(Ok("{ panic!(\"No match\"); }".to_string())))
+                        .collect::<Result<Vec<_>, String>>()?
+                        .join(" else ")
+                )
+            }
             _ => return Err(format!("Implement {e}")),
         })
     }
 
     fn format_statement(&mut self, s: &StatementInsideBlock<Expression>) -> Result<String, String> {
-        Err(format!(
-            "Compiling statements inside blocks is not yet implemented: {s}"
-        ))
+        Ok(match s {
+            StatementInsideBlock::LetStatement(LetStatementInsideBlock { pattern, ty, value }) => {
+                let Some(value) = value else {
+                    return Err(format!(
+                        "Column creating 'let'-statements not yet supported: {s}"
+                    ));
+                };
+                let value = self.format_expr(value)?;
+                let var_name = "scrutinee__";
+                let ty = ty
+                    .as_ref()
+                    .map(|ty| format!(": {}", map_type(ty)))
+                    .unwrap_or_default();
+
+                let (vars, code) = check_pattern(var_name, pattern)?;
+                // TODO if we want to explicitly specify the type, we need to exchange the non-captured
+                // parts by `()`.
+                format!("let {vars} = (|{var_name}{ty}| {code})({value}).unwrap();",)
+            }
+            StatementInsideBlock::Expression(e) => format!("{};", self.format_expr(e)?),
+        })
     }
 
     /// Returns a string expression evaluating to the value of the symbol.
@@ -315,6 +360,90 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
     }
 }
 
+/// Used for patterns in match and let statements:
+/// `value_name` is an expression string that is to be matched against `pattern`.
+/// Returns a rust pattern string (tuple of bound variables, might be nested) and a code string
+/// that, when executed, returns an Option with the values for the bound variables if the pattern
+/// matched `value_name` and `None` otherwise.
+///
+/// So if `let (vars, code) = check_pattern("x", pattern)?;`, then the return value
+/// can be used like this: `if let Some({vars}) = ({code}) {{ .. }}`
+fn check_pattern(value_name: &str, pattern: &Pattern) -> Result<(String, String), String> {
+    Ok(match pattern {
+        Pattern::CatchAll(_) => ("()".to_string(), "Some(())".to_string()),
+        Pattern::Number(_, n) => (
+            "_".to_string(),
+            format!(
+                "({value_name}.clone() == {}).then_some(())",
+                format_signed_integer(n)
+            ),
+        ),
+        Pattern::String(_, s) => (
+            "_".to_string(),
+            format!("({value_name}.clone() == {}).then_some(())", quote(s)),
+        ),
+        Pattern::Tuple(_, items) => {
+            let mut vars = vec![];
+            let inner_code = items
+                .iter()
+                .enumerate()
+                .map(|(i, item)| {
+                    let (v, code) = check_pattern(&format!("{value_name}.{i}"), item)?;
+                    vars.push(v);
+                    Ok(format!("({code})?"))
+                })
+                .collect::<Result<Vec<_>, String>>()?
+                .join(", ");
+            (
+                format!("({})", vars.join(", ")),
+                format!("(|| Some(({inner_code})))()"),
+            )
+        }
+        Pattern::Array(_, items) => {
+            let mut vars = vec![];
+            let mut ellipsis_seen = false;
+            // This will be code to check the individual items in the array pattern.
+            let inner_code = items
+                .iter()
+                .enumerate()
+                .filter_map(|(i, item)| {
+                    if matches!(item, Pattern::Ellipsis(_)) {
+                        ellipsis_seen = true;
+                        return None;
+                    }
+                    // Compute an expression to access the item.
+                    Some(if ellipsis_seen {
+                        let i_rev = items.len() - i;
+                        (format!("{value_name}[{value_name}.len() - {i_rev}]"), item)
+                    } else {
+                        (format!("{value_name}[{i}]"), item)
+                    })
+                })
+                .map(|(access_name, item)| {
+                    let (v, code) = check_pattern(&access_name, item)?;
+                    vars.push(v);
+                    Ok(format!("({code})?"))
+                })
+                .collect::<Result<Vec<_>, String>>()?
+                .join(", ");
+            let length_check = if ellipsis_seen {
+                format!("{value_name}.len() >= {}", items.len() - 1)
+            } else {
+                format!("{value_name}.len() == {}", items.len())
+            };
+            (
+                format!("({})", vars.join(", ")),
+                format!("if {length_check} {{ (|| Some(({inner_code})))() }} else {{ None }}"),
+            )
+        }
+        Pattern::Variable(_, var) => (var.to_string(), format!("Some({value_name}.clone())")),
+        Pattern::Enum(..) => {
+            return Err(format!("Enums as patterns not yet implemented: {pattern}"));
+        }
+        Pattern::Ellipsis(_) => unreachable!(),
+    })
+}
+
 fn format_unsigned_integer(n: &BigUint) -> String {
     if let Ok(n) = u64::try_from(n) {
         format!("ibig::IBig::from({n}_u64)")
@@ -329,6 +458,17 @@ fn format_unsigned_integer(n: &BigUint) -> String {
     }
 }
 
+fn format_signed_integer(n: &BigInt) -> String {
+    if let Ok(n) = BigUint::try_from(n) {
+        format_unsigned_integer(&n)
+    } else {
+        format!(
+            "-{}",
+            format_unsigned_integer(&BigUint::try_from(-n).unwrap())
+        )
+    }
+}
+
 fn map_type(ty: &Type) -> String {
     match ty {
         Type::Bottom | Type::Bool => format!("{ty}"),
@@ -337,7 +477,7 @@ fn map_type(ty: &Type) -> String {
         Type::String => "String".to_string(),
         Type::Expr => "Expr".to_string(),
         Type::Array(ArrayType { base, length: _ }) => format!("Vec<{}>", map_type(base)),
-        Type::Tuple(_) => todo!(),
+        Type::Tuple(TupleType { items }) => format!("({})", items.iter().map(map_type).join(", ")),
         Type::Function(ft) => format!(
             "fn({}) -> {}",
             ft.params.iter().map(map_type).join(", "),
@@ -365,6 +505,14 @@ fn get_builtins<T: FieldElement>() -> &'static HashMap<String, String> {
             (
                 "std::check::panic",
                 "(s: &str) -> ! { panic!(\"{s}\"); }".to_string(),
+            ),
+            (
+                "std::convert::fe",
+                "<T: Into<FieldElement>>(n: T) -> FieldElement { n.into() }".to_string(),
+            ),
+            (
+                "std::convert::int",
+                "<T: Into<ibig::Ibig>>(n: T) -> ibig::IBig {{ n.into() }}".to_string(),
             ),
             (
                 "std::field::modulus",
