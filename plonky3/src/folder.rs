@@ -1,6 +1,6 @@
 use alloc::vec::Vec;
 
-use p3_air::{AirBuilder, AirBuilderWithPublicValues, PairBuilder};
+use p3_air::{AirBuilder, PairBuilder};
 use p3_field::AbstractField;
 use p3_matrix::dense::{RowMajorMatrix, RowMajorMatrixView};
 use p3_matrix::stack::VerticalPair;
@@ -69,16 +69,9 @@ impl<'a, SC: StarkGenericConfig> AirBuilder for ProverConstraintFolder<'a, SC> {
     }
 }
 
-impl<'a, SC: StarkGenericConfig> AirBuilderWithPublicValues for ProverConstraintFolder<'a, SC> {
-    type PublicVar = Val<SC>;
-
-    fn public_values(&self) -> &[Self::PublicVar] {
-        unreachable!("use MultistageAirBuilder::stage_public_values")
-    }
-}
-
 impl<'a, SC: StarkGenericConfig> MultistageAirBuilder for ProverConstraintFolder<'a, SC> {
     type Challenge = Val<SC>;
+    type PublicVar = Val<SC>;
 
     fn stage_trace(&self, stage: usize) -> <Self as AirBuilder>::M {
         self.traces_by_stage[stage].clone()
@@ -131,16 +124,9 @@ impl<'a, SC: StarkGenericConfig> AirBuilder for VerifierConstraintFolder<'a, SC>
     }
 }
 
-impl<'a, SC: StarkGenericConfig> AirBuilderWithPublicValues for VerifierConstraintFolder<'a, SC> {
-    type PublicVar = Val<SC>;
-
-    fn public_values(&self) -> &[Self::PublicVar] {
-        self.stage_public_values(0)
-    }
-}
-
 impl<'a, SC: StarkGenericConfig> MultistageAirBuilder for VerifierConstraintFolder<'a, SC> {
     type Challenge = Val<SC>;
+    type PublicVar = Val<SC>;
 
     fn stage_trace(&self, stage: usize) -> <Self as AirBuilder>::M {
         self.traces_by_stage[stage]

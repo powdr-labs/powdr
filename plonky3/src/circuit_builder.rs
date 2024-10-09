@@ -17,7 +17,7 @@ use crate::{
     params::{Commitment, FieldElementMap, Plonky3Field, ProverData},
     AirStage,
 };
-use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues, BaseAir, PairBuilder};
+use p3_air::{Air, AirBuilder, BaseAir, PairBuilder};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression,
@@ -36,8 +36,6 @@ type Witness<T> = Mutex<RefCell<Vec<(String, Vec<T>)>>>;
 /// A description of the constraint system.
 /// All of the data is derived from the analyzed PIL, but is materialized
 /// here for performance reasons.
-// TODO: remove clone
-#[derive(Debug, Clone)]
 pub struct ConstraintSystem<T> {
     // for each witness column, the stage and index of this column in this stage
     witness_columns: HashMap<PolyID, (usize, usize)>,
@@ -119,10 +117,10 @@ where
 {
     /// The split program
     pub split: BTreeMap<String, (Analyzed<T>, ConstraintSystem<T>)>,
-    /// Callback to augment the witness in the later stages
-    witgen_callback: Option<WitgenCallback<T>>,
     /// The values of the witness, in a [RefCell] as it gets mutated as we go through stages
     witness_so_far: Witness<T>,
+    /// Callback to augment the witness in the later stages
+    witgen_callback: Option<WitgenCallback<T>>,
 }
 
 impl<T: FieldElementMap> PowdrCircuit<T>
@@ -133,8 +131,11 @@ where
     pub(crate) fn new(analyzed: Analyzed<T>) -> Self {
         Self {
             split: powdr_backend_utils::split_pil(&analyzed)
-                .iter()
-                .map(|(name, analyzed)| (name.clone(), (analyzed.clone(), analyzed.into())))
+                .into_iter()
+                .map(|(name, analyzed)| {
+                    let constraint_system = (&analyzed).into();
+                    (name.clone(), (analyzed, constraint_system))
+                })
                 .collect(),
             witgen_callback: None,
             witness_so_far: Default::default(),
@@ -183,7 +184,6 @@ where
     }
 }
 
-#[derive(Debug)]
 pub(crate) struct PowdrTable<'a, T: FieldElementMap>
 where
     ProverData<T>: Send,
@@ -234,7 +234,7 @@ where
         e: &AlgebraicExpression<T>,
         traces_by_stage: &[AB::M],
         fixed: &AB::M,
-        publics: &BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>,
+        publics: &BTreeMap<&String, <AB as MultistageAirBuilder>::PublicVar>,
         challenges: &BTreeMap<u32, BTreeMap<u64, <AB as MultistageAirBuilder>::Challenge>>,
     ) -> AB::Expr {
         let res = match e {
@@ -309,11 +309,8 @@ where
     }
 }
 
-impl<
-        'a,
-        T: FieldElementMap,
-        AB: AirBuilderWithPublicValues<F = Plonky3Field<T>> + PairBuilder + MultistageAirBuilder,
-    > Air<AB> for PowdrTable<'a, T>
+impl<'a, T: FieldElementMap, AB: PairBuilder + MultistageAirBuilder<F = Plonky3Field<T>>> Air<AB>
+    for PowdrTable<'a, T>
 where
     ProverData<T>: Send,
     Commitment<T>: Send,
@@ -322,7 +319,9 @@ where
         let stage_count = <Self as MultiStageAir<AB>>::stage_count(self);
         let trace_by_stage: Vec<AB::M> = (0..stage_count).map(|i| builder.stage_trace(i)).collect();
         let fixed = builder.preprocessed();
-        let pi = builder.stage_public_values(0);
+        let pi = (0..stage_count)
+            .map(|i| builder.stage_public_values(i))
+            .collect_vec();
 
         // for each stage, the values of the challenges drawn at the end of that stage
         let challenges: BTreeMap<u32, BTreeMap<u64, _>> = self
@@ -338,7 +337,12 @@ where
                 (stage, ids.into_iter().zip(p3_challenges).collect())
             })
             .collect();
-        assert_eq!(self.constraint_system.publics.len(), pi.len());
+        assert_eq!(
+            self.constraint_system.publics.len(),
+            pi.iter()
+                .map(|stage_publics| stage_publics.len())
+                .sum::<usize>()
+        );
 
         let stage_0_local = trace_by_stage[0].row_slice(0);
 
@@ -347,9 +351,11 @@ where
             .constraint_system
             .publics
             .iter()
-            .zip(pi.to_vec())
-            .map(|((id, _, _, _), val)| (id, val))
-            .collect::<BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>>();
+            .into_group_map_by(|(.., stage)| stage)
+            .into_iter()
+            .flat_map(|(stage, publics)| publics.into_iter().zip_eq(pi[*stage as usize]))
+            .map(|((id, _, _, _), pi)| (id, *pi))
+            .collect::<BTreeMap<&String, <AB as MultistageAirBuilder>::PublicVar>>();
 
         // constrain public inputs using witness columns in stage 0
         let fixed_local = fixed.row_slice(0);
@@ -399,11 +405,8 @@ where
     }
 }
 
-impl<
-        'a,
-        T: FieldElementMap,
-        AB: AirBuilderWithPublicValues<F = Plonky3Field<T>> + PairBuilder + MultistageAirBuilder,
-    > MultiStageAir<AB> for PowdrTable<'a, T>
+impl<'a, T: FieldElementMap, AB: PairBuilder + MultistageAirBuilder<F = Plonky3Field<T>>>
+    MultiStageAir<AB> for PowdrTable<'a, T>
 where
     ProverData<T>: Send,
     Commitment<T>: Send,

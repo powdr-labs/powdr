@@ -16,7 +16,7 @@ use crate::circuit_builder::{PowdrCircuit, PowdrTable};
 use crate::params::{Challenge, Challenger, Commitment, Plonky3Field, ProverData};
 use crate::symbolic_builder::{get_log_quotient_degree, SymbolicAirBuilder};
 use crate::{
-    FieldElementMap, MultiStageAir, Proof, StarkVerifyingKey, TableOpenedValues,
+    FieldElementMap, MultiStageAir, Proof, StageOpenedValues, StarkVerifyingKey, TableOpenedValues,
     VerifierConstraintFolder,
 };
 use p3_uni_stark::{PcsError, StarkGenericConfig, Val};
@@ -61,7 +61,7 @@ where
         .map(|(name, values)| (name, values.iter().collect_vec()))
         .collect();
 
-    let inputs: BTreeMap<&String, Table<_>> = program
+    let tables: BTreeMap<&String, Table<_>> = program
         .split
         .iter()
         .map(|(name, (_, constraints))| {
@@ -77,7 +77,7 @@ where
 
     assert!(public_inputs.is_empty());
 
-    if proof.opened_values.len() != inputs.len() {
+    if proof.opened_values.len() != tables.len() {
         return Err(VerificationError::InvalidProofShape);
     }
 
@@ -101,8 +101,6 @@ where
         }
     }
 
-    // loop through stages observing the trace and issuing challenges
-
     // Observe the instances.
     for opened_values in opened_values.values() {
         challenger.observe(Val::<T::Config>::from_canonical_usize(
@@ -115,7 +113,7 @@ where
     // values. It's not clear if failing to include other instance data could enable a transcript
     // collision, since most such changes would completely change the set of satisfying witnesses.
 
-    let stage_count = inputs
+    let stage_count = tables
         .values()
         .map(|i| &i.air)
         .map(<_ as MultiStageAir<SymbolicAirBuilder<_>>>::stage_count)
@@ -124,7 +122,7 @@ where
 
     let challenge_count_by_stage: Vec<usize> = (0..stage_count)
         .map(|stage_id| {
-            inputs
+            tables
                 .values()
                 .map(|table| {
                     <_ as MultiStageAir<SymbolicAirBuilder<_>>>::stage_challenge_count(
@@ -136,11 +134,11 @@ where
         })
         .collect();
 
-    let challenges: Vec<Vec<Plonky3Field<T>>> = commitments
+    let challenges_by_stage = commitments
         .traces_by_stage
         .iter()
         .zip_eq((0..stage_count).map(|i| {
-            inputs
+            tables
                 .values()
                 .map(|table| table.public_values_by_stage[i as usize].clone())
                 .collect_vec()
@@ -172,7 +170,7 @@ where
         })
         .collect::<Vec<_>>();
 
-    let quotient_domains: Vec<Vec<_>> = inputs
+    let quotient_domains: Vec<Vec<_>> = tables
         .values()
         .zip_eq(proof.opened_values.values())
         .map(|(input, opened_values)| {
@@ -203,7 +201,7 @@ where
         })
         .collect::<Vec<_>>();
 
-    // for preprocessed commitments, we have one commitment per table, opened on the trace domain at zeta and zeta_next
+    // for preprocessed commitments, we have one commitment per table, opened on the trace domain at `zeta` and `zeta_next`
     let preprocessed_domains_points_and_opens: Vec<(_, Vec<(_, _)>)> = proof
         .opened_values
         .iter()
@@ -212,9 +210,9 @@ where
             let zeta_next = trace_domain.next_point(zeta).unwrap();
 
             opened_values
-                .preprocessed_local
+                .preprocessed
                 .iter()
-                .map(move |preprocessed_local| {
+                .map(move |StageOpenedValues { local, next }| {
                     (
                         // choose the correct preprocessed commitment based on the degree in the proof
                         // this could be optimized by putting the preproccessed commitments in a merkle tree
@@ -229,25 +227,19 @@ where
                             .clone(),
                         vec![(
                             *trace_domain,
-                            vec![
-                                (zeta, preprocessed_local.clone()),
-                                (zeta_next, opened_values.preprocessed_next.clone().unwrap()),
-                            ],
+                            vec![(zeta, local.clone()), (zeta_next, next.clone())],
                         )],
                     )
                 })
         })
         .collect();
 
-    // for trace commitments, we have one commitment per stage, opened on each trace domain at zeta and zeta_next
+    // for trace commitments, we have one commitment per stage, opened on each trace domain at `zeta` and `zeta_next`
     let trace_domains_points_and_opens_by_stage: Vec<(_, Vec<(_, _)>)> = izip!(
         proof.commitments.traces_by_stage.iter(),
         (0..stage_count as usize).map(|i| opened_values
             .values()
-            .map(|opened_values| (
-                &opened_values.traces_by_stage_local[i],
-                &opened_values.traces_by_stage_next[i]
-            ))
+            .map(|opened_values| &opened_values.traces_by_stage[i])
             .collect_vec()),
     )
     .map(|(commit, openings)| {
@@ -256,14 +248,11 @@ where
             trace_domains
                 .iter()
                 .zip_eq(openings)
-                .map(|(trace_domain, (opened_local, opened_next))| {
+                .map(|(trace_domain, StageOpenedValues { local, next })| {
                     let zeta_next = trace_domain.next_point(zeta).unwrap();
                     (
                         *trace_domain,
-                        vec![
-                            (zeta, opened_local.clone()),
-                            (zeta_next, opened_next.clone()),
-                        ],
+                        vec![(zeta, local.clone()), (zeta_next, next.clone())],
                     )
                 })
                 .collect_vec(),
@@ -271,7 +260,7 @@ where
     })
     .collect();
 
-    // for quotient commitments, we have a single commitment, opened for each quotient domain on many points
+    // for quotient commitments, we have a single commitment, opened on each quotient domain at many points
     let quotient_chunks_domain_point_and_opens: (_, Vec<(_, _)>) = (
         proof.commitments.quotient_chunks.clone(),
         quotient_domains
@@ -297,7 +286,7 @@ where
 
     // Verify the constraint evaluations.
     for (table, trace_domain, quotient_chunks_domains, opened_values) in izip!(
-        inputs.into_values(),
+        tables.into_values(),
         trace_domains,
         quotient_domains,
         opened_values.values(),
@@ -329,18 +318,18 @@ where
                 ch.iter()
                     .enumerate()
                     .map(|(e_i, &c)| zps[ch_i] * Challenge::<T>::monomial(e_i) * c)
-                    .sum::<Challenge<T>>()
+                    .sum()
             })
-            .sum::<Challenge<T>>();
+            .sum();
 
         let sels = trace_domain.selectors_at_point(zeta);
 
         let empty_vec = vec![];
 
-        let preprocessed = if opened_values.preprocessed_local.is_some() {
+        let preprocessed = if let Some(preprocessed) = opened_values.preprocessed.as_ref() {
             VerticalPair::new(
-                RowMajorMatrixView::new_row(opened_values.preprocessed_local.as_ref().unwrap()),
-                RowMajorMatrixView::new_row(opened_values.preprocessed_next.as_ref().unwrap()),
+                RowMajorMatrixView::new_row(&preprocessed.local),
+                RowMajorMatrixView::new_row(&preprocessed.next),
             )
         } else {
             VerticalPair::new(
@@ -350,19 +339,18 @@ where
         };
 
         let traces_by_stage = opened_values
-            .traces_by_stage_local
+            .traces_by_stage
             .iter()
-            .zip_eq(opened_values.traces_by_stage_next.iter())
-            .map(|(trace_local, trace_next)| {
+            .map(|trace| {
                 VerticalPair::new(
-                    RowMajorMatrixView::new_row(trace_local),
-                    RowMajorMatrixView::new_row(trace_next),
+                    RowMajorMatrixView::new_row(&trace.local),
+                    RowMajorMatrixView::new_row(&trace.next),
                 )
             })
             .collect::<Vec<VerticalPair<_, _>>>();
 
         let mut folder: VerifierConstraintFolder<'_, T::Config> = VerifierConstraintFolder {
-            challenges: &challenges,
+            challenges: &challenges_by_stage,
             preprocessed,
             traces_by_stage,
             public_values_by_stage: table.public_values_by_stage,
@@ -420,27 +408,19 @@ where
     let air_fixed_width =
         <_ as MultiStageAir<SymbolicAirBuilder<Val<T::Config>>>>::preprocessed_width(&table.air);
     let res = opened_values
-        .preprocessed_local
+        .preprocessed
         .as_ref()
-        .map(|p| p.len())
-        .unwrap_or_default()
-        == air_fixed_width
+        .map(|StageOpenedValues { local, next }| {
+            local.len() == air_fixed_width && next.len() == air_fixed_width
+        })
+        .unwrap_or(true)
         && opened_values
-            .preprocessed_next
-            .as_ref()
-            .map(|p| p.len())
-            .unwrap_or_default()
-            == air_fixed_width
-        && opened_values
-            .traces_by_stage_local
+            .traces_by_stage
             .iter()
             .zip_eq(&air_widths)
-            .all(|(stage, air_width)| stage.len() == *air_width)
-        && opened_values
-            .traces_by_stage_next
-            .iter()
-            .zip_eq(&air_widths)
-            .all(|(stage, air_width)| stage.len() == *air_width)
+            .all(|(StageOpenedValues { local, next }, air_width)| {
+                local.len() == *air_width && next.len() == *air_width
+            })
         && opened_values.quotient_chunks.len() == quotient_degree
         && opened_values
             .quotient_chunks

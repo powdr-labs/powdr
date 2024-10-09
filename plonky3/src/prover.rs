@@ -17,7 +17,7 @@ use tracing::{info_span, instrument};
 
 use crate::circuit_builder::{generate_matrix, PowdrCircuit, PowdrTable};
 use crate::params::{Challenge, Challenger, Pcs, Plonky3Field};
-use crate::proof::OpenedValues;
+use crate::proof::{OpenedValues, StageOpenedValues};
 use crate::symbolic_builder::{get_log_quotient_degree, SymbolicAirBuilder};
 use crate::traits::MultiStageAir;
 use crate::{
@@ -118,10 +118,6 @@ where
     }
 
     /// Opens the commitments to the preprocessed trace, the traces, and the quotient polynomial.
-    ///
-    /// # Panics
-    ///
-    /// Panics if .
     fn open(
         &self,
         state: &mut ProverState<T>,
@@ -191,7 +187,10 @@ where
                     proving_key.preprocessed.contains_key(name).then(|| {
                         let value = opened_values.next().unwrap();
                         assert_eq!(value.len(), 1);
-                        (value[0][0].clone(), value[0][1].clone())
+                        StageOpenedValues {
+                            local: value[0][0].clone(),
+                            next: value[0][1].clone(),
+                        }
                     })
                 })
                 .collect()
@@ -199,31 +198,21 @@ where
             vec![None; state.program.table_count()]
         };
 
-        // for each stage, for each table
-
-        // output for each table, for each stage
-
         // get values for the traces
-        let (traces_by_stage_local, traces_by_stage_next): (Vec<Vec<Vec<_>>>, Vec<Vec<Vec<_>>>) =
-            state
-                .processed_stages
-                .iter()
-                .fold(
-                    vec![(vec![], vec![]); state.program.table_count()],
-                    |mut traces_by_table, _| {
-                        let mut values = opened_values.next().unwrap();
-                        for ((local, next), v) in
-                            traces_by_table.iter_mut().zip_eq(values.iter_mut())
-                        {
-                            assert_eq!(v.len(), 2);
-                            next.push(v.pop().unwrap());
-                            local.push(v.pop().unwrap());
-                        }
-                        traces_by_table
-                    },
-                )
-                .into_iter()
-                .unzip();
+        let traces_by_table_by_stage: Vec<Vec<_>> = state.processed_stages.iter().fold(
+            vec![vec![]; state.program.table_count()],
+            |mut traces_by_table, _| {
+                let mut values = opened_values.next().unwrap();
+                for (values, v) in traces_by_table.iter_mut().zip_eq(values.iter_mut()) {
+                    assert_eq!(v.len(), 2);
+                    values.push(StageOpenedValues {
+                        local: v.pop().unwrap(),
+                        next: v.pop().unwrap(),
+                    });
+                }
+                traces_by_table
+            },
+        );
 
         // get values for the quotient
         let mut value = opened_values.next().unwrap().into_iter();
@@ -245,42 +234,22 @@ where
 
         assert!(opened_values.next().is_none());
 
-        let log_degrees: Vec<_> = state
-            .program
-            .tables
-            .values()
-            .map(|table| table.log_degree())
-            .collect();
-
         let opened_values = state
             .program
             .tables
-            .keys()
+            .iter()
             .zip_eq(preprocessed)
-            .zip_eq(
-                traces_by_stage_local
-                    .into_iter()
-                    .zip_eq(traces_by_stage_next),
-            )
+            .zip_eq(traces_by_table_by_stage)
             .zip_eq(quotient_chunks)
-            .zip_eq(log_degrees)
             .map(
-                |(
-                    (
-                        ((name, preprocessed), (traces_by_stage_local, traces_by_stage_next)),
-                        quotient_chunks,
-                    ),
-                    log_degree,
-                )| {
+                |((((name, table), preprocessed), traces_by_stage), quotient_chunks)| {
                     (
                         name.clone(),
                         TableOpenedValues {
-                            preprocessed_local: preprocessed.as_ref().map(|p| p.0.clone()),
-                            preprocessed_next: preprocessed.as_ref().map(|p| p.1.clone()),
-                            traces_by_stage_local,
-                            traces_by_stage_next,
+                            preprocessed,
+                            traces_by_stage,
                             quotient_chunks,
-                            log_degree,
+                            log_degree: table.log_degree(),
                         },
                     )
                 },
@@ -422,7 +391,7 @@ where
 pub fn prove<T: FieldElementMap, C>(
     proving_key: Option<&StarkProvingKey<T::Config>>,
     program: &PowdrCircuit<T>,
-    stage_0: &[(String, Vec<T>)],
+    stage_0_witness: &[(String, Vec<T>)],
     challenger: &mut Challenger<T>,
     next_stage_trace_callback: &C,
 ) -> Proof<T::Config>
@@ -435,7 +404,7 @@ where
         .split
         .iter()
         .map(|(name, (pil, constraint_system))| {
-            let columns = machine_witness_columns(stage_0, pil, name);
+            let columns = machine_witness_columns(stage_0_witness, pil, name);
             let degree = columns[0].1.len();
 
             (
@@ -457,7 +426,7 @@ where
                             .iter()
                             .filter(|&(_, _, _, stage)| (*stage == 0))
                             .map(|(name, _, row, _)| {
-                                stage_0
+                                stage_0_witness
                                     .iter()
                                     .find_map(|(n, v)| (n == name).then(|| v[*row]))
                                     .unwrap()
@@ -484,6 +453,7 @@ where
 
     let pcs = config.pcs();
 
+    // observe the parts of the proving key which correspond to the sizes of the tables we are proving
     if let Some(proving_key) = proving_key {
         for commitment in proving_key
             .preprocessed
@@ -494,7 +464,6 @@ where
         }
     };
 
-    // Observe the instances. TODO: should this come before or after the proving key?
     program.observe_instances(challenger);
 
     let mut state = ProverState::new(&program, pcs, challenger);
@@ -708,9 +677,9 @@ where
         // commit to the traces
         let (commitment, prover_data) =
             info_span!("commit to stage {stage} data").in_scope(|| self.pcs.commit(commit_inputs));
-
         self.challenger.observe(commitment.clone());
-        // observe the public inputs. Is this fine to do after the trace commitment?
+
+        // observe the public inputs
         for public_values in &public_values {
             self.challenger.observe_slice(public_values);
         }

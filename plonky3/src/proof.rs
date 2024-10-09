@@ -38,12 +38,16 @@ pub type OpenedValues<Challenge> = BTreeMap<String, TableOpenedValues<Challenge>
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TableOpenedValues<Challenge> {
-    pub(crate) preprocessed_local: Option<Vec<Challenge>>,
-    pub(crate) preprocessed_next: Option<Vec<Challenge>>,
-    pub(crate) traces_by_stage_local: Vec<Vec<Challenge>>,
-    pub(crate) traces_by_stage_next: Vec<Vec<Challenge>>,
+    pub(crate) preprocessed: Option<StageOpenedValues<Challenge>>,
+    pub(crate) traces_by_stage: Vec<StageOpenedValues<Challenge>>,
     pub(crate) quotient_chunks: Vec<Vec<Challenge>>,
     pub(crate) log_degree: usize,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct StageOpenedValues<Challenge> {
+    pub(crate) local: Vec<Challenge>,
+    pub(crate) next: Vec<Challenge>,
 }
 
 pub struct StarkProvingKey<SC: StarkGenericConfig> {

@@ -10,10 +10,10 @@ use std::{
 
 use itertools::Itertools;
 use powdr_ast::analyzed::Analyzed;
+use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
 use powdr_number::{DegreeType, FieldElement};
 use serde::{Deserialize, Serialize};
-use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
@@ -107,6 +107,10 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
                 machine_fixed_columns(&fixed, &pil)
                     .into_iter()
                     .map(|(size, fixed)| {
+                        let fixed = fixed
+                            .into_iter()
+                            .map(|(name, values)| (name, values.to_vec().into()))
+                            .collect();
                         let pil = set_size(pil.clone(), size as DegreeType);
                         // Set up readers for the setup and verification key
                         let mut setup_cursor = setup_bytes.as_ref().map(Cursor::new);
