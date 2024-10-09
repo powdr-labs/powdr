@@ -50,7 +50,7 @@ machine Binary(byte_binary: ByteBinary) with
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
-    std::check::assert(std::field::modulus() > 2**16, || "Binary8 requires a field that fits any 16-Bit value.");
+    assert(modulus() > 2**16, || "Binary8 requires a field that fits any 16-Bit value.");
 
     operation and<0> I1, I2, I3, I4 -> O1, O2;
     operation or<1> I1, I2, I3, I4 -> O1, O2;
