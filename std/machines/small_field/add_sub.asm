@@ -16,6 +16,8 @@ machine AddSub(byte2: Byte2) with
     operation sub<1> C_h, C_l, B_h, B_l -> A_h, A_l;
     operation gt<2> C_h, C_l, B_h, B_l -> carry32;
 
+    std::check::assert(std::field::modulus() >= 2**18, || "Field too small.");
+
     col witness operation_id;
 
     col fixed latch(i) { 1 };
