@@ -1139,8 +1139,6 @@ mod tests {
             .map_err(|s| s.to_string());
 
         if include_std {
-            assert_eq!(res.map_err(|e| e.message().to_string()), expected);
-        } else {
             assert_eq!(
                 res.map_err(|e| e.message().to_string()).map(|s| s
                     .chars()
@@ -1148,6 +1146,8 @@ mod tests {
                     .collect::<String>()),
                 expected
             );
+        } else {
+            assert_eq!(res.map_err(|e| e.message().to_string()), expected);
         }
     }
 
