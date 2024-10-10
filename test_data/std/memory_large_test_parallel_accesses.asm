@@ -1,5 +1,5 @@
 use std::machines::range::Byte2;
-use std::machines::memory::Memory;
+use std::machines::large_field::memory::Memory;
 
 machine Main with
     degree: 65536,

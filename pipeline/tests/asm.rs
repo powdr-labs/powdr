@@ -382,7 +382,7 @@ fn pass_range_constraints() {
 #[test]
 fn side_effects() {
     let f = "asm/side_effects.asm";
-    regular_test(f, Default::default());
+    regular_test_without_babybear(f, Default::default());
 }
 
 #[test]

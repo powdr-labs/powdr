@@ -1,5 +1,5 @@
 use std::machines::binary::ByteBinary;
-use std::machines::binary::Binary;
+use std::machines::large_field::binary::Binary;
 
 machine Main with degree: 262144 {
     reg pc[@pc];

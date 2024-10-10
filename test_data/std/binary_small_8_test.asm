@@ -1,5 +1,5 @@
 use std::machines::binary::ByteBinary;
-use std::machines::binary_bb::Binary8;
+use std::machines::small_field::binary::Binary8;
 
 machine Main {
     reg pc[@pc];

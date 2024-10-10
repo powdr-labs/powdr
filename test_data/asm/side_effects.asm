@@ -3,7 +3,7 @@
 // in any updates to the MemoryProxy witness, but it does have a side effect (adding an
 // entry to the memory machine). Because of this, processing the link should not be skipped.
 
-use std::machines::memory::Memory;
+use std::machines::large_field::memory::Memory;
 
 mod test_util;
 use test_util::FakeByte2 as Byte2;

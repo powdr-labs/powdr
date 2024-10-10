@@ -1,4 +1,4 @@
-use std::machines::memory::Memory;
+use std::machines::large_field::memory::Memory;
 
 mod test_util;
 use test_util::FakeByte2 as Byte2;

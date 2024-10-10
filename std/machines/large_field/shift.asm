@@ -1,6 +1,8 @@
 use std::utils::unchanged_until;
 use std::utils::cross_product;
 use std::convert::int;
+use std::field::modulus;
+use std::check::assert;
 
 // Shift for single bytes using an exhaustive table
 // TODO this way, we cannot prove anything that shifts by more than 31 bits.
@@ -40,6 +42,8 @@ machine Shift(byte_shift: ByteShift) with
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
+    assert(modulus() > 2**32, || "Shift requires a field that fits any 32-Bit value.");
+
     operation shl<0> A, B -> C;
 
     operation shr<1> A, B -> C;

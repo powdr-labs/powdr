@@ -3,7 +3,9 @@ use std::utils::unchanged_until;
 use std::utils::force_bool;
 use std::utils::sum;
 use std::math::ff;
+use std::field::modulus;
 use std::check::panic;
+use std::check::assert;
 use std::convert::int;
 use std::convert::fe;
 use std::convert::expr;
@@ -21,7 +23,7 @@ machine Arith(byte: Byte, byte2: Byte2) with
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
-    std::check::assert(std::field::modulus() >= 2**19, || "Field too small.");
+    assert(modulus() > 2**18, || "Arith equires a field that fits any 18-Bit value.");
 
     col witness is_division;
 

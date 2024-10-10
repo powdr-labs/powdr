@@ -1,5 +1,5 @@
 use std::machines::range::Byte2;
-use std::machines::memory::Memory;
+use std::machines::large_field::memory_with_bootloader_write::MemoryWithBootloaderWrite;
 
 machine Main with degree: 65536 {
     reg pc[@pc];
@@ -9,10 +9,11 @@ machine Main with degree: 65536 {
 
     col fixed STEP(i) { i };
     Byte2 byte2;
-    Memory memory(byte2);
+    MemoryWithBootloaderWrite memory(byte2);
 
     instr mload X -> Y link ~> Y = memory.mload(X, STEP);
     instr mstore X, Y -> link ~> memory.mstore(X, STEP, Y);
+    instr mstore_bootloader X, Y -> link ~> memory.mstore_bootloader(X, STEP, Y);
 
     instr assert_eq X, Y {
         X = Y
@@ -20,10 +21,16 @@ machine Main with degree: 65536 {
 
     function main {
 
+        // Initialize memory cells:
+        mstore_bootloader 100, 0;
+        mstore_bootloader 104, 0;
+        mstore_bootloader 200, 0;
+        mstore_bootloader 0xfffffffc, 0;
+
         // Store 4
         mstore 100, 4;
         
-        // Read uninitialized memory
+        // Read initial memory value
         A <== mload(104);
         assert_eq A, 0;
 
@@ -41,7 +48,7 @@ machine Main with degree: 65536 {
         A <== mload(100);
         assert_eq A, 8;
 
-        // Write to previously uninitialized memory cell
+        // Write to previously initialized memory cell
         mstore 104, 1234;
         A <== mload(104);
         assert_eq A, 1234;

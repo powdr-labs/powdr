@@ -1,5 +1,5 @@
-use std::machines::shift::ByteShift;
-use std::machines::shift::Shift;
+use std::machines::large_field::shift::ByteShift;
+use std::machines::large_field::shift::Shift;
 
 machine Main with degree: 65536 {
     reg pc[@pc];

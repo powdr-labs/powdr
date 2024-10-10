@@ -3,7 +3,9 @@ use std::utils::unchanged_until;
 use std::utils::force_bool;
 use std::utils::sum;
 use std::math::ff;
+use std::field::modulus;
 use std::check::panic;
+use std::check::assert;
 use std::convert::int;
 use std::convert::fe;
 use std::convert::expr;
@@ -20,6 +22,8 @@ machine Arith with
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
+    assert(modulus() > 2**48, || "Arith requires a field that fits any 48-Bit value.");
+
     Byte2 byte2;
     
     // The operation ID will be bit-decomposed to yield selEq[], controlling which equations are activated.
