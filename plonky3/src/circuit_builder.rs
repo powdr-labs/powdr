@@ -128,9 +128,9 @@ where
     ProverData<T>: Send,
     Commitment<T>: Send,
 {
-    pub(crate) fn new(analyzed: Analyzed<T>) -> Self {
+    pub(crate) fn new(split: BTreeMap<String, Analyzed<T>>) -> Self {
         Self {
-            split: powdr_backend_utils::split_pil(&analyzed)
+            split: split
                 .into_iter()
                 .map(|(name, analyzed)| {
                     let constraint_system = (&analyzed).into();
@@ -158,9 +158,9 @@ where
             .map(|(name, (_, table))| {
                 let mut res = vec![vec![]; table.stage_widths.len()];
 
-                for (name, poly_id, _, _) in &table.publics {
-                    let (stage, index) = table.witness_columns[poly_id];
-                    res[stage].push(witness.get(name).map(|column| column[index]));
+                for (name, poly_id, row, _) in &table.publics {
+                    let (stage, _) = table.witness_columns[poly_id];
+                    res[stage].push(witness.get(name).map(|column| column[*row]));
                 }
 
                 (name.clone(), res)

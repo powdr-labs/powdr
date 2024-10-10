@@ -1,6 +1,5 @@
 use std::{io, path::PathBuf, sync::Arc};
 
-use itertools::Itertools;
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
 use powdr_number::{BabyBearField, GoldilocksField, Mersenne31Field};
@@ -66,35 +65,8 @@ where
     fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
         assert_eq!(instances.len(), 1);
         let instances = &instances[0];
-        // the backend API currently uses a single array of public inputs
-        // plonky3 supports public inputs for each table, for each stage
-        let analyzed = self.analyzed();
-        let stage_count = analyzed.stage_count();
-        let publics = analyzed
-            .get_publics()
-            .iter()
-            .zip_eq(instances.iter())
-            .map(|((poly_name, _, _, stage), value)| {
-                let namespace = poly_name.split("::").next().unwrap();
-                (namespace, stage, value)
-            })
-            .into_group_map_by(|(namespace, _, _)| namespace.to_string())
-            .into_iter()
-            .map(|(namespace, inputs)| {
-                (
-                    namespace.to_string(),
-                    inputs.into_iter().fold(
-                        vec![vec![]; stage_count],
-                        |mut acc, (_, stage, value)| {
-                            acc[*stage as usize].push(*value);
-                            acc
-                        },
-                    ),
-                )
-            })
-            .collect();
 
-        Ok(self.verify(proof, publics)?)
+        Ok(self.verify(proof, instances)?)
     }
 
     fn prove(

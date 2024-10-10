@@ -206,8 +206,8 @@ where
                 for (values, v) in traces_by_table.iter_mut().zip_eq(values.iter_mut()) {
                     assert_eq!(v.len(), 2);
                     values.push(StageOpenedValues {
-                        local: v.pop().unwrap(),
                         next: v.pop().unwrap(),
+                        local: v.pop().unwrap(),
                     });
                 }
                 traces_by_table
@@ -321,13 +321,13 @@ where
 
     /// Compute the quotient domains and chunks for this table.
     /// * Arguments:
-    ///    * `index`: The index of the table in the program. This is used as the index for this table in the mmcs.
+    ///    * `table_index`: The index of the table in the program. This is used as the index for this table in the mmcs.
     ///    * `state`: The current prover state.
     ///    * `table_preprocessed_data`: The preprocessed data for this table, if it exists.
     ///    * `alpha`: The challenge value for the quotient polynomial.
     fn quotient_domains_and_chunks(
         &self,
-        index: usize,
+        table_index: usize,
         state: &ProverState<T>,
         table_preprocessed_data: Option<&TableProvingKeyCollection<T::Config>>,
         alpha: Challenge<T>,
@@ -339,7 +339,8 @@ where
         let preprocessed_on_quotient_domain = table_preprocessed_data.map(|preprocessed| {
             state.pcs.get_evaluations_on_domain(
                 &preprocessed[&(1 << self.log_degree())].prover_data,
-                index,
+                // the index is 0 because we committed to each preprocessed matrix alone, see setup
+                0,
                 quotient_domain,
             )
         });
@@ -350,7 +351,8 @@ where
             .map(|s| {
                 state
                     .pcs
-                    .get_evaluations_on_domain(&s.prover_data, index, quotient_domain)
+                    // the index is `table_index` because we committed to all table for a given stage together, and this is the `table_index`th table
+                    .get_evaluations_on_domain(&s.prover_data, table_index, quotient_domain)
             })
             .collect();
 
@@ -363,7 +365,7 @@ where
         let public_values_by_stage = state
             .processed_stages
             .iter()
-            .map(|stage| stage.public_values[index].clone())
+            .map(|stage| stage.public_values[table_index].clone())
             .collect();
 
         let quotient_values = quotient_values::<T::Config, _, _>(

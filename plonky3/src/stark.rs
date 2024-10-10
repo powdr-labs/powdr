@@ -1,5 +1,6 @@
 //! A plonky3 prover using FRI and Poseidon
 
+use itertools::Itertools;
 use p3_commit::Pcs;
 use p3_matrix::dense::RowMajorMatrix;
 use powdr_backend_utils::machine_fixed_columns;
@@ -32,6 +33,8 @@ where
 {
     /// The analyzed PIL
     analyzed: Arc<Analyzed<T>>,
+    /// The split analyzed PIL
+    split: BTreeMap<String, Analyzed<T>>,
     /// The value of the fixed columns
     fixed: Arc<Vec<(String, VariablySizedColumn<T>)>>,
     /// Proving key
@@ -62,6 +65,7 @@ where
         fixed: Arc<Vec<(String, VariablySizedColumn<T>)>>,
     ) -> Self {
         Self {
+            split: powdr_backend_utils::split_pil(&analyzed),
             analyzed,
             fixed,
             proving_key: None,
@@ -93,9 +97,8 @@ where
     Commitment<T>: Send,
 {
     pub fn setup(&mut self) {
-        let split = powdr_backend_utils::split_pil(&self.analyzed);
-
-        let preprocessed: BTreeMap<String, TableProvingKeyCollection<T::Config>> = split
+        let preprocessed: BTreeMap<String, TableProvingKeyCollection<T::Config>> = self
+            .split
             .iter()
             .filter_map(|(namespace, pil)| {
                 // if we have neither fixed columns nor publics, we don't need to commit to anything
@@ -187,7 +190,7 @@ where
         witness: &[(String, Vec<T>)],
         witgen_callback: WitgenCallback<T>,
     ) -> Result<Vec<u8>, String> {
-        let circuit = PowdrCircuit::new((*self.analyzed).clone())
+        let circuit = PowdrCircuit::new(self.split.clone())
             .with_witgen_callback(witgen_callback)
             .with_phase_0_witness(witness);
 
@@ -235,11 +238,7 @@ where
     }
 
     // verify the proof given the instances for each table, for each stage
-    pub fn verify(
-        &self,
-        proof: &[u8],
-        instances: BTreeMap<String, Vec<Vec<T>>>,
-    ) -> Result<(), String> {
+    pub fn verify(&self, proof: &[u8], instances: &[T]) -> Result<(), String> {
         let proof: Proof<_> =
             bincode::deserialize(proof).map_err(|e| format!("Failed to deserialize proof: {e}"))?;
 
@@ -247,12 +246,32 @@ where
 
         let verifying_key = self.verifying_key.as_ref();
 
+        let stage_count = self.analyzed.stage_count();
+
+        let mut instance_map: BTreeMap<String, Vec<Vec<T>>> = self
+            .split
+            .keys()
+            .map(|name| (name.clone(), vec![vec![]; stage_count]))
+            .collect();
+
+        self.analyzed
+            .get_publics()
+            .iter()
+            .zip_eq(instances.iter())
+            .map(|((poly_name, _, _, stage), value)| {
+                let namespace = poly_name.split("::").next().unwrap();
+                (namespace, stage, value)
+            })
+            .for_each(|(namespace, stage, value)| {
+                instance_map.get_mut(namespace).unwrap()[*stage as usize].push(*value);
+            });
+
         verify(
             verifying_key,
-            &PowdrCircuit::new((*self.analyzed).clone()),
+            &PowdrCircuit::new(self.split.clone()),
             &mut challenger,
             &proof,
-            instances,
+            instance_map,
         )
         .map_err(|e| format!("Failed to verify proof: {e:?}"))
     }
@@ -260,8 +279,6 @@ where
 
 #[cfg(test)]
 mod tests {
-
-    use std::{collections::BTreeMap, iter::once};
 
     use powdr_number::{BabyBearField, GoldilocksField, Mersenne31Field};
     use powdr_pipeline::Pipeline;
@@ -274,16 +291,14 @@ mod tests {
         run_test_publics(pil, &None);
     }
 
-    fn run_test_publics(pil: &str, malicious_publics: &Option<BTreeMap<&str, Vec<Vec<usize>>>>) {
+    fn run_test_publics(pil: &str, malicious_publics: &Option<Vec<usize>>) {
         run_test_publics_aux::<GoldilocksField>(pil, malicious_publics);
         run_test_publics_aux::<BabyBearField>(pil, malicious_publics);
         run_test_publics_aux::<Mersenne31Field>(pil, malicious_publics);
     }
 
-    fn run_test_publics_aux<F: FieldElementMap>(
-        pil: &str,
-        malicious_publics: &Option<BTreeMap<&str, Vec<Vec<usize>>>>,
-    ) where
+    fn run_test_publics_aux<F: FieldElementMap>(pil: &str, malicious_publics: &Option<Vec<usize>>)
+    where
         ProverData<F>: Send,
         Commitment<F>: Send,
     {
@@ -304,20 +319,10 @@ mod tests {
             prover
                 .verify(
                     &proof.unwrap(),
-                    publics
+                    &publics
                         .iter()
-                        .map(|(name, values_by_stage)| {
-                            (
-                                name.to_string(),
-                                values_by_stage
-                                    .iter()
-                                    .map(|values| {
-                                        values.iter().map(|value| F::from(*value as u32)).collect()
-                                    })
-                                    .collect(),
-                            )
-                        })
-                        .collect(),
+                        .map(|i| F::from(*i as u64))
+                        .collect::<Vec<_>>(),
                 )
                 .unwrap()
         }
@@ -357,7 +362,7 @@ mod tests {
 
             public outz = z(7);
         "#;
-        let malicious_publics = Some(once(("Add", vec![vec![0]])).collect());
+        let malicious_publics = Some(vec![0]);
         run_test_publics(content, &malicious_publics);
     }
 
@@ -376,6 +381,17 @@ mod tests {
             col witness y;
             col witness z;
             x + y = z;
+        "#;
+        run_test(content);
+    }
+
+    #[test]
+    fn next() {
+        let content = r#"
+        namespace Next(8);
+            col witness x;
+            col witness y;
+            x' + y = 0;
         "#;
         run_test(content);
     }
@@ -444,7 +460,7 @@ mod tests {
 
             public out = y(N - 1);
         "#;
-        let malicious_publics = Some(once(("Global", vec![vec![0]])).collect());
+        let malicious_publics = Some(vec![0]);
         run_test_publics(content, &malicious_publics);
     }
 

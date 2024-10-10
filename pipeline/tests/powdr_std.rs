@@ -7,7 +7,7 @@ use powdr_pipeline::{
     test_util::{
         evaluate_function, evaluate_integer_function, execute_test_file, gen_estark_proof,
         gen_halo2_proof, make_simple_prepared_pipeline, regular_test, std_analyzed, test_halo2,
-        test_pilcom, test_plonky3_with_backend_variant, BackendVariant,
+        test_pilcom, test_plonky3, BackendVariant,
     },
     Pipeline,
 };
@@ -47,7 +47,7 @@ fn poseidon_gl_memory_test() {
 #[ignore = "Too slow"]
 fn keccakf16_test() {
     let f = "std/keccakf16_test.asm";
-    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
+    test_plonky3::<BabyBearField>(f, vec![]);
 }
 
 #[test]
@@ -70,14 +70,14 @@ fn split_gl_test() {
 #[ignore = "Too slow"]
 fn split_bb_test() {
     let f = "std/split_bb_test.asm";
-    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
+    test_plonky3::<BabyBearField>(f, vec![]);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn add_sub16_test() {
     let f = "std/add_sub16_test.asm";
-    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
+    test_plonky3::<BabyBearField>(f, vec![]);
 }
 
 #[test]
@@ -207,14 +207,14 @@ fn binary_test() {
 #[ignore = "Too slow"]
 fn binary_bb_8_test() {
     let f = "std/binary_bb_test_8.asm";
-    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
+    test_plonky3::<BabyBearField>(f, vec![]);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn binary_bb_16_test() {
     let f = "std/binary_bb_test_16.asm";
-    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
+    test_plonky3::<BabyBearField>(f, vec![]);
 }
 
 #[test]
