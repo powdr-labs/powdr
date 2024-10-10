@@ -1,10 +1,75 @@
 use crate::code_gen::Register;
 
+use powdr_number::{BabyBearField, FieldElement, LargeInt};
+use powdr_riscv_executor::executor_16::poseidon_bb::poseidon_bb;
+
+use crate::continuations::BootloaderImpl;
+
 use crate::continuations::bootloader::{
     BOOTLOADER_INPUTS_PER_PAGE, BYTES_PER_WORD, DEFAULT_PC, MEMORY_HASH_START_INDEX,
     MERKLE_TREE_DEPTH, NUM_PAGES_INDEX, N_LEAVES_LOG, PAGE_INPUTS_OFFSET, PAGE_NUMBER_MASK,
     PAGE_SIZE_BYTES, PC_INDEX, REGISTER_NAMES, SHUTDOWN_START, WORDS_PER_HASH, WORDS_PER_PAGE,
 };
+
+pub fn bb_split_word(v: u32) -> (BabyBearField, BabyBearField) {
+    ((v & 0xffff).into(), (v >> 16).into())
+}
+
+pub fn bb_split_fe(v: &BabyBearField) -> [BabyBearField; 2] {
+    let v = v.to_integer().try_into_u32().unwrap();
+    [(v >> 16).into(), (v & 0xffff).into()]
+}
+
+impl BootloaderImpl for BabyBearField {
+    type Fe = BabyBearField;
+    const FE_PER_WORD: usize = 2;
+    type Page = [Self::Fe; 2 * WORDS_PER_PAGE];
+    type Hash = [Self::Fe; 8];
+
+    fn update_page(page: &mut Self::Page, idx: usize, word: u32) {
+        let (hi, lo) = bb_split_word(word);
+        // TODO: check proper endianess here!
+        page[idx] = hi;
+        page[idx + 1] = lo;
+    }
+
+    fn hash_page(page: &Self::Page) -> Self::Hash {
+        let mut hash = [0.into(); 8];
+        for chunk in page.chunks_exact(8) {
+            hash = Self::hash_two(&hash, chunk.try_into().unwrap());
+        }
+        hash
+    }
+
+    fn hash_two(a: &Self::Hash, b: &Self::Hash) -> Self::Hash {
+        let mut buffer = [0.into(); 16];
+        buffer[..8].copy_from_slice(a);
+        buffer[8..16].copy_from_slice(b);
+        poseidon_bb(&buffer)
+    }
+
+    fn zero_hash() -> Self::Hash {
+        [0.into(); 8]
+    }
+
+    fn zero_page() -> Self::Page {
+        [0.into(); 2 * WORDS_PER_PAGE]
+    }
+
+    fn iter_hash_as_fe(h: &Self::Hash) -> impl Iterator<Item = Self::Fe> {
+        h.iter().flat_map(|f| bb_split_fe(f).into_iter())
+    }
+
+    fn iter_page_as_fe(p: &Self::Page) -> impl Iterator<Item = Self::Fe> {
+        p.iter().copied()
+    }
+
+    fn iter_word_as_fe(v: u32) -> impl Iterator<Item = Self::Fe> {
+        let (hi, lo) = bb_split_word(v);
+        // TODO: check proper endianess here!
+        [hi, lo].into_iter()
+    }
+}
 
 /// split a u32 into high and low, returns a string with them separated by a comma.
 fn split_hi_lo_arg(v: usize) -> String {

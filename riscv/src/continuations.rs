@@ -16,6 +16,7 @@ mod bootloader_16;
 mod bootloader_32;
 mod memory_merkle_tree;
 
+pub use bootloader::BootloaderImpl;
 use bootloader::{default_input, PAGE_SIZE_BYTES_LOG, PC_INDEX, REGISTER_NAMES};
 use memory_merkle_tree::MerkleTree;
 
@@ -25,8 +26,6 @@ use crate::continuations::bootloader::{
 };
 
 use crate::code_gen::Register;
-
-pub use self::memory_merkle_tree::MerkleTypes;
 
 fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace<F>) -> HashMap<String, Vec<F>> {
     let mut reg_values: HashMap<&str, Vec<F>> = HashMap::with_capacity(trace.reg_map.len());
@@ -216,11 +215,11 @@ pub struct DryRunResult<F: FieldElement> {
 /// Runs the entire execution using the RISC-V executor. For each chunk, it collects:
 /// - The inputs to the bootloader, needed to restore the correct state.
 /// - The number of rows after which the prover should jump to the shutdown routine.
-pub fn rust_continuations_dry_run<M: MerkleTypes>(
-    pipeline: &mut Pipeline<M::Fe>,
+pub fn rust_continuations_dry_run<B: BootloaderImpl>(
+    pipeline: &mut Pipeline<B::Fe>,
     field: KnownField,
     profiler_opt: Option<ProfilerOptions>,
-) -> DryRunResult<M::Fe> {
+) -> DryRunResult<B::Fe> {
     // All inputs for all chunks.
     let mut bootloader_inputs_and_num_rows = vec![];
 
@@ -239,14 +238,14 @@ pub fn rust_continuations_dry_run<M: MerkleTypes>(
     // and the pages are loaded via the bootloader.
     let initial_memory = load_initial_memory(&program);
 
-    let mut merkle_tree = MerkleTree::<M>::new();
+    let mut merkle_tree = MerkleTree::<B>::new();
     merkle_tree.update(initial_memory.iter().map(|(k, v)| (*k, *v)));
 
     // TODO: commit to the merkle_tree root in the verifier.
 
     log::info!("Executing powdr-asm...");
     let (full_trace, memory_accesses) = {
-        let trace = powdr_riscv_executor::execute_ast::<M::Fe>(
+        let trace = powdr_riscv_executor::execute_ast::<B::Fe>(
             &program,
             initial_memory,
             pipeline.data_callback().unwrap(),
@@ -254,13 +253,13 @@ pub fn rust_continuations_dry_run<M: MerkleTypes>(
             // constraints, but the executor does the right thing (read zero if the memory
             // cell has never been accessed). We can't pass the accessed pages here, because
             // we only know them after the full trace has been generated.
-            &default_input::<M>(&[]),
+            &default_input::<B>(&[]),
             usize::MAX,
             powdr_riscv_executor::ExecMode::Trace,
             profiler_opt,
         )
         .0;
-        (transposed_trace::<M::Fe>(&trace), trace.mem_ops)
+        (transposed_trace::<B::Fe>(&trace), trace.mem_ops)
     };
 
     let full_trace_length = full_trace["main::pc"].len();
@@ -352,7 +351,7 @@ pub fn rust_continuations_dry_run<M: MerkleTypes>(
         log::info!("Simulating chunk execution...");
         let (chunk_trace, memory_snapshot_update, register_memory_snapshot) = {
             let (trace, memory_snapshot_update, register_memory_snapshot) =
-                powdr_riscv_executor::execute_ast::<M::Fe>(
+                powdr_riscv_executor::execute_ast::<B::Fe>(
                     &program,
                     MemoryState::new(),
                     pipeline.data_callback().unwrap(),
@@ -380,7 +379,7 @@ pub fn rust_continuations_dry_run<M: MerkleTypes>(
                 PAGE_INPUTS_OFFSET + BOOTLOADER_INPUTS_PER_PAGE * i + 1 + WORDS_PER_PAGE + 8;
             for (j, sibling) in proof.into_iter().enumerate() {
                 bootloader_inputs[proof_start_index + j * 8..proof_start_index + j * 8 + 8]
-                    .copy_from_slice(&M::iter_hash_as_fe(sibling).collect::<Vec<_>>());
+                    .copy_from_slice(&B::iter_hash_as_fe(sibling).collect::<Vec<_>>());
             }
 
             // Update one child of the Merkle tree
@@ -397,7 +396,7 @@ pub fn rust_continuations_dry_run<M: MerkleTypes>(
             for (j, sibling) in proof.into_iter().enumerate() {
                 assert_eq!(
                     &bootloader_inputs[proof_start_index + j * 8..proof_start_index + j * 8 + 8],
-                    M::iter_hash_as_fe(sibling).collect::<Vec<_>>()
+                    B::iter_hash_as_fe(sibling).collect::<Vec<_>>()
                 );
             }
 
@@ -405,7 +404,7 @@ pub fn rust_continuations_dry_run<M: MerkleTypes>(
             let updated_page_hash_index =
                 PAGE_INPUTS_OFFSET + BOOTLOADER_INPUTS_PER_PAGE * i + 1 + WORDS_PER_PAGE;
             bootloader_inputs[updated_page_hash_index..updated_page_hash_index + 8]
-                .copy_from_slice(&M::iter_hash_as_fe(page_hash).collect::<Vec<_>>());
+                .copy_from_slice(&B::iter_hash_as_fe(page_hash).collect::<Vec<_>>());
         }
 
         // Go over all registers except the PC
@@ -427,7 +426,7 @@ pub fn rust_continuations_dry_run<M: MerkleTypes>(
         // Replace the updated root hash
         let updated_root_hash_index = MEMORY_HASH_START_INDEX + 8;
         bootloader_inputs[updated_root_hash_index..updated_root_hash_index + 8]
-            .copy_from_slice(&M::iter_hash_as_fe(merkle_tree.root_hash()).collect::<Vec<_>>());
+            .copy_from_slice(&B::iter_hash_as_fe(merkle_tree.root_hash()).collect::<Vec<_>>());
 
         log::info!(
             "Initial memory root hash: {}",

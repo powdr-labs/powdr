@@ -1,149 +1,15 @@
 use std::collections::{BTreeMap, HashMap};
 
 use super::bootloader::{
-    BYTES_PER_WORD, N_LEAVES_LOG, WORDS_PER_PAGE as WORDS_PER_PAGE_BOOTLOADER,
+    BootloaderImpl, BYTES_PER_WORD, N_LEAVES_LOG, WORDS_PER_PAGE as WORDS_PER_PAGE_BOOTLOADER,
 };
-
-use powdr_number::{BabyBearField, FieldElement, GoldilocksField, LargeInt};
-use powdr_riscv_executor::executor_16::poseidon_bb::poseidon_bb;
-use powdr_riscv_executor::executor_32::poseidon_gl::poseidon_gl;
-
-pub trait MerkleTypes {
-    type Fe: FieldElement;
-    const FE_PER_WORD: usize;
-    type Page;
-    type Hash;
-    fn update_page(page: &mut Self::Page, idx: usize, word: u32);
-    fn hash_page(page: &Self::Page) -> Self::Hash;
-    fn hash_two(a: &Self::Hash, b: &Self::Hash) -> Self::Hash;
-    fn zero_hash() -> Self::Hash;
-    fn zero_page() -> Self::Page;
-    // iterate over a hash value as machine words (should be
-    // bootloader::WORDS_PER_HASH!), in their field element representation (FE_PER_WORD)
-    fn iter_hash_as_fe(h: &Self::Hash) -> impl Iterator<Item = Self::Fe>;
-    // iterate over the page words, in their field element representation
-    fn iter_page_as_fe(p: &Self::Page) -> impl Iterator<Item = Self::Fe>;
-    // iterate over a word value in its field element representation
-    fn iter_word_as_fe(w: u32) -> impl Iterator<Item = Self::Fe>;
-}
-
-pub fn gl_split_fe(v: &GoldilocksField) -> [GoldilocksField; 2] {
-    let v = v.to_integer().try_into_u64().unwrap();
-    [((v & 0xffffffff) as u32).into(), ((v >> 32) as u32).into()]
-}
-
-impl MerkleTypes for GoldilocksField {
-    type Fe = GoldilocksField;
-    const FE_PER_WORD: usize = 1;
-    type Page = [Self::Fe; WORDS_PER_PAGE];
-    type Hash = [Self::Fe; 4];
-
-    fn update_page(page: &mut Self::Page, idx: usize, word: u32) {
-        page[idx] = GoldilocksField::from(word);
-    }
-
-    fn hash_page(page: &Self::Page) -> Self::Hash {
-        let mut hash = [0.into(); 4];
-        for chunk in page.chunks_exact(4) {
-            hash = Self::hash_two(&hash, chunk.try_into().unwrap());
-        }
-        hash
-    }
-
-    fn hash_two(a: &Self::Hash, b: &Self::Hash) -> Self::Hash {
-        let mut buffer = [0.into(); 12];
-        buffer[..4].copy_from_slice(a);
-        buffer[4..8].copy_from_slice(b);
-        poseidon_gl(&buffer)
-    }
-
-    fn zero_hash() -> Self::Hash {
-        [0.into(); 4]
-    }
-
-    fn zero_page() -> Self::Page {
-        [0.into(); WORDS_PER_PAGE]
-    }
-
-    fn iter_hash_as_fe(h: &Self::Hash) -> impl Iterator<Item = Self::Fe> {
-        h.iter().flat_map(|f| gl_split_fe(f).into_iter())
-    }
-
-    fn iter_page_as_fe(p: &Self::Page) -> impl Iterator<Item = Self::Fe> {
-        p.iter().copied()
-    }
-
-    fn iter_word_as_fe(w: u32) -> impl Iterator<Item = Self::Fe> {
-        std::iter::once(w.into())
-    }
-}
-
-pub fn bb_split_word(v: u32) -> (BabyBearField, BabyBearField) {
-    ((v & 0xffff).into(), (v >> 16).into())
-}
-
-pub fn bb_split_fe(v: &BabyBearField) -> [BabyBearField; 2] {
-    let v = v.to_integer().try_into_u32().unwrap();
-    [(v >> 16).into(), (v & 0xffff).into()]
-}
-
-impl MerkleTypes for BabyBearField {
-    type Fe = BabyBearField;
-    const FE_PER_WORD: usize = 2;
-    type Page = [Self::Fe; 2 * WORDS_PER_PAGE];
-    type Hash = [Self::Fe; 8];
-
-    fn update_page(page: &mut Self::Page, idx: usize, word: u32) {
-        let (hi, lo) = bb_split_word(word);
-        // TODO: check proper endianess here!
-        page[idx] = hi;
-        page[idx + 1] = lo;
-    }
-
-    fn hash_page(page: &Self::Page) -> Self::Hash {
-        let mut hash = [0.into(); 8];
-        for chunk in page.chunks_exact(8) {
-            hash = Self::hash_two(&hash, chunk.try_into().unwrap());
-        }
-        hash
-    }
-
-    fn hash_two(a: &Self::Hash, b: &Self::Hash) -> Self::Hash {
-        let mut buffer = [0.into(); 16];
-        buffer[..8].copy_from_slice(a);
-        buffer[8..16].copy_from_slice(b);
-        poseidon_bb(&buffer)
-    }
-
-    fn zero_hash() -> Self::Hash {
-        [0.into(); 8]
-    }
-
-    fn zero_page() -> Self::Page {
-        [0.into(); 2 * WORDS_PER_PAGE]
-    }
-
-    fn iter_hash_as_fe(h: &Self::Hash) -> impl Iterator<Item = Self::Fe> {
-        h.iter().flat_map(|f| bb_split_fe(f).into_iter())
-    }
-
-    fn iter_page_as_fe(p: &Self::Page) -> impl Iterator<Item = Self::Fe> {
-        p.iter().copied()
-    }
-
-    fn iter_word_as_fe(v: u32) -> impl Iterator<Item = Self::Fe> {
-        let (hi, lo) = bb_split_word(v);
-        // TODO: check proper endianess here!
-        [hi, lo].into_iter()
-    }
-}
 
 const N_LEVELS_DEFAULT: usize = N_LEAVES_LOG + 1;
 const N_LEVELS: usize = N_LEVELS_DEFAULT;
 const WORDS_PER_PAGE: usize = WORDS_PER_PAGE_BOOTLOADER;
 
 /// A Merkle tree of memory pages.
-pub struct MerkleTree<M: MerkleTypes> {
+pub struct MerkleTree<B: BootloaderImpl> {
     /// Hashes of non-default nodes of the Merkle tree.
     ///
     /// The key is the tuple (level, index), where level is the tree level, and
@@ -156,16 +22,16 @@ pub struct MerkleTree<M: MerkleTypes> {
     /// updated whenever the data is updated.
     ///
     /// If a node is not present in the map, it is assumed to be the default.
-    hashes: HashMap<(usize, usize), M::Hash>,
+    hashes: HashMap<(usize, usize), B::Hash>,
     /// Memory pages, numbered sequentially.
-    data: HashMap<usize, M::Page>,
+    data: HashMap<usize, B::Page>,
 
     /// The default hash for each level of the tree, when all leaves below are
     /// zeroed.
-    default_hashes: [M::Hash; N_LEVELS],
+    default_hashes: [B::Hash; N_LEVELS],
 
     /// A zeroed page, used as a default value for missing pages.
-    zero_page: M::Page,
+    zero_page: B::Page,
 }
 
 /// Takes the ordered list of node indices in one level, and updates the list
@@ -179,14 +45,14 @@ fn level_up(ordered_indices: &mut Vec<usize>) {
     ordered_indices.dedup();
 }
 
-impl<M: MerkleTypes> MerkleTree<M> {
+impl<B: BootloaderImpl> MerkleTree<B> {
     /// Build a new Merkle tree starting from an all-zero memory.
     pub fn new() -> Self {
         Self {
             hashes: HashMap::new(),
             data: HashMap::new(),
             default_hashes: Self::default_hashes_per_level(),
-            zero_page: M::zero_page(),
+            zero_page: B::zero_page(),
         }
     }
 
@@ -243,13 +109,13 @@ impl<M: MerkleTypes> MerkleTree<M> {
         let page = &mut self
             .data
             .entry(page_index)
-            .or_insert_with(|| M::zero_page());
+            .or_insert_with(|| B::zero_page());
         for (index, value) in updates {
-            M::update_page(page, *index, *value);
+            B::update_page(page, *index, *value);
         }
     }
 
-    fn get_hash(&self, level: usize, index: usize) -> &M::Hash {
+    fn get_hash(&self, level: usize, index: usize) -> &B::Hash {
         assert!(level < N_LEVELS);
         assert!(index < (1 << level));
         self.hashes
@@ -268,12 +134,12 @@ impl<M: MerkleTypes> MerkleTree<M> {
     fn update_leaf_hash(&mut self, page_index: usize) {
         self.hashes.insert(
             (N_LEVELS - 1, page_index),
-            M::hash_page(&self.data[&page_index]),
+            B::hash_page(&self.data[&page_index]),
         );
     }
 
     fn update_inner_hash(&mut self, level: usize, index: usize) {
-        let new_hash = M::hash_two(
+        let new_hash = B::hash_two(
             self.get_hash(level + 1, index * 2),
             self.get_hash(level + 1, index * 2 + 1),
         );
@@ -281,12 +147,12 @@ impl<M: MerkleTypes> MerkleTree<M> {
     }
 
     /// Returns the root hash of the Merkle tree.
-    pub fn root_hash(&self) -> &M::Hash {
+    pub fn root_hash(&self) -> &B::Hash {
         self.get_hash(0, 0)
     }
 
     /// Returns the data and Merkle proof for a given page.
-    pub fn get(&self, page_index: usize) -> (&M::Page, &M::Hash, Vec<&M::Hash>) {
+    pub fn get(&self, page_index: usize) -> (&B::Page, &B::Hash, Vec<&B::Hash>) {
         let mut proof = vec![];
         for (level, index) in self.iter_path(page_index).take(N_LEVELS - 1) {
             let sibling_index = index ^ 1;
@@ -309,12 +175,12 @@ impl<M: MerkleTypes> MerkleTree<M> {
         })
     }
 
-    fn default_hashes_per_level() -> [M::Hash; N_LEVELS] {
+    fn default_hashes_per_level() -> [B::Hash; N_LEVELS] {
         assert!(usize::BITS >= N_LEVELS as u32);
-        let zero_page = M::zero_page();
+        let zero_page = B::zero_page();
 
-        let mut generator = std::iter::successors(Some(M::hash_page(&zero_page)), |hash| {
-            Some(M::hash_two(hash, hash))
+        let mut generator = std::iter::successors(Some(B::hash_page(&zero_page)), |hash| {
+            Some(B::hash_two(hash, hash))
         });
         let mut result = std::array::from_fn(|_| generator.next().unwrap());
         result.reverse();
@@ -323,7 +189,7 @@ impl<M: MerkleTypes> MerkleTree<M> {
     }
 }
 
-impl<M: MerkleTypes> Default for MerkleTree<M> {
+impl<B: BootloaderImpl> Default for MerkleTree<B> {
     fn default() -> Self {
         Self::new()
     }
@@ -335,7 +201,7 @@ mod test {
 
     // use super::*;
 
-    // fn hash_page<T: FieldElement>(page: &[u64; 8]) -> M::Hash {
+    // fn hash_page<T: FieldElement>(page: &[u64; 8]) -> B::Hash {
     //     // Convert to field elements
     //     let page: [T; 8] = page
     //         .iter()
@@ -349,7 +215,7 @@ mod test {
     //     hash_cap0(&hash, &page[4..].try_into().unwrap())
     // }
 
-    // fn root_hash<T: FieldElement>(pages: &[[u64; 8]; 4]) -> M::Hash {
+    // fn root_hash<T: FieldElement>(pages: &[[u64; 8]; 4]) -> B::Hash {
     //     let page_hashes = pages.iter().map(|page| hash_page(page)).collect::<Vec<_>>();
 
     //     let hash_1_0 = hash_cap0(&page_hashes[0], &page_hashes[1]);

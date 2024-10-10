@@ -9,7 +9,7 @@ use log::LevelFilter;
 
 use powdr_number::{BigUint, GoldilocksField, KnownField};
 use powdr_pipeline::Pipeline;
-use powdr_riscv::continuations::MerkleTypes;
+use powdr_riscv::continuations::BootloaderImpl;
 use powdr_riscv::{CompilerOptions, Runtime, RuntimeEnum};
 use powdr_riscv_executor::ProfilerOptions;
 
@@ -355,7 +355,7 @@ fn execute(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn execute_inner<M: MerkleTypes>(
+fn execute_inner<B: BootloaderImpl>(
     file_name: &Path,
     field: KnownField,
     inputs: Vec<String>,
@@ -370,19 +370,19 @@ fn execute_inner<M: MerkleTypes>(
         .map(|x| x.parse::<BigUint>().unwrap().into())
         .collect();
 
-    let mut pipeline = Pipeline::<M::Fe>::default()
+    let mut pipeline = Pipeline::<B::Fe>::default()
         .from_file(file_name.to_path_buf())
         .with_prover_inputs(inputs)
         .with_output(output_dir.into(), true);
 
-    let generate_witness = |mut pipeline: Pipeline<M::Fe>| -> Result<(), Vec<String>> {
+    let generate_witness = |mut pipeline: Pipeline<B::Fe>| -> Result<(), Vec<String>> {
         pipeline.compute_witness().unwrap();
         Ok(())
     };
 
     match (witness, continuations) {
         (false, true) => {
-            powdr_riscv::continuations::rust_continuations_dry_run::<M>(
+            powdr_riscv::continuations::rust_continuations_dry_run::<B>(
                 &mut pipeline,
                 field,
                 profiling,
@@ -390,7 +390,7 @@ fn execute_inner<M: MerkleTypes>(
         }
         (false, false) => {
             let program = pipeline.compute_asm_string().unwrap().clone();
-            let (trace, _mem, _reg_mem) = powdr_riscv_executor::execute::<M::Fe>(
+            let (trace, _mem, _reg_mem) = powdr_riscv_executor::execute::<B::Fe>(
                 &program.1,
                 powdr_riscv_executor::MemoryState::new(),
                 pipeline.data_callback().unwrap(),
@@ -401,7 +401,7 @@ fn execute_inner<M: MerkleTypes>(
             log::info!("Execution trace length: {}", trace.len);
         }
         (true, true) => {
-            let dry_run = powdr_riscv::continuations::rust_continuations_dry_run::<M>(
+            let dry_run = powdr_riscv::continuations::rust_continuations_dry_run::<B>(
                 &mut pipeline,
                 field,
                 profiling,
