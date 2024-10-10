@@ -15,14 +15,14 @@ use crate::RuntimeLibs;
 /// RISCV powdr assembly runtime.
 /// Determines submachines, instructions and syscalls available to the main machine.
 #[derive(Clone)]
-pub struct Runtime64 {
+pub struct Runtime {
     submachines: BTreeMap<String, SubMachine>,
     syscalls: BTreeMap<Syscall, SyscallImpl>,
 }
 
-impl Runtime64 {
+impl Runtime {
     pub fn new(libs: RuntimeLibs, continuations: bool) -> Self {
-        let mut runtime = Runtime64::base();
+        let mut runtime = Runtime::base();
         if libs.poseidon {
             runtime = runtime.with_poseidon(continuations);
         }
@@ -36,7 +36,7 @@ impl Runtime64 {
     }
 
     pub fn base() -> Self {
-        let mut r = Runtime64 {
+        let mut r = Runtime {
             submachines: Default::default(),
             syscalls: Default::default(),
         };

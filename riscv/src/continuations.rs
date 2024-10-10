@@ -12,7 +12,6 @@ use powdr_pipeline::Pipeline;
 use powdr_riscv_executor::{get_main_machine, ExecutionTrace, MemoryState, ProfilerOptions};
 
 pub mod bootloader;
-mod bootloader64;
 mod memory_merkle_tree;
 
 use bootloader::split_fe;

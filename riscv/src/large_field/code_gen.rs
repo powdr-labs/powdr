@@ -6,19 +6,20 @@ use powdr_isa_utils::{escape_label, quote};
 use powdr_number::KnownField;
 
 use crate::continuations::bootloader::{bootloader_and_shutdown_routine, bootloader_preamble};
-use crate::runtime64::Runtime64;
 
 use crate::code_gen::{
     InstructionArgs, MemEntry, Register, RiscVProgram, SourceFileInfo, Statement,
 };
 use crate::CompilerOptions;
 
+use crate::large_field::runtime::Runtime;
+
 /// Translates a RISC-V program to POWDR ASM
 /// with constraints that work for a field >= the Goldilocks modulus.
 ///
 /// Will call each of the methods in the `RiscVProgram` just once.
 pub fn translate_program(program: impl RiscVProgram, options: CompilerOptions) -> String {
-    let runtime = Runtime64::new(options.libs, options.continuations);
+    let runtime = Runtime::new(options.libs, options.continuations);
     // Do this in a separate function to avoid most of the code being generic on F.
     let (initial_mem, instructions) = translate_program_impl(
         program,
@@ -38,7 +39,7 @@ pub fn translate_program(program: impl RiscVProgram, options: CompilerOptions) -
 fn translate_program_impl(
     mut program: impl RiscVProgram,
     field: KnownField,
-    runtime: &Runtime64,
+    runtime: &Runtime,
     continuations: bool,
 ) -> (Vec<String>, Vec<String>) {
     let mut initial_mem = Vec::new();
@@ -187,7 +188,7 @@ fn translate_program_impl(
 }
 
 fn riscv_machine(
-    runtime: &Runtime64,
+    runtime: &Runtime,
     preamble: &str,
     initial_memory: Vec<String>,
     program: Vec<String>,
@@ -226,7 +227,7 @@ let initial_memory: (fe, fe)[] = [
     )
 }
 
-fn preamble(field: KnownField, runtime: &Runtime64, with_bootloader: bool) -> String {
+fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> String {
     let bootloader_preamble_if_included = if with_bootloader {
         bootloader_preamble(field.clone())
     } else {
@@ -545,7 +546,7 @@ fn preamble(field: KnownField, runtime: &Runtime64, with_bootloader: bool) -> St
 "# + mul_instruction
 }
 
-fn mul_instruction(field: KnownField, runtime: &Runtime64) -> &'static str {
+fn mul_instruction(field: KnownField, runtime: &Runtime) -> &'static str {
     match field {
         KnownField::Bn254Field => {
             // The BN254 field can fit any 64-bit number, so we can naively de-compose

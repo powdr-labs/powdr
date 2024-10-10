@@ -16,7 +16,7 @@ pub const PAGE_SIZE_BYTES_LOG: usize = 11;
 /// 32-Bit architecture -> 4 bytes per word
 pub const BYTES_PER_WORD: usize = 4;
 
-use crate::continuations::bootloader64;
+use crate::large_field;
 
 // Derived constants
 pub const WORDS_PER_PAGE: usize = (1 << (PAGE_SIZE_BYTES_LOG)) / BYTES_PER_WORD;
@@ -60,7 +60,7 @@ pub fn bootloader_specific_instruction_names(field: KnownField) -> [&'static str
     match field {
         KnownField::BabyBearField | KnownField::Mersenne31Field => todo!(),
         KnownField::GoldilocksField | KnownField::Bn254Field => {
-            bootloader64::BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES
+            large_field::bootloader::BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES
         }
     }
 }
@@ -68,7 +68,9 @@ pub fn bootloader_specific_instruction_names(field: KnownField) -> [&'static str
 pub fn bootloader_preamble(field: KnownField) -> String {
     match field {
         KnownField::BabyBearField | KnownField::Mersenne31Field => todo!(),
-        KnownField::GoldilocksField | KnownField::Bn254Field => bootloader64::bootloader_preamble(),
+        KnownField::GoldilocksField | KnownField::Bn254Field => {
+            large_field::bootloader::bootloader_preamble()
+        }
     }
 }
 
@@ -79,7 +81,7 @@ pub fn bootloader_and_shutdown_routine(
     match field {
         KnownField::BabyBearField | KnownField::Mersenne31Field => todo!(),
         KnownField::GoldilocksField | KnownField::Bn254Field => {
-            bootloader64::bootloader_and_shutdown_routine(submachine_initialization)
+            large_field::bootloader::bootloader_and_shutdown_routine(submachine_initialization)
         }
     }
 }

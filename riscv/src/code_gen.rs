@@ -5,7 +5,7 @@ use powdr_number::KnownField;
 
 use crate::CompilerOptions;
 
-use crate::code_gen64;
+use crate::large_field;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Register {
@@ -110,7 +110,7 @@ pub fn translate_program(program: impl RiscVProgram, options: CompilerOptions) -
     match options.field {
         KnownField::BabyBearField | KnownField::Mersenne31Field => todo!(),
         KnownField::GoldilocksField | KnownField::Bn254Field => {
-            code_gen64::translate_program(program, options)
+            large_field::code_gen::translate_program(program, options)
         }
     }
 }

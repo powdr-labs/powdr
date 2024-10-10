@@ -12,11 +12,10 @@ use powdr_number::KnownField;
 use std::fs;
 
 mod code_gen;
-mod code_gen64;
 pub mod continuations;
 pub mod elf;
+pub mod large_field;
 pub mod runtime;
-pub mod runtime64;
 
 static TARGET_STD: &str = "riscv32im-risc0-zkvm-elf";
 static TARGET_NO_STD: &str = "riscv32imac-unknown-none-elf";
