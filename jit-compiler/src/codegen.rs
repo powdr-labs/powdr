@@ -188,7 +188,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 vars.bounds()
                     .map(|(var, bounds)| {
                         format!(
-                            "{var}: Clone{}",
+                            "{var}: Clone + Send + Sync{}",
                             bounds.iter().map(|b| format!(" + {b}")).format("")
                         )
                     })
