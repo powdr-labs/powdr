@@ -14,7 +14,6 @@ use goblin::elf::{
 };
 use itertools::{Either, Itertools};
 use powdr_isa_utils::SingleDataValue;
-use powdr_number::FieldElement;
 use raki::{
     decode::Decode,
     instruction::{Extensions, Instruction as Ins, OpcodeKind as Op},
@@ -24,7 +23,7 @@ use raki::{
 use crate::{
     code_gen::{self, InstructionArgs, MemEntry, Register, RiscVProgram, Statement},
     elf::debug_info::SymbolTable,
-    Runtime,
+    CompilerOptions,
 };
 
 use self::debug_info::DebugInfo;
@@ -32,13 +31,9 @@ use self::debug_info::DebugInfo;
 mod debug_info;
 
 /// Generates a Powdr Assembly program from a RISC-V 32 executable ELF file.
-pub fn translate<F: FieldElement>(
-    file_name: &Path,
-    runtime: &Runtime,
-    with_bootloader: bool,
-) -> String {
+pub fn translate(file_name: &Path, options: CompilerOptions) -> String {
     let elf_program = load_elf(file_name);
-    code_gen::translate_program::<F>(elf_program, runtime, with_bootloader)
+    code_gen::translate_program(elf_program, options)
 }
 
 struct ElfProgram {
