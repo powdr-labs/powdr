@@ -180,7 +180,9 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
         let generics = if vars.is_empty() {
             String::new()
         } else {
-            // TODO support actual bounds
+            // TODO The bounds here will probably not compile because
+            // some of the built-in ones do not exist as rust traits.
+            // Also traits are not yet implemented in this compiler.
             format!(
                 "<{}>",
                 vars.bounds()
