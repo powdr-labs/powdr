@@ -194,7 +194,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 Expression::StructExpression(
                     src,
                     StructExpression {
-                        name: self.driver.resolve_decl(&name),
+                        name: self.process_reference(name),
                         fields: fields
                             .into_iter()
                             .map(|named_expr| NamedExpression {

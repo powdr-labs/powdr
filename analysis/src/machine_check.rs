@@ -14,7 +14,7 @@ use powdr_ast::{
         asm::{
             self, ASMModule, ASMProgram, AbsoluteSymbolPath, AssignmentRegister, FunctionStatement,
             Instruction, LinkDeclaration, MachineProperties, MachineStatement, ModuleStatement,
-            RegisterFlag, SymbolDefinition, TypeDeclaration,
+            RegisterFlag, SymbolDefinition,
         },
     },
 };

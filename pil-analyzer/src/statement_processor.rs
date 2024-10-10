@@ -225,9 +225,6 @@ where
                 self.expression_processor(&Default::default())
                     .process_expression(expr),
             )],
-            PilStatement::StructDeclaration(_, _) => {
-                unimplemented!("Structs are not supported yet.")
-            }
         }
     }
 
@@ -450,11 +447,9 @@ where
         let fields = struct_decl
             .fields
             .into_iter()
-            .map(|v| {
-                (
-                    v.0.to_string(),
-                    self.type_processor(&type_vars).process_type(v.1),
-                )
+            .map(|v| NamedType {
+                name: v.name.to_string(),
+                ty: self.type_processor(&type_vars).process_type(v.ty),
             })
             .collect();
         let struct_decl = StructDeclaration {
@@ -462,27 +457,6 @@ where
             type_vars: struct_decl.type_vars,
             fields,
         };
-
-        // let inner_items = struct_decl
-        //     .fields
-        //     .iter()
-        //     .map(|(field_name, ty)| {
-        //         (
-        //             self.driver
-        //                 .resolve_namespaced_decl(&[&name, &field_name])
-        //                 .relative_to(&Default::default())
-        //                 .to_string(),
-        //             FunctionValueDefinition::StructField(
-        //                 Arc::new(struct_decl.clone()),
-        //                 TraitFunction {
-        //                     name: field_name.clone(),
-        //                     ty: ty.clone(),
-        //                 },
-        //             ),
-        //         )
-        //     })
-        //     .collect();
-        // let field_items = self.process_inner_definitions(source, inner_items);
 
         iter::once(PILItem::Definition(
             symbol,

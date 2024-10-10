@@ -725,7 +725,7 @@ impl TypeChecker {
             Expression::StructExpression(sr, struct_expr) => {
                 let struct_decl = self
                     .struct_declarations
-                    .get(&struct_expr.name)
+                    .get(&struct_expr.name.to_string())
                     .cloned()
                     .ok_or_else(|| {
                         sr.with_error(format!(
@@ -737,8 +737,8 @@ impl TypeChecker {
                 for named_expr in struct_expr.fields.iter_mut() {
                     let expr_ty = struct_decl.type_of_field(&named_expr.name);
                     match expr_ty {
-                        Some(ty) => {
-                            self.expect_type(ty, named_expr.body.as_mut())?;
+                        Some(scheme) => {
+                            self.expect_type(&scheme.ty, named_expr.body.as_mut())?;
                         }
                         None => {
                             return Err(sr.with_error(format!(
@@ -749,7 +749,7 @@ impl TypeChecker {
                     }
                 }
 
-                match SymbolPath::from_str(&struct_expr.name) {
+                match SymbolPath::from_str(&struct_expr.name.to_string()) {
                     Ok(named_type) => Ok(Type::NamedType(named_type, None)),
                     Err(err) => Err(sr.with_error(err))?,
                 }?

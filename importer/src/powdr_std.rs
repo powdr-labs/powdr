@@ -6,7 +6,7 @@ use std::{
 use powdr_ast::parsed::{
     asm::{
         ASMModule, ASMProgram, Import, Module, ModuleStatement, Part, SymbolDefinition, SymbolPath,
-        SymbolValue, TypeDeclaration,
+        SymbolValue,
     },
     folder::Folder,
 };

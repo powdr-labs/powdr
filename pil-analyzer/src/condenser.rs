@@ -26,8 +26,8 @@ use powdr_ast::{
         types::{ArrayType, Type},
         visitor::{AllChildren, ExpressionVisitable},
         ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall, FunctionKind,
-        LambdaExpression, LetStatementInsideBlock, Number, Pattern, SourceReference,
-        TypedExpression, UnaryOperation,
+        LambdaExpression, LetStatementInsideBlock, NamedExpression, Number, Pattern,
+        SourceReference, StructExpression, TypedExpression, UnaryOperation,
     },
 };
 use powdr_number::{BigUint, FieldElement};
@@ -35,8 +35,8 @@ use powdr_parser_util::SourceRef;
 
 use crate::{
     evaluator::{
-        self, evaluate_function_call, Closure, Definitions, EnumValue, EvalError, SymbolLookup,
-        Value,
+        self, evaluate_function_call, Closure, Definitions, EnumValue, EvalError, StructValue,
+        SymbolLookup, Value,
     },
     statement_processor::Counters,
 };
@@ -1101,23 +1101,32 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
                 "Converting builtin functions to expressions not supported.".to_string(),
             ))
         }
-        Value::Struct(name, fields) => StructExpression {
-            name: name.to_string(),
-            fields: fields
-                .iter()
-                .map(|(name, value)| {
-                    let body = match try_value_to_expression(value) {
-                        Ok(expr) => expr,
-                        Err(e) => return Err(e),
-                    };
-                    Ok(NamedExpression {
-                        name: name.to_string(),
-                        body: Box::new(body),
+        Value::Struct(StructValue { name, fields }) => {
+            let struct_ref = Reference::Poly(PolynomialReference {
+                name: name.to_string(),
+                // We do not know the type args here.
+                type_args: None,
+            });
+
+            StructExpression {
+                name: struct_ref,
+                fields: fields
+                    .iter()
+                    .map(|(name, value)| {
+                        let body = match try_value_to_expression(value) {
+                            Ok(expr) => expr,
+                            Err(e) => return Err(e),
+                        };
+                        Ok(NamedExpression {
+                            name: name.to_string(),
+                            body: Box::new(body),
+                        })
                     })
-                })
-                .collect::<Result<Vec<_>, _>>()?,
+                    .collect::<Result<Vec<_>, _>>()?,
+            }
+            .into()
         }
-        .into(),
+
         Value::Expression(e) => try_algebraic_expression_to_expression(e)?,
     })
 }

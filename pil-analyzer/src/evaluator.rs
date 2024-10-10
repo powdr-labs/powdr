@@ -147,7 +147,7 @@ pub enum Value<'a, T> {
     Closure(Closure<'a, T>),
     TypeConstructor(TypeConstructorValue<'a>),
     Enum(EnumValue<'a, T>),
-    Struct(&'a str, Vec<(&'a str, Arc<Self>)>),
+    Struct(StructValue<'a, T>),
     BuiltinFunction(BuiltinFunction),
     Expression(AlgebraicExpression<T>),
 }
@@ -225,7 +225,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
             Value::Closure(c) => c.type_formatted(),
             Value::TypeConstructor(tc) => tc.type_formatted(),
             Value::Enum(enum_val) => enum_val.type_formatted(),
-            Value::Struct(name, _) => name.to_string(), // TODO GZ change this
+            Value::Struct(struct_val) => struct_val.type_formatted(),
             Value::BuiltinFunction(b) => format!("builtin_{b:?}"),
             Value::Expression(_) => "expr".to_string(),
         }
@@ -318,6 +318,32 @@ impl<'a, T: FieldElement> Value<'a, T> {
                     vars
                 })
             })
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct StructValue<'a, T> {
+    pub name: &'a str,
+    pub fields: Vec<(&'a str, Arc<Value<'a, T>>)>,
+}
+
+impl<'a, T: Display> StructValue<'a, T> {
+    pub fn type_formatted(&self) -> String {
+        self.name.to_string()
+    }
+}
+
+impl<'a, T: Display> Display for StructValue<'a, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.name)?;
+        if !self.fields.is_empty() {
+            write!(f, "{{")?;
+            for (name, value) in &self.fields {
+                write!(f, "{name}: {value}, ")?;
+            }
+            write!(f, "}}")?;
+        }
+        Ok(())
     }
 }
 
@@ -497,13 +523,7 @@ impl<'a, T: Display> Display for Value<'a, T> {
             Value::Closure(closure) => write!(f, "{closure}"),
             Value::TypeConstructor(tc) => write!(f, "{tc}"),
             Value::Enum(enum_value) => write!(f, "{enum_value}"),
-            Value::Struct(name, data) => {
-                write!(f, "{name} {{")?;
-                for (field, value) in data {
-                    write!(f, "{field}: {value}, ")?;
-                }
-                write!(f, "}}")
-            }
+            Value::Struct(struct_value) => write!(f, "{struct_value}"),
             Value::BuiltinFunction(b) => write!(f, "{b:?}"),
             Value::Expression(e) => write!(f, "{e}"),
         }
@@ -985,7 +1005,13 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             Expression::FreeInput(_, _) => Err(EvalError::Unsupported(
                 "Cannot evaluate free input.".to_string(),
             ))?,
-            Expression::StructExpression(_, StructExpression { name, fields }) => {
+            Expression::StructExpression(
+                _,
+                StructExpression {
+                    name: reference,
+                    fields,
+                },
+            ) => {
                 let mut exp_fields = Vec::new();
                 for NamedExpression { name, body } in fields.iter() {
                     self.expand(body)?;
@@ -997,8 +1023,18 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                     exp_fields.push((name.as_str(), value));
                 }
 
-                self.value_stack
-                    .push(Value::Struct(name, exp_fields).into());
+                let reference = match reference {
+                    Reference::Poly(poly) => poly.name.as_str(),
+                    _ => unreachable!(),
+                };
+
+                self.value_stack.push(
+                    Value::Struct(StructValue {
+                        name: &reference,
+                        fields: exp_fields,
+                    })
+                    .into(),
+                );
             }
         };
         Ok(())
