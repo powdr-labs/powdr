@@ -1030,7 +1030,7 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
 
                 self.value_stack.push(
                     Value::Struct(StructValue {
-                        name: &reference,
+                        name: reference,
                         fields: exp_fields,
                     })
                     .into(),
