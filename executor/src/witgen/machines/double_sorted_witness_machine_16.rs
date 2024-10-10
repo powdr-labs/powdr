@@ -25,11 +25,11 @@ const ALLOWED_WITNESSES: [&str; 11] = [
     "m_change",
     "m_is_write",
     "m_is_bootloader_write",
-    "m_tmp1",
-    "m_tmp2",
+    "m_high_limb_equal",
+    "m_diff",
 ];
 
-const DIFF_COLUMNS: [&str; 2] = ["m_tmp1", "m_tmp2"];
+const DIFF_COLUMNS: [&str; 2] = ["m_high_limb_equal", "m_diff"];
 const BOOTLOADER_WRITE_COLUMN: &str = "m_is_bootloader_write";
 
 // The operation ID is decomposed into m_is_write + 2 * m_is_bootloader_write
@@ -53,6 +53,15 @@ impl<T: FieldElement> From<Word32<T>> for u64 {
     }
 }
 
+impl<T: FieldElement> From<u64> for Word32<T> {
+    fn from(value: u64) -> Self {
+        assert!(value <= (1 << 28));
+        let high = (value >> 16) as u64;
+        let low = (value & 0xffff) as u64;
+        Word32(T::from(high), T::from(low))
+    }
+}
+
 fn split_column_name(name: &str) -> (&str, &str) {
     let mut limbs = name.split("::");
     let namespace = limbs.next().unwrap();
@@ -70,7 +79,7 @@ pub struct DoubleSortedWitnesses16<'a, T: FieldElement> {
     /// The key column has a position of usize::max
     //witness_positions: HashMap<String, usize>,
     /// (addr, step) -> (value1, value2)
-    trace: BTreeMap<(Word32<T>, T), Operation<T>>,
+    trace: BTreeMap<(Word32<T>, Word32<T>), Operation<T>>,
     data: BTreeMap<u64, u64>,
     is_initialized: BTreeMap<Word32<T>, bool>,
     namespace: String,
@@ -168,6 +177,10 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
             let (min, max) = lower_range_constraint.range();
 
             if min == T::zero() {
+                assert!(
+                    max == T::from((1 << 16) - 1),
+                    "Currently, only 16-Bit limbs are supported"
+                );
                 Some(max.to_degree() + 1)
             } else {
                 return None;
@@ -223,7 +236,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses16<'a, T> {
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         let mut addr: Vec<Word32<T>> = vec![];
-        let mut step = vec![];
+        let mut step: Vec<Word32<T>> = vec![];
         let mut value: Vec<Word32<T>> = vec![];
         let mut is_normal_write = vec![];
         let mut is_bootloader_write = vec![];
@@ -244,6 +257,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses16<'a, T> {
 
         for ((current_address, current_step), operation) in std::mem::take(&mut self.trace) {
             let address_int: u64 = current_address.into();
+            let step_int: u64 = current_step.into();
+
             if let Some(prev_address) = addr.last() {
                 let prev_address_int: u64 = (*prev_address).into();
                 assert!(
@@ -258,7 +273,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses16<'a, T> {
                 let current_diff = if current_address != *prev_address {
                     address_int - prev_address_int
                 } else {
-                    (current_step - *step.last().unwrap()).to_degree()
+                    let prev_step_int: u64 = (*step.last().unwrap()).into();
+                    step_int - prev_step_int
                 };
                 assert!(current_diff > 0);
             }
@@ -295,7 +311,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses16<'a, T> {
 
         while addr.len() < self.degree as usize {
             addr.push(*addr.last().unwrap());
-            step.push(*step.last().unwrap() + T::from(1));
+            step.push(Word32::from(u64::from(*step.last().unwrap()) + 1));
             value.push(*value.last().unwrap());
             is_normal_write.push(0.into());
             is_bootloader_write.push(0.into());
@@ -317,44 +333,35 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses16<'a, T> {
             .collect::<Vec<_>>();
         assert_eq!(change.len(), addr.len());
 
-        let diff_columns = if let Some(diff_columns_base) = self.diff_columns_base {
+        let diff_columns = if self.diff_columns_base.is_some() {
             let (diff_col1, diff_col2): (Vec<T>, Vec<T>) = change
                 .iter()
                 .enumerate()
                 .map(|(i, address_change)| {
-                    if address_change == &T::zero() {
-                        // We are comparing the time step. The diff columns should contain the
-                        // high and low limb of the difference - 1.
-                        // Note that i + 1 will never be out of bounds because m_change is constrained
-                        // to be 1 in the last row.
-                        let diff = (step[i + 1] - step[i]).to_degree();
-                        assert!(diff > 0);
-                        (
-                            T::from((diff - 1) / diff_columns_base),
-                            T::from((diff - 1) % diff_columns_base),
-                        )
+                    // The first value should store whether the high 16-Bit limbs are equal;
+                    // the second value should store the diff - 1 of the limb being compared
+
+                    let values = if address_change == &T::one() {
+                        &addr
                     } else {
-                        // We are comparing the address. The first value should store whether the high
-                        // 16-Bit limbs are equal; the second value should store the diff - 1 of the
-                        // limb being compared
+                        &step
+                    };
 
-                        // Get the current and next address. The next address is None for the last row.
-                        let current_addr = &addr[i];
-                        let next_addr = addr.get(i + 1);
+                    // Get the current and next address. The next address is None for the last row.
+                    let current = &values[i];
+                    let next = values.get(i + 1);
 
-                        next_addr
-                            .map(|next_addr| {
-                                if current_addr.0 == next_addr.0 {
-                                    assert!(current_addr.1 < next_addr.1);
-                                    (T::zero(), next_addr.1 - current_addr.1 - T::one())
-                                } else {
-                                    assert!(current_addr.0 < next_addr.0);
-                                    (T::one(), next_addr.0 - current_addr.0 - T::one())
-                                }
-                            })
-                            // On the last row, the diff value is unconstrained, choose (0, 0).
-                            .unwrap_or((T::zero(), T::zero()))
-                    }
+                    next.map(|next| {
+                        if current.0 == next.0 {
+                            assert!(current.1 < next.1);
+                            (T::one(), next.1 - current.1 - T::one())
+                        } else {
+                            assert!(current.0 < next.0);
+                            (T::zero(), next.0 - current.0 - T::one())
+                        }
+                    })
+                    // On the last row, the diff value is unconstrained, choose (0, 0).
+                    .unwrap_or((T::zero(), T::zero()))
                 })
                 .unzip();
             vec![
@@ -386,10 +393,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses16<'a, T> {
 
         let (step_high, step_low) = step
             .into_iter()
-            .map(|s| {
-                let s = s.to_degree();
-                (T::from(s >> 16), T::from(s & 0xffff))
-            })
+            .map(|v| (v.0, v.1))
             .unzip::<_, _, Vec<_>, Vec<_>>();
 
         let selector_columns = selectors
@@ -423,7 +427,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
     ) -> EvalResult<'a, T> {
         // We blindly assume the lookup is of the form
         // OP { operation_id, ADDR_high, ADDR_low, STEP, X_high, X_low } is
-        // <selector> { operation_id, m_addr_high, m_addr_low, m_step, m_value_high, m_value_low }
+        // <selector> { operation_id, m_addr_high, m_addr_low, m_step_high * 2**16 + m_step_low, m_value_high, m_value_low }
         // Where:
         // - operation_id == 0: Read
         // - operation_id == 1: Write
@@ -472,6 +476,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
         let step = args[3]
             .constant_value()
             .ok_or_else(|| format!("Step must be known but is: {}", args[3]))?;
+        let step_word = Word32::from(step.to_degree());
 
         let value1_expr = &args[4];
         let value2_expr = &args[5];
@@ -505,7 +510,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
             self.data.insert(addr_int, value_int);
             self.trace
                 .insert(
-                    (addr, step),
+                    (addr, step_word),
                     Operation {
                         is_normal_write,
                         is_bootloader_write,
@@ -536,7 +541,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
             assignments.combine(ass2);
             self.trace
                 .insert(
-                    (addr, step),
+                    (addr, step_word),
                     Operation {
                         is_normal_write,
                         is_bootloader_write,

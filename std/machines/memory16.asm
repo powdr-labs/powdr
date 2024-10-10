@@ -75,42 +75,32 @@ machine Memory16(bit12: Bit12, byte2: Byte2) with
     // These two helper columns have different semantics, depending on
     // whether we're comparing addresses or time steps.
     // In both cases, m_tmp2 needs to be of 16 Bits.
-    col witness m_tmp1, m_tmp2;
+    col witness m_high_limb_equal, m_diff;
     link => byte2.check(m_diff);
 
-    // When comparing time steps, a 28-Bit diff is sufficient assuming a maximum step
-    // of 2**28.
-    // The difference is computed on the field, which is larger than 2**28.
-    // We prove that m_step' - m_step > 0 by letting the prover provide a 28-Bit value
-    // such that claimed_diff + 1 == m_step' - m_step.
-    // Because all values are constrained to be 28-Bit, no overflow can occur.
-    let m_diff_upper = m_tmp1;
-    let m_diff_lower = m_tmp2;
-    link if (1 - m_change) => bit12.check(m_diff_upper);
-    let claimed_time_step_diff = m_diff_upper * 2**16 + m_diff_lower;
-    let actual_time_step_diff = m_step' - m_step;
-    (1 - m_change) * (claimed_time_step_diff + 1 - actual_time_step_diff) = 0;
+    // m_high_limb_equal is binary.
+    m_high_limb_equal * (m_high_limb_equal - 1) = 0;
 
-    // When comparing addresses, we let the prover indicate whether the upper or lower
-    // limb needs to be compared and then assert that the diff is positive.
-    let address_high_unequal = m_tmp1;
-    let m_diff = m_tmp2;
+    // Select the actual diff.
+    // In the last row we'll use a diff_high of 1, so that the prover can satisfy the constraints
+    // below by setting m_high_limb_equal = 0 & m_diff = 0.
+    // Note that `(m_change - LAST)` is the same as `m_change * (1 - LAST)` (but of lower degree),
+    // because m_change is constrained to equal 1 in the last row.
+    let diff_high = (m_change - LAST) * (m_addr_high' - m_addr_high)
+                    + (1 - m_change) * (m_step_high' - m_step_high)
+                    + LAST * 1;
+    let diff_low = m_change * (m_addr_low' - m_addr_low)
+                     + (1 - m_change) * (m_step_low' - m_step_low);
 
-    // address_high_unequal is binary.
-    m_change * address_high_unequal * (address_high_unequal - 1) = 0;
+    // On the last row, we're not doing any diff. We force m_high_limb_equal
+    // to be zero in the last row, in order to deactivate the next constraint.
+    LAST * m_high_limb_equal = 0;
 
-    // Whether to do any comparison.
-    // We want to compare whenever m_change == 1, but not in the last row.
-    // Because we constrained m_change to be 1 in the last row, this will just
-    // be equal to m_change, except that the last entry is 0.
-    // (`m_change * (1 - LAST)` would be the same, but of higher degree.) 
-    let do_comparison = m_change - LAST;
-
-    // If address_high_unequal is 0, the higher limbs should be equal.
-    do_comparison * (1 - address_high_unequal) * (m_addr_high' - m_addr_high) = 0;
+    // If m_high_limb_equal is 1, the higher limbs should be equal.
+    m_high_limb_equal * diff_high = 0;
 
     // Assert that m_diff stores the actual diff - 1.
-    let actual_addr_limb_diff = address_high_unequal * (m_addr_high' - m_addr_high)
-                                + (1 - address_high_unequal) * (m_addr_low' - m_addr_low);
-    do_comparison * (m_diff + 1 - actual_addr_limb_diff) = 0;
+    let actual_limb_diff = m_high_limb_equal * diff_low
+                           + (1 - m_high_limb_equal) * diff_high;
+    (m_diff + 1 - actual_limb_diff) = 0;
 }
