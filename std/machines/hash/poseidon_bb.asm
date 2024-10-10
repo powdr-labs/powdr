@@ -97,7 +97,14 @@ machine PoseidonBB(mem: Memory16, split_bb: SplitBB) with
     let do_mload;
     do_mload = used * sum(STATE_SIZE, |i| CLK[i]);
     let input_index = sum(STATE_SIZE, |i| expr(i) * CLK[i]);
-    link if do_mload ~> (word_high, word_low) = mem.mload(input_addr + 4 * input_index, time_step);
+
+    // split the input address into high and low limbs
+    let load_addr = input_addr + 4 * input_index;
+    let load_addr_low;
+    let load_addr_high;
+    link if do_mload ~> (load_addr_low, load_addr_high) = split_bb.split(load_addr);
+
+    link if do_mload ~> (word_high, word_low) = mem.mload(load_addr_high, load_addr_low, time_step);
 
     // Combine the low and high limbs and write it into `input`
     let current_input = array::sum(array::new(STATE_SIZE, |i| CLK[i] * input[i]));
@@ -107,10 +114,17 @@ machine PoseidonBB(mem: Memory16, split_bb: SplitBB) with
     // For output i, we write the two limbs of field element at address output_addr + 4 * i.
     let do_mstore = used * sum(OUTPUT_SIZE, |i| CLK[i + STATE_SIZE]);
     let output_index = sum(OUTPUT_SIZE, |i| expr(i) * CLK[i + STATE_SIZE]);
+
+    // split the output address into high and low limbs
+    let store_addr = output_addr + 4 * output_index;
+    let store_addr_low;
+    let store_addr_high;
+    link if do_mstore ~> (store_addr_low, store_addr_high) = split_bb.split(store_addr);
+
     // TODO: This translates to two additional permutations. But because they go to the same machine
     // as the mloads above *and* never happen at the same time, they could actually be combined with
     // the mload permutations. But there is currently no way to express this.
-    link if do_mstore ~> mem.mstore(output_addr + 4 * output_index, time_step + 1, word_high, word_low);
+    link if do_mstore ~> mem.mstore(store_addr_high, store_addr_low, time_step + 1, word_high, word_low);
 
     // Make sure that in row i + STATE_SIZE, word_low and word_high correspond to output i
     let current_output = array::sum(array::new(OUTPUT_SIZE, |i| CLK[i + STATE_SIZE] * output[i]));
