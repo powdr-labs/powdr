@@ -43,7 +43,6 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
     /// After a failure, `self` can still be used to request other symbols.
     /// The code can later be retrieved via `generated_code`.
     pub fn request_symbol(&mut self, name: &str, type_args: &[Type]) -> Result<String, String> {
-        println!("Requesting {name}");
         // For now, code generation is generic, only the reference uses the type args.
         // If that changes at some point, we need to store the type args in the symbol map as well.
         match self.symbols.get(name) {
@@ -230,7 +229,16 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                         .map_err(|_| "Large numbers for expr not yet implemented.".to_string())?;
                     format!("Expr::from({val}_u64)")
                 }
-                _ => return Err(format!("Unexpected type for literal number: {type_}")),
+                Type::TypeVar(tv) => {
+                    if let Ok(v) = u64::try_from(value) {
+                        format!("{tv}::from_u64({v}_u64)")
+                    } else {
+                        let v_bytes = value.to_le_bytes();
+                        let v = v_bytes.iter().map(|b| format!("{b}_u8")).format(", ");
+                        format!("{tv}::from_le_bytes({v})")
+                    }
+                }
+                _ => unreachable!(),
             },
             Expression::FunctionCall(
                 _,
@@ -262,6 +270,9 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     }
                     BinaryOperator::ShiftRight => {
                         format!("(({left}).clone() >> usize::try_from(({right}).clone()).unwrap())")
+                    }
+                    BinaryOperator::Add => {
+                        format!("Add::add(({left}).clone(), ({right}).clone())")
                     }
                     _ => format!("(({left}).clone() {op} ({right}).clone())"),
                 }

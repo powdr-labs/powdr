@@ -101,6 +101,21 @@ impl<Args, Ret> Callable<Args, Ret> {
     }
 }
 
+trait Add {
+    fn add(a: Self, b: Self) -> Self;
+}
+
+impl Add for ibig::IBig {
+    fn add(a: Self, b: Self) -> Self { a + b }
+}
+
+trait FromLiteral {
+    fn from_u64(x: u64) -> Self;
+}
+impl FromLiteral for ibig::IBig {
+    fn from_u64(x: u64) -> Self { ibig::IBig::from(x) }
+}
+
 "#;
 
 const CARGO_TOML: &str = r#"

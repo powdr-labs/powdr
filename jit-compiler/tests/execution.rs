@@ -302,7 +302,8 @@ fn generic() {
                     };
             let<T: Add + FromLiteral> sum: T[] -> T = |arr| fold(std::array::len(arr), |i| arr[i], 0, |acc, e| acc + e);
             let a: int[] = [1, 2, 3];
-            let q: col = |i| i + sum(a);
+            let b: fe[] = [4, 5, 6];
+            let q: col = |i| std::convert::fe(i + std::convert::int(sum(b)) + sum(a));
         ";
     let q = compile(input, "main::q");
 
