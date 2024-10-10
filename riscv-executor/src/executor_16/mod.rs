@@ -110,7 +110,7 @@ struct RegisterMemory<F: FieldElement> {
 }
 
 impl<F: FieldElement> RegisterMemory<F> {
-    // TODO: fix the bootloader to see how this looks
+    // TODO: this should be two FE per register
     pub fn for_bootloader(&self) -> HashMap<u32, F> {
         Default::default()
     }
