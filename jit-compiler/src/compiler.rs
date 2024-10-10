@@ -109,11 +109,19 @@ impl Add for ibig::IBig {
     fn add(a: Self, b: Self) -> Self { a + b }
 }
 
+impl Add for FieldElement {
+// TODO incorrect.
+    fn add(a: Self, b: Self) -> Self { FieldElement(a.0 + b.0) }
+}
+
 trait FromLiteral {
     fn from_u64(x: u64) -> Self;
 }
 impl FromLiteral for ibig::IBig {
     fn from_u64(x: u64) -> Self { ibig::IBig::from(x) }
+}
+impl FromLiteral for FieldElement {
+    fn from_u64(x: u64) -> Self { FieldElement::from(x) }
 }
 
 "#;

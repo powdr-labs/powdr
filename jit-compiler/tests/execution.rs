@@ -307,8 +307,8 @@ fn generic() {
         ";
     let q = compile(input, "main::q");
 
-    assert_eq!(q.call(0), 1);
-    assert_eq!(q.call(1), 2);
-    assert_eq!(q.call(2), 3);
-    assert_eq!(q.call(3), 1);
+    assert_eq!(q.call(0), 21);
+    assert_eq!(q.call(1), 22);
+    assert_eq!(q.call(2), 23);
+    assert_eq!(q.call(3), 24);
 }

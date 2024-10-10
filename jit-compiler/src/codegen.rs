@@ -188,7 +188,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 vars.bounds()
                     .map(|(var, bounds)| {
                         format!(
-                            "{var}: Clone + Send + Sync{}",
+                            "{var}: Clone + Send + Sync{} + 'static",
                             bounds.iter().map(|b| format!(" + {b}")).format("")
                         )
                     })
@@ -665,7 +665,7 @@ fn get_builtins<T: FieldElement>() -> &'static HashMap<String, String> {
             ),
             (
                 "std::convert::int",
-                "<T: Into<ibig::Ibig>>(n: T) -> ibig::IBig {{ n.into() }}".to_string(),
+                "<T: Into<ibig::IBig>>(n: T) -> ibig::IBig {{ n.into() }}".to_string(),
             ),
             (
                 "std::field::modulus",
