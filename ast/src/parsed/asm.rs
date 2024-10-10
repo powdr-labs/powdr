@@ -16,7 +16,7 @@ use crate::parsed::{BinaryOperation, BinaryOperator};
 
 use super::{
     types::TypeScheme, visitor::Children, EnumDeclaration, EnumVariant, Expression, PilStatement,
-    SourceReference, TraitDeclaration,
+    SourceReference, StructDeclaration, TraitDeclaration,
 };
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
@@ -82,12 +82,18 @@ pub enum SymbolValueRef<'a> {
     Module(ModuleRef<'a>),
     /// A generic symbol / function.
     Expression(&'a Option<Expression>, &'a Option<TypeScheme<Expression>>),
-    /// A type declaration (currently only enums)
-    TypeDeclaration(&'a EnumDeclaration<Expression>),
+    /// A type declaration (currently only enums or structs)
+    TypeDeclaration(TypeDeclaration<'a>),
     /// A type constructor of an enum.
     TypeConstructor(&'a EnumVariant<Expression>),
     /// A trait declaration
     TraitDeclaration(&'a TraitDeclaration<Expression>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display)]
+pub enum TypeDeclaration<'a> {
+    Enum(&'a EnumDeclaration<Expression>),
+    Struct(&'a StructDeclaration<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, From)]
