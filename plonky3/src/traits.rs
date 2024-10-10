@@ -1,7 +1,8 @@
-use p3_air::{Air, AirBuilder, AirBuilderWithPublicValues};
+use p3_air::{Air, AirBuilder};
 
-pub trait MultistageAirBuilder: AirBuilderWithPublicValues {
+pub trait MultistageAirBuilder: AirBuilder {
     type Challenge: Clone + Into<Self::Expr>;
+    type PublicVar: Into<Self::Expr> + Copy;
 
     /// Traces from each stage.
     fn stage_trace(&self, stage: usize) -> Self::M;
@@ -10,31 +11,19 @@ pub trait MultistageAirBuilder: AirBuilderWithPublicValues {
     fn stage_challenges(&self, stage: usize) -> &[Self::Challenge];
 
     /// Public values for each stage
-    fn stage_public_values(&self, stage: usize) -> &[Self::PublicVar] {
-        match stage {
-            0 => self.public_values(),
-            _ => unimplemented!(),
-        }
-    }
+    fn stage_public_values(&self, stage: usize) -> &[Self::PublicVar];
 }
 
 pub trait MultiStageAir<AB: AirBuilder>: Air<AB> {
+    fn stage_public_count(&self, stage: u32) -> usize;
+
     fn preprocessed_width(&self) -> usize;
 
-    fn stage_count(&self) -> usize {
-        1
-    }
+    fn stage_count(&self) -> usize;
 
     /// The number of trace columns in this stage
-    fn stage_trace_width(&self, stage: u32) -> usize {
-        match stage {
-            0 => self.width(),
-            _ => unimplemented!(),
-        }
-    }
+    fn stage_trace_width(&self, stage: u32) -> usize;
 
     /// The number of challenges produced at the end of each stage
-    fn stage_challenge_count(&self, _stage: u32) -> usize {
-        0
-    }
+    fn stage_challenge_count(&self, _stage: u32) -> usize;
 }

@@ -1,7 +1,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use p3_air::{AirBuilder, AirBuilderWithPublicValues, PairBuilder};
+use p3_air::{AirBuilder, PairBuilder};
 use p3_field::Field;
 use p3_matrix::dense::RowMajorMatrix;
 use p3_util::log2_ceil_usize;
@@ -173,16 +173,9 @@ impl<F: Field> AirBuilder for SymbolicAirBuilder<F> {
     }
 }
 
-impl<F: Field> AirBuilderWithPublicValues for SymbolicAirBuilder<F> {
-    type PublicVar = SymbolicVariable<F>;
-
-    fn public_values(&self) -> &[Self::PublicVar] {
-        self.stage_public_values(0)
-    }
-}
-
 impl<F: Field> MultistageAirBuilder for SymbolicAirBuilder<F> {
     type Challenge = Self::Var;
+    type PublicVar = SymbolicVariable<F>;
 
     fn stage_public_values(&self, stage: usize) -> &[Self::PublicVar] {
         &self.public_values_by_stage[stage]

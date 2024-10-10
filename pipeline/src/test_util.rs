@@ -287,15 +287,8 @@ pub fn gen_halo2_proof(pipeline: Pipeline<Bn254Field>, backend: BackendVariant) 
 pub fn gen_halo2_proof(_pipeline: Pipeline<Bn254Field>, _backend: BackendVariant) {}
 
 #[cfg(feature = "plonky3")]
-pub fn test_plonky3_with_backend_variant<T: FieldElement>(
-    file_name: &str,
-    inputs: Vec<T>,
-    backend: BackendVariant,
-) {
-    let backend = match backend {
-        BackendVariant::Monolithic => powdr_backend::BackendType::Plonky3,
-        BackendVariant::Composite => powdr_backend::BackendType::Plonky3Composite,
-    };
+pub fn test_plonky3<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
+    let backend = powdr_backend::BackendType::Plonky3;
     let mut pipeline = Pipeline::default()
         .with_tmp_output()
         .from_file(resolve_test_file(file_name))
@@ -332,7 +325,7 @@ pub fn test_plonky3_with_backend_variant<T: FieldElement>(
 }
 
 #[cfg(not(feature = "plonky3"))]
-pub fn test_plonky3_with_backend_variant<T: FieldElement>(_: &str, _: Vec<T>, _: BackendVariant) {}
+pub fn test_plonky3<T: FieldElement>(_: &str, _: Vec<T>) {}
 
 #[cfg(not(feature = "plonky3"))]
 pub fn gen_plonky3_proof<T: FieldElement>(_: &str, _: Vec<T>) {}
