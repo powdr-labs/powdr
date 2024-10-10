@@ -123,7 +123,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
 
                 Ok(match (&value.e, type_scheme) {
                     (Expression::LambdaExpression(_, expr), type_scheme) => {
-                                self.try_format_function(symbol, expr, type_scheme)?
+                        self.try_format_function(symbol, expr, type_scheme)?
                     }
                     _ => {
                         let type_scheme = value.type_scheme.as_ref().unwrap();
