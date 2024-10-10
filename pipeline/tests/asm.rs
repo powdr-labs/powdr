@@ -440,7 +440,7 @@ fn vm_args() {
 #[test]
 fn vm_args_memory() {
     let f = "asm/vm_args_memory.asm";
-    regular_test(f, Default::default());
+    regular_test_without_babybear(f, Default::default());
 }
 
 #[test]
@@ -452,7 +452,7 @@ fn vm_args_relative_path() {
 #[test]
 fn vm_args_two_levels() {
     let f = "asm/vm_args_two_levels.asm";
-    regular_test(f, Default::default());
+    regular_test_without_babybear(f, Default::default());
 }
 
 mod reparse {

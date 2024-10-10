@@ -31,3 +31,7 @@ RUST_LOG=info cargo run --example powdr_crate_usage
 ```rust
 {{#include ../../powdr-test/examples/hello_world.rs}}
 ```
+
+```rust
+{{#include ../../powdr-test/src/lib.rs}}
+```

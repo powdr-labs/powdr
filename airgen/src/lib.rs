@@ -186,7 +186,9 @@ fn utility_functions(asm_file: AnalysisASMFile) -> BTreeMap<AbsoluteSymbolPath, 
                     .1
                     .into_iter()
                     .filter(|s| match s {
-                        PilStatement::EnumDeclaration(..) | PilStatement::LetStatement(..) => true,
+                        PilStatement::EnumDeclaration(..)
+                        | PilStatement::StructDeclaration(..)
+                        | PilStatement::LetStatement(..) => true,
                         PilStatement::Include(..) => false,
                         PilStatement::Namespace(..) => false,
                         PilStatement::PolynomialDefinition(..) => false,

@@ -212,6 +212,9 @@ where
                 self.expression_processor(&Default::default())
                     .process_expression(expr),
             )],
+            PilStatement::StructDeclaration(_, _) => {
+                unimplemented!("Structs are not supported yet.")
+            }
         }
     }
 
