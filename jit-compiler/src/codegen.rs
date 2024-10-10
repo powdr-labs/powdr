@@ -157,6 +157,9 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
         ))
     }
 
+    /// Format the expression `e` into a Rust string. `var_height` is the number of variables
+    /// up to this point, i.e. variables with ID less than `var_height` inside a lambda
+    /// expression are captured variables.
     fn format_expr(&mut self, e: &Expression, var_height: usize) -> Result<String, String> {
         Ok(match e {
             Expression::Reference(_, Reference::LocalVar(_id, name)) => name.clone(),

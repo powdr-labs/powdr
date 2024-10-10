@@ -416,7 +416,9 @@ impl TypeChecker {
             }
             Expression::LambdaExpression(_, LambdaExpression { param_types, .. }) => {
                 for ty in param_types {
-                    // Here, the types do not have to be concrete.
+                    // Here, the types do not have to be concrete, for example if
+                    // we have a lambda expression inside a generic function, the
+                    // lambda expression's types stay generic.
                     self.update_local_type(ty, type_var_mapping);
                 }
             }
@@ -598,6 +600,7 @@ impl TypeChecker {
                     });
                 self.local_var_types.truncate(old_len);
                 let (param_types_inferred, body_type) = result?;
+                assert!(param_types.is_empty());
                 *param_types = param_types_inferred.clone();
                 Type::Function(FunctionType {
                     params: param_types_inferred,
