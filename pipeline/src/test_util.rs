@@ -325,7 +325,7 @@ pub fn test_plonky3<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
 }
 
 #[cfg(not(feature = "plonky3"))]
-pub fn test_plonky3_with_backend_variant<T: FieldElement>(_: &str, _: Vec<T>, _: BackendVariant) {}
+pub fn test_plonky3<T: FieldElement>(_: &str, _: Vec<T>) {}
 
 #[cfg(not(feature = "plonky3"))]
 pub fn gen_plonky3_proof<T: FieldElement>(_: &str, _: Vec<T>) {}

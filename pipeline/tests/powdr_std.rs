@@ -84,7 +84,7 @@ fn add_sub_small_test() {
 #[ignore = "Too slow"]
 fn arith_small_test() {
     let f = "std/arith_small_test.asm";
-    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
+    test_plonky3::<BabyBearField>(f, vec![]);
 }
 
 #[test]
@@ -130,7 +130,7 @@ fn memory_test_parallel_accesses() {
 #[ignore = "Too slow"]
 fn memory16_test() {
     let f = "std/memory16_test.asm";
-    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
+    test_plonky3::<BabyBearField>(f, vec![]);
 }
 
 #[test]
