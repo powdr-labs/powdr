@@ -48,7 +48,7 @@ type ValMmcs = MerkleTreeMmcs<
 >;
 
 type ChallengeMmcs = ExtensionMmcs<BabyBear, FriChallenge, ValMmcs>;
-type Dft = Radix2DitParallel;
+type Dft = Radix2DitParallel<BabyBear>;
 type MyPcs = TwoAdicFriPcs<BabyBear, Dft, ValMmcs, ChallengeMmcs>;
 
 const FRI_LOG_BLOWUP: usize = 1;
@@ -60,18 +60,27 @@ const RNG_SEED: u64 = 42;
 lazy_static! {
     static ref PERM_BB: Perm = Perm::new(
         ROUNDS_F,
-        rand_chacha::ChaCha8Rng::seed_from_u64(RNG_SEED)
-            .sample_iter(Standard)
-            .take(ROUNDS_F)
-            .collect::<Vec<[BabyBear; WIDTH]>>(),
+        poseidon2_external_constants(),
         Poseidon2ExternalMatrixGeneral,
         ROUNDS_P,
-        rand_chacha::ChaCha8Rng::seed_from_u64(RNG_SEED)
-            .sample_iter(Standard)
-            .take(ROUNDS_P)
-            .collect(),
+        poseidon2_internal_constants(),
         DiffusionMatrixBabyBear::default()
     );
+}
+
+fn poseidon2_external_constants() -> Vec<[BabyBear; WIDTH]> {
+    rand_chacha::ChaCha8Rng::seed_from_u64(RNG_SEED)
+        .sample_iter(Standard)
+        .take(ROUNDS_F)
+        .collect()
+}
+
+fn poseidon2_internal_constants() -> Vec<BabyBear> {
+    // Use a different seed here so numbers don't repeat.
+    rand_chacha::ChaCha8Rng::seed_from_u64(RNG_SEED + 1)
+        .sample_iter(Standard)
+        .take(ROUNDS_P)
+        .collect()
 }
 
 impl FieldElementMap for BabyBearField {
@@ -97,7 +106,7 @@ impl FieldElementMap for BabyBearField {
 
         let challenge_mmcs = ChallengeMmcs::new(val_mmcs.clone());
 
-        let dft = Dft {};
+        let dft = Dft::default();
 
         let fri_config = FriConfig {
             log_blowup: FRI_LOG_BLOWUP,
