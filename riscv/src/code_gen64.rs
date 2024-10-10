@@ -6,7 +6,6 @@ use powdr_isa_utils::{escape_label, quote};
 use powdr_number::KnownField;
 
 use crate::continuations::bootloader::{bootloader_and_shutdown_routine, bootloader_preamble};
-use crate::runtime::Runtime;
 use crate::runtime64::Runtime64;
 
 use crate::code_gen::{

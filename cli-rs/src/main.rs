@@ -254,7 +254,6 @@ fn run_command(command: Commands) {
             };
             call_with_field!(execute::<field>(
                 Path::new(&file),
-                field.as_known_field(),
                 split_inputs(&inputs),
                 Path::new(&output_directory),
                 continuations,
@@ -305,7 +304,6 @@ fn compile_riscv_elf(
 #[allow(clippy::too_many_arguments)]
 fn execute<F: FieldElement>(
     file_name: &Path,
-    field: KnownField,
     inputs: Vec<F>,
     output_dir: &Path,
     continuations: bool,
@@ -324,7 +322,7 @@ fn execute<F: FieldElement>(
 
     match (witness, continuations) {
         (false, true) => {
-            powdr_riscv::continuations::rust_continuations_dry_run(&mut pipeline, field, profiling);
+            powdr_riscv::continuations::rust_continuations_dry_run(&mut pipeline, profiling);
         }
         (false, false) => {
             let program = pipeline.compute_asm_string().unwrap().clone();
@@ -339,11 +337,8 @@ fn execute<F: FieldElement>(
             log::info!("Execution trace length: {}", trace.len);
         }
         (true, true) => {
-            let dry_run = powdr_riscv::continuations::rust_continuations_dry_run(
-                &mut pipeline,
-                field,
-                profiling,
-            );
+            let dry_run =
+                powdr_riscv::continuations::rust_continuations_dry_run(&mut pipeline, profiling);
             powdr_riscv::continuations::rust_continuations(pipeline, generate_witness, dry_run)?;
         }
         (true, false) => {

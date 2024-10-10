@@ -1,7 +1,6 @@
 use powdr_ast::parsed::asm::{FunctionStatement, MachineStatement, SymbolPath};
 
 use powdr_parser::ParserContext;
-use powdr_riscv_syscalls::Syscall;
 
 pub static EXTRA_REG_PREFIX: &str = "xtra";
 
@@ -70,18 +69,3 @@ impl SubMachine {
 /// Other registers should be saved/restored from memory, as LLVM doesn't know about their usage here.
 #[derive(Clone)]
 pub struct SyscallImpl(pub Vec<FunctionStatement>);
-
-pub trait Runtime {
-    fn has_submachine(&self, name: &str) -> bool;
-    fn has_syscall(&self, s: Syscall) -> bool;
-    fn with_poseidon_no_continuations(self) -> Self;
-    fn with_poseidon_for_continuations(self) -> Self;
-    fn with_arith(self) -> Self;
-    fn submachines_init(&self) -> Vec<String>;
-    fn submachines_import(&self) -> String;
-    fn submachines_declare(&self) -> String;
-    fn submachines_instructions(&self) -> Vec<String>;
-    fn submachines_extra_registers(&self) -> Vec<String>;
-    fn ecall_handler(&self) -> Vec<String>;
-    fn submachine_names(&self) -> String;
-}

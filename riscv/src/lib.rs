@@ -40,24 +40,21 @@ impl RuntimeLibs {
     pub fn with_arith(self) -> Self {
         Self {
             arith: true,
-            keccak: self.keccak,
-            poseidon: self.poseidon,
+            ..self
         }
     }
 
     pub fn with_keccak(self) -> Self {
         Self {
-            arith: self.arith,
             keccak: true,
-            poseidon: self.poseidon,
+            ..self
         }
     }
 
     pub fn with_poseidon(self) -> Self {
         Self {
-            arith: self.arith,
-            keccak: self.keccak,
             poseidon: true,
+            ..self
         }
     }
 }
@@ -87,33 +84,29 @@ impl CompilerOptions {
 
     pub fn with_continuations(self) -> Self {
         Self {
-            field: self.field,
-            libs: self.libs,
             continuations: true,
+            ..self
         }
     }
 
     pub fn with_arith(self) -> Self {
         Self {
-            field: self.field,
             libs: self.libs.with_arith(),
-            continuations: self.continuations,
+            ..self
         }
     }
 
     pub fn with_keccak(self) -> Self {
         Self {
-            field: self.field,
             libs: self.libs.with_keccak(),
-            continuations: self.continuations,
+            ..self
         }
     }
 
     pub fn with_poseidon(self) -> Self {
         Self {
-            field: self.field,
             libs: self.libs.with_poseidon(),
-            continuations: self.continuations,
+            ..self
         }
     }
 }

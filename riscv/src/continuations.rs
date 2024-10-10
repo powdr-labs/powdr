@@ -216,9 +216,10 @@ pub struct DryRunResult<F: FieldElement> {
 /// - The number of rows after which the prover should jump to the shutdown routine.
 pub fn rust_continuations_dry_run<F: FieldElement>(
     pipeline: &mut Pipeline<F>,
-    field: KnownField,
     profiler_opt: Option<ProfilerOptions>,
 ) -> DryRunResult<F> {
+    let field = F::known_field().unwrap();
+
     // All inputs for all chunks.
     let mut bootloader_inputs_and_num_rows = vec![];
 

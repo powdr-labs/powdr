@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, convert::TryFrom};
+use std::collections::BTreeMap;
 
 use powdr_riscv_syscalls::Syscall;
 
@@ -7,7 +7,7 @@ use itertools::Itertools;
 use crate::code_gen::Register;
 
 use crate::runtime::{
-    parse_function_statement, parse_instruction_declaration, Runtime, SubMachine, SyscallImpl,
+    parse_function_statement, parse_instruction_declaration, SubMachine, SyscallImpl,
     EXTRA_REG_PREFIX,
 };
 use crate::RuntimeLibs;
@@ -361,23 +361,9 @@ impl Runtime64 {
         self.add_syscall(Syscall::PoseidonGL, implementation);
         self
     }
-}
 
-impl Runtime for Runtime64 {
-    fn has_submachine(&self, name: &str) -> bool {
+    pub fn has_submachine(&self, name: &str) -> bool {
         self.submachines.contains_key(name)
-    }
-
-    fn has_syscall(&self, s: Syscall) -> bool {
-        self.syscalls.contains_key(&s)
-    }
-
-    fn with_poseidon_no_continuations(self) -> Self {
-        self.with_poseidon(false)
-    }
-
-    fn with_poseidon_for_continuations(self) -> Self {
-        self.with_poseidon(true)
     }
 
     fn with_arith(mut self) -> Self {
@@ -513,7 +499,7 @@ impl Runtime for Runtime64 {
         self
     }
 
-    fn submachines_init(&self) -> Vec<String> {
+    pub fn submachines_init(&self) -> Vec<String> {
         self.submachines
             .values()
             .flat_map(|m| m.init_call.iter())
@@ -521,18 +507,18 @@ impl Runtime for Runtime64 {
             .collect()
     }
 
-    fn submachines_import(&self) -> String {
+    pub fn submachines_import(&self) -> String {
         self.submachines.values().map(|m| m.import()).join("\n")
     }
 
-    fn submachines_declare(&self) -> String {
+    pub fn submachines_declare(&self) -> String {
         self.submachines
             .values()
             .map(|m| m.declaration())
             .join("\n")
     }
 
-    fn submachines_instructions(&self) -> Vec<String> {
+    pub fn submachines_instructions(&self) -> Vec<String> {
         self.submachines
             .values()
             .flat_map(|m| m.instructions.iter())
@@ -540,7 +526,7 @@ impl Runtime for Runtime64 {
             .collect()
     }
 
-    fn submachines_extra_registers(&self) -> Vec<String> {
+    pub fn submachines_extra_registers(&self) -> Vec<String> {
         let count = self
             .submachines
             .values()
@@ -553,7 +539,7 @@ impl Runtime for Runtime64 {
             .collect()
     }
 
-    fn ecall_handler(&self) -> Vec<String> {
+    pub fn ecall_handler(&self) -> Vec<String> {
         let ecall = [
             "// ecall handler".to_string(),
             "__ecall_handler:".to_string(),
@@ -581,30 +567,6 @@ impl Runtime for Runtime64 {
             .chain(handlers)
             .chain(std::iter::once("// end of ecall handler".to_string()))
             .collect()
-    }
-
-    fn submachine_names(&self) -> String {
-        self.submachines.keys().join("\n")
-    }
-}
-
-impl TryFrom<&[&str]> for Runtime64 {
-    type Error = String;
-
-    fn try_from(names: &[&str]) -> Result<Self, Self::Error> {
-        let mut runtime = Runtime64::base();
-        for name in names {
-            if runtime.has_submachine(name) {
-                continue;
-            }
-            match *name {
-                "poseidon_gl" => runtime = runtime.with_poseidon_no_continuations(),
-                "keccakf" => runtime = runtime.with_keccak(),
-                "arith" => runtime = runtime.with_arith(),
-                _ => return Err(format!("Invalid co-processor specified: {name}")),
-            }
-        }
-        Ok(runtime)
     }
 }
 
