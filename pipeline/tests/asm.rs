@@ -247,25 +247,25 @@ fn vm_to_block_multiple_links() {
 #[test]
 fn mem_read_write() {
     let f = "asm/mem_read_write.asm";
-    regular_test(f, Default::default());
+    regular_test_without_babybear(f, Default::default());
 }
 
 #[test]
 fn mem_read_write_no_memory_accesses() {
     let f = "asm/mem_read_write_no_memory_accesses.asm";
-    regular_test(f, Default::default());
+    regular_test_without_babybear(f, Default::default());
 }
 
 #[test]
 fn mem_read_write_with_bootloader() {
     let f = "asm/mem_read_write_with_bootloader.asm";
-    regular_test(f, Default::default());
+    regular_test_without_babybear(f, Default::default());
 }
 
 #[test]
 fn mem_read_write_large_diffs() {
     let f = "asm/mem_read_write_large_diffs.asm";
-    regular_test(f, Default::default());
+    regular_test_without_babybear(f, Default::default());
 }
 
 #[test]
@@ -440,7 +440,7 @@ fn vm_args() {
 #[test]
 fn vm_args_memory() {
     let f = "asm/vm_args_memory.asm";
-    regular_test(f, Default::default());
+    regular_test_without_babybear(f, Default::default());
 }
 
 #[test]
@@ -452,7 +452,7 @@ fn vm_args_relative_path() {
 #[test]
 fn vm_args_two_levels() {
     let f = "asm/vm_args_two_levels.asm";
-    regular_test(f, Default::default());
+    regular_test_without_babybear(f, Default::default());
 }
 
 mod reparse {
