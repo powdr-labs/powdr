@@ -8,10 +8,6 @@ use powdr_number::{BabyBearField, FieldElement, GoldilocksField, LargeInt};
 use powdr_riscv_executor::executor_16::poseidon_bb::poseidon_bb;
 use powdr_riscv_executor::executor_32::poseidon_gl::poseidon_gl;
 
-pub struct MerkleTypesImpl<F: FieldElement> {
-    phantom: std::marker::PhantomData<F>,
-}
-
 pub trait MerkleTypes {
     type Fe: FieldElement;
     const FE_PER_WORD: usize;
@@ -36,7 +32,7 @@ pub fn gl_split_fe(v: &GoldilocksField) -> [GoldilocksField; 2] {
     [((v & 0xffffffff) as u32).into(), ((v >> 32) as u32).into()]
 }
 
-impl MerkleTypes for MerkleTypesImpl<GoldilocksField> {
+impl MerkleTypes for GoldilocksField {
     type Fe = GoldilocksField;
     const FE_PER_WORD: usize = 1;
     type Page = [Self::Fe; WORDS_PER_PAGE];
@@ -91,14 +87,14 @@ pub fn bb_split_fe(v: &BabyBearField) -> [BabyBearField; 2] {
     [(v >> 16).into(), (v & 0xffff).into()]
 }
 
-impl MerkleTypes for MerkleTypesImpl<BabyBearField> {
+impl MerkleTypes for BabyBearField {
     type Fe = BabyBearField;
     const FE_PER_WORD: usize = 2;
     type Page = [Self::Fe; 2 * WORDS_PER_PAGE];
     type Hash = [Self::Fe; 8];
 
-    fn update_page(page: &mut Self::Page, idx: usize, v: u32) {
-        let (hi, lo) = bb_split_word(v);
+    fn update_page(page: &mut Self::Page, idx: usize, word: u32) {
+        let (hi, lo) = bb_split_word(word);
         // TODO: check proper endianess here!
         page[idx] = hi;
         page[idx + 1] = lo;

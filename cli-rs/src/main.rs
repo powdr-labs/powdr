@@ -9,7 +9,7 @@ use log::LevelFilter;
 
 use powdr_number::{BigUint, GoldilocksField, KnownField};
 use powdr_pipeline::Pipeline;
-use powdr_riscv::continuations::{MerkleTypes, MerkleTypesImpl};
+use powdr_riscv::continuations::MerkleTypes;
 use powdr_riscv::{CompilerOptions, Runtime, RuntimeEnum};
 use powdr_riscv_executor::ProfilerOptions;
 
@@ -342,7 +342,7 @@ fn execute(
         KnownField::BabyBearField | KnownField::Mersenne31Field | KnownField::Bn254Field => {
             unimplemented!();
         }
-        KnownField::GoldilocksField => execute_inner::<MerkleTypesImpl<GoldilocksField>>(
+        KnownField::GoldilocksField => execute_inner::<GoldilocksField>(
             file_name,
             field,
             inputs,
