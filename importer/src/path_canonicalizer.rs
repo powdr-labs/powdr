@@ -845,6 +845,7 @@ fn check_expression(
                 kind: _,
                 params,
                 body,
+                ..
             },
         ) => {
             // Add the local variables, ignore collisions.

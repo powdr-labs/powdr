@@ -161,7 +161,8 @@ FunctionDefinition: FunctionDefinition = {
         => FunctionDefinition::Expression(Expression::LambdaExpression(ctx.source_ref(start, end), LambdaExpression{
             kind: FunctionKind::Pure,
             params,
-            body
+            body,
+            param_types: vec![],
         })),
     <start:@L> "=" <array:ArrayLiteralExpression> <end:@R> => FunctionDefinition::Array(array),
 }
@@ -190,7 +191,8 @@ PolynomialCommitDeclaration: PilStatement = {
         Some(FunctionDefinition::Expression(Expression::LambdaExpression(ctx.source_ref(start, end), LambdaExpression{
             kind: FunctionKind::Query,
             params,
-            body
+            body,
+            param_types: vec![],
         })))
     )
 }
@@ -448,9 +450,9 @@ SelectedExpressions<StructOption>: Box<Expression> = {
 
 LambdaExpression<StructOption>: Box<Expression> = {
     <start:@L> <kind:FunctionKind> "||" <body:LambdaExpression<StructOption>> <end:@R>
-        => ctx.to_expr_with_source_ref(LambdaExpression{kind, params: vec![], body}, start, end),
+        => ctx.to_expr_with_source_ref(LambdaExpression{kind, params: vec![], body, param_types: vec![]}, start, end),
     <start:@L> <kind:FunctionKind> "|" <params:ParameterList> "|" <body:LambdaExpression<StructOption>> <end:@R>
-        => ctx.to_expr_with_source_ref(LambdaExpression{kind, params, body}, start, end),
+        => ctx.to_expr_with_source_ref(LambdaExpression{kind, params, body, param_types: vec![]}, start, end),
     LogicalOr<StructOption>
 }
 

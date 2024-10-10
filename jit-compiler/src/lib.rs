@@ -36,12 +36,11 @@ pub fn compile<T: FieldElement>(
     let mut codegen = CodeGenerator::new(analyzed);
     let successful_symbols = requested_symbols
         .iter()
-        .filter_map(|&sym| {
-            if let Err(e) = codegen.request_symbol(sym) {
+        .filter_map(|&sym| match codegen.request_symbol(sym, &[]) {
+            Ok(access) => Some((sym, access)),
+            Err(e) => {
                 log::warn!("Unable to generate code for symbol {sym}: {e}");
                 None
-            } else {
-                Some(sym)
             }
         })
         .collect::<Vec<_>>();
@@ -60,7 +59,9 @@ pub fn compile<T: FieldElement>(
         metadata.len() as f64 / (1024.0 * 1024.0)
     );
 
-    let result = load_library(&lib_file.path, &successful_symbols);
+    let successful_symbol_names: Vec<_> =
+        successful_symbols.into_iter().map(|(sym, _)| sym).collect();
+    let result = load_library(&lib_file.path, &successful_symbol_names);
     log::info!("Done.");
     result
 }
