@@ -240,6 +240,14 @@ fn shift_test() {
 }
 
 #[test]
+#[ignore = "Too slow"]
+fn rotate_test() {
+    let f = "std/rotate_test.asm";
+    test_pilcom(make_simple_prepared_pipeline(f));
+    test_halo2(make_simple_prepared_pipeline(f));
+}
+
+#[test]
 fn ff_reduce_mod_7() {
     let test_inputs = vec![
         -22, -21, -20, -8, -7, -6, -2, -1, -0, -1, -2, -3, 4, 5, 6, 7, 8, 9, 13, 14, 15, 20, 21, 22,

@@ -8,6 +8,7 @@ mod hash;
 mod memory;
 mod memory16;
 mod memory_with_bootloader_write;
+mod rotate;
 mod shift;
 mod shift16;
 mod split;
