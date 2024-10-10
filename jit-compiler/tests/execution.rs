@@ -293,7 +293,6 @@ fn generic() {
         namespace std::array;
             let len = 8;
         namespace main;
-            let<T> new: int, (int -> T) -> T[] = |length, f| fold(length, f, [], |acc, e| (acc + [e]));
             let<T1, T2>
                 fold: int, (int -> T1), T2, (T2, T1 -> T2) -> T2 = |length, f, initial, folder|
                     if length <= 0 {
@@ -301,10 +300,9 @@ fn generic() {
                     } else {
                         folder(fold((length - 1), f, initial, folder), f((length - 1)))
                     };
-            let<T1, T2> map: T1[], (T1 -> T2) -> T2[] = |arr, f| new(std::array::len(arr), |i| f(arr[i]));
+            let<T: Add + FromLiteral> sum: T[] -> T = |arr| fold(std::array::len(arr), |i| arr[i], 0, |acc, e| acc + e);
             let a: int[] = [1, 2, 3];
-            let b = map(a, |x| std::convert::fe(x + 10));
-            let q: col = |i| b[i];
+            let q: col = |i| i + sum(a);
         ";
     let q = compile(input, "main::q");
 
