@@ -585,8 +585,9 @@ fn simple_struct() {
 }
 
 #[test]
-#[should_panic = "Struct 'NotADot' has not been declared"]
+#[should_panic = "Type symbol not found: NotADot"]
 fn wrong_struct() {
+    // This type of error is caught by the type checker
     let input = "
     struct Dot { x: int, y: int }
     let f: int -> Dot = |i| NotADot{x: 0, y: i};

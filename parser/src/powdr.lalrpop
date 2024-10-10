@@ -667,7 +667,7 @@ NamedExpression: NamedExpression<Box<Expression>> = {
 
 NamedTypes: Vec<NamedType<Expression>> = {
     => vec![],
-    <mut list:( <NamedType> "," )*> <end:NamedType> ","  => { list.push(end); list }
+    <mut list:( <NamedType> "," )*> <end:NamedType> ","?  => { list.push(end); list }
 }
 
 NamedType: NamedType<Expression> = {
