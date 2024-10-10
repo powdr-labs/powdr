@@ -235,3 +235,34 @@ fn let_complex() {
     assert_eq!(f.call(0), 8);
     assert_eq!(f.call(1), 9);
 }
+
+#[test]
+fn enums() {
+    let input = r#"
+        namespace std::array;
+            let len = 8;
+        namespace main;
+            enum Op<T> { Some(T), None }
+            enum Items { Multiple(int[]), Single(int) }
+            let a = |x| match x {
+                Op::Some(i) => i,
+                Op::None => 0,
+            };
+            let b = |x| match x {
+                Items::Multiple(i) => i[0],
+                Items::Single(i) => i,
+            };
+            let c = |i| match i {
+                0 => a(Op::Some(i)),
+                1 => a(Op::None),
+                2 => b(Items::Multiple([1, 2, i])),
+                _ => 99,
+            };
+        "#;
+    let c = compile(input, "main::c");
+
+    assert_eq!(c.call(0), 0);
+    assert_eq!(c.call(1), 0);
+    assert_eq!(c.call(2), 1);
+    assert_eq!(c.call(3), 99);
+}

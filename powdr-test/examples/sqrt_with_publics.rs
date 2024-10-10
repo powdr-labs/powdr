@@ -4,9 +4,9 @@ fn main() {
     env_logger::init();
 
     halo2_pipeline(
-        "test_data/asm/book/hello_world.asm",
-        vec![0.into()],
-        vec![],
+        "test_data/asm/sqrt_with_public.asm",
+        vec![3.into()],
+        vec![9.into()],
         8,
     );
 }
