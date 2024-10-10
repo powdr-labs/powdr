@@ -882,6 +882,20 @@ fn reparse_type_args_generic_enum() {
     let<T> consume: T -> () = |_| { };
     let p: int -> () = |i| X::consume::<(X::Option<int>)>(X::Option::Some::<int>(i));
 "#;
+
+    let formatted = analyze_string(input).to_string();
+    assert_eq!(formatted, input);
+}
+
+#[test]
+fn simple_struct() {
+    let input = "    struct Point {
+        x: int,
+        y: int,
+    }
+    let f: int -> Point = |i| Point{ x: 0, y: i };
+    let x: Point = f(0);
+";
     let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, input);
 }

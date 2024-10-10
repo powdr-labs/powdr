@@ -1,15 +1,19 @@
-use std::collections::{BTreeSet, HashMap};
+use std::{
+    collections::{BTreeSet, HashMap},
+    str::FromStr,
+};
 
 use itertools::Itertools;
 use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference},
     parsed::{
+        asm::SymbolPath,
         display::format_type_scheme_around_name,
         types::{ArrayType, FunctionType, TupleType, Type, TypeBounds, TypeScheme},
         visitor::ExpressionVisitable,
         ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall, FunctionKind, IndexAccess,
         LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number, Pattern,
-        SourceReference, StatementInsideBlock, UnaryOperation,
+        SourceReference, StatementInsideBlock, StructDeclaration, UnaryOperation,
     },
 };
 use powdr_parser_util::{Error, SourceRef};
@@ -31,8 +35,9 @@ use crate::{
 pub fn infer_types(
     definitions: HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
     expressions: &mut [(&mut Expression, ExpectedType)],
+    struct_declarations: HashMap<String, StructDeclaration>,
 ) -> Result<Vec<(String, Type)>, Vec<Error>> {
-    TypeChecker::new().infer_types(definitions, expressions)
+    TypeChecker::new(struct_declarations).infer_types(definitions, expressions)
 }
 
 /// A type to expect with a bit of flexibility.
@@ -72,16 +77,19 @@ struct TypeChecker {
     unifier: Unifier,
     /// Keeps track of the kind of lambda we are currently type-checking.
     lambda_kind: FunctionKind,
+    /// Declared structs.
+    struct_declarations: HashMap<String, StructDeclaration>,
 }
 
 impl TypeChecker {
-    pub fn new() -> Self {
+    pub fn new(struct_declarations: HashMap<String, StructDeclaration>) -> Self {
         Self {
             local_var_types: Default::default(),
             declared_types: Default::default(),
             declared_type_vars: Default::default(),
             unifier: Default::default(),
             lambda_kind: FunctionKind::Constr,
+            struct_declarations,
         }
     }
 
@@ -714,8 +722,37 @@ impl TypeChecker {
                 self.local_var_types.truncate(original_var_count);
                 result?
             }
-            Expression::StructExpression(_sr, _struct_expr) => {
-                unimplemented!("Struct expressions are not yet supported")
+            Expression::StructExpression(sr, struct_expr) => {
+                let struct_decl = self
+                    .struct_declarations
+                    .get(&struct_expr.name.to_string())
+                    .cloned()
+                    .ok_or_else(|| {
+                        sr.with_error(format!(
+                            "Struct '{}' has not been declared.",
+                            struct_expr.name
+                        ))
+                    })?;
+
+                for named_expr in struct_expr.fields.iter_mut() {
+                    let expr_ty = struct_decl.type_of_field(&named_expr.name);
+                    match expr_ty {
+                        Some(scheme) => {
+                            self.expect_type(&scheme.ty, named_expr.body.as_mut())?;
+                        }
+                        None => {
+                            return Err(sr.with_error(format!(
+                                "Field '{}' not found in struct '{}'",
+                                named_expr.name, struct_expr.name
+                            )));
+                        }
+                    }
+                }
+
+                match SymbolPath::from_str(&struct_expr.name.to_string()) {
+                    Ok(named_type) => Ok(Type::NamedType(named_type, None)),
+                    Err(err) => Err(sr.with_error(err))?,
+                }?
             }
         })
     }

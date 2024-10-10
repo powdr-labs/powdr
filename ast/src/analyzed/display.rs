@@ -64,9 +64,7 @@ impl<T: Display> Display for Analyzed<T> {
                         if matches!(
                             definition,
                             Some(FunctionValueDefinition::TypeConstructor(_, _))
-                        ) || matches!(
-                            definition,
-                            Some(FunctionValueDefinition::TraitFunction(_, _))
+                                | Some(FunctionValueDefinition::TraitFunction(_, _))
                         ) {
                             // These are printed as part of the enum / trait.
                             continue;
@@ -96,12 +94,17 @@ impl<T: Display> Display for Analyzed<T> {
                                         )?;
                                     }
                                     Some(FunctionValueDefinition::TypeDeclaration(
-                                        enum_declaration,
+                                        TypeDeclaration::Enum(enum_declaration),
                                     )) => {
                                         writeln_indented(
                                             f,
                                             enum_declaration.to_string_with_name(&name),
                                         )?;
+                                    }
+                                    Some(FunctionValueDefinition::TypeDeclaration(
+                                        TypeDeclaration::Struct(struct_declaration),
+                                    )) => {
+                                        writeln_indented(f, struct_declaration)?;
                                     }
                                     Some(FunctionValueDefinition::TraitDeclaration(
                                         trait_declaration,
