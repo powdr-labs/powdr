@@ -714,6 +714,9 @@ impl TypeChecker {
                 self.local_var_types.truncate(original_var_count);
                 result?
             }
+            Expression::StructExpression(_sr, _struct_expr) => {
+                unimplemented!("Struct expressions are not yet supported")
+            }
         })
     }
 
