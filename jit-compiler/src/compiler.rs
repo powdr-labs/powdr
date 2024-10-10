@@ -19,7 +19,7 @@ use powdr_number::FieldElement;
 use crate::{codegen::escape_symbol, LoadedFunction};
 
 pub fn generate_glue_code<T: FieldElement>(
-    symbols: &[&str],
+    symbols: &[(&str, String)],
     analyzed: &Analyzed<T>,
 ) -> Result<String, String> {
     if T::BITS > 64 {
@@ -34,7 +34,7 @@ pub fn generate_glue_code<T: FieldElement>(
         value: Box::new(Type::Int),
     })
     .into();
-    for sym in symbols {
+    for (sym, access) in symbols {
         let ty = analyzed.type_of_symbol(sym);
         if ty != int_int_fun && ty.ty != Type::Col {
             return Err(format!(
@@ -44,14 +44,11 @@ pub fn generate_glue_code<T: FieldElement>(
         }
 
         // TODO we should use big int instead of u64
-        // TODO we actually don't know how we have to access this symbol. It might be a closure,
-        // which needs to be accessed differently.
-        let name = escape_symbol(sym);
         glue.push_str(&format!(
             r#"
             #[no_mangle]
             pub extern "C" fn {}(i: u64) -> u64 {{
-                u64::try_from(({name}).call(ibig::IBig::from(i))).unwrap()
+                u64::try_from(({access}).call(ibig::IBig::from(i))).unwrap()
             }}
             "#,
             extern_symbol_name(sym)
@@ -139,6 +136,7 @@ pub fn call_cargo(code: &str) -> Result<PathInTempDir, String> {
         .env("RUSTFLAGS", "-C target-cpu=native")
         .arg("build")
         .arg("--release")
+        .arg("--offline")
         .current_dir(dir.clone())
         .output()
         .unwrap();

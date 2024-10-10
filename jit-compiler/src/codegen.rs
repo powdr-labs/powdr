@@ -426,11 +426,16 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 }
             }
             FunctionValueDefinition::TypeConstructor(decl, variant) => {
-                format!(
+                let formatted_variant = format!(
                     "{}::{}{type_args}",
                     escape_symbol(&decl.name),
                     escape_symbol(&variant.name)
-                )
+                );
+                if variant.fields.is_none() {
+                    formatted_variant
+                } else {
+                    format!("Callable::Fn({formatted_variant})",)
+                }
             }
             _ => format!("(*{}{type_args})", escape_symbol(symbol)),
         }
