@@ -43,6 +43,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
     /// After a failure, `self` can still be used to request other symbols.
     /// The code can later be retrieved via `generated_code`.
     pub fn request_symbol(&mut self, name: &str, type_args: &[Type]) -> Result<String, String> {
+        println!("Requesting {name}");
         // For now, code generation is generic, only the reference uses the type args.
         // If that changes at some point, we need to store the type args in the symbol map as well.
         match self.symbols.get(name) {
