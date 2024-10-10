@@ -136,7 +136,6 @@ pub fn call_cargo(code: &str) -> Result<PathInTempDir, String> {
         .env("RUSTFLAGS", "-C target-cpu=native")
         .arg("build")
         .arg("--release")
-        .arg("--offline")
         .current_dir(dir.clone())
         .output()
         .unwrap();
