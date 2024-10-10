@@ -26,10 +26,10 @@ const ALLOWED_WITNESSES: [&str; 11] = [
     "m_is_write",
     "m_is_bootloader_write",
     "m_high_limb_equal",
-    "m_diff",
+    "m_diff_minus_one",
 ];
 
-const DIFF_COLUMNS: [&str; 2] = ["m_high_limb_equal", "m_diff"];
+const DIFF_COLUMNS: [&str; 2] = ["m_high_limb_equal", "m_diff_minus_one"];
 const BOOTLOADER_WRITE_COLUMN: &str = "m_is_bootloader_write";
 
 // The operation ID is decomposed into m_is_write + 2 * m_is_bootloader_write
@@ -53,11 +53,15 @@ impl<T: FieldElement> From<Word32<T>> for u64 {
     }
 }
 
+fn unzip_word_column<T: FieldElement>(column: Vec<Word32<T>>) -> (Vec<T>, Vec<T>) {
+    column.into_iter().map(|w| (w.0, w.1)).unzip()
+}
+
 impl<T: FieldElement> From<u64> for Word32<T> {
     fn from(value: u64) -> Self {
-        assert!(value <= (1 << 28));
-        let high = (value >> 16) as u64;
-        let low = (value & 0xffff) as u64;
+        assert!(value <= 0xffff_ffff);
+        let high = value >> 16;
+        let low = value & 0xffff;
         Word32(T::from(high), T::from(low))
     }
 }
@@ -85,8 +89,7 @@ pub struct DoubleSortedWitnesses16<'a, T: FieldElement> {
     namespace: String,
     name: String,
     parts: MachineParts<'a, T>,
-    /// If the machine has the `m_diff_upper` and `m_diff_lower` columns, this is the base of the
-    /// two digits.
+    /// If the machine has the `m_high_limbs_equal` and `m_diff_minus_one` columns, this is the base of the latter.
     diff_columns_base: Option<u64>,
     /// Whether this machine has a `m_is_bootloader_write` column.
     has_bootloader_write_column: bool,
@@ -165,16 +168,13 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
         let has_bootloader_write_column = columns.contains(&BOOTLOADER_WRITE_COLUMN);
 
         let diff_columns_base = if has_diff_columns {
-            // We have the `m_tmp1` and `m_tmp2` columns.
-            // These have different semantics, depending on whether the the address changes in the next
-            // row. But in both cases, the range constraint of m_tmp2 will give us the base.
-            let lower_poly_id =
+            let diff_poly_id =
                 fixed_data.try_column_by_name(&format!("{namespace}::{}", DIFF_COLUMNS[1]))?;
-            let lower_range_constraint = fixed_data.global_range_constraints().witness_constraints
-                [&lower_poly_id]
+            let diff_constraint = fixed_data.global_range_constraints().witness_constraints
+                [&diff_poly_id]
                 .as_ref()?;
 
-            let (min, max) = lower_range_constraint.range();
+            let (min, max) = diff_constraint.range();
 
             if min == T::zero() {
                 assert!(
@@ -347,7 +347,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses16<'a, T> {
                         &step
                     };
 
-                    // Get the current and next address. The next address is None for the last row.
+                    // Get the current and next value. The next value is None for the last row.
                     let current = &values[i];
                     let next = values.get(i + 1);
 
@@ -360,7 +360,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses16<'a, T> {
                             (T::zero(), next.0 - current.0 - T::one())
                         }
                     })
-                    // On the last row, the diff value is unconstrained, choose (0, 0).
+                    // On the last row, the diff columns are constrained to equal (0, 0).
                     .unwrap_or((T::zero(), T::zero()))
                 })
                 .unzip();
@@ -381,20 +381,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses16<'a, T> {
             vec![]
         };
 
-        let (addr_high, addr_low) = addr
-            .into_iter()
-            .map(|a| (a.0, a.1))
-            .unzip::<_, _, Vec<_>, Vec<_>>();
-
-        let (value_high, value_low) = value
-            .into_iter()
-            .map(|v| (v.0, v.1))
-            .unzip::<_, _, Vec<_>, Vec<_>>();
-
-        let (step_high, step_low) = step
-            .into_iter()
-            .map(|v| (v.0, v.1))
-            .unzip::<_, _, Vec<_>, Vec<_>>();
+        let (addr_high, addr_low) = unzip_word_column(addr);
+        let (value_high, value_low) = unzip_word_column(value);
+        let (step_high, step_low) = unzip_word_column(step);
 
         let selector_columns = selectors
             .into_iter()

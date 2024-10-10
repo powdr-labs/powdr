@@ -11,8 +11,8 @@ machine Memory16(bit12: Bit12, byte2: Byte2) with
     operation_id: m_is_write,
     call_selectors: selectors,
 {
-    // We compute m_diff (28-Bit) + m_step (28-Bit) + 1, which fits into 29 Bits.
-    assert(modulus() > 2**29, || "Memory16 requires a field that fits any 29-Bit value.");
+    // We compute m_step_high (12-Bit) * 2**16 + m_step_low (16-Bit), which fits into 28 Bits.
+    assert(modulus() > 2**28, || "Memory16 requires a field that fits any 28-Bit value.");
 
     operation mload<0> m_addr_high, m_addr_low, m_step -> m_value1, m_value2;
     operation mstore<1> m_addr_high, m_addr_low, m_step, m_value1, m_value2 ->;
@@ -70,20 +70,15 @@ machine Memory16(bit12: Bit12, byte2: Byte2) with
 
     // Except for the last row, if m_change is 1, then addr has to increase,
     // if it is zero, step has to increase.
-    // The diff has to be equal to the difference **minus one**.
 
-    // These two helper columns have different semantics, depending on
-    // whether we're comparing addresses or time steps.
-    // In both cases, m_tmp2 needs to be of 16 Bits.
-    col witness m_high_limb_equal, m_diff;
-    link => byte2.check(m_diff);
-
-    // m_high_limb_equal is binary.
+    // The prover provides which limb to compare and the diff *minus one*
+    col witness m_high_limb_equal, m_diff_minus_one;
+    link => byte2.check(m_diff_minus_one);
     m_high_limb_equal * (m_high_limb_equal - 1) = 0;
 
     // Select the actual diff.
     // In the last row we'll use a diff_high of 1, so that the prover can satisfy the constraints
-    // below by setting m_high_limb_equal = 0 & m_diff = 0.
+    // below by setting m_high_limb_equal = 0 & m_diff_minus_one = 0.
     // Note that `(m_change - LAST)` is the same as `m_change * (1 - LAST)` (but of lower degree),
     // because m_change is constrained to equal 1 in the last row.
     let diff_high = (m_change - LAST) * (m_addr_high' - m_addr_high)
@@ -92,15 +87,15 @@ machine Memory16(bit12: Bit12, byte2: Byte2) with
     let diff_low = m_change * (m_addr_low' - m_addr_low)
                      + (1 - m_change) * (m_step_low' - m_step_low);
 
-    // On the last row, we're not doing any diff. We force m_high_limb_equal
+    // On the last row, we're not doing any diffing. We force m_high_limb_equal
     // to be zero in the last row, in order to deactivate the next constraint.
     LAST * m_high_limb_equal = 0;
 
     // If m_high_limb_equal is 1, the higher limbs should be equal.
     m_high_limb_equal * diff_high = 0;
 
-    // Assert that m_diff stores the actual diff - 1.
+    // Assert that m_diff_minus_one stores the actual diff - 1.
     let actual_limb_diff = m_high_limb_equal * diff_low
                            + (1 - m_high_limb_equal) * diff_high;
-    (m_diff + 1 - actual_limb_diff) = 0;
+    (m_diff_minus_one + 1 - actual_limb_diff) = 0;
 }
