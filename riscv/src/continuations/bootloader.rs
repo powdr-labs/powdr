@@ -32,6 +32,9 @@ pub const MEMORY_HASH_START_INDEX: usize = 2 * REGISTER_NAMES.len();
 pub const NUM_PAGES_INDEX: usize = MEMORY_HASH_START_INDEX + WORDS_PER_HASH * 2;
 pub const PAGE_INPUTS_OFFSET: usize = NUM_PAGES_INDEX + 1;
 
+/// This trait provides all the field specific types and implementations that
+/// the bootloader needs.
+/// For now, this trait is implemented directly by each `FieldElement` type that supports it.
 pub trait BootloaderImpl {
     type Fe: FieldElement;
     const FE_PER_WORD: usize;
@@ -42,13 +45,43 @@ pub trait BootloaderImpl {
     fn hash_two(a: &Self::Hash, b: &Self::Hash) -> Self::Hash;
     fn zero_hash() -> Self::Hash;
     fn zero_page() -> Self::Page;
-    // iterate over a hash value as machine words (should be
-    // bootloader::WORDS_PER_HASH!), in their field element representation (FE_PER_WORD)
+    // iterate over a hash value as machine words as field elements (i.e., WORDS_PER_HASH * Self::FE_PER_WORD field elements),
     fn iter_hash_as_fe(h: &Self::Hash) -> impl Iterator<Item = Self::Fe>;
     // iterate over the page words, in their field element representation
     fn iter_page_as_fe(p: &Self::Page) -> impl Iterator<Item = Self::Fe>;
     // iterate over a word value in its field element representation
     fn iter_word_as_fe(w: u32) -> impl Iterator<Item = Self::Fe>;
+}
+
+/// Creates the bootloader input, placing elements in the layout expected by the
+/// machine bootloader.
+pub fn create_input<B: BootloaderImpl, I: ExactSizeIterator<Item = u32>>(
+    register_values: Vec<B::Fe>,
+    merkle_tree: &MerkleTree<B>,
+    accessed_pages: I,
+) -> Vec<B::Fe> {
+    // initial register values
+    let mut inputs = register_values;
+    // final register values
+    inputs.extend_from_within(..);
+    let root_hash = merkle_tree.root_hash();
+    // initial hash
+    inputs.extend(B::iter_hash_as_fe(root_hash));
+    // final hash
+    inputs.extend(B::iter_hash_as_fe(root_hash));
+    // number of pages
+    inputs.extend(B::iter_word_as_fe(accessed_pages.len() as u32));
+    // page data
+    for page_index in accessed_pages {
+        let (page_data, page_hash, proof) = merkle_tree.get(page_index as usize);
+        inputs.extend(B::iter_word_as_fe(page_index));
+        inputs.extend(B::iter_page_as_fe(page_data));
+        inputs.extend(B::iter_hash_as_fe(page_hash));
+        for sibling in proof {
+            inputs.extend(B::iter_hash_as_fe(sibling));
+        }
+    }
+    inputs
 }
 
 // Ensure we have enough addresses for the scratch space.
@@ -167,70 +200,6 @@ pub const DEFAULT_PC: u64 = 3;
 
 /// Analogous to the `DEFAULT_PC`, this well-known PC jumps to the shutdown routine.
 pub const SHUTDOWN_START: u64 = 4;
-
-/// Helper struct to construct the bootloader inputs, placing each element in
-/// its correct position.
-struct InputCreator<'a, B: BootloaderImpl + 'a, Pages>
-where
-    Pages: ExactSizeIterator<Item = InputPage<'a, B>>,
-{
-    register_values: Vec<B::Fe>,
-    merkle_tree_root_hash: &'a B::Hash,
-    pages: Pages,
-}
-
-/// Pages of memory, each with its hash and proof.
-struct InputPage<'a, B: BootloaderImpl + 'a> {
-    page_idx: u32,
-    data: &'a B::Page,
-    hash: &'a B::Hash,
-    proof: Vec<&'a B::Hash>,
-}
-
-impl<'a, B, I> InputCreator<'a, B, I>
-where
-    B: BootloaderImpl,
-    I: ExactSizeIterator<Item = InputPage<'a, B>>,
-{
-    fn into_input(self) -> Vec<B::Fe> {
-        let mut inputs = self.register_values;
-        inputs.extend_from_within(..);
-        inputs.extend(B::iter_hash_as_fe(self.merkle_tree_root_hash));
-        inputs.extend(B::iter_hash_as_fe(self.merkle_tree_root_hash));
-
-        inputs.extend(B::iter_word_as_fe(self.pages.len() as u32));
-        for page in self.pages {
-            inputs.extend(B::iter_word_as_fe(page.page_idx));
-            inputs.extend(B::iter_page_as_fe(page.data));
-            inputs.extend(B::iter_hash_as_fe(page.hash));
-            for sibling in page.proof {
-                inputs.extend(B::iter_hash_as_fe(sibling));
-            }
-        }
-        inputs
-    }
-}
-
-pub fn create_input<B: BootloaderImpl, Pages: ExactSizeIterator<Item = u32>>(
-    register_values: Vec<B::Fe>,
-    merkle_tree: &MerkleTree<B>,
-    accessed_pages: Pages,
-) -> Vec<B::Fe> {
-    InputCreator {
-        register_values,
-        merkle_tree_root_hash: merkle_tree.root_hash(),
-        pages: accessed_pages.map(|page_index| {
-            let (page, page_hash, proof) = merkle_tree.get(page_index as usize);
-            InputPage::<B> {
-                page_idx: page_index,
-                data: page,
-                hash: page_hash,
-                proof,
-            }
-        }),
-    }
-    .into_input()
-}
 
 pub fn default_register_values<F: FieldElement>() -> Vec<F> {
     let mut register_values = vec![0.into(); REGISTER_NAMES.len()];
