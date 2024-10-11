@@ -173,6 +173,11 @@ impl SymbolPath {
         })
     }
 
+    /// Removes and returns the last part unless the path is empty.
+    pub fn pop(&mut self) -> Option<Part> {
+        self.parts.pop()
+    }
+
     /// Returns the last part of the path. Panics if it is "super" or if the path is empty.
     pub fn name(&self) -> &String {
         self.try_last_part().unwrap()
