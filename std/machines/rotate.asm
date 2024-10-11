@@ -2,8 +2,8 @@ use std::utils::unchanged_until;
 use std::utils::cross_product;
 use std::convert::int;
 
-// Shift for single bytes using an exhaustive table
-// TODO this way, we cannot prove anything that shifts by more than 31 bits.
+// Rotate for single bytes using an exhaustive table
+// TODO this way, we cannot prove anything that rotates by more than 31 bits.
 machine ByteRotate with
     latch: latch,
     operation_id: operation_id,
@@ -16,7 +16,7 @@ machine ByteRotate with
 
     let bit_counts = [256, 32, 4, 2];
     let min_degree = std::array::product(bit_counts);
-    std::check::assert(std::prover::min_degree() >= std::array::product(bit_counts), || "The shift machine needs at least 65536 rows to work.");
+    std::check::assert(std::prover::min_degree() >= std::array::product(bit_counts), || "The rotate machine needs at least 65536 rows to work.");
     let inputs = cross_product(bit_counts);
     let a: int -> int = inputs[0];
     let b: int -> int = inputs[1];
