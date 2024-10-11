@@ -44,7 +44,7 @@ impl Runtime {
         // Base submachines
         // TODO: can/should the memory machine be part of the runtime also?
         r.add_submachine(
-            "std::machines::binary::Binary",
+            "std::machines::large_field::binary::Binary",
             None,
             "binary",
             vec!["byte_binary"],
@@ -70,7 +70,7 @@ impl Runtime {
         );
 
         r.add_submachine(
-            "std::machines::shift::Shift",
+            "std::machines::large_field::shift::Shift",
             None,
             "shift",
             vec!["byte_shift"],
@@ -165,7 +165,7 @@ impl Runtime {
         );
 
         r.add_submachine::<&str, _, _>(
-            "std::machines::shift::ByteShift",
+            "std::machines::large_field::shift::ByteShift",
             None,
             "byte_shift",
             vec![],
