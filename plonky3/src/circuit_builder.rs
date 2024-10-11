@@ -322,8 +322,6 @@ where
                 .sum::<usize>()
         );
 
-        let stage_0_local = trace_by_stage[0].row_slice(0);
-
         // public constraints
         let public_vals_by_id = self
             .constraint_system
@@ -343,11 +341,7 @@ where
             |(index, (pub_id, poly_id, _, _))| {
                 let selector = fixed_local[public_offset + index];
                 let (stage, index) = self.constraint_system.witness_columns[poly_id];
-                assert_eq!(
-                    stage, 0,
-                    "public inputs are only allowed in the first stage"
-                );
-                let witness_col = stage_0_local[index];
+                let witness_col = trace_by_stage[stage].row_slice(0)[index];
                 let public_value = public_vals_by_id[pub_id];
 
                 // constraining s(i) * (pub[i] - x(i)) = 0
@@ -462,6 +456,8 @@ where
             )
         };
 
+        let public_values = self.public_values_so_far(witness);
+
         // generate the next trace in the format p3 expects
         // since the witgen callback returns the entire witness so far,
         // we filter out the columns we already know about
@@ -476,8 +472,10 @@ where
                     table_name.to_string(),
                     AirStage {
                         trace: generate_matrix(columns.into_iter()),
-                        // later stage publics are not supported, so we return an empty vector. TODO: change this
-                        public_values: vec![],
+                        public_values: public_values[table_name][trace_stage as usize]
+                            .iter()
+                            .map(|v| v.expect("public value for stage {trace_stage} should be available at this point").into_p3_field())
+                            .collect(),
                     },
                 )
             })

@@ -32,13 +32,6 @@ where
         if verification_app_key.is_some() {
             return Err(Error::NoAggregationAvailable);
         }
-        if pil.public_declarations_in_source_order().any(|(_, d)| {
-            pil.definitions.iter().any(|(_, (symbol, _))| {
-                symbol.absolute_name == d.name && symbol.stage.unwrap_or_default() > 0
-            })
-        }) {
-            return Err(Error::NoLaterStagePublicAvailable);
-        }
 
         let mut p3 = Box::new(Plonky3Prover::new(pil.clone(), fixed));
 

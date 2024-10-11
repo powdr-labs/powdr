@@ -452,9 +452,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "no entry found for key"]
     fn stage_1_public() {
-        // this currently fails because we try to extract the public values from the stage 0 witness only
         let content = r#"
         let N: int = 8;
         
@@ -467,8 +465,7 @@ mod tests {
 
             public out = y(N - 1);
         "#;
-        let malicious_publics = Some(vec![0]);
-        run_test_publics(content, &malicious_publics);
+        run_test(content);
     }
 
     #[test]

@@ -180,7 +180,7 @@ pub fn gen_estark_proof_with_backend_variant(
         .publics()
         .unwrap()
         .iter()
-        .map(|(_name, v)| *v)
+        .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
         .collect();
 
     pipeline.verify(&proof, &[publics]).unwrap();
@@ -277,7 +277,7 @@ pub fn gen_halo2_proof(pipeline: Pipeline<Bn254Field>, backend: BackendVariant) 
         .publics()
         .unwrap()
         .iter()
-        .map(|(_name, v)| *v)
+        .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
         .collect();
 
     pipeline.verify(&proof, &[publics]).unwrap();
@@ -303,7 +303,7 @@ pub fn test_plonky3<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
         .clone()
         .unwrap()
         .iter()
-        .map(|(_name, v)| *v)
+        .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
         .collect();
 
     pipeline.verify(&proof, &[publics.clone()]).unwrap();
@@ -342,7 +342,7 @@ pub fn test_plonky3_pipeline<T: FieldElement>(pipeline: Pipeline<T>) {
         .clone()
         .unwrap()
         .iter()
-        .map(|(_name, v)| *v)
+        .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
         .collect();
 
     pipeline.verify(&proof, &[publics.clone()]).unwrap();
@@ -365,6 +365,9 @@ pub fn test_plonky3_pipeline<T: FieldElement>(pipeline: Pipeline<T>) {
 
 #[cfg(not(feature = "plonky3"))]
 pub fn test_plonky3<T: FieldElement>(_: &str, _: Vec<T>) {}
+
+#[cfg(not(feature = "plonky3"))]
+pub fn test_plonky3_pipeline<T: FieldElement>(_: Pipeline<T>) {}
 
 #[cfg(not(feature = "plonky3"))]
 pub fn gen_plonky3_proof<T: FieldElement>(_: &str, _: Vec<T>) {}
