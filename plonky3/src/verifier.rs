@@ -56,26 +56,32 @@ where
         })
         .collect::<BTreeMap<_, _>>();
 
-    let mut public_inputs: BTreeMap<&String, Vec<&Vec<Plonky3Field<T>>>> = public_inputs
+    let public_inputs: BTreeMap<&String, Vec<&Vec<Plonky3Field<T>>>> = public_inputs
         .iter()
         .map(|(name, values)| (name, values.iter().collect_vec()))
         .collect();
 
+    // sanity check that both maps have the same keys
+    assert!(program
+        .split
+        .keys()
+        .zip_eq(public_inputs.keys())
+        .all(|(a, b)| a == *b));
+
     let tables: BTreeMap<&String, Table<_>> = program
         .split
-        .iter()
-        .map(|(name, (_, constraints))| {
+        .values()
+        .zip_eq(public_inputs)
+        .map(|((_, constraints), (name, public_values_by_stage))| {
             (
                 name,
                 Table {
                     air: PowdrTable::new(constraints),
-                    public_values_by_stage: public_inputs.remove(name).unwrap(),
+                    public_values_by_stage,
                 },
             )
         })
         .collect();
-
-    assert!(public_inputs.is_empty());
 
     if proof.opened_values.len() != tables.len() {
         return Err(VerificationError::InvalidProofShape);
