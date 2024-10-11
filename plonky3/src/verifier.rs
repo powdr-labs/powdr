@@ -31,6 +31,23 @@ where
     public_values_by_stage: Vec<&'a Vec<Val<T::Config>>>,
 }
 
+impl<'a, T: FieldElementMap> Table<'a, T>
+where
+    ProverData<T>: Send,
+    Commitment<T>: Send,
+{
+    fn get_log_quotient_degree(&self) -> usize {
+        get_log_quotient_degree(
+            &self.air,
+            &self
+                .public_values_by_stage
+                .iter()
+                .map(|values| values.len())
+                .collect::<Vec<_>>(),
+        )
+    }
+}
+
 #[instrument(skip_all)]
 pub fn verify<T: FieldElementMap>(
     verifying_key: Option<&StarkVerifyingKey<T::Config>>,
@@ -146,13 +163,13 @@ where
         .zip_eq((0..stage_count).map(|i| {
             tables
                 .values()
-                .map(|table| table.public_values_by_stage[i as usize].clone())
+                .map(|table| &table.public_values_by_stage[i as usize])
                 .collect_vec()
         }))
         .zip_eq(challenge_count_by_stage)
-        .map(|((commitment, public_values), challenge_count)| {
+        .map(|((commitment, public_values_by_stage), challenge_count)| {
             challenger.observe(commitment.clone());
-            for public_values in &public_values {
+            for public_values in &public_values_by_stage {
                 challenger.observe_slice(public_values);
             }
             (0..challenge_count)
@@ -166,7 +183,6 @@ where
 
     let zeta: Challenge<T> = challenger.sample();
 
-    // maybe these need to be in the vk, right now the prover can mess with them
     let trace_domains = proof
         .opened_values
         .values()
@@ -179,31 +195,12 @@ where
     let quotient_domains: Vec<Vec<_>> = tables
         .values()
         .zip_eq(proof.opened_values.values())
-        .map(|(input, opened_values)| {
-            let degree = 1 << opened_values.log_degree;
-            let trace_domain = pcs.natural_domain_for_degree(degree);
+        .zip_eq(trace_domains.iter())
+        .map(|((table, opened_values), trace_domain)| {
+            let log_quotient_degree = table.get_log_quotient_degree();
             trace_domain
-                .create_disjoint_domain(
-                    1 << (opened_values.log_degree
-                        + get_log_quotient_degree::<Val<T::Config>, _>(
-                            &input.air,
-                            &input
-                                .public_values_by_stage
-                                .iter()
-                                .map(|values| values.len())
-                                .collect::<Vec<_>>(),
-                        )),
-                )
-                .split_domains(
-                    1 << get_log_quotient_degree::<Val<T::Config>, _>(
-                        &input.air,
-                        &input
-                            .public_values_by_stage
-                            .iter()
-                            .map(|values| values.len())
-                            .collect::<Vec<_>>(),
-                    ),
-                )
+                .create_disjoint_domain(1 << (opened_values.log_degree + log_quotient_degree))
+                .split_domains(1 << log_quotient_degree)
         })
         .collect::<Vec<_>>();
 
