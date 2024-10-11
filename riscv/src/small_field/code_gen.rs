@@ -301,12 +301,12 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
     instr set_reg XL, YH, YL -> link ~> regs.mstore(0, XL, STEP, YH, YL);
 
     // We still need these registers prover inputs.
-    reg query_arg_1_h;
     reg query_arg_1_l;
-    reg query_arg_2_h;
+    reg query_arg_1_h;
     reg query_arg_2_l;
+    reg query_arg_2_h;
 
-    // Witness columns used in instuctions for intermediate values inside instructions.
+    // Witness columns used for intermediate values inside instructions.
     col witness tmp1_h;
     col witness tmp1_l;
     col witness tmp2_h;
@@ -336,7 +336,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
     // We need to add these inline instead of using std::utils::is_zero
     // because when XX is not constrained, witgen will try to set XX,
     // XX_inv and XXIsZero to zero, which fails this constraint.
-    // Therefore, we have to activate constrained whenever XXIsZero is used.
+    // Therefore, we have to activate the following constraint whenever XXIsZero is used:
     // XXIsZero = 1 - XX * XX_inv
     col witness XX, XX_inv, XXIsZero;
     std::utils::force_bool(XXIsZero);
@@ -345,6 +345,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
     // ============== control-flow instructions ==============
 
     // Load the value of label `l` into register X.
+    // We restrict the address to 24 bits to avoid overflows.
     instr load_label XL, l: label
         link ~> regs.mstore(0, XL, STEP, tmp1_h, tmp1_l)
         link => byte.check(tmp1_h)
@@ -353,6 +354,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
     }
 
     // Jump to `l` and store the return program counter in register W.
+    // We restrict the address to 24 bits to avoid overflows.
     instr jump l: label, WL
         link ~> regs.mstore(0, WL, STEP, tmp1_h, tmp1_l)
         link => byte.check(tmp1_h)
@@ -361,7 +363,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
         pc' = l
     }
     
-    col witness lala;
+    col witness tmp_fe;
 
     // Jump to the address in register X and store the return program counter in register W.
     instr jump_dyn XL, WL
@@ -372,17 +374,21 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
         link => byte.check(tmp1_h)
         link => byte.check(tmp2_h)
     {
-        lala = (tmp1_h * 2**16) + tmp1_l,
-        pc' = lala,
+        // We need a temporary col here because the compiler doesn't like
+        // `exp` inside an expr on the RHS of a pc update. 
+        tmp_fe = (tmp1_h * 2**16) + tmp1_l,
+        pc' = tmp_fe,
         pc + 1 = tmp2_h * 2**16 + tmp2_l
     }
 
-    // Jump to `l` if val(X) - val(Y) is nonzero, where X and Y are register ids.
-    instr branch_if_diff_nonzero XL, YL, l: label
+    // Jump to `l` if val(X) != val(Y) is nonzero, where X and Y are register ids.
+    instr branch_if_not_equal XL, YL, l: label
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
         link ~> (tmp3_h, tmp3_l) = add_sub.sub(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
     {
+        // TODO this could be optimized by removing the sub call above.
+        // What we want to do is to compare tmp1_h == tmp2_h && tmp1_l == tmp2_l.
         XXIsZero = 1 - XX * XX_inv,
         XX = (tmp3_h + tmp3_l),
         pc' = (1 - XXIsZero) * l + XXIsZero * (pc + 1)
@@ -396,7 +402,6 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
         link ~> (tmp4_h, tmp4_l) = add_sub.sub(tmp3_h, tmp3_l, ZH, ZL)
     {
         XXIsZero = 1 - XX * XX_inv,
-        // TODO is this correct?
         XX = tmp4_h + tmp4_l,
         pc' = XXIsZero * l + (1 - XXIsZero) * (pc + 1)
     }
@@ -423,27 +428,32 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
         pc' = (1 - wrap_bit) * l + wrap_bit * (pc + 1)
     }
 
-    col witness sign_bit;
-    std::utils::force_bool(sign_bit);
-
     // Branches to `l` if val(X) >= val(Y) <=> not(val(X) < val(Y)).
     instr branch_if_greater_or_equal_signed XL, YL, l: label
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
-        link ~> wrap_bit_3 = add_sub.gt(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
+        link ~> tmp5_h = add_sub.gt(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
+        link => byte.check(X_b1)
+        link => byte.check(X_b2)
+        link => byte.check(X_b3)
+        link => bit7.check(tmp3_l)
+        link => bit7.check(tmp3_h)
     {
-        tmp1_h = X_b1 + Y_7bit * 0x100 + wrap_bit * 0x8000,
-        tmp2_h = X_b2 + Y_7bit_2 * 0x100 + wrap_bit_2 * 0x8000,
+        // TODO witgen doesn't work with this yet.
+        std::utils::force_bool(tmp5_h),
 
-        Y_b5 = (1 - wrap_bit) * (1 - wrap_bit_2),
-        Y_b6 = wrap_bit * wrap_bit_2,
-        Y_b7 = (1 - wrap_bit) * wrap_bit_2,
+        tmp1_h = X_b1 + tmp3_l * 2**8 + wrap_bit * 2**15,
+        tmp2_h = X_b2 + tmp3_h * 2**8 + wrap_bit_2 * 2**15,
 
-        //Y_b8 = wrap_bit * (1 - wrap_bit_2),
-        X_b3 = Y_b5 * (1 - wrap_bit_3) +
-               Y_b6 * (1 - wrap_bit_3) +
-               Y_b7, /* * 1 */
-               /* Y_b8 * 0, */
+        tmp4_l = (1 - wrap_bit) * (1 - wrap_bit_2),
+        tmp4_h = wrap_bit * wrap_bit_2,
+        tmp5_l = (1 - wrap_bit) * wrap_bit_2,
+        //... = wrap_bit * (1 - wrap_bit_2),
+
+        X_b3 = tmp4_l * (1 - tmp5_h) +
+               tmp4_h * (1 - tmp5_h) +
+               tmp5_l, /* * 1 */
+               /* ...* 0, */
 
         pc' = X_b3 * l + (1 - X_b3) * (pc + 1)
     }
@@ -459,21 +469,28 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
     instr is_greater_or_equal_signed XL, YL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
-        link ~> wrap_bit_3 = add_sub.gt(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
+        link ~> tmp6_l = add_sub.gt(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
         link ~> regs.mstore(0, WL, STEP + 2, 0, X_b3)
+        link => byte.check(X_b1)
+        link => byte.check(X_b2)
+        link => byte.check(X_b3)
+        link => bit7.check(tmp3_l)
+        link => bit7.check(tmp3_h)
     {
-        tmp1_h = X_b1 + Y_7bit * 0x100 + wrap_bit * 0x8000,
-        tmp2_h = X_b2 + Y_7bit_2 * 0x100 + wrap_bit_2 * 0x8000,
+        std::utils::force_bool(tmp6_l),
 
-        Y_b5 = (1 - wrap_bit) * (1 - wrap_bit_2),
-        Y_b6 = wrap_bit * wrap_bit_2,
-        Y_b7 = (1 - wrap_bit) * wrap_bit_2,
+        tmp1_h = X_b1 + tmp3_l * 2**8 + wrap_bit * 2**15,
+        tmp2_h = X_b2 + tmp3_h * 2**8 + wrap_bit_2 * 2**15,
 
-        //Y_b8 = wrap_bit * (1 - wrap_bit_2),
-        X_b3 = Y_b5 * (1 - wrap_bit_3) +
-               Y_b6 * (1 - wrap_bit_3) +
-               Y_b7 /* * 1 */
-               /* Y_b8 * 0, */
+        tmp4_l = (1 - wrap_bit) * (1 - wrap_bit_2),
+        tmp4_h = wrap_bit * wrap_bit_2,
+        tmp5_l = (1 - wrap_bit) * wrap_bit_2,
+        //tmp5_h = wrap_bit * (1 - wrap_bit_2),
+ 
+        X_b3 = tmp4_l * (1 - tmp6_l) +
+               tmp4_h * (1 - tmp6_l) +
+               tmp5_l /* * 1 */
+               /* tmp5_h * 0, */
     }
 
     // Stores val(X) * Z + W in register Y.
@@ -537,49 +554,41 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
     col witness X_b1;
     col witness X_b2;
     col witness X_b3;
-    col witness X_b4;
-    link => byte.check(X_b1);
-    link => byte.check(X_b2);
-    link => byte.check(X_b3);
-    link => byte.check(X_b4);
+
+    // TODO Remove these once witgen supports Boolean
+    // constraints inside instructions.
     col witness wrap_bit;
     col witness wrap_bit_2;
-    col witness wrap_bit_3;
     std::utils::force_bool(wrap_bit);
     std::utils::force_bool(wrap_bit_2);
-    std::utils::force_bool(wrap_bit_3);
 
     // Sign extends the value in register X and stores it in register Y.
     // Input is a 32 bit unsigned number. We check bit 7 and set all higher bits to that value.
     instr sign_extend_byte XL, YL
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
         link ~> regs.mstore(0, YL, STEP + 3, tmp3_h, tmp3_l)
+        link => byte.check(X_b1)
+        link => bit7.check(tmp2_l)
     {
         // wrap_bit is used as sign_bit here.
-        tmp1_l = Y_7bit + wrap_bit * 0x80 + X_b2 * 0x100,
+        tmp1_l = tmp2_l + wrap_bit * 2**7 + X_b1 * 2**8,
         tmp3_h = wrap_bit * 0xffff,
-        tmp3_l = Y_7bit + wrap_bit * 0xff80
+        tmp3_l = tmp2_l + wrap_bit * 0xff80
     }
-
-    col witness Y_7bit;
-    col witness Y_7bit_2;
-    link => bit7.check(Y_7bit);
-    link => bit7.check(Y_7bit_2);
 
     // Sign extends the value in register X and stores it in register Y.
     // Input is a 32 bit unsigned number. We check bit 15 and set all higher bits to that value.
     instr sign_extend_16_bits XL, YL
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
         link ~> regs.mstore(0, YL, STEP + 3, tmp3_h, tmp3_l)
+        link => byte.check(X_b1)
+        link => bit7.check(tmp2_l)
     {
-        Y_15bit = X_b1 + Y_7bit * 0x100,
-
         // wrap_bit is used as sign_bit here.
-        tmp1_l = Y_15bit + wrap_bit * 0x8000,
+        tmp1_l = X_b1 + tmp2_l * 2**8 + wrap_bit * 2**15,
         tmp3_h = wrap_bit * 0xffff,
         tmp3_l = tmp1_l
     }
-    col witness Y_15bit;
 
     // ======================= assertions =========================
 
@@ -588,24 +597,6 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
     {
       tmp1_h = 1
     }
-
-    col witness Y_b5;
-    col witness Y_b6;
-    col witness Y_b7;
-    col witness Y_b8;
-    link => byte.check(Y_b5);
-    link => byte.check(Y_b6);
-    link => byte.check(Y_b7);
-    link => byte.check(Y_b8);
-
-    col witness REM_b1;
-    col witness REM_b2;
-    col witness REM_b3;
-    col witness REM_b4;
-    link => byte.check(REM_b1);
-    link => byte.check(REM_b2);
-    link => byte.check(REM_b3);
-    link => byte.check(REM_b4);
 
     // Computes Q = val(Y) / val(X) and R = val(Y) % val(X) and stores them in registers Z and W.
     instr divremu YL, XL, ZL, WL
@@ -667,8 +658,7 @@ fn memory(with_bootloader: bool) -> String {
 
     // ============== memory instructions ==============
 
-    /// Loads one word from an address V = val(X) + Y, where V can be between 0 and 2**33 (sic!),
-    /// wraps the address to 32 bits and rounds it down to the next multiple of 4.
+    /// Loads one word from an address V = val(X) + Y and rounds it down to the next multiple of 4.
     /// Writes the loaded word and the remainder of the division by 4 to registers Z and W,
     /// respectively.
     instr mload XL, YH, YL, ZL, WL
@@ -681,6 +671,7 @@ fn memory(with_bootloader: bool) -> String {
         link ~> regs.mstore(0, WL, STEP + 3, 0, tmp4_l)
         link => bit2.check(tmp4_l)
         link => bit6.check(X_b1)
+        link => byte.check(X_b2)
     {
         tmp2_l = X_b2 * 0x100 + X_b1 * 4 + tmp4_l
     }
@@ -1413,7 +1404,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             let (r1, r2, label) = args.rrl()?;
             let label = escape_label(label.as_ref());
             vec![format!(
-                "branch_if_diff_nonzero {}, {}, {label};",
+                "branch_if_not_equal {}, {}, {label};",
                 r1.addr(),
                 r2.addr()
             )]
@@ -1421,7 +1412,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
         "bnez" => {
             let (r1, label) = args.rl()?;
             let label = escape_label(label.as_ref());
-            vec![format!("branch_if_diff_nonzero {}, 0, {label};", r1.addr())]
+            vec![format!("branch_if_not_equal {}, 0, {label};", r1.addr())]
         }
 
         // jump and call
