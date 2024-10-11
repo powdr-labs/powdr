@@ -2,6 +2,12 @@ use std::fmt;
 
 use powdr_isa_utils::SingleDataValue;
 
+use powdr_number::KnownField;
+
+use crate::CompilerOptions;
+
+use crate::large_field;
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Register {
     value: u8,
@@ -101,6 +107,15 @@ pub trait RiscVProgram {
 /// Translates a RISC-V program to POWDR ASM.
 ///
 /// Will call each of the methods in the `RiscVProgram` just once.
+pub fn translate_program(program: impl RiscVProgram, options: CompilerOptions) -> String {
+    match options.field {
+        KnownField::BabyBearField | KnownField::Mersenne31Field => todo!(),
+        KnownField::GoldilocksField | KnownField::Bn254Field => {
+            large_field::code_gen::translate_program(program, options)
+        }
+    }
+}
+
 pub trait InstructionArgs {
     type Error: fmt::Display;
 

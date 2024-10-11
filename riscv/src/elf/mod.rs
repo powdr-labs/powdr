@@ -30,7 +30,7 @@ use self::debug_info::DebugInfo;
 
 mod debug_info;
 
-use crate::large_field::code_gen::translate_program;
+use crate::code_gen::translate_program;
 
 /// Generates a Powdr Assembly program from a RISC-V 32 executable ELF file.
 pub fn translate(file_name: &Path, options: CompilerOptions) -> String {
