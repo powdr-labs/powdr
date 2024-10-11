@@ -1,7 +1,7 @@
 use std::array;
 use std::machines::range::Byte2;
 use std::field::modulus;
-use std::check::assert;
+use std::check::require_field_bits;
 
 /// This machine is a slightly extended version of std::machines::memory::Memory,
 /// where in addition to mstore, there is an mstore_bootloader operation. It behaves
@@ -12,7 +12,7 @@ machine MemoryWithBootloaderWrite(byte2: Byte2) with
     operation_id: operation_id,
     call_selectors: selectors,
 {
-    assert(modulus() > 2**32, || "Memory requires a field that fits any 32-Bit value.");
+    require_field_bits(32, || "Memory requires a field that fits any 32-Bit value.");
     // lower bound degree is 65536
 
     operation mload<0> m_addr, m_step -> m_value;

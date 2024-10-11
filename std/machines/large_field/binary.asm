@@ -1,6 +1,6 @@
 use std::utils::unchanged_until;
 use std::field::modulus;
-use std::check::assert;
+use std::check::require_field_bits;
 use std::machines::binary::ByteBinary;
 
 machine Binary(byte_binary: ByteBinary) with
@@ -9,7 +9,7 @@ machine Binary(byte_binary: ByteBinary) with
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
-    assert(modulus() > 2**32, || "Binary requires a field that fits any 32-Bit value.");
+    require_field_bits(32, || "Binary requires a field that fits any 32-Bit value.");
 
     operation and<0> A, B -> C;
 

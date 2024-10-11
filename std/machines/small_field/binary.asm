@@ -1,7 +1,7 @@
 use std::utils::unchanged_until;
 use std::machines::binary::ByteBinary;
 use std::field::modulus;
-use std::check::assert;
+use std::check::require_field_bits;
 
 // Computes bitwise operations on two 32-bit numbers
 // decomposed into 4 bytes each.
@@ -11,7 +11,7 @@ machine Binary8(byte_binary: ByteBinary) with
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
-    assert(modulus() > 2**8, || "Binary8 requires a field that fits any 8-Bit value.");
+    require_field_bits(8, || "Binary8 requires a field that fits any 8-Bit value.");
 
     operation and<0> A1, A2, A3, A4, B1, B2, B3, B4 -> C1, C2, C3, C4;
 
@@ -50,7 +50,7 @@ machine Binary(byte_binary: ByteBinary) with
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
-    assert(modulus() > 2**16, || "Binary8 requires a field that fits any 16-Bit value.");
+    require_field_bits(16, || "Binary8 requires a field that fits any 16-Bit value.");
 
     operation and<0> I1, I2, I3, I4 -> O1, O2;
     operation or<1> I1, I2, I3, I4 -> O1, O2;

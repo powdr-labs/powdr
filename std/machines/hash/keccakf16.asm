@@ -17,7 +17,7 @@ machine Keccakf16 with
 {
     // Adapted from Plonky3 implementation of Keccak: https://github.com/Plonky3/Plonky3/tree/main/keccak-air/src
 
-    std::check::assert(std::field::modulus() >= 65535, || "The field modulo should be at least 2^16 - 1 to work in the keccakf16 machine.");
+    std::check::require_field_bits(16, || "The field modulo should be at least 2^16 - 1 to work in the keccakf16 machine.");
 
     // Expects input of 25 64-bit numbers decomposed to 25 chunks of 4 16-bit little endian limbs. 
     // The output is a_prime_prime_prime_0_0_limbs for the first 4 and a_prime_prime for the rest.

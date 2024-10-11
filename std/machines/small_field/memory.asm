@@ -1,6 +1,6 @@
 use std::array;
 use std::field::modulus;
-use std::check::assert;
+use std::check::require_field_bits;
 use std::machines::range::Bit12;
 use std::machines::range::Byte2;
 
@@ -12,7 +12,7 @@ machine Memory(bit12: Bit12, byte2: Byte2) with
     call_selectors: selectors,
 {
     // We compute m_step_high (12-Bit) * 2**16 + m_step_low (16-Bit), which fits into 28 Bits.
-    assert(modulus() > 2**28, || "Memory requires a field that fits any 28-Bit value.");
+    require_field_bits(28, || "Memory requires a field that fits any 28-Bit value.");
 
     operation mload<0> m_addr_high, m_addr_low, m_step -> m_value1, m_value2;
     operation mstore<1> m_addr_high, m_addr_low, m_step, m_value1, m_value2 ->;

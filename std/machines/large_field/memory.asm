@@ -1,7 +1,7 @@
 use std::array;
 use std::machines::range::Byte2;
 use std::field::modulus;
-use std::check::assert;
+use std::check::require_field_bits;
 
 // A read/write memory, similar to that of Polygon:
 // https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/mem.pil
@@ -10,7 +10,7 @@ machine Memory(byte2: Byte2) with
     operation_id: m_is_write,
     call_selectors: selectors,
 {
-    assert(modulus() > 2**32, || "Memory requires a field that fits any 32-Bit value.");
+    require_field_bits(32, || "Memory requires a field that fits any 32-Bit value.");
     // lower bound degree is 65536
 
     operation mload<0> m_addr, m_step -> m_value;
