@@ -1,11 +1,6 @@
 use std::fmt;
 
 use powdr_isa_utils::SingleDataValue;
-use powdr_number::KnownField;
-
-use crate::CompilerOptions;
-
-use crate::large_field;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Register {
