@@ -38,7 +38,7 @@ pub fn compile<T: FieldElement>(
         .iter()
         .filter_map(|&sym| match codegen.request_symbol(sym, &[]) {
             Err(e) => {
-                log::warn!("Unable to generate code for symbol {sym}: {e}");
+                log::debug!("Unable to generate code for symbol {sym}: {e}");
                 None
             }
             Ok(access) => Some((sym, access)),
