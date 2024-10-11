@@ -272,7 +272,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
         + &memory(with_bootloader)
         + r#"
     // =============== Register memory =======================
-"# + "std::machines::memory::Memory regs(byte2);"
+"# + "std::machines::large_field::memory::Memory regs(byte2);"
         + r#"
     // Get the value in register Y.
     instr get_reg Y -> X link ~> X = regs.mload(Y, STEP);
@@ -591,7 +591,7 @@ fn mul_instruction(field: KnownField, runtime: &Runtime) -> &'static str {
 fn memory(with_bootloader: bool) -> String {
     let memory_machine = if with_bootloader {
         r#"
-    std::machines::memory_with_bootloader_write::MemoryWithBootloaderWrite memory(byte2);
+    std::machines::large_field::memory_with_bootloader_write::MemoryWithBootloaderWrite memory(byte2);
 
     // Stores val(W) at address (V = val(X) - val(Z) + Y) % 2**32.
     // V can be between 0 and 2**33.
@@ -606,7 +606,7 @@ fn memory(with_bootloader: bool) -> String {
 "#
     } else {
         r#"
-    std::machines::memory::Memory memory(byte2);
+    std::machines::large_field::memory::Memory memory(byte2);
 "#
     };
 
