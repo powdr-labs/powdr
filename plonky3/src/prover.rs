@@ -357,7 +357,7 @@ where
             .processed_stages
             .iter()
             .map(|stage| stage.challenge_values.clone())
-            .collect();
+            .collect_vec();
 
         let public_values_by_stage = state
             .processed_stages
@@ -372,7 +372,7 @@ where
             quotient_domain,
             preprocessed_on_quotient_domain,
             traces_on_quotient_domain,
-            challenges,
+            &challenges,
             alpha,
         );
 
@@ -529,7 +529,7 @@ fn quotient_values<'a, SC, A, Mat>(
     quotient_domain: Domain<SC>,
     preprocessed_on_quotient_domain: Option<Mat>,
     traces_on_quotient_domain: Vec<Mat>,
-    challenges: Vec<Vec<Val<SC>>>,
+    challenges: &'a [Vec<Val<SC>>],
     alpha: SC::Challenge,
 ) -> Vec<SC::Challenge>
 where
@@ -600,7 +600,7 @@ where
 
             let accumulator = PackedChallenge::<SC>::zero();
             let mut folder = ProverConstraintFolder {
-                challenges: challenges.clone(),
+                challenges,
                 traces_by_stage,
                 preprocessed,
                 public_values_by_stage,
