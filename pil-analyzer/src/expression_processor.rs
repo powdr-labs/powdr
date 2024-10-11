@@ -291,7 +291,9 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
 
     pub fn process_lambda_expression(
         &mut self,
-        LambdaExpression { kind, params, body }: LambdaExpression,
+        LambdaExpression {
+            kind, params, body, ..
+        }: LambdaExpression,
     ) -> LambdaExpression<Expression> {
         let previous_local_vars = self.save_local_variables();
 
@@ -308,7 +310,12 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         let body = Box::new(self.process_expression(*body));
 
         self.reset_local_variables(previous_local_vars);
-        LambdaExpression { kind, params, body }
+        LambdaExpression {
+            kind,
+            params,
+            body,
+            param_types: vec![],
+        }
     }
 
     fn process_block_expression(

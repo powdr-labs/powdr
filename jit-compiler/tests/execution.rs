@@ -266,3 +266,20 @@ fn enums() {
     assert_eq!(c.call(2), 1);
     assert_eq!(c.call(3), 99);
 }
+
+#[test]
+fn closures() {
+    let input = "
+        namespace std::convert;
+            let fe = 99;
+        namespace main;
+            let eval_on: (int -> int), int -> int = |f, x| f(x);
+            let q: col = |i| std::convert::fe(eval_on(|j| i + j, i));
+        ";
+    let q = compile(input, "main::q");
+
+    assert_eq!(q.call(0), 0);
+    assert_eq!(q.call(1), 2);
+    assert_eq!(q.call(2), 4);
+    assert_eq!(q.call(3), 6);
+}
