@@ -130,7 +130,7 @@ fn field_specific_preamble<T: FieldElement>() -> String {
         impl Add for FieldElement {{
             fn add(a: Self, b: Self) -> Self {{
                 // TODO this is inefficient.
-                Self(u64::try_from(u128::from(a.0) + u128::from(b.0) % u128::from({modulus}_u64)).unwrap())
+                Self(u64::try_from((u128::from(a.0) + u128::from(b.0)) % u128::from({modulus}_u64)).unwrap())
             }}
         }}
         "#
