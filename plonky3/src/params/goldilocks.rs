@@ -5,7 +5,10 @@
 use lazy_static::lazy_static;
 use p3_poseidon2::{poseidon2_round_numbers_128, Poseidon2, Poseidon2ExternalMatrixGeneral};
 
-use crate::params::{Challenger, FieldElementMap, Plonky3Field};
+use crate::params::{
+    poseidon2::{poseidon2_external_constants, poseidon2_internal_constants},
+    Challenger, FieldElementMap, Plonky3Field,
+};
 use p3_challenger::DuplexChallenger;
 use p3_commit::ExtensionMmcs;
 use p3_dft::Radix2DitParallel;
@@ -16,7 +19,6 @@ use p3_merkle_tree::MerkleTreeMmcs;
 use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
 use p3_uni_stark::StarkConfig;
 use powdr_number::{FieldElement, GoldilocksField, LargeInt};
-use rand::{distributions::Standard, Rng, SeedableRng};
 
 // From: https://github.com/Plonky3/Plonky3/blob/64e79fe28c51ab35b509c68242256f253b61d612/poseidon2/benches/poseidon2.rs#L31
 const D: u64 = 7;
@@ -53,24 +55,16 @@ const FRI_LOG_BLOWUP: usize = 1;
 const FRI_NUM_QUERIES: usize = 100;
 const FRI_PROOF_OF_WORK_BITS: usize = 16;
 
-const RNG_SEED: u64 = 42;
-
 lazy_static! {
     static ref ROUNDS: (usize, usize) = poseidon2_round_numbers_128::<Goldilocks>(WIDTH, D);
     static ref ROUNDS_F: usize = ROUNDS.0;
     static ref ROUNDS_P: usize = ROUNDS.1;
     static ref PERM_GL: Perm = Perm::new(
         *ROUNDS_F,
-        rand_chacha::ChaCha8Rng::seed_from_u64(RNG_SEED)
-            .sample_iter(Standard)
-            .take(*ROUNDS_F)
-            .collect::<Vec<[Goldilocks; WIDTH]>>(),
+        poseidon2_external_constants(*ROUNDS_F),
         Poseidon2ExternalMatrixGeneral,
         *ROUNDS_P,
-        rand_chacha::ChaCha8Rng::seed_from_u64(RNG_SEED)
-            .sample_iter(Standard)
-            .take(*ROUNDS_P)
-            .collect(),
+        poseidon2_internal_constants(*ROUNDS_P),
         DiffusionMatrixGoldilocks
     );
 }
