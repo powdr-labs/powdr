@@ -212,7 +212,7 @@ where
         traces_by_stage: &[AB::M],
         fixed: &AB::M,
         publics: &BTreeMap<&String, <AB as MultistageAirBuilder>::PublicVar>,
-        challenges: &BTreeMap<u8, BTreeMap<u64, <AB as MultistageAirBuilder>::Challenge>>,
+        challenges: &[BTreeMap<u64, <AB as MultistageAirBuilder>::Challenge>],
     ) -> AB::Expr {
         let res = match e {
             AlgebraicExpression::Reference(r) => {
@@ -262,7 +262,7 @@ where
                     AlgebraicUnaryOperator::Minus => -expr,
                 }
             }
-            AlgebraicExpression::Challenge(challenge) => challenges[&(challenge.stage as u8)]
+            AlgebraicExpression::Challenge(challenge) => challenges[challenge.stage as usize]
                 [&challenge.id]
                 .clone()
                 .into(),
@@ -295,14 +295,15 @@ where
 {
     fn eval(&self, builder: &mut AB) {
         let stage_count = <Self as MultiStageAir<AB>>::stage_count(self);
-        let trace_by_stage: Vec<AB::M> = (0..stage_count).map(|i| builder.stage_trace(i)).collect();
+        let traces_by_stage: Vec<AB::M> =
+            (0..stage_count).map(|i| builder.stage_trace(i)).collect();
         let fixed = builder.preprocessed();
-        let pi = (0..stage_count)
+        let public_input_values_by_stage = (0..stage_count)
             .map(|i| builder.stage_public_values(i))
             .collect_vec();
 
         // for each stage, the values of the challenges drawn at the end of that stage
-        let challenges: BTreeMap<u8, BTreeMap<u64, _>> = self
+        let challenges_by_stage: Vec<BTreeMap<u64, _>> = self
             .constraint_system
             .challenges
             .iter()
@@ -310,14 +311,27 @@ where
             .into_group_map()
             .into_iter()
             .map(|(stage, ids)| {
-                let p3_challenges = builder.stage_challenges(stage).to_vec();
-                assert_eq!(p3_challenges.len(), ids.len());
-                (stage, ids.into_iter().zip(p3_challenges).collect())
+                let stage_challenges = builder.stage_challenges(stage);
+                assert_eq!(stage_challenges.len(), ids.len());
+                (
+                    stage,
+                    ids.into_iter()
+                        .zip(stage_challenges.iter().cloned())
+                        .collect(),
+                )
             })
-            .collect();
+            .fold(
+                vec![BTreeMap::default(); stage_count as usize],
+                |mut acc, (stage, challenges)| {
+                    acc[stage as usize] = challenges;
+                    acc
+                },
+            );
+
         assert_eq!(
             self.constraint_system.publics.len(),
-            pi.iter()
+            public_input_values_by_stage
+                .iter()
                 .map(|stage_publics| stage_publics.len())
                 .sum::<usize>()
         );
@@ -329,7 +343,11 @@ where
             .iter()
             .into_group_map_by(|(.., stage)| stage)
             .into_iter()
-            .flat_map(|(stage, publics)| publics.into_iter().zip_eq(pi[*stage as usize]))
+            .flat_map(|(stage, publics)| {
+                publics
+                    .into_iter()
+                    .zip_eq(public_input_values_by_stage[*stage as usize])
+            })
             .map(|((id, _, _, _), pi)| (id, *pi))
             .collect::<BTreeMap<&String, <AB as MultistageAirBuilder>::PublicVar>>();
 
@@ -341,7 +359,7 @@ where
             |(index, (pub_id, poly_id, _, _))| {
                 let selector = fixed_local[public_offset + index];
                 let (stage, index) = self.constraint_system.witness_columns[poly_id];
-                let witness_col = trace_by_stage[stage].row_slice(0)[index];
+                let witness_col = traces_by_stage[stage].row_slice(0)[index];
                 let public_value = public_vals_by_id[pub_id];
 
                 // constraining s(i) * (pub[i] - x(i)) = 0
@@ -359,10 +377,10 @@ where
 
                     let left = self.to_plonky3_expr::<AB>(
                         identity.left.selector.as_ref().unwrap(),
-                        &trace_by_stage,
+                        &traces_by_stage,
                         &fixed,
                         &public_vals_by_id,
-                        &challenges,
+                        &challenges_by_stage,
                     );
 
                     builder.assert_zero(left);

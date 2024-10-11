@@ -522,19 +522,19 @@ where
 
 #[allow(clippy::too_many_arguments)]
 #[instrument(name = "compute quotient polynomial", skip_all)]
-fn quotient_values<'a, SC, A, Mat>(
+fn quotient_values<SC, A, Mat>(
     air: &A,
-    public_values_by_stage: &'a [Vec<Val<SC>>],
+    public_values_by_stage: &[Vec<Val<SC>>],
     trace_domain: Domain<SC>,
     quotient_domain: Domain<SC>,
     preprocessed_on_quotient_domain: Option<Mat>,
     traces_on_quotient_domain: Vec<Mat>,
-    challenges: &'a [Vec<Val<SC>>],
+    challenges: &[Vec<Val<SC>>],
     alpha: SC::Challenge,
 ) -> Vec<SC::Challenge>
 where
     SC: StarkGenericConfig,
-    A: Air<ProverConstraintFolder<'a, SC>>,
+    A: for<'a> Air<ProverConstraintFolder<'a, SC>>,
     Mat: Matrix<Val<SC>> + Sync,
 {
     let quotient_size = quotient_domain.size();
@@ -596,13 +596,16 @@ where
                         trace_on_quotient_domain.width(),
                     )
                 })
-                .collect();
+                .collect_vec();
 
             let accumulator = PackedChallenge::<SC>::zero();
             let mut folder = ProverConstraintFolder {
                 challenges,
-                traces_by_stage,
-                preprocessed,
+                traces_by_stage: traces_by_stage
+                    .iter()
+                    .map(|trace| trace.as_view())
+                    .collect(),
+                preprocessed: preprocessed.as_view(),
                 public_values_by_stage,
                 is_first_row,
                 is_last_row,

@@ -177,12 +177,12 @@ impl<F: Field> MultistageAirBuilder for SymbolicAirBuilder<F> {
     type Challenge = Self::Var;
     type PublicVar = SymbolicVariable<F>;
 
-    fn stage_public_values(&self, stage: u8) -> &[Self::PublicVar] {
-        &self.public_values_by_stage[stage as usize]
-    }
-
     fn stage_trace(&self, stage: u8) -> Self::M {
         self.traces_by_stage[stage as usize].clone()
+    }
+
+    fn stage_public_values(&self, stage: u8) -> &[Self::PublicVar] {
+        &self.public_values_by_stage[stage as usize]
     }
 
     fn stage_challenges(&self, stage: u8) -> &[Self::Challenge] {

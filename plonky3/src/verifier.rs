@@ -28,7 +28,7 @@ where
     Commitment<T>: Send,
 {
     air: PowdrTable<'a, T>,
-    public_values_by_stage: Vec<&'a Vec<Val<T::Config>>>,
+    public_values_by_stage: &'a [Vec<Val<T::Config>>],
 }
 
 impl<'a, T: FieldElementMap> Table<'a, T>
@@ -73,9 +73,9 @@ where
         })
         .collect::<BTreeMap<_, _>>();
 
-    let public_inputs: BTreeMap<&String, Vec<&Vec<Plonky3Field<T>>>> = public_inputs
+    let public_inputs: BTreeMap<&String, &[Vec<Plonky3Field<T>>]> = public_inputs
         .iter()
-        .map(|(name, values)| (name, values.iter().collect_vec()))
+        .map(|(name, values)| (name, values.as_slice()))
         .collect();
 
     // sanity check that both maps have the same keys
