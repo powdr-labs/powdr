@@ -146,7 +146,7 @@ pub fn call_cargo(code: &str) -> Result<PathInTempDir, String> {
                 "Rust compiler error when JIT-compiling. Will use evaluator for all symbols. Error message:\n{stderr}."
             ));
         } else {
-            return Err(format!("Rust compiler error when JIT-compiling. Will use evaluator for all symbols. Set log level to DEBUG for reason."));
+            return Err("Rust compiler error when JIT-compiling. Will use evaluator for all symbols. Set log level to DEBUG for reason.".to_string());
         }
     }
     let extension = if cfg!(target_os = "windows") {
