@@ -6,8 +6,9 @@ use powdr_pil_analyzer::evaluator::Value;
 use powdr_pipeline::{
     test_util::{
         evaluate_function, evaluate_integer_function, execute_test_file, gen_estark_proof,
-        gen_halo2_proof, make_simple_prepared_pipeline, regular_test, std_analyzed, test_halo2,
-        test_pilcom, test_plonky3_with_backend_variant, BackendVariant,
+        gen_halo2_proof, make_simple_prepared_pipeline, regular_test,
+        regular_test_without_babybear, std_analyzed, test_halo2, test_pilcom,
+        test_plonky3_with_backend_variant, BackendVariant,
     },
     Pipeline,
 };
@@ -75,8 +76,22 @@ fn split_bb_test() {
 
 #[test]
 #[ignore = "Too slow"]
-fn arith_test() {
-    let f = "std/arith_test.asm";
+fn add_sub_small_test() {
+    let f = "std/add_sub_small_test.asm";
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn arith_small_test() {
+    let f = "std/arith_small_test.asm";
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn arith_large_test() {
+    let f = "std/arith_large_test.asm";
     let pipeline = make_simple_prepared_pipeline(f);
     test_pilcom(pipeline.clone());
 
@@ -93,23 +108,30 @@ fn arith_test() {
 
 #[test]
 #[ignore = "Too slow"]
-fn memory_test() {
-    let f = "std/memory_test.asm";
-    regular_test(f, &[]);
+fn memory_large_test() {
+    let f = "std/memory_large_test.asm";
+    regular_test_without_babybear(f, &[]);
 }
 
 #[test]
 #[ignore = "Too slow"]
-fn memory_with_bootloader_write_test() {
-    let f = "std/memory_with_bootloader_write_test.asm";
-    regular_test(f, &[]);
+fn memory_large_with_bootloader_write_test() {
+    let f = "std/memory_large_with_bootloader_write_test.asm";
+    regular_test_without_babybear(f, &[]);
 }
 
 #[test]
 #[ignore = "Too slow"]
-fn memory_test_parallel_accesses() {
-    let f = "std/memory_test_parallel_accesses.asm";
-    regular_test(f, &[]);
+fn memory_large_test_parallel_accesses() {
+    let f = "std/memory_large_test_parallel_accesses.asm";
+    regular_test_without_babybear(f, &[]);
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn memory_small_test() {
+    let f = "std/memory_small_test.asm";
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
 }
 
 #[test]
@@ -190,32 +212,39 @@ fn write_once_memory_test() {
 
 #[test]
 #[ignore = "Too slow"]
-fn binary_test() {
-    let f = "std/binary_test.asm";
+fn binary_large_test() {
+    let f = "std/binary_large_test.asm";
     test_pilcom(make_simple_prepared_pipeline(f));
     test_halo2(make_simple_prepared_pipeline(f));
 }
 
 #[test]
 #[ignore = "Too slow"]
-fn binary_bb_8_test() {
-    let f = "std/binary_bb_test_8.asm";
+fn binary_small_8_test() {
+    let f = "std/binary_small_8_test.asm";
     test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
 }
 
 #[test]
 #[ignore = "Too slow"]
-fn binary_bb_16_test() {
-    let f = "std/binary_bb_test_16.asm";
+fn binary_small_test() {
+    let f = "std/binary_small_test.asm";
     test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
 }
 
 #[test]
 #[ignore = "Too slow"]
-fn shift_test() {
-    let f = "std/shift_test.asm";
+fn shift_large_test() {
+    let f = "std/shift_large_test.asm";
     test_pilcom(make_simple_prepared_pipeline(f));
     test_halo2(make_simple_prepared_pipeline(f));
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn shift_small_test() {
+    let f = "std/shift_small_test.asm";
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
 }
 
 #[test]

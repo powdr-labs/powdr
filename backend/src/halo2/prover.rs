@@ -124,10 +124,8 @@ impl Halo2Prover {
     ) -> Result<(Vec<u8>, Vec<Vec<Fr>>), String> {
         log::info!("Starting proof generation...");
 
-        let circuit = PowdrCircuit::new(self.analyzed.clone(), &self.fixed)
-            .with_witgen_callback(witgen_callback)
-            .with_witness(witness);
-        let publics = vec![circuit.instance_column()];
+        // Create static circuit (no witness).
+        let circuit = PowdrCircuit::new(self.analyzed.clone(), &self.fixed);
 
         log::info!("Generating PK for snark...");
         let vk = match self.vkey {
@@ -138,6 +136,13 @@ impl Halo2Prover {
 
         log::info!("Generating proof...");
         let start = Instant::now();
+
+        // Add witness to the circuit structure.
+        let circuit = circuit
+            .with_witgen_callback(witgen_callback)
+            .with_witness(witness);
+
+        let publics = vec![circuit.instance_column()];
 
         let proof = gen_proof::<_, _, TW>(&self.params, &pk, circuit, &publics)?;
 

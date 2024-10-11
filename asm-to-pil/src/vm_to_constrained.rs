@@ -866,6 +866,7 @@ impl<T: FieldElement> VMConverter<T> {
                 assert!(op == UnaryOperator::Minus);
                 self.negate_assignment_value(self.process_assignment_value(*expr))
             }
+            Expression::StructExpression(_, _) => panic!(),
         }
     }
 
@@ -1057,6 +1058,7 @@ impl<T: FieldElement> VMConverter<T> {
                         kind: FunctionKind::Query,
                         params: vec![Pattern::Variable(SourceRef::unknown(), "__i".to_string())],
                         body: Box::new(call_to_handle_query.into()),
+                        param_types: vec![],
                     };
 
                     statements.push(PilStatement::Expression(

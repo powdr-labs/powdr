@@ -18,24 +18,23 @@ use powdr_number::FieldElement;
 
 use crate::{codegen::escape_symbol, LoadedFunction};
 
-// TODO make this depend on T
-
-const PREAMBLE: &str = r#"
-#![allow(unused_parens)]
-//type FieldElement = powdr_number::GoldilocksField;
-"#;
-
 pub fn generate_glue_code<T: FieldElement>(
-    symbols: &[&str],
+    symbols: &[(&str, String)],
     analyzed: &Analyzed<T>,
 ) -> Result<String, String> {
+    if T::BITS > 64 {
+        return Err(format!(
+            "Fields with more than 64 bits not supported, requested {}",
+            T::BITS,
+        ));
+    }
     let mut glue = String::new();
     let int_int_fun: TypeScheme = Type::Function(FunctionType {
         params: vec![Type::Int],
         value: Box::new(Type::Int),
     })
     .into();
-    for sym in symbols {
+    for (sym, access) in symbols {
         let ty = analyzed.type_of_symbol(sym);
         if ty != int_int_fun && ty.ty != Type::Col {
             return Err(format!(
@@ -45,12 +44,11 @@ pub fn generate_glue_code<T: FieldElement>(
         }
 
         // TODO we should use big int instead of u64
-        let name = escape_symbol(sym);
         glue.push_str(&format!(
             r#"
             #[no_mangle]
             pub extern "C" fn {}(i: u64) -> u64 {{
-                u64::try_from({name}(ibig::IBig::from(i))).unwrap()
+                u64::try_from(({access}).call(ibig::IBig::from(i))).unwrap()
             }}
             "#,
             extern_symbol_name(sym)
@@ -59,6 +57,51 @@ pub fn generate_glue_code<T: FieldElement>(
 
     Ok(format!("{PREAMBLE}\n{glue}\n",))
 }
+
+const PREAMBLE: &str = r#"
+#![allow(unused_parens)]
+
+#[derive(Clone, Copy)]
+struct FieldElement(u64);
+impl From<u64> for FieldElement {
+    fn from(x: u64) -> Self {
+        FieldElement(x)
+    }
+}
+impl From<FieldElement> for u64 {
+    fn from(x: FieldElement) -> u64 {
+        x.0
+    }
+}
+impl From<ibig::IBig> for FieldElement {
+    fn from(x: ibig::IBig) -> Self {
+        FieldElement(u64::try_from(x).unwrap())
+    }
+}
+impl From<FieldElement> for ibig::IBig {
+    fn from(x: FieldElement) -> Self {
+        // TODO once we support proper field element operations,
+        // this might be more complicated.
+        ibig::IBig::from(x.0)
+    }
+}
+
+#[derive(Clone)]
+enum Callable<Args, Ret> {
+    Fn(fn(Args) -> Ret),
+    Closure(std::sync::Arc<dyn Fn(Args) -> Ret + Send + Sync>),
+}
+impl<Args, Ret> Callable<Args, Ret> {
+    #[inline(always)]
+    fn call(&self, args: Args) -> Ret {
+        match self {
+            Callable::Fn(f) => f(args),
+            Callable::Closure(f) => f(args),
+        }
+    }
+}
+
+"#;
 
 const CARGO_TOML: &str = r#"
 [package]
@@ -97,8 +140,14 @@ pub fn call_cargo(code: &str) -> Result<PathInTempDir, String> {
         .output()
         .unwrap();
     if !out.status.success() {
-        let stderr = from_utf8(&out.stderr).unwrap_or("UTF-8 error in error message.");
-        return Err(format!("Failed to compile: {stderr}."));
+        if log::log_enabled!(log::Level::Debug) {
+            let stderr = from_utf8(&out.stderr).unwrap_or("UTF-8 error in error message.");
+            return Err(format!(
+                "Rust compiler error when JIT-compiling. Will use evaluator for all symbols. Error message:\n{stderr}."
+            ));
+        } else {
+            return Err("Rust compiler error when JIT-compiling. Will use evaluator for all symbols. Set log level to DEBUG for reason.".to_string());
+        }
     }
     let extension = if cfg!(target_os = "windows") {
         "dll"

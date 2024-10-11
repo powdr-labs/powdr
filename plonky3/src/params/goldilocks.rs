@@ -1,27 +1,33 @@
 //! The concrete parameters used in the prover
 //! Inspired from [this example](https://github.com/Plonky3/Plonky3/blob/6a1b0710fdf85136d0fdd645b92933615867740a/keccak-air/examples/prove_goldilocks_keccak.rs#L57)
+//! (But using Poseidon2 instead of Poseidon)
 
 use lazy_static::lazy_static;
+use p3_poseidon2::{poseidon2_round_numbers_128, Poseidon2, Poseidon2ExternalMatrixGeneral};
 
-use crate::params::{Challenger, FieldElementMap, Plonky3Field};
+use crate::params::{
+    poseidon2::{poseidon2_external_constants, poseidon2_internal_constants},
+    Challenger, FieldElementMap, Plonky3Field,
+};
 use p3_challenger::DuplexChallenger;
 use p3_commit::ExtensionMmcs;
 use p3_dft::Radix2DitParallel;
 use p3_field::{extension::BinomialExtensionField, AbstractField, Field, PrimeField64};
 use p3_fri::{FriConfig, TwoAdicFriPcs};
-use p3_goldilocks::{Goldilocks, MdsMatrixGoldilocks};
+use p3_goldilocks::{DiffusionMatrixGoldilocks, Goldilocks};
 use p3_merkle_tree::MerkleTreeMmcs;
-use p3_poseidon::Poseidon;
 use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
 use p3_uni_stark::StarkConfig;
 use powdr_number::{FieldElement, GoldilocksField, LargeInt};
-use rand::{distributions::Standard, Rng, SeedableRng};
+
+// From: https://github.com/Plonky3/Plonky3/blob/64e79fe28c51ab35b509c68242256f253b61d612/poseidon2/benches/poseidon2.rs#L31
+const D: u64 = 7;
+const WIDTH: usize = 8;
+type Perm =
+    Poseidon2<Goldilocks, Poseidon2ExternalMatrixGeneral, DiffusionMatrixGoldilocks, WIDTH, D>;
 
 const DEGREE: usize = 2;
 type FriChallenge = BinomialExtensionField<Goldilocks, DEGREE>;
-const WIDTH: usize = 8;
-const ALPHA: u64 = 7;
-type Perm = Poseidon<Goldilocks, MdsMatrixGoldilocks, WIDTH, ALPHA>;
 
 const RATE: usize = 4;
 const OUT: usize = 4;
@@ -42,30 +48,24 @@ type ValMmcs = MerkleTreeMmcs<
 
 pub type FriChallenger = DuplexChallenger<Goldilocks, Perm, WIDTH, RATE>;
 type ChallengeMmcs = ExtensionMmcs<Goldilocks, FriChallenge, ValMmcs>;
-type Dft = Radix2DitParallel;
+type Dft = Radix2DitParallel<Goldilocks>;
 type MyPcs = TwoAdicFriPcs<Goldilocks, Dft, ValMmcs, ChallengeMmcs>;
-
-const HALF_NUM_FULL_ROUNDS: usize = 4;
-const NUM_PARTIAL_ROUNDS: usize = 22;
 
 const FRI_LOG_BLOWUP: usize = 1;
 const FRI_NUM_QUERIES: usize = 100;
 const FRI_PROOF_OF_WORK_BITS: usize = 16;
 
-const NUM_ROUNDS: usize = 2 * HALF_NUM_FULL_ROUNDS + NUM_PARTIAL_ROUNDS;
-const NUM_CONSTANTS: usize = WIDTH * NUM_ROUNDS;
-
-const RNG_SEED: u64 = 42;
-
 lazy_static! {
+    static ref ROUNDS: (usize, usize) = poseidon2_round_numbers_128::<Goldilocks>(WIDTH, D);
+    static ref ROUNDS_F: usize = ROUNDS.0;
+    static ref ROUNDS_P: usize = ROUNDS.1;
     static ref PERM_GL: Perm = Perm::new(
-        HALF_NUM_FULL_ROUNDS,
-        NUM_PARTIAL_ROUNDS,
-        rand_chacha::ChaCha8Rng::seed_from_u64(RNG_SEED)
-            .sample_iter(Standard)
-            .take(NUM_CONSTANTS)
-            .collect(),
-        MdsMatrixGoldilocks,
+        *ROUNDS_F,
+        poseidon2_external_constants(*ROUNDS_F),
+        Poseidon2ExternalMatrixGeneral,
+        *ROUNDS_P,
+        poseidon2_internal_constants(*ROUNDS_P),
+        DiffusionMatrixGoldilocks
     );
 }
 
@@ -93,7 +93,7 @@ impl FieldElementMap for GoldilocksField {
 
         let challenge_mmcs = ChallengeMmcs::new(val_mmcs.clone());
 
-        let dft = Dft {};
+        let dft = Dft::default();
 
         let fri_config = FriConfig {
             log_blowup: FRI_LOG_BLOWUP,
