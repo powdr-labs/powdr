@@ -118,7 +118,7 @@ where
         .map(|i| &i.air)
         .map(<_ as MultiStageAir<SymbolicAirBuilder<_>>>::stage_count)
         .max()
-        .unwrap() as u32;
+        .unwrap();
 
     let challenge_count_by_stage: Vec<usize> = (0..stage_count)
         .map(|stage_id| {
@@ -392,16 +392,13 @@ where
     let quotient_degree = 1 << log_quotient_degree;
     let stage_count = <_ as MultiStageAir<SymbolicAirBuilder<_>>>::stage_count(&table.air);
     let challenge_counts: Vec<usize> = (0..stage_count)
-        .map(|i| {
-            <_ as MultiStageAir<SymbolicAirBuilder<_>>>::stage_challenge_count(&table.air, i as u32)
-        })
+        .map(|i| <_ as MultiStageAir<SymbolicAirBuilder<_>>>::stage_challenge_count(&table.air, i))
         .collect();
 
     let air_widths = (0..stage_count)
         .map(|stage| {
             <_ as MultiStageAir<SymbolicAirBuilder<Val<T::Config>>>>::stage_trace_width(
-                &table.air,
-                stage as u32,
+                &table.air, stage,
             )
         })
         .collect::<Vec<usize>>();
@@ -426,8 +423,8 @@ where
             .quotient_chunks
             .iter()
             .all(|qc| qc.len() == <Challenge<T> as AbstractExtensionField<Val<T::Config>>>::D)
-        && table.public_values_by_stage.len() == stage_count
-        && challenge_counts.len() == stage_count;
+        && table.public_values_by_stage.len() as u8 == stage_count
+        && challenge_counts.len() as u8 == stage_count;
 
     res.then_some(())
         .ok_or(VerificationError::InvalidProofShape)

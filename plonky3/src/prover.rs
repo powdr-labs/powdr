@@ -16,7 +16,7 @@ use p3_util::log2_strict_usize;
 use tracing::{info_span, instrument};
 
 use crate::circuit_builder::{generate_matrix, PowdrCircuit, PowdrTable};
-use crate::params::{Challenge, Challenger, Pcs, Plonky3Field};
+use crate::params::{Challenge, Challenger, Pcs};
 use crate::proof::{OpenedValues, StageOpenedValues};
 use crate::symbolic_builder::{get_log_quotient_degree, SymbolicAirBuilder};
 use crate::traits::MultiStageAir;
@@ -53,13 +53,13 @@ where
     /// # Panics
     ///
     /// Panics if there are no tables.
-    fn stage_count(&self) -> u32 {
+    fn stage_count(&self) -> u8 {
         self.tables
             .values()
             .map(|i| &i.air)
             .map(<_ as MultiStageAir<SymbolicAirBuilder<_>>>::stage_count)
             .max()
-            .expect("expected at least one table") as u32
+            .expect("expected at least one table")
     }
 
     /// Observe the instance for each table.
@@ -263,7 +263,7 @@ where
     /// # Panics
     ///
     /// Panics if there are no tables.
-    fn stage_challenge_count(&self, stage_id: u32) -> usize {
+    fn stage_challenge_count(&self, stage_id: u8) -> usize {
         self.tables
             .values()
             .map(|table| {
@@ -302,10 +302,7 @@ where
     fn public_input_count_per_stage(&self) -> Vec<usize> {
         (0..<_ as MultiStageAir<SymbolicAirBuilder<_>>>::stage_count(&self.air))
             .map(|stage| {
-                <_ as MultiStageAir<SymbolicAirBuilder<_>>>::stage_public_count(
-                    &self.air,
-                    stage as u32,
-                )
+                <_ as MultiStageAir<SymbolicAirBuilder<_>>>::stage_public_count(&self.air, stage)
             })
             .collect()
     }
@@ -390,23 +387,21 @@ where
 
 #[instrument(skip_all)]
 #[allow(clippy::multiple_bound_locations)] // cfg not supported in where clauses?
-pub fn prove<T: FieldElementMap, C>(
+pub fn prove<T: FieldElementMap>(
     proving_key: Option<&StarkProvingKey<T::Config>>,
     program: &PowdrCircuit<T>,
-    stage_0_witness: &[(String, Vec<T>)],
+    witness: &mut Vec<(String, Vec<T>)>,
     challenger: &mut Challenger<T>,
-    next_stage_trace_callback: &C,
 ) -> Proof<T::Config>
 where
     ProverData<T>: Send,
     Commitment<T>: Send,
-    C: NextStageTraceCallback<T>,
 {
     let (tables, stage_0): (BTreeMap<_, _>, BTreeMap<_, _>) = program
         .split
         .iter()
         .map(|(name, (pil, constraint_system))| {
-            let columns = machine_witness_columns(stage_0_witness, pil, name);
+            let columns = machine_witness_columns(witness, pil, name);
             let degree = columns[0].1.len();
 
             (
@@ -428,7 +423,7 @@ where
                             .iter()
                             .filter(|&(_, _, _, stage)| (*stage == 0))
                             .map(|(name, _, row, _)| {
-                                stage_0_witness
+                                witness
                                     .iter()
                                     .find_map(|(n, v)| (n == name).then(|| v[*row]))
                                     .unwrap()
@@ -445,13 +440,13 @@ where
         panic!("No tables to prove");
     }
 
-    let program = MultiTable { tables };
+    let multi_table = MultiTable { tables };
 
     let config = T::get_config();
 
-    assert_eq!(stage_0.keys().collect_vec(), program.table_names());
+    assert_eq!(stage_0.keys().collect_vec(), multi_table.table_names());
 
-    let stage_count = program.stage_count();
+    let stage_count = multi_table.stage_count();
 
     let pcs = config.pcs();
 
@@ -460,16 +455,15 @@ where
         for commitment in proving_key
             .preprocessed
             .iter()
-            .map(|(name, map)| &map[&program.tables[name].degree].commitment)
+            .map(|(name, map)| &map[&multi_table.tables[name].degree].commitment)
         {
             challenger.observe(commitment.clone());
         }
     };
 
-    program.observe_instances(challenger);
+    multi_table.observe_instances(challenger);
 
-    let mut state = ProverState::new(&program, pcs, challenger);
-    // assumption: stages are ordered like in airs in `state.tables`. Maybe we can enforce this better.
+    let mut state = ProverState::new(&multi_table, pcs, challenger);
     let mut stage = Stage {
         id: 0,
         air_stages: stage_0,
@@ -482,9 +476,9 @@ where
         // get the challenges drawn at the end of the previous stage
         let local_challenges = &state.processed_stages.last().unwrap().challenge_values;
         let CallbackResult { air_stages } =
-            next_stage_trace_callback.compute_stage(stage_id, local_challenges);
+            program.compute_stage(stage_id, local_challenges, witness);
 
-        assert_eq!(air_stages.len(), program.table_count());
+        assert_eq!(air_stages.len(), multi_table.table_count());
 
         // go to the next stage
         stage = Stage {
@@ -504,9 +498,9 @@ where
         .challenge_values
         .is_empty());
     // sanity check that we processed as many stages as expected
-    assert_eq!(state.processed_stages.len() as u32, stage_count);
+    assert_eq!(state.processed_stages.len() as u8, stage_count);
 
-    let (quotient_commit, quotient_data) = program.commit_to_quotient(&mut state, proving_key);
+    let (quotient_commit, quotient_data) = multi_table.commit_to_quotient(&mut state, proving_key);
 
     let commitments = Commitments {
         traces_by_stage: state
@@ -517,7 +511,7 @@ where
         quotient_chunks: quotient_commit,
     };
 
-    let (opened_values, opening_proof) = program.open(&mut state, proving_key, quotient_data);
+    let (opened_values, opening_proof) = multi_table.open(&mut state, proving_key, quotient_data);
 
     Proof {
         commitments,
@@ -712,7 +706,7 @@ pub struct AirStage<F> {
 
 pub struct Stage<F> {
     /// the id of this stage
-    pub(crate) id: u32,
+    pub(crate) id: u8,
     /// the stage trace for each air
     air_stages: BTreeMap<String, AirStage<F>>,
 }
@@ -720,17 +714,4 @@ pub struct Stage<F> {
 pub struct CallbackResult<T> {
     /// the next stage for each air
     pub(crate) air_stages: BTreeMap<String, AirStage<T>>,
-}
-
-pub trait NextStageTraceCallback<T: FieldElementMap>
-where
-    ProverData<T>: Send,
-    Commitment<T>: Send,
-{
-    /// Computes the stage number `trace_stage` based on `challenges` drawn at the end of stage `trace_stage - 1`
-    fn compute_stage(
-        &self,
-        stage: u32,
-        challenges: &[Plonky3Field<T>],
-    ) -> CallbackResult<Plonky3Field<T>>;
 }

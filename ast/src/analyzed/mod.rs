@@ -326,7 +326,7 @@ impl<T> Analyzed<T> {
     }
 
     /// Retrieves (col_name, poly_id, offset, stage) of each public witness in the trace.
-    pub fn get_publics(&self) -> Vec<(String, PolyID, usize, u32)> {
+    pub fn get_publics(&self) -> Vec<(String, PolyID, usize, u8)> {
         let mut publics = self
             .public_declarations
             .values()
@@ -340,7 +340,7 @@ impl<T> Analyzed<T> {
                             .nth(public_declaration.array_index.unwrap_or_default())
                             .unwrap()
                             .1,
-                        symbol.stage.unwrap_or_default(),
+                        symbol.stage.unwrap_or_default() as u8,
                     )
                 };
                 let row_offset = public_declaration.index as usize;

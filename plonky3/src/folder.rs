@@ -73,15 +73,15 @@ impl<'a, SC: StarkGenericConfig> MultistageAirBuilder for ProverConstraintFolder
     type Challenge = Val<SC>;
     type PublicVar = Val<SC>;
 
-    fn stage_trace(&self, stage: usize) -> <Self as AirBuilder>::M {
-        self.traces_by_stage[stage].clone()
+    fn stage_trace(&self, stage: u8) -> <Self as AirBuilder>::M {
+        self.traces_by_stage[stage as usize].clone()
     }
 
-    fn stage_challenges(&self, stage: usize) -> &[Self::Challenge] {
-        &self.challenges[stage]
+    fn stage_challenges(&self, stage: u8) -> &[Self::Challenge] {
+        &self.challenges[stage as usize]
     }
-    fn stage_public_values(&self, stage: usize) -> &[Self::PublicVar] {
-        &self.public_values_by_stage[stage]
+    fn stage_public_values(&self, stage: u8) -> &[Self::PublicVar] {
+        &self.public_values_by_stage[stage as usize]
     }
 }
 
@@ -128,15 +128,15 @@ impl<'a, SC: StarkGenericConfig> MultistageAirBuilder for VerifierConstraintFold
     type Challenge = Val<SC>;
     type PublicVar = Val<SC>;
 
-    fn stage_trace(&self, stage: usize) -> <Self as AirBuilder>::M {
-        self.traces_by_stage[stage]
+    fn stage_trace(&self, stage: u8) -> <Self as AirBuilder>::M {
+        self.traces_by_stage[stage as usize]
     }
 
-    fn stage_challenges(&self, stage: usize) -> &[Self::Challenge] {
-        &self.challenges[stage]
+    fn stage_challenges(&self, stage: u8) -> &[Self::Challenge] {
+        &self.challenges[stage as usize]
     }
-    fn stage_public_values(&self, stage: usize) -> &[Self::PublicVar] {
-        self.public_values_by_stage[stage]
+    fn stage_public_values(&self, stage: u8) -> &[Self::PublicVar] {
+        self.public_values_by_stage[stage as usize]
     }
 }
 

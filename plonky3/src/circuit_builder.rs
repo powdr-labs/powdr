@@ -7,11 +7,7 @@
 //! every row.
 
 use itertools::Itertools;
-use std::{
-    cell::RefCell,
-    collections::{BTreeMap, BTreeSet, HashMap},
-    sync::Mutex,
-};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::{
     params::{Commitment, FieldElementMap, Plonky3Field, ProverData},
@@ -25,13 +21,11 @@ use powdr_ast::analyzed::{
     PolyID, PolynomialType, SelectedExpressions,
 };
 
-use crate::{CallbackResult, MultiStageAir, MultistageAirBuilder, NextStageTraceCallback};
+use crate::{CallbackResult, MultiStageAir, MultistageAirBuilder};
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::FieldElement;
-
-type Witness<T> = Mutex<RefCell<Vec<(String, Vec<T>)>>>;
 
 /// A description of the constraint system.
 /// All of the data is derived from the analyzed PIL, but is materialized
@@ -43,7 +37,7 @@ pub struct ConstraintSystem<T> {
     fixed_columns: HashMap<PolyID, usize>,
     identities: Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>>,
     // for each public column, the name, poly_id, index in the witness columns, and stage
-    pub publics: Vec<(String, PolyID, usize, u32)>,
+    pub(crate) publics: Vec<(String, PolyID, usize, u8)>,
     constant_count: usize,
     // for each stage, the number of witness columns. There is always a least one stage, possibly empty
     stage_widths: Vec<usize>,
@@ -110,44 +104,35 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
     }
 }
 
-pub(crate) struct PowdrCircuit<T: FieldElementMap>
+pub(crate) struct PowdrCircuit<'a, T: FieldElementMap>
 where
     ProverData<T>: Send,
     Commitment<T>: Send,
 {
     /// The split program
-    pub split: BTreeMap<String, (Analyzed<T>, ConstraintSystem<T>)>,
-    /// The values of the witness, in a [RefCell] as it gets mutated as we go through stages
-    witness_so_far: Witness<T>,
+    pub split: &'a BTreeMap<String, (Analyzed<T>, ConstraintSystem<T>)>,
     /// Callback to augment the witness in the later stages
     witgen_callback: Option<WitgenCallback<T>>,
 }
 
-impl<T: FieldElementMap> PowdrCircuit<T>
+impl<'a, T: FieldElementMap> PowdrCircuit<'a, T>
 where
     ProverData<T>: Send,
     Commitment<T>: Send,
 {
-    pub(crate) fn new(split: BTreeMap<String, Analyzed<T>>) -> Self {
+    pub(crate) fn new(split: &'a BTreeMap<String, (Analyzed<T>, ConstraintSystem<T>)>) -> Self {
         Self {
-            split: split
-                .into_iter()
-                .map(|(name, analyzed)| {
-                    let constraint_system = (&analyzed).into();
-                    (name.clone(), (analyzed, constraint_system))
-                })
-                .collect(),
+            split,
             witgen_callback: None,
-            witness_so_far: Default::default(),
         }
     }
 
     /// Calculates public values from generated witness values.
     /// For stages in which there are no public values, return an empty vector
-    pub(crate) fn public_values_so_far(&self) -> BTreeMap<String, Vec<Vec<Option<T>>>> {
-        let binding = &self.witness_so_far.lock().unwrap();
-        let witness = binding.borrow();
-
+    pub(crate) fn public_values_so_far(
+        &self,
+        witness: &[(String, Vec<T>)],
+    ) -> BTreeMap<String, Vec<Vec<Option<T>>>> {
         let witness = witness
             .iter()
             .map(|(name, values)| (name, values))
@@ -171,14 +156,6 @@ where
     pub(crate) fn with_witgen_callback(self, witgen_callback: WitgenCallback<T>) -> Self {
         Self {
             witgen_callback: Some(witgen_callback),
-            ..self
-        }
-    }
-
-    pub(crate) fn with_phase_0_witness(self, witness: &[(String, Vec<T>)]) -> Self {
-        assert!(self.witness_so_far.lock().unwrap().borrow().is_empty());
-        Self {
-            witness_so_far: RefCell::new(witness.to_vec()).into(),
             ..self
         }
     }
@@ -235,7 +212,7 @@ where
         traces_by_stage: &[AB::M],
         fixed: &AB::M,
         publics: &BTreeMap<&String, <AB as MultistageAirBuilder>::PublicVar>,
-        challenges: &BTreeMap<u32, BTreeMap<u64, <AB as MultistageAirBuilder>::Challenge>>,
+        challenges: &BTreeMap<u8, BTreeMap<u64, <AB as MultistageAirBuilder>::Challenge>>,
     ) -> AB::Expr {
         let res = match e {
             AlgebraicExpression::Reference(r) => {
@@ -285,9 +262,10 @@ where
                     AlgebraicUnaryOperator::Minus => -expr,
                 }
             }
-            AlgebraicExpression::Challenge(challenge) => {
-                challenges[&challenge.stage][&challenge.id].clone().into()
-            }
+            AlgebraicExpression::Challenge(challenge) => challenges[&(challenge.stage as u8)]
+                [&challenge.id]
+                .clone()
+                .into(),
         };
         res
     }
@@ -324,15 +302,15 @@ where
             .collect_vec();
 
         // for each stage, the values of the challenges drawn at the end of that stage
-        let challenges: BTreeMap<u32, BTreeMap<u64, _>> = self
+        let challenges: BTreeMap<u8, BTreeMap<u64, _>> = self
             .constraint_system
             .challenges
             .iter()
-            .map(|c| (c.stage, c.id))
+            .map(|c| (c.stage as u8, c.id))
             .into_group_map()
             .into_iter()
             .map(|(stage, ids)| {
-                let p3_challenges = builder.stage_challenges(stage as usize).to_vec();
+                let p3_challenges = builder.stage_challenges(stage).to_vec();
                 assert_eq!(p3_challenges.len(), ids.len());
                 (stage, ids.into_iter().zip(p3_challenges).collect())
             })
@@ -411,7 +389,7 @@ where
     ProverData<T>: Send,
     Commitment<T>: Send,
 {
-    fn stage_public_count(&self, stage: u32) -> usize {
+    fn stage_public_count(&self, stage: u8) -> usize {
         self.constraint_system
             .publics
             .iter()
@@ -423,43 +401,35 @@ where
         self.constraint_system.constant_count + self.constraint_system.publics.len()
     }
 
-    fn stage_count(&self) -> usize {
-        self.constraint_system.stage_widths.len()
+    fn stage_count(&self) -> u8 {
+        self.constraint_system.stage_widths.len() as u8
     }
 
-    fn stage_trace_width(&self, stage: u32) -> usize {
+    fn stage_trace_width(&self, stage: u8) -> usize {
         self.constraint_system.stage_widths[stage as usize]
     }
 
-    fn stage_challenge_count(&self, stage: u32) -> usize {
+    fn stage_challenge_count(&self, stage: u8) -> usize {
         self.constraint_system
             .challenges
             .iter()
-            .filter(|c| c.stage == stage)
+            .filter(|c| c.stage as u8 == stage)
             .count()
     }
 }
 
-impl<T: FieldElementMap> NextStageTraceCallback<T> for PowdrCircuit<T>
+impl<'a, T: FieldElementMap> PowdrCircuit<'a, T>
 where
     ProverData<T>: Send,
     Commitment<T>: Send,
 {
-    // this wraps the witgen callback to make it compatible with p3:
-    // - p3 passes its local challenge values and the stage id
-    // - it receives the trace for the next stage in the expected format,
-    // as well as the public values for this stage and the updated challenges
-    // for the previous stage
-    // - internally, the full witness is accumulated in [Self] as it's needed
-    // in order to call the witgen callback
-    fn compute_stage(
+    /// Computes the stage data for stage number `trace_stage` based on `new_challenge_values` drawn at the end of stage `trace_stage - 1`.
+    pub fn compute_stage(
         &self,
-        trace_stage: u32,
+        trace_stage: u8,
         new_challenge_values: &[Plonky3Field<T>],
+        witness: &mut Vec<(String, Vec<T>)>,
     ) -> CallbackResult<Plonky3Field<T>> {
-        let witness = self.witness_so_far.lock().unwrap();
-        let mut witness = witness.borrow_mut();
-
         let previous_stage_challenges: BTreeSet<Challenge> = self
             .split
             .values()
@@ -467,12 +437,11 @@ where
                 constraint_system
                     .challenges
                     .iter()
-                    .filter(|c| c.stage == trace_stage - 1)
+                    .filter(|c| c.stage as u8 == trace_stage - 1)
                     .cloned()
             })
             .collect();
 
-        // let previous_stage_challenges: BTreeSet<Challenge> = unimplemented!();
         assert_eq!(previous_stage_challenges.len(), new_challenge_values.len());
         let challenge_map = previous_stage_challenges
             .into_iter()
@@ -480,22 +449,22 @@ where
             .map(|(c, v)| (c.id, T::from_p3_field(*v)))
             .collect();
 
+        // remember the columns we already know about
         let columns_before: BTreeSet<String> =
             witness.iter().map(|(name, _)| name.clone()).collect();
 
-        // to call the witgen callback, we need to pass the witness for all stages so far
+        // call the witgen callback, updating the witness
         *witness = {
             self.witgen_callback.as_ref().unwrap().next_stage_witness(
-                &witness,
+                witness,
                 challenge_map,
-                trace_stage as u8,
+                trace_stage,
             )
         };
 
         // generate the next trace in the format p3 expects
-        // TODO: since the current witgen callback returns the entire witness so far,
-        // we filter out the columns we already know about. Instead, return only the
-        // new witness in the witgen callback.
+        // since the witgen callback returns the entire witness so far,
+        // we filter out the columns we already know about
         let air_stages = witness
             .iter()
             .filter(|(name, _)| !columns_before.contains(name))
@@ -507,6 +476,7 @@ where
                     table_name.to_string(),
                     AirStage {
                         trace: generate_matrix(columns.into_iter()),
+                        // later stage publics are not supported, so we return an empty vector. TODO: change this
                         public_values: vec![],
                     },
                 )
@@ -514,7 +484,6 @@ where
             .collect();
 
         // return the next stage for each table
-        // later stage publics are not supported, so we return an empty vector. TODO: change this
         CallbackResult { air_stages }
     }
 }

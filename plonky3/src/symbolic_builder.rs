@@ -50,10 +50,10 @@ where
     A: MultiStageAir<SymbolicAirBuilder<F>>,
 {
     let widths: Vec<_> = (0..air.stage_count())
-        .map(|i| air.stage_trace_width(i as u32))
+        .map(|i| air.stage_trace_width(i))
         .collect();
     let challenges: Vec<_> = (0..air.stage_count())
-        .map(|i| air.stage_challenge_count(i as u32))
+        .map(|i| air.stage_challenge_count(i))
         .collect();
     let mut builder = SymbolicAirBuilder::new(
         air.preprocessed_width(),
@@ -177,16 +177,16 @@ impl<F: Field> MultistageAirBuilder for SymbolicAirBuilder<F> {
     type Challenge = Self::Var;
     type PublicVar = SymbolicVariable<F>;
 
-    fn stage_public_values(&self, stage: usize) -> &[Self::PublicVar] {
-        &self.public_values_by_stage[stage]
+    fn stage_public_values(&self, stage: u8) -> &[Self::PublicVar] {
+        &self.public_values_by_stage[stage as usize]
     }
 
-    fn stage_trace(&self, stage: usize) -> Self::M {
-        self.traces_by_stage[stage].clone()
+    fn stage_trace(&self, stage: u8) -> Self::M {
+        self.traces_by_stage[stage as usize].clone()
     }
 
-    fn stage_challenges(&self, stage: usize) -> &[Self::Challenge] {
-        &self.challenges[stage]
+    fn stage_challenges(&self, stage: u8) -> &[Self::Challenge] {
+        &self.challenges[stage as usize]
     }
 }
 

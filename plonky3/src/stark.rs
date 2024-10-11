@@ -15,8 +15,8 @@ use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
 
 use crate::{
-    prove, verify, Proof, StarkProvingKey, StarkVerifyingKey, TableProvingKey,
-    TableProvingKeyCollection,
+    circuit_builder::ConstraintSystem, prove, verify, Proof, StarkProvingKey, StarkVerifyingKey,
+    TableProvingKey, TableProvingKeyCollection,
 };
 
 use p3_uni_stark::StarkGenericConfig;
@@ -34,7 +34,7 @@ where
     /// The analyzed PIL
     analyzed: Arc<Analyzed<T>>,
     /// The split analyzed PIL
-    split: BTreeMap<String, Analyzed<T>>,
+    split: BTreeMap<String, (Analyzed<T>, ConstraintSystem<T>)>,
     /// The value of the fixed columns
     fixed: Arc<Vec<(String, VariablySizedColumn<T>)>>,
     /// Proving key
@@ -65,7 +65,13 @@ where
         fixed: Arc<Vec<(String, VariablySizedColumn<T>)>>,
     ) -> Self {
         Self {
-            split: powdr_backend_utils::split_pil(&analyzed),
+            split: powdr_backend_utils::split_pil(&analyzed)
+                .into_iter()
+                .map(|(name, pil)| {
+                    let constraint_system = ConstraintSystem::from(&pil);
+                    (name, (pil, constraint_system))
+                })
+                .collect(),
             analyzed,
             fixed,
             proving_key: None,
@@ -100,7 +106,7 @@ where
         let preprocessed: BTreeMap<String, TableProvingKeyCollection<T::Config>> = self
             .split
             .iter()
-            .filter_map(|(namespace, pil)| {
+            .filter_map(|(namespace, (pil, _))| {
                 // if we have neither fixed columns nor publics, we don't need to commit to anything
                 if pil.constant_count() + pil.publics_count() == 0 {
                     None
@@ -190,21 +196,22 @@ where
         witness: &[(String, Vec<T>)],
         witgen_callback: WitgenCallback<T>,
     ) -> Result<Vec<u8>, String> {
-        let circuit = PowdrCircuit::new(self.split.clone())
-            .with_witgen_callback(witgen_callback)
-            .with_phase_0_witness(witness);
+        // here we need to clone the witness because the callback will modify it
+        let witness = &mut witness.to_vec();
+
+        let circuit = PowdrCircuit::new(&self.split).with_witgen_callback(witgen_callback);
 
         let mut challenger = T::get_challenger();
 
         let proving_key = self.proving_key.as_ref();
 
-        let proof = prove(proving_key, &circuit, witness, &mut challenger, &circuit);
+        let proof = prove(proving_key, &circuit, witness, &mut challenger);
 
         let mut challenger = T::get_challenger();
 
         let verifying_key = self.verifying_key.as_ref();
 
-        let public_values = circuit.public_values_so_far();
+        let public_values = circuit.public_values_so_far(witness);
 
         // extract the full map of public values
         let public_values = public_values
@@ -268,7 +275,7 @@ where
 
         verify(
             verifying_key,
-            &PowdrCircuit::new(self.split.clone()),
+            &PowdrCircuit::new(&self.split),
             &mut challenger,
             &proof,
             instance_map,
@@ -306,12 +313,12 @@ mod tests {
 
         let pil = pipeline.compute_optimized_pil().unwrap();
         let witness_callback = pipeline.witgen_callback().unwrap();
-        let witness = pipeline.compute_witness().unwrap();
+        let witness = &mut pipeline.compute_witness().unwrap();
         let fixed = pipeline.compute_fixed_cols().unwrap();
 
         let mut prover = Plonky3Prover::new(pil, fixed);
         prover.setup();
-        let proof = prover.prove(&witness, witness_callback);
+        let proof = prover.prove(witness, witness_callback);
 
         assert!(proof.is_ok());
 
