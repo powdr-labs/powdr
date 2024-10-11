@@ -9,7 +9,12 @@ repository = { workspace = true }
 
 [features]
 default = []
-halo2 = ["dep:halo2_proofs", "dep:halo2_curves", "dep:snark-verifier", "dep:halo2_solidity_verifier"]
+halo2 = [
+  "dep:halo2_proofs",
+  "dep:halo2_curves",
+  "dep:snark-verifier",
+  "dep:halo2_solidity_verifier",
+]
 estark-polygon = ["dep:pil-stark-prover"]
 plonky3 = ["dep:powdr-plonky3"]
 
@@ -23,17 +28,23 @@ powdr-parser-util.workspace = true
 
 powdr-plonky3 = { path = "../plonky3", optional = true }
 
-starky = { git = "https://github.com/0xEigenLabs/eigen-zkvm.git", rev = "cf405b2e2cecb8567cfd083a55936b71722276d5" }
+starky = { git = "https://github.com/0xEigenLabs/eigen-zkvm.git", rev = "cf405b2e2cecb8567cfd083a55936b71722276d5", features = [
+  "avx512",
+] }
 pil-stark-prover = { git = "https://github.com/powdr-labs/pil-stark-prover.git", rev = "769b1153f3ae2d7cbab4c8acf33865ed13f8a823", optional = true }
 
 # TODO change this once Halo2 releases 0.3.1
 #halo2_proofs = { git = "https://github.com/privacy-scaling-explorations/halo2", tag = "v0.3.0", features = ["circuit-params"] }
-halo2_proofs = { git = "https://github.com/powdr-labs/halo2", branch = "make-emit-public-v0.3.0", features = ["circuit-params"], optional = true }
-halo2_curves = { version = "0.6.1", package = "halo2curves", optional = true}
+halo2_proofs = { git = "https://github.com/powdr-labs/halo2", branch = "make-emit-public-v0.3.0", features = [
+  "circuit-params",
+], optional = true }
+halo2_curves = { version = "0.6.1", package = "halo2curves", optional = true }
 # TODO change this once Halo2 releases 0.3.1 and snark-verifier uses it
 #snark-verifier = { git = "https://github.com/privacy-scaling-explorations/snark-verifier", tag = "v2024_01_31" }
 snark-verifier = { git = "https://github.com/powdr-labs/snark-verifier", branch = "powdr-halo2", optional = true }
-halo2_solidity_verifier = { git = "https://github.com/powdr-labs/halo2-solidity-verifier", branch = "main", features = ["evm"], optional = true }
+halo2_solidity_verifier = { git = "https://github.com/powdr-labs/halo2-solidity-verifier", branch = "main", features = [
+  "evm",
+], optional = true }
 
 strum = { version = "0.24.1", features = ["derive"] }
 log = "0.4.17"
