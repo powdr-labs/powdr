@@ -1102,29 +1102,22 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
             ))
         }
         Value::Struct(StructValue { name, fields }) => {
-            let struct_ref = Reference::Poly(PolynomialReference {
+            let name = Reference::Poly(PolynomialReference {
                 name: name.to_string(),
                 // We do not know the type args here.
                 type_args: None,
             });
-
-            StructExpression {
-                name: struct_ref,
-                fields: fields
+            let fields = fields
                     .iter()
                     .map(|(name, value)| {
-                        let body = match try_value_to_expression(value) {
-                            Ok(expr) => expr,
-                            Err(e) => return Err(e),
-                        };
                         Ok(NamedExpression {
                             name: name.to_string(),
-                            body: Box::new(body),
+                            body: Box::new(try_value_to_expression(value)?),
                         })
                     })
-                    .collect::<Result<Vec<_>, _>>()?,
-            }
-            .into()
+                    .collect::<Result<Vec<_>, _>>()?;
+
+            StructExpression { name, fields }.into()
         }
 
         Value::Expression(e) => try_algebraic_expression_to_expression(e)?,
