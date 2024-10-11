@@ -533,6 +533,8 @@ fn check_pattern(value_name: &str, pattern: &Pattern) -> Result<(String, String)
         Pattern::Enum(_, symbol, Some(items)) => {
             // We first match the enum variant and bind all items to variables and
             // the recursively match the items, even if they are catch-all.
+            // TODO check if we need `item__{i}` to be unique, i.e. if there could be clashes
+            // with already existing variables or other patterns.
             let mut vars = vec![];
             let item_name = |i| format!("item__{i}");
             let inner_code = items
