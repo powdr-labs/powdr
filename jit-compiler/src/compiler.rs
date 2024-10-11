@@ -14,7 +14,7 @@ use powdr_ast::{
         types::{FunctionType, Type, TypeScheme},
     },
 };
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, LargeInt};
 
 use crate::{codegen::escape_symbol, LoadedFunction};
 
@@ -55,7 +55,10 @@ pub fn generate_glue_code<T: FieldElement>(
         ));
     }
 
-    Ok(format!("{PREAMBLE}\n{glue}\n",))
+    Ok(format!(
+        "{PREAMBLE}\n{}\n{glue}\n",
+        field_specific_preamble::<T>()
+    ))
 }
 
 const PREAMBLE: &str = r#"
@@ -63,11 +66,6 @@ const PREAMBLE: &str = r#"
 
 #[derive(Clone, Copy)]
 struct FieldElement(u64);
-impl From<u64> for FieldElement {
-    fn from(x: u64) -> Self {
-        FieldElement(x)
-    }
-}
 impl From<FieldElement> for u64 {
     fn from(x: FieldElement) -> u64 {
         x.0
@@ -80,8 +78,6 @@ impl From<ibig::IBig> for FieldElement {
 }
 impl From<FieldElement> for ibig::IBig {
     fn from(x: FieldElement) -> Self {
-        // TODO once we support proper field element operations,
-        // this might be more complicated.
         ibig::IBig::from(x.0)
     }
 }
@@ -109,11 +105,6 @@ impl Add for ibig::IBig {
     fn add(a: Self, b: Self) -> Self { a + b }
 }
 
-impl Add for FieldElement {
-// TODO incorrect.
-    fn add(a: Self, b: Self) -> Self { FieldElement(a.0 + b.0) }
-}
-
 trait FromLiteral {
     fn from_u64(x: u64) -> Self;
 }
@@ -125,6 +116,26 @@ impl FromLiteral for FieldElement {
 }
 
 "#;
+
+fn field_specific_preamble<T: FieldElement>() -> String {
+    let modulus = u64::try_from(T::modulus().to_arbitrary_integer()).unwrap();
+    format!(
+        r#"
+        impl From<u64> for FieldElement {{
+            fn from(x: u64) -> Self {{
+                // TODO this is inefficient.
+                FieldElement(x % {modulus}_u64)
+            }}
+        }}
+        impl Add for FieldElement {{
+            fn add(a: Self, b: Self) -> Self {{
+                // TODO this is inefficient.
+                Self(u64::try_from(u128::from(a.0) + u128::from(b.0) % u128::from({modulus}_u64)).unwrap())
+            }}
+        }}
+        "#
+    )
+}
 
 const CARGO_TOML: &str = r#"
 [package]
