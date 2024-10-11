@@ -732,7 +732,7 @@ mod test {
         );
         assert_eq!(
             result,
-            "fn c((i): (ibig::IBig)) -> ibig::IBig { ((i).clone() + (ibig::IBig::from(20_u64)).clone()) }\n\
+            "fn c((i): (ibig::IBig)) -> ibig::IBig { Add::add((i).clone(), (ibig::IBig::from(20_u64)).clone()) }\n\
             \n\
             fn d((k): (ibig::IBig)) -> ibig::IBig { (Callable::Fn(c)).call((((k).clone() * (ibig::IBig::from(20_u64)).clone()).clone())) }\n\
             "
