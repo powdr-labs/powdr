@@ -15,7 +15,7 @@ use p3_poseidon2::{poseidon2_round_numbers_128, Poseidon2, Poseidon2ExternalMatr
 use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
 use p3_uni_stark::StarkConfig;
 
-use rand::{distributions::Standard, Rng, SeedableRng};
+use crate::params::poseidon2::{poseidon2_external_constants, poseidon2_internal_constants};
 
 use powdr_number::BabyBearField;
 
@@ -51,35 +51,18 @@ const FRI_LOG_BLOWUP: usize = 1;
 const FRI_NUM_QUERIES: usize = 100;
 const FRI_PROOF_OF_WORK_BITS: usize = 16;
 
-const RNG_SEED: u64 = 42;
-
 lazy_static! {
     static ref ROUNDS: (usize, usize) = poseidon2_round_numbers_128::<BabyBear>(WIDTH, D);
     static ref ROUNDS_F: usize = ROUNDS.0;
     static ref ROUNDS_P: usize = ROUNDS.1;
     static ref PERM_BB: Perm = Perm::new(
         *ROUNDS_F,
-        poseidon2_external_constants(),
+        poseidon2_external_constants(*ROUNDS_F),
         Poseidon2ExternalMatrixGeneral,
         *ROUNDS_P,
-        poseidon2_internal_constants(),
+        poseidon2_internal_constants(*ROUNDS_P),
         DiffusionMatrixBabyBear::default()
     );
-}
-
-fn poseidon2_external_constants() -> Vec<[BabyBear; WIDTH]> {
-    rand_chacha::ChaCha8Rng::seed_from_u64(RNG_SEED)
-        .sample_iter(Standard)
-        .take(*ROUNDS_F)
-        .collect()
-}
-
-fn poseidon2_internal_constants() -> Vec<BabyBear> {
-    // Use a different seed here so numbers don't repeat.
-    rand_chacha::ChaCha8Rng::seed_from_u64(RNG_SEED + 1)
-        .sample_iter(Standard)
-        .take(*ROUNDS_P)
-        .collect()
 }
 
 impl FieldElementMap for BabyBearField {
