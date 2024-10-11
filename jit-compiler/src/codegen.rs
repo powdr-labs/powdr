@@ -522,7 +522,7 @@ fn check_pattern(value_name: &str, pattern: &Pattern) -> Result<(String, String)
         }
         Pattern::Variable(_, var) => (var.to_string(), format!("Some({value_name}.clone())")),
         Pattern::Enum(_, symbol, None) => (
-            "_".to_string(),
+            "()".to_string(),
             format!(
                 "(matches!({value_name}, {}).then_some(()))",
                 escape_enum_variant(symbol.clone())
@@ -545,9 +545,9 @@ fn check_pattern(value_name: &str, pattern: &Pattern) -> Result<(String, String)
                 .join(", ");
 
             (
-                vars.join(", "),
+                format!("({})", vars.into_iter().format(", ")),
                 format!(
-                    "(|| if let {}({}) = ({value_name}).clone() {{ Some({inner_code}) }} else {{ None }})()",
+                    "(|| if let {}({}) = ({value_name}).clone() {{ Some(({inner_code})) }} else {{ None }})()",
                     escape_enum_variant(symbol.clone()),
                     (0..items.len()).map(item_name).join(", "),
                 ),
