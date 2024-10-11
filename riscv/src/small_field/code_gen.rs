@@ -611,7 +611,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
         XXIsZero = 1 - XX * XX_inv,
         XX = tmp2_h + tmp2_l,
 
-        // if X is zero, remainder is set to dividend, as per RISC-V specification:
+        // if tmp2 (the divisor) is zero, remainder is set to dividend, as per RISC-V specification:
         XXIsZero * tmp1_h + (1 - XXIsZero) * tmp3_h = tmp5_h,
         XXIsZero * tmp1_l + (1 - XXIsZero) * tmp3_l = tmp5_l,
 
