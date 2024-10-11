@@ -29,7 +29,7 @@ pub fn test_continuations(case: &str) {
     // Test continuations from ELF file.
     let powdr_asm = powdr_riscv::elf::translate(
         &executable,
-        CompilerOptions::new_32()
+        CompilerOptions::new_gl()
             .with_poseidon()
             .with_continuations(),
     );
@@ -117,7 +117,7 @@ fn zero_with_values() {
 #[ignore = "Too slow"]
 fn runtime_poseidon_gl() {
     let case = "poseidon_gl_via_coprocessor";
-    let options = CompilerOptions::new_32().with_poseidon();
+    let options = CompilerOptions::new_gl().with_poseidon();
     verify_riscv_crate_gl_with_options(case, Default::default(), options);
 }
 
@@ -232,7 +232,7 @@ fn function_pointer() {
 #[ignore = "Too slow"]
 fn runtime_ec_double() {
     let case = "ec_double";
-    let options = CompilerOptions::new_32().with_arith();
+    let options = CompilerOptions::new_gl().with_arith();
     verify_riscv_crate_gl_with_options(case, vec![], options);
 }
 
@@ -240,7 +240,7 @@ fn runtime_ec_double() {
 #[ignore = "Too slow"]
 fn runtime_ec_add() {
     let case = "ec_add";
-    let options = CompilerOptions::new_32().with_arith();
+    let options = CompilerOptions::new_gl().with_arith();
     verify_riscv_crate_gl_with_options(case, vec![], options);
 }
 
@@ -248,7 +248,7 @@ fn runtime_ec_add() {
 #[ignore = "Too slow"]
 fn runtime_affine_256() {
     let case = "affine_256";
-    let options = CompilerOptions::new_32().with_arith();
+    let options = CompilerOptions::new_gl().with_arith();
     verify_riscv_crate_gl_with_options(case, vec![], options);
 }
 
@@ -256,7 +256,7 @@ fn runtime_affine_256() {
 #[ignore = "Too slow"]
 fn runtime_modmul_256() {
     let case = "modmul_256";
-    let options = CompilerOptions::new_32().with_arith();
+    let options = CompilerOptions::new_gl().with_arith();
     verify_riscv_crate_gl_with_options(case, vec![], options);
 }
 
@@ -298,7 +298,7 @@ fn read_slice() {
         &temp_dir,
         None,
     );
-    let powdr_asm = powdr_riscv::elf::translate(&executable, CompilerOptions::new_32());
+    let powdr_asm = powdr_riscv::elf::translate(&executable, CompilerOptions::new_gl());
 
     let data: Vec<u32> = vec![];
     let answer = data.iter().sum::<u32>();
@@ -345,7 +345,7 @@ const DISPATCH_TABLE_S: &str = "tests/riscv_data/dispatch_table/dispatch_table.s
 #[ignore = "Too slow"]
 #[test]
 fn dispatch_table_pie_relocation() {
-    verify_riscv_asm_file(Path::new(DISPATCH_TABLE_S), CompilerOptions::new_32(), true);
+    verify_riscv_asm_file(Path::new(DISPATCH_TABLE_S), CompilerOptions::new_gl(), true);
 }
 
 /// Tests that the dispatch table is correctly relocated when PIE is disabled.
@@ -354,7 +354,7 @@ fn dispatch_table_pie_relocation() {
 fn dispatch_table_static_relocation() {
     verify_riscv_asm_file(
         Path::new(DISPATCH_TABLE_S),
-        CompilerOptions::new_32(),
+        CompilerOptions::new_gl(),
         false,
     );
 }
@@ -387,7 +387,7 @@ fn features() {
     );
 
     log::info!("Verifying {case} converted from ELF file");
-    let from_elf = powdr_riscv::elf::translate(&executable, CompilerOptions::new_32());
+    let from_elf = powdr_riscv::elf::translate(&executable, CompilerOptions::new_gl());
     verify_riscv_asm_string::<GoldilocksField, usize>(
         &format!("{case}_from_elf.asm"),
         &from_elf,
@@ -404,7 +404,7 @@ fn features() {
     );
 
     log::info!("Verifying {case} converted from ELF file");
-    let from_elf = powdr_riscv::elf::translate(&executable, CompilerOptions::new_32());
+    let from_elf = powdr_riscv::elf::translate(&executable, CompilerOptions::new_gl());
     verify_riscv_asm_string::<GoldilocksField, usize>(
         &format!("{case}_from_elf.asm"),
         &from_elf,
@@ -421,7 +421,7 @@ fn features() {
     );
 
     log::info!("Verifying {case} converted from ELF file");
-    let from_elf = powdr_riscv::elf::translate(&executable, CompilerOptions::new_32());
+    let from_elf = powdr_riscv::elf::translate(&executable, CompilerOptions::new_gl());
     verify_riscv_asm_string::<GoldilocksField, usize>(
         &format!("{case}_from_elf.asm"),
         &from_elf,
@@ -445,7 +445,7 @@ fn many_chunks_dry() {
     );
     let powdr_asm = powdr_riscv::elf::translate(
         &executable,
-        CompilerOptions::new_32()
+        CompilerOptions::new_gl()
             .with_poseidon()
             .with_continuations(),
     );
@@ -474,7 +474,7 @@ fn output_syscall() {
         &temp_dir,
         None,
     );
-    let powdr_asm = powdr_riscv::elf::translate(&executable, CompilerOptions::new_32());
+    let powdr_asm = powdr_riscv::elf::translate(&executable, CompilerOptions::new_gl());
 
     let inputs = vec![1u32, 2, 3]
         .into_iter()
@@ -512,7 +512,7 @@ fn many_chunks_memory() {
 }
 
 fn verify_riscv_crate_gl(case: &str, inputs: Vec<GoldilocksField>) {
-    let options = CompilerOptions::new_32();
+    let options = CompilerOptions::new_gl();
     verify_riscv_crate_impl::<GoldilocksField, ()>(case, options, inputs, None)
 }
 
@@ -536,7 +536,7 @@ fn verify_riscv_crate_gl_with_data<S: serde::Serialize + Send + Sync + 'static>(
     inputs: Vec<GoldilocksField>,
     data: Vec<(u32, S)>,
 ) {
-    let options = CompilerOptions::new_32();
+    let options = CompilerOptions::new_gl();
     verify_riscv_crate_impl(case, options, inputs, Some(data))
 }
 

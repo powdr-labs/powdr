@@ -74,7 +74,15 @@ impl CompilerOptions {
         }
     }
 
-    pub fn new_32() -> Self {
+    pub fn new_bb() -> Self {
+        Self {
+            field: KnownField::BabyBearField,
+            libs: RuntimeLibs::new(),
+            continuations: false,
+        }
+    }
+
+    pub fn new_gl() -> Self {
         Self {
             field: KnownField::GoldilocksField,
             libs: RuntimeLibs::new(),
