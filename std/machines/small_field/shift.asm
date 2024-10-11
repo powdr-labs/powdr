@@ -1,10 +1,13 @@
 use std::utils::unchanged_until;
 use std::utils::cross_product;
 use std::convert::int;
+use std::field::modulus;
+use std::check::assert;
+use std::check::require_field_bits;
 
 // Shift for single bytes using an exhaustive table, returning two 16-bit values as result.
 // TODO this way, we cannot prove anything that shifts by more than 31 bits.
-machine ByteShift16 with
+machine ByteShift with
     latch: latch,
     operation_id: operation_id,
     degree: 65536
@@ -18,7 +21,7 @@ machine ByteShift16 with
     let bit_counts = [256, 32, 4, 2];
     let min_degree = std::array::product(bit_counts);
     std::check::assert(std::prover::min_degree() >= std::array::product(bit_counts), || "The shift16 machine needs at least 65536 rows to work.");
-    std::check::assert(std::field::modulus() >= 65535, || "The field modulo should be at least 2^16 - 1 to work in the shift16 machine.");
+    require_field_bits(16, || "The field modulo should be at least 2^16 - 1 to work in the shift16 machine.");
     let inputs = cross_product(bit_counts);
     let a: int -> int = inputs[0];
     let b: int -> int = inputs[1];
@@ -36,12 +39,14 @@ machine ByteShift16 with
     col fixed P_CHi(i) { (c(i) >> 16) & 0xffff };
 }
 
-machine Shift16(byte_shift_16: ByteShift16) with
+machine Shift(byte_shift: ByteShift) with
     latch: latch,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
+    require_field_bits(17, || "Shift requires a field that fits any 17-Bit value.");
+
     operation shl<0> ALow, AHi, B -> CLow, CHi;
 
     operation shr<1> ALow, AHi, B -> CLow, CHi;
@@ -67,5 +72,5 @@ machine Shift16(byte_shift_16: ByteShift16) with
     CLow' = CLow * (1 - latch) + C_part_low;
     CHi' = CHi * (1 - latch) + C_part_hi;
 
-    link => (C_part_low, C_part_hi) = byte_shift_16.run(operation_id', A_byte, B', FACTOR_ROW);
+    link => (C_part_low, C_part_hi) = byte_shift.run(operation_id', A_byte, B', FACTOR_ROW);
 }
