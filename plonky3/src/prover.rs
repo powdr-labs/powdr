@@ -363,7 +363,7 @@ where
             .processed_stages
             .iter()
             .map(|stage| stage.public_values[table_index].clone())
-            .collect();
+            .collect_vec();
 
         let quotient_values = quotient_values::<T::Config, _, _>(
             &self.air,
@@ -524,7 +524,7 @@ where
 #[instrument(name = "compute quotient polynomial", skip_all)]
 fn quotient_values<'a, SC, A, Mat>(
     air: &A,
-    public_values_by_stage: &'a Vec<Vec<Val<SC>>>,
+    public_values_by_stage: &'a [Vec<Val<SC>>],
     trace_domain: Domain<SC>,
     quotient_domain: Domain<SC>,
     preprocessed_on_quotient_domain: Option<Mat>,

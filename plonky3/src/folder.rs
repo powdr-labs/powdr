@@ -13,7 +13,7 @@ pub struct ProverConstraintFolder<'a, SC: StarkGenericConfig> {
     pub challenges: Vec<Vec<Val<SC>>>,
     pub traces_by_stage: Vec<RowMajorMatrix<PackedVal<SC>>>,
     pub preprocessed: RowMajorMatrix<PackedVal<SC>>,
-    pub public_values_by_stage: &'a Vec<Vec<Val<SC>>>,
+    pub public_values_by_stage: &'a [Vec<Val<SC>>],
     pub is_first_row: PackedVal<SC>,
     pub is_last_row: PackedVal<SC>,
     pub is_transition: PackedVal<SC>,
@@ -25,7 +25,7 @@ type ViewPair<'a, T> = VerticalPair<RowMajorMatrixView<'a, T>, RowMajorMatrixVie
 
 #[derive(Debug)]
 pub struct VerifierConstraintFolder<'a, SC: StarkGenericConfig> {
-    pub challenges: &'a Vec<Vec<Val<SC>>>,
+    pub challenges: &'a [Vec<Val<SC>>],
     pub traces_by_stage: Vec<ViewPair<'a, SC::Challenge>>,
     pub preprocessed: ViewPair<'a, SC::Challenge>,
     pub public_values_by_stage: Vec<&'a Vec<Val<SC>>>,

@@ -24,7 +24,7 @@ pub type PcsProverData<SC> = <<SC as StarkGenericConfig>::Pcs as Pcs<
 #[serde(bound = "")]
 pub struct Proof<SC: StarkGenericConfig> {
     pub(crate) commitments: Commitments<Com<SC>>,
-    pub(crate) opened_values: BTreeMap<String, TableOpenedValues<SC::Challenge>>,
+    pub(crate) opened_values: OpenedValues<SC::Challenge>,
     pub(crate) opening_proof: PcsProof<SC>,
 }
 
