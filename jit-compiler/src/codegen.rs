@@ -112,7 +112,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     .join(",\n")
             )),
             FunctionValueDefinition::TypeConstructor(decl, _) => {
-                self.request_symbol(&decl.name, &vec![])?;
+                self.request_symbol(&decl.name, &[])?;
                 Ok(String::new())
             }
             FunctionValueDefinition::Expression(value) => {
