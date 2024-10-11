@@ -279,7 +279,7 @@ where
     Commitment<T>: Send,
 {
     fn width(&self) -> usize {
-        unreachable!("use MultiStageAir method instead")
+        unimplemented!("use MultiStageAir method instead")
     }
 
     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<Plonky3Field<T>>> {

@@ -213,7 +213,7 @@ where
 
         let public_values = circuit.public_values_so_far(witness);
 
-        // extract the full map of public values
+        // extract the full map of public values by unwrapping all the options
         let public_values = public_values
             .into_iter()
             .map(|(name, values)| {
