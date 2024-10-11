@@ -326,7 +326,7 @@ pub fn test_plonky3<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
 
 #[cfg(feature = "plonky3")]
 pub fn test_plonky3_pipeline<T: FieldElement>(pipeline: Pipeline<T>) {
-    let mut pipeline = pipeline.with_backend(powdr_backend::BackendType::Plonky3Composite, None);
+    let mut pipeline = pipeline.with_backend(powdr_backend::BackendType::Plonky3, None);
 
     pipeline.compute_witness().unwrap();
 
