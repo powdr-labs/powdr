@@ -54,7 +54,7 @@ pub fn compile<T: FieldElement>(
     if successful_symbols.len() < requested_symbols.len() {
         let successful_hash = successful_symbol_names.iter().collect::<HashSet<_>>();
         log::info!(
-            "Unable to JIT-compile the following symbols. Will use evaluator instead.\n{}",
+            "Unable to generate code during JIT-compilation for the following symbols. Will use evaluator instead.\n{}",
             requested_symbols
                 .iter()
                 .filter(|&sym| !successful_hash.contains(sym))
