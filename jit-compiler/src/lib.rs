@@ -1,11 +1,16 @@
 mod codegen;
 mod compiler;
 
-use std::{collections::HashMap, fs, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    fs,
+    sync::Arc,
+};
 
 use codegen::CodeGenerator;
 use compiler::{call_cargo, generate_glue_code, load_library};
 
+use itertools::Itertools;
 use powdr_ast::analyzed::Analyzed;
 use powdr_number::FieldElement;
 
@@ -38,12 +43,24 @@ pub fn compile<T: FieldElement>(
         .iter()
         .filter_map(|&sym| match codegen.request_symbol(sym, &[]) {
             Err(e) => {
-                log::warn!("Unable to generate code for symbol {sym}: {e}");
+                log::debug!("Unable to generate code for symbol {sym}: {e}");
                 None
             }
             Ok(access) => Some((sym, access)),
         })
         .collect::<Vec<_>>();
+    let successful_symbol_names: Vec<_> = successful_symbols.iter().map(|(s, _)| *s).collect();
+
+    if successful_symbols.len() < requested_symbols.len() {
+        let successful_hash = successful_symbol_names.iter().collect::<HashSet<_>>();
+        log::info!(
+            "Unable to generate code during JIT-compilation for the following symbols. Will use evaluator instead.\n{}",
+            requested_symbols
+                .iter()
+                .filter(|&sym| !successful_hash.contains(sym))
+                .format(", ")
+        );
+    }
 
     if successful_symbols.is_empty() {
         return Ok(Default::default());
@@ -59,8 +76,7 @@ pub fn compile<T: FieldElement>(
         metadata.len() as f64 / (1024.0 * 1024.0)
     );
 
-    let symbol_names: Vec<_> = successful_symbols.into_iter().map(|(s, _)| s).collect();
-    let result = load_library(&lib_file.path, &symbol_names);
+    let result = load_library(&lib_file.path, &successful_symbol_names);
     log::info!("Done.");
     result
 }
