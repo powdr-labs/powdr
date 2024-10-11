@@ -400,15 +400,14 @@ namespace N(2);
 namespace N(2);
     struct X {
     }
-    struct Y {
+    struct Y<T, U> {
         a: int,
         b: fe,
         c: fe[3],
-        d: (int -> fe),
-        e: (int, int -> fe),
-        f: ((int, fe), fe[2] -> (fe -> int)),
-        g: ((int -> fe) -> int),
-        h: (int -> (fe -> int)),
+        d: ((int, fe), fe[2] -> (fe -> int)),
+        e: ((int -> fe) -> int),
+        f: (T -> (U -> T)),
+        g: Y,
     }
 "#;
 
@@ -416,15 +415,14 @@ namespace N(2);
 namespace N(2);
     struct X {
     }
-    struct Y {
+    struct Y<T, U> {
         a: int,
         b: fe,
         c: fe[3],
-        d: int -> fe,
-        e: int, int -> fe,
-        f: (int, fe), fe[2] -> (fe -> int),
-        g: (int -> fe) -> int,
-        h: int -> (fe -> int),
+        d: (int, fe), fe[2] -> (fe -> int),
+        e: (int -> fe) -> int,
+        f: T -> (U -> T),
+        g: Y,
     }
 "#;
 

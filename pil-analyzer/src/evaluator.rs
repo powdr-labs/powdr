@@ -18,8 +18,8 @@ use powdr_ast::{
         types::{ArrayType, Type, TypeScheme},
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, EnumDeclaration,
         FunctionCall, IfExpression, IndexAccess, LambdaExpression, LetStatementInsideBlock,
-        MatchArm, MatchExpression, NamedExpression, Number, Pattern, StatementInsideBlock,
-        StructExpression, UnaryOperation, UnaryOperator,
+        MatchArm, MatchExpression, Number, Pattern, StatementInsideBlock, StructExpression,
+        UnaryOperation, UnaryOperator,
     },
 };
 use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
@@ -324,7 +324,7 @@ impl<'a, T: FieldElement> Value<'a, T> {
 #[derive(Clone, Debug)]
 pub struct StructValue<'a, T> {
     pub name: &'a str,
-    pub fields: Vec<(&'a str, Arc<Value<'a, T>>)>,
+    pub fields: HashMap<&'a str, Arc<Value<'a, T>>>,
 }
 
 impl<'a, T: Display> StructValue<'a, T> {
@@ -1005,36 +1005,16 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             Expression::FreeInput(_, _) => Err(EvalError::Unsupported(
                 "Cannot evaluate free input.".to_string(),
             ))?,
-            Expression::StructExpression(
-                _,
-                StructExpression {
-                    name: reference,
-                    fields,
-                },
-            ) => {
-                let mut exp_fields = Vec::new();
-                for NamedExpression { name, body } in fields.iter() {
-                    self.expand(body)?;
-
-                    let value = self.value_stack.pop().ok_or(EvalError::SymbolNotFound(
-                        "Symbol {name} not found".to_string(),
-                    ))?;
-
-                    exp_fields.push((name.as_str(), value));
-                }
-
-                let reference = match reference {
-                    Reference::Poly(poly) => poly.name.as_str(),
-                    _ => unreachable!(),
-                };
-
-                self.value_stack.push(
-                    Value::Struct(StructValue {
-                        name: reference,
-                        fields: exp_fields,
-                    })
-                    .into(),
+            Expression::StructExpression(_, StructExpression { name: _, fields }) => {
+                self.op_stack.push(Operation::Combine(expr));
+                self.op_stack.extend(
+                    fields
+                        .iter()
+                        .skip(1)
+                        .rev()
+                        .map(|named_expr| Operation::Expand(named_expr.body.as_ref())),
                 );
+                self.expand(fields[0].body.as_ref())?;
             }
         };
         Ok(())
@@ -1202,8 +1182,28 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 let body = if *condition { body } else { else_body };
                 return self.expand(body);
             }
-            Expression::StructExpression(_, StructExpression { name: _, fields: _ }) => {
-                return self.expand(expr);
+            Expression::StructExpression(_, StructExpression { name, fields }) => {
+                let new_fields = fields
+                    .iter()
+                    .map(|named_expr| {
+                        let value = self
+                            .value_stack
+                            .pop()
+                            .unwrap_or_else(|| panic!("Symbol {} not found", name));
+                        (named_expr.name.as_str(), value)
+                    })
+                    .collect::<HashMap<_, _>>();
+
+                let v_name = match name {
+                    Reference::Poly(poly) => &poly.name,
+                    _ => unreachable!(),
+                };
+
+                Value::Struct(StructValue {
+                    name: v_name,
+                    fields: new_fields,
+                })
+                .into()
             }
             _ => unreachable!(),
         };

@@ -1108,14 +1108,14 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
                 type_args: None,
             });
             let fields = fields
-                    .iter()
-                    .map(|(name, value)| {
-                        Ok(NamedExpression {
-                            name: name.to_string(),
-                            body: Box::new(try_value_to_expression(value)?),
-                        })
+                .iter()
+                .map(|(name, value)| {
+                    Ok(NamedExpression {
+                        name: name.to_string(),
+                        body: Box::new(try_value_to_expression(value)?),
                     })
-                    .collect::<Result<Vec<_>, _>>()?;
+                })
+                .collect::<Result<Vec<_>, _>>()?;
 
             StructExpression { name, fields }.into()
         }
