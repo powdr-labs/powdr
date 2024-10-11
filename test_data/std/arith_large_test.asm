@@ -1,4 +1,4 @@
-use std::machines::arith::Arith;
+use std::machines::large_field::arith::Arith;
 
 machine Main with degree: 65536 {
     reg pc[@pc];

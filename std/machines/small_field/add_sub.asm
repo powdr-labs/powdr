@@ -1,11 +1,17 @@
 use std::machines::range::Byte2;
+use std::field::modulus;
+use std::check::require_field_bits;
 
-machine AddSub16(byte2: Byte2) with
+// Implements 32-bit addition and subtraction using 16-bit limbs.
+// Requires the field to contain at least 17 bits.
+machine AddSub(byte2: Byte2) with
     latch: latch,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
+    require_field_bits(17, || "AddSub requires a field that fits any 17-Bit value.");
+
     operation add<0> A_h, A_l, B_h, B_l -> C_h, C_l;
     operation sub<1> C_h, C_l, B_h, B_l -> A_h, A_l;
     operation gt<2> C_h, C_l, B_h, B_l -> carry32;

@@ -3,7 +3,9 @@ use std::utils::unchanged_until;
 use std::utils::force_bool;
 use std::utils::sum;
 use std::math::ff;
+use std::field::modulus;
 use std::check::panic;
+use std::check::require_field_bits;
 use std::convert::int;
 use std::convert::fe;
 use std::convert::expr;
@@ -12,19 +14,23 @@ use std::prelude::Query;
 use std::machines::range::Byte;
 use std::machines::range::Byte2;
 
-// Arithmetic machine, inspired by Polygon's 256-Bit Arith machine: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/arith.pil
-machine Arith16(byte: Byte, byte2: Byte2) with
+// Implements 32-Bit multiplication and division.
+// Inspired by Polygon's 256-Bit Arith machine: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/arith.pil
+// Requires the field to contain at least 18 bits.
+machine Arith(byte: Byte, byte2: Byte2) with
     latch: CLK8_7,
     operation_id: is_division,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
+    require_field_bits(18, || "Arith equires a field that fits any 18-Bit value.");
+
     col witness is_division;
 
     // Computes x1 * y1 + x2, where all inputs / outputs are 32-bit words (represented as 16-bit limbs in big-endian order).
     // More precisely, affine(x1, y1, x2) = (y2, y3), where x1 * y1 + x2 = 2**16 * y2 + y3
     operation mul<0> x1c[1], x1c[0], x2c[1], x2c[0], y1c[1], y1c[0] -> y2c[1], y2c[0], y3c[1], y3c[0];
-    
+
     // y3 / x1 = y1 (remainder x2)
     // WARNING: it's not constrained that remainder is less than the divisor.
     // WARNING: For division by zero, the quotient is unconstrained.

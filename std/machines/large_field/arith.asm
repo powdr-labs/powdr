@@ -3,7 +3,9 @@ use std::utils::unchanged_until;
 use std::utils::force_bool;
 use std::utils::sum;
 use std::math::ff;
+use std::field::modulus;
 use std::check::panic;
+use std::check::require_field_bits;
 use std::convert::int;
 use std::convert::fe;
 use std::convert::expr;
@@ -11,14 +13,17 @@ use std::prover::eval;
 use std::prelude::Query;
 use std::machines::range::Byte2;
 
-// Arithmetic machine, ported mainly from Polygon: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/arith.pil
-// Currently only supports "Equation 0", i.e., 256-Bit addition and multiplication.
+// Implements 256-Bit addition and multiplication.
+// Ported mainly from Polygon: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/arith.pil
+// Requires the field to contain at least 48 bits.
 machine Arith with
     latch: CLK32_31,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
+    require_field_bits(48, || "Arith requires a field that fits any 48-Bit value.");
+
     Byte2 byte2;
     
     // The operation ID will be bit-decomposed to yield selEq[], controlling which equations are activated.
