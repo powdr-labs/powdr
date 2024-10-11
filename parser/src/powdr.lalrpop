@@ -200,7 +200,7 @@ Stage: u32 = {
 }
 
 PolynomialNameList: Vec<PolynomialName> = {
-    <mut list:( <PolynomialName> "," )*> <end:PolynomialName>  => { list.push(end); list }
+    <mut list:( <PolynomialName> "," )*> <end:PolynomialName> ","? => { list.push(end); list }
 }
 
 PolynomialName: PolynomialName = {
@@ -319,7 +319,7 @@ pub InstructionBody: InstructionBody = {
 }
 
 InstructionBodyElements: Vec<PilStatement> = {
-    <mut list:( <InstructionBodyElement> "," )*> <end:InstructionBodyElement>  => { list.push(end); list },
+    <mut list:( <InstructionBodyElement> "," )*> <end:InstructionBodyElement> ","?  => { list.push(end); list },
     => vec![]
 }
 
@@ -335,7 +335,7 @@ Params: Params<Param> = {
 
 ParamList: Vec<Param> = {
     => vec![],
-    <mut list:( <Param> "," )*> <end:Param>  => { list.push(end); list }
+    <mut list:( <Param> "," )*> <end:Param> ","? => { list.push(end); list }
 }
 
 Param: Param = {
@@ -368,7 +368,7 @@ AssignmentStatement: FunctionStatement = {
 }
 
 IdentifierList: Vec<String> = {
-    <mut list:( <Identifier> "," )*> <end:Identifier>  => { list.push(end); list },
+    <mut list:( <Identifier> "," )*> <end:Identifier> ","? => { list.push(end); list },
     => vec![]
 }
 
@@ -378,7 +378,7 @@ AssignOperator: Option<Vec<AssignmentRegister>> = {
 }
 
 AssignmentRegisterList: Vec<AssignmentRegister> = {
-    <mut list:( <AssignmentRegister> "," )*> <end:AssignmentRegister>  => { list.push(end); list },
+    <mut list:( <AssignmentRegister> "," )*> <end:AssignmentRegister> ","? => { list.push(end); list },
     => vec![]
 }
 
@@ -417,7 +417,7 @@ LabelStatement: FunctionStatement = {
 
 ExpressionList: Vec<Expression> = {
     => vec![],
-    <mut list:( <Expression> "," )*> <end:Expression>  => { list.push(end); list }
+    <mut list:( <Expression> "," )*> <end:Expression> ","?  => { list.push(end); list }
 }
 
 pub Expression = MacroExpression<TermWithStruct>;
@@ -667,7 +667,7 @@ NamedExpression: NamedExpression<Box<Expression>> = {
 
 NamedTypes: Vec<NamedType<Expression>> = {
     => vec![],
-    <mut list:( <NamedType> "," )*> <end:NamedType> ","  => { list.push(end); list }
+    <mut list:( <NamedType> "," )*> <end:NamedType> ","?  => { list.push(end); list }
 }
 
 NamedType: NamedType<Expression> = {
@@ -712,7 +712,7 @@ EnumPattern: Pattern = {
 }
 
 PatternList: Vec<Pattern> = {
-    <mut list:( <Pattern> "," )*> <end:Pattern>  => { list.push(end); list },
+    <mut list:( <Pattern> "," )*> <end:Pattern> ","? => { list.push(end); list },
     => vec![]
 }
 
@@ -728,7 +728,7 @@ TraitVars: Vec<String> = {
 
 TraitFunctions: Vec<NamedType<Expression>> = {
     => vec![],
-    <mut list:( <TraitFunction> "," )*> <end:TraitFunction> ","  => { list.push(end); list }
+    <mut list:( <TraitFunction> "," )*> <end:TraitFunction> ","?  => { list.push(end); list }
 }
 
 TraitFunction: NamedType<Expression> = {
@@ -788,7 +788,7 @@ Type<ArrayLength>: Type<ArrayLength> = {
 
 TypeTermList<ArrayLength>: Vec<Type<ArrayLength>> = {
     => vec![],
-    <mut list:( <TypeTerm<ArrayLength>> "," )*> <end:TypeTerm<ArrayLength>>  => { list.push(end); list }
+    <mut list:( <TypeTerm<ArrayLength>> "," )*> <end:TypeTerm<ArrayLength>> ","? => { list.push(end); list }
 }
 
 TypeTermBox<ArrayLength>: Box<Type<ArrayLength>> = {
@@ -829,7 +829,7 @@ TypeVar: String = {
 // bounds should be SymbolPaths in the future.
 pub TypeVarBounds: TypeBounds = {
     => Default::default(),
-    <list:( <TypeVarWithBounds> "," )*> <end:TypeVarWithBounds> => TypeBounds::new(list.into_iter().chain(std::iter::once(end)))
+    <list:( <TypeVarWithBounds> "," )*> <end:TypeVarWithBounds> ","? => TypeBounds::new(list.into_iter().chain(std::iter::once(end)))
 }
 
 TypeVarWithBounds: (String, BTreeSet<String>) = {
