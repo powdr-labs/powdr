@@ -433,10 +433,12 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     escape_symbol(&decl.name),
                     escape_symbol(&variant.name)
                 );
-                if variant.fields.is_none() {
-                    formatted_variant
+                if let Some(fields) = &variant.fields {
+                    // Callable::Fn takes only a single argument, so we pack the fields into a tuple.
+                    let field_vars = (0..fields.len()).map(|i| format!("v_{i}")).join(", ");
+                    format!("Callable::Fn(|({field_vars})| {formatted_variant}({field_vars}))")
                 } else {
-                    format!("Callable::Fn({formatted_variant})",)
+                    formatted_variant
                 }
             }
             _ => format!("(*{}{type_args})", escape_symbol(symbol)),
