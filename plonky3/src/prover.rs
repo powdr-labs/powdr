@@ -418,11 +418,9 @@ where
                         trace: generate_matrix(
                             columns.iter().map(|(name, values)| (name, values.as_ref())),
                         ),
-                        public_values: constraint_system
-                            .publics
+                        public_values: constraint_system.publics_by_stage[0]
                             .iter()
-                            .filter(|&(_, _, _, stage)| (*stage == 0))
-                            .map(|(name, _, row, _)| {
+                            .map(|(name, _, row)| {
                                 witness
                                     .iter()
                                     .find_map(|(n, v)| (n == name).then(|| v[*row]))

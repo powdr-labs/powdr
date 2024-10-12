@@ -17,8 +17,8 @@ use p3_air::{Air, AirBuilder, BaseAir, PairBuilder};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression,
-    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Challenge, Identity, IdentityKind,
-    PolyID, PolynomialType, SelectedExpressions,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Identity, IdentityKind, PolyID,
+    PolynomialType, SelectedExpressions,
 };
 
 use crate::{CallbackResult, MultiStageAir, MultistageAirBuilder};
@@ -37,17 +37,16 @@ pub struct ConstraintSystem<T> {
     fixed_columns: HashMap<PolyID, usize>,
     identities: Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>>,
     // for each public column, the name, poly_id, index in the witness columns, and stage
-    pub(crate) publics: Vec<(String, PolyID, usize, u8)>,
+    pub(crate) publics_by_stage: Vec<Vec<(String, PolyID, usize)>>,
     constant_count: usize,
     // for each stage, the number of witness columns. There is always a least one stage, possibly empty
     stage_widths: Vec<usize>,
-    challenges: BTreeSet<Challenge>,
+    challenges_by_stage: Vec<Vec<u64>>,
 }
 
 impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
     fn from(analyzed: &Analyzed<T>) -> Self {
         let identities = analyzed.identities_with_inlined_intermediate_polynomials();
-        let publics = analyzed.get_publics();
         let constant_count = analyzed.constant_count();
         let stage_widths = (0..analyzed.stage_count() as u32)
             .map(|stage| {
@@ -83,23 +82,31 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
             })
             .collect();
 
-        let mut challenges = BTreeSet::default();
+        let mut challenges_by_stage = vec![vec![]; analyzed.stage_count()];
         for identity in &identities {
             identity.pre_visit_expressions(&mut |expr| {
                 if let AlgebraicExpression::Challenge(challenge) = expr {
-                    challenges.insert(*challenge);
+                    challenges_by_stage[challenge.stage as usize].push(challenge.id);
                 }
             });
         }
 
+        let publics_by_stage = analyzed.get_publics().into_iter().fold(
+            vec![vec![]; analyzed.stage_count()],
+            |mut acc, (name, id, row, stage)| {
+                acc[stage as usize].push((name, id, row));
+                acc
+            },
+        );
+
         Self {
             identities,
-            publics,
+            publics_by_stage,
             constant_count,
             stage_widths,
             witness_columns,
             fixed_columns,
-            challenges,
+            challenges_by_stage,
         }
     }
 }
@@ -141,12 +148,16 @@ where
         self.split
             .iter()
             .map(|(name, (_, table))| {
-                let mut res = vec![vec![]; table.stage_widths.len()];
-
-                for (name, poly_id, row, _) in &table.publics {
-                    let (stage, _) = table.witness_columns[poly_id];
-                    res[stage].push(witness.get(name).map(|column| column[*row]));
-                }
+                let res = table
+                    .publics_by_stage
+                    .iter()
+                    .map(|publics| {
+                        publics
+                            .iter()
+                            .map(|(name, _, row)| witness.get(name).map(|column| column[*row]))
+                            .collect()
+                    })
+                    .collect();
 
                 (name.clone(), res)
             })
@@ -212,7 +223,7 @@ where
         traces_by_stage: &[AB::M],
         fixed: &AB::M,
         publics: &BTreeMap<&String, <AB as MultistageAirBuilder>::PublicVar>,
-        challenges: &[BTreeMap<u64, <AB as MultistageAirBuilder>::Challenge>],
+        challenges: &[BTreeMap<&u64, <AB as MultistageAirBuilder>::Challenge>],
     ) -> AB::Expr {
         let res = match e {
             AlgebraicExpression::Reference(r) => {
@@ -303,60 +314,48 @@ where
             .collect_vec();
 
         // for each stage, the values of the challenges drawn at the end of that stage
-        let challenges_by_stage: Vec<BTreeMap<u64, _>> = self
+        let challenges_by_stage: Vec<BTreeMap<&u64, _>> = self
             .constraint_system
-            .challenges
+            .challenges_by_stage
             .iter()
-            .map(|c| (c.stage as u8, c.id))
-            .into_group_map()
-            .into_iter()
+            .enumerate()
             .map(|(stage, ids)| {
-                let stage_challenges = builder.stage_challenges(stage);
-                assert_eq!(stage_challenges.len(), ids.len());
+                let stage_challenges = builder.stage_challenges(stage as u8);
                 (
                     stage,
-                    ids.into_iter()
-                        .zip(stage_challenges.iter().cloned())
+                    ids.iter()
+                        .zip_eq(stage_challenges.iter().cloned())
                         .collect(),
                 )
             })
             .fold(
                 vec![BTreeMap::default(); stage_count as usize],
                 |mut acc, (stage, challenges)| {
-                    acc[stage as usize] = challenges;
+                    acc[stage] = challenges;
                     acc
                 },
             );
 
-        assert_eq!(
-            self.constraint_system.publics.len(),
-            public_input_values_by_stage
-                .iter()
-                .map(|stage_publics| stage_publics.len())
-                .sum::<usize>()
-        );
-
         // public constraints
         let public_vals_by_id = self
             .constraint_system
-            .publics
+            .publics_by_stage
             .iter()
-            .into_group_map_by(|(.., stage)| stage)
-            .into_iter()
-            .flat_map(|(stage, publics)| {
-                publics
-                    .into_iter()
-                    .zip_eq(public_input_values_by_stage[*stage as usize])
-            })
-            .map(|((id, _, _, _), pi)| (id, *pi))
+            .zip_eq(public_input_values_by_stage)
+            .flat_map(|(publics, values)| publics.iter().zip_eq(values.iter()))
+            .map(|((id, _, _), pi)| (id, *pi))
             .collect::<BTreeMap<&String, <AB as MultistageAirBuilder>::PublicVar>>();
 
         // constrain public inputs using witness columns in stage 0
         let fixed_local = fixed.row_slice(0);
         let public_offset = self.constraint_system.constant_count;
 
-        self.constraint_system.publics.iter().enumerate().for_each(
-            |(index, (pub_id, poly_id, _, _))| {
+        self.constraint_system
+            .publics_by_stage
+            .iter()
+            .flatten()
+            .enumerate()
+            .for_each(|(index, (pub_id, poly_id, _))| {
                 let selector = fixed_local[public_offset + index];
                 let (stage, index) = self.constraint_system.witness_columns[poly_id];
                 let witness_col = traces_by_stage[stage].row_slice(0)[index];
@@ -364,8 +363,7 @@ where
 
                 // constraining s(i) * (pub[i] - x(i)) = 0
                 builder.assert_zero(selector * (public_value.into() - witness_col));
-            },
-        );
+            });
 
         // circuit constraints
         for identity in &self.constraint_system.identities {
@@ -402,15 +400,17 @@ where
     Commitment<T>: Send,
 {
     fn stage_public_count(&self, stage: u8) -> usize {
-        self.constraint_system
-            .publics
-            .iter()
-            .filter(|(_, _, _, s)| *s == stage)
-            .count()
+        self.constraint_system.publics_by_stage[stage as usize].len()
     }
 
     fn preprocessed_width(&self) -> usize {
-        self.constraint_system.constant_count + self.constraint_system.publics.len()
+        self.constraint_system.constant_count
+            + self
+                .constraint_system
+                .publics_by_stage
+                .iter()
+                .map(|publics| publics.len())
+                .sum::<usize>()
     }
 
     fn stage_count(&self) -> u8 {
@@ -422,11 +422,7 @@ where
     }
 
     fn stage_challenge_count(&self, stage: u8) -> usize {
-        self.constraint_system
-            .challenges
-            .iter()
-            .filter(|c| c.stage as u8 == stage)
-            .count()
+        self.constraint_system.challenges_by_stage[stage as usize].len()
     }
 }
 
@@ -442,15 +438,11 @@ where
         new_challenge_values: &[Plonky3Field<T>],
         witness: &mut Vec<(String, Vec<T>)>,
     ) -> CallbackResult<Plonky3Field<T>> {
-        let previous_stage_challenges: BTreeSet<Challenge> = self
+        let previous_stage_challenges: BTreeSet<&u64> = self
             .split
             .values()
             .flat_map(|(_, constraint_system)| {
-                constraint_system
-                    .challenges
-                    .iter()
-                    .filter(|c| c.stage as u8 == trace_stage - 1)
-                    .cloned()
+                &constraint_system.challenges_by_stage[trace_stage as usize - 1]
             })
             .collect();
 
@@ -458,7 +450,7 @@ where
         let challenge_map = previous_stage_challenges
             .into_iter()
             .zip(new_challenge_values)
-            .map(|(c, v)| (c.id, T::from_p3_field(*v)))
+            .map(|(c, v)| (*c, T::from_p3_field(*v)))
             .collect();
 
         // remember the columns we already know about
