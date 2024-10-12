@@ -138,13 +138,28 @@ fn byte_access() {
 #[test]
 #[ignore = "Too slow"]
 fn double_word() {
-    // TODO this will fail BB
     let case = "double_word";
     let a0 = 0x01000000u32;
     let a1 = 0x010000ffu32;
     let b0 = 0xf100b00fu32;
     let b1 = 0x0100f0f0u32;
     let c = ((a0 as u64) | ((a1 as u64) << 32)).wrapping_mul((b0 as u64) | ((b1 as u64) << 32));
+
+    verify_riscv_crate_bb(
+        case,
+        [
+            a0,
+            a1,
+            b0,
+            b1,
+            (c & 0xffffffff) as u32,
+            ((c >> 32) & 0xffffffff) as u32,
+        ]
+        .iter()
+        .map(|&x| x.into())
+        .collect(),
+    );
+
     verify_riscv_crate_gl(
         case,
         [
