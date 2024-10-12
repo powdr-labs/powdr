@@ -12,16 +12,17 @@ use halo2_proofs::{
     }
 };
 
+use halo2_solidity_verifier::revm::interpreter::gas::LOG;
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{DegreeType, FieldElement, KnownField};
 use super::circuit_builder::PowdrCircuit;
+use super::circuit_builder::FibonacciComponent;
 
-use super::circuit_builder::generate_parallel_stwo_trace_by_witness_repitition;
-use super::circuit_builder::WideFibonacciComponent;
-use super::circuit_builder::WideFibonacciEval;
 
-use stwo_prover::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
+
+
+use stwo_prover::{constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval}, core::backend::CpuBackend, examples::wide_fibonacci::generate_trace};
 use stwo_prover::core::air::Component;
 use stwo_prover::core::backend::simd::m31::{PackedBaseField, LOG_N_LANES, N_LANES};
 use stwo_prover::core::backend::simd::SimdBackend;
@@ -42,6 +43,7 @@ use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
 use stwo_prover::core::fri::FriConfig;
 use stwo_prover::core::channel::Poseidon252Channel;
 use stwo_prover::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
+use stwo_prover::core::fields::m31;
 
 
 use std::{
@@ -114,30 +116,21 @@ impl<F: FieldElement> StwoProver<F> {
         witgen_callback: WitgenCallback<F>,
     ) {
 
-        const LOG_N_INSTANCES: u32 = 5;
-        const FIB_SEQUENCE_LENGTH: usize=262144;
+
 
        
 
 
         let config = PcsConfig {
             pow_bits: 16,  // Any value you want to set for pow_bits
-            fri_config: FriConfig::new(2, 1, 100),  // Using different numbers for FriConfig
+            fri_config: FriConfig::new(0, 1, 100),  // Using different numbers for FriConfig
         };
 
-        // Precompute twiddles.
-        let twiddles = SimdBackend::precompute_twiddles(
-            CanonicCoset::new(LOG_N_INSTANCES + 1 + config.fri_config.log_blowup_factor)
-                .circle_domain()
-                .half_coset,
-        );
+        //let config = PcsConfig::default();
 
-         // Setup protocol.
-        let prover_channel = &mut Poseidon252Channel::default();
-        let commitment_scheme =
-            &mut CommitmentSchemeProver::<SimdBackend, Poseidon252MerkleChannel>::new(
-                config, &twiddles,
-            );
+        
+
+         
 
         //Trace
         let circuit = PowdrCircuit::new(&self.analyzed)
@@ -150,11 +143,26 @@ impl<F: FieldElement> StwoProver<F> {
         .find(|(key, _)| key == "Fibonacci::y")
         .map(|(_, values)| values.len())
         .unwrap_or(0);
-           
         
-
+         //Constraints that are to be proved
+        let component = FibonacciComponent::new(fibonacci_y_length.ilog2(), m31::M31(1142009218));
+           
+        // Precompute twiddles.
+        let twiddles = CpuBackend::precompute_twiddles(
+            CanonicCoset::new(fibonacci_y_length.ilog2()  + 1 + config.fri_config.log_blowup_factor)
+                .circle_domain()
+                .half_coset,
+        );
+        println!("generate twiddles");
+        // Setup protocol.
+        let prover_channel = &mut Poseidon252Channel::default();
+        let commitment_scheme =
+            &mut CommitmentSchemeProver::<CpuBackend, Poseidon252MerkleChannel>::new(
+                config, &twiddles,
+            );
+        println!("generate prover channel");
         //let trace = generate_stwo_trace(witness,LOG_N_INSTANCES);
-        let trace=generate_parallel_stwo_trace_by_witness_repitition(fibonacci_y_length, witness, LOG_N_INSTANCES);
+        let trace=super::circuit_builder::generate_trace(fibonacci_y_length.ilog2() as usize, witness);
 
         
 
@@ -167,13 +175,8 @@ impl<F: FieldElement> StwoProver<F> {
 
 
 
-        //Constraints that are to be proved
-        let component = WideFibonacciComponent::new(
-            &mut TraceLocationAllocator::default(),
-            WideFibonacciEval::<FIB_SEQUENCE_LENGTH> {
-                log_n_rows: LOG_N_INSTANCES,
-            },
-        );
+       
+        println!("size of the log size {:?}",fibonacci_y_length.ilog2());
 
         println!("created component!");
 
@@ -181,7 +184,7 @@ impl<F: FieldElement> StwoProver<F> {
         
        
         let start = Instant::now();
-        let proof = stwo_prover::core::prover::prove::<SimdBackend, Poseidon252MerkleChannel>(
+        let proof = stwo_prover::core::prover::prove::<CpuBackend, Poseidon252MerkleChannel>(
             &[&component],
             prover_channel,
             commitment_scheme,
