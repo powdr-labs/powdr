@@ -2,7 +2,7 @@ mod common;
 
 use common::{verify_riscv_asm_file, verify_riscv_asm_string};
 use mktemp::Temp;
-use powdr_number::{FieldElement, GoldilocksField, KnownField};
+use powdr_number::{BabyBearField, FieldElement, GoldilocksField, KnownField};
 use powdr_pipeline::{
     test_util::{run_pilcom_with_backend_variant, BackendVariant},
     Pipeline,
@@ -96,21 +96,21 @@ fn bn254_sanity_check() {
 #[ignore = "Too slow"]
 fn trivial() {
     let case = "trivial";
-    verify_riscv_crate_gl(case, Default::default())
+    verify_riscv_crate_bb_gl(case, Default::default())
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn halt() {
     let case = "halt";
-    verify_riscv_crate_gl(case, Default::default())
+    verify_riscv_crate_bb_gl(case, Default::default())
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn zero_with_values() {
     let case = "zero_with_values";
-    verify_riscv_crate_gl(case, Default::default())
+    verify_riscv_crate_bb_gl(case, Default::default())
 }
 
 #[test]
@@ -125,22 +125,20 @@ fn runtime_poseidon_gl() {
 #[ignore = "Too slow"]
 fn sum() {
     let case = "sum";
-    verify_riscv_crate_gl(
-        case,
-        [16, 4, 1, 2, 8, 5].iter().map(|&x| x.into()).collect(),
-    );
+    verify_riscv_crate_bb_gl(case, &[16u64, 4, 1, 2, 8, 5]);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn byte_access() {
     let case = "byte_access";
-    verify_riscv_crate_gl(case, [0, 104, 707].iter().map(|&x| x.into()).collect());
+    verify_riscv_crate_bb_gl(case, &[0u64, 104, 707]);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn double_word() {
+    // TODO this will fail BB
     let case = "double_word";
     let a0 = 0x01000000u32;
     let a1 = 0x010000ffu32;
@@ -167,14 +165,14 @@ fn double_word() {
 #[ignore = "Too slow"]
 fn memfuncs() {
     let case = "memfuncs";
-    verify_riscv_crate_gl(case, Default::default());
+    verify_riscv_crate_bb_gl(case, Default::default());
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn keccak() {
     let case = "keccak";
-    verify_riscv_crate_gl(case, Default::default());
+    verify_riscv_crate_bb_gl(case, Default::default());
 }
 
 #[cfg(feature = "estark-polygon")]
@@ -182,50 +180,35 @@ fn keccak() {
 #[ignore = "Too slow"]
 fn vec_median_estark_polygon() {
     let case = "vec_median";
-    verify_riscv_crate_gl(
-        case,
-        [5, 11, 15, 75, 6, 5, 1, 4, 7, 3, 2, 9, 2]
-            .into_iter()
-            .map(|x| x.into())
-            .collect(),
-    );
+    verify_riscv_crate_bb_gl(case, &[5u64, 11, 15, 75, 6, 5, 1, 4, 7, 3, 2, 9, 2]);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn vec_median() {
     let case = "vec_median";
-    verify_riscv_crate_gl(
-        case,
-        [5, 11, 15, 75, 6, 5, 1, 4, 7, 3, 2, 9, 2]
-            .into_iter()
-            .map(|x| x.into())
-            .collect(),
-    );
+    verify_riscv_crate_bb_gl(case, &[5, 11, 15, 75, 6, 5, 1, 4, 7, 3, 2, 9, 2]);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn password() {
     let case = "password_checker";
-    verify_riscv_crate_gl(case, Default::default());
+    verify_riscv_crate_bb_gl(case, Default::default());
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn std_hello_world() {
     let case = "std_hello_world";
-    verify_riscv_crate_gl(case, vec![]);
+    verify_riscv_crate_bb_gl(case, Default::default());
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn function_pointer() {
     let case = "function_pointer";
-    verify_riscv_crate_gl(
-        case,
-        [2734, 735, 1999].into_iter().map(|x| x.into()).collect(),
-    );
+    verify_riscv_crate_bb_gl(case, &[2734, 735, 1999]);
 }
 
 #[test]
@@ -274,6 +257,7 @@ fn evm() {
     let case = "evm";
     let bytes = hex::decode(BYTECODE).unwrap();
 
+    verify_riscv_crate_bb_with_data(case, vec![], vec![(666, bytes.clone())]);
     verify_riscv_crate_gl_with_data(case, vec![], vec![(666, bytes)]);
 }
 
@@ -285,6 +269,7 @@ fn sum_serde() {
     let data: Vec<u32> = vec![1, 2, 8, 5];
     let answer = data.iter().sum::<u32>();
 
+    verify_riscv_crate_bb_with_data(case, vec![answer.into()], vec![(42, data.clone())]);
     verify_riscv_crate_gl_with_data(case, vec![answer.into()], vec![(42, data)]);
 }
 
@@ -336,6 +321,7 @@ fn two_sums_serde() {
     let data1: Vec<u32> = vec![1, 2, 8, 5];
     let data2 = data1.clone();
 
+    verify_riscv_crate_bb_with_data(case, vec![], vec![(42, data1.clone()), (43, data2.clone())]);
     verify_riscv_crate_gl_with_data(case, vec![], vec![(42, data1), (43, data2)]);
 }
 
@@ -345,6 +331,7 @@ const DISPATCH_TABLE_S: &str = "tests/riscv_data/dispatch_table/dispatch_table.s
 #[ignore = "Too slow"]
 #[test]
 fn dispatch_table_pie_relocation() {
+    verify_riscv_asm_file(Path::new(DISPATCH_TABLE_S), CompilerOptions::new_bb(), true);
     verify_riscv_asm_file(Path::new(DISPATCH_TABLE_S), CompilerOptions::new_gl(), true);
 }
 
@@ -352,6 +339,11 @@ fn dispatch_table_pie_relocation() {
 #[ignore = "Too slow"]
 #[test]
 fn dispatch_table_static_relocation() {
+    verify_riscv_asm_file(
+        Path::new(DISPATCH_TABLE_S),
+        CompilerOptions::new_bb(),
+        false,
+    );
     verify_riscv_asm_file(
         Path::new(DISPATCH_TABLE_S),
         CompilerOptions::new_gl(),
@@ -364,7 +356,7 @@ fn dispatch_table_static_relocation() {
 #[should_panic(expected = "reached a fail instruction")]
 fn print() {
     let case = "print";
-    verify_riscv_crate_gl(case, vec![0.into()]);
+    verify_riscv_crate_bb_gl(case, &[0]);
 }
 
 #[test]
@@ -374,6 +366,11 @@ fn print() {
 // The test program has two features, "add_two" and "add_three".
 // Enabling these features adds 2 and 3 to the expected input, respectively.
 fn features() {
+    features_with_options::<BabyBearField>(CompilerOptions::new_bb());
+    features_with_options::<GoldilocksField>(CompilerOptions::new_gl());
+}
+
+fn features_with_options<T: FieldElement>(options: CompilerOptions) {
     let case = "features";
 
     let temp_dir = Temp::new_dir().unwrap();
@@ -387,8 +384,8 @@ fn features() {
     );
 
     log::info!("Verifying {case} converted from ELF file");
-    let from_elf = powdr_riscv::elf::translate(&executable, CompilerOptions::new_gl());
-    verify_riscv_asm_string::<GoldilocksField, usize>(
+    let from_elf = powdr_riscv::elf::translate(&executable, options.clone());
+    verify_riscv_asm_string::<T, usize>(
         &format!("{case}_from_elf.asm"),
         &from_elf,
         &[expected.into()],
@@ -404,8 +401,8 @@ fn features() {
     );
 
     log::info!("Verifying {case} converted from ELF file");
-    let from_elf = powdr_riscv::elf::translate(&executable, CompilerOptions::new_gl());
-    verify_riscv_asm_string::<GoldilocksField, usize>(
+    let from_elf = powdr_riscv::elf::translate(&executable, options.clone());
+    verify_riscv_asm_string::<T, usize>(
         &format!("{case}_from_elf.asm"),
         &from_elf,
         &[expected.into()],
@@ -421,8 +418,8 @@ fn features() {
     );
 
     log::info!("Verifying {case} converted from ELF file");
-    let from_elf = powdr_riscv::elf::translate(&executable, CompilerOptions::new_gl());
-    verify_riscv_asm_string::<GoldilocksField, usize>(
+    let from_elf = powdr_riscv::elf::translate(&executable, options);
+    verify_riscv_asm_string::<T, usize>(
         &format!("{case}_from_elf.asm"),
         &from_elf,
         &[expected.into()],
@@ -467,6 +464,11 @@ struct Point {
 #[test]
 #[ignore = "Too slow"]
 fn output_syscall() {
+    output_syscall_with_options::<BabyBearField>(CompilerOptions::new_bb());
+    output_syscall_with_options::<GoldilocksField>(CompilerOptions::new_gl());
+}
+
+fn output_syscall_with_options<T: FieldElement>(options: CompilerOptions) {
     let case = "output";
     let temp_dir = Temp::new_dir().unwrap();
     let executable = powdr_riscv::compile_rust_crate_to_riscv(
@@ -474,13 +476,10 @@ fn output_syscall() {
         &temp_dir,
         None,
     );
-    let powdr_asm = powdr_riscv::elf::translate(&executable, CompilerOptions::new_gl());
+    let powdr_asm = powdr_riscv::elf::translate(&executable, options);
 
-    let inputs = vec![1u32, 2, 3]
-        .into_iter()
-        .map(GoldilocksField::from)
-        .collect();
-    let mut pipeline = Pipeline::default()
+    let inputs = vec![1u32, 2, 3].into_iter().map(T::from).collect();
+    let mut pipeline = Pipeline::<T>::default()
         .from_asm_string(powdr_asm, Some(PathBuf::from(case)))
         .with_prover_inputs(inputs);
 
@@ -511,6 +510,16 @@ fn many_chunks_memory() {
     test_continuations("many_chunks_memory")
 }
 
+fn verify_riscv_crate_bb_gl(case: &str, inputs: &[u64]) {
+    verify_riscv_crate_bb(case, inputs.iter().map(|&x| x.into()).collect());
+    verify_riscv_crate_gl(case, inputs.iter().map(|&x| x.into()).collect());
+}
+
+fn verify_riscv_crate_bb(case: &str, inputs: Vec<BabyBearField>) {
+    let options = CompilerOptions::new_bb();
+    verify_riscv_crate_impl::<BabyBearField, ()>(case, options, inputs, None)
+}
+
 fn verify_riscv_crate_gl(case: &str, inputs: Vec<GoldilocksField>) {
     let options = CompilerOptions::new_gl();
     verify_riscv_crate_impl::<GoldilocksField, ()>(case, options, inputs, None)
@@ -524,12 +533,14 @@ fn verify_riscv_crate_gl_with_options(
     verify_riscv_crate_impl::<GoldilocksField, ()>(case, options, inputs, None)
 }
 
-/*
-fn verify_riscv_crate_bb(case: &str, inputs: Vec<BabyBearField>) {
-    let options = CompilerOptions::new_16();
-    verify_riscv_crate_impl::<BabyBearField, ()>(case, options, inputs, None)
+fn verify_riscv_crate_bb_with_data<S: serde::Serialize + Send + Sync + 'static>(
+    case: &str,
+    inputs: Vec<BabyBearField>,
+    data: Vec<(u32, S)>,
+) {
+    let options = CompilerOptions::new_bb();
+    verify_riscv_crate_impl(case, options, inputs, Some(data))
 }
-*/
 
 fn verify_riscv_crate_gl_with_data<S: serde::Serialize + Send + Sync + 'static>(
     case: &str,
