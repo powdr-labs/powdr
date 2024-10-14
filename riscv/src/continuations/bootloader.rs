@@ -130,9 +130,8 @@ pub const REGISTER_NAMES: [&str; 37] = [
 /// Index of the PC in the bootloader input.
 pub const PC_INDEX: usize = REGISTER_NAMES.len() - 1;
 
-
 /// The default PC that can be used in first chunk, will just continue with whatever comes after the bootloader.
-/// 
+///
 /// The value is 3, because we added a jump instruction at the beginning of the code.
 /// Specifically, the first instructions are:
 /// 0: reset
