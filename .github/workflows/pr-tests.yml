@@ -79,7 +79,12 @@ jobs:
     - name: Archive EStarkPolygon prover built dependencies
       run: tar --zstd -cf pil-stark-prover-deps.tar.zst target/pr-tests/build/pil-stark-prover-*/out
     - name: Create tests archive
-      run: cargo nextest archive --archive-file tests.tar.zst --cargo-profile pr-tests --workspace --all-features
+      run: |
+        if [[ "${{ matrix.toolchain }}" == "nightly" && "${{ matrix.features }}" == "stwo" ]]; then
+        cargo +nightly-2024-09-21-x86_64-unknown-linux-gnu nextest archive --archive-file tests.tar.zst --cargo-profile pr-tests --workspace --features ${{ matrix.features }}
+        else
+        cargo nextest archive --archive-file tests.tar.zst --cargo-profile pr-tests --workspace --features ${{ matrix.features }}
+        fi
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
