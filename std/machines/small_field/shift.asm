@@ -21,7 +21,7 @@ machine ByteShift with
     let bit_counts = [256, 32, 4, 2];
     let min_degree = std::array::product(bit_counts);
     std::check::assert(std::prover::min_degree() >= std::array::product(bit_counts), || "The shift16 machine needs at least 65536 rows to work.");
-    require_field_bits(16, || "The field modulo should be at least 2^16 - 1 to work in the shift16 machine.");
+    require_field_bits(16, || "The field modulo should be at least 2^16 - 1 to work in the shift16 machine.");
     let inputs = cross_product(bit_counts);
     let a: int -> int = inputs[0];
     let b: int -> int = inputs[1];
