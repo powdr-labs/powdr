@@ -142,6 +142,7 @@ where
     ) -> BTreeMap<String, Vec<Vec<Option<T>>>> {
         let witness = witness
             .iter()
+            // this map seems redundant but it turns a reference over a tuple into a tuple of references
             .map(|(name, values)| (name, values))
             .collect::<BTreeMap<_, _>>();
 

@@ -79,11 +79,7 @@ where
         .collect();
 
     // sanity check that both maps have the same keys
-    assert!(program
-        .split
-        .keys()
-        .zip_eq(public_inputs.keys())
-        .all(|(a, b)| a == *b));
+    itertools::assert_equal(program.split.keys(), public_inputs.keys().cloned());
 
     let tables: BTreeMap<&String, Table<_>> = program
         .split
