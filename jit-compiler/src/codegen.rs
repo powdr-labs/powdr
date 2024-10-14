@@ -433,10 +433,12 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     escape_symbol(&decl.name),
                     escape_symbol(&variant.name)
                 );
-                if variant.fields.is_none() {
-                    formatted_variant
+                if let Some(fields) = &variant.fields {
+                    // Callable::Fn takes only a single argument, so we pack the fields into a tuple.
+                    let field_vars = (0..fields.len()).map(|i| format!("v_{i}")).join(", ");
+                    format!("Callable::Fn(|({field_vars})| {formatted_variant}({field_vars}))")
                 } else {
-                    format!("Callable::Fn({formatted_variant})",)
+                    formatted_variant
                 }
             }
             _ => format!("(*{}{type_args})", escape_symbol(symbol)),
@@ -522,7 +524,7 @@ fn check_pattern(value_name: &str, pattern: &Pattern) -> Result<(String, String)
         }
         Pattern::Variable(_, var) => (var.to_string(), format!("Some({value_name}.clone())")),
         Pattern::Enum(_, symbol, None) => (
-            "_".to_string(),
+            "()".to_string(),
             format!(
                 "(matches!({value_name}, {}).then_some(()))",
                 escape_enum_variant(symbol.clone())
@@ -531,6 +533,8 @@ fn check_pattern(value_name: &str, pattern: &Pattern) -> Result<(String, String)
         Pattern::Enum(_, symbol, Some(items)) => {
             // We first match the enum variant and bind all items to variables and
             // the recursively match the items, even if they are catch-all.
+            // TODO check if we need `item__{i}` to be unique, i.e. if there could be clashes
+            // with already existing variables or other patterns.
             let mut vars = vec![];
             let item_name = |i| format!("item__{i}");
             let inner_code = items
@@ -545,9 +549,9 @@ fn check_pattern(value_name: &str, pattern: &Pattern) -> Result<(String, String)
                 .join(", ");
 
             (
-                vars.join(", "),
+                format!("({})", vars.into_iter().format(", ")),
                 format!(
-                    "(|| if let {}({}) = ({value_name}).clone() {{ Some({inner_code}) }} else {{ None }})()",
+                    "(|| if let {}({}) = ({value_name}).clone() {{ Some(({inner_code})) }} else {{ None }})()",
                     escape_enum_variant(symbol.clone()),
                     (0..items.len()).map(item_name).join(", "),
                 ),
