@@ -96,12 +96,17 @@ impl<T: Display> Display for Analyzed<T> {
                                         )?;
                                     }
                                     Some(FunctionValueDefinition::TypeDeclaration(
-                                        enum_declaration,
+                                        TypeDeclaration::Enum(enum_declaration),
                                     )) => {
                                         writeln_indented(
                                             f,
                                             enum_declaration.to_string_with_name(&name),
                                         )?;
+                                    }
+                                    Some(FunctionValueDefinition::TypeDeclaration(
+                                        TypeDeclaration::Struct(struct_declaration),
+                                    )) => {
+                                        writeln_indented(f, struct_declaration)?;
                                     }
                                     Some(FunctionValueDefinition::TraitDeclaration(
                                         trait_declaration,

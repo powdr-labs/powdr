@@ -20,7 +20,8 @@ use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
-    self, ArrayExpression, EnumDeclaration, EnumVariant, NamedType, TraitDeclaration,
+    self, ArrayExpression, EnumDeclaration, EnumVariant, NamedType, StructDeclaration,
+    TraitDeclaration,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -620,7 +621,7 @@ pub enum SymbolKind {
 pub enum FunctionValueDefinition {
     Array(ArrayExpression<Reference>),
     Expression(TypedExpression),
-    TypeDeclaration(EnumDeclaration),
+    TypeDeclaration(TypeDeclaration),
     TypeConstructor(Arc<EnumDeclaration>, EnumVariant),
     TraitDeclaration(TraitDeclaration),
     TraitFunction(Arc<TraitDeclaration>, NamedType),
@@ -654,6 +655,28 @@ impl Children<Expression> for FunctionValueDefinition {
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children_mut(),
             FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children_mut(),
             FunctionValueDefinition::TraitFunction(_, trait_func) => trait_func.children_mut(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub enum TypeDeclaration {
+    Enum(EnumDeclaration),
+    Struct(StructDeclaration),
+}
+
+impl Children<Expression> for TypeDeclaration {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        match self {
+            TypeDeclaration::Enum(enum_decl) => enum_decl.children(),
+            TypeDeclaration::Struct(struct_decl) => struct_decl.children(),
+        }
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        match self {
+            TypeDeclaration::Enum(enum_decl) => enum_decl.children_mut(),
+            TypeDeclaration::Struct(struct_decl) => struct_decl.children_mut(),
         }
     }
 }
