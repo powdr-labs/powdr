@@ -27,10 +27,10 @@ jobs:
         toolchain: [stable, nightly]
         features: [default, halo2, plonky3, estark-polygon, stwo]
         exclude:
-        - toolchain: stable
-          features: stwo
         - toolchain: nightly
           features: [default, halo2, plonky3, estark-polygon]
+        - toolchain: stable
+          features: stwo
 
     steps:
     - uses: actions/checkout@v4
