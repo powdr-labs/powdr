@@ -10,6 +10,7 @@ use powdr_ast::{
         asm::{Part, SymbolPath},
         display::quote,
         types::{ArrayType, FunctionType, TupleType, Type, TypeScheme},
+        visitor::AllChildren,
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, EnumDeclaration,
         FunctionCall, IfExpression, IndexAccess, LambdaExpression, LetStatementInsideBlock,
         MatchArm, MatchExpression, Number, Pattern, StatementInsideBlock, UnaryOperation,
@@ -44,7 +45,9 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
     /// On failure, returns an error string.
     /// After a failure, `self` can still be used to request other symbols.
     /// The code can later be retrieved via `generated_code`.
-    pub fn request_symbol(&mut self, name: &str) -> Result<String, String> {
+    pub fn request_symbol(&mut self, name: &str, type_args: &[Type]) -> Result<String, String> {
+        // For now, code generation is generic, only the reference uses the type args.
+        // If that changes at some point, we need to store the type args in the symbol map as well.
         match self.symbols.get(name) {
             Some(Err(e)) => return Err(e.clone()),
             Some(_) => {}
@@ -62,7 +65,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 }
             }
         }
-        Ok(self.symbol_reference(name))
+        Ok(self.symbol_reference(name, type_args))
     }
 
     /// Returns the concatenation of all successfully compiled symbols.
@@ -112,7 +115,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     .join(",\n")
             )),
             FunctionValueDefinition::TypeConstructor(decl, _) => {
-                self.request_symbol(&decl.name)?;
+                self.request_symbol(&decl.name, &[])?;
                 Ok(String::new())
             }
             FunctionValueDefinition::Expression(value) => {
@@ -145,7 +148,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                             }}\n",
                             escape_symbol(symbol),
                             map_type(&ty),
-                            self.format_expr(&value.e)?
+                            self.format_expr(&value.e, 0)?
                         )
                     }
                 })
@@ -175,31 +178,23 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
             _ => return Err(format!("Expected function type, got {ty}")),
         };
 
+        let var_height = params.iter().map(|p| p.variables().count()).sum::<usize>();
+
         Ok(format!(
-            "fn {}({}) -> {} {{ {} }}\n",
+            "fn {}(({}): ({})) -> {} {{ {} }}\n",
             escape_symbol(name),
-            params
-                .iter()
-                .zip(param_types)
-                .map(|(p, t)| format!("{p}: {}", map_type(t)))
-                .format(", "),
+            params.iter().format(", "),
+            param_types.iter().map(map_type).format(", "),
             map_type(return_type),
-            self.format_expr(body)?
+            self.format_expr(body, var_height)?
         ))
     }
 
-    fn format_expr(&mut self, e: &Expression) -> Result<String, String> {
+    fn format_expr(&mut self, e: &Expression, var_height: usize) -> Result<String, String> {
         Ok(match e {
             Expression::Reference(_, Reference::LocalVar(_id, name)) => name.clone(),
             Expression::Reference(_, Reference::Poly(PolynomialReference { name, type_args })) => {
-                let reference = self.request_symbol(name)?;
-                let ta = type_args.as_ref().unwrap();
-                format!(
-                    "{reference}{}",
-                    (!ta.is_empty())
-                        .then(|| format!("::<{}>", ta.iter().map(map_type).join(", ")))
-                        .unwrap_or_default()
-                )
+                self.request_symbol(name, type_args.as_ref().unwrap())?
             }
             Expression::Number(
                 _,
@@ -229,11 +224,11 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 },
             ) => {
                 format!(
-                    "({})({})",
-                    self.format_expr(function)?,
+                    "({}).call(({}))",
+                    self.format_expr(function, var_height)?,
                     arguments
                         .iter()
-                        .map(|a| self.format_expr(a))
+                        .map(|a| self.format_expr(a, var_height))
                         .collect::<Result<Vec<_>, _>>()?
                         .into_iter()
                         // TODO these should all be refs -> turn all types to arc
@@ -243,8 +238,8 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 )
             }
             Expression::BinaryOperation(_, BinaryOperation { left, op, right }) => {
-                let left = self.format_expr(left)?;
-                let right = self.format_expr(right)?;
+                let left = self.format_expr(left, var_height)?;
+                let right = self.format_expr(right, var_height)?;
                 match op {
                     BinaryOperator::ShiftLeft => {
                         format!("(({left}).clone() << usize::try_from(({right}).clone()).unwrap())")
@@ -256,20 +251,44 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 }
             }
             Expression::UnaryOperation(_, UnaryOperation { op, expr }) => {
-                format!("({op} ({}).clone())", self.format_expr(expr)?)
+                format!("({op} ({}).clone())", self.format_expr(expr, var_height)?)
             }
             Expression::IndexAccess(_, IndexAccess { array, index }) => {
                 format!(
                     "{}[usize::try_from({}).unwrap()].clone()",
-                    self.format_expr(array)?,
-                    self.format_expr(index)?
+                    self.format_expr(array, var_height)?,
+                    self.format_expr(index, var_height)?
                 )
             }
-            Expression::LambdaExpression(_, LambdaExpression { params, body, .. }) => {
+            Expression::LambdaExpression(
+                _,
+                LambdaExpression {
+                    params,
+                    body,
+                    param_types,
+                    ..
+                },
+            ) => {
+                // Number of new variables introduced in the parameters.
+                let new_vars = params.iter().map(|p| p.variables().count()).sum::<usize>();
+                // We create clones of the captured variables so that we can move them into the closure.
+                let captured_vars = body
+                    .all_children()
+                    .filter_map(|e| {
+                        if let Expression::Reference(_, Reference::LocalVar(id, name)) = e {
+                            (*id < var_height as u64).then_some(name)
+                        } else {
+                            None
+                        }
+                    })
+                    .unique()
+                    .map(|v| format!("let {v} = {v}.clone();"))
+                    .format("\n");
                 format!(
-                    "|{}| {{ {} }}",
+                    "Callable::Closure(std::sync::Arc::new({{\n{captured_vars}\nmove |({}): ({})| {{ {} }}\n}}))",
                     params.iter().format(", "),
-                    self.format_expr(body)?
+                    param_types.iter().map(map_type).format(", "),
+                    self.format_expr(body, var_height + new_vars)?
                 )
             }
             Expression::IfExpression(
@@ -282,9 +301,9 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
             ) => {
                 format!(
                     "if {} {{ {} }} else {{ {} }}",
-                    self.format_expr(condition)?,
-                    self.format_expr(body)?,
-                    self.format_expr(else_body)?
+                    self.format_expr(condition, var_height)?,
+                    self.format_expr(body, var_height)?,
+                    self.format_expr(else_body, var_height)?
                 )
             }
             Expression::ArrayLiteral(_, ArrayLiteral { items }) => {
@@ -292,7 +311,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     "vec![{}]",
                     items
                         .iter()
-                        .map(|i| self.format_expr(i))
+                        .map(|i| self.format_expr(i, var_height))
                         .collect::<Result<Vec<_>, _>>()?
                         .join(", ")
                 )
@@ -302,20 +321,25 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 "({})",
                 items
                     .iter()
-                    .map(|i| Ok(format!("({}.clone())", self.format_expr(i)?)))
+                    .map(|i| Ok(format!("({}.clone())", self.format_expr(i, var_height)?)))
                     .collect::<Result<Vec<_>, String>>()?
                     .join(", ")
             ),
             Expression::BlockExpression(_, BlockExpression { statements, expr }) => {
+                let (formatted_statements, var_height) = statements.iter().try_fold(
+                    (vec![], var_height),
+                    |(mut formatted, var_height), s| {
+                        let (formatted_statement, var_height) =
+                            self.format_statement(s, var_height)?;
+                        formatted.push(formatted_statement);
+                        Ok::<_, String>((formatted, var_height))
+                    },
+                )?;
                 format!(
                     "{{\n{}\n{}\n}}",
-                    statements
-                        .iter()
-                        .map(|s| self.format_statement(s))
-                        .collect::<Result<Vec<_>, _>>()?
-                        .join("\n"),
+                    formatted_statements.join("\n"),
                     expr.as_ref()
-                        .map(|e| self.format_expr(e.as_ref()))
+                        .map(|e| self.format_expr(e.as_ref(), var_height))
                         .transpose()?
                         .unwrap_or_default()
                 )
@@ -329,13 +353,14 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 let var_name = "scrutinee__";
                 format!(
                     "{{\nlet {var_name} = ({}).clone();\n{}\n}}\n",
-                    self.format_expr(scrutinee)?,
+                    self.format_expr(scrutinee, var_height)?,
                     arms.iter()
                         .map(|MatchArm { pattern, value }| {
+                            let new_vars = pattern.variables().count();
                             let (bound_vars, arm_test) = check_pattern(var_name, pattern)?;
                             Ok(format!(
                                 "if let Some({bound_vars}) = ({arm_test}) {{\n{}\n}}",
-                                self.format_expr(value)?,
+                                self.format_expr(value, var_height + new_vars)?,
                             ))
                         })
                         .chain(std::iter::once(Ok("{ panic!(\"No match\"); }".to_string())))
@@ -347,7 +372,13 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
         })
     }
 
-    fn format_statement(&mut self, s: &StatementInsideBlock<Expression>) -> Result<String, String> {
+    /// Formats a statement given a current variable height.
+    /// Returns the formatted statement and the new variable height.
+    fn format_statement(
+        &mut self,
+        s: &StatementInsideBlock<Expression>,
+        var_height: usize,
+    ) -> Result<(String, usize), String> {
         Ok(match s {
             StatementInsideBlock::LetStatement(LetStatementInsideBlock { pattern, ty, value }) => {
                 let Some(value) = value else {
@@ -355,7 +386,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                         "Column creating 'let'-statements not yet supported: {s}"
                     ));
                 };
-                let value = self.format_expr(value)?;
+                let value = self.format_expr(value, var_height)?;
                 let var_name = "scrutinee__";
                 let ty = ty
                     .as_ref()
@@ -367,36 +398,51 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                 // for `{vars}`. We cannot use `ty` for that because the pattern translation
                 // results in `()` for parts that do not have any captured variables.
                 // The best way is probably to modify `check_pattern` to return the types
-                format!("let {vars} = (|{var_name}{ty}| {code})({value}).unwrap();",)
+                (
+                    format!("let {vars} = (|{var_name}{ty}| {code})({value}).unwrap();"),
+                    var_height + pattern.variables().count(),
+                )
             }
-            StatementInsideBlock::Expression(e) => format!("{};", self.format_expr(e)?),
+            StatementInsideBlock::Expression(e) => {
+                (format!("{};", self.format_expr(e, var_height)?), var_height)
+            }
         })
     }
 
     /// Returns a string expression evaluating to the value of the symbol.
     /// This is either the escaped name of the symbol or a deref operator
     /// applied to it.
-    fn symbol_reference(&self, symbol: &str) -> String {
+    fn symbol_reference(&self, symbol: &str, type_args: &[Type]) -> String {
+        let type_args = if type_args.is_empty() {
+            "".to_string()
+        } else {
+            format!("::<{}>", type_args.iter().map(map_type).join(", "))
+        };
         if is_builtin::<T>(symbol) {
-            return escape_symbol(symbol);
+            return format!("Callable::Fn({}{type_args})", escape_symbol(symbol));
         }
-        let (_, def) = self.analyzed.definitions.get(symbol).unwrap();
+        let (_, def) = self.analyzed.definitions.get(symbol).as_ref().unwrap();
         match def.as_ref().unwrap() {
             FunctionValueDefinition::Expression(typed_expr) => {
                 if matches!(typed_expr.e, Expression::LambdaExpression(..)) {
-                    escape_symbol(symbol)
+                    format!("Callable::Fn({}{type_args})", escape_symbol(symbol))
                 } else {
-                    format!("(*{})", escape_symbol(symbol))
+                    format!("(*{}{type_args})", escape_symbol(symbol))
                 }
             }
             FunctionValueDefinition::TypeConstructor(decl, variant) => {
-                format!(
-                    "{}::{}",
+                let formatted_variant = format!(
+                    "{}::{}{type_args}",
                     escape_symbol(&decl.name),
                     escape_symbol(&variant.name)
-                )
+                );
+                if variant.fields.is_none() {
+                    formatted_variant
+                } else {
+                    format!("Callable::Fn({formatted_variant})",)
+                }
             }
-            _ => escape_symbol(symbol),
+            _ => format!("(*{}{type_args})", escape_symbol(symbol)),
         }
     }
 }
@@ -557,7 +603,7 @@ fn map_type(ty: &Type) -> String {
         Type::Array(ArrayType { base, length: _ }) => format!("Vec<{}>", map_type(base)),
         Type::Tuple(TupleType { items }) => format!("({})", items.iter().map(map_type).join(", ")),
         Type::Function(ft) => format!(
-            "fn({}) -> {}",
+            "Callable<({}), {}>",
             ft.params.iter().map(map_type).join(", "),
             map_type(&ft.value)
         ),
@@ -584,7 +630,7 @@ fn get_builtins<T: FieldElement>() -> &'static HashMap<String, String> {
             ),
             (
                 "std::check::panic",
-                "(s: &str) -> ! { panic!(\"{s}\"); }".to_string(),
+                "(s: String) -> ! { panic!(\"{s}\"); }".to_string(),
             ),
             (
                 "std::convert::fe",
@@ -634,7 +680,7 @@ mod test {
         let analyzed = analyze_string::<GoldilocksField>(input).unwrap();
         let mut compiler = CodeGenerator::new(&analyzed);
         for s in syms {
-            compiler.request_symbol(s).unwrap();
+            compiler.request_symbol(s, &[]).unwrap();
         }
         compiler.generated_code()
     }
@@ -648,7 +694,7 @@ mod test {
     #[test]
     fn simple_fun() {
         let result = compile("let c: int -> int = |i| i;", &["c"]);
-        assert_eq!(result, "fn c(i: ibig::IBig) -> ibig::IBig { i }\n");
+        assert_eq!(result, "fn c((i): (ibig::IBig)) -> ibig::IBig { i }\n");
     }
 
     #[test]
@@ -659,9 +705,9 @@ mod test {
         );
         assert_eq!(
             result,
-            "fn c(i: ibig::IBig) -> ibig::IBig { ((i).clone() + (ibig::IBig::from(20_u64)).clone()) }\n\
+            "fn c((i): (ibig::IBig)) -> ibig::IBig { ((i).clone() + (ibig::IBig::from(20_u64)).clone()) }\n\
             \n\
-            fn d(k: ibig::IBig) -> ibig::IBig { (c)(((k).clone() * (ibig::IBig::from(20_u64)).clone()).clone()) }\n\
+            fn d((k): (ibig::IBig)) -> ibig::IBig { (Callable::Fn(c)).call((((k).clone() * (ibig::IBig::from(20_u64)).clone()).clone())) }\n\
             "
         );
     }

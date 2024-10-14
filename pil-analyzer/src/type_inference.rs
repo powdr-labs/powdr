@@ -422,6 +422,12 @@ impl TypeChecker {
                     }
                 }
             }
+            Expression::LambdaExpression(_, LambdaExpression { param_types, .. }) => {
+                for ty in param_types {
+                    // Here, the types do not have to be concrete.
+                    self.update_local_type(ty, type_var_mapping);
+                }
+            }
             Expression::BlockExpression(
                 source_ref,
                 BlockExpression {
@@ -577,7 +583,15 @@ impl TypeChecker {
                     .map(|item| self.infer_type_of_expression(item))
                     .collect::<Result<_, _>>()?,
             }),
-            Expression::LambdaExpression(_, LambdaExpression { kind, params, body }) => {
+            Expression::LambdaExpression(
+                _,
+                LambdaExpression {
+                    kind,
+                    params,
+                    body,
+                    param_types,
+                },
+            ) => {
                 let old_len = self.local_var_types.len();
                 let result = params
                     .iter()
@@ -591,9 +605,10 @@ impl TypeChecker {
                         Ok((param_types, body_type?))
                     });
                 self.local_var_types.truncate(old_len);
-                let (param_types, body_type) = result?;
+                let (param_types_inferred, body_type) = result?;
+                *param_types = param_types_inferred.clone();
                 Type::Function(FunctionType {
-                    params: param_types,
+                    params: param_types_inferred,
                     value: Box::new(body_type),
                 })
             }
