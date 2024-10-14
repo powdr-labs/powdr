@@ -6,7 +6,7 @@ use crate::{
     asm_analysis::MachineDegree,
     parsed::{
         asm::{AbsoluteSymbolPath, CallableParams, OperationParams},
-        EnumDeclaration, Expression, PilStatement, TypedExpression,
+        Expression, PilStatement,
     },
 };
 
