@@ -1,7 +1,6 @@
-
 use powdr_ast::analyzed::Analyzed;
-use std::sync::Arc;
 use std::io;
+use std::sync::Arc;
 
 use powdr_number::FieldElement;
 

@@ -1,7 +1,7 @@
+use log::info;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
-use log::info;
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 use powdr_ast::analyzed::Analyzed;
@@ -41,7 +41,6 @@ impl<F: FieldElement> BackendFactory<F> for StwoProverFactory {
 }
 
 impl<T: FieldElement> Backend<T> for StwoProver<T> {
-    
     #[allow(unused_variables)]
     fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
         assert!(instances.len() == 1);

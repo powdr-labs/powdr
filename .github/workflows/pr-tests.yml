@@ -25,6 +25,7 @@ jobs:
     strategy:
       matrix:
         toolchain: [stable, nightly]
+        features: [default, stwo]
 
     steps:
     - uses: actions/checkout@v4
@@ -41,16 +42,15 @@ jobs:
           target/
           Cargo.lock
         key: ${{ runner.os }}-cargo-pr-tests
-    - name: Install Rust toolchain 1.81 (with clippy and rustfmt)
-      run: rustup toolchain install 1.81-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.81-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.81-x86_64-unknown-linux-gnu
-    - name: Install Rust toolchain
+    - name: Install Rust toolchain and components
       run: |
-        if [[ "${{ matrix.toolchain }}" == "nightly" ]]; then
-          rustup toolchain install nightly-2024-09-21-x86_64-unknown-linux-gnu
-        else
-          rustup toolchain install 1.81-x86_64-unknown-linux-gnu
-          rustup component add clippy rustfmt --toolchain 1.81-x86_64-unknown-linux-gnu
-        fi
+          if [[ "${{ matrix.toolchain }}" == "nightly" ]]; then
+            rustup toolchain install nightly-2024-09-21-x86_64-unknown-linux-gnu
+            rustup component add clippy rustfmt --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu
+          else
+            rustup toolchain install 1.81-x86_64-unknown-linux-gnu
+            rustup component add clippy rustfmt --toolchain 1.81-x86_64-unknown-linux-gnu
+          fi
     - name: Install EStarkPolygon prover dependencies
       run: sudo apt-get install -y nlohmann-json3-dev libpqxx-dev nasm
     - name: Lint no default features
@@ -60,14 +60,12 @@ jobs:
     - name: Build
       run: |
         if [[ "${{ matrix.toolchain }}" == "nightly" ]]; then
-          cargo +nightly build --all-targets --all --all-features --profile pr-tests --features stwo
+          cargo +nightly build --all-targets --all --all-features --profile pr-tests --features ${{ matrix.features }}
         else
-          cargo build --all-targets --all --all-features --profile pr-tests
+          cargo build --all-targets --all --all-features --profile pr-tests --features ${{ matrix.features }}
         fi
     - name: Format
       run: cargo fmt --all --check --verbose
-    - name: Build
-      run: cargo build --all-targets --all --all-features --profile pr-tests
     - uses: taiki-e/install-action@nextest
     - name: Archive EStarkPolygon prover built dependencies
       run: tar --zstd -cf pil-stark-prover-deps.tar.zst target/pr-tests/build/pil-stark-prover-*/out
