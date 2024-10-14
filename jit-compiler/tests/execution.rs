@@ -206,6 +206,30 @@ fn match_array() {
 }
 
 #[test]
+fn match_enum() {
+    let f = compile(
+        r#"
+enum Slice { S(int[], int, int) }
+let slice_pop: Slice -> (Slice, Option<int>) = |s| match s {
+    Slice::S(_, _, 0) => (s, Option::None),
+    Slice::S(arr, start, l) => (Slice::S(arr, start, l - 1), Option::Some(arr[start + l - 1])),
+};
+let f: int -> int = |y| {
+    let (s, last) = slice_pop(Slice::S([1, 2, y], 0, 3));
+    match last {
+        Option::Some(x) => x,
+        Option::None => 0,
+    }
+};
+"#,
+        "f",
+    );
+    assert_eq!(f.call(0), 0);
+    assert_eq!(f.call(1), 1);
+    assert_eq!(f.call(2), 2);
+}
+
+#[test]
 fn let_simple() {
     let f = compile(
         r#"let f: int -> int = |x| {
