@@ -13,7 +13,7 @@ use powdr_ast::parsed::asm::{
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_ast::parsed::{
-    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SymbolCategory,
+    self, FunctionKind, LambdaExpression, PILFile, PilStatement, StructDeclaration, SymbolCategory,
     TraitImplementation,
 };
 use powdr_number::{FieldElement, GoldilocksField};
@@ -21,7 +21,7 @@ use powdr_number::{FieldElement, GoldilocksField};
 use powdr_ast::analyzed::{
     type_from_definition, Analyzed, DegreeRange, Expression, FunctionValueDefinition,
     PolynomialReference, PolynomialType, PublicDeclaration, Reference, StatementIdentifier, Symbol,
-    SymbolKind, TypedExpression,
+    SymbolKind, TypeDeclaration, TypedExpression,
 };
 use powdr_parser::{parse, parse_module, parse_type};
 use powdr_parser_util::Error;
@@ -56,6 +56,7 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Result<Analyzed<T>, Vec<Erro
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(files)?;
     analyzer.side_effect_check()?;
+    analyzer.structs_check()?;
     analyzer.type_check()?;
     // TODO should use Result here as well.
     let solved_impls = analyzer.resolve_trait_impls();
@@ -257,6 +258,69 @@ impl PILAnalyzer {
         }
     }
 
+    pub fn structs_check(&self) -> Result<(), Vec<Error>> {
+        let mut errors = vec![];
+        let struct_declarations: HashMap<String, StructDeclaration> = self
+            .definitions
+            .iter()
+            .filter_map(|(name, (_, value))| {
+                if let Some(FunctionValueDefinition::TypeDeclaration(TypeDeclaration::Struct(
+                    struct_decl,
+                ))) = value
+                {
+                    Some((name.clone(), struct_decl.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        for (_, def) in self.definitions.values() {
+            let Some(def) = def else { continue };
+
+            def.all_children().for_each(|expr| {
+                if let Expression::StructExpression(sr, struct_expr) = expr {
+                    let Some(struct_decl) = struct_declarations.get(&struct_expr.name.to_string())
+                    else {
+                        errors.push(sr.with_error(format!(
+                            "Struct '{}' has not been declared",
+                            struct_expr.name
+                        )));
+                        return;
+                    };
+
+                    let mut used_fields = HashSet::new();
+
+                    for named_expr in &struct_expr.fields {
+                        if !struct_decl.fields.iter().any(|f| f.name == named_expr.name) {
+                            errors.push(sr.with_error(format!(
+                                "Field '{}' not found in struct '{}'",
+                                named_expr.name, struct_expr.name
+                            )));
+                        } else {
+                            used_fields.insert(named_expr.name.clone());
+                        }
+                    }
+
+                    for field in &struct_decl.fields {
+                        if !used_fields.contains(&field.name) {
+                            errors.push(sr.with_error(format!(
+                                "Field '{}' is declared but never used in struct '{}' initialization",
+                                field.name, struct_expr.name
+                            )));
+                        }
+                    }
+                }
+            });
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    }
+
     pub fn type_check(&mut self) -> Result<(), Vec<Error>> {
         let query_type: Type = parse_type("int -> std::prelude::Query").unwrap().into();
         let mut expressions = vec![];
@@ -291,6 +355,21 @@ impl PILAnalyzer {
                 }
             }
         }
+
+        let struct_declarations: HashMap<String, StructDeclaration> = self
+            .definitions
+            .iter()
+            .filter_map(|(name, (_, value))| {
+                if let Some(FunctionValueDefinition::TypeDeclaration(TypeDeclaration::Struct(
+                    struct_decl,
+                ))) = value
+                {
+                    Some((name.clone(), struct_decl.clone()))
+                } else {
+                    None
+                }
+            })
+            .collect();
 
         let definitions = self
             .definitions
@@ -343,7 +422,7 @@ impl PILAnalyzer {
             expressions.push((expr, constr_function_statement_type()));
         }
 
-        let inferred_types = infer_types(definitions, &mut expressions)?;
+        let inferred_types = infer_types(definitions, &mut expressions, struct_declarations)?;
         // Store the inferred types.
         for (name, ty) in inferred_types {
             let Some(FunctionValueDefinition::Expression(TypedExpression {

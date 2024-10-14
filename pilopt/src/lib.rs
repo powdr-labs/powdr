@@ -9,11 +9,11 @@ use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Expression, FunctionValueDefinition,
     IdentityKind, PolyID, PolynomialReference, PolynomialType, Reference, SymbolKind,
-    TypedExpression,
+    TypeDeclaration, TypedExpression,
 };
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
-use powdr_ast::parsed::{EnumDeclaration, Number};
+use powdr_ast::parsed::{EnumDeclaration, Number, StructDeclaration};
 use powdr_number::{BigUint, FieldElement};
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
@@ -97,7 +97,12 @@ trait ReferencedSymbols {
 impl ReferencedSymbols for FunctionValueDefinition {
     fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
         match self {
-            FunctionValueDefinition::TypeDeclaration(enum_decl) => enum_decl.symbols(),
+            FunctionValueDefinition::TypeDeclaration(TypeDeclaration::Enum(enum_decl)) => {
+                enum_decl.symbols()
+            }
+            FunctionValueDefinition::TypeDeclaration(TypeDeclaration::Struct(struct_decl)) => {
+                struct_decl.symbols()
+            }
             FunctionValueDefinition::TypeConstructor(enum_decl, _) => {
                 // This is the type constructor of an enum variant, it references the enum itself.
                 Box::new(once(enum_decl.name.as_str().into()))
@@ -120,6 +125,12 @@ impl ReferencedSymbols for EnumDeclaration {
                 .flat_map(|t| t.iter())
                 .flat_map(|t| t.symbols()),
         )
+    }
+}
+
+impl ReferencedSymbols for StructDeclaration {
+    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
+        Box::new(self.fields.iter().flat_map(|named| named.ty.symbols()))
     }
 }
 

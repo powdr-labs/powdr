@@ -574,6 +574,55 @@ fn empty_conditional() {
 }
 
 #[test]
+fn simple_struct() {
+    let input = "
+    struct Dot { x: int, y: int }
+    let f: int -> Dot = |i| Dot{x: 0, y: i};
+
+    let x = f(0);
+    ";
+    type_check(input, &[("x", "", "Dot")]);
+}
+
+#[test]
+#[should_panic = "Type symbol not found: NotADot"]
+fn wrong_struct() {
+    let input = "
+    struct Dot { x: int, y: int }
+    let f: int -> Dot = |i| NotADot{x: 0, y: i};
+
+    let x = f(0);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Field 'a' not found in struct 'Dot'"]
+fn struct_wrong_fields() {
+    let input = "
+    struct Dot { x: int, y: int }
+    let f: int -> Dot = |i| Dot{a: 0, y: i};
+
+    let x = f(0);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Field 'z' is missing in struct 'Point' initialization"]
+fn test_struct_unused_fields() {
+    let input = "    struct Point {
+        x: int,
+        y: int,
+        z: int,
+    }
+    let p: Point = Point{ y: 0, x: 2 };
+";
+
+    type_check(input, &[]);
+}
+
+#[test]
 fn defined_trait() {
     let input = "
     trait Add<T> {
