@@ -7,8 +7,9 @@ mod data_structures;
 mod interpreter;
 mod jit_compiler;
 
-#[allow(clippy::too_long_first_doc_paragraph)]
+
 /// Generates the fixed column values for all fixed columns that are defined
+/// 
 /// (and not just declared).
 /// @returns the names (in source order) and the values for the columns.
 /// Arrays of columns are flattened, the name of the `i`th array element
