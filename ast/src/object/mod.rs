@@ -48,12 +48,6 @@ pub struct PILGraph {
     pub statements: BTreeMap<AbsoluteSymbolPath, Vec<PilStatement>>,
 }
 
-#[derive(Clone)]
-pub enum TypeOrExpression {
-    Type(EnumDeclaration<Expression>),
-    Expression(TypedExpression),
-}
-
 #[derive(Default, Clone)]
 pub struct Object {
     pub degree: MachineDegree,
