@@ -54,8 +54,7 @@ jobs:
             rustup toolchain install 1.81-x86_64-unknown-linux-gnu
             rustup component add clippy rustfmt --toolchain 1.81-x86_64-unknown-linux-gnu
           fi
-    - name: Verify installed Rust toolchains
-      run: rustup show
+    
     - name: Install EStarkPolygon prover dependencies
       run: sudo apt-get install -y nlohmann-json3-dev libpqxx-dev nasm
     - name: Lint no default features
@@ -63,14 +62,14 @@ jobs:
     - name: Lint
       run: |
         if [[ "${{ matrix.toolchain }}" == "nightly" && "${{ matrix.features }}" == "stwo" ]]; then
-          cargo +nightly clippy --all-targets --features stwo --profile pr-tests -- -D warnings
+          cargo +nightly-2024-09-21-x86_64-unknown-linux-gnu clippy --all-targets --features stwo --profile pr-tests -- -D warnings
         else
           cargo clippy --all-targets --features ${{ matrix.features }} --profile pr-tests -- -D warnings
         fi
     - name: Build
       run: |
         if [[ "${{ matrix.toolchain }}" == "nightly" && "${{ matrix.features }}" == "stwo" ]]; then
-          cargo +nightly build --all-targets --profile pr-tests --features ${{ matrix.features }}
+          cargo +nightly-2024-09-21-x86_64-unknown-linux-gnu build --all-targets --profile pr-tests --features ${{ matrix.features }}
         elif [[ "${{ matrix.toolchain }}" == "stable" ]]; then
           cargo build --all-targets --profile pr-tests --features ${{ matrix.features }}
         fi
