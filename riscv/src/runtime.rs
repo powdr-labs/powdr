@@ -64,6 +64,7 @@ impl SubMachine {
     }
 }
 
+#[allow(clippy::too_long_first_doc_paragraph)]
 /// Sequence of asm function statements.
 /// Any of the registers used as input/output to the syscall should be usable without issue.
 /// Other registers should be saved/restored from memory, as LLVM doesn't know about their usage here.
