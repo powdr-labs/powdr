@@ -6,20 +6,20 @@ use std::iter::once;
 
 use itertools::{izip, Itertools};
 use p3_challenger::{CanObserve, CanSample, FieldChallenger};
-use p3_commit::{Pcs, PolynomialSpace};
+use p3_commit::{Pcs as _, PolynomialSpace};
 use p3_field::{AbstractExtensionField, AbstractField, Field};
 use p3_matrix::dense::RowMajorMatrixView;
 use p3_matrix::stack::VerticalPair;
 use tracing::instrument;
 
 use crate::circuit_builder::{PowdrCircuit, PowdrTable};
-use crate::params::{Challenge, Challenger, Commitment, Plonky3Field, ProverData};
+use crate::params::{Challenge, Challenger, Commitment, Pcs, ProverData};
 use crate::symbolic_builder::{get_log_quotient_degree, SymbolicAirBuilder};
 use crate::{
     FieldElementMap, MultiStageAir, Proof, StageOpenedValues, StarkVerifyingKey, TableOpenedValues,
-    VerifierConstraintFolder,
+    TableVerifyingKeyCollection, VerifierConstraintFolder,
 };
-use p3_uni_stark::{PcsError, StarkGenericConfig, Val};
+use p3_uni_stark::{Domain, PcsError, StarkGenericConfig, Val};
 
 /// A sub-table to be proven, in the form of an air and values for the public inputs
 struct Table<'a, T: FieldElementMap>
@@ -28,6 +28,8 @@ where
     Commitment<T>: Send,
 {
     air: PowdrTable<'a, T>,
+    preprocessed: Option<&'a TableVerifyingKeyCollection<T::Config>>,
+    opened_values: &'a TableOpenedValues<Challenge<T>>,
     public_values_by_stage: &'a [Vec<Val<T::Config>>],
 }
 
@@ -45,6 +47,24 @@ where
                 .map(|values| values.len())
                 .collect::<Vec<_>>(),
         )
+    }
+
+    fn natural_domain(&self, pcs: &Pcs<T>) -> Domain<T::Config> {
+        let degree = 1 << self.opened_values.log_degree;
+        pcs.natural_domain_for_degree(degree)
+    }
+
+    fn preprocessed_commit(&self) -> Option<&Commitment<T>> {
+        self.preprocessed
+            .as_ref()
+            .map(|preprocessed| &preprocessed[&(1 << self.opened_values.log_degree)])
+    }
+
+    fn quotient_domains(&self, pcs: &Pcs<T>) -> Vec<Domain<T::Config>> {
+        let log_quotient_degree = self.get_log_quotient_degree();
+        self.natural_domain(pcs)
+            .create_disjoint_domain(1 << (self.opened_values.log_degree + log_quotient_degree))
+            .split_domains(1 << log_quotient_degree)
     }
 }
 
@@ -73,57 +93,56 @@ where
         })
         .collect::<BTreeMap<_, _>>();
 
-    let public_inputs: BTreeMap<&String, &[Vec<Plonky3Field<T>>]> = public_inputs
-        .iter()
-        .map(|(name, values)| (name, values.as_slice()))
-        .collect();
-
-    // sanity check that both maps have the same keys
-    itertools::assert_equal(program.split.keys(), public_inputs.keys().cloned());
-
-    let tables: BTreeMap<&String, Table<_>> = program
-        .split
-        .values()
-        .zip_eq(public_inputs)
-        .map(|((_, constraints), (name, public_values_by_stage))| {
-            (
-                name,
-                Table {
-                    air: PowdrTable::new(constraints),
-                    public_values_by_stage,
-                },
-            )
-        })
-        .collect();
-
-    if proof.opened_values.len() != tables.len() {
-        return Err(VerificationError::InvalidProofShape);
-    }
-
-    let config = T::get_config();
-
-    let pcs = config.pcs();
-
     let Proof {
         commitments,
         opened_values,
         opening_proof,
     } = proof;
 
-    if let Some(vk) = verifying_key {
-        for commit in vk
-            .preprocessed
-            .iter()
-            .map(|(name, map)| &map[&(1 << opened_values[name].log_degree)])
-        {
-            challenger.observe(commit.clone());
+    // sanity check that the two maps have the same keys
+    itertools::assert_equal(program.split.keys(), public_inputs.keys());
+
+    // error out if the opened values do not have the same keys as the tables
+    if !itertools::equal(program.split.keys(), opened_values.keys()) {
+        return Err(VerificationError::InvalidProofShape);
+    }
+
+    let tables: BTreeMap<&String, Table<_>> = program
+        .split
+        .values()
+        .zip_eq(public_inputs.iter())
+        .zip_eq(opened_values.values())
+        .map(
+            |(((_, constraints), (name, public_values_by_stage)), opened_values)| {
+                (
+                    name,
+                    Table {
+                        air: PowdrTable::new(constraints),
+                        opened_values,
+                        public_values_by_stage,
+                        preprocessed: verifying_key
+                            .as_ref()
+                            .and_then(|vk| vk.preprocessed.get(name)),
+                    },
+                )
+            },
+        )
+        .collect();
+
+    let config = T::get_config();
+
+    let pcs = config.pcs();
+
+    for table in tables.values() {
+        if let Some(preprocessed_commit) = table.preprocessed_commit() {
+            challenger.observe(preprocessed_commit.clone());
         }
     }
 
     // Observe the instances.
-    for opened_values in opened_values.values() {
+    for table in tables.values() {
         challenger.observe(Val::<T::Config>::from_canonical_usize(
-            opened_values.log_degree,
+            table.opened_values.log_degree,
         ));
     }
     // TODO: Might be best practice to include other instance data here in the transcript, like some
@@ -179,78 +198,52 @@ where
 
     let zeta: Challenge<T> = challenger.sample();
 
-    let trace_domains = proof
-        .opened_values
-        .values()
-        .map(|opened_values| {
-            let degree = 1 << opened_values.log_degree;
-            pcs.natural_domain_for_degree(degree)
-        })
-        .collect::<Vec<_>>();
+    // for preprocessed commitments, we have one optional commitment per table, opened on the trace domain at `zeta` and `zeta_next`
+    let preprocessed_domains_points_and_opens: Vec<(_, Vec<(_, _)>)> =
+        tables
+            .values()
+            .flat_map(|table| {
+                let trace_domain = table.natural_domain(pcs);
 
-    let quotient_domains: Vec<Vec<_>> = tables
-        .values()
-        .zip_eq(proof.opened_values.values())
-        .zip_eq(trace_domains.iter())
-        .map(|((table, opened_values), trace_domain)| {
-            let log_quotient_degree = table.get_log_quotient_degree();
-            trace_domain
-                .create_disjoint_domain(1 << (opened_values.log_degree + log_quotient_degree))
-                .split_domains(1 << log_quotient_degree)
-        })
-        .collect::<Vec<_>>();
+                let zeta_next = trace_domain.next_point(zeta).unwrap();
 
-    // for preprocessed commitments, we have one commitment per table, opened on the trace domain at `zeta` and `zeta_next`
-    let preprocessed_domains_points_and_opens: Vec<(_, Vec<(_, _)>)> = proof
-        .opened_values
-        .iter()
-        .zip_eq(trace_domains.iter())
-        .flat_map(|((table_name, opened_values), trace_domain)| {
-            let zeta_next = trace_domain.next_point(zeta).unwrap();
-
-            opened_values
-                .preprocessed
-                .iter()
-                .map(move |StageOpenedValues { local, next }| {
-                    (
-                        // choose the correct preprocessed commitment based on the degree in the proof
-                        // this could be optimized by putting the preproccessed commitments in a merkle tree
-                        // and have the prover prove that it used commitments matching the lengths of the traces
-                        // this way the verifier does not need to have all the preprocessed commitments for all sizes
-                        verifying_key
-                            .as_ref()
-                            .unwrap()
-                            .preprocessed
-                            .get(table_name)
-                            .unwrap()[&(1 << opened_values.log_degree)]
-                            .clone(),
-                        vec![(
-                            *trace_domain,
-                            vec![(zeta, local.clone()), (zeta_next, next.clone())],
-                        )],
-                    )
-                })
-        })
-        .collect();
+                table.opened_values.preprocessed.iter().map(
+                    move |StageOpenedValues { local, next }| {
+                        (
+                            // choose the correct preprocessed commitment based on the degree in the proof
+                            // this could be optimized by putting the preproccessed commitments in a merkle tree
+                            // and have the prover prove that it used commitments matching the lengths of the traces
+                            // this way the verifier does not need to have all the preprocessed commitments for all sizes
+                            table.preprocessed_commit().expect("a preprocessed commitment was expected because a preprocessed opening was found").clone(),
+                            vec![(
+                                trace_domain,
+                                vec![(zeta, local.clone()), (zeta_next, next.clone())],
+                            )],
+                        )
+                    },
+                )
+            })
+            .collect();
 
     // for trace commitments, we have one commitment per stage, opened on each trace domain at `zeta` and `zeta_next`
     let trace_domains_points_and_opens_by_stage: Vec<(_, Vec<(_, _)>)> = izip!(
         proof.commitments.traces_by_stage.iter(),
-        (0..stage_count as usize).map(|i| opened_values
+        (0..stage_count as usize).map(|i| tables
             .values()
-            .map(|opened_values| &opened_values.traces_by_stage[i])
+            .map(|table| &table.opened_values.traces_by_stage[i])
             .collect_vec()),
     )
     .map(|(commit, openings)| {
         (
             commit.clone(),
-            trace_domains
-                .iter()
+            tables
+                .values()
                 .zip_eq(openings)
-                .map(|(trace_domain, StageOpenedValues { local, next })| {
+                .map(|(table, StageOpenedValues { local, next })| {
+                    let trace_domain = table.natural_domain(pcs);
                     let zeta_next = trace_domain.next_point(zeta).unwrap();
                     (
-                        *trace_domain,
+                        trace_domain,
                         vec![(zeta, local.clone()), (zeta_next, next.clone())],
                     )
                 })
@@ -262,14 +255,14 @@ where
     // for quotient commitments, we have a single commitment, opened on each quotient domain at many points
     let quotient_chunks_domain_point_and_opens: (_, Vec<(_, _)>) = (
         proof.commitments.quotient_chunks.clone(),
-        quotient_domains
-            .iter()
-            .zip_eq(opened_values.values())
-            .flat_map(|(domains, values)| {
-                domains
-                    .iter()
-                    .zip_eq(values.quotient_chunks.iter())
-                    .map(|(domain, chunk)| (*domain, vec![(zeta, chunk.clone())]))
+        tables
+            .values()
+            .flat_map(|table| {
+                let quotient_domains = table.quotient_domains(pcs);
+                quotient_domains
+                    .into_iter()
+                    .zip_eq(table.opened_values.quotient_chunks.iter())
+                    .map(|(domain, chunk)| (domain, vec![(zeta, chunk.clone())]))
             })
             .collect_vec(),
     );
@@ -284,20 +277,17 @@ where
         .map_err(VerificationError::InvalidOpeningArgument)?;
 
     // Verify the constraint evaluations.
-    for (table, trace_domain, quotient_chunks_domains, opened_values) in izip!(
-        tables.into_values(),
-        trace_domains,
-        quotient_domains,
-        opened_values.values(),
-    ) {
+    for table in tables.values() {
         // Verify the shape of the opening arguments matches the expected values.
-        verify_opening_shape(&table, opened_values)?;
+        verify_opening_shape(table)?;
         // Verify the constraint evaluation.
-        let zps = quotient_chunks_domains
+        let zps = table
+            .quotient_domains(pcs)
             .iter()
             .enumerate()
             .map(|(i, domain)| {
-                quotient_chunks_domains
+                table
+                    .quotient_domains(pcs)
                     .iter()
                     .enumerate()
                     .filter(|(j, _)| *j != i)
@@ -309,7 +299,8 @@ where
             })
             .collect_vec();
 
-        let quotient = opened_values
+        let quotient = table
+            .opened_values
             .quotient_chunks
             .iter()
             .enumerate()
@@ -321,11 +312,11 @@ where
             })
             .sum();
 
-        let sels = trace_domain.selectors_at_point(zeta);
+        let sels = table.natural_domain(pcs).selectors_at_point(zeta);
 
         let empty_vec = vec![];
 
-        let preprocessed = if let Some(preprocessed) = opened_values.preprocessed.as_ref() {
+        let preprocessed = if let Some(preprocessed) = table.opened_values.preprocessed.as_ref() {
             VerticalPair::new(
                 RowMajorMatrixView::new_row(&preprocessed.local),
                 RowMajorMatrixView::new_row(&preprocessed.next),
@@ -337,7 +328,8 @@ where
             )
         };
 
-        let traces_by_stage = opened_values
+        let traces_by_stage = table
+            .opened_values
             .traces_by_stage
             .iter()
             .map(|trace| {
@@ -374,7 +366,6 @@ where
 
 fn verify_opening_shape<T: FieldElementMap>(
     table: &Table<'_, T>,
-    opened_values: &TableOpenedValues<Challenge<T>>,
 ) -> Result<(), VerificationError<PcsError<T::Config>>>
 where
     ProverData<T>: Send,
@@ -403,22 +394,25 @@ where
         .collect::<Vec<usize>>();
     let air_fixed_width =
         <_ as MultiStageAir<SymbolicAirBuilder<Val<T::Config>>>>::preprocessed_width(&table.air);
-    let res = opened_values
+    let res = table
+        .opened_values
         .preprocessed
         .as_ref()
         .map(|StageOpenedValues { local, next }| {
             local.len() == air_fixed_width && next.len() == air_fixed_width
         })
         .unwrap_or(true)
-        && opened_values
+        && table
+            .opened_values
             .traces_by_stage
             .iter()
             .zip_eq(&air_widths)
             .all(|(StageOpenedValues { local, next }, air_width)| {
                 local.len() == *air_width && next.len() == *air_width
             })
-        && opened_values.quotient_chunks.len() == quotient_degree
-        && opened_values
+        && table.opened_values.quotient_chunks.len() == quotient_degree
+        && table
+            .opened_values
             .quotient_chunks
             .iter()
             .all(|qc| qc.len() == <Challenge<T> as AbstractExtensionField<Val<T::Config>>>::D)

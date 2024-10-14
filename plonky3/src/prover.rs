@@ -202,13 +202,11 @@ where
         let traces_by_table_by_stage: Vec<Vec<_>> = state.processed_stages.iter().fold(
             vec![vec![]; state.program.table_count()],
             |mut traces_by_table, _| {
-                let mut values = opened_values.next().unwrap();
-                for (values, v) in traces_by_table.iter_mut().zip_eq(values.iter_mut()) {
-                    assert_eq!(v.len(), 2);
-                    values.push(StageOpenedValues {
-                        next: v.pop().unwrap(),
-                        local: v.pop().unwrap(),
-                    });
+                let values = opened_values.next().unwrap();
+                for (values, v) in traces_by_table.iter_mut().zip_eq(values) {
+                    let [local, next] = v.try_into().unwrap();
+
+                    values.push(StageOpenedValues { next, local });
                 }
                 traces_by_table
             },
@@ -224,9 +222,9 @@ where
                 let quotient_degree = 1 << log_quotient_degree;
                 (&mut value)
                     .take(quotient_degree)
-                    .map(|mut v| {
-                        assert_eq!(v.len(), 1);
-                        v.pop().unwrap()
+                    .map(|v| {
+                        let [v] = v.try_into().unwrap();
+                        v
                     })
                     .collect()
             })
