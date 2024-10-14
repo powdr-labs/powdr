@@ -58,8 +58,13 @@ jobs:
       run: sudo apt-get install -y nlohmann-json3-dev libpqxx-dev nasm
     - name: Lint no default features
       run: cargo clippy --all --all-targets --no-default-features --profile pr-tests -- -D warnings
-    - name: Lint all features
-      run: cargo clippy --all --all-targets --all-features --profile pr-tests -- -D warnings
+    - name: Lint
+      run: |
+        if [[ "${{ matrix.toolchain }}" == "nightly" && "${{ matrix.features }}" == "stwo" ]]; then
+          cargo +nightly clippy --all-targets --features stwo --profile pr-tests -- -D warnings
+        else
+          cargo clippy --all-targets --features ${{ matrix.features }} --profile pr-tests -- -D warnings
+        fi
     - name: Build
       run: |
         if [[ "${{ matrix.toolchain }}" == "nightly" && "${{ matrix.features }}" == "stwo" ]]; then
