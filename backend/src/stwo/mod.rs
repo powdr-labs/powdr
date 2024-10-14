@@ -14,6 +14,8 @@ mod prover;
 pub(crate) struct StwoProverFactory;
 
 impl<F: FieldElement> BackendFactory<F> for StwoProverFactory {
+    #[allow(unreachable_code)]
+    #[allow(unused_variables)]
     fn create(
         &self,
         pil: Arc<Analyzed<F>>,
@@ -37,11 +39,14 @@ impl<F: FieldElement> BackendFactory<F> for StwoProverFactory {
 }
 
 impl<T: FieldElement> Backend<T> for StwoProver<T> {
+    
+    #[allow(unused_variables)]
     fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
         assert!(instances.len() == 1);
         Ok(())
     }
-
+    #[allow(unreachable_code)]
+    #[allow(unused_variables)]
     fn prove(
         &self,
         witness: &[(String, Vec<T>)],
@@ -51,12 +56,11 @@ impl<T: FieldElement> Backend<T> for StwoProver<T> {
         if prev_proof.is_some() {
             return Err(Error::NoAggregationAvailable);
         }
-
+        let proof = vec![0u8; 10];
         panic!("prove function is not implement yet");
-        let mut proof = vec![0u8; 10];
         Ok(proof)
     }
-
+    #[allow(unused_variables)]
     fn export_verification_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {
         Ok(())
     }

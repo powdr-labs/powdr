@@ -1,29 +1,32 @@
 use powdr_ast::analyzed::Analyzed;
 use std::sync::Arc;
-use std::{io, option};
+use std::io;
 
 use powdr_number::FieldElement;
 
+#[allow(unused_variables)]
 pub struct StwoProver<F> {
-    analyzed: Arc<Analyzed<F>>,
-    fixed: Arc<Vec<(String, Vec<F>)>>,
+    _analyzed: Arc<Analyzed<F>>,
+    _fixed: Arc<Vec<(String, Vec<F>)>>,
     /// Proving key placeholder
-    proving_key: Option<()>,
+    _proving_key: Option<()>,
     /// Verifying key placeholder
-    verifying_key: Option<()>,
+    _verifying_key: Option<()>,
 }
 
 impl<F: FieldElement> StwoProver<F> {
+   
+    #[allow(unused_variables)]
     pub fn new(
-        analyzed: Arc<Analyzed<F>>,
-        fixed: Arc<Vec<(String, Vec<F>)>>,
+        _analyzed: Arc<Analyzed<F>>,
+        _fixed: Arc<Vec<(String, Vec<F>)>>,
         setup: Option<&mut dyn io::Read>,
     ) -> Result<Self, io::Error> {
         Ok(Self {
-            analyzed,
-            fixed,
-            proving_key: None,
-            verifying_key: None,
+            _analyzed,
+            _fixed,
+            _proving_key: None,
+            _verifying_key: None,
         })
     }
 }
