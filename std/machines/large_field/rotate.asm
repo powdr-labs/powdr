@@ -1,9 +1,10 @@
 use std::utils::unchanged_until;
 use std::utils::cross_product;
 use std::convert::int;
+use std::check::require_field_bits;
 
-// Rotate for single bytes using an exhaustive table
-// TODO this way, we cannot prove anything that rotates by more than 31 bits.
+/// Rotate on single byte input using an exhaustive table, returning 32-bit value as result.
+/// TODO this way, we cannot prove anything that rotates by more than 31 bits.
 machine ByteRotate with
     latch: latch,
     operation_id: operation_id,
@@ -14,14 +15,18 @@ machine ByteRotate with
     col fixed latch = [1]*;
     col fixed operation_id = [0]*;
 
+    require_field_bits(16, || "The field modulo should be at least 2^16 - 1 to work in the rotate machine.");
+
     let bit_counts = [256, 32, 4, 2];
     let min_degree = std::array::product(bit_counts);
     std::check::assert(std::prover::min_degree() >= std::array::product(bit_counts), || "The rotate machine needs at least 65536 rows to work.");
-    let inputs = cross_product(bit_counts);
-    let a: int -> int = inputs[0];
-    let b: int -> int = inputs[1];
-    let row: int -> int = inputs[2];
-    let op: int -> int = inputs[3];
+    
+    let out_byte_offset = cross_product(bit_counts);
+    let a: int -> int = out_byte_offset[0];
+    let b: int -> int = out_byte_offset[1];
+    let row: int -> int = out_byte_offset[2];
+    let op: int -> int = out_byte_offset[3];
+
     let P_A: col = a;
     let P_B: col = b;
     let P_ROW: col = row;
@@ -40,6 +45,8 @@ machine Rotate(byte_rotate: ByteRotate) with
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
+    require_field_bits(32, || "Rotate requires a field that fits any 32-Bit value.");
+
     operation rotl<0> A, B -> C;
 
     operation rotr<1> A, B -> C;
