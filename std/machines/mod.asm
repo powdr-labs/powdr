@@ -9,6 +9,7 @@ mod memory;
 mod memory16;
 mod memory_with_bootloader_write;
 mod rotate;
+mod rotate16;
 mod shift;
 mod shift16;
 mod split;
