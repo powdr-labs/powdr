@@ -1,6 +1,7 @@
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
+use log::info;
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 use powdr_ast::analyzed::Analyzed;
@@ -11,6 +12,7 @@ use prover::StwoProver;
 
 mod prover;
 
+#[allow(dead_code)]
 pub(crate) struct StwoProverFactory;
 
 impl<F: FieldElement> BackendFactory<F> for StwoProverFactory {
@@ -33,7 +35,7 @@ impl<F: FieldElement> BackendFactory<F> for StwoProverFactory {
             get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
         );
         let stwo = Box::new(StwoProver::new(pil, fixed, setup)?);
-        println!("StwoProverFactory is not complete yet");
+        info!("StwoProverFactory is not complete yet");
         Ok(stwo)
     }
 }

@@ -1,3 +1,4 @@
+
 use powdr_ast::analyzed::Analyzed;
 use std::sync::Arc;
 use std::io;
@@ -15,7 +16,7 @@ pub struct StwoProver<F> {
 }
 
 impl<F: FieldElement> StwoProver<F> {
-   
+    #[allow(dead_code)]
     #[allow(unused_variables)]
     pub fn new(
         _analyzed: Arc<Analyzed<F>>,
