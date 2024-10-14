@@ -145,35 +145,16 @@ fn double_word() {
     let b1 = 0x0100f0f0u32;
     let c = ((a0 as u64) | ((a1 as u64) << 32)).wrapping_mul((b0 as u64) | ((b1 as u64) << 32));
 
-    verify_riscv_crate_bb(
-        case,
-        [
-            a0,
-            a1,
-            b0,
-            b1,
-            (c & 0xffffffff) as u32,
-            ((c >> 32) & 0xffffffff) as u32,
-        ]
-        .iter()
-        .map(|&x| x.into())
-        .collect(),
-    );
-
-    verify_riscv_crate_gl(
-        case,
-        [
-            a0,
-            a1,
-            b0,
-            b1,
-            (c & 0xffffffff) as u32,
-            ((c >> 32) & 0xffffffff) as u32,
-        ]
-        .iter()
-        .map(|&x| x.into())
-        .collect(),
-    );
+    let v = [
+        a0,
+        a1,
+        b0,
+        b1,
+        (c & 0xffffffff) as u32,
+        ((c >> 32) & 0xffffffff) as u32,
+    ];
+    verify_riscv_crate_bb_with_data(case, Default::default(), vec![(1, v)]);
+    verify_riscv_crate_gl_with_data(case, Default::default(), vec![(1, v)]);
 }
 
 #[test]
@@ -291,6 +272,11 @@ fn sum_serde() {
 #[test]
 #[ignore = "Too slow"]
 fn read_slice() {
+    read_slice_with_options::<BabyBearField>(CompilerOptions::new_bb());
+    read_slice_with_options::<GoldilocksField>(CompilerOptions::new_gl());
+}
+
+fn read_slice_with_options<T: FieldElement>(options: CompilerOptions) {
     let case = "read_slice";
     let temp_dir = Temp::new_dir().unwrap();
     let executable = powdr_riscv::compile_rust_crate_to_riscv(
@@ -298,13 +284,13 @@ fn read_slice() {
         &temp_dir,
         None,
     );
-    let powdr_asm = powdr_riscv::elf::translate(&executable, CompilerOptions::new_gl());
+    let powdr_asm = powdr_riscv::elf::translate(&executable, options);
 
     let data: Vec<u32> = vec![];
     let answer = data.iter().sum::<u32>();
 
     use std::collections::BTreeMap;
-    let d: BTreeMap<u32, Vec<GoldilocksField>> = vec![(
+    let d: BTreeMap<u32, Vec<T>> = vec![(
         42,
         vec![
             0u32.into(),
@@ -320,7 +306,7 @@ fn read_slice() {
     .into_iter()
     .collect();
 
-    let mut pipeline = Pipeline::<GoldilocksField>::default()
+    let mut pipeline = Pipeline::<T>::default()
         .from_asm_string(powdr_asm, Some(PathBuf::from(case)))
         .with_prover_inputs(vec![answer.into()])
         .with_prover_dict_inputs(d);
