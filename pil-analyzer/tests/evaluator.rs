@@ -680,4 +680,3 @@ fn test_struct_unordered_fields() {
         "Point{x: 2, y: 0, }".to_string()
     );
 }
-
