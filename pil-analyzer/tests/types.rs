@@ -587,7 +587,6 @@ fn simple_struct() {
 #[test]
 #[should_panic = "Type symbol not found: NotADot"]
 fn wrong_struct() {
-    // This type of error is caught by the type checker
     let input = "
     struct Dot { x: int, y: int }
     let f: int -> Dot = |i| NotADot{x: 0, y: i};
@@ -602,7 +601,7 @@ fn wrong_struct() {
 fn struct_wrong_fields() {
     let input = "
     struct Dot { x: int, y: int }
-    let f: int -> Dot = |i| Dot{a: 0, b: i};
+    let f: int -> Dot = |i| Dot{a: 0, y: i};
 
     let x = f(0);
     ";

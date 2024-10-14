@@ -741,38 +741,20 @@ impl TypeChecker {
                 let struct_decl = self
                     .struct_declarations
                     .get(&struct_expr.name.to_string())
-                    .cloned()
-                    .ok_or_else(|| {
-                        sr.with_error(format!(
-                            "Struct '{}' has not been declared.",
-                            struct_expr.name
-                        ))
-                    })?;
+                    .unwrap();
 
-                let mut used_fields = std::collections::HashSet::new();
+                let field_types: HashMap<_, _> = struct_expr
+                    .fields
+                    .iter()
+                    .map(|named_expr| {
+                        let scheme = struct_decl.type_of_field(&named_expr.name).unwrap();
+                        (named_expr.name.clone(), scheme.ty.clone())
+                    })
+                    .collect();
 
                 for named_expr in struct_expr.fields.iter_mut() {
-                    let expr_ty = struct_decl.type_of_field(&named_expr.name);
-                    match expr_ty {
-                        Some(scheme) => {
-                            self.expect_type(&scheme.ty, named_expr.body.as_mut())?;
-                            used_fields.insert(named_expr.name.clone());
-                        }
-                        None => {
-                            return Err(sr.with_error(format!(
-                                "Field '{}' not found in struct '{}'",
-                                named_expr.name, struct_expr.name
-                            )));
-                        }
-                    }
-                }
-
-                for field in struct_decl.fields.iter() {
-                    if !used_fields.contains(&field.name) {
-                        return Err(sr.with_error(format!(
-                            "Field '{}' is missing in struct '{}' initialization",
-                            field.name, struct_expr.name
-                        )));
+                    if let Some(field_type) = field_types.get(&named_expr.name) {
+                        self.expect_type(field_type, named_expr.body.as_mut())?;
                     }
                 }
 
