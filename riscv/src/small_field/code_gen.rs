@@ -393,7 +393,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
     {
         XXIsZero = 1 - XX * XX_inv,
 
-        // What we want to do is to compare tmp1_h == tmp2_h && tmp1_l == tmp2_l.
+        // We want to check tmp1_h == tmp2_h && tmp1_l == tmp2_l.
         // This could be done with the constraint below, but overflows causes soundness issues:
         // XX = (tmp1_h - tmp2_h)**2 + (tmp1_l - tmp2_l)**2,
         // One solution is to further decompose into single bytes.
@@ -412,11 +412,11 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
         // 32bits tmp2 = tmp5_h * 2**24 + tmp5_l * 2**16 + tmp6_h * 2**8 + tmp6_l
 
         // The constraint below leads to a plonky3 translation error:
-        // thread '<unnamed>' panicked at /home/leo/devel/powdr2/plonky3/src/circuit_builder.rs:259:25:
+        // thread '<unnamed>' panicked at plonky3/src/circuit_builder.rs:259:25:
         // internal error: entered unreachable code: exponentiations should have been evaluated
         // So we inline the squares.
 
-        // This should fit in 19 bits.
+        // This fits in 19 bits.
         //XX = (tmp3_h - tmp5_h)**2 + (tmp3_l - tmp5_l)**2 + (tmp4_h - tmp6_h)**2 + (tmp4_l - tmp6_l)**2,
         XX = (tmp3_h - tmp5_h)*(tmp3_h - tmp5_h) + (tmp3_l - tmp5_l)*(tmp3_l - tmp5_l) + (tmp4_h - tmp6_h)*(tmp4_h - tmp6_h) + (tmp4_l - tmp6_l)*(tmp4_l - tmp6_l),
 
