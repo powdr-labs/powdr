@@ -117,12 +117,7 @@ jobs:
     - name: Download build artifacts
       uses: actions/download-artifact@v4
       with:
-        name: |
-         tests_archive-stable-default
-         tests_archive-stable-halo2
-         tests_archive-stable-plonky3
-         tests_archive-stable-estark-polygon
-         tests_archive-nightly-stwo
+        name: tests_archive-${{ matrix.toolchain }}-${{ matrix.features }}
     - name: ⚡ Cache nodejs
       uses: actions/cache@v4
       with:
@@ -179,12 +174,7 @@ jobs:
     - name: Download build artifacts
       uses: actions/download-artifact@v4
       with:
-        name: |
-         tests_archive-stable-default
-         tests_archive-stable-halo2
-         tests_archive-stable-plonky3
-         tests_archive-stable-estark-polygon
-         tests_archive-nightly-stwo
+        name: tests_archive-${{ matrix.toolchain }}-${{ matrix.features }}
     - name: ⚡ Cache nodejs
       uses: actions/cache@v4
       with:
@@ -234,12 +224,7 @@ jobs:
     - name: Download build artifacts
       uses: actions/download-artifact@v4
       with:
-        name: |
-         tests_archive-stable-default
-         tests_archive-stable-halo2
-         tests_archive-stable-plonky3
-         tests_archive-stable-estark-polygon
-         tests_archive-nightly-stwo
+        name: tests_archive-${{ matrix.toolchain }}-${{ matrix.features }}
     - name: ⚡ Cache nodejs
       uses: actions/cache@v4
       with:
