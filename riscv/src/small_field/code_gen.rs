@@ -363,8 +363,6 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
         pc' = l
     }
     
-    col witness tmp_fe;
-
     // Jump to the address in register X and store the return program counter in register W.
     instr jump_dyn XL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
@@ -376,8 +374,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
     {
         // We need a temporary col here because the compiler doesn't like
         // `exp` inside an expr on the RHS of a pc update. 
-        tmp_fe = (tmp1_h * 2**16) + tmp1_l,
-        pc' = tmp_fe,
+        pc' = (tmp1_h * 2**16) + tmp1_l,
         pc + 1 = tmp2_h * 2**16 + tmp2_l
     }
 
