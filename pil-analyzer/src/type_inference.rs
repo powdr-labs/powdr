@@ -734,11 +734,14 @@ impl TypeChecker {
                         ))
                     })?;
 
+                let mut used_fields = std::collections::HashSet::new();
+
                 for named_expr in struct_expr.fields.iter_mut() {
                     let expr_ty = struct_decl.type_of_field(&named_expr.name);
                     match expr_ty {
                         Some(scheme) => {
                             self.expect_type(&scheme.ty, named_expr.body.as_mut())?;
+                            used_fields.insert(named_expr.name.clone());
                         }
                         None => {
                             return Err(sr.with_error(format!(
@@ -746,6 +749,15 @@ impl TypeChecker {
                                 named_expr.name, struct_expr.name
                             )));
                         }
+                    }
+                }
+
+                for field in struct_decl.fields.iter() {
+                    if !used_fields.contains(&field.name) {
+                        return Err(sr.with_error(format!(
+                            "Field '{}' is missing in struct '{}' initialization",
+                            field.name, struct_expr.name
+                        )));
                     }
                 }
 

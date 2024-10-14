@@ -610,6 +610,20 @@ fn struct_wrong_fields() {
 }
 
 #[test]
+#[should_panic = "Field 'z' is missing in struct 'Point' initialization"]
+fn test_struct_unused_fields() {
+    let input = "    struct Point {
+        x: int,
+        y: int,
+        z: int,
+    }
+    let p: Point = Point{ y: 0, x: 2 };
+";
+
+    type_check(input, &[]);
+}
+
+#[test]
 fn defined_trait() {
     let input = "
     trait Add<T> {

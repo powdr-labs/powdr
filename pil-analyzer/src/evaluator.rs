@@ -1185,11 +1185,12 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             Expression::StructExpression(_, StructExpression { name, fields }) => {
                 let new_fields = fields
                     .iter()
+                    .rev()
                     .map(|named_expr| {
                         let value = self
                             .value_stack
                             .pop()
-                            .unwrap_or_else(|| panic!("Symbol {} not found", name));
+                            .unwrap_or_else(|| panic!("Symbol {name} not found"));
                         (named_expr.name.as_str(), value)
                     })
                     .collect::<HashMap<_, _>>();

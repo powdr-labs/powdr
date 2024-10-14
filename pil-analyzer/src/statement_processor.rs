@@ -438,8 +438,6 @@ where
 
     fn process_struct_declaration(
         &mut self,
-        //source: SourceRef,
-        //name: String,
         symbol: Symbol,
         struct_decl: StructDeclaration<parsed::Expression>,
     ) -> Vec<PILItem> {
@@ -452,6 +450,7 @@ where
                 ty: self.type_processor(&type_vars).process_type(v.ty),
             })
             .collect();
+
         let struct_decl = StructDeclaration {
             name: self.driver.resolve_decl(&struct_decl.name),
             type_vars: struct_decl.type_vars,
@@ -464,7 +463,6 @@ where
                 TypeDeclarationAnalyzed::Struct(struct_decl.clone()),
             )),
         ))
-        //.chain(field_items)
         .collect()
     }
 

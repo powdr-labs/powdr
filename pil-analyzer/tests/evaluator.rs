@@ -665,3 +665,19 @@ fn test_struct() {
         "false".to_string()
     );
 }
+
+#[test]
+fn test_struct_unordered_fields() {
+    let input = "    struct Point {
+        x: int,
+        y: int,
+    }
+    let p: Point = Point{ y: 0, x: 2 };
+";
+
+    assert_eq!(
+        parse_and_evaluate_symbol(input, "p"),
+        "Point{x: 2, y: 0, }".to_string()
+    );
+}
+
