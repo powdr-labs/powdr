@@ -385,12 +385,44 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
     instr branch_if_not_equal XL, YL, l: label
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
-        link ~> (tmp3_h, tmp3_l) = add_sub.sub(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
+        link => byte.check(tmp3_h)
+        link => byte.check(tmp3_l)
+        link => byte.check(tmp4_h)
+        link => byte.check(tmp4_l)
+        link => byte.check(tmp5_h)
+        link => byte.check(tmp5_l)
+        link => byte.check(tmp6_h)
+        link => byte.check(tmp6_l)
     {
-        // TODO this could be optimized by removing the sub call above.
-        // What we want to do is to compare tmp1_h == tmp2_h && tmp1_l == tmp2_l.
         XXIsZero = 1 - XX * XX_inv,
-        XX = (tmp3_h + tmp3_l),
+
+        // What we want to do is to compare tmp1_h == tmp2_h && tmp1_l == tmp2_l.
+        // This could be done with the constraint below, but overflows causes soundness issues:
+        // XX = (tmp1_h - tmp2_h)**2 + (tmp1_l - tmp2_l)**2,
+        // One solution is to further decompose into single bytes.
+
+        // Decompose tmp1_h into 2 bytes
+        tmp1_h = tmp3_h * 2**8 + tmp3_l,
+        // Decompose tmp1_l into 2 bytes
+        tmp1_l = tmp4_h * 2**8 + tmp4_l,
+        // Decompose tmp2_h into 2 bytes
+        tmp2_h = tmp5_h * 2**8 + tmp5_l,
+        // Decompose tmp2_l into 2 bytes
+        tmp2_l = tmp6_h * 2**8 + tmp6_l,
+
+        // now we have that
+        // 32bits tmp1 = tmp3_h * 2**24 + tmp3_l * 2**16 + tmp4_h * 2**8 + tmp4_l
+        // 32bits tmp2 = tmp5_h * 2**24 + tmp5_l * 2**16 + tmp6_h * 2**8 + tmp6_l
+
+        // The constraint below leads to a plonky3 translation error:
+        // thread '<unnamed>' panicked at /home/leo/devel/powdr2/plonky3/src/circuit_builder.rs:259:25:
+        // internal error: entered unreachable code: exponentiations should have been evaluated
+        // So we inline the squares.
+
+        // This should fit in 19 bits.
+        //XX = (tmp3_h - tmp5_h)**2 + (tmp3_l - tmp5_l)**2 + (tmp4_h - tmp6_h)**2 + (tmp4_l - tmp6_l)**2,
+        XX = (tmp3_h - tmp5_h)*(tmp3_h - tmp5_h) + (tmp3_l - tmp5_l)*(tmp3_l - tmp5_l) + (tmp4_h - tmp6_h)*(tmp4_h - tmp6_h) + (tmp4_l - tmp6_l)*(tmp4_l - tmp6_l),
+
         pc' = (1 - XXIsZero) * l + XXIsZero * (pc + 1)
     }
 
