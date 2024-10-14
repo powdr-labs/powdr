@@ -1183,26 +1183,27 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
                 return self.expand(body);
             }
             Expression::StructExpression(_, StructExpression { name, fields }) => {
-                let new_fields = fields
+                let fields = fields
                     .iter()
                     .rev()
                     .map(|named_expr| {
-                        let value = self
-                            .value_stack
-                            .pop()
-                            .unwrap_or_else(|| panic!("Symbol {name} not found"));
+                        let value = self.value_stack.pop().unwrap_or_else(|| {
+                            panic!(
+                                "Value for field {} not found in struct {name}",
+                                named_expr.name
+                            )
+                        });
                         (named_expr.name.as_str(), value)
                     })
                     .collect::<HashMap<_, _>>();
 
-                let v_name = match name {
-                    Reference::Poly(poly) => &poly.name,
-                    _ => unreachable!(),
+                let Reference::Poly(poly) = name else {
+                    unreachable!();
                 };
 
                 Value::Struct(StructValue {
-                    name: v_name,
-                    fields: new_fields,
+                    name: &poly.name,
+                    fields,
                 })
                 .into()
             }
