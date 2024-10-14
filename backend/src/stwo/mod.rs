@@ -31,7 +31,7 @@ impl<F: FieldElement> BackendFactory<F> for StwoProverFactory {
             get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
         );
         let stwo = Box::new(StwoProver::new(pil, fixed, setup)?);
-        println!("StwoProverFactory create not implemented yet");
+        println!("StwoProverFactory is not complete yet");
         Ok(stwo)
     }
 }
