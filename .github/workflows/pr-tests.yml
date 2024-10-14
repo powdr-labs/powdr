@@ -32,9 +32,9 @@ jobs:
         - toolchain: nightly
           features: halo2
         - toolchain: nightly
-          feature: plonky3
+          features: plonky3
         - toolchain: nightly
-          feature: estark-polygon
+          features: estark-polygon
         - toolchain: stable
           features: stwo
 
