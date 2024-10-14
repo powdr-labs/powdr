@@ -1,5 +1,5 @@
-use std::machines::rotate::ByteRotate;
-use std::machines::rotate::Rotate;
+use std::machines::large_field::rotate::ByteRotate;
+use std::machines::large_field::rotate::Rotate;
 
 machine Main with degree: 65536 {
     reg pc[@pc];

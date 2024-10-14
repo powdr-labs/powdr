@@ -7,7 +7,7 @@ use powdr_ast::{
     asm_analysis::{AnalysisASMFile, Machine},
     parsed::{asm::parse_absolute_path, Expression, Number, PilStatement},
 };
-use powdr_number::{FieldElement, LargeInt};
+use powdr_number::{FieldElement, KnownField, LargeInt};
 use powdr_pipeline::Pipeline;
 use powdr_riscv_executor::{get_main_machine, ExecutionTrace, MemoryState, ProfilerOptions};
 
@@ -19,9 +19,8 @@ use bootloader::{default_input, PAGE_SIZE_BYTES_LOG, PC_INDEX, REGISTER_NAMES};
 use memory_merkle_tree::MerkleTree;
 
 use crate::continuations::bootloader::{
-    default_register_values, shutdown_routine_upper_bound, BOOTLOADER_INPUTS_PER_PAGE,
-    BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES, DEFAULT_PC, MEMORY_HASH_START_INDEX, PAGE_INPUTS_OFFSET,
-    WORDS_PER_PAGE,
+    default_register_values, shutdown_routine_upper_bound, BOOTLOADER_INPUTS_PER_PAGE, DEFAULT_PC,
+    MEMORY_HASH_START_INDEX, PAGE_INPUTS_OFFSET, WORDS_PER_PAGE,
 };
 
 use crate::code_gen::Register;
@@ -148,8 +147,8 @@ where
     Ok(())
 }
 
-fn sanity_check(main_machine: &Machine) {
-    for expected_instruction in BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES {
+fn sanity_check(main_machine: &Machine, field: KnownField) {
+    for expected_instruction in bootloader::bootloader_specific_instruction_names(field) {
         if !main_machine
             .instructions
             .iter()
@@ -218,6 +217,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     pipeline: &mut Pipeline<F>,
     profiler_opt: Option<ProfilerOptions>,
 ) -> DryRunResult<F> {
+    let field = F::known_field().unwrap();
+
     // All inputs for all chunks.
     let mut bootloader_inputs_and_num_rows = vec![];
 
@@ -226,7 +227,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
 
     let program = pipeline.compute_analyzed_asm().unwrap().clone();
     let main_machine = program.get_machine(&parse_absolute_path("::Main")).unwrap();
-    sanity_check(main_machine);
+    sanity_check(main_machine, field);
 
     log::info!("Initializing memory merkle tree...");
 

@@ -4,7 +4,7 @@ use std::convert::int;
 
 // Rotate for single bytes using an exhaustive table, returning two 16-bit values as result.
 // TODO this way, we cannot prove anything that rotates by more than 31 bits.
-machine ByteRotate16 with
+machine ByteRotate with
     latch: latch,
     operation_id: operation_id,
     degree: 65536
@@ -17,8 +17,8 @@ machine ByteRotate16 with
 
     let bit_counts = [256, 32, 4, 2];
     let min_degree = std::array::product(bit_counts);
-    std::check::assert(std::prover::min_degree() >= std::array::product(bit_counts), || "The rotate16 machine needs at least 65536 rows to work.");
-    std::check::assert(std::field::modulus() >= 65535, || "The field modulo should be at least 2^16 - 1 to work in the rotate16 machine.");
+    std::check::assert(std::prover::min_degree() >= std::array::product(bit_counts), || "The rotate machine needs at least 65536 rows to work.");
+    std::check::assert(std::field::modulus() >= 65535, || "The field modulo should be at least 2^16 - 1 to work in the rotate machine.");
     let inputs = cross_product(bit_counts);
     let a: int -> int = inputs[0];
     let b: int -> int = inputs[1];
@@ -36,7 +36,7 @@ machine ByteRotate16 with
     col fixed P_C1(i) { (c(i) >> 16) & 0xffff };
 }
 
-machine Rotate16(byte_rotate_16: ByteRotate16) with
+machine Rotate(byte_rotate: ByteRotate) with
     latch: latch,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation
@@ -67,5 +67,5 @@ machine Rotate16(byte_rotate_16: ByteRotate16) with
     C0' = C0 * (1 - latch) + C0_part;
     C1' = C1 * (1 - latch) + C1_part;
 
-    link => (C0_part, C1_part) = byte_rotate_16.run(operation_id', A_byte, B', FACTOR_ROW);
+    link => (C0_part, C1_part) = byte_rotate.run(operation_id', A_byte, B', FACTOR_ROW);
 }

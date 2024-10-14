@@ -3,3 +3,7 @@
 
 mod add_sub;
 mod arith;
+mod binary;
+mod memory;
+mod rotate;
+mod shift;

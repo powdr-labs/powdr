@@ -1,4 +1,4 @@
-use std::machines::memory::Memory;
+use std::machines::large_field::memory::Memory;
 
 // Copy of std::machines::range::Byte2 which sets the correct degree.
 machine Byte2 with

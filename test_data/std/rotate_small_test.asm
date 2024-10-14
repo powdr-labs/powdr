@@ -1,5 +1,5 @@
-use std::machines::rotate16::ByteRotate16;
-use std::machines::rotate16::Rotate16;
+use std::machines::small_field::rotate::ByteRotate;
+use std::machines::small_field::rotate::Rotate;
 
 machine Main with degree: 65536 {
     reg pc[@pc];
@@ -11,11 +11,11 @@ machine Main with degree: 65536 {
     reg A0;
     reg A1;
 
-    ByteRotate16 byte_rotate_16;
-    Rotate16 rotate16(byte_rotate_16);
+    ByteRotate byte_rotate;
+    Rotate rotate(byte_rotate);
 
-    instr rotl X0_1, X0_2, X1 -> X2_1, X2_2 link ~> (X2_1, X2_2) = rotate16.rotl(X0_1, X0_2, X1);
-    instr rotr X0_1, X0_2, X1 -> X2_1, X2_2 link ~> (X2_1, X2_2) = rotate16.rotr(X0_1, X0_2, X1);
+    instr rotl X0_1, X0_2, X1 -> X2_1, X2_2 link ~> (X2_1, X2_2) = rotate.rotl(X0_1, X0_2, X1);
+    instr rotr X0_1, X0_2, X1 -> X2_1, X2_2 link ~> (X2_1, X2_2) = rotate.rotr(X0_1, X0_2, X1);
 
     instr assert_eq X0_1, X0_2, X2_1, X2_2  {
         X0_1 = X2_1,
