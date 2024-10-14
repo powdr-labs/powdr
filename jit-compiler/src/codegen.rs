@@ -627,7 +627,7 @@ fn get_builtins<T: FieldElement>() -> &'static HashMap<String, String> {
             ),
             (
                 "std::check::panic",
-                "(s: &str) -> ! { panic!(\"{s}\"); }".to_string(),
+                "(s: String) -> ! { panic!(\"{s}\"); }".to_string(),
             ),
             (
                 "std::convert::fe",

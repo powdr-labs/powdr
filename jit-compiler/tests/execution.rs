@@ -52,6 +52,20 @@ fn invalid_function() {
 }
 
 #[test]
+fn builtin_panic() {
+    let input = r#"
+        namespace std::check;
+            let panic = [""];
+        namespace main;
+            let a: int -> int = |i| std::check::panic("test");
+        "#;
+    compile(input, "main::a");
+    // We de not call `a` because handling the panic is not yet properly implemented.
+    // It currently causes an unhandled panic inside an `extern "C"` function, which results in
+    // direct termination, so we cannot test it here.
+}
+
+#[test]
 fn assigned_functions() {
     let input = r#"
         namespace std::array;
