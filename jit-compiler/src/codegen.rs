@@ -282,7 +282,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     .map(|v| format!("let {v} = {v}.clone();"))
                     .format("\n");
                 format!(
-                    "Callable::Closure(std::sync::Arc::new({{\n{captured_vars}\nmove |({}): ({})| {{ {} }}\n}}))",
+                    "Callable::Closure(std::sync::Arc::new({{\n{captured_vars}\nmove |({}): ({})| {{ ({}).clone() }}\n}}))",
                     params.iter().format(", "),
                     param_types.iter().map(map_type).format(", "),
                     self.format_expr(body, var_height + new_vars)?

@@ -268,6 +268,21 @@ fn enums() {
 }
 
 #[test]
+fn clone_locals() {
+    let f = compile(
+        r#"
+        let a: int -> (int -> int) = |i| |_| i;
+        let f: int -> int = |i| a(7)(i);
+        "#,
+        "f",
+    );
+
+    assert_eq!(f.call(0), 7);
+    assert_eq!(f.call(1), 7);
+    assert_eq!(f.call(2), 7);
+}
+
+#[test]
 fn closures() {
     let input = "
         namespace std::convert;
