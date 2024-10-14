@@ -28,7 +28,13 @@ jobs:
         features: [default, halo2, plonky3, estark-polygon, stwo]
         exclude:
         - toolchain: nightly
-          features: [default, halo2, plonky3, estark-polygon]
+          features: default
+        - toolchain: nightly
+          features: halo2
+        - toolchain: nightly
+          feature: plonky3
+        - toolchain: nightly
+          feature: estark-polygon
         - toolchain: stable
           features: stwo
 
