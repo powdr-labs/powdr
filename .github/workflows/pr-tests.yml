@@ -29,6 +29,8 @@ jobs:
         exclude:
         - toolchain: stable
           features: stwo
+        - toolchain: nightly
+          features: [default, halo2, plonky3, estark-polygon]
 
     steps:
     - uses: actions/checkout@v4
@@ -48,8 +50,8 @@ jobs:
     - name: Install Rust toolchain and components
       run: |
           if [[ "${{ matrix.toolchain }}" == "nightly" ]]; then
-            rustup toolchain install nightly
-            rustup component add clippy rustfmt --toolchain nightly
+            rustup toolchain install nightly-2024-09-21-x86_64-unknown-linux-gnu
+            rustup component add clippy rustfmt --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu
           else
             rustup toolchain install 1.81-x86_64-unknown-linux-gnu
             rustup component add clippy rustfmt --toolchain 1.81-x86_64-unknown-linux-gnu
@@ -62,14 +64,14 @@ jobs:
     - name: Lint
       run: |
         if [[ "${{ matrix.toolchain }}" == "nightly" && "${{ matrix.features }}" == "stwo" ]]; then
-          cargo +nightly clippy --all-targets --features stwo --profile pr-tests -- -D warnings
+          cargo +nightly-2024-09-21-x86_64-unknown-linux-gnu clippy --all-targets --features stwo --profile pr-tests -- -D warnings
         else
           cargo clippy --all-targets --features ${{ matrix.features }} --profile pr-tests -- -D warnings
         fi
     - name: Build
       run: |
         if [[ "${{ matrix.toolchain }}" == "nightly" && "${{ matrix.features }}" == "stwo" ]]; then
-          cargo +nightly build --all-targets --profile pr-tests --features ${{ matrix.features }}
+          cargo +nightly-2024-09-21-x86_64-unknown-linux-gnu build --all-targets --profile pr-tests --features ${{ matrix.features }}
         elif [[ "${{ matrix.toolchain }}" == "stable" ]]; then
           cargo build --all-targets --profile pr-tests --features ${{ matrix.features }}
         fi
@@ -81,7 +83,7 @@ jobs:
     - name: Create tests archive
       run: |
         if [[ "${{ matrix.toolchain }}" == "nightly" && "${{ matrix.features }}" == "stwo" ]]; then
-        cargo +nightly nextest archive --archive-file tests.tar.zst --cargo-profile pr-tests --workspace --features ${{ matrix.features }}
+        cargo +nightly-2024-09-21-x86_64-unknown-linux-gnu nextest archive --archive-file tests.tar.zst --cargo-profile pr-tests --workspace --all-features
         else
         cargo nextest archive --archive-file tests.tar.zst --cargo-profile pr-tests --workspace --features ${{ matrix.features }}
         fi
