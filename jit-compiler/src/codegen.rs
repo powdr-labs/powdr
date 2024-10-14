@@ -122,9 +122,8 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     .ok_or_else(|| format!("Symbol does not have a type: {symbol}"))?;
 
                 Ok(match (&value.e, type_scheme) {
-                    (Expression::LambdaExpression(_, expr), TypeScheme { vars, ty }) => {
-                        assert!(vars.is_empty());
-                        self.try_format_function(symbol, expr, ty)?
+                    (Expression::LambdaExpression(_, expr), type_scheme) => {
+                        self.try_format_function(symbol, expr, type_scheme)?
                     }
                     _ => {
                         let type_scheme = value.type_scheme.as_ref().unwrap();
@@ -160,11 +159,12 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
         &mut self,
         name: &str,
         LambdaExpression { params, body, .. }: &LambdaExpression<Expression>,
-        ty: &Type,
+        TypeScheme { vars, ty }: &TypeScheme,
     ) -> Result<String, String> {
         let (param_types, return_type) = &match ty {
             Type::Function(FunctionType { params, value }) => (params.clone(), (**value).clone()),
             Type::Col => {
+                assert!(vars.is_empty());
                 // TODO we assume it is an int -> fe function, even though other
                 // types are possible.
                 // At some point, the type inference algorithm should store the derived type.
@@ -177,8 +177,26 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
 
         let var_height = params.iter().map(|p| p.variables().count()).sum::<usize>();
 
+        let generics = if vars.is_empty() {
+            String::new()
+        } else {
+            // TODO The bounds here will probably not compile because
+            // some of the built-in ones do not exist as rust traits.
+            // Also traits are not yet implemented in this compiler.
+            format!(
+                "<{}>",
+                vars.bounds()
+                    .map(|(var, bounds)| {
+                        format!(
+                            "{var}: Clone + Send + Sync{} + 'static",
+                            bounds.iter().map(|b| format!(" + {b}")).format("")
+                        )
+                    })
+                    .format(", ")
+            )
+        };
         Ok(format!(
-            "fn {}(({}): ({})) -> {} {{ {} }}\n",
+            "fn {}{generics}(({}): ({})) -> {} {{ {} }}\n",
             escape_symbol(name),
             params.iter().format(", "),
             param_types.iter().map(map_type).format(", "),
@@ -211,7 +229,16 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                         .map_err(|_| "Large numbers for expr not yet implemented.".to_string())?;
                     format!("Expr::from({val}_u64)")
                 }
-                _ => return Err(format!("Unexpected type for literal number: {type_}")),
+                Type::TypeVar(tv) => {
+                    if let Ok(v) = u64::try_from(value) {
+                        format!("{tv}::from_u64({v}_u64)")
+                    } else {
+                        let v_bytes = value.to_le_bytes();
+                        let v = v_bytes.iter().map(|b| format!("{b}_u8")).format(", ");
+                        format!("{tv}::from_le_bytes({v})")
+                    }
+                }
+                _ => unreachable!(),
             },
             Expression::FunctionCall(
                 _,
@@ -243,6 +270,9 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     }
                     BinaryOperator::ShiftRight => {
                         format!("(({left}).clone() >> usize::try_from(({right}).clone()).unwrap())")
+                    }
+                    BinaryOperator::Add => {
+                        format!("Add::add(({left}).clone(), ({right}).clone())")
                     }
                     _ => format!("(({left}).clone() {op} ({right}).clone())"),
                 }
@@ -305,7 +335,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
             }
             Expression::ArrayLiteral(_, ArrayLiteral { items }) => {
                 format!(
-                    "vec![{}]",
+                    "PilVec::from(vec![{}])",
                     items
                         .iter()
                         .map(|i| self.format_expr(i, var_height))
@@ -433,10 +463,12 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     escape_symbol(&decl.name),
                     escape_symbol(&variant.name)
                 );
-                if variant.fields.is_none() {
-                    formatted_variant
+                if let Some(fields) = &variant.fields {
+                    // Callable::Fn takes only a single argument, so we pack the fields into a tuple.
+                    let field_vars = (0..fields.len()).map(|i| format!("v_{i}")).join(", ");
+                    format!("Callable::Fn(|({field_vars})| {formatted_variant}({field_vars}))")
                 } else {
-                    format!("Callable::Fn({formatted_variant})",)
+                    formatted_variant
                 }
             }
             _ => format!("(*{}{type_args})", escape_symbol(symbol)),
@@ -522,7 +554,7 @@ fn check_pattern(value_name: &str, pattern: &Pattern) -> Result<(String, String)
         }
         Pattern::Variable(_, var) => (var.to_string(), format!("Some({value_name}.clone())")),
         Pattern::Enum(_, symbol, None) => (
-            "_".to_string(),
+            "()".to_string(),
             format!(
                 "(matches!({value_name}, {}).then_some(()))",
                 escape_enum_variant(symbol.clone())
@@ -531,6 +563,8 @@ fn check_pattern(value_name: &str, pattern: &Pattern) -> Result<(String, String)
         Pattern::Enum(_, symbol, Some(items)) => {
             // We first match the enum variant and bind all items to variables and
             // the recursively match the items, even if they are catch-all.
+            // TODO check if we need `item__{i}` to be unique, i.e. if there could be clashes
+            // with already existing variables or other patterns.
             let mut vars = vec![];
             let item_name = |i| format!("item__{i}");
             let inner_code = items
@@ -545,9 +579,9 @@ fn check_pattern(value_name: &str, pattern: &Pattern) -> Result<(String, String)
                 .join(", ");
 
             (
-                vars.join(", "),
+                format!("({})", vars.into_iter().format(", ")),
                 format!(
-                    "(|| if let {}({}) = ({value_name}).clone() {{ Some({inner_code}) }} else {{ None }})()",
+                    "(|| if let {}({}) = ({value_name}).clone() {{ Some(({inner_code})) }} else {{ None }})()",
                     escape_enum_variant(symbol.clone()),
                     (0..items.len()).map(item_name).join(", "),
                 ),
@@ -597,7 +631,7 @@ fn map_type(ty: &Type) -> String {
         Type::Fe => "FieldElement".to_string(),
         Type::String => "String".to_string(),
         Type::Expr => "Expr".to_string(),
-        Type::Array(ArrayType { base, length: _ }) => format!("Vec<{}>", map_type(base)),
+        Type::Array(ArrayType { base, length: _ }) => format!("PilVec<{}>", map_type(base)),
         Type::Tuple(TupleType { items }) => format!("({})", items.iter().map(map_type).join(", ")),
         Type::Function(ft) => format!(
             "Callable<({}), {}>",
@@ -623,7 +657,7 @@ fn get_builtins<T: FieldElement>() -> &'static HashMap<String, String> {
         [
             (
                 "std::array::len",
-                "<T>(a: Vec<T>) -> ibig::IBig { ibig::IBig::from(a.len()) }".to_string(),
+                "<T>(a: PilVec<T>) -> ibig::IBig { ibig::IBig::from(a.len()) }".to_string(),
             ),
             (
                 "std::check::panic",
@@ -635,7 +669,7 @@ fn get_builtins<T: FieldElement>() -> &'static HashMap<String, String> {
             ),
             (
                 "std::convert::int",
-                "<T: Into<ibig::Ibig>>(n: T) -> ibig::IBig {{ n.into() }}".to_string(),
+                "<T: Into<ibig::IBig>>(n: T) -> ibig::IBig { n.into() }".to_string(),
             ),
             (
                 "std::field::modulus",
@@ -643,6 +677,11 @@ fn get_builtins<T: FieldElement>() -> &'static HashMap<String, String> {
                     "() -> ibig::IBig {{ {} }}",
                     format_unsigned_integer(&T::modulus().to_arbitrary_integer())
                 ),
+            ),
+            (
+                "std::prover::degree",
+                "(_: ()) -> ibig::IBig { DEGREE.read().unwrap().as_ref().unwrap().clone() }"
+                    .to_string(),
             ),
         ]
         .into_iter()
@@ -702,7 +741,7 @@ mod test {
         );
         assert_eq!(
             result,
-            "fn c((i): (ibig::IBig)) -> ibig::IBig { ((i).clone() + (ibig::IBig::from(20_u64)).clone()) }\n\
+            "fn c((i): (ibig::IBig)) -> ibig::IBig { Add::add((i).clone(), (ibig::IBig::from(20_u64)).clone()) }\n\
             \n\
             fn d((k): (ibig::IBig)) -> ibig::IBig { (Callable::Fn(c)).call((((k).clone() * (ibig::IBig::from(20_u64)).clone()).clone())) }\n\
             "
