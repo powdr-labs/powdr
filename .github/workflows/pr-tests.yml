@@ -62,7 +62,7 @@ jobs:
         if [[ "${{ matrix.toolchain }}" == "nightly" && "${{ matrix.features }}" == "stwo" ]]; then
           cargo +nightly build --all-targets --all --all-features --profile pr-tests --features ${{ matrix.features }}
         elif [[ "${{ matrix.toolchain }}" == "stable" && "${{ matrix.features }}" == "default" ]]; then
-          cargo build --all-targets --all --all-features --profile pr-tests --features ${{ matrix.features }}
+          cargo build --all-targets --all --features "halo2,plonky3,estark-polygon" --profile pr-tests --features ${{ matrix.features }}
         fi
     - name: Format
       run: cargo fmt --all --check --verbose
