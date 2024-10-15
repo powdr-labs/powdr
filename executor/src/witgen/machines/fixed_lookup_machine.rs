@@ -304,7 +304,8 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         };
 
         // Update the multiplicities
-        if let Some(_) = self.logup_multiplicity_column {
+
+        if self.logup_multiplicity_column.is_some() {
             self.multiplicities
                 .entry(identity_id)
                 .or_insert_with(|| vec![T::zero(); self.degree as usize])[row] += T::one();
