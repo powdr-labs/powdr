@@ -514,6 +514,7 @@ impl Display for PilStatement {
             ),
             PilStatement::Expression(_, e) => write!(f, "{e};"),
             PilStatement::EnumDeclaration(_, enum_decl) => write!(f, "{enum_decl}"),
+            PilStatement::StructDeclaration(_, struct_decl) => write!(f, "{struct_decl}"),
             PilStatement::TraitImplementation(_, trait_impl) => write!(f, "{trait_impl}"),
             PilStatement::TraitDeclaration(_, trait_decl) => write!(f, "{trait_decl}"),
         }
@@ -651,6 +652,39 @@ impl<Expr: Display> Display for SelectedExpressions<Expr> {
     }
 }
 
+impl<E: Display> Display for StructDeclaration<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "struct {}{} {{\n{}}}",
+            self.name,
+            type_vars_to_string(&self.type_vars),
+            indent(
+                self.fields
+                    .iter()
+                    .map(|named| format!("{}: {},\n", named.name, named.ty))
+                    .format(""),
+                1
+            )
+        )
+    }
+}
+
+impl<E: Display> Display for StructExpression<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "{}{}",
+            self.name,
+            if self.fields.is_empty() {
+                "{}".to_string()
+            } else {
+                format!("{{ {} }}", self.fields.iter().join(", "))
+            }
+        )
+    }
+}
+
 impl<E: Display> Display for NamedExpression<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}: {}", self.name, self.body)
@@ -701,6 +735,7 @@ impl<Ref: Display> Display for Expression<Ref> {
             Expression::BlockExpression(_, block_expr) => {
                 write!(f, "{block_expr}")
             }
+            Expression::StructExpression(_, s) => write!(f, "{s}"),
         }
     }
 }
@@ -1005,6 +1040,14 @@ pub fn format_type_scheme_around_name<E: Display, N: Display>(
         )
     } else {
         format!(" {name}")
+    }
+}
+
+pub fn type_vars_to_string(type_vars: &TypeBounds) -> String {
+    if type_vars.is_empty() {
+        Default::default()
+    } else {
+        format!("<{type_vars}>")
     }
 }
 

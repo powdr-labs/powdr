@@ -52,6 +52,20 @@ fn invalid_function() {
 }
 
 #[test]
+fn builtin_panic() {
+    let input = r#"
+        namespace std::check;
+            let panic = [""];
+        namespace main;
+            let a: int -> int = |i| std::check::panic("test");
+        "#;
+    compile(input, "main::a");
+    // We de not call `a` because handling the panic is not yet properly implemented.
+    // It currently causes an unhandled panic inside an `extern "C"` function, which results in
+    // direct termination, so we cannot test it here.
+}
+
+#[test]
 fn assigned_functions() {
     let input = r#"
         namespace std::array;
@@ -234,4 +248,52 @@ fn let_complex() {
 
     assert_eq!(f.call(0), 8);
     assert_eq!(f.call(1), 9);
+}
+
+#[test]
+fn enums() {
+    let input = r#"
+        namespace std::array;
+            let len = 8;
+        namespace main;
+            enum Op<T> { Some(T), None }
+            enum Items { Multiple(int[]), Single(int) }
+            let a = |x| match x {
+                Op::Some(i) => i,
+                Op::None => 0,
+            };
+            let b = |x| match x {
+                Items::Multiple(i) => i[0],
+                Items::Single(i) => i,
+            };
+            let c = |i| match i {
+                0 => a(Op::Some(i)),
+                1 => a(Op::None),
+                2 => b(Items::Multiple([1, 2, i])),
+                _ => 99,
+            };
+        "#;
+    let c = compile(input, "main::c");
+
+    assert_eq!(c.call(0), 0);
+    assert_eq!(c.call(1), 0);
+    assert_eq!(c.call(2), 1);
+    assert_eq!(c.call(3), 99);
+}
+
+#[test]
+fn closures() {
+    let input = "
+        namespace std::convert;
+            let fe = 99;
+        namespace main;
+            let eval_on: (int -> int), int -> int = |f, x| f(x);
+            let q: col = |i| std::convert::fe(eval_on(|j| i + j, i));
+        ";
+    let q = compile(input, "main::q");
+
+    assert_eq!(q.call(0), 0);
+    assert_eq!(q.call(1), 2);
+    assert_eq!(q.call(2), 4);
+    assert_eq!(q.call(3), 6);
 }
