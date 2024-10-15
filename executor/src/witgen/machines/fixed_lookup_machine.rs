@@ -307,12 +307,12 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         };
 
         // Update the multiplicities
-        *self.multiplicities
+        *self
+            .multiplicities
             .entry(identity_id)
             .or_default()
             .entry(row)
             .or_insert(T::zero()) += T::one();
-
 
         let output = output_columns
             .iter()
@@ -405,7 +405,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
                 "LogUp witness generation not yet supported for > 1 lookups"
             );
             log::trace!("Detected LogUp Multiplicity Column");
-            
+
             for multiplicity in std::mem::take(&mut self.multiplicities).into_values() {
                 let mut values = vec![];
                 for row in 0..self.degree as usize {
