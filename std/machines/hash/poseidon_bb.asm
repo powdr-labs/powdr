@@ -2,9 +2,10 @@ use std::array;
 use std::check::assert;
 use std::utils::unchanged_until;
 use std::utils::force_bool;
+use std::utils::new_bool;
 use std::utils::sum;
 use std::convert::expr;
-use std::machines::memory16::Memory16;
+use std::machines::small_field::memory::Memory;
 use std::machines::split::split_bb::SplitBB;
 
 // Implements the Poseidon permutation for the BabyBear field with the following parameters:
@@ -21,7 +22,7 @@ use std::machines::split::split_bb::SplitBB;
 //
 // This version of the Poseidon machine receives memory pointers and interacts
 // with memory directly to fetch its inputs and write its outputs.
-machine PoseidonBB(mem: Memory16, split_bb: SplitBB) with
+machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     latch: CLK_0,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation
@@ -42,7 +43,10 @@ machine PoseidonBB(mem: Memory16, split_bb: SplitBB) with
     // (in canonical form).
     //
     // Reads happen at the provided time step; writes happen at the next time step.
-    operation poseidon_permutation<0> input_addr, output_addr, time_step ->;
+    operation poseidon_permutation<0>
+        input_addr_low, input_addr_high,
+        output_addr_low, output_addr_high,
+        time_step ->;
 
     col witness operation_id;
 
@@ -74,13 +78,29 @@ machine PoseidonBB(mem: Memory16, split_bb: SplitBB) with
     array::map(input, |c| unchanged_until(c, LAST));
     array::zip(input, state, |i, s| CLK[0] * (i - s) = 0);
 
-    // Repeat the time step and input / output address in the whole block
+    // Repeat the time step in the whole block
     col witness time_step;
-    col witness input_addr;
-    col witness output_addr;
     unchanged_until(time_step, LAST);
-    unchanged_until(input_addr, LAST);
-    unchanged_until(output_addr, LAST);
+
+    // Increment the address by 4 at every row but the latch.
+    // Assumes the address is a multiple of 4 (I hope this is enforced somewhere else)
+    let increment_addr_in_block = constr |latch, low_addr, high_addr| {
+        // Tells if the low limb of the address is about to overflow:
+        let low_overflow = new_bool();
+        let low_diff_inv;
+
+        low_overflow = 1 - (low_diff_inv * (input_addr_low - (0x10000 - 4)));
+
+        // Increment the low limb if this is not latch:
+        (1 - latch') * (
+            // If low limb is about to overflow, next value must be 0:
+            low_overflow * input_addr_low' +
+            // Otherwise, next value is current plus 4:
+            (1 - low_overflow) * (input_addr_low + 4 - input_addr_low')
+        ) = 0;
+        // Increment the high limb if lower overflowed:
+        (1 - latch') * low_overflow * (input_addr_high + 1 - input_addr_high') = 0; // '
+    };
     
     // One-hot encoding of the row number (for the first <STATE_SIZE + OUTPUT_SIZE> rows)
     assert(STATE_SIZE + OUTPUT_SIZE < ROWS_PER_HASH, || "Not enough rows to do memory read / write");
@@ -98,13 +118,12 @@ machine PoseidonBB(mem: Memory16, split_bb: SplitBB) with
     do_mload = used * sum(STATE_SIZE, |i| CLK[i]);
     let input_index = sum(STATE_SIZE, |i| expr(i) * CLK[i]);
 
-    // split the input address into high and low limbs
-    let load_addr = input_addr + 4 * input_index;
-    let load_addr_low;
-    let load_addr_high;
-    link if do_mload ~> (load_addr_low, load_addr_high) = split_bb.split(load_addr);
+    let input_addr_low;
+    let input_addr_high;
+    // Increment by 4 the address in every row but the latch
+    increment_addr_in_block(CLK_0, input_addr_low, input_addr_high);
 
-    link if do_mload ~> (word_high, word_low) = mem.mload(load_addr_high, load_addr_low, time_step);
+    link if do_mload ~> (word_high, word_low) = mem.mload(input_addr_high, input_addr_low, time_step);
 
     // Combine the low and high limbs and write it into `input`
     let current_input = array::sum(array::new(STATE_SIZE, |i| CLK[i] * input[i]));
@@ -115,16 +134,21 @@ machine PoseidonBB(mem: Memory16, split_bb: SplitBB) with
     let do_mstore = used * sum(OUTPUT_SIZE, |i| CLK[i + STATE_SIZE]);
     let output_index = sum(OUTPUT_SIZE, |i| expr(i) * CLK[i + STATE_SIZE]);
 
-    // split the output address into high and low limbs
-    let store_addr = output_addr + 4 * output_index;
-    let store_addr_low;
-    let store_addr_high;
-    link if do_mstore ~> (store_addr_low, store_addr_high) = split_bb.split(store_addr);
+    let output_addr_low;
+    let output_addr_high;
+
+    // Output address must be repeated until it is actually used:
+    unchanged_until(output_addr_low, do_mstore);
+    unchanged_until(output_addr_high, do_mstore);
+
+    // Increment the output address by 4 at every row it is used but the first:
+    let output_addr_inc_latch = CLK[STATE_SIZE] + (1 - do_mload);
+    increment_addr_in_block(output_addr_inc_latch, output_addr_low, output_addr_high);
 
     // TODO: This translates to two additional permutations. But because they go to the same machine
     // as the mloads above *and* never happen at the same time, they could actually be combined with
     // the mload permutations. But there is currently no way to express this.
-    link if do_mstore ~> mem.mstore(store_addr_high, store_addr_low, time_step + 1, word_high, word_low);
+    link if do_mstore ~> mem.mstore(output_addr_high, output_addr_low, time_step + 1, word_high, word_low);
 
     // Make sure that in row i + STATE_SIZE, word_low and word_high correspond to output i
     let current_output = array::sum(array::new(OUTPUT_SIZE, |i| CLK[i + STATE_SIZE] * output[i]));
