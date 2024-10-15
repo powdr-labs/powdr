@@ -6,7 +6,7 @@ use crate::{
     asm_analysis::MachineDegree,
     parsed::{
         asm::{AbsoluteSymbolPath, CallableParams, OperationParams},
-        EnumDeclaration, Expression, PilStatement, TypedExpression,
+        Expression, PilStatement,
     },
 };
 
@@ -46,12 +46,6 @@ pub struct PILGraph {
     pub objects: BTreeMap<Location, Object>,
     /// PIL utilities by module path
     pub statements: BTreeMap<AbsoluteSymbolPath, Vec<PilStatement>>,
-}
-
-#[derive(Clone)]
-pub enum TypeOrExpression {
-    Type(EnumDeclaration<Expression>),
-    Expression(TypedExpression),
 }
 
 #[derive(Default, Clone)]
