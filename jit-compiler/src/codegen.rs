@@ -235,7 +235,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     } else {
                         let v_bytes = value.to_le_bytes();
                         let v = v_bytes.iter().map(|b| format!("{b}_u8")).format(", ");
-                        format!("{tv}::from_le_bytes({v})")
+                        format!("{tv}::from_le_bytes([{v}])")
                     }
                 }
                 _ => unreachable!(),
