@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use itertools::Itertools;
 
-use powdr_ast::analyzed::{DegreeRange, TypedExpression};
+use powdr_ast::analyzed::{DegreeRange, TypeDeclaration, TypedExpression};
 use powdr_ast::parsed::asm::SymbolPath;
 use powdr_ast::parsed::types::TupleType;
 use powdr_ast::parsed::{
@@ -626,7 +626,9 @@ where
 
         iter::once(PILItem::Definition(
             symbol,
-            Some(FunctionValueDefinition::TypeDeclaration(enum_decl.clone())),
+            Some(FunctionValueDefinition::TypeDeclaration(
+                TypeDeclaration::Enum(enum_decl.clone()),
+            )),
         ))
         .chain(var_items)
         .collect()

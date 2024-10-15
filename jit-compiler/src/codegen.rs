@@ -2,7 +2,10 @@ use std::{collections::HashMap, sync::OnceLock};
 
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{Analyzed, Expression, FunctionValueDefinition, PolynomialReference, Reference},
+    analyzed::{
+        Analyzed, Expression, FunctionValueDefinition, PolynomialReference, Reference,
+        TypeDeclaration,
+    },
     parsed::{
         asm::{Part, SymbolPath},
         display::quote,
@@ -92,11 +95,11 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
             .ok_or_else(|| format!("No definition for {symbol}."))?;
 
         match definition {
-            FunctionValueDefinition::TypeDeclaration(EnumDeclaration {
+            FunctionValueDefinition::TypeDeclaration(TypeDeclaration::Enum(EnumDeclaration {
                 type_vars,
                 variants,
                 ..
-            }) => Ok(format!(
+            })) => Ok(format!(
                 "#[derive(Clone)]\nenum {}<{type_vars}> {{\n{}\n}}\n",
                 escape_symbol(symbol),
                 variants
