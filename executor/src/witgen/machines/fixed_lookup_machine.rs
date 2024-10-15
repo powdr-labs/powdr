@@ -185,7 +185,7 @@ pub struct FixedLookup<'a, T: FieldElement> {
     indices: IndexedColumns<T>,
     connecting_identities: BTreeMap<u64, &'a Identity<T>>,
     fixed_data: &'a FixedData<'a, T>,
-    multiplicities: BTreeMap<u64, BTreeMap<usize, u64>>,
+    multiplicities: BTreeMap<u64, BTreeMap<usize, T>>,
     logup_multiplicity_column: Option<PolyID>,
 }
 
@@ -307,12 +307,12 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         };
 
         // Update the multiplicities
-        self.multiplicities
+        *self.multiplicities
             .entry(identity_id)
             .or_default()
             .entry(row)
-            .and_modify(|e| *e += 1)
-            .or_insert(1);
+            .or_insert(T::zero()) += T::one();
+
 
         let output = output_columns
             .iter()
@@ -405,10 +405,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
                 "LogUp witness generation not yet supported for > 1 lookups"
             );
             log::trace!("Detected LogUp Multiplicity Column");
+            
             for multiplicity in std::mem::take(&mut self.multiplicities).into_values() {
                 let mut values = vec![];
                 for row in 0..self.degree as usize {
-                    values.push(T::from(multiplicity.get(&row).cloned().unwrap_or_default()));
+                    values.push(multiplicity.get(&row).cloned().unwrap_or(T::zero()));
                 }
                 witness_col_values.insert(
                     self.logup_multiplicity_column
@@ -418,6 +419,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
                 );
             }
         }
+
         witness_col_values
     }
 
