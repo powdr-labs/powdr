@@ -4,8 +4,9 @@ use powdr_ast::{
     parsed::{
         self, asm::SymbolPath, types::Type, ArrayExpression, ArrayLiteral, BinaryOperation,
         BlockExpression, IfExpression, LambdaExpression, LetStatementInsideBlock, MatchArm,
-        MatchExpression, NamespacedPolynomialReference, Number, Pattern, SelectedExpressions,
-        StatementInsideBlock, SymbolCategory, UnaryOperation,
+        MatchExpression, NamedExpression, NamespacedPolynomialReference, Number, Pattern,
+        SelectedExpressions, StatementInsideBlock, StructExpression, SymbolCategory,
+        UnaryOperation,
     },
 };
 
