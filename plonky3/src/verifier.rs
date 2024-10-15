@@ -4,7 +4,7 @@ use p3_air::Air;
 use std::collections::BTreeMap;
 use std::iter::once;
 
-use itertools::{izip, Itertools};
+use itertools::Itertools;
 use p3_challenger::{CanObserve, CanSample, FieldChallenger};
 use p3_commit::{Pcs as _, PolynomialSpace};
 use p3_field::{AbstractExtensionField, AbstractField, Field};
@@ -226,31 +226,34 @@ where
             .collect();
 
     // for trace commitments, we have one commitment per stage, opened on each trace domain at `zeta` and `zeta_next`
-    let trace_domains_points_and_opens_by_stage: Vec<(_, Vec<(_, _)>)> = izip!(
-        proof.commitments.traces_by_stage.iter(),
-        (0..stage_count as usize).map(|i| tables
-            .values()
-            .map(|table| &table.opened_values.traces_by_stage[i])
-            .collect_vec()),
-    )
-    .map(|(commit, openings)| {
-        (
-            commit.clone(),
+    let trace_domains_points_and_opens_by_stage: Vec<(_, Vec<(_, _)>)> = proof
+        .commitments
+        .traces_by_stage
+        .iter()
+        .zip_eq((0..stage_count as usize).map(|i| {
             tables
                 .values()
-                .zip_eq(openings)
-                .map(|(table, StageOpenedValues { local, next })| {
-                    let trace_domain = table.natural_domain(pcs);
-                    let zeta_next = trace_domain.next_point(zeta).unwrap();
-                    (
-                        trace_domain,
-                        vec![(zeta, local.clone()), (zeta_next, next.clone())],
-                    )
-                })
-                .collect_vec(),
-        )
-    })
-    .collect();
+                .map(|table| &table.opened_values.traces_by_stage[i])
+                .collect_vec()
+        }))
+        .map(|(commit, openings)| {
+            (
+                commit.clone(),
+                tables
+                    .values()
+                    .zip_eq(openings)
+                    .map(|(table, StageOpenedValues { local, next })| {
+                        let trace_domain = table.natural_domain(pcs);
+                        let zeta_next = trace_domain.next_point(zeta).unwrap();
+                        (
+                            trace_domain,
+                            vec![(zeta, local.clone()), (zeta_next, next.clone())],
+                        )
+                    })
+                    .collect_vec(),
+            )
+        })
+        .collect();
 
     // for quotient commitments, we have a single commitment, opened on each quotient domain at many points
     let quotient_chunks_domain_point_and_opens: (_, Vec<(_, _)>) = (
