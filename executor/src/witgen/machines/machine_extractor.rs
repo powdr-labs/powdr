@@ -3,7 +3,8 @@ use std::collections::{BTreeMap, HashSet};
 use itertools::Itertools;
 
 use super::block_machine::BlockMachine;
-use super::double_sorted_witness_machine::DoubleSortedWitnesses;
+use super::double_sorted_witness_machine_16::DoubleSortedWitnesses16;
+use super::double_sorted_witness_machine_32::DoubleSortedWitnesses32;
 use super::fixed_lookup_machine::FixedLookup;
 use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
@@ -222,13 +223,20 @@ fn build_machine<'a, T: FieldElement>(
     {
         log::debug!("Detected machine: sorted witnesses / write-once memory");
         KnownMachine::SortedWitnesses(machine)
-    } else if let Some(machine) = DoubleSortedWitnesses::try_new(
-        name_with_type("DoubleSortedWitnesses"),
+    } else if let Some(machine) = DoubleSortedWitnesses16::try_new(
+        name_with_type("DoubleSortedWitnesses16"),
         fixed_data,
         &machine_parts,
     ) {
-        log::debug!("Detected machine: memory");
-        KnownMachine::DoubleSortedWitnesses(machine)
+        log::debug!("Detected machine: memory16");
+        KnownMachine::DoubleSortedWitnesses16(machine)
+    } else if let Some(machine) = DoubleSortedWitnesses32::try_new(
+        name_with_type("DoubleSortedWitnesses32"),
+        fixed_data,
+        &machine_parts,
+    ) {
+        log::debug!("Detected machine: memory32");
+        KnownMachine::DoubleSortedWitnesses32(machine)
     } else if let Some(machine) = WriteOnceMemory::try_new(
         name_with_type("WriteOnceMemory"),
         fixed_data,

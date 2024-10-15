@@ -7,6 +7,7 @@
 //! every row.
 
 use itertools::Itertools;
+use p3_field::AbstractField;
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -22,11 +23,11 @@ use powdr_ast::analyzed::{
     PolyID, PolynomialType, SelectedExpressions,
 };
 
-use p3_uni_stark::{CallbackResult, MultiStageAir, MultistageAirBuilder, NextStageTraceCallback};
+use crate::{CallbackResult, MultiStageAir, MultistageAirBuilder, NextStageTraceCallback};
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, LargeInt};
 
 type Witness<T> = Mutex<RefCell<Vec<(String, Vec<T>)>>>;
 
@@ -57,7 +58,6 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
             .map(|stage| {
                 analyzed
                     .definitions_in_source_order(PolynomialType::Committed)
-                    .iter()
                     .filter_map(|(s, _)| {
                         let symbol_stage = s.stage.unwrap_or_default();
                         (stage == symbol_stage).then(|| s.array_elements().count())
@@ -68,7 +68,6 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
 
         let fixed_columns = analyzed
             .definitions_in_source_order(PolynomialType::Constant)
-            .iter()
             .flat_map(|(symbol, _)| symbol.array_elements())
             .enumerate()
             .map(|(index, (_, id))| (id, index))
@@ -76,7 +75,6 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
 
         let witness_columns = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
-            .iter()
             .into_group_map_by(|(s, _)| s.stage.unwrap_or_default())
             .into_iter()
             .flat_map(|(stage, symbols)| {
@@ -223,6 +221,7 @@ where
         publics: &BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>,
         challenges: &BTreeMap<u32, BTreeMap<u64, <AB as MultistageAirBuilder>::Challenge>>,
     ) -> AB::Expr {
+        use AlgebraicBinaryOperator::*;
         let res = match e {
             AlgebraicExpression::Reference(r) => {
                 let poly_id = r.poly_id;
@@ -248,6 +247,26 @@ where
                 .expect("Referenced public value does not exist"))
             .into(),
             AlgebraicExpression::Number(n) => AB::Expr::from(n.into_p3_field()),
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                left,
+                op: Pow,
+                right,
+            }) => match **right {
+                AlgebraicExpression::Number(n) => {
+                    let left = self.to_plonky3_expr::<AB>(
+                        left,
+                        traces_by_stage,
+                        fixed,
+                        publics,
+                        challenges,
+                    );
+                    (0u32..n.to_integer().try_into_u32().unwrap())
+                        .fold(AB::Expr::from(<AB::F as AbstractField>::one()), |acc, _| {
+                            acc * left.clone()
+                        })
+                }
+                _ => unimplemented!("pow with non-constant exponent"),
+            },
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
                 let left =
                     self.to_plonky3_expr::<AB>(left, traces_by_stage, fixed, publics, challenges);
@@ -255,12 +274,10 @@ where
                     self.to_plonky3_expr::<AB>(right, traces_by_stage, fixed, publics, challenges);
 
                 match op {
-                    AlgebraicBinaryOperator::Add => left + right,
-                    AlgebraicBinaryOperator::Sub => left - right,
-                    AlgebraicBinaryOperator::Mul => left * right,
-                    AlgebraicBinaryOperator::Pow => {
-                        unreachable!("exponentiations should have been evaluated")
-                    }
+                    Add => left + right,
+                    Sub => left - right,
+                    Mul => left * right,
+                    Pow => unreachable!("This case was handled above"),
                 }
             }
             AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
@@ -288,10 +305,6 @@ where
 {
     fn width(&self) -> usize {
         self.constraint_system.commitment_count
-    }
-
-    fn preprocessed_width(&self) -> usize {
-        self.constraint_system.constant_count + self.constraint_system.publics.len()
     }
 
     fn preprocessed_trace(&self) -> Option<RowMajorMatrix<Plonky3Field<T>>> {
@@ -401,6 +414,10 @@ where
     ProverData<T>: Send,
     Commitment<T>: Send,
 {
+    fn preprocessed_width(&self) -> usize {
+        self.constraint_system.constant_count + self.constraint_system.publics.len()
+    }
+
     fn stage_count(&self) -> usize {
         self.constraint_system.stage_widths.len()
     }

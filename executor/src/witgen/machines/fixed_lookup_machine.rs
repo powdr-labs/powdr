@@ -77,7 +77,7 @@ impl<T: FieldElement> IndexedColumns<T> {
     /// `input_fixed_columns` is assumed to be sorted
     fn ensure_index(&mut self, fixed_data: &FixedData<T>, sorted_fixed_columns: &Application) {
         // we do not use the Entry API here because we want to clone `sorted_input_fixed_columns` only on index creation
-        if self.indices.get(sorted_fixed_columns).is_some() {
+        if self.indices.contains_key(sorted_fixed_columns) {
             return;
         }
 
