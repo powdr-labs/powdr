@@ -9,7 +9,7 @@ use std::{
 };
 
 use itertools::Itertools;
-use parsed::{display::format_type_args, LambdaExpression, TypedExpression};
+use parsed::{display::format_type_args, LambdaExpression, TypeDeclaration, TypedExpression};
 
 use crate::{parsed::FunctionKind, writeln_indented, writeln_indented_by};
 

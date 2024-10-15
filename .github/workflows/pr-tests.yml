@@ -37,6 +37,9 @@ jobs:
           target/
           Cargo.lock
         key: ${{ runner.os }}-cargo-pr-tests
+    - name: Date of the restored cache
+      run: cat target/cache-build-date.txt
+      continue-on-error: true
     - name: Install Rust toolchain 1.81 (with clippy and rustfmt)
       run: rustup toolchain install 1.81-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.81-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.81-x86_64-unknown-linux-gnu
     - name: Install EStarkPolygon prover dependencies
