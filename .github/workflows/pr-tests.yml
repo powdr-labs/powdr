@@ -90,7 +90,7 @@ jobs:
     - name: Create tests archive
       run: |
         if [[ "${{ matrix.toolchain }}" == "nightly" && "${{ matrix.features }}" == "stwo" ]]; then
-        cargo +nightly-2024-09-21-x86_64-unknown-linux-gnu nextest archive --archive-file tests.tar.zst --cargo-profile pr-tests --workspace --all-features
+        cargo +nightly-2024-09-21-x86_64-unknown-linux-gnu nextest archive --archive-file tests.tar.zst --cargo-profile pr-tests --workspace --features ${{ matrix.features }}
         else
         cargo nextest archive --archive-file tests.tar.zst --cargo-profile pr-tests --workspace --features ${{ matrix.features }}
         fi
@@ -107,6 +107,19 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
+        toolchain: [stable, nightly]
+        features: [default, halo2, plonky3, estark-polygon, stwo]
+        exclude:
+        - toolchain: nightly
+          features: default
+        - toolchain: nightly
+          features: halo2
+        - toolchain: nightly
+          features: plonky3
+        - toolchain: nightly
+          features: estark-polygon
+        - toolchain: stable
+          features: stwo
         test:
         - "1"
         - "2"
@@ -135,7 +148,7 @@ jobs:
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - uses: taiki-e/install-action@nextest
     - name: Run default tests
-      run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/2
+      run: cargo nextest run --archive-file tests_archive-${{ matrix.toolchain }}-${{ matrix.features }}/tests.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/2
       env:
         PILCOM: ${{ github.workspace }}/pilcom/
         POWDR_STD: ${{ github.workspace }}/std/
@@ -194,7 +207,7 @@ jobs:
     - name: Unpack EStarkPolygon built dependencies
       run: tar --zstd -xf tests_archive-stable-estark-polygon/pil-stark-prover-deps.tar.zst
     - name: Run EStark Polygon test
-      run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only --no-capture -E "test(=vec_median_estark_polygon)"
+      run: cargo nextest run --archive-file tests_archive-stable-estark-polygon/tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only --no-capture -E "test(=vec_median_estark_polygon)"
       env:
         PILCOM: ${{ github.workspace }}/pilcom/
         POWDR_STD: ${{ github.workspace }}/std/
@@ -202,6 +215,19 @@ jobs:
   test_slow:
     strategy:
       matrix:
+        toolchain: [stable, nightly]
+        features: [default, halo2, plonky3, estark-polygon, stwo]
+        exclude:
+        - toolchain: nightly
+          features: default
+        - toolchain: nightly
+          features: halo2
+        - toolchain: nightly
+          features: plonky3
+        - toolchain: nightly
+          features: estark-polygon
+        - toolchain: stable
+          features: stwo
         test:
         - "1"
         - "2"
@@ -243,7 +269,7 @@ jobs:
       # Number threads is set to 2 because the runner does not have enough memory for more.
       run: |
         NIGHTLY_TESTS=$(cat .github/workflows/nightly_tests_list.txt)
-        cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only -E "!($NIGHTLY_TESTS)" --test-threads 2 --partition hash:"${{ matrix.test }}"/8
+        cargo nextest run --archive-file tests_archive-${{ matrix.toolchain }}-${{ matrix.features }}/tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only -E "!($NIGHTLY_TESTS)" --test-threads 2 --partition hash:"${{ matrix.test }}"/8
       shell: bash
       env:
         PILCOM: ${{ github.workspace }}/pilcom/
