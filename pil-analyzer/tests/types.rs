@@ -734,3 +734,39 @@ fn prover_functions() {
     ";
     type_check(input, &[("a", "", "int"), ("b", "", "()[]")]);
 }
+
+#[test]
+#[should_panic = "Type symbol not found: NotADot"]
+fn wrong_struct() {
+    let input = "
+    struct Dot { x: int, y: int }
+    let f: int -> Dot = |i| NotADot{x: 0, y: i};
+    let x = f(0);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Field 'a' not found in struct 'Dot'"]
+fn struct_wrong_fields() {
+    let input = "
+    struct Dot { x: int, y: int }
+    let f: int -> Dot = |i| Dot{a: 0, y: i};
+    let x = f(0);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Field 'z' is declared but never used in struct 'Point' initialization"]
+fn test_struct_unused_fields() {
+    let input = "    struct Point {
+        x: int,
+        y: int,
+        z: int,
+    }
+    let p: Point = Point{ y: 0, x: 2 };
+";
+
+    type_check(input, &[]);
+}
