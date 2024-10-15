@@ -14,14 +14,14 @@ use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_ast::parsed::{
     self, FunctionKind, LambdaExpression, PILFile, PilStatement, StructDeclaration, SymbolCategory,
-    TraitImplementation,
+    TraitImplementation, TypeDeclaration,
 };
 use powdr_number::{FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
     type_from_definition, Analyzed, DegreeRange, Expression, FunctionValueDefinition,
     PolynomialReference, PolynomialType, PublicDeclaration, Reference, StatementIdentifier, Symbol,
-    SymbolKind, TypeDeclaration, TypedExpression,
+    SymbolKind, TypedExpression,
 };
 use powdr_parser::{parse, parse_module, parse_type};
 use powdr_parser_util::Error;
