@@ -10,7 +10,8 @@ use powdr_ast::{
         visitor::AllChildren,
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, EnumDeclaration,
         FunctionCall, IfExpression, IndexAccess, LambdaExpression, LetStatementInsideBlock,
-        MatchArm, MatchExpression, Number, Pattern, StatementInsideBlock, UnaryOperation,
+        MatchArm, MatchExpression, Number, Pattern, StatementInsideBlock, TypeDeclaration,
+        UnaryOperation,
     },
 };
 use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
@@ -92,11 +93,11 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
             .ok_or_else(|| format!("No definition for {symbol}."))?;
 
         match definition {
-            FunctionValueDefinition::TypeDeclaration(EnumDeclaration {
+            FunctionValueDefinition::TypeDeclaration(TypeDeclaration::Enum(EnumDeclaration {
                 type_vars,
                 variants,
                 ..
-            }) => Ok(format!(
+            })) => Ok(format!(
                 "#[derive(Clone)]\nenum {}<{type_vars}> {{\n{}\n}}\n",
                 escape_symbol(symbol),
                 variants
