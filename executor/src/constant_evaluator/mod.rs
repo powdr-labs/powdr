@@ -23,6 +23,7 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, Variabl
     if max_degree > (1 << 18) {
         fixed_cols = jit_compiler::generate_values(analyzed);
     }
+    let mut used_interpreter = false;
     for (poly, value) in analyzed.constant_polys_in_source_order() {
         if let Some(value) = value {
             // For arrays, generate values for each index,
@@ -34,6 +35,7 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, Variabl
                     range
                         .iter()
                         .map(|degree| {
+                            used_interpreter = true;
                             interpreter::generate_values(analyzed, degree, &name, value, index)
                         })
                         .collect::<Vec<_>>()
@@ -41,6 +43,9 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, Variabl
                 });
             }
         }
+    }
+    if !used_interpreter && !fixed_cols.is_empty() {
+        log::info!("All columns were genrated using JIT-code.");
     }
 
     fixed_cols
