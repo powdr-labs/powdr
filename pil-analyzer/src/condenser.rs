@@ -26,8 +26,8 @@ use powdr_ast::{
         types::{ArrayType, Type},
         visitor::{AllChildren, ExpressionVisitable},
         ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall, FunctionKind,
-        LambdaExpression, LetStatementInsideBlock, Number, Pattern, SourceReference,
-        TypedExpression, UnaryOperation,
+        LambdaExpression, LetStatementInsideBlock, NamedExpression, Number, Pattern,
+        SourceReference, StructExpression, TypedExpression, UnaryOperation,
     },
 };
 use powdr_number::{BigUint, FieldElement};
@@ -35,8 +35,8 @@ use powdr_parser_util::SourceRef;
 
 use crate::{
     evaluator::{
-        self, evaluate_function_call, Closure, Definitions, EnumValue, EvalError, SymbolLookup,
-        Value,
+        self, evaluate_function_call, Closure, Definitions, EnumValue, EvalError, StructValue,
+        SymbolLookup, Value,
     },
     statement_processor::Counters,
 };
@@ -1100,6 +1100,24 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
             return Err(EvalError::TypeError(
                 "Converting builtin functions to expressions not supported.".to_string(),
             ))
+        }
+        Value::Struct(StructValue { name, fields }) => {
+            let name = Reference::Poly(PolynomialReference {
+                name: name.to_string(),
+                // We do not know the type args here.
+                type_args: None,
+            });
+            let fields = fields
+                .iter()
+                .map(|(name, value)| {
+                    Ok(NamedExpression {
+                        name: name.to_string(),
+                        body: Box::new(try_value_to_expression(value)?),
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+
+            StructExpression { name, fields }.into()
         }
         Value::Expression(e) => try_algebraic_expression_to_expression(e)?,
     })
