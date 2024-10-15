@@ -7,7 +7,7 @@ use std::str::FromStr;
 use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicReference, IdentityKind, PolyID, PolynomialType};
 use powdr_ast::parsed::asm::SymbolPath;
-use powdr_number::FieldElement;
+use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::affine_expression::{AffineExpression, AlgebraicVariable};
 use crate::witgen::global_constraints::{GlobalConstraints, RangeConstraintSet};
@@ -175,6 +175,7 @@ const MULTIPLICITY_LOOKUP_COLUMN: &str = "m_logup_multiplicity";
 
 /// Machine to perform a lookup in fixed columns only.
 pub struct FixedLookup<'a, T: FieldElement> {
+    degree: DegreeType,
     global_constraints: GlobalConstraints<T>,
     indices: IndexedColumns<T>,
     connecting_identities: BTreeMap<u64, &'a Identity<T>>,
@@ -208,9 +209,15 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             })
             .collect();
 
+        let degree = fixed_data
+            .fixed_cols
+            .values()
+            .map(|col| col.values_max_size().len())
+            .max()
+            .unwrap_or(0) as u64;
+
         // This currently just takes one element with the correct name
         // When we support more than one element, we need to have a vector of logup_multiplicity_columns: Vec<Option<PolyId>>
-
         let logup_multiplicity_column: Option<PolyID> = fixed_data
             .witness_cols
             .values()
@@ -220,6 +227,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             .map(|col| col.poly.poly_id);
 
         Self {
+            degree,
             global_constraints,
             indices: Default::default(),
             connecting_identities,
@@ -294,13 +302,10 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             }
         };
 
-        // Update the multiplicities
-        if let Some(poly_id) = self.logup_multiplicity_column {
-            let multiplicity = self.multiplicities.entry(identity_id).or_insert_with(|| {
-                vec![T::zero(); self.fixed_data.fixed_cols[&poly_id].values_max_size().len()]
-            });
-            multiplicity[row] += T::one();
-        }
+        // Update multiplicities
+        self.multiplicities
+            .entry(identity_id)
+            .or_insert_with(|| vec![T::zero(); self.degree as usize])[row] += T::one();
 
         let output = output_columns
             .iter()
