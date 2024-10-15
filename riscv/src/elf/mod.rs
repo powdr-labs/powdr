@@ -31,9 +31,9 @@ use self::debug_info::DebugInfo;
 mod debug_info;
 
 /// Generates a Powdr Assembly program from a RISC-V 32 executable ELF file.
-pub fn translate(file_name: &Path, options: CompilerOptions, with_bootloader: bool) -> String {
+pub fn translate(file_name: &Path, options: CompilerOptions) -> String {
     let elf_program = load_elf(file_name);
-    code_gen::translate_program(elf_program, options, with_bootloader)
+    code_gen::translate_program(elf_program, options)
 }
 
 struct ElfProgram {

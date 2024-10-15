@@ -107,24 +107,14 @@ pub trait RiscVProgram {
 /// Translates a RISC-V program to POWDR ASM.
 ///
 /// Will call each of the methods in the `RiscVProgram` just once.
-pub fn translate_program(
-    program: impl RiscVProgram,
-    options: CompilerOptions,
-    with_bootloader: bool,
-) -> String {
+pub fn translate_program(program: impl RiscVProgram, options: CompilerOptions) -> String {
     match options.field {
-        KnownField::BabyBearField | KnownField::Mersenne31Field => code_gen_16::translate_program(
-            program,
-            options.field,
-            options.runtime.as_runtime16(),
-            with_bootloader,
-        ),
-        KnownField::GoldilocksField | KnownField::Bn254Field => code_gen_32::translate_program(
-            program,
-            options.field,
-            options.runtime.as_runtime32(),
-            with_bootloader,
-        ),
+        KnownField::BabyBearField | KnownField::Mersenne31Field => {
+            code_gen_16::translate_program(program, options)
+        }
+        KnownField::GoldilocksField | KnownField::Bn254Field => {
+            code_gen_32::translate_program(program, options)
+        }
     }
 }
 

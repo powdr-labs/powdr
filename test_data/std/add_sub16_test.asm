@@ -1,4 +1,4 @@
-use std::machines::arith_bb::ArithBB;
+use std::machines::add_sub16::AddSub16;
 use std::machines::range::Byte2;
 
 machine Main {
@@ -14,16 +14,16 @@ machine Main {
     reg B;
 
     Byte2 byte2;
-    ArithBB arith_bb(byte2);
+    AddSub16 add_sub(byte2);
 
     instr add A_h, A_l, B_h, B_l -> C_h, C_l
-      link ~> (C_h, C_l) = arith_bb.add(A_h, A_l, B_h, B_l);
+      link ~> (C_h, C_l) = add_sub.add(A_h, A_l, B_h, B_l);
 
     instr sub A_h, A_l, B_h, B_l -> C_h, C_l
-      link ~> (C_h, C_l) = arith_bb.sub(A_h, A_l, B_h, B_l);
+      link ~> (C_h, C_l) = add_sub.sub(A_h, A_l, B_h, B_l);
 
-    instr cmp A_h, A_l, B_h, B_l -> C_l
-      link ~> C_l = arith_bb.cmp(A_h, A_l, B_h, B_l);
+    instr gt A_h, A_l, B_h, B_l -> C_l
+      link ~> C_l = add_sub.gt(A_h, A_l, B_h, B_l);
 
     instr assert_eq A_l, B_l {
         A_l = B_l 
@@ -99,38 +99,36 @@ machine Main {
         assert_eq A, 0;
         assert_eq B, 4;
 
-        // CMP
-        A <== cmp(0, 4, 0, 0);
+        // gt
+        A <== gt(0, 4, 0, 0);
         assert_eq A, 0;
 
-        A <== cmp(0, 4, 0, 8);
+        A <== gt(0, 4, 0, 8);
         assert_eq A, 1;
 
-        A <== cmp(0, 4, 0xffff, 0xffff);
+        A <== gt(0, 4, 0xffff, 0xffff);
         assert_eq A, 1;
 
-        A <== cmp(0xffff, 0xffff, 0, 4);
+        A <== gt(0xffff, 0xffff, 0, 4);
         assert_eq A, 0;
 
-        A <== cmp(0xffff, 0xffff, 0xffff, 0xfffe);
+        A <== gt(0xffff, 0xffff, 0xffff, 0xfffe);
         assert_eq A, 0;
 
-        A <== cmp(0xffff, 0xfffe, 0xffff, 0xffff);
+        A <== gt(0xffff, 0xfffe, 0xffff, 0xffff);
         assert_eq A, 1;
 
-        A <== cmp(0, 0, 0xffff, 0xffff);
+        A <== gt(0, 0, 0xffff, 0xffff);
         assert_eq A, 1;
 
-        A <== cmp(0xffff, 0xffff, 0, 0);
+        A <== gt(0xffff, 0xffff, 0, 0);
         assert_eq A, 0;
 
-        A <== cmp(0xffff, 0xfffe, 0, 0);
+        A <== gt(0xffff, 0xfffe, 0, 0);
         assert_eq A, 0;
 
-        A <== cmp(0, 0, 0xffff, 0xfffe);
+        A <== gt(0, 0, 0xffff, 0xfffe);
         assert_eq A, 1;
-
- 
 
         return;
     }

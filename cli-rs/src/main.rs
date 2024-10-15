@@ -10,7 +10,7 @@ use log::LevelFilter;
 use powdr_number::{BigUint, GoldilocksField, KnownField};
 use powdr_pipeline::Pipeline;
 use powdr_riscv::continuations::BootloaderImpl;
-use powdr_riscv::{CompilerOptions, Runtime, RuntimeEnum};
+use powdr_riscv::{CompilerLibs, CompilerOptions};
 use powdr_riscv_executor::ProfilerOptions;
 
 use std::ffi::OsStr;
@@ -75,8 +75,8 @@ enum Commands {
         output_directory: String,
 
         /// Comma-separated list of coprocessors.
-        #[arg(long, value_delimiter = ',')]
-        coprocessors: Option<Vec<String>>,
+        #[arg(long)]
+        coprocessors: Option<String>,
 
         /// Run a long execution in chunks (Experimental and not sound!)
         #[arg(short, long)]
@@ -101,8 +101,8 @@ enum Commands {
         output_directory: String,
 
         /// Comma-separated list of coprocessors.
-        #[arg(long, value_delimiter = ',')]
-        coprocessors: Option<Vec<String>>,
+        #[arg(long)]
+        coprocessors: Option<String>,
 
         /// Run a long execution in chunks (Experimental and not sound!)
         #[arg(short, long)]
@@ -266,40 +266,12 @@ fn compile_rust(
     file_name: &str,
     field: KnownField,
     output_dir: &Path,
-    coprocessors: Option<Vec<String>>,
+    coprocessors: Option<String>,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
-    let mut runtime = coprocessors_to_runtime(coprocessors, field.clone());
-
-    if continuations {
-        match field {
-            KnownField::BabyBearField => {
-                if runtime.has_submachine("poseidon_bb") {
-                    return Err(vec![
-                "Poseidon continuations mode is chosen automatically and incompatible with the chosen standard Poseidon coprocessor".to_string(),
-            ]);
-                }
-            }
-            KnownField::Mersenne31Field => {
-                if runtime.has_submachine("poseidon_m31") {
-                    return Err(vec![
-                "Poseidon continuations mode is chosen automatically and incompatible with the chosen standard Poseidon coprocessor".to_string(),
-            ]);
-                }
-            }
-            KnownField::GoldilocksField | KnownField::Bn254Field => {
-                if runtime.has_submachine("poseidon_gl") {
-                    return Err(vec![
-                "Poseidon continuations mode is chosen automatically and incompatible with the chosen standard Poseidon coprocessor".to_string(),
-            ]);
-                }
-            }
-        }
-        runtime = runtime.with_poseidon_for_continuations();
-    }
-
-    let options = CompilerOptions::new(field, runtime);
-    powdr_riscv::compile_rust(file_name, options, output_dir, true, continuations, None)
+    let libs = coprocessors_to_options(coprocessors)?;
+    let options = CompilerOptions::new(field, libs, continuations);
+    powdr_riscv::compile_rust(file_name, options, output_dir, true, None)
         .ok_or_else(|| vec!["could not compile rust".to_string()])?;
 
     Ok(())
@@ -309,21 +281,13 @@ fn compile_riscv_elf(
     input_file: &str,
     field: KnownField,
     output_dir: &Path,
-    coprocessors: Option<Vec<String>>,
+    coprocessors: Option<String>,
     continuations: bool,
 ) -> Result<(), Vec<String>> {
-    let runtime = coprocessors_to_runtime(coprocessors, field.clone());
-
-    let options = CompilerOptions::new(field, runtime);
-    powdr_riscv::compile_riscv_elf(
-        input_file,
-        Path::new(input_file),
-        options,
-        output_dir,
-        true,
-        continuations,
-    )
-    .ok_or_else(|| vec!["could not translate RISC-V executable".to_string()])?;
+    let libs = coprocessors_to_options(coprocessors)?;
+    let options = CompilerOptions::new(field, libs, continuations);
+    powdr_riscv::compile_riscv_elf(input_file, Path::new(input_file), options, output_dir, true)
+        .ok_or_else(|| vec!["could not translate RISC-V executable".to_string()])?;
 
     Ok(())
 }
@@ -416,23 +380,18 @@ fn execute_inner<B: BootloaderImpl>(
     Ok(())
 }
 
-fn coprocessors_to_runtime(coprocessors: Option<Vec<String>>, field: KnownField) -> RuntimeEnum {
-    match coprocessors {
-        Some(list) => match field {
-            KnownField::BabyBearField | KnownField::Mersenne31Field => RuntimeEnum::Runtime16(
-                powdr_riscv::runtime_16::Runtime16::try_from(list.as_ref()).unwrap(),
-            ),
-            KnownField::GoldilocksField | KnownField::Bn254Field => RuntimeEnum::Runtime32(
-                powdr_riscv::runtime_32::Runtime32::try_from(list.as_ref()).unwrap(),
-            ),
-        },
-        None => match field {
-            KnownField::BabyBearField | KnownField::Mersenne31Field => {
-                RuntimeEnum::Runtime16(powdr_riscv::runtime_16::Runtime16::base())
+fn coprocessors_to_options(coprocessors: Option<String>) -> Result<CompilerLibs, Vec<String>> {
+    let mut libs = CompilerLibs::new();
+    if let Some(list) = coprocessors {
+        let names = list.split(',').collect::<Vec<_>>();
+        for name in names {
+            match name {
+                "poseidon_gl" => libs = libs.with_poseidon(),
+                "keccakf" => libs = libs.with_keccak(),
+                "arith" => libs = libs.with_arith(),
+                _ => return Err(vec![format!("Invalid co-processor specified: {name}")]),
             }
-            KnownField::GoldilocksField | KnownField::Bn254Field => {
-                RuntimeEnum::Runtime32(powdr_riscv::runtime_32::Runtime32::base())
-            }
-        },
+        }
     }
+    Ok(libs)
 }

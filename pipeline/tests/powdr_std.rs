@@ -83,6 +83,13 @@ fn split_bb_test() {
 
 #[test]
 #[ignore = "Too slow"]
+fn add_sub16_test() {
+    let f = "std/add_sub16_test.asm";
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn arith_test() {
     let f = "std/arith_test.asm";
     let pipeline = make_simple_prepared_pipeline(f);

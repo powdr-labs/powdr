@@ -10,6 +10,7 @@ use crate::runtime::{
     parse_function_statement, parse_instruction_declaration, Runtime, SubMachine, SyscallImpl,
     EXTRA_REG_PREFIX,
 };
+use crate::CompilerLibs;
 
 /// RISCV powdr assembly runtime.
 /// Determines submachines, instructions and syscalls available to the main machine.
@@ -20,6 +21,20 @@ pub struct Runtime16 {
 }
 
 impl Runtime16 {
+    pub fn new(libs: CompilerLibs, continuations: bool) -> Self {
+        let mut runtime = Runtime16::base();
+        if libs.poseidon {
+            runtime = runtime.with_poseidon(continuations);
+        }
+        if libs.keccak {
+            runtime = runtime.with_keccak();
+        }
+        if libs.arith {
+            runtime = runtime.with_arith();
+        }
+        runtime
+    }
+
     pub fn base() -> Self {
         let mut r = Runtime16 {
             submachines: Default::default(),
@@ -37,19 +52,19 @@ impl Runtime16 {
                 r#"instr and XL, YL, ZH, ZL, WL
                             link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
                             link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
-                            link ~> (tmp3_h, tmp3_l) = arith_bb.add(tmp2_h, tmp2_l, ZH, ZL)
+                            link ~> (tmp3_h, tmp3_l) = add_sub.add(tmp2_h, tmp2_l, ZH, ZL)
                             link ~> (tmp4_h, tmp4_l) = binary.and(tmp1_h, tmp1_l, tmp3_h, tmp3_l)
                             link ~> regs.mstore(WL, STEP + 3, tmp4_h, tmp4_l);"#,
                 r#"instr or XL, YL, ZH, ZL, WL
                             link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
                             link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
-                            link ~> (tmp3_h, tmp3_l) = arith_bb.add(tmp2_h, tmp2_l, ZH, ZL)
+                            link ~> (tmp3_h, tmp3_l) = add_sub.add(tmp2_h, tmp2_l, ZH, ZL)
                             link ~> (tmp4_h, tmp4_l) = binary.or(tmp1_h, tmp1_l, tmp3_h, tmp3_l)
                             link ~> regs.mstore(WL, STEP + 3, tmp4_h, tmp4_l);"#,
                 r#"instr xor XL, YL, ZH, ZL, WL
                             link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
                             link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP + 1)
-                            link ~> (tmp3_h, tmp3_l) = arith_bb.add(tmp2_h, tmp2_l, ZH, ZL)
+                            link ~> (tmp3_h, tmp3_l) = add_sub.add(tmp2_h, tmp2_l, ZH, ZL)
                             link ~> (tmp4_h, tmp4_l) = binary.xor(tmp1_h, tmp1_l, tmp3_h, tmp3_l)
                             link ~> regs.mstore(WL, STEP + 3, tmp4_h, tmp4_l);"#,
             ],
@@ -66,14 +81,14 @@ impl Runtime16 {
                 r#"instr shl XL, YL, ZH, ZL, WL
                     link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
                     link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP)
-                    link ~> (tmp3_h, tmp3_l) = arith_bb.add(tmp2_h, tmp2_l, ZH, ZL)
+                    link ~> (tmp3_h, tmp3_l) = add_sub.add(tmp2_h, tmp2_l, ZH, ZL)
                     link ~> (tmp4_l, tmp4_h) = shift.shl(tmp1_l, tmp1_h, tmp3_l)
                     link ~> regs.mstore(WL, STEP + 3, tmp4_h, tmp4_l);
 "#,
                 r#"instr shr XL, YL, ZH, ZL, WL
                     link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)
                     link ~> (tmp2_h, tmp2_l) = regs.mload(YL, STEP)
-                    link ~> (tmp3_h, tmp3_l) = arith_bb.add(tmp2_h, tmp2_l, ZH, ZL)
+                    link ~> (tmp3_h, tmp3_l) = add_sub.add(tmp2_h, tmp2_l, ZH, ZL)
                     link ~> (tmp4_l, tmp4_h) = shift.shr(tmp1_l, tmp1_h, tmp3_l)
                     link ~> regs.mstore(WL, STEP + 3, tmp4_h, tmp4_l);
 "#,
