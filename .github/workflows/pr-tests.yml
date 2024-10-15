@@ -38,7 +38,7 @@ jobs:
           Cargo.lock
         key: ${{ runner.os }}-cargo-pr-tests
     - name: Install Rust toolchain nightly-2024-09-21 (with clippy and rustfmt)
-      run: rustup toolchain install nightly-2024-09-24-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-09-24-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-09-24-x86_64-unknown-linux-gnu
+      run: rustup toolchain install nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu
     - name: Install EStarkPolygon prover dependencies
       run: sudo apt-get install -y nlohmann-json3-dev libpqxx-dev nasm
     - name: Lint no default features
@@ -86,7 +86,7 @@ jobs:
           ~/pilcom/node_modules
         key: ${{ runner.os }}-pilcom-node-modules
     - name: Install Rust toolchain nightly-2024-09-21 (with clippy and rustfmt)
-      run: rustup toolchain install nightly-2024-09-24-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-09-24-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-09-24-x86_64-unknown-linux-gnu
+      run: rustup toolchain install nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu
     - name: Install nightly-2024-08-01
       run: rustup toolchain install nightly-2024-08-01-x86_64-unknown-linux-gnu
     - name: Install std source
@@ -121,7 +121,7 @@ jobs:
           Cargo.lock
         key: ${{ runner.os }}-cargo-pr-tests
     - name: Install Rust toolchain nightly-2024-09-21 (with clippy and rustfmt)
-      run: rustup toolchain install nightly-2024-09-24-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-09-24-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-09-24-x86_64-unknown-linux-gnu
+      run: rustup toolchain install nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu
     - name: Run examples
       run: cargo run --example hello_world && cargo run --example sqrt_with_publics
 
@@ -143,7 +143,7 @@ jobs:
           ~/pilcom/node_modules
         key: ${{ runner.os }}-pilcom-node-modules
     - name: Install Rust toolchain nightly-2024-09-21(with clippy and rustfmt)
-      run: rustup toolchain install nightly-2024-09-24-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-09-24-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-09-24-x86_64-unknown-linux-gnu
+      run: rustup toolchain install nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu
     - name: Install nightly-2024-08-01
       run: rustup toolchain install nightly-2024-08-01-x86_64-unknown-linux-gnu
     - name: Install std source
