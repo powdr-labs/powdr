@@ -262,7 +262,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             generator
         });
 
-        // Get the columns from machines
+        // Get columns from machines
         let mut columns = mutable_state
             .machines
             .take_witness_col_values(mutable_state.query_callback);

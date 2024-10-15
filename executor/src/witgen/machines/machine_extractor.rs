@@ -176,7 +176,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
     );
 
     // Prevent the fixed lookup witnesses to overwrite the base witnesses.
-    let fixed_lookup_witnesses = fixed_lookup.multiplicity_columns();
+    let fixed_lookup_witnesses = fixed_lookup.witness_columns();
     remaining_witnesses = &remaining_witnesses - &fixed_lookup_witnesses;
 
     machines.push(KnownMachine::FixedLookup(fixed_lookup));

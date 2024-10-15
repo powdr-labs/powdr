@@ -190,13 +190,8 @@ pub struct FixedLookup<'a, T: FieldElement> {
 }
 
 impl<'a, T: FieldElement> FixedLookup<'a, T> {
-    pub fn multiplicity_columns(&self) -> HashSet<PolyID> {
-        self.fixed_data
-            .witness_cols
-            .values()
-            .filter(|col| split_column_name(&col.poly.name).1 == MULTIPLICITY_LOOKUP_COLUMN)
-            .map(|col| col.poly.poly_id)
-            .collect()
+    pub fn witness_columns(&self) -> HashSet<PolyID> {
+        self.logup_multiplicity_column.iter().cloned().collect()
     }
 
     pub fn new(
