@@ -85,6 +85,7 @@ jobs:
       run: cargo fmt --all --check --verbose
     - uses: taiki-e/install-action@nextest
     - name: Archive EStarkPolygon prover built dependencies
+      if: ${{ matrix.toolchain == 'stable' && matrix.features == 'estark-polygon' }}
       run: tar --zstd -cf pil-stark-prover-deps.tar.zst target/pr-tests/build/pil-stark-prover-*/out
     - name: Create tests archive
       run: |
