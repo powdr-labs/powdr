@@ -1,4 +1,5 @@
 use std::{
+    collections::BTreeMap,
     fmt::Display,
     ops::{Add, Sub},
 };
@@ -390,6 +391,7 @@ pub struct RowPair<'row, 'a, T: FieldElement> {
     pub current: &'row Row<T>,
     pub next: Option<&'row Row<T>>,
     pub current_row_index: RowIndex,
+    publics: &'row BTreeMap<&'a str, T>,
     fixed_data: &'a FixedData<'a, T>,
     unknown_strategy: UnknownStrategy,
     size: DegreeType,
@@ -400,6 +402,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
         current: &'row Row<T>,
         next: &'row Row<T>,
         current_row_index: RowIndex,
+        publics: &'row BTreeMap<&'a str, T>,
         fixed_data: &'a FixedData<'a, T>,
         unknown_strategy: UnknownStrategy,
         size: DegreeType,
@@ -408,6 +411,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
             current,
             next: Some(next),
             current_row_index,
+            publics,
             fixed_data,
             unknown_strategy,
             size,
@@ -418,6 +422,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     pub fn from_single_row(
         current: &'row Row<T>,
         current_row_index: RowIndex,
+        publics: &'row BTreeMap<&'a str, T>,
         fixed_data: &'a FixedData<'a, T>,
         unknown_strategy: UnknownStrategy,
         size: DegreeType,
@@ -426,6 +431,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
             current,
             next: None,
             current_row_index,
+            publics,
             fixed_data,
             unknown_strategy,
             size,
@@ -455,16 +461,13 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     }
 
     pub fn get_value(&self, poly: AlgebraicVariable) -> Option<T> {
-        match poly {
-            AlgebraicVariable::Column(poly) => {
-                let row = self.get_row(poly.next);
-                if self.unknown_strategy == UnknownStrategy::Zero {
-                    Some(row.value_or_zero(&poly.poly_id))
-                } else {
-                    row.value(&poly.poly_id)
-                }
-            }
-            _ => todo!(),
+        let value = match poly {
+            AlgebraicVariable::Column(poly) => self.get_row(poly.next).value(&poly.poly_id),
+            AlgebraicVariable::Public(public_name) => self.publics.get(public_name).copied(),
+        };
+        match self.unknown_strategy {
+            UnknownStrategy::Zero => value.or(Some(T::ZERO)),
+            UnknownStrategy::Unknown => value,
         }
     }
 
@@ -497,7 +500,8 @@ impl<'a, T: FieldElement> RangeConstraintSet<AlgebraicVariable<'a>, T> for RowPa
             AlgebraicVariable::Column(poly) => {
                 self.get_row(poly.next).range_constraint(&poly.poly_id)
             }
-            _ => todo!(),
+            // No range constraints stored for publics.
+            AlgebraicVariable::Public(_) => None,
         }
     }
 }
