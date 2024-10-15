@@ -643,7 +643,7 @@ where
         iter::once(PILItem::Definition(
             symbol,
             Some(FunctionValueDefinition::TypeDeclaration(
-                TypeDeclaration::Struct(struct_decl.clone()),
+                TypeDeclaration::Struct(struct_decl),
             )),
         ))
         .collect()
