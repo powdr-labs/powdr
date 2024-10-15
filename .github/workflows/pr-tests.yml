@@ -192,7 +192,7 @@ jobs:
       run: sudo apt-get install -y nlohmann-json3-dev
     - uses: taiki-e/install-action@nextest
     - name: Unpack EStarkPolygon built dependencies
-      run: tar --zstd -xf pil-stark-prover-deps.tar.zst
+      run: tar --zstd -xf tests_archive-stable-estark-polygon/pil-stark-prover-deps.tar.zst
     - name: Run EStark Polygon test
       run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only --no-capture -E "test(=vec_median_estark_polygon)"
       env:
