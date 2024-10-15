@@ -734,3 +734,13 @@ fn prover_functions() {
     ";
     type_check(input, &[("a", "", "int"), ("b", "", "()[]")]);
 }
+
+#[test]
+fn simple_struct() {
+    let input = "
+    struct Dot { x: int, y: int }
+    let f: int -> Dot = |i| Dot{x: 0, y: i};
+    let x = f(0);
+    ";
+    type_check(input, &[("x", "", "Dot")]);
+}
