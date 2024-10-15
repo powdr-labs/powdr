@@ -295,10 +295,12 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         };
 
         // Update the multiplicities
-        self.multiplicities
-            .entry(identity_id)
-            .or_default()
-            .push(T::one());
+        if let Some(poly_id) = self.logup_multiplicity_column {
+            let multiplicity = self.multiplicities.entry(identity_id).or_insert_with(|| {
+                vec![T::zero(); self.fixed_data.fixed_cols[&poly_id].values_max_size().len()]
+            });
+            multiplicity[row] += T::one();
+        }
 
         let output = output_columns
             .iter()
