@@ -25,8 +25,8 @@ jobs:
       run: cargo clippy --all --all-targets --no-default-features --profile pr-tests -- -D warnings
     - name: Format
       run: cargo fmt --all --check --verbose
-    - name: Build
-      run: cargo build --all-targets --all --all-features --profile pr-tests
+    #- name: Build
+    #  run: cargo build --all-targets --all --all-features --profile pr-tests
     - name: Check without Halo2
       run: cargo check --all --no-default-features --profile pr-tests
     - name: ⚡ Save rust cache
