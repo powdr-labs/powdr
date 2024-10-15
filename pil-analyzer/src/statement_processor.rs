@@ -619,19 +619,24 @@ where
         symbol: Symbol,
         struct_decl: StructDeclaration<parsed::Expression>,
     ) -> Vec<PILItem> {
-        let type_vars = struct_decl.type_vars.vars().collect();
-        let fields = struct_decl
-            .fields
+        let StructDeclaration {
+            name,
+            type_vars,
+            fields,
+        } = struct_decl;
+        let type_vars_set = type_vars.vars().collect();
+
+        let fields = fields
             .into_iter()
             .map(|v| NamedType {
-                name: v.name.clone(),
-                ty: self.type_processor(&type_vars).process_type(v.ty),
+                name: v.name,
+                ty: self.type_processor(&type_vars_set).process_type(v.ty),
             })
             .collect();
 
         let struct_decl = StructDeclaration {
-            name: self.driver.resolve_decl(&struct_decl.name),
-            type_vars: struct_decl.type_vars,
+            name: self.driver.resolve_decl(&name),
+            type_vars,
             fields,
         };
 
