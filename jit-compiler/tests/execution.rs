@@ -58,6 +58,20 @@ fn invalid_function() {
 }
 
 #[test]
+fn builtin_panic() {
+    let input = r#"
+        namespace std::check;
+            let panic = [""];
+        namespace main;
+            let a: int -> int = |i| std::check::panic("test");
+        "#;
+    compile(input, "main::a");
+    // We de not call `a` because handling the panic is not yet properly implemented.
+    // It currently causes an unhandled panic inside an `extern "C"` function, which results in
+    // direct termination, so we cannot test it here.
+}
+
+#[test]
 fn assigned_functions() {
     let input = r#"
         namespace std::array;
@@ -230,6 +244,30 @@ fn match_array() {
 }
 
 #[test]
+fn match_enum() {
+    let f = compile_fun(
+        r#"
+enum Slice { S(int[], int, int) }
+let slice_pop: Slice -> (Slice, Option<int>) = |s| match s {
+    Slice::S(_, _, 0) => (s, Option::None),
+    Slice::S(arr, start, l) => (Slice::S(arr, start, l - 1), Option::Some(arr[start + l - 1])),
+};
+let f: int -> int = |y| {
+    let (s, last) = slice_pop(Slice::S([1, 2, y], 0, 3));
+    match last {
+        Option::Some(x) => x,
+        Option::None => 0,
+    }
+};
+"#,
+        "f",
+    );
+    assert_eq!(f.call(0), 0);
+    assert_eq!(f.call(1), 1);
+    assert_eq!(f.call(2), 2);
+}
+
+#[test]
 fn let_simple() {
     let f = compile_fun(
         r#"let f: int -> int = |x| {
@@ -289,6 +327,21 @@ fn enums() {
     assert_eq!(c.call(1), 0);
     assert_eq!(c.call(2), 1);
     assert_eq!(c.call(3), 99);
+}
+
+#[test]
+fn clone_locals() {
+    let f = compile_fun(
+        r#"
+        let a: int -> (int -> int) = |i| |_| i;
+        let f: int -> int = |i| a(7)(i);
+        "#,
+        "f",
+    );
+
+    assert_eq!(f.call(0), 7);
+    assert_eq!(f.call(1), 7);
+    assert_eq!(f.call(2), 7);
 }
 
 #[test]
