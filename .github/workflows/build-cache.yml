@@ -29,6 +29,8 @@ jobs:
       run: cargo build --all-targets --all --all-features --profile pr-tests
     - name: Check without Halo2
       run: cargo check --all --no-default-features --profile pr-tests
+    - name: Save date of cache build
+      run: date -R -u > target/cache-build-date.txt
     - name: ⚡ Save rust cache
       uses: WarpBuilds/cache/save@v1
       with:
