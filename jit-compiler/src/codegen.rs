@@ -2,10 +2,7 @@ use std::{collections::HashMap, sync::OnceLock};
 
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{
-        Analyzed, Expression, FunctionValueDefinition, PolynomialReference, Reference,
-        TypeDeclaration,
-    },
+    analyzed::{Analyzed, Expression, FunctionValueDefinition, PolynomialReference, Reference},
     parsed::{
         asm::{Part, SymbolPath},
         display::quote,
@@ -13,7 +10,8 @@ use powdr_ast::{
         visitor::AllChildren,
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, EnumDeclaration,
         FunctionCall, IfExpression, IndexAccess, LambdaExpression, LetStatementInsideBlock,
-        MatchArm, MatchExpression, Number, Pattern, StatementInsideBlock, UnaryOperation,
+        MatchArm, MatchExpression, Number, Pattern, StatementInsideBlock, TypeDeclaration,
+        UnaryOperation,
     },
 };
 use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};

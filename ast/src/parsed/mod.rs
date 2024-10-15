@@ -246,6 +246,44 @@ impl Children<Expression> for PilStatement {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub enum TypeDeclaration<E = u64> {
+    Enum(EnumDeclaration<E>),
+    Struct(StructDeclaration<E>),
+}
+
+impl<R> Children<Expression<R>> for TypeDeclaration<Expression<R>> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        match self {
+            TypeDeclaration::Enum(e) => e.children(),
+            TypeDeclaration::Struct(s) => s.children(),
+        }
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        match self {
+            TypeDeclaration::Enum(e) => e.children_mut(),
+            TypeDeclaration::Struct(s) => s.children_mut(),
+        }
+    }
+}
+
+impl<R> Children<Expression<R>> for TypeDeclaration<u64> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        match self {
+            TypeDeclaration::Enum(e) => e.children(),
+            TypeDeclaration::Struct(s) => s.children(),
+        }
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        match self {
+            TypeDeclaration::Enum(e) => e.children_mut(),
+            TypeDeclaration::Struct(s) => s.children_mut(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct StructDeclaration<E = u64> {
     pub name: String,
     pub type_vars: TypeBounds,
@@ -1290,7 +1328,7 @@ pub enum FunctionDefinition {
     /// Generic expression
     Expression(Expression),
     /// A type declaration.
-    TypeDeclaration(TypeDeclaration),
+    TypeDeclaration(TypeDeclaration<Expression>),
     /// A trait declaration.
     TraitDeclaration(TraitDeclaration<Expression>),
 }
@@ -1474,12 +1512,6 @@ impl<Ref> Children<Expression<Ref>> for ArrayExpression<Ref> {
             }
         }
     }
-}
-
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
-pub enum TypeDeclaration {
-    Enum(EnumDeclaration<Expression>),
-    Struct(StructDeclaration<Expression>),
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
