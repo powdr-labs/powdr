@@ -174,6 +174,7 @@ impl<T: FieldElement> IndexedColumns<T> {
 const MULTIPLICITY_LOOKUP_COLUMN: &str = "m_logup_multiplicity";
 
 /// Machine to perform a lookup in fixed columns only.
+/// `multiplicities` is a mapping between `identity_id` (u64) and a vector of multiplicities (Vec<T>).
 pub struct FixedLookup<'a, T: FieldElement> {
     degree: DegreeType,
     global_constraints: GlobalConstraints<T>,
