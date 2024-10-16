@@ -1,6 +1,5 @@
 use mktemp::Temp;
 use std::{
-    collections::HashMap,
     fs::{self},
     process::Command,
     str::from_utf8,
@@ -16,7 +15,7 @@ use powdr_ast::{
 };
 use powdr_number::{FieldElement, LargeInt};
 
-use crate::{codegen::escape_symbol, LoadedFunction};
+use crate::{codegen::escape_symbol, CompiledPIL, FixedColFunction};
 
 pub fn generate_glue_code<T: FieldElement>(
     symbols: &[(&str, String)],
@@ -62,7 +61,14 @@ pub fn generate_glue_code<T: FieldElement>(
 }
 
 const PREAMBLE: &str = r#"
-#![allow(unused_parens)]
+#![allow(unused_parens, unused_variables)]
+
+static DEGREE: std::sync::RwLock<Option<ibig::IBig>> = std::sync::RwLock::new(None);
+
+#[no_mangle]
+pub extern "C" fn __set_degree(degree: u64) {
+    *DEGREE.write().unwrap() = Some(ibig::IBig::from(degree));
+}
 
 #[derive(Clone, Copy)]
 struct FieldElement(u64);
@@ -200,29 +206,33 @@ pub fn call_cargo(code: &str) -> Result<PathInTempDir, String> {
     })
 }
 
-/// Loads the given library and creates function pointers for the given symbols.
-pub fn load_library(
-    path: &str,
-    symbols: &[&str],
-) -> Result<HashMap<String, LoadedFunction>, String> {
+/// Loads the given library and functions.
+pub fn load_library(path: &str, fixed_column_names: &[&str]) -> Result<CompiledPIL, String> {
     let library = Arc::new(
         unsafe { libloading::Library::new(path) }
             .map_err(|e| format!("Error loading library at {path}: {e}"))?,
     );
-    symbols
+    let fixed_columns = fixed_column_names
         .iter()
         .map(|&sym| {
             let extern_sym = extern_symbol_name(sym);
             let function =
                 *unsafe { library.get::<extern "C" fn(u64) -> u64>(extern_sym.as_bytes()) }
                     .map_err(|e| format!("Error accessing symbol {sym}: {e}"))?;
-            let fun = LoadedFunction {
+            let fun = FixedColFunction {
                 library: library.clone(),
                 function,
             };
             Ok((sym.to_string(), fun))
         })
-        .collect::<Result<_, String>>()
+        .collect::<Result<_, String>>()?;
+    let set_degree_fun = *unsafe { library.get::<extern "C" fn(u64)>(b"__set_degree") }
+        .map_err(|e| format!("Error accessing symbol __set_degree: {e}"))?;
+    Ok(CompiledPIL {
+        library,
+        fixed_columns,
+        set_degree_fun,
+    })
 }
 
 fn extern_symbol_name(sym: &str) -> String {
