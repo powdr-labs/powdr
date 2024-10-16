@@ -669,8 +669,8 @@ fn check_pil_statement_inside_module(
             }
             Ok(())
         }
-        PilStatement::EnumDeclaration(_, enum_decl) => {
-            check_enum_declaration(&location, enum_decl, state)
+        PilStatement::EnumDeclaration(src_ref, enum_decl) => {
+            check_enum_declaration(src_ref, &location, enum_decl, state)
         }
         PilStatement::StructDeclaration(_, struct_decl) => {
             check_struct_declaration(&location, struct_decl, state)
@@ -688,8 +688,8 @@ fn check_pil_statement_inside_module(
             }
             Ok(())
         }
-        PilStatement::TraitDeclaration(_, trait_decl) => {
-            check_trait_declaration(&location, trait_decl, state)
+        PilStatement::TraitDeclaration(src_ref, trait_decl) => {
+            check_trait_declaration(src_ref, &location, trait_decl, state)
         }
         s => unreachable!("the parser should not produce statement {s} inside a module"),
     }
@@ -992,6 +992,7 @@ fn check_patterns<'b>(
 }
 
 fn check_enum_declaration(
+    src_ref: &SourceRef,
     location: &AbsoluteSymbolPath,
     enum_decl: &EnumDeclaration<Expression>,
     state: &mut State<'_>,
@@ -1004,8 +1005,7 @@ fn check_enum_declaration(
                 .then_some(acc)
                 .ok_or(format!("Duplicate variant `{name}` in enum `{location}`"))
         })
-        // TODO enum declaration should have source reference.
-        .map_err(|e| SourceRef::default().with_error(e))?;
+        .map_err(|e| src_ref.with_error(e))?;
 
     let type_vars = enum_decl.type_vars.vars().collect::<HashSet<_>>();
 
@@ -1018,6 +1018,7 @@ fn check_enum_declaration(
 }
 
 fn check_struct_declaration(
+    src_ref: &SourceRef,
     location: &AbsoluteSymbolPath,
     struct_decl: &StructDeclaration<Expression>,
     state: &mut State<'_>,
@@ -1031,7 +1032,7 @@ fn check_struct_declaration(
                 named.name
             ))
         })
-        .map_err(|e| SourceRef::default().with_error(e))?;
+        .map_err(|e| src_ref.with_error(e))?;
 
     let type_vars = struct_decl.type_vars.vars().collect::<HashSet<_>>();
 
@@ -1077,6 +1078,7 @@ fn check_type<E: ExpressionInArrayLength>(
 }
 
 fn check_trait_declaration(
+    src_ref: &SourceRef,
     location: &AbsoluteSymbolPath,
     trait_decl: &TraitDeclaration<Expression>,
     state: &mut State<'_>,
@@ -1089,7 +1091,7 @@ fn check_trait_declaration(
                 "Duplicate method `{name}` defined in trait `{location}`"
             ))
         })
-        .map_err(|e| SourceRef::unknown().with_error(e))?;
+        .map_err(|e| src_ref.with_error(e))?;
 
     let type_vars = trait_decl.type_vars.iter().collect();
 
