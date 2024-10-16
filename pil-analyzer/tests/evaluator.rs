@@ -467,7 +467,7 @@ let g: int = f({  });
 }
 
 #[test]
-fn traits_and_refs() {
+fn test_traits_and_refs() {
     let input = "
     namespace std::convert(4);
         let fe = || fe();
@@ -503,7 +503,7 @@ fn traits_and_refs() {
 }
 
 #[test]
-fn traits_multiple_fns() {
+fn test_traits_multiple_fns() {
     let input = "
     namespace std::convert(4);
         let fe = || fe();
@@ -542,7 +542,7 @@ fn traits_multiple_fns() {
 }
 
 #[test]
-fn traits_multiple_impls() {
+fn test_traits_multiple_impls() {
     let input = "
     namespace std::convert(4);
         let fe = || fe();
@@ -646,4 +646,73 @@ fn test_trait_function_call_cross_impl() {
     ";
 
     assert_eq!(parse_and_evaluate_symbol(input, "F::r"), "6".to_string());
+}
+
+#[test]
+fn test_traits_generic_function() {
+    let input = "
+        namespace std::convert(4);
+            let fe = || fe();
+        namespace F(4);
+            trait Add<T> {
+                add: T, T -> T,
+            }
+
+            impl Add<int> {
+                add: |a, b| a + b,
+            }
+
+            impl Add<fe> {
+                add: |a, b| a + b,
+            }
+
+            let<T> generic_add: T, T -> T = |a, b| Add::add(a, b);
+
+            let r1: int = generic_add(3, 4);
+
+            let six: int = 6;
+            let five: int = 5;
+            let r2: fe = generic_add(std::convert::fe(five), std::convert::fe(six));
+        ";
+
+    assert_eq!(parse_and_evaluate_symbol(input, "F::r1"), "7".to_string());
+    assert_eq!(parse_and_evaluate_symbol(input, "F::r2"), "11".to_string());
+}
+
+#[test]
+fn test_traits_generic_multilevel_functions() {
+    let input = "
+        namespace std::convert(4);
+            let fe = || fe();
+        namespace F(4);
+            trait Add<T> {
+                add: T, T -> T,
+            }
+
+            impl Add<int> {
+                add: |a, b| a + b,
+            }
+
+            impl Add<fe> {
+                add: |a, b| a + b,
+            }
+
+            trait Cast<T, Q> {
+                cast: T -> Q,
+            }
+
+            impl Cast<int, fe> {
+                cast: |a| std::convert::fe(a),
+            }
+
+            let<T> generic_add: T, T -> T = |a, b| Add::add(a, b);
+            
+            let<T, Q> generic_add2: T, T -> Q = |a, b| Cast::cast(generic_add(a, b));
+
+            let six: int = 6;
+            let five: int = 5;
+            let r: fe = generic_add2(five, six);
+        ";
+
+    assert_eq!(parse_and_evaluate_symbol(input, "F::r"), "11".to_string());
 }
