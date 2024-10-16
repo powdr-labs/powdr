@@ -13,7 +13,7 @@ use powdr_ast::{
         types::{FunctionType, Type, TypeScheme},
     },
 };
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, LargeInt};
 
 use crate::{codegen::escape_symbol, CompiledPIL, FixedColFunction};
 
@@ -54,7 +54,10 @@ pub fn generate_glue_code<T: FieldElement>(
         ));
     }
 
-    Ok(format!("{PREAMBLE}\n{glue}\n",))
+    Ok(format!(
+        "{PREAMBLE}\n{}\n{glue}\n",
+        field_specific_preamble::<T>()
+    ))
 }
 
 const PREAMBLE: &str = r#"
@@ -69,11 +72,6 @@ pub extern "C" fn __set_degree(degree: u64) {
 
 #[derive(Clone, Copy)]
 struct FieldElement(u64);
-impl From<u64> for FieldElement {
-    fn from(x: u64) -> Self {
-        FieldElement(x)
-    }
-}
 impl From<FieldElement> for u64 {
     fn from(x: FieldElement) -> u64 {
         x.0
@@ -86,8 +84,6 @@ impl From<ibig::IBig> for FieldElement {
 }
 impl From<FieldElement> for ibig::IBig {
     fn from(x: FieldElement) -> Self {
-        // TODO once we support proper field element operations,
-        // this might be more complicated.
         ibig::IBig::from(x.0)
     }
 }
@@ -107,7 +103,45 @@ impl<Args, Ret> Callable<Args, Ret> {
     }
 }
 
+trait Add {
+    fn add(a: Self, b: Self) -> Self;
+}
+
+impl Add for ibig::IBig {
+    fn add(a: Self, b: Self) -> Self { a + b }
+}
+
+trait FromLiteral {
+    fn from_u64(x: u64) -> Self;
+}
+impl FromLiteral for ibig::IBig {
+    fn from_u64(x: u64) -> Self { ibig::IBig::from(x) }
+}
+impl FromLiteral for FieldElement {
+    fn from_u64(x: u64) -> Self { FieldElement::from(x) }
+}
+
 "#;
+
+fn field_specific_preamble<T: FieldElement>() -> String {
+    let modulus = u64::try_from(T::modulus().to_arbitrary_integer()).unwrap();
+    format!(
+        r#"
+        impl From<u64> for FieldElement {{
+            fn from(x: u64) -> Self {{
+                // TODO this is inefficient.
+                FieldElement(x % {modulus}_u64)
+            }}
+        }}
+        impl Add for FieldElement {{
+            fn add(a: Self, b: Self) -> Self {{
+                // TODO this is inefficient.
+                Self(u64::try_from((u128::from(a.0) + u128::from(b.0)) % u128::from({modulus}_u64)).unwrap())
+            }}
+        }}
+        "#
+    )
+}
 
 const CARGO_TOML: &str = r#"
 [package]
