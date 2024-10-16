@@ -174,13 +174,13 @@ impl<T: FieldElement> IndexedColumns<T> {
 const MULTIPLICITY_LOOKUP_COLUMN: &str = "m_logup_multiplicity";
 
 /// Machine to perform a lookup in fixed columns only.
-/// `multiplicities` is a mapping between `identity_id` (u64) and a vector of multiplicities (Vec<T>).
 pub struct FixedLookup<'a, T: FieldElement> {
     degree: DegreeType,
     global_constraints: GlobalConstraints<T>,
     indices: IndexedColumns<T>,
     connecting_identities: BTreeMap<u64, &'a Identity<T>>,
     fixed_data: &'a FixedData<'a, T>,
+    /// multiplicities column values for each identity id
     multiplicities: BTreeMap<u64, Vec<T>>,
     logup_multiplicity_column: Option<PolyID>,
 }
@@ -304,7 +304,6 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         };
 
         // Update the multiplicities
-
         if self.logup_multiplicity_column.is_some() {
             self.multiplicities
                 .entry(identity_id)
