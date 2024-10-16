@@ -535,7 +535,9 @@ impl<T: FieldElement> VMConverter<T> {
                 panic!("Invalid statement for instruction body: {statement}");
             };
             if let Some((var, expr)) = try_extract_update(&expr) {
-                // reduce the update to linear by introducing intermediate variables
+                // Try to reduce the update to linear by introducing intermediate variables.
+                // We do this to keep the degree of the update expression low, but it is
+                // not strictly necessary.
                 let expr = self.linearize(&format!("{flag}_{var}_update"), expr);
 
                 self.registers
@@ -1141,9 +1143,11 @@ impl<T: FieldElement> VMConverter<T> {
         return_instruction(self.output_count, self.pc_name.as_ref().unwrap())
     }
 
-    /// Return an expression of degree at most 1 whose value matches that of `expr`
+    /// Return an expression of degree at most 1 whose value matches that of `expr`.
     /// Intermediate witness columns can be introduced, with names starting with `prefix` optionally followed by a suffix
-    /// Suffixes are defined as follows: "", "_1", "_2", "_3" etc
+    /// Suffixes are defined as follows: "", "_1", "_2", "_3" etc.
+    /// In some situations, this function can fail and it will return an expression
+    /// that might not be linear.
     fn linearize(&mut self, prefix: &str, expr: Expression) -> Expression {
         self.linearize_rec(prefix, 0, expr).1
     }
@@ -1154,47 +1158,40 @@ impl<T: FieldElement> VMConverter<T> {
         counter: usize,
         expr: Expression,
     ) -> (usize, Expression) {
-        match expr {
-            Expression::BinaryOperation(
-                _,
-                BinaryOperation {
-                    left,
-                    op: operator,
-                    right,
-                },
-            ) => match operator {
-                BinaryOperator::Add => {
-                    let (counter, left) = self.linearize_rec(prefix, counter, *left);
-                    let (counter, right) = self.linearize_rec(prefix, counter, *right);
-                    (counter, left + right)
-                }
-                BinaryOperator::Sub => {
-                    let (counter, left) = self.linearize_rec(prefix, counter, *left);
-                    let (counter, right) = self.linearize_rec(prefix, counter, *right);
-                    (counter, left - right)
-                }
-                BinaryOperator::Mul => {
-                    // if we have a quadratic term, we linearize each factor and introduce an intermediate variable for the product
-                    let (counter, left) = self.linearize_rec(prefix, counter, *left);
-                    let (counter, right) = self.linearize_rec(prefix, counter, *right);
-                    let intermediate_name = format!(
-                        "{prefix}{}",
-                        if counter == 0 {
-                            "".to_string()
-                        } else {
-                            format!("_{counter}")
-                        }
-                    );
-                    self.pil.push(PilStatement::PolynomialDefinition(
-                        SourceRef::unknown(),
-                        intermediate_name.clone().into(),
-                        left * right,
-                    ));
-                    (counter + 1, direct_reference(intermediate_name))
-                }
-                op => unimplemented!("Binary operator \"{op}\" is not supported when linearizing"),
-            },
-            expr => (counter, expr),
+        let Expression::BinaryOperation(source, BinaryOperation { left, op, right }) = expr else {
+            return (counter, expr);
+        };
+        let (counter, left) = self.linearize_rec(prefix, counter, *left);
+        let (counter, right) = self.linearize_rec(prefix, counter, *right);
+        match op {
+            BinaryOperator::Mul => {
+                // if we have a quadratic term, we linearize each factor and introduce an intermediate variable for the product
+                let intermediate_name = format!(
+                    "{prefix}{}",
+                    if counter == 0 {
+                        "".to_string()
+                    } else {
+                        format!("_{counter}")
+                    }
+                );
+                self.pil.push(PilStatement::PolynomialDefinition(
+                    SourceRef::unknown(),
+                    intermediate_name.clone().into(),
+                    left * right,
+                ));
+                (counter + 1, direct_reference(intermediate_name))
+            }
+            _ => (
+                counter,
+                Expression::BinaryOperation(
+                    source,
+                    BinaryOperation {
+                        left: Box::new(left),
+                        op,
+                        right: Box::new(right),
+                    },
+                ),
+            ),
         }
     }
 }
