@@ -47,6 +47,12 @@ impl Elem {
         Self((hi.0 << 16) | lo.0)
     }
 
+    pub fn into_fe_limbs<F: FieldElement>(self) -> [F; 2] {
+        let hi = self.0 >> 16;
+        let lo = self.0 & 0xffff;
+        [hi.into(), lo.into()]
+    }
+
     /// Interprets the value of self as a field element, if the value is smaller than the modulus
     pub fn try_into_fe<F: FieldElement>(self) -> Option<F> {
         // TODO: avoid converting the modulus all the time
@@ -110,9 +116,11 @@ struct RegisterMemory<F: FieldElement> {
 }
 
 impl<F: FieldElement> RegisterMemory<F> {
-    // TODO: this should be two FE per register
-    pub fn for_bootloader(&self) -> HashMap<u32, F> {
-        Default::default()
+    pub fn for_bootloader(&self) -> HashMap<u32, Vec<F>> {
+        self.second_last
+            .iter()
+            .map(|(k, v)| (*k, v.into_fe_limbs().to_vec()))
+            .collect()
     }
 }
 

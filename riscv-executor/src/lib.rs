@@ -36,7 +36,8 @@ pub enum ExecMode {
 }
 
 pub type MemoryState = HashMap<u32, u32>;
-pub type RegisterMemoryState<F> = HashMap<u32, F>;
+/// Value of registers is Vec<F> to unify the output for different field sizes
+pub type RegisterMemoryState<F> = HashMap<u32, Vec<F>>;
 
 #[derive(Debug)]
 pub enum MemOperationKind {

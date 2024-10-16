@@ -157,10 +157,10 @@ pub struct RegisterMemory<F: FieldElement> {
 }
 
 impl<F: FieldElement> RegisterMemory<F> {
-    pub fn for_bootloader(&self) -> HashMap<u32, F> {
+    pub fn for_bootloader(&self) -> HashMap<u32, Vec<F>> {
         self.second_last
             .iter()
-            .map(|(k, v)| (*k, v.into_fe()))
+            .map(|(k, v)| (*k, vec![v.into_fe()]))
             .collect()
     }
 }
