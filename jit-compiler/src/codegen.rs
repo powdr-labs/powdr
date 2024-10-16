@@ -679,6 +679,11 @@ fn get_builtins<T: FieldElement>() -> &'static HashMap<String, String> {
                     format_unsigned_integer(&T::modulus().to_arbitrary_integer())
                 ),
             ),
+            (
+                "std::prover::degree",
+                "(_: ()) -> ibig::IBig { DEGREE.read().unwrap().as_ref().unwrap().clone() }"
+                    .to_string(),
+            ),
         ]
         .into_iter()
         .map(|(name, code)| {
