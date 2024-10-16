@@ -9,14 +9,16 @@ use std::{collections::HashMap, sync::Arc};
 
 use crate::type_unifier::Unifier;
 
-/// TraitsResolver implements a trait resolver for polynomial references.
-/// For each reference to a trait function with type arguments, it finds the corresponding
-/// trait implementation and stores this association in a map that is returned.
+/// Mapping from trait function name and (concrete) type arguments to the corresponding trait implementation.
+pub type SolvedTraitImpls = HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>;
+
+/// TraitsResolver helps to find the implementation for a given trait function
+/// and concrete type arguments.
 pub struct TraitsResolver<'a> {
     /// List of implementations for all traits.
     trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
     /// Map from trait function names and type arguments to the corresponding trait implementations.
-    solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
+    solved_impls: SolvedTraitImpls,
 }
 
 impl<'a> TraitsResolver<'a> {
@@ -70,7 +72,7 @@ impl<'a> TraitsResolver<'a> {
 
     /// Returns a map from all referenced trait functions and all their type arguments to the
     /// corresponding trait implementations.
-    pub fn solved_impls(self) -> HashMap<String, HashMap<Vec<Type>, Arc<Expression>>> {
+    pub fn solved_impls(self) -> SolvedTraitImpls {
         self.solved_impls
     }
 }

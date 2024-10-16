@@ -26,7 +26,7 @@ use powdr_ast::analyzed::{
 use powdr_parser::{parse, parse_module, parse_type};
 use powdr_parser_util::Error;
 
-use crate::traits_resolver::TraitsResolver;
+use crate::traits_resolver::{SolvedTraitImpls, TraitsResolver};
 use crate::type_builtins::constr_function_statement_type;
 use crate::type_inference::infer_types;
 use crate::{side_effect_checker, AnalysisDriver};
@@ -358,11 +358,9 @@ impl PILAnalyzer {
         Ok(())
     }
 
-    /// Creates and returns a map for every referenced trait and every concrete type to the
+    /// Creates and returns a map for every referenced trait function with concrete type to the
     /// corresponding trait implementation function.
-    fn resolve_trait_impls(
-        &mut self,
-    ) -> Result<HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>, Vec<Error>> {
+    fn resolve_trait_impls(&mut self) -> Result<SolvedTraitImpls, Vec<Error>> {
         let mut trait_solver = TraitsResolver::new(&self.trait_impls);
 
         // TODO building this impl map should be different from checking that all trait references
