@@ -477,6 +477,9 @@ impl PILAnalyzer {
                         PILItem::Definition(symbol, value) => {
                             let name = symbol.absolute_name.clone();
                             if matches!(value, Some(FunctionValueDefinition::TraitDeclaration(_))) {
+                                // Ensure that `trait_impls` has an entry for every trait,
+                                // even if it has no implementations.
+                                // We use this to distinguish generic functions from trait functions.
                                 self.trait_impls.entry(name.clone()).or_default();
                             }
                             let is_new = self
