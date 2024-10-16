@@ -20,8 +20,8 @@ use powdr_number::{FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
     type_from_definition, Analyzed, DegreeRange, Expression, FunctionValueDefinition,
-    PolynomialReference, PolynomialType, PublicDeclaration, Reference, StatementIdentifier, Symbol,
-    SymbolKind, TypedExpression,
+    PolynomialType, PublicDeclaration, Reference, StatementIdentifier, Symbol, SymbolKind,
+    TypedExpression,
 };
 use powdr_parser::{parse, parse_module, parse_type};
 use powdr_parser_util::Error;
@@ -395,7 +395,7 @@ impl PILAnalyzer {
             .flat_map(|i| i.all_children())
         {
             if let Expression::Reference(source_ref, Reference::Poly(reference)) = expr {
-                if !reference.type_args.is_none() {
+                if reference.type_args.is_some() {
                     if let Err(e) = trait_solver.resolve_trait_function_reference(reference) {
                         errors.push(source_ref.with_error(e));
                     }
@@ -404,7 +404,7 @@ impl PILAnalyzer {
         }
 
         if !errors.is_empty() {
-            return Err(errors);
+            Err(errors)
         } else {
             Ok(trait_solver.solved_impls())
         }

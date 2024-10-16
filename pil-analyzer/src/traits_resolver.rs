@@ -75,7 +75,7 @@ impl<'a> TraitsResolver<'a> {
     }
 }
 
-fn find_trait_implementation<'a>(
+fn find_trait_implementation(
     function: &str,
     type_args: &[Type],
     implementations: &[TraitImplementation<Expression>],
