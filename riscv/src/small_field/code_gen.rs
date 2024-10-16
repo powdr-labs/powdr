@@ -15,8 +15,8 @@ use crate::CompilerOptions;
 
 use crate::small_field::runtime::Runtime;
 
-/// Translates a RISC-V program to POWDR ASM
-/// with constraints that work for a field >24 bits.
+/// Translates a RISC-V program to POWDR ASM with constraints that work for a field >24 bits.
+///
 /// Note that specific submachines have different field size requirements,
 /// and the 24-bit requirement is for this machine only.
 ///
