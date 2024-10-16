@@ -13,9 +13,9 @@ ark-bn254 = { version = "0.4.0", default-features = false, features = [
 ] }
 ark-ff = "0.4.2"
 ark-serialize = "0.4.2"
-p3-baby-bear = { git = "https://github.com/plonky3/Plonky3.git" }
-p3-mersenne-31 = { git = "https://github.com/plonky3/Plonky3.git" }
-p3-field = { git = "https://github.com/plonky3/Plonky3.git" }
+p3-baby-bear = { git = "https://github.com/plonky3/Plonky3.git", rev = "9218db8195825877ea8158bd3e1e9d89cf38c06a" }
+p3-mersenne-31 = { git = "https://github.com/plonky3/Plonky3.git", rev = "9218db8195825877ea8158bd3e1e9d89cf38c06a" }
+p3-field = { git = "https://github.com/plonky3/Plonky3.git", rev = "9218db8195825877ea8158bd3e1e9d89cf38c06a" }
 num-bigint = { version = "0.4.3", features = ["serde"] }
 num-traits = "0.2.15"
 csv = "1.3"
