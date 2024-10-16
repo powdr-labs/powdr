@@ -44,11 +44,11 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     //
     // Reads happen at the provided time step; writes happen at the next time step.
     operation poseidon_permutation<0>
-        input_addr_low, input_addr_high,
-        output_addr_low, output_addr_high,
+        input_addr_high, input_addr_low,
+        output_addr_high, output_addr_low,
         time_step ->;
 
-    col witness operation_id;
+    let operation_id;
 
     // Number of field elements in the state
     let STATE_SIZE: int = 16;
@@ -74,17 +74,17 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     std::utils::force_bool(used);
 
     // Repeat the input state in the whole block
-    col witness input[STATE_SIZE];
+    let input: col[STATE_SIZE];
     array::map(input, |c| unchanged_until(c, LAST));
     array::zip(input, state, |i, s| CLK[0] * (i - s) = 0);
 
     // Repeat the time step in the whole block
-    col witness time_step;
+    let time_step;
     unchanged_until(time_step, LAST);
 
     // Increment the address by 4 at every row but the latch.
     // Assumes the address is a multiple of 4 (I hope this is enforced somewhere else)
-    let increment_addr_in_block = constr |latch, low_addr, high_addr| {
+    let increment_addr_in_block = constr |latch, high_addr, low_addr| {
         // Tells if the low limb of the address is about to overflow:
         let low_overflow = new_bool();
         let low_diff_inv;
@@ -101,13 +101,14 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
         // Increment the high limb if lower overflowed:
         (1 - latch') * low_overflow * (input_addr_high + 1 - input_addr_high') = 0; // '
     };
-    
+
     // One-hot encoding of the row number (for the first <STATE_SIZE + OUTPUT_SIZE> rows)
     assert(STATE_SIZE + OUTPUT_SIZE < ROWS_PER_HASH, || "Not enough rows to do memory read / write");
     let CLK: col[STATE_SIZE + OUTPUT_SIZE] = array::new(STATE_SIZE + OUTPUT_SIZE, |i| |row| if row % ROWS_PER_HASH == i { 1 } else { 0 });
     let CLK_0 = CLK[0];
 
-    col witness word_low, word_high;
+    let word_high;
+    let word_low;
 
     // Do a memory read in each of the first STATE_SIZE rows, getting the two 16-bit limbs
     // that makes up for the input field element. 
@@ -118,10 +119,10 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     do_mload = used * sum(STATE_SIZE, |i| CLK[i]);
     let input_index = sum(STATE_SIZE, |i| expr(i) * CLK[i]);
 
-    let input_addr_low;
     let input_addr_high;
+    let input_addr_low;
     // Increment by 4 the address in every row but the latch
-    increment_addr_in_block(CLK_0, input_addr_low, input_addr_high);
+    increment_addr_in_block(CLK_0, input_addr_high, input_addr_low);
 
     link if do_mload ~> (word_high, word_low) = mem.mload(input_addr_high, input_addr_low, time_step);
 
@@ -131,19 +132,26 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
 
     // Do a memory write in each of the next OUTPUT_SIZE rows.
     // For output i, we write the two limbs of field element at address output_addr + 4 * i.
-    let do_mstore = used * sum(OUTPUT_SIZE, |i| CLK[i + STATE_SIZE]);
+
+    ///////////////////// DEBUG: do_mstore as a witness. ///////////////////////
+    let do_mstore;
+    /////////////////////////////////////////////////////////////////////////
+    do_mstore = used * sum(OUTPUT_SIZE, |i| CLK[i + STATE_SIZE]);
     let output_index = sum(OUTPUT_SIZE, |i| expr(i) * CLK[i + STATE_SIZE]);
 
-    let output_addr_low;
     let output_addr_high;
+    let output_addr_low;
 
     // Output address must be repeated until it is actually used:
-    unchanged_until(output_addr_low, do_mstore);
     unchanged_until(output_addr_high, do_mstore);
+    unchanged_until(output_addr_low, do_mstore);
 
     // Increment the output address by 4 at every row it is used but the first:
-    let output_addr_inc_latch = CLK[STATE_SIZE] + (1 - do_mload);
-    increment_addr_in_block(output_addr_inc_latch, output_addr_low, output_addr_high);
+    ///////////////////// DEBUG: output_addr_inc_latch as a witness. ///////////////////////
+    let output_addr_inc_latch;
+    /////////////////////////////////////////////////////////////////////////
+    output_addr_inc_latch = CLK[STATE_SIZE] + (1 - do_mstore);
+    increment_addr_in_block(output_addr_inc_latch, output_addr_high, output_addr_low);
 
     // TODO: This translates to two additional permutations. But because they go to the same machine
     // as the mloads above *and* never happen at the same time, they could actually be combined with
@@ -151,7 +159,10 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     link if do_mstore ~> mem.mstore(output_addr_high, output_addr_low, time_step + 1, word_high, word_low);
 
     // Make sure that in row i + STATE_SIZE, word_low and word_high correspond to output i
-    let current_output = array::sum(array::new(OUTPUT_SIZE, |i| CLK[i + STATE_SIZE] * output[i]));
+    ///////////////////// DEBUG: current_output as a witness. ///////////////////////
+    let current_output;
+    /////////////////////////////////////////////////////////////////////////
+    current_output = array::sum(array::new(OUTPUT_SIZE, |i| CLK[i + STATE_SIZE] * output[i]));
     link if do_mstore ~> (word_low, word_high) = split_bb.split(current_output);
 
 
@@ -185,20 +196,20 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     let C = [C_0, C_1, C_2, C_3, C_4, C_5, C_6, C_7, C_8, C_9, C_10, C_11, C_12, C_13, C_14, C_15];
 
     // State of the Poseidon permutation (8 rate elements and 4 capacity elements)
-    pol commit state[STATE_SIZE];
+    let state: col[STATE_SIZE];
 
     // The first OUTPUT_SIZE elements of the *final* state
     // (constrained to be constant within the block and equal to parts of the state in the last row)
-    pol commit output[OUTPUT_SIZE];
+    let output: col[OUTPUT_SIZE];
 
     // Add round constants
     // TODO should these be intermediate?
     let a = array::zip(state, C, |state, C| state + C);
 
     // Compute S-Boxes (x^7) (using a degree bound of 3)
-    col witness x3[STATE_SIZE];
+    let x3: col[STATE_SIZE];
     array::zip(x3, array::map(a, |a| a * a * a), |x3, expected| x3 = expected);
-    col witness x7[STATE_SIZE];
+    let x7: col[STATE_SIZE];
     array::zip(x7, array::zip(x3, a, |x3, a| x3 * x3 * a), |x7, expected| x7 = expected);
 
     // Apply S-Boxes on the first element and otherwise if it is a full round.
@@ -234,6 +245,7 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
 
     // Copy c to state in the next row
     array::zip(state, c, |state, c| (state' - c) * (1-LAST) = 0);
+    // '
 
     // In the last row, the first OUTPUT_SIZE elements of the state should equal output
     let output_state = array::sub_array(state, 0, OUTPUT_SIZE);
