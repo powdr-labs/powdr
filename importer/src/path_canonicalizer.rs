@@ -672,8 +672,8 @@ fn check_pil_statement_inside_module(
         PilStatement::EnumDeclaration(src_ref, enum_decl) => {
             check_enum_declaration(src_ref, &location, enum_decl, state)
         }
-        PilStatement::StructDeclaration(_, struct_decl) => {
-            check_struct_declaration(&location, struct_decl, state)
+        PilStatement::StructDeclaration(src_ref, struct_decl) => {
+            check_struct_declaration(src_ref, &location, struct_decl, state)
         }
         PilStatement::TraitImplementation(_, trait_impl) => {
             check_type_scheme(
@@ -720,7 +720,7 @@ fn check_machine(
     for param in &m.params.0 {
         let path: SymbolPath = param.ty.clone().unwrap();
         check_path(module_location.clone().join(path), state)
-            .map_err(|e| SourceRef::default().with_error(e))?
+            .map_err(|e| param.source.with_error(e))?
     }
     if let Some(degree) = &m.properties.degree {
         check_expression(

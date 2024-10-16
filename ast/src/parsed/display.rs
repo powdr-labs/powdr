@@ -1071,6 +1071,7 @@ mod tests {
     #[test]
     fn params() {
         let p = Param {
+            source: SourceRef::unknown(),
             name: "abc".into(),
             index: None,
             ty: "ty".parse().ok(),
@@ -1082,11 +1083,13 @@ mod tests {
         let in_out = Params {
             inputs: vec![
                 Param {
+                    source: SourceRef::unknown(),
                     name: "abc".into(),
                     index: Some(7u32.into()),
                     ty: "ty0".parse().ok(),
                 },
                 Param {
+                    source: SourceRef::unknown(),
                     name: "def".into(),
                     index: None,
                     ty: "ty1".parse().ok(),
@@ -1094,11 +1097,13 @@ mod tests {
             ],
             outputs: vec![
                 Param {
+                    source: SourceRef::unknown(),
                     name: "abc".into(),
                     index: None,
                     ty: "ty0".parse().ok(),
                 },
                 Param {
+                    source: SourceRef::unknown(),
                     name: "def".into(),
                     index: Some(2u32.into()),
                     ty: "ty1".parse().ok(),
@@ -1116,6 +1121,7 @@ mod tests {
         let out = Params {
             inputs: vec![],
             outputs: vec![Param {
+                source: SourceRef::unknown(),
                 name: "abc".into(),
                 index: None,
                 ty: "ty".parse().ok(),
@@ -1125,6 +1131,7 @@ mod tests {
         assert_eq!(out.prepend_space_if_non_empty(), " -> abc: ty");
         let _in = Params {
             inputs: vec![Param {
+                source: SourceRef::unknown(),
                 name: "abc".into(),
                 index: None,
                 ty: "ty".parse().ok(),

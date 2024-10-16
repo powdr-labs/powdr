@@ -341,7 +341,7 @@ ParamList: Vec<Param> = {
 }
 
 Param: Param = {
-    <name: Identifier> <index:("[" <Number> "]")?> <ty:(":" <SymbolPath>)?> => Param{<>}
+    <start:@L> <name: Identifier> <index:("[" <Number> "]")?> <ty:(":" <SymbolPath>)?> <end:@R> => Param{source: ctx.source_ref(start, end), name, index, ty},
 }
 
 FunctionDeclaration: MachineStatement = {
