@@ -609,7 +609,7 @@ impl AllChildren<Expression> for PILAnalyzer {
                 .filter_map(|(_, def)| def.as_ref())
                 .flat_map(|def| def.all_children())
                 .chain(
-                    self.implementations
+                    self.trait_impls
                         .values()
                         .flat_map(|impls| impls.iter())
                         .flat_map(|impl_| impl_.all_children()),
