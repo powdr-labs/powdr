@@ -4,7 +4,7 @@ use std::convert::int;
 use std::check::require_field_bits;
 
 /// Rotate on single byte input using an exhaustive table, returning two 16-bit values as result.
-/// TODO this way, we cannot prove anything that rotates by more than 31 bits.
+/// We can rotate by at most 31 bits
 machine ByteRotate with
     latch: latch,
     operation_id: operation_id,

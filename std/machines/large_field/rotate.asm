@@ -14,9 +14,6 @@ machine ByteRotate with
 
     col fixed latch = [1]*;
     col fixed operation_id = [0]*;
-
-    require_field_bits(16, || "The field modulo should be at least 2^16 - 1 to work in the rotate machine.");
-
     let bit_counts = [256, 32, 4, 2];
     let min_degree = std::array::product(bit_counts);
     std::check::assert(std::prover::min_degree() >= std::array::product(bit_counts), || "The rotate machine needs at least 65536 rows to work.");
