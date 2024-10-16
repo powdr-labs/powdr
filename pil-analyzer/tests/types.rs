@@ -734,3 +734,22 @@ fn prover_functions() {
     ";
     type_check(input, &[("a", "", "int"), ("b", "", "()[]")]);
 }
+
+#[test]
+fn typed_literals() {
+    let input = "
+        let a = -1_int;
+        let b = -1_fe;
+        let c = -0x78_int;
+        let d = [1, 0_int, 2];
+        ";
+    type_check(
+        input,
+        &[
+            ("a", "", "int"),
+            ("b", "", "fe"),
+            ("c", "", "int"),
+            ("d", "", "int[]"),
+        ],
+    );
+}
