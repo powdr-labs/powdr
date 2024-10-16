@@ -190,14 +190,8 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 self.process_block_expression(statements, expr, src)
             }
             PExpression::FreeInput(_, _) => panic!(),
-            PExpression::StructExpression(
-                src,
-                StructExpression {
-                    name: reference,
-                    fields,
-                },
-            ) => {
-                let type_args = reference
+            PExpression::StructExpression(src, StructExpression { name, fields }) => {
+                let type_args = name
                     .type_args
                     .map(|args| args.into_iter().map(|t| self.process_type(t)).collect());
 
@@ -205,7 +199,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                     src,
                     StructExpression {
                         name: Reference::Poly(PolynomialReference {
-                            name: self.driver.resolve_type_ref(&reference.path),
+                            name: self.driver.resolve_type_ref(&name.path),
                             type_args,
                         }),
                         fields: fields
