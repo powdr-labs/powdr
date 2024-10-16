@@ -17,12 +17,11 @@ mod bootloader_32;
 mod memory_merkle_tree;
 
 pub use bootloader::BootloaderImpl;
-use bootloader::{default_input, PAGE_SIZE_BYTES_LOG, PC_INDEX, REGISTER_NAMES};
+use bootloader::{BootloaderInputs, PAGE_SIZE_BYTES_LOG, REGISTER_NAMES};
 use memory_merkle_tree::MerkleTree;
 
 use crate::continuations::bootloader::{
-    default_register_values, shutdown_routine_upper_bound, BOOTLOADER_INPUTS_PER_PAGE, DEFAULT_PC,
-    MEMORY_HASH_START_INDEX, PAGE_INPUTS_OFFSET, WORDS_PER_PAGE,
+    default_register_values, shutdown_routine_upper_bound, DEFAULT_PC,
 };
 
 use crate::code_gen::Register;
@@ -114,6 +113,7 @@ where
 
                 // get the length of the main machine
                 // quite hacky, is there a better way?
+                // TODO(leandro): use dry_run_result.trace_len here???
                 let length = pipeline
                     .optimized_pil()
                     .unwrap()
@@ -253,7 +253,7 @@ pub fn rust_continuations_dry_run<B: BootloaderImpl>(
             // constraints, but the executor does the right thing (read zero if the memory
             // cell has never been accessed). We can't pass the accessed pages here, because
             // we only know them after the full trace has been generated.
-            &default_input::<B>(&[]),
+            &BootloaderInputs::<B>::default_for(&[]).0,
             usize::MAX,
             powdr_riscv_executor::ExecMode::Trace,
             profiler_opt,
@@ -334,7 +334,7 @@ pub fn rust_continuations_dry_run<B: BootloaderImpl>(
         // - The updated page hashes are equal to the current page hashes.
         // - The updated root hash is equal to the current root hash.
         // After simulating the chunk execution, we'll replace those values with the actual values.
-        let mut bootloader_inputs = bootloader::create_input(
+        let mut bootloader_inputs = BootloaderInputs::new(
             register_values,
             &merkle_tree,
             accessed_pages.iter().cloned(),
@@ -343,9 +343,7 @@ pub fn rust_continuations_dry_run<B: BootloaderImpl>(
         log::info!("Bootloader inputs length: {}", bootloader_inputs.len());
         log::info!(
             "Initial memory root hash: {}",
-            render_memory_hash(
-                &bootloader_inputs[MEMORY_HASH_START_INDEX..MEMORY_HASH_START_INDEX + 8]
-            )
+            render_memory_hash(bootloader_inputs.initial_memory_hash())
         );
 
         log::info!("Simulating chunk execution...");
@@ -355,7 +353,7 @@ pub fn rust_continuations_dry_run<B: BootloaderImpl>(
                     &program,
                     MemoryState::new(),
                     pipeline.data_callback().unwrap(),
-                    &bootloader_inputs,
+                    &bootloader_inputs.0,
                     num_rows,
                     powdr_riscv_executor::ExecMode::Trace,
                     // profiling was done when full trace was generated
@@ -375,11 +373,12 @@ pub fn rust_continuations_dry_run<B: BootloaderImpl>(
             let (_, _, proof) = merkle_tree.get(page_index);
 
             // Replace the proof
-            let proof_start_index =
-                PAGE_INPUTS_OFFSET + BOOTLOADER_INPUTS_PER_PAGE * i + 1 + WORDS_PER_PAGE + 8;
             for (j, sibling) in proof.into_iter().enumerate() {
-                bootloader_inputs[proof_start_index + j * 8..proof_start_index + j * 8 + 8]
-                    .copy_from_slice(&B::iter_hash_as_fe(sibling).collect::<Vec<_>>());
+                bootloader_inputs.update_proof(
+                    i,
+                    j,
+                    &B::iter_hash_as_fe(sibling).collect::<Vec<_>>(),
+                );
             }
 
             // Update one child of the Merkle tree
@@ -395,16 +394,14 @@ pub fn rust_continuations_dry_run<B: BootloaderImpl>(
             // Assert the proof hasn't changed (because we didn't update any page except the current).
             for (j, sibling) in proof.into_iter().enumerate() {
                 assert_eq!(
-                    &bootloader_inputs[proof_start_index + j * 8..proof_start_index + j * 8 + 8],
+                    bootloader_inputs.proof(i, j),
                     B::iter_hash_as_fe(sibling).collect::<Vec<_>>()
                 );
             }
 
             // Replace the page hash
-            let updated_page_hash_index =
-                PAGE_INPUTS_OFFSET + BOOTLOADER_INPUTS_PER_PAGE * i + 1 + WORDS_PER_PAGE;
-            bootloader_inputs[updated_page_hash_index..updated_page_hash_index + 8]
-                .copy_from_slice(&B::iter_hash_as_fe(page_hash).collect::<Vec<_>>());
+            bootloader_inputs
+                .update_page_hash(i, &B::iter_hash_as_fe(page_hash).collect::<Vec<_>>());
         }
 
         // Go over all registers except the PC
@@ -418,33 +415,28 @@ pub fn rust_continuations_dry_run<B: BootloaderImpl>(
             })
             .collect::<Vec<_>>();
 
+        // TODO: PC needs to be split for small fields!
         register_values.push(*chunk_trace["main::pc"].last().unwrap());
 
         // Replace final register values of the current chunk
-        bootloader_inputs[REGISTER_NAMES.len()..2 * REGISTER_NAMES.len()]
-            .copy_from_slice(&register_values);
+        bootloader_inputs.update_final_registers(&register_values);
 
         // Replace the updated root hash
-        let updated_root_hash_index = MEMORY_HASH_START_INDEX + 8;
-        bootloader_inputs[updated_root_hash_index..updated_root_hash_index + 8]
-            .copy_from_slice(&B::iter_hash_as_fe(merkle_tree.root_hash()).collect::<Vec<_>>());
+        bootloader_inputs
+            .update_final_root(&B::iter_hash_as_fe(merkle_tree.root_hash()).collect::<Vec<_>>());
 
         log::info!(
             "Initial memory root hash: {}",
-            render_memory_hash(
-                &bootloader_inputs[MEMORY_HASH_START_INDEX..MEMORY_HASH_START_INDEX + 8]
-            )
+            render_memory_hash(bootloader_inputs.initial_memory_hash())
         );
         log::info!(
             "Final memory root hash: {}",
-            render_memory_hash(
-                &bootloader_inputs[MEMORY_HASH_START_INDEX + 8..MEMORY_HASH_START_INDEX + 16]
-            )
+            render_memory_hash(bootloader_inputs.initial_memory_hash())
         );
 
         let actual_num_rows = chunk_trace["main::pc"].len();
-        let bootloader_pc = bootloader_inputs[PC_INDEX];
-        bootloader_inputs_and_num_rows.push((bootloader_inputs, actual_num_rows as u64));
+        let bootloader_pc = bootloader_inputs.pc();
+        bootloader_inputs_and_num_rows.push((bootloader_inputs.0, actual_num_rows as u64));
 
         log::info!("Chunk trace length: {}", chunk_trace["main::pc"].len());
         log::info!("Validating chunk...");
