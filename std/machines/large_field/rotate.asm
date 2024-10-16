@@ -4,7 +4,7 @@ use std::convert::int;
 use std::check::require_field_bits;
 
 /// Rotate on single byte input using an exhaustive table, returning 32-bit value as result.
-/// TODO this way, we cannot prove anything that rotates by more than 31 bits.
+/// We can rotate by at most 31 bits
 machine ByteRotate with
     latch: latch,
     operation_id: operation_id,
@@ -17,6 +17,7 @@ machine ByteRotate with
     let bit_counts = [256, 32, 4, 2];
     let min_degree = std::array::product(bit_counts);
     std::check::assert(std::prover::min_degree() >= std::array::product(bit_counts), || "The rotate machine needs at least 65536 rows to work.");
+    require_field_bits(32, || "Rotate requires a field that fits any 32-Bit value.");
     
     let out_byte_offset = cross_product(bit_counts);
     let a: int -> int = out_byte_offset[0];
