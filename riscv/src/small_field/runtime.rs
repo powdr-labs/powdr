@@ -5,6 +5,7 @@ use powdr_riscv_syscalls::Syscall;
 use itertools::Itertools;
 
 use crate::code_gen::Register;
+use crate::small_field::code_gen::{u32_high, u32_low};
 
 use crate::runtime::{
     parse_function_statement, parse_instruction_declaration, SubMachine, SyscallImpl,
@@ -331,8 +332,8 @@ impl Runtime {
         .into_iter();
 
         let jump_table = self.syscalls.keys().map(|s| {
-            let s32_h = ((*s as u32) >> 16) as u16;
-            let s32_l = ((*s as u32) & 0xffff) as u16;
+            let s32_h = u32_high(*s as u32);
+            let s32_l = u32_low(*s as u32);
             format!("branch_if_diff_equal 5, 0, {s32_h}, {s32_l}, __ecall_handler_{s};",)
         });
 

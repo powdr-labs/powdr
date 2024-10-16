@@ -96,21 +96,21 @@ fn bn254_sanity_check() {
 #[ignore = "Too slow"]
 fn trivial() {
     let case = "trivial";
-    verify_riscv_crate_bb_gl(case, Default::default())
+    verify_riscv_crate(case, Default::default())
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn halt() {
     let case = "halt";
-    verify_riscv_crate_bb_gl(case, Default::default())
+    verify_riscv_crate(case, Default::default())
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn zero_with_values() {
     let case = "zero_with_values";
-    verify_riscv_crate_bb_gl(case, Default::default())
+    verify_riscv_crate(case, Default::default())
 }
 
 #[test]
@@ -125,14 +125,14 @@ fn runtime_poseidon_gl() {
 #[ignore = "Too slow"]
 fn sum() {
     let case = "sum";
-    verify_riscv_crate_bb_gl(case, &[16u64, 4, 1, 2, 8, 5]);
+    verify_riscv_crate(case, &[16u64, 4, 1, 2, 8, 5]);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn byte_access() {
     let case = "byte_access";
-    verify_riscv_crate_bb_gl(case, &[0u64, 104, 707]);
+    verify_riscv_crate(case, &[0u64, 104, 707]);
 }
 
 #[test]
@@ -161,14 +161,14 @@ fn double_word() {
 #[ignore = "Too slow"]
 fn memfuncs() {
     let case = "memfuncs";
-    verify_riscv_crate_bb_gl(case, Default::default());
+    verify_riscv_crate(case, Default::default());
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn keccak() {
     let case = "keccak";
-    verify_riscv_crate_bb_gl(case, Default::default());
+    verify_riscv_crate(case, Default::default());
 }
 
 #[cfg(feature = "estark-polygon")]
@@ -176,35 +176,35 @@ fn keccak() {
 #[ignore = "Too slow"]
 fn vec_median_estark_polygon() {
     let case = "vec_median";
-    verify_riscv_crate_bb_gl(case, &[5u64, 11, 15, 75, 6, 5, 1, 4, 7, 3, 2, 9, 2]);
+    verify_riscv_crate(case, &[5u64, 11, 15, 75, 6, 5, 1, 4, 7, 3, 2, 9, 2]);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn vec_median() {
     let case = "vec_median";
-    verify_riscv_crate_bb_gl(case, &[5, 11, 15, 75, 6, 5, 1, 4, 7, 3, 2, 9, 2]);
+    verify_riscv_crate(case, &[5, 11, 15, 75, 6, 5, 1, 4, 7, 3, 2, 9, 2]);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn password() {
     let case = "password_checker";
-    verify_riscv_crate_bb_gl(case, Default::default());
+    verify_riscv_crate(case, Default::default());
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn std_hello_world() {
     let case = "std_hello_world";
-    verify_riscv_crate_bb_gl(case, Default::default());
+    verify_riscv_crate(case, Default::default());
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn function_pointer() {
     let case = "function_pointer";
-    verify_riscv_crate_bb_gl(case, &[2734, 735, 1999]);
+    verify_riscv_crate(case, &[2734, 735, 1999]);
 }
 
 #[test]
@@ -357,7 +357,7 @@ fn dispatch_table_static_relocation() {
 #[should_panic(expected = "reached a fail instruction")]
 fn print() {
     let case = "print";
-    verify_riscv_crate_bb_gl(case, &[0]);
+    verify_riscv_crate(case, &[0]);
 }
 
 #[test]
@@ -511,7 +511,7 @@ fn many_chunks_memory() {
     test_continuations("many_chunks_memory")
 }
 
-fn verify_riscv_crate_bb_gl(case: &str, inputs: &[u64]) {
+fn verify_riscv_crate(case: &str, inputs: &[u64]) {
     verify_riscv_crate_bb(case, inputs.iter().map(|&x| x.into()).collect());
     verify_riscv_crate_gl(case, inputs.iter().map(|&x| x.into()).collect());
 }

@@ -16,20 +16,16 @@ use crate::CompilerOptions;
 use crate::small_field::runtime::Runtime;
 
 /// Translates a RISC-V program to POWDR ASM
-/// with constraints that work for a field >16 bits.
+/// with constraints that work for a field >24 bits.
+/// Note that specific submachines have different field size requirements,
+/// and the 24-bit requirement is for this machine only.
 ///
 /// Will call each of the methods in the `RiscVProgram` just once.
 pub fn translate_program(program: impl RiscVProgram, options: CompilerOptions) -> String {
     let runtime = Runtime::new(options.libs, options.continuations);
 
-    // Do this in a separate function to avoid most of the code being generic on F.
-    // TODO I think this isn't needed anymore
-    let (initial_mem, instructions) = translate_program_impl(
-        program,
-        options.field.clone(),
-        &runtime,
-        options.continuations,
-    );
+    let (initial_mem, instructions) =
+        translate_program_impl(program, options.field, &runtime, options.continuations);
 
     riscv_machine(
         &runtime,
@@ -294,10 +290,10 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
     // =============== Register memory =======================
 "# + "std::machines::small_field::memory::Memory regs(bit12, byte2);"
         + r#"
-    // Get the value in register Y.
+    // Get the value in register YL.
     instr get_reg YL -> XH, XL link ~> (XH, XL) = regs.mload(0, YL, STEP);
 
-    // Set the value in register X to the value in register Y.
+    // Set the value in register XL to the value (YH, YL).
     instr set_reg XL, YH, YL -> link ~> regs.mstore(0, XL, STEP, YH, YL);
 
     // We still need these registers prover inputs.
@@ -344,7 +340,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
 
     // ============== control-flow instructions ==============
 
-    // Load the value of label `l` into register X.
+    // Load the value of label `l` into register XL.
     // We restrict the address to 24 bits to avoid overflows.
     instr load_label XL, l: label
         link ~> regs.mstore(0, XL, STEP, tmp1_h, tmp1_l)
@@ -353,7 +349,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
         tmp1_h * 2**16 + tmp1_l = l
     }
 
-    // Jump to `l` and store the return program counter in register W.
+    // Jump to `l` and store the return program counter in register WL.
     // We restrict the address to 24 bits to avoid overflows.
     instr jump l: label, WL
         link ~> regs.mstore(0, WL, STEP, tmp1_h, tmp1_l)
@@ -363,7 +359,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
         pc' = l
     }
     
-    // Jump to the address in register X and store the return program counter in register W.
+    // Jump to the address in register XL and store the return program counter in register WL.
     instr jump_dyn XL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
         link ~> regs.mstore(0, WL, STEP, tmp2_h, tmp2_l)
@@ -378,7 +374,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
         pc + 1 = tmp2_h * 2**16 + tmp2_l
     }
 
-    // Jump to `l` if val(X) != val(Y) is nonzero, where X and Y are register ids.
+    // Jump to `l` if val(XL) != val(YL) is nonzero, where XL and YL are register ids.
     instr branch_if_not_equal XL, YL, l: label
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
@@ -411,19 +407,13 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
         // 32bits tmp1 = tmp3_h * 2**24 + tmp3_l * 2**16 + tmp4_h * 2**8 + tmp4_l
         // 32bits tmp2 = tmp5_h * 2**24 + tmp5_l * 2**16 + tmp6_h * 2**8 + tmp6_l
 
-        // The constraint below leads to a plonky3 translation error:
-        // thread '<unnamed>' panicked at plonky3/src/circuit_builder.rs:259:25:
-        // internal error: entered unreachable code: exponentiations should have been evaluated
-        // So we inline the squares.
-
         // This fits in 19 bits.
-        //XX = (tmp3_h - tmp5_h)**2 + (tmp3_l - tmp5_l)**2 + (tmp4_h - tmp6_h)**2 + (tmp4_l - tmp6_l)**2,
-        XX = (tmp3_h - tmp5_h)*(tmp3_h - tmp5_h) + (tmp3_l - tmp5_l)*(tmp3_l - tmp5_l) + (tmp4_h - tmp6_h)*(tmp4_h - tmp6_h) + (tmp4_l - tmp6_l)*(tmp4_l - tmp6_l),
+        XX = (tmp3_h - tmp5_h)**2 + (tmp3_l - tmp5_l)**2 + (tmp4_h - tmp6_h)**2 + (tmp4_l - tmp6_l)**2,
 
         pc' = (1 - XXIsZero) * l + XXIsZero * (pc + 1)
     }
 
-    // Jump to `l` if (val(X) - val(Y)) == Z, where X and Y are register ids and Z is a number.
+    // Jump to `l` if (val(XL) - val(YL)) == (ZH, ZL), where XL and YL are register ids and (ZH, ZL) is a number.
     instr branch_if_diff_equal XL, YL, ZH, ZL, l: label
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
@@ -435,7 +425,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
         pc' = XXIsZero * l + (1 - XXIsZero) * (pc + 1)
     }
 
-    // Skips W instructions if val(X) - val(Y) + Z is zero, where X and Y are register ids and Z is a
+    // Skips WL instructions if val(XL) - val(YL) + (ZH, ZL) is zero, where XL and YL are register ids and (ZH, ZL) is a
     // constant offset.
     instr skip_if_equal XL, YL, ZH, ZL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
@@ -448,7 +438,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
         pc' = pc + 1 + (XXIsZero * WL)
     }
 
-    // Branches to `l` if val(X) >= val(Y) <=> not(val(X) < val(Y)).
+    // Branches to `l` if val(XL) >= val(YL) <=> not(val(XL) < val(YL)).
     instr branch_if_greater_or_equal XL, YL, l: label
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
@@ -457,7 +447,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
         pc' = (1 - wrap_bit) * l + wrap_bit * (pc + 1)
     }
 
-    // Branches to `l` if val(X) >= val(Y) <=> not(val(X) < val(Y)).
+    // Branches to `l` if val(XL) >= val(YL) <=> not(val(XL) < val(YL)).
     instr branch_if_greater_or_equal_signed XL, YL, l: label
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
@@ -477,24 +467,27 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
         tmp4_l = (1 - wrap_bit) * (1 - wrap_bit_2),
         tmp4_h = wrap_bit * wrap_bit_2,
         tmp5_l = (1 - wrap_bit) * wrap_bit_2,
+        // The line below is left as a comment for clarity, but it's always
+        // multiplied by 0 in the block below.
         //... = wrap_bit * (1 - wrap_bit_2),
 
         X_b3 = tmp4_l * (1 - tmp5_h) +
                tmp4_h * (1 - tmp5_h) +
-               tmp5_l, /* * 1 */
-               /* ...* 0, */
+               tmp5_l, /* * 1 + */
+               // trivial cases left as comments clarity
+               /* ... * 0, */
 
         pc' = X_b3 * l + (1 - X_b3) * (pc + 1)
     }
 
-    // Stores 1 in register W if val(X) >= val(Y) <=> not(val(X) < val(Y)).
+    // Stores 1 in register WL if val(XL) >= val(YL) <=> not(val(XL) < val(YL)).
     instr is_greater_or_equal XL, YL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
         link ~> wrap_bit = add_sub.gt(tmp1_h, tmp1_l, tmp2_h, tmp2_l)
         link ~> regs.mstore(0, WL, STEP + 2, 0, 1 - wrap_bit);
 
-    // Branches to `l` if val(X) >= val(Y) <=> not(val(X) < val(Y)).
+    // Branches to `l` if val(XL) >= val(YL) <=> not(val(XL) < val(YL)).
     instr is_greater_or_equal_signed XL, YL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
@@ -522,7 +515,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
                /* tmp5_h * 0, */
     }
 
-    // Stores val(X) * Z + W in register Y.
+    // Stores val(XL) * (ZH, ZL) + (WH, WL) in register YL.
     instr affine XL, YL, ZH, ZL, WH, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
         link ~> (tmp3_h, tmp3_l, tmp2_h, tmp2_l) = arith_mul.mul(tmp1_h, tmp1_l, 0, 0, ZH, ZL)
@@ -532,8 +525,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
 
     // ================= wrapping instructions =================
 
-    // Computes V = val(X) + val(Y) + Z, wraps it in 32 bits, and stores the result in register W.
-    // Requires 0 <= V < 2**33.
+    // Computes V = val(XL) + val(YL) + (ZH, ZL) in 32-bit machine arithmetic, and stores the result in register WL.
     instr add_wrap XL, YL, ZH, ZL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
@@ -541,8 +533,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
         link ~> (tmp4_h, tmp4_l) = add_sub.add(tmp1_h, tmp1_l, tmp3_h, tmp3_l)
         link ~> regs.mstore(0, WL, STEP + 2, tmp4_h, tmp4_l);
 
-    // Computes V = val(X) - val(Y) + Z, wraps it in 32 bits, and stores the result in register W.
-    // Requires -2**32 <= V < 2**32.
+    // Computes V = val(XL) - val(YL) + (ZH, ZL) in 32-bit machine arithmetic, and stores the result in register WL.
     instr sub_wrap_with_offset XL, YL, ZH, ZL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
@@ -552,7 +543,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
 
     // ================= logical instructions =================
 
-    // Stores 1 in register W if the value in register X is zero,
+    // Stores 1 in register WL if the value in register XL is zero,
     // otherwise stores 0.
     instr is_equal_zero XL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
@@ -562,7 +553,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
         XX = (tmp1_h + tmp1_l)
     }
 
-    // Stores 1 in register W if val(X) == val(Y), otherwise stores 0.
+    // Stores 1 in register WL if val(XL) == val(YL), otherwise stores 0.
     instr is_not_equal XL, YL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP)
@@ -591,7 +582,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
     std::utils::force_bool(wrap_bit);
     std::utils::force_bool(wrap_bit_2);
 
-    // Sign extends the value in register X and stores it in register Y.
+    // Sign extends the value in register XL and stores it in register YL.
     // Input is a 32 bit unsigned number. We check bit 7 and set all higher bits to that value.
     instr sign_extend_byte XL, YL
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
@@ -605,7 +596,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
         tmp3_l = tmp2_l + wrap_bit * 0xff80
     }
 
-    // Sign extends the value in register X and stores it in register Y.
+    // Sign extends the value in register XL and stores it in register YL.
     // Input is a 32 bit unsigned number. We check bit 15 and set all higher bits to that value.
     instr sign_extend_16_bits XL, YL
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
@@ -627,7 +618,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
       tmp1_h = 1
     }
 
-    // Computes Q = val(Y) / val(X) and R = val(Y) % val(X) and stores them in registers Z and W.
+    // Computes Q = val(YL) / val(XL) and R = val(YL) % val(XL) and stores them in registers ZL and WL.
     instr divremu YL, XL, ZL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, YL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(0, XL, STEP + 1)
@@ -647,10 +638,10 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
         // remainder >= 0:
         (1 - XXIsZero) * wrap_bit_2 = 0, 
 
-        // remainder < divisor, conditioned to val(X) not being 0:
+        // remainder < divisor, conditioned to val(XL) not being 0:
         (1 - XXIsZero) * (wrap_bit - 1) = 0,
 
-        // in case X is zero, we set quotient according to RISC-V specification
+        // in case val(XL) is zero, we set quotient according to RISC-V specification
         XXIsZero * 0xffff + (1 - XXIsZero) * tmp4_h = tmp6_h,
         XXIsZero * 0xffff + (1 - XXIsZero) * tmp4_l = tmp6_l
     }
@@ -659,8 +650,8 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
 
 fn mul_instruction() -> &'static str {
     r#"
-    // Computes V = val(X) * val(Y) and
-    // stores the lower 32 bits in register Z and the upper 32 bits in register W.
+    // Computes V = val(XL) * val(YL) and
+    // stores the lower 32 bits in register ZL and the upper 32 bits in register WL.
     instr mul XL, YL, ZL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
         link ~> (tmp2_h, tmp2_l) = regs.mload(0, YL, STEP + 1)
@@ -687,8 +678,8 @@ fn memory(with_bootloader: bool) -> String {
 
     // ============== memory instructions ==============
 
-    /// Loads one word from an address V = val(X) + Y and rounds it down to the next multiple of 4.
-    /// Writes the loaded word and the remainder of the division by 4 to registers Z and W,
+    /// Loads one word from an address V = val(XL) + YL and rounds it down to the next multiple of 4.
+    /// Writes the loaded word and the remainder of the division by 4 to registers ZL and WL,
     /// respectively.
     instr mload XL, YH, YL, ZL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
@@ -705,8 +696,7 @@ fn memory(with_bootloader: bool) -> String {
         tmp2_l = X_b2 * 0x100 + X_b1 * 4 + tmp4_l
     }
 
-    // Stores val(W) at address (V = val(X) - val(Y) + Z) % 2**32.
-    // V can be between 0 and 2**33.
+    // Stores val(WL) at address (V = val(XL) - val(YL) + (ZH, ZL)) % 2**32.
     // V should be a multiple of 4, but this instruction does not enforce it.
     instr mstore XL, YL, ZH, ZL, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
@@ -740,7 +730,7 @@ pub fn push_register(name: &str) -> Vec<String> {
     let reg = Register::from(name);
     vec![
         // x2 + x0 - 4 => x2
-        format!("add_wrap 2, 0, 0xffff, 0xfffc, 2;",),
+        format!("add_wrap 2, 0, {}, {}, 2;", i32_high(-4), i32_low(-4)),
         format!("mstore 2, 0, 0, 0, {};", reg.addr()),
     ]
 }
@@ -759,11 +749,11 @@ pub fn pop_register(name: &str) -> Vec<String> {
     ]
 }
 
-fn u32_high(x: u32) -> u16 {
+pub fn u32_high(x: u32) -> u16 {
     (x >> 16) as u16
 }
 
-fn u32_low(x: u32) -> u16 {
+pub fn u32_low(x: u32) -> u16 {
     (x & 0xffff) as u16
 }
 
@@ -799,7 +789,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
                         "set_reg {}, {}, {};",
                         rd.addr(),
                         u32_high(imm),
-                        u32_low(imm)
+                        u32_low(imm),
                     ),
                 )
             }
@@ -907,9 +897,7 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             only_if_no_write_to_zero_vec(
                 rd,
                 vec![
-                    //format!("to_signed {}, {};", r1.addr(), tmp1.addr()),
                     format!("affine {}, {}, 0, 1, 0, 0;", r1.addr(), tmp1.addr()),
-                    //format!("to_signed {}, {};", r2.addr(), tmp2.addr()),
                     format!("affine {}, {}, 0, 1, 0, 0;", r2.addr(), tmp2.addr()),
                     // tmp3 is 1 if tmp1 is non-negative
                     format!(
@@ -974,7 +962,6 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             only_if_no_write_to_zero_vec(
                 rd,
                 vec![
-                    //format!("to_signed {}, {};", r1.addr(), tmp1.addr()),
                     format!("affine {}, {}, 0, 1, 0, 0;", r1.addr(), tmp1.addr()),
                     // tmp2 is 1 if tmp1 is non-negative
                     format!(
@@ -1165,7 +1152,6 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             only_if_no_write_to_zero_vec(
                 rd,
                 vec![
-                    //format!("to_signed {}, {};", rs.addr(), tmp1.addr()),
                     format!("affine {}, {}, 0, 1, 0, 0;", rs.addr(), tmp1.addr()),
                     format!(
                         "is_greater_or_equal_signed {}, 0, {};",
@@ -1207,7 +1193,6 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             only_if_no_write_to_zero_vec(
                 rd,
                 vec![
-                    //format!("to_signed {}, {};", rs.addr(), tmp1.addr()),
                     format!(
                         "set_reg {}, {}, {};",
                         tmp1.addr(),
@@ -1235,8 +1220,6 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             only_if_no_write_to_zero_vec(
                 rd,
                 vec![
-                    //format!("to_signed {}, {};", r1.addr(), tmp1.addr()),
-                    //format!("to_signed {}, {};", r2.addr(), tmp2.addr()),
                     format!(
                         "is_greater_or_equal_signed {}, {}, {};",
                         r1.addr(),
