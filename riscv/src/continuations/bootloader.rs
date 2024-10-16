@@ -53,13 +53,15 @@ pub trait BootloaderImpl {
     fn iter_word_as_fe(w: u32) -> impl Iterator<Item = Self::Fe>;
 }
 
+pub type BootloaderInputs<F> = Vec<F>;
+
 /// Creates the bootloader input, placing elements in the layout expected by the
 /// machine bootloader.
 pub fn create_input<B: BootloaderImpl, I: ExactSizeIterator<Item = u32>>(
     register_values: Vec<B::Fe>,
     merkle_tree: &MerkleTree<B>,
     accessed_pages: I,
-) -> Vec<B::Fe> {
+) -> BootloaderInputs<B::Fe> {
     // initial register values
     let mut inputs = register_values;
     // final register values
@@ -201,9 +203,11 @@ pub const DEFAULT_PC: u64 = 3;
 /// Analogous to the `DEFAULT_PC`, this well-known PC jumps to the shutdown routine.
 pub const SHUTDOWN_START: u64 = 4;
 
-pub fn default_register_values<F: FieldElement>() -> Vec<F> {
-    let mut register_values = vec![0.into(); REGISTER_NAMES.len()];
-    register_values[PC_INDEX] = DEFAULT_PC.into();
+pub fn default_register_values<B: BootloaderImpl>() -> Vec<B::Fe> {
+    let mut register_values = vec![0.into(); REGISTER_NAMES.len() * B::FE_PER_WORD];
+    // default pc value fits in least significant field element of the register
+    assert!(B::FE_PER_WORD <= 2 && DEFAULT_PC <= u16::MAX as u64);
+    register_values[(PC_INDEX + 1) * B::FE_PER_WORD - 1] = DEFAULT_PC.into();
     register_values
 }
 
@@ -211,9 +215,9 @@ pub fn default_register_values<F: FieldElement>() -> Vec<F> {
 /// - No pages are initialized
 /// - All registers are set to 0 (including the PC, which causes the bootloader to do nothing)
 /// - The state at the end of the execution is the same as the beginning
-pub fn default_input<B: BootloaderImpl>(accessed_pages: &[u64]) -> Vec<B::Fe> {
+pub fn default_input<B: BootloaderImpl>(accessed_pages: &[u64]) -> BootloaderInputs<B::Fe> {
     // Set all registers and the number of pages to zero
-    let register_values = default_register_values();
+    let register_values = default_register_values::<B>();
     let merkle_tree = MerkleTree::<B>::new();
 
     // TODO: We don't have a way to know the memory state *after* the execution.

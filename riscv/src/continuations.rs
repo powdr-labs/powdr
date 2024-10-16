@@ -224,7 +224,7 @@ pub fn rust_continuations_dry_run<B: BootloaderImpl>(
     let mut bootloader_inputs_and_num_rows = vec![];
 
     // Initial register values for the current chunk.
-    let mut register_values = default_register_values();
+    let mut register_values = default_register_values::<B>();
 
     let program = pipeline.compute_analyzed_asm().unwrap().clone();
     let main_machine = program.get_machine(&parse_absolute_path("::Main")).unwrap();
@@ -410,7 +410,7 @@ pub fn rust_continuations_dry_run<B: BootloaderImpl>(
         // Go over all registers except the PC
         let register_iter = REGISTER_NAMES.iter().take(REGISTER_NAMES.len() - 1);
         register_values = register_iter
-            // we flat_map here because each register value is given as Vec<F>
+            // we `flat_map` here because each register value is given as Vec<F> (e.g., BabyBear uses two elements)
             .flat_map(|reg| {
                 let reg = reg.strip_prefix("main.").unwrap();
                 let id = Register::from(reg).addr();
