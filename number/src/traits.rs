@@ -62,7 +62,7 @@ pub trait LargeInt:
     fn from_hex(s: &str) -> Self;
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum KnownField {
     BabyBearField,
     Mersenne31Field,
