@@ -6,6 +6,7 @@ use powdr_number::KnownField;
 use crate::CompilerOptions;
 
 use crate::large_field;
+use crate::small_field;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Register {
@@ -108,7 +109,9 @@ pub trait RiscVProgram {
 /// Will call each of the methods in the `RiscVProgram` just once.
 pub fn translate_program(program: impl RiscVProgram, options: CompilerOptions) -> String {
     match options.field {
-        KnownField::BabyBearField | KnownField::Mersenne31Field => todo!(),
+        KnownField::BabyBearField | KnownField::Mersenne31Field => {
+            small_field::code_gen::translate_program(program, options)
+        }
         KnownField::GoldilocksField | KnownField::Bn254Field => {
             large_field::code_gen::translate_program(program, options)
         }

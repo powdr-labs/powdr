@@ -21,12 +21,8 @@ use crate::large_field::runtime::Runtime;
 pub fn translate_program(program: impl RiscVProgram, options: CompilerOptions) -> String {
     let runtime = Runtime::new(options.libs, options.continuations);
     // Do this in a separate function to avoid most of the code being generic on F.
-    let (initial_mem, instructions) = translate_program_impl(
-        program,
-        options.field.clone(),
-        &runtime,
-        options.continuations,
-    );
+    let (initial_mem, instructions) =
+        translate_program_impl(program, options.field, &runtime, options.continuations);
 
     riscv_machine(
         &runtime,
@@ -229,7 +225,7 @@ let initial_memory: (fe, fe)[] = [
 
 fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> String {
     let bootloader_preamble_if_included = if with_bootloader {
-        bootloader_preamble(field.clone())
+        bootloader_preamble(field)
     } else {
         "".to_string()
     };

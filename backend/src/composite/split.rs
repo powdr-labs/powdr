@@ -173,6 +173,8 @@ fn referenced_namespaces<F: FieldElement>(
 fn split_by_namespace<F: FieldElement>(
     pil: &Analyzed<F>,
 ) -> BTreeMap<String, Vec<StatementIdentifier>> {
+    let mut current_namespace = "".to_string();
+
     pil.source_order
         .iter()
         // split, filtering out some statements
@@ -180,6 +182,7 @@ fn split_by_namespace<F: FieldElement>(
             StatementIdentifier::Definition(name)
             | StatementIdentifier::PublicDeclaration(name) => {
                 let namespace = extract_namespace(name);
+                current_namespace = namespace.clone();
                 // add `statement` to `namespace`
                 Some((namespace, statement))
             }
@@ -190,7 +193,8 @@ fn split_by_namespace<F: FieldElement>(
                 match namespaces.len() {
                     0 => panic!("Identity references no namespace: {identity}"),
                     // add this identity to the only referenced namespace
-                    1 => Some((namespaces.into_iter().next().unwrap(), statement)),
+                    1 => (namespaces.into_iter().next().unwrap() == current_namespace)
+                        .then(|| (current_namespace.clone(), statement)),
                     _ => match identity.kind {
                         IdentityKind::Plookup | IdentityKind::Permutation => {
                             assert_eq!(
