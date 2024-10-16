@@ -741,32 +741,68 @@ fn wrong_struct() {
     let input = "
     struct Dot { x: int, y: int }
     let f: int -> Dot = |i| NotADot{x: 0, y: i};
-    let x = f(0);
     ";
     type_check(input, &[]);
 }
 
 #[test]
-#[should_panic = "Field 'a' not found in struct 'Dot'"]
+#[should_panic = "Struct 'Dot' has no field named 'a'"]
 fn struct_wrong_fields() {
     let input = "
     struct Dot { x: int, y: int }
-    let f: int -> Dot = |i| Dot{a: 0, y: i};
+    let f: int -> Dot = |i| Dot{x: 0, y: i, a: 2};
     let x = f(0);
     ";
     type_check(input, &[]);
 }
 
 #[test]
-#[should_panic = "Field 'z' is declared but never used in struct 'Point' initialization"]
+#[should_panic = "Missing field 'z' in initializer of 'A'"]
 fn test_struct_unused_fields() {
-    let input = "    struct Point {
+    let input = "    struct A {
         x: int,
         y: int,
         z: int,
     }
-    let p: Point = Point{ y: 0, x: 2 };
+    let x = A{ y: 0, x: 2 };
 ";
 
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Field 'y' specified more than once"]
+fn test_struct_repeated_fields_expr() {
+    let input = "    struct A {
+        x: int,
+        y: int,
+    }
+    let x = A{ y: 0, x: 2, y: 1 };
+";
+
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Field 'x' is already declared"]
+fn test_struct_repeated_fields_decl() {
+    let input = "    struct A {
+        x: int,
+        y: int,
+        x: int,
+    }
+    let x = A{ y: 0, x: 2 };
+";
+
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic(expected = "Struct 'A' has not been declared")]
+fn enum_used_as_struct() {
+    let input = "
+    enum A { X }
+    let a = A{x: 8};
+    ";
     type_check(input, &[]);
 }

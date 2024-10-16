@@ -13,7 +13,7 @@ use powdr_ast::parsed::asm::{
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_ast::parsed::{
-    self, FunctionKind, LambdaExpression, PILFile, PilStatement, StructDeclaration, SymbolCategory,
+    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SymbolCategory,
     TraitImplementation, TypeDeclaration,
 };
 use powdr_number::{FieldElement, GoldilocksField};
@@ -56,7 +56,7 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Result<Analyzed<T>, Vec<Erro
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(files)?;
     analyzer.side_effect_check()?;
-    analyzer.structs_check()?;
+    analyzer.struct_fields_check()?;
     analyzer.type_check()?;
     // TODO should use Result here as well.
     let solved_impls = analyzer.resolve_trait_impls();
@@ -258,61 +258,56 @@ impl PILAnalyzer {
         }
     }
 
-    pub fn structs_check(&self) -> Result<(), Vec<Error>> {
+    /// Verifies that all struct instantiations match their corresponding declarations (existence of field names, completeness)
+    fn struct_fields_check(&self) -> Result<(), Vec<Error>> {
         let mut errors = vec![];
-        let struct_declarations: HashMap<String, StructDeclaration> = self
-            .definitions
-            .iter()
-            .filter_map(|(name, (_, value))| {
-                if let Some(FunctionValueDefinition::TypeDeclaration(TypeDeclaration::Struct(
-                    struct_decl,
-                ))) = value
-                {
-                    Some((name.clone(), struct_decl.clone()))
-                } else {
-                    None
+
+        self.all_children().for_each(|expr| {
+            if let Expression::StructExpression(sr, struct_expr) = expr {
+                let Some((
+                    _,
+                    Some(FunctionValueDefinition::TypeDeclaration(TypeDeclaration::Struct(
+                        struct_decl,
+                    ))),
+                )) = self.definitions.get(&struct_expr.name.to_string())
+                else {
+                    panic!("Struct '{}' has not been declared", struct_expr.name);
+                };
+
+                let mut declared_fields = HashSet::new();
+                for field in &struct_decl.fields {
+                    if !declared_fields.insert(&field.name) {
+                        errors.push(
+                            sr.with_error(format!("Field '{}' is already declared", field.name)),
+                        );
+                    }
                 }
-            })
-            .collect();
 
-        for (_, def) in self.definitions.values() {
-            let Some(def) = def else { continue };
-
-            def.all_children().for_each(|expr| {
-                if let Expression::StructExpression(sr, struct_expr) = expr {
-                    let Some(struct_decl) = struct_declarations.get(&struct_expr.name.to_string())
-                    else {
+                let mut used_fields = HashSet::new();
+                for field in &struct_expr.fields {
+                    if !used_fields.insert(&field.name) {
                         errors.push(sr.with_error(format!(
-                            "Struct '{}' has not been declared",
-                            struct_expr.name
+                            "Field '{}' specified more than once",
+                            field.name
                         )));
-                        return;
-                    };
-
-                    let mut used_fields = HashSet::new();
-
-                    for named_expr in &struct_expr.fields {
-                        if !struct_decl.fields.iter().any(|f| f.name == named_expr.name) {
-                            errors.push(sr.with_error(format!(
-                                "Field '{}' not found in struct '{}'",
-                                named_expr.name, struct_expr.name
-                            )));
-                        } else {
-                            used_fields.insert(named_expr.name.clone());
-                        }
-                    }
-
-                    for field in &struct_decl.fields {
-                        if !used_fields.contains(&field.name) {
-                            errors.push(sr.with_error(format!(
-                                "Field '{}' is declared but never used in struct '{}' initialization",
-                                field.name, struct_expr.name
-                            )));
-                        }
                     }
                 }
-            });
-        }
+
+                errors.extend(declared_fields.difference(&used_fields).map(|field| {
+                    sr.with_error(format!(
+                        "Missing field '{}' in initializer of '{}'",
+                        field, struct_expr.name
+                    ))
+                }));
+
+                errors.extend(used_fields.difference(&declared_fields).map(|field| {
+                    sr.with_error(format!(
+                        "Struct '{}' has no field named '{}'",
+                        struct_expr.name, field
+                    ))
+                }));
+            }
+        });
 
         if errors.is_empty() {
             Ok(())
@@ -595,6 +590,24 @@ impl PILAnalyzer {
 
     fn driver(&self) -> Driver {
         Driver(self)
+    }
+}
+
+impl AllChildren<Expression> for PILAnalyzer {
+    fn all_children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(
+            self.definitions
+                .values()
+                .filter_map(|(_, def)| def.as_ref())
+                .flat_map(|def| def.all_children())
+                .chain(
+                    self.implementations
+                        .values()
+                        .flat_map(|impls| impls.iter())
+                        .flat_map(|impl_| impl_.all_children()),
+                )
+                .chain(self.proof_items.iter()),
+        )
     }
 }
 
