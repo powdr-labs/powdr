@@ -1,13 +1,9 @@
-use std::{
-    collections::{BTreeSet, HashMap},
-    str::FromStr,
-};
+use std::collections::{BTreeSet, HashMap};
 
 use itertools::Itertools;
 use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference},
     parsed::{
-        asm::SymbolPath,
         display::format_type_scheme_around_name,
         types::{ArrayType, FunctionType, TupleType, Type, TypeBounds, TypeScheme},
         visitor::ExpressionVisitable,
@@ -738,10 +734,32 @@ impl TypeChecker {
                 result?
             }
             Expression::StructExpression(sr, StructExpression { name, fields }) => {
-                let Reference::Poly(PolynomialReference { name, .. }) = name else {
+                let Reference::Poly(PolynomialReference { name, type_args }) = name else {
                     unreachable!()
                 };
                 let struct_decl = self.struct_declarations.get(name).unwrap();
+
+                let scheme = TypeScheme {
+                    ty: Type::TypeVar(struct_decl.name.clone()),
+                    vars: struct_decl.type_vars.clone(),
+                };
+                let (ty, args) = self.unifier.instantiate_scheme(scheme);
+                if let Some(requested_type_args) = type_args {
+                    if requested_type_args.len() != args.len() {
+                        return Err(sr.with_error(format!(
+                            "Expected {} type arguments for struct {name}, but got {}: {}",
+                            args.len(),
+                            requested_type_args.len(),
+                            requested_type_args.iter().join(", ")
+                        )));
+                    }
+                    for (requested, inferred) in requested_type_args.iter_mut().zip(&args) {
+                        requested.substitute_type_vars(&self.declared_type_vars);
+                        self.unifier
+                            .unify_types(requested.clone(), inferred.clone())
+                            .map_err(|err| sr.with_error(err))?;
+                    }
+                }
 
                 let field_types: HashMap<_, _> = fields
                     .iter()
@@ -757,10 +775,7 @@ impl TypeChecker {
                     }
                 }
 
-                match SymbolPath::from_str(name) {
-                    Ok(named_type) => Ok(Type::NamedType(named_type, None)),
-                    Err(err) => Err(sr.with_error(err))?,
-                }?
+                ty
             }
         })
     }
