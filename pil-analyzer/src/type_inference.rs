@@ -770,9 +770,8 @@ impl TypeChecker {
                     .collect();
 
                 for named_expr in fields.iter_mut() {
-                    if let Some(field_type) = field_types.get(&named_expr.name) {
-                        self.expect_type(field_type, named_expr.body.as_mut())?;
-                    }
+                    let field_type = field_types.get(&named_expr.name).unwrap();
+                    self.expect_type(field_type, named_expr.body.as_mut())?;
                 }
 
                 ty
