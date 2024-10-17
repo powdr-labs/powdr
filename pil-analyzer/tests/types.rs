@@ -833,3 +833,15 @@ fn enum_used_as_struct() {
     ";
     type_check(input, &[]);
 }
+
+#[test]
+#[should_panic(expected = "warning: struct 'A' is never constructed")] // warning
+fn struct_never_constructed() {
+    let input = "
+    struct A {
+        x: int,
+        y: int,
+    }
+    ";
+    type_check(input, &[]);
+}
