@@ -89,7 +89,16 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
         let low_overflow = new_bool();
         let low_diff_inv;
 
-        low_overflow = 1 - (low_diff_inv * (low_addr - (0x10000 - 4)));
+        let low_diff = low_addr - (0x10000 - 4);
+
+        (low_diff_inv * low_diff - 1) * low_diff = 0;
+        low_overflow = 1 - low_diff_inv * low_diff;
+        query |i| {
+            let val = std::prover::eval(low_diff);
+            if val != 0 {
+                std::prover::provide_value(low_diff_inv, i, std::math::ff::inv_field(val));
+            } else {}
+        };
 
         // Increment the low limb if this is not latch:
         (1 - latch') * (
