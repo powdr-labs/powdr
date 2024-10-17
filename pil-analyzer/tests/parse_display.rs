@@ -262,7 +262,7 @@ fn next_op_on_param() {
     let expected = r#"namespace N(16);
     col witness x;
     col witness y;
-    let next_is_seven: expr -> expr = |t| t' - 7;
+    let next_is_seven: expr -> expr = |t| t' - 7_expr;
     N::y' - 7 = 0;
 "#;
     let formatted = analyze_string(input).to_string();
@@ -280,8 +280,8 @@ fn fixed_symbolic() {
     x - ISLAST = 0;
     "#;
     let expected = r#"namespace N(16);
-    let last_row: int = 15;
-    let islast: int -> fe = |i| if i == N::last_row { 1 } else { 0 };
+    let last_row: int = 15_int;
+    let islast: int -> fe = |i| if i == N::last_row { 1_fe } else { 0_fe };
     col fixed ISLAST(i) { N::islast(i) };
     col witness x;
     col witness y;
@@ -298,7 +298,7 @@ fn parentheses_lambda() {
     let x: fe = (|i| || w())(w())();
     "#;
     let expected = r#"namespace N(16);
-    let w: -> fe = || 2;
+    let w: -> fe = || 2_fe;
     let x: fe = (|i| (|| N::w()))(N::w())();
 "#;
     let formatted = analyze_string(input).to_string();
@@ -326,10 +326,10 @@ fn complex_type_resolution() {
     let z: (((int -> int), int -> int)[], expr) = ([x, x, x, x, x, x, x, x], y[0]);
     "#;
     let expected = r#"namespace N(16);
-    let f: int -> int = |i| i + 10;
-    let x: (int -> int), int -> int = |k, i| k(2 ** i);
+    let f: int -> int = |i| i + 10_int;
+    let x: (int -> int), int -> int = |k, i| k(2_int ** i);
     col witness y[14];
-    let z: (((int -> int), int -> int)[], expr) = ([N::x, N::x, N::x, N::x, N::x, N::x, N::x, N::x], N::y[0]);
+    let z: (((int -> int), int -> int)[], expr) = ([N::x, N::x, N::x, N::x, N::x, N::x, N::x, N::x], N::y[0_int]);
 "#;
     let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
@@ -358,7 +358,7 @@ fn expr_and_identity() {
     "#;
     let expected = r#"namespace N(16);
     let f: expr, expr -> std::prelude::Constr[] = |x, y| [x = y];
-    let g: expr -> std::prelude::Constr[] = |x| [x = 0];
+    let g: expr -> std::prelude::Constr[] = |x| [x = 0_expr];
     col witness x;
     col witness y;
     N::x = N::y;
@@ -428,7 +428,7 @@ fn to_expr() {
     let expected = r#"namespace std::convert(16);
     let expr = [];
 namespace N(16);
-    let mul_two: int -> int = |i| i * 2;
+    let mul_two: int -> int = |i| i * 2_int;
     col witness y;
     N::y = N::y * 14;
 "#;
@@ -494,10 +494,10 @@ fn challenges() {
     assert_eq!(analyzed.intermediate_count(), 0);
     let formatted = analyzed.to_string();
     let expected = r#"namespace Main(8);
-    col fixed first = [1] + [0]*;
+    col fixed first = [1_fe] + [0_fe]*;
     col witness x;
     col witness stage(2) y;
-    let a: expr = std::prelude::challenge(2, 1);
+    let a: expr = std::prelude::challenge(2_int, 1_int);
     Main::x' = (Main::x + 1) * (1 - Main::first);
     Main::y' = (Main::x + std::prelude::challenge(2, 1)) * (1 - Main::first);
 "#;
@@ -528,7 +528,7 @@ fn let_inside_block() {
             x
         },
         1 => Main::w,
-        _ => if i < 3 {
+        _ => if i < 3_int {
             let y: col;
             y
         } else { Main::w },
@@ -926,11 +926,13 @@ fn typed_literals() {
         let b = -1_2_fe;
         let c = -0x7_8_int;
         let d = [1, 0_int, 2];
+        let e = -0x1_8_expr;
         ";
     let expected = r#"    let a: int = -1_int;
     let b: fe = -12_fe;
     let c: int = -120_int;
     let d: int[] = [1_int, 0_int, 2_int];
+    let e: expr = -24_expr;
 "#;
     let analyzed = analyze_string(input);
     assert_eq!(analyzed.to_string(), expected);
