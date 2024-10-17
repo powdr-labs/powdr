@@ -25,7 +25,7 @@ pub enum FieldArgument {
     Bb,
     #[strum(serialize = "gl")]
     Gl,
-    // TODO(leandro): do we need this in riscv now? there's no poseidon, so no bootloader/continuations
+    // TODO(leandro): do we need to support this in riscv now?
     // #[strum(serialize = "bn254")]
     // Bn254,
 }
