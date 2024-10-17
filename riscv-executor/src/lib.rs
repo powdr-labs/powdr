@@ -18,8 +18,8 @@ use powdr_ast::{
 use powdr_number::{FieldElement, KnownField};
 
 pub mod large_field;
-pub mod small_field;
 mod profiler;
+pub mod small_field;
 pub use profiler::ProfilerOptions;
 
 /// Initial value of the PC.
