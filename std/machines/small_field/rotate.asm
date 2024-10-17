@@ -45,7 +45,7 @@ machine Rotate(byte_rotate: ByteRotate) with
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
-    require_field_bits(17, || "Rotate requires a field that fits any 17-Bit value.");
+    require_field_bits(16, || "Rotate requires a field that fits any 17-Bit value.");
 
     operation rotl<0> A0, A1, B -> C0, C1;
 
