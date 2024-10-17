@@ -37,7 +37,7 @@ snark-verifier = { git = "https://github.com/powdr-labs/snark-verifier", branch 
 halo2_solidity_verifier = { git = "https://github.com/powdr-labs/halo2-solidity-verifier", branch = "main", features = ["evm"], optional = true }
 
 #change this to main branch when updatetoolchain branch is merged,the main branch is using "nightly-2024-01-04", not compatiable with plonky3
-stwo-prover = { git= "https://github.com/starkware-libs/stwo.git",optional=true, branch = "andrew/dev/update-toolchain" }
+stwo-prover = { git= "https://github.com/starkware-libs/stwo.git",optional=true, rev="52d050c18b5dbc74af40214b3b441a6f60a20d41" }
 
 strum = { version = "0.24.1", features = ["derive"] }
 log = "0.4.17"

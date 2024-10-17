@@ -22,22 +22,6 @@ jobs:
   build:
     runs-on: warp-ubuntu-latest-x64-4x
 
-    strategy:
-      matrix:
-        toolchain: [stable, nightly]
-        features: [default, halo2, plonky3, estark-polygon, stwo]
-        exclude:
-        - toolchain: nightly
-          features: default
-        - toolchain: nightly
-          features: halo2
-        - toolchain: nightly
-          features: plonky3
-        - toolchain: nightly
-          features: estark-polygon
-        - toolchain: stable
-          features: stwo
-
     steps:
     - uses: actions/checkout@v4
       with:
@@ -53,73 +37,43 @@ jobs:
           target/
           Cargo.lock
         key: ${{ runner.os }}-cargo-pr-tests
-    - name: Install Rust toolchain and components
-      run: |
-          if [[ "${{ matrix.toolchain }}" == "nightly" ]]; then
-            rustup toolchain install nightly-2024-09-21-x86_64-unknown-linux-gnu
-            rustup component add clippy rustfmt --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu
-          else
-            rustup toolchain install 1.81-x86_64-unknown-linux-gnu
-            rustup component add clippy rustfmt --toolchain 1.81-x86_64-unknown-linux-gnu
-          fi
-    
+    - name: Date of the restored cache
+      run: cat target/cache-build-date.txt
+      continue-on-error: true
+    - name: Install Rust toolchain nightly-2024-09-21 (with clippy and rustfmt)
+      run: rustup toolchain install nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu
     - name: Install EStarkPolygon prover dependencies
       run: sudo apt-get install -y nlohmann-json3-dev libpqxx-dev nasm
+    - name: Install Rust toolchain 1.81 (stable)
+      run: rustup toolchain install 1.81.0-x86_64-unknown-linux-gnu
+    - name: Cargo check with Rust 1.81 (default features)
+      run: rustup default 1.81.0-x86_64-unknown-linux-gnu && cargo +1.81.0-x86_64-unknown-linux-gnu check --all-targets --no-default-features
     - name: Lint no default features
       run: cargo clippy --all --all-targets --no-default-features --profile pr-tests -- -D warnings
-    - name: Lint
-      run: |
-        if [[ "${{ matrix.toolchain }}" == "nightly" && "${{ matrix.features }}" == "stwo" ]]; then
-          cargo +nightly-2024-09-21-x86_64-unknown-linux-gnu clippy --all-targets --features stwo --profile pr-tests -- -D warnings
-        else
-          cargo clippy --all-targets --features ${{ matrix.features }} --profile pr-tests -- -D warnings
-        fi
-    - name: Build
-      run: |
-        if [[ "${{ matrix.toolchain }}" == "nightly" && "${{ matrix.features }}" == "stwo" ]]; then
-          cargo +nightly-2024-09-21-x86_64-unknown-linux-gnu build --all-targets --profile pr-tests --features ${{ matrix.features }}
-        elif [[ "${{ matrix.toolchain }}" == "stable" ]]; then
-          cargo build --all-targets --profile pr-tests --features ${{ matrix.features }}
-        fi
+    - name: Lint all features
+      run: cargo clippy --all --all-targets --all-features --profile pr-tests -- -D warnings
     - name: Format
       run: cargo fmt --all --check --verbose
+    - name: Build
+      run: cargo build --all-targets --all --all-features --profile pr-tests
     - uses: taiki-e/install-action@nextest
     - name: Archive EStarkPolygon prover built dependencies
-      if: ${{ matrix.toolchain == 'stable' && matrix.features == 'estark-polygon' }}
       run: tar --zstd -cf pil-stark-prover-deps.tar.zst target/pr-tests/build/pil-stark-prover-*/out
     - name: Create tests archive
-      run: |
-        if [[ "${{ matrix.toolchain }}" == "nightly" && "${{ matrix.features }}" == "stwo" ]]; then
-        cargo +nightly-2024-09-21-x86_64-unknown-linux-gnu nextest archive --archive-file tests.tar.zst --cargo-profile pr-tests --workspace --features ${{ matrix.features }}
-        else
-        cargo nextest archive --archive-file tests.tar.zst --cargo-profile pr-tests --workspace --features ${{ matrix.features }}
-        fi
+      run: cargo nextest archive --archive-file tests.tar.zst --cargo-profile pr-tests --workspace --all-features
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-          name: tests_archive-${{ matrix.toolchain }}-${{ matrix.features }}
-          path: |
-            tests.tar.zst
-            pil-stark-prover-deps.tar.zst
+        name: tests_archive
+        path: |
+          tests.tar.zst
+          pil-stark-prover-deps.tar.zst
 
   test_quick:
     needs: build
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        toolchain: [stable, nightly]
-        features: [default, halo2, plonky3, estark-polygon, stwo]
-        exclude:
-        - toolchain: nightly
-          features: default
-        - toolchain: nightly
-          features: halo2
-        - toolchain: nightly
-          features: plonky3
-        - toolchain: nightly
-          features: estark-polygon
-        - toolchain: stable
-          features: stwo
         test:
         - "1"
         - "2"
@@ -130,15 +84,17 @@ jobs:
         submodules: recursive
     - name: Download build artifacts
       uses: actions/download-artifact@v4
+      with:
+        name: tests_archive
     - name: ⚡ Cache nodejs
       uses: actions/cache@v4
       with:
         path: |
           ~/pilcom/node_modules
         key: ${{ runner.os }}-pilcom-node-modules
-    - name: Install Rust toolchain 1.81 (with clippy and rustfmt)
-      run: rustup toolchain install 1.81-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.81-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.81-x86_64-unknown-linux-gnu
-    - name: Install nightly
+    - name: Install Rust toolchain nightly-2024-09-21 (with clippy and rustfmt)
+      run: rustup toolchain install nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu
+    - name: Install nightly-2024-08-01
       run: rustup toolchain install nightly-2024-08-01-x86_64-unknown-linux-gnu
     - name: Install std source
       run: rustup component add rust-src --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
@@ -148,7 +104,7 @@ jobs:
       run: git clone https://github.com/0xPolygonHermez/pilcom.git  && cd pilcom && npm install
     - uses: taiki-e/install-action@nextest
     - name: Run default tests
-      run: cargo nextest run --archive-file tests_archive-${{ matrix.toolchain }}-${{ matrix.features }}/tests.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/2
+      run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --partition count:"${{ matrix.test }}"/2
       env:
         PILCOM: ${{ github.workspace }}/pilcom/
         POWDR_STD: ${{ github.workspace }}/std/
@@ -171,8 +127,8 @@ jobs:
           target/
           Cargo.lock
         key: ${{ runner.os }}-cargo-pr-tests
-    - name: Install Rust toolchain 1.81 (with clippy and rustfmt)
-      run: rustup toolchain install 1.81-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.81-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.81-x86_64-unknown-linux-gnu
+    - name: Install Rust toolchain nightly-2024-09-21 (with clippy and rustfmt)
+      run: rustup toolchain install nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu
     - name: Run examples
       run: cargo run --example hello_world && cargo run --example sqrt_with_publics
 
@@ -185,15 +141,17 @@ jobs:
         submodules: recursive
     - name: Download build artifacts
       uses: actions/download-artifact@v4
+      with:
+        name: tests_archive
     - name: ⚡ Cache nodejs
       uses: actions/cache@v4
       with:
         path: |
           ~/pilcom/node_modules
         key: ${{ runner.os }}-pilcom-node-modules
-    - name: Install Rust toolchain 1.81 (with clippy and rustfmt)
-      run: rustup toolchain install 1.81-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.81-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.81-x86_64-unknown-linux-gnu
-    - name: Install nightly
+    - name: Install Rust toolchain nightly-2024-09-21(with clippy and rustfmt)
+      run: rustup toolchain install nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu
+    - name: Install nightly-2024-08-01
       run: rustup toolchain install nightly-2024-08-01-x86_64-unknown-linux-gnu
     - name: Install std source
       run: rustup component add rust-src --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
@@ -205,9 +163,9 @@ jobs:
       run: sudo apt-get install -y nlohmann-json3-dev
     - uses: taiki-e/install-action@nextest
     - name: Unpack EStarkPolygon built dependencies
-      run: tar --zstd -xf tests_archive-stable-estark-polygon/pil-stark-prover-deps.tar.zst
+      run: tar --zstd -xf pil-stark-prover-deps.tar.zst
     - name: Run EStark Polygon test
-      run: cargo nextest run --archive-file tests_archive-stable-estark-polygon/tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only --no-capture -E "test(=vec_median_estark_polygon)"
+      run: cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only --no-capture -E "test(=vec_median_estark_polygon)"
       env:
         PILCOM: ${{ github.workspace }}/pilcom/
         POWDR_STD: ${{ github.workspace }}/std/
@@ -215,19 +173,6 @@ jobs:
   test_slow:
     strategy:
       matrix:
-        toolchain: [stable, nightly]
-        features: [default, halo2, plonky3, estark-polygon, stwo]
-        exclude:
-        - toolchain: nightly
-          features: default
-        - toolchain: nightly
-          features: halo2
-        - toolchain: nightly
-          features: plonky3
-        - toolchain: nightly
-          features: estark-polygon
-        - toolchain: stable
-          features: stwo
         test:
         - "1"
         - "2"
@@ -246,17 +191,19 @@ jobs:
         submodules: recursive
     - name: Download build artifacts
       uses: actions/download-artifact@v4
+      with:
+        name: tests_archive
     - name: ⚡ Cache nodejs
       uses: actions/cache@v4
       with:
         path: |
           ~/pilcom/node_modules
         key: ${{ runner.os }}-pilcom-node-modules
-    - name: Install Rust toolchain 1.81 (with clippy and rustfmt)
-      run: rustup toolchain install 1.81-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain 1.81-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain 1.81-x86_64-unknown-linux-gnu
+    - name: Install Rust toolchain nightly-2024-09-21 (with clippy and rustfmt)
+      run: rustup toolchain install nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add clippy --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu && rustup component add rustfmt --toolchain nightly-2024-09-21-x86_64-unknown-linux-gnu
     - name: Install test dependencies
       run: sudo apt-get install -y binutils-riscv64-unknown-elf lld
-    - name: Install nightly
+    - name: Install nightly-2024-08-01
       run: rustup toolchain install nightly-2024-08-01-x86_64-unknown-linux-gnu
     - name: Install std source
       run: rustup component add rust-src --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
@@ -269,7 +216,7 @@ jobs:
       # Number threads is set to 2 because the runner does not have enough memory for more.
       run: |
         NIGHTLY_TESTS=$(cat .github/workflows/nightly_tests_list.txt)
-        cargo nextest run --archive-file tests_archive-${{ matrix.toolchain }}-${{ matrix.features }}/tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only -E "!($NIGHTLY_TESTS)" --test-threads 2 --partition hash:"${{ matrix.test }}"/8
+        cargo nextest run --archive-file tests.tar.zst --workspace-remap . --verbose --run-ignored=ignored-only -E "!($NIGHTLY_TESTS)" --test-threads 2 --partition hash:"${{ matrix.test }}"/8
       shell: bash
       env:
         PILCOM: ${{ github.workspace }}/pilcom/
