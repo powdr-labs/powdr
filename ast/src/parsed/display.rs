@@ -620,16 +620,11 @@ impl<E: Display> Display for TraitImplementation<E> {
             panic!("Type from trait scheme is not a tuple.")
         };
 
-        let trait_vars = if items.is_empty() {
-            Default::default()
-        } else {
-            format!("<{}>", items.iter().format(", "))
-        };
-
         write!(
             f,
-            "impl{type_vars} {trait_name}{trait_vars} {{\n{methods}}}",
+            "impl{type_vars} {trait_name}{type_args} {{\n{methods}}}",
             trait_name = self.name,
+            type_args = format_type_args(items),
             methods = indent(
                 self.functions.iter().map(|m| format!("{m},\n")).format(""),
                 1
