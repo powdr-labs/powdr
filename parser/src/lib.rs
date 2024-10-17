@@ -462,7 +462,7 @@ namespace N(2);
     }"#;
 
         let expected = r#"
-    impl<A, B> Iterator<ArrayIterator<A>, B> {
+    impl<A, B> Iterator<(ArrayIterator<A>), B> {
         next: |it, pm| if pos(it) >= val(pm) { (it, pos(it)) } else { (it, 0) },
     }"#;
 
