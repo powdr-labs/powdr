@@ -42,6 +42,8 @@ pub enum SymbolCategory {
     TypeConstructor,
     /// A trait declaration, which can be used as a type.
     TraitDeclaration,
+    /// A struct declaration
+    StructDeclaration,
 }
 impl SymbolCategory {
     /// Returns if a symbol of a given category can satisfy a request for a certain category.
@@ -54,6 +56,7 @@ impl SymbolCategory {
                 request == SymbolCategory::TypeConstructor || request == SymbolCategory::Value
             }
             SymbolCategory::TraitDeclaration => request == SymbolCategory::TraitDeclaration,
+            SymbolCategory::StructDeclaration => request == SymbolCategory::StructDeclaration,
         }
     }
 }

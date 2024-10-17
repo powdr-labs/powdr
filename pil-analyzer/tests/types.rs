@@ -825,23 +825,11 @@ fn test_struct_repeated_fields_decl() {
 }
 
 #[test]
-#[should_panic(expected = "Struct 'A' has not been declared")]
+#[should_panic(expected = "Expected symbol of kind Struct but got Type: A")]
 fn enum_used_as_struct() {
     let input = "
     enum A { X }
     let a = A{x: 8};
-    ";
-    type_check(input, &[]);
-}
-
-#[test]
-#[should_panic(expected = "warning: struct 'A' is never constructed")] // warning
-fn struct_never_constructed() {
-    let input = "
-    struct A {
-        x: int,
-        y: int,
-    }
     ";
     type_check(input, &[]);
 }

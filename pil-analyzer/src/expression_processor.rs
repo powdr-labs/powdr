@@ -199,7 +199,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                     src,
                     StructExpression {
                         name: Reference::Poly(PolynomialReference {
-                            name: self.driver.resolve_type_ref(&name.path),
+                            name: self.driver.resolve_struct_ref(&name.path),
                             type_args,
                         }),
                         fields: fields

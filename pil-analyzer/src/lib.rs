@@ -42,6 +42,9 @@ pub trait AnalysisDriver: Clone + Copy {
     fn resolve_type_ref(&self, path: &SymbolPath) -> String {
         self.resolve_ref(path, SymbolCategory::Type)
     }
+    fn resolve_struct_ref(&self, path: &SymbolPath) -> String {
+        self.resolve_ref(path, SymbolCategory::StructDeclaration)
+    }
     fn resolve_ref(&self, path: &SymbolPath, symbol_category: SymbolCategory) -> String {
         let (path, cat) = self
             .try_resolve_ref(path)

@@ -52,8 +52,6 @@ pub fn check_structs_fields<'a>(
                     .into_iter()
                     .map(|f| sr.with_error(format!("Field '{f}' specified more than once"))),
             );
-        } else {
-            errors.push(sr.with_error(format!("Struct '{}' has not been declared", name)));
         }
 
         visited_structs.insert(name);
