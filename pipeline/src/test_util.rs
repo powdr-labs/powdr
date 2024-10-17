@@ -180,7 +180,7 @@ pub fn gen_estark_proof_with_backend_variant(
         .publics()
         .unwrap()
         .iter()
-        .map(|(_name, v)| *v)
+        .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
         .collect();
 
     pipeline.verify(&proof, &[publics]).unwrap();
@@ -277,7 +277,7 @@ pub fn gen_halo2_proof(pipeline: Pipeline<Bn254Field>, backend: BackendVariant) 
         .publics()
         .unwrap()
         .iter()
-        .map(|(_name, v)| *v)
+        .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
         .collect();
 
     pipeline.verify(&proof, &[publics]).unwrap();
@@ -287,15 +287,8 @@ pub fn gen_halo2_proof(pipeline: Pipeline<Bn254Field>, backend: BackendVariant) 
 pub fn gen_halo2_proof(_pipeline: Pipeline<Bn254Field>, _backend: BackendVariant) {}
 
 #[cfg(feature = "plonky3")]
-pub fn test_plonky3_with_backend_variant<T: FieldElement>(
-    file_name: &str,
-    inputs: Vec<T>,
-    backend: BackendVariant,
-) {
-    let backend = match backend {
-        BackendVariant::Monolithic => powdr_backend::BackendType::Plonky3,
-        BackendVariant::Composite => powdr_backend::BackendType::Plonky3Composite,
-    };
+pub fn test_plonky3<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
+    let backend = powdr_backend::BackendType::Plonky3;
     let mut pipeline = Pipeline::default()
         .with_tmp_output()
         .from_file(resolve_test_file(file_name))
@@ -310,7 +303,7 @@ pub fn test_plonky3_with_backend_variant<T: FieldElement>(
         .clone()
         .unwrap()
         .iter()
-        .map(|(_name, v)| *v)
+        .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
         .collect();
 
     pipeline.verify(&proof, &[publics.clone()]).unwrap();
@@ -333,7 +326,7 @@ pub fn test_plonky3_with_backend_variant<T: FieldElement>(
 
 #[cfg(feature = "plonky3")]
 pub fn test_plonky3_pipeline<T: FieldElement>(pipeline: Pipeline<T>) {
-    let mut pipeline = pipeline.with_backend(powdr_backend::BackendType::Plonky3Composite, None);
+    let mut pipeline = pipeline.with_backend(powdr_backend::BackendType::Plonky3, None);
 
     pipeline.compute_witness().unwrap();
 
@@ -349,7 +342,7 @@ pub fn test_plonky3_pipeline<T: FieldElement>(pipeline: Pipeline<T>) {
         .clone()
         .unwrap()
         .iter()
-        .map(|(_name, v)| *v)
+        .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
         .collect();
 
     pipeline.verify(&proof, &[publics.clone()]).unwrap();
@@ -371,7 +364,10 @@ pub fn test_plonky3_pipeline<T: FieldElement>(pipeline: Pipeline<T>) {
 }
 
 #[cfg(not(feature = "plonky3"))]
-pub fn test_plonky3_with_backend_variant<T: FieldElement>(_: &str, _: Vec<T>, _: BackendVariant) {}
+pub fn test_plonky3<T: FieldElement>(_: &str, _: Vec<T>) {}
+
+#[cfg(not(feature = "plonky3"))]
+pub fn test_plonky3_pipeline<T: FieldElement>(_: Pipeline<T>) {}
 
 #[cfg(not(feature = "plonky3"))]
 pub fn gen_plonky3_proof<T: FieldElement>(_: &str, _: Vec<T>) {}
