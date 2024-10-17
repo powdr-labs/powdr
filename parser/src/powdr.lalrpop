@@ -908,7 +908,7 @@ TypedNumber: (BigUint, Type) = {
     r"[0-9][0-9_]*_fe" => (BigUint::from_str(&<>.strip_suffix("_fe").unwrap().replace('_', "")).unwrap().into(), Type::Fe),
     // No hex with _fe suffix for now, because 'fe' is valid hex.
     r"[0-9][0-9_]*_int" => (BigUint::from_str(&<>.strip_suffix("_int").unwrap().replace('_', "")).unwrap().into(), Type::Int),
-    r"0x[0-9A-Fa-f][0-9A-Fa-f_]*_int" => (BigUint::from_str_radix(&<>.strip_suffix("_int").unwrap().replace('_', ""), 16).unwrap().into(), Type::Int),
+    r"0x[0-9A-Fa-f][0-9A-Fa-f_]*_int" => (BigUint::from_str_radix(&<>[2..].strip_suffix("_int").unwrap().replace('_', ""), 16).unwrap().into(), Type::Int),
 }
 
 UnsignedInteger: BigUint = {

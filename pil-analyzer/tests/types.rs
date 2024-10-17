@@ -739,8 +739,8 @@ fn prover_functions() {
 fn typed_literals() {
     let input = "
         let a = -1_int;
-        let b = -1_fe;
-        let c = -0x78_int;
+        let b = -1_2_fe;
+        let c = -0x7_8_int;
         let d = [1, 0_int, 2];
         ";
     type_check(
