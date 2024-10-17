@@ -32,9 +32,9 @@ pub const MEMORY_HASH_START_INDEX: usize = 2 * REGISTER_NAMES.len();
 pub const NUM_PAGES_INDEX: usize = MEMORY_HASH_START_INDEX + WORDS_PER_HASH * 2;
 pub const PAGE_INPUTS_OFFSET: usize = NUM_PAGES_INDEX + 1;
 
-/// This trait provides all the field specific types and implementations that
-/// the bootloader needs.
-/// For now, this trait is implemented directly by each `FieldElement` type that supports it.
+/// This trait provides all the field specific types and implementations that the bootloader needs.
+///
+/// For now, this trait is implemented directly by each `FieldElement` type, because the hash functions (i.e., poseidon) are field-specific.
 pub trait BootloaderImpl {
     type Fe: FieldElement;
     const FE_PER_WORD: usize;
