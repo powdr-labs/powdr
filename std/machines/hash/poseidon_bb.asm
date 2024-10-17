@@ -89,17 +89,17 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
         let low_overflow = new_bool();
         let low_diff_inv;
 
-        low_overflow = 1 - (low_diff_inv * (input_addr_low - (0x10000 - 4)));
+        low_overflow = 1 - (low_diff_inv * (low_addr - (0x10000 - 4)));
 
         // Increment the low limb if this is not latch:
         (1 - latch') * (
             // If low limb is about to overflow, next value must be 0:
-            low_overflow * input_addr_low' +
+            low_overflow * low_addr' +
             // Otherwise, next value is current plus 4:
-            (1 - low_overflow) * (input_addr_low + 4 - input_addr_low')
+            (1 - low_overflow) * (low_addr + 4 - low_addr')
         ) = 0;
         // Increment the high limb if lower overflowed:
-        (1 - latch') * low_overflow * (input_addr_high + 1 - input_addr_high') = 0; // '
+        (1 - latch') * low_overflow * (high_addr + 1 - high_addr') = 0; // '
     };
 
     // One-hot encoding of the row number (for the first <STATE_SIZE + OUTPUT_SIZE> rows)
