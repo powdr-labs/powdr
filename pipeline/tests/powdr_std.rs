@@ -265,7 +265,7 @@ fn rotate_large_test() {
 #[ignore = "Too slow"]
 fn rotate_small_test() {
     let f = "std/rotate_small_test.asm";
-    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
+    test_plonky3::<BabyBearField>(f, vec![]);
 }
 
 #[test]
