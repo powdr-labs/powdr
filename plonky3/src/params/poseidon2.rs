@@ -2,7 +2,7 @@
 
 use rand::{distributions::Standard, prelude::Distribution, Rng, SeedableRng};
 
-const RNG_SEED: u64 = 42;
+pub const RNG_SEED: u64 = 42;
 
 pub(crate) fn poseidon2_external_constants<T, const WIDTH: usize>(
     full_rounds: usize,

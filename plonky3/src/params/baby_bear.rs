@@ -20,7 +20,7 @@ use crate::params::poseidon2::{poseidon2_external_constants, poseidon2_internal_
 use powdr_number::BabyBearField;
 
 const D: u64 = 7;
-const WIDTH: usize = 16;
+pub const WIDTH: usize = 16;
 type Perm = Poseidon2<BabyBear, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, WIDTH, D>;
 
 const DEGREE: usize = 4;
