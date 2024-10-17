@@ -768,10 +768,11 @@ impl Display for Number {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         let Number { value, type_ } = self;
         write!(f, "{value}")?;
-        if let Some(ty) = type_ {
-            write!(f, "_{ty}")?;
+        match type_ {
+            Some(ty @ (Type::Int | Type::Fe | Type::Expr)) => write!(f, "_{ty}"),
+            Some(Type::TypeVar(_)) | None => Ok(()),
+            Some(_) => unreachable!(),
         }
-        Ok(())
     }
 }
 
