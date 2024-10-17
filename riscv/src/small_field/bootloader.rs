@@ -81,10 +81,11 @@ pub const BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES: [&str; 2] =
     ["load_bootloader_input", "jump_to_bootloader_input"];
 
 pub fn bootloader_preamble() -> String {
+    // TODO(leandro): WriteOnceMemory machine for small field
     let mut preamble = r#"
     // ============== bootloader-specific instructions =======================
     // Write-once memory
-    std::machines::write_once_memory16::WriteOnceMemory bootloader_inputs;
+    std::machines::small_field::write_once_memory::WriteOnceMemory bootloader_inputs;
 
     instr load_bootloader_input XL, YL, ZH, ZL, WH, WL
         link ~> (tmp1_h, tmp1_l) = regs.mload(XL, STEP)

@@ -68,7 +68,7 @@ pub fn bootloader_preamble() -> String {
     let mut preamble = r#"
     // ============== bootloader-specific instructions =======================
     // Write-once memory
-    std::machines::write_once_memory::WriteOnceMemory bootloader_inputs;
+    std::machines::large_field::write_once_memory::WriteOnceMemory bootloader_inputs;
 
     instr load_bootloader_input X, Y, Z, W
         link ~> tmp1_col = regs.mload(X, STEP)
