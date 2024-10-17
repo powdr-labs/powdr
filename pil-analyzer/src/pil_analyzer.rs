@@ -6,6 +6,7 @@ use std::iter::once;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::structural_checks::check_structs_fields;
 use itertools::Itertools;
 use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, ModuleStatement, SymbolPath,
@@ -13,8 +14,8 @@ use powdr_ast::parsed::asm::{
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_ast::parsed::{
-    self, FunctionKind, LambdaExpression, PILFile, PilStatement, StructExpression, SymbolCategory,
-    TraitImplementation, TypeDeclaration, TypedExpression,
+    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SymbolCategory,
+    TraitImplementation, TypedExpression,
 };
 use powdr_number::{FieldElement, GoldilocksField};
 
@@ -257,106 +258,16 @@ impl PILAnalyzer {
         }
     }
 
-    /// Verifies that all struct instantiations match their corresponding declarations (existence of field names, completeness)
-    fn struct_fields_check(&self) -> Result<(), Vec<Error>> {
-        let mut errors = Vec::new();
-        let mut visited_structs = HashSet::new();
-
+    pub fn struct_fields_check(&self) -> Result<(), Vec<Error>> {
         let structs_exprs = self.all_children().filter_map(|expr| {
-            if let Expression::StructExpression(
-                sr,
-                StructExpression {
-                    name: Reference::Poly(poly),
-                    fields,
-                },
-            ) = expr
-            {
-                Some((sr, poly.name.clone(), fields))
+            if let Expression::StructExpression(sr, struct_expr) = expr {
+                Some((sr, struct_expr))
             } else {
                 None
             }
         });
 
-        for (sr, name, fields) in structs_exprs {
-            if let Some((
-                _,
-                Some(FunctionValueDefinition::TypeDeclaration(TypeDeclaration::Struct(
-                    struct_decl,
-                ))),
-            )) = self.definitions.get(&name)
-            {
-                let declared_fields: HashSet<_> =
-                    struct_decl.fields.iter().map(|f| &f.name).collect();
-                let used_fields: HashSet<_> = fields.iter().map(|f| &f.name).collect();
-
-                errors.extend(
-                    fields
-                        .iter()
-                        .filter(|f| !declared_fields.contains(&f.name))
-                        .map(|f| {
-                            sr.with_error(format!(
-                                "Struct '{name}' has no field named '{}'",
-                                f.name
-                            ))
-                        }),
-                );
-
-                errors.extend(declared_fields.difference(&used_fields).map(|&f| {
-                    sr.with_error(format!("Missing field '{f}' in initializer of '{name}'",))
-                }));
-
-                let duplicate_fields: Vec<_> =
-                    fields.iter().map(|f| &f.name).duplicates().collect();
-
-                errors.extend(
-                    duplicate_fields
-                        .into_iter()
-                        .map(|f| sr.with_error(format!("Field '{f}' specified more than once"))),
-                );
-            } else {
-                errors.push(sr.with_error(format!("Struct '{name}' has not been declared")));
-            }
-
-            visited_structs.insert(name);
-        }
-
-        let structs_decls = self.definitions.iter().filter(|(_, (_, def))| {
-            matches!(
-                def,
-                Some(FunctionValueDefinition::TypeDeclaration(
-                    TypeDeclaration::Struct(_)
-                ))
-            )
-        });
-
-        for (name, (symbol, def)) in structs_decls {
-            if !visited_structs.contains(name) {
-                errors.push(
-                    symbol
-                        .source
-                        .with_error(format!("warning: struct '{name}' is never constructed")), // TODO: Warningx
-                );
-            } else if let Some(FunctionValueDefinition::TypeDeclaration(TypeDeclaration::Struct(
-                struct_decl,
-            ))) = def
-            {
-                let duplicate_declaration_fields: Vec<_> = struct_decl
-                    .fields
-                    .iter()
-                    .map(|f| &f.name)
-                    .duplicates()
-                    .collect();
-
-                errors.extend(duplicate_declaration_fields.into_iter().map(|f| {
-                    symbol
-                        .source
-                        .with_error(format!("Field '{f}' is already declared",))
-                }));
-            } else {
-                unreachable!()
-            }
-        }
-
+        let errors = check_structs_fields(structs_exprs, &self.definitions);
         if errors.is_empty() {
             Ok(())
         } else {
