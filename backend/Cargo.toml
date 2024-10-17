@@ -11,7 +11,7 @@ repository = { workspace = true }
 default = []
 halo2 = ["dep:halo2_proofs", "dep:halo2_curves", "dep:snark-verifier", "dep:halo2_solidity_verifier"]
 estark-polygon = ["dep:pil-stark-prover"]
-plonky3 = ["dep:powdr-plonky3"]
+plonky3 = ["dep:powdr-plonky3", "dep:p3-commit", "dep:p3-matrix", "dep:p3-uni-stark"]
 
 [dependencies]
 powdr-ast.workspace = true
@@ -36,6 +36,12 @@ halo2_curves = { version = "0.6.1", package = "halo2curves", optional = true}
 snark-verifier = { git = "https://github.com/powdr-labs/snark-verifier", branch = "powdr-halo2", optional = true }
 halo2_solidity_verifier = { git = "https://github.com/powdr-labs/halo2-solidity-verifier", branch = "main", features = ["evm"], optional = true }
 
+p3-commit = { git = "https://github.com/plonky3/Plonky3.git", features = [
+    "test-utils",
+], optional = true }
+p3-matrix = { git = "https://github.com/plonky3/Plonky3.git", optional = true } 
+p3-uni-stark = { git = "https://github.com/plonky3/Plonky3.git", optional = true } 
+
 strum = { version = "0.24.1", features = ["derive"] }
 log = "0.4.17"
 serde = "1.0"
@@ -53,6 +59,7 @@ rand = "0.8.5"
 test-log = "0.2.12"
 env_logger = "0.10.0"
 pretty_assertions = "1.4.0"
+powdr-pipeline.workspace = true
 
 [package.metadata.cargo-udeps.ignore]
 development = ["env_logger"]

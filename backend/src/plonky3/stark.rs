@@ -14,17 +14,12 @@ use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
 
-use crate::{
-    circuit_builder::ConstraintSystem, prove, verify, Proof, StarkProvingKey, StarkVerifyingKey,
-    TableProvingKey, TableProvingKeyCollection,
+use powdr_plonky3::{
+    prove, verify, Challenger, Commitment, ConstraintSystem, FieldElementMap, PowdrCircuit, Proof,
+    ProverData, StarkProvingKey, StarkVerifyingKey, TableProvingKey, TableProvingKeyCollection,
 };
 
 use p3_uni_stark::StarkGenericConfig;
-
-use crate::{
-    circuit_builder::PowdrCircuit,
-    params::{Challenger, Commitment, FieldElementMap, ProverData},
-};
 
 pub struct Plonky3Prover<T: FieldElementMap>
 where
@@ -77,10 +72,6 @@ where
             proving_key: None,
             verifying_key: None,
         }
-    }
-
-    pub fn analyzed(&self) -> &Analyzed<T> {
-        &self.analyzed
     }
 
     pub fn set_verifying_key(&mut self, rdr: &mut dyn std::io::Read) {
@@ -235,7 +226,7 @@ where
 
         verify(
             verifying_key,
-            &circuit,
+            circuit.split,
             &mut challenger,
             &proof,
             public_values,
@@ -275,7 +266,7 @@ where
 
         verify(
             verifying_key,
-            &PowdrCircuit::new(&self.split),
+            &self.split,
             &mut challenger,
             &proof,
             instance_map,
@@ -287,11 +278,12 @@ where
 #[cfg(test)]
 mod tests {
 
+    use super::Plonky3Prover;
     use powdr_number::{BabyBearField, GoldilocksField, Mersenne31Field};
     use powdr_pipeline::Pipeline;
     use test_log::test;
 
-    use crate::{Commitment, FieldElementMap, Plonky3Prover, ProverData};
+    use powdr_plonky3::{Commitment, FieldElementMap, ProverData};
 
     /// Prove and verify execution over all supported fields
     fn run_test(pil: &str) {

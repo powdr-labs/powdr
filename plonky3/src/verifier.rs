@@ -1,8 +1,10 @@
+use alloc::collections::BTreeMap;
+use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
+use core::iter::once;
 use p3_air::Air;
-use std::collections::BTreeMap;
-use std::iter::once;
+use powdr_ast::analyzed::Analyzed;
 
 use itertools::Itertools;
 use p3_challenger::{CanObserve, CanSample, FieldChallenger};
@@ -12,12 +14,12 @@ use p3_matrix::dense::RowMajorMatrixView;
 use p3_matrix::stack::VerticalPair;
 use tracing::instrument;
 
-use crate::circuit_builder::{PowdrCircuit, PowdrTable};
+use crate::circuit_builder::PowdrTable;
 use crate::params::{Challenge, Challenger, Commitment, Pcs, ProverData};
 use crate::symbolic_builder::{get_log_quotient_degree, SymbolicAirBuilder};
 use crate::{
-    FieldElementMap, MultiStageAir, Proof, StageOpenedValues, StarkVerifyingKey, TableOpenedValues,
-    TableVerifyingKeyCollection, VerifierConstraintFolder,
+    ConstraintSystem, FieldElementMap, MultiStageAir, Proof, StageOpenedValues, StarkVerifyingKey,
+    TableOpenedValues, TableVerifyingKeyCollection, VerifierConstraintFolder,
 };
 use p3_uni_stark::{Domain, PcsError, StarkGenericConfig, Val};
 
@@ -71,7 +73,7 @@ where
 #[instrument(skip_all)]
 pub fn verify<T: FieldElementMap>(
     verifying_key: Option<&StarkVerifyingKey<T::Config>>,
-    program: &PowdrCircuit<T>,
+    split: &BTreeMap<String, (Analyzed<T>, ConstraintSystem<T>)>,
     challenger: &mut Challenger<T>,
     proof: &Proof<T::Config>,
     public_inputs: BTreeMap<String, Vec<Vec<T>>>,
@@ -100,15 +102,14 @@ where
     } = proof;
 
     // sanity check that the two maps have the same keys
-    itertools::assert_equal(program.split.keys(), public_inputs.keys());
+    itertools::assert_equal(split.keys(), public_inputs.keys());
 
     // error out if the opened values do not have the same keys as the tables
-    if !itertools::equal(program.split.keys(), opened_values.keys()) {
+    if !itertools::equal(split.keys(), opened_values.keys()) {
         return Err(VerificationError::InvalidProofShape);
     }
 
-    let tables: BTreeMap<&String, Table<_>> = program
-        .split
+    let tables: BTreeMap<&String, Table<_>> = split
         .values()
         .zip_eq(public_inputs.iter())
         .zip_eq(opened_values.values())
