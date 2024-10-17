@@ -19,6 +19,8 @@ const SQRT_CODE: &str = "
         };
 ";
 
+const SORT_SIZES: [i32; 5] = [33, 100, 300, 900, 2700];
+
 /// Just some numbers to test the sqrt function on.
 fn sqrt_inputs() -> Vec<(String, u64)> {
     [879882356, 1882356, 1187956, 56]
@@ -104,9 +106,9 @@ fn evaluator_benchmark(c: &mut Criterion) {
         pipeline.compute_analyzed_pil().unwrap().clone()
     };
 
-    for l in [33, 100, 300, 900, 2700] {
+    for l in &SORT_SIZES {
         let input = Arc::new(Value::Array(
-            (0..l)
+            (0..*l)
                 .rev()
                 .map(|x| Arc::new(Value::Integer(x.into())))
                 .collect(),
@@ -143,6 +145,28 @@ fn jit_benchmark(c: &mut Criterion) {
         });
     }
 
+    // TOOD this is not exactly the same code as in the interpreter case.
+    // Here we are creating the array inside the code.
+    let sort_code = "let sort_int: int -> int = |size| {
+        let arr = std::array::new(size, |i| size - i - 1);
+        std::array::sort(arr, |a, b| a < b)[20]
+    };";
+    let sort_analyzed: Analyzed<GoldilocksField> = {
+        let mut pipeline = Pipeline::default().from_asm_string(sort_code.to_string(), None);
+        pipeline.compute_analyzed_pil().unwrap().clone()
+    };
+    let sort_fun = powdr_jit_compiler::compile(&sort_analyzed, &["sort_int"])
+        .unwrap()
+        .get_fixed_column("sort_int")
+        .unwrap()
+        .clone();
+    for l in &SORT_SIZES {
+        group.bench_with_input(format!("sort_{l}"), &l, |b, l| {
+            b.iter(|| {
+                sort_fun.call(**l as u64);
+            });
+        });
+    }
     group.finish();
 }
 
