@@ -129,7 +129,11 @@ fn jit_benchmark(c: &mut Criterion) {
         pipeline.compute_analyzed_pil().unwrap().clone()
     };
 
-    let sqrt_fun = &powdr_jit_compiler::compile(&sqrt_analyzed, &["sqrt"]).unwrap()["sqrt"];
+    let sqrt_fun = powdr_jit_compiler::compile(&sqrt_analyzed, &["sqrt"])
+        .unwrap()
+        .get_fixed_column("sqrt")
+        .unwrap()
+        .clone();
 
     for (name, val) in sqrt_inputs() {
         group.bench_with_input(format!("sqrt_{name}"), &val, |b, val| {

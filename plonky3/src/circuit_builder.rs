@@ -7,6 +7,7 @@
 //! every row.
 
 use itertools::Itertools;
+use p3_field::AbstractField;
 use std::{
     cell::RefCell,
     collections::{BTreeMap, BTreeSet, HashMap},
@@ -26,7 +27,7 @@ use crate::{CallbackResult, MultiStageAir, MultistageAirBuilder, NextStageTraceC
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, LargeInt};
 
 type Witness<T> = Mutex<RefCell<Vec<(String, Vec<T>)>>>;
 
@@ -220,6 +221,7 @@ where
         publics: &BTreeMap<&String, <AB as AirBuilderWithPublicValues>::PublicVar>,
         challenges: &BTreeMap<u32, BTreeMap<u64, <AB as MultistageAirBuilder>::Challenge>>,
     ) -> AB::Expr {
+        use AlgebraicBinaryOperator::*;
         let res = match e {
             AlgebraicExpression::Reference(r) => {
                 let poly_id = r.poly_id;
@@ -245,6 +247,26 @@ where
                 .expect("Referenced public value does not exist"))
             .into(),
             AlgebraicExpression::Number(n) => AB::Expr::from(n.into_p3_field()),
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                left,
+                op: Pow,
+                right,
+            }) => match **right {
+                AlgebraicExpression::Number(n) => {
+                    let left = self.to_plonky3_expr::<AB>(
+                        left,
+                        traces_by_stage,
+                        fixed,
+                        publics,
+                        challenges,
+                    );
+                    (0u32..n.to_integer().try_into_u32().unwrap())
+                        .fold(AB::Expr::from(<AB::F as AbstractField>::one()), |acc, _| {
+                            acc * left.clone()
+                        })
+                }
+                _ => unimplemented!("pow with non-constant exponent"),
+            },
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
                 let left =
                     self.to_plonky3_expr::<AB>(left, traces_by_stage, fixed, publics, challenges);
@@ -252,12 +274,10 @@ where
                     self.to_plonky3_expr::<AB>(right, traces_by_stage, fixed, publics, challenges);
 
                 match op {
-                    AlgebraicBinaryOperator::Add => left + right,
-                    AlgebraicBinaryOperator::Sub => left - right,
-                    AlgebraicBinaryOperator::Mul => left * right,
-                    AlgebraicBinaryOperator::Pow => {
-                        unreachable!("exponentiations should have been evaluated")
-                    }
+                    Add => left + right,
+                    Sub => left - right,
+                    Mul => left * right,
+                    Pow => unreachable!("This case was handled above"),
                 }
             }
             AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
