@@ -243,7 +243,7 @@ fn symbolic_functions() {
     col witness x;
     col witness y;
     let constrain_equal_expr: expr, expr -> expr = |A, B| A - B;
-    let on_regular_row: expr -> expr = |cond| (1 - N::ISLAST) * cond;
+    let on_regular_row: expr -> expr = |cond| (1expr - N::ISLAST) * cond;
     (1 - N::ISLAST) * (N::x' - N::y) = 0;
     (1 - N::ISLAST) * (N::y' - (N::x + N::y)) = 0;
 "#;
@@ -466,7 +466,7 @@ namespace main(16);
 
 #[test]
 fn stages() {
-    let input = "    let N: int = 8;
+    let input = "    let N: int = 8_int;
 namespace Main(8);
     col witness x;
     col witness stage(2) y;
@@ -647,11 +647,11 @@ fn refutable_let() {
 #[test]
 fn patterns() {
     let input = "    let t: ((int, int), int[]) -> int = |i| match i {
-        ((_, 6), []) => 2,
-        ((2, _), [3, 4]) => 3,
+        ((_, 6), []) => 2_int,
+        ((2, _), [3, 4]) => 3_int,
         ((_, 6), x) => x[0],
         ((_, y), _) => y,
-        (_, [2]) => 7,
+        (_, [2]) => 7_int,
     };
 ";
     assert_eq!(input, analyze_string(input).to_string());
@@ -730,8 +730,8 @@ fn function_param_shadowing() {
 #[test]
 fn match_shadowing() {
     let input = "    let t: (int, int) -> int = |i| match i {
-        (_, x) => 2,
-        (x, _) => 3,
+        (_, x) => 2_int,
+        (x, _) => 3_int,
     };
 ";
     assert_eq!(input, analyze_string(input).to_string());
@@ -740,11 +740,11 @@ fn match_shadowing() {
 #[test]
 fn single_ellipsis() {
     let input = "    let t: int[] -> int = |i| match i {
-        [1, .., 3] => 2,
-        [..] => 3,
-        [.., 1] => 9,
-        [7, 8, ..] => 2,
-        _ => -1,
+        [1, .., 3] => 2_int,
+        [..] => 3_int,
+        [.., 1] => 9_int,
+        [7, 8, ..] => 2_int,
+        _ => -1_int,
     };
 ";
     assert_eq!(input, analyze_string(input).to_string());
@@ -758,7 +758,7 @@ namespace T(8);
     let k = X::y;
 ";
     let expected = "namespace X;
-    let y: int = 7;
+    let y: int = 7_int;
 namespace T(8);
     let k: int = X::y;
 ";
@@ -774,7 +774,7 @@ namespace T(8);
     let k = y;
 ";
     let expected = "namespace std::prelude;
-    let y: int = 7;
+    let y: int = 7_int;
 namespace T(8);
     let k: int = std::prelude::y;
 ";
@@ -832,7 +832,7 @@ fn reparse_generic_function_call() {
     let input = r#"namespace X(16);
     let<T: Add + FromLiteral> inc: T -> T = |x| x + 1;
 namespace N(16);
-    let x: int = 7;
+    let x: int = 7_int;
     let y: int = X::inc::<int>(N::x);
 "#;
     let formatted = analyze_string(input).to_string();
@@ -855,7 +855,7 @@ fn reparse_array_typed_fixed_col() {
     let<T> len: T[] -> int = 19;
 namespace Main(16);
     let<T> make_array: int, (int -> T) -> T[] = |n, f| if n == 0 { [] } else { Main::make_array::<T>(n - 1, f) + [f(n - 1)] };
-    let nth_clock: int -> (int -> int) = |k| (|i| if i % std::array::len::<expr>(Main::clocks) == k { 1 } else { 0 });
+    let nth_clock: int -> (int -> int) = |k| (|i| if i % std::array::len::<expr>(Main::clocks) == k { 1_int } else { 0_int });
     let clocks: col[4] = Main::make_array::<(int -> int)>(4, Main::nth_clock);
 "#;
     let formatted = analyze_string(input).to_string();
