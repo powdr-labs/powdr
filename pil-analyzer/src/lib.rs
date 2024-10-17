@@ -7,6 +7,7 @@ pub mod expression_processor;
 mod pil_analyzer;
 mod side_effect_checker;
 mod statement_processor;
+mod structural_checks;
 mod traits_resolver;
 mod type_builtins;
 mod type_inference;
@@ -40,6 +41,9 @@ pub trait AnalysisDriver: Clone + Copy {
     }
     fn resolve_type_ref(&self, path: &SymbolPath) -> String {
         self.resolve_ref(path, SymbolCategory::Type)
+    }
+    fn resolve_struct_ref(&self, path: &SymbolPath) -> String {
+        self.resolve_ref(path, SymbolCategory::StructDeclaration)
     }
     fn resolve_ref(&self, path: &SymbolPath, symbol_category: SymbolCategory) -> String {
         let (path, cat) = self
