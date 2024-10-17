@@ -147,13 +147,13 @@ namespace N(r);
     let other = [1, z];
     let other_fun: int, fe -> (int, (int -> int)) = |i, j| (i + 7, (|k| k - i));
 "#;
-    let expected = r#"    let r: int = 65536;
+    let expected = r#"    let r: int = 65536_int;
 namespace N(65536);
     col witness x;
-    let z: int = 2;
+    let z: int = 2_int;
     col fixed t(i) { i + N::z };
     let other: int[] = [1, N::z];
-    let other_fun: int, fe -> (int, (int -> int)) = |i, j| (i + 7, |k| k - i);
+    let other_fun: int, fe -> (int, (int -> int)) = |i, j| (i + 7_int, |k| k - i);
 "#;
     let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
@@ -699,11 +699,11 @@ fn sub_block_shadowing() {
 fn disjoint_block_shadowing() {
     let input = "    let t: int = {
         let b: int = {
-            let x: int = 2;
+            let x: int = 2_int;
             x
         };
         {
-            let x: int = 3;
+            let x: int = 3_int;
             x + b
         }
     };
