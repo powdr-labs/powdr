@@ -288,7 +288,12 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
 
         log::debug!("Publics:");
         for (name, value) in extract_publics(&witness_cols, self.analyzed) {
-            log::debug!("  {name:>30}: {value}");
+            log::debug!(
+                "  {name:>30}: {}",
+                value
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "Not yet known at this stage".to_string())
+            );
         }
         witness_cols
     }
@@ -297,7 +302,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
 pub fn extract_publics<T: FieldElement>(
     witness: &[(String, Vec<T>)],
     pil: &Analyzed<T>,
-) -> Vec<(String, T)> {
+) -> Vec<(String, Option<T>)> {
     let witness = witness
         .iter()
         .map(|(name, col)| (name.clone(), col))
@@ -306,7 +311,9 @@ pub fn extract_publics<T: FieldElement>(
         .map(|(name, public_declaration)| {
             let poly_name = &public_declaration.referenced_poly_name();
             let poly_index = public_declaration.index;
-            let value = witness[poly_name][poly_index as usize];
+            let value = witness
+                .get(poly_name)
+                .map(|column| column[poly_index as usize]);
             ((*name).clone(), value)
         })
         .collect()
