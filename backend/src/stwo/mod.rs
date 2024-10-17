@@ -57,9 +57,7 @@ impl<T: FieldElement> Backend<T> for StwoProver<T> {
         if prev_proof.is_some() {
             return Err(Error::NoAggregationAvailable);
         }
-        let proof = vec![0u8; 10];
-        panic!("prove function is not implement yet");
-        Ok(proof)
+      unimplemented!()
     }
     #[allow(unused_variables)]
     fn export_verification_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {
