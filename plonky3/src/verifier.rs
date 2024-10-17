@@ -1,257 +1,429 @@
 use alloc::vec;
 use alloc::vec::Vec;
-use core::iter;
+use p3_air::Air;
+use std::collections::BTreeMap;
+use std::iter::once;
 
-use itertools::{izip, Itertools};
+use itertools::Itertools;
 use p3_challenger::{CanObserve, CanSample, FieldChallenger};
-use p3_commit::{Pcs, PolynomialSpace};
+use p3_commit::{Pcs as _, PolynomialSpace};
 use p3_field::{AbstractExtensionField, AbstractField, Field};
 use p3_matrix::dense::RowMajorMatrixView;
 use p3_matrix::stack::VerticalPair;
 use tracing::instrument;
 
+use crate::circuit_builder::{PowdrCircuit, PowdrTable};
+use crate::params::{Challenge, Challenger, Commitment, Pcs, ProverData};
 use crate::symbolic_builder::{get_log_quotient_degree, SymbolicAirBuilder};
-use crate::{MultiStageAir, Proof, StarkVerifyingKey, VerifierConstraintFolder};
-use p3_uni_stark::{PcsError, StarkGenericConfig, Val};
+use crate::{
+    FieldElementMap, MultiStageAir, Proof, StageOpenedValues, StarkVerifyingKey, TableOpenedValues,
+    TableVerifyingKeyCollection, VerifierConstraintFolder,
+};
+use p3_uni_stark::{Domain, PcsError, StarkGenericConfig, Val};
 
-#[instrument(skip_all)]
-pub fn verify<SC, A>(
-    config: &SC,
-    air: &A,
-    challenger: &mut SC::Challenger,
-    proof: &Proof<SC>,
-    public_values: &Vec<Val<SC>>,
-) -> Result<(), VerificationError<PcsError<SC>>>
+/// A sub-table to be proven, in the form of an air and values for the public inputs
+struct Table<'a, T: FieldElementMap>
 where
-    SC: StarkGenericConfig,
-    A: MultiStageAir<SymbolicAirBuilder<Val<SC>>>
-        + for<'a> MultiStageAir<VerifierConstraintFolder<'a, SC>>,
+    ProverData<T>: Send,
+    Commitment<T>: Send,
 {
-    verify_with_key(config, None, air, challenger, proof, vec![public_values])
+    air: PowdrTable<'a, T>,
+    preprocessed: Option<&'a TableVerifyingKeyCollection<T::Config>>,
+    opened_values: &'a TableOpenedValues<Challenge<T>>,
+    public_values_by_stage: &'a [Vec<Val<T::Config>>],
+}
+
+impl<'a, T: FieldElementMap> Table<'a, T>
+where
+    ProverData<T>: Send,
+    Commitment<T>: Send,
+{
+    fn get_log_quotient_degree(&self) -> usize {
+        get_log_quotient_degree(
+            &self.air,
+            &self
+                .public_values_by_stage
+                .iter()
+                .map(|values| values.len())
+                .collect::<Vec<_>>(),
+        )
+    }
+
+    fn natural_domain(&self, pcs: &Pcs<T>) -> Domain<T::Config> {
+        let degree = 1 << self.opened_values.log_degree;
+        pcs.natural_domain_for_degree(degree)
+    }
+
+    fn preprocessed_commit(&self) -> Option<&Commitment<T>> {
+        self.preprocessed
+            .as_ref()
+            .map(|preprocessed| &preprocessed[&(1 << self.opened_values.log_degree)])
+    }
+
+    fn quotient_domains(&self, pcs: &Pcs<T>) -> Vec<Domain<T::Config>> {
+        let log_quotient_degree = self.get_log_quotient_degree();
+        self.natural_domain(pcs)
+            .create_disjoint_domain(1 << (self.opened_values.log_degree + log_quotient_degree))
+            .split_domains(1 << log_quotient_degree)
+    }
 }
 
 #[instrument(skip_all)]
-pub fn verify_with_key<SC, A>(
-    config: &SC,
-    verifying_key: Option<&StarkVerifyingKey<SC>>,
-    air: &A,
-    challenger: &mut SC::Challenger,
-    proof: &Proof<SC>,
-    public_values_by_stage: Vec<&Vec<Val<SC>>>,
-) -> Result<(), VerificationError<PcsError<SC>>>
+pub fn verify<T: FieldElementMap>(
+    verifying_key: Option<&StarkVerifyingKey<T::Config>>,
+    program: &PowdrCircuit<T>,
+    challenger: &mut Challenger<T>,
+    proof: &Proof<T::Config>,
+    public_inputs: BTreeMap<String, Vec<Vec<T>>>,
+) -> Result<(), VerificationError<PcsError<T::Config>>>
 where
-    SC: StarkGenericConfig,
-    A: MultiStageAir<SymbolicAirBuilder<Val<SC>>>
-        + for<'a> MultiStageAir<VerifierConstraintFolder<'a, SC>>,
+    ProverData<T>: Send,
+    Commitment<T>: Send,
 {
+    let public_inputs = public_inputs
+        .into_iter()
+        .map(|(name, values)| {
+            (
+                name,
+                values
+                    .into_iter()
+                    .map(|values| values.into_iter().map(|v| v.into_p3_field()).collect_vec())
+                    .collect_vec(),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+
     let Proof {
         commitments,
         opened_values,
         opening_proof,
-        degree_bits,
     } = proof;
 
-    let degree = 1 << degree_bits;
-    let log_quotient_degree = get_log_quotient_degree::<Val<SC>, A>(
-        air,
-        &public_values_by_stage
-            .iter()
-            .map(|values| values.len())
-            .collect::<Vec<_>>(),
-    );
-    let quotient_degree = 1 << log_quotient_degree;
-    let stage_count = proof.commitments.traces_by_stage.len();
-    let challenge_counts: Vec<usize> = (0..stage_count)
-        .map(|i| <A as MultiStageAir<SymbolicAirBuilder<_>>>::stage_challenge_count(air, i as u32))
-        .collect();
+    // sanity check that the two maps have the same keys
+    itertools::assert_equal(program.split.keys(), public_inputs.keys());
 
-    let pcs = config.pcs();
-    let trace_domain = pcs.natural_domain_for_degree(degree);
-    let quotient_domain =
-        trace_domain.create_disjoint_domain(1 << (degree_bits + log_quotient_degree));
-    let quotient_chunks_domains = quotient_domain.split_domains(quotient_degree);
-
-    let air_widths = (0..stage_count)
-        .map(|stage| {
-            <A as MultiStageAir<SymbolicAirBuilder<Val<SC>>>>::stage_trace_width(air, stage as u32)
-        })
-        .collect::<Vec<usize>>();
-    let air_fixed_width =
-        <A as MultiStageAir<SymbolicAirBuilder<Val<SC>>>>::preprocessed_width(air);
-    let valid_shape = opened_values.preprocessed_local.len() == air_fixed_width
-        && opened_values.preprocessed_next.len() == air_fixed_width
-        && opened_values
-            .traces_by_stage_local
-            .iter()
-            .zip(&air_widths)
-            .all(|(stage, air_width)| stage.len() == *air_width)
-        && opened_values
-            .traces_by_stage_next
-            .iter()
-            .zip(&air_widths)
-            .all(|(stage, air_width)| stage.len() == *air_width)
-        && opened_values.quotient_chunks.len() == quotient_degree
-        && opened_values
-            .quotient_chunks
-            .iter()
-            .all(|qc| qc.len() == <SC::Challenge as AbstractExtensionField<Val<SC>>>::D)
-        && public_values_by_stage.len() == stage_count
-        && challenge_counts.len() == stage_count;
-
-    if !valid_shape {
+    // error out if the opened values do not have the same keys as the tables
+    if !itertools::equal(program.split.keys(), opened_values.keys()) {
         return Err(VerificationError::InvalidProofShape);
     }
 
-    // Observe the instance.
-    challenger.observe(Val::<SC>::from_canonical_usize(proof.degree_bits));
+    let tables: BTreeMap<&String, Table<_>> = program
+        .split
+        .values()
+        .zip_eq(public_inputs.iter())
+        .zip_eq(opened_values.values())
+        .map(
+            |(((_, constraints), (name, public_values_by_stage)), opened_values)| {
+                (
+                    name,
+                    Table {
+                        air: PowdrTable::new(constraints),
+                        opened_values,
+                        public_values_by_stage,
+                        preprocessed: verifying_key
+                            .as_ref()
+                            .and_then(|vk| vk.preprocessed.get(name)),
+                    },
+                )
+            },
+        )
+        .collect();
+
+    let config = T::get_config();
+
+    let pcs = config.pcs();
+
+    for table in tables.values() {
+        if let Some(preprocessed_commit) = table.preprocessed_commit() {
+            challenger.observe(preprocessed_commit.clone());
+        }
+    }
+
+    // Observe the instances.
+    for table in tables.values() {
+        challenger.observe(Val::<T::Config>::from_canonical_usize(
+            table.opened_values.log_degree,
+        ));
+    }
     // TODO: Might be best practice to include other instance data here in the transcript, like some
     // encoding of the AIR. This protects against transcript collisions between distinct instances.
     // Practically speaking though, the only related known attack is from failing to include public
     // values. It's not clear if failing to include other instance data could enable a transcript
     // collision, since most such changes would completely change the set of satisfying witnesses.
 
-    if let Some(verifying_key) = verifying_key {
-        challenger.observe(verifying_key.preprocessed_commit.clone())
-    };
+    let stage_count = tables
+        .values()
+        .map(|i| &i.air)
+        .map(<_ as MultiStageAir<SymbolicAirBuilder<_>>>::stage_count)
+        .max()
+        .unwrap();
 
-    let mut challenges = vec![];
-
-    commitments
-        .traces_by_stage
-        .iter()
-        .zip(&public_values_by_stage)
-        .zip(challenge_counts)
-        .for_each(|((commitment, public_values), challenge_count)| {
-            challenger.observe(commitment.clone());
-            challenger.observe_slice(public_values);
-            challenges.push((0..challenge_count).map(|_| challenger.sample()).collect());
-        });
-    let alpha: SC::Challenge = challenger.sample_ext_element();
-    challenger.observe(commitments.quotient_chunks.clone());
-
-    let zeta: SC::Challenge = challenger.sample();
-    let zeta_next = trace_domain.next_point(zeta).unwrap();
-
-    pcs.verify(
-        iter::empty()
-            .chain(
-                verifying_key
-                    .map(|verifying_key| {
-                        (
-                            verifying_key.preprocessed_commit.clone(),
-                            (vec![(
-                                trace_domain,
-                                vec![
-                                    (zeta, opened_values.preprocessed_local.clone()),
-                                    (zeta_next, opened_values.preprocessed_next.clone()),
-                                ],
-                            )]),
-                        )
-                    })
-                    .into_iter(),
-            )
-            .chain(
-                izip!(
-                    commitments.traces_by_stage.iter(),
-                    opened_values.traces_by_stage_local.iter(),
-                    opened_values.traces_by_stage_next.iter()
-                )
-                .map(|(trace_commit, opened_local, opened_next)| {
-                    (
-                        trace_commit.clone(),
-                        vec![(
-                            trace_domain,
-                            vec![
-                                (zeta, opened_local.clone()),
-                                (zeta_next, opened_next.clone()),
-                            ],
-                        )],
+    let challenge_count_by_stage: Vec<usize> = (0..stage_count)
+        .map(|stage_id| {
+            tables
+                .values()
+                .map(|table| {
+                    <_ as MultiStageAir<SymbolicAirBuilder<_>>>::stage_challenge_count(
+                        &table.air, stage_id,
                     )
                 })
-                .collect_vec(),
-            )
-            .chain([(
-                commitments.quotient_chunks.clone(),
-                quotient_chunks_domains
-                    .iter()
-                    .zip(&opened_values.quotient_chunks)
-                    .map(|(domain, values)| (*domain, vec![(zeta, values.clone())]))
-                    .collect_vec(),
-            )])
-            .collect_vec(),
-        opening_proof,
-        challenger,
-    )
-    .map_err(VerificationError::InvalidOpeningArgument)?;
+                .max()
+                .unwrap()
+        })
+        .collect();
 
-    let zps = quotient_chunks_domains
+    let challenges_by_stage = commitments
+        .traces_by_stage
         .iter()
-        .enumerate()
-        .map(|(i, domain)| {
-            quotient_chunks_domains
-                .iter()
-                .enumerate()
-                .filter(|(j, _)| *j != i)
-                .map(|(_, other_domain)| {
-                    other_domain.zp_at_point(zeta)
-                        * other_domain.zp_at_point(domain.first_point()).inverse()
-                })
-                .product::<SC::Challenge>()
+        .zip_eq((0..stage_count).map(|i| {
+            tables
+                .values()
+                .map(|table| &table.public_values_by_stage[i as usize])
+                .collect_vec()
+        }))
+        .zip_eq(challenge_count_by_stage)
+        .map(|((commitment, public_values_by_stage), challenge_count)| {
+            challenger.observe(commitment.clone());
+            for public_values in &public_values_by_stage {
+                challenger.observe_slice(public_values);
+            }
+            (0..challenge_count)
+                .map(|_| challenger.sample())
+                .collect_vec()
         })
         .collect_vec();
 
-    let quotient = opened_values
-        .quotient_chunks
+    let alpha: Challenge<T> = challenger.sample_ext_element();
+    challenger.observe(commitments.quotient_chunks.clone());
+
+    let zeta: Challenge<T> = challenger.sample();
+
+    // for preprocessed commitments, we have one optional commitment per table, opened on the trace domain at `zeta` and `zeta_next`
+    let preprocessed_domains_points_and_opens: Vec<(_, Vec<(_, _)>)> =
+        tables
+            .values()
+            .flat_map(|table| {
+                let trace_domain = table.natural_domain(pcs);
+
+                let zeta_next = trace_domain.next_point(zeta).unwrap();
+
+                table.opened_values.preprocessed.iter().map(
+                    move |StageOpenedValues { local, next }| {
+                        (
+                            // choose the correct preprocessed commitment based on the degree in the proof
+                            // this could be optimized by putting the preproccessed commitments in a merkle tree
+                            // and have the prover prove that it used commitments matching the lengths of the traces
+                            // this way the verifier does not need to have all the preprocessed commitments for all sizes
+                            table.preprocessed_commit().expect("a preprocessed commitment was expected because a preprocessed opening was found").clone(),
+                            vec![(
+                                trace_domain,
+                                vec![(zeta, local.clone()), (zeta_next, next.clone())],
+                            )],
+                        )
+                    },
+                )
+            })
+            .collect();
+
+    // for trace commitments, we have one commitment per stage, opened on each trace domain at `zeta` and `zeta_next`
+    let trace_domains_points_and_opens_by_stage: Vec<(_, Vec<(_, _)>)> = proof
+        .commitments
+        .traces_by_stage
         .iter()
-        .enumerate()
-        .map(|(ch_i, ch)| {
-            ch.iter()
-                .enumerate()
-                .map(|(e_i, &c)| zps[ch_i] * SC::Challenge::monomial(e_i) * c)
-                .sum::<SC::Challenge>()
-        })
-        .sum::<SC::Challenge>();
-
-    let sels = trace_domain.selectors_at_point(zeta);
-
-    let preprocessed = VerticalPair::new(
-        RowMajorMatrixView::new_row(&opened_values.preprocessed_local),
-        RowMajorMatrixView::new_row(&opened_values.preprocessed_next),
-    );
-
-    let traces_by_stage = opened_values
-        .traces_by_stage_local
-        .iter()
-        .zip(opened_values.traces_by_stage_next.iter())
-        .map(|(trace_local, trace_next)| {
-            VerticalPair::new(
-                RowMajorMatrixView::new_row(trace_local),
-                RowMajorMatrixView::new_row(trace_next),
+        .zip_eq((0..stage_count as usize).map(|i| {
+            tables
+                .values()
+                .map(|table| &table.opened_values.traces_by_stage[i])
+                .collect_vec()
+        }))
+        .map(|(commit, openings)| {
+            (
+                commit.clone(),
+                tables
+                    .values()
+                    .zip_eq(openings)
+                    .map(|(table, StageOpenedValues { local, next })| {
+                        let trace_domain = table.natural_domain(pcs);
+                        let zeta_next = trace_domain.next_point(zeta).unwrap();
+                        (
+                            trace_domain,
+                            vec![(zeta, local.clone()), (zeta_next, next.clone())],
+                        )
+                    })
+                    .collect_vec(),
             )
         })
-        .collect::<Vec<VerticalPair<_, _>>>();
+        .collect();
 
-    let mut folder = VerifierConstraintFolder {
-        challenges,
-        preprocessed,
-        traces_by_stage,
-        public_values_by_stage,
-        is_first_row: sels.is_first_row,
-        is_last_row: sels.is_last_row,
-        is_transition: sels.is_transition,
-        alpha,
-        accumulator: SC::Challenge::zero(),
-    };
-    air.eval(&mut folder);
-    let folded_constraints = folder.accumulator;
+    // for quotient commitments, we have a single commitment, opened on each quotient domain at many points
+    let quotient_chunks_domain_point_and_opens: (_, Vec<(_, _)>) = (
+        proof.commitments.quotient_chunks.clone(),
+        tables
+            .values()
+            .flat_map(|table| {
+                let quotient_domains = table.quotient_domains(pcs);
+                quotient_domains
+                    .into_iter()
+                    .zip_eq(table.opened_values.quotient_chunks.iter())
+                    .map(|(domain, chunk)| (domain, vec![(zeta, chunk.clone())]))
+            })
+            .collect_vec(),
+    );
 
-    // Finally, check that
-    //     folded_constraints(zeta) / Z_H(zeta) = quotient(zeta)
-    if folded_constraints * sels.inv_zeroifier != quotient {
-        return Err(VerificationError::OodEvaluationMismatch);
+    let verify_input = preprocessed_domains_points_and_opens
+        .into_iter()
+        .chain(trace_domains_points_and_opens_by_stage)
+        .chain(once(quotient_chunks_domain_point_and_opens))
+        .collect();
+
+    pcs.verify(verify_input, opening_proof, challenger)
+        .map_err(VerificationError::InvalidOpeningArgument)?;
+
+    // Verify the constraint evaluations.
+    for table in tables.values() {
+        // Verify the shape of the opening arguments matches the expected values.
+        verify_opening_shape(table)?;
+        // Verify the constraint evaluation.
+        let zps = table
+            .quotient_domains(pcs)
+            .iter()
+            .enumerate()
+            .map(|(i, domain)| {
+                table
+                    .quotient_domains(pcs)
+                    .iter()
+                    .enumerate()
+                    .filter(|(j, _)| *j != i)
+                    .map(|(_, other_domain)| {
+                        other_domain.zp_at_point(zeta)
+                            * other_domain.zp_at_point(domain.first_point()).inverse()
+                    })
+                    .product::<Challenge<T>>()
+            })
+            .collect_vec();
+
+        let quotient = table
+            .opened_values
+            .quotient_chunks
+            .iter()
+            .enumerate()
+            .map(|(ch_i, ch)| {
+                ch.iter()
+                    .enumerate()
+                    .map(|(e_i, &c)| zps[ch_i] * Challenge::<T>::monomial(e_i) * c)
+                    .sum()
+            })
+            .sum();
+
+        let sels = table.natural_domain(pcs).selectors_at_point(zeta);
+
+        let empty_vec = vec![];
+
+        let preprocessed = if let Some(preprocessed) = table.opened_values.preprocessed.as_ref() {
+            VerticalPair::new(
+                RowMajorMatrixView::new_row(&preprocessed.local),
+                RowMajorMatrixView::new_row(&preprocessed.next),
+            )
+        } else {
+            VerticalPair::new(
+                RowMajorMatrixView::new(&empty_vec, 0),
+                RowMajorMatrixView::new(&empty_vec, 0),
+            )
+        };
+
+        let traces_by_stage = table
+            .opened_values
+            .traces_by_stage
+            .iter()
+            .map(|trace| {
+                VerticalPair::new(
+                    RowMajorMatrixView::new_row(&trace.local),
+                    RowMajorMatrixView::new_row(&trace.next),
+                )
+            })
+            .collect::<Vec<VerticalPair<_, _>>>();
+
+        let mut folder: VerifierConstraintFolder<'_, T::Config> = VerifierConstraintFolder {
+            challenges: &challenges_by_stage,
+            preprocessed,
+            traces_by_stage,
+            public_values_by_stage: table.public_values_by_stage,
+            is_first_row: sels.is_first_row,
+            is_last_row: sels.is_last_row,
+            is_transition: sels.is_transition,
+            alpha,
+            accumulator: Challenge::<T>::zero(),
+        };
+        table.air.eval(&mut folder);
+        let folded_constraints = folder.accumulator;
+
+        // Finally, check that
+        //     folded_constraints(zeta) / Z_H(zeta) = quotient(zeta)
+        if folded_constraints * sels.inv_zeroifier != quotient {
+            return Err(VerificationError::OodEvaluationMismatch);
+        }
     }
 
     Ok(())
+}
+
+fn verify_opening_shape<T: FieldElementMap>(
+    table: &Table<'_, T>,
+) -> Result<(), VerificationError<PcsError<T::Config>>>
+where
+    ProverData<T>: Send,
+    Commitment<T>: Send,
+{
+    let log_quotient_degree = get_log_quotient_degree::<Val<T::Config>, _>(
+        &table.air,
+        &table
+            .public_values_by_stage
+            .iter()
+            .map(|values| values.len())
+            .collect::<Vec<_>>(),
+    );
+    let quotient_degree = 1 << log_quotient_degree;
+    let stage_count = <_ as MultiStageAir<SymbolicAirBuilder<_>>>::stage_count(&table.air);
+    let challenge_counts: Vec<usize> = (0..stage_count)
+        .map(|i| <_ as MultiStageAir<SymbolicAirBuilder<_>>>::stage_challenge_count(&table.air, i))
+        .collect();
+
+    let air_widths = (0..stage_count)
+        .map(|stage| {
+            <_ as MultiStageAir<SymbolicAirBuilder<Val<T::Config>>>>::stage_trace_width(
+                &table.air, stage,
+            )
+        })
+        .collect::<Vec<usize>>();
+    let air_fixed_width =
+        <_ as MultiStageAir<SymbolicAirBuilder<Val<T::Config>>>>::preprocessed_width(&table.air);
+    let res = table
+        .opened_values
+        .preprocessed
+        .as_ref()
+        .map(|StageOpenedValues { local, next }| {
+            local.len() == air_fixed_width && next.len() == air_fixed_width
+        })
+        .unwrap_or(true)
+        && table
+            .opened_values
+            .traces_by_stage
+            .iter()
+            .zip_eq(&air_widths)
+            .all(|(StageOpenedValues { local, next }, air_width)| {
+                local.len() == *air_width && next.len() == *air_width
+            })
+        && table.opened_values.quotient_chunks.len() == quotient_degree
+        && table
+            .opened_values
+            .quotient_chunks
+            .iter()
+            .all(|qc| qc.len() == <Challenge<T> as AbstractExtensionField<Val<T::Config>>>::D)
+        && table.public_values_by_stage.len() as u8 == stage_count
+        && challenge_counts.len() as u8 == stage_count;
+
+    res.then_some(())
+        .ok_or(VerificationError::InvalidProofShape)
 }
 
 #[derive(Debug)]
