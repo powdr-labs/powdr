@@ -348,7 +348,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         );
 
         log::info!("Simulating chunk execution...");
-        let (chunk_trace, memory_snapshot_update, register_memory_snapshot) = {
+        let (chunk_trace, memory_snapshot_update, mut register_memory_snapshot) = {
             let (trace, memory_snapshot_update, register_memory_snapshot) =
                 powdr_riscv_executor::execute_ast::<F>(
                     &program,
@@ -422,10 +422,11 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         // Go over all registers except the PC
         let register_iter = REGISTER_NAMES.iter().take(REGISTER_NAMES.len() - 1);
         register_values = register_iter
-            .map(|reg| {
+            // we use flat_map because the register values are `Vec<F>` (e.g., small fields use two elements)
+            .flat_map(|reg| {
                 let reg = reg.strip_prefix("main.").unwrap();
                 let id = Register::from(reg).addr();
-                *register_memory_snapshot.get(&(id as u32)).unwrap()
+                register_memory_snapshot.remove(&(id as u32)).unwrap()
             })
             .collect::<Vec<_>>();
 
