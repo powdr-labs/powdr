@@ -187,6 +187,12 @@ fn bus_permutation_via_challenges_bn() {
 }
 
 #[test]
+fn test_multiplicities() {
+    let f = "std/multiplicities.asm";
+    test_halo2(make_simple_prepared_pipeline(f));
+}
+
+#[test]
 fn bus_permutation_via_challenges_ext_bn() {
     let f = "std/bus_permutation_via_challenges_ext.asm";
     test_halo2(make_simple_prepared_pipeline(f));
@@ -245,6 +251,21 @@ fn shift_large_test() {
 fn shift_small_test() {
     let f = "std/shift_small_test.asm";
     test_plonky3::<BabyBearField>(f, vec![]);
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn rotate_large_test() {
+    let f = "std/rotate_large_test.asm";
+    test_pilcom(make_simple_prepared_pipeline(f));
+    test_halo2(make_simple_prepared_pipeline(f));
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn rotate_small_test() {
+    let f = "std/rotate_small_test.asm";
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Composite);
 }
 
 #[test]

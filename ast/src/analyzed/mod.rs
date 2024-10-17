@@ -21,6 +21,7 @@ pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
     self, ArrayExpression, EnumDeclaration, EnumVariant, NamedType, TraitDeclaration,
+    TypeDeclaration,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -623,7 +624,7 @@ pub enum SymbolKind {
 pub enum FunctionValueDefinition {
     Array(ArrayExpression<Reference>),
     Expression(TypedExpression),
-    TypeDeclaration(EnumDeclaration),
+    TypeDeclaration(TypeDeclaration),
     TypeConstructor(Arc<EnumDeclaration>, EnumVariant),
     TraitDeclaration(TraitDeclaration),
     TraitFunction(Arc<TraitDeclaration>, NamedType),
@@ -636,8 +637,8 @@ impl Children<Expression> for FunctionValueDefinition {
                 Box::new(iter::once(e))
             }
             FunctionValueDefinition::Array(e) => e.children(),
-            FunctionValueDefinition::TypeDeclaration(enum_declaration) => {
-                enum_declaration.children()
+            FunctionValueDefinition::TypeDeclaration(type_declaration) => {
+                type_declaration.children()
             }
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children(),
             FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children(),
@@ -651,8 +652,8 @@ impl Children<Expression> for FunctionValueDefinition {
                 Box::new(iter::once(e))
             }
             FunctionValueDefinition::Array(e) => e.children_mut(),
-            FunctionValueDefinition::TypeDeclaration(enum_declaration) => {
-                enum_declaration.children_mut()
+            FunctionValueDefinition::TypeDeclaration(type_declaration) => {
+                type_declaration.children_mut()
             }
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children_mut(),
             FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children_mut(),
