@@ -261,7 +261,8 @@ impl PILAnalyzer {
     fn struct_fields_check(&self) -> Result<(), Vec<Error>> {
         let mut errors = Vec::new();
         let mut visited_structs = HashSet::new();
-        let structs_data = self.all_children().filter_map(|expr| {
+
+        let structs_exprs = self.all_children().filter_map(|expr| {
             if let Expression::StructExpression(
                 sr,
                 StructExpression {
@@ -275,9 +276,10 @@ impl PILAnalyzer {
                 None
             }
         });
-        for (sr, name, fields) in structs_data {
+
+        for (sr, name, fields) in structs_exprs {
             if let Some((
-                symbol,
+                _,
                 Some(FunctionValueDefinition::TypeDeclaration(TypeDeclaration::Struct(
                     struct_decl,
                 ))),
@@ -311,7 +313,33 @@ impl PILAnalyzer {
                         .into_iter()
                         .map(|f| sr.with_error(format!("Field '{f}' specified more than once"))),
                 );
+            } else {
+                errors.push(sr.with_error(format!("Struct '{name}' has not been declared")));
+            }
 
+            visited_structs.insert(name);
+        }
+
+        let structs_decls = self.definitions.iter().filter(|(_, (_, def))| {
+            matches!(
+                def,
+                Some(FunctionValueDefinition::TypeDeclaration(
+                    TypeDeclaration::Struct(_)
+                ))
+            )
+        });
+
+        for (name, (symbol, def)) in structs_decls {
+            if !visited_structs.contains(name) {
+                errors.push(
+                    symbol
+                        .source
+                        .with_error(format!("warning: struct '{name}' is never constructed")), // TODO: Warningx
+                );
+            } else if let Some(FunctionValueDefinition::TypeDeclaration(TypeDeclaration::Struct(
+                struct_decl,
+            ))) = def
+            {
                 let duplicate_declaration_fields: Vec<_> = struct_decl
                     .fields
                     .iter()
@@ -325,30 +353,9 @@ impl PILAnalyzer {
                         .with_error(format!("Field '{f}' is already declared",))
                 }));
             } else {
-                errors.push(sr.with_error(format!("Struct '{name}' has not been declared")));
+                unreachable!()
             }
-
-            visited_structs.insert(name);
         }
-
-        self.definitions
-            .iter()
-            .filter(|(_, (_, def))| {
-                matches!(
-                    def,
-                    Some(FunctionValueDefinition::TypeDeclaration(
-                        TypeDeclaration::Struct(_)
-                    ))
-                )
-            })
-            .filter(|(name, _)| !visited_structs.contains(*name))
-            .for_each(|(name, (symbol, _))| {
-                errors.push(
-                    symbol
-                        .source
-                        .with_error(format!("warning: struct '{name}' is never constructed")), // TODO Warningx
-                );
-            });
 
         if errors.is_empty() {
             Ok(())
