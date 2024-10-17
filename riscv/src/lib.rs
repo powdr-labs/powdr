@@ -130,13 +130,10 @@ pub fn compile_rust(
 ) -> Option<(PathBuf, String)> {
     if options.continuations {
         match options.field {
-            KnownField::BabyBearField => {
-                todo!()
-            }
             KnownField::Mersenne31Field => {
                 todo!()
             }
-            KnownField::GoldilocksField | KnownField::Bn254Field => {
+            KnownField::BabyBearField | KnownField::GoldilocksField | KnownField::Bn254Field => {
                 assert!(
                     options.libs.poseidon,
                     "Poseidon library is required for bootloader"
