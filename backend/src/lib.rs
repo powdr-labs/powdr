@@ -8,6 +8,7 @@ mod plonky3;
 
 mod composite;
 mod field_filter;
+mod stwo;
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
@@ -46,6 +47,9 @@ pub enum BackendType {
     #[cfg(feature = "plonky3")]
     #[strum(serialize = "plonky3")]
     Plonky3,
+    #[cfg(feature = "stwo")]
+    #[strum(serialize = "stwo")]
+    Stwo,
 }
 
 pub type BackendOptions = String;
@@ -84,6 +88,8 @@ impl BackendType {
             }
             #[cfg(feature = "plonky3")]
             BackendType::Plonky3 => Box::new(plonky3::Factory),
+            #[cfg(feature = "stwo")]
+            BackendType::Stwo => Box::new(stwo::StwoProverFactory),
         }
     }
 }
