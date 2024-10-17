@@ -61,6 +61,6 @@ impl<T: FieldElement> Backend<T> for StwoProver<T> {
     }
     #[allow(unused_variables)]
     fn export_verification_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {
-        Ok(())
+        unimplemented!()
     }
 }
