@@ -906,3 +906,32 @@ fn intermediate_syntax() {
     assert_eq!(analyzed.intermediate_count(), 4);
     assert_eq!(analyzed.to_string(), expected);
 }
+
+#[test]
+#[should_panic = "Unrecognized token"]
+fn typed_literals_no_sep_fe() {
+    analyze_string("let a = 1fe;");
+}
+
+#[test]
+#[should_panic = "Unrecognized token"]
+fn typed_literals_no_sep_int() {
+    analyze_string("let a = 1int;");
+}
+
+#[test]
+fn typed_literals() {
+    let input = "
+        let a = -1_int;
+        let b = -1_2_fe;
+        let c = -0x7_8_int;
+        let d = [1, 0_int, 2];
+        ";
+    let expected = r#"    let a: int = -1_int;
+    let b: fe = -12_fe;
+    let c: int = -120_int;
+    let d: int[] = [1_int, 0_int, 2_int];
+"#;
+    let analyzed = analyze_string(input);
+    assert_eq!(analyzed.to_string(), expected);
+}
