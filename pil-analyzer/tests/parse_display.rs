@@ -22,7 +22,7 @@ fn analyze_string(input: &str) -> Analyzed<GoldilocksField> {
 #[test]
 fn parse_print_analyzed() {
     // This is rather a test for the Display trait than for the analyzer.
-    let input = r#"    let N: int = 65536;
+    let input = r#"    let N: int = 65536_int;
 public P = T::pc(2);
 namespace Bin(65536);
     col witness bla;
@@ -31,9 +31,9 @@ namespace std::prover(65536);
 namespace std::convert(65536);
     let int = [];
 namespace T(65536);
-    col fixed first_step = [1] + [0]*;
+    col fixed first_step = [1_fe] + [0_fe]*;
     col fixed line(i) { i };
-    let ops: int -> bool = |i| i < 7 && 6 >= -i;
+    let ops: int -> bool = |i| i < 7_int && 6_int >= -i;
     col witness pc;
     col witness XInv;
     col witness XIsZero;
@@ -61,18 +61,18 @@ namespace T(65536);
     T::A' = T::first_step' * 0 + T::reg_write_X_A * T::X + (1 - (T::first_step' + T::reg_write_X_A)) * T::A;
     col witness X_free_value;
     std::prelude::set_hint(T::X_free_value, query |_| match std::prover::eval(T::pc) {
-        0 => std::prelude::Query::Input(0, 2),
-        3 => std::prelude::Query::Input(0, std::convert::int::<fe>(std::prover::eval(T::CNT) + 2)),
-        7 => std::prelude::Query::Input(0, 1),
+        0 => std::prelude::Query::Input(0_int, 2_int),
+        3 => std::prelude::Query::Input(0_int, std::convert::int::<fe>(std::prover::eval(T::CNT) + 2_fe)),
+        7 => std::prelude::Query::Input(0_int, 1_int),
         _ => std::prelude::Query::None,
     });
-    col fixed p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
-    col fixed p_X_read_free = [1, 0, 0, 1, 0, 0, 0, -1, 0] + [0]*;
-    col fixed p_read_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 1] + [0]*;
-    col fixed p_read_X_CNT = [0, 0, 1, 0, 0, 0, 0, 0, 0] + [0]*;
-    col fixed p_read_X_pc = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
-    col fixed p_reg_write_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 0] + [0]*;
-    col fixed p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
+    col fixed p_X_const = [0_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe] + [0_fe]*;
+    col fixed p_X_read_free = [1_fe, 0_fe, 0_fe, 1_fe, 0_fe, 0_fe, 0_fe, -1_fe, 0_fe] + [0_fe]*;
+    col fixed p_read_X_A = [0_fe, 0_fe, 0_fe, 1_fe, 0_fe, 0_fe, 0_fe, 1_fe, 1_fe] + [0_fe]*;
+    col fixed p_read_X_CNT = [0_fe, 0_fe, 1_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe] + [0_fe]*;
+    col fixed p_read_X_pc = [0_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe] + [0_fe]*;
+    col fixed p_reg_write_X_A = [0_fe, 0_fe, 0_fe, 1_fe, 0_fe, 0_fe, 0_fe, 1_fe, 0_fe] + [0_fe]*;
+    col fixed p_reg_write_X_CNT = [1_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe] + [0_fe]*;
     [T::pc, T::reg_write_X_A, T::reg_write_X_CNT] in 1 - T::first_step $ [T::line, T::p_reg_write_X_A, T::p_reg_write_X_CNT];
 "#;
     let formatted = analyze_string(input).to_string();
@@ -152,7 +152,7 @@ namespace N(65536);
     col witness x;
     let z: int = 2_int;
     col fixed t(i) { i + N::z };
-    let other: int[] = [1, N::z];
+    let other: int[] = [1_int, N::z];
     let other_fun: int, fe -> (int, (int -> int)) = |i, j| (i + 7_int, |k| k - i);
 "#;
     let formatted = analyze_string(input).to_string();
@@ -201,9 +201,9 @@ fn namespaced_call() {
     let D = |i| Assembly::C((i + 3));
 "#;
     let expected = r#"namespace Assembly(2);
-    let A: int -> int = |i| 0;
-    let C: int -> int = |i| Assembly::A(i + 2) + 3;
-    let D: int -> int = |i| Assembly::C(i + 3);
+    let A: int -> int = |i| 0_int;
+    let C: int -> int = |i| Assembly::A(i + 2_int) + 3_int;
+    let D: int -> int = |i| Assembly::C(i + 3_int);
 "#;
     let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
@@ -217,9 +217,9 @@ fn if_expr() {
     col fixed D(i) { if (Assembly::c(i) != 0) { 3 } else { 2 } };
 "#;
     let expected = r#"namespace Assembly(2);
-    col fixed A = [0]*;
-    let c: int -> int = |i| if i < 3 { i } else { i + 9 };
-    col fixed D(i) { if Assembly::c(i) != 0 { 3 } else { 2 } };
+    col fixed A = [0_fe]*;
+    let c: int -> int = |i| if i < 3_int { i } else { i + 9_int };
+    col fixed D(i) { if Assembly::c(i) != 0_int { 3_fe } else { 2_fe } };
 "#;
     let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
@@ -238,12 +238,12 @@ fn symbolic_functions() {
     on_regular_row(constrain_equal_expr(y', x + y)) = 0;
     "#;
     let expected = r#"namespace N(16);
-    let last_row: int = 15;
-    col fixed ISLAST(i) { if i == N::last_row { 1 } else { 0 } };
+    let last_row: int = 15_int;
+    col fixed ISLAST(i) { if i == N::last_row { 1_fe } else { 0_fe } };
     col witness x;
     col witness y;
     let constrain_equal_expr: expr, expr -> expr = |A, B| A - B;
-    let on_regular_row: expr -> expr = |cond| (1expr - N::ISLAST) * cond;
+    let on_regular_row: expr -> expr = |cond| (1_expr - N::ISLAST) * cond;
     (1 - N::ISLAST) * (N::x' - N::y) = 0;
     (1 - N::ISLAST) * (N::y' - (N::x + N::y)) = 0;
 "#;
@@ -338,8 +338,8 @@ fn complex_type_resolution() {
 #[test]
 fn function_type_display() {
     let input = r#"namespace N(16);
-    let f: (-> int)[] = [|| 10, || 12];
-    let g: (int -> int) -> int = |f| f(0);
+    let f: (-> int)[] = [|| 10_int, || 12_int];
+    let g: (int -> int) -> int = |f| f(0_int);
     let h: int -> (int -> int) = |x| (|i| x + i);
 "#;
     let formatted = analyze_string(input).to_string();
@@ -649,7 +649,7 @@ fn patterns() {
     let input = "    let t: ((int, int), int[]) -> int = |i| match i {
         ((_, 6), []) => 2_int,
         ((2, _), [3, 4]) => 3_int,
-        ((_, 6), x) => x[0],
+        ((_, 6), x) => x[0_int],
         ((_, y), _) => y,
         (_, [2]) => 7_int,
     };
@@ -854,9 +854,9 @@ fn reparse_array_typed_fixed_col() {
     let input = r#"namespace std::array(16);
     let<T> len: T[] -> int = 19;
 namespace Main(16);
-    let<T> make_array: int, (int -> T) -> T[] = |n, f| if n == 0 { [] } else { Main::make_array::<T>(n - 1, f) + [f(n - 1)] };
+    let<T> make_array: int, (int -> T) -> T[] = |n, f| if n == 0_int { [] } else { Main::make_array::<T>(n - 1_int, f) + [f(n - 1_int)] };
     let nth_clock: int -> (int -> int) = |k| (|i| if i % std::array::len::<expr>(Main::clocks) == k { 1_int } else { 0_int });
-    let clocks: col[4] = Main::make_array::<(int -> int)>(4, Main::nth_clock);
+    let clocks: col[4] = Main::make_array::<(int -> int)>(4_int, Main::nth_clock);
 "#;
     let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, input);
