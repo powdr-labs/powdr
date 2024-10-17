@@ -8,8 +8,11 @@ mod instruction_tests {
     use test_log::test;
 
     fn run_instruction_test(path: &Path) {
-        let options_32 = CompilerOptions::new_32();
-        run_instruction_test_with_options(path, options_32);
+        let options_bb = CompilerOptions::new_bb();
+        run_instruction_test_with_options(path, options_bb);
+
+        let options_gl = CompilerOptions::new_gl();
+        run_instruction_test_with_options(path, options_gl);
     }
 
     fn run_instruction_test_with_options(path: &Path, options: CompilerOptions) {

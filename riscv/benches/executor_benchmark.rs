@@ -18,7 +18,7 @@ fn executor_benchmark(c: &mut Criterion) {
     let tmp_dir = Temp::new_dir().unwrap();
     let executable =
         compile_rust_crate_to_riscv("./tests/riscv_data/keccak/Cargo.toml", &tmp_dir, None);
-    let options = CompilerOptions::new_32();
+    let options = CompilerOptions::new_gl();
     let contents = elf::translate(&executable, options.clone());
     let mut pipeline = Pipeline::<T>::default().from_asm_string(contents, None);
     pipeline.compute_optimized_pil().unwrap();
