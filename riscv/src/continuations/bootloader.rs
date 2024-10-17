@@ -200,6 +200,8 @@ impl<B: BootloaderImpl> BootloaderInputs<B> {
         }
     }
 
+    /// Convert the bootloader inputs into the format expected by the external witness.
+    /// Column names here must match the column names in the `bootloader_inputs` submachines.
     pub fn into_external_witness(self) -> Vec<(String, Vec<B::Fe>)> {
         match B::FE_PER_WORD {
             1 => vec![("main_bootloader_inputs::value".to_string(), self.0)],
