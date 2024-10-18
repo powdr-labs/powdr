@@ -6,6 +6,13 @@ license.workspace = true
 homepage.workspace = true
 repository.workspace = true
 
+[lib]
+name = "powdr_plonky3"
+
+[[bin]]
+name = "gen_poseidon_bb_consts"
+path = "src/bin/gen_poseidon_bb_consts.rs" 
+
 [features]
 default = []
 nightly-features = [
