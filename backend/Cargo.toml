@@ -17,6 +17,7 @@ halo2 = [
 ]
 estark-polygon = ["dep:pil-stark-prover"]
 plonky3 = ["dep:powdr-plonky3"]
+stwo = ["dep:stwo-prover"]
 
 # Enable AVX or Neon accordingly in backends that support them.
 plonky3-simd = ["powdr-plonky3?/nightly-features"]
@@ -45,6 +46,9 @@ halo2_curves = { version = "0.6.1", package = "halo2curves", optional = true}
 #snark-verifier = { git = "https://github.com/privacy-scaling-explorations/snark-verifier", tag = "v2024_01_31" }
 snark-verifier = { git = "https://github.com/powdr-labs/snark-verifier.git", rev = "55012261fd4b0b8d21b581a9782d05258afe4104", optional = true }
 halo2_solidity_verifier = { git = "https://github.com/powdr-labs/halo2-solidity-verifier.git", rev = "ecae7fd2f62178c18b5fe18011630aa71da3371f", features = ["evm"], optional = true }
+
+# TODO: Change this to main branch when the `andrew/dev/update-toolchain` branch is merged,the main branch is using "nightly-2024-01-04", not compatiable with plonky3
+stwo-prover = { git= "https://github.com/starkware-libs/stwo.git",optional=true, rev="52d050c18b5dbc74af40214b3b441a6f60a20d41" }
 
 strum = { version = "0.24.1", features = ["derive"] }
 log = "0.4.17"
