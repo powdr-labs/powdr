@@ -2,6 +2,7 @@ use powdr_ast::analyzed::Analyzed;
 use powdr_backend::BackendType;
 use powdr_number::{
     buffered_write_file, BabyBearField, BigInt, Bn254Field, FieldElement, GoldilocksField,
+    KoalaBearField,
 };
 use powdr_pil_analyzer::evaluator::{self, SymbolLookup};
 use std::path::PathBuf;
@@ -72,9 +73,13 @@ pub fn regular_test(file_name: &str, inputs: &[i32]) {
     let inputs_bb = inputs.iter().map(|x| BabyBearField::from(*x)).collect();
     let pipeline_bb = make_prepared_pipeline(file_name, inputs_bb, vec![]);
     test_plonky3_pipeline(pipeline_bb);
+
+    let inputs_bb = inputs.iter().map(|x| KoalaBearField::from(*x)).collect();
+    let pipeline_bb = make_prepared_pipeline(file_name, inputs_bb, vec![]);
+    test_plonky3_pipeline(pipeline_bb);
 }
 
-pub fn regular_test_without_babybear(file_name: &str, inputs: &[i32]) {
+pub fn regular_test_without_small_field(file_name: &str, inputs: &[i32]) {
     let inputs_gl = inputs.iter().map(|x| GoldilocksField::from(*x)).collect();
     let pipeline_gl = make_prepared_pipeline(file_name, inputs_gl, vec![]);
     test_pilcom(pipeline_gl.clone());
