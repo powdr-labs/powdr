@@ -103,13 +103,14 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     CLK[STATE_SIZE] * (high_addr - output_addr_high) = 0;
     CLK[STATE_SIZE] * (low_addr - output_addr_low) = 0;
 
-    // Tells if the low limb of the address is about to overflow:
-    let low_overflow = new_bool();
+    // How far away from overflowing the low limb is:
     let low_diff = low_addr - (0x10000 - 4);
-    low_overflow = 1 - low_diff_inv * low_diff;
+    // Is one if low limb is about to overflow:
+    let low_overflow = 1 - low_diff_inv * low_diff;
     // Helper to allow low_overflow to be boolean
     let low_diff_inv;
-    // Ensures that low_diff_inv is the inverse when low_diff is not zero
+    // Ensures that (low_diff_inv * low_diff) is bool,
+    // and that low_diff_inv not 0 when low_diff is not 0:
     (low_diff_inv * low_diff - 1) * low_diff = 0;
 
     // Increment the low limb if address is not being set:
