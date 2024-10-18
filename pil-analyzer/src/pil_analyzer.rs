@@ -44,11 +44,7 @@ pub fn analyze_ast<T: FieldElement>(pil_file: PILFile) -> Result<Analyzed<T>, Ve
 }
 
 pub fn analyze_string<T: FieldElement>(contents: &str) -> Result<Analyzed<T>, Vec<Error>> {
-    let pil_file = powdr_parser::parse(Some("input"), contents).unwrap_or_else(|err| {
-        eprintln!("Error parsing .pil file:");
-        err.output_to_stderr();
-        panic!();
-    });
+    let pil_file = powdr_parser::parse(Some("input"), contents).map_err(|e| vec![e])?;
     analyze(vec![pil_file])
 }
 

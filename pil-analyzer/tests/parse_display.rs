@@ -22,7 +22,7 @@ fn analyze_string(input: &str) -> Analyzed<GoldilocksField> {
 #[test]
 fn parse_print_analyzed() {
     // This is rather a test for the Display trait than for the analyzer.
-    let input = r#"    let N: int = 65536;
+    let input = r#"    let N: int = 65536_int;
 public P = T::pc(2);
 namespace Bin(65536);
     col witness bla;
@@ -31,9 +31,9 @@ namespace std::prover(65536);
 namespace std::convert(65536);
     let int = [];
 namespace T(65536);
-    col fixed first_step = [1] + [0]*;
+    col fixed first_step = [1_fe] + [0_fe]*;
     col fixed line(i) { i };
-    let ops: int -> bool = |i| i < 7 && 6 >= -i;
+    let ops: int -> bool = |i| i < 7_int && 6_int >= -i;
     col witness pc;
     col witness XInv;
     col witness XIsZero;
@@ -61,18 +61,18 @@ namespace T(65536);
     T::A' = T::first_step' * 0 + T::reg_write_X_A * T::X + (1 - (T::first_step' + T::reg_write_X_A)) * T::A;
     col witness X_free_value;
     std::prelude::set_hint(T::X_free_value, query |_| match std::prover::eval(T::pc) {
-        0 => std::prelude::Query::Input(0, 2),
-        3 => std::prelude::Query::Input(0, std::convert::int::<fe>(std::prover::eval(T::CNT) + 2)),
-        7 => std::prelude::Query::Input(0, 1),
+        0 => std::prelude::Query::Input(0_int, 2_int),
+        3 => std::prelude::Query::Input(0_int, std::convert::int::<fe>(std::prover::eval(T::CNT) + 2_fe)),
+        7 => std::prelude::Query::Input(0_int, 1_int),
         _ => std::prelude::Query::None,
     });
-    col fixed p_X_const = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
-    col fixed p_X_read_free = [1, 0, 0, 1, 0, 0, 0, -1, 0] + [0]*;
-    col fixed p_read_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 1] + [0]*;
-    col fixed p_read_X_CNT = [0, 0, 1, 0, 0, 0, 0, 0, 0] + [0]*;
-    col fixed p_read_X_pc = [0, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
-    col fixed p_reg_write_X_A = [0, 0, 0, 1, 0, 0, 0, 1, 0] + [0]*;
-    col fixed p_reg_write_X_CNT = [1, 0, 0, 0, 0, 0, 0, 0, 0] + [0]*;
+    col fixed p_X_const = [0_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe] + [0_fe]*;
+    col fixed p_X_read_free = [1_fe, 0_fe, 0_fe, 1_fe, 0_fe, 0_fe, 0_fe, -1_fe, 0_fe] + [0_fe]*;
+    col fixed p_read_X_A = [0_fe, 0_fe, 0_fe, 1_fe, 0_fe, 0_fe, 0_fe, 1_fe, 1_fe] + [0_fe]*;
+    col fixed p_read_X_CNT = [0_fe, 0_fe, 1_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe] + [0_fe]*;
+    col fixed p_read_X_pc = [0_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe] + [0_fe]*;
+    col fixed p_reg_write_X_A = [0_fe, 0_fe, 0_fe, 1_fe, 0_fe, 0_fe, 0_fe, 1_fe, 0_fe] + [0_fe]*;
+    col fixed p_reg_write_X_CNT = [1_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe, 0_fe] + [0_fe]*;
     [T::pc, T::reg_write_X_A, T::reg_write_X_CNT] in 1 - T::first_step $ [T::line, T::p_reg_write_X_A, T::p_reg_write_X_CNT];
 "#;
     let formatted = analyze_string(input).to_string();
@@ -147,13 +147,13 @@ namespace N(r);
     let other = [1, z];
     let other_fun: int, fe -> (int, (int -> int)) = |i, j| (i + 7, (|k| k - i));
 "#;
-    let expected = r#"    let r: int = 65536;
+    let expected = r#"    let r: int = 65536_int;
 namespace N(65536);
     col witness x;
-    let z: int = 2;
+    let z: int = 2_int;
     col fixed t(i) { i + N::z };
-    let other: int[] = [1, N::z];
-    let other_fun: int, fe -> (int, (int -> int)) = |i, j| (i + 7, |k| k - i);
+    let other: int[] = [1_int, N::z];
+    let other_fun: int, fe -> (int, (int -> int)) = |i, j| (i + 7_int, |k| k - i);
 "#;
     let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
@@ -201,9 +201,9 @@ fn namespaced_call() {
     let D = |i| Assembly::C((i + 3));
 "#;
     let expected = r#"namespace Assembly(2);
-    let A: int -> int = |i| 0;
-    let C: int -> int = |i| Assembly::A(i + 2) + 3;
-    let D: int -> int = |i| Assembly::C(i + 3);
+    let A: int -> int = |i| 0_int;
+    let C: int -> int = |i| Assembly::A(i + 2_int) + 3_int;
+    let D: int -> int = |i| Assembly::C(i + 3_int);
 "#;
     let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
@@ -217,9 +217,9 @@ fn if_expr() {
     col fixed D(i) { if (Assembly::c(i) != 0) { 3 } else { 2 } };
 "#;
     let expected = r#"namespace Assembly(2);
-    col fixed A = [0]*;
-    let c: int -> int = |i| if i < 3 { i } else { i + 9 };
-    col fixed D(i) { if Assembly::c(i) != 0 { 3 } else { 2 } };
+    col fixed A = [0_fe]*;
+    let c: int -> int = |i| if i < 3_int { i } else { i + 9_int };
+    col fixed D(i) { if Assembly::c(i) != 0_int { 3_fe } else { 2_fe } };
 "#;
     let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
@@ -238,12 +238,12 @@ fn symbolic_functions() {
     on_regular_row(constrain_equal_expr(y', x + y)) = 0;
     "#;
     let expected = r#"namespace N(16);
-    let last_row: int = 15;
-    col fixed ISLAST(i) { if i == N::last_row { 1 } else { 0 } };
+    let last_row: int = 15_int;
+    col fixed ISLAST(i) { if i == N::last_row { 1_fe } else { 0_fe } };
     col witness x;
     col witness y;
     let constrain_equal_expr: expr, expr -> expr = |A, B| A - B;
-    let on_regular_row: expr -> expr = |cond| (1 - N::ISLAST) * cond;
+    let on_regular_row: expr -> expr = |cond| (1_expr - N::ISLAST) * cond;
     (1 - N::ISLAST) * (N::x' - N::y) = 0;
     (1 - N::ISLAST) * (N::y' - (N::x + N::y)) = 0;
 "#;
@@ -262,7 +262,7 @@ fn next_op_on_param() {
     let expected = r#"namespace N(16);
     col witness x;
     col witness y;
-    let next_is_seven: expr -> expr = |t| t' - 7;
+    let next_is_seven: expr -> expr = |t| t' - 7_expr;
     N::y' - 7 = 0;
 "#;
     let formatted = analyze_string(input).to_string();
@@ -280,8 +280,8 @@ fn fixed_symbolic() {
     x - ISLAST = 0;
     "#;
     let expected = r#"namespace N(16);
-    let last_row: int = 15;
-    let islast: int -> fe = |i| if i == N::last_row { 1 } else { 0 };
+    let last_row: int = 15_int;
+    let islast: int -> fe = |i| if i == N::last_row { 1_fe } else { 0_fe };
     col fixed ISLAST(i) { N::islast(i) };
     col witness x;
     col witness y;
@@ -298,7 +298,7 @@ fn parentheses_lambda() {
     let x: fe = (|i| || w())(w())();
     "#;
     let expected = r#"namespace N(16);
-    let w: -> fe = || 2;
+    let w: -> fe = || 2_fe;
     let x: fe = (|i| (|| N::w()))(N::w())();
 "#;
     let formatted = analyze_string(input).to_string();
@@ -326,10 +326,10 @@ fn complex_type_resolution() {
     let z: (((int -> int), int -> int)[], expr) = ([x, x, x, x, x, x, x, x], y[0]);
     "#;
     let expected = r#"namespace N(16);
-    let f: int -> int = |i| i + 10;
-    let x: (int -> int), int -> int = |k, i| k(2 ** i);
+    let f: int -> int = |i| i + 10_int;
+    let x: (int -> int), int -> int = |k, i| k(2_int ** i);
     col witness y[14];
-    let z: (((int -> int), int -> int)[], expr) = ([N::x, N::x, N::x, N::x, N::x, N::x, N::x, N::x], N::y[0]);
+    let z: (((int -> int), int -> int)[], expr) = ([N::x, N::x, N::x, N::x, N::x, N::x, N::x, N::x], N::y[0_int]);
 "#;
     let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, expected);
@@ -338,8 +338,8 @@ fn complex_type_resolution() {
 #[test]
 fn function_type_display() {
     let input = r#"namespace N(16);
-    let f: (-> int)[] = [|| 10, || 12];
-    let g: (int -> int) -> int = |f| f(0);
+    let f: (-> int)[] = [|| 10_int, || 12_int];
+    let g: (int -> int) -> int = |f| f(0_int);
     let h: int -> (int -> int) = |x| (|i| x + i);
 "#;
     let formatted = analyze_string(input).to_string();
@@ -358,7 +358,7 @@ fn expr_and_identity() {
     "#;
     let expected = r#"namespace N(16);
     let f: expr, expr -> std::prelude::Constr[] = |x, y| [x = y];
-    let g: expr -> std::prelude::Constr[] = |x| [x = 0];
+    let g: expr -> std::prelude::Constr[] = |x| [x = 0_expr];
     col witness x;
     col witness y;
     N::x = N::y;
@@ -428,7 +428,7 @@ fn to_expr() {
     let expected = r#"namespace std::convert(16);
     let expr = [];
 namespace N(16);
-    let mul_two: int -> int = |i| i * 2;
+    let mul_two: int -> int = |i| i * 2_int;
     col witness y;
     N::y = N::y * 14;
 "#;
@@ -466,7 +466,7 @@ namespace main(16);
 
 #[test]
 fn stages() {
-    let input = "    let N: int = 8;
+    let input = "    let N: int = 8_int;
 namespace Main(8);
     col witness x;
     col witness stage(2) y;
@@ -494,10 +494,10 @@ fn challenges() {
     assert_eq!(analyzed.intermediate_count(), 0);
     let formatted = analyzed.to_string();
     let expected = r#"namespace Main(8);
-    col fixed first = [1] + [0]*;
+    col fixed first = [1_fe] + [0_fe]*;
     col witness x;
     col witness stage(2) y;
-    let a: expr = std::prelude::challenge(2, 1);
+    let a: expr = std::prelude::challenge(2_int, 1_int);
     Main::x' = (Main::x + 1) * (1 - Main::first);
     Main::y' = (Main::x + std::prelude::challenge(2, 1)) * (1 - Main::first);
 "#;
@@ -528,7 +528,7 @@ fn let_inside_block() {
             x
         },
         1 => Main::w,
-        _ => if i < 3 {
+        _ => if i < 3_int {
             let y: col;
             y
         } else { Main::w },
@@ -647,11 +647,11 @@ fn refutable_let() {
 #[test]
 fn patterns() {
     let input = "    let t: ((int, int), int[]) -> int = |i| match i {
-        ((_, 6), []) => 2,
-        ((2, _), [3, 4]) => 3,
-        ((_, 6), x) => x[0],
+        ((_, 6), []) => 2_int,
+        ((2, _), [3, 4]) => 3_int,
+        ((_, 6), x) => x[0_int],
         ((_, y), _) => y,
-        (_, [2]) => 7,
+        (_, [2]) => 7_int,
     };
 ";
     assert_eq!(input, analyze_string(input).to_string());
@@ -699,11 +699,11 @@ fn sub_block_shadowing() {
 fn disjoint_block_shadowing() {
     let input = "    let t: int = {
         let b: int = {
-            let x: int = 2;
+            let x: int = 2_int;
             x
         };
         {
-            let x: int = 3;
+            let x: int = 3_int;
             x + b
         }
     };
@@ -730,8 +730,8 @@ fn function_param_shadowing() {
 #[test]
 fn match_shadowing() {
     let input = "    let t: (int, int) -> int = |i| match i {
-        (_, x) => 2,
-        (x, _) => 3,
+        (_, x) => 2_int,
+        (x, _) => 3_int,
     };
 ";
     assert_eq!(input, analyze_string(input).to_string());
@@ -740,11 +740,11 @@ fn match_shadowing() {
 #[test]
 fn single_ellipsis() {
     let input = "    let t: int[] -> int = |i| match i {
-        [1, .., 3] => 2,
-        [..] => 3,
-        [.., 1] => 9,
-        [7, 8, ..] => 2,
-        _ => -1,
+        [1, .., 3] => 2_int,
+        [..] => 3_int,
+        [.., 1] => 9_int,
+        [7, 8, ..] => 2_int,
+        _ => -1_int,
     };
 ";
     assert_eq!(input, analyze_string(input).to_string());
@@ -758,7 +758,7 @@ namespace T(8);
     let k = X::y;
 ";
     let expected = "namespace X;
-    let y: int = 7;
+    let y: int = 7_int;
 namespace T(8);
     let k: int = X::y;
 ";
@@ -774,7 +774,7 @@ namespace T(8);
     let k = y;
 ";
     let expected = "namespace std::prelude;
-    let y: int = 7;
+    let y: int = 7_int;
 namespace T(8);
     let k: int = std::prelude::y;
 ";
@@ -832,7 +832,7 @@ fn reparse_generic_function_call() {
     let input = r#"namespace X(16);
     let<T: Add + FromLiteral> inc: T -> T = |x| x + 1;
 namespace N(16);
-    let x: int = 7;
+    let x: int = 7_int;
     let y: int = X::inc::<int>(N::x);
 "#;
     let formatted = analyze_string(input).to_string();
@@ -854,9 +854,9 @@ fn reparse_array_typed_fixed_col() {
     let input = r#"namespace std::array(16);
     let<T> len: T[] -> int = 19;
 namespace Main(16);
-    let<T> make_array: int, (int -> T) -> T[] = |n, f| if n == 0 { [] } else { Main::make_array::<T>(n - 1, f) + [f(n - 1)] };
-    let nth_clock: int -> (int -> int) = |k| (|i| if i % std::array::len::<expr>(Main::clocks) == k { 1 } else { 0 });
-    let clocks: col[4] = Main::make_array::<(int -> int)>(4, Main::nth_clock);
+    let<T> make_array: int, (int -> T) -> T[] = |n, f| if n == 0_int { [] } else { Main::make_array::<T>(n - 1_int, f) + [f(n - 1_int)] };
+    let nth_clock: int -> (int -> int) = |k| (|i| if i % std::array::len::<expr>(Main::clocks) == k { 1_int } else { 0_int });
+    let clocks: col[4] = Main::make_array::<(int -> int)>(4_int, Main::nth_clock);
 "#;
     let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, input);
@@ -904,5 +904,36 @@ fn intermediate_syntax() {
 "#;
     let analyzed = analyze_string(input);
     assert_eq!(analyzed.intermediate_count(), 4);
+    assert_eq!(analyzed.to_string(), expected);
+}
+
+#[test]
+#[should_panic = "Unrecognized token"]
+fn typed_literals_no_sep_fe() {
+    analyze_string("let a = 1fe;");
+}
+
+#[test]
+#[should_panic = "Unrecognized token"]
+fn typed_literals_no_sep_int() {
+    analyze_string("let a = 1int;");
+}
+
+#[test]
+fn typed_literals() {
+    let input = "
+        let a = -1_int;
+        let b = -1_2_fe;
+        let c = -0x7_8_int;
+        let d = [1, 0_int, 2];
+        let e = -0x1_8_expr;
+        ";
+    let expected = r#"    let a: int = -1_int;
+    let b: fe = -12_fe;
+    let c: int = -120_int;
+    let d: int[] = [1_int, 0_int, 2_int];
+    let e: expr = -24_expr;
+"#;
+    let analyzed = analyze_string(input);
     assert_eq!(analyzed.to_string(), expected);
 }
