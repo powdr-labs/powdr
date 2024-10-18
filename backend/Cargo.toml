@@ -37,7 +37,7 @@ halo2_curves = { version = "0.6.1", package = "halo2curves", optional = true}
 snark-verifier = { git = "https://github.com/powdr-labs/snark-verifier", branch = "powdr-halo2", optional = true }
 halo2_solidity_verifier = { git = "https://github.com/powdr-labs/halo2-solidity-verifier", branch = "main", features = ["evm"], optional = true }
 
-#change this to main branch when updatetoolchain branch is merged,the main branch is using "nightly-2024-01-04", not compatiable with plonky3
+# TODO: Change this to main branch when the `andrew/dev/update-toolchain` branch is merged,the main branch is using "nightly-2024-01-04", not compatiable with plonky3
 stwo-prover = { git= "https://github.com/starkware-libs/stwo.git",optional=true, rev="52d050c18b5dbc74af40214b3b441a6f60a20d41" }
 
 strum = { version = "0.24.1", features = ["derive"] }
