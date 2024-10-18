@@ -230,11 +230,12 @@ pub fn compile_rust_crate_to_riscv(
     let metadata = CargoMetadata::from_input_dir(input_dir);
 
     // Run build.
-    let build_status =
-        build_cargo_command(input_dir, &target_dir, metadata.use_std, features.clone())
-            .status()
-            .unwrap();
-    assert!(build_status.success());
+    let build_output = build_cargo_command(input_dir, &target_dir, metadata.use_std, features.clone()).output().unwrap();
+
+    if !build_output.status.success() {
+        println!("{}", String::from_utf8_lossy(&build_output.stderr));
+        panic!();
+    }
 
     let target = if metadata.use_std {
         TARGET_STD

@@ -187,7 +187,12 @@ fn vec_median() {
 }
 
 #[test]
-#[ignore = "Too slow"]
+fn plonky3_recursion() {
+    let case = "plonky3_recursion";
+    verify_riscv_crate(case, &[]);
+}
+
+#[test]
 fn password() {
     let case = "password_checker";
     verify_riscv_crate(case, Default::default());
