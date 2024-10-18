@@ -6,7 +6,7 @@ use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::{
     test_util::{
         asm_string_to_pil, gen_estark_proof_with_backend_variant, make_prepared_pipeline,
-        make_simple_prepared_pipeline, regular_test, regular_test_without_babybear,
+        make_simple_prepared_pipeline, regular_test, regular_test_without_small_field,
         resolve_test_file, run_pilcom_with_backend_variant, test_halo2,
         test_halo2_with_backend_variant, test_pilcom, test_plonky3, BackendVariant,
     },
@@ -23,7 +23,7 @@ fn slice_to_vec<T: FieldElement>(arr: &[i32]) -> Vec<T> {
 fn sqrt_asm() {
     let f = "asm/sqrt.asm";
     let i = [3];
-    regular_test_without_babybear(f, &i);
+    regular_test_without_small_field(f, &i);
 }
 
 #[test]
@@ -52,7 +52,7 @@ fn secondary_machine_plonk() {
 #[test]
 fn secondary_block_machine_add2() {
     let f = "asm/secondary_block_machine_add2.asm";
-    regular_test_without_babybear(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
@@ -86,14 +86,14 @@ fn mem_write_once_external_write() {
 #[test]
 fn block_machine_cache_miss() {
     let f = "asm/block_machine_cache_miss.asm";
-    regular_test_without_babybear(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
 fn palindrome() {
     let f = "asm/palindrome.asm";
     let i = [7, 1, 7, 3, 9, 3, 7, 1];
-    regular_test_without_babybear(f, &i);
+    regular_test_without_small_field(f, &i);
 }
 
 #[test]
@@ -123,7 +123,7 @@ fn empty_vm() {
 #[test]
 fn vm_to_block_unique_interface() {
     let f = "asm/vm_to_block_unique_interface.asm";
-    regular_test_without_babybear(f, &[]);
+    regular_test_without_small_field(f, &[]);
 }
 
 #[test]
@@ -242,25 +242,25 @@ fn vm_to_block_multiple_links() {
 #[test]
 fn mem_read_write() {
     let f = "asm/mem_read_write.asm";
-    regular_test_without_babybear(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
 fn mem_read_write_no_memory_accesses() {
     let f = "asm/mem_read_write_no_memory_accesses.asm";
-    regular_test_without_babybear(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
 fn mem_read_write_with_bootloader() {
     let f = "asm/mem_read_write_with_bootloader.asm";
-    regular_test_without_babybear(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
 fn mem_read_write_large_diffs() {
     let f = "asm/mem_read_write_large_diffs.asm";
-    regular_test_without_babybear(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
@@ -294,20 +294,20 @@ fn multi_return_wrong_assignment_register_length() {
 fn bit_access() {
     let f = "asm/bit_access.asm";
     let i = [20];
-    regular_test_without_babybear(f, &i);
+    regular_test_without_small_field(f, &i);
 }
 
 #[test]
 fn sqrt() {
     let f = "asm/sqrt.asm";
-    regular_test_without_babybear(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
 fn functional_instructions() {
     let f = "asm/functional_instructions.asm";
     let i = [20];
-    regular_test_without_babybear(f, &i);
+    regular_test_without_small_field(f, &i);
 }
 
 #[test]
@@ -371,13 +371,13 @@ fn enum_in_asm() {
 #[test]
 fn pass_range_constraints() {
     let f = "asm/pass_range_constraints.asm";
-    regular_test_without_babybear(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
 fn side_effects() {
     let f = "asm/side_effects.asm";
-    regular_test_without_babybear(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
@@ -389,13 +389,13 @@ fn multiple_signatures() {
 #[test]
 fn permutation_simple() {
     let f = "asm/permutations/simple.asm";
-    regular_test_without_babybear(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
 fn permutation_to_block() {
     let f = "asm/permutations/vm_to_block.asm";
-    regular_test_without_babybear(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
@@ -409,7 +409,7 @@ fn permutation_to_vm() {
 #[test]
 fn permutation_to_block_to_block() {
     let f = "asm/permutations/block_to_block.asm";
-    regular_test_without_babybear(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
@@ -422,20 +422,20 @@ fn permutation_incoming_needs_selector() {
 #[test]
 fn call_selectors_with_no_permutation() {
     let f = "asm/permutations/call_selectors_with_no_permutation.asm";
-    regular_test_without_babybear(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn vm_args() {
     let f = "asm/vm_args.asm";
-    regular_test_without_babybear(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
 fn vm_args_memory() {
     let f = "asm/vm_args_memory.asm";
-    regular_test_without_babybear(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
@@ -447,7 +447,7 @@ fn vm_args_relative_path() {
 #[test]
 fn vm_args_two_levels() {
     let f = "asm/vm_args_two_levels.asm";
-    regular_test_without_babybear(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 mod reparse {

@@ -139,16 +139,13 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     link if do_mload ~> (word_high, word_low) = mem.mload(high_addr, low_addr, time_step);
 
     // Combine the low and high limbs and write it into `input`
-    let current_input = array::sum(array::new(STATE_SIZE, |i| CLK[i] * input[i]));
+    let current_input = sum(STATE_SIZE, |i| CLK[i] * input[i]);
     do_mload * (word_low + word_high * 2**16 - current_input) = 0;
 
     // Do a memory write in each of the next OUTPUT_SIZE rows.
     // For output i, we write the two limbs of field element at address output_addr + 4 * i.
 
-    ///////////////////// DEBUG: do_mstore as a witness. ///////////////////////
-    let do_mstore;
-    /////////////////////////////////////////////////////////////////////////
-    do_mstore = used * sum(OUTPUT_SIZE, |i| CLK[i + STATE_SIZE]);
+    let do_mstore = used * sum(OUTPUT_SIZE, |i| CLK[i + STATE_SIZE]);
     let output_index = sum(OUTPUT_SIZE, |i| expr(i) * CLK[i + STATE_SIZE]);
 
     // TODO: This translates to two additional permutations. But because they go to the same machine
@@ -157,10 +154,7 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     link if do_mstore ~> mem.mstore(high_addr, low_addr, time_step + 1, word_high, word_low);
 
     // Make sure that in row i + STATE_SIZE, word_low and word_high correspond to output i
-    ///////////////////// DEBUG: current_output as a witness. ///////////////////////
-    let current_output;
-    /////////////////////////////////////////////////////////////////////////
-    current_output = array::sum(array::new(OUTPUT_SIZE, |i| CLK[i + STATE_SIZE] * output[i]));
+    let current_output = sum(OUTPUT_SIZE, |i| CLK[i + STATE_SIZE] * output[i]);
     link if do_mstore ~> (word_low, word_high) = split_bb.split(current_output);
 
 
