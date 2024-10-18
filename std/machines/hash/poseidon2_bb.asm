@@ -30,7 +30,7 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     // Reads happen at the provided time step; writes happen at the next time step.
     operation poseidon_permutation<0> input_addr, output_addr, time_step ->;
 
-    let latch =  |_| 1;
+    let latch: col =  |_| 1;
     let operation_id;
 
     let input_addr;
@@ -133,7 +133,8 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
         let x7 = array::zip(x3, step_a, constr |x_3, x| { let x7; x7 = x_3 * x_3 * x; x7 });
 
         // Multiply with MDS Matrix
-        output = apply_mds(x7, array::len(output));
+        array::zip(output, apply_mds(x7, array::len(output)), |out, x| out = x);
+//        output = apply_mds(x7, array::len(output));
     };
 
     let internal_round = constr |c_idx, input, output| {
@@ -201,7 +202,8 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
         let after_initial_rounds = utils::fold(
             HALF_EXTERNAL_ROUNDS, |round_idx| round_idx, pre_rounds,
             constr |pre_state, round_idx| {
-                let post_state: col[STATE_SIZE];
+            //    let post_state: col[STATE_SIZE];
+                let post_state = array::new(STATE_SIZE, |_| { let x; x});
                 external_round(round_idx, pre_state, post_state);
                 post_state
             }
@@ -211,23 +213,23 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
         let after_internal_rounds = utils::fold(
             INTERNAL_ROUNDS, |round_idx| round_idx, after_initial_rounds,
             constr |pre_state, round_idx| {
-                let post_state: col[STATE_SIZE];
+                let post_state = array::new(STATE_SIZE, |_| { let x; x});
                 internal_round(round_idx, pre_state, post_state);
                 post_state
             }
         );
 
         // Perform the second half of the external rounds, except the last one
-        final_full_state = utils::fold(
+        array::zip(final_full_state, utils::fold(
             HALF_EXTERNAL_ROUNDS - 1,
             |round_idx| round_idx + HALF_EXTERNAL_ROUNDS,
             after_internal_rounds,
             constr |pre_state, round_idx| {
-                let post_state: col[STATE_SIZE];
+                let post_state = array::new(STATE_SIZE, |_| { let x; x});
                 external_round(round_idx, pre_state, post_state);
                 post_state
             }
-        );
+        ), |a, b| a = b);
     })();
 
     // Perform the last external round
