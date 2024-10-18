@@ -34,7 +34,6 @@ impl<F: FieldElement> BackendFactory<F> for StwoProverFactory {
             get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
         );
         let stwo = Box::new(StwoProver::new(pil, fixed, setup)?);
-        info!("StwoProverFactory is not complete yet");
         Ok(stwo)
     }
 }
@@ -43,7 +42,7 @@ impl<T: FieldElement> Backend<T> for StwoProver<T> {
     #[allow(unused_variables)]
     fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
         assert!(instances.len() == 1);
-        Ok(())
+        unimplemented!()
     }
     #[allow(unreachable_code)]
     #[allow(unused_variables)]
