@@ -1,6 +1,8 @@
+use std::marker::PhantomData;
+
 use crate::code_gen::Register;
 
-use powdr_number::{BabyBearField, FieldElement, LargeInt};
+use powdr_number::{FieldElement, LargeInt};
 use powdr_riscv_executor::small_field::poseidon_bb::poseidon_bb;
 
 use crate::continuations::bootloader::BootloaderImpl;
@@ -11,23 +13,24 @@ use crate::continuations::bootloader::{
     PAGE_SIZE_BYTES, PC_INDEX, REGISTER_NAMES, SHUTDOWN_START, WORDS_PER_HASH, WORDS_PER_PAGE,
 };
 
-pub fn bb_split_word(v: u32) -> (BabyBearField, BabyBearField) {
+pub fn split_word<F: FieldElement>(v: u32) -> (F, F) {
     ((v & 0xffff).into(), (v >> 16).into())
 }
 
-pub fn bb_split_fe(v: &BabyBearField) -> [BabyBearField; 2] {
+pub fn split_fe<F: FieldElement>(v: &F) -> [F; 2] {
     let v = v.to_integer().try_into_u32().unwrap();
     [(v >> 16).into(), (v & 0xffff).into()]
 }
 
-impl BootloaderImpl for BabyBearField {
-    type Fe = BabyBearField;
+pub struct SmallFieldBootloader<F: FieldElement>(PhantomData<F>);
+
+impl<F: FieldElement> BootloaderImpl<F> for SmallFieldBootloader<F> {
     const FE_PER_WORD: usize = 2;
-    type Page = [Self::Fe; 2 * WORDS_PER_PAGE];
-    type Hash = [Self::Fe; 8];
+    type Page = [F; 2 * WORDS_PER_PAGE];
+    type Hash = [F; 8];
 
     fn update_page(page: &mut Self::Page, idx: usize, word: u32) {
-        let (hi, lo) = bb_split_word(word);
+        let (hi, lo) = split_word(word);
         // TODO: check proper endianess here!
         page[idx] = hi;
         page[idx + 1] = lo;
@@ -48,24 +51,20 @@ impl BootloaderImpl for BabyBearField {
         poseidon_bb(&buffer)
     }
 
-    fn zero_hash() -> Self::Hash {
-        [0.into(); 8]
-    }
-
     fn zero_page() -> Self::Page {
         [0.into(); 2 * WORDS_PER_PAGE]
     }
 
-    fn iter_hash_as_fe(h: &Self::Hash) -> impl Iterator<Item = Self::Fe> {
-        h.iter().flat_map(|f| bb_split_fe(f).into_iter())
+    fn iter_hash_as_fe(h: &Self::Hash) -> impl Iterator<Item = F> {
+        h.iter().flat_map(|f| split_fe(f).into_iter())
     }
 
-    fn iter_page_as_fe(p: &Self::Page) -> impl Iterator<Item = Self::Fe> {
+    fn iter_page_as_fe(p: &Self::Page) -> impl Iterator<Item = F> {
         p.iter().copied()
     }
 
-    fn iter_word_as_fe(v: u32) -> impl Iterator<Item = Self::Fe> {
-        let (hi, lo) = bb_split_word(v);
+    fn iter_word_as_fe(v: u32) -> impl Iterator<Item = F> {
+        let (hi, lo) = split_word(v);
         // TODO: check proper endianess here!
         [hi, lo].into_iter()
     }

@@ -1,5 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
+use powdr_number::FieldElement;
+
 use super::bootloader::{
     BootloaderImpl, BYTES_PER_WORD, N_LEAVES_LOG, WORDS_PER_PAGE as WORDS_PER_PAGE_BOOTLOADER,
 };
@@ -9,7 +11,7 @@ const N_LEVELS: usize = N_LEVELS_DEFAULT;
 const WORDS_PER_PAGE: usize = WORDS_PER_PAGE_BOOTLOADER;
 
 /// A Merkle tree of memory pages.
-pub struct MerkleTree<B: BootloaderImpl> {
+pub struct MerkleTree<F: FieldElement, B: BootloaderImpl<F>> {
     /// Hashes of non-default nodes of the Merkle tree.
     ///
     /// The key is the tuple (level, index), where level is the tree level, and
@@ -45,7 +47,7 @@ fn level_up(ordered_indices: &mut Vec<usize>) {
     ordered_indices.dedup();
 }
 
-impl<B: BootloaderImpl> MerkleTree<B> {
+impl<F: FieldElement, B: BootloaderImpl<F>> MerkleTree<F, B> {
     /// Build a new Merkle tree starting from an all-zero memory.
     pub fn new() -> Self {
         Self {
@@ -189,7 +191,7 @@ impl<B: BootloaderImpl> MerkleTree<B> {
     }
 }
 
-impl<B: BootloaderImpl> Default for MerkleTree<B> {
+impl<F: FieldElement, B: BootloaderImpl<F>> Default for MerkleTree<F, B> {
     fn default() -> Self {
         Self::new()
     }

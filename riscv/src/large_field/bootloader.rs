@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use crate::code_gen::Register;
 
 use crate::continuations::bootloader::{
@@ -7,22 +9,23 @@ use crate::continuations::bootloader::{
     WORDS_PER_PAGE,
 };
 
-use powdr_number::{FieldElement, GoldilocksField, LargeInt};
+use powdr_number::{FieldElement, LargeInt};
 use powdr_riscv_executor::large_field::poseidon_gl::poseidon_gl;
 
-pub fn gl_split_fe(v: &GoldilocksField) -> [GoldilocksField; 2] {
+pub fn split_fe<F: FieldElement>(v: &F) -> [F; 2] {
     let v = v.to_integer().try_into_u64().unwrap();
     [((v & 0xffffffff) as u32).into(), ((v >> 32) as u32).into()]
 }
 
-impl BootloaderImpl for GoldilocksField {
-    type Fe = GoldilocksField;
+pub struct LargeFieldBootloader<F: FieldElement>(PhantomData<F>);
+
+impl<F: FieldElement> BootloaderImpl<F> for LargeFieldBootloader<F> {
     const FE_PER_WORD: usize = 1;
-    type Page = [Self::Fe; WORDS_PER_PAGE];
-    type Hash = [Self::Fe; 4];
+    type Page = [F; WORDS_PER_PAGE];
+    type Hash = [F; 4];
 
     fn update_page(page: &mut Self::Page, idx: usize, word: u32) {
-        page[idx] = GoldilocksField::from(word);
+        page[idx] = F::from(word);
     }
 
     fn hash_page(page: &Self::Page) -> Self::Hash {
@@ -40,23 +43,19 @@ impl BootloaderImpl for GoldilocksField {
         poseidon_gl(&buffer)
     }
 
-    fn zero_hash() -> Self::Hash {
-        [0.into(); 4]
-    }
-
     fn zero_page() -> Self::Page {
         [0.into(); WORDS_PER_PAGE]
     }
 
-    fn iter_hash_as_fe(h: &Self::Hash) -> impl Iterator<Item = Self::Fe> {
-        h.iter().flat_map(|f| gl_split_fe(f).into_iter())
+    fn iter_hash_as_fe(h: &Self::Hash) -> impl Iterator<Item = F> {
+        h.iter().flat_map(|f| split_fe(f).into_iter())
     }
 
-    fn iter_page_as_fe(p: &Self::Page) -> impl Iterator<Item = Self::Fe> {
+    fn iter_page_as_fe(p: &Self::Page) -> impl Iterator<Item = F> {
         p.iter().copied()
     }
 
-    fn iter_word_as_fe(w: u32) -> impl Iterator<Item = Self::Fe> {
+    fn iter_word_as_fe(w: u32) -> impl Iterator<Item = F> {
         std::iter::once(w.into())
     }
 }

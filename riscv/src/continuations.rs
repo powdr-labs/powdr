@@ -14,12 +14,15 @@ use powdr_riscv_executor::{get_main_machine, ExecutionTrace, MemoryState, Profil
 pub mod bootloader;
 mod memory_merkle_tree;
 
-pub use bootloader::BootloaderImpl;
-use bootloader::{BootloaderInputs, PAGE_SIZE_BYTES_LOG, REGISTER_NAMES};
+use bootloader::{BootloaderImpl, BootloaderInputs, PAGE_SIZE_BYTES_LOG, REGISTER_NAMES};
 use memory_merkle_tree::MerkleTree;
 
-use crate::continuations::bootloader::{
-    default_register_values, shutdown_routine_upper_bound, DEFAULT_PC,
+use crate::{
+    continuations::bootloader::{
+        default_register_values, shutdown_routine_upper_bound, DEFAULT_PC,
+    },
+    large_field::bootloader::LargeFieldBootloader,
+    small_field::bootloader::SmallFieldBootloader,
 };
 
 use crate::code_gen::Register;
@@ -65,16 +68,16 @@ fn render_memory_hash<F: FieldElement>(hash: &[F]) -> String {
 ///   but with the `PilWithEvaluatedFixedCols` stage already advanced to and all chunk-specific parameters set.
 /// - `bootloader_inputs`: The inputs to the bootloader and the index of the row at which the shutdown routine
 ///   is supposed to execute, for each chunk, as returned by `rust_continuations_dry_run`.
-pub fn rust_continuations<B: BootloaderImpl, PipelineCallback, E>(
-    mut pipeline: Pipeline<B::Fe>,
+pub fn rust_continuations<F: FieldElement, PipelineCallback, E>(
+    mut pipeline: Pipeline<F>,
     pipeline_callback: PipelineCallback,
-    dry_run_result: DryRunResult<B>,
+    dry_run_result: DryRunResult<F>,
 ) -> Result<(), E>
 where
-    PipelineCallback: Fn(Pipeline<B::Fe>) -> Result<(), E>,
+    PipelineCallback: Fn(Pipeline<F>) -> Result<(), E>,
 {
-    let bootloader_inputs = dry_run_result.bootloader_inputs;
-    let num_chunks = bootloader_inputs.len();
+    let chunks = dry_run_result.chunks;
+    let num_chunks = chunks.len();
 
     log::info!("Computing fixed columns...");
     pipeline.compute_fixed_cols().unwrap();
@@ -83,11 +86,18 @@ where
     // in every chunk.
     pipeline.compute_optimized_pil().unwrap();
 
-    bootloader_inputs
+    chunks
         .into_iter()
         .enumerate()
         .map(
-            |(i, (bootloader_inputs, start_of_shutdown_routine))| -> Result<(), E> {
+            |(
+                i,
+                ChunkResult {
+                    bootloader_inputs,
+                    num_rows: start_of_shutdown_routine,
+                },
+            )|
+             -> Result<(), E> {
                 log::info!("\nRunning chunk {} / {}...", i + 1, num_chunks);
                 let pipeline = pipeline.clone();
                 let pipeline = if let Some(parent_dir) = pipeline.output_dir() {
@@ -129,12 +139,12 @@ where
                 let jump_to_shutdown_routine = (0..length)
                     .map(|i| (i == start_of_shutdown_routine - 1).into())
                     .collect();
-                let mut bootloader_witness = bootloader_inputs.into_external_witness();
-                bootloader_witness.push((
+                let mut external_witness = bootloader_inputs;
+                external_witness.push((
                     "main::jump_to_shutdown_routine".to_string(),
                     jump_to_shutdown_routine,
                 ));
-                let pipeline = pipeline.add_external_witness_values(bootloader_witness);
+                let pipeline = pipeline.add_external_witness_values(external_witness);
                 pipeline_callback(pipeline)?;
                 Ok(())
             },
@@ -200,8 +210,15 @@ pub fn load_initial_memory(program: &AnalysisASMFile) -> MemoryState {
         .collect()
 }
 
-pub struct DryRunResult<B: BootloaderImpl> {
-    pub bootloader_inputs: Vec<(BootloaderInputs<B>, u64)>,
+pub struct ChunkResult<F: FieldElement> {
+    /// Bootloader inputs for the chunk (external witness colums)
+    pub bootloader_inputs: Vec<(String, Vec<F>)>,
+    /// Number of rows in the chunk execution
+    pub num_rows: u64,
+}
+
+pub struct DryRunResult<F: FieldElement> {
+    pub chunks: Vec<ChunkResult<F>>,
     // full execution trace length (i.e., length of main::pc)
     pub trace_len: usize,
 }
@@ -209,19 +226,40 @@ pub struct DryRunResult<B: BootloaderImpl> {
 /// Runs the entire execution using the RISC-V executor. For each chunk, it collects:
 /// - The inputs to the bootloader, needed to restore the correct state.
 /// - The number of rows after which the prover should jump to the shutdown routine.
-pub fn rust_continuations_dry_run<B: BootloaderImpl>(
-    pipeline: &mut Pipeline<B::Fe>,
+pub fn rust_continuations_dry_run<F: FieldElement>(
+    pipeline: &mut Pipeline<F>,
     profiler_opt: Option<ProfilerOptions>,
-) -> DryRunResult<B> {
+) -> DryRunResult<F> {
+    // we do this to so we don't have to make BootloaderImpl public
+    match F::known_field() {
+        Some(KnownField::BabyBearField) => {
+            rust_continuations_dry_run_inner::<_, SmallFieldBootloader<F>>(pipeline, profiler_opt)
+        }
+        Some(KnownField::GoldilocksField) => {
+            rust_continuations_dry_run_inner::<_, LargeFieldBootloader<F>>(pipeline, profiler_opt)
+        }
+        Some(field) => {
+            panic!("There's no bootloader implementation for {field:?}")
+        }
+        _ => {
+            panic!("Field not supported")
+        }
+    }
+}
+
+fn rust_continuations_dry_run_inner<F: FieldElement, B: BootloaderImpl<F>>(
+    pipeline: &mut Pipeline<F>,
+    profiler_opt: Option<ProfilerOptions>,
+) -> DryRunResult<F> {
     // All inputs for all chunks.
     let mut bootloader_inputs_and_num_rows = vec![];
 
     // Initial register values for the current chunk.
-    let mut register_values = default_register_values::<B>();
+    let mut register_values = default_register_values::<_, B>();
 
     let program = pipeline.compute_analyzed_asm().unwrap().clone();
     let main_machine = program.get_machine(&parse_absolute_path("::Main")).unwrap();
-    sanity_check(main_machine, B::Fe::known_field().unwrap());
+    sanity_check(main_machine, F::known_field().unwrap());
 
     log::info!("Initializing memory merkle tree...");
 
@@ -231,14 +269,14 @@ pub fn rust_continuations_dry_run<B: BootloaderImpl>(
     // and the pages are loaded via the bootloader.
     let initial_memory = load_initial_memory(&program);
 
-    let mut merkle_tree = MerkleTree::<B>::new();
+    let mut merkle_tree = MerkleTree::<_, B>::new();
     merkle_tree.update(initial_memory.iter().map(|(k, v)| (*k, *v)));
 
     // TODO: commit to the merkle_tree root in the verifier.
 
     log::info!("Executing powdr-asm...");
     let (full_trace, memory_accesses) = {
-        let trace = powdr_riscv_executor::execute_ast::<B::Fe>(
+        let trace = powdr_riscv_executor::execute_ast::<F>(
             &program,
             initial_memory,
             pipeline.data_callback().unwrap(),
@@ -246,13 +284,13 @@ pub fn rust_continuations_dry_run<B: BootloaderImpl>(
             // constraints, but the executor does the right thing (read zero if the memory
             // cell has never been accessed). We can't pass the accessed pages here, because
             // we only know them after the full trace has been generated.
-            &BootloaderInputs::<B>::default_for(&[]).0,
+            BootloaderInputs::<_, B>::default_for(&[]).as_executor_input(),
             usize::MAX,
             powdr_riscv_executor::ExecMode::Trace,
             profiler_opt,
         )
         .0;
-        (transposed_trace::<B::Fe>(&trace), trace.mem_ops)
+        (transposed_trace::<F>(&trace), trace.mem_ops)
     };
 
     let full_trace_length = full_trace["main::pc"].len();
@@ -342,11 +380,11 @@ pub fn rust_continuations_dry_run<B: BootloaderImpl>(
         log::info!("Simulating chunk execution...");
         let (chunk_trace, memory_snapshot_update, mut register_memory_snapshot) = {
             let (trace, memory_snapshot_update, register_memory_snapshot) =
-                powdr_riscv_executor::execute_ast::<B::Fe>(
+                powdr_riscv_executor::execute_ast::<F>(
                     &program,
                     MemoryState::new(),
                     pipeline.data_callback().unwrap(),
-                    &bootloader_inputs.0,
+                    bootloader_inputs.as_executor_input(),
                     num_rows,
                     powdr_riscv_executor::ExecMode::Trace,
                     // profiling was done when full trace was generated
@@ -424,12 +462,15 @@ pub fn rust_continuations_dry_run<B: BootloaderImpl>(
         );
         log::info!(
             "Final memory root hash: {}",
-            render_memory_hash(bootloader_inputs.initial_memory_hash())
+            render_memory_hash(bootloader_inputs.final_memory_hash())
         );
 
         let actual_num_rows = chunk_trace["main::pc"].len();
         let bootloader_pc = bootloader_inputs.pc();
-        bootloader_inputs_and_num_rows.push((bootloader_inputs, actual_num_rows as u64));
+        bootloader_inputs_and_num_rows.push(ChunkResult {
+            bootloader_inputs: bootloader_inputs.into_witness(),
+            num_rows: actual_num_rows as u64,
+        });
 
         log::info!("Chunk trace length: {}", chunk_trace["main::pc"].len());
         log::info!("Validating chunk...");
@@ -485,7 +526,7 @@ pub fn rust_continuations_dry_run<B: BootloaderImpl>(
         chunk_index += 1;
     }
     DryRunResult {
-        bootloader_inputs: bootloader_inputs_and_num_rows,
+        chunks: bootloader_inputs_and_num_rows,
         trace_len: full_trace_length,
     }
 }

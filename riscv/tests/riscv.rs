@@ -51,7 +51,8 @@ fn run_continuations_test(case: &str, powdr_asm: String) {
     };
     let bootloader_inputs =
         rust_continuations_dry_run::<GoldilocksField>(&mut pipeline, Default::default());
-    rust_continuations(pipeline, pipeline_callback, bootloader_inputs).unwrap();
+    rust_continuations::<GoldilocksField, _, _>(pipeline, pipeline_callback, bootloader_inputs)
+        .unwrap();
 }
 
 #[test]

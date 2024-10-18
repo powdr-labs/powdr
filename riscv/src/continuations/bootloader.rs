@@ -1,3 +1,5 @@
+use std::marker::PhantomData;
+
 use powdr_number::FieldElement;
 use powdr_number::LargeInt;
 
@@ -17,7 +19,9 @@ pub const PAGE_SIZE_BYTES_LOG: usize = 11;
 pub const BYTES_PER_WORD: usize = 4;
 
 use crate::large_field;
+use crate::large_field::bootloader::LargeFieldBootloader;
 use crate::small_field;
+use crate::small_field::bootloader::SmallFieldBootloader;
 
 // Derived constants
 pub const WORDS_PER_PAGE: usize = (1 << (PAGE_SIZE_BYTES_LOG)) / BYTES_PER_WORD;
@@ -35,30 +39,31 @@ pub const PAGE_INPUTS_OFFSET: usize = NUM_PAGES_INDEX + 1;
 /// This trait provides all the field specific types and implementations that the bootloader needs.
 ///
 /// For now, this trait is implemented directly by each `FieldElement` type, because the hash functions (i.e., poseidon) are field-specific.
-pub trait BootloaderImpl {
-    type Fe: FieldElement;
+pub(crate) trait BootloaderImpl<F> {
     const FE_PER_WORD: usize;
     type Page;
     type Hash;
     fn update_page(page: &mut Self::Page, idx: usize, word: u32);
     fn hash_page(page: &Self::Page) -> Self::Hash;
     fn hash_two(a: &Self::Hash, b: &Self::Hash) -> Self::Hash;
-    fn zero_hash() -> Self::Hash;
     fn zero_page() -> Self::Page;
     // iterate over a hash value as machine words as field elements (i.e., WORDS_PER_HASH * Self::FE_PER_WORD field elements),
-    fn iter_hash_as_fe(h: &Self::Hash) -> impl Iterator<Item = Self::Fe>;
+    fn iter_hash_as_fe(h: &Self::Hash) -> impl Iterator<Item = F>;
     // iterate over the page words, in their field element representation
-    fn iter_page_as_fe(p: &Self::Page) -> impl Iterator<Item = Self::Fe>;
+    fn iter_page_as_fe(p: &Self::Page) -> impl Iterator<Item = F>;
     // iterate over a word value in its field element representation
-    fn iter_word_as_fe(w: u32) -> impl Iterator<Item = Self::Fe>;
+    fn iter_word_as_fe(w: u32) -> impl Iterator<Item = F>;
 }
 
-pub struct BootloaderInputs<B: BootloaderImpl>(pub Vec<B::Fe>);
+pub(crate) struct BootloaderInputs<F: FieldElement, B: BootloaderImpl<F>> {
+    inputs: Vec<F>,
+    phantom: PhantomData<B>,
+}
 
-impl<B: BootloaderImpl> BootloaderInputs<B> {
+impl<F: FieldElement, B: BootloaderImpl<F>> BootloaderInputs<F, B> {
     pub fn new<I: ExactSizeIterator<Item = u32>>(
-        register_values: Vec<B::Fe>,
-        merkle_tree: &MerkleTree<B>,
+        register_values: Vec<F>,
+        merkle_tree: &MerkleTree<F, B>,
         accessed_pages: I,
     ) -> Self {
         // initial register values
@@ -82,17 +87,20 @@ impl<B: BootloaderImpl> BootloaderInputs<B> {
                 inputs.extend(B::iter_hash_as_fe(sibling));
             }
         }
-        BootloaderInputs(inputs)
+        BootloaderInputs {
+            inputs,
+            phantom: PhantomData,
+        }
     }
 
     /// The bootloader input that is equivalent to not using a bootloader, i.e.:
     /// - No pages are initialized
     /// - All registers are set to 0 (including the PC, which causes the bootloader to do nothing)
     /// - The state at the end of the execution is the same as the beginning
-    pub fn default_for(accessed_pages: &[u64]) -> BootloaderInputs<B> {
+    pub fn default_for(accessed_pages: &[u64]) -> BootloaderInputs<F, B> {
         // Set all registers and the number of pages to zero
-        let register_values = default_register_values::<B>();
-        let merkle_tree = MerkleTree::<B>::new();
+        let register_values = default_register_values::<_, B>();
+        let merkle_tree = MerkleTree::<_, B>::new();
 
         // TODO: We don't have a way to know the memory state *after* the execution.
         // For now, we'll just claim that the memory doesn't change.
@@ -107,22 +115,18 @@ impl<B: BootloaderImpl> BootloaderInputs<B> {
     }
 
     pub fn len(&self) -> usize {
-        self.0.len()
+        self.inputs.len()
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
-    }
-
-    pub fn initial_memory_hash(&self) -> &[B::Fe] {
+    pub fn initial_memory_hash(&self) -> &[F] {
         // &bootloader_inputs[MEMORY_HASH_START_INDEX..MEMORY_HASH_START_INDEX + 8]
         let hash_start = MEMORY_HASH_START_INDEX * B::FE_PER_WORD;
-        &self.0[hash_start..hash_start + WORDS_PER_HASH * B::FE_PER_WORD]
+        &self.inputs[hash_start..hash_start + WORDS_PER_HASH * B::FE_PER_WORD]
     }
 
-    pub fn final_memory_hash(&self) -> &[B::Fe] {
+    pub fn final_memory_hash(&self) -> &[F] {
         let hash_start = (MEMORY_HASH_START_INDEX + WORDS_PER_HASH) * B::FE_PER_WORD;
-        &self.0[hash_start..hash_start + WORDS_PER_HASH * B::FE_PER_WORD]
+        &self.inputs[hash_start..hash_start + WORDS_PER_HASH * B::FE_PER_WORD]
     }
 
     fn proof_start(input_page_idx: usize) -> usize {
@@ -134,87 +138,87 @@ impl<B: BootloaderImpl> BootloaderInputs<B> {
                 + WORDS_PER_HASH)
     }
 
-    pub fn update_proof(&mut self, input_page_idx: usize, sibling_idx: usize, hash: &[B::Fe]) {
+    pub fn update_proof(&mut self, input_page_idx: usize, sibling_idx: usize, hash: &[F]) {
         assert_eq!(hash.len(), WORDS_PER_HASH * B::FE_PER_WORD);
         let sibling_start =
             Self::proof_start(input_page_idx) + sibling_idx * WORDS_PER_HASH * B::FE_PER_WORD;
         let sibling_end =
             Self::proof_start(input_page_idx) + (sibling_idx + 1) * WORDS_PER_HASH * B::FE_PER_WORD;
-        self.0[sibling_start..sibling_end].copy_from_slice(hash);
+        self.inputs[sibling_start..sibling_end].copy_from_slice(hash);
     }
 
-    pub fn proof(&self, input_page_idx: usize, sibling_idx: usize) -> &[B::Fe] {
+    pub fn proof(&self, input_page_idx: usize, sibling_idx: usize) -> &[F] {
         let sibling_start =
             Self::proof_start(input_page_idx) + sibling_idx * WORDS_PER_HASH * B::FE_PER_WORD;
         let sibling_end =
             Self::proof_start(input_page_idx) + (sibling_idx + 1) * WORDS_PER_HASH * B::FE_PER_WORD;
-        &self.0[sibling_start..sibling_end]
+        &self.inputs[sibling_start..sibling_end]
     }
 
-    pub fn update_page_hash(&mut self, input_page_idx: usize, hash: &[B::Fe]) {
+    pub fn update_page_hash(&mut self, input_page_idx: usize, hash: &[F]) {
         assert_eq!(hash.len(), WORDS_PER_HASH * B::FE_PER_WORD);
         let hash_start =
             (PAGE_INPUTS_OFFSET + BOOTLOADER_INPUTS_PER_PAGE * input_page_idx + 1 + WORDS_PER_PAGE)
                 * B::FE_PER_WORD;
-        self.0[hash_start..hash_start + WORDS_PER_HASH * B::FE_PER_WORD].copy_from_slice(hash);
+        self.inputs[hash_start..hash_start + WORDS_PER_HASH * B::FE_PER_WORD].copy_from_slice(hash);
     }
 
-    pub fn update_final_registers(&mut self, register_values: &[B::Fe]) {
+    pub fn update_final_registers(&mut self, register_values: &[F]) {
         assert_eq!(register_values.len(), REGISTER_NAMES.len() * B::FE_PER_WORD);
         let final_registers_start = REGISTER_NAMES.len() * B::FE_PER_WORD;
-        self.0
+        self.inputs
             [final_registers_start..final_registers_start + REGISTER_NAMES.len() * B::FE_PER_WORD]
             .copy_from_slice(register_values);
     }
 
-    pub fn update_final_root(&mut self, hash: &[B::Fe]) {
+    pub fn update_final_root(&mut self, hash: &[F]) {
         assert_eq!(hash.len(), WORDS_PER_HASH * B::FE_PER_WORD);
         let root_hash_start = (MEMORY_HASH_START_INDEX + WORDS_PER_HASH) * B::FE_PER_WORD;
-        self.0[root_hash_start..root_hash_start + WORDS_PER_HASH * B::FE_PER_WORD]
+        self.inputs[root_hash_start..root_hash_start + WORDS_PER_HASH * B::FE_PER_WORD]
             .copy_from_slice(hash);
     }
 
-    pub fn pc(&mut self) -> B::Fe {
+    pub fn pc(&mut self) -> F {
         // the PC is a powdr asm register, which is a single fe, but for the
         // bootloader inputs, we store it as a "word", the same representation
         // as the other registers in memory, which may be more than one fe
         // (e.g., 2 for small fields such as BabyBear).
         // Here we return the composed fe value.
         match B::FE_PER_WORD {
-            1 => self.0[PC_INDEX],
+            1 => self.inputs[PC_INDEX],
             2 => {
-                let hi = self.0[PC_INDEX * B::FE_PER_WORD]
+                let hi = self.inputs[PC_INDEX * B::FE_PER_WORD]
                     .to_integer()
                     .try_into_u32()
                     .unwrap();
-                let lo = self.0[PC_INDEX * B::FE_PER_WORD + 1]
+                let lo = self.inputs[PC_INDEX * B::FE_PER_WORD + 1]
                     .to_integer()
                     .try_into_u32()
                     .unwrap();
                 assert!(lo <= 0xffff);
                 let pc = hi << 16 | lo;
-                assert!(pc < B::Fe::modulus().try_into_u32().unwrap());
+                assert!(pc < F::modulus().try_into_u32().unwrap());
                 pc.into()
             }
             _ => unreachable!(),
         }
     }
 
-    /// Convert the bootloader inputs into the format expected by the external witness.
-    /// Column names here must match the column names in the `bootloader_inputs` submachines.
-    pub fn into_external_witness(self) -> Vec<(String, Vec<B::Fe>)> {
+    /// Generate proper external witness columns for the bootloader inputs.
+    // Column names here must match the column names in the `bootloader_inputs` submachines.
+    pub fn into_witness(self) -> Vec<(String, Vec<F>)> {
         match B::FE_PER_WORD {
-            1 => vec![("main_bootloader_inputs::value".to_string(), self.0)],
+            1 => vec![("main_bootloader_inputs::value".to_string(), self.inputs)],
             2 => {
                 // split the words into two colums with hi and lo
-                let (hi, lo) =
-                    self.0
-                        .chunks_exact(2)
-                        .fold((vec![], vec![]), |(mut hi, mut lo), chunk| {
-                            hi.push(chunk[0]);
-                            lo.push(chunk[1]);
-                            (hi, lo)
-                        });
+                let (hi, lo) = self.inputs.chunks_exact(2).fold(
+                    (vec![], vec![]),
+                    |(mut hi, mut lo), chunk| {
+                        hi.push(chunk[0]);
+                        lo.push(chunk[1]);
+                        (hi, lo)
+                    },
+                );
                 vec![
                     ("main_bootloader_inputs::value1".to_string(), hi),
                     ("main_bootloader_inputs::value2".to_string(), lo),
@@ -222,6 +226,29 @@ impl<B: BootloaderImpl> BootloaderInputs<B> {
             }
             _ => unreachable!(),
         }
+    }
+
+    /// Inputs in the format expected by the riscv executor.
+    pub fn as_executor_input(&self) -> &[F] {
+        &self.inputs
+    }
+}
+
+// This method only exists to keep the bootloader types internal to this crate.
+// It's only used by this project's benchmarks (`benches` folder), which are
+// users of the crate and not part of it...
+pub fn default_input_witness<F: FieldElement>(accessed_pages: &[u64]) -> Vec<(String, Vec<F>)> {
+    match F::known_field() {
+        Some(KnownField::BabyBearField) => {
+            BootloaderInputs::<F, SmallFieldBootloader<F>>::default_for(accessed_pages)
+                .into_witness()
+        }
+        Some(KnownField::GoldilocksField) => {
+            BootloaderInputs::<F, LargeFieldBootloader<F>>::default_for(accessed_pages)
+                .into_witness()
+        }
+        Some(field) => panic!("bootloader not implemented for field {field:?}"),
+        None => panic!("unsupported field"),
     }
 }
 
@@ -343,7 +370,7 @@ pub const DEFAULT_PC: u64 = 3;
 /// Analogous to the `DEFAULT_PC`, this well-known PC jumps to the shutdown routine.
 pub const SHUTDOWN_START: u64 = 4;
 
-pub fn default_register_values<B: BootloaderImpl>() -> Vec<B::Fe> {
+pub(crate) fn default_register_values<F: FieldElement, B: BootloaderImpl<F>>() -> Vec<F> {
     let mut register_values = vec![0.into(); REGISTER_NAMES.len() * B::FE_PER_WORD];
     // default pc value fits in least significant field element of the register
     assert!(B::FE_PER_WORD <= 2 && DEFAULT_PC <= u16::MAX as u64);
