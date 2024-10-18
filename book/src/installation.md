@@ -19,12 +19,10 @@ installed with the "Desktop Development With C++" Workloads option.
 
 If you want to enable feature `estark-polygon`, you also need the following
 runtime dependencies installed on the system:
-
 - `gcc`
 - `nlohmann-json3-dev`
 
 You will also need the following build time dependencies:
-
 - `make`
 - `pkg-config`
 - `libpqxx-dev` (Ubuntu) | `libpqxx` (Arch Linux)
