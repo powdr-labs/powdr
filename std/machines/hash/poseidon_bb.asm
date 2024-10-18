@@ -9,9 +9,7 @@ use std::machines::small_field::memory::Memory;
 use std::machines::split::split_bb::SplitBB;
 
 // Implements the Poseidon permutation for the BabyBear field with the following parameters:
-// - 16 field elements in the state, of which
-//   - 8 are meant to be rate elements
-//   - 8 are meant to be capacity elements
+// - 16 field elements in the state
 // - 8 field elements of output
 // - 8 full rounds
 // - 16 partial rounds
@@ -29,11 +27,8 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     call_selectors: sel,
 {
 
-    // Hashes 16 "rate" elements and 8 "capacity" elements to 8 field elements
-    // by applying the Poseidon permutation and returning the first 8 rate elements.
-    // When the hash function is used only once, the capacity elements should be
-    // set to constants, where different constants can be used to define different
-    // hash functions.
+    // Compresses 16 to 8 field elements by applying the Poseidon permutation and
+    // returning the first 8 elements of the state vector.
     //
     // The input data is passed via a memory pointer: the machine will read 16 field
     // elements from memory (32 16-bits half-words).
