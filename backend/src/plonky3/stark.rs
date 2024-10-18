@@ -226,7 +226,11 @@ where
 
         verify(
             verifying_key,
-            circuit.split,
+            &circuit
+                .split
+                .iter()
+                .map(|(name, (_, constraints))| (name, constraints))
+                .collect(),
             &mut challenger,
             &proof,
             public_values,
@@ -266,7 +270,11 @@ where
 
         verify(
             verifying_key,
-            &self.split,
+            &self
+                .split
+                .iter()
+                .map(|(name, (_, constraints))| (name, constraints))
+                .collect(),
             &mut challenger,
             &proof,
             instance_map,

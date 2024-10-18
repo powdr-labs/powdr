@@ -4,7 +4,6 @@ use alloc::vec;
 use alloc::vec::Vec;
 use core::iter::once;
 use p3_air::Air;
-use powdr_ast::analyzed::Analyzed;
 
 use itertools::Itertools;
 use p3_challenger::{CanObserve, CanSample, FieldChallenger};
@@ -73,7 +72,7 @@ where
 #[instrument(skip_all)]
 pub fn verify<T: FieldElementMap>(
     verifying_key: Option<&StarkVerifyingKey<T::Config>>,
-    split: &BTreeMap<String, (Analyzed<T>, ConstraintSystem<T>)>,
+    split: &BTreeMap<&String, &ConstraintSystem<T>>,
     challenger: &mut Challenger<T>,
     proof: &Proof<T::Config>,
     public_inputs: BTreeMap<String, Vec<Vec<T>>>,
@@ -102,10 +101,10 @@ where
     } = proof;
 
     // sanity check that the two maps have the same keys
-    itertools::assert_equal(split.keys(), public_inputs.keys());
+    itertools::assert_equal(split.keys().cloned(), public_inputs.keys());
 
     // error out if the opened values do not have the same keys as the tables
-    if !itertools::equal(split.keys(), opened_values.keys()) {
+    if !itertools::equal(split.keys().cloned(), opened_values.keys()) {
         return Err(VerificationError::InvalidProofShape);
     }
 
@@ -114,7 +113,7 @@ where
         .zip_eq(public_inputs.iter())
         .zip_eq(opened_values.values())
         .map(
-            |(((_, constraints), (name, public_values_by_stage)), opened_values)| {
+            |((constraints, (name, public_values_by_stage)), opened_values)| {
                 (
                     name,
                     Table {
