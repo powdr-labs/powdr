@@ -7,7 +7,8 @@ use powdr_ast::{
 };
 use powdr_parser_util::{Error, SourceRef};
 
-/// Verifies that all struct instantiations match their corresponding declarations (existence of field names, completeness)
+/// Verifies that all struct instantiations match their corresponding declarations
+/// (existence of field names, completeness) and ensures that both are correct.
 pub fn check_structs_fields<'a>(
     structs_exprs: impl Iterator<Item = (&'a SourceRef, &'a StructExpression<Reference>)>,
     definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
