@@ -1,9 +1,12 @@
+mod stark;
+
 use std::{io, path::PathBuf, sync::Arc};
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
 use powdr_number::{BabyBearField, GoldilocksField, KoalaBearField, Mersenne31Field};
-use powdr_plonky3::{Commitment, FieldElementMap, Plonky3Prover, ProverData};
+use powdr_plonky3::{Commitment, FieldElementMap, ProverData};
+use stark::Plonky3Prover;
 
 use crate::{
     field_filter::generalize_factory, Backend, BackendFactory, BackendOptions, Error, Proof,

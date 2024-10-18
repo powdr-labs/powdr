@@ -1,5 +1,6 @@
 //! Poseidon2 constants generation.
 
+use alloc::vec::Vec;
 use rand::{distributions::Standard, prelude::Distribution, Rng, SeedableRng};
 
 pub const RNG_SEED: u64 = 42;

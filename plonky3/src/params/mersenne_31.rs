@@ -1,7 +1,8 @@
 //! The concrete parameters used in the prover for Mersenne-31
+//!
 //! Inspired from [this example](https://github.com/Plonky3/Plonky3/blob/7c5deb0eab7191a97f7bb088637c1a68b2e6eb68/keccak-air/examples/prove_m31_poseidon2.rs)
 
-use std::marker::PhantomData;
+use core::marker::PhantomData;
 
 use lazy_static::lazy_static;
 

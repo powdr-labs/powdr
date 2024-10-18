@@ -6,9 +6,14 @@
 //! everywhere save for at row j is constructed to constrain s * (pub - x) on
 //! every row.
 
+use alloc::{
+    collections::{btree_map::BTreeMap, btree_set::BTreeSet},
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 use itertools::Itertools;
 use p3_field::AbstractField;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use crate::{
     params::{Commitment, FieldElementMap, Plonky3Field, ProverData},
@@ -33,9 +38,9 @@ use powdr_number::{FieldElement, LargeInt};
 /// here for performance reasons.
 pub struct ConstraintSystem<T> {
     // for each witness column, the stage and index of this column in this stage
-    witness_columns: HashMap<PolyID, (usize, usize)>,
+    witness_columns: BTreeMap<PolyID, (usize, usize)>,
     // for each fixed column, the index of this column in the fixed columns
-    fixed_columns: HashMap<PolyID, usize>,
+    fixed_columns: BTreeMap<PolyID, usize>,
     identities: Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>>,
     // for each public column, the name, poly_id, index in the witness columns, and stage
     pub(crate) publics_by_stage: Vec<Vec<(String, PolyID, usize)>>,
@@ -112,7 +117,7 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
     }
 }
 
-pub(crate) struct PowdrCircuit<'a, T: FieldElementMap>
+pub struct PowdrCircuit<'a, T: FieldElementMap>
 where
     ProverData<T>: Send,
     Commitment<T>: Send,
@@ -128,7 +133,7 @@ where
     ProverData<T>: Send,
     Commitment<T>: Send,
 {
-    pub(crate) fn new(split: &'a BTreeMap<String, (Analyzed<T>, ConstraintSystem<T>)>) -> Self {
+    pub fn new(split: &'a BTreeMap<String, (Analyzed<T>, ConstraintSystem<T>)>) -> Self {
         Self {
             split,
             witgen_callback: None,
@@ -137,7 +142,7 @@ where
 
     /// Calculates public values from generated witness values.
     /// For stages in which there are no public values, return an empty vector
-    pub(crate) fn public_values_so_far(
+    pub fn public_values_so_far(
         &self,
         witness: &[(String, Vec<T>)],
     ) -> BTreeMap<String, Vec<Vec<Option<T>>>> {
@@ -166,7 +171,7 @@ where
             .collect()
     }
 
-    pub(crate) fn with_witgen_callback(self, witgen_callback: WitgenCallback<T>) -> Self {
+    pub fn with_witgen_callback(self, witgen_callback: WitgenCallback<T>) -> Self {
         Self {
             witgen_callback: Some(witgen_callback),
             ..self
