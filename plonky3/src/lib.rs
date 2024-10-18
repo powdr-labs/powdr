@@ -15,9 +15,6 @@ use prover::*;
 use traits::*;
 use verifier::*;
 
-#[cfg(debug_assertions)]
-mod check_constraints;
-
 mod circuit_builder;
 mod params;
 mod stark;
