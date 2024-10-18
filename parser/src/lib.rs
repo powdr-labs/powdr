@@ -446,7 +446,7 @@ namespace N(2);
     }"#;
 
         let expected = r#"
-    impl<T> Iterator<ArrayIterator<T>, T> {
+    impl<T> Iterator<(ArrayIterator<T>), T> {
         next_max: |it, max| if pos(it) >= max { None } else { Some(increment(it)) },
     }"#;
 
