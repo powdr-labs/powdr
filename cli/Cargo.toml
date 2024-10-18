@@ -16,6 +16,7 @@ estark-polygon = [
   "powdr-backend/estark-polygon",
   "powdr-pipeline/estark-polygon",
 ]
+stwo=["powdr-backend/stwo","powdr-pipeline/stwo"]
 
 [dependencies]
 powdr-backend.workspace = true
