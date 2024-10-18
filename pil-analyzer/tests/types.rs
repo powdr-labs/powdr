@@ -763,7 +763,7 @@ fn prover_functions() {
 }
 
 #[test]
-#[should_panic = "Type symbol not found: NotADot"]
+#[should_panic = "Struct symbol not found: NotADot"]
 fn wrong_struct() {
     let input = "
     struct Dot { x: int, y: int }
@@ -811,7 +811,7 @@ fn test_struct_repeated_fields_expr() {
 }
 
 #[test]
-#[should_panic = "Field 'x' is already declared"]
+#[should_panic = "Field 'x' is declared more than once"]
 fn test_struct_repeated_fields_decl() {
     let input = "    struct A {
         x: int,
