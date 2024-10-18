@@ -75,7 +75,7 @@ machine Main with degree: 65536 {
         assert_eq 0, 28, 1386481683;
 
         // All ones:
-        mstore_le 0, 0, 1;
+        mstore_le 0, 0, 0, 1;
         mstore_le 0, 4, 0, 1;
         mstore_le 0, 8, 0, 1;
         mstore_le 0, 12, 0, 1;
@@ -133,7 +133,7 @@ machine Main with degree: 65536 {
         assert_eq 0, 28, 693019811;
 
         // Some other values (ported from poseidon_gl test):
-        mstore_le 0, 14, 6474;
+        mstore_le 0, 0, 14, 6474;
         mstore_le 0, 4, 3225, 31229;
         mstore_le 0, 8, 13499, 22633;
         mstore_le 0, 12, 1, 47334;
@@ -161,35 +161,37 @@ machine Main with degree: 65536 {
         assert_eq 0, 24, 1012016786;
         assert_eq 0, 28, 481888550;
 
-        // Repeat the first test, but be fancy with the memory pointers being passed:
-        mstore_le 0, 100, 0, 0;
-        mstore_le 0, 104, 0, 0;
-        mstore_le 0, 108, 0, 0;
-        mstore_le 0, 112, 0, 0;
-        mstore_le 0, 116, 0, 0;
-        mstore_le 0, 120, 0, 0;
-        mstore_le 0, 124, 0, 0;
-        mstore_le 0, 128, 0, 0;
-        mstore_le 0, 132, 0, 0;
-        mstore_le 0, 136, 0, 0;
-        mstore_le 0, 140, 0, 0;
-        mstore_le 0, 144, 0, 0;
-        mstore_le 0, 148, 0, 0;
-        mstore_le 0, 152, 0, 0;
-        mstore_le 0, 156, 0, 0;
-        mstore_le 0, 160, 0, 0;
+        // Repeat the second test, but be fancy with the memory pointers being passed:
+        mstore_le 42, 65520, 0, 1;
+        mstore_le 42, 65524, 0, 1;
+        mstore_le 42, 65528, 0, 1;
+        mstore_le 42, 65532, 0, 1;
+        mstore_le 43, 0, 0, 1;
+        mstore_le 43, 4, 0, 1;
+        mstore_le 43, 8, 0, 1;
+        mstore_le 43, 12, 0, 1;
+        mstore_le 43, 16, 0, 1;
+        mstore_le 43, 20, 0, 1;
+        mstore_le 43, 24, 0, 1;
+        mstore_le 43, 28, 0, 1;
+        mstore_le 43, 32, 0, 1;
+        mstore_le 43, 36, 0, 1;
+        mstore_le 43, 40, 0, 1;
+        mstore_le 43, 44, 0, 1;
 
-        // This will read bytes [100, 164) and write the result to bytes [104, 136)
-        poseidon 0, 100, 0, 104;
+        // This will read 64 bytes starting at address 0x002afff0 and
+        // write the result to bytes starting at address 0x002afff4.
+        // Both operations should overflow the lower 16 bits of the address.
+        poseidon 42, 65520, 42, 65524;
 
-        assert_eq 0, 104, 958909011;
-        assert_eq 0, 108, 1204189760;
-        assert_eq 0, 112, 1051708848;
-        assert_eq 0, 116, 538282630;
-        assert_eq 0, 120, 129608908;
-        assert_eq 0, 124, 219931460;
-        assert_eq 0, 128, 1794729453;
-        assert_eq 0, 132, 1386481683;
+        assert_eq 42, 65524, 605188316;
+        assert_eq 42, 65528, 179227070;
+        assert_eq 42, 65532, 987768411;
+        assert_eq 43, 0, 743435232;
+        assert_eq 43, 4, 1037675772;
+        assert_eq 43, 8, 926267312;
+        assert_eq 43, 12, 842954441;
+        assert_eq 43, 16, 1311415732;
 
         return;
     }

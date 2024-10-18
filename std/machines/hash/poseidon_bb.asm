@@ -106,11 +106,12 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     // How far away from overflowing the low limb is:
     let low_diff = low_addr - (0x10000 - 4);
     // Is one if low limb is about to overflow:
-    let low_overflow = 1 - low_diff_inv * low_diff;
+    let low_overflow;
+    low_overflow = 1 - low_diff_inv * low_diff;
     // Helper to allow low_overflow to be boolean
     let low_diff_inv;
-    // Ensures that (low_diff_inv * low_diff) is bool,
-    // and that low_diff_inv not 0 when low_diff is not 0:
+    // Ensures that (low_diff_inv * low_diff) is boolean,
+    // and that low_diff_inv is not 0 when low_diff is not 0:
     (low_diff_inv * low_diff - 1) * low_diff = 0;
 
     // Increment the low limb if address is not being set:
@@ -120,8 +121,8 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
         // Otherwise, next value is current plus 4:
         (1 - low_overflow) * (low_addr + 4 - low_addr')
     ) = 0;
-    // Set high limb, incremented if lower overflowed:
-    high_addr' = high_addr + low_overflow;
+    // Set high limb, incremented if low overflowed:
+    (1 - is_addr_set') * (high_addr' - high_addr - low_overflow) = 0;
 
     // One-hot encoding of the row number (for the first <STATE_SIZE + OUTPUT_SIZE> rows)
     assert(STATE_SIZE + OUTPUT_SIZE < ROWS_PER_HASH, || "Not enough rows to do memory read / write");
