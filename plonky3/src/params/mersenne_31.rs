@@ -5,10 +5,7 @@ use std::marker::PhantomData;
 
 use lazy_static::lazy_static;
 
-use crate::params::{
-    poseidon2::{poseidon2_external_constants, poseidon2_internal_constants},
-    Challenger, FieldElementMap, Plonky3Field,
-};
+use crate::params::{poseidon2, Challenger, FieldElementMap, Plonky3Field};
 use p3_challenger::DuplexChallenger;
 use p3_circle::CirclePcs;
 use p3_commit::ExtensionMmcs;
@@ -60,10 +57,10 @@ lazy_static! {
     static ref ROUNDS_P: usize = ROUNDS.1;
     static ref PERM_M31: Perm = Perm::new(
         *ROUNDS_F,
-        poseidon2_external_constants(*ROUNDS_F),
+        poseidon2::external_constants(*ROUNDS_F),
         Poseidon2ExternalMatrixGeneral,
         *ROUNDS_P,
-        poseidon2_internal_constants(*ROUNDS_P),
+        poseidon2::internal_constants(*ROUNDS_P),
         DiffusionMatrixMersenne31
     );
 }
