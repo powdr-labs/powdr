@@ -16,6 +16,7 @@ path = "src/bin/gen_poseidon_bb_consts.rs"
 [dependencies]
 powdr-ast.workspace = true
 powdr-number.workspace = true
+powdr-backend-utils.workspace = true
 rand = "0.8.5"
 powdr-analysis = { path = "../analysis" }
 powdr-executor = { path = "../executor" }
