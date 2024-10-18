@@ -446,7 +446,7 @@ namespace N(2);
     }"#;
 
         let expected = r#"
-    impl<T> Iterator<(ArrayIterator<T>), T> {
+    impl<T> Iterator<ArrayIterator<T>, T> {
         next_max: |it, max| if pos(it) >= max { None } else { Some(increment(it)) },
     }"#;
 
@@ -462,9 +462,31 @@ namespace N(2);
     }"#;
 
         let expected = r#"
-    impl<A, B> Iterator<(ArrayIterator<A>), B> {
+    impl<A, B> Iterator<ArrayIterator<A>, B> {
         next: |it, pm| if pos(it) >= val(pm) { (it, pos(it)) } else { (it, 0) },
     }"#;
+
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn parse_impl3() {
+        let input = "impl ToCol<(int -> fe)> { to_col: |x| x }";
+        let expected = "impl ToCol<(int -> fe)> {
+        to_col: |x| x,
+    }";
+
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn parse_impl4() {
+        let input = "impl ToCol<(int -> fe), int[]> { to_col: |x| x }";
+        let expected = "impl ToCol<(int -> fe), int[]> {
+        to_col: |x| x,
+    }";
 
         let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
         assert_eq!(expected.trim(), printed.trim());
