@@ -1,5 +1,5 @@
 use mktemp::Temp;
-use powdr_number::{BabyBearField, FieldElement, GoldilocksField, KnownField};
+use powdr_number::{BabyBearField, FieldElement, GoldilocksField, KnownField, KoalaBearField};
 use powdr_pipeline::{
     test_util::{run_pilcom_with_backend_variant, test_plonky3_pipeline, BackendVariant},
     Pipeline,
@@ -100,6 +100,14 @@ pub fn verify_riscv_asm_file(asm_file: &Path, options: CompilerOptions, use_pie:
     match options.field {
         KnownField::BabyBearField => {
             verify_riscv_asm_string::<BabyBearField, ()>(
+                &format!("{case_name}.asm"),
+                &powdr_asm,
+                &[],
+                None,
+            );
+        }
+        KnownField::KoalaBearField => {
+            verify_riscv_asm_string::<KoalaBearField, ()>(
                 &format!("{case_name}.asm"),
                 &powdr_asm,
                 &[],

@@ -1,16 +1,16 @@
 //! The concrete parameters used in the prover
 //!
-//! Inspired from [this example](https://github.com/Plonky3/Plonky3/blob/6a1b0710fdf85136d0fdd645b92933615867740a/keccak-air/examples/prove_baby_bear_poseidon2.rs)
+//! Inspired from [this example](https://github.com/Plonky3/Plonky3/blob/51c98987d1ee52c83a75142c1a2827d3ec71e563/keccak-air/examples/prove_koala_bear_poseidon2.rs)
 
 use lazy_static::lazy_static;
 
 use crate::params::{Challenger, FieldElementMap, Plonky3Field};
-use p3_baby_bear::{BabyBear, DiffusionMatrixBabyBear};
 use p3_challenger::DuplexChallenger;
 use p3_commit::ExtensionMmcs;
 use p3_dft::Radix2DitParallel;
 use p3_field::{extension::BinomialExtensionField, Field};
 use p3_fri::{FriConfig, TwoAdicFriPcs};
+use p3_koala_bear::{DiffusionMatrixKoalaBear, KoalaBear};
 use p3_merkle_tree::MerkleTreeMmcs;
 use p3_poseidon2::{poseidon2_round_numbers_128, Poseidon2, Poseidon2ExternalMatrixGeneral};
 use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
@@ -18,18 +18,19 @@ use p3_uni_stark::StarkConfig;
 
 use crate::params::poseidon2::{poseidon2_external_constants, poseidon2_internal_constants};
 
-use powdr_number::BabyBearField;
+use powdr_number::KoalaBearField;
 
-const D: u64 = 7;
-pub const WIDTH: usize = 16;
-type Perm = Poseidon2<BabyBear, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, WIDTH, D>;
+const D: u64 = 3;
+const WIDTH: usize = 16;
+type Perm =
+    Poseidon2<KoalaBear, Poseidon2ExternalMatrixGeneral, DiffusionMatrixKoalaBear, WIDTH, D>;
 
 const DEGREE: usize = 4;
-type FriChallenge = BinomialExtensionField<BabyBear, DEGREE>;
+type FriChallenge = BinomialExtensionField<KoalaBear, DEGREE>;
 
 const RATE: usize = 8;
 const OUT: usize = 8;
-type FriChallenger = DuplexChallenger<BabyBear, Perm, WIDTH, RATE>;
+type FriChallenger = DuplexChallenger<KoalaBear, Perm, WIDTH, RATE>;
 type Hash = PaddingFreeSponge<Perm, WIDTH, RATE, OUT>;
 
 const N: usize = 2;
@@ -37,23 +38,23 @@ const CHUNK: usize = 8;
 type Compress = TruncatedPermutation<Perm, N, CHUNK, WIDTH>;
 const DIGEST_ELEMS: usize = 8;
 type ValMmcs = MerkleTreeMmcs<
-    <BabyBear as Field>::Packing,
-    <BabyBear as Field>::Packing,
+    <KoalaBear as Field>::Packing,
+    <KoalaBear as Field>::Packing,
     Hash,
     Compress,
     DIGEST_ELEMS,
 >;
 
-type ChallengeMmcs = ExtensionMmcs<BabyBear, FriChallenge, ValMmcs>;
-type Dft = Radix2DitParallel<BabyBear>;
-type MyPcs = TwoAdicFriPcs<BabyBear, Dft, ValMmcs, ChallengeMmcs>;
+type ChallengeMmcs = ExtensionMmcs<KoalaBear, FriChallenge, ValMmcs>;
+type Dft = Radix2DitParallel<KoalaBear>;
+type MyPcs = TwoAdicFriPcs<KoalaBear, Dft, ValMmcs, ChallengeMmcs>;
 
 const FRI_LOG_BLOWUP: usize = 1;
 const FRI_NUM_QUERIES: usize = 100;
 const FRI_PROOF_OF_WORK_BITS: usize = 16;
 
 lazy_static! {
-    static ref ROUNDS: (usize, usize) = poseidon2_round_numbers_128::<BabyBear>(WIDTH, D);
+    static ref ROUNDS: (usize, usize) = poseidon2_round_numbers_128::<KoalaBear>(WIDTH, D);
     static ref ROUNDS_F: usize = ROUNDS.0;
     static ref ROUNDS_P: usize = ROUNDS.1;
     static ref PERM_BB: Perm = Perm::new(
@@ -62,18 +63,18 @@ lazy_static! {
         Poseidon2ExternalMatrixGeneral,
         *ROUNDS_P,
         poseidon2_internal_constants(*ROUNDS_P),
-        DiffusionMatrixBabyBear::default()
+        DiffusionMatrixKoalaBear::default()
     );
 }
 
-impl FieldElementMap for BabyBearField {
+impl FieldElementMap for KoalaBearField {
     type Config = StarkConfig<MyPcs, FriChallenge, FriChallenger>;
     fn into_p3_field(self) -> Plonky3Field<Self> {
         self.into_inner()
     }
 
     fn from_p3_field(e: Plonky3Field<Self>) -> Self {
-        BabyBearField::from_inner(e)
+        KoalaBearField::from_inner(e)
     }
 
     fn get_challenger() -> Challenger<Self> {

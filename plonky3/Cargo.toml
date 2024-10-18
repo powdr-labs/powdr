@@ -6,6 +6,13 @@ license.workspace = true
 homepage.workspace = true
 repository.workspace = true
 
+[lib]
+name = "powdr_plonky3"
+
+[[bin]]
+name = "gen_poseidon_bb_consts"
+path = "src/bin/gen_poseidon_bb_consts.rs" 
+
 [dependencies]
 powdr-ast.workspace = true
 powdr-number.workspace = true
@@ -21,6 +28,7 @@ p3-commit = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf2
     "test-utils",
 ] }
 p3-poseidon2 = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0" }
+p3-poseidon = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0" }
 p3-fri = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0" }
 # We don't use p3-maybe-rayon directly, but it is a dependency of p3-uni-stark.
 # Activating the "parallel" feature gives us parallelism in the prover.
@@ -33,6 +41,7 @@ p3-merkle-tree = { git = "https://github.com/plonky3/Plonky3.git", rev = "219243
 p3-mersenne-31 = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0" }
 p3-circle = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0" }
 p3-baby-bear = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0" }
+p3-koala-bear = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0" }
 p3-goldilocks = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0" }
 p3-symmetric = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0" }
 p3-dft = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0" }

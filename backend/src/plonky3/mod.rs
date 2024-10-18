@@ -4,7 +4,7 @@ use std::{io, path::PathBuf, sync::Arc};
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
-use powdr_number::{BabyBearField, GoldilocksField, Mersenne31Field};
+use powdr_number::{BabyBearField, GoldilocksField, KoalaBearField, Mersenne31Field};
 use powdr_plonky3::{Commitment, FieldElementMap, ProverData};
 use stark::Plonky3Prover;
 
@@ -48,7 +48,7 @@ where
     }
 }
 
-generalize_factory!(Factory <- RestrictedFactory, [BabyBearField, GoldilocksField, Mersenne31Field]);
+generalize_factory!(Factory <- RestrictedFactory, [BabyBearField, KoalaBearField, GoldilocksField, Mersenne31Field]);
 
 impl<T: FieldElementMap> Backend<T> for Plonky3Prover<T>
 where

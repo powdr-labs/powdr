@@ -7,7 +7,9 @@ use env_logger::fmt::Color;
 use env_logger::{Builder, Target};
 use log::LevelFilter;
 
-use powdr_number::{BabyBearField, BigUint, Bn254Field, FieldElement, GoldilocksField, KnownField};
+use powdr_number::{
+    BabyBearField, BigUint, Bn254Field, FieldElement, GoldilocksField, KnownField, KoalaBearField,
+};
 use powdr_pipeline::Pipeline;
 use powdr_riscv::{CompilerOptions, RuntimeLibs};
 use powdr_riscv_executor::ProfilerOptions;
@@ -23,6 +25,8 @@ use strum::{Display, EnumString, EnumVariantNames};
 pub enum FieldArgument {
     #[strum(serialize = "bb")]
     Bb,
+    #[strum(serialize = "kb")]
+    Kb,
     #[strum(serialize = "gl")]
     Gl,
     #[strum(serialize = "bn254")]
@@ -33,6 +37,7 @@ impl FieldArgument {
     pub fn as_known_field(&self) -> KnownField {
         match self {
             FieldArgument::Bb => KnownField::BabyBearField,
+            FieldArgument::Kb => KnownField::KoalaBearField,
             FieldArgument::Gl => KnownField::GoldilocksField,
             FieldArgument::Bn254 => KnownField::Bn254Field,
         }
