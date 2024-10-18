@@ -22,7 +22,7 @@ pub use bn254::Bn254Field;
 pub use goldilocks::GoldilocksField;
 pub use koala_bear::KoalaBearField;
 pub use mersenne31::Mersenne31Field;
-pub use traits::KnownField;
+pub use traits::{FieldSize, KnownField};
 
 pub use ibig::{IBig as BigInt, UBig as BigUint};
 pub use traits::{FieldElement, LargeInt};

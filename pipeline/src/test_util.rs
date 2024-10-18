@@ -74,9 +74,9 @@ pub fn regular_test(file_name: &str, inputs: &[i32]) {
     let pipeline_bb = make_prepared_pipeline(file_name, inputs_bb, vec![]);
     test_plonky3_pipeline(pipeline_bb);
 
-    let inputs_bb = inputs.iter().map(|x| KoalaBearField::from(*x)).collect();
-    let pipeline_bb = make_prepared_pipeline(file_name, inputs_bb, vec![]);
-    test_plonky3_pipeline(pipeline_bb);
+    let inputs_kb = inputs.iter().map(|x| KoalaBearField::from(*x)).collect();
+    let pipeline_kb = make_prepared_pipeline(file_name, inputs_kb, vec![]);
+    test_plonky3_pipeline(pipeline_kb);
 }
 
 pub fn regular_test_without_small_field(file_name: &str, inputs: &[i32]) {
