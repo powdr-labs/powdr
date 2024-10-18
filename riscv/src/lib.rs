@@ -230,10 +230,12 @@ pub fn compile_rust_crate_to_riscv(
     let metadata = CargoMetadata::from_input_dir(input_dir);
 
     // Run build.
-    let build_output = build_cargo_command(input_dir, &target_dir, metadata.use_std, features.clone()).output().unwrap();
+    let build_output =
+        build_cargo_command(input_dir, &target_dir, metadata.use_std, features.clone())
+            .output()
+            .unwrap();
 
     if !build_output.status.success() {
-        println!("{}", String::from_utf8_lossy(&build_output.stderr));
         panic!();
     }
 
@@ -251,6 +253,7 @@ pub fn compile_rust_crate_to_riscv(
         .join(&metadata.bins[0])
 }
 
+#[derive(Debug)]
 struct CargoMetadata {
     bins: Vec<String>,
     use_std: bool,
