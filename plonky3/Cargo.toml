@@ -35,6 +35,7 @@ p3-merkle-tree = { git = "https://github.com/plonky3/Plonky3.git" }
 p3-mersenne-31 = { git = "https://github.com/plonky3/Plonky3.git" }
 p3-circle = { git = "https://github.com/plonky3/Plonky3.git" }
 p3-baby-bear = { git = "https://github.com/plonky3/Plonky3.git" }
+p3-koala-bear = { git = "https://github.com/plonky3/Plonky3.git" }
 p3-goldilocks = { git = "https://github.com/plonky3/Plonky3.git" }
 p3-symmetric = { git = "https://github.com/plonky3/Plonky3.git" }
 p3-dft = { git = "https://github.com/plonky3/Plonky3.git" }
