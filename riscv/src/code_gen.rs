@@ -109,7 +109,7 @@ pub trait RiscVProgram {
 /// Will call each of the methods in the `RiscVProgram` just once.
 pub fn translate_program(program: impl RiscVProgram, options: CompilerOptions) -> String {
     match options.field {
-        KnownField::BabyBearField | KnownField::Mersenne31Field => {
+        KnownField::BabyBearField | KnownField::KoalaBearField | KnownField::Mersenne31Field => {
             small_field::code_gen::translate_program(program, options)
         }
         KnownField::GoldilocksField | KnownField::Bn254Field => {
