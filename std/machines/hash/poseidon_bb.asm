@@ -139,7 +139,7 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     link if do_mload ~> (word_high, word_low) = mem.mload(high_addr, low_addr, time_step);
 
     // Combine the low and high limbs and write it into `input`
-    let current_input = array::sum(array::new(STATE_SIZE, |i| CLK[i] * input[i]));
+    let current_input = sum(STATE_SIZE, |i| CLK[i] * input[i]);
     do_mload * (word_low + word_high * 2**16 - current_input) = 0;
 
     // Do a memory write in each of the next OUTPUT_SIZE rows.
