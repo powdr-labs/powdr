@@ -880,7 +880,7 @@ fn reparse_type_args_generic_enum() {
         Some(T),
     }
     let<T> consume: T -> () = |_| { };
-    let p: int -> () = |i| X::consume::<(X::Option<int>)>(X::Option::Some::<int>(i));
+    let p: int -> () = |i| X::consume::<X::Option<int> >(X::Option::Some::<int>(i));
 "#;
     let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, input);
