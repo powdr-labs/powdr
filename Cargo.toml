@@ -27,7 +27,7 @@ members = [
     "riscv-executor",
     "riscv-syscalls",
     "schemas",
-    "backend-utils"
+    "backend-utils",
 ]
 
 exclude = [ "riscv-runtime" ]
@@ -63,7 +63,6 @@ powdr-riscv = { path = "./riscv", version = "0.1.0-alpha.2" }
 powdr-riscv-executor = { path = "./riscv-executor", version = "0.1.0-alpha.2" }
 powdr-riscv-syscalls = { path = "./riscv-syscalls", version = "0.1.0-alpha.2" }
 powdr-schemas = { path = "./schemas", version = "0.1.0-alpha.2" }
-powdr-plonky3 = { path = "./plonky3", version = "0.1.0-alpha.2" }
 
 [profile.pr-tests]
 inherits = "dev"
