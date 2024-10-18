@@ -9,9 +9,19 @@ repository = { workspace = true }
 
 [features]
 default = []
-halo2 = ["dep:halo2_proofs", "dep:halo2_curves", "dep:snark-verifier", "dep:halo2_solidity_verifier"]
+halo2 = [
+  "dep:halo2_proofs",
+  "dep:halo2_curves",
+  "dep:snark-verifier",
+  "dep:halo2_solidity_verifier",
+]
 estark-polygon = ["dep:pil-stark-prover"]
 plonky3 = ["dep:powdr-plonky3"]
+
+# Enable AVX or Neon accordingly in backends that support them.
+plonky3-simd = ["powdr-plonky3?/nightly-features"]
+estark-starky-simd = ["starky/avx512"]
+simd = ["plonky3-simd", "estark-starky-simd"]
 
 [dependencies]
 powdr-ast.workspace = true

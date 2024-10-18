@@ -16,6 +16,7 @@ estark-polygon = [
   "powdr-backend/estark-polygon",
   "powdr-pipeline/estark-polygon",
 ]
+simd = ["powdr-backend/simd", "powdr-pipeline/simd"]
 
 [dependencies]
 powdr-backend.workspace = true
