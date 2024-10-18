@@ -36,11 +36,11 @@ halo2_curves = { version = "0.6.1", package = "halo2curves", optional = true}
 snark-verifier = { git = "https://github.com/powdr-labs/snark-verifier.git", rev = "55012261fd4b0b8d21b581a9782d05258afe4104", optional = true }
 halo2_solidity_verifier = { git = "https://github.com/powdr-labs/halo2-solidity-verifier.git", rev = "ecae7fd2f62178c18b5fe18011630aa71da3371f", features = ["evm"], optional = true }
 
-p3-commit = { git = "https://github.com/plonky3/Plonky3.git", features = [
+p3-commit = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0", features = [
     "test-utils",
 ], optional = true }
-p3-matrix = { git = "https://github.com/plonky3/Plonky3.git", optional = true } 
-p3-uni-stark = { git = "https://github.com/plonky3/Plonky3.git", optional = true } 
+p3-matrix = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0", optional = true } 
+p3-uni-stark = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0", optional = true } 
 
 strum = { version = "0.24.1", features = ["derive"] }
 log = "0.4.17"
