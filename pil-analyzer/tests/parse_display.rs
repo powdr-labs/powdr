@@ -906,3 +906,16 @@ fn intermediate_syntax() {
     assert_eq!(analyzed.intermediate_count(), 4);
     assert_eq!(analyzed.to_string(), expected);
 }
+
+#[test]
+fn simple_struct_parsing() {
+    let input = "    struct Point {
+        x: int,
+        y: int,
+    }
+    let f: int -> Point = |i| Point{ x: 0, y: i };
+    let x: Point = f(0);
+";
+    let formatted = analyze_string(input).to_string();
+    assert_eq!(formatted, input);
+}
