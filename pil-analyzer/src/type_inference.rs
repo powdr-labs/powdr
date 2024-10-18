@@ -527,7 +527,7 @@ impl TypeChecker {
             ) => {
                 let scheme = self.declared_types[name].1.clone();
                 let ty =
-                    self.instantiate_type_scheme_with_args(name, type_args, scheme, source_ref)?;
+                    self.instantiate_type_scheme_with_args(type_args, scheme, name, source_ref)?;
                 type_for_reference(&ty)
             }
             Expression::PublicReference(_, _) => Type::Expr,
@@ -735,30 +735,28 @@ impl TypeChecker {
                     vars: struct_decl.type_vars.clone(),
                 };
 
-                let ty = self.instantiate_type_scheme_with_args(name, type_args, scheme, sr)?;
-
                 for named_expr in fields.iter_mut() {
                     let field_type = field_types.get(&named_expr.name).unwrap();
                     self.expect_type(field_type, named_expr.body.as_mut())?;
                 }
 
-                ty
+                self.instantiate_type_scheme_with_args(type_args, scheme, name, sr)?
             }
         })
     }
 
     fn instantiate_type_scheme_with_args(
         &mut self,
-        name: &mut String,
         type_args: &mut Option<Vec<Type>>,
         scheme: TypeScheme,
+        symbol_name: &mut String,
         source_ref: &mut SourceRef,
     ) -> Result<Type, Error> {
         let (ty, args) = self.unifier.instantiate_scheme(scheme);
         if let Some(requested_type_args) = type_args {
             if requested_type_args.len() != args.len() {
                 return Err(source_ref.with_error(format!(
-                    "Expected {} type arguments for symbol {name}, but got {}: {}",
+                    "Expected {} type arguments for symbol {symbol_name}, but got {}: {}",
                     args.len(),
                     requested_type_args.len(),
                     requested_type_args.iter().join(", ")
