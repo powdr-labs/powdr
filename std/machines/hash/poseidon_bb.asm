@@ -119,8 +119,8 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
         // Otherwise, next value is current plus 4:
         (1 - low_overflow) * (low_addr + 4 - low_addr')
     ) = 0;
-    // Increment the high limb if lower overflowed:
-    (1 - is_addr_set') * low_overflow * (high_addr + 1 - high_addr') = 0; // '
+    // Set high limb, incremented if lower overflowed:
+    high_addr' = high_addr + low_overflow;
 
     // One-hot encoding of the row number (for the first <STATE_SIZE + OUTPUT_SIZE> rows)
     assert(STATE_SIZE + OUTPUT_SIZE < ROWS_PER_HASH, || "Not enough rows to do memory read / write");
