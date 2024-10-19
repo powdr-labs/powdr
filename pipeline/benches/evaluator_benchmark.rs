@@ -9,6 +9,26 @@ use powdr_pipeline::test_util::{evaluate_function, evaluate_integer_function, st
 
 use criterion::{criterion_group, criterion_main, Criterion};
 
+const SQRT_CODE: &str = "
+    let sqrt: int -> int = |x| sqrt_rec(x, x);
+    let sqrt_rec: int, int -> int = |y, x|
+        if y * y <= x && (y + 1) * (y + 1) > x {
+            y
+        } else {
+            sqrt_rec((y + x / y) / 2, x)
+        };
+";
+
+const SORT_SIZES: [i32; 5] = [33, 100, 300, 900, 2700];
+
+/// Just some numbers to test the sqrt function on.
+fn sqrt_inputs() -> Vec<(String, u64)> {
+    [879882356, 1882356, 1187956, 56]
+        .into_iter()
+        .map(|x| (x.to_string(), (x as u64) * 112655675_u64))
+        .collect()
+}
+
 fn evaluator_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("evaluator-benchmark");
 
@@ -67,25 +87,14 @@ fn evaluator_benchmark(c: &mut Criterion) {
     });
 
     let sqrt_analyzed: Analyzed<GoldilocksField> = {
-        let code = "
-            let sqrt: int -> int = |x| sqrt_rec(x, x);
-            let sqrt_rec: int, int -> int = |y, x|
-                if y * y <= x && (y + 1) * (y + 1) > x {
-                    y
-                } else {
-                    sqrt_rec((y + x / y) / 2, x)
-                };
-        "
-        .to_string();
-        let mut pipeline = Pipeline::default().from_asm_string(code, None);
+        let mut pipeline = Pipeline::default().from_asm_string(SQRT_CODE.to_string(), None);
         pipeline.compute_analyzed_pil().unwrap().clone()
     };
 
-    for x in [879882356, 1882356, 1187956, 56] {
-        group.bench_with_input(format!("sqrt_{x}"), &x, |b, &x| {
+    for (name, val) in sqrt_inputs() {
+        group.bench_with_input(format!("sqrt_{name}"), &val, |b, val| {
             b.iter(|| {
-                let y = BigInt::from(x) * BigInt::from(112655675);
-                evaluate_integer_function(&sqrt_analyzed, "sqrt", vec![y.clone()]);
+                evaluate_integer_function(&sqrt_analyzed, "sqrt", vec![BigInt::from(*val)]);
             });
         });
     }
@@ -97,9 +106,9 @@ fn evaluator_benchmark(c: &mut Criterion) {
         pipeline.compute_analyzed_pil().unwrap().clone()
     };
 
-    for l in [33, 100, 300, 900, 2700] {
+    for l in &SORT_SIZES {
         let input = Arc::new(Value::Array(
-            (0..l)
+            (0..*l)
                 .rev()
                 .map(|x| Arc::new(Value::Integer(x.into())))
                 .collect(),
@@ -114,5 +123,52 @@ fn evaluator_benchmark(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches_pil, evaluator_benchmark);
+fn jit_benchmark(c: &mut Criterion) {
+    let mut group = c.benchmark_group("jit-benchmark");
+
+    let sqrt_analyzed: Analyzed<GoldilocksField> = {
+        let mut pipeline = Pipeline::default().from_asm_string(SQRT_CODE.to_string(), None);
+        pipeline.compute_analyzed_pil().unwrap().clone()
+    };
+
+    let sqrt_fun = powdr_jit_compiler::compile(&sqrt_analyzed, &["sqrt"])
+        .unwrap()
+        .get_fixed_column("sqrt")
+        .unwrap()
+        .clone();
+
+    for (name, val) in sqrt_inputs() {
+        group.bench_with_input(format!("sqrt_{name}"), &val, |b, val| {
+            b.iter(|| {
+                sqrt_fun.call(*val);
+            });
+        });
+    }
+
+    // TOOD this is not exactly the same code as in the interpreter case.
+    // Here we are creating the array inside the code.
+    let sort_code = "let sort_int: int -> int = |size| {
+        let arr = std::array::new(size, |i| size - i - 1);
+        std::array::sort(arr, |a, b| a < b)[20]
+    };";
+    let sort_analyzed: Analyzed<GoldilocksField> = {
+        let mut pipeline = Pipeline::default().from_asm_string(sort_code.to_string(), None);
+        pipeline.compute_analyzed_pil().unwrap().clone()
+    };
+    let sort_fun = powdr_jit_compiler::compile(&sort_analyzed, &["sort_int"])
+        .unwrap()
+        .get_fixed_column("sort_int")
+        .unwrap()
+        .clone();
+    for l in &SORT_SIZES {
+        group.bench_with_input(format!("sort_{l}"), &l, |b, l| {
+            b.iter(|| {
+                sort_fun.call(**l as u64);
+            });
+        });
+    }
+    group.finish();
+}
+
+criterion_group!(benches_pil, evaluator_benchmark, jit_benchmark);
 criterion_main!(benches_pil);

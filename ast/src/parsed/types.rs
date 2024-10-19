@@ -8,7 +8,7 @@ use itertools::Itertools;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use super::{asm::SymbolPath, visitor::Children, Expression, Number};
+use super::{asm::SymbolPath, display::type_vars_to_string, visitor::Children, Expression, Number};
 
 #[derive(
     Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash, Serialize, Deserialize, JsonSchema,
@@ -461,11 +461,7 @@ impl<E: Clone> TypeScheme<E> {
 }
 impl<E> TypeScheme<E> {
     pub fn type_vars_to_string(&self) -> String {
-        if self.vars.is_empty() {
-            String::new()
-        } else {
-            format!("<{}>", self.vars)
-        }
+        type_vars_to_string(&self.vars)
     }
 }
 

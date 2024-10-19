@@ -21,6 +21,7 @@ pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
     self, ArrayExpression, EnumDeclaration, EnumVariant, NamedType, TraitDeclaration,
+    TypeDeclaration,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -82,6 +83,16 @@ impl<T> Analyzed<T> {
             .collect::<HashSet<_>>()
     }
 
+    /// Returns the number of stages based on the maximum stage number of all definitions
+    pub fn stage_count(&self) -> usize {
+        self.definitions
+            .iter()
+            .map(|(_, (s, _))| s.stage.unwrap_or_default())
+            .max()
+            .unwrap_or_default() as usize
+            + 1
+    }
+
     /// @returns the number of committed polynomials (with multiplicities for arrays)
     pub fn commitment_count(&self) -> usize {
         self.declaration_type_count(PolynomialType::Committed)
@@ -104,70 +115,63 @@ impl<T> Analyzed<T> {
 
     pub fn constant_polys_in_source_order(
         &self,
-    ) -> Vec<&(Symbol, Option<FunctionValueDefinition>)> {
+    ) -> impl Iterator<Item = &(Symbol, Option<FunctionValueDefinition>)> {
         self.definitions_in_source_order(PolynomialType::Constant)
     }
 
     pub fn committed_polys_in_source_order(
         &self,
-    ) -> Vec<&(Symbol, Option<FunctionValueDefinition>)> {
+    ) -> impl Iterator<Item = &(Symbol, Option<FunctionValueDefinition>)> {
         self.definitions_in_source_order(PolynomialType::Committed)
     }
 
     pub fn intermediate_polys_in_source_order(
         &self,
-    ) -> Vec<&(Symbol, Vec<AlgebraicExpression<T>>)> {
-        self.source_order
-            .iter()
-            .filter_map(move |statement| {
-                if let StatementIdentifier::Definition(name) = statement {
-                    if let Some(definition) = self.intermediate_columns.get(name) {
-                        return Some(definition);
-                    }
+    ) -> impl Iterator<Item = &(Symbol, Vec<AlgebraicExpression<T>>)> {
+        self.source_order.iter().filter_map(move |statement| {
+            if let StatementIdentifier::Definition(name) = statement {
+                if let Some(definition) = self.intermediate_columns.get(name) {
+                    return Some(definition);
                 }
-                None
-            })
-            .collect()
+            }
+            None
+        })
     }
 
     pub fn definitions_in_source_order(
         &self,
         poly_type: PolynomialType,
-    ) -> Vec<&(Symbol, Option<FunctionValueDefinition>)> {
+    ) -> impl Iterator<Item = &(Symbol, Option<FunctionValueDefinition>)> {
         assert!(
             poly_type != PolynomialType::Intermediate,
             "Use intermediate_polys_in_source_order to get intermediate polys."
         );
-        self.source_order
-            .iter()
-            .filter_map(move |statement| {
-                if let StatementIdentifier::Definition(name) = statement {
-                    if let Some(definition) = self.definitions.get(name) {
-                        match definition.0.kind {
-                            SymbolKind::Poly(ptype) if ptype == poly_type => {
-                                return Some(definition);
-                            }
-                            _ => {}
+        self.source_order.iter().filter_map(move |statement| {
+            if let StatementIdentifier::Definition(name) = statement {
+                if let Some(definition) = self.definitions.get(name) {
+                    match definition.0.kind {
+                        SymbolKind::Poly(ptype) if ptype == poly_type => {
+                            return Some(definition);
                         }
+                        _ => {}
                     }
                 }
-                None
-            })
-            .collect()
+            }
+            None
+        })
     }
 
-    pub fn public_declarations_in_source_order(&self) -> Vec<(&String, &PublicDeclaration)> {
-        self.source_order
-            .iter()
-            .filter_map(move |statement| {
-                if let StatementIdentifier::PublicDeclaration(name) = statement {
-                    if let Some(public_declaration) = self.public_declarations.get(name) {
-                        return Some((name, public_declaration));
-                    }
+    pub fn public_declarations_in_source_order(
+        &self,
+    ) -> impl Iterator<Item = (&String, &PublicDeclaration)> {
+        self.source_order.iter().filter_map(move |statement| {
+            if let StatementIdentifier::PublicDeclaration(name) = statement {
+                if let Some(public_declaration) = self.public_declarations.get(name) {
+                    return Some((name, public_declaration));
                 }
-                None
-            })
-            .collect()
+            }
+            None
+        })
     }
 
     fn declaration_type_count(&self, poly_type: PolynomialType) -> usize {
@@ -269,13 +273,10 @@ impl<T> Analyzed<T> {
 
         // Create and update the replacement map for all polys.
         self.committed_polys_in_source_order()
-            .iter()
             .fold(0, |new_id, (poly, _def)| handle_symbol(new_id, poly));
         self.constant_polys_in_source_order()
-            .iter()
             .fold(0, |new_id, (poly, _def)| handle_symbol(new_id, poly));
         self.intermediate_polys_in_source_order()
-            .iter()
             .fold(0, |new_id, (poly, _def)| handle_symbol(new_id, poly));
 
         self.definitions.values_mut().for_each(|(poly, _def)| {
@@ -325,22 +326,26 @@ impl<T> Analyzed<T> {
             .for_each(|definition| definition.post_visit_expressions_mut(f))
     }
 
-    /// Retrieves (col_name, col_idx, offset) of each public witness in the trace.
-    pub fn get_publics(&self) -> Vec<(String, usize, usize)> {
+    /// Retrieves (col_name, poly_id, offset, stage) of each public witness in the trace.
+    pub fn get_publics(&self) -> Vec<(String, PolyID, usize, u8)> {
         let mut publics = self
             .public_declarations
             .values()
             .map(|public_declaration| {
                 let column_name = public_declaration.referenced_poly_name();
-                let column_idx = {
-                    let base = self.definitions[&public_declaration.polynomial.name].0.id;
-                    match public_declaration.array_index {
-                        Some(array_idx) => base + array_idx as u64,
-                        None => base,
-                    }
+                let (poly_id, stage) = {
+                    let symbol = &self.definitions[&public_declaration.polynomial.name].0;
+                    (
+                        symbol
+                            .array_elements()
+                            .nth(public_declaration.array_index.unwrap_or_default())
+                            .unwrap()
+                            .1,
+                        symbol.stage.unwrap_or_default() as u8,
+                    )
                 };
                 let row_offset = public_declaration.index as usize;
-                (column_name, column_idx as usize, row_offset)
+                (column_name, poly_id, row_offset, stage)
             })
             .collect::<Vec<_>>();
 
@@ -357,7 +362,6 @@ impl<T: FieldElement> Analyzed<T> {
     ) -> Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>> {
         let intermediates = &self
             .intermediate_polys_in_source_order()
-            .iter()
             .flat_map(|(symbol, def)| {
                 symbol
                     .array_elements()
@@ -620,7 +624,7 @@ pub enum SymbolKind {
 pub enum FunctionValueDefinition {
     Array(ArrayExpression<Reference>),
     Expression(TypedExpression),
-    TypeDeclaration(EnumDeclaration),
+    TypeDeclaration(TypeDeclaration),
     TypeConstructor(Arc<EnumDeclaration>, EnumVariant),
     TraitDeclaration(TraitDeclaration),
     TraitFunction(Arc<TraitDeclaration>, NamedType),
@@ -633,8 +637,8 @@ impl Children<Expression> for FunctionValueDefinition {
                 Box::new(iter::once(e))
             }
             FunctionValueDefinition::Array(e) => e.children(),
-            FunctionValueDefinition::TypeDeclaration(enum_declaration) => {
-                enum_declaration.children()
+            FunctionValueDefinition::TypeDeclaration(type_declaration) => {
+                type_declaration.children()
             }
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children(),
             FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children(),
@@ -648,8 +652,8 @@ impl Children<Expression> for FunctionValueDefinition {
                 Box::new(iter::once(e))
             }
             FunctionValueDefinition::Array(e) => e.children_mut(),
-            FunctionValueDefinition::TypeDeclaration(enum_declaration) => {
-                enum_declaration.children_mut()
+            FunctionValueDefinition::TypeDeclaration(type_declaration) => {
+                type_declaration.children_mut()
             }
             FunctionValueDefinition::TypeConstructor(_, variant) => variant.children_mut(),
             FunctionValueDefinition::TraitDeclaration(trait_decl) => trait_decl.children_mut(),
@@ -1085,7 +1089,9 @@ impl<T> AlgebraicExpression<T> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Copy, Serialize, Deserialize, JsonSchema,
+)]
 pub struct Challenge {
     /// Challenge ID
     pub id: u64,

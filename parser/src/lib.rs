@@ -550,4 +550,136 @@ namespace N(8);
         let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
         assert_eq!(expected.trim(), printed.trim());
     }
+
+    #[test]
+    fn parse_trailing_commas() {
+        let input = r#"
+    let<T1, T2,> left: T1, T2, -> T1 = |a, b,| a;
+
+    let<T1: Trait1, T2: Trait2,> func: T1 -> T2 = |x| x;
+
+    enum MyEnum {
+        Variant1,
+        Variant2(int, int,),
+    }
+
+    trait MyTrait<T, U,> {
+        func1: T -> U,
+        func2: U -> T,
+    }
+
+    let tuple = (1, 2, 3,);
+
+    let array = [1, 2, 3,];
+
+    let match_expr = match x {
+        1 => "one",
+        2 => "two",
+        _ => "other",
+    };
+"#;
+        let expected = r#"
+    let<T1, T2> left: T1, T2 -> T1 = |a, b| a;
+    let<T1: Trait1, T2: Trait2> func: T1 -> T2 = |x| x;
+    enum MyEnum {
+        Variant1,
+        Variant2(int, int),
+    }
+    trait MyTrait<T, U> {
+        func1: T -> U,
+        func2: U -> T,
+    }
+    let tuple = (1, 2, 3);
+    let array = [1, 2, 3];
+    let match_expr = match x {
+        1 => "one",
+        2 => "two",
+        _ => "other",
+    };
+"#;
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn parse_trailing_commas_asm() {
+        let input = r#"
+machine Main (a: Byte, b: Byte,) {
+    reg pc[@pc];
+    reg X[<=];
+
+    function get a, step, -> b {
+        A <== mload(a, step,);
+        return A;
+    }
+
+    instr assert_eq X, Y, { X = Y }
+}
+"#;
+        let expected = r#"
+machine Main(a: Byte, b: Byte) {
+    reg pc[@pc];
+    reg X[<=];
+    function get a, step -> b {
+    A <== mload(a, step);
+    return A;
+    }
+    instr assert_eq X, Y{ X = Y }
+}
+"#;
+        let printed = format!("{}", parse_asm(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn struct_decls() {
+        let input = r#"
+namespace N(2);
+    struct X {
+    }
+    struct Y<T, U> {
+        a: int,
+        b: fe,
+        c: fe[3],
+        d: ((int, fe), fe[2] -> (fe -> int)),
+        e: ((int -> fe) -> int),
+        f: (T -> (U -> T)),
+        g: Y,
+    }
+"#;
+
+        let expected = r#"
+namespace N(2);
+    struct X {
+    }
+    struct Y<T, U> {
+        a: int,
+        b: fe,
+        c: fe[3],
+        d: (int, fe), fe[2] -> (fe -> int),
+        e: (int -> fe) -> int,
+        f: T -> (U -> T),
+        g: Y,
+    }
+"#;
+
+        let printed = format!("{}", parse(Some("input"), input).unwrap());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn simple_struct() {
+        let input = r#"
+    struct A {
+        x: int,
+        y: fe,
+    }"#;
+        let expected = r#"
+    struct A {
+        x: int,
+        y: fe,
+    }"#;
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
 }

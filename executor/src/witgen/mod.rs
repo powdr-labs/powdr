@@ -48,7 +48,7 @@ mod vm_processor;
 static OUTER_CODE_NAME: &str = "witgen (outer code)";
 
 // TODO change this so that it has functions
-// get_input, get_input_from_channel, output_byte
+// input_from_channel, output_to_channel
 // instead of processing strings.
 // but we can only do that once we have fully removed the old query functions.
 pub trait QueryCallback<T>: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
@@ -277,7 +277,6 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         let witness_cols = self
             .analyzed
             .committed_polys_in_source_order()
-            .into_iter()
             .filter(|(symbol, _)| symbol.stage.unwrap_or_default() <= self.stage.into())
             .flat_map(|(p, _)| p.array_elements())
             .map(|(name, _id)| {
@@ -289,7 +288,12 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
 
         log::debug!("Publics:");
         for (name, value) in extract_publics(&witness_cols, self.analyzed) {
-            log::debug!("  {name:>30}: {value}");
+            log::debug!(
+                "  {name:>30}: {}",
+                value
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "Not yet known at this stage".to_string())
+            );
         }
         witness_cols
     }
@@ -298,17 +302,18 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
 pub fn extract_publics<T: FieldElement>(
     witness: &[(String, Vec<T>)],
     pil: &Analyzed<T>,
-) -> Vec<(String, T)> {
+) -> Vec<(String, Option<T>)> {
     let witness = witness
         .iter()
         .map(|(name, col)| (name.clone(), col))
         .collect::<BTreeMap<_, _>>();
     pil.public_declarations_in_source_order()
-        .iter()
         .map(|(name, public_declaration)| {
             let poly_name = &public_declaration.referenced_poly_name();
             let poly_index = public_declaration.index;
-            let value = witness[poly_name][poly_index as usize];
+            let value = witness
+                .get(poly_name)
+                .map(|column| column[poly_index as usize]);
             ((*name).clone(), value)
         })
         .collect()
@@ -368,7 +373,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             .collect::<BTreeMap<_, _>>();
 
         let witness_cols =
-            WitnessColumnMap::from(analyzed.committed_polys_in_source_order().iter().flat_map(
+            WitnessColumnMap::from(analyzed.committed_polys_in_source_order().flat_map(
                 |(poly, value)| {
                     poly.array_elements()
                         .map(|(name, poly_id)| {
