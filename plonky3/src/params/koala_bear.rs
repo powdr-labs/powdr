@@ -1,4 +1,5 @@
 //! The concrete parameters used in the prover
+//!
 //! Inspired from [this example](https://github.com/Plonky3/Plonky3/blob/51c98987d1ee52c83a75142c1a2827d3ec71e563/keccak-air/examples/prove_koala_bear_poseidon2.rs)
 
 use lazy_static::lazy_static;
