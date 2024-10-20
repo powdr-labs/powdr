@@ -13,6 +13,16 @@ name = "powdr_plonky3"
 name = "gen_poseidon_bb_consts"
 path = "src/bin/gen_poseidon_bb_consts.rs" 
 
+[features]
+default = []
+nightly-features = [
+  "p3-goldilocks/nightly-features",
+  "p3-baby-bear/nightly-features",
+  "p3-koala-bear/nightly-features",
+  "p3-mersenne-31/nightly-features",
+  "p3-poseidon2/nightly-features",
+]
+
 [dependencies]
 powdr-ast.workspace = true
 powdr-number.workspace = true
@@ -51,4 +61,11 @@ lazy_static = "1.4.0"
 rand_chacha = "0.3.1"
 itertools = "0.13.0"
 tracing = "0.1.37"
-serde = { version = "1.0", default-features = false, features = ["derive", "alloc"] }
+serde = { version = "1.0", default-features = false, features = [
+  "derive",
+  "alloc",
+] }
+
+[dev-dependencies]
+powdr-pipeline.workspace = true
+test-log = "0.2.12"
