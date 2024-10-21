@@ -120,7 +120,7 @@ let lookup: Constr, expr -> () = constr |lookup_constraint, multiplicities| {
         _ => panic("Expected lookup constraint")
     };
     // TODO: Adding it to the constraint set currently fails
-    witgen_annotation;
+    // witgen_annotation;
 
     // In the extension field, we need a prover function for the accumulator.
     if needs_extension() {
