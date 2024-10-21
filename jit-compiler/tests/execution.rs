@@ -4,9 +4,9 @@ use test_log::test;
 use powdr_number::GoldilocksField;
 use powdr_pil_analyzer::analyze_string;
 
-fn compile(input: &str, symbol: &str) -> CompiledPIL {
+fn compile(input: &str, symbols: &[&str]) -> CompiledPIL {
     let analyzed = analyze_string::<GoldilocksField>(input).unwrap();
-    powdr_jit_compiler::compile(&analyzed, &[symbol])
+    powdr_jit_compiler::compile(&analyzed, symbols)
         .map_err(|e| {
             eprintln!("Error jit-compiling:\n{e}");
             e
@@ -15,7 +15,7 @@ fn compile(input: &str, symbol: &str) -> CompiledPIL {
 }
 
 fn compile_fun(input: &str, symbol: &str) -> FixedColFunction {
-    compile(input, symbol)
+    compile(input, &[symbol])
         .get_fixed_column(symbol)
         .unwrap()
         .clone()
@@ -65,7 +65,7 @@ fn builtin_panic() {
         namespace main;
             let a: int -> int = |i| std::check::panic("test");
         "#;
-    compile(input, "main::a");
+    compile(input, &["main::a"]);
     // We de not call `a` because handling the panic is not yet properly implemented.
     // It currently causes an unhandled panic inside an `extern "C"` function, which results in
     // direct termination, so we cannot test it here.
@@ -83,14 +83,15 @@ fn assigned_functions() {
             let c = if t { a } else { b };
             let d = |i| c(i);
         "#;
-    let c = compile_fun(input, "main::c");
+    let obj = compile(input, &["main::c", "main::d"]);
+    let c = obj.get_fixed_column("main::c").unwrap();
 
     assert_eq!(c.call(0), 1);
     assert_eq!(c.call(1), 2);
     assert_eq!(c.call(2), 3);
     assert_eq!(c.call(3), 4);
 
-    let d = compile_fun(input, "main::d");
+    let d = obj.get_fixed_column("main::d").unwrap();
     assert_eq!(d.call(0), 1);
 }
 
@@ -115,14 +116,15 @@ fn simple_field() {
             let q: col = |i| a[i % std::array::len(a)];
             let r: col = |i| std::convert::fe(k(i));
         ";
-    let q = compile_fun(input, "main::q");
+    let obj = compile(input, &["main::q", "main::r"]);
+    let q = obj.get_fixed_column("main::q").unwrap();
 
     assert_eq!(q.call(0), 1);
     assert_eq!(q.call(1), 2);
     assert_eq!(q.call(2), 3);
     assert_eq!(q.call(3), 1);
 
-    let r = compile_fun(input, "main::r");
+    let r = obj.get_fixed_column("main::r").unwrap();
     assert_eq!(r.call(0), 0);
     assert_eq!(r.call(1), 1);
     assert_eq!(r.call(2), 2);
@@ -137,7 +139,7 @@ fn degree_builtin() {
         namespace main;
             let a: int -> int = |i| std::prover::degree();
         "#;
-    let compiled_pil = compile(input, "main::a");
+    let compiled_pil = compile(input, &["main::a"]);
     println!("Calling set degree outside");
     compiled_pil.set_degree(128);
 
