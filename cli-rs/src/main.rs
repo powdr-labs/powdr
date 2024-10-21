@@ -392,7 +392,7 @@ fn execute<F: FieldElement>(
                         profiling,
                     );
                 (
-                    continuations::transposed_trace(&trace),
+                    powdr_riscv::continuations::transposed_trace(&trace),
                     trace.into_cols(),
                     memory_snapshot_update,
                     register_memory_snapshot,
@@ -404,13 +404,12 @@ fn execute<F: FieldElement>(
             let pil = pipeline.compute_optimized_pil().unwrap();
             let witness_cols: HashSet<_> = pil
                 .committed_polys_in_source_order()
-                .iter()
                 .flat_map(|(s, _)| s.array_elements().map(|(name, _)| name))
                 .collect();
 
             let full_trace: Vec<_> = reg_trace
                 .into_iter()
-                .chain(cols.into_iter())
+                .chain(cols)
                 .filter(|(a, _)| witness_cols.contains(a))
                 // Uncomment the code below to test a specific column (for debugging).
                 // .filter(|(a, _)| {
@@ -421,7 +420,7 @@ fn execute<F: FieldElement>(
                 //     ]
                 //     .contains(&a.as_str())
                 // })
-                .map(|(a, b)| (a, b.into_iter().map(|e| e.into_fe()).collect::<Vec<_>>()))
+                .map(|(a, b)| (a, b.into_iter().collect::<Vec<_>>()))
                 .collect();
 
             let mut keys: Vec<_> = full_trace.iter().map(|(a, _)| a.clone()).collect();

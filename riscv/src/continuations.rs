@@ -25,7 +25,7 @@ use crate::continuations::bootloader::{
 
 use crate::code_gen::Register;
 
-fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace<F>) -> HashMap<String, Vec<F>> {
+pub fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace<F>) -> HashMap<String, Vec<F>> {
     let mut reg_values: HashMap<&str, Vec<F>> = HashMap::with_capacity(trace.reg_map.len());
 
     let mut rows = trace.replay();
