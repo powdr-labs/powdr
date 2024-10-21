@@ -620,16 +620,11 @@ impl<E: Display> Display for TraitImplementation<E> {
             panic!("Type from trait scheme is not a tuple.")
         };
 
-        let trait_vars = if items.is_empty() {
-            Default::default()
-        } else {
-            format!("<{}>", items.iter().format(", "))
-        };
-
         write!(
             f,
-            "impl{type_vars} {trait_name}{trait_vars} {{\n{methods}}}",
+            "impl{type_vars} {trait_name}{type_args} {{\n{methods}}}",
             trait_name = self.name,
+            type_args = format_type_args(items),
             methods = indent(
                 self.functions.iter().map(|m| format!("{m},\n")).format(""),
                 1
@@ -1011,19 +1006,22 @@ fn format_list_of_types<E: Display>(types: &[Type<E>]) -> String {
 
 /// Formats a list of types to be used as values for type arguments
 /// and puts them in angle brackets.
-/// Puts the last item in parentheses if it ends in `>` to avoid parser problems.
+/// It might add parentheses and spaces to avoid parser problems.
 pub fn format_type_args<E: Display>(args: &[Type<E>]) -> String {
     format!(
         "<{}>",
         args.iter()
-            .map(|arg| arg.to_string())
-            .map(|s| {
-                if s.contains('>') {
-                    format!("({s})")
-                } else {
-                    s
-                }
+            .rev()
+            .enumerate()
+            .map(|(i, t)| match t {
+                // Function types need parentheses if at the outermost level,
+                // because of the '>' in '->'
+                Type::Function(_) => format!("({t})"),
+                // For generic types we add a space to avoid '>>' at the end.
+                Type::NamedType(_, Some(_)) if i == 0 => format!("{t} "),
+                _ => format!("{t}"),
             })
+            .rev()
             .join(", ")
     )
 }
