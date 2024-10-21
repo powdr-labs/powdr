@@ -16,13 +16,14 @@ use p3_poseidon2::{poseidon2_round_numbers_128, Poseidon2, Poseidon2ExternalMatr
 use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
 use p3_uni_stark::StarkConfig;
 
-use crate::params::poseidon2::{poseidon2_external_constants, poseidon2_internal_constants};
+use crate::params::poseidon2;
 
 use powdr_number::BabyBearField;
 
 const D: u64 = 7;
 pub const WIDTH: usize = 16;
-type Perm = Poseidon2<BabyBear, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, WIDTH, D>;
+pub type Perm =
+    Poseidon2<BabyBear, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, WIDTH, D>;
 
 const DEGREE: usize = 4;
 type FriChallenge = BinomialExtensionField<BabyBear, DEGREE>;
@@ -54,14 +55,14 @@ const FRI_PROOF_OF_WORK_BITS: usize = 16;
 
 lazy_static! {
     static ref ROUNDS: (usize, usize) = poseidon2_round_numbers_128::<BabyBear>(WIDTH, D);
-    static ref ROUNDS_F: usize = ROUNDS.0;
-    static ref ROUNDS_P: usize = ROUNDS.1;
+    pub static ref ROUNDS_F: usize = ROUNDS.0;
+    pub static ref ROUNDS_P: usize = ROUNDS.1;
     static ref PERM_BB: Perm = Perm::new(
         *ROUNDS_F,
-        poseidon2_external_constants(*ROUNDS_F),
+        poseidon2::external_constants(*ROUNDS_F),
         Poseidon2ExternalMatrixGeneral,
         *ROUNDS_P,
-        poseidon2_internal_constants(*ROUNDS_P),
+        poseidon2::internal_constants(*ROUNDS_P),
         DiffusionMatrixBabyBear::default()
     );
 }
