@@ -921,7 +921,7 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.witness.as_ref().unwrap().clone())
     }
 
-    pub fn publics(&self) -> Result<Vec<(String, T)>, Vec<String>> {
+    pub fn publics(&self) -> Result<Vec<(String, Option<T>)>, Vec<String>> {
         let pil = self.optimized_pil()?;
         let witness = self.witness()?;
         Ok(extract_publics(&witness, &pil))

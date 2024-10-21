@@ -368,8 +368,6 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
         link => byte.check(tmp1_h)
         link => byte.check(tmp2_h)
     {
-        // We need a temporary col here because the compiler doesn't like
-        // `exp` inside an expr on the RHS of a pc update. 
         pc' = (tmp1_h * 2**16) + tmp1_l,
         pc + 1 = tmp2_h * 2**16 + tmp2_l
     }

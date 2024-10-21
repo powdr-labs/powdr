@@ -326,23 +326,26 @@ impl<T> Analyzed<T> {
             .for_each(|definition| definition.post_visit_expressions_mut(f))
     }
 
-    /// Retrieves (col_name, poly_id, offset) of each public witness in the trace.
-    pub fn get_publics(&self) -> Vec<(String, PolyID, usize)> {
+    /// Retrieves (col_name, poly_id, offset, stage) of each public witness in the trace.
+    pub fn get_publics(&self) -> Vec<(String, PolyID, usize, u8)> {
         let mut publics = self
             .public_declarations
             .values()
             .map(|public_declaration| {
                 let column_name = public_declaration.referenced_poly_name();
-                let poly_id = {
+                let (poly_id, stage) = {
                     let symbol = &self.definitions[&public_declaration.polynomial.name].0;
-                    symbol
-                        .array_elements()
-                        .nth(public_declaration.array_index.unwrap_or_default())
-                        .unwrap()
-                        .1
+                    (
+                        symbol
+                            .array_elements()
+                            .nth(public_declaration.array_index.unwrap_or_default())
+                            .unwrap()
+                            .1,
+                        symbol.stage.unwrap_or_default() as u8,
+                    )
                 };
                 let row_offset = public_declaration.index as usize;
-                (column_name, poly_id, row_offset)
+                (column_name, poly_id, row_offset, stage)
             })
             .collect::<Vec<_>>();
 

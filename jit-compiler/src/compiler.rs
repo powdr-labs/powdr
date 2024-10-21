@@ -103,12 +103,47 @@ impl<Args, Ret> Callable<Args, Ret> {
     }
 }
 
+#[derive(Clone)]
+struct PilVec<T>(std::sync::Arc<Vec<T>>);
+
+impl<T> PilVec<T> {
+    fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+impl<T> From<Vec<T>> for PilVec<T> {
+    fn from(v: Vec<T>) -> Self {
+        PilVec(std::sync::Arc::new(v))
+    }
+}
+impl<T> std::ops::Index<usize> for PilVec<T> {
+    type Output = T;
+
+    #[inline]
+    fn index(&self, index: usize) -> &T {
+        &self.0[index]
+    }
+}
+    
+
 trait Add {
     fn add(a: Self, b: Self) -> Self;
 }
 
 impl Add for ibig::IBig {
     fn add(a: Self, b: Self) -> Self { a + b }
+}
+
+impl<T: Clone> Add for PilVec<T> {
+    fn add(a: Self, b: Self) -> Self {
+        // TODO for a regular "push" or array::map this is very slow.
+        // We could optimize this by sharing a larger backing vector
+        // across prefix instances, allowing to extend the backing vector if
+        // our view is the full vector.
+        PilVec(std::sync::Arc::new(
+            a.0.as_ref().iter().chain(b.0.as_ref()).cloned().collect::<Vec<_>>()
+        ))
+    }
 }
 
 trait FromLiteral {

@@ -14,6 +14,7 @@ macro_rules! call_with_field {
     ($function:ident::<$field:ident>($($args:expr),*) ) => {
         match $field {
             FieldArgument::Bb => $function::<BabyBearField>($($args),*),
+            FieldArgument::Kb => $function::<KoalaBearField>($($args),*),
             FieldArgument::Gl => $function::<GoldilocksField>($($args),*),
             FieldArgument::Bn254 => $function::<Bn254Field>($($args),*),
         }

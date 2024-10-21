@@ -26,6 +26,7 @@ estark-polygon = [
   "powdr-pipeline/estark-polygon",
   "powdr-riscv/estark-polygon",
 ]
+simd = ["powdr-backend/simd", "powdr-pipeline/simd"]
 
 [lints.clippy]
 uninlined_format_args = "deny"
