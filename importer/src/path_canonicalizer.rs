@@ -492,7 +492,7 @@ fn check_path_internal<'a>(
                     SymbolValueRef::Machine(_)
                     | SymbolValueRef::Expression(_, _)
                     | SymbolValueRef::TypeConstructor(_)
-                    | SymbolValueRef::TraitDeclaration(_) => {
+                    | SymbolValueRef::TraitFunction(_) => {
                         Err(format!("symbol not found in `{location}`: `{member}`"))
                     }
                     // modules expose symbols
@@ -562,6 +562,19 @@ fn check_path_internal<'a>(
                     SymbolValueRef::TypeDeclaration(TypeDeclaration::Struct(_)) => {
                         Ok((location.with_part(member), value, chain))
                     }
+                    SymbolValueRef::TraitDeclaration(TraitDeclaration {
+                        functions, ..
+                    }) => functions
+                        .iter()
+                        .find(|f| f.name == member)
+                        .ok_or_else(|| format!("symbol not found in `{location}`: `{member}`"))
+                        .map(|f| {
+                            (
+                                location.with_part(member),
+                                SymbolValueRef::TraitFunction(f),
+                                chain,
+                            )
+                        }),
                 }
             },
         )
@@ -1301,6 +1314,11 @@ mod tests {
     #[test]
     fn trait_implementation() {
         expect("trait_implementation", Ok(()), false)
+    }
+
+    #[test]
+    fn trait_ref() {
+        expect("trait_ref", Ok(()), false)
     }
 
     #[test]
