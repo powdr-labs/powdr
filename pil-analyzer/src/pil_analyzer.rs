@@ -56,7 +56,7 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Result<Analyzed<T>, Vec<Erro
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(files)?;
     analyzer.side_effect_check()?;
-    analyzer.struct_fields_check()?;
+    analyzer.validate_structs()?;
     analyzer.type_check()?;
     let solved_impls = analyzer.resolve_trait_impls()?;
     analyzer.condense(solved_impls)
@@ -258,7 +258,7 @@ impl PILAnalyzer {
         }
     }
 
-    pub fn struct_fields_check(&self) -> Result<(), Vec<Error>> {
+    pub fn validate_structs(&self) -> Result<(), Vec<Error>> {
         let structs_exprs = self.all_children().filter_map(|expr| {
             if let Expression::StructExpression(sr, struct_expr) = expr {
                 Some((sr, struct_expr))
@@ -267,12 +267,7 @@ impl PILAnalyzer {
             }
         });
 
-        let errors = check_structs_fields(structs_exprs, &self.definitions);
-        if errors.is_empty() {
-            Ok(())
-        } else {
-            Err(errors)
-        }
+        check_structs_fields(structs_exprs, &self.definitions)
     }
 
     pub fn type_check(&mut self) -> Result<(), Vec<Error>> {

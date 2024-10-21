@@ -42,23 +42,24 @@ pub enum SymbolCategory {
     TypeConstructor,
     /// A trait declaration, which can be used as a type.
     TraitDeclaration,
-    /// A struct
+    /// A struct, which can be used as a type.
     Struct,
 }
 impl SymbolCategory {
     /// Returns if a symbol of a given category can satisfy a request for a certain category.
     pub fn compatible_with_request(&self, request: SymbolCategory) -> bool {
         match self {
-            SymbolCategory::Value => request == SymbolCategory::Value,
-            SymbolCategory::Type => request == SymbolCategory::Type,
+            SymbolCategory::Struct => {
+                // Structs can also satisfy requests for types.
+                request == SymbolCategory::Struct || request == SymbolCategory::Type
+            }
             SymbolCategory::TypeConstructor => {
                 // Type constructors can also satisfy requests for values.
                 request == SymbolCategory::TypeConstructor || request == SymbolCategory::Value
             }
+            SymbolCategory::Value => request == SymbolCategory::Value,
+            SymbolCategory::Type => request == SymbolCategory::Type,
             SymbolCategory::TraitDeclaration => request == SymbolCategory::TraitDeclaration,
-            SymbolCategory::Struct => {
-                request == SymbolCategory::Struct || request == SymbolCategory::Type
-            }
         }
     }
 }
