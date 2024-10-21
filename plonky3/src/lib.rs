@@ -1,22 +1,20 @@
-// #![no_std]
+#![no_std]
 
 extern crate alloc;
 
+mod circuit_builder;
 mod folder;
+mod params;
 mod proof;
 mod prover;
 mod symbolic_builder;
 mod traits;
 mod verifier;
 
-use folder::*;
-use proof::*;
-use prover::*;
-use traits::*;
-use verifier::*;
-
-mod circuit_builder;
-mod params;
-mod stark;
-pub use params::{baby_bear, poseidon2, Commitment, FieldElementMap, ProverData};
-pub use stark::Plonky3Prover;
+pub use circuit_builder::*;
+pub use folder::*;
+pub use params::*;
+pub use proof::*;
+pub use prover::*;
+pub use traits::*;
+pub use verifier::*;

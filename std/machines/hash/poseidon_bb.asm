@@ -6,6 +6,7 @@ use std::utils::new_bool;
 use std::utils::sum;
 use std::convert::expr;
 use std::machines::small_field::memory::Memory;
+use std::machines::small_field::pointer_arith::word_increment_ptr;
 use std::machines::split::split_bb::SplitBB;
 
 // Implements the Poseidon permutation for the BabyBear field with the following parameters:
@@ -98,26 +99,11 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     CLK[STATE_SIZE] * (high_addr - output_addr_high) = 0;
     CLK[STATE_SIZE] * (low_addr - output_addr_low) = 0;
 
-    // How far away from overflowing the low limb is:
-    let low_diff = low_addr - (0x10000 - 4);
-    // Is one if low limb is about to overflow:
-    let low_overflow;
-    low_overflow = 1 - low_diff_inv * low_diff;
-    // Helper to allow low_overflow to be boolean
-    let low_diff_inv;
-    // Ensures that (low_diff_inv * low_diff) is boolean,
-    // and that low_diff_inv is not 0 when low_diff is not 0:
-    (low_diff_inv * low_diff - 1) * low_diff = 0;
-
-    // Increment the low limb if address is not being set:
-    (1 - is_addr_set') * (
-        // If low limb is about to overflow, next value must be 0:
-        low_overflow * low_addr' +
-        // Otherwise, next value is current plus 4:
-        (1 - low_overflow) * (low_addr + 4 - low_addr')
-    ) = 0;
-    // Set high limb, incremented if low overflowed:
-    (1 - is_addr_set') * (high_addr' - high_addr - low_overflow) = 0;
+    // Increment the address in every row but the ones it is set.
+    std::array::map(
+        word_increment_ptr(high_addr, low_addr, high_addr', low_addr'),
+        |c| std::constraints::make_conditional(c, (1 - is_addr_set'))
+    );
 
     // One-hot encoding of the row number (for the first <STATE_SIZE + OUTPUT_SIZE> rows)
     assert(STATE_SIZE + OUTPUT_SIZE < ROWS_PER_HASH, || "Not enough rows to do memory read / write");
@@ -139,16 +125,13 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     link if do_mload ~> (word_high, word_low) = mem.mload(high_addr, low_addr, time_step);
 
     // Combine the low and high limbs and write it into `input`
-    let current_input = array::sum(array::new(STATE_SIZE, |i| CLK[i] * input[i]));
+    let current_input = sum(STATE_SIZE, |i| CLK[i] * input[i]);
     do_mload * (word_low + word_high * 2**16 - current_input) = 0;
 
     // Do a memory write in each of the next OUTPUT_SIZE rows.
     // For output i, we write the two limbs of field element at address output_addr + 4 * i.
 
-    ///////////////////// DEBUG: do_mstore as a witness. ///////////////////////
-    let do_mstore;
-    /////////////////////////////////////////////////////////////////////////
-    do_mstore = used * sum(OUTPUT_SIZE, |i| CLK[i + STATE_SIZE]);
+    let do_mstore = used * sum(OUTPUT_SIZE, |i| CLK[i + STATE_SIZE]);
     let output_index = sum(OUTPUT_SIZE, |i| expr(i) * CLK[i + STATE_SIZE]);
 
     // TODO: This translates to two additional permutations. But because they go to the same machine
@@ -157,10 +140,7 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     link if do_mstore ~> mem.mstore(high_addr, low_addr, time_step + 1, word_high, word_low);
 
     // Make sure that in row i + STATE_SIZE, word_low and word_high correspond to output i
-    ///////////////////// DEBUG: current_output as a witness. ///////////////////////
-    let current_output;
-    /////////////////////////////////////////////////////////////////////////
-    current_output = array::sum(array::new(OUTPUT_SIZE, |i| CLK[i + STATE_SIZE] * output[i]));
+    let current_output = sum(OUTPUT_SIZE, |i| CLK[i + STATE_SIZE] * output[i]);
     link if do_mstore ~> (word_low, word_high) = split_bb.split(current_output);
 
 

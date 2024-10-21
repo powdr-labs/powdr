@@ -7,7 +7,7 @@ use powdr_pipeline::{
     test_util::{
         evaluate_function, evaluate_integer_function, execute_test_file, gen_estark_proof,
         gen_halo2_proof, make_simple_prepared_pipeline, regular_test,
-        regular_test_without_babybear, std_analyzed, test_halo2, test_pilcom, test_plonky3,
+        regular_test_without_small_field, std_analyzed, test_halo2, test_pilcom, test_plonky3,
         BackendVariant,
     },
     Pipeline,
@@ -124,21 +124,21 @@ fn arith_large_test() {
 #[ignore = "Too slow"]
 fn memory_large_test() {
     let f = "std/memory_large_test.asm";
-    regular_test_without_babybear(f, &[]);
+    regular_test_without_small_field(f, &[]);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn memory_large_with_bootloader_write_test() {
     let f = "std/memory_large_with_bootloader_write_test.asm";
-    regular_test_without_babybear(f, &[]);
+    regular_test_without_small_field(f, &[]);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn memory_large_test_parallel_accesses() {
     let f = "std/memory_large_test_parallel_accesses.asm";
-    regular_test_without_babybear(f, &[]);
+    regular_test_without_small_field(f, &[]);
 }
 
 #[test]
