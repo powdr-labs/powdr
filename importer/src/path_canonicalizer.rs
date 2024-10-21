@@ -562,19 +562,19 @@ fn check_path_internal<'a>(
                     SymbolValueRef::TypeDeclaration(TypeDeclaration::Struct(_)) => {
                         Ok((location.with_part(member), value, chain))
                     }
-                    SymbolValueRef::TraitDeclaration(TraitDeclaration {
-                        functions, ..
-                    }) => functions
-                        .iter()
-                        .find(|f| f.name == member)
-                        .ok_or_else(|| format!("symbol not found in `{location}`: `{member}`"))
-                        .map(|f| {
-                            (
-                                location.with_part(member),
-                                SymbolValueRef::TraitFunction(f),
-                                chain,
-                            )
-                        }),
+                    SymbolValueRef::TraitDeclaration(TraitDeclaration { functions, .. }) => {
+                        functions
+                            .iter()
+                            .find(|f| f.name == member)
+                            .ok_or_else(|| format!("symbol not found in `{location}`: `{member}`"))
+                            .map(|f| {
+                                (
+                                    location.with_part(member),
+                                    SymbolValueRef::TraitFunction(f),
+                                    chain,
+                                )
+                            })
+                    }
                 }
             },
         )
