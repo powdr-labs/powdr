@@ -10,7 +10,7 @@ let make_conditional: Constr, expr -> Constr = |constraint, condition| match con
     Constr::Connection(_) => std::check::panic("Connection constraints cannot be conditional"),
 };
 
-/// Either one constraint or the other, depending on a boolen condition.
+/// Either one constraint or the other, depending on a boolean condition.
 let if_else: expr, Constr, Constr -> Constr = |condition, if_true, if_false| match (if_true, if_false) {
     (Constr::Identity(l_t, r_t), Constr::Identity(l_f, r_f)) =>
         condition * (l_t - r_t) +
