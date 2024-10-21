@@ -13,11 +13,10 @@ fn run_witgen_pil<T: FieldElement>(pil: &str) -> Arc<Columns<T>> {
 }
 
 #[test]
+#[should_panic = "Publics are referenced by more than one machine: {\"public\"}"]
 fn two_machines_conflicting_public() {
     // This test *should* fail, because two machines access the same
     // public, but assign different values to it.
-    // The current implementation ignores scalar publics though, so this
-    // is not caught.
     let src = r#"
     namespace Machine1(4);
         col witness y;
