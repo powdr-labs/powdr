@@ -102,7 +102,7 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     // Increment the address in every row but the ones it is set.
     std::array::map(
         word_increment_ptr(high_addr, low_addr, high_addr', low_addr'),
-        |c| (1 - is_addr_set') * c = 0
+        |c| std::constraints::make_conditional(c, (1 - is_addr_set'))
     );
 
     // One-hot encoding of the row number (for the first <STATE_SIZE + OUTPUT_SIZE> rows)
