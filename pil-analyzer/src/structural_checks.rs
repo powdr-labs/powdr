@@ -39,7 +39,7 @@ pub fn check_structs_fields<'a>(
 fn check_struct_expression(
     definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     name: &String,
-    fields: &Vec<powdr_ast::parsed::NamedExpression<Box<powdr_ast::parsed::Expression<Reference>>>>,
+    fields: &[powdr_ast::parsed::NamedExpression<Box<powdr_ast::parsed::Expression<Reference>>>],
     source: &SourceRef,
 ) -> Vec<Error> {
     let mut errors = Vec::new();
