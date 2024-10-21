@@ -12,7 +12,6 @@
 use std::{
     collections::{BTreeMap, HashMap},
     fmt::{self, Display, Formatter},
-    io,
     sync::Arc,
 };
 
@@ -20,12 +19,11 @@ use builder::TraceBuilder;
 
 use itertools::Itertools;
 use powdr_ast::{
-    asm_analysis::{
-        AnalysisASMFile, CallableSymbol, FunctionStatement, Item, LabelStatement, Machine,
-    },
+    asm_analysis::{AnalysisASMFile, CallableSymbol, FunctionStatement, LabelStatement, Machine},
     parsed::{
-        asm::AssignmentRegister, asm::DebugDirective, BinaryOperation, Expression, FunctionCall,
-        Number, UnaryOperation,
+        asm::AssignmentRegister,
+        asm::{parse_absolute_path, DebugDirective},
+        BinaryOperation, Expression, FunctionCall, Number, UnaryOperation,
     },
 };
 use powdr_executor::constant_evaluator::VariablySizedColumn;
@@ -51,7 +49,7 @@ use crate::profiler::Profiler;
 const PC_INITIAL_VAL: usize = 2;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Elem<F: FieldElement> {
+enum Elem<F: FieldElement> {
     /// Only the ranges of i32 and u32 are actually valid for a Binary value.
     /// I.e., [-2**31, 2**32).
     Binary(i64),
@@ -59,17 +57,13 @@ pub enum Elem<F: FieldElement> {
 }
 
 impl<F: FieldElement> Elem<F> {
-    /// Interprets the value of a field as a binary, if it can be represented either as a
+    /// Try to interpret the value of a field as a binary, if it can be represented either as a
     /// u32 or a i32.
-    ///
-    /// Panics otherwise.
-    pub fn new_from_fe_as_bin(value: &F) -> Self {
+    pub fn try_from_fe_as_bin(value: &F) -> Option<Self> {
         if let Some(v) = value.to_integer().try_into_u32() {
-            Self::Binary(v as i64)
-        } else if let Some(v) = value.try_into_i32() {
-            Self::Binary(v as i64)
+            Some(Self::Binary(v as i64))
         } else {
-            panic!("Value does not fit in 32 bits.")
+            value.try_into_i32().map(|v| Self::Binary(v as i64))
         }
     }
 
@@ -94,15 +88,15 @@ impl<F: FieldElement> Elem<F> {
     }
 
     /// Interprets the value of self as a field element.
-    pub fn into_fe(&self) -> F {
-        match *self {
+    pub fn into_fe(self) -> F {
+        match self {
             Self::Field(f) => f,
             Self::Binary(b) => b.into(),
         }
     }
 
     /// Interprets the value of self as an i64, ignoring higher bytes if a field element
-    pub fn into_i64_from_lower_bytes(&self) -> i64 {
+    pub fn as_i64_from_lower_bytes(&self) -> i64 {
         match self {
             Self::Binary(b) => *b,
             Self::Field(f) => {
@@ -113,23 +107,9 @@ impl<F: FieldElement> Elem<F> {
         }
     }
 
-    pub fn fe(&self) -> F {
-        match self {
-            Self::Field(f) => *f,
-            Self::Binary(_) => panic!(),
-        }
-    }
-
     pub fn bin(&self) -> i64 {
         match self {
             Self::Binary(b) => *b,
-            Self::Field(_) => panic!(),
-        }
-    }
-
-    fn bin_mut(&mut self) -> &mut i64 {
-        match self {
-            Self::Binary(b) => b,
             Self::Field(_) => panic!(),
         }
     }
@@ -236,6 +216,7 @@ impl<F: FieldElement> Display for Elem<F> {
 }
 
 pub type MemoryState = HashMap<u32, u32>;
+pub type RegisterMemoryState<F> = HashMap<u32, F>;
 
 #[derive(Debug)]
 pub enum MemOperationKind {
@@ -258,7 +239,7 @@ pub struct RegWrite<F: FieldElement> {
     row: usize,
     /// Index of the register in the register bank.
     reg_idx: u16,
-    val: Elem<F>,
+    val: F,
 }
 
 pub struct ExecutionTrace<F: FieldElement> {
@@ -276,7 +257,7 @@ pub struct ExecutionTrace<F: FieldElement> {
     /// The length of the trace, after applying the reg_writes.
     pub len: usize,
 
-    pub cols: HashMap<String, Vec<Elem<F>>>,
+    cols: HashMap<String, Vec<Elem<F>>>,
 }
 
 impl<F: FieldElement> ExecutionTrace<F> {
@@ -374,8 +355,14 @@ impl<F: FieldElement> ExecutionTrace<F> {
         }
     }
 
-    pub fn into_cols(self) -> Vec<(String, Vec<Elem<F>>)> {
-        self.cols.into_iter().collect()
+    pub fn into_cols(self) -> Vec<(String, Vec<F>)> {
+        self.cols
+            .into_iter()
+            .map(|(name, elems)| {
+                let fes = elems.into_iter().map(|e| e.into_fe()).collect();
+                (name, fes)
+            })
+            .collect()
     }
 
     /// Replay the execution and get the register values per trace row.
@@ -392,7 +379,7 @@ impl<F: FieldElement> ExecutionTrace<F> {
 
 pub struct TraceReplay<'a, F: FieldElement> {
     trace: &'a ExecutionTrace<F>,
-    regs: Vec<Elem<F>>,
+    regs: Vec<F>,
     pc_idx: usize,
     next_write: usize,
     next_r: usize,
@@ -402,14 +389,14 @@ impl<'a, F: FieldElement> TraceReplay<'a, F> {
     /// Returns the next row's registers value.
     ///
     /// Just like an iterator's next(), but returns the value borrowed from self.
-    pub fn next_row(&mut self) -> Option<&[Elem<F>]> {
+    pub fn next_row(&mut self) -> Option<&[F]> {
         if self.next_r == self.trace.len {
             return None;
         }
 
         // we optimistically increment the PC, if it is a jump or special case,
         // one of the writes will overwrite it
-        *self.regs[self.pc_idx].bin_mut() += 1;
+        self.regs[self.pc_idx] += 1.into();
 
         while let Some(next_write) = self.trace.reg_writes.get(self.next_write) {
             if next_write.row > self.next_r {
@@ -427,8 +414,17 @@ impl<'a, F: FieldElement> TraceReplay<'a, F> {
 
 #[derive(Default)]
 pub struct RegisterMemory<F: FieldElement> {
-    pub last: HashMap<u32, Elem<F>>,
-    pub second_last: HashMap<u32, Elem<F>>,
+    last: HashMap<u32, Elem<F>>,
+    second_last: HashMap<u32, Elem<F>>,
+}
+
+impl<F: FieldElement> RegisterMemory<F> {
+    pub fn for_bootloader(&self) -> HashMap<u32, F> {
+        self.second_last
+            .iter()
+            .map(|(k, v)| (*k, v.into_fe()))
+            .collect()
+    }
 }
 
 mod builder {
@@ -439,8 +435,8 @@ mod builder {
 
     use crate::{
         BinaryMachine, Elem, ExecMode, ExecutionTrace, MemOperation, MemOperationKind,
-        MemoryMachine, MemoryState, RegWrite, RegisterMemory, ShiftMachine, SplitGlMachine,
-        Submachine, SubmachineBoxed, PC_INITIAL_VAL,
+        MemoryMachine, MemoryState, RegWrite, RegisterMemory, RegisterMemoryState, ShiftMachine,
+        SplitGlMachine, Submachine, SubmachineBoxed, PC_INITIAL_VAL,
     };
 
     fn register_names(main: &Machine) -> Vec<&str> {
@@ -508,7 +504,7 @@ mod builder {
             batch_to_line_map: &'b [u32],
             max_rows_len: usize,
             mode: ExecMode,
-        ) -> Result<Self, Box<(ExecutionTrace<F>, MemoryState, RegisterMemory<F>)>> {
+        ) -> Result<Self, Box<(ExecutionTrace<F>, MemoryState, RegisterMemoryState<F>)>> {
             let reg_map = register_names(main)
                 .into_iter()
                 .enumerate()
@@ -635,7 +631,7 @@ mod builder {
                 self.trace.reg_writes.push(RegWrite {
                     row: self.trace.len,
                     reg_idx: idx,
-                    val: value,
+                    val: value.into_fe(),
                 });
             }
 
@@ -647,7 +643,7 @@ mod builder {
                 .trace
                 .cols
                 .get_mut(name)
-                .unwrap_or_else(|| panic!("col not found: {}", name));
+                .unwrap_or_else(|| panic!("col not found: {name}"));
             *col.get_mut(idx).unwrap() = value;
         }
 
@@ -656,7 +652,7 @@ mod builder {
                 .trace
                 .cols
                 .get_mut(name)
-                .unwrap_or_else(|| panic!("col not found: {}", name));
+                .unwrap_or_else(|| panic!("col not found: {name}"));
             *col.last_mut().unwrap() = value;
         }
 
@@ -665,7 +661,7 @@ mod builder {
                 .trace
                 .cols
                 .get(name)
-                .unwrap_or_else(|| panic!("col not found: {}", name));
+                .unwrap_or_else(|| panic!("col not found: {name}"));
             *col.last().unwrap()
         }
 
@@ -678,7 +674,7 @@ mod builder {
 
         pub fn extend_rows(&mut self, len: u32) {
             self.trace.cols.values_mut().for_each(|v| {
-                let last = v.last().unwrap().clone();
+                let last = *v.last().unwrap();
                 v.resize(len as usize, last);
             });
         }
@@ -754,7 +750,7 @@ mod builder {
             self.reg_mem.second_last = self.reg_mem.last.clone();
         }
 
-        pub fn finish(mut self) -> (ExecutionTrace<F>, MemoryState, RegisterMemory<F>) {
+        pub fn finish(mut self) -> (ExecutionTrace<F>, MemoryState, RegisterMemoryState<F>) {
             // fill machine rows up to the next power of two
             let main_degree = self.len().next_power_of_two();
 
@@ -763,7 +759,7 @@ mod builder {
 
             // add submachine traces to main trace
             for (name, mut machine) in self.submachines {
-                if name.len() == 0 {
+                if name.is_empty() {
                     // ignore empty machines
                     continue;
                 }
@@ -790,7 +786,7 @@ mod builder {
             for (col_name, col) in self.memory_machine.take_cols(mem_degree) {
                 assert!(self.trace.cols.insert(col_name, col).is_none());
             }
-            (self.trace, self.mem, self.reg_mem)
+            (self.trace, self.mem, self.reg_mem.for_bootloader())
         }
 
         /// Should we stop the execution because the maximum number of rows has
@@ -831,22 +827,14 @@ mod builder {
 }
 
 pub fn get_main_machine(program: &AnalysisASMFile) -> &Machine {
-    for (name, m) in program.items.iter() {
-        if name.len() == 1 && name.parts().next() == Some("Main") {
-            let Item::Machine(m) = m else {
-                panic!();
-            };
-            return m;
-        }
-    }
-    panic!();
+    program.get_machine(&parse_absolute_path("::Main")).unwrap()
 }
 
-struct PreprocessedMain<'a, T: FieldElement> {
+struct PreprocessedMain<'a, F: FieldElement> {
     /// list of all statements (batches expanded)
     statements: Vec<&'a FunctionStatement>,
     /// label to batch number
-    label_map: HashMap<&'a str, Elem<T>>,
+    label_map: HashMap<&'a str, Elem<F>>,
     /// batch number to its first statement idx
     batch_to_line_map: Vec<u32>,
     /// file number to (dir,name)
@@ -859,7 +847,7 @@ struct PreprocessedMain<'a, T: FieldElement> {
 
 /// Returns the list of instructions, directly indexable by PC, the map from
 /// labels to indices into that list, and the list with the start of each batch.
-fn preprocess_main_function<T: FieldElement>(machine: &Machine) -> PreprocessedMain<T> {
+fn preprocess_main_function<F: FieldElement>(machine: &Machine) -> PreprocessedMain<F> {
     let CallableSymbol::Function(main_function) = &machine.callable.0["main"] else {
         panic!("main function missing")
     };
@@ -935,10 +923,9 @@ struct Executor<'a, 'b, F: FieldElement> {
     proc: TraceBuilder<'b, F>,
     label_map: HashMap<&'a str, Elem<F>>,
     inputs: &'b Callback<'b, F>,
-    bootloader_inputs: &'b [Elem<F>],
+    bootloader_inputs: Vec<Elem<F>>,
     fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
     step: u32,
-    _stdout: io::Stdout,
 }
 
 impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
@@ -1312,7 +1299,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 tmp_val3_col = Elem::from_u32_as_fe(val);
                 tmp_val4_col = Elem::from_i64_as_fe(rem);
 
-                let v = tmp_val1_col.add(&args[1]).into_i64_from_lower_bytes();
+                let v = tmp_val1_col.add(&args[1]).as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
                 tmp_x_b1 = Elem::from_u32_as_fe((b1 / 4).into());
                 tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
@@ -1555,7 +1542,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let p = Elem::from_i64_as_fe((2 << 32) - 1);
                 let val_p = val.add(&p);
 
-                let v = val_p.into_i64_from_lower_bytes();
+                let v = val_p.as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
                 tmp_x_b1 = Elem::from_u32_as_fe(b1.into());
                 tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
@@ -1596,7 +1583,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 let p = Elem::from_i64_as_fe((2 << 32) - 1);
                 let val = val.add(&p);
-                let v = val.into_i64_from_lower_bytes();
+                let v = val.as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
                 tmp_x_b1 = Elem::from_u32_as_fe(b1.into());
                 tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
@@ -1685,7 +1672,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 tmp_val2_col = val2;
                 tmp_val3_col = Elem::from_u32_as_fe(r);
 
-                let v = val.into_i64_from_lower_bytes();
+                let v = val.as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
                 tmp_x_b1 = Elem::from_u32_as_fe(b1.into());
                 tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
@@ -1722,7 +1709,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 tmp_val1_col = val;
                 tmp_val3_col = Elem::from_u32_as_fe(r);
 
-                let v = tmp_val3_col.into_i64_from_lower_bytes();
+                let v = tmp_val3_col.as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
                 tmp_x_b1 = Elem::from_u32_as_fe(b1.into());
                 tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
@@ -1798,7 +1785,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 //tmp_val3_col = Elem::from_u32_as_fe(r);
                 tmp_val3_col = Elem::from_u32_as_fe(extended_val);
 
-                let v = tmp_val1_col.into_i64_from_lower_bytes();
+                let v = tmp_val1_col.as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
                 // first 7bits
                 tmp_y_7bit = Elem::from_u32_as_fe((b1 & 0x7f).into());
@@ -1844,7 +1831,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 //tmp_val3_col = Elem::from_u32_as_fe(r);
                 tmp_val3_col = Elem::from_u32_as_fe(extended_val);
 
-                let v = tmp_val1_col.into_i64_from_lower_bytes();
+                let v = tmp_val1_col.as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _) = decompose_lower32(v);
                 tmp_x_b1 = Elem::from_u32_as_fe(b1.into());
                 // no x_b2 here
@@ -1937,7 +1924,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     tmp_xx_inv = Elem::Field(F::one() / tmp_xx.into_fe());
                 }
 
-                let v = tmp_val3_col.into_i64_from_lower_bytes();
+                let v = tmp_val3_col.as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
                 tmp_x_b1 = Elem::from_u32_as_fe(b1.into());
                 tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
@@ -2438,7 +2425,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let query = format!("{variant}({})", values.join(","));
                 match (self.inputs)(&query).unwrap() {
                     Some(val) => {
-                        vec![Elem::new_from_fe_as_bin(&val)]
+                        let e = Elem::try_from_fe_as_bin(&val)
+                            .expect("field value does not fit into u32 or i32");
+                        vec![e]
                     }
                     None => {
                         panic!("unknown query command: {query}");
@@ -2449,6 +2438,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             Expression::IfExpression(_, _) => panic!(),
             Expression::BlockExpression(_, _) => panic!(),
             Expression::IndexAccess(_, _) => todo!(),
+            Expression::StructExpression(_, _) => todo!(),
         }
     }
 }
@@ -2464,16 +2454,16 @@ fn is_jump(e: &Expression) -> bool {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn execute_ast<T: FieldElement>(
+pub fn execute_ast<F: FieldElement>(
     program: &AnalysisASMFile,
-    fixed: Option<Arc<Vec<(String, VariablySizedColumn<T>)>>>,
+    fixed: Option<Arc<Vec<(String, VariablySizedColumn<F>)>>>,
     initial_memory: MemoryState,
-    inputs: &Callback<T>,
-    bootloader_inputs: &[Elem<T>],
+    inputs: &Callback<F>,
+    bootloader_inputs: &[F],
     max_steps_to_execute: usize,
     mode: ExecMode,
     profiling: Option<ProfilerOptions>,
-) -> (ExecutionTrace<T>, MemoryState, RegisterMemory<T>) {
+) -> (ExecutionTrace<F>, MemoryState, RegisterMemoryState<F>) {
     let main_machine = get_main_machine(program);
 
     let PreprocessedMain {
@@ -2485,7 +2475,7 @@ pub fn execute_ast<T: FieldElement>(
         location_starts,
     } = preprocess_main_function(main_machine);
 
-    let proc = match TraceBuilder::<'_, T>::new(
+    let proc = match TraceBuilder::<'_, F>::new(
         main_machine,
         initial_memory,
         &batch_to_line_map,
@@ -2504,13 +2494,17 @@ pub fn execute_ast<T: FieldElement>(
     //     );
     // }
 
+    let bootloader_inputs = bootloader_inputs
+        .iter()
+        .map(|v| Elem::try_from_fe_as_bin(v).unwrap_or(Elem::Field(*v)))
+        .collect();
+
     let mut e = Executor {
         proc,
         label_map,
         inputs,
         bootloader_inputs,
         fixed: fixed.unwrap_or_default(),
-        _stdout: io::stdout(),
         step: 0,
     };
 
@@ -2582,7 +2576,7 @@ pub fn execute_ast<T: FieldElement>(
                             // X - X_const = X_read_free * X_free_value
                             // X_free_value = (X - X_const) / X_read_free
                             let x_free_value = if x_read_free.is_zero() {
-                                Elem::Field(T::zero())
+                                Elem::Field(F::zero())
                             } else {
                                 x.sub(&x_const).div(&x_read_free)
                             };
@@ -2726,10 +2720,10 @@ pub fn execute<F: FieldElement>(
     fixed: Option<Arc<Vec<(String, VariablySizedColumn<F>)>>>,
     initial_memory: MemoryState,
     inputs: &Callback<F>,
-    bootloader_inputs: &[Elem<F>],
+    bootloader_inputs: &[F],
     mode: ExecMode,
     profiling: Option<ProfilerOptions>,
-) -> (ExecutionTrace<F>, MemoryState, RegisterMemory<F>) {
+) -> (ExecutionTrace<F>, MemoryState, RegisterMemoryState<F>) {
     log::info!("Parsing...");
     let parsed = powdr_parser::parse_asm(None, asm_source).unwrap();
     log::info!("Resolving imports...");

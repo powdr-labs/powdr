@@ -1,0 +1,8 @@
+[package]
+name = "powdr-isa-utils"
+description = "powdr utilities for translating from native ISA code (RISCV for now)"
+version = { workspace = true }
+edition = { workspace = true }
+license = { workspace = true }
+homepage = { workspace = true }
+repository = { workspace = true }

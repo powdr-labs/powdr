@@ -8,16 +8,18 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [features]
-default = [] # halo2 is disabled by default
+default = []                                      # halo2 is disabled by default
 halo2 = ["powdr-backend/halo2"]
 plonky3 = ["powdr-backend/plonky3"]
 estark-polygon = ["powdr-backend/estark-polygon"]
+stwo = ["powdr-backend/stwo"]
+
+simd = ["powdr-backend/simd"]
 
 [dependencies]
 powdr-airgen.workspace = true
 powdr-analysis.workspace = true
 powdr-asm-to-pil.workspace = true
-powdr-asm-utils.workspace = true
 powdr-ast.workspace = true
 powdr-backend.workspace = true
 powdr-executor.workspace = true
@@ -33,7 +35,11 @@ powdr-schemas.workspace = true
 itertools = "0.13"
 log = "0.4.17"
 mktemp = "0.5.0"
-serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }
+serde = { version = "1.0", default-features = false, features = [
+  "alloc",
+  "derive",
+  "rc",
+] }
 serde_cbor = "0.11.2"
 num-traits = "0.2.15"
 
@@ -41,6 +47,7 @@ num-traits = "0.2.15"
 test-log = "0.2.12"
 env_logger = "0.10.0"
 criterion = { version = "0.4", features = ["html_reports"] }
+powdr-jit-compiler.workspace = true
 
 [package.metadata.cargo-udeps.ignore]
 development = ["env_logger"]

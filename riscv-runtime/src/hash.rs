@@ -1,27 +1,30 @@
 use core::arch::asm;
+use core::convert::TryInto;
 use core::mem;
 
 use powdr_riscv_syscalls::Syscall;
 
 const GOLDILOCKS: u64 = 0xffffffff00000001;
 
-/// Calls the low level Poseidon PIL machine, where
-/// the last 4 elements are the "cap"
-/// and the return value is placed in data[0:4].
-/// This is unsafe because it does not check if the u64 elements fit the Goldilocks field.
-pub fn poseidon_gl_unsafe(mut data: [u64; 12]) -> [u64; 4] {
+/// Calls the low level Poseidon PIL machine, where the last 4 elements are the
+/// "cap", the return value is placed in data[..4] and the reference to this
+/// sub-array is returned.
+///
+/// This is unsafe because it does not check if the u64 elements fit the
+/// Goldilocks field.
+pub fn poseidon_gl_unsafe(data: &mut [u64; 12]) -> &[u64; 4] {
     unsafe {
-        asm!("ecall", in("a0") &mut data as *mut [u64; 12], in("t0") u32::from(Syscall::PoseidonGL));
+        asm!("ecall", in("a0") data as *mut [u64; 12], in("t0") u32::from(Syscall::PoseidonGL));
     }
-
-    [data[0], data[1], data[2], data[3]]
+    data[..4].try_into().unwrap()
 }
 
-/// Calls the low level Poseidon PIL machine, where
-/// the last 4 elements are the "cap"
-/// and the return value is placed in data[0:4].
-/// This function will panic if any of the u64 elements doesn't fit the Goldilocks field.
-pub fn poseidon_gl(data: [u64; 12]) -> [u64; 4] {
+/// Calls the low level Poseidon PIL machine, where the last 4 elements are the
+/// "cap" and the return value is placed in data[0:4].
+///
+/// This function will panic if any of the u64 elements doesn't fit the
+/// Goldilocks field.
+pub fn poseidon_gl(data: &mut [u64; 12]) -> &[u64; 4] {
     for &n in data.iter() {
         assert!(n < GOLDILOCKS);
     }
@@ -43,9 +46,9 @@ const W: usize = 32;
 
 /// Keccak function that calls the keccakf machine.
 /// Input is a byte array of arbitrary length and a delimiter byte.
-/// Output is a byte array of length W. 
+/// Output is a byte array of length W.
 pub fn keccak(data: &[u8], delim: u8) -> [u8; W] {
-    let mut b = [[0u8; 200]; 2]; 
+    let mut b = [[0u8; 200]; 2];
     let [mut b_input, mut b_output] = &mut b;
     let rate = 200 - (2 * W);
     let mut pt = 0;

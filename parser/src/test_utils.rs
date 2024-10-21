@@ -71,17 +71,10 @@ impl ClearSourceRefs for ModuleStatement {
                         .for_each(ClearSourceRefs::clear_source_refs);
                 }
                 SymbolValue::Module(Module::External(_)) | SymbolValue::Import(_) => {}
-                SymbolValue::Expression(e) => e.e.clear_source_refs(),
-                SymbolValue::TypeDeclaration(decl) => decl
-                    .children_mut()
-                    .for_each(ClearSourceRefs::clear_source_refs),
-                SymbolValue::TraitDeclaration(trait_decl) => trait_decl
-                    .children_mut()
-                    .for_each(ClearSourceRefs::clear_source_refs),
             },
-            ModuleStatement::TraitImplementation(trait_impl) => trait_impl
-                .children_mut()
-                .for_each(ClearSourceRefs::clear_source_refs),
+            ModuleStatement::PilStatement(s) => {
+                s.clear_source_refs();
+            }
         }
     }
 }
@@ -108,11 +101,9 @@ impl ClearSourceRefs for PilStatement {
             | PilStatement::PolynomialConstantDeclaration(s, _)
             | PilStatement::PolynomialConstantDefinition(s, _, _)
             | PilStatement::PolynomialCommitDeclaration(s, _, _, _)
-            | PilStatement::PlookupIdentity(s, _, _)
-            | PilStatement::PermutationIdentity(s, _, _)
-            | PilStatement::ConnectIdentity(s, _, _)
             | PilStatement::Expression(s, _)
             | PilStatement::EnumDeclaration(s, _)
+            | PilStatement::StructDeclaration(s, _)
             | PilStatement::TraitDeclaration(s, _)
             | PilStatement::TraitImplementation(s, _) => *s = SourceRef::unknown(),
         }
@@ -135,7 +126,8 @@ impl<R> ClearSourceRefs for Expression<R> {
             | Expression::IndexAccess(_, _)
             | Expression::FunctionCall(_, _)
             | Expression::FreeInput(_, _)
-            | Expression::IfExpression(_, _) => {}
+            | Expression::IfExpression(_, _)
+            | Expression::StructExpression(_, _) => {}
             Expression::BlockExpression(_, b) => b.clear_source_refs(),
             Expression::MatchExpression(_, m) => m.clear_source_refs(),
             Expression::LambdaExpression(_, l) => l.clear_source_refs(),

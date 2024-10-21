@@ -4,18 +4,15 @@ use lazy_static::lazy_static;
 use powdr_analysis::utils::parse_pil_statement;
 use powdr_ast::{
     asm_analysis::{combine_flags, MachineDegree},
-    object::{Link, Location, PILGraph, TypeOrExpression},
+    object::{Link, Location, PILGraph},
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
-        build::{index_access, namespaced_reference},
-        ArrayLiteral, Expression, NamespaceDegree, PILFile, PilStatement, SelectedExpressions,
-        TypedExpression,
+        build::{index_access, lookup, namespaced_reference, permutation, selected},
+        ArrayLiteral, Expression, NamespaceDegree, PILFile, PilStatement,
     },
 };
 use powdr_parser_util::SourceRef;
-use std::collections::BTreeMap;
-
-use itertools::Itertools;
+use std::{collections::BTreeMap, iter::once};
 
 const MAIN_OPERATION_NAME: &str = "main";
 /// The log of the default minimum degree
@@ -60,7 +57,7 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
         .degree
         .clone();
 
-    let mut pil = process_definitions(graph.definitions);
+    let mut pil = process_definitions(graph.statements);
 
     for (location, object) in graph.objects.into_iter() {
         // create a namespace for this object
@@ -111,49 +108,26 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
 
 // Extract the utilities and sort them into namespaces where possible.
 fn process_definitions(
-    definitions: BTreeMap<AbsoluteSymbolPath, TypeOrExpression>,
+    mut definitions: BTreeMap<AbsoluteSymbolPath, Vec<PilStatement>>,
 ) -> Vec<PilStatement> {
-    let mut current_namespace = Default::default();
-    definitions
-        .into_iter()
-        .sorted_by_cached_key(|(namespace, _)| {
-            let mut namespace = namespace.clone();
-            let name = namespace.pop();
-            // Group by namespace and then sort by name.
-            (namespace, name)
-        })
-        .flat_map(|(mut namespace, type_or_expr)| {
-            let name = namespace.pop().unwrap();
-            let statement = match type_or_expr {
-                TypeOrExpression::Expression(TypedExpression { e, type_scheme }) => {
-                    PilStatement::LetStatement(
-                        SourceRef::unknown(),
-                        name.to_string(),
-                        type_scheme,
-                        Some(e),
-                    )
-                }
-                TypeOrExpression::Type(enum_decl) => {
-                    PilStatement::EnumDeclaration(SourceRef::unknown(), enum_decl)
-                }
-            };
+    // definitions at the root do not require a namespace statement, so we put them first
+    let root = definitions.remove(&Default::default());
 
-            // If there is a namespace change, insert a namespace statement.
-            if current_namespace != namespace {
-                current_namespace = namespace.clone();
-                vec![
-                    PilStatement::Namespace(
+    root.into_iter()
+        .flatten()
+        .chain(
+            definitions
+                .into_iter()
+                .flat_map(|(module_path, statements)| {
+                    once(PilStatement::Namespace(
                         SourceRef::unknown(),
-                        namespace.relative_to(&AbsoluteSymbolPath::default()),
+                        module_path.relative_to(&Default::default()),
                         None,
-                    ),
-                    statement,
-                ]
-            } else {
-                vec![statement]
-            }
-        })
-        .collect::<Vec<_>>()
+                    ))
+                    .chain(statements)
+                }),
+        )
+        .collect()
 }
 
 fn process_link(link: Link) -> PilStatement {
@@ -163,20 +137,18 @@ fn process_link(link: Link) -> PilStatement {
     // the lhs is `instr_flag { operation_id, inputs, outputs }`
     let op_id = to.operation.id.iter().cloned().map(|n| n.into());
 
-    if link.is_permutation {
+    let expr = if link.is_permutation {
         // permutation lhs is `flag { operation_id, inputs, outputs }`
-        let lhs = SelectedExpressions {
-            selector: Some(combine_flags(from.instr_flag, from.link_flag)),
-            expressions: Box::new(
-                ArrayLiteral {
-                    items: op_id
-                        .chain(from.params.inputs)
-                        .chain(from.params.outputs)
-                        .collect(),
-                }
-                .into(),
-            ),
-        };
+        let lhs = selected(
+            combine_flags(from.instr_flag, from.link_flag),
+            ArrayLiteral {
+                items: op_id
+                    .chain(from.params.inputs)
+                    .chain(from.params.outputs)
+                    .collect(),
+            }
+            .into(),
+        );
 
         // permutation rhs is `(latch * selector[idx]) { operation_id, inputs, outputs }`
         let to_namespace = to.machine.location.clone().to_string();
@@ -191,43 +163,39 @@ fn process_link(link: Link) -> PilStatement {
             let call_selector_array = namespaced_reference(to_namespace.clone(), call_selectors);
             let call_selector =
                 index_access(call_selector_array, Some(to.selector_idx.unwrap().into()));
-            Some(latch * call_selector)
+            latch * call_selector
         } else {
-            Some(latch)
+            latch
         };
 
-        let rhs = SelectedExpressions {
-            selector: rhs_selector,
-            expressions: Box::new(
-                ArrayLiteral {
-                    items: op_id
-                        .chain(to.operation.params.inputs_and_outputs().map(|i| {
-                            index_access(
-                                namespaced_reference(to_namespace.clone(), &i.name),
-                                i.index.clone(),
-                            )
-                        }))
-                        .collect(),
-                }
-                .into(),
-            ),
-        };
+        let rhs = selected(
+            rhs_selector,
+            ArrayLiteral {
+                items: op_id
+                    .chain(to.operation.params.inputs_and_outputs().map(|i| {
+                        index_access(
+                            namespaced_reference(to_namespace.clone(), &i.name),
+                            i.index.clone(),
+                        )
+                    }))
+                    .collect(),
+            }
+            .into(),
+        );
 
-        PilStatement::PermutationIdentity(SourceRef::unknown(), lhs, rhs)
+        permutation(lhs, rhs)
     } else {
         // plookup lhs is `flag $ [ operation_id, inputs, outputs ]`
-        let lhs = SelectedExpressions {
-            selector: Some(combine_flags(from.instr_flag, from.link_flag)),
-            expressions: Box::new(
-                ArrayLiteral {
-                    items: op_id
-                        .chain(from.params.inputs)
-                        .chain(from.params.outputs)
-                        .collect(),
-                }
-                .into(),
-            ),
-        };
+        let lhs = selected(
+            combine_flags(from.instr_flag, from.link_flag),
+            ArrayLiteral {
+                items: op_id
+                    .chain(from.params.inputs)
+                    .chain(from.params.outputs)
+                    .collect(),
+            }
+            .into(),
+        );
 
         let to_namespace = to.machine.location.clone().to_string();
         let op_id = to
@@ -236,30 +204,28 @@ fn process_link(link: Link) -> PilStatement {
             .map(|oid| namespaced_reference(to_namespace.clone(), oid))
             .into_iter();
 
-        // plookup rhs is `latch $ [ operation_id, inputs, outputs ]`
-        let latch = Some(namespaced_reference(
-            to_namespace.clone(),
-            to.machine.latch.unwrap(),
-        ));
+        let latch = namespaced_reference(to_namespace.clone(), to.machine.latch.unwrap());
 
-        let rhs = SelectedExpressions {
-            selector: latch,
-            expressions: Box::new(
-                ArrayLiteral {
-                    items: op_id
-                        .chain(to.operation.params.inputs_and_outputs().map(|i| {
-                            index_access(
-                                namespaced_reference(to_namespace.clone(), &i.name),
-                                i.index.clone(),
-                            )
-                        }))
-                        .collect(),
-                }
-                .into(),
-            ),
-        };
-        PilStatement::PlookupIdentity(SourceRef::unknown(), lhs, rhs)
-    }
+        // plookup rhs is `latch $ [ operation_id, inputs, outputs ]`
+        let rhs = selected(
+            latch,
+            ArrayLiteral {
+                items: op_id
+                    .chain(to.operation.params.inputs_and_outputs().map(|i| {
+                        index_access(
+                            namespaced_reference(to_namespace.clone(), &i.name),
+                            i.index.clone(),
+                        )
+                    }))
+                    .collect(),
+            }
+            .into(),
+        );
+
+        lookup(lhs, rhs)
+    };
+
+    PilStatement::Expression(SourceRef::unknown(), expr)
 }
 
 #[cfg(test)]
@@ -305,7 +271,8 @@ mod test {
     #[test]
     fn compile_empty_vm() {
         let expectation = r#"namespace main(4 + 4);
-    pol commit _operation_id(i) query std::prelude::Query::Hint(2);
+    let _operation_id;
+    query |__i| std::prover::provide_if_unknown(_operation_id, __i, || 2);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
     _operation_id_no_change * (_operation_id' - _operation_id) = 0;
@@ -329,11 +296,8 @@ namespace main__rom(4 + 4);
     pol constant latch = [1]*;
 "#;
 
-        let file_name = format!(
-            "{}/../test_data/asm/empty_vm.asm",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        let graph = parse_analyze_and_compile_file::<GoldilocksField>(&file_name);
+        let file_name = "../test_data/asm/empty_vm.asm";
+        let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
         let pil = link(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
@@ -363,7 +327,8 @@ namespace main__rom(4 + 4);
     #[test]
     fn compile_different_signatures() {
         let expectation = r#"namespace main(16);
-    pol commit _operation_id(i) query std::prelude::Query::Hint(4);
+    let _operation_id;
+    query |__i| std::prover::provide_if_unknown(_operation_id, __i, || 4);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
     _operation_id_no_change * (_operation_id' - _operation_id) = 0;
@@ -425,7 +390,8 @@ namespace main__rom(16);
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
 namespace main_sub(16);
-    pol commit _operation_id(i) query std::prelude::Query::Hint(5);
+    let _operation_id;
+    query |__i| std::prover::provide_if_unknown(_operation_id, __i, || 5);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
     _operation_id_no_change * (_operation_id' - _operation_id) = 0;
@@ -461,11 +427,8 @@ namespace main_sub__rom(16);
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
 "#;
-        let file_name = format!(
-            "{}/../test_data/asm/different_signatures.asm",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        let graph = parse_analyze_and_compile_file::<GoldilocksField>(&file_name);
+        let file_name = "../test_data/asm/different_signatures.asm";
+        let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
         let pil = link(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
@@ -478,7 +441,8 @@ namespace main_sub__rom(16);
     XIsZero = 1 - X * XInv;
     XIsZero * X = 0;
     XIsZero * (1 - XIsZero) = 0;
-    pol commit _operation_id(i) query std::prelude::Query::Hint(10);
+    let _operation_id;
+    query |__i| std::prover::provide_if_unknown(_operation_id, __i, || 10);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
     _operation_id_no_change * (_operation_id' - _operation_id) = 0;
@@ -496,7 +460,7 @@ namespace main_sub__rom(16);
     pol commit instr_jmp_param_l;
     pol commit instr_dec_CNT;
     pol commit instr_assert_zero;
-    instr_assert_zero * (XIsZero - 1) = 0;
+    std::constraints::make_conditional(XIsZero = 1, instr_assert_zero);
     pol commit instr__jump_to_operation;
     pol commit instr__reset;
     pol commit instr__loop;
@@ -513,12 +477,13 @@ namespace main_sub__rom(16);
     pol commit pc_update;
     pc_update = instr_jmpz * (instr_jmpz_pc_update + instr_jmpz_pc_update_1) + instr_jmp * instr_jmp_param_l + instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr_jmpz + instr_jmp + instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1);
     pc' = (1 - first_step') * pc_update;
-    pol commit X_free_value(__i) query match std::prover::eval(pc) {
-        2 => std::prelude::Query::Input(1),
-        4 => std::prelude::Query::Input(std::convert::int(std::prover::eval(CNT) + 1)),
-        7 => std::prelude::Query::Input(0),
+    pol commit X_free_value;
+    query |__i| std::prover::handle_query(X_free_value, __i, match std::prover::eval(pc) {
+        2 => std::prelude::Query::Input(0, 2),
+        4 => std::prelude::Query::Input(0, std::convert::int(std::prover::eval(CNT) + 2)),
+        7 => std::prelude::Query::Input(0, 1),
         _ => std::prelude::Query::None,
-    };
+    });
     1 $ [0, pc, reg_write_X_A, reg_write_X_CNT, instr_jmpz, instr_jmpz_param_l, instr_jmp, instr_jmp_param_l, instr_dec_CNT, instr_assert_zero, instr__jump_to_operation, instr__reset, instr__loop, instr_return, X_const, X_read_free, read_X_A, read_X_CNT, read_X_pc] in main__rom::latch $ [main__rom::operation_id, main__rom::p_line, main__rom::p_reg_write_X_A, main__rom::p_reg_write_X_CNT, main__rom::p_instr_jmpz, main__rom::p_instr_jmpz_param_l, main__rom::p_instr_jmp, main__rom::p_instr_jmp_param_l, main__rom::p_instr_dec_CNT, main__rom::p_instr_assert_zero, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return, main__rom::p_X_const, main__rom::p_X_read_free, main__rom::p_read_X_A, main__rom::p_read_X_CNT, main__rom::p_read_X_pc];
     pol constant _linker_first_step(i) { if i == 0 { 1 } else { 0 } };
     _linker_first_step * (_operation_id - 2) = 0;
@@ -544,11 +509,8 @@ namespace main__rom(16);
     pol constant operation_id = [0]*;
     pol constant latch = [1]*;
 "#;
-        let file_name = format!(
-            "{}/../test_data/asm/simple_sum.asm",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        let graph = parse_analyze_and_compile_file::<GoldilocksField>(&file_name);
+        let file_name = "../test_data/asm/simple_sum.asm";
+        let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
         let pil = link(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
@@ -571,7 +533,8 @@ machine Machine with min_degree: 32, max_degree: 64 {
 }
 "#;
         let expectation = r#"namespace main(32..64);
-    pol commit _operation_id(i) query std::prelude::Query::Hint(4);
+    let _operation_id;
+    query |__i| std::prover::provide_if_unknown(_operation_id, __i, || 4);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
     _operation_id_no_change * (_operation_id' - _operation_id) = 0;
@@ -662,7 +625,8 @@ machine Main with min_degree: 32, max_degree: 64 {
 }
 ";
         let expected = r#"namespace main(32..64);
-    pol commit _operation_id(i) query std::prelude::Query::Hint(3);
+    let _operation_id;
+    query |__i| std::prover::provide_if_unknown(_operation_id, __i, || 3);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
     _operation_id_no_change * (_operation_id' - _operation_id) = 0;
@@ -719,7 +683,8 @@ namespace main_vm(64..128);
     #[test]
     fn permutation_instructions() {
         let expected = r#"namespace main(128);
-    pol commit _operation_id(i) query std::prelude::Query::Hint(13);
+    let _operation_id;
+    query |__i| std::prover::provide_if_unknown(_operation_id, __i, || 13);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
     _operation_id_no_change * (_operation_id' - _operation_id) = 0;
@@ -738,7 +703,7 @@ namespace main_vm(64..128);
     pol commit instr_or;
     pol commit instr_or_into_B;
     pol commit instr_assert_eq;
-    instr_assert_eq * (X - Y) = 0;
+    std::constraints::make_conditional(X = Y, instr_assert_eq);
     pol commit instr__jump_to_operation;
     pol commit instr__reset;
     pol commit instr__loop;
@@ -830,11 +795,8 @@ namespace main_bin(128);
     pol commit sel[2];
     std::array::map(sel, std::utils::force_bool);
 "#;
-        let file_name = format!(
-            "{}/../test_data/asm/permutations/vm_to_block.asm",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        let graph = parse_analyze_and_compile_file::<GoldilocksField>(&file_name);
+        let file_name = "../test_data/asm/permutations/vm_to_block.asm";
+        let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
         let pil = link(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expected);
     }
@@ -843,7 +805,8 @@ namespace main_bin(128);
     fn link_merging() {
         let expected = r#"namespace main(32);
     pol commit tmp;
-    pol commit _operation_id(i) query std::prelude::Query::Hint(18);
+    let _operation_id;
+    query |__i| std::prover::provide_if_unknown(_operation_id, __i, || 18);
     pol constant _block_enforcer_last_step = [0]* + [1];
     let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
     _operation_id_no_change * (_operation_id' - _operation_id) = 0;
@@ -876,7 +839,7 @@ namespace main_bin(128);
     pol commit instr_sub;
     pol commit instr_add_with_sub;
     pol commit instr_assert_eq;
-    instr_assert_eq * (X - Y) = 0;
+    std::constraints::make_conditional(X = Y, instr_assert_eq);
     pol commit instr__jump_to_operation;
     pol commit instr__reset;
     pol commit instr__loop;
@@ -989,11 +952,8 @@ namespace main_submachine(32);
     pol commit z;
     z = y + x;
 "#;
-        let file_name = format!(
-            "{}/../test_data/asm/permutations/link_merging.asm",
-            env!("CARGO_MANIFEST_DIR")
-        );
-        let graph = parse_analyze_and_compile_file::<GoldilocksField>(&file_name);
+        let file_name = "../test_data/asm/permutations/link_merging.asm";
+        let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
         let pil = link(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expected);
     }

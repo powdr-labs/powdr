@@ -2,8 +2,10 @@ use std::collections::BTreeMap;
 
 use powdr_ast::analyzed::PolynomialType;
 use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
+
 use powdr_number::{DegreeType, FieldElement};
 
+use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
 use crate::Identity;
 
@@ -20,7 +22,7 @@ use super::{
     Constraints, EvalError, EvalValue, IncompleteCause, MutableState, QueryCallback,
 };
 
-type Left<'a, T> = Vec<AffineExpression<&'a AlgebraicReference, T>>;
+type Left<'a, T> = Vec<AffineExpression<AlgebraicVariable<'a>, T>>;
 
 /// Data needed to handle an outer query.
 #[derive(Clone)]
@@ -82,6 +84,8 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     is_relevant_witness: WitnessColumnMap<bool>,
     /// Relevant witness columns that have a prover query function attached.
     prover_query_witnesses: Vec<PolyID>,
+    /// Which prover functions were successfully executed on which row.
+    processed_prover_functions: ProcessedProverFunctions,
     /// The outer query, if any. If there is none, processing an outer query will fail.
     outer_query: Option<OuterQuery<'a, 'c, T>>,
     inputs: Vec<(PolyID, T)>,
@@ -120,6 +124,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             parts,
             is_relevant_witness,
             prover_query_witnesses,
+            processed_prover_functions: ProcessedProverFunctions::new(parts.prover_functions.len()),
             outer_query: None,
             inputs: Vec::new(),
             previously_set_inputs: BTreeMap::new(),
@@ -191,6 +196,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             self.mutable_state.query_callback,
             self.size,
         );
+
         let global_row_index = self.row_offset + row_index as u64;
         let row_pair = RowPair::new(
             &self.data[row_index],
@@ -201,6 +207,17 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             self.size,
         );
         let mut updates = EvalValue::complete(vec![]);
+
+        for (i, fun) in self.parts.prover_functions.iter().enumerate() {
+            if !self.processed_prover_functions.has_run(row_index, i) {
+                let r = query_processor.process_prover_function(&row_pair, fun)?;
+                if r.is_complete() {
+                    updates.combine(r);
+                    self.processed_prover_functions.mark_as_run(row_index, i);
+                }
+            }
+        }
+
         for poly_id in &self.prover_query_witnesses {
             if let Some(r) = query_processor.process_query(&row_pair, poly_id) {
                 updates.combine(r?);
@@ -271,7 +288,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
     pub fn process_outer_query(
         &mut self,
         row_index: usize,
-    ) -> Result<(bool, Constraints<&'a AlgebraicReference, T>), EvalError<T>> {
+    ) -> Result<(bool, Constraints<AlgebraicVariable<'a>, T>), EvalError<T>> {
         let mut progress = false;
         let right = &self.outer_query.as_ref().unwrap().connecting_identity.right;
         if let Some(selector) = right.selector.as_ref() {
@@ -315,10 +332,13 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         let outer_assignments = updates
             .constraints
             .into_iter()
-            .filter(|(poly, update)| match update {
-                Constraint::Assignment(_) => !self.is_relevant_witness[&poly.poly_id],
+            .filter(|(var, update)| match (var, update) {
+                (AlgebraicVariable::Column(poly), Constraint::Assignment(_)) => {
+                    !self.is_relevant_witness[&poly.poly_id]
+                }
+                (AlgebraicVariable::Public(_), Constraint::Assignment(_)) => unimplemented!(),
                 // Range constraints are currently not communicated between callee and caller.
-                Constraint::RangeConstraint(_) => false,
+                (_, Constraint::RangeConstraint(_)) => false,
             })
             .collect::<Vec<_>>();
 
@@ -335,13 +355,14 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         for (poly_id, value) in self.inputs.iter() {
             if !self.data[row_index].value_is_known(poly_id) {
                 input_updates.combine(EvalValue::complete(vec![(
-                    &self.fixed_data.witness_cols[poly_id].poly,
+                    AlgebraicVariable::Column(&self.fixed_data.witness_cols[poly_id].poly),
                     Constraint::Assignment(*value),
                 )]));
             }
         }
 
-        for (poly, _) in &input_updates.constraints {
+        for (var, _) in &input_updates.constraints {
+            let poly = var.try_as_column().expect("Expected column");
             let poly_id = &poly.poly_id;
             if let Some(start_row) = self.previously_set_inputs.remove(poly_id) {
                 log::trace!(
@@ -353,7 +374,8 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                 }
             }
         }
-        for (poly, _) in &input_updates.constraints {
+        for (var, _) in &input_updates.constraints {
+            let poly = var.try_as_column().expect("Expected column");
             self.previously_set_inputs.insert(poly.poly_id, row_index);
         }
         self.apply_updates(row_index, &input_updates, || "inputs".to_string())
@@ -366,7 +388,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         expression: &'a Expression<T>,
         value: T,
         name: impl Fn() -> String,
-    ) -> Result<bool, IncompleteCause<&'a AlgebraicReference>> {
+    ) -> Result<bool, IncompleteCause<AlgebraicVariable<'a>>> {
         let row_pair = RowPair::new(
             &self.data[row_index],
             &self.data[row_index + 1],
@@ -385,7 +407,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
     fn apply_updates(
         &mut self,
         row_index: usize,
-        updates: &EvalValue<&'a AlgebraicReference, T>,
+        updates: &EvalValue<AlgebraicVariable<'a>, T>,
         source_name: impl Fn() -> String,
     ) -> bool {
         if updates.constraints.is_empty() {
@@ -395,7 +417,11 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         log::trace!("    Updates from: {}", source_name());
 
         let mut progress = false;
-        for (poly, c) in &updates.constraints {
+        for (var, c) in &updates.constraints {
+            let poly = match var {
+                AlgebraicVariable::Column(poly) => poly,
+                _ => unimplemented!(),
+            };
             if self.parts.witnesses.contains(&poly.poly_id) {
                 // Build RowUpdater
                 // (a bit complicated, because we need two mutable
@@ -410,7 +436,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
                 let left = &mut self.outer_query.as_mut().unwrap().left;
                 log::trace!("      => {} (outer) = {}", poly, v);
                 for l in left.iter_mut() {
-                    l.assign(poly, *v);
+                    l.assign(*var, *v);
                 }
                 progress = true;
             };
@@ -544,5 +570,39 @@ Known values in current row (local: {row_index}, global {global_row_index}):
             return false;
         }
         true
+    }
+}
+
+struct ProcessedProverFunctions {
+    data: Vec<u8>,
+    function_count: usize,
+}
+
+impl ProcessedProverFunctions {
+    pub fn new(prover_function_count: usize) -> Self {
+        Self {
+            data: vec![],
+            function_count: prover_function_count,
+        }
+    }
+
+    pub fn has_run(&self, row_index: usize, function_index: usize) -> bool {
+        let (el, bit) = self.index_for(row_index, function_index);
+        self.data
+            .get(el)
+            .map_or(false, |byte| byte & (1 << bit) != 0)
+    }
+
+    pub fn mark_as_run(&mut self, row_index: usize, function_index: usize) {
+        let (el, bit) = self.index_for(row_index, function_index);
+        if el >= self.data.len() {
+            self.data.resize(el + 1, 0);
+        }
+        self.data[el] |= 1 << bit;
+    }
+
+    fn index_for(&self, row_index: usize, function_index: usize) -> (usize, usize) {
+        let index = row_index * self.function_count + function_index;
+        (index / 8, index % 8)
     }
 }

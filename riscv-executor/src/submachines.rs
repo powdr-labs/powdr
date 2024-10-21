@@ -126,7 +126,7 @@ impl<F: FieldElement> SubmachineTrace<F> {
         } else {
             idx as usize
         };
-        self.cols.get(col).unwrap()[idx].clone()
+        self.cols.get(col).unwrap()[idx]
     }
 
     /// set the value of a column in the last row of the complete trace
@@ -138,7 +138,7 @@ impl<F: FieldElement> SubmachineTrace<F> {
     fn final_row_override(&mut self) {
         for (col, value) in self.last_row_overrides.iter() {
             if let Some(value) = value {
-                *self.cols.get_mut(col).unwrap().last_mut().unwrap() = value.clone();
+                *self.cols.get_mut(col).unwrap().last_mut().unwrap() = *value;
             }
         }
     }
@@ -152,9 +152,7 @@ impl<F: FieldElement> SubmachineTrace<F> {
 
     /// add a copy of the previous row to the trace
     fn push_row_copy(&mut self, idx: u32) {
-        self.cols
-            .values_mut()
-            .for_each(|v| v.push(v[idx as usize].clone()));
+        self.cols.values_mut().for_each(|v| v.push(v[idx as usize]));
     }
 
     /// Push a dummy block to the trace.
@@ -189,7 +187,7 @@ impl<F: FieldElement> SubmachineTrace<F> {
                 "{col}: {:x}",
                 values[idx].into_fe().to_integer().try_into_u64().unwrap()
             );
-            print!("{:>15}, ", val);
+            print!("{val:>15}, ");
         }
         println!();
     }

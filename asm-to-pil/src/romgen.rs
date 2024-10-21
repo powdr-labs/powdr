@@ -219,8 +219,9 @@ pub fn generate_machine_rom<T: FieldElement>(mut machine: Machine) -> (Machine, 
 
         machine.pil.extend([
             // inject the operation_id
+            parse_pil_statement(&format!("let {operation_id};")),
             parse_pil_statement(&format!(
-                "col witness {operation_id}(i) query std::prelude::Query::Hint({sink_id});"
+                "query |__i| std::prover::provide_if_unknown({operation_id}, __i, || {sink_id});"
             )),
             // inject last step
             parse_pil_statement(&format!("col constant {last_step} = [0]* + [1];")),
@@ -249,10 +250,7 @@ pub fn generate_machine_rom<T: FieldElement>(mut machine: Machine) -> (Machine, 
 mod tests {
     use std::collections::BTreeMap;
 
-    use powdr_ast::{
-        asm_analysis::Item,
-        parsed::asm::{parse_absolute_path, AbsoluteSymbolPath},
-    };
+    use powdr_ast::parsed::asm::{parse_absolute_path, AbsoluteSymbolPath};
     use powdr_number::Bn254Field;
     use pretty_assertions::assert_eq;
 
@@ -263,15 +261,8 @@ mod tests {
         let parsed = powdr_parser::parse_asm(None, src).unwrap();
         let checked = powdr_analysis::machine_check::check(parsed).unwrap();
         checked
-            .items
-            .into_iter()
-            .filter_map(|(name, m)| match m {
-                Item::Machine(m) => Some((name, generate_machine_rom::<T>(m))),
-                Item::Expression(_)
-                | Item::TypeDeclaration(_)
-                | Item::TraitDeclaration(_)
-                | Item::TraitImplementation(_) => None,
-            })
+            .into_machines()
+            .map(|(name, m)| (name, generate_machine_rom::<T>(m)))
             .collect()
     }
 

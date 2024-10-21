@@ -5,10 +5,8 @@
 use std::collections::BTreeMap;
 
 use powdr_ast::{
-    asm_analysis::{self, combine_flags, AnalysisASMFile, Item, LinkDefinition},
-    object::{
-        Link, LinkFrom, LinkTo, Location, Machine, Object, Operation, PILGraph, TypeOrExpression,
-    },
+    asm_analysis::{self, combine_flags, AnalysisASMFile, LinkDefinition},
+    object::{Link, LinkFrom, LinkTo, Location, Machine, Object, Operation, PILGraph},
     parsed::{
         asm::{parse_absolute_path, AbsoluteSymbolPath, CallableRef, MachineParams},
         Expression, PilStatement,
@@ -47,7 +45,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
                 main,
                 entry_points: Default::default(),
                 objects: [(main_location, Default::default())].into(),
-                definitions: utility_functions(input),
+                statements: utility_functions(input),
             };
         }
         // if there is a single machine, treat it as main
@@ -55,7 +53,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
         // otherwise, use the machine called `MAIN`
         _ => {
             let p = parse_absolute_path(MAIN_MACHINE);
-            assert!(input.items.contains_key(&p));
+            assert!(input.get_machine(&p).is_some());
             p
         }
     };
@@ -67,7 +65,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
     let mut instances = BTreeMap::default();
 
     while let Some((location, ty, args)) = queue.pop() {
-        let machine = input.items.get(&ty).unwrap().try_to_machine().unwrap();
+        let machine = &input.get_machine(&ty).unwrap();
 
         queue.extend(machine.submachines.iter().map(|def| {
             (
@@ -127,9 +125,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
         }
     }
 
-    let Item::Machine(main_ty) = input.items.get(&main_ty).unwrap() else {
-        panic!()
-    };
+    let main_ty = &input.get_machine(&main_ty).unwrap();
 
     let main = powdr_ast::object::Machine {
         location: main_location,
@@ -150,7 +146,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
         main,
         entry_points,
         objects,
-        definitions: utility_functions(input),
+        statements: utility_functions(input),
     }
 }
 
@@ -178,14 +174,34 @@ fn resolve_submachine_arg(
     }
 }
 
-fn utility_functions(asm_file: AnalysisASMFile) -> BTreeMap<AbsoluteSymbolPath, TypeOrExpression> {
+fn utility_functions(asm_file: AnalysisASMFile) -> BTreeMap<AbsoluteSymbolPath, Vec<PilStatement>> {
     asm_file
-        .items
+        .modules
         .into_iter()
-        .filter_map(|(n, v)| match v {
-            Item::Expression(e) => Some((n, TypeOrExpression::Expression(e))),
-            Item::TypeDeclaration(type_decl) => Some((n, TypeOrExpression::Type(type_decl))),
-            _ => None,
+        .map(|(module_path, module)| {
+            (
+                module_path,
+                module
+                    .into_inner()
+                    .1
+                    .into_iter()
+                    .filter(|s| match s {
+                        PilStatement::EnumDeclaration(..)
+                        | PilStatement::StructDeclaration(..)
+                        | PilStatement::LetStatement(..) => true,
+                        PilStatement::Include(..) => false,
+                        PilStatement::Namespace(..) => false,
+                        PilStatement::PolynomialDefinition(..) => false,
+                        PilStatement::PublicDeclaration(..) => false,
+                        PilStatement::PolynomialConstantDeclaration(..) => false,
+                        PilStatement::PolynomialConstantDefinition(..) => false,
+                        PilStatement::PolynomialCommitDeclaration(..) => false,
+                        PilStatement::TraitImplementation(..) => false,
+                        PilStatement::TraitDeclaration(..) => false,
+                        PilStatement::Expression(..) => false,
+                    })
+                    .collect(),
+            )
         })
         .collect()
 }
@@ -205,7 +221,7 @@ struct ASMPILConverter<'a> {
     /// Current machine instance
     location: &'a Location,
     /// Input definitions and machines.
-    items: &'a BTreeMap<AbsoluteSymbolPath, Item>,
+    input: &'a AnalysisASMFile,
     /// Pil statements generated for the machine
     pil: Vec<PilStatement>,
     /// Submachine instances accessible to the machine (includes those passed as a parameter)
@@ -224,7 +240,7 @@ impl<'a> ASMPILConverter<'a> {
         Self {
             instances,
             location,
-            items: &input.items,
+            input,
             pil: Default::default(),
             submachines: Default::default(),
             incoming_permutations,
@@ -247,9 +263,7 @@ impl<'a> ASMPILConverter<'a> {
     fn convert_machine_inner(mut self) -> Object {
         let (ty, args) = self.instances.get(self.location).as_ref().unwrap();
         // TODO: This clone doubles the current memory usage
-        let Item::Machine(input) = self.items.get(ty).unwrap().clone() else {
-            panic!();
-        };
+        let input = self.input.get_machine(ty).unwrap().clone();
 
         let degree = input.degree;
 
@@ -331,9 +345,7 @@ impl<'a> ASMPILConverter<'a> {
                 panic!("could not find submachine named `{instance}` in machine `{ty}`");
             });
         // get the machine type from the machine map
-        let Item::Machine(instance_ty) = self.items.get(&instance.ty).unwrap() else {
-            panic!();
-        };
+        let instance_ty = &self.input.get_machine(&instance.ty).unwrap();
 
         // check that the operation exists and that it has the same number of inputs/outputs as the link
         let operation = instance_ty
@@ -388,6 +400,7 @@ impl<'a> ASMPILConverter<'a> {
     /// - they target the same instance.operation
     /// - they are of the same kind (permutation/lookup)
     /// - their flags are mutually exclusive
+    ///
     /// Right now we only consider links from different instructions,
     /// as a single instruction can be active at a time.
     fn process_and_merge_links(&self, defs: &[LinkDefinition]) -> Vec<Link> {
@@ -513,8 +526,8 @@ impl<'a> ASMPILConverter<'a> {
 
         for (param, value) in params.iter().zip(values) {
             let ty = AbsoluteSymbolPath::default().join(param.ty.clone().unwrap());
-            match self.items.get(&ty) {
-                Some(Item::Machine(_)) => self.submachines.push(SubmachineRef {
+            match self.input.get_machine(&ty) {
+                Some(_) => self.submachines.push(SubmachineRef {
                     location: value.clone(),
                     name: param.name.clone(),
                     ty,

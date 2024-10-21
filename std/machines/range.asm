@@ -57,3 +57,15 @@ machine Bit7 with
     col fixed latch = [1]*;
     col fixed operation_id = [0]*;
 }
+
+machine Bit12 with
+    latch: latch,
+    operation_id: operation_id,
+    degree: 4096
+{
+    operation check<0> BIT12 -> ;
+
+    let BIT12: col = |i| i % (2**12);
+    let latch = 1;
+    col fixed operation_id = [0]*;
+}

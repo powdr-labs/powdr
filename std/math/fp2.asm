@@ -11,18 +11,23 @@ use std::math::ff::inv_field;
 use std::prover::eval;
 
 /// Corresponding Sage code to test irreduciblity
-/// BabyBear = 2^27 * 15 + 1
-/// M31 = 2^31 - 1
-/// BN254 = 21888242871839275222246405745257275088548364400416034343698204186575808495617
+/// BabyBear = 0x78000001
+/// M31 = 0x7fffffff
+/// BN254 = 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
 /// GL = 0xffffffff00000001
-/// F = GF(GL)
-/// R.<x> = PolynomialRing(F)
-/// f = x^2 - 7
-/// f.is_irreducible()
+/// 
+/// fields = [BabyBear, M31, BN254, GL]
+/// 
+/// def check_irreducibility(field):
+///     F = GF(field)
+///     R.<x> = PolynomialRing(F)
+///     f = x^2 - 11
+///     return f"Field: {field}\nIs irreducible: {f.is_irreducible()}"
+/// 
+/// print("\n".join(map(check_irreducibility, fields)))
 
-/// An element of the extension field over the implied base field (which has to be either
-/// the Goldilocks or the BN254 field) relative to the irreducible polynomial X^2 - 7,
-/// (This irreducible polynomial also works for Mersenne31)
+/// An element of the extension field over the implied base field (which has to be one
+/// of the field elements: Goldilocks, BN254, BabyBear, M31) relative to the irreducible polynomial X^2 - 11,
 /// where Fp2(a0, a1) is interpreted as a0 + a1 * X.
 /// T is assumed to either be fe, expr or any other object whose algebraic operations
 /// are compatible with fe.
@@ -52,10 +57,10 @@ let<T: Sub> sub_ext: Fp2<T>, Fp2<T> -> Fp2<T> = |a, b| match (a, b) {
 /// Extension field multiplication
 let<T: Add + FromLiteral + Mul> mul_ext: Fp2<T>, Fp2<T> -> Fp2<T> = |a, b| match (a, b) {
     (Fp2::Fp2(a0, a1), Fp2::Fp2(b0, b1)) => Fp2::Fp2(
-        // Multiplication modulo the polynomial x^2 - 7. We'll use the fact
-        // that x^2 == 7 (mod x^2 - 7), so:
-        // (a0 + a1 * x) * (b0 + b1 * x) = a0 * b0 + 7 * a1 * b1 + (a1 * b0 + a0 * b1) * x (mod x^2 - 7)
-        a0 * b0 + 7 * a1 * b1,
+        // Multiplication modulo the polynomial x^2 - 11. We'll use the fact
+        // that x^2 == 11 (mod x^2 - 11), so:
+        // (a0 + a1 * x) * (b0 + b1 * x) = a0 * b0 + 11 * a1 * b1 + (a1 * b0 + a0 * b1) * x (mod x^2 - 11)
+        a0 * b0 + 11 * a1 * b1,
         a1 * b0 + a0 * b1
     )
 };
@@ -83,13 +88,13 @@ let constrain_eq_ext: Fp2<expr>, Fp2<expr> -> Constr[] = |a, b| match (a, b) {
 /// Extension field inversion
 let inv_ext: Fp2<fe> -> Fp2<fe> = |a| match a {
     // The inverse of (a0, a1) is a point (b0, b1) such that:
-    // (a0 + a1 * x) (b0 + b1 * x) = 1 (mod x^2 - 7)
-    // Multiplying out and plugging in x^2 = 7 yields the following system of linear equations:
-    // a0 * b0 + 7 * a1 * b1 = 1
+    // (a0 + a1 * x) (b0 + b1 * x) = 1 (mod x^2 - 11)
+    // Multiplying out and plugging in x^2 = 11 yields the following system of linear equations:
+    // a0 * b0 + 11 * a1 * b1 = 1
     // a1 * b0 + a0 * b1 = 0
     // Solving for (b0, b1) yields:
     Fp2::Fp2(a0, a1) => {
-        let factor = inv_field(7 * a1 * a1 - a0 * a0);
+        let factor = inv_field(11 * a1 * a1 - a0 * a0);
         Fp2::Fp2(-a0 * factor, a1 * factor)
     }
 };
@@ -110,9 +115,12 @@ let<T> unpack_ext_array: Fp2<T> -> T[] = |a| match a {
 };
 
 /// Whether we need to operate on the F_{p^2} extension field (because the current field is too small).
-let needs_extension: -> bool = || match known_field() {
-    Option::Some(KnownField::Goldilocks) => true,
-    Option::Some(KnownField::BN254) => false,
+let needs_extension: -> bool = || required_extension_size() > 1;
+
+/// How many field elements / field extensions are recommended for the current base field.
+let required_extension_size: -> int = || match known_field() {
+    Option::Some(KnownField::Goldilocks) => 2,
+    Option::Some(KnownField::BN254) => 1,
     None => panic("The permutation/lookup argument is not implemented for the current field!")
 };
 
@@ -166,7 +174,7 @@ mod test {
 
         // Subtract arbitrary elements
         let _ = test_sub(Fp2::Fp2(123, 1234), Fp2::Fp2(567, 5678), Fp2::Fp2(123 - 567, 1234 - 5678));
-        test_sub(Fp2::Fp2(-1, -1), Fp2::Fp2(0x100000000, 1), Fp2::Fp2(-0x100000000 - 1, -2))
+        test_sub(Fp2::Fp2(-1, -1), Fp2::Fp2(0x78000000, 1), Fp2::Fp2(-0x78000000 - 1, -2))
     };
 
     let mul = || {
@@ -182,10 +190,10 @@ mod test {
         let _ = test_mul(from_base(0), Fp2::Fp2(123, 1234), from_base(0));
 
         // Multiply arbitrary elements
-        let _ = test_mul(Fp2::Fp2(123, 1234), Fp2::Fp2(567, 5678), Fp2::Fp2(49116305, 1398072));
+        let _ = test_mul(Fp2::Fp2(123, 1234), Fp2::Fp2(567, 5678), Fp2::Fp2(77142913, 1398072));
 
         // Multiplication with field overflow
-        test_mul(Fp2::Fp2(-1, -2), Fp2::Fp2(-3, 4), Fp2::Fp2(3 - 7 * 8, 6 - 4))
+        test_mul(Fp2::Fp2(-1, -2), Fp2::Fp2(-3, 4), Fp2::Fp2(3 - 11 * 8, 6 - 4))
     };
 
     let inverse = || {

@@ -2,12 +2,14 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::Peekable;
 use std::mem;
 use std::num::NonZeroUsize;
+use std::str::FromStr;
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicReference, IdentityKind, PolyID, PolynomialType};
-use powdr_number::FieldElement;
+use powdr_ast::parsed::asm::SymbolPath;
+use powdr_number::{DegreeType, FieldElement};
 
-use crate::witgen::affine_expression::AffineExpression;
+use crate::witgen::affine_expression::{AffineExpression, AlgebraicVariable};
 use crate::witgen::global_constraints::{GlobalConstraints, RangeConstraintSet};
 use crate::witgen::processor::OuterQuery;
 use crate::witgen::range_constraints::RangeConstraint;
@@ -77,7 +79,7 @@ impl<T: FieldElement> IndexedColumns<T> {
     /// `input_fixed_columns` is assumed to be sorted
     fn ensure_index(&mut self, fixed_data: &FixedData<T>, sorted_fixed_columns: &Application) {
         // we do not use the Entry API here because we want to clone `sorted_input_fixed_columns` only on index creation
-        if self.indices.get(sorted_fixed_columns).is_some() {
+        if self.indices.contains_key(sorted_fixed_columns) {
             return;
         }
 
@@ -169,15 +171,25 @@ impl<T: FieldElement> IndexedColumns<T> {
     }
 }
 
+const MULTIPLICITY_LOOKUP_COLUMN: &str = "m_logup_multiplicity";
+
 /// Machine to perform a lookup in fixed columns only.
 pub struct FixedLookup<'a, T: FieldElement> {
+    degree: DegreeType,
     global_constraints: GlobalConstraints<T>,
     indices: IndexedColumns<T>,
     connecting_identities: BTreeMap<u64, &'a Identity<T>>,
     fixed_data: &'a FixedData<'a, T>,
+    /// multiplicities column values for each identity id
+    multiplicities: BTreeMap<u64, Vec<T>>,
+    logup_multiplicity_column: Option<PolyID>,
 }
 
 impl<'a, T: FieldElement> FixedLookup<'a, T> {
+    pub fn witness_columns(&self) -> HashSet<PolyID> {
+        self.logup_multiplicity_column.iter().cloned().collect()
+    }
+
     pub fn new(
         global_constraints: GlobalConstraints<T>,
         all_identities: Vec<&'a Identity<T>>,
@@ -197,26 +209,52 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
                 .then_some((i.id, i))
             })
             .collect();
+
+        let degree = fixed_data
+            .fixed_cols
+            .values()
+            .map(|col| col.values_max_size().len())
+            .max()
+            .unwrap_or(0) as u64;
+
+        // This currently just takes one element with the correct name
+        // When we support more than one element, we need to have a vector of logup_multiplicity_columns: Vec<Option<PolyId>>
+        let logup_multiplicity_column: Option<PolyID> = fixed_data
+            .witness_cols
+            .values()
+            .find(|col| {
+                SymbolPath::from_str(&col.poly.name).unwrap().name() == MULTIPLICITY_LOOKUP_COLUMN
+            })
+            .map(|col| col.poly.poly_id);
+
         Self {
+            degree,
             global_constraints,
             indices: Default::default(),
             connecting_identities,
             fixed_data,
+            multiplicities: Default::default(),
+            logup_multiplicity_column,
         }
     }
 
     fn process_plookup_internal(
         &mut self,
         rows: &RowPair<'_, '_, T>,
-        left: &[AffineExpression<&'a AlgebraicReference, T>],
+        left: &[AffineExpression<AlgebraicVariable<'a>, T>],
         mut right: Peekable<impl Iterator<Item = &'a AlgebraicReference>>,
+        identity_id: u64,
     ) -> EvalResult<'a, T> {
         if left.len() == 1
             && !left.first().unwrap().is_constant()
             && right.peek().unwrap().poly_id.ptype == PolynomialType::Constant
         {
             // Lookup of the form "c $ [ X ] in [ B ]". Might be a conditional range check.
-            return self.process_range_check(rows, left.first().unwrap(), right.peek().unwrap());
+            return self.process_range_check(
+                rows,
+                left.first().unwrap(),
+                AlgebraicVariable::Column(right.peek().unwrap()),
+            );
         }
 
         // split the fixed columns depending on whether their associated lookup variable is constant or not. Preserve the value of the constant arguments.
@@ -265,6 +303,13 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             }
         };
 
+        // Update the multiplicities
+        if self.logup_multiplicity_column.is_some() {
+            self.multiplicities
+                .entry(identity_id)
+                .or_insert_with(|| vec![T::zero(); self.degree as usize])[row] += T::one();
+        }
+
         let output = output_columns
             .iter()
             .map(|column| self.fixed_data.fixed_cols[column].values_max_size()[row]);
@@ -285,15 +330,14 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
                 }
             }
         }
-
         Ok(result)
     }
 
     fn process_range_check<'b>(
         &self,
         rows: &RowPair<'_, '_, T>,
-        lhs: &AffineExpression<&'b AlgebraicReference, T>,
-        rhs: &'b AlgebraicReference,
+        lhs: &AffineExpression<AlgebraicVariable<'b>, T>,
+        rhs: AlgebraicVariable<'b>,
     ) -> EvalResult<'b, T> {
         // Use AffineExpression::solve_with_range_constraints to transfer range constraints
         // from the rhs to the lhs.
@@ -309,7 +353,12 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             updates
                 .constraints
                 .into_iter()
-                .filter(|(poly, _)| poly.poly_id.ptype == PolynomialType::Committed)
+                .filter(|(poly, _)| match poly {
+                    AlgebraicVariable::Column(poly) => {
+                        poly.poly_id.ptype == PolynomialType::Committed
+                    }
+                    _ => unimplemented!(),
+                })
                 .collect(),
             IncompleteCause::NotConcrete,
         ))
@@ -338,14 +387,32 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
             .peekable();
 
         let outer_query = OuterQuery::new(caller_rows, identity);
-        self.process_plookup_internal(caller_rows, &outer_query.left, right)
+        self.process_plookup_internal(caller_rows, &outer_query.left, right, identity_id)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
-        Default::default()
+        let mut witness_col_values = HashMap::new();
+        if self.logup_multiplicity_column.is_some() {
+            assert!(
+                self.multiplicities.len() <= 1,
+                "LogUp witness generation not yet supported for > 1 lookups"
+            );
+            log::trace!("Detected LogUp Multiplicity Column");
+
+            for (_, values) in self.multiplicities.iter() {
+                witness_col_values.insert(
+                    self.logup_multiplicity_column
+                        .map(|poly_id| self.fixed_data.column_name(&poly_id).to_string())
+                        .unwrap(),
+                    values.clone(),
+                );
+            }
+        }
+
+        witness_col_values
     }
 
     fn identity_ids(&self) -> Vec<u64> {
@@ -362,12 +429,16 @@ pub struct UnifiedRangeConstraints<'a, T: FieldElement> {
     global_constraints: &'a GlobalConstraints<T>,
 }
 
-impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T>
+impl<'a, T: FieldElement> RangeConstraintSet<AlgebraicVariable<'a>, T>
     for UnifiedRangeConstraints<'_, T>
 {
-    fn range_constraint(&self, poly: &AlgebraicReference) -> Option<RangeConstraint<T>> {
+    fn range_constraint(&self, var: AlgebraicVariable<'a>) -> Option<RangeConstraint<T>> {
+        let poly = match var {
+            AlgebraicVariable::Column(poly) => poly,
+            _ => unimplemented!(),
+        };
         match poly.poly_id.ptype {
-            PolynomialType::Committed => self.witness_constraints.range_constraint(poly),
+            PolynomialType::Committed => self.witness_constraints.range_constraint(var),
             PolynomialType::Constant => self.global_constraints.range_constraint(poly),
             PolynomialType::Intermediate => unimplemented!(),
         }

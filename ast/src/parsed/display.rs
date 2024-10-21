@@ -5,7 +5,7 @@ use itertools::Itertools;
 use crate::{
     indent,
     parsed::{BinaryOperator, UnaryOperator},
-    write_indented_by, write_items, write_items_indented,
+    write_indented_by, write_items, write_items_indented, writeln_indented,
 };
 
 use self::types::{ArrayType, FunctionType, TupleType, TypeBounds};
@@ -14,7 +14,13 @@ use super::{asm::*, *};
 
 impl Display for PILFile {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write_items(f, &self.0)
+        for statement in &self.0 {
+            match statement {
+                PilStatement::Namespace(..) => writeln!(f, "{statement}")?,
+                _ => writeln_indented(f, statement.to_string())?,
+            }
+        }
+        Ok(())
     }
 }
 
@@ -34,7 +40,7 @@ impl Display for ModuleStatement {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
             ModuleStatement::SymbolDefinition(symbol_def) => write!(f, "{symbol_def}"),
-            ModuleStatement::TraitImplementation(trait_impl) => write!(f, "{trait_impl}"),
+            ModuleStatement::PilStatement(s) => write!(f, "{s}"),
         }
     }
 }
@@ -55,15 +61,6 @@ impl Display for SymbolDefinition {
             SymbolValue::Module(m @ Module::Local(_)) => {
                 write!(f, "mod {name} {m}")
             }
-            SymbolValue::Expression(TypedExpression { e, type_scheme }) => {
-                write!(
-                    f,
-                    "let{} = {e};",
-                    format_type_scheme_around_name(name, type_scheme)
-                )
-            }
-            SymbolValue::TypeDeclaration(ty) => write!(f, "{ty}"),
-            SymbolValue::TraitDeclaration(trait_decl) => write!(f, "{trait_decl}"),
         }
     }
 }
@@ -142,17 +139,13 @@ impl Display for InstructionBody {
 }
 
 fn format_instruction_statement(stmt: &PilStatement) -> String {
-    match stmt {
-        PilStatement::Expression(_, _)
-        | PilStatement::PlookupIdentity(_, _, _)
-        | PilStatement::PermutationIdentity(_, _, _)
-        | PilStatement::ConnectIdentity(_, _, _) => {
-            // statements inside instruction definition don't end in semicolon
-            let mut s = format!("{stmt}");
-            assert_eq!(s.pop(), Some(';'));
-            s
-        }
-        _ => panic!("invalid statement inside instruction body: {stmt}"),
+    if let PilStatement::Expression(_, _) = stmt {
+        // statements inside instruction definition don't end in semicolon
+        let mut s = format!("{stmt}");
+        assert_eq!(s.pop(), Some(';'));
+        s
+    } else {
+        panic!("invalid statement inside instruction body: {stmt}")
     }
 }
 
@@ -482,69 +475,48 @@ impl Display for PilStatement {
                     }
                 }
             }
-            PilStatement::LetStatement(_, pattern, type_scheme, value) => write_indented_by(
+            PilStatement::LetStatement(_, pattern, type_scheme, value) => write!(
                 f,
-                format!(
-                    "let{}{};",
-                    format_type_scheme_around_name(pattern, type_scheme),
-                    value
-                        .as_ref()
-                        .map(|value| format!(" = {value}"))
-                        .unwrap_or_default()
-                ),
-                1,
+                "let{}{};",
+                format_type_scheme_around_name(pattern, type_scheme),
+                value
+                    .as_ref()
+                    .map(|value| format!(" = {value}"))
+                    .unwrap_or_default()
             ),
             PilStatement::PolynomialDefinition(_, name, value) => {
-                write_indented_by(f, format!("pol {name} = {value};"), 1)
+                write!(f, "pol {name} = {value};")
             }
             PilStatement::PublicDeclaration(_, name, poly, array_index, index) => {
-                write_indented_by(
+                write!(
                     f,
-                    format!(
-                        "public {name} = {poly}{}({index});",
-                        array_index
-                            .as_ref()
-                            .map(|i| format!("[{i}]"))
-                            .unwrap_or_default()
-                    ),
-                    1,
+                    "public {name} = {poly}{}({index});",
+                    array_index
+                        .as_ref()
+                        .map(|i| format!("[{i}]"))
+                        .unwrap_or_default()
                 )
             }
             PilStatement::PolynomialConstantDeclaration(_, names) => {
-                write_indented_by(f, format!("pol constant {};", names.iter().format(", ")), 1)
+                write!(f, "pol constant {};", names.iter().format(", "))
             }
             PilStatement::PolynomialConstantDefinition(_, name, definition) => {
-                write_indented_by(f, format!("pol constant {name}{definition};"), 1)
+                write!(f, "pol constant {name}{definition};")
             }
-            PilStatement::PolynomialCommitDeclaration(_, stage, names, value) => write_indented_by(
+            PilStatement::PolynomialCommitDeclaration(_, stage, names, value) => write!(
                 f,
-                format!(
-                    "pol commit {}{}{};",
-                    stage.map(|s| format!("stage({s}) ")).unwrap_or_default(),
-                    names.iter().format(", "),
-                    value.as_ref().map(|v| format!("{v}")).unwrap_or_default()
-                ),
-                1,
+                "pol commit {}{}{};",
+                stage
+                    .and_then(|s| (s > 0).then(|| format!("stage({s}) ")))
+                    .unwrap_or_default(),
+                names.iter().format(", "),
+                value.as_ref().map(|v| format!("{v}")).unwrap_or_default()
             ),
-            PilStatement::PlookupIdentity(_, left, right) => {
-                write_indented_by(f, format!("{left} in {right};"), 1)
-            }
-            PilStatement::PermutationIdentity(_, left, right) => {
-                write_indented_by(f, format!("{left} is {right};"), 1)
-            }
-            PilStatement::ConnectIdentity(_, left, right) => write_indented_by(
-                f,
-                format!(
-                    "[ {} ] connect [ {} ];",
-                    format_list(left),
-                    format_list(right)
-                ),
-                1,
-            ),
-            PilStatement::Expression(_, e) => write_indented_by(f, format!("{e};"), 1),
-            PilStatement::EnumDeclaration(_, enum_decl) => write_indented_by(f, enum_decl, 1),
-            PilStatement::TraitImplementation(_, trait_impl) => write_indented_by(f, trait_impl, 1),
-            PilStatement::TraitDeclaration(_, trait_decl) => write_indented_by(f, trait_decl, 1),
+            PilStatement::Expression(_, e) => write!(f, "{e};"),
+            PilStatement::EnumDeclaration(_, enum_decl) => write!(f, "{enum_decl}"),
+            PilStatement::StructDeclaration(_, struct_decl) => write!(f, "{struct_decl}"),
+            PilStatement::TraitImplementation(_, trait_impl) => write!(f, "{trait_impl}"),
+            PilStatement::TraitDeclaration(_, trait_decl) => write!(f, "{trait_decl}"),
         }
     }
 }
@@ -606,7 +578,7 @@ impl<E: Display> Display for TraitDeclaration<E> {
     }
 }
 
-impl<E: Display> Display for TraitFunction<E> {
+impl<E: Display> Display for NamedType<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{}: {}", self.name, self.ty)
     }
@@ -648,16 +620,11 @@ impl<E: Display> Display for TraitImplementation<E> {
             panic!("Type from trait scheme is not a tuple.")
         };
 
-        let trait_vars = if items.is_empty() {
-            Default::default()
-        } else {
-            format!("<{}>", items.iter().format(", "))
-        };
-
         write!(
             f,
-            "impl{type_vars} {trait_name}{trait_vars} {{\n{methods}}}",
+            "impl{type_vars} {trait_name}{type_args} {{\n{methods}}}",
             trait_name = self.name,
+            type_args = format_type_args(items),
             methods = indent(
                 self.functions.iter().map(|m| format!("{m},\n")).format(""),
                 1
@@ -676,6 +643,39 @@ impl<Expr: Display> Display for SelectedExpressions<Expr> {
                 .map(|s| format!("{s} $ "))
                 .unwrap_or_default(),
             self.expressions
+        )
+    }
+}
+
+impl<E: Display> Display for StructDeclaration<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "struct {}{} {{\n{}}}",
+            self.name,
+            type_vars_to_string(&self.type_vars),
+            indent(
+                self.fields
+                    .iter()
+                    .map(|named| format!("{}: {},\n", named.name, named.ty))
+                    .format(""),
+                1
+            )
+        )
+    }
+}
+
+impl<E: Display> Display for StructExpression<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "{}{}",
+            self.name,
+            if self.fields.is_empty() {
+                "{}".to_string()
+            } else {
+                format!("{{ {} }}", self.fields.iter().join(", "))
+            }
         )
     }
 }
@@ -709,7 +709,7 @@ impl<Ref: Display> Display for Expression<Ref> {
         match self {
             Expression::Reference(_, reference) => write!(f, "{reference}"),
             Expression::PublicReference(_, name) => write!(f, ":{name}"),
-            Expression::Number(_, Number { value, .. }) => write!(f, "{value}"),
+            Expression::Number(_, n) => write!(f, "{n}"),
             Expression::String(_, value) => write!(f, "{}", quote(value)),
             Expression::Tuple(_, items) => write!(f, "({})", format_list(items)),
             Expression::LambdaExpression(_, lambda) => write!(f, "{lambda}"),
@@ -730,6 +730,7 @@ impl<Ref: Display> Display for Expression<Ref> {
             Expression::BlockExpression(_, block_expr) => {
                 write!(f, "{block_expr}")
             }
+            Expression::StructExpression(_, s) => write!(f, "{s}"),
         }
     }
 }
@@ -754,6 +755,18 @@ impl Display for NamespacedPolynomialReference {
             write!(f, "{}::{}", self.path, format_type_args(type_args))
         } else {
             write!(f, "{}", self.path)
+        }
+    }
+}
+
+impl Display for Number {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let Number { value, type_ } = self;
+        write!(f, "{value}")?;
+        match type_ {
+            Some(ty @ (Type::Int | Type::Fe | Type::Expr)) => write!(f, "_{ty}"),
+            Some(Type::TypeVar(_)) | None => Ok(()),
+            Some(_) => unreachable!(),
         }
     }
 }
@@ -870,6 +883,10 @@ impl Display for BinaryOperator {
                 BinaryOperator::NotEqual => "!=",
                 BinaryOperator::GreaterEqual => ">=",
                 BinaryOperator::Greater => ">",
+                BinaryOperator::In => "in",
+                BinaryOperator::Is => "is",
+                BinaryOperator::Connect => "connect",
+                BinaryOperator::Select => "$",
             }
         )
     }
@@ -1001,19 +1018,22 @@ fn format_list_of_types<E: Display>(types: &[Type<E>]) -> String {
 
 /// Formats a list of types to be used as values for type arguments
 /// and puts them in angle brackets.
-/// Puts the last item in parentheses if it ends in `>` to avoid parser problems.
+/// It might add parentheses and spaces to avoid parser problems.
 pub fn format_type_args<E: Display>(args: &[Type<E>]) -> String {
     format!(
         "<{}>",
         args.iter()
-            .map(|arg| arg.to_string())
-            .map(|s| {
-                if s.contains('>') {
-                    format!("({s})")
-                } else {
-                    s
-                }
+            .rev()
+            .enumerate()
+            .map(|(i, t)| match t {
+                // Function types need parentheses if at the outermost level,
+                // because of the '>' in '->'
+                Type::Function(_) => format!("({t})"),
+                // For generic types we add a space to avoid '>>' at the end.
+                Type::NamedType(_, Some(_)) if i == 0 => format!("{t} "),
+                _ => format!("{t}"),
             })
+            .rev()
             .join(", ")
     )
 }
@@ -1030,6 +1050,14 @@ pub fn format_type_scheme_around_name<E: Display, N: Display>(
         )
     } else {
         format!(" {name}")
+    }
+}
+
+pub fn type_vars_to_string(type_vars: &TypeBounds) -> String {
+    if type_vars.is_empty() {
+        Default::default()
+    } else {
+        format!("<{type_vars}>")
     }
 }
 

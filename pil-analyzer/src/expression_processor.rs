@@ -18,6 +18,7 @@ use std::{
 use crate::{type_processor::TypeProcessor, AnalysisDriver};
 
 /// The ExpressionProcessor turns parsed expressions into analyzed expressions.
+///
 /// Its main job is to resolve references:
 /// It turns simple references into fully namespaced references and resolves local function variables.
 pub struct ExpressionProcessor<'a, D: AnalysisDriver> {
@@ -188,6 +189,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 self.process_block_expression(statements, expr, src)
             }
             PExpression::FreeInput(_, _) => panic!(),
+            PExpression::StructExpression(_, _) => unimplemented!("Structs are not supported yet"),
         }
     }
 
@@ -289,7 +291,9 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
 
     pub fn process_lambda_expression(
         &mut self,
-        LambdaExpression { kind, params, body }: LambdaExpression,
+        LambdaExpression {
+            kind, params, body, ..
+        }: LambdaExpression,
     ) -> LambdaExpression<Expression> {
         let previous_local_vars = self.save_local_variables();
 
@@ -306,7 +310,12 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         let body = Box::new(self.process_expression(*body));
 
         self.reset_local_variables(previous_local_vars);
-        LambdaExpression { kind, params, body }
+        LambdaExpression {
+            kind,
+            params,
+            body,
+            param_types: vec![],
+        }
     }
 
     fn process_block_expression(

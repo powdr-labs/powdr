@@ -13,7 +13,7 @@ use powdr_ast::analyzed::{
 };
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
-use powdr_ast::parsed::{EnumDeclaration, Number};
+use powdr_ast::parsed::{EnumDeclaration, Number, StructDeclaration, TypeDeclaration};
 use powdr_number::{BigUint, FieldElement};
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
@@ -49,6 +49,7 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         let symbols: Box<dyn Iterator<Item = Cow<'_, str>>> = if let Some((sym, value)) =
             pil_file.definitions.get(n.as_ref())
         {
+            // TODO remove this.
             let set_hint = (sym.kind == SymbolKind::Poly(PolynomialType::Committed)
                 && value.is_some())
             .then_some(Cow::from("std::prelude::set_hint"));
@@ -96,7 +97,7 @@ trait ReferencedSymbols {
 impl ReferencedSymbols for FunctionValueDefinition {
     fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
         match self {
-            FunctionValueDefinition::TypeDeclaration(enum_decl) => enum_decl.symbols(),
+            FunctionValueDefinition::TypeDeclaration(type_decl) => type_decl.symbols(),
             FunctionValueDefinition::TypeConstructor(enum_decl, _) => {
                 // This is the type constructor of an enum variant, it references the enum itself.
                 Box::new(once(enum_decl.name.as_str().into()))
@@ -110,6 +111,15 @@ impl ReferencedSymbols for FunctionValueDefinition {
     }
 }
 
+impl ReferencedSymbols for TypeDeclaration {
+    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
+        match self {
+            TypeDeclaration::Enum(enum_decl) => enum_decl.symbols(),
+            TypeDeclaration::Struct(struct_decl) => struct_decl.symbols(),
+        }
+    }
+}
+
 impl ReferencedSymbols for EnumDeclaration {
     fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
         Box::new(
@@ -119,6 +129,12 @@ impl ReferencedSymbols for EnumDeclaration {
                 .flat_map(|t| t.iter())
                 .flat_map(|t| t.symbols()),
         )
+    }
+}
+
+impl ReferencedSymbols for StructDeclaration {
+    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
+        Box::new(self.fields.iter().flat_map(|named| named.ty.symbols()))
     }
 }
 
@@ -183,6 +199,13 @@ fn collect_required_names<'a, T: FieldElement>(
             .values()
             .map(|p| p.polynomial.name.as_str().into()),
     );
+    for fun in &pil_file.prover_functions {
+        for e in fun.all_children() {
+            if let Expression::Reference(_, Reference::Poly(PolynomialReference { name, .. })) = e {
+                required_names.insert(Cow::from(name));
+            }
+        }
+    }
     for id in &pil_file.identities {
         id.pre_visit_expressions(&mut |e: &AlgebraicExpression<T>| {
             if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = e {
@@ -198,7 +221,6 @@ fn collect_required_names<'a, T: FieldElement>(
 fn remove_constant_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let constant_polys = pil_file
         .constant_polys_in_source_order()
-        .iter()
         .filter(|(p, _)| !p.is_array())
         .filter_map(|(poly, definition)| {
             let definition = definition.as_ref()?;
@@ -438,7 +460,6 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
     // We cannot remove arrays or array elements, so filter them out.
     let columns = pil_file
         .committed_polys_in_source_order()
-        .iter()
         .filter(|&(s, _)| (!s.is_array()))
         .map(|(s, _)| s.into())
         .collect::<HashSet<PolyID>>();
@@ -587,7 +608,7 @@ mod test {
     N::X = N::Y;
     N::Y = 7 * N::X;
 "#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
         assert_eq!(optimized, expectation);
     }
 
@@ -621,7 +642,7 @@ mod test {
     N::A = 1 + N::A;
     N::Z = 1 + N::A;
 "#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
         assert_eq!(optimized, expectation);
     }
 
@@ -637,7 +658,7 @@ mod test {
     col intermediate = N::x;
     N::intermediate = N::intermediate;
 "#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
         assert_eq!(optimized, expectation);
     }
 
@@ -660,7 +681,7 @@ namespace N(65536);
     col fixed t(i) { std::array::len::<expr>(N::y) };
     N::x[0] = N::t;
 "#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
         assert_eq!(optimized, expectation);
     }
 
@@ -689,7 +710,7 @@ namespace N(65536);
     [N::x + 1] in [N::cnt];
     [N::x] in [N::cnt + 1];
 "#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
         assert_eq!(optimized, expectation);
     }
 
@@ -712,10 +733,10 @@ namespace N(65536);
         let expectation = r#"namespace N(65536);
     col witness x;
     col fixed cnt(i) { N::inc(i) };
-    let inc: int -> int = |x| x + 1;
+    let inc: int -> int = |x| x + 1_int;
     [N::x] in [N::cnt];
 "#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
         assert_eq!(optimized, expectation);
     }
 
@@ -731,7 +752,7 @@ namespace N(65536);
     col inte[5] = [N::x[0], N::x[1], N::x[2], N::x[3], N::x[4]];
     N::x[2] = N::inte[4];
 "#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input));
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap());
         assert_eq!(optimized.intermediate_count(), 5);
         assert_eq!(optimized.to_string(), expectation);
     }
@@ -763,12 +784,12 @@ namespace N(65536);
     enum R {
         T,
     }
-    let t: N::X[] -> int = |r| 1;
-    col fixed f(i) { if i == 0 { N::t([]) } else { (|x| 1)(N::Y::F([])) } };
+    let t: N::X[] -> int = |r| 1_int;
+    col fixed f(i) { if i == 0_int { N::t([]) } else { (|x| 1_int)(N::Y::F([])) } };
     col witness x;
     N::x = N::f;
 "#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input)).to_string();
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
         assert_eq!(optimized, expectation);
     }
 }

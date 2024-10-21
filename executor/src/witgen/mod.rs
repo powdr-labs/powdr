@@ -47,6 +47,10 @@ mod vm_processor;
 
 static OUTER_CODE_NAME: &str = "witgen (outer code)";
 
+// TODO change this so that it has functions
+// input_from_channel, output_to_channel
+// instead of processing strings.
+// but we can only do that once we have fully removed the old query functions.
 pub trait QueryCallback<T>: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 impl<T, F> QueryCallback<T> for F where F: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 
@@ -214,7 +218,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             mut machines,
             base_parts,
         } = if self.stage == 0 {
-            machines::machine_extractor::split_out_machines(&fixed, retained_identities)
+            machines::machine_extractor::split_out_machines(&fixed, retained_identities, self.stage)
         } else {
             // We expect later-stage witness columns to be accumulators for lookup and permutation arguments.
             // These don't behave like normal witness columns (e.g. in a block machine), and they might depend
@@ -232,9 +236,11 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                     Default::default(),
                     polynomial_identities,
                     fixed.witness_cols.keys().collect::<HashSet<_>>(),
+                    fixed.analyzed.prover_functions.iter().collect(),
                 ),
             }
         };
+
         let mut query_callback = self.query_callback;
         let mut mutable_state = MutableState {
             machines: Machines::from(machines.iter_mut()),
@@ -271,7 +277,6 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         let witness_cols = self
             .analyzed
             .committed_polys_in_source_order()
-            .into_iter()
             .filter(|(symbol, _)| symbol.stage.unwrap_or_default() <= self.stage.into())
             .flat_map(|(p, _)| p.array_elements())
             .map(|(name, _id)| {
@@ -283,7 +288,12 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
 
         log::debug!("Publics:");
         for (name, value) in extract_publics(&witness_cols, self.analyzed) {
-            log::debug!("  {name:>30}: {value}");
+            log::debug!(
+                "  {name:>30}: {}",
+                value
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "Not yet known at this stage".to_string())
+            );
         }
         witness_cols
     }
@@ -292,17 +302,18 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
 pub fn extract_publics<T: FieldElement>(
     witness: &[(String, Vec<T>)],
     pil: &Analyzed<T>,
-) -> Vec<(String, T)> {
+) -> Vec<(String, Option<T>)> {
     let witness = witness
         .iter()
         .map(|(name, col)| (name.clone(), col))
         .collect::<BTreeMap<_, _>>();
     pil.public_declarations_in_source_order()
-        .iter()
         .map(|(name, public_declaration)| {
             let poly_name = &public_declaration.referenced_poly_name();
             let poly_index = public_declaration.index;
-            let value = witness[poly_name][poly_index as usize];
+            let value = witness
+                .get(poly_name)
+                .map(|column| column[poly_index as usize]);
             ((*name).clone(), value)
         })
         .collect()
@@ -362,7 +373,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             .collect::<BTreeMap<_, _>>();
 
         let witness_cols =
-            WitnessColumnMap::from(analyzed.committed_polys_in_source_order().iter().flat_map(
+            WitnessColumnMap::from(analyzed.committed_polys_in_source_order().flat_map(
                 |(poly, value)| {
                     poly.array_elements()
                         .map(|(name, poly_id)| {

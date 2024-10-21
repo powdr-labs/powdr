@@ -1,4 +1,7 @@
-use std::{env, path::PathBuf};
+use std::{
+    env,
+    path::{Path, PathBuf},
+};
 
 use powdr_ast::parsed::{
     asm::{
@@ -20,7 +23,7 @@ static MOD_FILE: &str = "mod.asm";
 /// # Panics
 /// If there is an error loading the standard library
 fn load_std() -> ASMModule {
-    let default_std_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+    let default_std_path = Path::new(env!("CARGO_MANIFEST_DIR"))
         .parent()
         .unwrap()
         .join("std");
@@ -88,18 +91,9 @@ impl Folder for StdAdder {
                         StdAdder::fold_import(self, import).map(From::from)
                     }
                     SymbolValue::Module(module) => self.fold_module(module).map(From::from),
-                    SymbolValue::Expression(e) => Ok(SymbolValue::Expression(e)),
-                    SymbolValue::TypeDeclaration(ty) => {
-                        self.fold_type_declaration(ty).map(From::from)
-                    }
-                    SymbolValue::TraitDeclaration(trait_decl) => {
-                        self.fold_trait_declaration(trait_decl).map(From::from)
-                    }
                 }
                 .map(|value| ModuleStatement::SymbolDefinition(SymbolDefinition { value, ..d })),
-                ModuleStatement::TraitImplementation(trait_impl) => {
-                    self.fold_trait_implementation(trait_impl).map(From::from)
-                }
+                ModuleStatement::PilStatement(pil) => self.fold_pil_statement(pil).map(From::from),
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -107,7 +101,7 @@ impl Folder for StdAdder {
         // (E.g. the main module)
         let has_std = statements
             .iter()
-            .filter_map(|m| m.defined_names())
+            .flat_map(|m| m.defined_names())
             .any(|n| n == "std");
 
         if !has_std {

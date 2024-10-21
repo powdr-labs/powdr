@@ -1,5 +1,5 @@
-use std::machines::shift::Shift;
-use std::machines::shift::ByteShift;
+use std::machines::large_field::shift::Shift;
+use std::machines::large_field::shift::ByteShift;
 
 let N: int = 65536;
 
