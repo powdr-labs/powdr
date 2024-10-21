@@ -527,7 +527,7 @@ impl TypeChecker {
             ) => {
                 let scheme = self.declared_types[name].1.clone();
                 let ty =
-                    self.instantiate_type_scheme_with_args(type_args, scheme, name, source_ref)?;
+                    self.instantiate_type_args_with_scheme(type_args, scheme, name, source_ref)?;
                 type_for_reference(&ty)
             }
             Expression::PublicReference(_, _) => Type::Expr,
@@ -735,17 +735,54 @@ impl TypeChecker {
                     vars: struct_decl.type_vars.clone(),
                 };
 
+                println!("type args: {:?}", type_args);
+                //let ty = self.instantiate_type_args_with_scheme(type_args, scheme, name, sr)?;
+                let (ty, args) = self.unifier.instantiate_scheme(scheme);
+                if let Some(requested_type_args) = type_args {
+                    if requested_type_args.len() != args.len() {
+                        return Err(sr.with_error(format!(
+                            "Expected {} type arguments for symbol {name}, but got {}: {}",
+                            args.len(),
+                            requested_type_args.len(),
+                            requested_type_args.iter().join(", ")
+                        )));
+                    }
+                    for (requested, inferred) in requested_type_args.iter_mut().zip(&args) {
+                        //requested.substitute_type_vars(&self.declared_type_vars);
+                        let requested = match requested {
+                            Type::TypeVar(_) => &self.unifier.new_type_var(),
+                            ty => ty,
+                        };
+                        println!("requested: {:?}", requested);
+                        println!("inferred: {:?}", inferred);
+                        self.unifier
+                            .unify_types(requested.clone(), inferred.clone())
+                            .map_err(|err| sr.with_error(err))?;
+                    }
+                }
+                //println!("args: {:?}", args.clone());
+                *type_args = Some(args);
+
+                println!("type_args: {:?}", type_args);
+                println!("ty: {:?}", ty);
+
                 for named_expr in fields.iter_mut() {
-                    let field_type = field_types.get(&named_expr.name).unwrap();
-                    self.expect_type(field_type, named_expr.body.as_mut())?;
+                    //let field_type = match field_types.get(&named_expr.name).unwrap() {
+                    //    Type::TypeVar(_) => &self.unifier.new_type_var(),
+                    //    ty => ty,
+                    //};
+                    let mut field_type = field_types.get(&named_expr.name).unwrap().clone();
+                    self.unifier.substitute(&mut field_type);
+                    //println!(" name: {:?}, field type: {:?}", named_expr.name, field_type);
+                    self.expect_type(&field_type, named_expr.body.as_mut())?;
                 }
 
-                self.instantiate_type_scheme_with_args(type_args, scheme, name, sr)?
+                ty
             }
         })
     }
 
-    fn instantiate_type_scheme_with_args(
+    fn instantiate_type_args_with_scheme(
         &mut self,
         type_args: &mut Option<Vec<Type>>,
         scheme: TypeScheme,

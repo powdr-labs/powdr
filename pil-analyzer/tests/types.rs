@@ -749,10 +749,14 @@ fn simple_struct() {
 fn simple_struct_type_arg() {
     let input = "
     struct Dot<T> { x: int, y: T }
+    
     let n: int = 1;
-    let x: Dot = Dot{x: 0, y: n};
+    let x = Dot{x: 0, y: n};
+    
+    let m: bool = false;
+    let y = Dot{x: 0, y: m};
     ";
-    type_check(input, &[("x", "", "Dot")]);
+    type_check(input, &[("x", "", "Dot"), ("y", "", "Dot")]);
 }
 
 #[test]
