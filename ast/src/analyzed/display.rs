@@ -64,9 +64,7 @@ impl<T: Display> Display for Analyzed<T> {
                         if matches!(
                             definition,
                             Some(FunctionValueDefinition::TypeConstructor(_, _))
-                        ) || matches!(
-                            definition,
-                            Some(FunctionValueDefinition::TraitFunction(_, _))
+                                | Some(FunctionValueDefinition::TraitFunction(_, _))
                         ) {
                             // These are printed as part of the enum / trait.
                             continue;
