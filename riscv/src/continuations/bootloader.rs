@@ -1,6 +1,7 @@
 use std::marker::PhantomData;
 
 use powdr_number::FieldElement;
+use powdr_number::FieldSize;
 use powdr_number::LargeInt;
 
 use super::memory_merkle_tree::MerkleTree;
@@ -281,24 +282,16 @@ pub fn shutdown_routine_upper_bound(num_pages: usize) -> usize {
 }
 
 pub fn bootloader_specific_instruction_names(field: KnownField) -> [&'static str; 2] {
-    match field {
-        KnownField::BabyBearField | KnownField::Mersenne31Field => {
-            small_field::bootloader::BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES
-        }
-        KnownField::GoldilocksField | KnownField::Bn254Field => {
-            large_field::bootloader::BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES
-        }
+    match field.field_size() {
+        FieldSize::Small => small_field::bootloader::BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES,
+        FieldSize::Large => large_field::bootloader::BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES,
     }
 }
 
 pub fn bootloader_preamble(field: KnownField) -> String {
-    match field {
-        KnownField::BabyBearField | KnownField::Mersenne31Field => {
-            small_field::bootloader::bootloader_preamble()
-        }
-        KnownField::GoldilocksField | KnownField::Bn254Field => {
-            large_field::bootloader::bootloader_preamble()
-        }
+    match field.field_size() {
+        FieldSize::Small => small_field::bootloader::bootloader_preamble(),
+        FieldSize::Large => large_field::bootloader::bootloader_preamble(),
     }
 }
 
@@ -306,11 +299,11 @@ pub fn bootloader_and_shutdown_routine(
     field: KnownField,
     submachine_initialization: &[String],
 ) -> String {
-    match field {
-        KnownField::BabyBearField | KnownField::Mersenne31Field => {
+    match field.field_size() {
+        FieldSize::Small => {
             small_field::bootloader::bootloader_and_shutdown_routine(submachine_initialization)
         }
-        KnownField::GoldilocksField | KnownField::Bn254Field => {
+        FieldSize::Large => {
             large_field::bootloader::bootloader_and_shutdown_routine(submachine_initialization)
         }
     }

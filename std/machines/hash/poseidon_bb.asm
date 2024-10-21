@@ -2,15 +2,14 @@ use std::array;
 use std::check::assert;
 use std::utils::unchanged_until;
 use std::utils::force_bool;
+use std::utils::new_bool;
 use std::utils::sum;
 use std::convert::expr;
-use std::machines::memory_bb::Memory;
+use std::machines::small_field::memory::Memory;
 use std::machines::split::split_bb::SplitBB;
 
 // Implements the Poseidon permutation for the BabyBear field with the following parameters:
-// - 16 field elements in the state, of which
-//   - 8 are meant to be rate elements
-//   - 8 are meant to be capacity elements
+// - 16 field elements in the state
 // - 8 field elements of output
 // - 8 full rounds
 // - 16 partial rounds
@@ -28,11 +27,8 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     call_selectors: sel,
 {
 
-    // Hashes 16 "rate" elements and 8 "capacity" elements to 8 field elements
-    // by applying the Poseidon permutation and returning the first 8 rate elements.
-    // When the hash function is used only once, the capacity elements should be
-    // set to constants, where different constants can be used to define different
-    // hash functions.
+    // Compresses 16 to 8 field elements by applying the Poseidon permutation and
+    // returning the first 8 elements of the state vector.
     //
     // The input data is passed via a memory pointer: the machine will read 16 field
     // elements from memory (32 16-bits half-words).
@@ -42,9 +38,12 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     // (in canonical form).
     //
     // Reads happen at the provided time step; writes happen at the next time step.
-    operation poseidon_permutation<0> input_addr, output_addr, time_step ->;
+    operation poseidon_permutation<0>
+        input_addr_high, input_addr_low,
+        output_addr_high, output_addr_low,
+        time_step ->;
 
-    col witness operation_id;
+    let operation_id;
 
     // Number of field elements in the state
     let STATE_SIZE: int = 16;
@@ -70,24 +69,63 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     std::utils::force_bool(used);
 
     // Repeat the input state in the whole block
-    col witness input[STATE_SIZE];
+    let input: col[STATE_SIZE];
     array::map(input, |c| unchanged_until(c, LAST));
     array::zip(input, state, |i, s| CLK[0] * (i - s) = 0);
 
     // Repeat the time step and input / output address in the whole block
-    col witness time_step;
-    col witness input_addr;
-    col witness output_addr;
+    let time_step;
+    let input_addr_high;
+    let input_addr_low;
+    let output_addr_high;
+    let output_addr_low;
     unchanged_until(time_step, LAST);
-    unchanged_until(input_addr, LAST);
-    unchanged_until(output_addr, LAST);
-    
+    unchanged_until(input_addr_high, LAST);
+    unchanged_until(input_addr_low, LAST);
+    unchanged_until(output_addr_high, LAST);
+    unchanged_until(output_addr_low, LAST);
+
+    // Increment the address in every row but the one it is set.
+    let is_addr_set = CLK[0] + CLK[STATE_SIZE];
+    let high_addr;
+    let low_addr;
+
+    // Set the initial address to read from
+    CLK[0] * (high_addr - input_addr_high) = 0;
+    CLK[0] * (low_addr - input_addr_low) = 0;
+
+    // Set the initial address to write to
+    CLK[STATE_SIZE] * (high_addr - output_addr_high) = 0;
+    CLK[STATE_SIZE] * (low_addr - output_addr_low) = 0;
+
+    // How far away from overflowing the low limb is:
+    let low_diff = low_addr - (0x10000 - 4);
+    // Is one if low limb is about to overflow:
+    let low_overflow;
+    low_overflow = 1 - low_diff_inv * low_diff;
+    // Helper to allow low_overflow to be boolean
+    let low_diff_inv;
+    // Ensures that (low_diff_inv * low_diff) is boolean,
+    // and that low_diff_inv is not 0 when low_diff is not 0:
+    (low_diff_inv * low_diff - 1) * low_diff = 0;
+
+    // Increment the low limb if address is not being set:
+    (1 - is_addr_set') * (
+        // If low limb is about to overflow, next value must be 0:
+        low_overflow * low_addr' +
+        // Otherwise, next value is current plus 4:
+        (1 - low_overflow) * (low_addr + 4 - low_addr')
+    ) = 0;
+    // Set high limb, incremented if low overflowed:
+    (1 - is_addr_set') * (high_addr' - high_addr - low_overflow) = 0;
+
     // One-hot encoding of the row number (for the first <STATE_SIZE + OUTPUT_SIZE> rows)
     assert(STATE_SIZE + OUTPUT_SIZE < ROWS_PER_HASH, || "Not enough rows to do memory read / write");
     let CLK: col[STATE_SIZE + OUTPUT_SIZE] = array::new(STATE_SIZE + OUTPUT_SIZE, |i| |row| if row % ROWS_PER_HASH == i { 1 } else { 0 });
     let CLK_0 = CLK[0];
 
-    col witness word_low, word_high;
+    let word_high;
+    let word_low;
 
     // Do a memory read in each of the first STATE_SIZE rows, getting the two 16-bit limbs
     // that makes up for the input field element. 
@@ -97,23 +135,26 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     let do_mload;
     do_mload = used * sum(STATE_SIZE, |i| CLK[i]);
     let input_index = sum(STATE_SIZE, |i| expr(i) * CLK[i]);
-    link if do_mload ~> (word_high, word_low) = mem.mload(input_addr + 4 * input_index, time_step);
+
+    link if do_mload ~> (word_high, word_low) = mem.mload(high_addr, low_addr, time_step);
 
     // Combine the low and high limbs and write it into `input`
-    let current_input = array::sum(array::new(STATE_SIZE, |i| CLK[i] * input[i]));
+    let current_input = sum(STATE_SIZE, |i| CLK[i] * input[i]);
     do_mload * (word_low + word_high * 2**16 - current_input) = 0;
 
     // Do a memory write in each of the next OUTPUT_SIZE rows.
     // For output i, we write the two limbs of field element at address output_addr + 4 * i.
+
     let do_mstore = used * sum(OUTPUT_SIZE, |i| CLK[i + STATE_SIZE]);
     let output_index = sum(OUTPUT_SIZE, |i| expr(i) * CLK[i + STATE_SIZE]);
+
     // TODO: This translates to two additional permutations. But because they go to the same machine
     // as the mloads above *and* never happen at the same time, they could actually be combined with
     // the mload permutations. But there is currently no way to express this.
-    link if do_mstore ~> mem.mstore(output_addr + 4 * output_index, time_step + 1, word_high, word_low);
+    link if do_mstore ~> mem.mstore(high_addr, low_addr, time_step + 1, word_high, word_low);
 
     // Make sure that in row i + STATE_SIZE, word_low and word_high correspond to output i
-    let current_output = array::sum(array::new(OUTPUT_SIZE, |i| CLK[i + STATE_SIZE] * output[i]));
+    let current_output = sum(OUTPUT_SIZE, |i| CLK[i + STATE_SIZE] * output[i]);
     link if do_mstore ~> (word_low, word_high) = split_bb.split(current_output);
 
 
@@ -147,20 +188,20 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     let C = [C_0, C_1, C_2, C_3, C_4, C_5, C_6, C_7, C_8, C_9, C_10, C_11, C_12, C_13, C_14, C_15];
 
     // State of the Poseidon permutation (8 rate elements and 4 capacity elements)
-    pol commit state[STATE_SIZE];
+    let state: col[STATE_SIZE];
 
     // The first OUTPUT_SIZE elements of the *final* state
     // (constrained to be constant within the block and equal to parts of the state in the last row)
-    pol commit output[OUTPUT_SIZE];
+    let output: col[OUTPUT_SIZE];
 
     // Add round constants
     // TODO should these be intermediate?
     let a = array::zip(state, C, |state, C| state + C);
 
     // Compute S-Boxes (x^7) (using a degree bound of 3)
-    col witness x3[STATE_SIZE];
+    let x3: col[STATE_SIZE];
     array::zip(x3, array::map(a, |a| a * a * a), |x3, expected| x3 = expected);
-    col witness x7[STATE_SIZE];
+    let x7: col[STATE_SIZE];
     array::zip(x7, array::zip(x3, a, |x3, a| x3 * x3 * a), |x7, expected| x7 = expected);
 
     // Apply S-Boxes on the first element and otherwise if it is a full round.
@@ -196,6 +237,7 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
 
     // Copy c to state in the next row
     array::zip(state, c, |state, c| (state' - c) * (1-LAST) = 0);
+    // '
 
     // In the last row, the first OUTPUT_SIZE elements of the state should equal output
     let output_state = array::sub_array(state, 0, OUTPUT_SIZE);
