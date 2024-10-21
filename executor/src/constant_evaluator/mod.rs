@@ -7,8 +7,8 @@ mod data_structures;
 mod interpreter;
 mod jit_compiler;
 
-/// Generates the fixed column values for all fixed columns that are defined
-/// (and not just declared).
+/// Generates the fixed column values for all fixed columns that are defined (and not just declared).
+///
 /// @returns the names (in source order) and the values for the columns.
 /// Arrays of columns are flattened, the name of the `i`th array element
 /// is `name[i]`.
@@ -23,6 +23,7 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, Variabl
     if max_degree > (1 << 18) {
         fixed_cols = jit_compiler::generate_values(analyzed);
     }
+    let mut used_interpreter = false;
     for (poly, value) in analyzed.constant_polys_in_source_order() {
         if let Some(value) = value {
             // For arrays, generate values for each index,
@@ -34,6 +35,7 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, Variabl
                     range
                         .iter()
                         .map(|degree| {
+                            used_interpreter = true;
                             interpreter::generate_values(analyzed, degree, &name, value, index)
                         })
                         .collect::<Vec<_>>()
@@ -41,6 +43,9 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, Variabl
                 });
             }
         }
+    }
+    if !used_interpreter && !fixed_cols.is_empty() {
+        log::info!("All columns were genrated using JIT-code.");
     }
 
     fixed_cols

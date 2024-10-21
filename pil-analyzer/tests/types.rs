@@ -722,6 +722,33 @@ fn trait_user_defined_enum_wrong_type() {
 }
 
 #[test]
+#[should_panic = "Could not find an implementation for the trait function ToTuple::get::<int, (int, int)> at input:90-102"]
+fn trait_no_impl() {
+    let input = "
+    trait ToTuple<S, I> {
+        get: S -> (S, I),
+    }
+    let r: (int, (int, int)) = ToTuple::get(3);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Could not find an implementation for the trait function Trait::f::<string> at input:109-117"]
+fn trait_wrong_impl() {
+    let input = r#"
+    trait Trait<X> {
+        f: X -> ()
+    }
+    impl Trait<int> {
+        f: |_| ()
+    }
+    let r: () = Trait::f("");
+    "#;
+    type_check(input, &[]);
+}
+
+#[test]
 fn prover_functions() {
     let input = "
         let a = 9;
@@ -733,4 +760,23 @@ fn prover_functions() {
         };
     ";
     type_check(input, &[("a", "", "int"), ("b", "", "()[]")]);
+}
+
+#[test]
+fn typed_literals() {
+    let input = "
+        let a = -1_int;
+        let b = -1_2_fe;
+        let c = -0x7_8_int;
+        let d = [1, 0_int, 2];
+        ";
+    type_check(
+        input,
+        &[
+            ("a", "", "int"),
+            ("b", "", "fe"),
+            ("c", "", "int"),
+            ("d", "", "int[]"),
+        ],
+    );
 }

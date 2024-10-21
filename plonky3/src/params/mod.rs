@@ -1,9 +1,8 @@
-//! The concrete parameters used in the prover
-//! Inspired from [this example](https://github.com/Plonky3/Plonky3/blob/6a1b0710fdf85136d0fdd645b92933615867740a/keccak-air/examples/prove_goldilocks_poseidon.rs)
-
 pub mod baby_bear;
 pub mod goldilocks;
+pub mod koala_bear;
 pub mod mersenne_31;
+pub(crate) mod poseidon2;
 
 use p3_uni_stark::StarkGenericConfig;
 use powdr_number::FieldElement;

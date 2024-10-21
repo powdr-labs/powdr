@@ -1,11 +1,15 @@
 //! The concrete parameters used in the prover for Mersenne-31
+//!
 //! Inspired from [this example](https://github.com/Plonky3/Plonky3/blob/7c5deb0eab7191a97f7bb088637c1a68b2e6eb68/keccak-air/examples/prove_m31_poseidon2.rs)
 
-use std::marker::PhantomData;
+use core::marker::PhantomData;
 
 use lazy_static::lazy_static;
 
-use crate::params::{Challenger, FieldElementMap, Plonky3Field};
+use crate::params::{
+    poseidon2::{poseidon2_external_constants, poseidon2_internal_constants},
+    Challenger, FieldElementMap, Plonky3Field,
+};
 use p3_challenger::DuplexChallenger;
 use p3_circle::CirclePcs;
 use p3_commit::ExtensionMmcs;
@@ -13,19 +17,13 @@ use p3_field::{extension::BinomialExtensionField, Field};
 use p3_fri::FriConfig;
 use p3_merkle_tree::MerkleTreeMmcs;
 use p3_mersenne_31::{DiffusionMatrixMersenne31, Mersenne31};
-use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
+use p3_poseidon2::{poseidon2_round_numbers_128, Poseidon2, Poseidon2ExternalMatrixGeneral};
 use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
 use p3_uni_stark::StarkConfig;
-
-use rand::{distributions::Standard, Rng, SeedableRng};
 
 use powdr_number::Mersenne31Field;
 
 const D: u64 = 5;
-// params directly taken from plonky3's poseidon2_round_numbers_128 function
-// to guarantee 128-bit security.
-const ROUNDS_F: usize = 8;
-const ROUNDS_P: usize = 12;
 const WIDTH: usize = 16;
 type Perm =
     Poseidon2<Mersenne31, Poseidon2ExternalMatrixGeneral, DiffusionMatrixMersenne31, WIDTH, D>;
@@ -57,21 +55,16 @@ const FRI_LOG_BLOWUP: usize = 1;
 const FRI_NUM_QUERIES: usize = 100;
 const FRI_PROOF_OF_WORK_BITS: usize = 16;
 
-const RNG_SEED: u64 = 42;
-
 lazy_static! {
+    static ref ROUNDS: (usize, usize) = poseidon2_round_numbers_128::<Mersenne31>(WIDTH, D);
+    static ref ROUNDS_F: usize = ROUNDS.0;
+    static ref ROUNDS_P: usize = ROUNDS.1;
     static ref PERM_M31: Perm = Perm::new(
-        ROUNDS_F,
-        rand_chacha::ChaCha8Rng::seed_from_u64(RNG_SEED)
-            .sample_iter(Standard)
-            .take(ROUNDS_F)
-            .collect::<Vec<[Mersenne31; WIDTH]>>(),
+        *ROUNDS_F,
+        poseidon2_external_constants(*ROUNDS_F),
         Poseidon2ExternalMatrixGeneral,
-        ROUNDS_P,
-        rand_chacha::ChaCha8Rng::seed_from_u64(RNG_SEED)
-            .sample_iter(Standard)
-            .take(ROUNDS_P)
-            .collect(),
+        *ROUNDS_P,
+        poseidon2_internal_constants(*ROUNDS_P),
         DiffusionMatrixMersenne31
     );
 }

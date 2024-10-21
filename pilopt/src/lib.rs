@@ -13,7 +13,7 @@ use powdr_ast::analyzed::{
 };
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
-use powdr_ast::parsed::{EnumDeclaration, Number};
+use powdr_ast::parsed::{EnumDeclaration, Number, StructDeclaration, TypeDeclaration};
 use powdr_number::{BigUint, FieldElement};
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
@@ -97,7 +97,7 @@ trait ReferencedSymbols {
 impl ReferencedSymbols for FunctionValueDefinition {
     fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
         match self {
-            FunctionValueDefinition::TypeDeclaration(enum_decl) => enum_decl.symbols(),
+            FunctionValueDefinition::TypeDeclaration(type_decl) => type_decl.symbols(),
             FunctionValueDefinition::TypeConstructor(enum_decl, _) => {
                 // This is the type constructor of an enum variant, it references the enum itself.
                 Box::new(once(enum_decl.name.as_str().into()))
@@ -111,6 +111,15 @@ impl ReferencedSymbols for FunctionValueDefinition {
     }
 }
 
+impl ReferencedSymbols for TypeDeclaration {
+    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
+        match self {
+            TypeDeclaration::Enum(enum_decl) => enum_decl.symbols(),
+            TypeDeclaration::Struct(struct_decl) => struct_decl.symbols(),
+        }
+    }
+}
+
 impl ReferencedSymbols for EnumDeclaration {
     fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
         Box::new(
@@ -120,6 +129,12 @@ impl ReferencedSymbols for EnumDeclaration {
                 .flat_map(|t| t.iter())
                 .flat_map(|t| t.symbols()),
         )
+    }
+}
+
+impl ReferencedSymbols for StructDeclaration {
+    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
+        Box::new(self.fields.iter().flat_map(|named| named.ty.symbols()))
     }
 }
 
@@ -718,7 +733,7 @@ namespace N(65536);
         let expectation = r#"namespace N(65536);
     col witness x;
     col fixed cnt(i) { N::inc(i) };
-    let inc: int -> int = |x| x + 1;
+    let inc: int -> int = |x| x + 1_int;
     [N::x] in [N::cnt];
 "#;
         let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
@@ -769,8 +784,8 @@ namespace N(65536);
     enum R {
         T,
     }
-    let t: N::X[] -> int = |r| 1;
-    col fixed f(i) { if i == 0 { N::t([]) } else { (|x| 1)(N::Y::F([])) } };
+    let t: N::X[] -> int = |r| 1_int;
+    col fixed f(i) { if i == 0_int { N::t([]) } else { (|x| 1_int)(N::Y::F([])) } };
     col witness x;
     N::x = N::f;
 "#;

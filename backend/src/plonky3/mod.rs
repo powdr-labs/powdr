@@ -1,12 +1,12 @@
+mod stark;
+
 use std::{io, path::PathBuf, sync::Arc};
 
 use powdr_ast::analyzed::Analyzed;
-use powdr_executor::{
-    constant_evaluator::{get_uniquely_sized_cloned, VariablySizedColumn},
-    witgen::WitgenCallback,
-};
-use powdr_number::{BabyBearField, GoldilocksField, Mersenne31Field};
-use powdr_plonky3::{Commitment, FieldElementMap, Plonky3Prover, ProverData};
+use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
+use powdr_number::{BabyBearField, GoldilocksField, KoalaBearField, Mersenne31Field};
+use powdr_plonky3::{Commitment, FieldElementMap, ProverData};
+use stark::Plonky3Prover;
 
 use crate::{
     field_filter::generalize_factory, Backend, BackendFactory, BackendOptions, Error, Proof,
@@ -35,22 +35,8 @@ where
         if verification_app_key.is_some() {
             return Err(Error::NoAggregationAvailable);
         }
-        if pil.degrees().len() > 1 {
-            return Err(Error::NoVariableDegreeAvailable);
-        }
-        if pil.public_declarations_in_source_order().any(|(_, d)| {
-            pil.definitions.iter().any(|(_, (symbol, _))| {
-                symbol.absolute_name == d.name && symbol.stage.unwrap_or_default() > 0
-            })
-        }) {
-            return Err(Error::NoLaterStagePublicAvailable);
-        }
 
-        let fixed = Arc::new(
-            get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
-        );
-
-        let mut p3 = Box::new(Plonky3Prover::new(pil.clone(), fixed.clone()));
+        let mut p3 = Box::new(Plonky3Prover::new(pil.clone(), fixed));
 
         if let Some(verification_key) = verification_key {
             p3.set_verifying_key(verification_key);
@@ -62,7 +48,7 @@ where
     }
 }
 
-generalize_factory!(Factory <- RestrictedFactory, [BabyBearField, GoldilocksField, Mersenne31Field]);
+generalize_factory!(Factory <- RestrictedFactory, [BabyBearField, KoalaBearField, GoldilocksField, Mersenne31Field]);
 
 impl<T: FieldElementMap> Backend<T> for Plonky3Prover<T>
 where
@@ -70,6 +56,9 @@ where
     Commitment<T>: Send,
 {
     fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
+        assert_eq!(instances.len(), 1);
+        let instances = &instances[0];
+
         Ok(self.verify(proof, instances)?)
     }
 
