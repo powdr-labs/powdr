@@ -833,3 +833,22 @@ fn enum_used_as_struct() {
     ";
     type_check(input, &[]);
 }
+
+#[test]
+fn typed_literals() {
+    let input = "
+        let a = -1_int;
+        let b = -1_2_fe;
+        let c = -0x7_8_int;
+        let d = [1, 0_int, 2];
+        ";
+    type_check(
+        input,
+        &[
+            ("a", "", "int"),
+            ("b", "", "fe"),
+            ("c", "", "int"),
+            ("d", "", "int[]"),
+        ],
+    );
+}

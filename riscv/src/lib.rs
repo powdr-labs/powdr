@@ -133,6 +133,9 @@ pub fn compile_rust(
             KnownField::BabyBearField => {
                 todo!()
             }
+            KnownField::KoalaBearField => {
+                todo!()
+            }
             KnownField::Mersenne31Field => {
                 todo!()
             }

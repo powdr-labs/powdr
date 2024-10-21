@@ -9,7 +9,8 @@ use log::{max_level, LevelFilter};
 use powdr_backend::BackendType;
 use powdr_number::{buffered_write_file, read_polys_csv_file, CsvRenderMode};
 use powdr_number::{
-    BabyBearField, BigUint, Bn254Field, FieldElement, GoldilocksField, Mersenne31Field,
+    BabyBearField, BigUint, Bn254Field, FieldElement, GoldilocksField, KoalaBearField,
+    Mersenne31Field,
 };
 use powdr_pipeline::Pipeline;
 use std::io;
@@ -63,6 +64,8 @@ fn bind_cli_args<F: FieldElement>(
 pub enum FieldArgument {
     #[strum(serialize = "bb")]
     Bb,
+    #[strum(serialize = "kb")]
+    Kb,
     #[strum(serialize = "m31")]
     M31,
     #[strum(serialize = "gl")]
