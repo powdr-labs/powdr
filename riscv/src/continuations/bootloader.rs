@@ -40,8 +40,11 @@ pub const PAGE_INPUTS_OFFSET: usize = NUM_PAGES_INDEX + 1;
 ///
 /// For now, this trait is implemented directly by each `FieldElement` type, because the hash functions (i.e., poseidon) are field-specific.
 pub(crate) trait BootloaderImpl<F> {
+    // number of field elements to represent a single 32-bit word.
     const FE_PER_WORD: usize;
+    // type of a memory page (must be a FE array of a specific size, but we can't use associated constants to define it...)
     type Page;
+    // type of a hash value (same as Page, a FE array of a specific size)
     type Hash;
     fn update_page(page: &mut Self::Page, idx: usize, word: u32);
     fn hash_page(page: &Self::Page) -> Self::Hash;
