@@ -2,7 +2,6 @@ use std::array;
 use std::array::fold;
 use std::array::len;
 use std::array::map;
-use std::array::zip;
 use std::check::assert;
 use std::check::panic;
 use std::math::fp2::Fp2;
