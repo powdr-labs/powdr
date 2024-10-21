@@ -25,10 +25,9 @@ let word_increment_ptr: expr, expr, expr, expr -> Constr[] = constr |pre_high, p
 
     // Increment polynomials, to be used by the caller in constraints:
     [
-        // If low limb is about to overflow, next value must be 0:
-        low_overflow * post_low +
-        // Otherwise, next value is current plus 4:
-        (1 - low_overflow) * (pre_low + 4 - post_low) = 0,
+        // If low limb is about to overflow, next value must be 0,
+        // otherwise, next value is current plus 4.
+        std::constraints::if_else(low_overflow, post_low = 0, post_low = pre_low + 4),
 
         // Set high limb, incremented if low overflowed:
         post_high - pre_high - low_overflow = 0
