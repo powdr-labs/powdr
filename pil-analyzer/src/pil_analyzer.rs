@@ -327,7 +327,6 @@ impl PILAnalyzer {
                         else {
                             panic!("Invalid value for query function")
                         };
-
                         expressions.push((e, query_type.clone().into()));
 
                         (type_scheme, None)

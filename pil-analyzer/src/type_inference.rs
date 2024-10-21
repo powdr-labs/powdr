@@ -4,6 +4,7 @@ use itertools::Itertools;
 use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference},
     parsed::{
+        asm::SymbolPath,
         display::format_type_scheme_around_name,
         types::{ArrayType, FunctionType, TupleType, Type, TypeBounds, TypeScheme},
         visitor::ExpressionVisitable,
@@ -722,62 +723,54 @@ impl TypeChecker {
                 };
                 let struct_decl = self.struct_declarations.get(name).unwrap();
 
-                let field_types: HashMap<_, _> = fields
-                    .iter()
-                    .map(|named_expr| {
-                        let scheme = struct_decl.type_of_field(&named_expr.name).unwrap();
-                        (named_expr.name.clone(), scheme.ty)
-                    })
+                let fresh_type_vars: Vec<Type> = struct_decl
+                    .type_vars
+                    .vars()
+                    .map(|_| self.unifier.new_type_var())
                     .collect();
 
-                let scheme = TypeScheme {
-                    ty: Type::<u64>::TypeVar(struct_decl.name.clone()),
-                    vars: struct_decl.type_vars.clone(),
-                };
-
-                println!("type args: {:?}", type_args);
-                //let ty = self.instantiate_type_args_with_scheme(type_args, scheme, name, sr)?;
-                let (ty, args) = self.unifier.instantiate_scheme(scheme);
                 if let Some(requested_type_args) = type_args {
-                    if requested_type_args.len() != args.len() {
-                        return Err(sr.with_error(format!(
-                            "Expected {} type arguments for symbol {name}, but got {}: {}",
-                            args.len(),
-                            requested_type_args.len(),
-                            requested_type_args.iter().join(", ")
-                        )));
-                    }
-                    for (requested, inferred) in requested_type_args.iter_mut().zip(&args) {
-                        //requested.substitute_type_vars(&self.declared_type_vars);
-                        let requested = match requested {
-                            Type::TypeVar(_) => &self.unifier.new_type_var(),
-                            ty => ty,
-                        };
-                        println!("requested: {:?}", requested);
-                        println!("inferred: {:?}", inferred);
+                    for (fresh_var, requested) in
+                        fresh_type_vars.iter().zip(requested_type_args.iter())
+                    {
                         self.unifier
-                            .unify_types(requested.clone(), inferred.clone())
+                            .unify_types(fresh_var.clone(), requested.clone())
                             .map_err(|err| sr.with_error(err))?;
                     }
                 }
-                //println!("args: {:?}", args.clone());
-                *type_args = Some(args);
 
-                println!("type_args: {:?}", type_args);
-                println!("ty: {:?}", ty);
+                let vars_mapping = &struct_decl
+                    .type_vars
+                    .vars()
+                    .zip(fresh_type_vars.iter())
+                    .map(|(var, ty)| (var.clone(), ty.clone()))
+                    .collect();
+
+                let instantiated_field_types: HashMap<_, _> = struct_decl
+                    .fields
+                    .iter()
+                    .map(|field| {
+                        let mut field_type = field.ty.clone();
+                        field_type.substitute_type_vars(vars_mapping);
+                        (field.name.clone(), field_type)
+                    })
+                    .collect();
 
                 for named_expr in fields.iter_mut() {
-                    //let field_type = match field_types.get(&named_expr.name).unwrap() {
-                    //    Type::TypeVar(_) => &self.unifier.new_type_var(),
-                    //    ty => ty,
-                    //};
-                    let mut field_type = field_types.get(&named_expr.name).unwrap().clone();
-                    self.unifier.substitute(&mut field_type);
-                    //println!(" name: {:?}, field type: {:?}", named_expr.name, field_type);
-                    self.expect_type(&field_type, named_expr.body.as_mut())?;
+                    let field_type = instantiated_field_types.get(&named_expr.name).unwrap();
+                    self.expect_type(field_type, named_expr.body.as_mut())?;
                 }
 
-                ty
+                *type_args = Some(fresh_type_vars.clone());
+
+                if type_args.as_ref().map_or(true, |args| args.is_empty()) {
+                    Type::TypeVar(name.to_string())
+                } else {
+                    Type::NamedType(
+                        SymbolPath::from_identifier(name.to_string()),
+                        type_args.clone(),
+                    )
+                }
             }
         })
     }

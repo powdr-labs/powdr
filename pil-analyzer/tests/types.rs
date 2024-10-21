@@ -750,13 +750,27 @@ fn simple_struct_type_arg() {
     let input = "
     struct Dot<T> { x: int, y: T }
     
-    let n: int = 1;
-    let x = Dot{x: 0, y: n};
+    let f: int -> Dot<int> = |i| Dot{x: 0, y: i};
+    let n = 1;
+    let x = f(n);
     
     let m: bool = false;
     let y = Dot{x: 0, y: m};
     ";
-    type_check(input, &[("x", "", "Dot"), ("y", "", "Dot")]);
+    type_check(input, &[("x", "", "Dot<int>"), ("y", "", "Dot<bool>")]);
+}
+
+#[test]
+#[should_panic = "Cannot unify types Dot<int> and Dot"]
+fn simple_struct_type_arg_fail() {
+    let input = "
+    struct Dot<T> { x: int, y: T }
+    
+    let f: int -> Dot = |i| Dot{x: 0, y: i};
+    let n = 1;
+    let x = f(n);
+    ";
+    type_check(input, &[]);
 }
 
 #[test]
