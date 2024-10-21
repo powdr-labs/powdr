@@ -134,8 +134,8 @@ let once: int[] -> ArrayTerm = |a| ArrayTerm::Once(a);
 machine Main with degree: 2**22 {
     col witness w;
     let LAST: col = match expand([repeat([0]), once([1])], std::prover::degree) {
-        Result::Ok(r) => r,
+        Result::Ok(r) => |i| std::convert::fe(r(i)),
         Result::Err(e) => panic(e)
     };
-    w  = LAST;
+    w = LAST;
 }
