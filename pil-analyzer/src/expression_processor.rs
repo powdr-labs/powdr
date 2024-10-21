@@ -7,8 +7,8 @@ use powdr_ast::{
         types::{ArrayType, Type},
         ArrayExpression, ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall,
         IfExpression, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression,
-        NamespacedPolynomialReference, Number, Pattern, SelectedExpressions, StatementInsideBlock,
-        SymbolCategory, UnaryOperation,
+        NamespacedPolynomialReference, Number, Pattern, SelectedExpressions, SourceReference,
+        StatementInsideBlock, SymbolCategory, UnaryOperation,
     },
 };
 
@@ -46,7 +46,7 @@ pub fn inject_column_conversion_if_needed(value: Expression, ty: &Option<Type<u6
 /// Replaces `expr` by a function call to `name` with `expr` as argument.
 fn inject_function_call(expr: Expression, name: &str) -> Expression {
     let function = Box::new(Expression::Reference(
-        SourceRef::unknown(),
+        expr.source_reference().clone(),
         Reference::Poly(PolynomialReference {
             name: name.to_string(),
             type_args: None,
