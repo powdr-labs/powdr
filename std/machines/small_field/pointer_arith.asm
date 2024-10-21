@@ -6,11 +6,9 @@
 /// The returned polynomials are not automatically added as constraints. This is so the caller
 /// will be able to latch-disable them in rows they aren't needed.
 ///
-/// I think it can be used in both directions: to increment and decrement. Just swap the inputs.
-///
 /// This constr function introduces 2 new witness column and some helper constraints.
 ///
-/// Preconditions: pre_low and post_low must be 16-bit aligned and in range [0, 0xfffc].
+/// Preconditions: pre_low must be 16-bit aligned and in range [0, 0xfffc].
 let word_increment_ptr: expr, expr, expr, expr -> expr[] = constr |pre_high, pre_low, post_high, post_low| {
     // How far away from overflowing the low limb is:
     let low_diff = pre_low - (0x10000 - 4);
