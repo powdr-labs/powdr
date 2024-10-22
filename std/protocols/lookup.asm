@@ -4,6 +4,7 @@ use std::array::len;
 use std::array::map;
 use std::check::assert;
 use std::check::panic;
+use std::constraints::to_phantom_lookup;
 use std::math::fp2::Fp2;
 use std::math::fp2::add_ext;
 use std::math::fp2::sub_ext;
@@ -113,11 +114,7 @@ let lookup: Constr, expr -> () = constr |lookup_constraint, multiplicities| {
     constrain_eq_ext(update_expr, from_base(0));
 
     // Build an annotation for witness generation
-    let witgen_annotation = match lookup_constraint {
-        Constr::Lookup(selectors, values) =>
-            Constr::PhantomLookup(selectors, values, multiplicities),
-        _ => panic("Expected lookup constraint")
-    };
+    let witgen_annotation = to_phantom_lookup(lookup_constraint, multiplicities);
     // TODO: Adding it to the constraint set currently fails
     // witgen_annotation;
 
