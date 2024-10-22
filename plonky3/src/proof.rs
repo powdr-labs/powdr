@@ -50,6 +50,8 @@ pub struct StageOpenedValues<Challenge> {
     pub(crate) next: Vec<Challenge>,
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(bound = "PcsProverData<SC>: for<'a> Deserialize<'a> + Serialize")]
 pub struct StarkProvingKey<SC: StarkGenericConfig> {
     // for each table, the preprocessed data
     pub preprocessed: BTreeMap<String, TableProvingKeyCollection<SC>>,
@@ -61,6 +63,8 @@ pub type TableProvingKeyCollection<SC> = BTreeMap<usize, TableProvingKey<SC>>;
 /// For each possible size, the commitment
 pub type TableVerifyingKeyCollection<SC> = BTreeMap<usize, Com<SC>>;
 
+#[derive(Serialize, Deserialize)]
+#[serde(bound = "PcsProverData<SC>: for<'a> Deserialize<'a> + Serialize")]
 pub struct TableProvingKey<SC: StarkGenericConfig> {
     pub commitment: Com<SC>,
     pub prover_data: PcsProverData<SC>,

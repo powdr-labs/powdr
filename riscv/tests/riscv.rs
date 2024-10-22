@@ -44,13 +44,13 @@ fn run_continuations_test(case: &str, powdr_asm: String) {
         .from_asm_string(powdr_asm.clone(), Some(PathBuf::from(&case)))
         .with_prover_inputs(Default::default())
         .with_output(tmp_dir.to_path_buf(), false);
-    let pipeline_callback = |pipeline: Pipeline<GoldilocksField>| -> Result<(), ()> {
-        run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).unwrap();
+    let pipeline_callback = |pipeline: &mut Pipeline<GoldilocksField>| -> Result<(), ()> {
+        run_pilcom_with_backend_variant(pipeline.clone(), BackendVariant::Composite).unwrap();
 
         Ok(())
     };
     let bootloader_inputs = rust_continuations_dry_run(&mut pipeline, Default::default());
-    rust_continuations(pipeline, pipeline_callback, bootloader_inputs).unwrap();
+    rust_continuations(&mut pipeline, pipeline_callback, bootloader_inputs).unwrap();
 }
 
 #[test]

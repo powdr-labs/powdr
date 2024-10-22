@@ -32,6 +32,7 @@ impl BackendFactory<GoldilocksField> for RestrictedFactory {
         fixed: Arc<Vec<(String, VariablySizedColumn<GoldilocksField>)>>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
+        proving_key: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
         verification_app_key: Option<&mut dyn std::io::Read>,
         _options: BackendOptions,
@@ -40,6 +41,9 @@ impl BackendFactory<GoldilocksField> for RestrictedFactory {
             return Err(Error::NoSetupAvailable);
         }
 
+        if proving_key.is_some() {
+            return Err(Error::BackendError("Proving key unused".to_string()));
+        }
         if verification_app_key.is_some() {
             return Err(Error::NoAggregationAvailable);
         }

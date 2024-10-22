@@ -5,6 +5,7 @@ use p3_commit::Pcs;
 use p3_matrix::dense::RowMajorMatrix;
 use powdr_backend_utils::machine_fixed_columns;
 use powdr_executor::constant_evaluator::VariablySizedColumn;
+use serde::{Deserialize, Serialize};
 
 use core::fmt;
 use std::collections::BTreeMap;
@@ -52,7 +53,7 @@ impl fmt::Display for VerificationKeyExportError {
 
 impl<T: FieldElementMap> Plonky3Prover<T>
 where
-    ProverData<T>: Send,
+    ProverData<T>: Send + Serialize + for<'a> Deserialize<'a>,
     Commitment<T>: Send,
 {
     pub fn new(
@@ -74,8 +75,21 @@ where
         }
     }
 
+    pub fn set_proving_key(&mut self, rdr: &mut dyn std::io::Read) {
+        self.proving_key = Some(bincode::deserialize_from(rdr).unwrap());
+    }
+
     pub fn set_verifying_key(&mut self, rdr: &mut dyn std::io::Read) {
         self.verifying_key = Some(bincode::deserialize_from(rdr).unwrap());
+    }
+
+    pub fn export_proving_key(&self) -> Result<Vec<u8>, VerificationKeyExportError> {
+        Ok(bincode::serialize(
+            self.proving_key
+                .as_ref()
+                .ok_or(VerificationKeyExportError::NoVerificationKey)?,
+        )
+        .unwrap())
     }
 
     pub fn export_verifying_key(&self) -> Result<Vec<u8>, VerificationKeyExportError> {
@@ -306,7 +320,7 @@ mod tests {
 
     fn run_test_publics_aux<F: FieldElementMap>(pil: &str, malicious_publics: &Option<Vec<usize>>)
     where
-        ProverData<F>: Send,
+        ProverData<F>: Send + serde::Serialize + for<'a> serde::Deserialize<'a>,
         Commitment<F>: Send,
     {
         let mut pipeline = Pipeline::<F>::default().from_pil_string(pil.to_string());

@@ -139,6 +139,7 @@ pub trait BackendFactory<F: FieldElement> {
         fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
+        proving_key: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,
         backend_options: BackendOptions,
@@ -185,6 +186,10 @@ pub trait Backend<F: FieldElement>: Send {
             .write_all(&v)
             .map_err(|_| Error::BackendError("Could not write verification key".to_string()))?;
         Ok(())
+    }
+
+    fn export_proving_key(&self, _output: &mut dyn io::Write) -> Result<(), Error> {
+        Err(Error::BackendError("No proving key available".to_string()))
     }
 
     fn verification_key_bytes(&self) -> Result<Vec<u8>, Error> {
