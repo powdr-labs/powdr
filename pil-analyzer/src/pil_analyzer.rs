@@ -429,18 +429,23 @@ impl PILAnalyzer {
             _ => {
                 let names = statement
                     .symbol_definition_names_and_contained()
-                    .map(|(name, sub_name, symbol_category)| {
-                        (
-                            match sub_name {
-                                None => self.driver().resolve_decl(name),
-                                Some(sub_name) => self
-                                    .driver()
-                                    .resolve_namespaced_decl(&[name, sub_name])
-                                    .relative_to(&Default::default())
-                                    .to_string(),
-                            },
-                            symbol_category,
-                        )
+                    .filter_map(|(name, sub_name, symbol_category)| {
+                        let resolved_name_result = match sub_name {
+                            None => self.driver().resolve_decl(SourceRef::unknown(), name),
+                            Some(sub_name) => self
+                                .driver()
+                                .resolve_namespaced_decl(SourceRef::unknown(), &[name, sub_name])
+                                .map(|resolved_name| {
+                                    resolved_name.relative_to(&Default::default()).to_string()
+                                }),
+                        };
+
+                        match resolved_name_result {
+                            Ok(resolved_name) => Some((resolved_name, symbol_category)),
+                            Err(err) => {
+                                panic!("Failed to resolve symbol: {}", err);
+                            }
+                        }
                     })
                     .collect::<Vec<_>>();
                 for (name, symbol_kind) in &names {
@@ -511,8 +516,14 @@ impl PILAnalyzer {
 
     fn handle_namespace(&mut self, name: SymbolPath, degree: Option<parsed::NamespaceDegree>) {
         let evaluate_degree_bound = |e| {
-            let e =
-                ExpressionProcessor::new(self.driver(), &Default::default()).process_expression(e);
+            let e = match ExpressionProcessor::new(self.driver(), &Default::default())
+                .process_expression(e)
+            {
+                Ok(e) => e,
+                Err(e) => {
+                    panic!("{}", e.message());
+                }
+            };
             u64::try_from(
                 evaluator::evaluate_expression::<GoldilocksField>(
                     &e,
@@ -544,7 +555,7 @@ struct Driver<'a>(&'a PILAnalyzer);
 impl<'a> AnalysisDriver for Driver<'a> {
     fn resolve_namespaced_decl(
         &self,
-        source: SourceRef,
+        _source: SourceRef,
         path: &[&String],
     ) -> Result<AbsoluteSymbolPath, Error> {
         Ok(path
