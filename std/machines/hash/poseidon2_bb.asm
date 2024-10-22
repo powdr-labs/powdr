@@ -136,7 +136,6 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
 
         // Multiply with MDS Matrix
         array::zip(output, apply_mds(x7, array::len(output)), |out, x| out = x);
-//        output = apply_mds(x7, array::len(output));
     };
 
     let internal_round = constr |c_idx, input, output| {
@@ -164,7 +163,7 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
         );
     };
 
-    let addr_inc = constr |addr_high, addr_low| {
+    let address_inc = constr |addr_high, addr_low| {
         let addr = array::zip(
             addr_high,
             addr_low,
@@ -186,7 +185,7 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     // Calculate the addresses and load all the inputs into the first time step
     let input_addr_high: col[STATE_SIZE];
     let input_addr_low: col[STATE_SIZE];
-    addr_inc(input_addr_high, input_addr_low);
+    address_inc(input_addr_high, input_addr_low);
 
     let input_low: col[STATE_SIZE];
     let input_high: col[STATE_SIZE];
@@ -208,31 +207,15 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     link ~> (input_high[14], input_low[14]) = mem.mload(input_addr_high[14], input_addr_low[14], time_step);
     link ~> (input_high[15], input_low[15]) = mem.mload(input_addr_high[15], input_addr_low[15], time_step);
 
-    ////////////////////////////// DEBUG ///////////////////////////////////
-    let input: col[STATE_SIZE];
-    ////////////////////////////////////////////////////////////////////////
-    array::zip(input,
-        array::zip(input_low, input_high, |low, high| low + 0x10000 * high),
-        |a, b| a = b
-    );
+    let input = array::zip(input_low, input_high, |low, high| low + 0x10000 * high);
 
     // Perform the inital MDS step
-    ////////////////////////////// DEBUG ///////////////////////////////////
-    let pre_rounds: col[STATE_SIZE];
-    ////////////////////////////////////////////////////////////////////////
-    array::zip(apply_mds(input, STATE_SIZE), pre_rounds, |a, b| a = b);
-
-
-    ////////////////////////////// DEBUG ///////////////////////////////////
-    let after_initial_rounds: col[STATE_SIZE];
-    let after_internal_rounds: col[STATE_SIZE];
-    ////////////////////////////////////////////////////////////////////////
+    let pre_rounds = apply_mds(input, STATE_SIZE);
 
     // Perform most of the rounds
-    let final_full_state: col[STATE_SIZE];
-    (constr || {
+    let final_full_state = (constr || {
         // Perform the first half of the external rounds
-        let aaaaaaaa = utils::fold(
+        let after_initial_rounds = utils::fold(
             HALF_EXTERNAL_ROUNDS, |round_idx| round_idx, pre_rounds,
             constr |pre_state, round_idx| {
             //    let post_state: col[STATE_SIZE];
@@ -241,10 +224,9 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
                 post_state
             }
         );
-        array::zip(after_initial_rounds, aaaaaaaa, |a, b| a = b);
 
         // Perform the internal rounds
-        let bbbbbbbbbb = utils::fold(
+        let after_internal_rounds = utils::fold(
             INTERNAL_ROUNDS, |round_idx| round_idx, after_initial_rounds,
             constr |pre_state, round_idx| {
                 let post_state = array::new(STATE_SIZE, |_| { let x; x});
@@ -252,10 +234,9 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
                 post_state
             }
         );
-        array::zip(after_internal_rounds, bbbbbbbbbb, |a, b| a = b);
 
         // Perform the second half of the external rounds, except the last one
-        array::zip(final_full_state, utils::fold(
+        utils::fold(
             HALF_EXTERNAL_ROUNDS - 1,
             |round_idx| round_idx + HALF_EXTERNAL_ROUNDS,
             after_internal_rounds,
@@ -264,32 +245,32 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
                 external_round(round_idx, pre_state, post_state);
                 post_state
             }
-        ), |a, b| a = b);
+        )
     })();
 
     // Perform the last external round
     // It is special because the output is smaller than the entire state,
     // so the MDS matrix multiplication is only partial.
-    let xinforinfula: col[OUTPUT_SIZE];
-    external_round(2 * HALF_EXTERNAL_ROUNDS - 1, final_full_state, xinforinfula);
+    let output: col[OUTPUT_SIZE];
+    external_round(2 * HALF_EXTERNAL_ROUNDS - 1, final_full_state, output);
 
     // Split the output into high and low limbs
     let output_low: col[OUTPUT_SIZE];
     let output_high: col[OUTPUT_SIZE];
     // TODO: turn this into array operations
-    link ~> (output_low[0], output_high[0]) = split_BB.split(xinforinfula[0]);
-    link ~> (output_low[1], output_high[1]) = split_BB.split(xinforinfula[1]);
-    link ~> (output_low[2], output_high[2]) = split_BB.split(xinforinfula[2]);
-    link ~> (output_low[3], output_high[3]) = split_BB.split(xinforinfula[3]);
-    link ~> (output_low[4], output_high[4]) = split_BB.split(xinforinfula[4]);
-    link ~> (output_low[5], output_high[5]) = split_BB.split(xinforinfula[5]);
-    link ~> (output_low[6], output_high[6]) = split_BB.split(xinforinfula[6]);
-    link ~> (output_low[7], output_high[7]) = split_BB.split(xinforinfula[7]);
+    link ~> (output_low[0], output_high[0]) = split_BB.split(output[0]);
+    link ~> (output_low[1], output_high[1]) = split_BB.split(output[1]);
+    link ~> (output_low[2], output_high[2]) = split_BB.split(output[2]);
+    link ~> (output_low[3], output_high[3]) = split_BB.split(output[3]);
+    link ~> (output_low[4], output_high[4]) = split_BB.split(output[4]);
+    link ~> (output_low[5], output_high[5]) = split_BB.split(output[5]);
+    link ~> (output_low[6], output_high[6]) = split_BB.split(output[6]);
+    link ~> (output_low[7], output_high[7]) = split_BB.split(output[7]);
 
     // Write the output to memory at the next time step
     let output_addr_high: col[OUTPUT_SIZE];
     let output_addr_low: col[OUTPUT_SIZE];
-    addr_inc(output_addr_high, output_addr_low);
+    address_inc(output_addr_high, output_addr_low);
     // TODO: turn this into array operations
     link ~> mem.mstore(output_addr_high[0], output_addr_low[0], time_step + 1, output_high[0], output_low[0]);
     link ~> mem.mstore(output_addr_high[1], output_addr_low[1], time_step + 1, output_high[1], output_low[1]);
