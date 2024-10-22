@@ -344,11 +344,7 @@ fn execute<F: FieldElement>(
         (true, true) => {
             let dry_run =
                 powdr_riscv::continuations::rust_continuations_dry_run(&mut pipeline, profiling);
-            powdr_riscv::continuations::rust_continuations::<F, _, _>(
-                pipeline,
-                generate_witness,
-                dry_run,
-            )?;
+            powdr_riscv::continuations::rust_continuations(pipeline, generate_witness, dry_run)?;
         }
         (true, false) => {
             generate_witness(pipeline)?;
