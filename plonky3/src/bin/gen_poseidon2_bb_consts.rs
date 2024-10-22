@@ -1,7 +1,7 @@
 use itertools::Itertools;
-use p3_baby_bear::{BabyBear, BabyBearDiffusionMatrixParameters, BabyBearParameters};
-use p3_field::{AbstractField, PrimeField32, PrimeField64};
-use p3_monty_31::{DiffusionMatrixParameters, MontyParameters};
+use p3_baby_bear::{BabyBear, BabyBearDiffusionMatrixParameters};
+use p3_field::{AbstractField, PrimeField32};
+use p3_monty_31::DiffusionMatrixParameters;
 use p3_poseidon2::Poseidon2ExternalMatrixGeneral;
 use p3_symmetric::Permutation;
 use powdr_plonky3::{
