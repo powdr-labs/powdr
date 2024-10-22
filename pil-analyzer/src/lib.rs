@@ -25,30 +25,41 @@ use powdr_ast::{
 };
 
 pub use pil_analyzer::{analyze_ast, analyze_file, analyze_string};
+use powdr_parser_util::{Error, SourceRef};
 
 pub trait AnalysisDriver: Clone + Copy {
     /// Turns a declaration into an absolute name.
-    fn resolve_decl(&self, name: &String) -> String {
-        self.resolve_namespaced_decl(&[name])
-            .relative_to(&Default::default())
-            .to_string()
+    fn resolve_decl(&self, source: SourceRef, name: &String) -> Result<String, Error> {
+        self.resolve_namespaced_decl(source, &[name])
+            .map(|path| path.relative_to(&Default::default()).to_string())
     }
     /// Turns a nested declaration into an absolute name.
-    fn resolve_namespaced_decl(&self, path: &[&String]) -> AbsoluteSymbolPath;
-    fn resolve_value_ref(&self, path: &SymbolPath) -> String {
-        self.resolve_ref(path, SymbolCategory::Value)
+    fn resolve_namespaced_decl(
+        &self,
+        source: SourceRef,
+        path: &[&String],
+    ) -> Result<AbsoluteSymbolPath, Error>;
+    fn resolve_value_ref(&self, source: SourceRef, path: &SymbolPath) -> Result<String, Error> {
+        self.resolve_ref(source, path, SymbolCategory::Value)
     }
-    fn resolve_type_ref(&self, path: &SymbolPath) -> String {
-        self.resolve_ref(path, SymbolCategory::Type)
+    fn resolve_type_ref(&self, source: SourceRef, path: &SymbolPath) -> Result<String, Error> {
+        self.resolve_ref(source, path, SymbolCategory::Type)
     }
-    fn resolve_ref(&self, path: &SymbolPath, symbol_category: SymbolCategory) -> String {
-        let (path, cat) = self
-            .try_resolve_ref(path)
-            .unwrap_or_else(|| panic!("{symbol_category} symbol not found: {path}"));
+    fn resolve_ref(
+        &self,
+        source: SourceRef,
+        path: &SymbolPath,
+        symbol_category: SymbolCategory,
+    ) -> Result<String, Error> {
+        let (path, cat) = self.try_resolve_ref(path).ok_or_else(|| {
+            source.with_error(format!("{symbol_category} symbol not found: {path}"))
+        })?;
         if !cat.compatible_with_request(symbol_category) {
-            panic!("Expected symbol of kind {symbol_category} but got {cat}: {path}")
+            return Err(source.with_error(format!(
+                "Expected symbol of kind {symbol_category} but got {cat}: {path}"
+            )));
         }
-        path
+        Ok(path)
     }
     /// Turns a reference to a name with an optional namespace into an absolute name.
     fn try_resolve_ref(&self, path: &SymbolPath) -> Option<(String, SymbolCategory)>;

@@ -2,6 +2,7 @@ use std::{collections::HashSet, str::FromStr};
 
 use powdr_ast::parsed::{asm::SymbolPath, types::Type, visitor::Children, Expression};
 use powdr_number::BigUint;
+use powdr_parser_util::SourceRef;
 
 use crate::{evaluator::EvalError, untyped_evaluator, AnalysisDriver};
 
@@ -33,7 +34,10 @@ impl<'a, D: AnalysisDriver> TypeProcessor<'a, D> {
     pub fn process_number_type(&self, mut ty: Type<u64>) -> Type {
         ty.map_to_type_vars(self.type_vars);
         ty.contained_named_types_mut().for_each(|n| {
-            let name = self.driver.resolve_type_ref(n);
+            let name = match self.driver.resolve_type_ref(SourceRef::unknown(), n) {
+                Ok(name) => name,
+                Err(e) => panic!("Error resolving type name \"{n}\":\n{e}"),
+            };
             *n = SymbolPath::from_str(&name).unwrap();
         });
         ty

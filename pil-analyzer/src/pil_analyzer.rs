@@ -24,7 +24,7 @@ use powdr_ast::analyzed::{
     TypedExpression,
 };
 use powdr_parser::{parse, parse_module, parse_type};
-use powdr_parser_util::Error;
+use powdr_parser_util::{Error, SourceRef};
 
 use crate::traits_resolver::{SolvedTraitImpls, TraitsResolver};
 use crate::type_builtins::constr_function_statement_type;
@@ -542,11 +542,16 @@ impl PILAnalyzer {
 struct Driver<'a>(&'a PILAnalyzer);
 
 impl<'a> AnalysisDriver for Driver<'a> {
-    fn resolve_namespaced_decl(&self, path: &[&String]) -> AbsoluteSymbolPath {
-        path.iter()
+    fn resolve_namespaced_decl(
+        &self,
+        source: SourceRef,
+        path: &[&String],
+    ) -> Result<AbsoluteSymbolPath, Error> {
+        Ok(path
+            .iter()
             .fold(self.0.current_namespace.clone(), |path, part| {
                 path.with_part(part)
-            })
+            }))
     }
 
     fn try_resolve_ref(&self, path: &SymbolPath) -> Option<(String, SymbolCategory)> {

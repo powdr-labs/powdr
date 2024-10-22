@@ -16,8 +16,14 @@ pub fn evaluate_expression_to_int(
     driver: impl AnalysisDriver,
     expr: parsed::Expression,
 ) -> Result<BigInt, EvalError> {
+    let processed_expr =
+        match ExpressionProcessor::new(driver, &Default::default()).process_expression(expr) {
+            Ok(expr) => expr,
+            Err(e) => return Err(EvalError::SymbolNotFound(e.message().to_string())), // TODO: Proper EvalError here
+        };
+
     evaluator::evaluate_expression::<GoldilocksField>(
-        &ExpressionProcessor::new(driver, &Default::default()).process_expression(expr),
+        &processed_expr,
         driver.definitions(),
         &Default::default(),
     )?
