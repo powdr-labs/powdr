@@ -40,17 +40,20 @@ let new_bool: -> expr = constr || {
     x
 };
 
-/// Creates a new witness column which is 1 on each row where `x` is zero
-/// and 0 otherwise.
+/// Returns a degree 2 boolean expression that is 1 if and only if `x` is not zero.
+let is_not_zero: expr -> expr = constr |x| {
+    // The inverse of "x" if it is not zero, otherwise undefined.
+    let inverse;
+
+    // Ensures that "inverse * x" is either 0 or 1:
+    (inverse * x - 1) * x = 0;
+
+    inverse * x
+};
+
+/// Returns a degree 2 boolean expression that is 1 if and only if `x` is zero.
 let is_zero: expr -> expr = constr |x| {
-    let x_is_zero;
-    force_bool(x_is_zero);
-    /// This is the inverse of x in the field as long as x is not zero.
-    /// It is unconstrained if x is zero.
-    let x_inv;
-    x_is_zero = 1 - x * x_inv;
-    x_is_zero * x = 0;
-    x_is_zero
+    1 - is_not_zero(x)
 };
 
 /// Returns an array of functions such that the range of the `i`th function is exactly the
