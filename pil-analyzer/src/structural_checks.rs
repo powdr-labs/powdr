@@ -2,7 +2,7 @@ use itertools::Itertools;
 use std::collections::{HashMap, HashSet};
 
 use powdr_ast::{
-    analyzed::{FunctionValueDefinition, PolynomialReference, Reference, Symbol},
+    analyzed::{Expression, FunctionValueDefinition, PolynomialReference, Reference, Symbol},
     parsed::{StructExpression, TypeDeclaration},
 };
 use powdr_parser_util::{Error, SourceRef};
@@ -10,16 +10,19 @@ use powdr_parser_util::{Error, SourceRef};
 /// Verifies that all struct instantiations match their corresponding declarations
 /// (existence of field names, completeness) and ensures that both are correct.
 pub fn check_structs_fields<'a>(
-    structs_exprs: impl Iterator<Item = (&'a SourceRef, &'a StructExpression<Reference>)>,
+    structs_exprs: impl Iterator<Item = &'a Expression>,
     definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
 ) -> Result<(), Vec<Error>> {
     let mut errors = Vec::new();
 
-    for (source, st) in structs_exprs {
-        let StructExpression {
-            name: Reference::Poly(PolynomialReference { name, .. }),
-            fields,
-        } = st
+    for expr in structs_exprs {
+        let Expression::StructExpression(
+            source,
+            StructExpression {
+                name: Reference::Poly(PolynomialReference { name, .. }),
+                fields,
+            },
+        ) = expr
         else {
             unreachable!()
         };

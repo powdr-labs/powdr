@@ -40,7 +40,7 @@ pub enum SymbolCategory {
     /// A type constructor, i.e. an enum variant, which can be used as a function or constant inside an expression
     /// or to deconstruct a value in a pattern.
     TypeConstructor,
-    /// A trait declaration, which can be used as a type.
+    /// A trait declaration
     TraitDeclaration,
     /// A struct, which can be used as a type.
     Struct,

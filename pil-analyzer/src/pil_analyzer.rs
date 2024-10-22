@@ -256,8 +256,8 @@ impl PILAnalyzer {
 
     pub fn validate_structs(&self) -> Result<(), Vec<Error>> {
         let structs_exprs = self.all_children().filter_map(|expr| {
-            if let Expression::StructExpression(sr, struct_expr) = expr {
-                Some((sr, struct_expr))
+            if let Expression::StructExpression(_, _) = expr {
+                Some(expr)
             } else {
                 None
             }
