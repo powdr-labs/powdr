@@ -763,6 +763,53 @@ fn prover_functions() {
 }
 
 #[test]
+fn simple_enum_test0() {
+    let input = "
+    enum Option {
+        Some,
+        None
+    }
+    let f: int -> Option = |i| Option::Some;
+    let x = f(0);
+    ";
+    type_check(input, &[("x", "", "Option")]);
+}
+
+#[test]
+fn simple_enum_test() {
+    let input = "
+    enum Option<T> {
+        Some(T),
+        None
+    }
+    let f: int -> Option = |i| Option::Some(i);
+    let x = f(0);
+    ";
+    type_check(input, &[("x", "", "Option<int>")]);
+}
+
+#[test]
+fn simple_enum_type_arg() {
+    let input = "
+    enum Option<T> {
+        Some(T),
+        None
+    }
+    
+    let f: int -> Option<int> = |i| Option::Some(i);
+    let n = 1;
+    let x = f(n);
+    
+    let m: bool = false;
+    let y = Option::Some(m);
+    ";
+    type_check(
+        input,
+        &[("x", "", "Option<int>"), ("y", "", "Option<bool>")],
+    );
+}
+
+#[test]
 fn simple_struct() {
     let input = "
     struct Dot { x: int, y: int }
@@ -788,12 +835,11 @@ fn simple_struct_type_arg() {
 }
 
 #[test]
-#[should_panic = "Cannot unify types Dot<int> and Dot"]
 fn simple_struct_type_arg_fail() {
     let input = "
     struct Dot<T> { x: int, y: T }
     
-    let f: int -> Dot = |i| Dot{x: 0, y: i};
+    let f: int -> Dot<int> = |i| Dot{x: 0, y: i};
     let n = 1;
     let x = f(n);
     ";

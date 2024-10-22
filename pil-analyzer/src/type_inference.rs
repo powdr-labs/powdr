@@ -528,7 +528,7 @@ impl TypeChecker {
             ) => {
                 let scheme = self.declared_types[name].1.clone();
                 let ty =
-                    self.instantiate_type_args_with_scheme(type_args, scheme, name, source_ref)?;
+                    self.instantiate_scheme_with_type_args(type_args, scheme, name, source_ref)?;
                 type_for_reference(&ty)
             }
             Expression::PublicReference(_, _) => Type::Expr,
@@ -763,6 +763,7 @@ impl TypeChecker {
 
                 *type_args = Some(fresh_type_vars.clone());
 
+                // TODO: This is a temporal hacky solution
                 if type_args.as_ref().map_or(true, |args| args.is_empty()) {
                     Type::TypeVar(name.to_string())
                 } else {
@@ -775,7 +776,7 @@ impl TypeChecker {
         })
     }
 
-    fn instantiate_type_args_with_scheme(
+    fn instantiate_scheme_with_type_args(
         &mut self,
         type_args: &mut Option<Vec<Type>>,
         scheme: TypeScheme,
