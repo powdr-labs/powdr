@@ -1,6 +1,23 @@
 extern crate powdr_riscv_runtime;
 use powdr_number::GoldilocksField;
 
+use powdr_riscv_runtime::io::read;
+
+use powdr_plonky3::{verify, FieldElementMap};
+
 pub fn main() {
-    let _ = powdr_plonky3::verify::<GoldilocksField>(unimplemented!(), unimplemented!(), unimplemented!(), unimplemented!(), unimplemented!());
+    let verifying_key = read(1);
+    //let split = read(2);
+    let mut challenger = GoldilocksField::get_challenger();
+    let proof = read(3);
+    let public_inputs = read(4);
+
+    let _ = verify::<GoldilocksField>(
+        Some(&verifying_key),
+        //&split,
+        &Default::default(),
+        &mut challenger,
+        &proof,
+        public_inputs,
+    );
 }
