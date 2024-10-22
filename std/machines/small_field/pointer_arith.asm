@@ -1,7 +1,8 @@
 /// Creates constraints that increments a pointer by one full 32-bit word.
 ///
-/// The pointers are given in 2 16-bit limbs. This function return the polynomials constraining
-/// (int(post_high) * 0x10000 + int(post_low)) to (int(pre_high) * 0x10000 + int(pre_low) + 4).
+/// The pointers are given in 2 16-bit limbs. This function returns a constraint ensuring that the following are equal:
+/// - (int(post_high) * 0x10000 + int(post_low)) and
+/// - (int(pre_high) * 0x10000 + int(pre_low) + 4).
 ///
 /// The returned constraints are not automatically added to the constraints set. This is so the
 /// caller will be able to latch-disable them in rows they aren't needed.
