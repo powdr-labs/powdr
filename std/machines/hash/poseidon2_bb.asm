@@ -23,6 +23,10 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
+    // Is this a used row?
+    let is_used = array::sum(sel);
+    utils::force_bool(is_used);
+
     // The input data is passed via a memory pointer: the machine will read STATE_SIZE
     // field elements from memory, in pairs of 16-bit limbs for BabyBear.
     //
@@ -190,22 +194,22 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     let input_low: col[STATE_SIZE];
     let input_high: col[STATE_SIZE];
     // TODO: when link is availailable inside functions, we can turn this into array operations.
-    link ~> (input_high[0], input_low[0]) = mem.mload(input_addr_high[0], input_addr_low[0], time_step);
-    link ~> (input_high[1], input_low[1]) = mem.mload(input_addr_high[1], input_addr_low[1], time_step);
-    link ~> (input_high[2], input_low[2]) = mem.mload(input_addr_high[2], input_addr_low[2], time_step);
-    link ~> (input_high[3], input_low[3]) = mem.mload(input_addr_high[3], input_addr_low[3], time_step);
-    link ~> (input_high[4], input_low[4]) = mem.mload(input_addr_high[4], input_addr_low[4], time_step);
-    link ~> (input_high[5], input_low[5]) = mem.mload(input_addr_high[5], input_addr_low[5], time_step);
-    link ~> (input_high[6], input_low[6]) = mem.mload(input_addr_high[6], input_addr_low[6], time_step);
-    link ~> (input_high[7], input_low[7]) = mem.mload(input_addr_high[7], input_addr_low[7], time_step);
-    link ~> (input_high[8], input_low[8]) = mem.mload(input_addr_high[8], input_addr_low[8], time_step);
-    link ~> (input_high[9], input_low[9]) = mem.mload(input_addr_high[9], input_addr_low[9], time_step);
-    link ~> (input_high[10], input_low[10]) = mem.mload(input_addr_high[10], input_addr_low[10], time_step);
-    link ~> (input_high[11], input_low[11]) = mem.mload(input_addr_high[11], input_addr_low[11], time_step);
-    link ~> (input_high[12], input_low[12]) = mem.mload(input_addr_high[12], input_addr_low[12], time_step);
-    link ~> (input_high[13], input_low[13]) = mem.mload(input_addr_high[13], input_addr_low[13], time_step);
-    link ~> (input_high[14], input_low[14]) = mem.mload(input_addr_high[14], input_addr_low[14], time_step);
-    link ~> (input_high[15], input_low[15]) = mem.mload(input_addr_high[15], input_addr_low[15], time_step);
+    link if is_used ~> (input_high[0], input_low[0]) = mem.mload(input_addr_high[0], input_addr_low[0], time_step);
+    link if is_used ~> (input_high[1], input_low[1]) = mem.mload(input_addr_high[1], input_addr_low[1], time_step);
+    link if is_used ~> (input_high[2], input_low[2]) = mem.mload(input_addr_high[2], input_addr_low[2], time_step);
+    link if is_used ~> (input_high[3], input_low[3]) = mem.mload(input_addr_high[3], input_addr_low[3], time_step);
+    link if is_used ~> (input_high[4], input_low[4]) = mem.mload(input_addr_high[4], input_addr_low[4], time_step);
+    link if is_used ~> (input_high[5], input_low[5]) = mem.mload(input_addr_high[5], input_addr_low[5], time_step);
+    link if is_used ~> (input_high[6], input_low[6]) = mem.mload(input_addr_high[6], input_addr_low[6], time_step);
+    link if is_used ~> (input_high[7], input_low[7]) = mem.mload(input_addr_high[7], input_addr_low[7], time_step);
+    link if is_used ~> (input_high[8], input_low[8]) = mem.mload(input_addr_high[8], input_addr_low[8], time_step);
+    link if is_used ~> (input_high[9], input_low[9]) = mem.mload(input_addr_high[9], input_addr_low[9], time_step);
+    link if is_used ~> (input_high[10], input_low[10]) = mem.mload(input_addr_high[10], input_addr_low[10], time_step);
+    link if is_used ~> (input_high[11], input_low[11]) = mem.mload(input_addr_high[11], input_addr_low[11], time_step);
+    link if is_used ~> (input_high[12], input_low[12]) = mem.mload(input_addr_high[12], input_addr_low[12], time_step);
+    link if is_used ~> (input_high[13], input_low[13]) = mem.mload(input_addr_high[13], input_addr_low[13], time_step);
+    link if is_used ~> (input_high[14], input_low[14]) = mem.mload(input_addr_high[14], input_addr_low[14], time_step);
+    link if is_used ~> (input_high[15], input_low[15]) = mem.mload(input_addr_high[15], input_addr_low[15], time_step);
 
     let input = array::zip(input_low, input_high, |low, high| low + 0x10000 * high);
 
@@ -258,26 +262,26 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     let output_low: col[OUTPUT_SIZE];
     let output_high: col[OUTPUT_SIZE];
     // TODO: turn this into array operations
-    link ~> (output_low[0], output_high[0]) = split_BB.split(output[0]);
-    link ~> (output_low[1], output_high[1]) = split_BB.split(output[1]);
-    link ~> (output_low[2], output_high[2]) = split_BB.split(output[2]);
-    link ~> (output_low[3], output_high[3]) = split_BB.split(output[3]);
-    link ~> (output_low[4], output_high[4]) = split_BB.split(output[4]);
-    link ~> (output_low[5], output_high[5]) = split_BB.split(output[5]);
-    link ~> (output_low[6], output_high[6]) = split_BB.split(output[6]);
-    link ~> (output_low[7], output_high[7]) = split_BB.split(output[7]);
+    link if is_used ~> (output_low[0], output_high[0]) = split_BB.split(output[0]);
+    link if is_used ~> (output_low[1], output_high[1]) = split_BB.split(output[1]);
+    link if is_used ~> (output_low[2], output_high[2]) = split_BB.split(output[2]);
+    link if is_used ~> (output_low[3], output_high[3]) = split_BB.split(output[3]);
+    link if is_used ~> (output_low[4], output_high[4]) = split_BB.split(output[4]);
+    link if is_used ~> (output_low[5], output_high[5]) = split_BB.split(output[5]);
+    link if is_used ~> (output_low[6], output_high[6]) = split_BB.split(output[6]);
+    link if is_used ~> (output_low[7], output_high[7]) = split_BB.split(output[7]);
 
     // Write the output to memory at the next time step
     let output_addr_high: col[OUTPUT_SIZE];
     let output_addr_low: col[OUTPUT_SIZE];
     address_inc(output_addr_high, output_addr_low);
     // TODO: turn this into array operations
-    link ~> mem.mstore(output_addr_high[0], output_addr_low[0], time_step + 1, output_high[0], output_low[0]);
-    link ~> mem.mstore(output_addr_high[1], output_addr_low[1], time_step + 1, output_high[1], output_low[1]);
-    link ~> mem.mstore(output_addr_high[2], output_addr_low[2], time_step + 1, output_high[2], output_low[2]);
-    link ~> mem.mstore(output_addr_high[3], output_addr_low[3], time_step + 1, output_high[3], output_low[3]);
-    link ~> mem.mstore(output_addr_high[4], output_addr_low[4], time_step + 1, output_high[4], output_low[4]);
-    link ~> mem.mstore(output_addr_high[5], output_addr_low[5], time_step + 1, output_high[5], output_low[5]);
-    link ~> mem.mstore(output_addr_high[6], output_addr_low[6], time_step + 1, output_high[6], output_low[6]);
-    link ~> mem.mstore(output_addr_high[7], output_addr_low[7], time_step + 1, output_high[7], output_low[7]);
+    link if is_used ~> mem.mstore(output_addr_high[0], output_addr_low[0], time_step + 1, output_high[0], output_low[0]);
+    link if is_used ~> mem.mstore(output_addr_high[1], output_addr_low[1], time_step + 1, output_high[1], output_low[1]);
+    link if is_used ~> mem.mstore(output_addr_high[2], output_addr_low[2], time_step + 1, output_high[2], output_low[2]);
+    link if is_used ~> mem.mstore(output_addr_high[3], output_addr_low[3], time_step + 1, output_high[3], output_low[3]);
+    link if is_used ~> mem.mstore(output_addr_high[4], output_addr_low[4], time_step + 1, output_high[4], output_low[4]);
+    link if is_used ~> mem.mstore(output_addr_high[5], output_addr_low[5], time_step + 1, output_high[5], output_low[5]);
+    link if is_used ~> mem.mstore(output_addr_high[6], output_addr_low[6], time_step + 1, output_high[6], output_low[6]);
+    link if is_used ~> mem.mstore(output_addr_high[7], output_addr_low[7], time_step + 1, output_high[7], output_low[7]);
 }
