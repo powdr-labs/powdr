@@ -215,7 +215,7 @@ mod test {
     ) -> <LargeFieldBootloader<GoldilocksField> as BootloaderImpl<GoldilocksField>>::Hash {
         let page_hashes = pages
             .iter()
-            .map(|page| LargeFieldBootloader::hash_page(page))
+            .map(LargeFieldBootloader::hash_page)
             .collect::<Vec<_>>();
 
         let hash_1_0 = LargeFieldBootloader::hash_two(&page_hashes[0], &page_hashes[1]);
