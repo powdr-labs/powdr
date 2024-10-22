@@ -102,6 +102,10 @@ impl ReferencedSymbols for FunctionValueDefinition {
                 // This is the type constructor of an enum variant, it references the enum itself.
                 Box::new(once(enum_decl.name.as_str().into()))
             }
+            FunctionValueDefinition::TraitFunction(trait_decl, fun) => {
+                // TODO but we also need the specific impl.
+                Box::new(once(trait_decl.name.as_str().into()))
+            }
             FunctionValueDefinition::Expression(TypedExpression {
                 type_scheme: Some(type_scheme),
                 e,
@@ -151,6 +155,7 @@ impl ReferencedSymbols for Expression {
                             .iter()
                             .flat_map(|t| t.iter())
                             .flat_map(|t| t.symbols())
+                            // TODO add the type args here.
                             .chain(once(name.into())),
                     ),
                     _ => None,
@@ -803,8 +808,12 @@ namespace N(65536);
         w = x;
     "#;
         let expectation = r#"namespace N(65536);
-    trait Default<T> { f: -> T }
-    impl Default<fe> { f: || 1 }
+    trait N::Default<T> {
+        f: -> T,
+    }
+    impl N::Default<fe> {
+        f: || 1,
+    }
     col fixed x(_) { N::Default::f::<fe>() };
     col witness w;
     N::w = N::x;
