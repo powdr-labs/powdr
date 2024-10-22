@@ -54,6 +54,18 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, Variabl
         .collect()
 }
 
+/// Generates the fixed column values only using JIT-compiled code.
+/// Might not return all fixed columns.
+pub fn generate_only_via_jit<T: FieldElement>(
+    analyzed: &Analyzed<T>,
+) -> Vec<(String, VariablySizedColumn<T>)> {
+    jit_compiler::generate_values(analyzed)
+        .into_iter()
+        .sorted_by_key(|((_, id), _)| *id)
+        .map(|((name, _), values)| (name, values))
+        .collect()
+}
+
 #[cfg(test)]
 mod test {
     use itertools::Itertools;
