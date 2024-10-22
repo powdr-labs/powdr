@@ -25,6 +25,6 @@ let word_increment_ptr: expr, expr, expr, expr -> Constr[] = constr |pre_high, p
         std::constraints::if_else(low_overflow, post_low = 0, post_low = pre_low + 4),
 
         // Set high limb, incremented if low overflowed:
-        post_high - pre_high - low_overflow = 0
+        post_high = pre_high + low_overflow
     ]
 };
