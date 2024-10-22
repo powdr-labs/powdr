@@ -69,3 +69,15 @@ machine Bit12 with
     let latch = 1;
     col fixed operation_id = [0]*;
 }
+
+machine Range9 with
+    latch: latch,
+    operation_id: operation_id,
+    degree: 16
+{
+    operation check<0> range9 -> ;
+
+    let range9: col = |i| i & 0x1001;
+    col fixed latch = [1]*;
+    col fixed operation_id = [0]*;
+}
