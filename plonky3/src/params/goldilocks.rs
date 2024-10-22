@@ -6,10 +6,7 @@
 use lazy_static::lazy_static;
 use p3_poseidon2::{poseidon2_round_numbers_128, Poseidon2, Poseidon2ExternalMatrixGeneral};
 
-use crate::params::{
-    poseidon2,
-    Challenger, FieldElementMap, Plonky3Field,
-};
+use crate::params::{poseidon2, Challenger, FieldElementMap, Plonky3Field};
 use p3_challenger::DuplexChallenger;
 use p3_commit::ExtensionMmcs;
 use p3_dft::Radix2DitParallel;
