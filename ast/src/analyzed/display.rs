@@ -318,20 +318,46 @@ impl<Expr: Display> Display for SelectedExpressions<Expr> {
     }
 }
 
-impl<T: Display> Display for Identity<SelectedExpressions<AlgebraicExpression<T>>> {
+impl<T: Display> Display for PolynomialIdentity<AlgebraicExpression<T>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self.kind {
-            IdentityKind::Polynomial => {
-                let (left, right) = self.as_polynomial_identity();
-                let right = right
-                    .as_ref()
-                    .map(|r| r.to_string())
-                    .unwrap_or_else(|| "0".into());
-                write!(f, "{left} = {right};")
+        match &self.e {
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                left,
+                op: AlgebraicBinaryOperator::Sub,
+                right,
+            }) => {
+                writeln!(f, "{left} = {right};")
             }
-            IdentityKind::Plookup => write!(f, "{} in {};", self.left, self.right),
-            IdentityKind::Permutation => write!(f, "{} is {};", self.left, self.right),
-            IdentityKind::Connect => write!(f, "{} connect {};", self.left, self.right),
+            e => write!(f, "{e} = 0;"),
+        }
+    }
+}
+
+impl<T: Display> Display for PlookupIdentity<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{} in {};", self.left, self.right)
+    }
+}
+
+impl<T: Display> Display for PermutationIdentity<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{} in {};", self.left, self.right)
+    }
+}
+
+impl<T: Display> Display for ConnectIdentity<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{} connect {};", self.left, self.right)
+    }
+}
+
+impl<T: Display> Display for Identity<AlgebraicExpression<T>> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        match self {
+            Identity::Polynomial(p) => write!(f, "{}", p),
+            Identity::Plookup(p) => write!(f, "{}", p),
+            Identity::Permutation(p) => write!(f, "{}", p),
+            Identity::Connect(p) => write!(f, "{}", p),
         }
     }
 }

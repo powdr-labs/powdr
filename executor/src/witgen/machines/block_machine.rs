@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Display;
 use std::iter::{self, once};
 
-use super::{EvalResult, FixedData, MachineParts};
+use super::{ConnectingIdentityRef, ConnectionType, EvalResult, FixedData, MachineParts};
 
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::block_processor::BlockProcessor;
@@ -48,33 +48,6 @@ fn collect_fixed_cols<T: FieldElement>(
             }
         }
     });
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-enum ConnectionType {
-    Permutation,
-    Lookup,
-}
-
-impl From<ConnectionType> for IdentityKind {
-    fn from(value: ConnectionType) -> Self {
-        match value {
-            ConnectionType::Permutation => IdentityKind::Permutation,
-            ConnectionType::Lookup => IdentityKind::Plookup,
-        }
-    }
-}
-
-impl TryFrom<IdentityKind> for ConnectionType {
-    type Error = ();
-
-    fn try_from(value: IdentityKind) -> Result<Self, Self::Error> {
-        match value {
-            IdentityKind::Permutation => Ok(ConnectionType::Permutation),
-            IdentityKind::Plookup => Ok(ConnectionType::Lookup),
-            _ => Err(()),
-        }
-    }
 }
 
 impl<'a, T: FieldElement> Display for BlockMachine<'a, T> {
@@ -130,7 +103,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             detect_connection_type_and_block_size(fixed_data, &parts.connecting_identities)?;
 
         for id in parts.connecting_identities.values() {
-            for r in id.right.expressions.iter() {
+            for r in id.right().expressions.iter() {
                 if let Some(poly) = try_to_simple_poly(r) {
                     if poly.poly_id.ptype == PolynomialType::Constant {
                         // It does not really make sense to have constant polynomials on the RHS
@@ -175,17 +148,16 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
 fn detect_connection_type_and_block_size<'a, T: FieldElement>(
     fixed_data: &'a FixedData<'a, T>,
-    connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
+    connecting_identities: &BTreeMap<u64, ConnectingIdentityRef<'a, T>>,
 ) -> Option<(ConnectionType, usize, usize)> {
     // TODO we should check that the other constraints/fixed columns are also periodic.
 
     // Connecting identities should either all be permutations or all lookups.
     let connection_type = connecting_identities
         .values()
-        .map(|id| id.kind.try_into())
+        .map(|id| id.kind())
         .unique()
         .exactly_one()
-        .ok()?
         .ok()?;
 
     // Detect the block size.
@@ -194,7 +166,7 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
             // We'd expect all RHS selectors to be fixed columns of the same period.
             connecting_identities
                 .values()
-                .map(|id| try_to_period(&id.right.selector, fixed_data))
+                .map(|id| try_to_period(&id.right().selector, fixed_data))
                 .unique()
                 .exactly_one()
                 .ok()??
@@ -211,7 +183,7 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
             };
             let mut latch_candidates = BTreeSet::new();
             for id in connecting_identities.values() {
-                if let Some(selector) = &id.right.selector {
+                if let Some(selector) = &id.right().selector {
                     collect_fixed_cols(selector, &mut latch_candidates);
                 }
             }
@@ -351,7 +323,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 processor
                     .set_value(
                         self.latch_row + 1,
-                        id.right.selector.as_ref().unwrap(),
+                        id.right().selector.as_ref().unwrap(),
                         T::zero(),
                         || "Zero selectors".to_string(),
                     )
@@ -482,7 +454,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
         let outer_query =
-            OuterQuery::new(caller_rows, self.parts.connecting_identities[&identity_id]);
+            OuterQuery::new(caller_rows, self.parts.connecting_identities[&identity_id].clone());
 
         log::trace!("Start processing block machine '{}'", self.name());
         log::trace!("Left values of lookup:");

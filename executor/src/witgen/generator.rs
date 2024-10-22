@@ -1,4 +1,4 @@
-use powdr_ast::analyzed::AlgebraicExpression as Expression;
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, PlookupIdentity};
 use powdr_number::{DegreeType, FieldElement};
 use std::collections::HashMap;
 
@@ -44,12 +44,16 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let identity = self.parts.connecting_identities.get(&identity_id).unwrap();
-        let outer_query = OuterQuery::new(caller_rows, identity);
+        let identity = self
+            .parts
+            .connecting_identities
+            .get(&identity_id)
+            .unwrap().clone();
+        let outer_query = OuterQuery::new(caller_rows, identity.clone());
 
         log::trace!("Start processing secondary VM '{}'", self.name());
         log::trace!("Arguments:");
-        for (r, l) in identity.right.expressions.iter().zip(&outer_query.left) {
+        for (r, l) in identity.right().expressions.iter().zip(&outer_query.left) {
             log::trace!("  {r} = {l}");
         }
 

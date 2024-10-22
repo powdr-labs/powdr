@@ -4,7 +4,7 @@ use std::{
 };
 
 use lazy_static::lazy_static;
-use powdr_ast::analyzed::{AlgebraicExpression as Expression, IdentityKind};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, IdentityKind, PlookupIdentity, PolynomialIdentity};
 use powdr_number::FieldElement;
 
 use crate::{
@@ -147,12 +147,15 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         identity: &'a Identity<T>,
         rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let result = match identity.kind {
-            IdentityKind::Polynomial => self.process_polynomial_identity(identity, rows),
-            IdentityKind::Plookup | IdentityKind::Permutation => {
+        let result = match identity {
+            Identity::Polynomial(identity) => self.process_polynomial_identity(identity, rows),
+            Identity::Plookup(identity) => {
                 self.process_plookup(identity, rows)
             }
-            IdentityKind::Connect => {
+            Identity::Permutation(..) => {
+                todo!("same as plookup, avoid duplication")
+            }
+            Identity::Connect(identity) => {
                 // TODO this is not the right cause.
                 Ok(EvalValue::incomplete(IncompleteCause::SolvingFailed))
                 // unimplemented!(
@@ -166,10 +169,10 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
 
     fn process_polynomial_identity(
         &self,
-        identity: &'a Identity<T>,
+        identity: &'a PolynomialIdentity<Expression<T>>,
         rows: &RowPair<T>,
     ) -> EvalResult<'a, T> {
-        match rows.evaluate(identity.expression_for_poly_id()) {
+        match rows.evaluate(&identity.e) {
             Err(incomplete_cause) => Ok(EvalValue::incomplete(incomplete_cause)),
             Ok(evaluated) => evaluated.solve_with_range_constraints(rows),
         }
@@ -177,7 +180,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
 
     fn process_plookup(
         &mut self,
-        identity: &'a Identity<T>,
+        identity: &'a PlookupIdentity<Expression<T>>,
         rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
         if let Some(left_selector) = &identity.left.selector {
@@ -188,7 +191,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
 
         self.mutable_state
             .machines
-            .call(identity.id, rows, self.mutable_state.query_callback)
+            .call(unimplemented!("identity id"), rows, self.mutable_state.query_callback)
     }
 
     /// Handles the lookup that connects the current machine to the calling machine.
@@ -205,7 +208,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         outer_query: &OuterQuery<'a, '_, T>,
         current_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let right = &outer_query.connecting_identity.right;
+        let right = &outer_query.connecting_identity.right();
         // sanity check that the right hand side selector is active
         let selector_value = right
             .selector
@@ -274,7 +277,7 @@ lazy_static! {
 fn report_identity_solving<T: FieldElement, K>(identity: &Identity<T>, result: &EvalResult<T, K>) {
     let success = result.as_ref().map(|r| r.is_complete()).unwrap_or_default() as u64;
     let mut stat = STATISTICS.lock().unwrap();
-    stat.entry(identity.id)
+    stat.entry(unimplemented!("identity id"))
         .and_modify(|s| {
             s.invocations += 1;
             s.success += success;

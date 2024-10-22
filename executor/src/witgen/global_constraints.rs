@@ -219,16 +219,15 @@ fn propagate_constraints<T: FieldElement>(
     full_span: &BTreeSet<PolyID>,
 ) -> (BTreeMap<PolyID, RangeConstraint<T>>, bool) {
     let mut remove = false;
-    match identity.kind {
-        IdentityKind::Polynomial => {
-            if let Some(p) = is_binary_constraint(identity.expression_for_poly_id()) {
+    match identity {
+        Identity::Polynomial(identity) => {
+            if let Some(p) = is_binary_constraint(&identity.e) {
                 assert!(known_constraints
                     .insert(p, RangeConstraint::from_max_bit(0))
                     .is_none());
                 remove = true;
             } else {
-                for (p, c) in
-                    try_transfer_constraints(identity.expression_for_poly_id(), &known_constraints)
+                for (p, c) in try_transfer_constraints(&identity.e, &known_constraints)
                 {
                     known_constraints
                         .entry(p)
@@ -237,7 +236,7 @@ fn propagate_constraints<T: FieldElement>(
                 }
             }
         }
-        IdentityKind::Plookup | IdentityKind::Permutation | IdentityKind::Connect => {
+        Identity::Plookup(identity) => {
             if identity.left.selector.is_some() || identity.right.selector.is_some() {
                 return (known_constraints, false);
             }
@@ -258,7 +257,7 @@ fn propagate_constraints<T: FieldElement>(
                     }
                 }
             }
-            if identity.kind == IdentityKind::Plookup && identity.right.expressions.len() == 1 {
+            if identity.right.expressions.len() == 1 {
                 // We can only remove the lookup if the RHS is a fixed polynomial that
                 // provides all values in the span.
                 if let Some(name) = try_to_simple_poly(&identity.right.expressions[0]) {
@@ -270,6 +269,8 @@ fn propagate_constraints<T: FieldElement>(
                 }
             }
         }
+        Identity::Permutation(..) => todo!("almost same as lookup, avoid duplication"),
+        Identity::Connect(..) => todo!("same as permutation, avoid duplication"),
     }
 
     (known_constraints, remove)

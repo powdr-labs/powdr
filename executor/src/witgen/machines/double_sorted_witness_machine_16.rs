@@ -3,7 +3,7 @@ use std::iter::once;
 
 use itertools::Itertools;
 
-use super::{Machine, MachineParts};
+use super::{ConnectionType, Machine, MachineParts};
 use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{EvalError, EvalResult, FixedData, MutableState, QueryCallback};
@@ -133,7 +133,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
         if !parts
             .connecting_identities
             .values()
-            .all(|i| i.kind == IdentityKind::Permutation)
+            .all(|i| i.kind() == ConnectionType::Permutation)
         {
             return None;
         }
@@ -142,11 +142,11 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
             .connecting_identities
             .values()
             .map(|i| {
-                i.right
+                i.right()
                     .selector
                     .as_ref()
                     .and_then(|r| try_to_simple_poly(r))
-                    .map(|p| (i.id, p.poly_id))
+                    .map(|p| ({unimplemented!("identity id"); 0}, p.poly_id))
             })
             .collect::<Option<BTreeMap<_, _>>>()?;
 
@@ -423,7 +423,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
         // - operation_id == 2: Bootloader write
 
         let args = self.parts.connecting_identities[&identity_id]
-            .left
+            .left()
             .expressions
             .iter()
             .map(|e| caller_rows.evaluate(e).unwrap())

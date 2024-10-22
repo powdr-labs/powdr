@@ -14,10 +14,10 @@ use num_traits::sign::Signed;
 use powdr_ast::{
     analyzed::{
         self, AlgebraicBinaryOperation, AlgebraicExpression, AlgebraicReference,
-        AlgebraicUnaryOperation, Analyzed, Challenge, DegreeRange, Expression,
-        FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialReference,
-        PolynomialType, PublicDeclaration, Reference, SelectedExpressions, StatementIdentifier,
-        Symbol, SymbolKind,
+        AlgebraicUnaryOperation, Analyzed, Challenge, ConnectIdentity, DegreeRange, Expression,
+        FunctionValueDefinition, Identity, PermutationIdentity, PlookupIdentity,
+        PolyID, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
+        SelectedExpressions, StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
         self,
@@ -41,7 +41,7 @@ use crate::{
     statement_processor::Counters,
 };
 
-type AnalyzedIdentity<T> = Identity<SelectedExpressions<AlgebraicExpression<T>>>;
+type AnalyzedIdentity<T> = Identity<AlgebraicExpression<T>>;
 
 pub fn condense<T: FieldElement>(
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
@@ -672,18 +672,12 @@ fn to_constraint<T: FieldElement>(
         "Identity" => {
             assert_eq!(fields.len(), 2);
             AnalyzedIdentity::from_polynomial_identity(
-                counters.dispense_identity_id(),
                 source,
                 to_expr(&fields[0]) - to_expr(&fields[1]),
             )
         }
         "Lookup" | "Permutation" => {
             assert_eq!(fields.len(), 2);
-            let kind = if variant == &"Lookup" {
-                IdentityKind::Plookup
-            } else {
-                IdentityKind::Permutation
-            };
 
             let (sel_from, sel_to) = if let Value::Tuple(t) = fields[0].as_ref() {
                 assert_eq!(t.len(), 2);
@@ -707,12 +701,20 @@ fn to_constraint<T: FieldElement>(
                 unreachable!()
             };
 
-            Identity {
-                id: counters.dispense_identity_id(),
-                kind,
-                source,
-                left: to_selected_exprs(sel_from, from),
-                right: to_selected_exprs(sel_to, to),
+            if variant == &"Lookup" {
+                PlookupIdentity::new(
+                    source,
+                    to_selected_exprs(sel_from, from),
+                    to_selected_exprs(sel_to, to),
+                )
+                .into()
+            } else {
+                PermutationIdentity::new(
+                    source,
+                    to_selected_exprs(sel_from, from),
+                    to_selected_exprs(sel_to, to),
+                )
+                .into()
             }
         }
         "Connection" => {
@@ -733,19 +735,18 @@ fn to_constraint<T: FieldElement>(
                 unreachable!()
             };
 
-            Identity {
-                id: counters.dispense_identity_id(),
-                kind: IdentityKind::Connect,
+            ConnectIdentity::new(
                 source,
-                left: analyzed::SelectedExpressions {
+                analyzed::SelectedExpressions {
                     selector: None,
                     expressions: from.into_iter().map(to_expr).collect(),
                 },
-                right: analyzed::SelectedExpressions {
+                analyzed::SelectedExpressions {
                     selector: None,
                     expressions: to.into_iter().map(to_expr).collect(),
                 },
-            }
+            )
+            .into()
         }
         _ => panic!("Expected constraint but got {constraint}"),
     }

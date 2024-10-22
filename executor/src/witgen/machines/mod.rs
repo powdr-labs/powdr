@@ -1,9 +1,13 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 
 use powdr_ast::analyzed;
+use powdr_ast::analyzed::AlgebraicExpression;
 use powdr_ast::analyzed::DegreeRange;
+use powdr_ast::analyzed::PermutationIdentity;
+use powdr_ast::analyzed::PlookupIdentity;
 use powdr_ast::analyzed::PolyID;
 
+use powdr_ast::parsed::SelectedExpressions;
 use powdr_number::FieldElement;
 
 use crate::Identity;
@@ -151,6 +155,57 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
     }
 }
 
+#[derive(Copy, Clone)]
+pub enum ConnectingIdentityRef<'a, T> {
+    Plookup(&'a PlookupIdentity<AlgebraicExpression<T>>),
+    Permutation(&'a PermutationIdentity<AlgebraicExpression<T>>),
+}
+
+impl<'a, T> TryFrom<&'a Identity<T>> for ConnectingIdentityRef<'a, T> {
+    type Error = ();
+
+    fn try_from(value: &'a Identity<T>) -> Result<Self, Self::Error> {
+        match value {
+            Identity::Plookup(plookup) => Ok(ConnectingIdentityRef::Plookup(plookup)),
+            Identity::Permutation(permutation) => Ok(ConnectingIdentityRef::Permutation(permutation)),
+            _ => Err(()),
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+enum ConnectionType {
+    Permutation,
+    Lookup,
+}
+
+impl<'a, T> ConnectingIdentityRef<'a, T> {
+    pub fn left(&self) -> &analyzed::SelectedExpressions<AlgebraicExpression<T>> {
+        match self {
+            ConnectingIdentityRef::Plookup(i) => &i.left,
+            ConnectingIdentityRef::Permutation(i) => &i.left,
+        }
+    }
+
+    pub fn right(&self) -> &analyzed::SelectedExpressions<AlgebraicExpression<T>> {
+        match self {
+            ConnectingIdentityRef::Plookup(i) => &i.right,
+            ConnectingIdentityRef::Permutation(i) => &i.right,
+        }
+    }
+    
+    fn kind(&self) -> ConnectionType {
+        match self {
+            ConnectingIdentityRef::Plookup(_) => ConnectionType::Lookup,
+            ConnectingIdentityRef::Permutation(_) => ConnectionType::Permutation,
+        }
+    }
+    
+    fn id(&self) -> u64 {
+        todo!()
+    }
+}
+
 /// The parts of Analyzed that are assigned to a machine.
 /// Also includes FixedData for convenience.
 #[derive(Clone)]
@@ -159,7 +214,7 @@ pub struct MachineParts<'a, T: FieldElement> {
     /// Connecting identities, indexed by their ID.
     /// These are the identities that connect another machine to this one,
     /// where this one is on the RHS of a lookup.
-    pub connecting_identities: BTreeMap<u64, &'a Identity<T>>,
+    pub connecting_identities: BTreeMap<u64, ConnectingIdentityRef<'a, T>>,
     /// Identities relevant to this machine and only this machine.
     pub identities: Vec<&'a Identity<T>>,
     /// Witness columns relevant to this machine.
@@ -171,7 +226,7 @@ pub struct MachineParts<'a, T: FieldElement> {
 impl<'a, T: FieldElement> MachineParts<'a, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
-        connecting_identities: BTreeMap<u64, &'a Identity<T>>,
+        connecting_identities: BTreeMap<u64, ConnectingIdentityRef<'a, T>>,
         identities: Vec<&'a Identity<T>>,
         witnesses: HashSet<PolyID>,
         prover_functions: Vec<&'a analyzed::Expression>,

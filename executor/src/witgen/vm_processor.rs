@@ -351,8 +351,11 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         let pc_lookup_index = identities
             .iter_mut()
             .enumerate()
-            .filter(|(_, (ident, _))| ident.kind == IdentityKind::Plookup)
-            .max_by_key(|(_, (ident, _))| ident.left.expressions.len())
+            .filter_map(|(index, (ident, _))| match ident {
+                Identity::Plookup(i) => Some((index, i)),
+                _ => None
+            })
+            .max_by_key(|(_, ident)| ident.left.expressions.len())
             .map(|(i, _)| i);
         loop {
             let mut progress = false;
@@ -442,8 +445,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         }
 
         let is_machine_call = matches!(
-            identity.kind,
-            IdentityKind::Plookup | IdentityKind::Permutation
+            identity,
+            Identity::Plookup(..) | Identity::Permutation(..)
         );
         if is_machine_call && unknown_strategy == UnknownStrategy::Zero {
             // The fact that we got to the point where we assume 0 for unknown cells, but this identity

@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use super::super::affine_expression::AffineExpression;
-use super::{EvalResult, FixedData};
+use super::{ConnectingIdentityRef, EvalResult, FixedData};
 use super::{Machine, MachineParts};
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::rows::RowPair;
@@ -27,7 +27,7 @@ use powdr_number::{DegreeType, FieldElement};
 pub struct SortedWitnesses<'a, T: FieldElement> {
     degree: DegreeType,
     rhs_references: BTreeMap<u64, Vec<&'a AlgebraicReference>>,
-    connecting_identities: BTreeMap<u64, &'a Identity<T>>,
+    connecting_identities: BTreeMap<u64, ConnectingIdentityRef<'a, T>>,
     key_col: PolyID,
     /// Position of the witness columns in the data.
     witness_positions: HashMap<PolyID, usize>,
@@ -63,7 +63,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                 .values()
                 .filter_map(|&id| {
                     let rhs_expressions = id
-                        .right
+                        .right()
                         .expressions
                         .iter()
                         .map(|expr| match expr {
@@ -73,7 +73,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                         })
                         .collect::<Option<Vec<_>>>()?;
 
-                    Some((id.id, rhs_expressions))
+                    Some((id.id(), rhs_expressions))
                 })
                 .collect::<BTreeMap<_, _>>();
 
@@ -232,7 +232,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
         caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
         let left = self.connecting_identities[&identity_id]
-            .left
+            .left()
             .expressions
             .iter()
             .map(|e| caller_rows.evaluate(e).unwrap())

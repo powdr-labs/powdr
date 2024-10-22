@@ -255,7 +255,7 @@ fn build_machine<'a, T: FieldElement>(
             .values()
             .fold(None, |existing_latch, identity| {
                 let current_latch = identity
-                    .right
+                    .right()
                     .selector
                     .as_ref()
                     .expect("Cannot handle lookup in this machine because it does not have a latch");
@@ -290,15 +290,15 @@ fn all_row_connected_witnesses<T>(
     loop {
         let count = witnesses.len();
         for i in identities {
-            match i.kind {
-                IdentityKind::Polynomial => {
+            match i {
+                Identity::Polynomial(i) => {
                     // Any current witness in the identity adds all other witnesses.
-                    let in_identity = &refs_in_identity(i) & all_witnesses;
+                    let in_identity = &refs_in_expression(&i.e).collect::<HashSet<_>>() & all_witnesses;
                     if in_identity.intersection(&witnesses).next().is_some() {
                         witnesses.extend(in_identity);
                     }
                 }
-                IdentityKind::Plookup | IdentityKind::Permutation | IdentityKind::Connect => {
+                Identity::Plookup(i) => {
                     // If we already have witnesses on the LHS, include the LHS,
                     // and vice-versa, but not across the "sides".
                     let in_lhs = &refs_in_selected_expressions(&i.left) & all_witnesses;
@@ -308,7 +308,8 @@ fn all_row_connected_witnesses<T>(
                     } else if in_rhs.intersection(&witnesses).next().is_some() {
                         witnesses.extend(in_rhs);
                     }
-                }
+                },
+                Identity::Permutation(..) | Identity::Connect(..) => todo!("same as plookup, avoid repetition?"),
             };
         }
         if witnesses.len() == count {
