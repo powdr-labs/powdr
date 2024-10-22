@@ -47,6 +47,11 @@ fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace<F>) -> HashMap<Strin
 }
 
 fn render_memory_hash<F: FieldElement>(hash: &[F]) -> String {
+    // TODO: support for small field, which uses two F per word
+    assert!(matches!(
+        F::known_field().unwrap().field_size(),
+        FieldSize::Large
+    ));
     // Main memory values must fit into u32
     hash.iter()
         .map(|&f| {
