@@ -2,16 +2,16 @@ use std::collections::{BTreeMap, HashMap};
 
 use powdr_number::FieldElement;
 
-use super::bootloader::{
-    BootloaderImpl, BYTES_PER_WORD, N_LEAVES_LOG, WORDS_PER_PAGE as WORDS_PER_PAGE_BOOTLOADER,
-};
+use super::bootloader::{BootloaderImpl, BYTES_PER_WORD, N_LEAVES_LOG, WORDS_PER_PAGE};
 
 const N_LEVELS_DEFAULT: usize = N_LEAVES_LOG + 1;
-const N_LEVELS: usize = N_LEVELS_DEFAULT;
-const WORDS_PER_PAGE: usize = WORDS_PER_PAGE_BOOTLOADER;
 
 /// A Merkle tree of memory pages.
-pub struct MerkleTree<F: FieldElement, B: BootloaderImpl<F>> {
+pub struct MerkleTree<
+    F: FieldElement,
+    B: BootloaderImpl<F>,
+    const N_LEVELS: usize = N_LEVELS_DEFAULT,
+> {
     /// Hashes of non-default nodes of the Merkle tree.
     ///
     /// The key is the tuple (level, index), where level is the tree level, and
@@ -47,7 +47,7 @@ fn level_up(ordered_indices: &mut Vec<usize>) {
     ordered_indices.dedup();
 }
 
-impl<F: FieldElement, B: BootloaderImpl<F>> MerkleTree<F, B> {
+impl<F: FieldElement, B: BootloaderImpl<F>, const N_LEVELS: usize> MerkleTree<F, B, N_LEVELS> {
     /// Build a new Merkle tree starting from an all-zero memory.
     pub fn new() -> Self {
         Self {
@@ -199,144 +199,170 @@ impl<F: FieldElement, B: BootloaderImpl<F>> Default for MerkleTree<F, B> {
 
 #[cfg(test)]
 mod test {
-    // use powdr_number::GoldilocksField;
+    use powdr_number::GoldilocksField;
 
-    // use super::*;
+    use crate::large_field::bootloader::LargeFieldBootloader;
 
-    // fn hash_page<T: FieldElement>(page: &[u64; 8]) -> B::Hash {
-    //     // Convert to field elements
-    //     let page: [T; 8] = page
-    //         .iter()
-    //         .map(|&x| T::from(x))
-    //         .collect::<Vec<_>>()
-    //         .try_into()
-    //         .unwrap();
+    use super::*;
+    const P: u32 = WORDS_PER_PAGE as u32;
+    const W: u32 = BYTES_PER_WORD as u32;
+    const N_LEVELS: usize = 3;
+    type TestMerkleTree =
+        MerkleTree<GoldilocksField, LargeFieldBootloader<GoldilocksField>, N_LEVELS>;
 
-    //     // Linearly hash page
-    //     let hash = hash_cap0(&[T::zero(); 4], &page[..4].try_into().unwrap());
-    //     hash_cap0(&hash, &page[4..].try_into().unwrap())
-    // }
+    fn root_hash(
+        pages: &[[GoldilocksField; WORDS_PER_PAGE]; 4],
+    ) -> <LargeFieldBootloader<GoldilocksField> as BootloaderImpl<GoldilocksField>>::Hash {
+        let page_hashes = pages
+            .iter()
+            .map(|page| LargeFieldBootloader::hash_page(page))
+            .collect::<Vec<_>>();
 
-    // fn root_hash<T: FieldElement>(pages: &[[u64; 8]; 4]) -> B::Hash {
-    //     let page_hashes = pages.iter().map(|page| hash_page(page)).collect::<Vec<_>>();
+        let hash_1_0 = LargeFieldBootloader::hash_two(&page_hashes[0], &page_hashes[1]);
+        let hash_1_1 = LargeFieldBootloader::hash_two(&page_hashes[2], &page_hashes[3]);
+        LargeFieldBootloader::hash_two(&hash_1_0, &hash_1_1)
+    }
 
-    //     let hash_1_0 = hash_cap0(&page_hashes[0], &page_hashes[1]);
-    //     let hash_1_1 = hash_cap0(&page_hashes[2], &page_hashes[3]);
-    //     hash_cap0(&hash_1_0, &hash_1_1)
-    // }
+    fn zero_page() -> [GoldilocksField; WORDS_PER_PAGE] {
+        <LargeFieldBootloader<GoldilocksField> as BootloaderImpl<_>>::zero_page()
+    }
 
-    // #[test]
-    // fn update() {
-    //     let mut tree = MerkleTree::<GoldilocksField, 3, 8>::new();
-    //     let mut data = [[0; 8]; 4];
+    #[test]
+    fn update() {
+        let mut tree = TestMerkleTree::new();
+        let mut data: [[GoldilocksField; WORDS_PER_PAGE]; 4] = [zero_page(); 4];
 
-    //     // Update page 0
-    //     data[0][4] = 1;
-    //     tree.update([(4 * 4, 1)].into_iter());
-    //     let expected_root_hash = root_hash::<GoldilocksField>(&data);
-    //     assert_eq!(tree.root_hash(), &expected_root_hash);
+        // Update page 0
+        data[0][4] = 1.into();
+        tree.update([(4 * W, 1)].into_iter());
+        let expected_root_hash = root_hash(&data);
+        assert_eq!(tree.root_hash(), &expected_root_hash);
 
-    //     // Update page 1
-    //     data[1][3] = 2;
-    //     tree.update([((8 + 3) * 4, 2)].into_iter());
-    //     let expected_root_hash = root_hash::<GoldilocksField>(&data);
-    //     assert_eq!(tree.root_hash(), &expected_root_hash);
+        // Update page 1
+        data[1][3] = 2.into();
+        tree.update([((P + 3) * W, 2)].into_iter());
+        let expected_root_hash = root_hash(&data);
+        assert_eq!(tree.root_hash(), &expected_root_hash);
 
-    //     // Update page 2
-    //     data[2][7] = 3;
-    //     tree.update([((2 * 8 + 7) * 4, 3)].into_iter());
-    //     let expected_root_hash = root_hash::<GoldilocksField>(&data);
-    //     assert_eq!(tree.root_hash(), &expected_root_hash);
+        // Update page 2
+        data[2][7] = 3.into();
+        tree.update([((2 * P + 7) * W, 3)].into_iter());
+        let expected_root_hash = root_hash(&data);
+        assert_eq!(tree.root_hash(), &expected_root_hash);
 
-    //     // Update page 3
-    //     data[3][6] = 4;
-    //     tree.update([((3 * 8 + 6) * 4, 4)].into_iter());
-    //     let expected_root_hash = root_hash::<GoldilocksField>(&data);
-    //     assert_eq!(tree.root_hash(), &expected_root_hash);
+        // Update page 3
+        data[3][6] = 4.into();
+        tree.update([((3 * P + 6) * W, 4)].into_iter());
+        let expected_root_hash = root_hash(&data);
+        assert_eq!(tree.root_hash(), &expected_root_hash);
 
-    //     // Update page 0, again
-    //     data[0][3] = 5;
-    //     tree.update([(4 * 3, 5)].into_iter());
-    //     let expected_root_hash = root_hash::<GoldilocksField>(&data);
-    //     assert_eq!(tree.root_hash(), &expected_root_hash);
+        // Update page 0, again
+        data[0][3] = 5.into();
+        tree.update([(3 * W, 5)].into_iter());
+        let expected_root_hash = root_hash(&data);
+        assert_eq!(tree.root_hash(), &expected_root_hash);
 
-    //     // Update all at once
-    //     let mut tree = MerkleTree::<GoldilocksField, 3, 8>::new();
-    //     tree.update(
-    //         [
-    //             (4 * 4, 1),
-    //             ((8 + 3) * 4, 2),
-    //             ((2 * 8 + 7) * 4, 3),
-    //             ((3 * 8 + 6) * 4, 4),
-    //             (4 * 3, 5),
-    //         ]
-    //         .into_iter(),
-    //     );
-    //     assert_eq!(tree.root_hash(), &expected_root_hash);
-    // }
+        // Update all at once
+        let mut tree = TestMerkleTree::new();
+        tree.update(
+            [
+                (4 * W, 1),
+                ((P + 3) * W, 2),
+                ((2 * P + 7) * W, 3),
+                ((3 * P + 6) * W, 4),
+                (3 * W, 5),
+            ]
+            .into_iter(),
+        );
+        assert_eq!(tree.root_hash(), &expected_root_hash);
+    }
 
-    // #[test]
-    // fn get() {
-    //     let g = GoldilocksField::from;
-    //     let mut tree = MerkleTree::<GoldilocksField, 3, 8>::new();
-    //     tree.update(
-    //         [
-    //             (4 * 4, 1),
-    //             ((8 + 3) * 4, 2),
-    //             ((2 * 8 + 7) * 4, 3),
-    //             ((3 * 8 + 6) * 4, 4),
-    //             (4 * 3, 5),
-    //         ]
-    //         .into_iter(),
-    //     );
-    //     let root_hash = tree.root_hash();
+    #[test]
+    fn get() {
+        let g = GoldilocksField::from;
+        let mut tree = TestMerkleTree::new();
+        tree.update(
+            [
+                (4 * W, 1),
+                ((P + 3) * W, 2),
+                ((2 * P + 7) * W, 3),
+                ((3 * P + 6) * W, 4),
+                (3 * W, 5),
+            ]
+            .into_iter(),
+        );
+        let root_hash = tree.root_hash();
 
-    //     // Get page 0
-    //     let (page, page_hash, proof) = tree.get(0);
-    //     let expected_page = [g(0), g(0), g(0), g(5), g(1), g(0), g(0), g(0)];
-    //     assert_eq!(page, &expected_page);
-    //     assert_eq!(page_hash, &hash_page(&[0, 0, 0, 5, 1, 0, 0, 0]));
+        // Get page 0
+        let (page, page_hash, proof) = tree.get(0);
+        for e in &page[8..] {
+            assert!(e == &g(0));
+        }
+        let mut expected_page = zero_page();
+        expected_page[3] = g(5);
+        expected_page[4] = g(1);
+        assert_eq!(page, &expected_page);
+        assert_eq!(
+            page_hash,
+            &LargeFieldBootloader::<GoldilocksField>::hash_page(&expected_page)
+        );
 
-    //     // Verify Merkle proof
-    //     assert_eq!(proof.len(), 2);
-    //     let computed_hash = hash_cap0(page_hash, proof[0]);
-    //     let computed_hash = hash_cap0(&computed_hash, proof[1]);
-    //     assert_eq!(computed_hash, *root_hash);
+        // Verify Merkle proof
+        assert_eq!(proof.len(), 2);
+        let computed_hash = &LargeFieldBootloader::<GoldilocksField>::hash_two(page_hash, proof[0]);
+        let computed_hash =
+            &LargeFieldBootloader::<GoldilocksField>::hash_two(computed_hash, proof[1]);
+        assert_eq!(computed_hash, root_hash);
 
-    //     // Get page 1
-    //     let (page, page_hash, proof) = tree.get(1);
-    //     let expected_page = [g(0), g(0), g(0), g(2), g(0), g(0), g(0), g(0)];
-    //     assert_eq!(page, &expected_page);
-    //     assert_eq!(page_hash, &hash_page(&[0, 0, 0, 2, 0, 0, 0, 0]));
+        // Get page 1
+        let (page, page_hash, proof) = tree.get(1);
+        let mut expected_page = zero_page();
+        expected_page[3] = g(2);
+        assert_eq!(page, &expected_page);
+        assert_eq!(
+            page_hash,
+            &LargeFieldBootloader::<GoldilocksField>::hash_page(&expected_page)
+        );
 
-    //     // Verify Merkle proof
-    //     assert_eq!(proof.len(), 2);
-    //     let computed_hash = hash_cap0(proof[0], page_hash);
-    //     let computed_hash = hash_cap0(&computed_hash, proof[1]);
-    //     assert_eq!(computed_hash, *root_hash);
+        // Verify Merkle proof
+        assert_eq!(proof.len(), 2);
+        let computed_hash = &LargeFieldBootloader::<GoldilocksField>::hash_two(proof[0], page_hash);
+        let computed_hash =
+            &LargeFieldBootloader::<GoldilocksField>::hash_two(computed_hash, proof[1]);
+        assert_eq!(computed_hash, root_hash);
 
-    //     // Get page 2
-    //     let (page, page_hash, proof) = tree.get(2);
-    //     let expected_page = [g(0), g(0), g(0), g(0), g(0), g(0), g(0), g(3)];
-    //     assert_eq!(page, &expected_page);
-    //     assert_eq!(page_hash, &hash_page(&[0, 0, 0, 0, 0, 0, 0, 3]));
+        // Get page 2
+        let (page, page_hash, proof) = tree.get(2);
+        let mut expected_page = zero_page();
+        expected_page[7] = g(3);
+        assert_eq!(page, &expected_page);
+        assert_eq!(
+            page_hash,
+            &LargeFieldBootloader::<GoldilocksField>::hash_page(&expected_page)
+        );
 
-    //     // Verify Merkle proof
-    //     assert_eq!(proof.len(), 2);
-    //     let computed_hash = hash_cap0(page_hash, proof[0]);
-    //     let computed_hash = hash_cap0(proof[1], &computed_hash);
-    //     assert_eq!(computed_hash, *root_hash);
+        // Verify Merkle proof
+        assert_eq!(proof.len(), 2);
+        let computed_hash = &LargeFieldBootloader::<GoldilocksField>::hash_two(page_hash, proof[0]);
+        let computed_hash =
+            &LargeFieldBootloader::<GoldilocksField>::hash_two(proof[1], computed_hash);
+        assert_eq!(computed_hash, root_hash);
 
-    //     // Get page 3
-    //     let (page, page_hash, proof) = tree.get(3);
-    //     let expected_page = [g(0), g(0), g(0), g(0), g(0), g(0), g(4), g(0)];
-    //     assert_eq!(page, &expected_page);
-    //     assert_eq!(page_hash, &hash_page(&[0, 0, 0, 0, 0, 0, 4, 0]));
+        // Get page 3
+        let (page, page_hash, proof) = tree.get(3);
+        let mut expected_page = zero_page();
+        expected_page[6] = g(4);
+        assert_eq!(page, &expected_page);
+        assert_eq!(
+            page_hash,
+            &LargeFieldBootloader::<GoldilocksField>::hash_page(&expected_page)
+        );
 
-    //     // Verify Merkle proof
-    //     assert_eq!(proof.len(), 2);
-    //     let computed_hash = hash_cap0(proof[0], page_hash);
-    //     let computed_hash = hash_cap0(proof[1], &computed_hash);
-    //     assert_eq!(computed_hash, *root_hash);
-    // }
+        // Verify Merkle proof
+        assert_eq!(proof.len(), 2);
+        let computed_hash = &LargeFieldBootloader::<GoldilocksField>::hash_two(proof[0], page_hash);
+        let computed_hash =
+            &LargeFieldBootloader::<GoldilocksField>::hash_two(proof[1], computed_hash);
+        assert_eq!(computed_hash, root_hash);
+    }
 }
