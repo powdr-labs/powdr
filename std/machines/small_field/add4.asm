@@ -1,12 +1,11 @@
 use std::machines::range::Byte2;
 use std::machines::range::Bit2;
-use std::machines::range::Range9;
 use std::field::modulus;
 use std::check::require_field_bits;
 
 // Implements 32-bit addition using 16-bit limbs.
 // Requires the field to contain at least 17 bits.
-machine Add4(byte2: Byte2, bit2: Bit2, range9: Range9) with
+machine Add4(byte2: Byte2, bit2: Bit2) with
     latch: latch,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation
@@ -25,11 +24,6 @@ machine Add4(byte2: Byte2, bit2: Bit2, range9: Range9) with
 
     let carry32;
     link => bit2.check(carry32);
-
-    //let carry;
-    //link => range9.check(carry);
-//
-    //carry = 2 * carry32 + carry16;
 
     link => byte2.check(A_l);
     link => byte2.check(A_h);

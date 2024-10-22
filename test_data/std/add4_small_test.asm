@@ -1,7 +1,6 @@
 use std::machines::small_field::add4::Add4;
 use std::machines::range::Byte2;
 use std::machines::range::Bit2;
-use std::machines::range::Range9;
 
 machine Main {
     reg pc[@pc];
@@ -23,8 +22,7 @@ machine Main {
 
     Byte2 byte2;
     Bit2 bit2;
-    Range9 range9;
-    Add4 add4(byte2, bit2, range9);
+    Add4 add4(byte2, bit2);
 
     instr add4 A_h, A_l, B_h, B_l, C_h, C_l, D_h, D_l -> E_h, E_l
       link ~> (E_h, E_l) = add4.add(A_h, A_l, B_h, B_l, C_h, C_l, D_h, D_l);
