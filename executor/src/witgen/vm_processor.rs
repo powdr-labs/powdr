@@ -353,7 +353,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             .enumerate()
             .filter_map(|(index, (ident, _))| match ident {
                 Identity::Plookup(i) => Some((index, i)),
-                _ => None
+                _ => None,
             })
             .max_by_key(|(_, ident)| ident.left.expressions.len())
             .map(|(i, _)| i);
@@ -444,10 +444,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             return Ok(None);
         }
 
-        let is_machine_call = matches!(
-            identity,
-            Identity::Plookup(..) | Identity::Permutation(..)
-        );
+        let is_machine_call = matches!(identity, Identity::Plookup(..) | Identity::Permutation(..));
         if is_machine_call && unknown_strategy == UnknownStrategy::Zero {
             // The fact that we got to the point where we assume 0 for unknown cells, but this identity
             // is still not complete, means that either the inputs or the machine is under-constrained.

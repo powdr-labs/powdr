@@ -12,6 +12,7 @@ use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::constant_evaluator::VariablySizedColumn;
+use crate::Identity;
 
 use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{
@@ -227,7 +228,13 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             // as they are assumed to be handled in stage 0.
             let polynomial_identities = identities
                 .iter()
-                .filter(|identity| identity.kind == IdentityKind::Polynomial)
+                .filter_map(|identity| {
+                    if let Identity::Polynomial(_) = &identity {
+                        Some(identity)
+                    } else {
+                        None
+                    }
+                })
                 .collect::<Vec<_>>();
             ExtractionOutput {
                 machines: Vec::new(),

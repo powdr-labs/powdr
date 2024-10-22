@@ -1,11 +1,12 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fmt::Display;
 
-use powdr_ast::analyzed;
 use powdr_ast::analyzed::AlgebraicExpression;
 use powdr_ast::analyzed::DegreeRange;
 use powdr_ast::analyzed::PermutationIdentity;
 use powdr_ast::analyzed::PlookupIdentity;
 use powdr_ast::analyzed::PolyID;
+use powdr_ast::analyzed::{self, PolynomialIdentity};
 
 use powdr_ast::parsed::SelectedExpressions;
 use powdr_number::FieldElement;
@@ -161,13 +162,24 @@ pub enum ConnectingIdentityRef<'a, T> {
     Permutation(&'a PermutationIdentity<AlgebraicExpression<T>>),
 }
 
+impl<'a, T: Display> Display for ConnectingIdentityRef<'a, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConnectingIdentityRef::Plookup(i) => write!(f, "{}", i),
+            ConnectingIdentityRef::Permutation(i) => write!(f, "{}", i),
+        }
+    }
+}
+
 impl<'a, T> TryFrom<&'a Identity<T>> for ConnectingIdentityRef<'a, T> {
     type Error = ();
 
     fn try_from(value: &'a Identity<T>) -> Result<Self, Self::Error> {
         match value {
             Identity::Plookup(plookup) => Ok(ConnectingIdentityRef::Plookup(plookup)),
-            Identity::Permutation(permutation) => Ok(ConnectingIdentityRef::Permutation(permutation)),
+            Identity::Permutation(permutation) => {
+                Ok(ConnectingIdentityRef::Permutation(permutation))
+            }
             _ => Err(()),
         }
     }
@@ -193,14 +205,14 @@ impl<'a, T> ConnectingIdentityRef<'a, T> {
             ConnectingIdentityRef::Permutation(i) => &i.right,
         }
     }
-    
+
     fn kind(&self) -> ConnectionType {
         match self {
             ConnectingIdentityRef::Plookup(_) => ConnectionType::Lookup,
             ConnectingIdentityRef::Permutation(_) => ConnectionType::Permutation,
         }
     }
-    
+
     fn id(&self) -> u64 {
         todo!()
     }

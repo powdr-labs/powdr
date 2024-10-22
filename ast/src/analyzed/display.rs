@@ -354,10 +354,10 @@ impl<T: Display> Display for ConnectIdentity<T> {
 impl<T: Display> Display for Identity<AlgebraicExpression<T>> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         match self {
-            Identity::Polynomial(p) => write!(f, "{}", p),
-            Identity::Plookup(p) => write!(f, "{}", p),
-            Identity::Permutation(p) => write!(f, "{}", p),
-            Identity::Connect(p) => write!(f, "{}", p),
+            Identity::Polynomial(p) => write!(f, "{p}"),
+            Identity::Plookup(p) => write!(f, "{p}"),
+            Identity::Permutation(p) => write!(f, "{p}"),
+            Identity::Connect(p) => write!(f, "{p}"),
         }
     }
 }

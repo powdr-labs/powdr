@@ -695,7 +695,7 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .iter()
         .enumerate()
         .filter_map(|(index, identity)| {
-            match identity_expressions.insert(CanonicalIdentity(&identity)) {
+            match identity_expressions.insert(CanonicalIdentity(identity)) {
                 false => Some(index),
                 true => None,
             }

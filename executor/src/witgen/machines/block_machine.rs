@@ -453,8 +453,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let outer_query =
-            OuterQuery::new(caller_rows, self.parts.connecting_identities[&identity_id].clone());
+        let outer_query = OuterQuery::new(
+            caller_rows,
+            self.parts.connecting_identities[&identity_id].clone(),
+        );
 
         log::trace!("Start processing block machine '{}'", self.name());
         log::trace!("Left values of lookup:");

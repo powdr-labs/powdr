@@ -48,7 +48,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
             .parts
             .connecting_identities
             .get(&identity_id)
-            .unwrap().clone();
+            .unwrap()
+            .clone();
         let outer_query = OuterQuery::new(caller_rows, identity.clone());
 
         log::trace!("Start processing secondary VM '{}'", self.name());

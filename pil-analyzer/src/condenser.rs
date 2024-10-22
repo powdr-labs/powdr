@@ -15,9 +15,9 @@ use powdr_ast::{
     analyzed::{
         self, AlgebraicBinaryOperation, AlgebraicExpression, AlgebraicReference,
         AlgebraicUnaryOperation, Analyzed, Challenge, ConnectIdentity, DegreeRange, Expression,
-        FunctionValueDefinition, Identity, PermutationIdentity, PlookupIdentity,
-        PolyID, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
-        SelectedExpressions, StatementIdentifier, Symbol, SymbolKind,
+        FunctionValueDefinition, Identity, PermutationIdentity, PlookupIdentity, PolyID,
+        PolynomialReference, PolynomialType, PublicDeclaration, Reference, SelectedExpressions,
+        StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
         self,

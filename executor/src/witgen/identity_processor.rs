@@ -4,7 +4,9 @@ use std::{
 };
 
 use lazy_static::lazy_static;
-use powdr_ast::analyzed::{AlgebraicExpression as Expression, IdentityKind, PlookupIdentity, PolynomialIdentity};
+use powdr_ast::analyzed::{
+    AlgebraicExpression as Expression, IdentityKind, PlookupIdentity, PolynomialIdentity,
+};
 use powdr_number::FieldElement;
 
 use crate::{
@@ -149,9 +151,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
     ) -> EvalResult<'a, T> {
         let result = match identity {
             Identity::Polynomial(identity) => self.process_polynomial_identity(identity, rows),
-            Identity::Plookup(identity) => {
-                self.process_plookup(identity, rows)
-            }
+            Identity::Plookup(identity) => self.process_plookup(identity, rows),
             Identity::Permutation(..) => {
                 todo!("same as plookup, avoid duplication")
             }
@@ -189,9 +189,11 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
             }
         }
 
-        self.mutable_state
-            .machines
-            .call(unimplemented!("identity id"), rows, self.mutable_state.query_callback)
+        self.mutable_state.machines.call(
+            unimplemented!("identity id"),
+            rows,
+            self.mutable_state.query_callback,
+        )
     }
 
     /// Handles the lookup that connects the current machine to the calling machine.

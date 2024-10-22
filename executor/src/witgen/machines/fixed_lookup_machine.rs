@@ -5,7 +5,9 @@ use std::num::NonZeroUsize;
 use std::str::FromStr;
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, IdentityKind, PolyID, PolynomialType};
+use powdr_ast::analyzed::{
+    AlgebraicExpression, AlgebraicReference, IdentityKind, PolyID, PolynomialType,
+};
 use powdr_ast::parsed::asm::SymbolPath;
 use powdr_number::{DegreeType, FieldElement};
 
@@ -197,20 +199,22 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
     ) -> Self {
         let connecting_identities = all_identities
             .into_iter()
-            .filter_map(|i| {
-                match i {
-                    Identity::Plookup(i) => {
-                        (i.right.selector.is_none()
-                        && i.right.expressions.iter().all(|e| {
-                            try_to_simple_poly_ref(e)
-                                .map(|poly| poly.poly_id.ptype == PolynomialType::Constant)
-                                .unwrap_or(false)
-                        })
-                        && !i.right.expressions.is_empty())
-                    .then_some(({unimplemented!("identity id"); 0u64}, ConnectingIdentityRef::Plookup(i)))
+            .filter_map(|i| match i {
+                Identity::Plookup(i) => (i.right.selector.is_none()
+                    && i.right.expressions.iter().all(|e| {
+                        try_to_simple_poly_ref(e)
+                            .map(|poly| poly.poly_id.ptype == PolynomialType::Constant)
+                            .unwrap_or(false)
+                    })
+                    && !i.right.expressions.is_empty())
+                .then_some((
+                    {
+                        unimplemented!("identity id");
+                        0u64
                     },
-                    _ => None,
-                }
+                    ConnectingIdentityRef::Plookup(i),
+                )),
+                _ => None,
             })
             .collect();
 

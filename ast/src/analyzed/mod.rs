@@ -946,6 +946,10 @@ impl<T> Identity<AlgebraicExpression<T>> {
     pub fn degree(&self) -> usize {
         self.children().map(|e| e.degree()).max().unwrap_or(0)
     }
+
+    pub fn id(&self) -> u64 {
+        todo!()
+    }
 }
 
 impl<T> Children<AlgebraicExpression<T>> for Identity<AlgebraicExpression<T>> {

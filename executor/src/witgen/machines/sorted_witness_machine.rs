@@ -109,11 +109,14 @@ fn check_identity<T: FieldElement>(
     id: &Identity<T>,
     degree: DegreeType,
 ) -> Option<PolyID> {
+    let id = if let Identity::Plookup(id) = id {
+        id
+    } else {
+        return None;
+    };
+
     // Looking for NOTLAST $ [ A' - A ] in [ POSITIVE ]
-    if id.kind != IdentityKind::Plookup
-        || id.right.selector.is_some()
-        || id.left.expressions.len() != 1
-    {
+    if id.right.selector.is_some() || id.left.expressions.len() != 1 {
         return None;
     }
 

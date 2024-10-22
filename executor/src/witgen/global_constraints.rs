@@ -227,8 +227,7 @@ fn propagate_constraints<T: FieldElement>(
                     .is_none());
                 remove = true;
             } else {
-                for (p, c) in try_transfer_constraints(&identity.e, &known_constraints)
-                {
+                for (p, c) in try_transfer_constraints(&identity.e, &known_constraints) {
                     known_constraints
                         .entry(p)
                         .and_modify(|existing| *existing = existing.conjunction(&c))

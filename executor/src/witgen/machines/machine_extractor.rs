@@ -1,6 +1,8 @@
 use std::collections::{BTreeMap, HashSet};
 
 use itertools::Itertools;
+use powdr_ast::analyzed::PermutationIdentity;
+use powdr_ast::analyzed::PlookupIdentity;
 
 use super::block_machine::BlockMachine;
 use super::double_sorted_witness_machine_16::DoubleSortedWitnesses16;
@@ -9,6 +11,7 @@ use super::fixed_lookup_machine::FixedLookup;
 use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::KnownMachine;
+use crate::witgen::machines::ConnectingIdentityRef;
 use crate::{
     witgen::{
         generator::Generator,
@@ -62,7 +65,13 @@ pub fn split_out_machines<'a, T: FieldElement>(
     let mut id_counter = 0;
     for id in &identities {
         // Extract all witness columns in the RHS of the lookup.
-        let lookup_witnesses = &refs_in_selected_expressions(&id.right) & (&remaining_witnesses);
+        let lookup_witnesses = match id {
+            Identity::Plookup(PlookupIdentity { right, .. })
+            | Identity::Permutation(PermutationIdentity { right, .. }) => {
+                &refs_in_selected_expressions(right) & (&remaining_witnesses)
+            }
+            _ => Default::default(),
+        };
         if lookup_witnesses.is_empty() {
             continue;
         }
@@ -78,29 +87,46 @@ pub fn split_out_machines<'a, T: FieldElement>(
             base_identities.iter().cloned().partition(|i| {
                 // The identity's left side has at least one machine witness, but
                 // all referenced witnesses are machine witnesses.
-                // Note that expressions of "simple" polynomial identities are stored
-                // in i.left.selector, so those are covered as well.
                 // For lookups, any lookup calling from the current machine belongs
                 // to the machine; lookups to the machine do not.
-                let all_refs = &refs_in_selected_expressions(&i.left) & (&all_witnesses);
+                let all_refs = match i {
+                    Identity::Polynomial(identity) => {
+                        &refs_in_expression(&identity.e).collect() & (&all_witnesses)
+                    }
+                    Identity::Plookup(PlookupIdentity { left, .. })
+                    | Identity::Permutation(PermutationIdentity { left, .. }) => {
+                        &refs_in_selected_expressions(&left) & (&all_witnesses)
+                    }
+                    Identity::Connect(..) => unimplemented!(),
+                };
                 !all_refs.is_empty() && all_refs.is_subset(&machine_witnesses)
             });
         base_identities = remaining_identities;
         remaining_witnesses = &remaining_witnesses - &machine_witnesses;
 
         // Identities that call into the current machine
-        let connecting_identities = identities
+        let connecting_identities: BTreeMap<u64, ConnectingIdentityRef<'a, T>> = identities
             .iter()
             .cloned()
-            .filter(|i| {
-                refs_in_selected_expressions(&i.right)
-                    .intersection(&machine_witnesses)
-                    .next()
-                    .is_some()
+            .filter_map(|i| {
+                let id = i.id();
+                match i {
+                    Identity::Polynomial(polynomial_identity) => None,
+                    Identity::Plookup(i) => refs_in_selected_expressions(&i.right)
+                        .intersection(&machine_witnesses)
+                        .next()
+                        .is_some()
+                        .then_some((id, ConnectingIdentityRef::Plookup(i))),
+                    Identity::Permutation(i) => refs_in_selected_expressions(&i.right)
+                        .intersection(&machine_witnesses)
+                        .next()
+                        .is_some()
+                        .then_some((id, ConnectingIdentityRef::Permutation(i))),
+                    Identity::Connect(connect_identity) => None,
+                }
             })
-            .map(|identity| (identity.id, identity))
             .collect::<BTreeMap<_, _>>();
-        assert!(connecting_identities.contains_key(&id.id));
+        assert!(connecting_identities.contains_key(&id.id()));
 
         let prover_functions = prover_functions
             .iter()
@@ -293,7 +319,8 @@ fn all_row_connected_witnesses<T>(
             match i {
                 Identity::Polynomial(i) => {
                     // Any current witness in the identity adds all other witnesses.
-                    let in_identity = &refs_in_expression(&i.e).collect::<HashSet<_>>() & all_witnesses;
+                    let in_identity =
+                        &refs_in_expression(&i.e).collect::<HashSet<_>>() & all_witnesses;
                     if in_identity.intersection(&witnesses).next().is_some() {
                         witnesses.extend(in_identity);
                     }
@@ -308,8 +335,10 @@ fn all_row_connected_witnesses<T>(
                     } else if in_rhs.intersection(&witnesses).next().is_some() {
                         witnesses.extend(in_rhs);
                     }
-                },
-                Identity::Permutation(..) | Identity::Connect(..) => todo!("same as plookup, avoid repetition?"),
+                }
+                Identity::Permutation(..) | Identity::Connect(..) => {
+                    todo!("same as plookup, avoid repetition?")
+                }
             };
         }
         if witnesses.len() == count {

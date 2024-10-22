@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
-use powdr_ast::analyzed::{ConnectIdentity, PolynomialType};
 use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
+use powdr_ast::analyzed::{ConnectIdentity, PolynomialType};
 
 use powdr_number::{DegreeType, FieldElement};
 
@@ -36,7 +36,10 @@ pub struct OuterQuery<'a, 'b, T: FieldElement> {
 }
 
 impl<'a, 'b, T: FieldElement> OuterQuery<'a, 'b, T> {
-    pub fn new(caller_rows: &'b RowPair<'b, 'a, T>, connecting_identity: ConnectingIdentityRef<'a, T>) -> Self {
+    pub fn new(
+        caller_rows: &'b RowPair<'b, 'a, T>,
+        connecting_identity: ConnectingIdentityRef<'a, T>,
+    ) -> Self {
         // Evaluate once, for performance reasons.
         let left = connecting_identity
             .left()
@@ -290,7 +293,12 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         row_index: usize,
     ) -> Result<(bool, Constraints<AlgebraicVariable<'a>, T>), EvalError<T>> {
         let mut progress = false;
-        let right = &self.outer_query.as_ref().unwrap().connecting_identity.right();
+        let right = &self
+            .outer_query
+            .as_ref()
+            .unwrap()
+            .connecting_identity
+            .right();
         if let Some(selector) = right.selector.as_ref() {
             progress |= self
                 .set_value(row_index, selector, T::one(), || {
