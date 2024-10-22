@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use powdr_backend::BackendType;
-use powdr_executor::constant_evaluator::get_uniquely_sized;
+use powdr_executor::constant_evaluator::{self, get_uniquely_sized};
 use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::{
     test_util::{
@@ -754,4 +754,23 @@ fn types_in_expressions() {
 fn set_hint() {
     let f = "asm/set_hint.asm";
     regular_test(f, Default::default());
+}
+
+#[test]
+fn expand_fixed_jit() {
+    // Test some more or less complicated code and see that it all JIT-compiles.
+    let file_name = "asm/expand_fixed.asm";
+
+    let mut pipeline = Pipeline::<GoldilocksField>::default()
+        .with_tmp_output()
+        .from_file(resolve_test_file(file_name));
+    let pil = pipeline.compute_optimized_pil().unwrap();
+
+    let fixed_cols = constant_evaluator::generate_only_via_jit(&pil);
+
+    let fixed_col_names = fixed_cols
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect::<Vec<_>>();
+    assert_eq!(fixed_col_names, vec!["main::LAST"]);
 }
