@@ -9,6 +9,7 @@ use powdr_executor::witgen::WitgenCallback;
 use powdr_number::FieldElement;
 use prover::StwoProver;
 
+mod circuit_builder;
 mod prover;
 
 #[allow(dead_code)]
@@ -33,7 +34,7 @@ impl<F: FieldElement> BackendFactory<F> for StwoProverFactory {
         let fixed = Arc::new(
             get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
         );
-        let stwo = Box::new(StwoProver::new(pil, fixed, setup)?);
+        let stwo = Box::new(StwoProver::new(pil, fixed)?);
         Ok(stwo)
     }
 }

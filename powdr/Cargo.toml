@@ -18,7 +18,7 @@ powdr-riscv.workspace = true
 powdr-riscv-executor.workspace = true
 
 [features]
-default = ["halo2", "plonky3"]
+default = ["halo2", "plonky3","stwo"]
 plonky3 = ["powdr-backend/plonky3", "powdr-pipeline/plonky3"]
 halo2 = ["powdr-backend/halo2", "powdr-pipeline/halo2"]
 estark-polygon = [
@@ -26,6 +26,7 @@ estark-polygon = [
   "powdr-pipeline/estark-polygon",
   "powdr-riscv/estark-polygon",
 ]
+stwo = ["powdr-backend/stwo"]
 simd = ["powdr-backend/simd", "powdr-pipeline/simd"]
 
 [lints.clippy]
