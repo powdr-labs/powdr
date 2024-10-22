@@ -7,7 +7,7 @@ use super::{EvalResult, FixedData, MachineParts};
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
-use crate::witgen::processor::{MutableData, OuterQuery, Processor};
+use crate::witgen::processor::{OuterQuery, Processor, SolverState};
 use crate::witgen::rows::{Row, RowIndex, RowPair};
 use crate::witgen::sequence_iterator::{
     DefaultSequenceIterator, ProcessingSequenceCache, ProcessingSequenceIterator,
@@ -24,12 +24,12 @@ use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_number::{DegreeType, FieldElement};
 
 enum ProcessResult<'a, T: FieldElement> {
-    Success(MutableData<'a, T>, EvalValue<AlgebraicVariable<'a>, T>),
+    Success(SolverState<'a, T>, EvalValue<AlgebraicVariable<'a>, T>),
     Incomplete(EvalValue<AlgebraicVariable<'a>, T>),
 }
 
 impl<'a, T: FieldElement> ProcessResult<'a, T> {
-    fn new(data: MutableData<'a, T>, updates: EvalValue<AlgebraicVariable<'a>, T>) -> Self {
+    fn new(data: SolverState<'a, T>, updates: EvalValue<AlgebraicVariable<'a>, T>) -> Self {
         match updates.is_complete() {
             true => ProcessResult::Success(data, updates),
             false => ProcessResult::Incomplete(updates),
@@ -341,7 +341,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             let row_offset = RowIndex::from_i64(-1, self.degree);
             let mut processor = Processor::new(
                 row_offset,
-                MutableData::new(dummy_block, self.publics.clone()),
+                SolverState::new(dummy_block, self.publics.clone()),
                 mutable_state,
                 self.fixed_data,
                 &self.parts,
@@ -559,7 +559,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         );
         let mut processor = BlockProcessor::new(
             row_offset,
-            MutableData::new(block, self.publics.clone()),
+            SolverState::new(block, self.publics.clone()),
             mutable_state,
             self.fixed_data,
             &self.parts,

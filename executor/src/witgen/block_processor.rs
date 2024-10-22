@@ -5,7 +5,7 @@ use crate::Identity;
 use super::{
     affine_expression::AlgebraicVariable,
     machines::MachineParts,
-    processor::{MutableData, OuterQuery, Processor},
+    processor::{OuterQuery, Processor, SolverState},
     rows::{RowIndex, UnknownStrategy},
     sequence_iterator::{Action, ProcessingSequenceIterator, SequenceStep},
     EvalError, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
@@ -26,7 +26,7 @@ pub struct BlockProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c, T, Q> {
     pub fn new(
         row_offset: RowIndex,
-        mutable_data: MutableData<'a, T>,
+        mutable_data: SolverState<'a, T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
         fixed_data: &'a FixedData<'a, T>,
         parts: &'c MachineParts<'a, T>,
@@ -113,7 +113,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
     }
 
     /// Returns the updated data and values for publics
-    pub fn finish(self) -> MutableData<'a, T> {
+    pub fn finish(self) -> SolverState<'a, T> {
         self.processor.finish()
     }
 }
@@ -132,7 +132,7 @@ mod tests {
             data_structures::finalizable_data::FinalizableData,
             identity_processor::Machines,
             machines::MachineParts,
-            processor::MutableData,
+            processor::SolverState,
             rows::{Row, RowIndex},
             sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator},
             unused_query_callback, FixedData, MutableState, QueryCallback,
@@ -200,7 +200,7 @@ mod tests {
 
         let processor = BlockProcessor::new(
             row_offset,
-            MutableData::without_publics(data),
+            SolverState::without_publics(data),
             &mut mutable_state,
             &fixed_data,
             &machine_parts,

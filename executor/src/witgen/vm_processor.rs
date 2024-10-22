@@ -13,7 +13,7 @@ use crate::Identity;
 
 use super::affine_expression::AlgebraicVariable;
 use super::machines::MachineParts;
-use super::processor::{MutableData, OuterQuery, Processor};
+use super::processor::{OuterQuery, Processor, SolverState};
 
 use super::rows::{Row, RowIndex, UnknownStrategy};
 use super::{Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCallback};
@@ -75,7 +75,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         row_offset: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
         parts: &'c MachineParts<'a, T>,
-        mutable_data: MutableData<'a, T>,
+        mutable_data: SolverState<'a, T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
     ) -> Self {
         let degree_range = parts.common_degree_range();
@@ -125,7 +125,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
     }
 
     /// Returns the updated data, values for publics, and the length of the block.
-    pub fn finish(self) -> (MutableData<'a, T>, DegreeType) {
+    pub fn finish(self) -> (SolverState<'a, T>, DegreeType) {
         (self.processor.finish(), self.degree)
     }
 

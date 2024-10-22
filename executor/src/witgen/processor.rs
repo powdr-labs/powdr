@@ -25,14 +25,14 @@ use super::{
 type Left<'a, T> = Vec<AffineExpression<AlgebraicVariable<'a>, T>>;
 
 /// The data mutated by the processor
-pub(crate) struct MutableData<'a, T: FieldElement> {
+pub(crate) struct SolverState<'a, T: FieldElement> {
     /// The block of trace cells
     pub block: FinalizableData<T>,
     /// The values of publics
     pub publics: BTreeMap<&'a str, T>,
 }
 
-impl<'a, T: FieldElement> MutableData<'a, T> {
+impl<'a, T: FieldElement> SolverState<'a, T> {
     pub fn new(block: FinalizableData<T>, publics: BTreeMap<&'a str, T>) -> Self {
         Self { block, publics }
     }
@@ -120,7 +120,7 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, Q> {
     pub fn new(
         row_offset: RowIndex,
-        mutable_data: MutableData<'a, T>,
+        mutable_data: SolverState<'a, T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
         fixed_data: &'a FixedData<'a, T>,
         parts: &'c MachineParts<'a, T>,
@@ -195,8 +195,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
     }
 
     /// Returns the updated data and values for publics
-    pub fn finish(self) -> MutableData<'a, T> {
-        MutableData {
+    pub fn finish(self) -> SolverState<'a, T> {
+        SolverState {
             block: self.data,
             publics: self.publics,
         }

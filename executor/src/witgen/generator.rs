@@ -10,7 +10,7 @@ use crate::witgen::EvalValue;
 use super::affine_expression::AlgebraicVariable;
 use super::block_processor::BlockProcessor;
 use super::machines::{Machine, MachineParts};
-use super::processor::MutableData;
+use super::processor::SolverState;
 use super::rows::{Row, RowIndex, RowPair};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use super::vm_processor::VmProcessor;
@@ -18,7 +18,7 @@ use super::{EvalResult, FixedData, MutableState, QueryCallback};
 
 struct ProcessResult<'a, T: FieldElement> {
     eval_value: EvalValue<AlgebraicVariable<'a>, T>,
-    updated_data: MutableData<'a, T>,
+    updated_data: SolverState<'a, T>,
 }
 
 pub struct Generator<'a, T: FieldElement> {
@@ -184,7 +184,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         let mut processor = BlockProcessor::new(
             RowIndex::from_i64(-1, self.degree),
             // Shouldn't need any publics at this point
-            MutableData::without_publics(data),
+            SolverState::without_publics(data),
             mutable_state,
             self.fixed_data,
             &next_parts,
@@ -222,7 +222,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             RowIndex::from_degree(row_offset, self.degree),
             self.fixed_data,
             &self.parts,
-            MutableData::new(data, self.publics.clone()),
+            SolverState::new(data, self.publics.clone()),
             mutable_state,
         );
         if let Some(outer_query) = outer_query {

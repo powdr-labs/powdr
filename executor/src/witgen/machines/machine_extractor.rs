@@ -30,36 +30,6 @@ pub struct ExtractionOutput<'a, T: FieldElement> {
     pub base_parts: MachineParts<'a, T>,
 }
 
-#[derive(Default)]
-/// Keeps track of the global set of publics that are referenced by the machine's identities.
-struct PublicsTracker<'a>(BTreeSet<&'a String>);
-
-impl<'a> PublicsTracker<'a> {
-    /// Given a machine's identities, add all publics that are referenced by them.
-    /// Panics if a public is referenced by more than one machine.
-    fn add_all<T>(
-        &mut self,
-        identities: &[&'a powdr_ast::analyzed::Identity<SelectedExpressions<Expression<T>>>],
-    ) {
-        let referenced_publics = identities
-            .iter()
-            .flat_map(|id| id.all_children())
-            .filter_map(|expr| match expr {
-                Expression::PublicReference(public_name) => Some(public_name),
-                _ => None,
-            })
-            .collect();
-        let intersection = self
-            .0
-            .intersection(&referenced_publics)
-            .collect::<BTreeSet<_>>();
-        if !intersection.is_empty() {
-            panic!("Publics are referenced by more than one machine: {intersection:?}",);
-        }
-        self.0.extend(referenced_publics);
-    }
-}
-
 /// Finds machines in the witness columns and identities
 /// and returns a list of machines and the identities
 /// that are not "internal" to the machines.
@@ -117,7 +87,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
         base_identities = remaining_identities;
         remaining_witnesses = &remaining_witnesses - &machine_witnesses;
 
-        publics.add_all(machine_identities.as_slice());
+        publics.add_all(machine_identities.as_slice()).unwrap();
 
         // Identities that call into the current machine
         let connecting_identities = identities
@@ -195,7 +165,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
 
         machines.push(build_machine(fixed, machine_parts, name_with_type));
     }
-    publics.add_all(base_identities.as_slice());
+    publics.add_all(base_identities.as_slice()).unwrap();
 
     // Always add a fixed lookup machine.
     // Note that this machine comes last, because some machines do a fixed lookup
@@ -242,6 +212,39 @@ pub fn split_out_machines<'a, T: FieldElement>(
             remaining_witnesses,
             base_prover_functions,
         ),
+    }
+}
+
+#[derive(Default)]
+/// Keeps track of the global set of publics that are referenced by the machine's identities.
+struct PublicsTracker<'a>(BTreeSet<&'a String>);
+
+impl<'a> PublicsTracker<'a> {
+    /// Given a machine's identities, add all publics that are referenced by them.
+    /// Panics if a public is referenced by more than one machine.
+    fn add_all<T>(
+        &mut self,
+        identities: &[&'a powdr_ast::analyzed::Identity<SelectedExpressions<Expression<T>>>],
+    ) -> Result<(), String> {
+        let referenced_publics = identities
+            .iter()
+            .flat_map(|id| id.all_children())
+            .filter_map(|expr| match expr {
+                Expression::PublicReference(public_name) => Some(public_name),
+                _ => None,
+            })
+            .collect();
+        let intersection = self
+            .0
+            .intersection(&referenced_publics)
+            .collect::<BTreeSet<_>>();
+        if !intersection.is_empty() {
+            return Err(format!(
+                "Publics are referenced by more than one machine: {intersection:?}",
+            ));
+        }
+        self.0.extend(referenced_publics);
+        Ok(())
     }
 }
 
