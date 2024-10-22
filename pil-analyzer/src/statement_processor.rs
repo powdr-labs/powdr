@@ -207,14 +207,20 @@ where
                 None,
                 Some(FunctionDefinition::TraitDeclaration(trait_decl.clone())),
             ),
-            PilStatement::TraitImplementation(_, trait_impl) => {
-                let trait_impl = self.process_trait_implementation(trait_impl);
+            PilStatement::TraitImplementation(source, trait_impl) => {
+                let trait_impl = self.process_trait_implementation(source, trait_impl);
                 vec![PILItem::TraitImplementation(trait_impl)]
             }
-            PilStatement::Expression(_, expr) => vec![PILItem::ProofItem(
-                self.expression_processor(&Default::default())
-                    .process_expression(expr),
-            )],
+            PilStatement::Expression(_, expr) => {
+                let processed_expression = self
+                    .expression_processor(&Default::default())
+                    .process_expression(expr);
+
+                match processed_expression {
+                    Ok(expression) => vec![PILItem::ProofItem(expression)],
+                    Err(e) => panic!("Failed to process expression: {e}"),
+                }
+            }
             PilStatement::StructDeclaration(source, struct_declaration) => self
                 .handle_symbol_definition(
                     source,
@@ -401,7 +407,10 @@ where
         assert!(stage.is_none() || symbol_kind == SymbolKind::Poly(PolynomialType::Committed));
 
         let id = self.counters.dispense_symbol_id(symbol_kind, length);
-        let absolute_name = self.driver.resolve_decl(&name);
+        let absolute_name = match self.driver.resolve_decl(&source, &name) {
+            Ok(name) => name,
+            Err(err) => panic!("Failed to resolve declaration: {}", err),
+        };
 
         let symbol = Symbol {
             id,
@@ -420,7 +429,7 @@ where
             }
             Some(FunctionDefinition::TypeDeclaration(TypeDeclaration::Struct(struct_decl))) => {
                 assert_eq!(symbol_kind, SymbolKind::Other());
-                self.process_struct_declaration(symbol, struct_decl)
+                self.process_struct_declaration(source, symbol, struct_decl)
             }
             Some(FunctionDefinition::TraitDeclaration(trait_decl)) => {
                 self.process_trait_declaration(source, name, symbol, trait_decl)
@@ -460,12 +469,16 @@ where
             .as_ref()
             .map(|ts| ts.vars.vars().collect())
             .unwrap_or_default();
-        let value = FunctionValueDefinition::Expression(TypedExpression {
-            e: self
-                .expression_processor(&type_vars)
-                .process_expression(expr),
-            type_scheme,
-        });
+
+        let e = match self
+            .expression_processor(&type_vars)
+            .process_expression(expr)
+        {
+            Ok(e) => e,
+            Err(err) => panic!("Failed to process expression: {}", err),
+        };
+
+        let value = FunctionValueDefinition::Expression(TypedExpression { e, type_scheme });
 
         vec![PILItem::Definition(symbol, Some(value))]
     }
@@ -476,9 +489,13 @@ where
         type_scheme: Option<TypeScheme>,
         value: ArrayExpression,
     ) -> Vec<PILItem> {
-        let expression = self
+        let expression = match self
             .expression_processor(&Default::default())
-            .process_array_expression(value);
+            .process_array_expression(value)
+        {
+            Ok(e) => e,
+            Err(err) => panic!("Failed to process array expression: {}", err),
+        };
         assert!(type_scheme.is_none() || type_scheme == Some(Type::Col.into()));
         let value = FunctionValueDefinition::Array(expression);
 
@@ -517,9 +534,13 @@ where
         index: parsed::Expression,
     ) -> Vec<PILItem> {
         let id = self.counters.dispense_public_id();
-        let polynomial = self
+        let polynomial = match self
             .expression_processor(&Default::default())
-            .process_namespaced_polynomial_reference(poly);
+            .process_namespaced_polynomial_reference(source.clone(), poly)
+        {
+            Ok(p) => p,
+            Err(err) => panic!("Failed to process polynomial reference: {}", err),
+        };
         let array_index = array_index.map(|i| {
             let index: u64 = untyped_evaluator::evaluate_expression_to_int(self.driver, i)
                 .unwrap()
@@ -565,8 +586,14 @@ where
             .into_iter()
             .map(|v| self.process_enum_variant(v, &type_vars))
             .collect();
+        let resolved_name = match self.driver.resolve_decl(&source, &enum_decl.name) {
+            Ok(name) => name,
+            Err(e) => {
+                panic!("Failed to resolve enum name: {}", e);
+            }
+        };
         let enum_decl = EnumDeclaration {
-            name: self.driver.resolve_decl(&enum_decl.name),
+            name: resolved_name,
             type_vars: enum_decl.type_vars,
             variants,
         };
@@ -575,11 +602,17 @@ where
             .variants
             .iter()
             .map(|variant| {
+                let resolved_name_result = self
+                    .driver
+                    .resolve_namespaced_decl(&source, &[&name, &variant.name]);
+
+                let resolved_name = match resolved_name_result {
+                    Ok(name) => name,
+                    Err(err) => panic!("Failed to resolve enum variant: {}", err),
+                };
+
                 (
-                    self.driver
-                        .resolve_namespaced_decl(&[&name, &variant.name])
-                        .relative_to(&Default::default())
-                        .to_string(),
+                    resolved_name.relative_to(&Default::default()).to_string(),
                     FunctionValueDefinition::TypeConstructor(
                         Arc::new(enum_decl.clone()),
                         variant.clone(),
@@ -616,6 +649,7 @@ where
 
     fn process_struct_declaration(
         &mut self,
+        source: SourceRef,
         symbol: Symbol,
         struct_decl: StructDeclaration<parsed::Expression>,
     ) -> Vec<PILItem> {
@@ -634,8 +668,14 @@ where
             })
             .collect();
 
+        let name = match self.driver.resolve_decl(&source, &name) {
+            Ok(name) => name,
+            Err(e) => {
+                panic!("Failed to resolve struct name: {}", e);
+            }
+        };
         let struct_decl = StructDeclaration {
-            name: self.driver.resolve_decl(&name),
+            name,
             type_vars,
             fields,
         };
@@ -665,8 +705,14 @@ where
                 ty: self.type_processor(&type_vars).process_type(f.ty),
             })
             .collect();
+        let resolved_name = match self.driver.resolve_decl(&source, &trait_decl.name) {
+            Ok(name) => name,
+            Err(e) => {
+                panic!("Failed to resolve trait name: {}", e);
+            }
+        };
         let trait_decl = TraitDeclaration {
-            name: self.driver.resolve_decl(&trait_decl.name),
+            name: resolved_name,
             type_vars: trait_decl.type_vars,
             functions,
         };
@@ -675,11 +721,17 @@ where
             .functions
             .iter()
             .map(|function| {
+                let resolved_name_result = self
+                    .driver
+                    .resolve_namespaced_decl(&source, &[&name, &function.name]);
+
+                let resolved_name = match resolved_name_result {
+                    Ok(name) => name,
+                    Err(err) => panic!("Failed to resolve namespaced declaration: {}", err),
+                };
+
                 (
-                    self.driver
-                        .resolve_namespaced_decl(&[&name, &function.name])
-                        .relative_to(&Default::default())
-                        .to_string(),
+                    resolved_name.relative_to(&Default::default()).to_string(),
                     FunctionValueDefinition::TraitFunction(
                         Arc::new(trait_decl.clone()),
                         function.clone(),
@@ -701,6 +753,7 @@ where
 
     fn process_trait_implementation(
         &self,
+        source: SourceRef,
         trait_impl: parsed::TraitImplementation<parsed::Expression>,
     ) -> TraitImplementation<Expression> {
         let type_vars: HashSet<_> = trait_impl.type_scheme.vars.vars().collect();
@@ -710,12 +763,19 @@ where
         let functions = trait_impl
             .functions
             .into_iter()
-            .map(|named| NamedExpression {
-                name: named.name,
-                body: Arc::new(
-                    self.expression_processor(&type_vars)
-                        .process_expression(Arc::try_unwrap(named.body).unwrap()),
-                ),
+            .map(|named| {
+                let processed_body = match self
+                    .expression_processor(&type_vars)
+                    .process_expression(Arc::try_unwrap(named.body).unwrap())
+                {
+                    Ok(body) => body,
+                    Err(e) => panic!("Failed to unwrap the expression body: {}", e),
+                };
+
+                NamedExpression {
+                    name: named.name,
+                    body: Arc::new(processed_body),
+                }
             })
             .collect();
 
@@ -731,9 +791,16 @@ where
             })
             .collect();
 
-        let resolved_name = self
-            .driver
-            .resolve_ref(&trait_impl.name, SymbolCategory::TraitDeclaration);
+        let resolved_name = match self.driver.resolve_ref(
+            &source,
+            &trait_impl.name,
+            SymbolCategory::TraitDeclaration,
+        ) {
+            Ok(name) => name,
+            Err(e) => {
+                panic!("Failed to resolve trait name: {}", e);
+            }
+        };
 
         TraitImplementation {
             name: SymbolPath::from_str(&resolved_name).unwrap(),

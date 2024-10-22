@@ -240,7 +240,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 }
             }
             Pattern::Enum(source_ref, name, fields) => {
-                let name = self.driver.resolve_value_ref(source_ref.clone(), &name)?;
+                let name = self.driver.resolve_value_ref(&source_ref, &name)?;
                 self.process_enum_pattern(source_ref, name, fields)
             }
         }
@@ -319,9 +319,9 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
 
         for param in &params {
             if !param.is_irrefutable() {
-                param.source_reference().with_error(format!(
+                Err(param.source_reference().with_error(format!(
                     "Function parameters must be irrefutable, but {param} is refutable."
-                ));
+                )))?;
             }
         }
         let body = Box::new(self.process_expression(*body)?);
@@ -351,10 +351,10 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                     let pattern = self.process_pattern(pattern)?;
                     let ty = ty.map(|ty| self.process_number_type(ty));
                     if value.is_none() && !matches!(pattern, Pattern::Variable(_, _)) {
-                        src.with_error(format!("Let statement without value requires a single variable, but got {pattern}."));
+                        Err(src.with_error(format!("Let statement without value requires a single variable, but got {pattern}.")))?;
                     }
                     if !pattern.is_irrefutable() {
-                        src.with_error(format!("Let statement requires an irrefutable pattern, but {pattern} is refutable."));
+                        Err(src.with_error(format!("Let statement requires an irrefutable pattern, but {pattern} is refutable.")))?;
                     }
                     Ok(StatementInsideBlock::LetStatement(LetStatementInsideBlock { pattern, ty, value }))
                 }
@@ -390,7 +390,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         let type_args = reference
             .type_args
             .map(|args| args.into_iter().map(|t| self.process_type(t)).collect());
-        let name = self.driver.resolve_value_ref(source, &reference.path)?;
+        let name = self.driver.resolve_value_ref(&source, &reference.path)?;
         Ok(PolynomialReference { name, type_args })
     }
 

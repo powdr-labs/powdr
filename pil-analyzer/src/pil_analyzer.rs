@@ -431,10 +431,10 @@ impl PILAnalyzer {
                     .symbol_definition_names_and_contained()
                     .filter_map(|(name, sub_name, symbol_category)| {
                         let resolved_name_result = match sub_name {
-                            None => self.driver().resolve_decl(SourceRef::unknown(), name),
+                            None => self.driver().resolve_decl(&SourceRef::unknown(), name),
                             Some(sub_name) => self
                                 .driver()
-                                .resolve_namespaced_decl(SourceRef::unknown(), &[name, sub_name])
+                                .resolve_namespaced_decl(&SourceRef::unknown(), &[name, sub_name])
                                 .map(|resolved_name| {
                                     resolved_name.relative_to(&Default::default()).to_string()
                                 }),
@@ -555,7 +555,7 @@ struct Driver<'a>(&'a PILAnalyzer);
 impl<'a> AnalysisDriver for Driver<'a> {
     fn resolve_namespaced_decl(
         &self,
-        _source: SourceRef,
+        _source: &SourceRef,
         path: &[&String],
     ) -> Result<AbsoluteSymbolPath, Error> {
         Ok(path
