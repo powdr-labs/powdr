@@ -336,7 +336,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
             }
             Expression::ArrayLiteral(_, ArrayLiteral { items }) => {
                 format!(
-                    "vec![{}]",
+                    "PilVec::from(vec![{}])",
                     items
                         .iter()
                         .map(|i| self.format_expr(i, var_height))
@@ -632,7 +632,7 @@ fn map_type(ty: &Type) -> String {
         Type::Fe => "FieldElement".to_string(),
         Type::String => "String".to_string(),
         Type::Expr => "Expr".to_string(),
-        Type::Array(ArrayType { base, length: _ }) => format!("Vec<{}>", map_type(base)),
+        Type::Array(ArrayType { base, length: _ }) => format!("PilVec<{}>", map_type(base)),
         Type::Tuple(TupleType { items }) => format!("({})", items.iter().map(map_type).join(", ")),
         Type::Function(ft) => format!(
             "Callable<({}), {}>",
@@ -658,7 +658,7 @@ fn get_builtins<T: FieldElement>() -> &'static HashMap<String, String> {
         [
             (
                 "std::array::len",
-                "<T>(a: Vec<T>) -> ibig::IBig { ibig::IBig::from(a.len()) }".to_string(),
+                "<T>(a: PilVec<T>) -> ibig::IBig { ibig::IBig::from(a.len()) }".to_string(),
             ),
             (
                 "std::check::panic",
@@ -678,6 +678,11 @@ fn get_builtins<T: FieldElement>() -> &'static HashMap<String, String> {
                     "() -> ibig::IBig {{ {} }}",
                     format_unsigned_integer(&T::modulus().to_arbitrary_integer())
                 ),
+            ),
+            (
+                "std::prover::degree",
+                "(_: ()) -> ibig::IBig { DEGREE.read().unwrap().as_ref().unwrap().clone() }"
+                    .to_string(),
             ),
         ]
         .into_iter()

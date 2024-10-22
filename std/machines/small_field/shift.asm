@@ -45,7 +45,7 @@ machine Shift(byte_shift: ByteShift) with
     // Allow this machine to be connected via a permutation
     call_selectors: sel,
 {
-    require_field_bits(17, || "Shift requires a field that fits any 17-Bit value.");
+    require_field_bits(16, || "Shift requires a field that fits any 17-Bit value.");
 
     operation shl<0> ALow, AHi, B -> CLow, CHi;
 

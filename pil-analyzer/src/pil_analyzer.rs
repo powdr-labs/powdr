@@ -20,13 +20,13 @@ use powdr_number::{FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
     type_from_definition, Analyzed, DegreeRange, Expression, FunctionValueDefinition,
-    PolynomialReference, PolynomialType, PublicDeclaration, Reference, StatementIdentifier, Symbol,
-    SymbolKind, TypedExpression,
+    PolynomialType, PublicDeclaration, Reference, StatementIdentifier, Symbol, SymbolKind,
+    TypedExpression,
 };
 use powdr_parser::{parse, parse_module, parse_type};
 use powdr_parser_util::Error;
 
-use crate::traits_resolver::TraitsResolver;
+use crate::traits_resolver::{SolvedTraitImpls, TraitsResolver};
 use crate::type_builtins::constr_function_statement_type;
 use crate::type_inference::infer_types;
 use crate::{side_effect_checker, AnalysisDriver};
@@ -44,11 +44,7 @@ pub fn analyze_ast<T: FieldElement>(pil_file: PILFile) -> Result<Analyzed<T>, Ve
 }
 
 pub fn analyze_string<T: FieldElement>(contents: &str) -> Result<Analyzed<T>, Vec<Error>> {
-    let pil_file = powdr_parser::parse(Some("input"), contents).unwrap_or_else(|err| {
-        eprintln!("Error parsing .pil file:");
-        err.output_to_stderr();
-        panic!();
-    });
+    let pil_file = powdr_parser::parse(Some("input"), contents).map_err(|e| vec![e])?;
     analyze(vec![pil_file])
 }
 
@@ -57,8 +53,7 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Result<Analyzed<T>, Vec<Erro
     analyzer.process(files)?;
     analyzer.side_effect_check()?;
     analyzer.type_check()?;
-    // TODO should use Result here as well.
-    let solved_impls = analyzer.resolve_trait_impls();
+    let solved_impls = analyzer.resolve_trait_impls()?;
     analyzer.condense(solved_impls)
 }
 
@@ -80,7 +75,8 @@ struct PILAnalyzer {
     /// Symbols from the core that were added automatically but will not be printed.
     auto_added_symbols: HashSet<String>,
     /// All trait implementations found, organized according to their associated trait name.
-    implementations: HashMap<String, Vec<TraitImplementation<Expression>>>,
+    /// If a trait has no implementations, it is still present.
+    trait_impls: HashMap<String, Vec<TraitImplementation<Expression>>>,
 }
 
 /// Reads and parses the given path and all its imports.
@@ -234,7 +230,7 @@ impl PILAnalyzer {
                 .unwrap_or_else(|err| errors.push(err));
         }
 
-        for v in self.implementations.values() {
+        for v in self.trait_impls.values() {
             for impl_ in v {
                 impl_
                     .children()
@@ -265,14 +261,14 @@ impl PILAnalyzer {
         // by the statement processor already).
         // For Arrays, we also collect the inner expressions and expect them to be field elements.
 
-        for (name, trait_impls) in self.implementations.iter_mut() {
+        for (name, trait_impls) in self.trait_impls.iter_mut() {
             let (_, def) = self
                 .definitions
                 .get(name)
                 .expect("Trait definition not found");
 
             let Some(FunctionValueDefinition::TraitDeclaration(trait_decl)) = def else {
-                continue;
+                unreachable!();
             };
             for impl_ in trait_impls {
                 let specialized_types: Vec<_> = impl_
@@ -372,52 +368,54 @@ impl PILAnalyzer {
         Ok(())
     }
 
-    /// Creates and returns a map for every referenced trait and every concrete type to the
+    /// Creates and returns a map for every referenced trait function with concrete type to the
     /// corresponding trait implementation function.
-    fn resolve_trait_impls(&mut self) -> HashMap<String, HashMap<Vec<Type>, Arc<Expression>>> {
-        let mut trait_solver = TraitsResolver::new(&self.implementations);
+    fn resolve_trait_impls(&mut self) -> Result<SolvedTraitImpls, Vec<Error>> {
+        let mut trait_solver = TraitsResolver::new(&self.trait_impls);
 
-        let mut resolve_references = |expr: &Expression| {
-            expr.all_children().for_each(|expr| {
-                if let Expression::Reference(
-                    _,
-                    Reference::Poly(
-                        reference @ PolynomialReference {
-                            type_args: Some(_), ..
-                        },
-                    ),
-                ) = expr
-                {
-                    let _ = trait_solver.resolve_trait_function_reference(reference);
+        // TODO building this impl map should be different from checking that all trait references
+        // have an implementation.
+        // The reason is that for building the map, we need to unfold all generic functions,
+        // which could cause an exponential blow-up. Checking that an implementation exists
+        // could maybe already done at the type-checking level.
+        // If we do that earlier, then errors here should be panics.
+        // Also we should only build the impl map for code that is reachable from entry points.
+        let definitions = self
+            .definitions
+            .values()
+            .flat_map(|(_, def)| match def {
+                Some(
+                    v
+                    @ (FunctionValueDefinition::Expression(_) | FunctionValueDefinition::Array(_)),
+                ) => Some(v),
+                _ => None,
+            })
+            .flat_map(|d| d.children());
+        let proof_items = self.proof_items.iter();
+        let trait_impls = self
+            .trait_impls
+            .values()
+            .flat_map(|impls| impls.iter().flat_map(|i| i.children()));
+        let mut errors = vec![];
+        for expr in definitions
+            .chain(proof_items)
+            .chain(trait_impls)
+            .flat_map(|i| i.all_children())
+        {
+            if let Expression::Reference(source_ref, Reference::Poly(reference)) = expr {
+                if reference.type_args.is_some() {
+                    if let Err(e) = trait_solver.resolve_trait_function_reference(reference) {
+                        errors.push(source_ref.with_error(e));
+                    }
                 }
-            });
-        };
-
-        for (_, def) in self.definitions.values() {
-            match def {
-                Some(FunctionValueDefinition::Expression(TypedExpression { e, .. })) => {
-                    resolve_references(e);
-                }
-                Some(FunctionValueDefinition::Array(items)) => {
-                    items.all_children().for_each(&mut resolve_references);
-                }
-                _ => {}
             }
         }
 
-        for identity in &self.proof_items {
-            for expr in identity.all_children() {
-                resolve_references(expr);
-            }
+        if !errors.is_empty() {
+            Err(errors)
+        } else {
+            Ok(trait_solver.solved_impls())
         }
-
-        for impls in self.implementations.values() {
-            for impl_ in impls {
-                impl_.all_children().for_each(&mut resolve_references);
-            }
-        }
-
-        trait_solver.solved_impls()
     }
 
     pub fn condense<T: FieldElement>(
@@ -488,6 +486,12 @@ impl PILAnalyzer {
                     match item {
                         PILItem::Definition(symbol, value) => {
                             let name = symbol.absolute_name.clone();
+                            if matches!(value, Some(FunctionValueDefinition::TraitDeclaration(_))) {
+                                // Ensure that `trait_impls` has an entry for every trait,
+                                // even if it has no implementations.
+                                // We use this to distinguish generic functions from trait functions.
+                                self.trait_impls.entry(name.clone()).or_default();
+                            }
                             let is_new = self
                                 .definitions
                                 .insert(name.clone(), (symbol, value))
@@ -509,7 +513,7 @@ impl PILAnalyzer {
                             self.proof_items.push(item)
                         }
                         PILItem::TraitImplementation(trait_impl) => self
-                            .implementations
+                            .trait_impls
                             .entry(trait_impl.name.to_string())
                             .or_default()
                             .push(trait_impl),
