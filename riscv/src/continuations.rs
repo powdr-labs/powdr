@@ -223,7 +223,6 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     pipeline: &mut Pipeline<F>,
     profiler_opt: Option<ProfilerOptions>,
 ) -> DryRunResult<F> {
-    // we do this to so we don't have to make BootloaderImpl public
     match F::known_field().expect("Field not supported").field_size() {
         FieldSize::Small => {
             rust_continuations_dry_run_inner::<_, SmallFieldBootloader<F>>(pipeline, profiler_opt)
