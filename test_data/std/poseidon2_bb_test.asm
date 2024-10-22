@@ -184,14 +184,14 @@ machine Main with degree: 65536 {
         // Both operations should overflow the lower 16 bits of the address.
         poseidon2 42, 65520, 42, 65524;
 
-        assert_eq 42, 65524, 248801356;
-        assert_eq 42, 65528, 1685558007;
-        assert_eq 42, 65532, 720497725;
-        assert_eq 43, 0, 956335022;
-        assert_eq 43, 4, 321739953;
-        assert_eq 43, 8, 208179186;
-        assert_eq 43, 12, 1631289420;
-        assert_eq 43, 16, 1989448950;
+        assert_eq 42, 65524, 825643358;
+        assert_eq 42, 65528, 1347291127;
+        assert_eq 42, 65532, 575415694;
+        assert_eq 43, 0, 739008160;
+        assert_eq 43, 4, 1041909928;
+        assert_eq 43, 8, 1744130887;
+        assert_eq 43, 12, 1806932542;
+        assert_eq 43, 16, 1046987717;
 
         return;
     }

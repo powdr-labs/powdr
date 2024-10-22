@@ -85,8 +85,8 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
 
     // A multiplier for our diffusion matrix. Not in the original Poseidon2 paper,
     // but needed to match the choice of matrix in the Plonky3 implementation.
-    // (They decided to use the Montgomery form of the matrix.)
-    let DIFF_MULTIPLIER = 268435454;
+    // (They decided to use a scaled form of the matrix, to facilitate operations in montgomery form.)
+    let DIFF_MULTIPLIER = 943718400;
 
     // External round constants, one STATE_SIZE array for each round
     let EXTERNAL_ROUND_CONSTANTS = [
@@ -145,8 +145,10 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
         let step_a = input[0] + INTERNAL_ROUND_CONSTANTS[c_idx];
 
         // Apply S-box
-        let x3 = step_a * step_a * step_a;
-        let x7 = x3 * x3 * step_a;
+        let x3;
+        x3 = step_a * step_a * step_a;
+        let x7;
+        x7 = x3 * x3 * step_a;
 
         // Multiply with the diffusion matrix
         let line_sum = x7 + array::sum(array::sub_array(input, 1, STATE_SIZE - 1));

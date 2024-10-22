@@ -54,13 +54,16 @@ fn main() {
     }
     println!("];");
 
-    let inv_monty =
-        BabyBear::new(((1u64 << BabyBearParameters::MONTY_BITS) % BabyBear::ORDER_U64) as u32);
-    println!("INV_MONTY = {};", inv_monty);
+    println!("DIFFUSION_MATRIX = [");
+    let mds = extract_matrix(p3_baby_bear::DiffusionMatrixBabyBear::default());
+    for row in mds {
+        println!("    [{}],", row.into_iter().format(", "));
+    }
+    println!("];");
 
     let internal_diag: &[BabyBear; 16] = &BabyBearDiffusionMatrixParameters::INTERNAL_DIAG_MONTY;
     println!(
-        "INTERNAL_DIAG = [{}];",
+        "DIFF_DIAGONAL = [{}];",
         internal_diag
             .iter()
             .map(|val| {
