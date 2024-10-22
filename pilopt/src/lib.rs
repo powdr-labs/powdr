@@ -864,4 +864,24 @@ namespace N(65536);
         let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
         assert_eq!(optimized, expectation);
     }
+
+    #[test]
+    fn test_trait_impl() {
+        let input = r#"namespace N(65536);
+        trait Default<T> { f: -> T }
+        impl Default<fe> { f: || 1 }
+        let x: col = |_| Default::f();
+        let w;
+        w = x;
+    "#;
+        let expectation = r#"namespace N(65536);
+    trait Default<T> { f: -> T }
+    impl Default<fe> { f: || 1 }
+    col fixed x(_) { N::Default::f::<fe>() };
+    col witness w;
+    N::w = N::x;
+"#;
+        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+        assert_eq!(optimized, expectation);
+    }
 }
