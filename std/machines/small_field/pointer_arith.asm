@@ -16,7 +16,8 @@ let word_increment_ptr: expr, expr, expr, expr -> Constr[] = constr |pre_high, p
     let low_diff = pre_low - (0x10000 - 4);
 
     // Is the low limb at its maximum value?
-    let low_overflow = std::utils::is_zero(low_diff);
+    let low_overflow;
+    low_overflow = std::utils::is_zero(low_diff);
 
     // Increment polynomials, to be used by the caller in constraints:
     [

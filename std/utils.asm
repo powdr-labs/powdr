@@ -40,7 +40,9 @@ let new_bool: -> expr = constr || {
     x
 };
 
-/// Returns a degree 2 boolean expression that is 1 if and only if `x` is not zero.
+/// Returns a 2nd degree boolean expression that is 1 if and only if `x` is not zero.
+///
+/// Introduces one new witness column and one new constraint.
 let is_not_zero: expr -> expr = constr |x| {
     // The inverse of "x" if it is not zero, otherwise undefined.
     let inverse;
@@ -51,7 +53,9 @@ let is_not_zero: expr -> expr = constr |x| {
     inverse * x
 };
 
-/// Returns a degree 2 boolean expression that is 1 if and only if `x` is zero.
+/// Returns a 2nd degree boolean expression that is 1 if and only if `x` is zero.
+///
+/// Introduces one new witness column and one new constraint.
 let is_zero: expr -> expr = constr |x| {
     1 - is_not_zero(x)
 };
