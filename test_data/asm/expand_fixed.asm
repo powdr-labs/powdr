@@ -1,3 +1,6 @@
+//! This file tests that the JIT-compiler can translate more or less complicated code.
+//! The actual code is not that important.
+
 use std::check::panic;
 
 enum Result<V, E> {

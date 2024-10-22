@@ -758,6 +758,7 @@ fn set_hint() {
 
 #[test]
 fn expand_fixed_jit() {
+    // Test some more or less complicated code and see that it all JIT-compiles.
     let file_name = "asm/expand_fixed.asm";
 
     let mut pipeline = Pipeline::<GoldilocksField>::default()
