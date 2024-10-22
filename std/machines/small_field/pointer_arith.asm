@@ -1,6 +1,7 @@
 /// Creates constraints that increments a pointer by one full 32-bit word.
 ///
-/// The pointers are given in 2 16-bit limbs. This function returns a constraint ensuring that the following are equal:
+/// The pointers are given in 2 16-bit limbs. This function returns a set of constraints
+/// ensuring that the following are equal:
 /// - (int(post_high) * 0x10000 + int(post_low)) and
 /// - (int(pre_high) * 0x10000 + int(pre_low) + 4).
 ///
@@ -9,7 +10,7 @@
 ///
 /// This constr function introduces 2 new witness column and some helper constraints.
 ///
-/// Preconditions: pre_low must be 16-bit aligned and in range [0, 0xfffc].
+/// Preconditions: pre_low must be 4-byte aligned and in range [0, 0xfffc].
 let word_increment_ptr: expr, expr, expr, expr -> Constr[] = constr |pre_high, pre_low, post_high, post_low| {
     // How far away from overflowing the low limb is:
     let low_diff = pre_low - (0x10000 - 4);
