@@ -913,8 +913,8 @@ fn simple_struct_parsing() {
         x: int,
         y: int,
     }
-    let f: int -> Point = |i| Point{ x: 0, y: i };
-    let x: Point = f(0);
+    let f: int -> Point = |i| Point{ x: 0_int, y: i };
+    let x: Point = f(0_int);
 ";
     let formatted = analyze_string(input).to_string();
     assert_eq!(formatted, input);
