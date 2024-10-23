@@ -1,6 +1,6 @@
 use std::machines::hash::poseidon_gl::PoseidonGL;
 
-machine Main with min_degree: 32, max_degree: 256 {
+machine Main with degree: 256 {
     reg pc[@pc];
     reg X0[<=];
     reg X1[<=];
