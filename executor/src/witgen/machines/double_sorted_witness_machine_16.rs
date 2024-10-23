@@ -10,7 +10,7 @@ use crate::witgen::{EvalError, EvalResult, FixedData, MutableState, QueryCallbac
 use crate::witgen::{EvalValue, IncompleteCause};
 use powdr_number::{DegreeType, FieldElement, LargeInt};
 
-use powdr_ast::analyzed::{DegreeRange, IdentityKind, PolyID};
+use powdr_ast::analyzed::{DegreeRange, PolyID};
 
 /// If all witnesses of a machine have a name in this list (disregarding the namespace),
 /// we'll consider it to be a double-sorted machine.
@@ -146,15 +146,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
                     .selector
                     .as_ref()
                     .and_then(|r| try_to_simple_poly(r))
-                    .map(|p| {
-                        (
-                            {
-                                unimplemented!("identity id");
-                                0
-                            },
-                            p.poly_id,
-                        )
-                    })
+                    .map(|p| ({ i.id() }, p.poly_id))
             })
             .collect::<Option<BTreeMap<_, _>>>()?;
 

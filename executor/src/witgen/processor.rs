@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
+use powdr_ast::analyzed::PolynomialType;
 use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
-use powdr_ast::analyzed::{ConnectIdentity, PolynomialType};
 
 use powdr_number::{DegreeType, FieldElement};
 

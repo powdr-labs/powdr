@@ -2,15 +2,12 @@ use std::collections::{BTreeMap, HashMap};
 
 use itertools::{Either, Itertools};
 
-use powdr_ast::analyzed::{IdentityKind, PolyID, PolynomialType};
+use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
-use crate::{
-    witgen::{
-        rows::RowPair, util::try_to_simple_poly, EvalError, EvalResult, EvalValue, FixedData,
-        IncompleteCause, MutableState, QueryCallback,
-    },
-    Identity,
+use crate::witgen::{
+    rows::RowPair, util::try_to_simple_poly, EvalError, EvalResult, EvalValue, FixedData,
+    IncompleteCause, MutableState, QueryCallback,
 };
 
 use super::{ConnectingIdentityRef, ConnectionType, Machine, MachineParts};

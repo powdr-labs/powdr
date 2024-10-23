@@ -23,8 +23,7 @@ use p3_air::{Air, AirBuilder, BaseAir, PairBuilder};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression,
-    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Identity, IdentityKind, PolyID,
-    PolynomialType, SelectedExpressions,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Identity, PolyID, PolynomialType,
 };
 
 use crate::{CallbackResult, MultiStageAir, MultistageAirBuilder};
@@ -41,7 +40,7 @@ pub struct ConstraintSystem<T> {
     witness_columns: BTreeMap<PolyID, (usize, usize)>,
     // for each fixed column, the index of this column in the fixed columns
     fixed_columns: BTreeMap<PolyID, usize>,
-    identities: Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>>,
+    identities: Vec<Identity<AlgebraicExpression<T>>>,
     // for each public column, the name, poly_id, index in the witness columns, and stage
     pub(crate) publics_by_stage: Vec<Vec<(String, PolyID, usize)>>,
     constant_count: usize,
@@ -393,27 +392,23 @@ where
 
         // circuit constraints
         for identity in &self.constraint_system.identities {
-            match identity.kind {
-                IdentityKind::Polynomial => {
-                    assert_eq!(identity.left.expressions.len(), 0);
-                    assert_eq!(identity.right.expressions.len(), 0);
-                    assert!(identity.right.selector.is_none());
-
-                    let left = self.to_plonky3_expr::<AB>(
-                        identity.left.selector.as_ref().unwrap(),
+            match identity {
+                Identity::Polynomial(identity) => {
+                    let e = self.to_plonky3_expr::<AB>(
+                        &identity.e,
                         &traces_by_stage,
                         &fixed,
                         &public_vals_by_id,
                         &challenges_by_stage,
                     );
 
-                    builder.assert_zero(left);
+                    builder.assert_zero(e);
                 }
-                IdentityKind::Plookup => unimplemented!("Plonky3 does not support plookup"),
-                IdentityKind::Permutation => {
+                Identity::Plookup(..) => unimplemented!("Plonky3 does not support plookup"),
+                Identity::Permutation(..) => {
                     unimplemented!("Plonky3 does not support permutations")
                 }
-                IdentityKind::Connect => unimplemented!("Plonky3 does not support connections"),
+                Identity::Connect(..) => unimplemented!("Plonky3 does not support connections"),
             }
         }
     }

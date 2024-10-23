@@ -178,7 +178,7 @@ fn log_machine_stats<T: FieldElement>(machine_name: &str, pil: &Analyzed<T>) {
     let num_identities_by_kind = pil
         .identities
         .iter()
-        .map(|i| i.kind)
+        .map(|i| i.kind())
         .counts()
         .into_iter()
         .collect::<BTreeMap<_, _>>();

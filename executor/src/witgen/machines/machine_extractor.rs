@@ -21,7 +21,7 @@ use crate::{
 };
 
 use powdr_ast::analyzed::{
-    self, AlgebraicExpression as Expression, IdentityKind, PolyID, PolynomialReference, Reference,
+    self, AlgebraicExpression as Expression, PolyID, PolynomialReference, Reference,
     SelectedExpressions,
 };
 use powdr_ast::parsed::{
@@ -95,7 +95,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
                     }
                     Identity::Plookup(PlookupIdentity { left, .. })
                     | Identity::Permutation(PermutationIdentity { left, .. }) => {
-                        &refs_in_selected_expressions(&left) & (&all_witnesses)
+                        &refs_in_selected_expressions(left) & (&all_witnesses)
                     }
                     Identity::Connect(..) => unimplemented!(),
                 };

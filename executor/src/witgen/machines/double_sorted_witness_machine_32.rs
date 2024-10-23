@@ -11,7 +11,7 @@ use crate::witgen::{EvalValue, IncompleteCause};
 
 use powdr_number::{DegreeType, FieldElement};
 
-use powdr_ast::analyzed::{DegreeRange, IdentityKind, PolyID};
+use powdr_ast::analyzed::{DegreeRange, PolyID};
 
 /// If all witnesses of a machine have a name in this list (disregarding the namespace),
 /// we'll consider it to be a double-sorted machine.

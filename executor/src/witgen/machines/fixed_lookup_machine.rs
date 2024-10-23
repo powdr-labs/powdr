@@ -5,9 +5,7 @@ use std::num::NonZeroUsize;
 use std::str::FromStr;
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{
-    AlgebraicExpression, AlgebraicReference, IdentityKind, PolyID, PolynomialType,
-};
+use powdr_ast::analyzed::{AlgebraicReference, PolyID, PolynomialType};
 use powdr_ast::parsed::asm::SymbolPath;
 use powdr_number::{DegreeType, FieldElement};
 
@@ -384,7 +382,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let identity = self.connecting_identities[&identity_id].clone();
+        let identity = self.connecting_identities[&identity_id];
         let right = identity.right();
 
         // get the values of the fixed columns

@@ -12,9 +12,7 @@ use crate::witgen::{
 use crate::witgen::{EvalValue, IncompleteCause, MutableState, QueryCallback};
 use crate::Identity;
 use itertools::Itertools;
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, IdentityKind, PolyID,
-};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
 use powdr_number::{DegreeType, FieldElement};
 
 /// A machine that can support a lookup in a set of columns that are sorted

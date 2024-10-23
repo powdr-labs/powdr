@@ -5,7 +5,7 @@ use itertools::Itertools;
 use machines::MachineParts;
 use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, Analyzed, DegreeRange, Expression,
-    FunctionValueDefinition, IdentityKind, PolyID, PolynomialType, SymbolKind, TypedExpression,
+    FunctionValueDefinition, PolyID, PolynomialType, SymbolKind, TypedExpression,
 };
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};

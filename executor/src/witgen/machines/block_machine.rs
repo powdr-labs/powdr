@@ -15,11 +15,8 @@ use crate::witgen::sequence_iterator::{
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause};
 use crate::witgen::{MutableState, QueryCallback};
-use crate::Identity;
 use itertools::Itertools;
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, DegreeRange, IdentityKind, PolyID, PolynomialType,
-};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, DegreeRange, PolyID, PolynomialType};
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_number::{DegreeType, FieldElement};
 
@@ -453,10 +450,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let outer_query = OuterQuery::new(
-            caller_rows,
-            self.parts.connecting_identities[&identity_id].clone(),
-        );
+        let outer_query =
+            OuterQuery::new(caller_rows, self.parts.connecting_identities[&identity_id]);
 
         log::trace!("Start processing block machine '{}'", self.name());
         log::trace!("Left values of lookup:");

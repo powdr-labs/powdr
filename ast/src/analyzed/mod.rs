@@ -715,18 +715,6 @@ impl<Expr> Children<Expr> for SelectedExpressions<Expr> {
     }
 }
 
-// #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
-// pub struct Identity<SelectedExpressions> {
-//     /// The ID is globally unique among identities.
-//     pub id: u64,
-//     pub kind: IdentityKind,
-//     pub source: SourceRef,
-//     /// For a simple polynomial identity, the selector contains
-//     /// the actual expression (see expression_for_poly_id).
-//     pub left: SelectedExpressions,
-//     pub right: SelectedExpressions,
-// }
-
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PolynomialIdentity<Expr> {
     pub source: SourceRef,
@@ -948,6 +936,29 @@ impl<T> Identity<AlgebraicExpression<T>> {
     }
 
     pub fn id(&self) -> u64 {
+        todo!()
+    }
+
+    pub fn source(&self) -> &SourceRef {
+        match self {
+            Identity::Polynomial(i) => &i.source,
+            Identity::Plookup(i) => &i.source,
+            Identity::Permutation(i) => &i.source,
+            Identity::Connect(i) => &i.source,
+        }
+    }
+
+    pub fn kind(&self) -> IdentityKind {
+        match self {
+            Identity::Polynomial(_) => IdentityKind::Polynomial,
+            Identity::Plookup(_) => IdentityKind::Plookup,
+            Identity::Permutation(_) => IdentityKind::Permutation,
+            Identity::Connect(_) => IdentityKind::Connect,
+        }
+    }
+
+    #[cfg(test)]
+    fn set_id(&mut self, _: u32) {
         todo!()
     }
 }
@@ -1506,7 +1517,7 @@ mod tests {
         let mut pil_result = Analyzed::default();
         pil_result.append_polynomial_identity(AlgebraicExpression::Number(0), SourceRef::unknown());
         pil_result.append_polynomial_identity(AlgebraicExpression::Number(5), SourceRef::unknown());
-        pil_result.identities[1].id = 6;
+        pil_result.identities[1].set_id(6);
         assert_eq!(pil.identities, pil_result.identities);
         assert_eq!(pil.source_order, pil_result.source_order);
     }

@@ -4,13 +4,12 @@ use std::{cmp, path::PathBuf};
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, IdentityKind, PolyID,
-    PolynomialType, StatementIdentifier, SymbolKind,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Identity, PolyID, PolynomialType,
+    StatementIdentifier, SymbolKind,
 };
 use powdr_parser_util::SourceRef;
 use starky::types::{
-    ConnectionIdentity, Expression as StarkyExpr, PermutationIdentity, PlookupIdentity,
-    PolIdentity, Reference, PIL,
+    ConnectionIdentity, Expression as StarkyExpr, PlookupIdentity, PolIdentity, Reference, PIL,
 };
 
 use self::expression_counter::compute_intermediate_expression_ids;
@@ -47,7 +46,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
     let mut publics = Vec::new();
     let mut pol_identities = Vec::new();
     let mut plookup_identities = Vec::new();
-    let mut permutation_identities = Vec::new();
+    let permutation_identities = Vec::new();
     let mut connection_identities = Vec::new();
     for item in &analyzed.source_order {
         match item {
@@ -84,7 +83,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                 let identity = &analyzed.identities[*id];
                 // PILCOM strips the path from filenames, we do the same here for compatibility
                 let file_name = identity
-                    .source
+                    .source()
                     .file_name
                     .as_deref()
                     .and_then(|s| {
@@ -94,47 +93,45 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                             .map(String::from)
                     })
                     .unwrap_or_default();
-                let line = exporter.line_of_source_ref(&identity.source);
-                let selector_degree = if identity.kind == IdentityKind::Polynomial {
-                    2
-                } else {
-                    1
-                };
-                let left = exporter.extract_expression_vec(&identity.left.expressions, 1);
-                let sel_left =
-                    exporter.extract_expression_opt(&identity.left.selector, selector_degree);
-                let right = exporter.extract_expression_vec(&identity.right.expressions, 1);
-                let sel_right = exporter.extract_expression_opt(&identity.right.selector, 1);
-                match identity.kind {
-                    IdentityKind::Polynomial => pol_identities.push(PolIdentity {
-                        e: sel_left.unwrap(),
+                let line = exporter.line_of_source_ref(identity.source());
+                match identity {
+                    Identity::Polynomial(identity) => pol_identities.push(PolIdentity {
+                        e: exporter.extract_expression(&identity.e, 2),
                         fileName: file_name,
                         line,
                     }),
-                    IdentityKind::Plookup => {
+                    Identity::Plookup(identity) => {
                         plookup_identities.push(PlookupIdentity {
-                            selF: sel_left,
-                            f: Some(left),
-                            selT: sel_right,
-                            t: Some(right),
+                            selF: exporter.extract_expression_opt(&identity.left.selector, 1),
+                            f: Some(exporter.extract_expression_vec(&identity.left.expressions, 1)),
+                            selT: exporter.extract_expression_opt(&identity.right.selector, 1),
+                            t: Some(
+                                exporter.extract_expression_vec(&identity.right.expressions, 1),
+                            ),
                             fileName: file_name,
                             line,
                         });
                     }
-                    IdentityKind::Permutation => {
-                        permutation_identities.push(PermutationIdentity {
-                            selF: sel_left,
-                            f: Some(left),
-                            selT: sel_right,
-                            t: Some(right),
+                    Identity::Permutation(identity) => {
+                        plookup_identities.push(PlookupIdentity {
+                            selF: exporter.extract_expression_opt(&identity.left.selector, 1),
+                            f: Some(exporter.extract_expression_vec(&identity.left.expressions, 1)),
+                            selT: exporter.extract_expression_opt(&identity.right.selector, 1),
+                            t: Some(
+                                exporter.extract_expression_vec(&identity.right.expressions, 1),
+                            ),
                             fileName: file_name,
                             line,
                         });
                     }
-                    IdentityKind::Connect => {
+                    Identity::Connect(identity) => {
                         connection_identities.push(ConnectionIdentity {
-                            pols: Some(left),
-                            connections: Some(right),
+                            pols: Some(
+                                exporter.extract_expression_vec(&identity.left.expressions, 1),
+                            ),
+                            connections: Some(
+                                exporter.extract_expression_vec(&identity.right.expressions, 1),
+                            ),
                             fileName: file_name,
                             line,
                         });

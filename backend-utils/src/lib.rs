@@ -7,9 +7,7 @@ use std::{
 
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{
-        AlgebraicExpression, Analyzed, IdentityKind, StatementIdentifier, Symbol, SymbolKind,
-    },
+    analyzed::{AlgebraicExpression, Analyzed, Identity, StatementIdentifier, Symbol, SymbolKind},
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         visitor::{ExpressionVisitable, VisitOrder},
@@ -190,8 +188,8 @@ fn split_by_namespace<F: FieldElement>(
                     // add this identity to the only referenced namespace
                     1 => (namespaces.into_iter().next().unwrap() == current_namespace)
                         .then(|| (current_namespace.clone(), statement)),
-                    _ => match identity.kind {
-                        IdentityKind::Plookup | IdentityKind::Permutation => {
+                    _ => match identity {
+                        Identity::Plookup(identity) => {
                             assert_eq!(
                                 referenced_namespaces(&identity.left).len(),
                                 1,
@@ -204,6 +202,9 @@ fn split_by_namespace<F: FieldElement>(
                             );
                             log::debug!("Skipping connecting identity: {identity}");
                             None
+                        }
+                        Identity::Permutation(_) => {
+                            todo!("same as lookup, avoid repetition")
                         }
                         _ => {
                             panic!("Identity references multiple namespaces: {identity}");

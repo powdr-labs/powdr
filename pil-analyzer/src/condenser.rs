@@ -656,7 +656,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
 fn to_constraint<T: FieldElement>(
     constraint: &Value<'_, T>,
     source: SourceRef,
-    counters: &mut Counters,
+    _counters: &mut Counters,
 ) -> AnalyzedIdentity<T> {
     let Value::Enum(EnumValue {
         enum_decl,

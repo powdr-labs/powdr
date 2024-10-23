@@ -6,9 +6,8 @@ use powdr_ast::analyzed::DegreeRange;
 use powdr_ast::analyzed::PermutationIdentity;
 use powdr_ast::analyzed::PlookupIdentity;
 use powdr_ast::analyzed::PolyID;
-use powdr_ast::analyzed::{self, PolynomialIdentity};
+use powdr_ast::analyzed::{self};
 
-use powdr_ast::parsed::SelectedExpressions;
 use powdr_number::FieldElement;
 
 use crate::Identity;
@@ -165,8 +164,8 @@ pub enum ConnectingIdentityRef<'a, T> {
 impl<'a, T: Display> Display for ConnectingIdentityRef<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ConnectingIdentityRef::Plookup(i) => write!(f, "{}", i),
-            ConnectingIdentityRef::Permutation(i) => write!(f, "{}", i),
+            ConnectingIdentityRef::Plookup(i) => write!(f, "{i}"),
+            ConnectingIdentityRef::Permutation(i) => write!(f, "{i}"),
         }
     }
 }
@@ -192,14 +191,14 @@ enum ConnectionType {
 }
 
 impl<'a, T> ConnectingIdentityRef<'a, T> {
-    pub fn left(&self) -> &analyzed::SelectedExpressions<AlgebraicExpression<T>> {
+    pub fn left(&self) -> &'a analyzed::SelectedExpressions<AlgebraicExpression<T>> {
         match self {
             ConnectingIdentityRef::Plookup(i) => &i.left,
             ConnectingIdentityRef::Permutation(i) => &i.left,
         }
     }
 
-    pub fn right(&self) -> &analyzed::SelectedExpressions<AlgebraicExpression<T>> {
+    pub fn right(&self) -> &'a analyzed::SelectedExpressions<AlgebraicExpression<T>> {
         match self {
             ConnectingIdentityRef::Plookup(i) => &i.right,
             ConnectingIdentityRef::Permutation(i) => &i.right,
