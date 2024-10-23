@@ -41,8 +41,6 @@ use crate::{
     statement_processor::Counters,
 };
 
-type AnalyzedIdentity<T> = Identity<AlgebraicExpression<T>>;
-
 pub fn condense<T: FieldElement>(
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
@@ -298,7 +296,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     }
 
     /// Returns the new constraints generated since the last call to this function.
-    pub fn extract_new_constraints(&mut self) -> Vec<AnalyzedIdentity<T>> {
+    pub fn extract_new_constraints(&mut self) -> Vec<Identity<T>> {
         self.new_constraints
             .drain(..)
             .map(|(item, source)| to_constraint(item.as_ref(), source, &mut self.counters))
@@ -656,8 +654,8 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
 fn to_constraint<T: FieldElement>(
     constraint: &Value<'_, T>,
     source: SourceRef,
-    _counters: &mut Counters,
-) -> AnalyzedIdentity<T> {
+    counters: &mut Counters,
+) -> Identity<T> {
     let Value::Enum(EnumValue {
         enum_decl,
         variant,
@@ -671,7 +669,8 @@ fn to_constraint<T: FieldElement>(
     match &**variant {
         "Identity" => {
             assert_eq!(fields.len(), 2);
-            AnalyzedIdentity::from_polynomial_identity(
+            Identity::from_polynomial_identity(
+                counters.dispense_identity_id(),
                 source,
                 to_expr(&fields[0]) - to_expr(&fields[1]),
             )
@@ -703,6 +702,7 @@ fn to_constraint<T: FieldElement>(
 
             if variant == &"Lookup" {
                 PlookupIdentity::new(
+                    counters.dispense_identity_id(),
                     source,
                     to_selected_exprs(sel_from, from),
                     to_selected_exprs(sel_to, to),
@@ -710,6 +710,7 @@ fn to_constraint<T: FieldElement>(
                 .into()
             } else {
                 PermutationIdentity::new(
+                    counters.dispense_identity_id(),
                     source,
                     to_selected_exprs(sel_from, from),
                     to_selected_exprs(sel_to, to),
@@ -736,6 +737,7 @@ fn to_constraint<T: FieldElement>(
             };
 
             ConnectIdentity::new(
+                counters.dispense_identity_id(),
                 source,
                 analyzed::SelectedExpressions {
                     selector: None,
@@ -755,7 +757,7 @@ fn to_constraint<T: FieldElement>(
 fn to_selected_exprs<'a, T: Clone + Debug>(
     selector: &Value<'a, T>,
     exprs: Vec<&Value<'a, T>>,
-) -> SelectedExpressions<AlgebraicExpression<T>> {
+) -> SelectedExpressions<T> {
     SelectedExpressions {
         selector: to_option_expr(selector),
         expressions: exprs.into_iter().map(to_expr).collect(),

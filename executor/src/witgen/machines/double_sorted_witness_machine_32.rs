@@ -118,10 +118,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
                     .and_then(|r| try_to_simple_poly(r))
                     .map(|p| {
                         (
-                            {
-                                unimplemented!();
-                                0
-                            },
+                            i.id(),
                             p.poly_id,
                         )
                     })

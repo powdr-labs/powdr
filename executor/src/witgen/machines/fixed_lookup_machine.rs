@@ -206,10 +206,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
                     })
                     && !i.right.expressions.is_empty())
                 .then_some((
-                    {
-                        unimplemented!("identity id");
-                        0u64
-                    },
+                    i.id,
                     ConnectingIdentityRef::Plookup(i),
                 )),
                 _ => None,

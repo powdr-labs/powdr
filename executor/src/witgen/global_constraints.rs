@@ -221,13 +221,13 @@ fn propagate_constraints<T: FieldElement>(
     let mut remove = false;
     match identity {
         Identity::Polynomial(identity) => {
-            if let Some(p) = is_binary_constraint(&identity.e) {
+            if let Some(p) = is_binary_constraint(&identity.expression) {
                 assert!(known_constraints
                     .insert(p, RangeConstraint::from_max_bit(0))
                     .is_none());
                 remove = true;
             } else {
-                for (p, c) in try_transfer_constraints(&identity.e, &known_constraints) {
+                for (p, c) in try_transfer_constraints(&identity.expression, &known_constraints) {
                     known_constraints
                         .entry(p)
                         .and_modify(|existing| *existing = existing.conjunction(&c))

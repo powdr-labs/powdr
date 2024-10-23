@@ -40,7 +40,7 @@ pub struct ConstraintSystem<T> {
     witness_columns: BTreeMap<PolyID, (usize, usize)>,
     // for each fixed column, the index of this column in the fixed columns
     fixed_columns: BTreeMap<PolyID, usize>,
-    identities: Vec<Identity<AlgebraicExpression<T>>>,
+    identities: Vec<Identity<T>>,
     // for each public column, the name, poly_id, index in the witness columns, and stage
     pub(crate) publics_by_stage: Vec<Vec<(String, PolyID, usize)>>,
     constant_count: usize,
@@ -395,7 +395,7 @@ where
             match identity {
                 Identity::Polynomial(identity) => {
                     let e = self.to_plonky3_expr::<AB>(
-                        &identity.e,
+                        &identity.expression,
                         &traces_by_stage,
                         &fixed,
                         &public_vals_by_id,

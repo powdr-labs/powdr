@@ -318,9 +318,9 @@ impl<Expr: Display> Display for SelectedExpressions<Expr> {
     }
 }
 
-impl<T: Display> Display for PolynomialIdentity<AlgebraicExpression<T>> {
+impl<T: Display> Display for PolynomialIdentity<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match &self.e {
+        match &self.expression {
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
                 left,
                 op: AlgebraicBinaryOperator::Sub,
@@ -348,17 +348,6 @@ impl<T: Display> Display for PermutationIdentity<T> {
 impl<T: Display> Display for ConnectIdentity<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{} connect {};", self.left, self.right)
-    }
-}
-
-impl<T: Display> Display for Identity<AlgebraicExpression<T>> {
-    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self {
-            Identity::Polynomial(p) => write!(f, "{p}"),
-            Identity::Plookup(p) => write!(f, "{p}"),
-            Identity::Permutation(p) => write!(f, "{p}"),
-            Identity::Connect(p) => write!(f, "{p}"),
-        }
     }
 }
 

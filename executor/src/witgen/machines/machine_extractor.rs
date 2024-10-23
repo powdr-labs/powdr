@@ -91,7 +91,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
                 // to the machine; lookups to the machine do not.
                 let all_refs = match i {
                     Identity::Polynomial(identity) => {
-                        &refs_in_expression(&identity.e).collect() & (&all_witnesses)
+                        &refs_in_expression(&identity.expression).collect() & (&all_witnesses)
                     }
                     Identity::Plookup(PlookupIdentity { left, .. })
                     | Identity::Permutation(PermutationIdentity { left, .. }) => {
@@ -111,7 +111,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             .filter_map(|i| {
                 let id = i.id();
                 match i {
-                    Identity::Polynomial(polynomial_identity) => None,
+                    Identity::Polynomial(_) => None,
                     Identity::Plookup(i) => refs_in_selected_expressions(&i.right)
                         .intersection(&machine_witnesses)
                         .next()
@@ -122,7 +122,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
                         .next()
                         .is_some()
                         .then_some((id, ConnectingIdentityRef::Permutation(i))),
-                    Identity::Connect(connect_identity) => None,
+                    Identity::Connect(_) => None,
                 }
             })
             .collect::<BTreeMap<_, _>>();
@@ -320,7 +320,7 @@ fn all_row_connected_witnesses<T>(
                 Identity::Polynomial(i) => {
                     // Any current witness in the identity adds all other witnesses.
                     let in_identity =
-                        &refs_in_expression(&i.e).collect::<HashSet<_>>() & all_witnesses;
+                        &refs_in_expression(&i.expression).collect::<HashSet<_>>() & all_witnesses;
                     if in_identity.intersection(&witnesses).next().is_some() {
                         witnesses.extend(in_identity);
                     }
@@ -347,17 +347,9 @@ fn all_row_connected_witnesses<T>(
     }
 }
 
-/// Extracts all references to names from an identity.
-fn refs_in_identity<T>(identity: &Identity<T>) -> HashSet<PolyID> {
-    identity
-        .children()
-        .flat_map(|e| refs_in_expression(e))
-        .collect()
-}
-
 /// Extracts all references to names from selected expressions.
 fn refs_in_selected_expressions<T>(
-    sel_expr: &SelectedExpressions<Expression<T>>,
+    sel_expr: &SelectedExpressions<T>,
 ) -> HashSet<PolyID> {
     sel_expr
         .children()

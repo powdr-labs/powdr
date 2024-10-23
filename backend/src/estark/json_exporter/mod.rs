@@ -96,7 +96,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                 let line = exporter.line_of_source_ref(identity.source());
                 match identity {
                     Identity::Polynomial(identity) => pol_identities.push(PolIdentity {
-                        e: exporter.extract_expression(&identity.e, 2),
+                        e: exporter.extract_expression(&identity.expression, 2),
                         fileName: file_name,
                         line,
                     }),

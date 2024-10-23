@@ -83,11 +83,11 @@ impl Counters {
         counters
     }
 
-    // pub fn dispense_identity_id(&mut self) -> u64 {
-    //     let id = self.identity_counter;
-    //     self.identity_counter += 1;
-    //     id
-    // }
+    pub fn dispense_identity_id(&mut self) -> u64 {
+        let id = self.identity_counter;
+        self.identity_counter += 1;
+        id
+    }
 
     pub fn dispense_symbol_id(&mut self, kind: SymbolKind, length: Option<u64>) -> u64 {
         let counter = self.symbol_counters.get_mut(&kind).unwrap();

@@ -249,7 +249,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
                     .iter()
                     .map(|id| {
                         let name = id.to_string();
-                        let expr = to_halo2_expression(&id.e, &config, meta);
+                        let expr = to_halo2_expression(&id.expression, &config, meta);
                         let expr = expr * meta.query_fixed(config.enable, Rotation::cur());
                         (name, expr)
                     })
@@ -279,7 +279,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
         // Challenge used to combine the lookup tuple with the selector
         let beta = Expression::Challenge(meta.challenge_usable_after(FirstPhase));
 
-        let to_lookup_tuple = |expr: &SelectedExpressions<AlgebraicExpression<T>>,
+        let to_lookup_tuple = |expr: &SelectedExpressions<T>,
                                meta: &mut VirtualCells<'_, F>| {
             let selector = expr
                 .selector

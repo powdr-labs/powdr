@@ -401,6 +401,7 @@ fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
             source,
             left,
             right,
+            ..
         }) = identity
         {
             let mut extracted = HashSet::new();
@@ -458,7 +459,7 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         .identities
         .iter()
         .filter_map(|id| {
-            if let Identity::Polynomial(PolynomialIdentity { e, .. }) = id {
+            if let Identity::Polynomial(PolynomialIdentity { expression: e, .. }) = id {
                 Some(e)
             } else {
                 None
@@ -551,7 +552,7 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .iter()
         .enumerate()
         .filter_map(|(index, identity)| match identity {
-            Identity::Polynomial(PolynomialIdentity { e, .. }) => {
+            Identity::Polynomial(PolynomialIdentity { expression: e, .. }) => {
                 if let AlgebraicExpression::Number(n) = e {
                     if *n == 0.into() {
                         return Some(index);
@@ -579,8 +580,8 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         fn eq(&self, other: &Self) -> bool {
             match (self.0, other.0) {
                 (
-                    Identity::Polynomial(PolynomialIdentity { e: e1, .. }),
-                    Identity::Polynomial(PolynomialIdentity { e: e2, .. }),
+                    Identity::Polynomial(PolynomialIdentity { expression: e1, .. }),
+                    Identity::Polynomial(PolynomialIdentity { expression: e2, .. }),
                 ) => e1 == e2,
                 (
                     Identity::Plookup(PlookupIdentity {
@@ -629,8 +630,8 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
             match (self.0, other.0) {
                 (
-                    Identity::Polynomial(PolynomialIdentity { e: e1, .. }),
-                    Identity::Polynomial(PolynomialIdentity { e: e2, .. }),
+                    Identity::Polynomial(PolynomialIdentity { expression: e1, .. }),
+                    Identity::Polynomial(PolynomialIdentity { expression: e2, .. }),
                 ) => e1.partial_cmp(e2),
                 (
                     Identity::Plookup(PlookupIdentity {

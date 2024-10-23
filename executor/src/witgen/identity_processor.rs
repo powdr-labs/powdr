@@ -153,7 +153,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
             Identity::Permutation(..) => {
                 todo!("same as plookup, avoid duplication")
             }
-            Identity::Connect(identity) => {
+            Identity::Connect(..) => {
                 // TODO this is not the right cause.
                 Ok(EvalValue::incomplete(IncompleteCause::SolvingFailed))
                 // unimplemented!(
@@ -167,10 +167,10 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
 
     fn process_polynomial_identity(
         &self,
-        identity: &'a PolynomialIdentity<Expression<T>>,
+        identity: &'a PolynomialIdentity<T>,
         rows: &RowPair<T>,
     ) -> EvalResult<'a, T> {
-        match rows.evaluate(&identity.e) {
+        match rows.evaluate(&identity.expression) {
             Err(incomplete_cause) => Ok(EvalValue::incomplete(incomplete_cause)),
             Ok(evaluated) => evaluated.solve_with_range_constraints(rows),
         }
@@ -178,7 +178,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
 
     fn process_plookup(
         &mut self,
-        identity: &'a PlookupIdentity<Expression<T>>,
+        identity: &'a PlookupIdentity<T>,
         rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
         if let Some(left_selector) = &identity.left.selector {
@@ -188,7 +188,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         }
 
         self.mutable_state.machines.call(
-            unimplemented!("identity id"),
+            identity.id,
             rows,
             self.mutable_state.query_callback,
         )
@@ -277,7 +277,7 @@ lazy_static! {
 fn report_identity_solving<T: FieldElement, K>(identity: &Identity<T>, result: &EvalResult<T, K>) {
     let success = result.as_ref().map(|r| r.is_complete()).unwrap_or_default() as u64;
     let mut stat = STATISTICS.lock().unwrap();
-    stat.entry(unimplemented!("identity id"))
+    stat.entry(identity.id())
         .and_modify(|s| {
             s.invocations += 1;
             s.success += success;

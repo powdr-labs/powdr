@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Display;
 
-use powdr_ast::analyzed::AlgebraicExpression;
 use powdr_ast::analyzed::DegreeRange;
 use powdr_ast::analyzed::PermutationIdentity;
 use powdr_ast::analyzed::PlookupIdentity;
@@ -157,8 +156,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
 
 #[derive(Copy, Clone)]
 pub enum ConnectingIdentityRef<'a, T> {
-    Plookup(&'a PlookupIdentity<AlgebraicExpression<T>>),
-    Permutation(&'a PermutationIdentity<AlgebraicExpression<T>>),
+    Plookup(&'a PlookupIdentity<T>),
+    Permutation(&'a PermutationIdentity<T>),
 }
 
 impl<'a, T: Display> Display for ConnectingIdentityRef<'a, T> {
@@ -191,14 +190,14 @@ enum ConnectionType {
 }
 
 impl<'a, T> ConnectingIdentityRef<'a, T> {
-    pub fn left(&self) -> &'a analyzed::SelectedExpressions<AlgebraicExpression<T>> {
+    pub fn left(&self) -> &'a analyzed::SelectedExpressions<T> {
         match self {
             ConnectingIdentityRef::Plookup(i) => &i.left,
             ConnectingIdentityRef::Permutation(i) => &i.left,
         }
     }
 
-    pub fn right(&self) -> &'a analyzed::SelectedExpressions<AlgebraicExpression<T>> {
+    pub fn right(&self) -> &'a analyzed::SelectedExpressions<T> {
         match self {
             ConnectingIdentityRef::Plookup(i) => &i.right,
             ConnectingIdentityRef::Permutation(i) => &i.right,
