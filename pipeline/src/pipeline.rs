@@ -108,6 +108,8 @@ struct Arguments<T: FieldElement> {
     export_witness_csv: bool,
     /// The optional setup file to use for proving.
     setup_file: Option<PathBuf>,
+    /// The optional proving key file to use for proving.
+    pkey_file: Option<PathBuf>,
     /// The optional verification key file to use for proving.
     vkey_file: Option<PathBuf>,
     /// The optional verification key file to use for recursive proving.
@@ -247,6 +249,11 @@ impl<T: FieldElement> Pipeline<T> {
         }
     }
 
+    pub fn set_output(&mut self, output_dir: PathBuf, force_overwrite: bool) {
+        self.output_dir = Some(output_dir);
+        self.force_overwrite = force_overwrite;
+    }
+
     pub fn add_external_witness_values(
         mut self,
         external_witness_values: Vec<(String, Vec<T>)>,
@@ -265,6 +272,25 @@ impl<T: FieldElement> Pipeline<T> {
             .external_witness_values
             .extend(external_witness_values);
         self
+    }
+
+    pub fn add_external_witness_values_mut(
+        &mut self,
+        external_witness_values: Vec<(String, Vec<T>)>,
+    ) {
+        for (name, _) in &external_witness_values {
+            assert!(
+                !self
+                    .arguments
+                    .external_witness_values
+                    .iter()
+                    .any(|(n, _)| n == name),
+                "Duplicate witness column name: {name}"
+            );
+        }
+        self.arguments
+            .external_witness_values
+            .extend(external_witness_values);
     }
 
     pub fn with_witness_csv_settings(
@@ -286,7 +312,7 @@ impl<T: FieldElement> Pipeline<T> {
         self
     }
 
-    pub fn add_data<S: serde::Serialize + 'static>(self, channel: u32, data: &S) -> Self {
+    pub fn add_data<S: serde::Serialize>(self, channel: u32, data: &S) -> Self {
         let bytes = serde_cbor::to_vec(&data).unwrap();
         self.add_query_callback(Arc::new(serde_data_to_query_callback(channel, bytes)))
     }
@@ -317,10 +343,24 @@ impl<T: FieldElement> Pipeline<T> {
         self
     }
 
+    pub fn with_pkey_file(mut self, pkey_file: Option<PathBuf>) -> Self {
+        self.arguments.pkey_file = pkey_file;
+        self.artifact.backend = None;
+        self
+    }
+
+    pub fn set_pkey_file(&mut self, pkey_file: PathBuf) {
+        self.arguments.pkey_file = Some(pkey_file);
+    }
+
     pub fn with_vkey_file(mut self, vkey_file: Option<PathBuf>) -> Self {
         self.arguments.vkey_file = vkey_file;
         self.artifact.backend = None;
         self
+    }
+
+    pub fn set_vkey_file(&mut self, vkey_file: PathBuf) {
+        self.arguments.vkey_file = Some(vkey_file);
     }
 
     pub fn with_vkey_app_file(mut self, vkey_app_file: Option<PathBuf>) -> Self {
@@ -422,23 +462,32 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     /// Reads previously generated fixed columns from the provided directory.
-    pub fn read_constants(self, directory: &Path) -> Self {
-        let fixed = FixedPolySet::<T>::read(directory);
+    pub fn read_constants(self, directory: &Path) -> Result<Self, String> {
+        let fixed = FixedPolySet::<T>::read(directory)?;
 
-        Pipeline {
+        Ok(Pipeline {
             artifact: Artifacts {
                 fixed_cols: Some(Arc::new(fixed)),
                 ..self.artifact
             },
             ..self
-        }
+        })
+    }
+
+    /// Reads previously generated fixed columns from the provided directory.
+    pub fn read_constants_mut(&mut self, directory: &Path) -> Result<(), String> {
+        let fixed = FixedPolySet::<T>::read(directory)?;
+
+        self.artifact.fixed_cols = Some(Arc::new(fixed));
+
+        Ok(())
     }
 
     /// Reads a previously generated witness from the provided directory.
-    pub fn read_witness(self, directory: &Path) -> Self {
-        let witness = WitnessPolySet::<T>::read(directory);
+    pub fn read_witness(self, directory: &Path) -> Result<Self, String> {
+        let witness = WitnessPolySet::<T>::read(directory)?;
 
-        Pipeline {
+        Ok(Pipeline {
             artifact: Artifacts {
                 witness: Some(Arc::new(witness)),
                 // we're changing the witness, clear the current proof
@@ -446,7 +495,7 @@ impl<T: FieldElement> Pipeline<T> {
                 ..self.artifact
             },
             ..self
-        }
+        })
     }
 
     /// Sets the witness to the provided value.
@@ -594,6 +643,17 @@ impl<T: FieldElement> Pipeline<T> {
         }
 
         Ok(())
+    }
+
+    // Removes artifacts related to witgen and proofs.
+    // This is useful for when a single pipeline is used for several proofs.
+    // In that case, we want to keep the fixed columns and backend setup unmodified,
+    // but give it different witnesses and generate different proofs.
+    // The previous alternative to this was cloning the entire pipeline.
+    pub fn rollback_from_witness(&mut self) {
+        self.artifact.witness = None;
+        self.artifact.proof = None;
+        self.arguments.external_witness_values.clear();
     }
 
     // ===== Compute and retrieve artifacts =====
@@ -961,6 +1021,13 @@ impl<T: FieldElement> Pipeline<T> {
             .as_ref()
             .map(|path| BufReader::new(fs::File::open(path).unwrap()));
 
+        // Opens the proving key file, if set.
+        let mut pkey = self
+            .arguments
+            .pkey_file
+            .as_ref()
+            .map(|path| BufReader::new(fs::File::open(path).unwrap()));
+
         // Opens the verification key file, if set.
         let mut vkey = self
             .arguments
@@ -984,6 +1051,7 @@ impl<T: FieldElement> Pipeline<T> {
                 fixed_cols.clone(),
                 self.output_dir.clone(),
                 setup.as_io_read(),
+                pkey.as_io_read(),
                 vkey.as_io_read(),
                 vkey_app.as_io_read(),
                 self.arguments.backend_options.clone(),
@@ -1056,16 +1124,27 @@ impl<T: FieldElement> Pipeline<T> {
         self.arguments.query_callback.as_deref()
     }
 
+    pub fn export_proving_key<W: io::Write>(&mut self, mut writer: W) -> Result<(), Vec<String>> {
+        let backend = self.setup_backend()?;
+        backend
+            .export_proving_key(&mut writer)
+            .map_err(|e| match e {
+                powdr_backend::Error::BackendError(e) => vec![e],
+                _ => panic!(),
+            })
+    }
+
     pub fn export_verification_key<W: io::Write>(
         &mut self,
         mut writer: W,
     ) -> Result<(), Vec<String>> {
         let backend = self.setup_backend()?;
-        match backend.export_verification_key(&mut writer) {
-            Ok(()) => Ok(()),
-            Err(powdr_backend::Error::BackendError(e)) => Err(vec![e]),
-            _ => panic!(),
-        }
+        backend
+            .export_verification_key(&mut writer)
+            .map_err(|e| match e {
+                powdr_backend::Error::BackendError(e) => vec![e],
+                _ => panic!(),
+            })
     }
 
     pub fn export_ethereum_verifier<W: io::Write>(
@@ -1099,6 +1178,14 @@ impl<T: FieldElement> Pipeline<T> {
             Err(powdr_backend::Error::BackendError(e)) => Err(vec![e]),
             _ => panic!(),
         }
+    }
+
+    pub fn export_backend_setup<W: io::Write>(&mut self, mut writer: W) -> Result<(), Vec<String>> {
+        let backend = self.setup_backend()?;
+        backend.export_setup(&mut writer).map_err(|e| match e {
+            powdr_backend::Error::BackendError(e) => vec![e],
+            _ => panic!(),
+        })
     }
 
     pub fn host_context(&self) -> &HostContext {
