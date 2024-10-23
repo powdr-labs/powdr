@@ -520,38 +520,12 @@ pub fn run_reparse_test_with_blacklist(file: &str, blacklist: &[&str]) {
 // TODO: Add #[cfg(feature = "stwo")] to conditionally compile this function. now when I add it, this code is disabled. how to eable by default?
 pub fn test_stwo(file_name: &str, inputs: Vec<Mersenne31Field>) {
     let backend = powdr_backend::BackendType::Stwo;
-    
-    // let mut pipeline = Pipeline::default()
-    //     .with_tmp_output()
-    //     .from_file(resolve_test_file(file_name))
-    //     .with_prover_inputs(inputs)
-    //     .with_backend(backend, None);
+    let mut pipeline = Pipeline::default()
+        .with_tmp_output()
+        .from_file(resolve_test_file(file_name))
+        .with_prover_inputs(inputs)
+        .with_backend(backend, None);
 
-    // // Generate a proof
-    // let proof = pipeline.compute_proof().cloned().unwrap();
-
-    // let publics: Vec<Mersenne31Field> = pipeline
-    //     .publics()
-    //     .clone()
-    //     .unwrap()
-    //     .iter()
-    //     .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
-    //     .collect();
-
-    // pipeline.verify(&proof, &[publics.clone()]).unwrap();
-
-    // if pipeline.optimized_pil().unwrap().constant_count() > 0 {
-    //     // Export verification Key
-    //     let output_dir = pipeline.output_dir().as_ref().unwrap();
-    //     let vkey_file_path = output_dir.join("verification_key.bin");
-    //     buffered_write_file(&vkey_file_path, |writer| {
-    //         pipeline.export_verification_key(writer).unwrap()
-    //     })
-    //     .unwrap();
-
-    //     let mut pipeline = pipeline.with_vkey_file(Some(vkey_file_path));
-
-    //     // Verify the proof again
-    //     pipeline.verify(&proof, &[publics]).unwrap();
-    // }
+    // Generate a proof
+    let _proof = pipeline.compute_proof().cloned().unwrap();
 }

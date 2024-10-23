@@ -56,6 +56,7 @@ impl<T: FieldElement> Backend<T> for StwoProver<T> {
         if prev_proof.is_some() {
             return Err(Error::NoAggregationAvailable);
         }
+        self.prove(witness, witgen_callback);
         unimplemented!()
     }
     #[allow(unused_variables)]

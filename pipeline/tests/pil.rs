@@ -7,7 +7,7 @@ use powdr_pipeline::test_util::{
     assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof,
     gen_estark_proof_with_backend_variant, make_prepared_pipeline, make_simple_prepared_pipeline,
     regular_test, run_pilcom_with_backend_variant, test_halo2, test_halo2_with_backend_variant,
-    test_pilcom, test_plonky3,test_stwo, BackendVariant,
+    test_pilcom, test_plonky3, test_stwo, BackendVariant,
 };
 
 use test_log::test;
@@ -247,7 +247,7 @@ fn add() {
 #[test]
 fn stwo_add() {
     let f = "pil/add.pil";
-    test_stwo(f,Default::default());
+    test_stwo(f, Default::default());
 }
 #[test]
 fn simple_div() {
