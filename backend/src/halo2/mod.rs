@@ -90,7 +90,7 @@ impl BackendFactory<Bn254Field> for Bn254Factory {
             return Err(Error::NoVariableDegreeAvailable);
         }
         if proving_key.is_some() {
-            return Err(Error::BackendError("Proving key unused".to_string()));
+            return Err(Error::NoProvingKeyAvailable);
         }
 
         let proof_type = ProofType::from(options);
@@ -207,7 +207,7 @@ impl<F: FieldElement> BackendFactory<F> for Halo2MockFactory {
             return Err(Error::NoSetupAvailable);
         }
         if proving_key.is_some() {
-            return Err(Error::BackendError("Proving key unused".to_string()));
+            return Err(Error::NoProvingKeyAvailable);
         }
         if verification_key.is_some() {
             return Err(Error::NoVerificationAvailable);

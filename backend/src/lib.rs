@@ -102,6 +102,8 @@ pub enum Error {
     EmptyWitness,
     #[error("the backend has no setup operations")]
     NoSetupAvailable,
+    #[error("the backend does not use a proving key setup")]
+    NoProvingKeyAvailable,
     #[error("the backend does not implement proof verification")]
     NoVerificationAvailable,
     #[error("the backend does not support Ethereum onchain verification")]
@@ -189,7 +191,7 @@ pub trait Backend<F: FieldElement>: Send {
     }
 
     fn export_proving_key(&self, _output: &mut dyn io::Write) -> Result<(), Error> {
-        Err(Error::BackendError("No proving key available".to_string()))
+        Err(Error::NoProvingKeyAvailable)
     }
 
     fn verification_key_bytes(&self) -> Result<Vec<u8>, Error> {

@@ -645,13 +645,14 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(())
     }
 
+    // Removes artifacts related to witgen and proofs.
+    // This is useful for when a single pipeline is used for several proofs.
+    // In that case, we want to keep the fixed columns and backend setup unmodified,
+    // but give it different witnesses and generate different proofs.
+    // The previous alternative to this was cloning the entire pipeline.
     pub fn rollback_from_witness(&mut self) {
-        if self.artifact.witness.is_some() {
-            self.artifact.witness.take().unwrap();
-        }
-        if self.artifact.proof.is_some() {
-            self.artifact.proof.take().unwrap();
-        }
+        self.artifact.witness = None;
+        self.artifact.proof = None;
         self.arguments.external_witness_values.clear();
     }
 
@@ -1125,11 +1126,12 @@ impl<T: FieldElement> Pipeline<T> {
 
     pub fn export_proving_key<W: io::Write>(&mut self, mut writer: W) -> Result<(), Vec<String>> {
         let backend = self.setup_backend()?;
-        match backend.export_proving_key(&mut writer) {
-            Ok(()) => Ok(()),
-            Err(powdr_backend::Error::BackendError(e)) => Err(vec![e]),
-            _ => panic!(),
-        }
+        backend
+            .export_proving_key(&mut writer)
+            .map_err(|e| match e {
+                powdr_backend::Error::BackendError(e) => vec![e],
+                _ => panic!(),
+            })
     }
 
     pub fn export_verification_key<W: io::Write>(
@@ -1137,11 +1139,12 @@ impl<T: FieldElement> Pipeline<T> {
         mut writer: W,
     ) -> Result<(), Vec<String>> {
         let backend = self.setup_backend()?;
-        match backend.export_verification_key(&mut writer) {
-            Ok(()) => Ok(()),
-            Err(powdr_backend::Error::BackendError(e)) => Err(vec![e]),
-            _ => panic!(),
-        }
+        backend
+            .export_verification_key(&mut writer)
+            .map_err(|e| match e {
+                powdr_backend::Error::BackendError(e) => vec![e],
+                _ => panic!(),
+            })
     }
 
     pub fn export_ethereum_verifier<W: io::Write>(
@@ -1179,11 +1182,10 @@ impl<T: FieldElement> Pipeline<T> {
 
     pub fn export_backend_setup<W: io::Write>(&mut self, mut writer: W) -> Result<(), Vec<String>> {
         let backend = self.setup_backend()?;
-        match backend.export_setup(&mut writer) {
-            Ok(()) => Ok(()),
-            Err(powdr_backend::Error::BackendError(e)) => Err(vec![e]),
+        backend.export_setup(&mut writer).map_err(|e| match e {
+            powdr_backend::Error::BackendError(e) => vec![e],
             _ => panic!(),
-        }
+        })
     }
 
     pub fn host_context(&self) -> &HostContext {

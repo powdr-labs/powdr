@@ -42,7 +42,7 @@ impl BackendFactory<GoldilocksField> for RestrictedFactory {
         }
 
         if proving_key.is_some() {
-            return Err(Error::BackendError("Proving key unused".to_string()));
+            return Err(Error::NoProvingKeyAvailable);
         }
         if verification_app_key.is_some() {
             return Err(Error::NoAggregationAvailable);

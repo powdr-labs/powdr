@@ -39,13 +39,15 @@ where
     verifying_key: Option<StarkVerifyingKey<T::Config>>,
 }
 
-pub enum VerificationKeyExportError {
+pub enum KeyExportError {
+    NoProvingKey,
     NoVerificationKey,
 }
 
-impl fmt::Display for VerificationKeyExportError {
+impl fmt::Display for KeyExportError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::NoProvingKey => write!(f, "No proving key set"),
             Self::NoVerificationKey => write!(f, "No verification key set"),
         }
     }
@@ -83,20 +85,20 @@ where
         self.verifying_key = Some(bincode::deserialize_from(rdr).unwrap());
     }
 
-    pub fn export_proving_key(&self) -> Result<Vec<u8>, VerificationKeyExportError> {
+    pub fn export_proving_key(&self) -> Result<Vec<u8>, KeyExportError> {
         Ok(bincode::serialize(
             self.proving_key
                 .as_ref()
-                .ok_or(VerificationKeyExportError::NoVerificationKey)?,
+                .ok_or(KeyExportError::NoProvingKey)?,
         )
         .unwrap())
     }
 
-    pub fn export_verifying_key(&self) -> Result<Vec<u8>, VerificationKeyExportError> {
+    pub fn export_verifying_key(&self) -> Result<Vec<u8>, KeyExportError> {
         Ok(bincode::serialize(
             self.verifying_key
                 .as_ref()
-                .ok_or(VerificationKeyExportError::NoVerificationKey)?,
+                .ok_or(KeyExportError::NoVerificationKey)?,
         )
         .unwrap())
     }

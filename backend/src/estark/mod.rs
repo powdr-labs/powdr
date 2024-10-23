@@ -156,7 +156,7 @@ impl<'a, F: FieldElement> EStarkFilesCommon<F> {
             return Err(Error::NoSetupAvailable);
         }
         if proving_key.is_some() {
-            return Err(Error::BackendError("Proving key unused".to_string()));
+            return Err(Error::NoProvingKeyAvailable);
         }
         if verification_key.is_some() {
             return Err(Error::NoVerificationAvailable);
