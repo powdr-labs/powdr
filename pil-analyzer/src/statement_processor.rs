@@ -409,7 +409,7 @@ where
         let id = self.counters.dispense_symbol_id(symbol_kind, length);
         let absolute_name = match self.driver.resolve_decl(&source, &name) {
             Ok(name) => name,
-            Err(err) => panic!("Failed to resolve declaration: {}", err),
+            Err(err) => panic!("Failed to resolve declaration: {err}"),
         };
 
         let symbol = Symbol {
@@ -475,7 +475,7 @@ where
             .process_expression(expr)
         {
             Ok(e) => e,
-            Err(err) => panic!("Failed to process expression: {}", err),
+            Err(err) => panic!("Failed to process expression: {err}"),
         };
 
         let value = FunctionValueDefinition::Expression(TypedExpression { e, type_scheme });
@@ -494,7 +494,7 @@ where
             .process_array_expression(value)
         {
             Ok(e) => e,
-            Err(err) => panic!("Failed to process array expression: {}", err),
+            Err(err) => panic!("Failed to process array expression: {err}"),
         };
         assert!(type_scheme.is_none() || type_scheme == Some(Type::Col.into()));
         let value = FunctionValueDefinition::Array(expression);
@@ -539,7 +539,7 @@ where
             .process_namespaced_polynomial_reference(source.clone(), poly)
         {
             Ok(p) => p,
-            Err(err) => panic!("Failed to process polynomial reference: {}", err),
+            Err(err) => panic!("Failed to process polynomial reference: {err}"),
         };
         let array_index = array_index.map(|i| {
             let index: u64 = untyped_evaluator::evaluate_expression_to_int(self.driver, i)
@@ -589,7 +589,7 @@ where
         let resolved_name = match self.driver.resolve_decl(&source, &enum_decl.name) {
             Ok(name) => name,
             Err(e) => {
-                panic!("Failed to resolve enum name: {}", e);
+                panic!("Failed to resolve enum name: {e}");
             }
         };
         let enum_decl = EnumDeclaration {
@@ -608,7 +608,7 @@ where
 
                 let resolved_name = match resolved_name_result {
                     Ok(name) => name,
-                    Err(err) => panic!("Failed to resolve enum variant: {}", err),
+                    Err(err) => panic!("Failed to resolve enum variant: {err}"),
                 };
 
                 (
@@ -671,7 +671,7 @@ where
         let name = match self.driver.resolve_decl(&source, &name) {
             Ok(name) => name,
             Err(e) => {
-                panic!("Failed to resolve struct name: {}", e);
+                panic!("Failed to resolve struct name: {e}");
             }
         };
         let struct_decl = StructDeclaration {
@@ -708,7 +708,7 @@ where
         let resolved_name = match self.driver.resolve_decl(&source, &trait_decl.name) {
             Ok(name) => name,
             Err(e) => {
-                panic!("Failed to resolve trait name: {}", e);
+                panic!("Failed to resolve trait name: {e}");
             }
         };
         let trait_decl = TraitDeclaration {
@@ -727,7 +727,7 @@ where
 
                 let resolved_name = match resolved_name_result {
                     Ok(name) => name,
-                    Err(err) => panic!("Failed to resolve namespaced declaration: {}", err),
+                    Err(err) => panic!("Failed to resolve namespaced declaration: {err}"),
                 };
 
                 (
@@ -769,7 +769,7 @@ where
                     .process_expression(Arc::try_unwrap(named.body).unwrap())
                 {
                     Ok(body) => body,
-                    Err(e) => panic!("Failed to unwrap the expression body: {}", e),
+                    Err(e) => panic!("Failed to unwrap the expression body: {e}"),
                 };
 
                 NamedExpression {
@@ -798,7 +798,7 @@ where
         ) {
             Ok(name) => name,
             Err(e) => {
-                panic!("Failed to resolve trait name: {}", e);
+                panic!("Failed to resolve trait name: {e}");
             }
         };
 

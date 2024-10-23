@@ -429,7 +429,7 @@ impl PILAnalyzer {
             _ => {
                 let names = statement
                     .symbol_definition_names_and_contained()
-                    .filter_map(|(name, sub_name, symbol_category)| {
+                    .map(|(name, sub_name, symbol_category)| {
                         let resolved_name_result = match sub_name {
                             None => self.driver().resolve_decl(&SourceRef::unknown(), name),
                             Some(sub_name) => self
@@ -441,9 +441,9 @@ impl PILAnalyzer {
                         };
 
                         match resolved_name_result {
-                            Ok(resolved_name) => Some((resolved_name, symbol_category)),
+                            Ok(resolved_name) => (resolved_name, symbol_category),
                             Err(err) => {
-                                panic!("Failed to resolve symbol: {}", err);
+                                panic!("Failed to resolve symbol: {err}");
                             }
                         }
                     })
