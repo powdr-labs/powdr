@@ -326,7 +326,7 @@ impl<T: Display> Display for PolynomialIdentity<T> {
                 op: AlgebraicBinaryOperator::Sub,
                 right,
             }) => {
-                writeln!(f, "{left} = {right};")
+                write!(f, "{left} = {right};")
             }
             e => write!(f, "{e} = 0;"),
         }

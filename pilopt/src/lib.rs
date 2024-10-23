@@ -629,6 +629,14 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 
     impl<T: PartialOrd> PartialOrd for CanonicalIdentity<'_, T> {
         fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            // we implement our own discriminant since std::mem::Discriminant does not implement PartialOrd...
+            let discriminant = |i: &Identity<T>| match i {
+                Identity::Polynomial(..) => 0,
+                Identity::Lookup(..) => 1,
+                Identity::Permutation(..) => 2,
+                Identity::Connect(..) => 3,
+            };
+
             match (self.0, other.0) {
                 (
                     Identity::Polynomial(PolynomialIdentity { expression: e1, .. }),
@@ -679,7 +687,7 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                     Some(Ordering::Equal) => r1.partial_cmp(r2),
                     x => x,
                 },
-                _ => None,
+                (l, r) => discriminant(&l).partial_cmp(&discriminant(&r)),
             }
         }
     }
