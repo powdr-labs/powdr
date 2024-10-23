@@ -348,9 +348,7 @@ fn all_row_connected_witnesses<T>(
 }
 
 /// Extracts all references to names from selected expressions.
-fn refs_in_selected_expressions<T>(
-    sel_expr: &SelectedExpressions<T>,
-) -> HashSet<PolyID> {
+fn refs_in_selected_expressions<T>(sel_expr: &SelectedExpressions<T>) -> HashSet<PolyID> {
     sel_expr
         .children()
         .flat_map(|e| refs_in_expression(e))

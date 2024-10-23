@@ -432,7 +432,6 @@ fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 
                 extracted.insert(i);
             }
-
             // TODO rust-ize this.
             let mut c = 0usize;
             left.expressions.retain(|_i| {
@@ -552,8 +551,8 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .iter()
         .enumerate()
         .filter_map(|(index, identity)| match identity {
-            Identity::Polynomial(PolynomialIdentity { expression: e, .. }) => {
-                if let AlgebraicExpression::Number(n) = e {
+            Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
+                if let AlgebraicExpression::Number(n) = expression {
                     if *n == 0.into() {
                         return Some(index);
                     }
@@ -574,6 +573,8 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 }
 
 fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
+    // TODO: there must be a less verbose way to do this...
+    /// Wrapper around `Identity` that implements `PartialEq` and `Ord` for canonical comparison, ignoring source information and id.
     struct CanonicalIdentity<'a, T>(&'a Identity<T>);
 
     impl<T: PartialEq> PartialEq for CanonicalIdentity<'_, T> {

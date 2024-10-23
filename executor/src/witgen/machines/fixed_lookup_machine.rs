@@ -205,10 +205,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
                             .unwrap_or(false)
                     })
                     && !i.right.expressions.is_empty())
-                .then_some((
-                    i.id,
-                    ConnectingIdentityRef::Plookup(i),
-                )),
+                .then_some((i.id, ConnectingIdentityRef::Plookup(i))),
                 _ => None,
             })
             .collect();

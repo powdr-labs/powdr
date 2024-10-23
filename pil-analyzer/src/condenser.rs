@@ -16,8 +16,8 @@ use powdr_ast::{
         self, AlgebraicBinaryOperation, AlgebraicExpression, AlgebraicReference,
         AlgebraicUnaryOperation, Analyzed, Challenge, ConnectIdentity, DegreeRange, Expression,
         FunctionValueDefinition, Identity, PermutationIdentity, PlookupIdentity, PolyID,
-        PolynomialReference, PolynomialType, PublicDeclaration, Reference, SelectedExpressions,
-        StatementIdentifier, Symbol, SymbolKind,
+        PolynomialIdentity, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
+        SelectedExpressions, StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
         self,
@@ -669,11 +669,12 @@ fn to_constraint<T: FieldElement>(
     match &**variant {
         "Identity" => {
             assert_eq!(fields.len(), 2);
-            Identity::from_polynomial_identity(
+            PolynomialIdentity::new(
                 counters.dispense_identity_id(),
                 source,
                 to_expr(&fields[0]) - to_expr(&fields[1]),
             )
+            .into()
         }
         "Lookup" | "Permutation" => {
             assert_eq!(fields.len(), 2);
@@ -739,14 +740,8 @@ fn to_constraint<T: FieldElement>(
             ConnectIdentity::new(
                 counters.dispense_identity_id(),
                 source,
-                analyzed::SelectedExpressions {
-                    selector: None,
-                    expressions: from.into_iter().map(to_expr).collect(),
-                },
-                analyzed::SelectedExpressions {
-                    selector: None,
-                    expressions: to.into_iter().map(to_expr).collect(),
-                },
+                from.into_iter().map(to_expr).collect(),
+                to.into_iter().map(to_expr).collect(),
             )
             .into()
         }

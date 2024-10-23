@@ -40,7 +40,7 @@ trait ExpressionCounter {
     fn expression_count(&self) -> usize;
 }
 
-impl<Expr> ExpressionCounter for Identity<Expr> {
+impl<T> ExpressionCounter for Identity<T> {
     fn expression_count(&self) -> usize {
         match self {
             Identity::Polynomial(_) => 1,
@@ -52,7 +52,7 @@ impl<Expr> ExpressionCounter for Identity<Expr> {
                     + permutation_identity.right.expression_count()
             }
             Identity::Connect(connect_identity) => {
-                connect_identity.left.expression_count() + connect_identity.right.expression_count()
+                connect_identity.left.len() + connect_identity.right.len()
             }
         }
     }

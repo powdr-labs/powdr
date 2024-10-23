@@ -341,13 +341,18 @@ impl<T: Display> Display for PlookupIdentity<T> {
 
 impl<T: Display> Display for PermutationIdentity<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{} in {};", self.left, self.right)
+        write!(f, "{} is {};", self.left, self.right)
     }
 }
 
 impl<T: Display> Display for ConnectIdentity<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(f, "{} connect {};", self.left, self.right)
+        write!(
+            f,
+            "[{}] connect [{}];",
+            self.left.iter().format(", "),
+            self.right.iter().format(", ")
+        )
     }
 }
 

@@ -238,14 +238,14 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
         }
 
         // Add polynomial identities
-        let identities: Vec<PolynomialIdentity<_>> = analyzed
+        let polynomial_identities: Vec<PolynomialIdentity<_>> = analyzed
             .identities_with_inlined_intermediate_polynomials()
             .into_iter()
             .filter_map(|id| id.try_into().ok())
             .collect::<Vec<_>>();
-        if !identities.is_empty() {
+        if !polynomial_identities.is_empty() {
             meta.create_gate("main", |meta| -> Vec<(String, Expression<F>)> {
-                identities
+                polynomial_identities
                     .iter()
                     .map(|id| {
                         let name = id.to_string();
@@ -279,8 +279,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
         // Challenge used to combine the lookup tuple with the selector
         let beta = Expression::Challenge(meta.challenge_usable_after(FirstPhase));
 
-        let to_lookup_tuple = |expr: &SelectedExpressions<T>,
-                               meta: &mut VirtualCells<'_, F>| {
+        let to_lookup_tuple = |expr: &SelectedExpressions<T>, meta: &mut VirtualCells<'_, F>| {
             let selector = expr
                 .selector
                 .as_ref()

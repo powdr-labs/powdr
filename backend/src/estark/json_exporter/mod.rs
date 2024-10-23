@@ -9,7 +9,8 @@ use powdr_ast::analyzed::{
 };
 use powdr_parser_util::SourceRef;
 use starky::types::{
-    ConnectionIdentity, Expression as StarkyExpr, PlookupIdentity, PolIdentity, Reference, PIL,
+    ConnectionIdentity, Expression as StarkyExpr, PermutationIdentity, PlookupIdentity,
+    PolIdentity, Reference, PIL,
 };
 
 use self::expression_counter::compute_intermediate_expression_ids;
@@ -46,7 +47,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
     let mut publics = Vec::new();
     let mut pol_identities = Vec::new();
     let mut plookup_identities = Vec::new();
-    let permutation_identities = Vec::new();
+    let mut permutation_identities = Vec::new();
     let mut connection_identities = Vec::new();
     for item in &analyzed.source_order {
         match item {
@@ -113,7 +114,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                         });
                     }
                     Identity::Permutation(identity) => {
-                        plookup_identities.push(PlookupIdentity {
+                        permutation_identities.push(PermutationIdentity {
                             selF: exporter.extract_expression_opt(&identity.left.selector, 1),
                             f: Some(exporter.extract_expression_vec(&identity.left.expressions, 1)),
                             selT: exporter.extract_expression_opt(&identity.right.selector, 1),
@@ -126,12 +127,8 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                     }
                     Identity::Connect(identity) => {
                         connection_identities.push(ConnectionIdentity {
-                            pols: Some(
-                                exporter.extract_expression_vec(&identity.left.expressions, 1),
-                            ),
-                            connections: Some(
-                                exporter.extract_expression_vec(&identity.right.expressions, 1),
-                            ),
+                            pols: Some(exporter.extract_expression_vec(&identity.left, 1)),
+                            connections: Some(exporter.extract_expression_vec(&identity.right, 1)),
                             fileName: file_name,
                             line,
                         });

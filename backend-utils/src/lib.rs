@@ -7,7 +7,10 @@ use std::{
 
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{AlgebraicExpression, Analyzed, Identity, StatementIdentifier, Symbol, SymbolKind},
+    analyzed::{
+        AlgebraicExpression, Analyzed, Identity, PermutationIdentity, PlookupIdentity,
+        StatementIdentifier, Symbol, SymbolKind,
+    },
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         visitor::{ExpressionVisitable, VisitOrder},
@@ -189,22 +192,20 @@ fn split_by_namespace<F: FieldElement>(
                     1 => (namespaces.into_iter().next().unwrap() == current_namespace)
                         .then(|| (current_namespace.clone(), statement)),
                     _ => match identity {
-                        Identity::Plookup(identity) => {
+                        Identity::Plookup(PlookupIdentity { left, right, .. })
+                        | Identity::Permutation(PermutationIdentity { left, right, .. }) => {
                             assert_eq!(
-                                referenced_namespaces(&identity.left).len(),
+                                referenced_namespaces(left).len(),
                                 1,
                                 "LHS of identity references multiple namespaces: {identity}"
                             );
                             assert_eq!(
-                                referenced_namespaces(&identity.right).len(),
+                                referenced_namespaces(right).len(),
                                 1,
                                 "RHS of identity references multiple namespaces: {identity}"
                             );
                             log::debug!("Skipping connecting identity: {identity}");
                             None
-                        }
-                        Identity::Permutation(_) => {
-                            todo!("same as lookup, avoid repetition")
                         }
                         _ => {
                             panic!("Identity references multiple namespaces: {identity}");
