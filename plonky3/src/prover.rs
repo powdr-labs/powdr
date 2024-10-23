@@ -92,8 +92,8 @@ where
             .tables
             .iter()
             .enumerate()
-            .flat_map(|(index, (name, i))| {
-                i.quotient_domains_and_chunks(
+            .flat_map(|(index, (name, table))| {
+                table.quotient_domains_and_chunks(
                     index,
                     state,
                     proving_key
@@ -461,15 +461,16 @@ where
     multi_table.observe_instances(challenger);
 
     let mut state = ProverState::new(&multi_table, pcs, challenger);
-    let mut stage = Stage {
+
+    // run the first stage
+    state = state.run_stage(Stage {
         id: 0,
         air_stages: stage_0,
-    };
+    });
 
     assert!(stage_count >= 1);
     // generate all stages starting from the second one based on the witgen callback
     for stage_id in 1..stage_count {
-        state = state.run_stage(stage);
         // get the challenges drawn at the end of the previous stage
         let local_challenges = &state.processed_stages.last().unwrap().challenge_values;
         let CallbackResult { air_stages } =
@@ -478,14 +479,11 @@ where
         assert_eq!(air_stages.len(), multi_table.table_count());
 
         // go to the next stage
-        stage = Stage {
+        state = state.run_stage(Stage {
             id: stage_id,
             air_stages,
-        };
+        });
     }
-
-    // run the last stage
-    state = state.run_stage(stage);
 
     // sanity check that the last stage did not create any challenges
     assert!(state
