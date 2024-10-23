@@ -687,7 +687,7 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                     Some(Ordering::Equal) => r1.partial_cmp(r2),
                     x => x,
                 },
-                (l, r) => discriminant(&l).partial_cmp(&discriminant(&r)),
+                (l, r) => discriminant(l).partial_cmp(&discriminant(r)),
             }
         }
     }
