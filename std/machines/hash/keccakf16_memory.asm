@@ -9,10 +9,10 @@ use std::prelude::set_hint;
 use std::prelude::Query;
 use std::prover::eval;
 use std::prover::provide_value;
-use std::machines::memory_bb::Memory;
-use std::machines::arith_bb::ArithBB;
+use std::machines::small_field::memory::Memory;
+use std::machines::small_field::add_sub::AddSub;
 
-machine Keccakf16(mem: Memory, arith: ArithBB) with
+machine Keccakf16Memory(mem: Memory, add_sub: AddSub) with
     latch: final_step,
     operation_id: operation_id,
     call_selectors: sel,
@@ -24,11 +24,11 @@ machine Keccakf16(mem: Memory, arith: ArithBB) with
     //   - 5 to make the time step, input address limbs, and output address limbs available in all rows.
     //   - 6 to store the low and high words of exclusive memory reads.
     //   - 6 to store the low and high words of exclusive memory writes.
-    //   - 8 to store current input/output addresses for memory reads/writes.
+    //   - 12 to store current input/output addresses for memory reads/writes.
     // - 10 extra permutations to increment address limbs.
     // Overall, given that there are 2,600+ columns in the non-memory version, this isn't a huge cost.
 
-    operation keccakf16<0> input_addr_low, input_addr_high, output_addr_low, output_addr_high, time_step ->;
+    operation keccakf16_memory<0> input_addr_high, input_addr_low, output_addr_high, output_addr_low, time_step ->;
 
     let OUTPUT_SIZE: int = 100;
 
@@ -46,11 +46,13 @@ machine Keccakf16(mem: Memory, arith: ArithBB) with
 
     // Make output available in all rows
     let output: col[OUTPUT_SIZE];
+    array::new(100, |i| unchanged_until(output[i], final_step + is_last));
     array::new(4, |i| final_step * (output[i] - a_prime_prime_prime_0_0_limbs[i]) = 0);
     array::new(OUTPUT_SIZE - 4, |i| final_step * (output[i + 4] - a_prime_prime[i + 4]) = 0);
 
     // Because there are 24 rows each block, 100 16-bit inputs and 100 16-bit outputs, and each memory read/write processes 2 16-bit numbers,
-    // the smallest number of memory read/write needed on each row is (100 + 100)/2/24 = 5 (rounded up) and we need 10 
+    // the smallest number of memory read/write needed on each row is (100 + 100)/2/24 = 5 (rounded up) and we need 10 columns minimum just to store the read result/numbers to write.
+    // Here we use 12 columns, to avoid mixing input and output on the same column.
 
     // Stores the first 48 input columns, with 2 columns from the same memory read on the same row.
     let current_input_0_low = array::sum(array::new(NUM_ROUNDS, |i| step_flags[i] * preimage[i * 2]));
@@ -90,53 +92,57 @@ machine Keccakf16(mem: Memory, arith: ArithBB) with
     let current_input_0_addr_high;
     let current_input_1_addr_low;
     let current_input_1_addr_high;
+    let current_input_2_addr_low;
+    let current_input_2_addr_high;
     let current_output_0_addr_low;
     let current_output_0_addr_high;
     let current_output_1_addr_low;
     let current_output_1_addr_high;
-
-    // Constrain the first address to input address.
-    input_addr_low = first_step * current_input_0_addr_low;
-    input_addr_high = first_step * current_input_0_addr_high;
-    // Increment the address by 4 (bytes) for each row.
-    // Submachine is big-endian.
-    link if (1 - last_step) ~> (current_input_0_addr_high', current_input_0_addr_low') = arith.add(current_input_0_addr_high, current_input_0_addr_low, 0, 4);
+    let current_output_2_addr_low;
+    let current_output_2_addr_high;
     
-    // Add 96 (bytes) to initial address.
-    link if first_step ~> (current_input_1_addr_high, current_input_1_addr_low) = arith.add(input_addr_high, input_addr_low, 0, 96);
+    // Submachine is big-endian.
     // Increment the address by 4 (bytes) for each row.
-    link if (1 - last_step) ~> (current_input_1_addr_high', current_input_1_addr_low') = arith.add(current_input_1_addr_high, current_input_1_addr_low, 0, 4);
+    link if (1 - final_step - is_last) ~> (current_input_0_addr_high', current_input_0_addr_low') = add_sub.add(current_input_0_addr_high, current_input_0_addr_low, 0, 4);
+    // Last address should be 92 more than the input address.
+    link if final_step ~> (input_addr_high, input_addr_low) = add_sub.add(current_input_0_addr_high, current_input_0_addr_low, 0, 92);
+    
+    // Increment the address by 4 (bytes) for each row.
+    link if (1 - final_step - is_last) ~> (current_input_1_addr_high', current_input_1_addr_low') = add_sub.add(current_input_1_addr_high, current_input_1_addr_low, 0, 4);
+    // Last address should be 188 more than the input address.
+    link if final_step ~> (input_addr_high, input_addr_low) = add_sub.add(current_input_1_addr_high, current_input_1_addr_low, 0, 188);
 
-    // Add 192 (bytes) to initial address.
-    link if first_step ~> (current_input_2_addr_high, current_input_2_addr_low) = arith.add(input_addr_high, input_addr_low, 0, 192);
     // Increment the address by 4 (bytes) for each row.
-    link if (1 - last_step) ~> (current_input_2_addr_high', current_input_2_addr_low') = arith.add(current_input_2_addr_high, current_input_2_addr_low, 0, 4);
+    link if (1 - final_step - is_last) ~> (current_input_2_addr_high', current_input_2_addr_low') = add_sub.add(current_input_2_addr_high, current_input_2_addr_low, 0, 4);
+    // Last address should be 284 more than the input address.
+    link if final_step ~> (input_addr_high, input_addr_low) = add_sub.add(current_input_2_addr_high, current_input_2_addr_low, 0, 284);
 
-    // Constrain the first address to output address.
-    output_addr_low = first_step * current_output_0_addr_low;
-    output_addr_high = first_step * current_output_0_addr_high;
     // Increment the address by 4 (bytes) for each row.
-    link if (1 - last_step) ~> (current_output_0_addr_high', current_output_0_addr_low') = arith.add(current_output_0_addr_high, current_output_0_addr_low, 0, 4);
+    link if (1 - final_step - is_last) ~> (current_output_0_addr_high', current_output_0_addr_low') = add_sub.add(current_output_0_addr_high, current_output_0_addr_low, 0, 4);
+    // Last address should be 92 more than the output address.
+    link if final_step ~> (output_addr_high, output_addr_low) = add_sub.add(current_output_0_addr_high, current_output_0_addr_low, 0, 92);
+    
+    // Increment the address by 4 (bytes) for each row.
+    link if (1 - final_step - is_last) ~> (current_output_1_addr_high', current_output_1_addr_low') = add_sub.add(current_output_1_addr_high, current_output_1_addr_low, 0, 4);
+    // Last address should be 188 more than the output address.
+    link if final_step ~> (output_addr_high, output_addr_low) = add_sub.add(current_output_1_addr_high, current_output_1_addr_low, 0, 188);
 
-    // Add 96 (bytes) to initial address.
-    link if first_step ~> (current_output_1_addr_high, current_output_1_addr_low) = arith.add(output_addr_high, output_addr_low, 0, 96);
     // Increment the address by 4 (bytes) for each row.
-    link if (1 - last_step) ~> (current_input_1_addr_high', current_input_1_addr_low') = arith.add(current_input_1_addr_high, current_input_1_addr_low, 0, 4);
-
-    // Add 192 (bytes) to initial address.
-    link if first_step ~> (current_output_2_addr_high, current_output_2_addr_low) = arith.add(output_addr_high, output_addr_low, 0, 192);
-    // Increment the address by 4 (bytes) for each row.
-    link if (1 - last_step) ~> (current_output_2_addr_high', current_output_2_addr_low') = arith.add(current_output_2_addr_high, current_output_2_addr_low, 0, 4);
+    link if (1 - final_step - is_last) ~> (current_output_2_addr_high', current_output_2_addr_low') = add_sub.add(current_output_2_addr_high, current_output_2_addr_low, 0, 4);
+    // Last address should be 284 more than the output address.
+    link if final_step ~> (output_addr_high, output_addr_low) = add_sub.add(current_output_2_addr_high, current_output_2_addr_low, 0, 284);
 
     // No link flag needed because all rows are memory read.
-    link ~> (current_input_0_low, current_input_0_high) = mem.mload(current_input_0_addr_low, current_input_0_addr_high, time_step);
-    link ~> (current_input_1_low, current_input_1_high) = mem.mload(current_input_1_addr_low, current_input_1_addr_high, time_step);
-    link ~> (current_input_2_low, current_input_2_high) = mem.mload(current_input_2_addr_low, current_input_2_addr_high, time_step);
+    link ~> (current_input_0_high, current_input_0_low) = mem.mload(current_input_0_addr_high, current_input_0_addr_low, time_step);
+    link ~> (current_input_1_high, current_input_1_low) = mem.mload(current_input_1_addr_high, current_input_1_addr_low, time_step);
+    // Only do two reads for the last set of input columns.
+    link if first_step + step_flags[1] ~> (current_input_2_high, current_input_2_low) = mem.mload(current_input_2_addr_high, current_input_2_addr_low, time_step);
     
     // No link flag needed because all rows are memory write.
-    link ~> (current_output_0_low, current_output_0_high) = mem.mload(current_output_0_addr_low, current_output_0_addr_high, time_step);
-    link ~> (current_output_1_low, current_output_1_high) = mem.mload(current_output_1_addr_low, current_output_1_addr_high, time_step);
-    link ~> (current_output_2_low, current_output_2_high) = mem.mload(current_output_2_addr_low, current_output_2_addr_high, time_step);
+    link ~> mem.mstore(current_output_0_addr_high, current_output_0_addr_low, time_step, current_output_0_high, current_output_0_low);
+    link ~> mem.mstore(current_output_1_addr_high, current_output_1_addr_low, time_step, current_output_1_high, current_output_1_low);
+    // Only do two reads for the last set of output columns.
+    link if first_step + step_flags[1] ~> mem.mstore(current_output_2_addr_high, current_output_2_addr_low, time_step, current_output_2_high, current_output_2_low);
 
     // ------------- End memory read / write ---------------
 
@@ -146,7 +152,7 @@ machine Keccakf16(mem: Memory, arith: ArithBB) with
 
     // Expects input of 25 64-bit numbers decomposed to 25 chunks of 4 16-bit little endian limbs. 
     // The output is a_prime_prime_prime_0_0_limbs for the first 4 and a_prime_prime for the rest.
-    operation keccakf16<0> preimage[0], preimage[1], preimage[2], preimage[3], preimage[4], preimage[5], preimage[6], preimage[7], preimage[8], preimage[9], preimage[10], preimage[11], preimage[12], preimage[13], preimage[14], preimage[15], preimage[16], preimage[17], preimage[18], preimage[19], preimage[20], preimage[21], preimage[22], preimage[23], preimage[24], preimage[25], preimage[26], preimage[27], preimage[28], preimage[29], preimage[30], preimage[31], preimage[32], preimage[33], preimage[34], preimage[35], preimage[36], preimage[37], preimage[38], preimage[39], preimage[40], preimage[41], preimage[42], preimage[43], preimage[44], preimage[45], preimage[46], preimage[47], preimage[48], preimage[49], preimage[50], preimage[51], preimage[52], preimage[53], preimage[54], preimage[55], preimage[56], preimage[57], preimage[58], preimage[59], preimage[60], preimage[61], preimage[62], preimage[63], preimage[64], preimage[65], preimage[66], preimage[67], preimage[68], preimage[69], preimage[70], preimage[71], preimage[72], preimage[73], preimage[74], preimage[75], preimage[76], preimage[77], preimage[78], preimage[79], preimage[80], preimage[81], preimage[82], preimage[83], preimage[84], preimage[85], preimage[86], preimage[87], preimage[88], preimage[89], preimage[90], preimage[91], preimage[92], preimage[93], preimage[94], preimage[95], preimage[96], preimage[97], preimage[98], preimage[99] -> a_prime_prime_prime_0_0_limbs[0], a_prime_prime_prime_0_0_limbs[1], a_prime_prime_prime_0_0_limbs[2], a_prime_prime_prime_0_0_limbs[3], a_prime_prime[4], a_prime_prime[5], a_prime_prime[6], a_prime_prime[7], a_prime_prime[8], a_prime_prime[9], a_prime_prime[10], a_prime_prime[11], a_prime_prime[12], a_prime_prime[13], a_prime_prime[14], a_prime_prime[15], a_prime_prime[16], a_prime_prime[17], a_prime_prime[18], a_prime_prime[19], a_prime_prime[20], a_prime_prime[21], a_prime_prime[22], a_prime_prime[23], a_prime_prime[24], a_prime_prime[25], a_prime_prime[26], a_prime_prime[27], a_prime_prime[28], a_prime_prime[29], a_prime_prime[30], a_prime_prime[31], a_prime_prime[32], a_prime_prime[33], a_prime_prime[34], a_prime_prime[35], a_prime_prime[36], a_prime_prime[37], a_prime_prime[38], a_prime_prime[39], a_prime_prime[40], a_prime_prime[41], a_prime_prime[42], a_prime_prime[43], a_prime_prime[44], a_prime_prime[45], a_prime_prime[46], a_prime_prime[47], a_prime_prime[48], a_prime_prime[49], a_prime_prime[50], a_prime_prime[51], a_prime_prime[52], a_prime_prime[53], a_prime_prime[54], a_prime_prime[55], a_prime_prime[56], a_prime_prime[57], a_prime_prime[58], a_prime_prime[59], a_prime_prime[60], a_prime_prime[61], a_prime_prime[62], a_prime_prime[63], a_prime_prime[64], a_prime_prime[65], a_prime_prime[66], a_prime_prime[67], a_prime_prime[68], a_prime_prime[69], a_prime_prime[70], a_prime_prime[71], a_prime_prime[72], a_prime_prime[73], a_prime_prime[74], a_prime_prime[75], a_prime_prime[76], a_prime_prime[77], a_prime_prime[78], a_prime_prime[79], a_prime_prime[80], a_prime_prime[81], a_prime_prime[82], a_prime_prime[83], a_prime_prime[84], a_prime_prime[85], a_prime_prime[86], a_prime_prime[87], a_prime_prime[88], a_prime_prime[89], a_prime_prime[90], a_prime_prime[91], a_prime_prime[92], a_prime_prime[93], a_prime_prime[94], a_prime_prime[95], a_prime_prime[96], a_prime_prime[97], a_prime_prime[98], a_prime_prime[99];
+    // operation keccakf16<0> preimage[0], preimage[1], preimage[2], preimage[3], preimage[4], preimage[5], preimage[6], preimage[7], preimage[8], preimage[9], preimage[10], preimage[11], preimage[12], preimage[13], preimage[14], preimage[15], preimage[16], preimage[17], preimage[18], preimage[19], preimage[20], preimage[21], preimage[22], preimage[23], preimage[24], preimage[25], preimage[26], preimage[27], preimage[28], preimage[29], preimage[30], preimage[31], preimage[32], preimage[33], preimage[34], preimage[35], preimage[36], preimage[37], preimage[38], preimage[39], preimage[40], preimage[41], preimage[42], preimage[43], preimage[44], preimage[45], preimage[46], preimage[47], preimage[48], preimage[49], preimage[50], preimage[51], preimage[52], preimage[53], preimage[54], preimage[55], preimage[56], preimage[57], preimage[58], preimage[59], preimage[60], preimage[61], preimage[62], preimage[63], preimage[64], preimage[65], preimage[66], preimage[67], preimage[68], preimage[69], preimage[70], preimage[71], preimage[72], preimage[73], preimage[74], preimage[75], preimage[76], preimage[77], preimage[78], preimage[79], preimage[80], preimage[81], preimage[82], preimage[83], preimage[84], preimage[85], preimage[86], preimage[87], preimage[88], preimage[89], preimage[90], preimage[91], preimage[92], preimage[93], preimage[94], preimage[95], preimage[96], preimage[97], preimage[98], preimage[99] -> a_prime_prime_prime_0_0_limbs[0], a_prime_prime_prime_0_0_limbs[1], a_prime_prime_prime_0_0_limbs[2], a_prime_prime_prime_0_0_limbs[3], a_prime_prime[4], a_prime_prime[5], a_prime_prime[6], a_prime_prime[7], a_prime_prime[8], a_prime_prime[9], a_prime_prime[10], a_prime_prime[11], a_prime_prime[12], a_prime_prime[13], a_prime_prime[14], a_prime_prime[15], a_prime_prime[16], a_prime_prime[17], a_prime_prime[18], a_prime_prime[19], a_prime_prime[20], a_prime_prime[21], a_prime_prime[22], a_prime_prime[23], a_prime_prime[24], a_prime_prime[25], a_prime_prime[26], a_prime_prime[27], a_prime_prime[28], a_prime_prime[29], a_prime_prime[30], a_prime_prime[31], a_prime_prime[32], a_prime_prime[33], a_prime_prime[34], a_prime_prime[35], a_prime_prime[36], a_prime_prime[37], a_prime_prime[38], a_prime_prime[39], a_prime_prime[40], a_prime_prime[41], a_prime_prime[42], a_prime_prime[43], a_prime_prime[44], a_prime_prime[45], a_prime_prime[46], a_prime_prime[47], a_prime_prime[48], a_prime_prime[49], a_prime_prime[50], a_prime_prime[51], a_prime_prime[52], a_prime_prime[53], a_prime_prime[54], a_prime_prime[55], a_prime_prime[56], a_prime_prime[57], a_prime_prime[58], a_prime_prime[59], a_prime_prime[60], a_prime_prime[61], a_prime_prime[62], a_prime_prime[63], a_prime_prime[64], a_prime_prime[65], a_prime_prime[66], a_prime_prime[67], a_prime_prime[68], a_prime_prime[69], a_prime_prime[70], a_prime_prime[71], a_prime_prime[72], a_prime_prime[73], a_prime_prime[74], a_prime_prime[75], a_prime_prime[76], a_prime_prime[77], a_prime_prime[78], a_prime_prime[79], a_prime_prime[80], a_prime_prime[81], a_prime_prime[82], a_prime_prime[83], a_prime_prime[84], a_prime_prime[85], a_prime_prime[86], a_prime_prime[87], a_prime_prime[88], a_prime_prime[89], a_prime_prime[90], a_prime_prime[91], a_prime_prime[92], a_prime_prime[93], a_prime_prime[94], a_prime_prime[95], a_prime_prime[96], a_prime_prime[97], a_prime_prime[98], a_prime_prime[99];
 
     col witness operation_id;
 
