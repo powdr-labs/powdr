@@ -763,13 +763,9 @@ impl TypeChecker {
 
                 *type_args = Some(fresh_type_vars.clone());
 
-                // This conditional addresses the fact that both `NamedType` and `TypeVar` are initially parsed as `NamedType`.
-                // They are then disambiguated based on the presence or absence of type arguments.
-                // Therefore, a struct like `MyStruct` will be considered a `TypeVar` if it has no type arguments
-                // (and in the empty case, the `<>` are removed).
-                // Conversely, a struct like `MyStruct<T>` will be considered a `NamedType`.
+                // If type_arg is empty, it's also considered None
                 if type_args.as_ref().map_or(true, |args| args.is_empty()) {
-                    Type::TypeVar(name.to_string())
+                    Type::NamedType(SymbolPath::from_identifier(name.to_string()), None)
                 } else {
                     Type::NamedType(
                         SymbolPath::from_identifier(name.to_string()),
