@@ -8,6 +8,7 @@ use std::cmp::max;
 use std::time::Instant;
 
 use crate::witgen::identity_processor::{self};
+use crate::witgen::machines::compute_size_and_log;
 use crate::witgen::IncompleteCause;
 use crate::Identity;
 
@@ -180,17 +181,12 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                         "Found loop with period {p} starting at row {row_index}"
                     );
 
-                    let new_degree = self.processor.len().next_power_of_two() as DegreeType;
-                    let new_degree = self.degree_range.fit(new_degree);
-                    log::info!(
-                        "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
-                        self.machine_name,
-                        self.degree,
-                        new_degree,
-                        self.processor.len()
+                    self.degree = compute_size_and_log(
+                        &self.machine_name,
+                        self.processor.len(),
+                        self.degree_range,
                     );
-                    self.degree = new_degree;
-                    self.processor.set_size(new_degree);
+                    self.processor.set_size(self.degree);
                 }
             }
             if let Some(period) = looping_period {

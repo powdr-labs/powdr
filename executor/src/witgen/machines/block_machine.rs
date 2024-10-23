@@ -7,6 +7,7 @@ use super::{EvalResult, FixedData, MachineParts};
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
+use crate::witgen::machines::compute_size_and_log;
 use crate::witgen::processor::{OuterQuery, Processor};
 use crate::witgen::rows::{Row, RowIndex, RowPair};
 use crate::witgen::sequence_iterator::{
@@ -310,17 +311,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                  This might violate some internal constraints."
             );
         }
-
-        let new_degree = self.data.len().next_power_of_two() as DegreeType;
-        let new_degree = self.degree_range.fit(new_degree);
-        log::info!(
-            "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
-            self.name,
-            self.degree,
-            new_degree,
-            self.data.len()
-        );
-        self.degree = new_degree;
+        self.degree = compute_size_and_log(&self.name, self.data.len(), self.degree_range);
 
         if matches!(self.connection_type, ConnectionType::Permutation) {
             // We have to make sure that *all* selectors are 0 in the dummy block,

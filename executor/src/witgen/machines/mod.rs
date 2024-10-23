@@ -4,6 +4,7 @@ use powdr_ast::analyzed;
 use powdr_ast::analyzed::DegreeRange;
 use powdr_ast::analyzed::PolyID;
 
+use powdr_number::DegreeType;
 use powdr_number::FieldElement;
 
 use crate::Identity;
@@ -213,4 +214,34 @@ impl<'a, T: FieldElement> MachineParts<'a, T> {
     pub fn column_name(&self, poly_id: &PolyID) -> &str {
         self.fixed_data.column_name(poly_id)
     }
+}
+
+/// The minimum size for which a warning is logged if the used rows are less than half of the size.
+/// This number coincides with 2**powdr_linker::MIN_DEGREE_LOG.
+/// It's probably not worth introducing a dependency to the linker just for this constant.
+const MIN_RERPORTING_SIZE: DegreeType = 32;
+
+pub fn compute_size_and_log(name: &str, used_rows: usize, degree_range: DegreeRange) -> DegreeType {
+    let size = used_rows.next_power_of_two() as DegreeType;
+    let size = degree_range.fit(size);
+    let fraction_used = used_rows as f64 / size as f64;
+
+    if size > MIN_RERPORTING_SIZE && fraction_used < 0.5 {
+        // In a machine configured to use VADCOP, we would expect the next power of two to be used.
+        log::info!(
+            "Only {} / {} rows are used in machine {}, which is configured to support sizes in the range {}. If the backend supports it, consider lowering the minimum size.",
+            used_rows,
+            size,
+            name,
+            degree_range
+        );
+    } else {
+        log::debug!(
+            "{} / {} rows are used in machine {}.",
+            used_rows,
+            size,
+            name,
+        );
+    }
+    size
 }

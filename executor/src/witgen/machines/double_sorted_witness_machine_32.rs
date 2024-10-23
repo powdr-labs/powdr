@@ -4,6 +4,7 @@ use std::iter::once;
 use itertools::Itertools;
 
 use super::{Machine, MachineParts};
+use crate::witgen::machines::compute_size_and_log;
 use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{EvalError, EvalResult, FixedData, MutableState, QueryCallback};
@@ -266,17 +267,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
             set_selector(None);
         }
 
-        let current_size = addr.len();
-        let new_size = current_size.next_power_of_two() as DegreeType;
-        let new_size = self.degree_range.fit(new_size);
-        log::info!(
-            "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
-            self.name,
-            self.degree,
-            new_size,
-            current_size
-        );
-        self.degree = new_size;
+        self.degree = compute_size_and_log(&self.name, addr.len(), self.degree_range);
 
         while addr.len() < self.degree as usize {
             addr.push(*addr.last().unwrap());
