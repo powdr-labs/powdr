@@ -146,7 +146,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
                     .selector
                     .as_ref()
                     .and_then(|r| try_to_simple_poly(r))
-                    .map(|p| ({ i.id() }, p.poly_id))
+                    .map(|p| (i.id(), p.poly_id))
             })
             .collect::<Option<BTreeMap<_, _>>>()?;
 

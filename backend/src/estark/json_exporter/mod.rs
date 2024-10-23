@@ -101,7 +101,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                         fileName: file_name,
                         line,
                     }),
-                    Identity::Plookup(identity) => {
+                    Identity::Lookup(identity) => {
                         plookup_identities.push(PlookupIdentity {
                             selF: exporter.extract_expression_opt(&identity.left.selector, 1),
                             f: Some(exporter.extract_expression_vec(&identity.left.expressions, 1)),

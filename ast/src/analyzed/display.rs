@@ -333,7 +333,7 @@ impl<T: Display> Display for PolynomialIdentity<T> {
     }
 }
 
-impl<T: Display> Display for PlookupIdentity<T> {
+impl<T: Display> Display for LookupIdentity<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{} in {};", self.left, self.right)
     }

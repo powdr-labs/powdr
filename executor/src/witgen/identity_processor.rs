@@ -4,7 +4,9 @@ use std::{
 };
 
 use lazy_static::lazy_static;
-use powdr_ast::analyzed::{AlgebraicExpression as Expression, PlookupIdentity, PolynomialIdentity};
+use powdr_ast::analyzed::{
+    AlgebraicExpression as Expression, LookupIdentity, PermutationIdentity, PolynomialIdentity,
+};
 use powdr_number::FieldElement;
 
 use crate::{
@@ -149,9 +151,9 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
     ) -> EvalResult<'a, T> {
         let result = match identity {
             Identity::Polynomial(identity) => self.process_polynomial_identity(identity, rows),
-            Identity::Plookup(identity) => self.process_plookup(identity, rows),
-            Identity::Permutation(..) => {
-                todo!("same as plookup, avoid duplication")
+            Identity::Lookup(LookupIdentity { left, id, .. })
+            | Identity::Permutation(PermutationIdentity { left, id, .. }) => {
+                self.process_lookup_or_permutation(*id, left, rows)
             }
             Identity::Connect(..) => {
                 // TODO this is not the right cause.
@@ -176,12 +178,13 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         }
     }
 
-    fn process_plookup(
+    fn process_lookup_or_permutation(
         &mut self,
-        identity: &'a PlookupIdentity<T>,
+        id: u64,
+        left: &'a powdr_ast::analyzed::SelectedExpressions<T>,
         rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        if let Some(left_selector) = &identity.left.selector {
+        if let Some(left_selector) = &left.selector {
             if let Some(status) = self.handle_left_selector(left_selector, rows) {
                 return Ok(status);
             }
@@ -189,7 +192,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
 
         self.mutable_state
             .machines
-            .call(identity.id, rows, self.mutable_state.query_callback)
+            .call(id, rows, self.mutable_state.query_callback)
     }
 
     /// Handles the lookup that connects the current machine to the calling machine.

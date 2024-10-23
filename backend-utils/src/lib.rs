@@ -8,7 +8,7 @@ use std::{
 use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
-        AlgebraicExpression, Analyzed, Identity, PermutationIdentity, PlookupIdentity,
+        AlgebraicExpression, Analyzed, Identity, LookupIdentity, PermutationIdentity,
         StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
@@ -192,7 +192,7 @@ fn split_by_namespace<F: FieldElement>(
                     1 => (namespaces.into_iter().next().unwrap() == current_namespace)
                         .then(|| (current_namespace.clone(), statement)),
                     _ => match identity {
-                        Identity::Plookup(PlookupIdentity { left, right, .. })
+                        Identity::Lookup(LookupIdentity { left, right, .. })
                         | Identity::Permutation(PermutationIdentity { left, right, .. }) => {
                             assert_eq!(
                                 referenced_namespaces(left).len(),

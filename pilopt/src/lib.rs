@@ -9,7 +9,7 @@ use std::iter::once;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, ConnectIdentity, Expression,
-    FunctionValueDefinition, Identity, PermutationIdentity, PlookupIdentity, PolyID,
+    FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity, PolyID,
     PolynomialIdentity, PolynomialReference, PolynomialType, Reference, SymbolKind,
     TypedExpression,
 };
@@ -378,7 +378,7 @@ fn remove_trivial_selectors<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 
     for identity in &mut pil_file.identities.iter_mut() {
         match identity {
-            Identity::Plookup(PlookupIdentity { left, right, .. })
+            Identity::Lookup(LookupIdentity { left, right, .. })
             | Identity::Permutation(PermutationIdentity { left, right, .. }) => {
                 if left.selector.as_ref() == Some(&one) {
                     left.selector = None;
@@ -397,7 +397,7 @@ fn remove_trivial_selectors<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let mut new_identities = vec![];
     for identity in &mut pil_file.identities.iter_mut() {
-        if let Identity::Plookup(PlookupIdentity {
+        if let Identity::Lookup(LookupIdentity {
             source,
             left,
             right,
@@ -561,7 +561,7 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 }
                 None
             }
-            Identity::Plookup(PlookupIdentity { left, right, .. }) => {
+            Identity::Lookup(LookupIdentity { left, right, .. }) => {
                 assert_eq!(left.expressions.len(), right.expressions.len());
                 left.expressions.is_empty().then_some(index)
             }
@@ -585,12 +585,12 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                     Identity::Polynomial(PolynomialIdentity { expression: e2, .. }),
                 ) => e1 == e2,
                 (
-                    Identity::Plookup(PlookupIdentity {
+                    Identity::Lookup(LookupIdentity {
                         left: l1,
                         right: r1,
                         ..
                     }),
-                    Identity::Plookup(PlookupIdentity {
+                    Identity::Lookup(LookupIdentity {
                         left: l2,
                         right: r2,
                         ..
@@ -635,12 +635,12 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                     Identity::Polynomial(PolynomialIdentity { expression: e2, .. }),
                 ) => e1.partial_cmp(e2),
                 (
-                    Identity::Plookup(PlookupIdentity {
+                    Identity::Lookup(LookupIdentity {
                         left: l1,
                         right: r1,
                         ..
                     }),
-                    Identity::Plookup(PlookupIdentity {
+                    Identity::Lookup(LookupIdentity {
                         left: l2,
                         right: r2,
                         ..

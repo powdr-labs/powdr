@@ -15,7 +15,7 @@ use powdr_ast::{
     analyzed::{
         self, AlgebraicBinaryOperation, AlgebraicExpression, AlgebraicReference,
         AlgebraicUnaryOperation, Analyzed, Challenge, ConnectIdentity, DegreeRange, Expression,
-        FunctionValueDefinition, Identity, PermutationIdentity, PlookupIdentity, PolyID,
+        FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity, PolyID,
         PolynomialIdentity, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
         SelectedExpressions, StatementIdentifier, Symbol, SymbolKind,
     },
@@ -702,7 +702,7 @@ fn to_constraint<T: FieldElement>(
             };
 
             if variant == &"Lookup" {
-                PlookupIdentity::new(
+                LookupIdentity::new(
                     counters.dispense_identity_id(),
                     source,
                     to_selected_exprs(sel_from, from),

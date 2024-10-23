@@ -5,7 +5,7 @@ use num_traits::Zero;
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, PolyID, PolynomialType,
+    AlgebraicReference, LookupIdentity, PermutationIdentity, PolyID, PolynomialType,
 };
 
 use powdr_number::FieldElement;
@@ -235,16 +235,12 @@ fn propagate_constraints<T: FieldElement>(
                 }
             }
         }
-        Identity::Plookup(identity) => {
-            if identity.left.selector.is_some() || identity.right.selector.is_some() {
+        Identity::Lookup(LookupIdentity { left, right, .. })
+        | Identity::Permutation(PermutationIdentity { left, right, .. }) => {
+            if left.selector.is_some() || right.selector.is_some() {
                 return (known_constraints, false);
             }
-            for (left, right) in identity
-                .left
-                .expressions
-                .iter()
-                .zip(identity.right.expressions.iter())
-            {
+            for (left, right) in left.expressions.iter().zip(right.expressions.iter()) {
                 if let (Some(left), Some(right)) =
                     (try_to_simple_poly(left), try_to_simple_poly(right))
                 {
@@ -256,11 +252,11 @@ fn propagate_constraints<T: FieldElement>(
                     }
                 }
             }
-            if identity.right.expressions.len() == 1 {
+            if right.expressions.len() == 1 {
                 // We can only remove the lookup if the RHS is a fixed polynomial that
                 // provides all values in the span.
-                if let Some(name) = try_to_simple_poly(&identity.right.expressions[0]) {
-                    if try_to_simple_poly(&identity.left.expressions[0]).is_some()
+                if let Some(name) = try_to_simple_poly(&right.expressions[0]) {
+                    if try_to_simple_poly(&left.expressions[0]).is_some()
                         && full_span.contains(&name.poly_id)
                     {
                         remove = true;
@@ -268,8 +264,7 @@ fn propagate_constraints<T: FieldElement>(
                 }
             }
         }
-        Identity::Permutation(..) => todo!("almost same as lookup, avoid duplication"),
-        Identity::Connect(..) => todo!("same as permutation, avoid duplication"),
+        Identity::Connect(..) => todo!(),
     }
 
     (known_constraints, remove)

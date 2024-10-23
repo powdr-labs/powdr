@@ -44,7 +44,7 @@ impl<T> ExpressionCounter for Identity<T> {
     fn expression_count(&self) -> usize {
         match self {
             Identity::Polynomial(_) => 1,
-            Identity::Plookup(plookup_identity) => {
+            Identity::Lookup(plookup_identity) => {
                 plookup_identity.left.expression_count() + plookup_identity.right.expression_count()
             }
             Identity::Permutation(permutation_identity) => {

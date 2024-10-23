@@ -228,13 +228,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             // as they are assumed to be handled in stage 0.
             let polynomial_identities = identities
                 .iter()
-                .filter_map(|identity| {
-                    if let Identity::Polynomial(_) = &identity {
-                        Some(identity)
-                    } else {
-                        None
-                    }
-                })
+                .filter(|identity| matches!(identity, Identity::Polynomial(_)))
                 .collect::<Vec<_>>();
             ExtractionOutput {
                 machines: Vec::new(),

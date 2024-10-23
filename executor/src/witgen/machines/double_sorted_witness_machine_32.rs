@@ -3,7 +3,7 @@ use std::iter::once;
 
 use itertools::Itertools;
 
-use super::{ConnectionType, Machine, MachineParts};
+use super::{Machine, MachineParts};
 use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{EvalError, EvalResult, FixedData, MutableState, QueryCallback};
@@ -103,7 +103,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
         if !parts
             .connecting_identities
             .values()
-            .all(|i| i.kind() == ConnectionType::Permutation)
+            .all(|i| i.is_permutation())
         {
             return None;
         }

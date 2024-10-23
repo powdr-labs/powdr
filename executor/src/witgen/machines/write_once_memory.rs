@@ -10,7 +10,7 @@ use crate::witgen::{
     IncompleteCause, MutableState, QueryCallback,
 };
 
-use super::{ConnectingIdentityRef, ConnectionType, Machine, MachineParts};
+use super::{ConnectingIdentityRef, Machine, MachineParts};
 
 /// A memory machine with a fixed address space, and each address can only have one
 /// value during the lifetime of the program.
@@ -49,11 +49,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             return None;
         }
 
-        if !parts
-            .connecting_identities
-            .values()
-            .all(|i| i.kind() == ConnectionType::Lookup)
-        {
+        if !parts.connecting_identities.values().all(|i| i.is_lookup()) {
             return None;
         }
 

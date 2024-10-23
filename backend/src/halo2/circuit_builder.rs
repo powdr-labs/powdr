@@ -307,7 +307,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
                 // Already handled above
                 Identity::Polynomial(..) => {}
                 Identity::Connect(..) => unimplemented!(),
-                Identity::Plookup(id) => {
+                Identity::Lookup(id) => {
                     let name = id.to_string();
                     meta.lookup_any(&name, |meta| {
                         to_lookup_tuple(&id.left, meta)

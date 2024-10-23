@@ -198,14 +198,14 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         let connecting_identities = all_identities
             .into_iter()
             .filter_map(|i| match i {
-                Identity::Plookup(i) => (i.right.selector.is_none()
+                Identity::Lookup(i) => (i.right.selector.is_none()
                     && i.right.expressions.iter().all(|e| {
                         try_to_simple_poly_ref(e)
                             .map(|poly| poly.poly_id.ptype == PolynomialType::Constant)
                             .unwrap_or(false)
                     })
                     && !i.right.expressions.is_empty())
-                .then_some((i.id, ConnectingIdentityRef::Plookup(i))),
+                .then_some((i.id, ConnectingIdentityRef::Lookup(i))),
                 _ => None,
             })
             .collect();

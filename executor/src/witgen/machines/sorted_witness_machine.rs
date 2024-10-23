@@ -107,7 +107,8 @@ fn check_identity<T: FieldElement>(
     id: &Identity<T>,
     degree: DegreeType,
 ) -> Option<PolyID> {
-    let id = if let Identity::Plookup(id) = id {
+    // Looking for a lookup
+    let id = if let Identity::Lookup(id) = id {
         id
     } else {
         return None;

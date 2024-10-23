@@ -1,11 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Display;
 
-use powdr_ast::analyzed::DegreeRange;
-use powdr_ast::analyzed::PermutationIdentity;
-use powdr_ast::analyzed::PlookupIdentity;
-use powdr_ast::analyzed::PolyID;
-use powdr_ast::analyzed::{self};
+use powdr_ast::analyzed::{self, DegreeRange, LookupIdentity, PermutationIdentity, PolyID};
 
 use powdr_number::FieldElement;
 
@@ -155,64 +151,62 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
 }
 
 #[derive(Copy, Clone)]
+/// A reference to a connecting identity, which is either a permutation or a lookup.
 pub enum ConnectingIdentityRef<'a, T> {
-    Plookup(&'a PlookupIdentity<T>),
+    Lookup(&'a LookupIdentity<T>),
     Permutation(&'a PermutationIdentity<T>),
 }
 
 impl<'a, T: Display> Display for ConnectingIdentityRef<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ConnectingIdentityRef::Plookup(i) => write!(f, "{i}"),
+            ConnectingIdentityRef::Lookup(i) => write!(f, "{i}"),
             ConnectingIdentityRef::Permutation(i) => write!(f, "{i}"),
-        }
-    }
-}
-
-impl<'a, T> TryFrom<&'a Identity<T>> for ConnectingIdentityRef<'a, T> {
-    type Error = ();
-
-    fn try_from(value: &'a Identity<T>) -> Result<Self, Self::Error> {
-        match value {
-            Identity::Plookup(plookup) => Ok(ConnectingIdentityRef::Plookup(plookup)),
-            Identity::Permutation(permutation) => {
-                Ok(ConnectingIdentityRef::Permutation(permutation))
-            }
-            _ => Err(()),
         }
     }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
 enum ConnectionType {
-    Permutation,
     Lookup,
+    Permutation,
 }
 
 impl<'a, T> ConnectingIdentityRef<'a, T> {
     pub fn left(&self) -> &'a analyzed::SelectedExpressions<T> {
         match self {
-            ConnectingIdentityRef::Plookup(i) => &i.left,
+            ConnectingIdentityRef::Lookup(i) => &i.left,
             ConnectingIdentityRef::Permutation(i) => &i.left,
         }
     }
 
     pub fn right(&self) -> &'a analyzed::SelectedExpressions<T> {
         match self {
-            ConnectingIdentityRef::Plookup(i) => &i.right,
+            ConnectingIdentityRef::Lookup(i) => &i.right,
             ConnectingIdentityRef::Permutation(i) => &i.right,
+        }
+    }
+
+    fn id(&self) -> u64 {
+        match self {
+            ConnectingIdentityRef::Lookup(i) => i.id,
+            ConnectingIdentityRef::Permutation(i) => i.id,
         }
     }
 
     fn kind(&self) -> ConnectionType {
         match self {
-            ConnectingIdentityRef::Plookup(_) => ConnectionType::Lookup,
+            ConnectingIdentityRef::Lookup(_) => ConnectionType::Lookup,
             ConnectingIdentityRef::Permutation(_) => ConnectionType::Permutation,
         }
     }
 
-    fn id(&self) -> u64 {
-        todo!()
+    fn is_lookup(&self) -> bool {
+        matches!(self, ConnectingIdentityRef::Lookup(_))
+    }
+
+    fn is_permutation(&self) -> bool {
+        matches!(self, ConnectingIdentityRef::Permutation(_))
     }
 }
 

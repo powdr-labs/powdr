@@ -404,7 +404,7 @@ where
 
                     builder.assert_zero(e);
                 }
-                Identity::Plookup(..) => unimplemented!("Plonky3 does not support plookup"),
+                Identity::Lookup(..) => unimplemented!("Plonky3 does not support plookup"),
                 Identity::Permutation(..) => {
                     unimplemented!("Plonky3 does not support permutations")
                 }

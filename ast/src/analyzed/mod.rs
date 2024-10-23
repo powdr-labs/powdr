@@ -749,7 +749,7 @@ impl<T> PolynomialIdentity<T> {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct PlookupIdentity<T> {
+pub struct LookupIdentity<T> {
     // The ID is globally unique among identitites.
     pub id: u64,
     pub source: SourceRef,
@@ -757,7 +757,7 @@ pub struct PlookupIdentity<T> {
     pub right: SelectedExpressions<T>,
 }
 
-impl<T> Children<AlgebraicExpression<T>> for PlookupIdentity<T> {
+impl<T> Children<AlgebraicExpression<T>> for LookupIdentity<T> {
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
         Box::new(self.left.children_mut().chain(self.right.children_mut()))
     }
@@ -766,7 +766,7 @@ impl<T> Children<AlgebraicExpression<T>> for PlookupIdentity<T> {
     }
 }
 
-impl<T> PlookupIdentity<T> {
+impl<T> LookupIdentity<T> {
     pub fn new(
         id: u64,
         source: SourceRef,
@@ -874,7 +874,7 @@ impl<T> ConnectIdentity<T> {
 )]
 pub enum Identity<T> {
     Polynomial(PolynomialIdentity<T>),
-    Plookup(PlookupIdentity<T>),
+    Lookup(LookupIdentity<T>),
     Permutation(PermutationIdentity<T>),
     Connect(ConnectIdentity<T>),
 }
@@ -892,7 +892,7 @@ impl<T> Identity<T> {
     pub fn id(&self) -> u64 {
         match self {
             Identity::Polynomial(i) => i.id,
-            Identity::Plookup(i) => i.id,
+            Identity::Lookup(i) => i.id,
             Identity::Permutation(i) => i.id,
             Identity::Connect(i) => i.id,
         }
@@ -901,7 +901,7 @@ impl<T> Identity<T> {
     pub fn source(&self) -> &SourceRef {
         match self {
             Identity::Polynomial(i) => &i.source,
-            Identity::Plookup(i) => &i.source,
+            Identity::Lookup(i) => &i.source,
             Identity::Permutation(i) => &i.source,
             Identity::Connect(i) => &i.source,
         }
@@ -910,7 +910,7 @@ impl<T> Identity<T> {
     pub fn kind(&self) -> IdentityKind {
         match self {
             Identity::Polynomial(_) => IdentityKind::Polynomial,
-            Identity::Plookup(_) => IdentityKind::Plookup,
+            Identity::Lookup(_) => IdentityKind::Plookup,
             Identity::Permutation(_) => IdentityKind::Permutation,
             Identity::Connect(_) => IdentityKind::Connect,
         }
@@ -920,7 +920,7 @@ impl<T> Identity<T> {
     fn set_id(&mut self, id: u64) {
         match self {
             Identity::Polynomial(i) => i.id = id,
-            Identity::Plookup(i) => i.id = id,
+            Identity::Lookup(i) => i.id = id,
             Identity::Permutation(i) => i.id = id,
             Identity::Connect(i) => i.id = id,
         }
@@ -931,7 +931,7 @@ impl<T> Children<AlgebraicExpression<T>> for Identity<T> {
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
         match self {
             Identity::Polynomial(i) => i.children_mut(),
-            Identity::Plookup(i) => i.children_mut(),
+            Identity::Lookup(i) => i.children_mut(),
             Identity::Permutation(i) => i.children_mut(),
             Identity::Connect(i) => i.children_mut(),
         }
@@ -940,7 +940,7 @@ impl<T> Children<AlgebraicExpression<T>> for Identity<T> {
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
         match self {
             Identity::Polynomial(i) => i.children(),
-            Identity::Plookup(i) => i.children(),
+            Identity::Lookup(i) => i.children(),
             Identity::Permutation(i) => i.children(),
             Identity::Connect(i) => i.children(),
         }

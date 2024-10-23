@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, HashSet};
 
 use itertools::Itertools;
+use powdr_ast::analyzed::LookupIdentity;
 use powdr_ast::analyzed::PermutationIdentity;
-use powdr_ast::analyzed::PlookupIdentity;
 
 use super::block_machine::BlockMachine;
 use super::double_sorted_witness_machine_16::DoubleSortedWitnesses16;
@@ -66,7 +66,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
     for id in &identities {
         // Extract all witness columns in the RHS of the lookup.
         let lookup_witnesses = match id {
-            Identity::Plookup(PlookupIdentity { right, .. })
+            Identity::Lookup(LookupIdentity { right, .. })
             | Identity::Permutation(PermutationIdentity { right, .. }) => {
                 &refs_in_selected_expressions(right) & (&remaining_witnesses)
             }
@@ -93,7 +93,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
                     Identity::Polynomial(identity) => {
                         &refs_in_expression(&identity.expression).collect() & (&all_witnesses)
                     }
-                    Identity::Plookup(PlookupIdentity { left, .. })
+                    Identity::Lookup(LookupIdentity { left, .. })
                     | Identity::Permutation(PermutationIdentity { left, .. }) => {
                         &refs_in_selected_expressions(left) & (&all_witnesses)
                     }
@@ -105,18 +105,18 @@ pub fn split_out_machines<'a, T: FieldElement>(
         remaining_witnesses = &remaining_witnesses - &machine_witnesses;
 
         // Identities that call into the current machine
-        let connecting_identities: BTreeMap<u64, ConnectingIdentityRef<'a, T>> = identities
+        let connecting_identities = identities
             .iter()
             .cloned()
             .filter_map(|i| {
                 let id = i.id();
                 match i {
                     Identity::Polynomial(_) => None,
-                    Identity::Plookup(i) => refs_in_selected_expressions(&i.right)
+                    Identity::Lookup(i) => refs_in_selected_expressions(&i.right)
                         .intersection(&machine_witnesses)
                         .next()
                         .is_some()
-                        .then_some((id, ConnectingIdentityRef::Plookup(i))),
+                        .then_some((id, ConnectingIdentityRef::Lookup(i))),
                     Identity::Permutation(i) => refs_in_selected_expressions(&i.right)
                         .intersection(&machine_witnesses)
                         .next()
@@ -319,25 +319,25 @@ fn all_row_connected_witnesses<T>(
             match i {
                 Identity::Polynomial(i) => {
                     // Any current witness in the identity adds all other witnesses.
-                    let in_identity =
-                        &refs_in_expression(&i.expression).collect::<HashSet<_>>() & all_witnesses;
+                    let in_identity = &refs_in_expression(&i.expression).collect() & all_witnesses;
                     if in_identity.intersection(&witnesses).next().is_some() {
                         witnesses.extend(in_identity);
                     }
                 }
-                Identity::Plookup(i) => {
+                Identity::Lookup(LookupIdentity { left, right, .. })
+                | Identity::Permutation(PermutationIdentity { left, right, .. }) => {
                     // If we already have witnesses on the LHS, include the LHS,
                     // and vice-versa, but not across the "sides".
-                    let in_lhs = &refs_in_selected_expressions(&i.left) & all_witnesses;
-                    let in_rhs = &refs_in_selected_expressions(&i.right) & all_witnesses;
+                    let in_lhs = &refs_in_selected_expressions(left) & all_witnesses;
+                    let in_rhs = &refs_in_selected_expressions(right) & all_witnesses;
                     if in_lhs.intersection(&witnesses).next().is_some() {
                         witnesses.extend(in_lhs);
                     } else if in_rhs.intersection(&witnesses).next().is_some() {
                         witnesses.extend(in_rhs);
                     }
                 }
-                Identity::Permutation(..) | Identity::Connect(..) => {
-                    todo!("same as plookup, avoid repetition?")
+                Identity::Connect(..) => {
+                    unimplemented!()
                 }
             };
         }
