@@ -577,124 +577,63 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     /// Wrapper around `Identity` that implements `PartialEq` and `Ord` for canonical comparison, ignoring source information and id.
     struct CanonicalIdentity<'a, T>(&'a Identity<T>);
 
-    impl<T: PartialEq> PartialEq for CanonicalIdentity<'_, T> {
-        fn eq(&self, other: &Self) -> bool {
-            match (self.0, other.0) {
-                (
-                    Identity::Polynomial(PolynomialIdentity { expression: e1, .. }),
-                    Identity::Polynomial(PolynomialIdentity { expression: e2, .. }),
-                ) => e1 == e2,
-                (
-                    Identity::Lookup(LookupIdentity {
-                        left: l1,
-                        right: r1,
-                        ..
-                    }),
-                    Identity::Lookup(LookupIdentity {
-                        left: l2,
-                        right: r2,
-                        ..
-                    }),
-                ) => l1 == l2 && r1 == r2,
-                (
-                    Identity::Permutation(PermutationIdentity {
-                        left: l1,
-                        right: r1,
-                        ..
-                    }),
-                    Identity::Permutation(PermutationIdentity {
-                        left: l2,
-                        right: r2,
-                        ..
-                    }),
-                ) => l1 == l2 && r1 == r2,
-                (
-                    Identity::Connect(ConnectIdentity {
-                        left: l1,
-                        right: r1,
-                        ..
-                    }),
-                    Identity::Connect(ConnectIdentity {
-                        left: l2,
-                        right: r2,
-                        ..
-                    }),
-                ) => l1 == l2 && r1 == r2,
-                _ => false,
-            }
-        }
-    }
-
-    impl<T: PartialEq> Eq for CanonicalIdentity<'_, T> {}
-
-    impl<T: PartialOrd> PartialOrd for CanonicalIdentity<'_, T> {
-        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-            // we implement our own discriminant since std::mem::Discriminant does not implement PartialOrd...
-            let discriminant = |i: &Identity<T>| match i {
+    impl<T: FieldElement> Ord for CanonicalIdentity<'_, T> {
+        fn cmp(&self, other: &Self) -> Ordering {
+            // we implement our own discriminant since std::mem::Discriminant does not implement Ord...
+            let discriminant = |i: &CanonicalIdentity<T>| match i.0 {
                 Identity::Polynomial(..) => 0,
                 Identity::Lookup(..) => 1,
                 Identity::Permutation(..) => 2,
                 Identity::Connect(..) => 3,
             };
 
-            match (self.0, other.0) {
-                (
-                    Identity::Polynomial(PolynomialIdentity { expression: e1, .. }),
-                    Identity::Polynomial(PolynomialIdentity { expression: e2, .. }),
-                ) => e1.partial_cmp(e2),
-                (
-                    Identity::Lookup(LookupIdentity {
-                        left: l1,
-                        right: r1,
-                        ..
-                    }),
-                    Identity::Lookup(LookupIdentity {
-                        left: l2,
-                        right: r2,
-                        ..
-                    }),
-                ) => match l1.partial_cmp(l2) {
-                    Some(Ordering::Equal) => r1.partial_cmp(r2),
-                    x => x,
-                },
-                (
-                    Identity::Permutation(PermutationIdentity {
-                        left: l1,
-                        right: r1,
-                        ..
-                    }),
-                    Identity::Permutation(PermutationIdentity {
-                        left: l2,
-                        right: r2,
-                        ..
-                    }),
-                ) => match l1.partial_cmp(l2) {
-                    Some(Ordering::Equal) => r1.partial_cmp(r2),
-                    x => x,
-                },
-                (
-                    Identity::Connect(ConnectIdentity {
-                        left: l1,
-                        right: r1,
-                        ..
-                    }),
-                    Identity::Connect(ConnectIdentity {
-                        left: l2,
-                        right: r2,
-                        ..
-                    }),
-                ) => match l1.partial_cmp(l2) {
-                    Some(Ordering::Equal) => r1.partial_cmp(r2),
-                    x => x,
-                },
-                (l, r) => discriminant(l).partial_cmp(&discriminant(r)),
-            }
+            discriminant(self)
+                .cmp(&discriminant(other))
+                .then_with(|| match (self.0, other.0) {
+                    (
+                        Identity::Polynomial(PolynomialIdentity { expression: a, .. }),
+                        Identity::Polynomial(PolynomialIdentity { expression: b, .. }),
+                    ) => a.cmp(b),
+                    (
+                        Identity::Lookup(LookupIdentity {
+                            left: a, right: b, ..
+                        }),
+                        Identity::Lookup(LookupIdentity {
+                            left: c, right: d, ..
+                        }),
+                    ) => a.cmp(c).then_with(|| b.cmp(d)),
+                    (
+                        Identity::Permutation(PermutationIdentity {
+                            left: a, right: b, ..
+                        }),
+                        Identity::Permutation(PermutationIdentity {
+                            left: c, right: d, ..
+                        }),
+                    ) => a.cmp(c).then_with(|| b.cmp(d)),
+                    (
+                        Identity::Connect(ConnectIdentity {
+                            left: a, right: b, ..
+                        }),
+                        Identity::Connect(ConnectIdentity {
+                            left: c, right: d, ..
+                        }),
+                    ) => a.cmp(c).then_with(|| b.cmp(d)),
+                    _ => unreachable!("Different identity types would have different discriminants."),
+                })
         }
     }
 
-    impl<T: Ord> Ord for CanonicalIdentity<'_, T> {
-        fn cmp(&self, other: &Self) -> Ordering {
-            self.partial_cmp(other).unwrap()
+    impl<T: FieldElement> PartialEq for CanonicalIdentity<'_, T> {
+        fn eq(&self, other: &Self) -> bool {
+            self.cmp(other) == Ordering::Equal
+        }
+    }
+
+    impl<T: FieldElement> Eq for CanonicalIdentity<'_, T> {}
+
+    impl<T: FieldElement> PartialOrd for CanonicalIdentity<'_, T> {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
         }
     }
 
