@@ -401,13 +401,11 @@ where
         assert!(stage.is_none() || symbol_kind == SymbolKind::Poly(PolynomialType::Committed));
 
         let id = self.counters.dispense_symbol_id(symbol_kind, length);
-        let absolute_name = self.driver.resolve_decl(&name);
-
         let symbol = Symbol {
             id,
             source: source.clone(),
             stage,
-            absolute_name: absolute_name.clone(),
+            absolute_name: self.driver.resolve_decl(&source, &name).unwrap(),
             kind: symbol_kind,
             length,
             degree: self.degree,
@@ -420,7 +418,7 @@ where
             }
             Some(FunctionDefinition::TypeDeclaration(TypeDeclaration::Struct(struct_decl))) => {
                 assert_eq!(symbol_kind, SymbolKind::Other());
-                self.process_struct_declaration(symbol, struct_decl)
+                self.process_struct_declaration(source, symbol, struct_decl)
             }
             Some(FunctionDefinition::TraitDeclaration(trait_decl)) => {
                 self.process_trait_declaration(source, name, symbol, trait_decl)
@@ -519,7 +517,7 @@ where
         let id = self.counters.dispense_public_id();
         let polynomial = self
             .expression_processor(&Default::default())
-            .process_namespaced_polynomial_reference(poly);
+            .process_namespaced_polynomial_reference(source.clone(), poly);
         let array_index = array_index.map(|i| {
             let index: u64 = untyped_evaluator::evaluate_expression_to_int(self.driver, i)
                 .unwrap()
@@ -566,7 +564,7 @@ where
             .map(|v| self.process_enum_variant(v, &type_vars))
             .collect();
         let enum_decl = EnumDeclaration {
-            name: self.driver.resolve_decl(&enum_decl.name),
+            name: self.driver.resolve_decl(&source, &enum_decl.name).unwrap(),
             type_vars: enum_decl.type_vars,
             variants,
         };
@@ -577,7 +575,8 @@ where
             .map(|variant| {
                 (
                     self.driver
-                        .resolve_namespaced_decl(&[&name, &variant.name])
+                        .resolve_namespaced_decl(&source, &[&name, &variant.name])
+                        .unwrap()
                         .relative_to(&Default::default())
                         .to_string(),
                     FunctionValueDefinition::TypeConstructor(
@@ -616,6 +615,7 @@ where
 
     fn process_struct_declaration(
         &mut self,
+        source: SourceRef,
         symbol: Symbol,
         struct_decl: StructDeclaration<parsed::Expression>,
     ) -> Vec<PILItem> {
@@ -635,7 +635,7 @@ where
             .collect();
 
         let struct_decl = StructDeclaration {
-            name: self.driver.resolve_decl(&name),
+            name: self.driver.resolve_decl(&source, &name).unwrap(),
             type_vars,
             fields,
         };
@@ -666,7 +666,7 @@ where
             })
             .collect();
         let trait_decl = TraitDeclaration {
-            name: self.driver.resolve_decl(&trait_decl.name),
+            name: self.driver.resolve_decl(&source, &trait_decl.name).unwrap(),
             type_vars: trait_decl.type_vars,
             functions,
         };
@@ -677,7 +677,8 @@ where
             .map(|function| {
                 (
                     self.driver
-                        .resolve_namespaced_decl(&[&name, &function.name])
+                        .resolve_namespaced_decl(&source, &[&name, &function.name])
+                        .unwrap()
                         .relative_to(&Default::default())
                         .to_string(),
                     FunctionValueDefinition::TraitFunction(
@@ -731,12 +732,20 @@ where
             })
             .collect();
 
-        let resolved_name = self
-            .driver
-            .resolve_ref(&trait_impl.name, SymbolCategory::TraitDeclaration);
+        let name = SymbolPath::from_str(
+            &self
+                .driver
+                .resolve_ref(
+                    &trait_impl.source_ref,
+                    &trait_impl.name,
+                    SymbolCategory::TraitDeclaration,
+                )
+                .unwrap(),
+        )
+        .unwrap();
 
         TraitImplementation {
-            name: SymbolPath::from_str(&resolved_name).unwrap(),
+            name,
             source_ref: trait_impl.source_ref,
             type_scheme: TypeScheme {
                 vars: trait_impl.type_scheme.vars,
