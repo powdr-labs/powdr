@@ -66,10 +66,14 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
         fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
+        proving_key: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
         verification_app_key: Option<&mut dyn std::io::Read>,
         backend_options: BackendOptions,
     ) -> Result<Box<dyn Backend<F>>, Error> {
+        if proving_key.is_some() {
+            unimplemented!();
+        }
         if verification_app_key.is_some() {
             unimplemented!();
         }
@@ -135,6 +139,7 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
                             fixed,
                             output_dir,
                             setup,
+                            None, // TODO
                             verification_key,
                             // TODO: Handle verification_app_key
                             None,

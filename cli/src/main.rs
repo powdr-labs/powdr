@@ -578,6 +578,7 @@ fn verification_key<T: FieldElement>(
     let mut pipeline = Pipeline::<T>::default()
         .from_file(file.to_path_buf())
         .read_constants(dir)
+        .map_err(|e| vec![e])?
         .with_setup_file(params.map(PathBuf::from))
         .with_vkey_app_file(vkey_app.map(PathBuf::from))
         .with_backend(*backend_type, backend_options);
@@ -603,6 +604,7 @@ fn export_verifier<T: FieldElement>(
     let mut pipeline = Pipeline::<T>::default()
         .from_file(file.to_path_buf())
         .read_constants(dir)
+        .map_err(|e| vec![e])?
         .with_setup_file(params.map(PathBuf::from))
         .with_vkey_file(vkey.map(PathBuf::from))
         .with_backend(*backend_type, backend_options);
@@ -695,6 +697,7 @@ fn read_and_prove<T: FieldElement>(
         .from_maybe_pil_object(file.to_path_buf())?
         .with_output(dir.to_path_buf(), true)
         .read_witness(dir)
+        .map_err(|e| vec![e])?
         .with_setup_file(params.map(PathBuf::from))
         .with_vkey_app_file(vkey_app.map(PathBuf::from))
         .with_vkey_file(vkey.map(PathBuf::from))
@@ -724,6 +727,7 @@ fn read_and_verify<T: FieldElement>(
     let mut pipeline = Pipeline::<T>::default()
         .from_file(file.to_path_buf())
         .read_constants(dir)
+        .map_err(|e| vec![e])?
         .with_setup_file(params.map(PathBuf::from))
         .with_vkey_file(Some(vkey))
         .with_backend(*backend_type, backend_options);
