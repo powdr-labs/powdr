@@ -1,25 +1,27 @@
 use powdr_ast::analyzed::{Analyzed, IdentityKind};
 use powdr_executor::witgen::WitgenCallback;
+use powdr_number::Mersenne31Field;
 use std::io;
 use std::sync::Arc;
-use powdr_number::Mersenne31Field;
 
 use crate::stwo::circuit_builder::PowdrCircuitTrace;
 
-use super::circuit_builder::PowdrEval;
 use super::circuit_builder::PowdrComponent;
+use super::circuit_builder::PowdrEval;
 
-
-use stwo_prover::core::channel::Poseidon252Channel;
-use stwo_prover::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
+use stwo_prover::constraint_framework::{
+    assert_constraints, EvalAtRow, FrameworkComponent, FrameworkEval, TraceLocationAllocator,
+};
 use stwo_prover::core::backend::simd::SimdBackend;
-use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
+use stwo_prover::core::channel::Poseidon252Channel;
 use stwo_prover::core::fri::FriConfig;
-use stwo_prover::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig, TreeVec};
-use stwo_prover::constraint_framework::{EvalAtRow, FrameworkEval,assert_constraints, FrameworkComponent,TraceLocationAllocator};
+use stwo_prover::core::pcs::{
+    CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig, TreeVec,
+};
+use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
+use stwo_prover::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
 
 use powdr_number::FieldElement;
-
 
 #[allow(unused_variables)]
 pub struct StwoProver<T> {
@@ -46,38 +48,33 @@ impl<F: FieldElement> StwoProver<F> {
             _verifying_key: None,
         })
     }
-    pub fn prove(
-        &self,
-        witness: &[(String, Vec<F>)],
-        witgen_callback: WitgenCallback<F>,
-    ) {
+    pub fn prove(&self, witness: &[(String, Vec<F>)], witgen_callback: WitgenCallback<F>) {
         let config = PcsConfig {
-            pow_bits: 16,  // Any value you want to set for pow_bits
-            fri_config: FriConfig::new(0, 1, 100),  // Using different numbers for FriConfig
+            pow_bits: 16,                          // Any value you want to set for pow_bits
+            fri_config: FriConfig::new(0, 1, 100), // Using different numbers for FriConfig
         };
 
         //Trace
         let circuit = PowdrCircuitTrace::new(self.analyzed.clone())
-        .with_witgen_callback(witgen_callback.clone())
-        .with_witness(witness)
-        .generate_stwo_circuit_trace();
+            .with_witgen_callback(witgen_callback.clone())
+            .with_witness(witness)
+            .generate_stwo_circuit_trace();
         //print!("witness from powdr {:?}", witness );
 
         let circuitEval = PowdrEval::new(self.analyzed.clone())
-        .with_witgen_callback(witgen_callback)
-        .with_witness(witness);
+            .with_witgen_callback(witgen_callback.clone())
+            .with_witness(witness);
 
+        //Constraints that are to be proved
+        let component = PowdrComponent::new(&mut TraceLocationAllocator::default(), circuitEval);
 
-         //Constraints that are to be proved
-        let component = PowdrComponent::new(
-            &mut TraceLocationAllocator::default(),
-            circuitEval);
-           
         // Precompute twiddles.
         let twiddles = SimdBackend::precompute_twiddles(
-            CanonicCoset::new((self.analyzed.degree() as u32)  + 1 + config.fri_config.log_blowup_factor)
-                .circle_domain()
-                .half_coset,
+            CanonicCoset::new(
+                (self.analyzed.degree() as u32) + 1 + config.fri_config.log_blowup_factor,
+            )
+            .circle_domain()
+            .half_coset,
         );
         println!("generate twiddles");
         // Setup protocol.
@@ -87,71 +84,49 @@ impl<F: FieldElement> StwoProver<F> {
                 config, &twiddles,
             );
         println!("generate prover channel");
-        //let trace = generate_stwo_trace(witness,LOG_N_INSTANCES);
-    //     let trace=super::circuit_builder::generate_trace(fibonacci_y_length.ilog2() as usize, witness);
+        let trace = PowdrCircuitTrace::new(self.analyzed.clone())
+            .with_witgen_callback(witgen_callback)
+            .with_witness(witness)
+            .generate_stwo_circuit_trace()
+            .gen_trace();
 
-        
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals(trace);
+        tree_builder.commit(prover_channel);
 
-    //     let mut tree_builder = commitment_scheme.tree_builder();
-    //     tree_builder.extend_evals(trace);
-    //     tree_builder.commit(prover_channel);
+        println!("created component!");
 
-    
+        // println!("component eval is like this  \n {} ",component.log_n_rows);
 
+        //let start = Instant::now();
+        let proof = stwo_prover::core::prover::prove::<SimdBackend, Poseidon252MerkleChannel>(
+            &[&component],
+            prover_channel,
+            commitment_scheme,
+        )
+        .unwrap();
 
+        //     println!("proof generated!");
+        //     let duration = start.elapsed();
 
+        //     // Verify.
+        //     let verifier_channel = &mut Poseidon252Channel::default();
+        //     let commitment_scheme =
+        //         &mut CommitmentSchemeVerifier::<Poseidon252MerkleChannel>::new(config);
 
-       
-    //     println!("size of the log size {:?}",fibonacci_y_length.ilog2());
+        //     // Retrieve the expected column sizes in each commitment interaction, from the AIR.
+        //     let sizes = component.trace_log_degree_bounds();
+        //     commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
 
-    //     println!("created component!");
+        //     println!("proving time for fibo length of {:?} is {:?}",fibonacci_y_length, duration);
+        //     println!("proof size is {:?} bytes",proof.size_estimate());
 
-    //    // println!("component eval is like this  \n {} ",component.log_n_rows);
-        
-       
-    //     let start = Instant::now();
-    //     let proof = stwo_prover::core::prover::prove::<CpuBackend, Poseidon252MerkleChannel>(
-    //         &[&component],
-    //         prover_channel,
-    //         commitment_scheme,
-    //     )
-    //     .unwrap();
-        
-    //     println!("proof generated!");
-    //     let duration = start.elapsed();
-
-        
-
-    //     // Verify.
-    //     let verifier_channel = &mut Poseidon252Channel::default();
-    //     let commitment_scheme =
-    //         &mut CommitmentSchemeVerifier::<Poseidon252MerkleChannel>::new(config);
-
-
-    //     // Retrieve the expected column sizes in each commitment interaction, from the AIR.
-    //     let sizes = component.trace_log_degree_bounds();
-    //     commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
-
-    //     println!("proving time for fibo length of {:?} is {:?}",fibonacci_y_length, duration);
-    //     println!("proof size is {:?} bytes",proof.size_estimate());
-        
-    //     let verifystart = Instant::now();
-    //     stwo_prover::core::prover::verify(&[&component], verifier_channel, commitment_scheme, proof).unwrap();
-    //     let verifyduration = verifystart.elapsed();
-    //     println!("verify time is {:?} ",verifyduration);
-
-
-        
-         
-         
-
-        
-
+        //     let verifystart = Instant::now();
+        //     stwo_prover::core::prover::verify(&[&component], verifier_channel, commitment_scheme, proof).unwrap();
+        //     let verifyduration = verifystart.elapsed();
+        //     println!("verify time is {:?} ",verifyduration);
 
         println!("prove_stwo in prover.rs is not complete yet");
-
-        
-    
     }
 }
 
@@ -160,7 +135,10 @@ impl<F: FieldElement> StwoProver<F> {
 mod tests {
     use super::*;
     use num_traits::{ConstOne, One};
-    use powdr_ast::analyzed::{IdentityKind,AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, SelectedExpressions,};
+    use powdr_ast::analyzed::{
+        AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, IdentityKind,
+        SelectedExpressions,
+    };
     use powdr_number::Mersenne31Field as F;
     use powdr_pipeline::Pipeline;
     use stwo_prover::constraint_framework::EvalAtRow;
@@ -185,7 +163,10 @@ mod tests {
             .map(|id| {
                 let expr = id.expression_for_poly_id();
                 let name = id.to_string();
-                println!("\n this is the name {:?}, this is the expr {:?} \n", name, expr);
+                println!(
+                    "\n this is the name {:?}, this is the expr {:?} \n",
+                    name, expr
+                );
                 to_stwo_expression(expr);
                 (name, expr)
             })
@@ -227,19 +208,28 @@ mod tests {
                 match op {
                     AlgebraicBinaryOperator::Add => {
                         lhe + rhe;
-                        println!("This is the addition, lhe is {:?}, and rhe is {:?}", lhe, rhe);
+                        println!(
+                            "This is the addition, lhe is {:?}, and rhe is {:?}",
+                            lhe, rhe
+                        );
                         unimplemented!()
                     }
                     AlgebraicBinaryOperator::Sub => {
                         lhe - rhe;
-                        println!("This is the substraction, lhe is {:?}, and rhe is {:?}", lhe, rhe);
+                        println!(
+                            "This is the substraction, lhe is {:?}, and rhe is {:?}",
+                            lhe, rhe
+                        );
                         0
                     }
                     AlgebraicBinaryOperator::Mul => {
                         lhe * rhe;
-                        println!("This is the multiplication, lhe is {:?}, and rhe is {:?}", lhe, rhe);
+                        println!(
+                            "This is the multiplication, lhe is {:?}, and rhe is {:?}",
+                            lhe, rhe
+                        );
                         0
-                    },
+                    }
                     AlgebraicBinaryOperator::Pow => {
                         let AlgebraicExpression::Number(e) = powdr_rhe.as_ref() else {
                             panic!("Expected number in exponent.")
@@ -264,7 +254,6 @@ mod tests {
             _ => unimplemented!("{:?}", expr),
         }
     }
-    
 
     #[test]
     fn shuang_keep_doing() {
