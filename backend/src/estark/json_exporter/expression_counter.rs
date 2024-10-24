@@ -76,6 +76,6 @@ impl ExpressionCounter for PublicDeclaration {
 
 impl<T> ExpressionCounter for SelectedExpressions<T> {
     fn expression_count(&self) -> usize {
-        self.selector.is_some() as usize + self.expressions.len()
+        1 + self.expressions.len()
     }
 }

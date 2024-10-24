@@ -749,7 +749,7 @@ fn to_constraint<T: FieldElement>(
     }
 }
 
-fn to_selected_exprs<'a, T: Clone + Debug>(
+fn to_selected_exprs<'a, T: FieldElement>(
     selector: &Value<'a, T>,
     exprs: Vec<&Value<'a, T>>,
 ) -> SelectedExpressions<T> {
@@ -759,17 +759,17 @@ fn to_selected_exprs<'a, T: Clone + Debug>(
     }
 }
 
-fn to_option_expr<T: Clone + Debug>(value: &Value<'_, T>) -> Option<AlgebraicExpression<T>> {
+fn to_option_expr<T: FieldElement>(value: &Value<'_, T>) -> AlgebraicExpression<T> {
     let Value::Enum(enum_value) = value else {
         panic!("Expected option but got {value:?}")
     };
     assert_eq!(enum_value.enum_decl.name, "std::prelude::Option");
     match enum_value.variant {
-        "None" => None,
+        "None" => T::one().into(),
         "Some" => {
             let fields = enum_value.data.as_ref().unwrap();
             assert_eq!(fields.len(), 1);
-            Some(to_expr(&fields[0]))
+            to_expr(&fields[0])
         }
         _ => panic!(),
     }

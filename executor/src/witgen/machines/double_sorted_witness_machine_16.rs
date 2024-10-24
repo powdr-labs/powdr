@@ -141,13 +141,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
         let selector_ids = parts
             .connecting_identities
             .values()
-            .map(|i| {
-                i.right
-                    .selector
-                    .as_ref()
-                    .and_then(|r| try_to_simple_poly(r))
-                    .map(|p| (i.id, p.poly_id))
-            })
+            .map(|i| try_to_simple_poly(&i.right.selector).map(|p| (i.id, p.poly_id)))
             .collect::<Option<BTreeMap<_, _>>>()?;
 
         let namespace = namespaces.drain().next().unwrap().into();

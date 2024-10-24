@@ -237,7 +237,7 @@ fn propagate_constraints<T: FieldElement>(
         }
         Identity::Lookup(LookupIdentity { left, right, .. })
         | Identity::Permutation(PermutationIdentity { left, right, .. }) => {
-            if left.selector.is_some() || right.selector.is_some() {
+            if left.selector != T::one().into() || right.selector != T::one().into() {
                 return (known_constraints, false);
             }
             for (left, right) in left.expressions.iter().zip(right.expressions.iter()) {
