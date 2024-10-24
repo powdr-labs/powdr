@@ -618,7 +618,9 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                             left: c, right: d, ..
                         }),
                     ) => a.cmp(c).then_with(|| b.cmp(d)),
-                    _ => unreachable!("Different identity types would have different discriminants."),
+                    _ => {
+                        unreachable!("Different identity types would have different discriminants.")
+                    }
                 })
         }
     }
