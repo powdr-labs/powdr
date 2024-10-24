@@ -89,7 +89,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
                 // all referenced witnesses are machine witnesses.
                 // For lookups, any lookup calling from the current machine belongs
                 // to the machine; lookups to the machine do not.
-                let all_refs = refs_in_identity(i);
+                let all_refs = &refs_in_identity_left(i) & (&all_witnesses);
                 !all_refs.is_empty() && all_refs.is_subset(&machine_witnesses)
             });
         base_identities = remaining_identities;
@@ -339,14 +339,21 @@ fn refs_in_selected_expressions<T>(sel_expr: &SelectedExpressions<T>) -> HashSet
         .collect()
 }
 
-fn refs_in_identity<T>(identity: &Identity<T>) -> HashSet<PolyID> {
-    identity
-        .all_children()
-        .filter_map(|e| match e {
-            Expression::Reference(p) => Some(p.poly_id),
-            _ => None,
-        })
-        .collect()
+/// Extracts all references to names from the "left" side of an identity. This is the left selected expressions for connecting identities, and everything for other identities.
+fn refs_in_identity_left<T>(identity: &Identity<T>) -> HashSet<PolyID> {
+    match identity {
+        Identity::Lookup(LookupIdentity { left, .. })
+        | Identity::Permutation(PermutationIdentity { left, .. }) => {
+            refs_in_selected_expressions(left)
+        }
+        Identity::Polynomial(i) => refs_in_expression(&i.expression).collect(),
+        Identity::Connect(i) => i
+            .left
+            .iter()
+            .chain(&i.right)
+            .flat_map(refs_in_expression)
+            .collect(),
+    }
 }
 
 fn refs_in_expression<T>(expr: &Expression<T>) -> impl Iterator<Item = PolyID> + '_ {
