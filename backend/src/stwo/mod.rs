@@ -9,9 +9,10 @@ use powdr_executor::witgen::WitgenCallback;
 use powdr_number::FieldElement;
 use prover::StwoProver;
 
+
 mod circuit_builder;
 mod prover;
-
+use circuit_builder::PowdrCircuitTrace;
 #[allow(dead_code)]
 pub(crate) struct StwoProverFactory;
 
@@ -56,6 +57,11 @@ impl<T: FieldElement> Backend<T> for StwoProver<T> {
         if prev_proof.is_some() {
             return Err(Error::NoAggregationAvailable);
         }
+        let circuit = PowdrCircuitTrace::new(self.analyzed.clone())
+        .with_witgen_callback(witgen_callback.clone())
+        .with_witness(witness);
+     print!("witness from powdr at the beginning..............\n {:?}", circuit.witness );
+        println!("Proving with witness: {:?}", witness);
         self.prove(witness, witgen_callback);
         unimplemented!()
     }

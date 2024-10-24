@@ -25,12 +25,14 @@ use stwo_prover::core::ColumnVec;
 
 pub type PowdrComponent<'a, F: FieldElement> = FrameworkComponent<PowdrEval<'a, F>>;
 
+
+
 pub struct PowdrCircuitTrace<'a, T> {
     analyzed: Arc<Analyzed<T>>,
     /// Callback to augment the witness in the later stages.
     witgen_callback: Option<WitgenCallback<T>>,
     /// The value of the witness columns, if set
-    witness: Option<&'a [(String, Vec<T>)]>,
+    pub witness: Option<&'a [(String, Vec<T>)]>,
 
     pub elements: Option<Vec<(String, BaseColumn)>>,
 }
@@ -91,12 +93,17 @@ impl<'a, T: FieldElement> PowdrCircuitTrace<'a, T> {
     pub fn gen_trace(
         self,
     ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
-        let domain = CanonicCoset::new(self.analyzed.degree() as u32).circle_domain();
+        println!("degree log 2 is {:?}", self.analyzed.degree().ilog2());
+        let domain = CanonicCoset::new(self.analyzed.degree().ilog2()).circle_domain();
+        println!("domain size is {:?}", domain.size());
         self.elements
             .map(|elements| {
                 elements
                     .iter()
-                    .map(|(_, base_column)| CircleEvaluation::new(domain, base_column.clone()))
+                    .map(|(_, base_column)| {
+                        println!("base_column is {:?}", base_column);
+                        CircleEvaluation::new(domain, base_column.clone())
+            })
                     .collect()
             })
             .unwrap()
@@ -123,11 +130,12 @@ pub(crate) struct PowdrEval<'a, T> {
 
 impl<'a, T: FieldElement> PowdrEval<'a, T> {
     pub(crate) fn new(analyzed: Arc<Analyzed<T>>) -> Self {
+        let degree_log = analyzed.degree().ilog2();
         Self {
             analyzed,
             witgen_callback: None,
             witness: None,
-            log_n_rows: 0,
+            log_n_rows: degree_log,
             // lookup_elements: unimplemented!(),
             // claimed_sum: unimplemented!(),
             // total_sum: unimplemented!(),
@@ -179,14 +187,6 @@ impl<'a, T: FieldElement> FrameworkEval for PowdrEval<'a, T> {
                 eval.add_constraint(expr);
             });
         }
-        let mut a = eval.next_trace_mask();
-        let mut b = eval.next_trace_mask();
-        for _ in 2..7 {
-            let c = eval.next_trace_mask();
-            eval.add_constraint(c.clone() - (a + b));
-            a = b;
-            b = c;
-        }
         eval
     }
 }
@@ -213,14 +213,18 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
             op,
             right: powdr_rhe,
         }) => {
+            println!("coming to BinaryOperation: left is {:?} \n, op is {:?} \n, right is {:?} \n", lhe, op, powdr_rhe);
             let mut lhe = to_stwo_expression(lhe, eval);
             let mut rhe = to_stwo_expression(powdr_rhe, eval);
+            println!("after recursion: lhe is {:?} \n, op is {:?} \n, rhe is {:?} \n", lhe, op, rhe);
+
             match op {
                 AlgebraicBinaryOperator::Add => {
                     println!(
                         "This is the addition, lhe is {:?}, and rhe is {:?}",
                         lhe, rhe
                     );
+                    println!("lhe + rhe is {:?}", lhe + rhe);
                     lhe + rhe
                 }
                 AlgebraicBinaryOperator::Sub => {
@@ -228,6 +232,7 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
                         "This is the substraction, lhe is {:?}, and rhe is {:?}",
                         lhe, rhe
                     );
+                    println!("lhe - rhe is {:?}", lhe - rhe);
                     lhe - rhe
                 }
                 AlgebraicBinaryOperator::Mul => {

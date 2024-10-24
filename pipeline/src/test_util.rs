@@ -523,8 +523,9 @@ pub fn test_stwo(file_name: &str, inputs: Vec<Mersenne31Field>) {
     let mut pipeline = Pipeline::default()
         .with_tmp_output()
         .from_file(resolve_test_file(file_name))
-        .with_prover_inputs(inputs)
+        .with_prover_inputs(inputs.clone())
         .with_backend(backend, None);
+    println!("inputs from test file {:?}", inputs);
 
     // Generate a proof
     let _proof = pipeline.compute_proof().cloned().unwrap();

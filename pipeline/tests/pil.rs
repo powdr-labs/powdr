@@ -1,5 +1,6 @@
 #[cfg(feature = "halo2")]
 use powdr_number::Bn254Field;
+use powdr_number::Mersenne31Field;
 use powdr_number::GoldilocksField;
 use powdr_pipeline::test_util::{
     assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_estark,
@@ -247,7 +248,7 @@ fn add() {
 #[test]
 fn stwo_add() {
     let f = "pil/add.pil";
-    test_stwo(f, Default::default());
+    test_stwo(f, [Mersenne31Field::from(3), Mersenne31Field::from(4),Mersenne31Field::from(2)].to_vec());
 }
 #[test]
 fn simple_div() {

@@ -20,12 +20,14 @@ use stwo_prover::core::pcs::{
 };
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use stwo_prover::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
+use stwo_prover::core::air::Component;
 
 use powdr_number::FieldElement;
 
+
 #[allow(unused_variables)]
 pub struct StwoProver<T> {
-    analyzed: Arc<Analyzed<T>>,
+    pub analyzed: Arc<Analyzed<T>>,
     _fixed: Arc<Vec<(String, Vec<T>)>>,
     /// Proving key placeholder
     _proving_key: Option<()>,
@@ -59,14 +61,13 @@ impl<F: FieldElement> StwoProver<F> {
             .with_witgen_callback(witgen_callback.clone())
             .with_witness(witness)
             .generate_stwo_circuit_trace();
-        //print!("witness from powdr {:?}", witness );
+        print!("witness from powdr {:?}", circuit.witness );
 
         let circuitEval = PowdrEval::new(self.analyzed.clone())
             .with_witgen_callback(witgen_callback.clone())
             .with_witness(witness);
 
-        //Constraints that are to be proved
-        let component = PowdrComponent::new(&mut TraceLocationAllocator::default(), circuitEval);
+        
 
         // Precompute twiddles.
         let twiddles = SimdBackend::precompute_twiddles(
@@ -76,6 +77,7 @@ impl<F: FieldElement> StwoProver<F> {
             .circle_domain()
             .half_coset,
         );
+        println!("canonic coset size: {:?}", (self.analyzed.degree() as u32) + 1 + config.fri_config.log_blowup_factor);
         println!("generate twiddles");
         // Setup protocol.
         let prover_channel = &mut Poseidon252Channel::default();
@@ -84,19 +86,32 @@ impl<F: FieldElement> StwoProver<F> {
                 config, &twiddles,
             );
         println!("generate prover channel");
+
+        let pretest_trace = PowdrCircuitTrace::new(self.analyzed.clone())
+            .with_witgen_callback(witgen_callback.clone())
+            .with_witness(witness)
+            .generate_stwo_circuit_trace();
+        println!("\n the trace after convert to circle domain is {:?} \n", pretest_trace.elements);
+
         let trace = PowdrCircuitTrace::new(self.analyzed.clone())
             .with_witgen_callback(witgen_callback)
             .with_witness(witness)
             .generate_stwo_circuit_trace()
             .gen_trace();
+      
 
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals(trace);
         tree_builder.commit(prover_channel);
 
+        //Constraints that are to be proved
+        let component = PowdrComponent::new(&mut TraceLocationAllocator::default(), circuitEval);
+
         println!("created component!");
 
-        // println!("component eval is like this  \n {} ",component.log_n_rows);
+        println!("component eval is like this  \n {} ",component.log_n_rows);
+
+        
 
         //let start = Instant::now();
         let proof = stwo_prover::core::prover::prove::<SimdBackend, Poseidon252MerkleChannel>(
@@ -106,24 +121,24 @@ impl<F: FieldElement> StwoProver<F> {
         )
         .unwrap();
 
-        //     println!("proof generated!");
+        println!("proof generated!");
         //     let duration = start.elapsed();
 
         //     // Verify.
-        //     let verifier_channel = &mut Poseidon252Channel::default();
-        //     let commitment_scheme =
-        //         &mut CommitmentSchemeVerifier::<Poseidon252MerkleChannel>::new(config);
+        let verifier_channel = &mut Poseidon252Channel::default();
+        let commitment_scheme =
+         &mut CommitmentSchemeVerifier::<Poseidon252MerkleChannel>::new(config);
 
-        //     // Retrieve the expected column sizes in each commitment interaction, from the AIR.
-        //     let sizes = component.trace_log_degree_bounds();
-        //     commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
+            // Retrieve the expected column sizes in each commitment interaction, from the AIR.
+        let sizes = component.trace_log_degree_bounds();
+            commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
 
         //     println!("proving time for fibo length of {:?} is {:?}",fibonacci_y_length, duration);
         //     println!("proof size is {:?} bytes",proof.size_estimate());
 
         //     let verifystart = Instant::now();
-        //     stwo_prover::core::prover::verify(&[&component], verifier_channel, commitment_scheme, proof).unwrap();
-        //     let verifyduration = verifystart.elapsed();
+        stwo_prover::core::prover::verify(&[&component], verifier_channel, commitment_scheme, proof).unwrap();
+        
         //     println!("verify time is {:?} ",verifyduration);
 
         println!("prove_stwo in prover.rs is not complete yet");
