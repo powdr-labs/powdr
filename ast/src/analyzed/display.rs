@@ -339,9 +339,60 @@ impl<T: Display> Display for LookupIdentity<T> {
     }
 }
 
+impl<T: Display> Display for PhantomLookupIdentity<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "Constr::PhantomLookup(({}, {}), [{}], {});",
+            self.left
+                .selector
+                .as_ref()
+                .map(|s| format!("Some({s})"))
+                .unwrap_or_else(|| "None".to_string()),
+            self.right
+                .selector
+                .as_ref()
+                .map(|s| format!("Some({s})"))
+                .unwrap_or_else(|| "None".to_string()),
+            self.left
+                .expressions
+                .iter()
+                .zip_eq(&self.right.expressions)
+                .map(|(left, right)| format!("({left}, {right})"))
+                .format(", "),
+            self.multiplicity
+        )
+    }
+}
+
 impl<T: Display> Display for PermutationIdentity<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{} is {};", self.left, self.right)
+    }
+}
+
+impl<T: Display> Display for PhantomPermutationIdentity<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "Constr::PhantomPermutation(({}, {}), [{}]);",
+            self.left
+                .selector
+                .as_ref()
+                .map(|s| format!("Some({s})"))
+                .unwrap_or_else(|| "None".to_string()),
+            self.right
+                .selector
+                .as_ref()
+                .map(|s| format!("Some({s})"))
+                .unwrap_or_else(|| "None".to_string()),
+            self.left
+                .expressions
+                .iter()
+                .zip_eq(&self.right.expressions)
+                .map(|(left, right)| format!("({left}, {right})"))
+                .format(", ")
+        )
     }
 }
 
