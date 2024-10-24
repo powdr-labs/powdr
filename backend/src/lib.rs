@@ -8,6 +8,7 @@ mod plonky3;
 
 mod composite;
 mod field_filter;
+#[cfg(feature = "stwo")]
 mod stwo;
 
 use powdr_ast::analyzed::Analyzed;
