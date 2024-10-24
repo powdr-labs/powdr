@@ -54,6 +54,8 @@ impl<T> ExpressionCounter for Identity<T> {
             Identity::Connect(connect_identity) => {
                 connect_identity.left.len() + connect_identity.right.len()
             }
+            // phantom identities are not relevant in this context
+            Identity::PhantomLookup(..) | Identity::PhantomPermutation(..) => 0,
         }
     }
 }

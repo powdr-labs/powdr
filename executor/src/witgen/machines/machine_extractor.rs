@@ -3,6 +3,8 @@ use std::collections::{BTreeMap, HashSet};
 use itertools::Itertools;
 use powdr_ast::analyzed::LookupIdentity;
 use powdr_ast::analyzed::PermutationIdentity;
+use powdr_ast::analyzed::PhantomLookupIdentity;
+use powdr_ast::analyzed::PhantomPermutationIdentity;
 
 use super::block_machine::BlockMachine;
 use super::double_sorted_witness_machine_16::DoubleSortedWitnesses16;
@@ -309,7 +311,11 @@ fn all_row_connected_witnesses<T>(
                     }
                 }
                 Identity::Lookup(LookupIdentity { left, right, .. })
-                | Identity::Permutation(PermutationIdentity { left, right, .. }) => {
+                | Identity::Permutation(PermutationIdentity { left, right, .. })
+                | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. })
+                | Identity::PhantomPermutation(PhantomPermutationIdentity {
+                    left, right, ..
+                }) => {
                     // If we already have witnesses on the LHS, include the LHS,
                     // and vice-versa, but not across the "sides".
                     let in_lhs = &refs_in_selected_expressions(left) & all_witnesses;

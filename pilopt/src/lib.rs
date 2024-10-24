@@ -9,9 +9,9 @@ use std::iter::once;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, ConnectIdentity, Expression,
-    FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity, PolyID,
-    PolynomialIdentity, PolynomialReference, PolynomialType, Reference, SymbolKind,
-    TypedExpression,
+    FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
+    PhantomPermutationIdentity, PolyID, PolynomialIdentity, PolynomialReference, PolynomialType,
+    Reference, SymbolKind, TypedExpression,
 };
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
@@ -565,6 +565,8 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 assert_eq!(left.expressions.len(), right.expressions.len());
                 left.expressions.is_empty().then_some(index)
             }
+            Identity::PhantomLookup(..) => None,
+            Identity::PhantomPermutation(..) => None,
             Identity::Permutation(..) => None,
             Identity::Connect(..) => None,
         })
@@ -583,8 +585,10 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
             let discriminant = |i: &CanonicalIdentity<T>| match i.0 {
                 Identity::Polynomial(..) => 0,
                 Identity::Lookup(..) => 1,
-                Identity::Permutation(..) => 2,
-                Identity::Connect(..) => 3,
+                Identity::PhantomLookup(..) => 2,
+                Identity::Permutation(..) => 3,
+                Identity::PhantomPermutation(..) => 4,
+                Identity::Connect(..) => 5,
             };
 
             discriminant(self)
@@ -603,11 +607,37 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                         }),
                     ) => a.cmp(c).then_with(|| b.cmp(d)),
                     (
+                        Identity::PhantomLookup(PhantomLookupIdentity {
+                            left: a,
+                            right: b,
+                            multiplicity: c,
+                            ..
+                        }),
+                        Identity::PhantomLookup(PhantomLookupIdentity {
+                            left: d,
+                            right: e,
+                            multiplicity: f,
+                            ..
+                        }),
+                    ) => a.cmp(d).then_with(|| b.cmp(e)).then_with(|| c.cmp(f)),
+                    (
                         Identity::Permutation(PermutationIdentity {
                             left: a, right: b, ..
                         }),
                         Identity::Permutation(PermutationIdentity {
                             left: c, right: d, ..
+                        }),
+                    ) => a.cmp(c).then_with(|| b.cmp(d)),
+                    (
+                        Identity::PhantomPermutation(PhantomPermutationIdentity {
+                            left: a,
+                            right: b,
+                            ..
+                        }),
+                        Identity::PhantomPermutation(PhantomPermutationIdentity {
+                            left: c,
+                            right: d,
+                            ..
                         }),
                     ) => a.cmp(c).then_with(|| b.cmp(d)),
                     (
