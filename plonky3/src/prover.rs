@@ -78,7 +78,7 @@ where
     }
 
     /// Computes the quotient polynomials for each table and commits to them.
-    /// 
+    ///
     /// # Side effects
     /// Samples a random challenge and observes the commitment.
     ///
@@ -499,7 +499,8 @@ where
     // sanity check that we processed as many stages as expected
     assert_eq!(state.processed_stages.len() as u8, stage_count);
 
-    let (quotient_commit, quotient_data) = multi_table.compute_and_commit_to_quotient(&mut state, proving_key);
+    let (quotient_commit, quotient_data) =
+        multi_table.compute_and_commit_to_quotient(&mut state, proving_key);
 
     let commitments = Commitments {
         traces_by_stage: state
