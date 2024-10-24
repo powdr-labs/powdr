@@ -12,6 +12,7 @@ use crate::witgen::{
 use crate::witgen::{EvalValue, IncompleteCause, MutableState, QueryCallback};
 use crate::Identity;
 use itertools::Itertools;
+use num_traits::One;
 use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
 use powdr_number::{DegreeType, FieldElement};
 
@@ -115,14 +116,14 @@ fn check_identity<T: FieldElement>(
     };
 
     // Looking for NOTLAST $ [ A' - A ] in [ POSITIVE ]
-    if id.right.selector.is_some() || id.left.expressions.len() != 1 {
+    if !id.right.selector.is_one() || id.left.expressions.len() != 1 {
         return None;
     }
 
     // Check for A' - A in the LHS
     let key_column = check_constraint(id.left.expressions.first().unwrap())?;
 
-    let not_last = id.left.selector.as_ref()?;
+    let not_last = &id.left.selector;
     let positive = id.right.expressions.first().unwrap();
 
     // TODO this could be rather slow. We should check the code for identity instead
