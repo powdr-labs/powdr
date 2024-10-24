@@ -12,6 +12,8 @@ use p3_uni_stark::Entry;
 use p3_uni_stark::SymbolicExpression;
 use p3_uni_stark::SymbolicVariable;
 
+// TODO: This function iterates over all constraints, we should instead store the
+// max degree in `ConstraintSystem`.
 #[instrument(name = "infer log of constraint degree", skip_all)]
 pub fn get_log_quotient_degree<F, A>(air: &A, public_values_counts: &[usize]) -> usize
 where
