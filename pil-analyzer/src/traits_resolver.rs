@@ -21,6 +21,17 @@ pub struct TraitsResolver<'a> {
     solved_impls: SolvedTraitImpls,
 }
 
+// Reachability analysis returns a list of symbols plus concrete type args.
+// we need to cross-check with the unifier to select which impl we need to consider.
+
+// For generic functions we don't actually need to re-analyze them for all possible type args,
+// but if they call trait functions, we need to run the resolver.
+
+// Does pilopt and the resolver behave differently in that case?
+
+// One difference between pilopt and the resolver: For a trait function in pil opt, we need to include the full trait impl.
+// for the resolver, we only need to consider the one function of the trait impl.
+
 impl<'a> TraitsResolver<'a> {
     /// Creates a new instance of the resolver.
     /// The trait impls need to have a key for every trait name, even if it is not implemented at all.

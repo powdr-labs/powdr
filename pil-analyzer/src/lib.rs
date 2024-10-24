@@ -5,6 +5,7 @@ mod condenser;
 pub mod evaluator;
 pub mod expression_processor;
 mod pil_analyzer;
+pub mod reachability;
 mod side_effect_checker;
 mod statement_processor;
 mod traits_resolver;
