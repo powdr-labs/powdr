@@ -55,7 +55,7 @@ let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr, expr -> fe[] = quer
     unpack_ext_array(res)
 };
     
-/// Transforms a single lookup constraint to identity constraint, challenges and
+/// Transforms a single lookup constraint to identity constraints, challenges and
 /// higher-stage witness columns.
 /// Use this function if the backend does not support lookup constraints natively.
 /// WARNING: This function can currently not be used multiple times since
