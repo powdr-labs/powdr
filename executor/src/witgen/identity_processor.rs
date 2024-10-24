@@ -5,7 +5,8 @@ use std::{
 
 use lazy_static::lazy_static;
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, LookupIdentity, PermutationIdentity, PolynomialIdentity,
+    AlgebraicExpression as Expression, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
+    PhantomPermutationIdentity, PolynomialIdentity,
 };
 use powdr_number::FieldElement;
 
@@ -152,7 +153,9 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         let result = match identity {
             Identity::Polynomial(identity) => self.process_polynomial_identity(identity, rows),
             Identity::Lookup(LookupIdentity { left, id, .. })
-            | Identity::Permutation(PermutationIdentity { left, id, .. }) => {
+            | Identity::Permutation(PermutationIdentity { left, id, .. })
+            | Identity::PhantomLookup(PhantomLookupIdentity { left, id, .. })
+            | Identity::PhantomPermutation(PhantomPermutationIdentity { left, id, .. }) => {
                 self.process_lookup_or_permutation(*id, left, rows)
             }
             Identity::Connect(..) => {

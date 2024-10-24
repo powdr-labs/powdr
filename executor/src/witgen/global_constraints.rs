@@ -264,6 +264,9 @@ fn propagate_constraints<T: FieldElement>(
                 }
             }
         }
+        Identity::PhantomPermutation(..) | Identity::PhantomLookup(..) => {
+            // phantom identities do not provide any constraints
+        }
         Identity::Connect(..) => {
             // we do not handle connect identities yet, so we do nothing
         }

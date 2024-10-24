@@ -817,6 +817,53 @@ impl<T> Children<AlgebraicExpression<T>> for LookupIdentity<T> {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct PhantomLookupIdentity<T> {
+    // The ID is globally unique among identitites.
+    pub id: u64,
+    pub source: SourceRef,
+    pub left: SelectedExpressions<T>,
+    pub right: SelectedExpressions<T>,
+    pub multiplicity: AlgebraicExpression<T>,
+}
+
+impl<T> Children<AlgebraicExpression<T>> for PhantomLookupIdentity<T> {
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
+        Box::new(
+            self.left
+                .children_mut()
+                .chain(self.right.children_mut())
+                .chain(self.multiplicity.children_mut()),
+        )
+    }
+    fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
+        Box::new(
+            self.left
+                .children()
+                .chain(self.right.children())
+                .chain(self.multiplicity.children()),
+        )
+    }
+}
+
+impl<T> PhantomLookupIdentity<T> {
+    pub fn new(
+        id: u64,
+        source: SourceRef,
+        left: SelectedExpressions<T>,
+        right: SelectedExpressions<T>,
+        multiplicity: AlgebraicExpression<T>,
+    ) -> Self {
+        Self {
+            id,
+            source,
+            left,
+            right,
+            multiplicity,
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PermutationIdentity<T> {
     // The ID is globally unique among identitites.
     pub id: u64,
@@ -831,6 +878,40 @@ impl<T> Children<AlgebraicExpression<T>> for PermutationIdentity<T> {
     }
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
         Box::new(self.left.children().chain(self.right.children()))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct PhantomPermutationIdentity<T> {
+    // The ID is globally unique among identitites.
+    pub id: u64,
+    pub source: SourceRef,
+    pub left: SelectedExpressions<T>,
+    pub right: SelectedExpressions<T>,
+}
+
+impl<T> Children<AlgebraicExpression<T>> for PhantomPermutationIdentity<T> {
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
+        Box::new(self.left.children_mut().chain(self.right.children_mut()))
+    }
+    fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
+        Box::new(self.left.children().chain(self.right.children()))
+    }
+}
+
+impl<T> PhantomPermutationIdentity<T> {
+    pub fn new(
+        id: u64,
+        source: SourceRef,
+        left: SelectedExpressions<T>,
+        right: SelectedExpressions<T>,
+    ) -> Self {
+        Self {
+            id,
+            source,
+            left,
+            right,
+        }
     }
 }
 
@@ -883,7 +964,9 @@ impl<T> ConnectIdentity<T> {
 pub enum Identity<T> {
     Polynomial(PolynomialIdentity<T>),
     Lookup(LookupIdentity<T>),
+    PhantomLookup(PhantomLookupIdentity<T>),
     Permutation(PermutationIdentity<T>),
+    PhantomPermutation(PhantomPermutationIdentity<T>),
     Connect(ConnectIdentity<T>),
 }
 
@@ -900,7 +983,9 @@ impl<T> Identity<T> {
         match self {
             Identity::Polynomial(i) => i.id,
             Identity::Lookup(i) => i.id,
+            Identity::PhantomLookup(i) => i.id,
             Identity::Permutation(i) => i.id,
+            Identity::PhantomPermutation(i) => i.id,
             Identity::Connect(i) => i.id,
         }
     }
@@ -908,8 +993,10 @@ impl<T> Identity<T> {
     pub fn kind(&self) -> IdentityKind {
         match self {
             Identity::Polynomial(_) => IdentityKind::Polynomial,
-            Identity::Lookup(_) => IdentityKind::Plookup,
+            Identity::Lookup(_) => IdentityKind::Lookup,
+            Identity::PhantomLookup(_) => IdentityKind::PhantomLookup,
             Identity::Permutation(_) => IdentityKind::Permutation,
+            Identity::PhantomPermutation(_) => IdentityKind::PhantomPermutation,
             Identity::Connect(_) => IdentityKind::Connect,
         }
     }
@@ -920,7 +1007,9 @@ impl<T> SourceReference for Identity<T> {
         match self {
             Identity::Polynomial(i) => &i.source,
             Identity::Lookup(i) => &i.source,
+            Identity::PhantomLookup(i) => &i.source,
             Identity::Permutation(i) => &i.source,
+            Identity::PhantomPermutation(i) => &i.source,
             Identity::Connect(i) => &i.source,
         }
     }
@@ -929,7 +1018,9 @@ impl<T> SourceReference for Identity<T> {
         match self {
             Identity::Polynomial(i) => &mut i.source,
             Identity::Lookup(i) => &mut i.source,
+            Identity::PhantomLookup(i) => &mut i.source,
             Identity::Permutation(i) => &mut i.source,
+            Identity::PhantomPermutation(i) => &mut i.source,
             Identity::Connect(i) => &mut i.source,
         }
     }
@@ -940,7 +1031,9 @@ impl<T> Children<AlgebraicExpression<T>> for Identity<T> {
         match self {
             Identity::Polynomial(i) => i.children_mut(),
             Identity::Lookup(i) => i.children_mut(),
+            Identity::PhantomLookup(i) => i.children_mut(),
             Identity::Permutation(i) => i.children_mut(),
+            Identity::PhantomPermutation(i) => i.children_mut(),
             Identity::Connect(i) => i.children_mut(),
         }
     }
@@ -949,7 +1042,9 @@ impl<T> Children<AlgebraicExpression<T>> for Identity<T> {
         match self {
             Identity::Polynomial(i) => i.children(),
             Identity::Lookup(i) => i.children(),
+            Identity::PhantomLookup(i) => i.children(),
             Identity::Permutation(i) => i.children(),
+            Identity::PhantomPermutation(i) => i.children(),
             Identity::Connect(i) => i.children(),
         }
     }
@@ -960,8 +1055,10 @@ impl<T> Children<AlgebraicExpression<T>> for Identity<T> {
 )]
 pub enum IdentityKind {
     Polynomial,
-    Plookup,
+    Lookup,
+    PhantomLookup,
     Permutation,
+    PhantomPermutation,
     Connect,
 }
 
