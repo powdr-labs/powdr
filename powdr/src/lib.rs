@@ -29,10 +29,35 @@ pub struct Session {
 const DEFAULT_PKEY: &str = "pkey.bin";
 const DEFAULT_VKEY: &str = "vkey.bin";
 
+// Minimum and maximum log of number of rows for the RISCV machine.
+const DEFAULT_LOG_MIN_DEGREE: u32 = 5;
+const DEFAULT_LOG_MAX_DEGREE: u32 = 20;
+// Minimum acceptable max degree.
+const DEFAULT_MIN_LOG_MAX_DEGREE: u32 = 16;
+
 impl Session {
     pub fn new(guest_path: &str, out_path: &str) -> Self {
         Session {
-            pipeline: pipeline_from_guest(guest_path, Path::new(out_path)),
+            pipeline: pipeline_from_guest(
+                guest_path,
+                Path::new(out_path),
+                DEFAULT_LOG_MIN_DEGREE,
+                DEFAULT_LOG_MAX_DEGREE,
+            ),
+            out_path: out_path.into(),
+        }
+        .with_backend(powdr_backend::BackendType::Plonky3)
+    }
+
+    pub fn new_with_chunk_size(guest_path: &str, out_path: &str, chunk_size_log: u32) -> Self {
+        assert!(chunk_size_log >= DEFAULT_MIN_LOG_MAX_DEGREE);
+        Session {
+            pipeline: pipeline_from_guest(
+                guest_path,
+                Path::new(out_path),
+                DEFAULT_LOG_MIN_DEGREE,
+                chunk_size_log,
+            ),
             out_path: out_path.into(),
         }
         .with_backend(powdr_backend::BackendType::Plonky3)
@@ -149,12 +174,19 @@ fn read_file_if_exists(path: &Path) -> Option<String> {
     }
 }
 
-pub fn build_guest(guest_path: &str, out_path: &Path) -> (PathBuf, String) {
+pub fn build_guest(
+    guest_path: &str,
+    out_path: &Path,
+    log_min_degree: u32,
+    log_max_degree: u32,
+) -> (PathBuf, String) {
     riscv::compile_rust(
         guest_path,
         CompilerOptions::new_gl()
             .with_poseidon()
-            .with_continuations(),
+            .with_continuations()
+            .with_log_min_degree(log_min_degree)
+            .with_log_max_degree(log_max_degree),
         out_path,
         true,
         None,
@@ -163,10 +195,16 @@ pub fn build_guest(guest_path: &str, out_path: &Path) -> (PathBuf, String) {
     .unwrap()
 }
 
-pub fn pipeline_from_guest(guest_path: &str, out_path: &Path) -> Pipeline<GoldilocksField> {
+pub fn pipeline_from_guest(
+    guest_path: &str,
+    out_path: &Path,
+    log_min_degree: u32,
+    log_max_degree: u32,
+) -> Pipeline<GoldilocksField> {
     log::info!("Compiling guest program...");
 
-    let (asm_file_path, asm_contents) = build_guest(guest_path, out_path);
+    let (asm_file_path, asm_contents) =
+        build_guest(guest_path, out_path, log_min_degree, log_max_degree);
 
     // Create a pipeline from the asm program
     Pipeline::<GoldilocksField>::default()
