@@ -209,7 +209,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         outer_query: &OuterQuery<'a, '_, T>,
         current_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let right = outer_query.connecting_identity.right();
+        let right = outer_query.connecting_identity.right;
         // sanity check that the right hand side selector is active
         let selector_value = right
             .selector

@@ -11,7 +11,7 @@ use super::fixed_lookup_machine::FixedLookup;
 use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::KnownMachine;
-use crate::witgen::machines::ConnectingIdentityRef;
+use crate::witgen::machines::ConnectingIdentity;
 use crate::{
     witgen::{
         generator::Generator,
@@ -89,16 +89,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
                 // all referenced witnesses are machine witnesses.
                 // For lookups, any lookup calling from the current machine belongs
                 // to the machine; lookups to the machine do not.
-                let all_refs = match i {
-                    Identity::Polynomial(identity) => {
-                        &refs_in_expression(&identity.expression).collect() & (&all_witnesses)
-                    }
-                    Identity::Lookup(LookupIdentity { left, .. })
-                    | Identity::Permutation(PermutationIdentity { left, .. }) => {
-                        &refs_in_selected_expressions(left) & (&all_witnesses)
-                    }
-                    Identity::Connect(..) => unimplemented!(),
-                };
+                let all_refs = refs_in_identity(i);
                 !all_refs.is_empty() && all_refs.is_subset(&machine_witnesses)
             });
         base_identities = remaining_identities;
@@ -107,23 +98,16 @@ pub fn split_out_machines<'a, T: FieldElement>(
         // Identities that call into the current machine
         let connecting_identities = identities
             .iter()
-            .cloned()
             .filter_map(|i| {
-                let id = i.id();
-                match i {
-                    Identity::Polynomial(_) => None,
-                    Identity::Lookup(i) => refs_in_selected_expressions(&i.right)
-                        .intersection(&machine_witnesses)
-                        .next()
-                        .is_some()
-                        .then_some((id, ConnectingIdentityRef::Lookup(i))),
-                    Identity::Permutation(i) => refs_in_selected_expressions(&i.right)
-                        .intersection(&machine_witnesses)
-                        .next()
-                        .is_some()
-                        .then_some((id, ConnectingIdentityRef::Permutation(i))),
-                    Identity::Connect(_) => None,
-                }
+                // identify potential connecting identities
+                let i = ConnectingIdentity::try_from(*i).ok()?;
+
+                // check if the identity connects to the current machine
+                refs_in_selected_expressions(i.right)
+                    .intersection(&machine_witnesses)
+                    .next()
+                    .is_some()
+                    .then_some((i.id, i))
             })
             .collect::<BTreeMap<_, _>>();
         assert!(connecting_identities.contains_key(&id.id()));
@@ -281,7 +265,7 @@ fn build_machine<'a, T: FieldElement>(
             .values()
             .fold(None, |existing_latch, identity| {
                 let current_latch = identity
-                    .right()
+                    .right
                     .selector
                     .as_ref()
                     .expect("Cannot handle lookup in this machine because it does not have a latch");
@@ -352,6 +336,16 @@ fn refs_in_selected_expressions<T>(sel_expr: &SelectedExpressions<T>) -> HashSet
     sel_expr
         .children()
         .flat_map(|e| refs_in_expression(e))
+        .collect()
+}
+
+fn refs_in_identity<T>(identity: &Identity<T>) -> HashSet<PolyID> {
+    identity
+        .all_children()
+        .filter_map(|e| match e {
+            Expression::Reference(p) => Some(p.poly_id),
+            _ => None,
+        })
         .collect()
 }
 

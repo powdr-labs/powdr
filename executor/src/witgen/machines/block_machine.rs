@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Display;
 use std::iter::{self, once};
 
-use super::{ConnectingIdentityRef, ConnectionType, EvalResult, FixedData, MachineParts};
+use super::{ConnectingIdentity, ConnectionKind, EvalResult, FixedData, MachineParts};
 
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::block_processor::BlockProcessor;
@@ -73,7 +73,7 @@ pub struct BlockMachine<'a, T: FieldElement> {
     /// The parts of the machine (identities, witness columns, etc.)
     parts: MachineParts<'a, T>,
     /// The type of constraint used to connect this machine to its caller.
-    connection_type: ConnectionType,
+    connection_type: ConnectionKind,
     /// The data of the machine.
     data: FinalizableData<T>,
     /// The index of the first row that has not been finalized yet.
@@ -100,7 +100,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             detect_connection_type_and_block_size(fixed_data, &parts.connecting_identities)?;
 
         for id in parts.connecting_identities.values() {
-            for r in id.right().expressions.iter() {
+            for r in id.right.expressions.iter() {
                 if let Some(poly) = try_to_simple_poly(r) {
                     if poly.poly_id.ptype == PolynomialType::Constant {
                         // It does not really make sense to have constant polynomials on the RHS
@@ -145,30 +145,30 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
 fn detect_connection_type_and_block_size<'a, T: FieldElement>(
     fixed_data: &'a FixedData<'a, T>,
-    connecting_identities: &BTreeMap<u64, ConnectingIdentityRef<'a, T>>,
-) -> Option<(ConnectionType, usize, usize)> {
+    connecting_identities: &BTreeMap<u64, ConnectingIdentity<'a, T>>,
+) -> Option<(ConnectionKind, usize, usize)> {
     // TODO we should check that the other constraints/fixed columns are also periodic.
 
     // Connecting identities should either all be permutations or all lookups.
     let connection_type = connecting_identities
         .values()
-        .map(|id| id.kind())
+        .map(|id| id.kind)
         .unique()
         .exactly_one()
         .ok()?;
 
     // Detect the block size.
     let (latch_row, block_size) = match connection_type {
-        ConnectionType::Lookup => {
+        ConnectionKind::Lookup => {
             // We'd expect all RHS selectors to be fixed columns of the same period.
             connecting_identities
                 .values()
-                .map(|id| try_to_period(&id.right().selector, fixed_data))
+                .map(|id| try_to_period(&id.right.selector, fixed_data))
                 .unique()
                 .exactly_one()
                 .ok()??
         }
-        ConnectionType::Permutation => {
+        ConnectionKind::Permutation => {
             // We check all fixed columns appearing in RHS selectors. If there is none, the block size is 1.
 
             let find_max_period = |latch_candidates: BTreeSet<Option<Expression<T>>>| {
@@ -180,7 +180,7 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
             };
             let mut latch_candidates = BTreeSet::new();
             for id in connecting_identities.values() {
-                if let Some(selector) = &id.right().selector {
+                if let Some(selector) = &id.right.selector {
                     collect_fixed_cols(selector, &mut latch_candidates);
                 }
             }
@@ -291,7 +291,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         );
         self.degree = new_degree;
 
-        if matches!(self.connection_type, ConnectionType::Permutation) {
+        if matches!(self.connection_type, ConnectionKind::Permutation) {
             // We have to make sure that *all* selectors are 0 in the dummy block,
             // because otherwise this block won't have a matching block on the LHS.
 
@@ -320,7 +320,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 processor
                     .set_value(
                         self.latch_row + 1,
-                        id.right().selector.as_ref().unwrap(),
+                        id.right.selector.as_ref().unwrap(),
                         T::zero(),
                         || "Zero selectors".to_string(),
                     )

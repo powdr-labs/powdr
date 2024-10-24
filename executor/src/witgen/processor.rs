@@ -9,7 +9,7 @@ use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
 use crate::Identity;
 
-use super::machines::{ConnectingIdentityRef, MachineParts};
+use super::machines::{ConnectingIdentity, MachineParts};
 use super::FixedData;
 use super::{
     affine_expression::AffineExpression,
@@ -30,7 +30,7 @@ pub struct OuterQuery<'a, 'b, T: FieldElement> {
     /// Rows of the calling machine.
     pub caller_rows: &'b RowPair<'b, 'a, T>,
     /// Connecting identity.
-    pub connecting_identity: ConnectingIdentityRef<'a, T>,
+    pub connecting_identity: ConnectingIdentity<'a, T>,
     /// The left side of the connecting identity, evaluated.
     pub left: Left<'a, T>,
 }
@@ -38,11 +38,11 @@ pub struct OuterQuery<'a, 'b, T: FieldElement> {
 impl<'a, 'b, T: FieldElement> OuterQuery<'a, 'b, T> {
     pub fn new(
         caller_rows: &'b RowPair<'b, 'a, T>,
-        connecting_identity: ConnectingIdentityRef<'a, T>,
+        connecting_identity: ConnectingIdentity<'a, T>,
     ) -> Self {
         // Evaluate once, for performance reasons.
         let left = connecting_identity
-            .left()
+            .left
             .expressions
             .iter()
             .map(|e| caller_rows.evaluate(e).unwrap())
@@ -146,7 +146,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         for (l, r) in outer_query
             .left
             .iter()
-            .zip(&outer_query.connecting_identity.right().expressions)
+            .zip(&outer_query.connecting_identity.right.expressions)
         {
             if let Some(right_poly) = try_to_simple_poly(r).map(|p| p.poly_id) {
                 if let Some(l) = l.constant_value() {
@@ -187,7 +187,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         );
         self.outer_query
             .as_ref()
-            .and_then(|outer_query| outer_query.connecting_identity.right().selector.as_ref())
+            .and_then(|outer_query| outer_query.connecting_identity.right.selector.as_ref())
             .and_then(|latch| row_pair.evaluate(latch).ok())
             .and_then(|l| l.constant_value())
             .map(|l| l.is_one())
@@ -293,12 +293,7 @@ Known values in current row (local: {row_index}, global {global_row_index}):
         row_index: usize,
     ) -> Result<(bool, Constraints<AlgebraicVariable<'a>, T>), EvalError<T>> {
         let mut progress = false;
-        let right = &self
-            .outer_query
-            .as_ref()
-            .unwrap()
-            .connecting_identity
-            .right();
+        let right = self.outer_query.as_ref().unwrap().connecting_identity.right;
         if let Some(selector) = right.selector.as_ref() {
             progress |= self
                 .set_value(row_index, selector, T::one(), || {

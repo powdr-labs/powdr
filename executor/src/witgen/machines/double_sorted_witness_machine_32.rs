@@ -112,11 +112,11 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
             .connecting_identities
             .values()
             .map(|i| {
-                i.right()
+                i.right
                     .selector
                     .as_ref()
                     .and_then(|r| try_to_simple_poly(r))
-                    .map(|p| (i.id(), p.poly_id))
+                    .map(|p| (i.id, p.poly_id))
             })
             .collect::<Option<BTreeMap<_, _>>>()?;
 
@@ -367,7 +367,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
         // - operation_id == 2: Bootloader write
 
         let args = self.parts.connecting_identities[&identity_id]
-            .left()
+            .left
             .expressions
             .iter()
             .map(|e| caller_rows.evaluate(e).unwrap())

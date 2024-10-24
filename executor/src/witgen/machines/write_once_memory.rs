@@ -10,7 +10,7 @@ use crate::witgen::{
     IncompleteCause, MutableState, QueryCallback,
 };
 
-use super::{ConnectingIdentityRef, Machine, MachineParts};
+use super::{ConnectingIdentity, Machine, MachineParts};
 
 /// A memory machine with a fixed address space, and each address can only have one
 /// value during the lifetime of the program.
@@ -27,7 +27,7 @@ use super::{ConnectingIdentityRef, Machine, MachineParts};
 /// ```
 pub struct WriteOnceMemory<'a, T: FieldElement> {
     degree: DegreeType,
-    connecting_identities: BTreeMap<u64, ConnectingIdentityRef<'a, T>>,
+    connecting_identities: BTreeMap<u64, ConnectingIdentity<'a, T>>,
     /// The fixed data
     fixed_data: &'a FixedData<'a, T>,
     /// The polynomials that are used as values (witness polynomials on the RHS)
@@ -55,7 +55,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
 
         // All connecting identities should have no selector or a selector of 1
         if parts.connecting_identities.values().any(|i| {
-            i.right()
+            i.right
                 .selector
                 .as_ref()
                 .map(|s| s != &T::one().into())
@@ -68,7 +68,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         let rhs_exprs = parts
             .connecting_identities
             .values()
-            .map(|i| &i.right().expressions)
+            .map(|i| &i.right.expressions)
             .collect_vec();
         if !rhs_exprs.iter().all_equal() {
             return None;
@@ -134,14 +134,14 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
     ) -> EvalResult<'a, T> {
         let identity = self.connecting_identities[&identity_id];
         let args = identity
-            .left()
+            .left
             .expressions
             .iter()
             .map(|e| caller_rows.evaluate(e).unwrap())
             .collect::<Vec<_>>();
         let (key_expressions, value_expressions): (Vec<_>, Vec<_>) = args
             .iter()
-            .zip(identity.right().expressions.iter())
+            .zip(identity.right.expressions.iter())
             .partition(|(_, r)| {
                 try_to_simple_poly(r).unwrap().poly_id.ptype == PolynomialType::Constant
             });

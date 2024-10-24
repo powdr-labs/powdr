@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Display;
 
-use powdr_ast::analyzed::{self, DegreeRange, LookupIdentity, PermutationIdentity, PolyID};
+use powdr_ast::analyzed::{self, DegreeRange, PolyID};
 
 use powdr_number::FieldElement;
 
@@ -150,63 +150,64 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
     }
 }
 
-#[derive(Copy, Clone)]
-/// A reference to a connecting identity, which is either a permutation or a lookup.
-pub enum ConnectingIdentityRef<'a, T> {
-    Lookup(&'a LookupIdentity<T>),
-    Permutation(&'a PermutationIdentity<T>),
+#[derive(Clone, Copy)]
+pub struct ConnectingIdentity<'a, T> {
+    pub id: u64,
+    pub left: &'a analyzed::SelectedExpressions<T>,
+    pub right: &'a analyzed::SelectedExpressions<T>,
+    pub kind: ConnectionKind,
 }
 
-impl<'a, T: Display> Display for ConnectingIdentityRef<'a, T> {
+impl<'a, T: Display> Display for ConnectingIdentity<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ConnectingIdentityRef::Lookup(i) => write!(f, "{i}"),
-            ConnectingIdentityRef::Permutation(i) => write!(f, "{i}"),
+        write!(f, "{} {} {}", self.left, self.right, self.kind)
+    }
+}
+
+impl<'a, T> ConnectingIdentity<'a, T> {
+    fn is_permutation(&self) -> bool {
+        self.kind == ConnectionKind::Permutation
+    }
+
+    fn is_lookup(&self) -> bool {
+        self.kind == ConnectionKind::Lookup
+    }
+}
+
+impl<'a, T> TryFrom<&'a Identity<T>> for ConnectingIdentity<'a, T> {
+    type Error = &'a Identity<T>;
+
+    fn try_from(identity: &'a Identity<T>) -> Result<Self, Self::Error> {
+        match identity {
+            Identity::Lookup(i) => Ok(ConnectingIdentity {
+                id: i.id,
+                left: &i.left,
+                right: &i.right,
+                kind: ConnectionKind::Lookup,
+            }),
+            Identity::Permutation(i) => Ok(ConnectingIdentity {
+                id: i.id,
+                left: &i.left,
+                right: &i.right,
+                kind: ConnectionKind::Permutation,
+            }),
+            _ => Err(identity),
         }
     }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-enum ConnectionType {
+pub enum ConnectionKind {
     Lookup,
     Permutation,
 }
 
-impl<'a, T> ConnectingIdentityRef<'a, T> {
-    pub fn left(&self) -> &'a analyzed::SelectedExpressions<T> {
+impl Display for ConnectionKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            ConnectingIdentityRef::Lookup(i) => &i.left,
-            ConnectingIdentityRef::Permutation(i) => &i.left,
+            ConnectionKind::Lookup => write!(f, "in"),
+            ConnectionKind::Permutation => write!(f, "is"),
         }
-    }
-
-    pub fn right(&self) -> &'a analyzed::SelectedExpressions<T> {
-        match self {
-            ConnectingIdentityRef::Lookup(i) => &i.right,
-            ConnectingIdentityRef::Permutation(i) => &i.right,
-        }
-    }
-
-    fn id(&self) -> u64 {
-        match self {
-            ConnectingIdentityRef::Lookup(i) => i.id,
-            ConnectingIdentityRef::Permutation(i) => i.id,
-        }
-    }
-
-    fn kind(&self) -> ConnectionType {
-        match self {
-            ConnectingIdentityRef::Lookup(_) => ConnectionType::Lookup,
-            ConnectingIdentityRef::Permutation(_) => ConnectionType::Permutation,
-        }
-    }
-
-    fn is_lookup(&self) -> bool {
-        matches!(self, ConnectingIdentityRef::Lookup(_))
-    }
-
-    fn is_permutation(&self) -> bool {
-        matches!(self, ConnectingIdentityRef::Permutation(_))
     }
 }
 
@@ -218,7 +219,7 @@ pub struct MachineParts<'a, T: FieldElement> {
     /// Connecting identities, indexed by their ID.
     /// These are the identities that connect another machine to this one,
     /// where this one is on the RHS of a lookup.
-    pub connecting_identities: BTreeMap<u64, ConnectingIdentityRef<'a, T>>,
+    pub connecting_identities: BTreeMap<u64, ConnectingIdentity<'a, T>>,
     /// Identities relevant to this machine and only this machine.
     pub identities: Vec<&'a Identity<T>>,
     /// Witness columns relevant to this machine.
@@ -230,7 +231,7 @@ pub struct MachineParts<'a, T: FieldElement> {
 impl<'a, T: FieldElement> MachineParts<'a, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
-        connecting_identities: BTreeMap<u64, ConnectingIdentityRef<'a, T>>,
+        connecting_identities: BTreeMap<u64, ConnectingIdentity<'a, T>>,
         identities: Vec<&'a Identity<T>>,
         witnesses: HashSet<PolyID>,
         prover_functions: Vec<&'a analyzed::Expression>,

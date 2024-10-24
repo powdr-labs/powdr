@@ -49,7 +49,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
 
         log::trace!("Start processing secondary VM '{}'", self.name());
         log::trace!("Arguments:");
-        for (r, l) in identity.right().expressions.iter().zip(&outer_query.left) {
+        for (r, l) in identity.right.expressions.iter().zip(&outer_query.left) {
             log::trace!("  {r} = {l}");
         }
 
