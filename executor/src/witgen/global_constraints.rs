@@ -264,7 +264,9 @@ fn propagate_constraints<T: FieldElement>(
                 }
             }
         }
-        Identity::Connect(..) => todo!(),
+        Identity::Connect(..) => {
+            // we do not handle connect identities yet, so we do nothing
+        }
     }
 
     (known_constraints, remove)

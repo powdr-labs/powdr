@@ -827,20 +827,10 @@ pub struct ConnectIdentity<T> {
 
 impl<T> Children<AlgebraicExpression<T>> for ConnectIdentity<T> {
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
-        Box::new(
-            self.left
-                .iter_mut()
-                .chain(self.right.iter_mut())
-                .flat_map(|e| e.children_mut()),
-        )
+        Box::new(self.left.iter_mut().chain(self.right.iter_mut()))
     }
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
-        Box::new(
-            self.left
-                .iter()
-                .chain(self.right.iter())
-                .flat_map(|e| e.children()),
-        )
+        Box::new(self.left.iter().chain(self.right.iter()))
     }
 }
 
