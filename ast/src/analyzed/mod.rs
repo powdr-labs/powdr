@@ -701,7 +701,7 @@ pub struct SelectedExpressions<T> {
     pub expressions: Vec<AlgebraicExpression<T>>,
 }
 
-impl<Expr> Default for SelectedExpressions<Expr> {
+impl<T> Default for SelectedExpressions<T> {
     fn default() -> Self {
         Self {
             selector: Default::default(),

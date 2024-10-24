@@ -304,7 +304,7 @@ fn format_outer_function(e: &Expression, f: &mut Formatter<'_>) -> Result {
     }
 }
 
-impl<Expr: Display> Display for SelectedExpressions<Expr> {
+impl<T: Display> Display for SelectedExpressions<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
