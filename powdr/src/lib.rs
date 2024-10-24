@@ -16,6 +16,7 @@ pub use powdr_number::GoldilocksField;
 use riscv::CompilerOptions;
 
 use std::fs::File;
+use std::io::Read;
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -64,25 +65,53 @@ impl Session {
     }
 
     pub fn prove(&mut self) {
-        match self.pipeline.read_constants_mut(Path::new(&self.out_path)) {
-            Ok(_) => (),
-            Err(_) => {
-                self.pipeline.compute_fixed_cols().unwrap();
+        let asm_name = self.pipeline.asm_string().unwrap().0.clone().unwrap();
+        let pil_file = create_pil_file_path(&asm_name);
+
+        let generate_artifacts = if let Some(existing_pil) = read_file_if_exists(&pil_file) {
+            let computed_pil = self.pipeline.compute_optimized_pil().unwrap().to_string();
+            if existing_pil != computed_pil {
+                log::info!("Compiled PIL changed, invalidating artifacts...");
+                true
+            } else {
+                log::info!("Compiled PIL did not change, will try to reuse artifacts...");
+                false
             }
-        }
+        } else {
+            log::info!("PIL file not found, will generate artifacts...");
+            true
+        };
 
         let pkey = Path::new(&self.out_path).join(DEFAULT_PKEY);
         let vkey = Path::new(&self.out_path).join(DEFAULT_VKEY);
 
-        if pkey.exists() && vkey.exists() {
-            self.pipeline.set_pkey_file(pkey.clone());
-            self.pipeline.set_vkey_file(vkey.clone());
-            self.pipeline.setup_backend().unwrap();
-        } else {
+        if generate_artifacts {
+            self.pipeline.compute_fixed_cols().unwrap();
             self.pipeline.setup_backend().unwrap();
             self.export_setup();
             self.pipeline.set_pkey_file(pkey.clone());
             self.pipeline.set_vkey_file(vkey.clone());
+        } else {
+            if self
+                .pipeline
+                .read_constants_mut(Path::new(&self.out_path))
+                .is_ok()
+            {
+                log::info!("Read constants from file...");
+            } else {
+                self.pipeline.compute_fixed_cols().unwrap();
+            }
+
+            if pkey.exists() && vkey.exists() {
+                log::info!("Re-using proving and verification keys...");
+                self.pipeline.set_pkey_file(pkey.clone());
+                self.pipeline.set_vkey_file(vkey.clone());
+                self.pipeline.setup_backend().unwrap();
+            } else {
+                self.export_setup();
+                self.pipeline.set_pkey_file(pkey.clone());
+                self.pipeline.set_vkey_file(vkey.clone());
+            }
         }
 
         prove(&mut self.pipeline);
@@ -100,6 +129,23 @@ impl Session {
         let file = File::create(path).unwrap();
 
         self.pipeline.export_verification_key(file).unwrap();
+    }
+}
+
+fn create_pil_file_path(asm_name: &Path) -> PathBuf {
+    let file_stem = asm_name.file_stem().unwrap().to_str().unwrap();
+    let opt_file_stem = format!("{file_stem}_opt");
+    asm_name.with_file_name(opt_file_stem).with_extension("pil")
+}
+
+fn read_file_if_exists(path: &Path) -> Option<String> {
+    if path.exists() {
+        let mut file = File::open(path).unwrap();
+        let mut contents = String::new();
+        file.read_to_string(&mut contents).unwrap();
+        Some(contents)
+    } else {
+        None
     }
 }
 
