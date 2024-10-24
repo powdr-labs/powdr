@@ -4,12 +4,13 @@ use itertools::Itertools;
 use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference},
     parsed::{
+        asm::SymbolPath,
         display::format_type_scheme_around_name,
         types::{ArrayType, FunctionType, TupleType, Type, TypeBounds, TypeScheme},
         visitor::ExpressionVisitable,
         ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall, FunctionKind, IndexAccess,
         LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number, Pattern,
-        SourceReference, StatementInsideBlock, UnaryOperation,
+        SourceReference, StatementInsideBlock, StructDeclaration, StructExpression, UnaryOperation,
     },
 };
 use powdr_parser_util::{Error, SourceRef};
@@ -31,8 +32,9 @@ use crate::{
 pub fn infer_types(
     definitions: HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
     expressions: &mut [(&mut Expression, ExpectedType)],
+    struct_declarations: HashMap<String, StructDeclaration>,
 ) -> Result<Vec<(String, Type)>, Vec<Error>> {
-    TypeChecker::new().infer_types(definitions, expressions)
+    TypeChecker::new(struct_declarations).infer_types(definitions, expressions)
 }
 
 /// A type to expect with a bit of flexibility.
@@ -72,16 +74,19 @@ struct TypeChecker {
     unifier: Unifier,
     /// Keeps track of the kind of lambda we are currently type-checking.
     lambda_kind: FunctionKind,
+    /// Declared structs.
+    struct_declarations: HashMap<String, StructDeclaration>,
 }
 
 impl TypeChecker {
-    pub fn new() -> Self {
+    pub fn new(struct_declarations: HashMap<String, StructDeclaration>) -> Self {
         Self {
             local_var_types: Default::default(),
             declared_types: Default::default(),
             declared_type_vars: Default::default(),
             unifier: Default::default(),
             lambda_kind: FunctionKind::Constr,
+            struct_declarations,
         }
     }
 
@@ -521,26 +526,9 @@ impl TypeChecker {
                 source_ref,
                 Reference::Poly(PolynomialReference { name, type_args }),
             ) => {
-                let (ty, args) = self
-                    .unifier
-                    .instantiate_scheme(self.declared_types[name].1.clone());
-                if let Some(requested_type_args) = type_args {
-                    if requested_type_args.len() != args.len() {
-                        return Err(source_ref.with_error(format!(
-                            "Expected {} type arguments for symbol {name}, but got {}: {}",
-                            args.len(),
-                            requested_type_args.len(),
-                            requested_type_args.iter().join(", ")
-                        )));
-                    }
-                    for (requested, inferred) in requested_type_args.iter_mut().zip(&args) {
-                        requested.substitute_type_vars(&self.declared_type_vars);
-                        self.unifier
-                            .unify_types(requested.clone(), inferred.clone())
-                            .map_err(|err| source_ref.with_error(err))?;
-                    }
-                }
-                *type_args = Some(args);
+                let scheme = self.declared_types[name].1.clone();
+                let ty =
+                    self.instantiate_scheme_with_type_args(type_args, scheme, name, source_ref)?;
                 type_for_reference(&ty)
             }
             Expression::PublicReference(_, _) => Type::Expr,
@@ -729,10 +717,91 @@ impl TypeChecker {
                 self.local_var_types.truncate(original_var_count);
                 result?
             }
-            Expression::StructExpression(_sr, _struct_expr) => {
-                unimplemented!("Struct expressions are not yet supported")
+            Expression::StructExpression(sr, StructExpression { name, fields }) => {
+                let Reference::Poly(PolynomialReference { name, type_args }) = name else {
+                    unreachable!()
+                };
+                let struct_decl = self.struct_declarations.get(name).unwrap();
+
+                let fresh_type_vars: Vec<Type> = struct_decl
+                    .type_vars
+                    .vars()
+                    .map(|_| self.unifier.new_type_var())
+                    .collect();
+
+                if let Some(requested_type_args) = type_args {
+                    for (fresh_var, requested) in
+                        fresh_type_vars.iter().zip(requested_type_args.iter())
+                    {
+                        self.unifier
+                            .unify_types(fresh_var.clone(), requested.clone())
+                            .map_err(|err| sr.with_error(err))?;
+                    }
+                }
+
+                let vars_mapping = &struct_decl
+                    .type_vars
+                    .vars()
+                    .zip(fresh_type_vars.iter())
+                    .map(|(var, ty)| (var.clone(), ty.clone()))
+                    .collect();
+
+                let instantiated_field_types: HashMap<_, _> = struct_decl
+                    .fields
+                    .iter()
+                    .map(|field| {
+                        let mut field_type = field.ty.clone();
+                        field_type.substitute_type_vars(vars_mapping);
+                        (field.name.clone(), field_type)
+                    })
+                    .collect();
+
+                for named_expr in fields.iter_mut() {
+                    let field_type = instantiated_field_types.get(&named_expr.name).unwrap();
+                    self.expect_type(field_type, named_expr.body.as_mut())?;
+                }
+
+                *type_args = Some(fresh_type_vars.clone());
+
+                // TODO: This is a temporal hacky solution
+                if type_args.as_ref().map_or(true, |args| args.is_empty()) {
+                    Type::TypeVar(name.to_string())
+                } else {
+                    Type::NamedType(
+                        SymbolPath::from_identifier(name.to_string()),
+                        type_args.clone(),
+                    )
+                }
             }
         })
+    }
+
+    fn instantiate_scheme_with_type_args(
+        &mut self,
+        type_args: &mut Option<Vec<Type>>,
+        scheme: TypeScheme,
+        symbol_name: &mut String,
+        source_ref: &mut SourceRef,
+    ) -> Result<Type, Error> {
+        let (ty, args) = self.unifier.instantiate_scheme(scheme);
+        if let Some(requested_type_args) = type_args {
+            if requested_type_args.len() != args.len() {
+                return Err(source_ref.with_error(format!(
+                    "Expected {} type arguments for symbol {symbol_name}, but got {}: {}",
+                    args.len(),
+                    requested_type_args.len(),
+                    requested_type_args.iter().join(", ")
+                )));
+            }
+            for (requested, inferred) in requested_type_args.iter_mut().zip(&args) {
+                requested.substitute_type_vars(&self.declared_type_vars);
+                self.unifier
+                    .unify_types(requested.clone(), inferred.clone())
+                    .map_err(|err| source_ref.with_error(err))?;
+            }
+        }
+        *type_args = Some(args);
+        Ok(ty)
     }
 
     /// Returns the type expected at statement level, given the current function context.

@@ -763,6 +763,56 @@ fn prover_functions() {
 }
 
 #[test]
+fn simple_struct() {
+    let input = "
+    struct Dot { x: int, y: int }
+    let f: int -> Dot = |i| Dot{x: 0, y: i};
+    let x = f(0);
+    ";
+    type_check(input, &[("x", "", "Dot")]);
+}
+
+#[test]
+fn simple_struct_type_arg() {
+    let input = "
+    struct Dot<T> { x: int, y: T }
+    
+    let f: int -> Dot<int> = |i| Dot{x: 0, y: i};
+    let n = 1;
+    let x = f(n);
+    
+    let m: bool = false;
+    let y = Dot{x: 0, y: m};
+    ";
+    type_check(input, &[("x", "", "Dot<int>"), ("y", "", "Dot<bool>")]);
+}
+
+#[test]
+#[should_panic = "Cannot unify types Dot<int> and Dot"]
+fn simple_struct_type_arg_fail() {
+    let input = "
+    struct Dot<T> { x: int, y: T }
+    
+    let f: int -> Dot = |i| Dot{x: 0, y: i};
+    let n = 1;
+    let x = f(n);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Expected symbol of kind Type but got Value: x"]
+// The error message should change to something like
+// "Expected symbol of kind Struct but got Value: x" if #1907 is merged first
+fn struct_in_var() {
+    let input = "
+    let x: int = 1;
+    let y = x{a: 2};
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
 fn typed_literals() {
     let input = "
         let a = -1_int;
