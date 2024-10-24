@@ -124,11 +124,12 @@ impl PilStatement {
     /// and their category.
     /// Note it does not return nested definitions (for an enum for example).
     pub fn symbol_definition_names(&self) -> impl Iterator<Item = (&String, SymbolCategory)> + '_ {
-        self.symbol_definition_names_and_contained()
-            .filter_map(|(name, sub_name, category)| match sub_name {
+        self.symbol_definition_names_and_contained().filter_map(
+            |(name, sub_name, category, _source)| match sub_name {
                 Some(_) => None,
                 None => Some((name, category)),
-            })
+            },
+        )
     }
 
     /// If the statement is a symbol definition, returns all (local) names of defined symbols
@@ -137,41 +138,57 @@ impl PilStatement {
     /// component is the name of the enum and the second the name of the variant.
     pub fn symbol_definition_names_and_contained(
         &self,
-    ) -> Box<dyn Iterator<Item = (&String, Option<&String>, SymbolCategory)> + '_> {
+    ) -> Box<dyn Iterator<Item = (&String, Option<&String>, SymbolCategory, SourceRef)> + '_> {
+        // We are currently returning SourceRef by value because, in some cases, we need to use SourceRef::unknown.
+        // This prevents us from returning references to data created within the function itself.
+        // However, once the missing SourceRef instances are included, the function can be updated to return &SourceRef
+        // and removed all source.clone()
         match self {
-            PilStatement::PolynomialDefinition(_, PolynomialName { name, .. }, _)
-            | PilStatement::PolynomialConstantDefinition(_, name, _)
-            | PilStatement::PublicDeclaration(_, name, _, _, _)
-            | PilStatement::LetStatement(_, name, _, _) => {
-                Box::new(once((name, None, SymbolCategory::Value)))
+            PilStatement::PolynomialDefinition(source, PolynomialName { name, .. }, _)
+            | PilStatement::PolynomialConstantDefinition(source, name, _)
+            | PilStatement::PublicDeclaration(source, name, _, _, _)
+            | PilStatement::LetStatement(source, name, _, _) => {
+                Box::new(once((name, None, SymbolCategory::Value, source.clone())))
             }
-            PilStatement::EnumDeclaration(_, EnumDeclaration { name, variants, .. }) => Box::new(
-                once((name, None, SymbolCategory::Type)).chain(
-                    variants
-                        .iter()
-                        .map(move |v| (name, Some(&v.name), SymbolCategory::TypeConstructor)),
-                ),
-            ),
-            PilStatement::StructDeclaration(_, StructDeclaration { name, .. }) => {
-                Box::new(once((name, None, SymbolCategory::Type)))
+            PilStatement::EnumDeclaration(source, EnumDeclaration { name, variants, .. }) => {
+                Box::new(
+                    once((name, None, SymbolCategory::Type, source.clone())).chain(
+                        variants.iter().map(move |v| {
+                            (
+                                name,
+                                Some(&v.name),
+                                SymbolCategory::TypeConstructor,
+                                SourceRef::unknown(),
+                            )
+                        }),
+                    ),
+                )
+            }
+            PilStatement::StructDeclaration(source, StructDeclaration { name, .. }) => {
+                Box::new(once((name, None, SymbolCategory::Type, source.clone())))
             }
             PilStatement::TraitDeclaration(
-                _,
+                source,
                 TraitDeclaration {
                     name, functions, ..
                 },
             ) => Box::new(
-                once((name, None, SymbolCategory::TraitDeclaration)).chain(
-                    functions
-                        .iter()
-                        .map(move |f| (name, Some(&f.name), SymbolCategory::Value)),
+                once((name, None, SymbolCategory::TraitDeclaration, source.clone())).chain(
+                    functions.iter().map(move |f| {
+                        (
+                            name,
+                            Some(&f.name),
+                            SymbolCategory::Value,
+                            SourceRef::unknown(),
+                        )
+                    }),
                 ),
             ),
             PilStatement::PolynomialConstantDeclaration(_, polynomials)
             | PilStatement::PolynomialCommitDeclaration(_, _, polynomials, _) => Box::new(
                 polynomials
                     .iter()
-                    .map(|p| (&p.name, None, SymbolCategory::Value)),
+                    .map(|p| (&p.name, None, SymbolCategory::Value, SourceRef::unknown())),
             ),
 
             PilStatement::Include(_, _)

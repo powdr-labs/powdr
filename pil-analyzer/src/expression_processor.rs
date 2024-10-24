@@ -240,10 +240,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 }
             }
             Pattern::Enum(source_ref, name, fields) => {
-                let name = match self.driver.resolve_value_ref(&source_ref, &name) {
-                    Ok(resolved_name) => resolved_name,
-                    Err(e) => panic!("{}", e),
-                };
+                let name = self.driver.resolve_value_ref(&source_ref, &name).unwrap();
                 self.process_enum_pattern(source_ref, name, fields)
             }
         }
@@ -375,11 +372,13 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         let type_args = reference
             .type_args
             .map(|args| args.into_iter().map(|t| self.process_type(t)).collect());
-        let name = match self.driver.resolve_value_ref(&source, &reference.path) {
-            Ok(value) => value,
-            Err(e) => panic!("{}", e),
-        };
-        PolynomialReference { name, type_args }
+        PolynomialReference {
+            name: self
+                .driver
+                .resolve_value_ref(&source, &reference.path)
+                .unwrap(),
+            type_args,
+        }
     }
 
     fn process_type(&self, ty: Type<parsed::Expression>) -> Type<u64> {

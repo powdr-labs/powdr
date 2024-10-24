@@ -429,23 +429,19 @@ impl PILAnalyzer {
             _ => {
                 let names = statement
                     .symbol_definition_names_and_contained()
-                    .map(|(name, sub_name, symbol_category)| {
-                        let resolved_name_result = match sub_name {
-                            None => self.driver().resolve_decl(&SourceRef::unknown(), name),
-                            Some(sub_name) => self
-                                .driver()
-                                .resolve_namespaced_decl(&SourceRef::unknown(), &[name, sub_name])
-                                .map(|resolved_name| {
-                                    resolved_name.relative_to(&Default::default()).to_string()
-                                }),
-                        };
-
-                        match resolved_name_result {
-                            Ok(resolved_name) => (resolved_name, symbol_category),
-                            Err(err) => {
-                                panic!("Failed to resolve symbol: {err}");
-                            }
-                        }
+                    .map(|(name, sub_name, symbol_category, source)| {
+                        (
+                            match sub_name {
+                                None => self.driver().resolve_decl(&source, name).unwrap(),
+                                Some(sub_name) => self
+                                    .driver()
+                                    .resolve_namespaced_decl(&source, &[name, sub_name])
+                                    .unwrap()
+                                    .relative_to(&Default::default())
+                                    .to_string(),
+                            },
+                            symbol_category,
+                        )
                     })
                     .collect::<Vec<_>>();
                 for (name, symbol_kind) in &names {
