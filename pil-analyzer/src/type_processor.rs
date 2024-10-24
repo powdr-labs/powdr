@@ -34,10 +34,10 @@ impl<'a, D: AnalysisDriver> TypeProcessor<'a, D> {
     pub fn process_number_type(&self, mut ty: Type<u64>) -> Type {
         ty.map_to_type_vars(self.type_vars);
         ty.contained_named_types_mut().for_each(|n| {
-            let name = match self.driver.resolve_type_ref(&SourceRef::unknown(), n) {
-                Ok(name) => name,
-                Err(e) => panic!("Error resolving type name \"{n}\":\n{e}"),
-            };
+            let name = self
+                .driver
+                .resolve_type_ref(&SourceRef::unknown(), n)
+                .unwrap();
             *n = SymbolPath::from_str(&name).unwrap();
         });
         ty
