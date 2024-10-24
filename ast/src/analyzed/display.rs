@@ -307,10 +307,13 @@ impl<T: Display> Display for SelectedExpressions<T> {
         write!(
             f,
             "{}[{}]",
-            self.selector
-                .as_ref()
-                .map(|s| format!("{s} $ "))
-                .unwrap_or_default(),
+            {
+                let s = self.selector.to_string();
+                match s.as_str() {
+                    "1" => "".to_string(),
+                    _ => format!("{s} $ "),
+                }
+            },
             self.expressions.iter().format(", ")
         )
     }

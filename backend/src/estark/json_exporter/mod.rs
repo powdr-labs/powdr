@@ -266,13 +266,11 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
         id
     }
 
-    fn extract_expression_opt(
-        &mut self,
-        expr: &Option<Expression<T>>,
-        max_degree: u32,
-    ) -> Option<usize> {
-        expr.as_ref()
-            .map(|e| self.extract_expression(e, max_degree))
+    fn extract_expression_opt(&mut self, expr: &Expression<T>, max_degree: u32) -> Option<usize> {
+        match self.extract_expression(expr, max_degree) {
+            1 => None,
+            e => Some(e),
+        }
     }
 
     fn extract_expression_vec(&mut self, expr: &[Expression<T>], max_degree: u32) -> Vec<usize> {

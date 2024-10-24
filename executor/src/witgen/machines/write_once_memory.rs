@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 
 use itertools::{Either, Itertools};
 
+use num_traits::One;
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
@@ -54,13 +55,11 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         }
 
         // All connecting identities should have no selector or a selector of 1
-        if parts.connections.values().any(|i| {
-            i.right
-                .selector
-                .as_ref()
-                .map(|s| s != &T::one().into())
-                .unwrap_or(false)
-        }) {
+        if parts
+            .connections
+            .values()
+            .any(|i| i.right.selector.is_one())
+        {
             return None;
         }
 
