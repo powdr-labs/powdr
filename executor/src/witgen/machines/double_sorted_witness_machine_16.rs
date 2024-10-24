@@ -3,14 +3,14 @@ use std::iter::once;
 
 use itertools::Itertools;
 
-use super::{Machine, MachineParts};
+use super::{ConnectionKind, Machine, MachineParts};
 use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{EvalError, EvalResult, FixedData, MutableState, QueryCallback};
 use crate::witgen::{EvalValue, IncompleteCause};
 use powdr_number::{DegreeType, FieldElement, LargeInt};
 
-use powdr_ast::analyzed::{DegreeRange, IdentityKind, PolyID};
+use powdr_ast::analyzed::{DegreeRange, PolyID};
 
 /// If all witnesses of a machine have a name in this list (disregarding the namespace),
 /// we'll consider it to be a double-sorted machine.
@@ -133,7 +133,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
         if !parts
             .connecting_identities
             .values()
-            .all(|i| i.kind == IdentityKind::Permutation)
+            .all(|i| i.kind == ConnectionKind::Permutation)
         {
             return None;
         }

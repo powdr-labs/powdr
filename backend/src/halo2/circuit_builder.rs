@@ -12,12 +12,10 @@ use halo2_proofs::{
 use powdr_executor::witgen::WitgenCallback;
 
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, SelectedExpressions,
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, Identity,
+    PolynomialIdentity, SelectedExpressions,
 };
-use powdr_ast::{
-    analyzed::{Analyzed, IdentityKind},
-    parsed::visitor::ExpressionVisitable,
-};
+use powdr_ast::{analyzed::Analyzed, parsed::visitor::ExpressionVisitable};
 use powdr_number::FieldElement;
 
 const FIRST_STEP_NAME: &str = "__first_step";
@@ -240,19 +238,18 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
         }
 
         // Add polynomial identities
-        let identities = analyzed
+        let polynomial_identities: Vec<PolynomialIdentity<_>> = analyzed
             .identities_with_inlined_intermediate_polynomials()
             .into_iter()
-            .filter(|id| id.kind == IdentityKind::Polynomial)
+            .filter_map(|id| id.try_into().ok())
             .collect::<Vec<_>>();
-        if !identities.is_empty() {
+        if !polynomial_identities.is_empty() {
             meta.create_gate("main", |meta| -> Vec<(String, Expression<F>)> {
-                identities
+                polynomial_identities
                     .iter()
                     .map(|id| {
-                        let expr = id.expression_for_poly_id();
                         let name = id.to_string();
-                        let expr = to_halo2_expression(expr, &config, meta);
+                        let expr = to_halo2_expression(&id.expression, &config, meta);
                         let expr = expr * meta.query_fixed(config.enable, Rotation::cur());
                         (name, expr)
                     })
@@ -282,8 +279,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
         // Challenge used to combine the lookup tuple with the selector
         let beta = Expression::Challenge(meta.challenge_usable_after(FirstPhase));
 
-        let to_lookup_tuple = |expr: &SelectedExpressions<AlgebraicExpression<T>>,
-                               meta: &mut VirtualCells<'_, F>| {
+        let to_lookup_tuple = |expr: &SelectedExpressions<T>, meta: &mut VirtualCells<'_, F>| {
             let selector = expr
                 .selector
                 .as_ref()
@@ -307,11 +303,11 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
         };
 
         for id in analyzed.identities_with_inlined_intermediate_polynomials() {
-            match id.kind {
+            match id {
                 // Already handled above
-                IdentityKind::Polynomial => {}
-                IdentityKind::Connect => unimplemented!(),
-                IdentityKind::Plookup => {
+                Identity::Polynomial(..) => {}
+                Identity::Connect(..) => unimplemented!(),
+                Identity::Lookup(id) => {
                     let name = id.to_string();
                     meta.lookup_any(&name, |meta| {
                         to_lookup_tuple(&id.left, meta)
@@ -320,7 +316,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
                             .collect()
                     });
                 }
-                IdentityKind::Permutation => {
+                Identity::Permutation(id) => {
                     let name = id.to_string();
                     meta.shuffle(&name, |meta| {
                         to_lookup_tuple(&id.left, meta)

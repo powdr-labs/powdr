@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use super::super::affine_expression::AffineExpression;
-use super::{EvalResult, FixedData};
+use super::{ConnectingIdentity, EvalResult, FixedData};
 use super::{Machine, MachineParts};
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::rows::RowPair;
@@ -12,9 +12,7 @@ use crate::witgen::{
 use crate::witgen::{EvalValue, IncompleteCause, MutableState, QueryCallback};
 use crate::Identity;
 use itertools::Itertools;
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, IdentityKind, PolyID,
-};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
 use powdr_number::{DegreeType, FieldElement};
 
 /// A machine that can support a lookup in a set of columns that are sorted
@@ -27,7 +25,7 @@ use powdr_number::{DegreeType, FieldElement};
 pub struct SortedWitnesses<'a, T: FieldElement> {
     degree: DegreeType,
     rhs_references: BTreeMap<u64, Vec<&'a AlgebraicReference>>,
-    connecting_identities: BTreeMap<u64, &'a Identity<T>>,
+    connecting_identities: BTreeMap<u64, ConnectingIdentity<'a, T>>,
     key_col: PolyID,
     /// Position of the witness columns in the data.
     witness_positions: HashMap<PolyID, usize>,
@@ -109,11 +107,15 @@ fn check_identity<T: FieldElement>(
     id: &Identity<T>,
     degree: DegreeType,
 ) -> Option<PolyID> {
+    // Looking for a lookup
+    let id = if let Identity::Lookup(id) = id {
+        id
+    } else {
+        return None;
+    };
+
     // Looking for NOTLAST $ [ A' - A ] in [ POSITIVE ]
-    if id.kind != IdentityKind::Plookup
-        || id.right.selector.is_some()
-        || id.left.expressions.len() != 1
-    {
+    if id.right.selector.is_some() || id.left.expressions.len() != 1 {
         return None;
     }
 

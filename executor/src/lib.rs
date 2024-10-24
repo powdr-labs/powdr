@@ -2,9 +2,7 @@
 
 #![deny(clippy::print_stdout)]
 
-use powdr_ast::analyzed::{AlgebraicExpression, Identity as IdentityStruct, SelectedExpressions};
+use powdr_ast::analyzed::Identity;
 
 pub mod constant_evaluator;
 pub mod witgen;
-
-type Identity<T> = IdentityStruct<SelectedExpressions<AlgebraicExpression<T>>>;

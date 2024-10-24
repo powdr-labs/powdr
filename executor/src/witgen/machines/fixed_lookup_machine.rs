@@ -5,7 +5,7 @@ use std::num::NonZeroUsize;
 use std::str::FromStr;
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicReference, IdentityKind, PolyID, PolynomialType};
+use powdr_ast::analyzed::{AlgebraicReference, PolyID, PolynomialType};
 use powdr_ast::parsed::asm::SymbolPath;
 use powdr_number::{DegreeType, FieldElement};
 
@@ -19,7 +19,7 @@ use crate::witgen::{EvalError, EvalValue, IncompleteCause, MutableState, QueryCa
 use crate::witgen::{EvalResult, FixedData};
 use crate::Identity;
 
-use super::Machine;
+use super::{ConnectingIdentity, ConnectionKind, Machine};
 
 type Application = (Vec<PolyID>, Vec<PolyID>);
 type Index<T> = BTreeMap<Vec<T>, IndexValue>;
@@ -178,7 +178,7 @@ pub struct FixedLookup<'a, T: FieldElement> {
     degree: DegreeType,
     global_constraints: GlobalConstraints<T>,
     indices: IndexedColumns<T>,
-    connecting_identities: BTreeMap<u64, &'a Identity<T>>,
+    connecting_identities: BTreeMap<u64, ConnectingIdentity<'a, T>>,
     fixed_data: &'a FixedData<'a, T>,
     /// multiplicities column values for each identity id
     multiplicities: BTreeMap<u64, Vec<T>>,
@@ -197,16 +197,24 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
     ) -> Self {
         let connecting_identities = all_identities
             .into_iter()
-            .filter_map(|i| {
-                (i.kind == IdentityKind::Plookup
-                    && i.right.selector.is_none()
+            .filter_map(|i| match i {
+                Identity::Lookup(i) => (i.right.selector.is_none()
                     && i.right.expressions.iter().all(|e| {
                         try_to_simple_poly_ref(e)
                             .map(|poly| poly.poly_id.ptype == PolynomialType::Constant)
                             .unwrap_or(false)
                     })
                     && !i.right.expressions.is_empty())
-                .then_some((i.id, i))
+                .then_some((
+                    i.id,
+                    ConnectingIdentity {
+                        left: &i.left,
+                        right: &i.right,
+                        id: i.id,
+                        kind: ConnectionKind::Lookup,
+                    },
+                )),
+                _ => None,
             })
             .collect();
 
@@ -377,7 +385,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
         let identity = self.connecting_identities[&identity_id];
-        let right = &identity.right;
+        let right = identity.right;
 
         // get the values of the fixed columns
         let right = right

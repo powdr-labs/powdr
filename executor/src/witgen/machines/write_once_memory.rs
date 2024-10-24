@@ -2,18 +2,15 @@ use std::collections::{BTreeMap, HashMap};
 
 use itertools::{Either, Itertools};
 
-use powdr_ast::analyzed::{IdentityKind, PolyID, PolynomialType};
+use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
-use crate::{
-    witgen::{
-        rows::RowPair, util::try_to_simple_poly, EvalError, EvalResult, EvalValue, FixedData,
-        IncompleteCause, MutableState, QueryCallback,
-    },
-    Identity,
+use crate::witgen::{
+    rows::RowPair, util::try_to_simple_poly, EvalError, EvalResult, EvalValue, FixedData,
+    IncompleteCause, MutableState, QueryCallback,
 };
 
-use super::{Machine, MachineParts};
+use super::{ConnectingIdentity, Machine, MachineParts};
 
 /// A memory machine with a fixed address space, and each address can only have one
 /// value during the lifetime of the program.
@@ -30,7 +27,7 @@ use super::{Machine, MachineParts};
 /// ```
 pub struct WriteOnceMemory<'a, T: FieldElement> {
     degree: DegreeType,
-    connecting_identities: BTreeMap<u64, &'a Identity<T>>,
+    connecting_identities: BTreeMap<u64, ConnectingIdentity<'a, T>>,
     /// The fixed data
     fixed_data: &'a FixedData<'a, T>,
     /// The polynomials that are used as values (witness polynomials on the RHS)
@@ -52,11 +49,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             return None;
         }
 
-        if !parts
-            .connecting_identities
-            .values()
-            .all(|i| i.kind == IdentityKind::Plookup)
-        {
+        if !parts.connecting_identities.values().all(|i| i.is_lookup()) {
             return None;
         }
 

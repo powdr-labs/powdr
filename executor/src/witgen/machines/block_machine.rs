@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Display;
 use std::iter::{self, once};
 
-use super::{EvalResult, FixedData, MachineParts};
+use super::{ConnectingIdentity, ConnectionKind, EvalResult, FixedData, MachineParts};
 
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::block_processor::BlockProcessor;
@@ -15,11 +15,8 @@ use crate::witgen::sequence_iterator::{
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause};
 use crate::witgen::{MutableState, QueryCallback};
-use crate::Identity;
 use itertools::Itertools;
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, DegreeRange, IdentityKind, PolyID, PolynomialType,
-};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, DegreeRange, PolyID, PolynomialType};
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_number::{DegreeType, FieldElement};
 
@@ -50,33 +47,6 @@ fn collect_fixed_cols<T: FieldElement>(
     });
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-enum ConnectionType {
-    Permutation,
-    Lookup,
-}
-
-impl From<ConnectionType> for IdentityKind {
-    fn from(value: ConnectionType) -> Self {
-        match value {
-            ConnectionType::Permutation => IdentityKind::Permutation,
-            ConnectionType::Lookup => IdentityKind::Plookup,
-        }
-    }
-}
-
-impl TryFrom<IdentityKind> for ConnectionType {
-    type Error = ();
-
-    fn try_from(value: IdentityKind) -> Result<Self, Self::Error> {
-        match value {
-            IdentityKind::Permutation => Ok(ConnectionType::Permutation),
-            IdentityKind::Plookup => Ok(ConnectionType::Lookup),
-            _ => Err(()),
-        }
-    }
-}
-
 impl<'a, T: FieldElement> Display for BlockMachine<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(
@@ -103,7 +73,7 @@ pub struct BlockMachine<'a, T: FieldElement> {
     /// The parts of the machine (identities, witness columns, etc.)
     parts: MachineParts<'a, T>,
     /// The type of constraint used to connect this machine to its caller.
-    connection_type: ConnectionType,
+    connection_type: ConnectionKind,
     /// The data of the machine.
     data: FinalizableData<T>,
     /// The index of the first row that has not been finalized yet.
@@ -175,22 +145,21 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
 fn detect_connection_type_and_block_size<'a, T: FieldElement>(
     fixed_data: &'a FixedData<'a, T>,
-    connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
-) -> Option<(ConnectionType, usize, usize)> {
+    connecting_identities: &BTreeMap<u64, ConnectingIdentity<'a, T>>,
+) -> Option<(ConnectionKind, usize, usize)> {
     // TODO we should check that the other constraints/fixed columns are also periodic.
 
     // Connecting identities should either all be permutations or all lookups.
     let connection_type = connecting_identities
         .values()
-        .map(|id| id.kind.try_into())
+        .map(|id| id.kind)
         .unique()
         .exactly_one()
-        .ok()?
         .ok()?;
 
     // Detect the block size.
     let (latch_row, block_size) = match connection_type {
-        ConnectionType::Lookup => {
+        ConnectionKind::Lookup => {
             // We'd expect all RHS selectors to be fixed columns of the same period.
             connecting_identities
                 .values()
@@ -199,7 +168,7 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
                 .exactly_one()
                 .ok()??
         }
-        ConnectionType::Permutation => {
+        ConnectionKind::Permutation => {
             // We check all fixed columns appearing in RHS selectors. If there is none, the block size is 1.
 
             let find_max_period = |latch_candidates: BTreeSet<Option<Expression<T>>>| {
@@ -322,7 +291,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         );
         self.degree = new_degree;
 
-        if matches!(self.connection_type, ConnectionType::Permutation) {
+        if matches!(self.connection_type, ConnectionKind::Permutation) {
             // We have to make sure that *all* selectors are 0 in the dummy block,
             // because otherwise this block won't have a matching block on the LHS.
 
