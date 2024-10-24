@@ -7,6 +7,7 @@ use powdr_pipeline::{
     test_util::{run_pilcom_with_backend_variant, BackendVariant},
     Pipeline,
 };
+use powdr_riscv_executor::ProfilerOptions;
 use std::path::{Path, PathBuf};
 use test_log::test;
 
@@ -573,4 +574,52 @@ fn verify_riscv_crate_impl<T: FieldElement, S: serde::Serialize + Send + Sync + 
         &inputs,
         data.as_deref(),
     );
+}
+
+#[test]
+fn profiler_sanity_check() {
+    let case = "keccak";
+
+    let temp_dir = Temp::new_dir().unwrap();
+    let executable = powdr_riscv::compile_rust_crate_to_riscv(
+        &format!("tests/riscv_data/{case}/Cargo.toml"),
+        &temp_dir,
+        None,
+    );
+
+    let options = CompilerOptions::new(KnownField::GoldilocksField, RuntimeLibs::new(), false);
+    let asm = powdr_riscv::elf::translate(&executable, options);
+
+    let temp_dir = mktemp::Temp::new_dir().unwrap().release();
+    let file_name = format!("{case}.asm");
+    let mut pipeline = Pipeline::<GoldilocksField>::default()
+        .with_output(temp_dir.to_path_buf(), false)
+        .from_asm_string(asm, Some(PathBuf::from(file_name)));
+    let analyzed = pipeline.compute_analyzed_asm().unwrap().clone();
+    let profiler_opt = ProfilerOptions {
+        file_stem: Some("{case}".to_string()),
+        output_directory: temp_dir.to_path_buf().to_str().unwrap().to_string(),
+        flamegraph: true,
+        callgrind: true,
+    };
+    powdr_riscv_executor::execute_ast(
+        &analyzed,
+        Default::default(),
+        pipeline.data_callback().unwrap(),
+        &[],
+        usize::MAX,
+        powdr_riscv_executor::ExecMode::Fast,
+        Some(profiler_opt),
+    );
+
+    // check files were created in temp dir, and that they are not empty
+    let mut svg_path = temp_dir.to_path_buf();
+    svg_path.push("{case}.svg");
+    let flamegraph = std::fs::read_to_string(svg_path);
+    assert!(!flamegraph.unwrap().is_empty());
+
+    let mut callgrind_path = temp_dir.to_path_buf();
+    callgrind_path.push("{case}.callgrind");
+    let callgrind = std::fs::read_to_string(callgrind_path);
+    assert!(!callgrind.unwrap().is_empty());
 }
