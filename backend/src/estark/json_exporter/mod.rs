@@ -1,3 +1,4 @@
+use powdr_ast::parsed::SourceReference;
 use powdr_number::FieldElement;
 use std::collections::HashMap;
 use std::{cmp, path::PathBuf};
@@ -84,7 +85,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                 let identity = &analyzed.identities[*id];
                 // PILCOM strips the path from filenames, we do the same here for compatibility
                 let file_name = identity
-                    .source()
+                    .source_reference()
                     .file_name
                     .as_deref()
                     .and_then(|s| {
@@ -94,7 +95,7 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                             .map(String::from)
                     })
                     .unwrap_or_default();
-                let line = exporter.line_of_source_ref(identity.source());
+                let line = exporter.line_of_source_ref(identity.source_reference());
                 match identity {
                     Identity::Polynomial(identity) => pol_identities.push(PolIdentity {
                         e: exporter.extract_expression(&identity.expression, 2),

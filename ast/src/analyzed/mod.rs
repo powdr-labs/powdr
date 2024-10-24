@@ -20,8 +20,8 @@ use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
-    self, ArrayExpression, EnumDeclaration, EnumVariant, NamedType, TraitDeclaration,
-    TypeDeclaration,
+    self, ArrayExpression, EnumDeclaration, EnumVariant, NamedType, SourceReference,
+    TraitDeclaration, TypeDeclaration,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -898,15 +898,6 @@ impl<T> Identity<T> {
         }
     }
 
-    pub fn source(&self) -> &SourceRef {
-        match self {
-            Identity::Polynomial(i) => &i.source,
-            Identity::Lookup(i) => &i.source,
-            Identity::Permutation(i) => &i.source,
-            Identity::Connect(i) => &i.source,
-        }
-    }
-
     pub fn kind(&self) -> IdentityKind {
         match self {
             Identity::Polynomial(_) => IdentityKind::Polynomial,
@@ -923,6 +914,26 @@ impl<T> Identity<T> {
             Identity::Lookup(i) => i.id = id,
             Identity::Permutation(i) => i.id = id,
             Identity::Connect(i) => i.id = id,
+        }
+    }
+}
+
+impl<T> SourceReference for Identity<T> {
+    fn source_reference(&self) -> &SourceRef {
+        match self {
+            Identity::Polynomial(i) => &i.source,
+            Identity::Lookup(i) => &i.source,
+            Identity::Permutation(i) => &i.source,
+            Identity::Connect(i) => &i.source,
+        }
+    }
+
+    fn source_reference_mut(&mut self) -> &mut SourceRef {
+        match self {
+            Identity::Polynomial(i) => &mut i.source,
+            Identity::Lookup(i) => &mut i.source,
+            Identity::Permutation(i) => &mut i.source,
+            Identity::Connect(i) => &mut i.source,
         }
     }
 }
