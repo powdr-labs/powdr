@@ -350,8 +350,8 @@ fn refs_in_selected_expressions<T>(sel_expr: &SelectedExpressions<T>) -> HashSet
 fn refs_in_identity_left<T>(identity: &Identity<T>) -> HashSet<PolyID> {
     match identity {
         Identity::Lookup(LookupIdentity { left, .. })
-        | Identity::Permutation(PermutationIdentity { left, .. })
         | Identity::PhantomLookup(PhantomLookupIdentity { left, .. })
+        | Identity::Permutation(PermutationIdentity { left, .. })
         | Identity::PhantomPermutation(PhantomPermutationIdentity { left, .. }) => {
             refs_in_selected_expressions(left)
         }

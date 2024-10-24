@@ -5,7 +5,8 @@ use num_traits::Zero;
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, LookupIdentity, PermutationIdentity, PolyID, PolynomialType,
+    AlgebraicReference, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
+    PhantomPermutationIdentity, PolyID, PolynomialType,
 };
 
 use powdr_number::FieldElement;
@@ -236,7 +237,9 @@ fn propagate_constraints<T: FieldElement>(
             }
         }
         Identity::Lookup(LookupIdentity { left, right, .. })
-        | Identity::Permutation(PermutationIdentity { left, right, .. }) => {
+        | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. })
+        | Identity::Permutation(PermutationIdentity { left, right, .. })
+        | Identity::PhantomPermutation(PhantomPermutationIdentity { left, right, .. }) => {
             if left.selector.is_some() || right.selector.is_some() {
                 return (known_constraints, false);
             }
@@ -253,7 +256,7 @@ fn propagate_constraints<T: FieldElement>(
                 }
             }
             if right.expressions.len() == 1 {
-                // We can only remove the lookup if the RHS is a fixed polynomial that
+                // We can only remove the lookup or permutation if the RHS is a fixed polynomial that
                 // provides all values in the span.
                 if let Some(name) = try_to_simple_poly(&right.expressions[0]) {
                     if try_to_simple_poly(&left.expressions[0]).is_some()
@@ -263,9 +266,6 @@ fn propagate_constraints<T: FieldElement>(
                     }
                 }
             }
-        }
-        Identity::PhantomPermutation(..) | Identity::PhantomLookup(..) => {
-            // phantom identities do not provide any constraints
         }
         Identity::Connect(..) => {
             // we do not handle connect identities yet, so we do nothing
