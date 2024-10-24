@@ -77,10 +77,14 @@ where
             .sum()
     }
 
-    /// Commit to the quotient polynomial across all tables.
+    /// Computes the quotient polynomials for each table and commits to them.
+    /// 
+    /// # Side effects
+    /// Samples a random challenge and observes the commitment.
     ///
-    /// Returns a single commitment and the prover data.
-    fn commit_to_quotient(
+    /// # Returns
+    /// The commitment and the prover data.
+    fn compute_and_commit_to_quotient(
         &self,
         state: &mut ProverState<'a, T>,
         proving_key: Option<&StarkProvingKey<T::Config>>,
@@ -495,7 +499,7 @@ where
     // sanity check that we processed as many stages as expected
     assert_eq!(state.processed_stages.len() as u8, stage_count);
 
-    let (quotient_commit, quotient_data) = multi_table.commit_to_quotient(&mut state, proving_key);
+    let (quotient_commit, quotient_data) = multi_table.compute_and_commit_to_quotient(&mut state, proving_key);
 
     let commitments = Commitments {
         traces_by_stage: state
