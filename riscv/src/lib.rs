@@ -357,6 +357,8 @@ fn build_cargo_command(
         "RUSTFLAGS",
         "-g -C link-arg=-Tpowdr.x -C link-arg=--emit-relocs -C passes=lower-atomic -C panic=abort",
     );
+    // keep debug info for the profiler (callgrind/flamegraph)
+    cmd.env("CARGO_PROFILE_RELEASE_DEBUG", "true");
 
     let mut args: Vec<&OsStr> = as_ref![
         OsStr;
