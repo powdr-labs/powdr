@@ -896,16 +896,6 @@ impl<T> Identity<T> {
             Identity::Connect(_) => IdentityKind::Connect,
         }
     }
-
-    #[cfg(test)]
-    fn set_id(&mut self, id: u64) {
-        match self {
-            Identity::Polynomial(i) => i.id = id,
-            Identity::Lookup(i) => i.id = id,
-            Identity::Permutation(i) => i.id = id,
-            Identity::Connect(i) => i.id = id,
-        }
-    }
 }
 
 impl<T> SourceReference for Identity<T> {
@@ -1445,7 +1435,9 @@ mod tests {
     use powdr_number::DegreeType;
     use powdr_parser_util::SourceRef;
 
-    use crate::analyzed::{AlgebraicReference, DegreeRange, PolyID, PolynomialType};
+    use crate::analyzed::{
+        AlgebraicReference, DegreeRange, Identity, PolyID, PolynomialIdentity, PolynomialType,
+    };
 
     use super::{AlgebraicExpression, Analyzed};
 
@@ -1482,7 +1474,11 @@ mod tests {
         let mut pil_result = Analyzed::default();
         pil_result.append_polynomial_identity(AlgebraicExpression::Number(0), SourceRef::unknown());
         pil_result.append_polynomial_identity(AlgebraicExpression::Number(5), SourceRef::unknown());
-        pil_result.identities[1].set_id(6);
+        if let Identity::Polynomial(PolynomialIdentity { id, .. }) = &mut pil_result.identities[1] {
+            *id = 6;
+        } else {
+            panic!();
+        }
         assert_eq!(pil.identities, pil_result.identities);
         assert_eq!(pil.source_order, pil_result.source_order);
     }
