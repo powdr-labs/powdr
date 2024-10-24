@@ -386,7 +386,7 @@ fn features_with_options<T: FieldElement>(options: CompilerOptions) {
     );
 
     log::info!("Verifying {case} converted from ELF file");
-    let from_elf = powdr_riscv::elf::translate(&executable, options.clone());
+    let from_elf = powdr_riscv::elf::translate(&executable, options);
     verify_riscv_asm_string::<T, usize>(
         &format!("{case}_from_elf.asm"),
         &from_elf,
@@ -403,7 +403,7 @@ fn features_with_options<T: FieldElement>(options: CompilerOptions) {
     );
 
     log::info!("Verifying {case} converted from ELF file");
-    let from_elf = powdr_riscv::elf::translate(&executable, options.clone());
+    let from_elf = powdr_riscv::elf::translate(&executable, options);
     verify_riscv_asm_string::<T, usize>(
         &format!("{case}_from_elf.asm"),
         &from_elf,

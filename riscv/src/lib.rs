@@ -21,7 +21,7 @@ pub mod small_field;
 static TARGET_STD: &str = "riscv32im-risc0-zkvm-elf";
 static TARGET_NO_STD: &str = "riscv32imac-unknown-none-elf";
 
-#[derive(Default, Clone)]
+#[derive(Copy, Default, Clone)]
 pub struct RuntimeLibs {
     pub arith: bool,
     pub keccak: bool,
@@ -58,11 +58,13 @@ impl RuntimeLibs {
         }
     }
 }
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct CompilerOptions {
     pub field: KnownField,
     pub libs: RuntimeLibs,
     pub continuations: bool,
+    pub log_min_degree: Option<u32>,
+    pub log_max_degree: Option<u32>,
 }
 
 impl CompilerOptions {
@@ -71,6 +73,8 @@ impl CompilerOptions {
             field,
             libs,
             continuations,
+            log_min_degree: None,
+            log_max_degree: None,
         }
     }
 
@@ -79,6 +83,8 @@ impl CompilerOptions {
             field: KnownField::BabyBearField,
             libs: RuntimeLibs::new(),
             continuations: false,
+            log_min_degree: None,
+            log_max_degree: None,
         }
     }
 
@@ -87,6 +93,22 @@ impl CompilerOptions {
             field: KnownField::GoldilocksField,
             libs: RuntimeLibs::new(),
             continuations: false,
+            log_min_degree: None,
+            log_max_degree: None,
+        }
+    }
+
+    pub fn with_log_min_degree(self, log_min_degree: u32) -> Self {
+        Self {
+            log_min_degree: Some(log_min_degree),
+            ..self
+        }
+    }
+
+    pub fn with_log_max_degree(self, log_max_degree: u32) -> Self {
+        Self {
+            log_max_degree: Some(log_max_degree),
+            ..self
         }
     }
 
