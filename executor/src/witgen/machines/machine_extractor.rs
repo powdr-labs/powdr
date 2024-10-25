@@ -69,7 +69,9 @@ pub fn split_out_machines<'a, T: FieldElement>(
         // Extract all witness columns in the RHS of the lookup.
         let lookup_witnesses = match id {
             Identity::Lookup(LookupIdentity { right, .. })
-            | Identity::Permutation(PermutationIdentity { right, .. }) => {
+            | Identity::PhantomLookup(PhantomLookupIdentity { right, .. })
+            | Identity::Permutation(PermutationIdentity { right, .. })
+            | Identity::PhantomPermutation(PhantomPermutationIdentity { right, .. }) => {
                 &refs_in_selected_expressions(right) & (&remaining_witnesses)
             }
             _ => Default::default(),

@@ -710,29 +710,29 @@ fn to_constraint<T: FieldElement>(
             let left = to_selected_exprs(sel_from, from);
             let right = to_selected_exprs(sel_to, to);
 
-            match variant {
-                &"Lookup" => LookupIdentity {
+            match *variant {
+                "Lookup" => LookupIdentity {
                     id,
                     source,
                     left,
                     right,
                 }
                 .into(),
-                &"Permutation" => PermutationIdentity {
+                "Permutation" => PermutationIdentity {
                     id,
                     source,
                     left,
                     right,
                 }
                 .into(),
-                &"PhantomPermutation" => PhantomPermutationIdentity {
+                "PhantomPermutation" => PhantomPermutationIdentity {
                     id,
                     source,
                     left,
                     right,
                 }
                 .into(),
-                &"PhantomLookup" => {
+                "PhantomLookup" => {
                     let multiplicity = to_expr(&fields[2]);
                     PhantomLookupIdentity {
                         id,

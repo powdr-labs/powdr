@@ -9,7 +9,7 @@ use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
         AlgebraicExpression, Analyzed, Identity, LookupIdentity, PermutationIdentity,
-        StatementIdentifier, Symbol, SymbolKind,
+        PhantomLookupIdentity, PhantomPermutationIdentity, StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
@@ -193,7 +193,13 @@ fn split_by_namespace<F: FieldElement>(
                         .then(|| (current_namespace.clone(), statement)),
                     _ => match identity {
                         Identity::Lookup(LookupIdentity { left, right, .. })
-                        | Identity::Permutation(PermutationIdentity { left, right, .. }) => {
+                        | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. })
+                        | Identity::Permutation(PermutationIdentity { left, right, .. })
+                        | Identity::PhantomPermutation(PhantomPermutationIdentity {
+                            left,
+                            right,
+                            ..
+                        }) => {
                             assert_eq!(
                                 referenced_namespaces(left).len(),
                                 1,
