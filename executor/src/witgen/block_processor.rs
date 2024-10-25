@@ -188,6 +188,7 @@ mod tests {
             identities,
             fixed_data.witness_cols.keys().collect(),
             Default::default(),
+            Default::default(),
         );
 
         let processor = BlockProcessor::new(
