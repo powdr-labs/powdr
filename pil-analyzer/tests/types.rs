@@ -813,9 +813,7 @@ fn simple_struct_type_arg_fail() {
 }
 
 #[test]
-#[should_panic = "Expected symbol of kind Type but got Value: x"]
-// The error message should change to something like
-// "Expected symbol of kind Struct but got Value: x" if #1907 is merged first
+#[should_panic = "Expected symbol of kind Struct but got Value: x"]
 fn struct_in_var() {
     let input = "
     let x: int = 1;
