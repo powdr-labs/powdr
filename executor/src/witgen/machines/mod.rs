@@ -47,7 +47,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     /// Returns a unique name for this machine.
     fn name(&self) -> &str;
 
-    /// Processes a connecting identity of a given ID (which must be known to the callee).
+    /// Processes a connection of a given ID (which must be known to the callee).
     /// Returns an error if the query leads to a constraint failure.
     /// Otherwise, it computes any updates to the caller row pair and returns them.
     fn process_plookup<'b, Q: QueryCallback<T>>(
