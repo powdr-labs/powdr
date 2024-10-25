@@ -9,6 +9,7 @@ use crate::witgen::EvalValue;
 
 use super::affine_expression::AlgebraicVariable;
 use super::block_processor::BlockProcessor;
+use super::machines::multiplicity_counter::MultiplicityCounter;
 use super::machines::{Machine, MachineParts};
 use super::rows::{Row, RowIndex, RowPair};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
@@ -27,6 +28,7 @@ pub struct Generator<'a, T: FieldElement> {
     latch: Option<Expression<T>>,
     name: String,
     degree: DegreeType,
+    multiplicity_counter: MultiplicityCounter,
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
@@ -69,6 +71,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
             self.data.pop();
             self.data.extend(block);
 
+            // The last row is the latch row.
+            self.multiplicity_counter
+                .increment(identity_id, self.data.len() - 1);
+
             eval_value.report_side_effect()
         } else {
             log::trace!("End processing VM '{}' (incomplete)", self.name());
@@ -88,7 +94,12 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
 
         self.data
             .take_transposed()
-            .map(|(id, (values, _))| (self.fixed_data.column_name(&id).to_string(), values))
+            .map(|(id, (values, _))| (id, values))
+            .chain(
+                self.multiplicity_counter
+                    .generate_columns_single_size(self.degree),
+            )
+            .map(|(id, values)| (self.fixed_data.column_name(&id).to_string(), values))
             .collect()
     }
 }
@@ -101,6 +112,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         latch: Option<Expression<T>>,
     ) -> Self {
         let data = FinalizableData::new(&parts.witnesses);
+        let multiplicity_counter = MultiplicityCounter::new(parts.multiplicity_columns.clone());
 
         Self {
             degree: parts.common_degree_range().max,
@@ -109,6 +121,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             parts,
             data,
             latch,
+            multiplicity_counter,
         }
     }
 
