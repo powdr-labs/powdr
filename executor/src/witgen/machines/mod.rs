@@ -229,20 +229,10 @@ pub fn compute_size_and_log(name: &str, used_rows: usize, degree_range: DegreeRa
     if size > MIN_RERPORTING_SIZE && fraction_used < 0.5 {
         // In a machine configured to use VADCOP, we would expect the next power of two to be used.
         log::info!(
-            "Only {} / {} rows are used in machine {}, which is configured to support sizes in the range {}..{}. If the backend supports it, consider lowering the min_degree.",
-            used_rows,
-            size,
-            name,
-            degree_range.min,
-            degree_range.max,
+            "Only {used_rows} of {size} rows are used in machine '{name}', which is configured to support sizes in the range {degree_range}. If the backend supports it, consider lowering the min_degree.",
         );
     } else {
-        log::debug!(
-            "{} / {} rows are used in machine {}.",
-            used_rows,
-            size,
-            name,
-        );
+        log::debug!("{used_rows} of {size} rows are used in machine '{name}'.");
     }
     size
 }
