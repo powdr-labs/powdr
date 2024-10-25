@@ -215,8 +215,8 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
                 .then_some((
                     *id,
                     ConnectingIdentity {
-                        left: &left,
-                        right: &right,
+                        left,
+                        right,
                         id: *id,
                         kind: ConnectionKind::Lookup,
                     },

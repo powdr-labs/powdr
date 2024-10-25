@@ -710,13 +710,13 @@ fn to_constraint<T: FieldElement>(
             let from = to_selected_exprs(sel_from, from);
             let to = to_selected_exprs(sel_to, to);
 
-            match variant {
-                &"Lookup" => LookupIdentity::new(id, source, from, to).into(),
-                &"Permutation" => PermutationIdentity::new(id, source, from, to).into(),
-                &"PhantomPermutation" => {
+            match *variant {
+                "Lookup" => LookupIdentity::new(id, source, from, to).into(),
+                "Permutation" => PermutationIdentity::new(id, source, from, to).into(),
+                "PhantomPermutation" => {
                     PhantomPermutationIdentity::new(id, source, from, to).into()
                 }
-                &"PhantomLookup" => {
+                "PhantomLookup" => {
                     let multiplicity = to_expr(&fields[2]);
                     PhantomLookupIdentity::new(id, source, from, to, multiplicity).into()
                 }

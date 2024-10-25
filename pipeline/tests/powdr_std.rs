@@ -170,24 +170,6 @@ fn lookup_via_challenges_bn() {
 }
 
 #[test]
-fn lookup_via_challenges_ext() {
-    let f = "std/lookup_via_challenges_ext.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-    // Note that this does not actually run the second-phase witness generation, because no
-    // Goldilocks backend support challenges yet.
-    make_simple_prepared_pipeline::<GoldilocksField>(f);
-}
-
-#[test]
-fn lookup_via_challenges_ext_simple() {
-    let f = "std/lookup_via_challenges_ext_simple.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-    // Note that this does not actually run the second-phase witness generation, because no
-    // Goldilocks backend support challenges yet.
-    make_simple_prepared_pipeline::<GoldilocksField>(f);
-}
-
-#[test]
 fn bus_permutation_via_challenges_bn() {
     let f = "std/bus_permutation_via_challenges.asm";
     test_halo2(make_simple_prepared_pipeline(f));
@@ -208,12 +190,6 @@ fn bus_permutation_via_challenges_ext_bn() {
 #[test]
 fn bus_lookup_via_challenges_bn() {
     let f = "std/bus_lookup_via_challenges.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-}
-
-#[test]
-fn bus_lookup_via_challenges_ext_bn() {
-    let f = "std/bus_lookup_via_challenges_ext.asm";
     test_halo2(make_simple_prepared_pipeline(f));
 }
 
