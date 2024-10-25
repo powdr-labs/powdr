@@ -13,7 +13,7 @@ fn run_witgen_pil<T: FieldElement>(pil: &str) -> Arc<Columns<T>> {
 }
 
 #[test]
-#[should_panic = "Publics are referenced by more than one machine: {\"public\"}"]
+#[should_panic = "Publics are referenced by more than one machine: public"]
 fn two_machines_conflicting_public() {
     // This test *should* fail, because two machines access the same
     // public, but assign different values to it.

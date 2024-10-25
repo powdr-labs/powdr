@@ -239,8 +239,9 @@ impl<'a> PublicsTracker<'a> {
             .intersection(&referenced_publics)
             .collect::<BTreeSet<_>>();
         if !intersection.is_empty() {
+            let intersection_list = intersection.iter().format(", ");
             return Err(format!(
-                "Publics are referenced by more than one machine: {intersection:?}",
+                "Publics are referenced by more than one machine: {intersection_list}",
             ));
         }
         self.0.extend(referenced_publics);
