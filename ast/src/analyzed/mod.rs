@@ -355,6 +355,40 @@ impl<T> Analyzed<T> {
     }
 }
 
+impl<T> Children<Expression> for Analyzed<T> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(
+            self.definitions
+                .values()
+                .filter_map(|(_, def)| def.as_ref())
+                .flat_map(|def| def.children())
+                .chain(
+                    self.solved_impls
+                        .values()
+                        .flat_map(|impls| impls.iter())
+                        .flat_map(|(_, expr)| expr.children()),
+                )
+                .chain(self.prover_functions.iter()),
+        )
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(
+            self.definitions
+                .values_mut()
+                .filter_map(|(_, def)| def.as_mut())
+                .flat_map(|def| def.children_mut())
+                .chain(
+                    self.solved_impls
+                        .values_mut()
+                        .flat_map(|impls| impls.iter_mut())
+                        .flat_map(|(_, expr)| Arc::get_mut(expr).unwrap().children_mut()),
+                )
+                .chain(self.prover_functions.iter_mut()),
+        )
+    }
+}
+
 impl<T: FieldElement> Analyzed<T> {
     /// @returns all identities with intermediate polynomials inlined.
     pub fn identities_with_inlined_intermediate_polynomials(
