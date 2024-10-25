@@ -105,6 +105,7 @@ fn arith_large_test() {
     // Running gen_estark_proof(f, Default::default())
     // is too slow for the PR tests. This will only create a single
     // eStark proof instead of 3.
+    #[cfg(feature = "estark-starky")]
     pipeline
         .with_backend(powdr_backend::BackendType::EStarkStarky, None)
         .compute_proof()

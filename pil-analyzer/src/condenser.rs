@@ -14,10 +14,10 @@ use num_traits::sign::Signed;
 use powdr_ast::{
     analyzed::{
         self, AlgebraicBinaryOperation, AlgebraicExpression, AlgebraicReference,
-        AlgebraicUnaryOperation, Analyzed, Challenge, DegreeRange, Expression,
-        FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialReference,
-        PolynomialType, PublicDeclaration, Reference, SelectedExpressions, StatementIdentifier,
-        Symbol, SymbolKind,
+        AlgebraicUnaryOperation, Analyzed, Challenge, ConnectIdentity, DegreeRange, Expression,
+        FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity, PolyID,
+        PolynomialIdentity, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
+        SelectedExpressions, StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
         self,
@@ -40,8 +40,6 @@ use crate::{
     },
     statement_processor::Counters,
 };
-
-type AnalyzedIdentity<T> = Identity<SelectedExpressions<AlgebraicExpression<T>>>;
 
 pub fn condense<T: FieldElement>(
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
@@ -298,7 +296,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     }
 
     /// Returns the new constraints generated since the last call to this function.
-    pub fn extract_new_constraints(&mut self) -> Vec<AnalyzedIdentity<T>> {
+    pub fn extract_new_constraints(&mut self) -> Vec<Identity<T>> {
         self.new_constraints
             .drain(..)
             .map(|(item, source)| to_constraint(item.as_ref(), source, &mut self.counters))
@@ -657,7 +655,7 @@ fn to_constraint<T: FieldElement>(
     constraint: &Value<'_, T>,
     source: SourceRef,
     counters: &mut Counters,
-) -> AnalyzedIdentity<T> {
+) -> Identity<T> {
     let Value::Enum(EnumValue {
         enum_decl,
         variant,
@@ -671,19 +669,15 @@ fn to_constraint<T: FieldElement>(
     match &**variant {
         "Identity" => {
             assert_eq!(fields.len(), 2);
-            AnalyzedIdentity::from_polynomial_identity(
-                counters.dispense_identity_id(),
+            PolynomialIdentity {
+                id: counters.dispense_identity_id(),
                 source,
-                to_expr(&fields[0]) - to_expr(&fields[1]),
-            )
+                expression: to_expr(&fields[0]) - to_expr(&fields[1]),
+            }
+            .into()
         }
         "Lookup" | "Permutation" => {
             assert_eq!(fields.len(), 2);
-            let kind = if variant == &"Lookup" {
-                IdentityKind::Plookup
-            } else {
-                IdentityKind::Permutation
-            };
 
             let (sel_from, sel_to) = if let Value::Tuple(t) = fields[0].as_ref() {
                 assert_eq!(t.len(), 2);
@@ -707,12 +701,22 @@ fn to_constraint<T: FieldElement>(
                 unreachable!()
             };
 
-            Identity {
-                id: counters.dispense_identity_id(),
-                kind,
-                source,
-                left: to_selected_exprs(sel_from, from),
-                right: to_selected_exprs(sel_to, to),
+            if variant == &"Lookup" {
+                LookupIdentity {
+                    id: counters.dispense_identity_id(),
+                    source,
+                    left: to_selected_exprs(sel_from, from),
+                    right: to_selected_exprs(sel_to, to),
+                }
+                .into()
+            } else {
+                PermutationIdentity {
+                    id: counters.dispense_identity_id(),
+                    source,
+                    left: to_selected_exprs(sel_from, from),
+                    right: to_selected_exprs(sel_to, to),
+                }
+                .into()
             }
         }
         "Connection" => {
@@ -733,19 +737,13 @@ fn to_constraint<T: FieldElement>(
                 unreachable!()
             };
 
-            Identity {
+            ConnectIdentity {
                 id: counters.dispense_identity_id(),
-                kind: IdentityKind::Connect,
                 source,
-                left: analyzed::SelectedExpressions {
-                    selector: None,
-                    expressions: from.into_iter().map(to_expr).collect(),
-                },
-                right: analyzed::SelectedExpressions {
-                    selector: None,
-                    expressions: to.into_iter().map(to_expr).collect(),
-                },
+                left: from.into_iter().map(to_expr).collect(),
+                right: to.into_iter().map(to_expr).collect(),
             }
+            .into()
         }
         _ => panic!("Expected constraint but got {constraint}"),
     }
@@ -754,7 +752,7 @@ fn to_constraint<T: FieldElement>(
 fn to_selected_exprs<'a, T: Clone + Debug>(
     selector: &Value<'a, T>,
     exprs: Vec<&Value<'a, T>>,
-) -> SelectedExpressions<AlgebraicExpression<T>> {
+) -> SelectedExpressions<T> {
     SelectedExpressions {
         selector: to_option_expr(selector),
         expressions: exprs.into_iter().map(to_expr).collect(),

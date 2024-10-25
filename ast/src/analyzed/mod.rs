@@ -20,8 +20,8 @@ use crate::parsed::visitor::{Children, ExpressionVisitable};
 pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
-    self, ArrayExpression, EnumDeclaration, EnumVariant, NamedType, TraitDeclaration,
-    TypeDeclaration,
+    self, ArrayExpression, EnumDeclaration, EnumVariant, NamedType, SourceReference,
+    TraitDeclaration, TypeDeclaration,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -41,7 +41,7 @@ pub struct Analyzed<T> {
     pub solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
     pub public_declarations: HashMap<String, PublicDeclaration>,
     pub intermediate_columns: HashMap<String, (Symbol, Vec<AlgebraicExpression<T>>)>,
-    pub identities: Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>>,
+    pub identities: Vec<Identity<T>>,
     pub prover_functions: Vec<Expression>,
     /// The order in which definitions and identities
     /// appear in the source.
@@ -195,20 +195,23 @@ impl<T> Analyzed<T> {
     /// Adds a polynomial identity and returns the ID.
     pub fn append_polynomial_identity(
         &mut self,
-        identity: AlgebraicExpression<T>,
+        expression: AlgebraicExpression<T>,
         source: SourceRef,
     ) -> u64 {
         let id = self
             .identities
             .iter()
-            .map(|identity| identity.id)
+            .map(|identity| identity.id())
             .max()
             .unwrap_or_default()
             + 1;
         self.identities.push(
-            Identity::<SelectedExpressions<AlgebraicExpression<T>>>::from_polynomial_identity(
-                id, source, identity,
-            ),
+            PolynomialIdentity {
+                id,
+                source,
+                expression,
+            }
+            .into(),
         );
         self.source_order
             .push(StatementIdentifier::ProofItem(self.identities.len() - 1));
@@ -357,9 +360,7 @@ impl<T> Analyzed<T> {
 
 impl<T: FieldElement> Analyzed<T> {
     /// @returns all identities with intermediate polynomials inlined.
-    pub fn identities_with_inlined_intermediate_polynomials(
-        &self,
-    ) -> Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>> {
+    pub fn identities_with_inlined_intermediate_polynomials(&self) -> Vec<Identity<T>> {
         let intermediates = &self
             .intermediate_polys_in_source_order()
             .flat_map(|(symbol, def)| {
@@ -389,9 +390,9 @@ impl<T: FieldElement> Analyzed<T> {
 /// Takes identities as values and inlines intermediate polynomials everywhere, returning a vector of the updated identities
 /// TODO: this could return an iterator
 fn substitute_intermediate<T: Copy + Display>(
-    identities: impl IntoIterator<Item = Identity<SelectedExpressions<AlgebraicExpression<T>>>>,
+    identities: impl IntoIterator<Item = Identity<T>>,
     intermediate_polynomials: &HashMap<PolyID, &AlgebraicExpression<T>>,
-) -> Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>> {
+) -> Vec<Identity<T>> {
     identities
         .into_iter()
         .scan(HashMap::default(), |cache, mut identity| {
@@ -701,12 +702,12 @@ impl PublicDeclaration {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct SelectedExpressions<Expr> {
-    pub selector: Option<Expr>,
-    pub expressions: Vec<Expr>,
+pub struct SelectedExpressions<T> {
+    pub selector: Option<AlgebraicExpression<T>>,
+    pub expressions: Vec<AlgebraicExpression<T>>,
 }
 
-impl<Expr> Default for SelectedExpressions<Expr> {
+impl<T> Default for SelectedExpressions<T> {
     fn default() -> Self {
         Self {
             selector: Default::default(),
@@ -715,96 +716,188 @@ impl<Expr> Default for SelectedExpressions<Expr> {
     }
 }
 
-impl<Expr> Children<Expr> for SelectedExpressions<Expr> {
+impl<T> Children<AlgebraicExpression<T>> for SelectedExpressions<T> {
     /// Returns an iterator over all (top-level) expressions in this SelectedExpressions.
-    fn children(&self) -> Box<dyn Iterator<Item = &Expr> + '_> {
+    fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
         Box::new(self.selector.iter().chain(self.expressions.iter()))
     }
     /// Returns an iterator over all (top-level) expressions in this SelectedExpressions.
-    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expr> + '_> {
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
         Box::new(self.selector.iter_mut().chain(self.expressions.iter_mut()))
     }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct Identity<SelectedExpressions> {
-    /// The ID is globally unique among identities.
+pub struct PolynomialIdentity<T> {
+    // The ID is globally unique among identitites.
     pub id: u64,
-    pub kind: IdentityKind,
     pub source: SourceRef,
-    /// For a simple polynomial identity, the selector contains
-    /// the actual expression (see expression_for_poly_id).
-    pub left: SelectedExpressions,
-    pub right: SelectedExpressions,
+    pub expression: AlgebraicExpression<T>,
 }
 
-// TODO This is the only version of Identity left.
-impl<T> Identity<SelectedExpressions<AlgebraicExpression<T>>> {
-    /// Constructs an Identity from a polynomial identity (expression assumed to be identical zero).
-    pub fn from_polynomial_identity(
+impl<T> Children<AlgebraicExpression<T>> for PolynomialIdentity<T> {
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
+        Box::new(iter::once(&mut self.expression))
+    }
+    fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
+        Box::new(iter::once(&self.expression))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct LookupIdentity<T> {
+    // The ID is globally unique among identitites.
+    pub id: u64,
+    pub source: SourceRef,
+    pub left: SelectedExpressions<T>,
+    pub right: SelectedExpressions<T>,
+}
+
+impl<T> Children<AlgebraicExpression<T>> for LookupIdentity<T> {
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
+        Box::new(self.left.children_mut().chain(self.right.children_mut()))
+    }
+    fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
+        Box::new(self.left.children().chain(self.right.children()))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct PermutationIdentity<T> {
+    // The ID is globally unique among identitites.
+    pub id: u64,
+    pub source: SourceRef,
+    pub left: SelectedExpressions<T>,
+    pub right: SelectedExpressions<T>,
+}
+
+impl<T> Children<AlgebraicExpression<T>> for PermutationIdentity<T> {
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
+        Box::new(self.left.children_mut().chain(self.right.children_mut()))
+    }
+    fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
+        Box::new(self.left.children().chain(self.right.children()))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct ConnectIdentity<T> {
+    // The ID is globally unique among identitites.
+    pub id: u64,
+    pub source: SourceRef,
+    pub left: Vec<AlgebraicExpression<T>>,
+    pub right: Vec<AlgebraicExpression<T>>,
+}
+
+impl<T> Children<AlgebraicExpression<T>> for ConnectIdentity<T> {
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
+        Box::new(self.left.iter_mut().chain(self.right.iter_mut()))
+    }
+    fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
+        Box::new(self.left.iter().chain(self.right.iter()))
+    }
+}
+
+impl<T> ConnectIdentity<T> {
+    pub fn new(
         id: u64,
         source: SourceRef,
-        identity: AlgebraicExpression<T>,
+        left: Vec<AlgebraicExpression<T>>,
+        right: Vec<AlgebraicExpression<T>>,
     ) -> Self {
-        Identity {
+        Self {
             id,
-            kind: IdentityKind::Polynomial,
             source,
-            left: SelectedExpressions {
-                selector: Some(identity),
-                expressions: vec![],
-            },
-            right: SelectedExpressions {
-                selector: Default::default(),
-                expressions: vec![],
-            },
+            left,
+            right,
         }
     }
-    /// Returns the expression in case this is a polynomial identity.
-    pub fn expression_for_poly_id(&self) -> &AlgebraicExpression<T> {
-        assert_eq!(self.kind, IdentityKind::Polynomial);
-        self.left.selector.as_ref().unwrap()
-    }
+}
 
-    /// Returns the expression in case this is a polynomial identity.
-    pub fn expression_for_poly_id_mut(&mut self) -> &mut AlgebraicExpression<T> {
-        assert_eq!(self.kind, IdentityKind::Polynomial);
-        self.left.selector.as_mut().unwrap()
-    }
+#[derive(
+    Debug,
+    PartialEq,
+    Eq,
+    Clone,
+    Serialize,
+    Deserialize,
+    JsonSchema,
+    derive_more::Display,
+    derive_more::From,
+    derive_more::TryInto,
+)]
+pub enum Identity<T> {
+    Polynomial(PolynomialIdentity<T>),
+    Lookup(LookupIdentity<T>),
+    Permutation(PermutationIdentity<T>),
+    Connect(ConnectIdentity<T>),
+}
 
+impl<T> Identity<T> {
     pub fn contains_next_ref(&self) -> bool {
-        self.left.contains_next_ref() || self.right.contains_next_ref()
-    }
-
-    /// Either returns (a, Some(b)) if this is a - b or (a, None)
-    /// if it is a polynomial identity of a different structure.
-    /// Panics if it is a different kind of constraint.
-    pub fn as_polynomial_identity(
-        &self,
-    ) -> (&AlgebraicExpression<T>, Option<&AlgebraicExpression<T>>) {
-        assert_eq!(self.kind, IdentityKind::Polynomial);
-        match self.expression_for_poly_id() {
-            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                left: a,
-                op: AlgebraicBinaryOperator::Sub,
-                right: b,
-            }) => (a.as_ref(), Some(b.as_ref())),
-            a => (a, None),
-        }
+        self.children().any(|e| e.contains_next_ref())
     }
 
     pub fn degree(&self) -> usize {
         self.children().map(|e| e.degree()).max().unwrap_or(0)
     }
+
+    pub fn id(&self) -> u64 {
+        match self {
+            Identity::Polynomial(i) => i.id,
+            Identity::Lookup(i) => i.id,
+            Identity::Permutation(i) => i.id,
+            Identity::Connect(i) => i.id,
+        }
+    }
+
+    pub fn kind(&self) -> IdentityKind {
+        match self {
+            Identity::Polynomial(_) => IdentityKind::Polynomial,
+            Identity::Lookup(_) => IdentityKind::Plookup,
+            Identity::Permutation(_) => IdentityKind::Permutation,
+            Identity::Connect(_) => IdentityKind::Connect,
+        }
+    }
 }
 
-impl<T> Children<AlgebraicExpression<T>> for Identity<SelectedExpressions<AlgebraicExpression<T>>> {
+impl<T> SourceReference for Identity<T> {
+    fn source_reference(&self) -> &SourceRef {
+        match self {
+            Identity::Polynomial(i) => &i.source,
+            Identity::Lookup(i) => &i.source,
+            Identity::Permutation(i) => &i.source,
+            Identity::Connect(i) => &i.source,
+        }
+    }
+
+    fn source_reference_mut(&mut self) -> &mut SourceRef {
+        match self {
+            Identity::Polynomial(i) => &mut i.source,
+            Identity::Lookup(i) => &mut i.source,
+            Identity::Permutation(i) => &mut i.source,
+            Identity::Connect(i) => &mut i.source,
+        }
+    }
+}
+
+impl<T> Children<AlgebraicExpression<T>> for Identity<T> {
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
-        Box::new(self.left.children_mut().chain(self.right.children_mut()))
+        match self {
+            Identity::Polynomial(i) => i.children_mut(),
+            Identity::Lookup(i) => i.children_mut(),
+            Identity::Permutation(i) => i.children_mut(),
+            Identity::Connect(i) => i.children_mut(),
+        }
     }
 
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
-        Box::new(self.left.children().chain(self.right.children()))
+        match self {
+            Identity::Polynomial(i) => i.children(),
+            Identity::Lookup(i) => i.children(),
+            Identity::Permutation(i) => i.children(),
+            Identity::Connect(i) => i.children(),
+        }
     }
 }
 
@@ -818,7 +911,7 @@ pub enum IdentityKind {
     Connect,
 }
 
-impl<T> SelectedExpressions<AlgebraicExpression<T>> {
+impl<T> SelectedExpressions<T> {
     /// @returns true if the expression contains a reference to a next value of a
     /// (witness or fixed) column
     pub fn contains_next_ref(&self) -> bool {
@@ -1305,7 +1398,9 @@ mod tests {
     use powdr_number::DegreeType;
     use powdr_parser_util::SourceRef;
 
-    use crate::analyzed::{AlgebraicReference, DegreeRange, PolyID, PolynomialType};
+    use crate::analyzed::{
+        AlgebraicReference, DegreeRange, Identity, PolyID, PolynomialIdentity, PolynomialType,
+    };
 
     use super::{AlgebraicExpression, Analyzed};
 
@@ -1342,7 +1437,11 @@ mod tests {
         let mut pil_result = Analyzed::default();
         pil_result.append_polynomial_identity(AlgebraicExpression::Number(0), SourceRef::unknown());
         pil_result.append_polynomial_identity(AlgebraicExpression::Number(5), SourceRef::unknown());
-        pil_result.identities[1].id = 6;
+        if let Identity::Polynomial(PolynomialIdentity { id, .. }) = &mut pil_result.identities[1] {
+            *id = 6;
+        } else {
+            panic!();
+        }
         assert_eq!(pil.identities, pil_result.identities);
         assert_eq!(pil.source_order, pil_result.source_order);
     }

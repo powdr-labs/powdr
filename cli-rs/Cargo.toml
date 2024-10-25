@@ -8,9 +8,10 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [features]
-default = []
+default = ["plonky3"]
 halo2 = ["powdr-pipeline/halo2"]
 plonky3 = ["powdr-pipeline/plonky3"]
+estark-starky = ["powdr-pipeline/estark-starky"]
 estark-polygon = ["powdr-pipeline/estark-polygon", "powdr-riscv/estark-polygon"]
 
 [dependencies]

@@ -8,7 +8,8 @@ use std::{
 use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
-        AlgebraicExpression, Analyzed, IdentityKind, StatementIdentifier, Symbol, SymbolKind,
+        AlgebraicExpression, Analyzed, Identity, LookupIdentity, PermutationIdentity,
+        StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
@@ -190,15 +191,16 @@ fn split_by_namespace<F: FieldElement>(
                     // add this identity to the only referenced namespace
                     1 => (namespaces.into_iter().next().unwrap() == current_namespace)
                         .then(|| (current_namespace.clone(), statement)),
-                    _ => match identity.kind {
-                        IdentityKind::Plookup | IdentityKind::Permutation => {
+                    _ => match identity {
+                        Identity::Lookup(LookupIdentity { left, right, .. })
+                        | Identity::Permutation(PermutationIdentity { left, right, .. }) => {
                             assert_eq!(
-                                referenced_namespaces(&identity.left).len(),
+                                referenced_namespaces(left).len(),
                                 1,
                                 "LHS of identity references multiple namespaces: {identity}"
                             );
                             assert_eq!(
-                                referenced_namespaces(&identity.right).len(),
+                                referenced_namespaces(right).len(),
                                 1,
                                 "RHS of identity references multiple namespaces: {identity}"
                             );
