@@ -106,12 +106,18 @@ impl<T: Display> Display for Analyzed<T> {
                                     Some(FunctionValueDefinition::TypeDeclaration(
                                         TypeDeclaration::Struct(struct_declaration),
                                     )) => {
-                                        writeln_indented(f, struct_declaration)?;
+                                        writeln_indented(
+                                            f,
+                                            struct_declaration.to_string_with_name(&name),
+                                        )?;
                                     }
                                     Some(FunctionValueDefinition::TraitDeclaration(
                                         trait_declaration,
                                     )) => {
-                                        writeln_indented(f, trait_declaration)?;
+                                        writeln_indented(
+                                            f,
+                                            trait_declaration.to_string_with_name(&name),
+                                        )?;
                                     }
                                     _ => {
                                         unreachable!("Invalid definition for symbol: {}", name)
