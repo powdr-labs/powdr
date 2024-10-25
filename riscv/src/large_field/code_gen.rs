@@ -210,13 +210,13 @@ let initial_memory: (fe, fe)[] = [
 "#,
         runtime.submachines_import(),
         1 << (options
-            .log_min_degree
+            .min_degree_log
             .unwrap_or(powdr_linker::MIN_DEGREE_LOG as u32)),
         // We expect some machines (e.g. register memory) to use up to 4x the number
         // of rows as main. By setting the max degree of main to be smaller by a factor
         // of 4, we ensure that we don't run out of rows in those machines.
         1 << options
-            .log_max_degree
+            .max_degree_log
             .unwrap_or(*powdr_linker::MAX_DEGREE_LOG as u32 - 2),
         runtime.submachines_declare(),
         preamble,

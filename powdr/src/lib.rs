@@ -29,10 +29,10 @@ const DEFAULT_PKEY: &str = "pkey.bin";
 const DEFAULT_VKEY: &str = "vkey.bin";
 
 // Minimum and maximum log of number of rows for the RISCV machine.
-const DEFAULT_LOG_MIN_DEGREE: u32 = 5;
-const DEFAULT_LOG_MAX_DEGREE: u32 = 20;
+const DEFAULT_MIN_DEGREE_LOG: u32 = 5;
+const DEFAULT_MAX_DEGREE_LOG: u32 = 20;
 // Minimum acceptable max degree.
-const DEFAULT_MIN_LOG_MAX_DEGREE: u32 = 16;
+const DEFAULT_MIN_MAX_DEGREE_LOG: u32 = 18;
 
 impl Session {
     pub fn new(guest_path: &str, out_path: &str) -> Self {
@@ -40,21 +40,23 @@ impl Session {
             pipeline: pipeline_from_guest(
                 guest_path,
                 Path::new(out_path),
-                DEFAULT_LOG_MIN_DEGREE,
-                DEFAULT_LOG_MAX_DEGREE,
+                DEFAULT_MIN_DEGREE_LOG,
+                DEFAULT_MAX_DEGREE_LOG,
             ),
             out_path: out_path.into(),
         }
         .with_backend(powdr_backend::BackendType::Plonky3)
     }
 
+    /// Create a new session with a specific chunk size, represented by its log2.
+    /// Example: for a chunk size of 2^20, set chunk_size_log to 20.
     pub fn new_with_chunk_size(guest_path: &str, out_path: &str, chunk_size_log: u32) -> Self {
-        assert!(chunk_size_log >= DEFAULT_MIN_LOG_MAX_DEGREE);
+        assert!(chunk_size_log >= DEFAULT_MIN_MAX_DEGREE_LOG);
         Session {
             pipeline: pipeline_from_guest(
                 guest_path,
                 Path::new(out_path),
-                DEFAULT_LOG_MIN_DEGREE,
+                DEFAULT_MIN_DEGREE_LOG,
                 chunk_size_log,
             ),
             out_path: out_path.into(),
@@ -165,16 +167,16 @@ fn pil_file_path(asm_name: &Path) -> PathBuf {
 pub fn build_guest(
     guest_path: &str,
     out_path: &Path,
-    log_min_degree: u32,
-    log_max_degree: u32,
+    min_degree_log: u32,
+    max_degree_log: u32,
 ) -> (PathBuf, String) {
     riscv::compile_rust(
         guest_path,
         CompilerOptions::new_gl()
             .with_poseidon()
             .with_continuations()
-            .with_log_min_degree(log_min_degree)
-            .with_log_max_degree(log_max_degree),
+            .with_log_min_degree(min_degree_log)
+            .with_log_max_degree(max_degree_log),
         out_path,
         true,
         None,
@@ -186,13 +188,13 @@ pub fn build_guest(
 pub fn pipeline_from_guest(
     guest_path: &str,
     out_path: &Path,
-    log_min_degree: u32,
-    log_max_degree: u32,
+    min_degree_log: u32,
+    max_degree_log: u32,
 ) -> Pipeline<GoldilocksField> {
     log::info!("Compiling guest program...");
 
     let (asm_file_path, asm_contents) =
-        build_guest(guest_path, out_path, log_min_degree, log_max_degree);
+        build_guest(guest_path, out_path, min_degree_log, max_degree_log);
 
     // Create a pipeline from the asm program
     Pipeline::<GoldilocksField>::default()
