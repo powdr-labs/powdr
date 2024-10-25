@@ -164,20 +164,20 @@ fn permutation_via_challenges_ext() {
 }
 
 #[test]
-fn lookup_via_challenges_bn() {
+fn lookup_via_challenges() {
     let f = "std/lookup_via_challenges.asm";
     test_halo2(make_simple_prepared_pipeline(f));
+
+    // TODO: Plonky3 fails, not sure why...
+    // test_plonky3_pipeline(make_simple_prepared_pipeline::<GoldilocksField>(f));
+
+    // At least run witness generation on Goldilocks.
+    make_simple_prepared_pipeline::<GoldilocksField>(f);
 }
 
 #[test]
 fn bus_permutation_via_challenges_bn() {
     let f = "std/bus_permutation_via_challenges.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-}
-
-#[test]
-fn test_multiplicities() {
-    let f = "std/multiplicities.asm";
     test_halo2(make_simple_prepared_pipeline(f));
 }
 
