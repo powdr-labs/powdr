@@ -15,8 +15,7 @@ pub use powdr_number::GoldilocksField;
 
 use riscv::CompilerOptions;
 
-use std::fs::File;
-use std::io::Read;
+use std::fs::{self, File};
 use std::path::Path;
 use std::path::PathBuf;
 use std::time::Instant;
@@ -91,9 +90,9 @@ impl Session {
 
     pub fn prove(&mut self) {
         let asm_name = self.pipeline.asm_string().unwrap().0.clone().unwrap();
-        let pil_file = create_pil_file_path(&asm_name);
+        let pil_file = pil_file_path(&asm_name);
 
-        let generate_artifacts = if let Some(existing_pil) = read_file_if_exists(&pil_file) {
+        let generate_artifacts = if let Ok(existing_pil) = fs::read_to_string(&pil_file) {
             let computed_pil = self.pipeline.compute_optimized_pil().unwrap().to_string();
             if existing_pil != computed_pil {
                 log::info!("Compiled PIL changed, invalidating artifacts...");
@@ -157,21 +156,10 @@ impl Session {
     }
 }
 
-fn create_pil_file_path(asm_name: &Path) -> PathBuf {
+fn pil_file_path(asm_name: &Path) -> PathBuf {
     let file_stem = asm_name.file_stem().unwrap().to_str().unwrap();
     let opt_file_stem = format!("{file_stem}_opt");
     asm_name.with_file_name(opt_file_stem).with_extension("pil")
-}
-
-fn read_file_if_exists(path: &Path) -> Option<String> {
-    if path.exists() {
-        let mut file = File::open(path).unwrap();
-        let mut contents = String::new();
-        file.read_to_string(&mut contents).unwrap();
-        Some(contents)
-    } else {
-        None
-    }
 }
 
 pub fn build_guest(
