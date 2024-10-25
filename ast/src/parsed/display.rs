@@ -709,7 +709,7 @@ impl<Ref: Display> Display for Expression<Ref> {
         match self {
             Expression::Reference(_, reference) => write!(f, "{reference}"),
             Expression::PublicReference(_, name) => write!(f, ":{name}"),
-            Expression::Number(_, Number { value, .. }) => write!(f, "{value}"),
+            Expression::Number(_, n) => write!(f, "{n}"),
             Expression::String(_, value) => write!(f, "{}", quote(value)),
             Expression::Tuple(_, items) => write!(f, "({})", format_list(items)),
             Expression::LambdaExpression(_, lambda) => write!(f, "{lambda}"),
@@ -755,6 +755,18 @@ impl Display for NamespacedPolynomialReference {
             write!(f, "{}::{}", self.path, format_type_args(type_args))
         } else {
             write!(f, "{}", self.path)
+        }
+    }
+}
+
+impl Display for Number {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let Number { value, type_ } = self;
+        write!(f, "{value}")?;
+        match type_ {
+            Some(ty @ (Type::Int | Type::Fe | Type::Expr)) => write!(f, "_{ty}"),
+            Some(Type::TypeVar(_)) | None => Ok(()),
+            Some(_) => unreachable!(),
         }
     }
 }

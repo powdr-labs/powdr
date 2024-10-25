@@ -320,7 +320,7 @@ fn execute<F: FieldElement>(
         .with_prover_inputs(inputs)
         .with_output(output_dir.into(), true);
 
-    let generate_witness = |mut pipeline: Pipeline<F>| -> Result<(), Vec<String>> {
+    let generate_witness = |pipeline: &mut Pipeline<F>| -> Result<(), Vec<String>> {
         pipeline.compute_witness().unwrap();
         Ok(())
     };
@@ -344,10 +344,14 @@ fn execute<F: FieldElement>(
         (true, true) => {
             let dry_run =
                 powdr_riscv::continuations::rust_continuations_dry_run(&mut pipeline, profiling);
-            powdr_riscv::continuations::rust_continuations(pipeline, generate_witness, dry_run)?;
+            powdr_riscv::continuations::rust_continuations(
+                &mut pipeline,
+                generate_witness,
+                dry_run,
+            )?;
         }
         (true, false) => {
-            generate_witness(pipeline)?;
+            generate_witness(&mut pipeline)?;
         }
     }
 

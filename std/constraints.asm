@@ -17,3 +17,15 @@ let if_else: expr, Constr, Constr -> Constr = |condition, if_true, if_false| mat
         (1 - condition) * (l_f - r_f) = 0,
     _ => std::check::panic("if_else can only be used with two identity constraints"),
 };
+
+/// Converts a lookup constraint to a phantom lookup constraint.
+let to_phantom_lookup: Constr, expr -> Constr = |constraint, multiplicities| match constraint {
+    Constr::Lookup(selectors, exprs) => Constr::PhantomLookup(selectors, exprs, multiplicities),
+    _ => std::check::panic("Expected a lookup constraint."),
+};
+
+/// Converts a permutation constraint to a phantom permutation constraint.
+let to_phantom_permutation: Constr -> Constr = |constraint| match constraint {
+    Constr::Permutation(selectors, exprs) => Constr::PhantomPermutation(selectors, exprs),
+    _ => std::check::panic("Expected a permutation constraint."),
+};

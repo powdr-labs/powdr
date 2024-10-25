@@ -21,6 +21,7 @@ macro_rules! generalize_factory {
                 )>>,
                 output_dir: std::option::Option<std::path::PathBuf>,
                 setup: std::option::Option<&mut dyn std::io::Read>,
+                proving_key: std::option::Option<&mut dyn std::io::Read>,
                 verification_key: std::option::Option<&mut dyn std::io::Read>,
                 verification_app_key: std::option::Option<&mut dyn std::io::Read>,
                 backend_options: crate::BackendOptions,
@@ -40,6 +41,7 @@ macro_rules! generalize_factory {
                                     std::mem::transmute::<Arc<Vec<(String, VariablySizedColumn<F>)>>, Arc<Vec<(String, VariablySizedColumn<$supported_type>)>>>(fixed),
                                     output_dir,
                                     setup,
+                                    proving_key,
                                     verification_key,
                                     verification_app_key,
                                     backend_options
