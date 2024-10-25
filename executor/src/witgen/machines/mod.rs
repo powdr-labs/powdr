@@ -219,17 +219,20 @@ impl<'a, T: FieldElement> MachineParts<'a, T> {
 /// The minimum size for which a warning is logged if the used rows are less than half of the size.
 /// This number coincides with 2**powdr_linker::MIN_DEGREE_LOG.
 /// It's probably not worth introducing a dependency to the linker just for this constant.
-const MIN_RERPORTING_SIZE: DegreeType = 32;
+const MIN_REPORTING_SIZE: DegreeType = 32;
 
 pub fn compute_size_and_log(name: &str, used_rows: usize, degree_range: DegreeRange) -> DegreeType {
     let size = used_rows.next_power_of_two() as DegreeType;
     let size = degree_range.fit(size);
     let fraction_used = used_rows as f64 / size as f64;
 
-    if size > MIN_RERPORTING_SIZE && fraction_used < 0.5 {
+    if size > MIN_REPORTING_SIZE && fraction_used < 0.5 {
         // In a machine configured to use VADCOP, we would expect the next power of two to be used.
+        let percentage = fraction_used * 100.0;
         log::info!(
-            "Only {used_rows} of {size} rows are used in machine '{name}', which is configured to support sizes in the range {degree_range}. If the backend supports it, consider lowering the min_degree.",
+            "Only {used_rows} of {size} rows ({percentage:.2}%) are used in machine '{name}', which is configured to support sizes in the range {degree_range}. \
+            If the min_degree of this machine was lower, we could size it down such that the fraction of used rows is at least 50%. \
+            If the backend supports it, consider lowering the min_degree.",
         );
     } else {
         log::debug!("{used_rows} of {size} rows are used in machine '{name}'.");
