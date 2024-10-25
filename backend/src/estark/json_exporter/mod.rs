@@ -1,3 +1,4 @@
+use num_traits::One;
 use powdr_ast::parsed::SourceReference;
 use powdr_number::FieldElement;
 use std::collections::HashMap;
@@ -267,9 +268,9 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
     }
 
     fn extract_selector(&mut self, expr: &Expression<T>, max_degree: u32) -> Option<usize> {
-        match self.extract_expression(expr, max_degree) {
-            1 => None,
-            e => Some(e),
+        match expr.is_one() {
+            true => None,
+            false => Some(self.extract_expression(expr, max_degree)),
         }
     }
 
