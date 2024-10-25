@@ -74,6 +74,8 @@ fn check_struct_expression(
                 .into_iter()
                 .map(|f| source.with_error(format!("Field '{f}' specified more than once"))),
         );
+    } else {
+        panic!("Struct '{name}' has not been declared");
     }
 
     errors
@@ -82,21 +84,12 @@ fn check_struct_expression(
 fn check_struct_declarations(
     definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
 ) -> Vec<Error> {
-    let structs_decls = definitions.iter().filter(|(_, (_, def))| {
-        matches!(
-            def,
-            Some(FunctionValueDefinition::TypeDeclaration(
-                TypeDeclaration::Struct(_)
-            ))
-        )
-    });
-
     let mut errors = Vec::new();
-    for (_, (symbol, def)) in structs_decls {
+    for (_, (symbol, def)) in definitions {
         let Some(FunctionValueDefinition::TypeDeclaration(TypeDeclaration::Struct(struct_decl))) =
             def
         else {
-            unreachable!()
+            continue;
         };
 
         let duplicate_declaration_fields: Vec<_> = struct_decl
