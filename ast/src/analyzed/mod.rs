@@ -389,6 +389,26 @@ impl<T> Children<Expression> for Analyzed<T> {
     }
 }
 
+impl<T> Children<AlgebraicExpression<T>> for Analyzed<T> {
+    fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
+        Box::new(
+            self.intermediate_columns
+                .values()
+                .flat_map(|(_, exprs)| exprs.iter())
+                .chain(self.identities.iter().flat_map(|i| i.children())),
+        )
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
+        Box::new(
+            self.intermediate_columns
+                .values_mut()
+                .flat_map(|(_, exprs)| exprs.iter_mut())
+                .chain(self.identities.iter_mut().flat_map(|i| i.children_mut())),
+        )
+    }
+}
+
 impl<T: FieldElement> Analyzed<T> {
     /// @returns all identities with intermediate polynomials inlined.
     pub fn identities_with_inlined_intermediate_polynomials(
