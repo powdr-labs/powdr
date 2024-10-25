@@ -937,3 +937,38 @@ fn typed_literals() {
     let analyzed = analyze_string(input);
     assert_eq!(analyzed.to_string(), expected);
 }
+
+#[test]
+fn traits_and_impls() {
+    let input = "
+        trait X<T> {
+            f: -> T,
+            g: T -> T,
+        }
+        impl X<int> {
+            f: || 1,
+            g: |x| x + 1,
+        }
+        impl X<()> {
+            f: || (),
+            g: |()| (),
+        }
+        let a: int = X::f();
+        ";
+    let expected = r#"    trait X<T> {
+        f: -> T,
+        g: T -> T,
+    }
+    impl X<int> {
+        f: || 1_int,
+        g: |x| x + 1_int,
+    }
+    impl X<()> {
+        f: || (),
+        g: |()| (),
+    }
+    let a: int = X::f::<int>();
+"#;
+    let analyzed = analyze_string(input);
+    assert_eq!(analyzed.to_string(), expected);
+}

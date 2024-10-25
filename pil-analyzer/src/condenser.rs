@@ -27,7 +27,7 @@ use powdr_ast::{
         visitor::{AllChildren, ExpressionVisitable},
         ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall, FunctionKind,
         LambdaExpression, LetStatementInsideBlock, Number, Pattern, SourceReference,
-        TypedExpression, UnaryOperation,
+        TraitImplementation, TypedExpression, UnaryOperation,
     },
 };
 use powdr_number::{BigUint, FieldElement};
@@ -46,6 +46,7 @@ pub fn condense<T: FieldElement>(
     solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
     public_declarations: HashMap<String, PublicDeclaration>,
     proof_items: &[Expression],
+    trait_impls: Vec<TraitImplementation<Expression>>,
     source_order: Vec<StatementIdentifier>,
     auto_added_symbols: HashSet<String>,
 ) -> Analyzed<T> {
@@ -192,6 +193,7 @@ pub fn condense<T: FieldElement>(
         intermediate_columns,
         identities: condensed_identities,
         prover_functions,
+        trait_impls,
         source_order,
         auto_added_symbols,
     }

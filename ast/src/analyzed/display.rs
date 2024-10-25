@@ -154,6 +154,9 @@ impl<T: Display> Display for Analyzed<T> {
                 StatementIdentifier::ProverFunction(i) => {
                     writeln_indented(f, format!("{};", &self.prover_functions[*i]))?;
                 }
+                StatementIdentifier::TraitImplementation(i) => {
+                    writeln_indented(f, format!("{}", self.trait_impls[*i]))?;
+                }
             }
         }
 
