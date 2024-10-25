@@ -40,9 +40,21 @@ trait ExpressionCounter {
     fn expression_count(&self) -> usize;
 }
 
-impl<Expr> ExpressionCounter for Identity<SelectedExpressions<Expr>> {
+impl<T> ExpressionCounter for Identity<T> {
     fn expression_count(&self) -> usize {
-        self.left.expression_count() + self.right.expression_count()
+        match self {
+            Identity::Polynomial(_) => 1,
+            Identity::Lookup(plookup_identity) => {
+                plookup_identity.left.expression_count() + plookup_identity.right.expression_count()
+            }
+            Identity::Permutation(permutation_identity) => {
+                permutation_identity.left.expression_count()
+                    + permutation_identity.right.expression_count()
+            }
+            Identity::Connect(connect_identity) => {
+                connect_identity.left.len() + connect_identity.right.len()
+            }
+        }
     }
 }
 
@@ -62,7 +74,7 @@ impl ExpressionCounter for PublicDeclaration {
     }
 }
 
-impl<Expr> ExpressionCounter for SelectedExpressions<Expr> {
+impl<T> ExpressionCounter for SelectedExpressions<T> {
     fn expression_count(&self) -> usize {
         self.selector.is_some() as usize + self.expressions.len()
     }
