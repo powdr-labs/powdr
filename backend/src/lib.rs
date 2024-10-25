@@ -1,14 +1,16 @@
 #![deny(clippy::print_stdout)]
 
+#[cfg(feature = "estark-starky")]
 mod estark;
 #[cfg(feature = "halo2")]
 mod halo2;
 #[cfg(feature = "plonky3")]
 mod plonky3;
+#[cfg(feature = "stwo")]
+mod stwo;
 
 mod composite;
 mod field_filter;
-mod stwo;
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
@@ -36,12 +38,16 @@ pub enum BackendType {
     #[cfg(feature = "estark-polygon")]
     #[strum(serialize = "estark-polygon-composite")]
     EStarkPolygonComposite,
+    #[cfg(feature = "estark-starky")]
     #[strum(serialize = "estark-starky")]
     EStarkStarky,
+    #[cfg(feature = "estark-starky")]
     #[strum(serialize = "estark-starky-composite")]
     EStarkStarkyComposite,
+    #[cfg(feature = "estark-starky")]
     #[strum(serialize = "estark-dump")]
     EStarkDump,
+    #[cfg(feature = "estark-starky")]
     #[strum(serialize = "estark-dump-composite")]
     EStarkDumpComposite,
     #[cfg(feature = "plonky3")]
@@ -78,11 +84,16 @@ impl BackendType {
             BackendType::EStarkPolygonComposite => Box::new(
                 composite::CompositeBackendFactory::new(estark::polygon_wrapper::Factory),
             ),
+            #[cfg(feature = "estark-starky")]
             BackendType::EStarkStarky => Box::new(estark::starky_wrapper::Factory),
+            #[cfg(feature = "estark-starky")]
             BackendType::EStarkStarkyComposite => Box::new(
                 composite::CompositeBackendFactory::new(estark::starky_wrapper::Factory),
             ),
+            // We need starky here because the dump backend uses some types that come from starky.
+            #[cfg(feature = "estark-starky")]
             BackendType::EStarkDump => Box::new(estark::DumpFactory),
+            #[cfg(feature = "estark-starky")]
             BackendType::EStarkDumpComposite => {
                 Box::new(composite::CompositeBackendFactory::new(estark::DumpFactory))
             }
@@ -90,6 +101,14 @@ impl BackendType {
             BackendType::Plonky3 => Box::new(plonky3::Factory),
             #[cfg(feature = "stwo")]
             BackendType::Stwo => Box::new(stwo::StwoProverFactory),
+            #[cfg(not(any(
+                feature = "halo2",
+                feature = "estark-polygon",
+                feature = "estark-starky",
+                feature = "plonky3",
+                feature = "stwo"
+            )))]
+            _ => panic!("Empty backend."),
         }
     }
 }
