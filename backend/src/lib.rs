@@ -90,7 +90,7 @@ impl BackendType {
             BackendType::EStarkStarkyComposite => Box::new(
                 composite::CompositeBackendFactory::new(estark::starky_wrapper::Factory),
             ),
-            // We need starky here becase the dump backend uses some types that come from starky.
+            // We need starky here because the dump backend uses some types that come from starky.
             #[cfg(feature = "estark-starky")]
             BackendType::EStarkDump => Box::new(estark::DumpFactory),
             #[cfg(feature = "estark-starky")]
