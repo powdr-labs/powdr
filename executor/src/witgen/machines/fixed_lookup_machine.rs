@@ -210,7 +210,6 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
                     ConnectingIdentity {
                         left: &i.left,
                         right: &i.right,
-                        id: i.id,
                         kind: ConnectionKind::Lookup,
                     },
                 )),

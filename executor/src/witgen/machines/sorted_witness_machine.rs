@@ -58,9 +58,9 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
 
             let rhs_references = parts
                 .connecting_identities
-                .values()
-                .filter_map(|&id| {
-                    let rhs_expressions = id
+                .iter()
+                .filter_map(|(id, &identity)| {
+                    let rhs_expressions = identity
                         .right
                         .expressions
                         .iter()
@@ -71,7 +71,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                         })
                         .collect::<Option<Vec<_>>>()?;
 
-                    Some((id.id, rhs_expressions))
+                    Some((*id, rhs_expressions))
                 })
                 .collect::<BTreeMap<_, _>>();
 

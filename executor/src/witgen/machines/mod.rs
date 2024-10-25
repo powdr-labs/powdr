@@ -151,8 +151,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
 }
 
 #[derive(Clone, Copy)]
+/// A connecting identity is any identity which can be used to connect two machines, see [ConnectionKind].
 pub struct ConnectingIdentity<'a, T> {
-    pub id: u64,
     pub left: &'a analyzed::SelectedExpressions<T>,
     pub right: &'a analyzed::SelectedExpressions<T>,
     pub kind: ConnectionKind,
@@ -180,13 +180,11 @@ impl<'a, T> TryFrom<&'a Identity<T>> for ConnectingIdentity<'a, T> {
     fn try_from(identity: &'a Identity<T>) -> Result<Self, Self::Error> {
         match identity {
             Identity::Lookup(i) => Ok(ConnectingIdentity {
-                id: i.id,
                 left: &i.left,
                 right: &i.right,
                 kind: ConnectionKind::Lookup,
             }),
             Identity::Permutation(i) => Ok(ConnectingIdentity {
-                id: i.id,
                 left: &i.left,
                 right: &i.right,
                 kind: ConnectionKind::Permutation,

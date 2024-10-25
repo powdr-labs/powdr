@@ -669,11 +669,11 @@ fn to_constraint<T: FieldElement>(
     match &**variant {
         "Identity" => {
             assert_eq!(fields.len(), 2);
-            PolynomialIdentity::new(
-                counters.dispense_identity_id(),
+            PolynomialIdentity {
+                id: counters.dispense_identity_id(),
                 source,
-                to_expr(&fields[0]) - to_expr(&fields[1]),
-            )
+                expression: to_expr(&fields[0]) - to_expr(&fields[1]),
+            }
             .into()
         }
         "Lookup" | "Permutation" => {
@@ -702,20 +702,20 @@ fn to_constraint<T: FieldElement>(
             };
 
             if variant == &"Lookup" {
-                LookupIdentity::new(
-                    counters.dispense_identity_id(),
+                LookupIdentity {
+                    id: counters.dispense_identity_id(),
                     source,
-                    to_selected_exprs(sel_from, from),
-                    to_selected_exprs(sel_to, to),
-                )
+                    left: to_selected_exprs(sel_from, from),
+                    right: to_selected_exprs(sel_to, to),
+                }
                 .into()
             } else {
-                PermutationIdentity::new(
-                    counters.dispense_identity_id(),
+                PermutationIdentity {
+                    id: counters.dispense_identity_id(),
                     source,
-                    to_selected_exprs(sel_from, from),
-                    to_selected_exprs(sel_to, to),
-                )
+                    left: to_selected_exprs(sel_from, from),
+                    right: to_selected_exprs(sel_to, to),
+                }
                 .into()
             }
         }
@@ -737,12 +737,12 @@ fn to_constraint<T: FieldElement>(
                 unreachable!()
             };
 
-            ConnectIdentity::new(
-                counters.dispense_identity_id(),
+            ConnectIdentity {
+                id: counters.dispense_identity_id(),
                 source,
-                from.into_iter().map(to_expr).collect(),
-                to.into_iter().map(to_expr).collect(),
-            )
+                left: from.into_iter().map(to_expr).collect(),
+                right: to.into_iter().map(to_expr).collect(),
+            }
             .into()
         }
         _ => panic!("Expected constraint but got {constraint}"),

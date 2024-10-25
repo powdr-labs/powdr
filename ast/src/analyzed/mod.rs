@@ -205,8 +205,14 @@ impl<T> Analyzed<T> {
             .max()
             .unwrap_or_default()
             + 1;
-        self.identities
-            .push(PolynomialIdentity::new(id, source, expression).into());
+        self.identities.push(
+            PolynomialIdentity {
+                id,
+                source,
+                expression,
+            }
+            .into(),
+        );
         self.source_order
             .push(StatementIdentifier::ProofItem(self.identities.len() - 1));
         id
@@ -738,16 +744,6 @@ impl<T> Children<AlgebraicExpression<T>> for PolynomialIdentity<T> {
     }
 }
 
-impl<T> PolynomialIdentity<T> {
-    pub fn new(id: u64, source: SourceRef, expression: AlgebraicExpression<T>) -> Self {
-        Self {
-            id,
-            source,
-            expression,
-        }
-    }
-}
-
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct LookupIdentity<T> {
     // The ID is globally unique among identitites.
@@ -766,22 +762,6 @@ impl<T> Children<AlgebraicExpression<T>> for LookupIdentity<T> {
     }
 }
 
-impl<T> LookupIdentity<T> {
-    pub fn new(
-        id: u64,
-        source: SourceRef,
-        left: SelectedExpressions<T>,
-        right: SelectedExpressions<T>,
-    ) -> Self {
-        Self {
-            id,
-            source,
-            left,
-            right,
-        }
-    }
-}
-
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PermutationIdentity<T> {
     // The ID is globally unique among identitites.
@@ -797,22 +777,6 @@ impl<T> Children<AlgebraicExpression<T>> for PermutationIdentity<T> {
     }
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
         Box::new(self.left.children().chain(self.right.children()))
-    }
-}
-
-impl<T> PermutationIdentity<T> {
-    pub fn new(
-        id: u64,
-        source: SourceRef,
-        left: SelectedExpressions<T>,
-        right: SelectedExpressions<T>,
-    ) -> Self {
-        Self {
-            id,
-            source,
-            left,
-            right,
-        }
     }
 }
 
@@ -869,7 +833,6 @@ pub enum Identity<T> {
     Connect(ConnectIdentity<T>),
 }
 
-// TODO This is the only version of Identity left.
 impl<T> Identity<T> {
     pub fn contains_next_ref(&self) -> bool {
         self.children().any(|e| e.contains_next_ref())

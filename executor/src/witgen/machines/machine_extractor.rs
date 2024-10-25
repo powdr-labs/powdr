@@ -99,6 +99,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
         let connecting_identities = identities
             .iter()
             .filter_map(|i| {
+                let id = i.id();
                 // identify potential connecting identities
                 let i = ConnectingIdentity::try_from(*i).ok()?;
 
@@ -107,7 +108,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
                     .intersection(&machine_witnesses)
                     .next()
                     .is_some()
-                    .then_some((i.id, i))
+                    .then_some((id, i))
             })
             .collect::<BTreeMap<_, _>>();
         assert!(connecting_identities.contains_key(&id.id()));
