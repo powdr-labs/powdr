@@ -133,6 +133,8 @@ where
 
     let pcs = config.pcs();
 
+    // TODO: Instead of hashing each commit separately, we could hash a summary of all the commitments,
+    // like a hash that is precomputed at setup phase.
     for table in tables.values() {
         if let Some(preprocessed_commit) = table.preprocessed_commit() {
             challenger.observe(preprocessed_commit.clone());
@@ -211,7 +213,7 @@ where
                     move |StageOpenedValues { local, next }| {
                         (
                             // choose the correct preprocessed commitment based on the degree in the proof
-                            // this could be optimized by putting the preproccessed commitments in a merkle tree
+                            // this could be optimized by putting the preprocessed commitments in a merkle tree
                             // and have the prover prove that it used commitments matching the lengths of the traces
                             // this way the verifier does not need to have all the preprocessed commitments for all sizes
                             table.preprocessed_commit().expect("a preprocessed commitment was expected because a preprocessed opening was found").clone(),

@@ -18,10 +18,28 @@ enum Option<T> {
 enum Constr {
     /// A polynomial identity, result of the "=" operator.
     Identity(expr, expr),
+
     /// A lookup constraint with selectors, result of the "in" operator.
     Lookup((Option<expr>, Option<expr>), (expr, expr)[]),
+
+    /// A "phantom" lookup constraint, i.e., an annotation for witness generation.
+    /// The actual constraint should be enforced via other constraints.
+    /// Contains:
+    /// - The selectors (if any) for the left and right hand side.
+    /// - The LHS and RHS values.
+    /// - The multiplicity column.
+    PhantomLookup((Option<expr>, Option<expr>), (expr, expr)[], expr),
+
     /// A permutation constraint with selectors, result of the "is" operator.
     Permutation((Option<expr>, Option<expr>), (expr, expr)[]),
+
+    /// A "phantom" permutation constraint, i.e., an annotation for witness generation.
+    /// The actual constraint should be enforced via other constraints.
+    /// Contains:
+    /// - The selectors (if any) for the left and right hand side.
+    /// - The LHS and RHS values.
+    PhantomPermutation((Option<expr>, Option<expr>), (expr, expr)[]),
+
     /// A connection constraint (copy constraint), result of the "connect" operator.
     Connection((expr, expr)[])
 }

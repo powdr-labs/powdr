@@ -102,6 +102,8 @@ pub enum Error {
     EmptyWitness,
     #[error("the backend has no setup operations")]
     NoSetupAvailable,
+    #[error("the backend does not use a proving key setup")]
+    NoProvingKeyAvailable,
     #[error("the backend does not implement proof verification")]
     NoVerificationAvailable,
     #[error("the backend does not support Ethereum onchain verification")]
@@ -139,6 +141,7 @@ pub trait BackendFactory<F: FieldElement> {
         fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
+        proving_key: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,
         backend_options: BackendOptions,
@@ -185,6 +188,10 @@ pub trait Backend<F: FieldElement>: Send {
             .write_all(&v)
             .map_err(|_| Error::BackendError("Could not write verification key".to_string()))?;
         Ok(())
+    }
+
+    fn export_proving_key(&self, _output: &mut dyn io::Write) -> Result<(), Error> {
+        Err(Error::NoProvingKeyAvailable)
     }
 
     fn verification_key_bytes(&self) -> Result<Vec<u8>, Error> {
