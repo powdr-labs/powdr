@@ -100,16 +100,12 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
             return None;
         }
 
-        if !parts
-            .connecting_identities
-            .values()
-            .all(|i| i.is_permutation())
-        {
+        if !parts.connections.values().all(|i| i.is_permutation()) {
             return None;
         }
 
         let selector_ids = parts
-            .connecting_identities
+            .connections
             .iter()
             .map(|(id, i)| {
                 i.right
@@ -366,7 +362,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
         // - operation_id == 1: Write
         // - operation_id == 2: Bootloader write
 
-        let args = self.parts.connecting_identities[&identity_id]
+        let args = self.parts.connections[&identity_id]
             .left
             .expressions
             .iter()

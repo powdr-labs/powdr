@@ -9,7 +9,7 @@ use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
 use crate::Identity;
 
-use super::machines::{ConnectingIdentity, MachineParts};
+use super::machines::{Connection, MachineParts};
 use super::FixedData;
 use super::{
     affine_expression::AffineExpression,
@@ -30,7 +30,7 @@ pub struct OuterQuery<'a, 'b, T: FieldElement> {
     /// Rows of the calling machine.
     pub caller_rows: &'b RowPair<'b, 'a, T>,
     /// Connecting identity.
-    pub connecting_identity: ConnectingIdentity<'a, T>,
+    pub connecting_identity: Connection<'a, T>,
     /// The left side of the connecting identity, evaluated.
     pub left: Left<'a, T>,
 }
@@ -38,7 +38,7 @@ pub struct OuterQuery<'a, 'b, T: FieldElement> {
 impl<'a, 'b, T: FieldElement> OuterQuery<'a, 'b, T> {
     pub fn new(
         caller_rows: &'b RowPair<'b, 'a, T>,
-        connecting_identity: ConnectingIdentity<'a, T>,
+        connecting_identity: Connection<'a, T>,
     ) -> Self {
         // Evaluate once, for performance reasons.
         let left = connecting_identity

@@ -19,7 +19,7 @@ use crate::witgen::{EvalError, EvalValue, IncompleteCause, MutableState, QueryCa
 use crate::witgen::{EvalResult, FixedData};
 use crate::Identity;
 
-use super::{ConnectingIdentity, ConnectionKind, Machine};
+use super::{Connection, ConnectionKind, Machine};
 
 type Application = (Vec<PolyID>, Vec<PolyID>);
 type Index<T> = BTreeMap<Vec<T>, IndexValue>;
@@ -178,7 +178,7 @@ pub struct FixedLookup<'a, T: FieldElement> {
     degree: DegreeType,
     global_constraints: GlobalConstraints<T>,
     indices: IndexedColumns<T>,
-    connecting_identities: BTreeMap<u64, ConnectingIdentity<'a, T>>,
+    connections: BTreeMap<u64, Connection<'a, T>>,
     fixed_data: &'a FixedData<'a, T>,
     /// multiplicities column values for each identity id
     multiplicities: BTreeMap<u64, Vec<T>>,
@@ -195,7 +195,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         all_identities: Vec<&'a Identity<T>>,
         fixed_data: &'a FixedData<'a, T>,
     ) -> Self {
-        let connecting_identities = all_identities
+        let connections = all_identities
             .into_iter()
             .filter_map(|i| match i {
                 Identity::Lookup(i) => (i.right.selector.is_none()
@@ -207,7 +207,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
                     && !i.right.expressions.is_empty())
                 .then_some((
                     i.id,
-                    ConnectingIdentity {
+                    Connection {
                         left: &i.left,
                         right: &i.right,
                         kind: ConnectionKind::Lookup,
@@ -238,7 +238,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             degree,
             global_constraints,
             indices: Default::default(),
-            connecting_identities,
+            connections,
             fixed_data,
             multiplicities: Default::default(),
             logup_multiplicity_column,
@@ -383,7 +383,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let identity = self.connecting_identities[&identity_id];
+        let identity = self.connections[&identity_id];
         let right = identity.right;
 
         // get the values of the fixed columns
@@ -423,7 +423,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
     }
 
     fn identity_ids(&self) -> Vec<u64> {
-        self.connecting_identities.keys().copied().collect()
+        self.connections.keys().copied().collect()
     }
 }
 

@@ -151,20 +151,21 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
 }
 
 #[derive(Clone, Copy)]
-/// A connecting identity is any identity which can be used to connect two machines, see [ConnectionKind].
-pub struct ConnectingIdentity<'a, T> {
+/// A connection is a witness generation directive to propagate rows across machines
+pub struct Connection<'a, T> {
     pub left: &'a analyzed::SelectedExpressions<T>,
     pub right: &'a analyzed::SelectedExpressions<T>,
+    /// For [ConnectionKind::Permutation], rows of `left` are a permutation of rows of `right`. For [ConnectionKind::Lookup], all rows in `left` are in `right`.
     pub kind: ConnectionKind,
 }
 
-impl<'a, T: Display> Display for ConnectingIdentity<'a, T> {
+impl<'a, T: Display> Display for Connection<'a, T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "{} {} {}", self.left, self.right, self.kind)
     }
 }
 
-impl<'a, T> ConnectingIdentity<'a, T> {
+impl<'a, T> Connection<'a, T> {
     fn is_permutation(&self) -> bool {
         self.kind == ConnectionKind::Permutation
     }
@@ -174,17 +175,17 @@ impl<'a, T> ConnectingIdentity<'a, T> {
     }
 }
 
-impl<'a, T> TryFrom<&'a Identity<T>> for ConnectingIdentity<'a, T> {
+impl<'a, T> TryFrom<&'a Identity<T>> for Connection<'a, T> {
     type Error = &'a Identity<T>;
 
     fn try_from(identity: &'a Identity<T>) -> Result<Self, Self::Error> {
         match identity {
-            Identity::Lookup(i) => Ok(ConnectingIdentity {
+            Identity::Lookup(i) => Ok(Connection {
                 left: &i.left,
                 right: &i.right,
                 kind: ConnectionKind::Lookup,
             }),
-            Identity::Permutation(i) => Ok(ConnectingIdentity {
+            Identity::Permutation(i) => Ok(Connection {
                 left: &i.left,
                 right: &i.right,
                 kind: ConnectionKind::Permutation,
@@ -217,7 +218,7 @@ pub struct MachineParts<'a, T: FieldElement> {
     /// Connecting identities, indexed by their ID.
     /// These are the identities that connect another machine to this one,
     /// where this one is on the RHS of a lookup.
-    pub connecting_identities: BTreeMap<u64, ConnectingIdentity<'a, T>>,
+    pub connections: BTreeMap<u64, Connection<'a, T>>,
     /// Identities relevant to this machine and only this machine.
     pub identities: Vec<&'a Identity<T>>,
     /// Witness columns relevant to this machine.
@@ -229,14 +230,14 @@ pub struct MachineParts<'a, T: FieldElement> {
 impl<'a, T: FieldElement> MachineParts<'a, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
-        connecting_identities: BTreeMap<u64, ConnectingIdentity<'a, T>>,
+        connections: BTreeMap<u64, Connection<'a, T>>,
         identities: Vec<&'a Identity<T>>,
         witnesses: HashSet<PolyID>,
         prover_functions: Vec<&'a analyzed::Expression>,
     ) -> Self {
         Self {
             fixed_data,
-            connecting_identities,
+            connections,
             identities,
             witnesses,
             prover_functions,
@@ -264,7 +265,7 @@ impl<'a, T: FieldElement> MachineParts<'a, T> {
 
     /// Returns the IDs of the connecting identities.
     pub fn identity_ids(&self) -> Vec<u64> {
-        self.connecting_identities.keys().cloned().collect()
+        self.connections.keys().cloned().collect()
     }
 
     /// Returns the name of a column.

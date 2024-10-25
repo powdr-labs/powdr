@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use super::super::affine_expression::AffineExpression;
-use super::{ConnectingIdentity, EvalResult, FixedData};
+use super::{Connection, EvalResult, FixedData};
 use super::{Machine, MachineParts};
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::rows::RowPair;
@@ -25,7 +25,7 @@ use powdr_number::{DegreeType, FieldElement};
 pub struct SortedWitnesses<'a, T: FieldElement> {
     degree: DegreeType,
     rhs_references: BTreeMap<u64, Vec<&'a AlgebraicReference>>,
-    connecting_identities: BTreeMap<u64, ConnectingIdentity<'a, T>>,
+    connections: BTreeMap<u64, Connection<'a, T>>,
     key_col: PolyID,
     /// Position of the witness columns in the data.
     witness_positions: HashMap<PolyID, usize>,
@@ -57,7 +57,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                 .collect();
 
             let rhs_references = parts
-                .connecting_identities
+                .connections
                 .iter()
                 .filter_map(|(id, &identity)| {
                     let rhs_expressions = identity
@@ -75,7 +75,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                 })
                 .collect::<BTreeMap<_, _>>();
 
-            if rhs_references.len() != parts.connecting_identities.len() {
+            if rhs_references.len() != parts.connections.len() {
                 // Not all connected identities meet the criteria above, so this is not a DoubleSortedWitnesses machine.
                 return None;
             }
@@ -91,7 +91,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
             Some(SortedWitnesses {
                 degree,
                 rhs_references,
-                connecting_identities: parts.connecting_identities.clone(),
+                connections: parts.connections.clone(),
                 name,
                 key_col,
                 witness_positions,
@@ -233,7 +233,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
         identity_id: u64,
         caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let left = self.connecting_identities[&identity_id]
+        let left = self.connections[&identity_id]
             .left
             .expressions
             .iter()

@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Display;
 use std::iter::{self, once};
 
-use super::{ConnectingIdentity, ConnectionKind, EvalResult, FixedData, MachineParts};
+use super::{Connection, ConnectionKind, EvalResult, FixedData, MachineParts};
 
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::block_processor::BlockProcessor;
@@ -97,9 +97,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let degree = degree_range.max;
 
         let (is_permutation, block_size, latch_row) =
-            detect_connection_type_and_block_size(fixed_data, &parts.connecting_identities)?;
+            detect_connection_type_and_block_size(fixed_data, &parts.connections)?;
 
-        for id in parts.connecting_identities.values() {
+        for id in parts.connections.values() {
             for r in id.right.expressions.iter() {
                 if let Some(poly) = try_to_simple_poly(r) {
                     if poly.poly_id.ptype == PolynomialType::Constant {
@@ -145,12 +145,12 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
 fn detect_connection_type_and_block_size<'a, T: FieldElement>(
     fixed_data: &'a FixedData<'a, T>,
-    connecting_identities: &BTreeMap<u64, ConnectingIdentity<'a, T>>,
+    connections: &BTreeMap<u64, Connection<'a, T>>,
 ) -> Option<(ConnectionKind, usize, usize)> {
     // TODO we should check that the other constraints/fixed columns are also periodic.
 
     // Connecting identities should either all be permutations or all lookups.
-    let connection_type = connecting_identities
+    let connection_type = connections
         .values()
         .map(|id| id.kind)
         .unique()
@@ -161,7 +161,7 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
     let (latch_row, block_size) = match connection_type {
         ConnectionKind::Lookup => {
             // We'd expect all RHS selectors to be fixed columns of the same period.
-            connecting_identities
+            connections
                 .values()
                 .map(|id| try_to_period(&id.right.selector, fixed_data))
                 .unique()
@@ -179,7 +179,7 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
                     .max_by_key(|&(_, period)| period)
             };
             let mut latch_candidates = BTreeSet::new();
-            for id in connecting_identities.values() {
+            for id in connections.values() {
                 if let Some(selector) = &id.right.selector {
                     collect_fixed_cols(selector, &mut latch_candidates);
                 }
@@ -245,7 +245,7 @@ fn try_to_period<T: FieldElement>(
 
 impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
-        self.parts.connecting_identities.keys().copied().collect()
+        self.parts.connections.keys().copied().collect()
     }
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
@@ -316,7 +316,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             );
 
             // Set all selectors to 0
-            for id in self.parts.connecting_identities.values() {
+            for id in self.parts.connections.values() {
                 processor
                     .set_value(
                         self.latch_row + 1,
@@ -450,8 +450,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let outer_query =
-            OuterQuery::new(caller_rows, self.parts.connecting_identities[&identity_id]);
+        let outer_query = OuterQuery::new(caller_rows, self.parts.connections[&identity_id]);
 
         log::trace!("Start processing block machine '{}'", self.name());
         log::trace!("Left values of lookup:");

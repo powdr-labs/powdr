@@ -11,7 +11,7 @@ use super::fixed_lookup_machine::FixedLookup;
 use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::KnownMachine;
-use crate::witgen::machines::ConnectingIdentity;
+use crate::witgen::machines::Connection;
 use crate::{
     witgen::{
         generator::Generator,
@@ -96,12 +96,12 @@ pub fn split_out_machines<'a, T: FieldElement>(
         remaining_witnesses = &remaining_witnesses - &machine_witnesses;
 
         // Identities that call into the current machine
-        let connecting_identities = identities
+        let connections = identities
             .iter()
             .filter_map(|i| {
                 let id = i.id();
                 // identify potential connecting identities
-                let i = ConnectingIdentity::try_from(*i).ok()?;
+                let i = Connection::try_from(*i).ok()?;
 
                 // check if the identity connects to the current machine
                 refs_in_selected_expressions(i.right)
@@ -111,7 +111,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
                     .then_some((id, i))
             })
             .collect::<BTreeMap<_, _>>();
-        assert!(connecting_identities.contains_key(&id.id()));
+        assert!(connections.contains_key(&id.id()));
 
         let prover_functions = prover_functions
             .iter()
@@ -136,7 +136,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             machine_identities
                 .iter()
                 .format("\n"),
-            connecting_identities
+            connections
                 .values()
                 .map(|id| id.to_string())
                 .format("\n"),
@@ -167,7 +167,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
 
         let machine_parts = MachineParts::new(
             fixed,
-            connecting_identities,
+            connections,
             machine_identities,
             machine_witnesses,
             prover_functions.iter().map(|&(_, pf)| pf).collect(),
@@ -262,7 +262,7 @@ fn build_machine<'a, T: FieldElement>(
         KnownMachine::BlockMachine(machine)
     } else {
         log::debug!("Detected machine: VM.");
-        let latch = machine_parts.connecting_identities
+        let latch = machine_parts.connections
             .values()
             .fold(None, |existing_latch, identity| {
                 let current_latch = identity
