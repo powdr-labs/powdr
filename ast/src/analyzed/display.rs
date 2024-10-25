@@ -64,9 +64,7 @@ impl<T: Display> Display for Analyzed<T> {
                         if matches!(
                             definition,
                             Some(FunctionValueDefinition::TypeConstructor(_, _))
-                        ) || matches!(
-                            definition,
-                            Some(FunctionValueDefinition::TraitFunction(_, _))
+                                | Some(FunctionValueDefinition::TraitFunction(_, _))
                         ) {
                             // These are printed as part of the enum / trait.
                             continue;
@@ -304,7 +302,7 @@ fn format_outer_function(e: &Expression, f: &mut Formatter<'_>) -> Result {
     }
 }
 
-impl<Expr: Display> Display for SelectedExpressions<Expr> {
+impl<T: Display> Display for SelectedExpressions<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
@@ -318,21 +316,41 @@ impl<Expr: Display> Display for SelectedExpressions<Expr> {
     }
 }
 
-impl<T: Display> Display for Identity<SelectedExpressions<AlgebraicExpression<T>>> {
+impl<T: Display> Display for PolynomialIdentity<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self.kind {
-            IdentityKind::Polynomial => {
-                let (left, right) = self.as_polynomial_identity();
-                let right = right
-                    .as_ref()
-                    .map(|r| r.to_string())
-                    .unwrap_or_else(|| "0".into());
+        match &self.expression {
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                left,
+                op: AlgebraicBinaryOperator::Sub,
+                right,
+            }) => {
                 write!(f, "{left} = {right};")
             }
-            IdentityKind::Plookup => write!(f, "{} in {};", self.left, self.right),
-            IdentityKind::Permutation => write!(f, "{} is {};", self.left, self.right),
-            IdentityKind::Connect => write!(f, "{} connect {};", self.left, self.right),
+            e => write!(f, "{e} = 0;"),
         }
+    }
+}
+
+impl<T: Display> Display for LookupIdentity<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{} in {};", self.left, self.right)
+    }
+}
+
+impl<T: Display> Display for PermutationIdentity<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{} is {};", self.left, self.right)
+    }
+}
+
+impl<T: Display> Display for ConnectIdentity<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "[{}] connect [{}];",
+            self.left.iter().format(", "),
+            self.right.iter().format(", ")
+        )
     }
 }
 

@@ -334,6 +334,7 @@ fn pil_at_module_level() {
     regular_test(f, Default::default());
 }
 
+#[cfg(feature = "estark-starky")]
 #[test]
 fn read_poly_files() {
     let asm_files = ["asm/vm_to_block_unique_interface.asm", "asm/empty.asm"];
@@ -350,14 +351,14 @@ fn read_poly_files() {
         pipeline.compute_proof().unwrap();
 
         // check fixed cols (may have no fixed cols)
-        let fixed = FixedPolySet::<Bn254Field>::read(tmp_dir.as_path());
+        let fixed = FixedPolySet::<Bn254Field>::read(tmp_dir.as_path()).unwrap();
         let fixed = get_uniquely_sized(&fixed).unwrap();
         if !fixed.is_empty() {
             assert_eq!(pil.degree(), fixed[0].1.len() as u64);
         }
 
         // check witness cols (examples assumed to have at least one witness col)
-        let witness = WitnessPolySet::<Bn254Field>::read(tmp_dir.as_path());
+        let witness = WitnessPolySet::<Bn254Field>::read(tmp_dir.as_path()).unwrap();
         assert_eq!(pil.degree(), witness[0].1.len() as u64);
     }
 }

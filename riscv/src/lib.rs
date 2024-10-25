@@ -21,7 +21,7 @@ pub mod small_field;
 static TARGET_STD: &str = "riscv32im-risc0-zkvm-elf";
 static TARGET_NO_STD: &str = "riscv32imac-unknown-none-elf";
 
-#[derive(Default, Clone)]
+#[derive(Copy, Default, Clone)]
 pub struct RuntimeLibs {
     pub arith: bool,
     pub keccak: bool,
@@ -58,11 +58,13 @@ impl RuntimeLibs {
         }
     }
 }
-#[derive(Clone)]
+#[derive(Copy, Clone)]
 pub struct CompilerOptions {
     pub field: KnownField,
     pub libs: RuntimeLibs,
     pub continuations: bool,
+    pub min_degree_log: Option<u32>,
+    pub max_degree_log: Option<u32>,
 }
 
 impl CompilerOptions {
@@ -71,6 +73,8 @@ impl CompilerOptions {
             field,
             libs,
             continuations,
+            min_degree_log: None,
+            max_degree_log: None,
         }
     }
 
@@ -79,6 +83,8 @@ impl CompilerOptions {
             field: KnownField::BabyBearField,
             libs: RuntimeLibs::new(),
             continuations: false,
+            min_degree_log: None,
+            max_degree_log: None,
         }
     }
 
@@ -87,6 +93,22 @@ impl CompilerOptions {
             field: KnownField::GoldilocksField,
             libs: RuntimeLibs::new(),
             continuations: false,
+            min_degree_log: None,
+            max_degree_log: None,
+        }
+    }
+
+    pub fn with_min_degree_log(self, log_min_degree: u32) -> Self {
+        Self {
+            min_degree_log: Some(log_min_degree),
+            ..self
+        }
+    }
+
+    pub fn with_max_degree_log(self, log_max_degree: u32) -> Self {
+        Self {
+            max_degree_log: Some(log_max_degree),
+            ..self
         }
     }
 
@@ -357,6 +379,8 @@ fn build_cargo_command(
         "RUSTFLAGS",
         "-g -C link-arg=-Tpowdr.x -C link-arg=--emit-relocs -C passes=lower-atomic -C panic=abort",
     );
+    // keep debug info for the profiler (callgrind/flamegraph)
+    cmd.env("CARGO_PROFILE_RELEASE_DEBUG", "true");
 
     let mut args: Vec<&OsStr> = as_ref![
         OsStr;

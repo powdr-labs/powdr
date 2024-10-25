@@ -81,6 +81,7 @@ impl BackendFactory<Bn254Field> for Bn254Factory {
         fixed: Arc<Vec<(String, VariablySizedColumn<Bn254Field>)>>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
+        proving_key: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,
         options: BackendOptions,
@@ -88,6 +89,10 @@ impl BackendFactory<Bn254Field> for Bn254Factory {
         if pil.degrees().len() > 1 {
             return Err(Error::NoVariableDegreeAvailable);
         }
+        if proving_key.is_some() {
+            return Err(Error::NoProvingKeyAvailable);
+        }
+
         let proof_type = ProofType::from(options);
         let fixed = Arc::new(
             get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
@@ -193,12 +198,16 @@ impl<F: FieldElement> BackendFactory<F> for Halo2MockFactory {
         fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
+        proving_key: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,
         _options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<F>>, Error> {
         if setup.is_some() {
             return Err(Error::NoSetupAvailable);
+        }
+        if proving_key.is_some() {
+            return Err(Error::NoProvingKeyAvailable);
         }
         if verification_key.is_some() {
             return Err(Error::NoVerificationAvailable);

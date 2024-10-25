@@ -40,19 +40,25 @@ pub enum SymbolCategory {
     /// A type constructor, i.e. an enum variant, which can be used as a function or constant inside an expression
     /// or to deconstruct a value in a pattern.
     TypeConstructor,
-    /// A trait declaration, which can be used as a type.
+    /// A trait declaration
     TraitDeclaration,
+    /// A struct, which can be used as a type.
+    Struct,
 }
 impl SymbolCategory {
     /// Returns if a symbol of a given category can satisfy a request for a certain category.
     pub fn compatible_with_request(&self, request: SymbolCategory) -> bool {
         match self {
-            SymbolCategory::Value => request == SymbolCategory::Value,
-            SymbolCategory::Type => request == SymbolCategory::Type,
+            SymbolCategory::Struct => {
+                // Structs can also satisfy requests for types.
+                request == SymbolCategory::Struct || request == SymbolCategory::Type
+            }
             SymbolCategory::TypeConstructor => {
                 // Type constructors can also satisfy requests for values.
                 request == SymbolCategory::TypeConstructor || request == SymbolCategory::Value
             }
+            SymbolCategory::Value => request == SymbolCategory::Value,
+            SymbolCategory::Type => request == SymbolCategory::Type,
             SymbolCategory::TraitDeclaration => request == SymbolCategory::TraitDeclaration,
         }
     }
@@ -165,7 +171,7 @@ impl PilStatement {
                 )
             }
             PilStatement::StructDeclaration(source, StructDeclaration { name, .. }) => {
-                Box::new(once((name, None, SymbolCategory::Type, source.clone())))
+                Box::new(once((name, None, SymbolCategory::Struct, source.clone())))
             }
             PilStatement::TraitDeclaration(
                 source,
