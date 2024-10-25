@@ -754,12 +754,13 @@ fn to_selected_exprs<'a, T: FieldElement>(
     exprs: Vec<&Value<'a, T>>,
 ) -> SelectedExpressions<T> {
     SelectedExpressions {
-        selector: to_option_expr(selector),
+        selector: to_selector_expr(selector),
         expressions: exprs.into_iter().map(to_expr).collect(),
     }
 }
 
-fn to_option_expr<T: FieldElement>(value: &Value<'_, T>) -> AlgebraicExpression<T> {
+/// Turns an optional selector expression into an algebraic expression. `None` gets turned into 1.
+fn to_selector_expr<T: FieldElement>(value: &Value<'_, T>) -> AlgebraicExpression<T> {
     let Value::Enum(enum_value) = value else {
         panic!("Expected option but got {value:?}")
     };

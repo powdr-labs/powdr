@@ -104,9 +104,9 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                     }),
                     Identity::Lookup(identity) => {
                         plookup_identities.push(PlookupIdentity {
-                            selF: exporter.extract_expression_opt(&identity.left.selector, 1),
+                            selF: exporter.extract_selector(&identity.left.selector, 1),
                             f: Some(exporter.extract_expression_vec(&identity.left.expressions, 1)),
-                            selT: exporter.extract_expression_opt(&identity.right.selector, 1),
+                            selT: exporter.extract_selector(&identity.right.selector, 1),
                             t: Some(
                                 exporter.extract_expression_vec(&identity.right.expressions, 1),
                             ),
@@ -116,9 +116,9 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                     }
                     Identity::Permutation(identity) => {
                         permutation_identities.push(PermutationIdentity {
-                            selF: exporter.extract_expression_opt(&identity.left.selector, 1),
+                            selF: exporter.extract_selector(&identity.left.selector, 1),
                             f: Some(exporter.extract_expression_vec(&identity.left.expressions, 1)),
-                            selT: exporter.extract_expression_opt(&identity.right.selector, 1),
+                            selT: exporter.extract_selector(&identity.right.selector, 1),
                             t: Some(
                                 exporter.extract_expression_vec(&identity.right.expressions, 1),
                             ),
@@ -266,7 +266,7 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
         id
     }
 
-    fn extract_expression_opt(&mut self, expr: &Expression<T>, max_degree: u32) -> Option<usize> {
+    fn extract_selector(&mut self, expr: &Expression<T>, max_degree: u32) -> Option<usize> {
         match self.extract_expression(expr, max_degree) {
             1 => None,
             e => Some(e),

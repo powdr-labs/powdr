@@ -214,7 +214,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
             .ok()
             .and_then(|affine_expression| affine_expression.constant_value())
             .and_then(|v| v.is_one().then_some(()))
-            .ok_or(EvalError::Generic("Selector is not !".to_string()))?;
+            .ok_or(EvalError::Generic("Selector is not 1!".to_string()))?;
 
         let range_constraint =
             CombinedRangeConstraintSet::new(outer_query.caller_rows, current_rows);

@@ -311,7 +311,7 @@ impl<T: Display> Display for SelectedExpressions<T> {
                 let s = self.selector.to_string();
                 match s.as_str() {
                     "1" => "".to_string(),
-                    _ => format!("{s} $ "),
+                    s => format!("{s} $ "),
                 }
             },
             self.expressions.iter().format(", ")
