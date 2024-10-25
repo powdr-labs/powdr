@@ -196,12 +196,12 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                     .map(|args| args.into_iter().map(|t| self.process_type(t)).collect());
 
                 Expression::StructExpression(
-                    src,
+                    src.clone(),
                     StructExpression {
                         name: Reference::Poly(PolynomialReference {
                             name: self
                                 .driver
-                                .resolve_ref(&name.path, SymbolCategory::Struct)
+                                .resolve_ref(&src, &name.path, SymbolCategory::Struct)
                                 .unwrap(),
                             type_args,
                         }),
