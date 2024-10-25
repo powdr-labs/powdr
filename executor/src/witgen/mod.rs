@@ -237,6 +237,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                     Default::default(),
                     polynomial_identities,
                     fixed.witness_cols.keys().collect::<HashSet<_>>(),
+                    Default::default(),
                     fixed.analyzed.prover_functions.iter().collect(),
                 ),
             }

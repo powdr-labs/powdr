@@ -25,6 +25,7 @@ mod double_sorted_witness_machine_16;
 mod double_sorted_witness_machine_32;
 mod fixed_lookup_machine;
 pub mod machine_extractor;
+pub(crate) mod multiplicity_counter;
 pub mod profiling;
 mod sorted_witness_machine;
 mod write_once_memory;
@@ -234,6 +235,7 @@ pub struct MachineParts<'a, T: FieldElement> {
     pub identities: Vec<&'a Identity<T>>,
     /// Witness columns relevant to this machine.
     pub witnesses: HashSet<PolyID>,
+    pub multiplicity_columns: BTreeMap<u64, PolyID>,
     /// Prover functions that are relevant for this machine.
     pub prover_functions: Vec<&'a analyzed::Expression>,
 }
@@ -244,6 +246,7 @@ impl<'a, T: FieldElement> MachineParts<'a, T> {
         connections: BTreeMap<u64, Connection<'a, T>>,
         identities: Vec<&'a Identity<T>>,
         witnesses: HashSet<PolyID>,
+        multiplicity_columns: BTreeMap<u64, PolyID>,
         prover_functions: Vec<&'a analyzed::Expression>,
     ) -> Self {
         Self {
@@ -251,6 +254,7 @@ impl<'a, T: FieldElement> MachineParts<'a, T> {
             connections,
             identities,
             witnesses,
+            multiplicity_columns,
             prover_functions,
         }
     }

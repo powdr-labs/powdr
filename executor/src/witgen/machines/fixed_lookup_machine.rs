@@ -8,7 +8,7 @@ use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicReference, LookupIdentity, PhantomLookupIdentity, PolyID, PolynomialType,
 };
-use powdr_number::FieldElement;
+use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::affine_expression::{AffineExpression, AlgebraicVariable};
 use crate::witgen::global_constraints::{GlobalConstraints, RangeConstraintSet};
@@ -178,6 +178,8 @@ pub struct FixedLookup<'a, T: FieldElement> {
     indices: IndexedColumns<T>,
     connections: BTreeMap<u64, Connection<'a, T>>,
     fixed_data: &'a FixedData<'a, T>,
+    machine_sizes: BTreeMap<PolyID, DegreeType>,
+    multiplicity_counter: MultiplicityCounter,
 }
 
 impl<'a, T: FieldElement> FixedLookup<'a, T> {
@@ -185,6 +187,8 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         global_constraints: GlobalConstraints<T>,
         all_identities: Vec<&'a Identity<T>>,
         fixed_data: &'a FixedData<'a, T>,
+        machine_sizes: BTreeMap<PolyID, DegreeType>,
+        id_to_multiplicity: BTreeMap<u64, PolyID>,
     ) -> Self {
         let connections = all_identities
             .into_iter()
@@ -218,11 +222,14 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             indices: Default::default(),
             connections,
             fixed_data,
+            machine_sizes,
+            multiplicity_counter: MultiplicityCounter::new(id_to_multiplicity),
         }
     }
 
     fn process_plookup_internal(
         &mut self,
+        identity_id: u64,
         rows: &RowPair<'_, '_, T>,
         left: &[AffineExpression<AlgebraicVariable<'a>, T>],
         mut right: Peekable<impl Iterator<Item = &'a AlgebraicReference>>,
@@ -284,6 +291,8 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
                 ))
             }
         };
+
+        self.multiplicity_counter.increment(identity_id, row);
 
         let output = output_columns
             .iter()
@@ -362,14 +371,18 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
             .peekable();
 
         let outer_query = OuterQuery::new(caller_rows, identity);
-        self.process_plookup_internal(caller_rows, &outer_query.left, right)
+        self.process_plookup_internal(identity_id, caller_rows, &outer_query.left, right)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
-        HashMap::new()
+        self.multiplicity_counter
+            .generate_columns_different_sizes(self.machine_sizes.clone())
+            .into_iter()
+            .map(|(poly_id, column)| (self.fixed_data.column_name(&poly_id).to_string(), column))
+            .collect()
     }
 
     fn identity_ids(&self) -> Vec<u64> {

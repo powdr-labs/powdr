@@ -15,7 +15,10 @@ use crate::witgen::sequence_iterator::{
     DefaultSequenceIterator, ProcessingSequenceCache, ProcessingSequenceIterator,
 };
 use crate::witgen::util::try_to_simple_poly;
-use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause};
+use crate::witgen::{
+    machines::multiplicity_counter::MultiplicityCounter, machines::Machine, EvalError, EvalValue,
+    IncompleteCause,
+};
 use crate::witgen::{MutableState, QueryCallback};
 use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicExpression as Expression, DegreeRange, PolyID, PolynomialType};
@@ -86,6 +89,7 @@ pub struct BlockMachine<'a, T: FieldElement> {
     /// to make progress most quickly.
     processing_sequence_cache: ProcessingSequenceCache,
     name: String,
+    multiplicity_counter: MultiplicityCounter,
 }
 
 impl<'a, T: FieldElement> BlockMachine<'a, T> {
@@ -138,6 +142,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             data,
             publics: Default::default(),
             first_in_progress_row: block_size,
+            multiplicity_counter: MultiplicityCounter::new(parts.multiplicity_columns.clone()),
             processing_sequence_cache: ProcessingSequenceCache::new(
                 block_size,
                 latch_row,
@@ -383,6 +388,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             .collect();
         self.handle_last_row(&mut data);
         data.into_iter()
+            .chain(
+                self.multiplicity_counter
+                    .generate_columns_single_size(self.degree),
+            )
             .map(|(id, values)| (self.fixed_data.column_name(&id).to_string(), values))
             .collect()
     }
@@ -476,6 +485,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
                 let updates = updates.report_side_effect();
 
+                let latch_row_index = self.data.len() - 1 - self.block_size + self.latch_row;
+                self.multiplicity_counter
+                    .increment(identity_id, latch_row_index);
+
                 // We solved the query, so report it to the cache.
                 self.processing_sequence_cache
                     .report_processing_sequence(&outer_query.left, sequence_iterator);
@@ -538,8 +551,8 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
         // 1. Ignore the first row of the next block:
         new_block.pop();
-        // 2. Merge the last row of the previous block
 
+        // 2. Merge the last row of the previous block
         new_block
             .get_mut(0)
             .unwrap()
@@ -549,6 +562,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                     "Block machine overwrites existing value with different value!".to_string(),
                 )
             })?;
+
         // 3. Remove the last row of the previous block from data
         self.data.pop();
 
