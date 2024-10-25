@@ -869,7 +869,13 @@ namespace N(65536);
     fn test_trait_impl() {
         let input = r#"namespace N(65536);
         trait Default<T> { f: -> T, g: T -> T }
-        impl Default<fe> { f: || 1, g: |x| x }
+        impl Default<fe> {
+            f: || 1,
+            // This is unused but should not be removed, nor should its dependencies.
+            g: |x| dep(x)
+        }
+        let dep: fe -> fe = |x| x + 1;
+        // this should be removed.
         impl Default<int> { f: || 1, g: |x| x }
         let x: col = |_| Default::f();
         let w;
@@ -878,11 +884,13 @@ namespace N(65536);
         let expectation = r#"namespace N(65536);
     trait Default<T> {
         f: -> T,
+        g: T -> T
     }
     impl Default<fe> {
-        f: || 1,
-        g: |x| x,
+        f: || 1_fe,
+        g: |x| dep(x),
     }
+    let dep: fe -> fe = |x| x + 1_fe;
     col fixed x(_) { N::Default::f::<fe>() };
     col witness w;
     N::w = N::x;
