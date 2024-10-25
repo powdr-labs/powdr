@@ -9,14 +9,15 @@ repository = { workspace = true }
 default-run = "powdr"
 
 [features]
-default = [] # halo2 is disabled by default
+default = []
 halo2 = ["powdr-backend/halo2", "powdr-pipeline/halo2"]
 plonky3 = ["powdr-backend/plonky3", "powdr-pipeline/plonky3"]
+estark-starky = ["powdr-backend/estark-starky", "powdr-pipeline/estark-starky"]
 estark-polygon = [
   "powdr-backend/estark-polygon",
   "powdr-pipeline/estark-polygon",
 ]
-stwo=["powdr-backend/stwo","powdr-pipeline/stwo"]
+stwo = ["powdr-backend/stwo", "powdr-pipeline/stwo"]
 
 simd = ["powdr-backend/simd", "powdr-pipeline/simd"]
 
@@ -37,6 +38,8 @@ tracing-subscriber = { version = "0.3.17", features = ["std", "env-filter"] }
 tracing-forest = { version = "0.1.6", features = ["ansi", "smallvec"] }
 
 [dev-dependencies]
+powdr-pipeline = { workspace = true, features = ["estark-starky"] }
+
 tempfile = "3.6"
 
 test-log = "0.2.12"
