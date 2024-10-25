@@ -868,15 +868,21 @@ namespace N(65536);
     #[test]
     fn test_trait_impl() {
         let input = r#"namespace N(65536);
-        trait Default<T> { f: -> T }
-        impl Default<fe> { f: || 1 }
+        trait Default<T> { f: -> T, g: T -> T }
+        impl Default<fe> { f: || 1, g: |x| x }
+        impl Default<int> { f: || 1, g: |x| x }
         let x: col = |_| Default::f();
         let w;
         w = x;
     "#;
         let expectation = r#"namespace N(65536);
-    trait Default<T> { f: -> T }
-    impl Default<fe> { f: || 1 }
+    trait Default<T> {
+        f: -> T,
+    }
+    impl Default<fe> {
+        f: || 1,
+        g: |x| x,
+    }
     col fixed x(_) { N::Default::f::<fe>() };
     col witness w;
     N::w = N::x;
