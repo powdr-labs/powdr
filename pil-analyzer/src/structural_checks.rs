@@ -85,7 +85,7 @@ fn check_struct_declarations(
     definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
 ) -> Vec<Error> {
     let mut errors = Vec::new();
-    for (_, (symbol, def)) in definitions {
+    for (symbol, def) in definitions.values() {
         let Some(FunctionValueDefinition::TypeDeclaration(TypeDeclaration::Struct(struct_decl))) =
             def
         else {
