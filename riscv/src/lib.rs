@@ -98,14 +98,14 @@ impl CompilerOptions {
         }
     }
 
-    pub fn with_log_min_degree(self, log_min_degree: u32) -> Self {
+    pub fn with_min_degree_log(self, log_min_degree: u32) -> Self {
         Self {
             min_degree_log: Some(log_min_degree),
             ..self
         }
     }
 
-    pub fn with_log_max_degree(self, log_max_degree: u32) -> Self {
+    pub fn with_max_degree_log(self, log_max_degree: u32) -> Self {
         Self {
             max_degree_log: Some(log_max_degree),
             ..self

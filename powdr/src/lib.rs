@@ -175,8 +175,8 @@ pub fn build_guest(
         CompilerOptions::new_gl()
             .with_poseidon()
             .with_continuations()
-            .with_log_min_degree(min_degree_log)
-            .with_log_max_degree(max_degree_log),
+            .with_min_degree_log(min_degree_log)
+            .with_max_degree_log(max_degree_log),
         out_path,
         true,
         None,
