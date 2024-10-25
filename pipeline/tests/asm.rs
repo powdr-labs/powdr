@@ -334,6 +334,7 @@ fn pil_at_module_level() {
     regular_test(f, Default::default());
 }
 
+#[cfg(feature = "estark-starky")]
 #[test]
 fn read_poly_files() {
     let asm_files = ["asm/vm_to_block_unique_interface.asm", "asm/empty.asm"];
