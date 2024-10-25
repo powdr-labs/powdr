@@ -134,7 +134,7 @@ where
     let pcs = config.pcs();
 
     // TODO: Instead of hashing each commit separately, we could hash a summary of all the commitments,
-    // like a (precomputed) hash.
+    // like a hash that is precomputed at setup phase.
     for table in tables.values() {
         if let Some(preprocessed_commit) = table.preprocessed_commit() {
             challenger.observe(preprocessed_commit.clone());
