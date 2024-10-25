@@ -526,9 +526,26 @@ impl TypeChecker {
                 source_ref,
                 Reference::Poly(PolynomialReference { name, type_args }),
             ) => {
-                let scheme = self.declared_types[name].1.clone();
-                let ty =
-                    self.instantiate_scheme_with_type_args(type_args, scheme, name, source_ref)?;
+                let (ty, args) = self
+                    .unifier
+                    .instantiate_scheme(self.declared_types[name].1.clone());
+                if let Some(requested_type_args) = type_args {
+                    if requested_type_args.len() != args.len() {
+                        return Err(source_ref.with_error(format!(
+                            "Expected {} type arguments for symbol {name}, but got {}: {}",
+                            args.len(),
+                            requested_type_args.len(),
+                            requested_type_args.iter().join(", ")
+                        )));
+                    }
+                    for (requested, inferred) in requested_type_args.iter_mut().zip(&args) {
+                        requested.substitute_type_vars(&self.declared_type_vars);
+                        self.unifier
+                            .unify_types(requested.clone(), inferred.clone())
+                            .map_err(|err| source_ref.with_error(err))?;
+                    }
+                }
+                *type_args = Some(args);
                 type_for_reference(&ty)
             }
             Expression::PublicReference(_, _) => Type::Expr,
@@ -774,34 +791,6 @@ impl TypeChecker {
                 }
             }
         })
-    }
-
-    fn instantiate_scheme_with_type_args(
-        &mut self,
-        type_args: &mut Option<Vec<Type>>,
-        scheme: TypeScheme,
-        symbol_name: &mut String,
-        source_ref: &mut SourceRef,
-    ) -> Result<Type, Error> {
-        let (ty, args) = self.unifier.instantiate_scheme(scheme);
-        if let Some(requested_type_args) = type_args {
-            if requested_type_args.len() != args.len() {
-                return Err(source_ref.with_error(format!(
-                    "Expected {} type arguments for symbol {symbol_name}, but got {}: {}",
-                    args.len(),
-                    requested_type_args.len(),
-                    requested_type_args.iter().join(", ")
-                )));
-            }
-            for (requested, inferred) in requested_type_args.iter_mut().zip(&args) {
-                requested.substitute_type_vars(&self.declared_type_vars);
-                self.unifier
-                    .unify_types(requested.clone(), inferred.clone())
-                    .map_err(|err| source_ref.with_error(err))?;
-            }
-        }
-        *type_args = Some(args);
-        Ok(ty)
     }
 
     /// Returns the type expected at statement level, given the current function context.
