@@ -13,136 +13,238 @@ use std::machines::small_field::memory::Memory;
 use std::machines::small_field::add_sub::AddSub;
 
 machine Keccakf16Memory(mem: Memory, add_sub: AddSub) with
-    latch: final_step,
+    latch: first_step,
     operation_id: operation_id,
     call_selectors: sel,
 {
     // ------------- Begin memory read / write ---------------
     // Additional columns compared to the non-memory version:
-    // - 125 extra witness columns:
-    //   - 100 to make output available in all rows.
-    //   - 5 to make the time step, input address limbs, and output address limbs available in all rows.
-    //   - 6 to store the low and high words of exclusive memory reads.
-    //   - 6 to store the low and high words of exclusive memory writes.
-    //   - 12 to store current input/output addresses for memory reads/writes.
-    // - 10 extra permutations to increment address limbs.
+    // - 2 columns
     // Overall, given that there are 2,600+ columns in the non-memory version, this isn't a huge cost.
 
-    operation keccakf16_memory<0> input_addr_high, input_addr_low, output_addr_high, output_addr_low, time_step ->;
+    operation keccakf16_memory<0> input_addr_h, input_addr_l, output_addr_h, output_addr_l, time_step ->;
 
     let OUTPUT_SIZE: int = 100;
 
     // Repeat the time step and input / output address in the whole block.
     let time_step;
-    let input_addr_low;
-    let input_addr_high;
-    let output_addr_low;
-    let output_addr_high;
     unchanged_until(time_step, final_step + is_last);
-    unchanged_until(input_addr_low, final_step + is_last);
-    unchanged_until(input_addr_high, final_step + is_last);
-    unchanged_until(output_addr_low, final_step + is_last);
-    unchanged_until(output_addr_high, final_step + is_last);
 
-    // Make output available in all rows
-    let output: col[OUTPUT_SIZE];
-    array::new(100, |i| unchanged_until(output[i], final_step + is_last));
-    array::new(4, |i| final_step * (output[i] - a_prime_prime_prime_0_0_limbs[i]) = 0);
-    array::new(OUTPUT_SIZE - 4, |i| final_step * (output[i + 4] - a_prime_prime[i + 4]) = 0);
+    pol commit addr_h[49];
+    pol commit addr_l[49];
+    pol commit input_addr_h;
+    pol commit input_addr_l;
+    pol commit output_addr_h;
+    pol commit output_addr_l;
+    unchanged_until(output_addr_h, final_step + is_last);
+    unchanged_until(output_addr_l, final_step + is_last);
 
-    // Because there are 24 rows each block, 100 16-bit inputs and 100 16-bit outputs, and each memory read/write processes 2 16-bit numbers,
-    // the smallest number of memory read/write needed on each row is (100 + 100)/2/24 = 5 (rounded up) and we need 10 columns minimum just to store the read result/numbers to write.
-    // Here we use 12 columns, to avoid mixing input and output on the same column.
-
-    // Stores the first 48 input columns, with 2 columns from the same memory read on the same row.
-    let current_input_0_low = array::sum(array::new(NUM_ROUNDS, |i| step_flags[i] * preimage[i * 2]));
-    let current_input_0_high = array::sum(array::new(NUM_ROUNDS, |i| step_flags[i] * preimage[i * 2 + 1]));
-
-    // Stores the next 48 input columns, with 2 columns from the same memory read on the same row.
-    let current_input_1_low = array::sum(array::new(NUM_ROUNDS, |i| step_flags[i] * preimage[(i + NUM_ROUNDS) * 2]));
-    let current_input_1_high = array::sum(array::new(NUM_ROUNDS, |i| step_flags[i] * preimage[(i + NUM_ROUNDS) * 2 + 1]));
-
-    // Stores the last 2 input columns, with 2 columns from the same memory write on the same row.
-    let current_input_2_low = array::sum(array::new(2, |i| step_flags[i] * preimage[(i + 2 * NUM_ROUNDS) * 2]));
-    let current_input_2_high = array::sum(array::new(2, |i| step_flags[i] * preimage[(i + 2 * NUM_ROUNDS) * 2 + 1]));
-
-    // Stores the first 48 output columns, with 2 columns from the same memory write on the same row.
-    let current_output_0_low = array::sum(array::new(NUM_ROUNDS, |i| step_flags[i] * output[i * 2]));
-    let current_output_0_high = array::sum(array::new(NUM_ROUNDS, |i| step_flags[i] * output[i * 2 + 1]));
-
-    // Stores the next 48 output columns, with 2 columns from the same memory write on the same row.
-    let current_output_1_low = array::sum(array::new(NUM_ROUNDS, |i| step_flags[i] * output[(i + NUM_ROUNDS) * 2]));
-    let current_output_1_high = array::sum(array::new(NUM_ROUNDS, |i| step_flags[i] * output[(i + NUM_ROUNDS) * 2 + 1]));
-
-    // Stores the last 2 output columns, with 2 columns from the same memory write on the same row. 
-    let current_output_2_low = array::sum(array::new(2, |i| step_flags[i] * output[(i + 2 * NUM_ROUNDS) * 2]));
-    let current_output_2_high = array::sum(array::new(2, |i| step_flags[i] * output[(i + 2 * NUM_ROUNDS) * 2 + 1]));
-
-    // Create address columns that increment the memory read/write addresses accordingly using submachine,
-    // because now we have addresses in two 16-bit limbs and can't just calculate on the fly.
-    // Two methods for implementing this:
-    // 1. Use constraints.
-    //  - Won't be hard to implement and only need two sets of carry columns (carry16 and carry32) for input and output, 
-    //    because carry can only happen once in all input/output addresses.
-    //  - Also need to constrain byte2 for these addresses and maybe constrain carry32 to zero to avoid address overflowing 32 bit.
-    // 2. Use submachine.
-
-    // Here's implementation for method 2:
-    let current_input_0_addr_low;
-    let current_input_0_addr_high;
-    let current_input_1_addr_low;
-    let current_input_1_addr_high;
-    let current_input_2_addr_low;
-    let current_input_2_addr_high;
-    let current_output_0_addr_low;
-    let current_output_0_addr_high;
-    let current_output_1_addr_low;
-    let current_output_1_addr_high;
-    let current_output_2_addr_low;
-    let current_output_2_addr_high;
+    link if first_step ~> (addr_h[0], addr_l[0]) = add_sub.add(input_addr_h, input_addr_l, 0, 4);
+    link if first_step ~> (addr_h[1], addr_l[1]) = add_sub.add(input_addr_h, input_addr_l, 0, 8);
+    link if first_step ~> (addr_h[2], addr_l[2]) = add_sub.add(input_addr_h, input_addr_l, 0, 12);
+    link if first_step ~> (addr_h[3], addr_l[3]) = add_sub.add(input_addr_h, input_addr_l, 0, 16);
+    link if first_step ~> (addr_h[4], addr_l[4]) = add_sub.add(input_addr_h, input_addr_l, 0, 20);
+    link if first_step ~> (addr_h[5], addr_l[5]) = add_sub.add(input_addr_h, input_addr_l, 0, 24);
+    link if first_step ~> (addr_h[6], addr_l[6]) = add_sub.add(input_addr_h, input_addr_l, 0, 28);
+    link if first_step ~> (addr_h[7], addr_l[7]) = add_sub.add(input_addr_h, input_addr_l, 0, 32);
+    link if first_step ~> (addr_h[8], addr_l[8]) = add_sub.add(input_addr_h, input_addr_l, 0, 36);
+    link if first_step ~> (addr_h[9], addr_l[9]) = add_sub.add(input_addr_h, input_addr_l, 0, 40);
+    link if first_step ~> (addr_h[10], addr_l[10]) = add_sub.add(input_addr_h, input_addr_l, 0, 44);
+    link if first_step ~> (addr_h[11], addr_l[11]) = add_sub.add(input_addr_h, input_addr_l, 0, 48);
+    link if first_step ~> (addr_h[12], addr_l[12]) = add_sub.add(input_addr_h, input_addr_l, 0, 52);
+    link if first_step ~> (addr_h[13], addr_l[13]) = add_sub.add(input_addr_h, input_addr_l, 0, 56);
+    link if first_step ~> (addr_h[14], addr_l[14]) = add_sub.add(input_addr_h, input_addr_l, 0, 60);
+    link if first_step ~> (addr_h[15], addr_l[15]) = add_sub.add(input_addr_h, input_addr_l, 0, 64);
+    link if first_step ~> (addr_h[16], addr_l[16]) = add_sub.add(input_addr_h, input_addr_l, 0, 68);
+    link if first_step ~> (addr_h[17], addr_l[17]) = add_sub.add(input_addr_h, input_addr_l, 0, 72);
+    link if first_step ~> (addr_h[18], addr_l[18]) = add_sub.add(input_addr_h, input_addr_l, 0, 76);
+    link if first_step ~> (addr_h[19], addr_l[19]) = add_sub.add(input_addr_h, input_addr_l, 0, 80);
+    link if first_step ~> (addr_h[20], addr_l[20]) = add_sub.add(input_addr_h, input_addr_l, 0, 84);
+    link if first_step ~> (addr_h[21], addr_l[21]) = add_sub.add(input_addr_h, input_addr_l, 0, 88);
+    link if first_step ~> (addr_h[22], addr_l[22]) = add_sub.add(input_addr_h, input_addr_l, 0, 92);
+    link if first_step ~> (addr_h[23], addr_l[23]) = add_sub.add(input_addr_h, input_addr_l, 0, 96);
+    link if first_step ~> (addr_h[24], addr_l[24]) = add_sub.add(input_addr_h, input_addr_l, 0, 100);
+    link if first_step ~> (addr_h[25], addr_l[25]) = add_sub.add(input_addr_h, input_addr_l, 0, 104);
+    link if first_step ~> (addr_h[26], addr_l[26]) = add_sub.add(input_addr_h, input_addr_l, 0, 108);
+    link if first_step ~> (addr_h[27], addr_l[27]) = add_sub.add(input_addr_h, input_addr_l, 0, 112);
+    link if first_step ~> (addr_h[28], addr_l[28]) = add_sub.add(input_addr_h, input_addr_l, 0, 116);
+    link if first_step ~> (addr_h[29], addr_l[29]) = add_sub.add(input_addr_h, input_addr_l, 0, 120);
+    link if first_step ~> (addr_h[30], addr_l[30]) = add_sub.add(input_addr_h, input_addr_l, 0, 124);
+    link if first_step ~> (addr_h[31], addr_l[31]) = add_sub.add(input_addr_h, input_addr_l, 0, 128);
+    link if first_step ~> (addr_h[32], addr_l[32]) = add_sub.add(input_addr_h, input_addr_l, 0, 132);
+    link if first_step ~> (addr_h[33], addr_l[33]) = add_sub.add(input_addr_h, input_addr_l, 0, 136);
+    link if first_step ~> (addr_h[34], addr_l[34]) = add_sub.add(input_addr_h, input_addr_l, 0, 140);
+    link if first_step ~> (addr_h[35], addr_l[35]) = add_sub.add(input_addr_h, input_addr_l, 0, 144);
+    link if first_step ~> (addr_h[36], addr_l[36]) = add_sub.add(input_addr_h, input_addr_l, 0, 148);
+    link if first_step ~> (addr_h[37], addr_l[37]) = add_sub.add(input_addr_h, input_addr_l, 0, 152);
+    link if first_step ~> (addr_h[38], addr_l[38]) = add_sub.add(input_addr_h, input_addr_l, 0, 156);
+    link if first_step ~> (addr_h[39], addr_l[39]) = add_sub.add(input_addr_h, input_addr_l, 0, 160);
+    link if first_step ~> (addr_h[40], addr_l[40]) = add_sub.add(input_addr_h, input_addr_l, 0, 164);
+    link if first_step ~> (addr_h[41], addr_l[41]) = add_sub.add(input_addr_h, input_addr_l, 0, 168);
+    link if first_step ~> (addr_h[42], addr_l[42]) = add_sub.add(input_addr_h, input_addr_l, 0, 172);
+    link if first_step ~> (addr_h[43], addr_l[43]) = add_sub.add(input_addr_h, input_addr_l, 0, 176);
+    link if first_step ~> (addr_h[44], addr_l[44]) = add_sub.add(input_addr_h, input_addr_l, 0, 180);
+    link if first_step ~> (addr_h[45], addr_l[45]) = add_sub.add(input_addr_h, input_addr_l, 0, 184);
+    link if first_step ~> (addr_h[46], addr_l[46]) = add_sub.add(input_addr_h, input_addr_l, 0, 188);
+    link if first_step ~> (addr_h[47], addr_l[47]) = add_sub.add(input_addr_h, input_addr_l, 0, 192);
+    link if first_step ~> (addr_h[48], addr_l[48]) = add_sub.add(input_addr_h, input_addr_l, 0, 196);
     
-    // Submachine is big-endian.
-    // Increment the address by 4 (bytes) for each row.
-    link if (1 - final_step - is_last) ~> (current_input_0_addr_high', current_input_0_addr_low') = add_sub.add(current_input_0_addr_high, current_input_0_addr_low, 0, 4);
-    // Last address should be 92 more than the input address.
-    link if final_step ~> (input_addr_high, input_addr_low) = add_sub.add(current_input_0_addr_high, current_input_0_addr_low, 0, 92);
+    link if first_step ~> (preimage[3], preimage[2]) = mem.mload(input_addr_h, input_addr_l, time_step);
+    link if first_step ~> (preimage[1], preimage[0]) = mem.mload(addr_h[0], addr_l[0], time_step);
+    link if first_step ~> (preimage[7], preimage[6]) = mem.mload(addr_h[1], addr_l[1], time_step);
+    link if first_step ~> (preimage[5], preimage[4]) = mem.mload(addr_h[2], addr_l[2], time_step);
+    link if first_step ~> (preimage[11], preimage[10]) = mem.mload(addr_h[3], addr_l[3], time_step);
+    link if first_step ~> (preimage[9], preimage[8]) = mem.mload(addr_h[4], addr_l[4], time_step);
+    link if first_step ~> (preimage[15], preimage[14]) = mem.mload(addr_h[5], addr_l[5], time_step);
+    link if first_step ~> (preimage[13], preimage[12]) = mem.mload(addr_h[6], addr_l[6], time_step);
+    link if first_step ~> (preimage[19], preimage[18]) = mem.mload(addr_h[7], addr_l[7], time_step);
+    link if first_step ~> (preimage[17], preimage[16]) = mem.mload(addr_h[8], addr_l[8], time_step);
+    link if first_step ~> (preimage[23], preimage[22]) = mem.mload(addr_h[9], addr_l[9], time_step);
+    link if first_step ~> (preimage[21], preimage[20]) = mem.mload(addr_h[10], addr_l[10], time_step);
+    link if first_step ~> (preimage[27], preimage[26]) = mem.mload(addr_h[11], addr_l[11], time_step);
+    link if first_step ~> (preimage[25], preimage[24]) = mem.mload(addr_h[12], addr_l[12], time_step);
+    link if first_step ~> (preimage[31], preimage[30]) = mem.mload(addr_h[13], addr_l[13], time_step);
+    link if first_step ~> (preimage[29], preimage[28]) = mem.mload(addr_h[14], addr_l[14], time_step);
+    link if first_step ~> (preimage[35], preimage[34]) = mem.mload(addr_h[15], addr_l[15], time_step);
+    link if first_step ~> (preimage[33], preimage[32]) = mem.mload(addr_h[16], addr_l[16], time_step);
+    link if first_step ~> (preimage[39], preimage[38]) = mem.mload(addr_h[17], addr_l[17], time_step);
+    link if first_step ~> (preimage[37], preimage[36]) = mem.mload(addr_h[18], addr_l[18], time_step);
+    link if first_step ~> (preimage[43], preimage[42]) = mem.mload(addr_h[19], addr_l[19], time_step);
+    link if first_step ~> (preimage[41], preimage[40]) = mem.mload(addr_h[20], addr_l[20], time_step);
+    link if first_step ~> (preimage[47], preimage[46]) = mem.mload(addr_h[21], addr_l[21], time_step);
+    link if first_step ~> (preimage[45], preimage[44]) = mem.mload(addr_h[22], addr_l[22], time_step);
+    link if first_step ~> (preimage[51], preimage[50]) = mem.mload(addr_h[23], addr_l[23], time_step);
+    link if first_step ~> (preimage[49], preimage[48]) = mem.mload(addr_h[24], addr_l[24], time_step);
+    link if first_step ~> (preimage[55], preimage[54]) = mem.mload(addr_h[25], addr_l[25], time_step);
+    link if first_step ~> (preimage[53], preimage[52]) = mem.mload(addr_h[26], addr_l[26], time_step);
+    link if first_step ~> (preimage[59], preimage[58]) = mem.mload(addr_h[27], addr_l[27], time_step);
+    link if first_step ~> (preimage[57], preimage[56]) = mem.mload(addr_h[28], addr_l[28], time_step);
+    link if first_step ~> (preimage[63], preimage[62]) = mem.mload(addr_h[29], addr_l[29], time_step);
+    link if first_step ~> (preimage[61], preimage[60]) = mem.mload(addr_h[30], addr_l[30], time_step);
+    link if first_step ~> (preimage[67], preimage[66]) = mem.mload(addr_h[31], addr_l[31], time_step);
+    link if first_step ~> (preimage[65], preimage[64]) = mem.mload(addr_h[32], addr_l[32], time_step);
+    link if first_step ~> (preimage[71], preimage[70]) = mem.mload(addr_h[33], addr_l[33], time_step);
+    link if first_step ~> (preimage[69], preimage[68]) = mem.mload(addr_h[34], addr_l[34], time_step);
+    link if first_step ~> (preimage[75], preimage[74]) = mem.mload(addr_h[35], addr_l[35], time_step);
+    link if first_step ~> (preimage[73], preimage[72]) = mem.mload(addr_h[36], addr_l[36], time_step);
+    link if first_step ~> (preimage[79], preimage[78]) = mem.mload(addr_h[37], addr_l[37], time_step);
+    link if first_step ~> (preimage[77], preimage[76]) = mem.mload(addr_h[38], addr_l[38], time_step);
+    link if first_step ~> (preimage[83], preimage[82]) = mem.mload(addr_h[39], addr_l[39], time_step);
+    link if first_step ~> (preimage[81], preimage[80]) = mem.mload(addr_h[40], addr_l[40], time_step);
+    link if first_step ~> (preimage[87], preimage[86]) = mem.mload(addr_h[41], addr_l[41], time_step);
+    link if first_step ~> (preimage[85], preimage[84]) = mem.mload(addr_h[42], addr_l[42], time_step);
+    link if first_step ~> (preimage[91], preimage[90]) = mem.mload(addr_h[43], addr_l[43], time_step);
+    link if first_step ~> (preimage[89], preimage[88]) = mem.mload(addr_h[44], addr_l[44], time_step);
+    link if first_step ~> (preimage[95], preimage[94]) = mem.mload(addr_h[45], addr_l[45], time_step);
+    link if first_step ~> (preimage[93], preimage[92]) = mem.mload(addr_h[46], addr_l[46], time_step);
+    link if first_step ~> (preimage[99], preimage[98]) = mem.mload(addr_h[47], addr_l[47], time_step);
+    link if first_step ~> (preimage[97], preimage[96]) = mem.mload(addr_h[48], addr_l[48], time_step);
     
-    // Increment the address by 4 (bytes) for each row.
-    link if (1 - final_step - is_last) ~> (current_input_1_addr_high', current_input_1_addr_low') = add_sub.add(current_input_1_addr_high, current_input_1_addr_low, 0, 4);
-    // Last address should be 188 more than the input address.
-    link if final_step ~> (input_addr_high, input_addr_low) = add_sub.add(current_input_1_addr_high, current_input_1_addr_low, 0, 188);
+    link if final_step ~> (addr_h[0], addr_l[0]) = add_sub.add(output_addr_h, output_addr_l, 0, 4);
+    link if final_step ~> (addr_h[1], addr_l[1]) = add_sub.add(output_addr_h, output_addr_l, 0, 8);
+    link if final_step ~> (addr_h[2], addr_l[2]) = add_sub.add(output_addr_h, output_addr_l, 0, 12);
+    link if final_step ~> (addr_h[3], addr_l[3]) = add_sub.add(output_addr_h, output_addr_l, 0, 16);
+    link if final_step ~> (addr_h[4], addr_l[4]) = add_sub.add(output_addr_h, output_addr_l, 0, 20);
+    link if final_step ~> (addr_h[5], addr_l[5]) = add_sub.add(output_addr_h, output_addr_l, 0, 24);
+    link if final_step ~> (addr_h[6], addr_l[6]) = add_sub.add(output_addr_h, output_addr_l, 0, 28);
+    link if final_step ~> (addr_h[7], addr_l[7]) = add_sub.add(output_addr_h, output_addr_l, 0, 32);
+    link if final_step ~> (addr_h[8], addr_l[8]) = add_sub.add(output_addr_h, output_addr_l, 0, 36);
+    link if final_step ~> (addr_h[9], addr_l[9]) = add_sub.add(output_addr_h, output_addr_l, 0, 40);
+    link if final_step ~> (addr_h[10], addr_l[10]) = add_sub.add(output_addr_h, output_addr_l, 0, 44);
+    link if final_step ~> (addr_h[11], addr_l[11]) = add_sub.add(output_addr_h, output_addr_l, 0, 48);
+    link if final_step ~> (addr_h[12], addr_l[12]) = add_sub.add(output_addr_h, output_addr_l, 0, 52);
+    link if final_step ~> (addr_h[13], addr_l[13]) = add_sub.add(output_addr_h, output_addr_l, 0, 56);
+    link if final_step ~> (addr_h[14], addr_l[14]) = add_sub.add(output_addr_h, output_addr_l, 0, 60);
+    link if final_step ~> (addr_h[15], addr_l[15]) = add_sub.add(output_addr_h, output_addr_l, 0, 64);
+    link if final_step ~> (addr_h[16], addr_l[16]) = add_sub.add(output_addr_h, output_addr_l, 0, 68);
+    link if final_step ~> (addr_h[17], addr_l[17]) = add_sub.add(output_addr_h, output_addr_l, 0, 72);
+    link if final_step ~> (addr_h[18], addr_l[18]) = add_sub.add(output_addr_h, output_addr_l, 0, 76);
+    link if final_step ~> (addr_h[19], addr_l[19]) = add_sub.add(output_addr_h, output_addr_l, 0, 80);
+    link if final_step ~> (addr_h[20], addr_l[20]) = add_sub.add(output_addr_h, output_addr_l, 0, 84);
+    link if final_step ~> (addr_h[21], addr_l[21]) = add_sub.add(output_addr_h, output_addr_l, 0, 88);
+    link if final_step ~> (addr_h[22], addr_l[22]) = add_sub.add(output_addr_h, output_addr_l, 0, 92);
+    link if final_step ~> (addr_h[23], addr_l[23]) = add_sub.add(output_addr_h, output_addr_l, 0, 96);
+    link if final_step ~> (addr_h[24], addr_l[24]) = add_sub.add(output_addr_h, output_addr_l, 0, 100);
+    link if final_step ~> (addr_h[25], addr_l[25]) = add_sub.add(output_addr_h, output_addr_l, 0, 104);
+    link if final_step ~> (addr_h[26], addr_l[26]) = add_sub.add(output_addr_h, output_addr_l, 0, 108);
+    link if final_step ~> (addr_h[27], addr_l[27]) = add_sub.add(output_addr_h, output_addr_l, 0, 112);
+    link if final_step ~> (addr_h[28], addr_l[28]) = add_sub.add(output_addr_h, output_addr_l, 0, 116);
+    link if final_step ~> (addr_h[29], addr_l[29]) = add_sub.add(output_addr_h, output_addr_l, 0, 120);
+    link if final_step ~> (addr_h[30], addr_l[30]) = add_sub.add(output_addr_h, output_addr_l, 0, 124);
+    link if final_step ~> (addr_h[31], addr_l[31]) = add_sub.add(output_addr_h, output_addr_l, 0, 128);
+    link if final_step ~> (addr_h[32], addr_l[32]) = add_sub.add(output_addr_h, output_addr_l, 0, 132);
+    link if final_step ~> (addr_h[33], addr_l[33]) = add_sub.add(output_addr_h, output_addr_l, 0, 136);
+    link if final_step ~> (addr_h[34], addr_l[34]) = add_sub.add(output_addr_h, output_addr_l, 0, 140);
+    link if final_step ~> (addr_h[35], addr_l[35]) = add_sub.add(output_addr_h, output_addr_l, 0, 144);
+    link if final_step ~> (addr_h[36], addr_l[36]) = add_sub.add(output_addr_h, output_addr_l, 0, 148);
+    link if final_step ~> (addr_h[37], addr_l[37]) = add_sub.add(output_addr_h, output_addr_l, 0, 152);
+    link if final_step ~> (addr_h[38], addr_l[38]) = add_sub.add(output_addr_h, output_addr_l, 0, 156);
+    link if final_step ~> (addr_h[39], addr_l[39]) = add_sub.add(output_addr_h, output_addr_l, 0, 160);
+    link if final_step ~> (addr_h[40], addr_l[40]) = add_sub.add(output_addr_h, output_addr_l, 0, 164);
+    link if final_step ~> (addr_h[41], addr_l[41]) = add_sub.add(output_addr_h, output_addr_l, 0, 168);
+    link if final_step ~> (addr_h[42], addr_l[42]) = add_sub.add(output_addr_h, output_addr_l, 0, 172);
+    link if final_step ~> (addr_h[43], addr_l[43]) = add_sub.add(output_addr_h, output_addr_l, 0, 176);
+    link if final_step ~> (addr_h[44], addr_l[44]) = add_sub.add(output_addr_h, output_addr_l, 0, 180);
+    link if final_step ~> (addr_h[45], addr_l[45]) = add_sub.add(output_addr_h, output_addr_l, 0, 184);
+    link if final_step ~> (addr_h[46], addr_l[46]) = add_sub.add(output_addr_h, output_addr_l, 0, 188);
+    link if final_step ~> (addr_h[47], addr_l[47]) = add_sub.add(output_addr_h, output_addr_l, 0, 192);
+    link if final_step ~> (addr_h[48], addr_l[48]) = add_sub.add(output_addr_h, output_addr_l, 0, 196);
 
-    // Increment the address by 4 (bytes) for each row.
-    link if (1 - final_step - is_last) ~> (current_input_2_addr_high', current_input_2_addr_low') = add_sub.add(current_input_2_addr_high, current_input_2_addr_low, 0, 4);
-    // Last address should be 284 more than the input address.
-    link if final_step ~> (input_addr_high, input_addr_low) = add_sub.add(current_input_2_addr_high, current_input_2_addr_low, 0, 284);
+    link if final_step ~> mem.mstore(output_addr_h, output_addr_l, time_step, a_prime_prime_prime_0_0_limbs[3], a_prime_prime_prime_0_0_limbs[2]);
+    link if final_step ~> mem.mstore(addr_h[0], addr_l[0], time_step, a_prime_prime_prime_0_0_limbs[1], a_prime_prime_prime_0_0_limbs[0]);
+    link if final_step ~> mem.mstore(addr_h[1], addr_l[1], time_step, a_prime_prime[7], a_prime_prime[6]);
+    link if final_step ~> mem.mstore(addr_h[2], addr_l[2], time_step, a_prime_prime[5], a_prime_prime[4]);
+    link if final_step ~> mem.mstore(addr_h[3], addr_l[3], time_step, a_prime_prime[11], a_prime_prime[8]);
+    link if final_step ~> mem.mstore(addr_h[4], addr_l[4], time_step, a_prime_prime[9], a_prime_prime[7]);
+    link if final_step ~> mem.mstore(addr_h[5], addr_l[5], time_step, a_prime_prime[15], a_prime_prime[14]);
+    link if final_step ~> mem.mstore(addr_h[6], addr_l[6], time_step, a_prime_prime[13], a_prime_prime[12]);
+    link if final_step ~> mem.mstore(addr_h[7], addr_l[7], time_step, a_prime_prime[19], a_prime_prime[18]);
+    link if final_step ~> mem.mstore(addr_h[8], addr_l[8], time_step, a_prime_prime[17], a_prime_prime[16]);
+    link if final_step ~> mem.mstore(addr_h[9], addr_l[9], time_step, a_prime_prime[23], a_prime_prime[22]);
+    link if final_step ~> mem.mstore(addr_h[10], addr_l[10], time_step, a_prime_prime[21], a_prime_prime[20]);
+    link if final_step ~> mem.mstore(addr_h[11], addr_l[11], time_step, a_prime_prime[27], a_prime_prime[26]);
+    link if final_step ~> mem.mstore(addr_h[12], addr_l[12], time_step, a_prime_prime[25], a_prime_prime[24]);
+    link if final_step ~> mem.mstore(addr_h[13], addr_l[13], time_step, a_prime_prime[31], a_prime_prime[30]);
+    link if final_step ~> mem.mstore(addr_h[14], addr_l[14], time_step, a_prime_prime[29], a_prime_prime[28]);
+    link if final_step ~> mem.mstore(addr_h[15], addr_l[15], time_step, a_prime_prime[35], a_prime_prime[34]);
+    link if final_step ~> mem.mstore(addr_h[16], addr_l[16], time_step, a_prime_prime[33], a_prime_prime[32]);
+    link if final_step ~> mem.mstore(addr_h[17], addr_l[17], time_step, a_prime_prime[39], a_prime_prime[38]);
+    link if final_step ~> mem.mstore(addr_h[18], addr_l[18], time_step, a_prime_prime[37], a_prime_prime[36]);
+    link if final_step ~> mem.mstore(addr_h[19], addr_l[19], time_step, a_prime_prime[43], a_prime_prime[42]);
+    link if final_step ~> mem.mstore(addr_h[20], addr_l[20], time_step, a_prime_prime[41], a_prime_prime[40]);
+    link if final_step ~> mem.mstore(addr_h[21], addr_l[21], time_step, a_prime_prime[47], a_prime_prime[46]);
+    link if final_step ~> mem.mstore(addr_h[22], addr_l[22], time_step, a_prime_prime[45], a_prime_prime[44]);
+    link if final_step ~> mem.mstore(addr_h[23], addr_l[23], time_step, a_prime_prime[51], a_prime_prime[50]);
+    link if final_step ~> mem.mstore(addr_h[24], addr_l[24], time_step, a_prime_prime[49], a_prime_prime[48]);
+    link if final_step ~> mem.mstore(addr_h[25], addr_l[25], time_step, a_prime_prime[55], a_prime_prime[54]);
+    link if final_step ~> mem.mstore(addr_h[26], addr_l[26], time_step, a_prime_prime[53], a_prime_prime[52]);
+    link if final_step ~> mem.mstore(addr_h[27], addr_l[27], time_step, a_prime_prime[59], a_prime_prime[58]);
+    link if final_step ~> mem.mstore(addr_h[28], addr_l[28], time_step, a_prime_prime[57], a_prime_prime[56]);
+    link if final_step ~> mem.mstore(addr_h[29], addr_l[29], time_step, a_prime_prime[63], a_prime_prime[62]);
+    link if final_step ~> mem.mstore(addr_h[30], addr_l[30], time_step, a_prime_prime[61], a_prime_prime[60]);
+    link if final_step ~> mem.mstore(addr_h[31], addr_l[31], time_step, a_prime_prime[67], a_prime_prime[66]);
+    link if final_step ~> mem.mstore(addr_h[32], addr_l[32], time_step, a_prime_prime[65], a_prime_prime[64]);
+    link if final_step ~> mem.mstore(addr_h[33], addr_l[33], time_step, a_prime_prime[71], a_prime_prime[70]);
+    link if final_step ~> mem.mstore(addr_h[34], addr_l[34], time_step, a_prime_prime[69], a_prime_prime[68]);
+    link if final_step ~> mem.mstore(addr_h[35], addr_l[35], time_step, a_prime_prime[75], a_prime_prime[74]);
+    link if final_step ~> mem.mstore(addr_h[36], addr_l[36], time_step, a_prime_prime[73], a_prime_prime[72]);
+    link if final_step ~> mem.mstore(addr_h[37], addr_l[37], time_step, a_prime_prime[79], a_prime_prime[78]);
+    link if final_step ~> mem.mstore(addr_h[38], addr_l[38], time_step, a_prime_prime[77], a_prime_prime[76]);
+    link if final_step ~> mem.mstore(addr_h[39], addr_l[39], time_step, a_prime_prime[83], a_prime_prime[82]);
+    link if final_step ~> mem.mstore(addr_h[40], addr_l[40], time_step, a_prime_prime[81], a_prime_prime[80]);
+    link if final_step ~> mem.mstore(addr_h[41], addr_l[41], time_step, a_prime_prime[87], a_prime_prime[86]);
+    link if final_step ~> mem.mstore(addr_h[42], addr_l[42], time_step, a_prime_prime[85], a_prime_prime[84]);
+    link if final_step ~> mem.mstore(addr_h[43], addr_l[43], time_step, a_prime_prime[91], a_prime_prime[90]);
+    link if final_step ~> mem.mstore(addr_h[44], addr_l[44], time_step, a_prime_prime[89], a_prime_prime[88]);
+    link if final_step ~> mem.mstore(addr_h[45], addr_l[45], time_step, a_prime_prime[95], a_prime_prime[94]);
+    link if final_step ~> mem.mstore(addr_h[46], addr_l[46], time_step, a_prime_prime[93], a_prime_prime[92]);
+    link if final_step ~> mem.mstore(addr_h[47], addr_l[47], time_step, a_prime_prime[99], a_prime_prime[98]);
+    link if final_step ~> mem.mstore(addr_h[48], addr_l[48], time_step, a_prime_prime[97], a_prime_prime[96]);
 
-    // Increment the address by 4 (bytes) for each row.
-    link if (1 - final_step - is_last) ~> (current_output_0_addr_high', current_output_0_addr_low') = add_sub.add(current_output_0_addr_high, current_output_0_addr_low, 0, 4);
-    // Last address should be 92 more than the output address.
-    link if final_step ~> (output_addr_high, output_addr_low) = add_sub.add(current_output_0_addr_high, current_output_0_addr_low, 0, 92);
-    
-    // Increment the address by 4 (bytes) for each row.
-    link if (1 - final_step - is_last) ~> (current_output_1_addr_high', current_output_1_addr_low') = add_sub.add(current_output_1_addr_high, current_output_1_addr_low, 0, 4);
-    // Last address should be 188 more than the output address.
-    link if final_step ~> (output_addr_high, output_addr_low) = add_sub.add(current_output_1_addr_high, current_output_1_addr_low, 0, 188);
-
-    // Increment the address by 4 (bytes) for each row.
-    link if (1 - final_step - is_last) ~> (current_output_2_addr_high', current_output_2_addr_low') = add_sub.add(current_output_2_addr_high, current_output_2_addr_low, 0, 4);
-    // Last address should be 284 more than the output address.
-    link if final_step ~> (output_addr_high, output_addr_low) = add_sub.add(current_output_2_addr_high, current_output_2_addr_low, 0, 284);
-
-    // No link flag needed because all rows are memory read.
-    link ~> (current_input_0_high, current_input_0_low) = mem.mload(current_input_0_addr_high, current_input_0_addr_low, time_step);
-    link ~> (current_input_1_high, current_input_1_low) = mem.mload(current_input_1_addr_high, current_input_1_addr_low, time_step);
-    // Only do two reads for the last set of input columns.
-    link if first_step + step_flags[1] ~> (current_input_2_high, current_input_2_low) = mem.mload(current_input_2_addr_high, current_input_2_addr_low, time_step);
-    
-    // No link flag needed because all rows are memory write.
-    link ~> mem.mstore(current_output_0_addr_high, current_output_0_addr_low, time_step, current_output_0_high, current_output_0_low);
-    link ~> mem.mstore(current_output_1_addr_high, current_output_1_addr_low, time_step, current_output_1_high, current_output_1_low);
-    // Only do two reads for the last set of output columns.
-    link if first_step + step_flags[1] ~> mem.mstore(current_output_2_addr_high, current_output_2_addr_low, time_step, current_output_2_high, current_output_2_low);
+    unchanged_until(input_addr_l, final_step + is_last);
+    unchanged_until(input_addr_h, final_step + is_last);
+    unchanged_until(output_addr_l, final_step + is_last);
+    unchanged_until(output_addr_h, final_step + is_last);
 
     // ------------- End memory read / write ---------------
 

@@ -38,11 +38,12 @@ machine Main with degree: 65536 {
     }
 
     function main {
-        // 0 for all 25 64-bit inputs except setting the second 64-bit input to 1. All 64-bit inputs in chunks of 4 16-bit little endian limbs.
+        // Test 1: Input/output address computations have no carry.
+        // 0 for all 25 64-bit inputs except setting the second 64-bit input to 1. All 64-bit inputs in chunks of 4 16-bit big endian limbs.
         mstore 0, 0, 0, 0;
         mstore 0, 4, 0, 0;
-        mstore 0, 8, 0, 1;
-        mstore 0, 12, 0, 0;
+        mstore 0, 8, 0, 0;
+        mstore 0, 12, 0, 1;
         mstore 0, 16, 0, 0;
         mstore 0, 20, 0, 0;
         mstore 0, 24, 0, 0;
@@ -64,36 +65,52 @@ machine Main with degree: 65536 {
         mstore 0, 88, 0, 0;
         mstore 0, 92, 0, 0;
         mstore 0, 96, 0, 0;
-        mstore 0, 100, 0, 0;
-        mstore 0, 104, 0, 0;
-        mstore 0, 108, 0, 0;
-        mstore 0, 112, 0, 0;
-        mstore 0, 116, 0, 0;
-        mstore 0, 120, 0, 0;
-        mstore 0, 124, 0, 0;
-        mstore 0, 128, 0, 0;
-        mstore 0, 132, 0, 0;
-        mstore 0, 136, 0, 0;
-        mstore 0, 140, 0, 0;
-        mstore 0, 144, 0, 0;
-        mstore 0, 148, 0, 0;
-        mstore 0, 152, 0, 0;
-        mstore 0, 156, 0, 0;
-        mstore 0, 160, 0, 0;
-        mstore 0, 164, 0, 0;
-        mstore 0, 168, 0, 0;
-        mstore 0, 172, 0, 0;
-        mstore 0, 176, 0, 0;
-        mstore 0, 180, 0, 0;
-        mstore 0, 184, 0, 0;
-        mstore 0, 188, 0, 0;
-        mstore 0, 192, 0, 0;
-        mstore 0, 196, 0, 0;
-
+        // Input address 0. Output address 200.
         keccakf16_memory 0, 0, 0, 200;
+        // Selectively checking a few registers only.
+        // Test vector generated from Tiny Keccak.
+        assert_eq 0, 200, 0xfdbb, 0xbbdf;
+        assert_eq 0, 204, 0x9001, 0x405f;
+        assert_eq 0, 392, 0xeac9, 0xf006;
+        assert_eq 0, 396, 0x664d, 0xeb35;
+
+        // Test 2: Input/output address computations have carry.
+        // 0 for all 25 64-bit inputs except setting the second 64-bit input to 1. All 64-bit inputs in chunks of 4 16-bit big endian limbs.
+        mstore 100, 65520, 0, 0;
+        mstore 100, 65524, 0, 0;
+        mstore 100, 65528, 0, 0;
+        mstore 100, 65532, 0, 1;
+        mstore 101, 0, 0, 0;
+        mstore 101, 4, 0, 0;
+        mstore 101, 8, 0, 0;
+        mstore 101, 12, 0, 0;
+        mstore 101, 16, 0, 0;
+        mstore 101, 20, 0, 0;
+        mstore 101, 24, 0, 0;
+        mstore 101, 28, 0, 0;
+        mstore 101, 32, 0, 0;
+        mstore 101, 36, 0, 0;
+        mstore 101, 40, 0, 0;
+        mstore 101, 44, 0, 0;
+        mstore 101, 48, 0, 0;
+        mstore 101, 52, 0, 0;
+        mstore 101, 56, 0, 0;
+        mstore 101, 60, 0, 0;
+        mstore 101, 64, 0, 0;
+        mstore 101, 68, 0, 0;
+        mstore 101, 72, 0, 0;
+        mstore 101, 76, 0, 0;
+        mstore 101, 80, 0, 0;
+
+        // Input address (100 * 65536 + 65520). Output address (50000 * 65536 + 65528).
+        keccakf16_memory 100, 65520, 50000, 65528;
 
         // Selectively checking a few registers only.
-        assert_eq 0, 200, 0, 1234;
+        // Test vector generated from Tiny Keccak.
+        assert_eq 50000, 65528, 0xfdbb, 0xbbdf;
+        assert_eq 50000, 65532, 0x9001, 0x405f;
+        assert_eq 50001, 184, 0xeac9, 0xf006;
+        assert_eq 50001, 188, 0x664d, 0xeb35;
 
         return;
     }
