@@ -19,26 +19,53 @@ machine Keccakf16Memory(mem: Memory, add_sub: AddSub) with
 {
     // ------------- Begin memory read / write ---------------
     // Additional columns compared to the non-memory version:
-    // - 2 columns
+    // - 2 columns (1 high and 1 low) for user input address (of first byte of input).
+    // - 2 columns (1 high and 1 low) for user output address (of first byte of output).
+    // - 98 columns (49 high and 49 low) for computed input/output address of all bytes.
     // Overall, given that there are 2,600+ columns in the non-memory version, this isn't a huge cost.
 
-    operation keccakf16_memory<0> input_addr_h, input_addr_l, output_addr_h, output_addr_l, time_step ->;
+    // Methodology description:
+    // 1. User latch in the input and output addresses in the first row of each block.
+    // 2. Input addresses for all bytes are calculated from user input address in the first row using permutation links to add_sub.add operations.
+    // 3. Load all input bytes from memory to the preimage columns.
+    // 4. User output address is kept the same for use in the last row.
+    // 5. Keccak is computed from top to bottom.
+    // 6. Output addresses for all bytes are calculated from user output address in the last row using permutation links to add_sub.add operations.
+    // 7. Store all output bytes from keccak computation columns to memory.
+    // Note that this methodology reuses the same 98 columns of addr_h (49) and addr_l (49) to calculate input and output addresses of all bytes.
+    // However, these 98 columns are only used in the first and last rows of each block.
+    // Essentially, we conduct all memory reads in the first row and all memory writes in the last row.
+    // This might seem wasteful, but it's still cheaper than spreading memory reads/writes over different rows while using as few columns as possible, 
+    // which requires 100 columns to make outputs available in all rows in additional to the memory columns.
+    // This alternative methodology (memory reads/writes over different rows) also doesn't work well with our auto witgen infrastructure, 
+    // because one would need to do memory read -> keccak computation -> memory write as three sequential passes during witgen.
+    // On the contrary, our current methodology performs all memory reads at once in the first row, then immediately does the keccak computation,
+    // and finally performs all memory writes at once in the last row, and thus only requires one pass with auto witgen.
 
-    let OUTPUT_SIZE: int = 100;
+    operation keccakf16_memory<0> input_addr_h, input_addr_l, output_addr_h, output_addr_l, time_step ->;
 
     // Repeat the time step and input / output address in the whole block.
     let time_step;
     unchanged_until(time_step, final_step + is_last);
 
-    pol commit addr_h[49];
-    pol commit addr_l[49];
+    // Input address for the first byte of input array from the user.
+    // Used immediately in the first row and therefore doesn't need to be kept constant throughout the block.
     pol commit input_addr_h;
     pol commit input_addr_l;
+
+    // Output address for the first byte of output array from the user.
+    // Used in the last row and therefore needs to be kept constant throughout the block.
     pol commit output_addr_h;
     pol commit output_addr_l;
     unchanged_until(output_addr_h, final_step + is_last);
     unchanged_until(output_addr_l, final_step + is_last);
 
+    // Address high and address low, used for memory read in the first row and memory write in the last row of each block.
+    // Not used in any other rows.
+    pol commit addr_h[49];
+    pol commit addr_l[49];
+
+    // Calculate address of all bytes in the input address array using permutation links to the add_sub machine.
     link if first_step ~> (addr_h[0], addr_l[0]) = add_sub.add(input_addr_h, input_addr_l, 0, 4);
     link if first_step ~> (addr_h[1], addr_l[1]) = add_sub.add(input_addr_h, input_addr_l, 0, 8);
     link if first_step ~> (addr_h[2], addr_l[2]) = add_sub.add(input_addr_h, input_addr_l, 0, 12);
@@ -89,6 +116,10 @@ machine Keccakf16Memory(mem: Memory, add_sub: AddSub) with
     link if first_step ~> (addr_h[47], addr_l[47]) = add_sub.add(input_addr_h, input_addr_l, 0, 192);
     link if first_step ~> (addr_h[48], addr_l[48]) = add_sub.add(input_addr_h, input_addr_l, 0, 196);
     
+    // Load memory while converting to little endian format for keccak computation.
+    // Specifically, this keccakf16 machine accepts big endian inputs in memory.
+    // However the keccak computation constraints are written for little endian iputs.
+    // Therefore memory load converts big endian inputs to little endian for the preimage.
     link if first_step ~> (preimage[3], preimage[2]) = mem.mload(input_addr_h, input_addr_l, time_step);
     link if first_step ~> (preimage[1], preimage[0]) = mem.mload(addr_h[0], addr_l[0], time_step);
     link if first_step ~> (preimage[7], preimage[6]) = mem.mload(addr_h[1], addr_l[1], time_step);
@@ -140,6 +171,7 @@ machine Keccakf16Memory(mem: Memory, add_sub: AddSub) with
     link if first_step ~> (preimage[99], preimage[98]) = mem.mload(addr_h[47], addr_l[47], time_step);
     link if first_step ~> (preimage[97], preimage[96]) = mem.mload(addr_h[48], addr_l[48], time_step);
     
+    // Calculate address of all bytes in the output address array using permutation links to the add_sub machine.
     link if final_step ~> (addr_h[0], addr_l[0]) = add_sub.add(output_addr_h, output_addr_l, 0, 4);
     link if final_step ~> (addr_h[1], addr_l[1]) = add_sub.add(output_addr_h, output_addr_l, 0, 8);
     link if final_step ~> (addr_h[2], addr_l[2]) = add_sub.add(output_addr_h, output_addr_l, 0, 12);
@@ -190,6 +222,13 @@ machine Keccakf16Memory(mem: Memory, add_sub: AddSub) with
     link if final_step ~> (addr_h[47], addr_l[47]) = add_sub.add(output_addr_h, output_addr_l, 0, 192);
     link if final_step ~> (addr_h[48], addr_l[48]) = add_sub.add(output_addr_h, output_addr_l, 0, 196);
 
+    // Expects input of 25 64-bit numbers decomposed to 25 chunks of 4 16-bit little endian limbs. 
+    // The output is a_prime_prime_prime_0_0_limbs for the first 4 and a_prime_prime for the rest.
+
+    // Write memory while converting output to big endian format.
+    // Specifically, output obtained from the keccak computation are little endian.
+    // However, this keccakf16_memory machine produces big endian outputs in memory.
+    // Therefore, memory write converts little endian from keccak computation to big endian for the output in memory.
     link if final_step ~> mem.mstore(output_addr_h, output_addr_l, time_step, a_prime_prime_prime_0_0_limbs[3], a_prime_prime_prime_0_0_limbs[2]);
     link if final_step ~> mem.mstore(addr_h[0], addr_l[0], time_step, a_prime_prime_prime_0_0_limbs[1], a_prime_prime_prime_0_0_limbs[0]);
     link if final_step ~> mem.mstore(addr_h[1], addr_l[1], time_step, a_prime_prime[7], a_prime_prime[6]);
@@ -241,20 +280,11 @@ machine Keccakf16Memory(mem: Memory, add_sub: AddSub) with
     link if final_step ~> mem.mstore(addr_h[47], addr_l[47], time_step, a_prime_prime[99], a_prime_prime[98]);
     link if final_step ~> mem.mstore(addr_h[48], addr_l[48], time_step, a_prime_prime[97], a_prime_prime[96]);
 
-    unchanged_until(input_addr_l, final_step + is_last);
-    unchanged_until(input_addr_h, final_step + is_last);
-    unchanged_until(output_addr_l, final_step + is_last);
-    unchanged_until(output_addr_h, final_step + is_last);
-
     // ------------- End memory read / write ---------------
 
     // Adapted from Plonky3 implementation of Keccak: https://github.com/Plonky3/Plonky3/tree/main/keccak-air/src
 
     std::check::assert(std::field::modulus() >= 65535, || "The field modulo should be at least 2^16 - 1 to work in the keccakf16 machine.");
-
-    // Expects input of 25 64-bit numbers decomposed to 25 chunks of 4 16-bit little endian limbs. 
-    // The output is a_prime_prime_prime_0_0_limbs for the first 4 and a_prime_prime for the rest.
-    // operation keccakf16<0> preimage[0], preimage[1], preimage[2], preimage[3], preimage[4], preimage[5], preimage[6], preimage[7], preimage[8], preimage[9], preimage[10], preimage[11], preimage[12], preimage[13], preimage[14], preimage[15], preimage[16], preimage[17], preimage[18], preimage[19], preimage[20], preimage[21], preimage[22], preimage[23], preimage[24], preimage[25], preimage[26], preimage[27], preimage[28], preimage[29], preimage[30], preimage[31], preimage[32], preimage[33], preimage[34], preimage[35], preimage[36], preimage[37], preimage[38], preimage[39], preimage[40], preimage[41], preimage[42], preimage[43], preimage[44], preimage[45], preimage[46], preimage[47], preimage[48], preimage[49], preimage[50], preimage[51], preimage[52], preimage[53], preimage[54], preimage[55], preimage[56], preimage[57], preimage[58], preimage[59], preimage[60], preimage[61], preimage[62], preimage[63], preimage[64], preimage[65], preimage[66], preimage[67], preimage[68], preimage[69], preimage[70], preimage[71], preimage[72], preimage[73], preimage[74], preimage[75], preimage[76], preimage[77], preimage[78], preimage[79], preimage[80], preimage[81], preimage[82], preimage[83], preimage[84], preimage[85], preimage[86], preimage[87], preimage[88], preimage[89], preimage[90], preimage[91], preimage[92], preimage[93], preimage[94], preimage[95], preimage[96], preimage[97], preimage[98], preimage[99] -> a_prime_prime_prime_0_0_limbs[0], a_prime_prime_prime_0_0_limbs[1], a_prime_prime_prime_0_0_limbs[2], a_prime_prime_prime_0_0_limbs[3], a_prime_prime[4], a_prime_prime[5], a_prime_prime[6], a_prime_prime[7], a_prime_prime[8], a_prime_prime[9], a_prime_prime[10], a_prime_prime[11], a_prime_prime[12], a_prime_prime[13], a_prime_prime[14], a_prime_prime[15], a_prime_prime[16], a_prime_prime[17], a_prime_prime[18], a_prime_prime[19], a_prime_prime[20], a_prime_prime[21], a_prime_prime[22], a_prime_prime[23], a_prime_prime[24], a_prime_prime[25], a_prime_prime[26], a_prime_prime[27], a_prime_prime[28], a_prime_prime[29], a_prime_prime[30], a_prime_prime[31], a_prime_prime[32], a_prime_prime[33], a_prime_prime[34], a_prime_prime[35], a_prime_prime[36], a_prime_prime[37], a_prime_prime[38], a_prime_prime[39], a_prime_prime[40], a_prime_prime[41], a_prime_prime[42], a_prime_prime[43], a_prime_prime[44], a_prime_prime[45], a_prime_prime[46], a_prime_prime[47], a_prime_prime[48], a_prime_prime[49], a_prime_prime[50], a_prime_prime[51], a_prime_prime[52], a_prime_prime[53], a_prime_prime[54], a_prime_prime[55], a_prime_prime[56], a_prime_prime[57], a_prime_prime[58], a_prime_prime[59], a_prime_prime[60], a_prime_prime[61], a_prime_prime[62], a_prime_prime[63], a_prime_prime[64], a_prime_prime[65], a_prime_prime[66], a_prime_prime[67], a_prime_prime[68], a_prime_prime[69], a_prime_prime[70], a_prime_prime[71], a_prime_prime[72], a_prime_prime[73], a_prime_prime[74], a_prime_prime[75], a_prime_prime[76], a_prime_prime[77], a_prime_prime[78], a_prime_prime[79], a_prime_prime[80], a_prime_prime[81], a_prime_prime[82], a_prime_prime[83], a_prime_prime[84], a_prime_prime[85], a_prime_prime[86], a_prime_prime[87], a_prime_prime[88], a_prime_prime[89], a_prime_prime[90], a_prime_prime[91], a_prime_prime[92], a_prime_prime[93], a_prime_prime[94], a_prime_prime[95], a_prime_prime[96], a_prime_prime[97], a_prime_prime[98], a_prime_prime[99];
 
     col witness operation_id;
 
