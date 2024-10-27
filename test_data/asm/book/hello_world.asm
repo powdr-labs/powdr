@@ -1,14 +1,8 @@
 machine HelloWorld with degree: 8 {
-    // this simple machine does not have submachines
-
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
     reg A;
-
-    instr incr X -> Y {
-        Y = X + 1
-    }
 
     instr decr X -> Y {
         Y = X - 1
@@ -18,12 +12,16 @@ machine HelloWorld with degree: 8 {
         X = 0
     }
 
-    // the main function assigns the first prover input to A, increments it, decrements it, and loops forever
     function main {
+        // assign the first prover input to A
         A <=X= ${ std::prelude::Query::Input(0, 1) };
-        A <== incr(A);
+
+        // decrement A
         A <== decr(A);
+
+        // assert that A is zero
         assert_zero A;
+
         return;
     }
 }
