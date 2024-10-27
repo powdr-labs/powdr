@@ -15,8 +15,8 @@ use serde::{Deserialize, Serialize};
 use crate::parsed::{BinaryOperation, BinaryOperator};
 
 use super::{
-    types::TypeScheme, visitor::Children, EnumDeclaration, EnumVariant, Expression, PilStatement,
-    SourceReference, TraitDeclaration,
+    types::TypeScheme, visitor::Children, EnumDeclaration, EnumVariant, Expression, NamedType,
+    PilStatement, SourceReference, StructDeclaration, TraitDeclaration,
 };
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
@@ -82,12 +82,19 @@ pub enum SymbolValueRef<'a> {
     Module(ModuleRef<'a>),
     /// A generic symbol / function.
     Expression(&'a Option<Expression>, &'a Option<TypeScheme<Expression>>),
-    /// A type declaration (currently only enums)
-    TypeDeclaration(&'a EnumDeclaration<Expression>),
+    /// A type declaration (currently only enums or structs)
+    TypeDeclaration(TypeDeclaration<'a>),
     /// A type constructor of an enum.
     TypeConstructor(&'a EnumVariant<Expression>),
     /// A trait declaration
     TraitDeclaration(&'a TraitDeclaration<Expression>),
+    TraitFunction(&'a NamedType<Expression>),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, derive_more::Display)]
+pub enum TypeDeclaration<'a> {
+    Enum(&'a EnumDeclaration<Expression>),
+    Struct(&'a StructDeclaration<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, From)]
@@ -165,6 +172,11 @@ impl SymbolPath {
             Part::Super => None,
             Part::Named(n) => Some(n),
         })
+    }
+
+    /// Removes and returns the last part unless the path is empty.
+    pub fn pop(&mut self) -> Option<Part> {
+        self.parts.pop()
     }
 
     /// Returns the last part of the path. Panics if it is "super" or if the path is empty.

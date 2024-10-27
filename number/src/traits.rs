@@ -62,12 +62,32 @@ pub trait LargeInt:
     fn from_hex(s: &str) -> Self;
 }
 
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
+pub enum FieldSize {
+    /// Fields that fit a 29-Bit number, but not much more.
+    Small,
+    /// Fields that at least fit a product of two 32-Bit numbers
+    /// (Goldilocks and larger)
+    Large,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum KnownField {
     BabyBearField,
+    KoalaBearField,
     Mersenne31Field,
     GoldilocksField,
     Bn254Field,
+}
+
+impl KnownField {
+    pub fn field_size(&self) -> FieldSize {
+        match self {
+            KnownField::BabyBearField
+            | KnownField::KoalaBearField
+            | KnownField::Mersenne31Field => FieldSize::Small,
+            KnownField::GoldilocksField | KnownField::Bn254Field => FieldSize::Large,
+        }
+    }
 }
 
 /// A field element

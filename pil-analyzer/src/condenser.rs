@@ -13,10 +13,11 @@ use num_traits::sign::Signed;
 
 use powdr_ast::{
     analyzed::{
-        self, AlgebraicExpression, AlgebraicReference, Analyzed, Challenge, DegreeRange,
-        Expression, FunctionValueDefinition, Identity, IdentityKind, PolyID, PolynomialReference,
-        PolynomialType, PublicDeclaration, Reference, SelectedExpressions, StatementIdentifier,
-        Symbol, SymbolKind,
+        self, AlgebraicBinaryOperation, AlgebraicExpression, AlgebraicReference,
+        AlgebraicUnaryOperation, Analyzed, Challenge, ConnectIdentity, DegreeRange, Expression,
+        FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity, PolyID,
+        PolynomialIdentity, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
+        SelectedExpressions, StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
         self,
@@ -24,8 +25,9 @@ use powdr_ast::{
         display::format_type_scheme_around_name,
         types::{ArrayType, Type},
         visitor::{AllChildren, ExpressionVisitable},
-        ArrayLiteral, BlockExpression, FunctionCall, FunctionKind, LambdaExpression,
-        LetStatementInsideBlock, Number, Pattern, SourceReference, TypedExpression, UnaryOperation,
+        ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall, FunctionKind,
+        LambdaExpression, LetStatementInsideBlock, Number, Pattern, SourceReference,
+        TypedExpression, UnaryOperation,
     },
 };
 use powdr_number::{BigUint, FieldElement};
@@ -38,8 +40,6 @@ use crate::{
     },
     statement_processor::Counters,
 };
-
-type AnalyzedIdentity<T> = Identity<SelectedExpressions<AlgebraicExpression<T>>>;
 
 pub fn condense<T: FieldElement>(
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
@@ -296,7 +296,7 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
     }
 
     /// Returns the new constraints generated since the last call to this function.
-    pub fn extract_new_constraints(&mut self) -> Vec<AnalyzedIdentity<T>> {
+    pub fn extract_new_constraints(&mut self) -> Vec<Identity<T>> {
         self.new_constraints
             .drain(..)
             .map(|(item, source)| to_constraint(item.as_ref(), source, &mut self.counters))
@@ -655,7 +655,7 @@ fn to_constraint<T: FieldElement>(
     constraint: &Value<'_, T>,
     source: SourceRef,
     counters: &mut Counters,
-) -> AnalyzedIdentity<T> {
+) -> Identity<T> {
     let Value::Enum(EnumValue {
         enum_decl,
         variant,
@@ -669,19 +669,15 @@ fn to_constraint<T: FieldElement>(
     match &**variant {
         "Identity" => {
             assert_eq!(fields.len(), 2);
-            AnalyzedIdentity::from_polynomial_identity(
-                counters.dispense_identity_id(),
+            PolynomialIdentity {
+                id: counters.dispense_identity_id(),
                 source,
-                to_expr(&fields[0]) - to_expr(&fields[1]),
-            )
+                expression: to_expr(&fields[0]) - to_expr(&fields[1]),
+            }
+            .into()
         }
         "Lookup" | "Permutation" => {
             assert_eq!(fields.len(), 2);
-            let kind = if variant == &"Lookup" {
-                IdentityKind::Plookup
-            } else {
-                IdentityKind::Permutation
-            };
 
             let (sel_from, sel_to) = if let Value::Tuple(t) = fields[0].as_ref() {
                 assert_eq!(t.len(), 2);
@@ -705,12 +701,22 @@ fn to_constraint<T: FieldElement>(
                 unreachable!()
             };
 
-            Identity {
-                id: counters.dispense_identity_id(),
-                kind,
-                source,
-                left: to_selected_exprs(sel_from, from),
-                right: to_selected_exprs(sel_to, to),
+            if variant == &"Lookup" {
+                LookupIdentity {
+                    id: counters.dispense_identity_id(),
+                    source,
+                    left: to_selected_exprs(sel_from, from),
+                    right: to_selected_exprs(sel_to, to),
+                }
+                .into()
+            } else {
+                PermutationIdentity {
+                    id: counters.dispense_identity_id(),
+                    source,
+                    left: to_selected_exprs(sel_from, from),
+                    right: to_selected_exprs(sel_to, to),
+                }
+                .into()
             }
         }
         "Connection" => {
@@ -731,19 +737,13 @@ fn to_constraint<T: FieldElement>(
                 unreachable!()
             };
 
-            Identity {
+            ConnectIdentity {
                 id: counters.dispense_identity_id(),
-                kind: IdentityKind::Connect,
                 source,
-                left: analyzed::SelectedExpressions {
-                    selector: None,
-                    expressions: from.into_iter().map(to_expr).collect(),
-                },
-                right: analyzed::SelectedExpressions {
-                    selector: None,
-                    expressions: to.into_iter().map(to_expr).collect(),
-                },
+                left: from.into_iter().map(to_expr).collect(),
+                right: to.into_iter().map(to_expr).collect(),
             }
+            .into()
         }
         _ => panic!("Expected constraint but got {constraint}"),
     }
@@ -752,7 +752,7 @@ fn to_constraint<T: FieldElement>(
 fn to_selected_exprs<'a, T: Clone + Debug>(
     selector: &Value<'a, T>,
     exprs: Vec<&Value<'a, T>>,
-) -> SelectedExpressions<AlgebraicExpression<T>> {
+) -> SelectedExpressions<T> {
     SelectedExpressions {
         selector: to_option_expr(selector),
         expressions: exprs.into_iter().map(to_expr).collect(),
@@ -939,6 +939,84 @@ fn shift_local_var_refs(e: &mut Expression, shift: u64) {
         .for_each(|e| shift_local_var_refs(e, shift));
 }
 
+fn try_algebraic_expression_to_expression<T: FieldElement>(
+    e: &AlgebraicExpression<T>,
+) -> Result<Expression, EvalError> {
+    Ok(match e {
+        AlgebraicExpression::Reference(AlgebraicReference {
+            name,
+            poly_id: _,
+            next,
+        }) => {
+            let e = Expression::Reference(
+                SourceRef::unknown(),
+                Reference::Poly(PolynomialReference {
+                    name: name.clone(),
+                    type_args: None,
+                }),
+            );
+            if *next {
+                UnaryOperation {
+                    op: parsed::UnaryOperator::Next,
+                    expr: Box::new(e),
+                }
+                .into()
+            } else {
+                e
+            }
+        }
+
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+            BinaryOperation {
+                left: Box::new(try_algebraic_expression_to_expression(left)?),
+                op: (*op).into(),
+                right: Box::new(try_algebraic_expression_to_expression(right)?),
+            }
+            .into()
+        }
+
+        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
+            UnaryOperation {
+                op: (*op).into(),
+                expr: Box::new(try_algebraic_expression_to_expression(expr)?),
+            }
+            .into()
+        }
+
+        AlgebraicExpression::Challenge(Challenge { id, stage }) => {
+            let function = Expression::Reference(
+                SourceRef::unknown(),
+                Reference::Poly(PolynomialReference {
+                    name: "std::prelude::challenge".to_string(),
+                    type_args: None,
+                }),
+            )
+            .into();
+            let arguments = [*stage as u64, *id]
+                .into_iter()
+                .map(|x| BigUint::from(x).into())
+                .collect();
+            Expression::FunctionCall(
+                SourceRef::unknown(),
+                FunctionCall {
+                    function,
+                    arguments,
+                },
+            )
+        }
+
+        AlgebraicExpression::Number(n) => Number {
+            value: n.to_arbitrary_integer(),
+            type_: Some(Type::Expr),
+        }
+        .into(),
+
+        AlgebraicExpression::PublicReference(s) => {
+            Expression::PublicReference(SourceRef::unknown(), s.clone())
+        }
+    })
+}
+
 /// Tries to convert an evaluator value to an expression with the same value.
 fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expression, EvalError> {
     Ok(match value {
@@ -1021,49 +1099,6 @@ fn try_value_to_expression<T: FieldElement>(value: &Value<'_, T>) -> Result<Expr
                 "Converting builtin functions to expressions not supported.".to_string(),
             ))
         }
-        Value::Expression(e) => match e {
-            AlgebraicExpression::Reference(AlgebraicReference {
-                name,
-                poly_id: _,
-                next: false,
-            }) => Expression::Reference(
-                SourceRef::unknown(),
-                Reference::Poly(PolynomialReference {
-                    name: name.clone(),
-                    type_args: None,
-                }),
-            ),
-            AlgebraicExpression::Challenge(Challenge { id, stage }) => {
-                let function = Expression::Reference(
-                    SourceRef::unknown(),
-                    Reference::Poly(PolynomialReference {
-                        name: "std::prelude::challenge".to_string(),
-                        type_args: None,
-                    }),
-                )
-                .into();
-                let arguments = [*stage as u64, *id]
-                    .into_iter()
-                    .map(|x| BigUint::from(x).into())
-                    .collect();
-                Expression::FunctionCall(
-                    SourceRef::unknown(),
-                    FunctionCall {
-                        function,
-                        arguments,
-                    },
-                )
-            }
-            AlgebraicExpression::Number(n) => Number {
-                value: n.to_arbitrary_integer(),
-                type_: Some(Type::Expr),
-            }
-            .into(),
-            _ => {
-                return Err(EvalError::TypeError(format!(
-                    "Converting complex algebraic expressions to expressions not supported: {e}."
-                )))
-            }
-        },
+        Value::Expression(e) => try_algebraic_expression_to_expression(e)?,
     })
 }

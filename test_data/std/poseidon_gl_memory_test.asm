@@ -1,6 +1,6 @@
 use std::machines::hash::poseidon_gl_memory::PoseidonGLMemory;
 use std::machines::range::Byte2;
-use std::machines::memory::Memory;
+use std::machines::large_field::memory::Memory;
 use std::machines::split::ByteCompare;
 use std::machines::split::split_gl::SplitGL;
 
@@ -137,7 +137,7 @@ machine Main with degree: 65536 {
         mstore_le 180, 0, 0;
         mstore_le 188, 0, 0;
  
-        // This will read bytes [100, 191] and write the result to bytes [104, 131]
+        // This will read bytes [100, 195] and write the result to bytes [104, 131]
         poseidon 100, 104;
 
         assert_eq 104, 4330397376401421145;

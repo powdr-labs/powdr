@@ -1,15 +1,15 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fmt::Display;
 
-use powdr_ast::analyzed;
-use powdr_ast::analyzed::DegreeRange;
-use powdr_ast::analyzed::PolyID;
+use powdr_ast::analyzed::{self, DegreeRange, PolyID};
 
 use powdr_number::FieldElement;
 
 use crate::Identity;
 
 use self::block_machine::BlockMachine;
-use self::double_sorted_witness_machine::DoubleSortedWitnesses;
+use self::double_sorted_witness_machine_16::DoubleSortedWitnesses16;
+use self::double_sorted_witness_machine_32::DoubleSortedWitnesses32;
 pub use self::fixed_lookup_machine::FixedLookup;
 use self::profiling::{record_end, record_start};
 use self::sorted_witness_machine::SortedWitnesses;
@@ -20,7 +20,8 @@ use super::rows::RowPair;
 use super::{EvalResult, FixedData, MutableState, QueryCallback};
 
 mod block_machine;
-mod double_sorted_witness_machine;
+mod double_sorted_witness_machine_16;
+mod double_sorted_witness_machine_32;
 mod fixed_lookup_machine;
 pub mod machine_extractor;
 pub mod profiling;
@@ -46,7 +47,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     /// Returns a unique name for this machine.
     fn name(&self) -> &str;
 
-    /// Processes a connecting identity of a given ID (which must be known to the callee).
+    /// Processes a connection of a given ID (which must be known to the callee).
     /// Returns an error if the query leads to a constraint failure.
     /// Otherwise, it computes any updates to the caller row pair and returns them.
     fn process_plookup<'b, Q: QueryCallback<T>>(
@@ -71,7 +72,8 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
 /// which requires that all lifetime parameters are 'static.
 pub enum KnownMachine<'a, T: FieldElement> {
     SortedWitnesses(SortedWitnesses<'a, T>),
-    DoubleSortedWitnesses(DoubleSortedWitnesses<'a, T>),
+    DoubleSortedWitnesses16(DoubleSortedWitnesses16<'a, T>),
+    DoubleSortedWitnesses32(DoubleSortedWitnesses32<'a, T>),
     WriteOnceMemory(WriteOnceMemory<'a, T>),
     BlockMachine(BlockMachine<'a, T>),
     Vm(Generator<'a, T>),
@@ -89,7 +91,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
             KnownMachine::SortedWitnesses(m) => {
                 m.process_plookup(mutable_state, identity_id, caller_rows)
             }
-            KnownMachine::DoubleSortedWitnesses(m) => {
+            KnownMachine::DoubleSortedWitnesses16(m) => {
+                m.process_plookup(mutable_state, identity_id, caller_rows)
+            }
+            KnownMachine::DoubleSortedWitnesses32(m) => {
                 m.process_plookup(mutable_state, identity_id, caller_rows)
             }
             KnownMachine::WriteOnceMemory(m) => {
@@ -108,7 +113,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
     fn name(&self) -> &str {
         match self {
             KnownMachine::SortedWitnesses(m) => m.name(),
-            KnownMachine::DoubleSortedWitnesses(m) => m.name(),
+            KnownMachine::DoubleSortedWitnesses16(m) => m.name(),
+            KnownMachine::DoubleSortedWitnesses32(m) => m.name(),
             KnownMachine::WriteOnceMemory(m) => m.name(),
             KnownMachine::BlockMachine(m) => m.name(),
             KnownMachine::Vm(m) => m.name(),
@@ -122,7 +128,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
     ) -> HashMap<String, Vec<T>> {
         match self {
             KnownMachine::SortedWitnesses(m) => m.take_witness_col_values(mutable_state),
-            KnownMachine::DoubleSortedWitnesses(m) => m.take_witness_col_values(mutable_state),
+            KnownMachine::DoubleSortedWitnesses16(m) => m.take_witness_col_values(mutable_state),
+            KnownMachine::DoubleSortedWitnesses32(m) => m.take_witness_col_values(mutable_state),
             KnownMachine::WriteOnceMemory(m) => m.take_witness_col_values(mutable_state),
             KnownMachine::BlockMachine(m) => m.take_witness_col_values(mutable_state),
             KnownMachine::Vm(m) => m.take_witness_col_values(mutable_state),
@@ -133,11 +140,72 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
         match self {
             KnownMachine::SortedWitnesses(m) => m.identity_ids(),
-            KnownMachine::DoubleSortedWitnesses(m) => m.identity_ids(),
+            KnownMachine::DoubleSortedWitnesses16(m) => m.identity_ids(),
+            KnownMachine::DoubleSortedWitnesses32(m) => m.identity_ids(),
             KnownMachine::WriteOnceMemory(m) => m.identity_ids(),
             KnownMachine::BlockMachine(m) => m.identity_ids(),
             KnownMachine::Vm(m) => m.identity_ids(),
             KnownMachine::FixedLookup(m) => m.identity_ids(),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+/// A connection is a witness generation directive to propagate rows across machines
+pub struct Connection<'a, T> {
+    pub left: &'a analyzed::SelectedExpressions<T>,
+    pub right: &'a analyzed::SelectedExpressions<T>,
+    /// For [ConnectionKind::Permutation], rows of `left` are a permutation of rows of `right`. For [ConnectionKind::Lookup], all rows in `left` are in `right`.
+    pub kind: ConnectionKind,
+}
+
+impl<'a, T: Display> Display for Connection<'a, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {} {}", self.left, self.right, self.kind)
+    }
+}
+
+impl<'a, T> Connection<'a, T> {
+    fn is_permutation(&self) -> bool {
+        self.kind == ConnectionKind::Permutation
+    }
+
+    fn is_lookup(&self) -> bool {
+        self.kind == ConnectionKind::Lookup
+    }
+}
+
+impl<'a, T> TryFrom<&'a Identity<T>> for Connection<'a, T> {
+    type Error = &'a Identity<T>;
+
+    fn try_from(identity: &'a Identity<T>) -> Result<Self, Self::Error> {
+        match identity {
+            Identity::Lookup(i) => Ok(Connection {
+                left: &i.left,
+                right: &i.right,
+                kind: ConnectionKind::Lookup,
+            }),
+            Identity::Permutation(i) => Ok(Connection {
+                left: &i.left,
+                right: &i.right,
+                kind: ConnectionKind::Permutation,
+            }),
+            _ => Err(identity),
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ConnectionKind {
+    Lookup,
+    Permutation,
+}
+
+impl Display for ConnectionKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConnectionKind::Lookup => write!(f, "in"),
+            ConnectionKind::Permutation => write!(f, "is"),
         }
     }
 }
@@ -150,7 +218,7 @@ pub struct MachineParts<'a, T: FieldElement> {
     /// Connecting identities, indexed by their ID.
     /// These are the identities that connect another machine to this one,
     /// where this one is on the RHS of a lookup.
-    pub connecting_identities: BTreeMap<u64, &'a Identity<T>>,
+    pub connections: BTreeMap<u64, Connection<'a, T>>,
     /// Identities relevant to this machine and only this machine.
     pub identities: Vec<&'a Identity<T>>,
     /// Witness columns relevant to this machine.
@@ -162,14 +230,14 @@ pub struct MachineParts<'a, T: FieldElement> {
 impl<'a, T: FieldElement> MachineParts<'a, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
-        connecting_identities: BTreeMap<u64, &'a Identity<T>>,
+        connections: BTreeMap<u64, Connection<'a, T>>,
         identities: Vec<&'a Identity<T>>,
         witnesses: HashSet<PolyID>,
         prover_functions: Vec<&'a analyzed::Expression>,
     ) -> Self {
         Self {
             fixed_data,
-            connecting_identities,
+            connections,
             identities,
             witnesses,
             prover_functions,
@@ -197,7 +265,7 @@ impl<'a, T: FieldElement> MachineParts<'a, T> {
 
     /// Returns the IDs of the connecting identities.
     pub fn identity_ids(&self) -> Vec<u64> {
-        self.connecting_identities.keys().cloned().collect()
+        self.connections.keys().cloned().collect()
     }
 
     /// Returns the name of a column.

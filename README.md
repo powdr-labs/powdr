@@ -74,7 +74,9 @@ dual licensed as below, without any additional terms or conditions.
 
 This project is licensed under either of
 
+<!-- markdown-link-check-disable -->
 - [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0) ([`LICENSE-APACHE`](LICENSE-APACHE))
 - [MIT license](https://opensource.org/licenses/MIT) ([`LICENSE-MIT`](LICENSE-MIT))
+<!-- markdown-link-check-enable -->
 
 at your option.

@@ -4,8 +4,9 @@ use powdr_ast::{
     parsed::{
         self, asm::SymbolPath, types::Type, ArrayExpression, ArrayLiteral, BinaryOperation,
         BlockExpression, IfExpression, LambdaExpression, LetStatementInsideBlock, MatchArm,
-        MatchExpression, NamespacedPolynomialReference, Number, Pattern, SelectedExpressions,
-        StatementInsideBlock, SymbolCategory, UnaryOperation,
+        MatchExpression, NamedExpression, NamespacedPolynomialReference, Number, Pattern,
+        SelectedExpressions, StatementInsideBlock, StructExpression, SymbolCategory,
+        UnaryOperation,
     },
 };
 
@@ -189,6 +190,28 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 self.process_block_expression(statements, expr, src)
             }
             PExpression::FreeInput(_, _) => panic!(),
+            PExpression::StructExpression(src, StructExpression { name, fields }) => {
+                let type_args = name
+                    .type_args
+                    .map(|args| args.into_iter().map(|t| self.process_type(t)).collect());
+
+                Expression::StructExpression(
+                    src,
+                    StructExpression {
+                        name: Reference::Poly(PolynomialReference {
+                            name: self.driver.resolve_ref(&name.path, SymbolCategory::Struct),
+                            type_args,
+                        }),
+                        fields: fields
+                            .into_iter()
+                            .map(|named_expr| NamedExpression {
+                                name: named_expr.name,
+                                body: Box::new(self.process_expression(*named_expr.body)),
+                            })
+                            .collect(),
+                    },
+                )
+            }
         }
     }
 
@@ -290,7 +313,9 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
 
     pub fn process_lambda_expression(
         &mut self,
-        LambdaExpression { kind, params, body }: LambdaExpression,
+        LambdaExpression {
+            kind, params, body, ..
+        }: LambdaExpression,
     ) -> LambdaExpression<Expression> {
         let previous_local_vars = self.save_local_variables();
 
@@ -307,7 +332,12 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         let body = Box::new(self.process_expression(*body));
 
         self.reset_local_variables(previous_local_vars);
-        LambdaExpression { kind, params, body }
+        LambdaExpression {
+            kind,
+            params,
+            body,
+            param_types: vec![],
+        }
     }
 
     fn process_block_expression(

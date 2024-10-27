@@ -9,7 +9,8 @@ use log::{max_level, LevelFilter};
 use powdr_backend::BackendType;
 use powdr_number::{buffered_write_file, read_polys_csv_file, CsvRenderMode};
 use powdr_number::{
-    BabyBearField, BigUint, Bn254Field, FieldElement, GoldilocksField, Mersenne31Field,
+    BabyBearField, BigUint, Bn254Field, FieldElement, GoldilocksField, KoalaBearField,
+    Mersenne31Field,
 };
 use powdr_pipeline::Pipeline;
 use std::io;
@@ -63,6 +64,8 @@ fn bind_cli_args<F: FieldElement>(
 pub enum FieldArgument {
     #[strum(serialize = "bb")]
     Bb,
+    #[strum(serialize = "kb")]
+    Kb,
     #[strum(serialize = "m31")]
     M31,
     #[strum(serialize = "gl")]
@@ -575,6 +578,7 @@ fn verification_key<T: FieldElement>(
     let mut pipeline = Pipeline::<T>::default()
         .from_file(file.to_path_buf())
         .read_constants(dir)
+        .map_err(|e| vec![e])?
         .with_setup_file(params.map(PathBuf::from))
         .with_vkey_app_file(vkey_app.map(PathBuf::from))
         .with_backend(*backend_type, backend_options);
@@ -600,6 +604,7 @@ fn export_verifier<T: FieldElement>(
     let mut pipeline = Pipeline::<T>::default()
         .from_file(file.to_path_buf())
         .read_constants(dir)
+        .map_err(|e| vec![e])?
         .with_setup_file(params.map(PathBuf::from))
         .with_vkey_file(vkey.map(PathBuf::from))
         .with_backend(*backend_type, backend_options);
@@ -692,6 +697,7 @@ fn read_and_prove<T: FieldElement>(
         .from_maybe_pil_object(file.to_path_buf())?
         .with_output(dir.to_path_buf(), true)
         .read_witness(dir)
+        .map_err(|e| vec![e])?
         .with_setup_file(params.map(PathBuf::from))
         .with_vkey_app_file(vkey_app.map(PathBuf::from))
         .with_vkey_file(vkey.map(PathBuf::from))
@@ -721,6 +727,7 @@ fn read_and_verify<T: FieldElement>(
     let mut pipeline = Pipeline::<T>::default()
         .from_file(file.to_path_buf())
         .read_constants(dir)
+        .map_err(|e| vec![e])?
         .with_setup_file(params.map(PathBuf::from))
         .with_vkey_file(Some(vkey))
         .with_backend(*backend_type, backend_options);

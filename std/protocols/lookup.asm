@@ -4,6 +4,7 @@ use std::array::len;
 use std::array::map;
 use std::check::assert;
 use std::check::panic;
+use std::constraints::to_phantom_lookup;
 use std::math::fp2::Fp2;
 use std::math::fp2::add_ext;
 use std::math::fp2::sub_ext;
@@ -54,7 +55,7 @@ let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr, expr -> fe[] = quer
     unpack_ext_array(res)
 };
     
-/// Transfroms a single lookup constraint to identity constraint, challenges and
+/// Transforms a single lookup constraint to identity constraints, challenges and
 /// higher-stage witness columns.
 /// Use this function if the backend does not support lookup constraints natively.
 /// WARNING: This function can currently not be used multiple times since
@@ -111,6 +112,11 @@ let lookup: Constr, expr -> () = constr |lookup_constraint, multiplicities| {
     is_first * acc_1 = 0;
     is_first * acc_2 = 0;
     constrain_eq_ext(update_expr, from_base(0));
+
+    // Build an annotation for witness generation
+    let witgen_annotation = to_phantom_lookup(lookup_constraint, multiplicities);
+    // TODO: Adding it to the constraint set currently fails
+    // witgen_annotation;
 
     // In the extension field, we need a prover function for the accumulator.
     if needs_extension() {

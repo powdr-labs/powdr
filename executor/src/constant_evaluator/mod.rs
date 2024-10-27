@@ -1,192 +1,70 @@
-use std::{
-    collections::{BTreeMap, HashMap},
-    sync::{Arc, RwLock},
-};
-
 pub use data_structures::{get_uniquely_sized, get_uniquely_sized_cloned, VariablySizedColumn};
 use itertools::Itertools;
-use powdr_ast::{
-    analyzed::{Analyzed, Expression, FunctionValueDefinition, Symbol, TypedExpression},
-    parsed::{
-        types::{ArrayType, Type},
-        IndexAccess,
-    },
-};
-use powdr_number::{BigInt, BigUint, DegreeType, FieldElement};
-use powdr_pil_analyzer::evaluator::{self, Definitions, SymbolLookup, Value};
-use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+use powdr_ast::analyzed::Analyzed;
+use powdr_number::FieldElement;
 
 mod data_structures;
+mod interpreter;
+mod jit_compiler;
 
-/// Generates the fixed column values for all fixed columns that are defined
-/// (and not just declared).
+/// Generates the fixed column values for all fixed columns that are defined (and not just declared).
+///
 /// @returns the names (in source order) and the values for the columns.
 /// Arrays of columns are flattened, the name of the `i`th array element
 /// is `name[i]`.
 pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, VariablySizedColumn<T>)> {
-    let mut fixed_cols = HashMap::new();
+    let max_degree = analyzed
+        .constant_polys_in_source_order()
+        .map(|(poly, _)| poly.degree.unwrap().max)
+        .max()
+        .unwrap_or_default();
+
+    let mut fixed_cols = Default::default();
+    if max_degree > (1 << 18) {
+        fixed_cols = jit_compiler::generate_values(analyzed);
+    }
+    let mut used_interpreter = false;
     for (poly, value) in analyzed.constant_polys_in_source_order() {
         if let Some(value) = value {
             // For arrays, generate values for each index,
             // for non-arrays, set index to None.
             for (index, (name, id)) in poly.array_elements().enumerate() {
-                let index = poly.is_array().then_some(index as u64);
-                let range = poly.degree.unwrap();
-                let values = range
-                    .iter()
-                    .map(|degree| generate_values(analyzed, degree, &name, value, index))
-                    .collect::<Vec<_>>()
-                    .into();
-                assert!(fixed_cols.insert(name, (id, values)).is_none());
+                fixed_cols.entry((name.clone(), id)).or_insert_with(|| {
+                    let index = poly.is_array().then_some(index as u64);
+                    let range = poly.degree.unwrap();
+                    range
+                        .iter()
+                        .map(|degree| {
+                            used_interpreter = true;
+                            interpreter::generate_values(analyzed, degree, &name, value, index)
+                        })
+                        .collect::<Vec<_>>()
+                        .into()
+                });
             }
         }
+    }
+    if !used_interpreter && !fixed_cols.is_empty() {
+        log::info!("All columns were genrated using JIT-code.");
     }
 
     fixed_cols
         .into_iter()
-        .sorted_by_key(|(_, (id, _))| *id)
-        .map(|(name, (_, values))| (name, values))
+        .sorted_by_key(|((_, id), _)| *id)
+        .map(|((name, _), values)| (name, values))
         .collect()
 }
 
-fn generate_values<T: FieldElement>(
+/// Generates the fixed column values only using JIT-compiled code.
+/// Might not return all fixed columns.
+pub fn generate_only_via_jit<T: FieldElement>(
     analyzed: &Analyzed<T>,
-    degree: DegreeType,
-    name: &str,
-    body: &FunctionValueDefinition,
-    index: Option<u64>,
-) -> Vec<T> {
-    let symbols = CachedSymbols {
-        symbols: &analyzed.definitions,
-        solved_impls: &analyzed.solved_impls,
-        cache: Arc::new(RwLock::new(Default::default())),
-        degree,
-    };
-    let result = match body {
-        FunctionValueDefinition::Expression(TypedExpression { e, type_scheme }) => {
-            if let Some(type_scheme) = type_scheme {
-                assert!(type_scheme.vars.is_empty());
-                let ty = &type_scheme.ty;
-                if ty == &Type::Col {
-                    assert!(index.is_none());
-                } else if let Type::Array(ArrayType { base, length: _ }) = ty {
-                    assert!(index.is_some());
-                    assert_eq!(base.as_ref(), &Type::Col);
-                } else {
-                    panic!("Invalid fixed column type: {ty}");
-                }
-            };
-            let index_expr;
-            let e = if let Some(index) = index {
-                index_expr = IndexAccess {
-                    array: e.clone().into(),
-                    index: Box::new(BigUint::from(index).into()),
-                }
-                .into();
-                &index_expr
-            } else {
-                e
-            };
-            let fun = evaluator::evaluate(e, &mut symbols.clone()).unwrap();
-            (0..degree)
-                .into_par_iter()
-                .map(|i| {
-                    evaluator::evaluate_function_call(
-                        fun.clone(),
-                        vec![Arc::new(Value::Integer(BigInt::from(i)))],
-                        &mut symbols.clone(),
-                    )?
-                    .try_to_field_element()
-                })
-                .collect::<Result<Vec<_>, _>>()
-        }
-        FunctionValueDefinition::Array(values) => {
-            assert!(index.is_none());
-            values
-                .to_repeated_arrays(degree)
-                .map(|elements| {
-                    let items = elements
-                        .pattern()
-                        .iter()
-                        .map(|v| {
-                            let mut symbols = symbols.clone();
-                            evaluator::evaluate(v, &mut symbols)
-                                .and_then(|v| v.try_to_field_element())
-                        })
-                        .collect::<Result<Vec<_>, _>>()?;
-
-                    Ok(items
-                        .into_iter()
-                        .cycle()
-                        .take(elements.size() as usize)
-                        .collect::<Vec<_>>())
-                })
-                .collect::<Result<Vec<_>, _>>()
-                .map(|values| {
-                    let values: Vec<T> = values.into_iter().flatten().collect();
-                    assert_eq!(values.len(), degree as usize);
-                    values
-                })
-        }
-        FunctionValueDefinition::TypeDeclaration(_)
-        | FunctionValueDefinition::TypeConstructor(_, _)
-        | FunctionValueDefinition::TraitDeclaration(_)
-        | FunctionValueDefinition::TraitFunction(_, _) => panic!(),
-    };
-    match result {
-        Err(err) => {
-            eprintln!("Error evaluating fixed polynomial {name}{body}:\n{err}");
-            panic!("{err}");
-        }
-        Ok(v) => v,
-    }
-}
-
-type SymbolCache<'a, T> = HashMap<String, BTreeMap<Option<Vec<Type>>, Arc<Value<'a, T>>>>;
-
-#[derive(Clone)]
-pub struct CachedSymbols<'a, T> {
-    symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    solved_impls: &'a HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
-    cache: Arc<RwLock<SymbolCache<'a, T>>>,
-    degree: DegreeType,
-}
-
-impl<'a, T: FieldElement> SymbolLookup<'a, T> for CachedSymbols<'a, T> {
-    fn lookup(
-        &mut self,
-        name: &'a str,
-        type_args: &Option<Vec<Type>>,
-    ) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
-        if let Some(v) = self
-            .cache
-            .read()
-            .unwrap()
-            .get(name)
-            .and_then(|map| map.get(type_args))
-        {
-            return Ok(v.clone());
-        }
-        let result = Definitions::lookup_with_symbols(
-            self.symbols,
-            self.solved_impls,
-            name,
-            type_args,
-            self,
-        )?;
-        self.cache
-            .write()
-            .unwrap()
-            .entry(name.to_string())
-            .or_default()
-            .entry(type_args.clone())
-            .or_insert_with(|| result.clone());
-        Ok(result)
-    }
-
-    fn degree(&self) -> Result<Arc<Value<'a, T>>, evaluator::EvalError> {
-        Ok(Value::Integer(self.degree.into()).into())
-    }
+) -> Vec<(String, VariablySizedColumn<T>)> {
+    jit_compiler::generate_values(analyzed)
+        .into_iter()
+        .sorted_by_key(|((_, id), _)| *id)
+        .map(|((name, _), values)| (name, values))
+        .collect()
 }
 
 #[cfg(test)]

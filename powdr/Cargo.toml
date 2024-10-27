@@ -17,6 +17,13 @@ powdr-pipeline.workspace = true
 powdr-riscv.workspace = true
 powdr-riscv-executor.workspace = true
 
+log = "0.4.17"
+
+serde = { version = "1.0", default-features = false, features = [
+  "derive",
+  "alloc",
+] }
+
 [features]
 default = ["halo2", "plonky3"]
 plonky3 = ["powdr-backend/plonky3", "powdr-pipeline/plonky3"]
@@ -26,6 +33,7 @@ estark-polygon = [
   "powdr-pipeline/estark-polygon",
   "powdr-riscv/estark-polygon",
 ]
+simd = ["powdr-backend/simd", "powdr-pipeline/simd"]
 
 [lints.clippy]
 uninlined_format_args = "deny"
