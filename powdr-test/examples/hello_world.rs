@@ -5,7 +5,7 @@ fn main() {
 
     halo2_pipeline(
         "test_data/asm/book/hello_world.asm",
-        vec![0.into()],
+        vec![1.into()],
         vec![],
         8,
     );
