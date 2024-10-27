@@ -33,7 +33,8 @@ estark-polygon = [
   "powdr-pipeline/estark-polygon",
   "powdr-riscv/estark-polygon",
 ]
-simd = ["powdr-backend/simd", "powdr-pipeline/simd"]
+plonky3-simd = ["powdr-backend/plonky3-simd", "powdr-pipeline/plonky3-simd"]
+estark-starky-simd = ["powdr-backend/estark-starky-simd", "powdr-pipeline/estark-starky-simd"]
 
 [lints.clippy]
 uninlined_format_args = "deny"
