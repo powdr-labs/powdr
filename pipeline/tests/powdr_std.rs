@@ -174,18 +174,14 @@ fn lookup_via_challenges_bn() {
 fn lookup_via_challenges_ext() {
     let f = "std/lookup_via_challenges_ext.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-    // Note that this does not actually run the second-phase witness generation, because no
-    // Goldilocks backend support challenges yet.
-    make_simple_prepared_pipeline::<GoldilocksField>(f);
+    test_plonky3::<GoldilocksField>(f, vec![]);
 }
 
 #[test]
 fn lookup_via_challenges_ext_simple() {
     let f = "std/lookup_via_challenges_ext_simple.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-    // Note that this does not actually run the second-phase witness generation, because no
-    // Goldilocks backend support challenges yet.
-    make_simple_prepared_pipeline::<GoldilocksField>(f);
+    test_plonky3::<GoldilocksField>(f, vec![]);
 }
 
 #[test]
