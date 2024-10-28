@@ -565,12 +565,17 @@ impl Display for FunctionDefinition {
 
 impl<E: Display> Display for TraitDeclaration<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "trait {name}<{type_vars}> {{\n{functions}}}",
-            name = self.name,
-            type_vars = self.type_vars.iter().format(", "),
-            functions = indent(
+        write!(f, "{}", self.to_string_with_name(&self.name))
+    }
+}
+
+impl<E: Display> TraitDeclaration<E> {
+    /// Formats the trait declaration, exchanging its name by the provided one.
+    pub fn to_string_with_name(&self, name: &str) -> String {
+        format!(
+            "trait {name}<{}> {{\n{}}}",
+            self.type_vars.iter().format(", "),
+            indent(
                 self.functions.iter().map(|m| format!("{m},\n")).format(""),
                 1
             )
@@ -649,10 +654,15 @@ impl<Expr: Display> Display for SelectedExpressions<Expr> {
 
 impl<E: Display> Display for StructDeclaration<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "struct {}{} {{\n{}}}",
-            self.name,
+        write!(f, "{}", self.to_string_with_name(&self.name))
+    }
+}
+
+impl<E: Display> StructDeclaration<E> {
+    /// Formats the struct declaration, exchanging its name by the provided one.
+    pub fn to_string_with_name(&self, name: &str) -> String {
+        format!(
+            "struct {name}{} {{\n{}}}",
             type_vars_to_string(&self.type_vars),
             indent(
                 self.fields

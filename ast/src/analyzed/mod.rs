@@ -21,7 +21,7 @@ pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
     self, ArrayExpression, EnumDeclaration, EnumVariant, NamedType, SourceReference,
-    TraitDeclaration, TypeDeclaration,
+    TraitDeclaration, TraitImplementation, TypeDeclaration,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -29,10 +29,12 @@ pub enum StatementIdentifier {
     /// Either an intermediate column or a definition.
     Definition(String),
     PublicDeclaration(String),
-    /// Index into the vector of proof items.
+    /// Index into the vector of proof items / identities.
     ProofItem(usize),
     /// Index into the vector of prover functions.
     ProverFunction(usize),
+    /// Index into the vector of trait implementations.
+    TraitImplementation(usize),
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
@@ -43,6 +45,7 @@ pub struct Analyzed<T> {
     pub intermediate_columns: HashMap<String, (Symbol, Vec<AlgebraicExpression<T>>)>,
     pub identities: Vec<Identity<T>>,
     pub prover_functions: Vec<Expression>,
+    pub trait_impls: Vec<TraitImplementation<Expression>>,
     /// The order in which definitions and identities
     /// appear in the source.
     pub source_order: Vec<StatementIdentifier>,
