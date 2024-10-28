@@ -142,24 +142,9 @@ fn memory_small_test() {
 }
 
 #[test]
-fn permutation_via_challenges_bn() {
+fn permutation_via_challenges() {
     let f = "std/permutation_via_challenges.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-}
-
-#[test]
-fn permutation_via_challenges_gl() {
-    let f = "std/permutation_via_challenges.asm";
-    make_simple_prepared_pipeline::<GoldilocksField>(f);
-}
-
-#[test]
-fn permutation_via_challenges_ext() {
-    let f = "std/permutation_via_challenges_ext.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-    // Note that this does not actually run the second-phase witness generation, because no
-    // Goldilocks backend support challenges yet. But at least it tests that the panic from
-    // the previous test is not happening.
     make_simple_prepared_pipeline::<GoldilocksField>(f);
 }
 
@@ -176,17 +161,8 @@ fn lookup_via_challenges() {
 }
 
 #[test]
-fn bus_permutation_via_challenges_bn() {
+fn bus_permutation_via_challenges() {
     let f = "std/bus_permutation_via_challenges.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-
-    // At least run witness generation on Goldilocks.
-    make_simple_prepared_pipeline::<GoldilocksField>(f);
-}
-
-#[test]
-fn bus_permutation_via_challenges_ext_bn() {
-    let f = "std/bus_permutation_via_challenges_ext.asm";
     test_halo2(make_simple_prepared_pipeline(f));
 
     // At least run witness generation on Goldilocks.

@@ -1,6 +1,7 @@
 use std::array::map;
 use std::check::assert;
 use std::check::panic;
+use std::constraints::to_phantom_permutation;
 use std::math::fp2::Fp2;
 use std::math::fp2::add_ext;
 use std::math::fp2::sub_ext;
@@ -109,6 +110,9 @@ let permutation: Constr -> () = constr |permutation_constraint| {
     is_first * (acc_1 - 1) = 0;
     is_first * acc_2 = 0;
     constrain_eq_ext(update_expr, from_base(0));
+
+    // Add an annotation for witness generation
+    to_phantom_permutation(permutation_constraint);
 
     // In the extension field, we need a prover function for the accumulator.
     if needs_extension() {
