@@ -27,8 +27,7 @@ stwo = ["dep:stwo-prover"]
 
 # Enable AVX or Neon accordingly in backends that support them.
 plonky3-simd = ["powdr-plonky3?/nightly-features"]
-estark-starky-simd = ["starky/avx512"]
-simd = ["plonky3-simd", "estark-starky-simd"]
+estark-starky-simd = ["starky?/avx512"]
 
 [dependencies]
 powdr-ast.workspace = true
