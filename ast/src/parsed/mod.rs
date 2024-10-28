@@ -188,6 +188,43 @@ impl PilStatement {
     }
 }
 
+impl SourceReference for PilStatement {
+    fn source_reference(&self) -> &SourceRef {
+        match self {
+            PilStatement::Include(s, _)
+            | PilStatement::Namespace(s, _, _)
+            | PilStatement::LetStatement(s, _, _, _)
+            | PilStatement::PolynomialDefinition(s, _, _)
+            | PilStatement::PolynomialCommitDeclaration(s, _, _, _)
+            | PilStatement::PolynomialConstantDeclaration(s, _)
+            | PilStatement::PolynomialConstantDefinition(s, _, _)
+            | PilStatement::PublicDeclaration(s, _, _, _, _)
+            | PilStatement::EnumDeclaration(s, _)
+            | PilStatement::StructDeclaration(s, _)
+            | PilStatement::TraitDeclaration(s, _)
+            | PilStatement::TraitImplementation(s, _)
+            | PilStatement::Expression(s, _) => s,
+        }
+    }
+    fn source_reference_mut(&mut self) -> &mut SourceRef {
+        match self {
+            PilStatement::Include(s, _)
+            | PilStatement::Namespace(s, _, _)
+            | PilStatement::LetStatement(s, _, _, _)
+            | PilStatement::PolynomialDefinition(s, _, _)
+            | PilStatement::PolynomialCommitDeclaration(s, _, _, _)
+            | PilStatement::PolynomialConstantDeclaration(s, _)
+            | PilStatement::PolynomialConstantDefinition(s, _, _)
+            | PilStatement::PublicDeclaration(s, _, _, _, _)
+            | PilStatement::EnumDeclaration(s, _)
+            | PilStatement::StructDeclaration(s, _)
+            | PilStatement::TraitDeclaration(s, _)
+            | PilStatement::TraitImplementation(s, _)
+            | PilStatement::Expression(s, _) => s,
+        }
+    }
+}
+
 impl Children<Expression> for PilStatement {
     /// Returns an iterator over all (top-level) expressions in this statement.
     fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
