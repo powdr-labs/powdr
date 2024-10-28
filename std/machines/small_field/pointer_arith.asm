@@ -9,7 +9,7 @@
 /// The pointers are given in 2 16-bit limbs. This function returns a set of constraints
 /// ensuring that the following are equal:
 /// - (int(post_high) * 0x10000 + int(post_low))
-/// - (int(pre_high) * 0x10000 + int(pre_low) + 4)
+/// - (int(pre_high) * 0x10000 + int(pre_low) + amount)
 ///
 /// The returned constraints are not automatically added to the constraints set. This is so the
 /// caller will be able to latch-disable them in rows they aren't needed.
