@@ -305,6 +305,31 @@ impl<T> Analyzed<T> {
         self.post_visit_expressions_in_identities_mut(algebraic_visitor);
     }
 
+    pub fn remove_trait_impls(&mut self, to_remove: &HashSet<usize>) {
+        let to_remove_vec: Vec<usize> = to_remove.iter().copied().collect();
+
+        self.source_order.retain_mut(|s| {
+            if let StatementIdentifier::TraitImplementation(index) = s {
+                match to_remove_vec.binary_search(index) {
+                    Ok(_) => false,
+                    Err(insert_pos) => {
+                        *index -= insert_pos;
+                        true
+                    }
+                }
+            } else {
+                true
+            }
+        });
+        self.trait_impls = std::mem::take(&mut self.trait_impls)
+            .into_iter()
+            .enumerate()
+            .filter(|(i, _)| !to_remove.contains(i))
+            .map(|(_, impl_)| impl_)
+            .collect();
+        self.solved_impls.remove_trait_impls(&to_remove_vec);
+    }
+
     pub fn post_visit_expressions_in_identities_mut<F>(&mut self, f: &mut F)
     where
         F: FnMut(&mut AlgebraicExpression<T>),
@@ -620,6 +645,24 @@ impl SolvedTraitImpls {
             .entry(trait_function_name)
             .or_default()
             .insert(type_args, ImplData { index, function });
+    }
+
+    /// Update the data structure after a certain set of trait impls have been removed.
+    /// This just updates the `index` fields.
+    /// Assumes that `to_remove` is sorted.
+    pub fn remove_trait_impls(&mut self, to_remove: &Vec<usize>) {
+        for map in self.impls.values_mut() {
+            for impl_data in map.values_mut() {
+                match to_remove.binary_search(&impl_data.index) {
+                    Ok(index) => {
+                        // TODO remove this impl_data from map
+                    }
+                    Err(index) => {
+                        impl_data.index -= index;
+                    }
+                }
+            }
+        }
     }
 }
 

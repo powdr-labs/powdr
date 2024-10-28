@@ -8,7 +8,7 @@ use powdr_ast::{
         asm::SymbolPath,
         types::Type,
         visitor::{AllChildren, Children},
-        EnumDeclaration, StructDeclaration, TypeDeclaration,
+        EnumDeclaration, StructDeclaration, TraitImplementation, TypeDeclaration,
     },
 };
 
@@ -94,6 +94,16 @@ impl ReferencedSymbols for FunctionValueDefinition {
     }
 }
 
+impl ReferencedSymbols for TraitImplementation<Expression> {
+    fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
+        Box::new(
+            once(SymbolReference::from(&self.name))
+                .chain(self.functions.iter().flat_map(|f| f.body.symbols()))
+                .chain(self.type_scheme.ty.symbols()),
+        )
+    }
+}
+
 impl ReferencedSymbols for TypeDeclaration {
     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
         match self {
@@ -125,7 +135,7 @@ impl ReferencedSymbols for Expression {
     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
         Box::new(
             self.all_children()
-                .flat_map(|e| symbols_in_expression(e))
+                .flat_map(symbols_in_expression)
                 .flatten(),
         )
     }
@@ -150,9 +160,6 @@ fn symbols_in_expression(
 
 impl ReferencedSymbols for Type {
     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
-        Box::new(
-            self.contained_named_types()
-                .map(|n| SymbolReference::from(n)),
-        )
+        Box::new(self.contained_named_types().map(SymbolReference::from))
     }
 }

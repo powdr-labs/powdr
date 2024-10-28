@@ -214,6 +214,7 @@ fn test_trait_impl() {
             // This is unused but should not be removed, nor should its dependencies.
             g: |x| dep(x)
         }
+        trait UnusedTrait<T> { f: -> T }
         let dep: fe -> fe = |x| x + 1;
         // this should be removed.
         impl Default<int> { f: || 1, g: |x| x }
@@ -224,11 +225,11 @@ fn test_trait_impl() {
     let expectation = r#"namespace N(65536);
     trait Default<T> {
         f: -> T,
-        g: T -> T
+        g: T -> T,
     }
-    impl Default<fe> {
+    impl N::Default<fe> {
         f: || 1_fe,
-        g: |x| dep(x),
+        g: |x| N::dep(x),
     }
     let dep: fe -> fe = |x| x + 1_fe;
     col fixed x(_) { N::Default::f::<fe>() };

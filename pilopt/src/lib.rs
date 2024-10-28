@@ -1,11 +1,9 @@
 //! PIL-based optimizer
 #![deny(clippy::print_stdout)]
 
-use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
-use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, ConnectIdentity, Expression,
@@ -14,7 +12,7 @@ use powdr_ast::analyzed::{
 };
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
-use powdr_ast::parsed::{NamedType, Number};
+use powdr_ast::parsed::Number;
 use powdr_number::{BigUint, FieldElement};
 
 mod referenced_symbols;
@@ -49,29 +47,24 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
 fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let poly_id_to_definition_name = build_poly_id_to_definition_name_lookup(pil_file);
     let mut symbols_seen = collect_required_symbols(pil_file, &poly_id_to_definition_name);
+    let mut impls_to_retain = HashSet::new();
 
     let mut to_process = symbols_seen.iter().cloned().collect::<Vec<_>>();
     while let Some(n) = to_process.pop() {
         let symbols: Box<dyn Iterator<Item = SymbolReference<'_>>> = if let Some((sym, value)) =
             pil_file.definitions.get(n.name.as_ref())
         {
-            println!(
-                " Next up in queue: {}::<{}>",
-                n.name,
-                n.type_args
-                    .map(|ta| ta.iter().format(", "))
-                    .map(|s| s.to_string())
-                    .unwrap_or_default()
-            );
             // TODO remove this.
             let set_hint = (sym.kind == SymbolKind::Poly(PolynomialType::Committed)
                 && value.is_some())
             .then_some(SymbolReference::from("std::prelude::set_hint"));
-            // let<T> x = || Trait::g::<T>();
             // TODO substitute type args in what is returned here?
-            if let Some(FunctionValueDefinition::TraitFunction(trait_name, fun_name)) = value {
-                let NamedType { name, ty } = fun_name;
-                todo!()
+            if let Some(FunctionValueDefinition::TraitFunction(..)) = value {
+                let impl_index = pil_file
+                    .solved_impls
+                    .resolve_trait_impl_index(&n.name, n.type_args.unwrap());
+                impls_to_retain.insert(impl_index);
+                Box::new(pil_file.trait_impls[impl_index].symbols())
             } else {
                 Box::new(
                     value
@@ -120,6 +113,10 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         .cloned()
         .collect();
     pil_file.remove_definitions(&definitions_to_remove);
+    let impls_to_remove = (0..pil_file.trait_impls.len())
+        .filter(|i| !impls_to_retain.contains(i))
+        .collect();
+    pil_file.remove_trait_impls(&impls_to_remove);
 }
 
 /// Builds a lookup-table that can be used to turn array elements
