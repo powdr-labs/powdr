@@ -53,7 +53,8 @@ pub fn compile<T: FieldElement>(
     analyzed: &Analyzed<T>,
     requested_symbols: &[&str],
 ) -> Result<CompiledPIL, String> {
-    log::info!("JIT-compiling {} symbols...", requested_symbols.len());
+    // TODO this should be changed back to Info after the introduction of the ToCol trait.
+    log::debug!("JIT-compiling {} symbols...", requested_symbols.len());
 
     let mut codegen = CodeGenerator::new(analyzed);
     let successful_symbols = requested_symbols
@@ -70,7 +71,8 @@ pub fn compile<T: FieldElement>(
 
     if successful_symbols.len() < requested_symbols.len() {
         let successful_hash = successful_symbol_names.iter().collect::<HashSet<_>>();
-        log::info!(
+        // TODO this should be changed back to Info after the introduction of the ToCol trait.
+        log::debug!(
             "Unable to generate code during JIT-compilation for the following symbols. Will use evaluator instead.\n{}",
             requested_symbols
                 .iter()

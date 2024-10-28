@@ -6,6 +6,7 @@ use std::iter::once;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::structural_checks::check_structs_fields;
 use itertools::Itertools;
 use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, ModuleStatement, SymbolPath,
@@ -14,14 +15,13 @@ use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_ast::parsed::{
     self, FunctionKind, LambdaExpression, PILFile, PilStatement, SymbolCategory,
-    TraitImplementation,
+    TraitImplementation, TypedExpression,
 };
 use powdr_number::{FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
     type_from_definition, Analyzed, DegreeRange, Expression, FunctionValueDefinition,
     PolynomialType, PublicDeclaration, Reference, StatementIdentifier, Symbol, SymbolKind,
-    TypedExpression,
 };
 use powdr_parser::{parse, parse_module, parse_type};
 use powdr_parser_util::Error;
@@ -52,6 +52,7 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Result<Analyzed<T>, Vec<Erro
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(files)?;
     analyzer.side_effect_check()?;
+    analyzer.validate_structs()?;
     analyzer.type_check()?;
     let solved_impls = analyzer.resolve_trait_impls()?;
     analyzer.condense(solved_impls)
@@ -247,6 +248,14 @@ impl PILAnalyzer {
         } else {
             Err(errors)
         }
+    }
+
+    pub fn validate_structs(&self) -> Result<(), Vec<Error>> {
+        let structs_exprs = self
+            .all_children()
+            .filter(|expr| matches!(expr, Expression::StructExpression(_, _)));
+
+        check_structs_fields(structs_exprs, &self.definitions)
     }
 
     pub fn type_check(&mut self) -> Result<(), Vec<Error>> {
@@ -533,6 +542,40 @@ impl PILAnalyzer {
 
     fn driver(&self) -> Driver {
         Driver(self)
+    }
+}
+
+impl Children<Expression> for PILAnalyzer {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(
+            self.definitions
+                .values()
+                .filter_map(|(_, def)| def.as_ref())
+                .flat_map(|def| def.children())
+                .chain(
+                    self.trait_impls
+                        .values()
+                        .flat_map(|impls| impls.iter())
+                        .flat_map(|impl_| impl_.children()),
+                )
+                .chain(self.proof_items.iter()),
+        )
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(
+            self.definitions
+                .values_mut()
+                .filter_map(|(_, def)| def.as_mut())
+                .flat_map(|def| def.children_mut())
+                .chain(
+                    self.trait_impls
+                        .values_mut()
+                        .flat_map(|impls| impls.iter_mut())
+                        .flat_map(|impl_| impl_.children_mut()),
+                )
+                .chain(self.proof_items.iter_mut()),
+        )
     }
 }
 
