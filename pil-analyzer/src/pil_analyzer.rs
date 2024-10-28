@@ -24,7 +24,7 @@ use powdr_ast::analyzed::{
     PolynomialType, PublicDeclaration, Reference, StatementIdentifier, Symbol, SymbolKind,
 };
 use powdr_parser::{parse, parse_module, parse_type};
-use powdr_parser_util::{Error, SourceRef};
+use powdr_parser_util::Error;
 
 use crate::traits_resolver::{SolvedTraitImpls, TraitsResolver};
 use crate::type_builtins::constr_function_statement_type;
@@ -438,13 +438,13 @@ impl PILAnalyzer {
             _ => {
                 let names = statement
                     .symbol_definition_names_and_contained()
-                    .map(|(name, sub_name, symbol_category, source)| {
+                    .map(|(name, sub_name, symbol_category)| {
                         (
                             match sub_name {
-                                None => self.driver().resolve_decl(&source, name).unwrap(),
+                                None => self.driver().resolve_decl(name).unwrap(),
                                 Some(sub_name) => self
                                     .driver()
-                                    .resolve_namespaced_decl(&source, &[name, sub_name])
+                                    .resolve_namespaced_decl(&[name, sub_name])
                                     .unwrap()
                                     .relative_to(&Default::default())
                                     .to_string(),
@@ -586,11 +586,7 @@ impl Children<Expression> for PILAnalyzer {
 struct Driver<'a>(&'a PILAnalyzer);
 
 impl<'a> AnalysisDriver for Driver<'a> {
-    fn resolve_namespaced_decl(
-        &self,
-        _source: &SourceRef,
-        path: &[&String],
-    ) -> Result<AbsoluteSymbolPath, Error> {
+    fn resolve_namespaced_decl(&self, path: &[&String]) -> Result<AbsoluteSymbolPath, String> {
         Ok(path
             .iter()
             .fold(self.0.current_namespace.clone(), |path, part| {

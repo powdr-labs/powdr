@@ -96,7 +96,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         use parsed::Expression as PExpression;
         match expr {
             PExpression::Reference(src, poly) => {
-                Expression::Reference(src.clone(), self.process_reference(src, poly))
+                Expression::Reference(src, self.process_reference(poly))
             }
             PExpression::PublicReference(src, name) => Expression::PublicReference(src, name),
             PExpression::Number(src, Number { value: n, type_: t }) => {
@@ -201,7 +201,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                         name: Reference::Poly(PolynomialReference {
                             name: self
                                 .driver
-                                .resolve_ref(&src, &name.path, SymbolCategory::Struct)
+                                .resolve_ref(&name.path, SymbolCategory::Struct)
                                 .unwrap(),
                             type_args,
                         }),
@@ -265,7 +265,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 }
             }
             Pattern::Enum(source_ref, name, fields) => {
-                let name = self.driver.resolve_value_ref(&source_ref, &name).unwrap();
+                let name = self.driver.resolve_value_ref(&name).unwrap();
                 self.process_enum_pattern(source_ref, name, fields)
             }
         }
@@ -305,17 +305,13 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         )
     }
 
-    fn process_reference(
-        &mut self,
-        source: SourceRef,
-        reference: NamespacedPolynomialReference,
-    ) -> Reference {
+    fn process_reference(&mut self, reference: NamespacedPolynomialReference) -> Reference {
         match reference.try_to_identifier() {
             Some(name) if self.local_variables.contains_key(name) => {
                 let id = self.local_variables[name];
                 Reference::LocalVar(id, name.to_string())
             }
-            _ => Reference::Poly(self.process_namespaced_polynomial_reference(source, reference)),
+            _ => Reference::Poly(self.process_namespaced_polynomial_reference(reference)),
         }
     }
 
@@ -391,17 +387,13 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
 
     pub fn process_namespaced_polynomial_reference(
         &mut self,
-        source: SourceRef,
         reference: NamespacedPolynomialReference,
     ) -> PolynomialReference {
         let type_args = reference
             .type_args
             .map(|args| args.into_iter().map(|t| self.process_type(t)).collect());
         PolynomialReference {
-            name: self
-                .driver
-                .resolve_value_ref(&source, &reference.path)
-                .unwrap(),
+            name: self.driver.resolve_value_ref(&reference.path).unwrap(),
             type_args,
         }
     }
