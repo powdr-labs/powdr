@@ -10,6 +10,7 @@ use std::ops::{self, ControlFlow};
 use std::sync::Arc;
 
 use itertools::Itertools;
+use num_traits::One;
 use powdr_number::{DegreeType, FieldElement};
 use powdr_parser_util::SourceRef;
 use schemars::JsonSchema;
@@ -761,7 +762,7 @@ pub struct SelectedExpressions<T> {
     pub expressions: Vec<AlgebraicExpression<T>>,
 }
 
-impl<T: FieldElement> Default for SelectedExpressions<T> {
+impl<T: One> Default for SelectedExpressions<T> {
     fn default() -> Self {
         Self {
             selector: T::one().into(),
@@ -969,9 +970,7 @@ impl<T> SelectedExpressions<T> {
     /// @returns true if the expression contains a reference to a next value of a
     /// (witness or fixed) column
     pub fn contains_next_ref(&self) -> bool {
-        once(&self.selector)
-            .chain(self.expressions.iter())
-            .any(|e| e.contains_next_ref())
+        self.children().any(|e| e.contains_next_ref())
     }
 }
 
