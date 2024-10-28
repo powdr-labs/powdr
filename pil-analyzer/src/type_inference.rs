@@ -62,13 +62,26 @@ impl From<Type> for ExpectedType {
     }
 }
 
+#[derive(Clone)]
+struct DeclaredType {
+    pub source: SourceRef,
+    pub vars: TypeBounds,
+    pub ty: TypeDeclaredType,
+}
+
+#[derive(Clone)]
+enum TypeDeclaredType {
+    Struct(HashMap<String, Type>),
+    Type(Type),
+}
+
 struct TypeChecker {
     /// Types for local variables, might contain type variables.
     local_var_types: Vec<Type>,
     /// Declared types for all symbols and their source references.
     /// Contains the unmodified type scheme for symbols with generic types and newly
     /// created type variables for symbols without declared type.
-    declared_types: HashMap<String, (SourceRef, TypeScheme)>,
+    declared_types: HashMap<String, DeclaredType>,
     /// Current mapping of declared type vars to type. Reset before checking each definition.
     declared_type_vars: HashMap<String, Type>,
     unifier: Unifier,
