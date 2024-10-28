@@ -6,7 +6,7 @@ use std::utils::new_bool;
 use std::utils::sum;
 use std::convert::expr;
 use std::machines::small_field::memory::Memory;
-use std::machines::small_field::pointer_arith::word_increment_ptr;
+use std::machines::small_field::pointer_arith::increment_ptr;
 use std::machines::split::split_bb::SplitBB;
 
 // Implements the Poseidon permutation for the BabyBear field with the following parameters:
@@ -99,9 +99,9 @@ machine PoseidonBB(mem: Memory, split_bb: SplitBB) with
     CLK[STATE_SIZE] * (high_addr - output_addr_high) = 0;
     CLK[STATE_SIZE] * (low_addr - output_addr_low) = 0;
 
-    // Increment the address in every row but the ones it is set.
+    // Increment the address by 4 in every row but the ones it is set.
     std::array::map(
-        word_increment_ptr(high_addr, low_addr, high_addr', low_addr'),
+        increment_ptr(4, high_addr, low_addr, high_addr', low_addr'),
         |c| std::constraints::make_conditional(c, (1 - is_addr_set'))
     );
 
