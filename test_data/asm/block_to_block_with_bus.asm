@@ -26,47 +26,8 @@ machine Arith with
 
     let used = std::array::sum(sel);
 
-    // ==== Begin bus: Receive tuple (0, x, y, z) with ARITH_INTERACTION_ID ====
-
-    // Non-extension case, can be useful for debugging
-    /*
-    let alpha = from_base(challenge(0, 1));
-    let beta = from_base(challenge(0, 2));
-
-    let is_first: col = std::well_known::is_first;
-    col witness stage(1) acc;
-
-    bus_receive(is_first, ARITH_INTERACTION_ID, [0, x, y, z], latch * used, [acc], alpha, beta);
-    */
-
-    let alpha1: expr = challenge(0, 1);
-    let alpha2: expr = challenge(0, 2);
-    let beta1: expr = challenge(0, 3);
-    let beta2: expr = challenge(0, 4);
-    let alpha = Fp2::Fp2(alpha1, alpha2);
-    let beta = Fp2::Fp2(beta1, beta2);
-
-    let is_first: col = std::well_known::is_first;
-    col witness stage(1) acc1;
-    col witness stage(1) acc2;
-    let acc = Fp2::Fp2(acc1, acc2);
-
-    bus_receive(ARITH_INTERACTION_ID, [0, x, y, z], latch * used, [acc1, acc2], alpha, beta);
-
-    col witness stage(1) acc1_next;
-    col witness stage(1) acc2_next;
-    query |i| {
-        let hint = compute_next_z_receive(is_first, ARITH_INTERACTION_ID, [0, x, y, z], latch * used, acc, alpha, beta);
-        std::prover::provide_value(acc1_next, i, hint[0]);
-        std::prover::provide_value(acc2_next, i, hint[1]);
-    };
-
-    acc1' = acc1_next;
-    acc2' = acc2_next;
-
+    bus_receive(ARITH_INTERACTION_ID, [0, x, y, z], latch * used);
     // TODO: Expose final value of acc as public.
-
-    // ==== End bus ====
 
     col fixed operation_id = [0]*;
     col fixed latch = [1]*;
@@ -93,44 +54,7 @@ machine Main with
     // Need a constraint so that it's not optimized away
     dummy = dummy';
 
-    // ==== Begin bus: Send tuple (0, x, y, z) with ARITH_INTERACTION_ID ====
-
-    // Non-extension case, can be useful for debugging
-    /*
-    let alpha = from_base(challenge(0, 1));
-    let beta = from_base(challenge(0, 2));
-
-    let is_first: col = std::well_known::is_first;
-    col witness stage(1) acc;
-
-    bus_send(is_first, ARITH_INTERACTION_ID, [0, x, y, z], instr_add, [acc], alpha, beta);
-    */
-
-    let alpha1: expr = challenge(0, 1);
-    let alpha2: expr = challenge(0, 2);
-    let beta1: expr = challenge(0, 3);
-    let beta2: expr = challenge(0, 4);
-    let alpha = Fp2::Fp2(alpha1, alpha2);
-    let beta = Fp2::Fp2(beta1, beta2);
-
-    let is_first: col = std::well_known::is_first;
-    col witness stage(1) acc1;
-    col witness stage(1) acc2;
-    let acc = Fp2::Fp2(acc1, acc2);
-
-    bus_send(ARITH_INTERACTION_ID, [0, x, y, z], instr_add, [acc1, acc2], alpha, beta);
-
-    col witness stage(1) acc1_next;
-    col witness stage(1) acc2_next;
-    query |i| {
-        let hint = compute_next_z_send(is_first, ARITH_INTERACTION_ID, [0, x, y, z], instr_add, acc, alpha, beta);
-        std::prover::provide_value(acc1_next, i, hint[0]);
-        std::prover::provide_value(acc2_next, i, hint[1]);
-    };
-
-    acc1' = acc1_next;
-    acc2' = acc2_next;
-
+    bus_send(ARITH_INTERACTION_ID, [0, x, y, z], instr_add);
     // TODO: Expose final value of acc as public.
 
     // ==== End bus ====

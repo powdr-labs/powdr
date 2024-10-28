@@ -1,5 +1,6 @@
 use std::check::assert;
 use std::check::panic;
+use std::array;
 use std::math::fp2::Fp2;
 use std::math::fp2::add_ext;
 use std::math::fp2::sub_ext;
@@ -15,6 +16,7 @@ use std::math::fp2::is_extension;
 use std::math::fp2::fp2_from_array;
 use std::math::fp2::constrain_eq_ext;
 use std::protocols::fingerprint::fingerprint_with_id;
+use std::math::fp2::required_extension_size;
 use std::prover::eval;
 
 /// Sends the tuple (id, tuple...) to the bus by adding
@@ -35,7 +37,14 @@ use std::prover::eval;
 /// # Returns:
 ///
 /// - Constraints to be added to enforce the bus
-let bus_interaction: expr, expr[], expr, expr[], Fp2<expr>, Fp2<expr> -> () = constr |id, tuple, multiplicity, acc, alpha, beta| {
+let bus_interaction: expr, expr[], expr -> () = constr |id, tuple, multiplicity| {
+
+    std::check::assert(required_extension_size() <= 2, || "Invalid extension size");
+
+    // Alpha is used to compress the LHS and RHS arrays.
+    let alpha = fp2_from_array(array::new(required_extension_size(), |i| challenge(0, i + 1)));
+    // Beta is used to update the accumulator.
+    let beta = fp2_from_array(array::new(required_extension_size(), |i| challenge(0, i + 3)));
 
     // Implemented as: folded = (beta - fingerprint(id, tuple...));
     let folded = sub_ext(beta, fingerprint_with_id(id, tuple, alpha));
@@ -44,6 +53,7 @@ let bus_interaction: expr, expr[], expr, expr[], Fp2<expr>, Fp2<expr> -> () = co
     let m_ext = from_base(multiplicity);
     let m_ext_next = next_ext(m_ext);
 
+    let acc = array::new(required_extension_size(), |i| std::prover::new_witness_col_at_stage("acc", 1));
     let acc_ext = fp2_from_array(acc);
     let next_acc = next_ext(acc_ext);
 
@@ -94,11 +104,11 @@ let compute_next_z_receive: expr, expr, expr[], expr, Fp2<expr>, Fp2<expr>, Fp2<
     compute_next_z_send(is_first, id, tuple, -multiplicity, acc, alpha, beta);
 
 /// Convenience function for bus interaction to send columns
-let bus_send: expr, expr[], expr, expr[], Fp2<expr>, Fp2<expr> -> () = constr |id, tuple, multiplicity, acc, alpha, beta| {
-    bus_interaction(id, tuple, multiplicity, acc, alpha, beta);
+let bus_send: expr, expr[], expr -> () = constr |id, tuple, multiplicity| {
+    bus_interaction(id, tuple, multiplicity);
 };
 
 /// Convenience function for bus interaction to receive columns
-let bus_receive: expr, expr[], expr, expr[], Fp2<expr>, Fp2<expr> -> () = constr |id, tuple, multiplicity, acc, alpha, beta| {
-    bus_interaction(id, tuple, -1 * multiplicity, acc, alpha, beta);
+let bus_receive: expr, expr[], expr -> () = constr |id, tuple, multiplicity| {
+    bus_interaction(id, tuple, -1 * multiplicity);
 };

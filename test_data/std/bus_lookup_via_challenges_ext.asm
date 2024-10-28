@@ -8,13 +8,6 @@ use std::prover::challenge;
 
 machine Main with degree: 8 {
 
-    let alpha1: expr = challenge(0, 1);
-    let alpha2: expr = challenge(0, 2);
-    let beta1: expr = challenge(0, 3);
-    let beta2: expr = challenge(0, 4);
-    let alpha = Fp2::Fp2(alpha1, alpha2);
-    let beta = Fp2::Fp2(beta1, beta2);
-
     col fixed a_sel = [0, 1, 1, 1, 0, 1, 0, 0];
     col fixed b_sel = [1, 1, 0, 1, 1, 1, 1, 0];
 
@@ -31,21 +24,11 @@ machine Main with degree: 8 {
 
     let lookup_constraint = a_sel $ [a1, a2, a3] in b_sel $ [b1, b2, b3];
 
-    // TODO: Functions currently cannot add witness columns at later stages,
-    // so we have to manually create it here and pass it to lookup(). 
-    col witness stage(1) z1;
-    col witness stage(1) z2;
-    let z = Fp2::Fp2(z1, z2);
-
-    col witness stage(1) u1;
-    col witness stage(1) u2;
-    let u = Fp2::Fp2(u1, u2);
-
-
-    lookup(1, [z1,z2], [u1, u2], alpha, beta, lookup_constraint, m);
+    lookup(1, lookup_constraint, m);
 
     let is_first: col = std::well_known::is_first;
     
+    /*
     col witness stage(1) z1_next;
     col witness stage(1) z2_next;
     query |i| {
@@ -70,4 +53,6 @@ machine Main with degree: 8 {
 
     is_first' * (z1 + u1) = 0;
     is_first' * (z2 + u2) = 0;
+
+    */
 }
