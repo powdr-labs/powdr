@@ -199,15 +199,10 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                         challenge.stage >= self.stage.into()
                     }
                     AlgebraicExpression::Reference(AlgebraicReference { name, .. }) => {
-                        // TODO: Shouldn't be using name? What about arrays?
+                        // TODO: This doesn't work for arrays!
                         self.analyzed
                             .definitions
-                            .get(name)
-                            .unwrap()
-                            .0
-                            .stage
-                            .unwrap_or_default()
-                            > self.stage.into()
+                            .get(name).map(|(symbol, _)| symbol.stage.unwrap_or_default()> self.stage.into()).unwrap_or(false)
                     }
                     _ => false,
                 });
