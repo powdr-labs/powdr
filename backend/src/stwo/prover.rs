@@ -4,15 +4,16 @@ use powdr_number::Mersenne31Field;
 use std::io;
 use std::sync::Arc;
 
-use crate::stwo::circuit_builder::PowdrCircuitTrace;
+use crate::stwo::circuit_builder::PowdrCircuit;
 
 use super::circuit_builder::PowdrComponent;
-use super::circuit_builder::PowdrEval;
+
 
 use stwo_prover::constraint_framework::{
     assert_constraints, EvalAtRow, FrameworkComponent, FrameworkEval, TraceLocationAllocator,
 };
 use stwo_prover::core::backend::simd::SimdBackend;
+
 use stwo_prover::core::channel::Poseidon252Channel;
 use stwo_prover::core::fri::FriConfig;
 use stwo_prover::core::pcs::{
@@ -57,13 +58,13 @@ impl<F: FieldElement> StwoProver<F> {
         };
 
         //Trace
-        let circuit = PowdrCircuitTrace::new(self.analyzed.clone())
+        let circuit = PowdrCircuit::new(self.analyzed.clone())
             .with_witgen_callback(witgen_callback.clone())
             .with_witness(witness)
             .generate_stwo_circuit_trace();
         print!("witness from powdr {:?}", circuit.witness );
 
-        let circuitEval = PowdrEval::new(self.analyzed.clone())
+        let circuitEval = PowdrCircuit::new(self.analyzed.clone())
             .with_witgen_callback(witgen_callback.clone())
             .with_witness(witness);
 
@@ -87,13 +88,13 @@ impl<F: FieldElement> StwoProver<F> {
             );
         println!("generate prover channel");
 
-        let pretest_trace = PowdrCircuitTrace::new(self.analyzed.clone())
+        let pretest_trace = PowdrCircuit::new(self.analyzed.clone())
             .with_witgen_callback(witgen_callback.clone())
             .with_witness(witness)
             .generate_stwo_circuit_trace();
         println!("\n the trace after convert to circle domain is {:?} \n", pretest_trace.elements);
 
-        let trace = PowdrCircuitTrace::new(self.analyzed.clone())
+        let trace = PowdrCircuit::new(self.analyzed.clone())
             .with_witgen_callback(witgen_callback)
             .with_witness(witness)
             .generate_stwo_circuit_trace()
@@ -167,25 +168,6 @@ mod tests {
         println!("This is the pil {}", pil);
         println!("This is the identity {:?}", pil.identities);
 
-        let identities = pil
-            .identities_with_inlined_intermediate_polynomials()
-            .into_iter()
-            .filter(|id| id.kind == IdentityKind::Polynomial)
-            .collect::<Vec<_>>();
-
-        identities
-            .iter()
-            .map(|id| {
-                let expr = id.expression_for_poly_id();
-                let name = id.to_string();
-                println!(
-                    "\n this is the name {:?}, this is the expr {:?} \n",
-                    name, expr
-                );
-                to_stwo_expression(expr);
-                (name, expr)
-            })
-            .collect::<Vec<_>>();
 
         let witness_callback = pipeline.witgen_callback().unwrap();
         let witness = &mut pipeline.compute_witness().unwrap();
@@ -194,80 +176,6 @@ mod tests {
         let fixed = pipeline.compute_fixed_cols().unwrap();
 
         //let mut prover = StwoProver::new(pil, fixed);
-    }
-
-    fn to_stwo_expression(
-        expr: &AlgebraicExpression<F>,
-        //eval: &mut E,
-    ) -> isize {
-        match expr {
-            AlgebraicExpression::Number(n) => {
-                println!("This is the number {:?}", n);
-                unimplemented!("Number");
-            }
-            AlgebraicExpression::Reference(polyref) => {
-                let interaction = match polyref.next {
-                    false => println!("no constraint for rows"),
-                    true => println!("next reference"),
-                };
-                //handle advice and fixed differently, constant or witness?
-                0
-            }
-            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-                left: lhe,
-                op,
-                right: powdr_rhe,
-            }) => {
-                let lhe = to_stwo_expression(lhe);
-                let rhe = to_stwo_expression(powdr_rhe);
-                match op {
-                    AlgebraicBinaryOperator::Add => {
-                        lhe + rhe;
-                        println!(
-                            "This is the addition, lhe is {:?}, and rhe is {:?}",
-                            lhe, rhe
-                        );
-                        unimplemented!()
-                    }
-                    AlgebraicBinaryOperator::Sub => {
-                        lhe - rhe;
-                        println!(
-                            "This is the substraction, lhe is {:?}, and rhe is {:?}",
-                            lhe, rhe
-                        );
-                        0
-                    }
-                    AlgebraicBinaryOperator::Mul => {
-                        lhe * rhe;
-                        println!(
-                            "This is the multiplication, lhe is {:?}, and rhe is {:?}",
-                            lhe, rhe
-                        );
-                        0
-                    }
-                    AlgebraicBinaryOperator::Pow => {
-                        let AlgebraicExpression::Number(e) = powdr_rhe.as_ref() else {
-                            panic!("Expected number in exponent.")
-                        };
-                        let e: u32 = e
-                            .to_arbitrary_integer()
-                            .try_into()
-                            .unwrap_or_else(|_| panic!("Exponent has to fit 32 bits."));
-                        if e == 0 {
-                            //Expression::Constant(F::from(1))
-                            println!("This is the power");
-                            unimplemented!()
-                        } else {
-                            (0..e).fold(lhe.clone(), |acc, _| acc * lhe.clone())
-                        }
-                    }
-                }
-            }
-            AlgebraicExpression::Challenge(challenge) => {
-                unimplemented!()
-            }
-            _ => unimplemented!("{:?}", expr),
-        }
     }
 
     #[test]

@@ -1,0 +1,6 @@
+namespace Add(4);
+    let a;
+    let b;
+    let c;
+    a + b = c;
+    a=b;

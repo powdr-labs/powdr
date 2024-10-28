@@ -12,7 +12,7 @@ use prover::StwoProver;
 
 mod circuit_builder;
 mod prover;
-use circuit_builder::PowdrCircuitTrace;
+use circuit_builder::PowdrCircuit;
 #[allow(dead_code)]
 pub(crate) struct StwoProverFactory;
 
@@ -35,6 +35,8 @@ impl<F: FieldElement> BackendFactory<F> for StwoProverFactory {
         let fixed = Arc::new(
             get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
         );
+        println!("Creating StwoProver in BackendFactory trait, should pil to be istablished?");
+   
         let stwo = Box::new(StwoProver::new(pil, fixed)?);
         Ok(stwo)
     }
@@ -57,7 +59,7 @@ impl<T: FieldElement> Backend<T> for StwoProver<T> {
         if prev_proof.is_some() {
             return Err(Error::NoAggregationAvailable);
         }
-        let circuit = PowdrCircuitTrace::new(self.analyzed.clone())
+        let circuit = PowdrCircuit::new(self.analyzed.clone())
         .with_witgen_callback(witgen_callback.clone())
         .with_witness(witness);
      print!("witness from powdr at the beginning..............\n {:?}", circuit.witness );

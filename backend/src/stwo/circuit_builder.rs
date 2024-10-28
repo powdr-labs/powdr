@@ -1,6 +1,14 @@
-use num_traits::Pow;
-use num_traits::{ConstOne, One};
 
+use num_traits::Pow;
+use itertools::Itertools;
+use num_traits::{ConstOne, One};
+extern crate alloc;
+use alloc::{
+    collections::{btree_map::BTreeMap, btree_set::BTreeSet},
+    string::{String, ToString},
+    vec,
+    vec::Vec,
+};
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, Analyzed, IdentityKind,
 };
@@ -22,26 +30,40 @@ use stwo_prover::core::pcs::{CommitmentSchemeProver, PcsConfig, TreeSubspan};
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::ColumnVec;
+use powdr_ast::analyzed::{PolynomialType,PolyID};
 
-pub type PowdrComponent<'a, F: FieldElement> = FrameworkComponent<PowdrEval<'a, F>>;
+pub type PowdrComponent<'a, F: FieldElement> = FrameworkComponent<PowdrCircuit<'a, F>>;
 
 
 
-pub struct PowdrCircuitTrace<'a, T> {
+pub struct PowdrCircuit<'a, T> {
+    pub log_n_rows: u32,
     analyzed: Arc<Analyzed<T>>,
     /// Callback to augment the witness in the later stages.
     witgen_callback: Option<WitgenCallback<T>>,
     /// The value of the witness columns, if set
     pub witness: Option<&'a [(String, Vec<T>)]>,
+    witness_columns: BTreeMap<PolyID, usize>,
 
     pub elements: Option<Vec<(String, BaseColumn)>>,
 }
 
-impl<'a, T: FieldElement> PowdrCircuitTrace<'a, T> {
+impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     pub fn new(analyzed: Arc<Analyzed<T>>) -> Self {
+
+        let witness_columns:BTreeMap<PolyID, usize> = analyzed
+            .definitions_in_source_order(PolynomialType::Committed)
+            .flat_map(|(symbol, _)| symbol.array_elements())
+            .enumerate()
+            .map(|(index, (_, id))| (id, index))
+            .collect();
+        println!("this is the witness_columns {:?}", witness_columns);
+
         Self {
+            log_n_rows: analyzed.degree().ilog2(),
             analyzed,
             witgen_callback: None,
+            witness_columns:witness_columns,
             witness: None,
             elements: None,
         }
@@ -83,7 +105,7 @@ impl<'a, T: FieldElement> PowdrCircuitTrace<'a, T> {
                 })
                 .collect(),
         );
-        println!("this is the element {:?}", element);
+        println!("this is the element from generate_stwo_circuit {:?}", element);
         Self {
             elements: element,
             ..self
@@ -110,57 +132,7 @@ impl<'a, T: FieldElement> PowdrCircuitTrace<'a, T> {
     }
 }
 
-#[derive(Clone)]
-//maybe change the name to PowdrEval, follows stwo tradition
-//to do, witness related should move to powdrcircuit
-pub(crate) struct PowdrEval<'a, T> {
-    analyzed: Arc<Analyzed<T>>,
-    /// Callback to augment the witness in the later stages.
-    witgen_callback: Option<WitgenCallback<T>>,
-    /// The value of the witness columns, if set
-    witness: Option<&'a [(String, Vec<T>)]>,
-    pub log_n_rows: u32,
-    // pub lookup_elements: LookupElements<2>,
-    // pub claimed_sum: ClaimedPrefixSum,
-    // pub total_sum: SecureField,
-    // pub base_trace_location: TreeSubspan,
-    // pub interaction_trace_location: TreeSubspan,
-    // pub constants_trace_location: TreeSubspan,
-}
-
-impl<'a, T: FieldElement> PowdrEval<'a, T> {
-    pub(crate) fn new(analyzed: Arc<Analyzed<T>>) -> Self {
-        let degree_log = analyzed.degree().ilog2();
-        Self {
-            analyzed,
-            witgen_callback: None,
-            witness: None,
-            log_n_rows: degree_log,
-            // lookup_elements: unimplemented!(),
-            // claimed_sum: unimplemented!(),
-            // total_sum: unimplemented!(),
-            // base_trace_location: unimplemented!(),
-            // interaction_trace_location: unimplemented!(),
-            // constants_trace_location: unimplemented!(),
-        }
-    }
-
-    pub(crate) fn with_witgen_callback(self, witgen_callback: WitgenCallback<T>) -> Self {
-        Self {
-            witgen_callback: Some(witgen_callback),
-            ..self
-        }
-    }
-
-    pub(crate) fn with_witness(self, witness: &'a [(String, Vec<T>)]) -> Self {
-        Self {
-            witness: Some(witness),
-            ..self
-        }
-    }
-}
-
-impl<'a, T: FieldElement> FrameworkEval for PowdrEval<'a, T> {
+impl<'a, T: FieldElement> FrameworkEval for PowdrCircuit<'a, T> {
     fn log_size(&self) -> u32 {
         self.log_n_rows
     }
@@ -168,6 +140,20 @@ impl<'a, T: FieldElement> FrameworkEval for PowdrEval<'a, T> {
         self.log_n_rows + 1
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
+        
+        let witness_columns:BTreeMap<PolyID, usize> = self.analyzed
+            .definitions_in_source_order(PolynomialType::Committed)
+            .flat_map(|(symbol, _)| symbol.array_elements())
+            .enumerate()
+            .map(|(index, (_, id))| (id, index))
+            .collect();
+
+            let mut witness_eval = Vec::with_capacity(4);
+            for _ in 0..3 {
+                witness_eval.push(eval.next_trace_mask());
+            }
+            
+        
         // Add polynomial identities
         let identities = self
             .analyzed
@@ -175,15 +161,17 @@ impl<'a, T: FieldElement> FrameworkEval for PowdrEval<'a, T> {
             .into_iter()
             .filter(|id| id.kind == IdentityKind::Polynomial)
             .collect::<Vec<_>>();
+        
         if !identities.is_empty() {
             identities.iter().for_each(|id| {
                 let expr = id.expression_for_poly_id();
                 let name = id.to_string();
                 println!(
-                    "\n this is the name {:?}, this is the expr {:?} \n",
+                    "\n this is the name {:?}, \n this is the expr {:?} \n",
                     name, expr
                 );
-                let expr = to_stwo_expression(expr, &mut eval);
+                let expr = to_stwo_expression(&witness_columns,expr, &witness_eval,&eval);
+                println!("this is the expr {:?}", expr);
                 eval.add_constraint(expr);
             });
         }
@@ -192,8 +180,10 @@ impl<'a, T: FieldElement> FrameworkEval for PowdrEval<'a, T> {
 }
 
 fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
+    witness_columns:&BTreeMap<PolyID, usize>,
     expr: &AlgebraicExpression<T>,
-    eval: &mut E,
+    witness_eval: &Vec<<E as EvalAtRow>::F>,
+    eval:  &E,
 ) -> E::F {
     match expr {
         AlgebraicExpression::Number(n) => {
@@ -201,12 +191,14 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
             unimplemented!("Number");
         }
         AlgebraicExpression::Reference(polyref) => {
+            let poly_id = polyref.poly_id;
             let interaction = match polyref.next {
                 false => println!("no constraint for rows"),
                 true => println!("next reference"),
             };
-            //handle advice and fixed differently, constant or witness?
-            eval.next_trace_mask()
+            //let index = self.constraint_system.fixed_columns[&poly_id];
+            let index = witness_columns[&poly_id];
+            witness_eval[index].into()
         }
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
             left: lhe,
@@ -214,8 +206,8 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
             right: powdr_rhe,
         }) => {
             println!("coming to BinaryOperation: left is {:?} \n, op is {:?} \n, right is {:?} \n", lhe, op, powdr_rhe);
-            let mut lhe = to_stwo_expression(lhe, eval);
-            let mut rhe = to_stwo_expression(powdr_rhe, eval);
+            let mut lhe = to_stwo_expression(witness_columns,lhe, witness_eval,eval);
+            let mut rhe = to_stwo_expression(witness_columns,powdr_rhe, witness_eval,eval);
             println!("after recursion: lhe is {:?} \n, op is {:?} \n, rhe is {:?} \n", lhe, op, rhe);
 
             match op {

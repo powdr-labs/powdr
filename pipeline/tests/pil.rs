@@ -242,13 +242,13 @@ fn halo_without_lookup() {
 #[test]
 fn add() {
     let f = "pil/add.pil";
-    test_plonky3::<GoldilocksField>(f, Default::default());
+    test_plonky3::<GoldilocksField>(f, {Default::default()});
 }
 
 #[test]
-fn stwo_add() {
-    let f = "pil/add.pil";
-    test_stwo(f, [Mersenne31Field::from(3), Mersenne31Field::from(4),Mersenne31Field::from(2)].to_vec());
+fn stwo_add_and_equal() {
+    let f = "pil/add_and_equal.pil";
+    test_stwo(f, {Default::default()});
 }
 #[test]
 fn simple_div() {
