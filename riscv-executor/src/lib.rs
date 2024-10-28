@@ -1229,7 +1229,10 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 tmp_y = val;
 
-                self.proc.set_col("main::Y_free_value", val);
+                if !self.proc.get_col("main::Y_read_free").is_zero() {
+                    self.proc.set_col("main::Y_free_value", val);
+                }
+
                 //self.proc.set_reg("X", addr);
                 //self.proc.set_reg("Y", val);
                 //self.proc.set_reg("Z", 0);
@@ -1421,8 +1424,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 self.proc.set_pc(label);
 
-                tmp3_col = Elem::from_u32_as_fe(next_pc);
-
                 self.proc.set_col("main::instr_jump_param_l", label);
                 //self.proc.set_reg("X", 0);
                 //self.proc.set_reg("Y", 0);
@@ -1445,7 +1446,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 self.proc.set_pc(addr);
 
                 tmp1_col = addr;
-                tmp3_col = Elem::from_u32_as_fe(next_pc);
                 //self.proc.set_reg("X", read_reg);
                 //self.proc.set_reg("W", write_reg);
                 //self.proc.set_reg("Y", 0);
