@@ -48,24 +48,22 @@ let bus_interaction: expr, expr[], expr -> () = constr |id, tuple, multiplicity|
 
     // Implemented as: folded = (beta - fingerprint(id, tuple...));
     let folded = sub_ext(beta, fingerprint_with_id(id, tuple, alpha));
-    let folded_next = next_ext(folded);
 
     let m_ext = from_base(multiplicity);
-    let m_ext_next = next_ext(m_ext);
 
     let acc = array::new(required_extension_size(), |i| std::prover::new_witness_col_at_stage("acc", 1));
     let acc_ext = fp2_from_array(acc);
     let next_acc = next_ext(acc_ext);
 
     let is_first: col = std::well_known::is_first;
-    let is_first_next = from_base(is_first');
+    let is_first_ext = from_base(is_first);
 
     // Update rule:
-    // acc' =  acc * (1 - is_first') + multiplicity' / folded'
+    // acc' =  acc * (1 - is_first) + multiplicity / folded
     // or equivalently:
-    // folded' * (acc' - acc * (1 - is_first')) - multiplicity' = 0
+    // folded * (acc' - acc * (1 - is_first)) - multiplicity = 0
     let update_expr = sub_ext(
-        mul_ext(folded_next, sub_ext(next_acc, mul_ext(acc_ext, sub_ext(from_base(1), is_first_next)))), m_ext_next
+        mul_ext(folded, sub_ext(next_acc, mul_ext(acc_ext, sub_ext(from_base(1), is_first_ext)))), m_ext
     );
     
     constrain_eq_ext(update_expr, from_base(0));
@@ -77,7 +75,7 @@ let bus_interaction: expr, expr[], expr -> () = constr |id, tuple, multiplicity|
         query |i| {
             let _ = std::array::zip(
                 acc_next_col,
-                compute_next_z_send(is_first, id, tuple, multiplicity, acc_ext, alpha, beta),
+                compute_next_z(i, id, tuple, multiplicity, acc_ext, alpha, beta),
                 |acc_next, hint_val| std::prover::provide_value(acc_next, i, hint_val)
             );
         };
@@ -92,33 +90,23 @@ let bus_interaction: expr, expr[], expr -> () = constr |id, tuple, multiplicity|
 /// using extension field arithmetic.
 /// This is intended to be used as a hint in the extension field case; for the base case
 /// automatic witgen is smart enough to figure out the value of the accumulator.
-let compute_next_z_send: expr, expr, expr[], expr, Fp2<expr>, Fp2<expr>, Fp2<expr> -> fe[] = query |is_first, id, tuple, multiplicity, acc, alpha, beta| {
+let compute_next_z: int, expr, expr[], expr, Fp2<expr>, Fp2<expr>, Fp2<expr> -> fe[] = query |row, id, tuple, multiplicity, acc, alpha, beta| {
     // Implemented as: folded = (beta - fingerprint(id, tuple...));
     // `multiplicity / (beta - fingerprint(id, tuple...))` to `acc`
     let folded = sub_ext(beta, fingerprint_with_id(id, tuple, alpha));
-    let folded_next = next_ext(folded);
 
     let m_ext = from_base(multiplicity);
-    let m_ext_next = next_ext(m_ext);
 
-    let is_first_next = eval(is_first');
-    let current_acc = if is_first_next == 1 {from_base(0)} else {eval_ext(acc)};
+    let current_acc = if row == 1 {from_base(0)} else {eval_ext(acc)};
     
-    // acc' = acc * (1 - is_first') + multiplicity / fingerprint_with_id(id, (a1', a2'))
+    // acc' = acc * (1 - is_first) + multiplicity / fingerprint_with_id(id, (a1, a2))
     let res = add_ext(
         current_acc,
-        mul_ext(eval_ext(m_ext_next), inv_ext(eval_ext(folded_next)))
+        mul_ext(eval_ext(m_ext), inv_ext(eval_ext(folded)))
     );
 
     unpack_ext_array(res)
 };
-
-/// Compute acc' = acc * (1 - is_first') - multiplicity' / fingerprint_with_id(id, (a1', a2')),
-/// using extension field arithmetic.
-/// This is intended to be used as a hint in the extension field case; for the base case
-/// automatic witgen is smart enough to figure out the value of the accumulator.
-let compute_next_z_receive: expr, expr, expr[], expr, Fp2<expr>, Fp2<expr>, Fp2<expr> -> fe[] = query |is_first, id, tuple, multiplicity, acc, alpha, beta| 
-    compute_next_z_send(is_first, id, tuple, -multiplicity, acc, alpha, beta);
 
 /// Convenience function for bus interaction to send columns
 let bus_send: expr, expr[], expr -> () = constr |id, tuple, multiplicity| {

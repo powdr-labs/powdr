@@ -1,7 +1,5 @@
 use std::protocols::bus::bus_receive;
 use std::protocols::bus::bus_send;
-use std::protocols::bus::compute_next_z_send;
-use std::protocols::bus::compute_next_z_receive;
 use std::math::fp2::Fp2;
 use std::math::fp2::from_base;
 use std::prelude::Query;

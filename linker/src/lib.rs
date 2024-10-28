@@ -8,11 +8,11 @@ use powdr_ast::{
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         build::{index_access, lookup, namespaced_reference, permutation, selected},
-        ArrayLiteral, Expression, NamespaceDegree, PILFile, PilStatement,
+        ArrayLiteral, Expression, FunctionCall, NamespaceDegree, PILFile, PilStatement,
     },
 };
 use powdr_parser_util::SourceRef;
-use std::{collections::BTreeMap, iter::once};
+use std::{collections::BTreeMap, iter::once, str::FromStr};
 
 const MAIN_OPERATION_NAME: &str = "main";
 /// The log of the default minimum degree
@@ -183,7 +183,20 @@ fn process_link(link: Link) -> PilStatement {
             .into(),
         );
 
-        permutation(lhs, rhs)
+        let permutation_constraint = permutation(lhs, rhs);
+
+        Expression::FunctionCall(
+            SourceRef::unknown(),
+            FunctionCall {
+                function: Box::new(Expression::Reference(
+                    SourceRef::unknown(),
+                    SymbolPath::from_str("std::protocols::permutation_via_bus::permutation")
+                        .unwrap()
+                        .into(),
+                )),
+                arguments: vec![42.into(), permutation_constraint],
+            },
+        )
     } else {
         // plookup lhs is `flag $ [ operation_id, inputs, outputs ]`
         let lhs = selected(
@@ -222,7 +235,20 @@ fn process_link(link: Link) -> PilStatement {
             .into(),
         );
 
-        lookup(lhs, rhs)
+        let lookup_constraint = lookup(lhs, rhs);
+
+        Expression::FunctionCall(
+            SourceRef::unknown(),
+            FunctionCall {
+                function: Box::new(Expression::Reference(
+                    SourceRef::unknown(),
+                    SymbolPath::from_str("std::protocols::lookup_via_bus::lookup")
+                        .unwrap()
+                        .into(),
+                )),
+                arguments: vec![42.into(), lookup_constraint],
+            },
+        )
     };
 
     PilStatement::Expression(SourceRef::unknown(), expr)
