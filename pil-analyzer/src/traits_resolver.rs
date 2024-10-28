@@ -74,7 +74,7 @@ impl<'a> TraitsResolver<'a> {
         }
         let Some(trait_impls) = self.trait_impls.get(trait_decl_name) else {
             return Err(format!(
-                "Could not find an implementation for the trait function {reference}"
+                "Could not find an implementation for the trait function {reference} (trait is not implemented at all)"
             ));
         };
 
@@ -87,7 +87,7 @@ impl<'a> TraitsResolver<'a> {
                 Ok(())
             }
             None => Err(format!(
-                "Could not find an implementation for the trait function {reference}"
+                "Could not find a matching implementation for the trait function {reference}"
             )),
         }
     }
