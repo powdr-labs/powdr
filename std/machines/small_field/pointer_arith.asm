@@ -5,6 +5,7 @@
 /// - `amount` must be in range [1, 0x10000],
 /// - `pre_low` must be a multiple of amount,
 /// - `pre_low` must be in range [0, 0xffff].
+/// - `pre_high` * 0x10000 + `pre_low` + `amount` must be in range [0, 0xffffffff].
 ///
 /// The pointers are given in 2 16-bit limbs. This function returns a set of constraints
 /// ensuring that the following are equal:
