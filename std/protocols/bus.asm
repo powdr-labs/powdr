@@ -69,6 +69,23 @@ let bus_interaction: expr, expr[], expr -> () = constr |id, tuple, multiplicity|
     );
     
     constrain_eq_ext(update_expr, from_base(0));
+
+    // In the extension field, we need a prover function for the accumulator.
+    if needs_extension() {
+        // TODO: Helper columns, because we can't access the previous row in hints
+        let acc_next_col = std::array::map(acc, |_| std::prover::new_witness_col_at_stage("acc_next", 1));
+        query |i| {
+            let _ = std::array::zip(
+                acc_next_col,
+                compute_next_z_send(is_first, id, tuple, multiplicity, acc_ext, alpha, beta),
+                |acc_next, hint_val| std::prover::provide_value(acc_next, i, hint_val)
+            );
+        };
+        std::array::zip(acc, acc_next_col, |acc_col, acc_next| {
+            acc_col' = acc_next
+        });
+    } else {
+    }
 };
 
 /// Compute acc' = acc * (1 - is_first') + multiplicity' / fingerprint_with_id(id, (a1', a2')),

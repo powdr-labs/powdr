@@ -72,6 +72,7 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
                 })
             }))
         } else {
+            println!("{:?}", pil_file.definitions.keys());
             panic!("Symbol not found: {n}");
         };
         for s in symbols {

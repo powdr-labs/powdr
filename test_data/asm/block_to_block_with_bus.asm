@@ -57,8 +57,6 @@ machine Main with
     bus_send(ARITH_INTERACTION_ID, [0, x, y, z], instr_add);
     // TODO: Expose final value of acc as public.
 
-    // ==== End bus ====
-
     col fixed operation_id = [0]*;
     col fixed x(i) { i / 4 };
     col fixed y(i) { i / 4 + 1 };

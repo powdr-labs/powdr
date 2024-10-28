@@ -159,18 +159,14 @@ fn lookup_via_challenges() {
 fn bus_permutation_via_challenges() {
     let f = "std/bus_permutation_via_challenges.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-
-    // At least run witness generation on Goldilocks.
-    make_simple_prepared_pipeline::<GoldilocksField>(f);
+    test_plonky3::<GoldilocksField>(f, vec![]);
 }
 
 #[test]
 fn bus_lookup_via_challenges_bn() {
     let f = "std/bus_lookup_via_challenges.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-
-    // At least run witness generation on Goldilocks.
-    make_simple_prepared_pipeline::<GoldilocksField>(f);
+    test_plonky3::<GoldilocksField>(f, vec![]);
 }
 
 #[test]
