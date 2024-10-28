@@ -1,15 +1,16 @@
-/// Creates constraints that increments a pointer by amount.
+/// Creates constraints that increments a 32-bits pointer by `amount` bytes.
 ///
 /// Preconditions:
-/// - amount must be a power of two,
-/// - amount must be in range [1, 0x10000],
-/// - pre_low must be a multiple of amount,
-/// - pre_low must be in range [0, 0xffff].
+/// - `amount` must be a power of two,
+/// - `amount` must be in range [1, 0x10000],
+/// - `pre_low` must be a multiple of amount,
+/// - `pre_low` must be in range [0, 0xffff].
+/// - `int(pre_high) * 0x10000 + int(pre_low) + amount` must be in range [0, 0xffffffff].
 ///
 /// The pointers are given in 2 16-bit limbs. This function returns a set of constraints
 /// ensuring that the following are equal:
 /// - (int(post_high) * 0x10000 + int(post_low))
-/// - (int(pre_high) * 0x10000 + int(pre_low) + 4)
+/// - (int(pre_high) * 0x10000 + int(pre_low) + amount)
 ///
 /// The returned constraints are not automatically added to the constraints set. This is so the
 /// caller will be able to latch-disable them in rows they aren't needed.
