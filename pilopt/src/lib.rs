@@ -14,7 +14,7 @@ use powdr_ast::analyzed::{
 };
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
-use powdr_ast::parsed::Number;
+use powdr_ast::parsed::{NamedType, Number};
 use powdr_number::{BigUint, FieldElement};
 
 mod referenced_symbols;
@@ -68,13 +68,18 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
                 && value.is_some())
             .then_some(SymbolReference::from("std::prelude::set_hint"));
             // let<T> x = || Trait::g::<T>();
-            // TODO substitute type args in what is returned here.
-            Box::new(
-                value
-                    .iter()
-                    .flat_map(|v| v.symbols())
-                    .chain(set_hint.into_iter()),
-            )
+            // TODO substitute type args in what is returned here?
+            if let Some(FunctionValueDefinition::TraitFunction(trait_name, fun_name)) = value {
+                let NamedType { name, ty } = fun_name;
+                todo!()
+            } else {
+                Box::new(
+                    value
+                        .iter()
+                        .flat_map(|v| v.symbols())
+                        .chain(set_hint.into_iter()),
+                )
+            }
         } else if let Some((_, value)) = pil_file.intermediate_columns.get(n.name.as_ref()) {
             assert!(n.type_args.is_none());
             Box::new(value.iter().flat_map(|v| {
@@ -90,6 +95,12 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
             panic!("Symbol not found: {}", n.name);
         };
         for s in symbols {
+            if let Some(ta) = s.type_args {
+                assert!(
+                    ta.iter().all(|t| t.is_concrete_type()),
+                    "Referenced symbol should have concrete type arguments. Forgot to substitute?"
+                );
+            }
             if symbols_seen.insert(s.clone()) {
                 to_process.push(s);
             }
