@@ -6,7 +6,7 @@ use std::utils::force_bool;
 use std::utils::sum;
 use std::convert::expr;
 use std::machines::small_field::memory::Memory;
-use std::machines::small_field::pointer_arith::word_increment_ptr;
+use std::machines::small_field::pointer_arith::increment_ptr;
 use std::machines::split::split_bb::SplitBB;
 
 // Implements the Poseidon2 permutation for the BabyBear.
@@ -167,6 +167,7 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
         );
     };
 
+    // Creates a sequence of 4-byte sparsed addresses.
     let address_inc = constr |addr_high, addr_low| {
         let addr = array::zip(
             addr_high,
@@ -179,7 +180,7 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
                 array::sub_array(addr, 0, array::len(addr) - 1),
                 array::sub_array(addr, 1, array::len(addr) - 1),
                 constr |(high, low), (next_high, next_low)| {
-                    word_increment_ptr(high, low, next_high, next_low)
+                    increment_ptr(4, high, low, next_high, next_low)
                 }
             ), [],
             |a, b| a + b
