@@ -552,12 +552,7 @@ impl Children<Expression> for PILAnalyzer {
                 .values()
                 .filter_map(|(_, def)| def.as_ref())
                 .flat_map(|def| def.children())
-                .chain(
-                    self.trait_impls
-                        .values()
-                        .flat_map(|impls| impls.iter())
-                        .flat_map(|impl_| impl_.children()),
-                )
+                .chain(self.trait_impls.iter().flat_map(|impl_| impl_.children()))
                 .chain(self.proof_items.iter()),
         )
     }
@@ -570,8 +565,7 @@ impl Children<Expression> for PILAnalyzer {
                 .flat_map(|def| def.children_mut())
                 .chain(
                     self.trait_impls
-                        .values_mut()
-                        .flat_map(|impls| impls.iter_mut())
+                        .iter_mut()
                         .flat_map(|impl_| impl_.children_mut()),
                 )
                 .chain(self.proof_items.iter_mut()),
