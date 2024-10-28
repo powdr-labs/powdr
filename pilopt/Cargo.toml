@@ -10,6 +10,7 @@ repository = { workspace = true }
 [dependencies]
 powdr-ast.workspace = true
 powdr-number.workspace = true
+itertools = "0.13"
 
 log = "0.4.17"
 pretty_assertions = "1.4.0"

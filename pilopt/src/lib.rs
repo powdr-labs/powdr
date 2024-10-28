@@ -5,6 +5,7 @@ use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
+use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, ConnectIdentity, Expression,
@@ -18,7 +19,7 @@ use powdr_number::{BigUint, FieldElement};
 
 mod referenced_symbols;
 
-use referenced_symbols::ReferencedSymbols;
+use referenced_symbols::{ReferencedSymbols, SymbolReference};
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
@@ -47,24 +48,35 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
 /// or witness column hint.
 fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let poly_id_to_definition_name = build_poly_id_to_definition_name_lookup(pil_file);
-    let mut required_names = collect_required_names(pil_file, &poly_id_to_definition_name);
-    let mut to_process = required_names.iter().cloned().collect::<Vec<_>>();
+    let mut symbols_seen = collect_required_symbols(pil_file, &poly_id_to_definition_name);
+
+    let mut to_process = symbols_seen.iter().cloned().collect::<Vec<_>>();
     while let Some(n) = to_process.pop() {
-        let symbols: Box<dyn Iterator<Item = Cow<'_, str>>> = if let Some((sym, value)) =
-            pil_file.definitions.get(n.as_ref())
+        let symbols: Box<dyn Iterator<Item = SymbolReference<'_>>> = if let Some((sym, value)) =
+            pil_file.definitions.get(n.name.as_ref())
         {
+            println!(
+                " Next up in queue: {}::<{}>",
+                n.name,
+                n.type_args
+                    .map(|ta| ta.iter().format(", "))
+                    .map(|s| s.to_string())
+                    .unwrap_or_default()
+            );
             // TODO remove this.
             let set_hint = (sym.kind == SymbolKind::Poly(PolynomialType::Committed)
                 && value.is_some())
-            .then_some(Cow::from("std::prelude::set_hint"));
+            .then_some(SymbolReference::from("std::prelude::set_hint"));
+            // let<T> x = || Trait::g::<T>();
+            // TODO substitute type args in what is returned here.
             Box::new(
                 value
                     .iter()
                     .flat_map(|v| v.symbols())
-                    .map(|s| s.name)
                     .chain(set_hint.into_iter()),
             )
-        } else if let Some((_, value)) = pil_file.intermediate_columns.get(n.as_ref()) {
+        } else if let Some((_, value)) = pil_file.intermediate_columns.get(n.name.as_ref()) {
+            assert!(n.type_args.is_none());
             Box::new(value.iter().flat_map(|v| {
                 v.all_children().flat_map(|e| {
                     if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = e {
@@ -75,20 +87,25 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
                 })
             }))
         } else {
-            panic!("Symbol not found: {n}");
+            panic!("Symbol not found: {}", n.name);
         };
         for s in symbols {
-            if required_names.insert(s.clone()) {
+            if symbols_seen.insert(s.clone()) {
                 to_process.push(s);
             }
         }
     }
 
+    let required_names = symbols_seen
+        .iter()
+        .map(|s| s.name.as_ref())
+        .collect::<HashSet<_>>();
+
     let definitions_to_remove: BTreeSet<_> = pil_file
         .definitions
         .keys()
         .chain(pil_file.intermediate_columns.keys())
-        .filter(|name| !required_names.contains(&Cow::from(*name)))
+        .filter(|name| !required_names.contains(name.as_str()))
         .cloned()
         .collect();
     pil_file.remove_definitions(&definitions_to_remove);
@@ -116,21 +133,21 @@ fn build_poly_id_to_definition_name_lookup(
 }
 
 /// Collect all names that are referenced in identities and public declarations.
-fn collect_required_names<'a, T: FieldElement>(
+fn collect_required_symbols<'a, T: FieldElement>(
     pil_file: &'a Analyzed<T>,
     poly_id_to_definition_name: &BTreeMap<PolyID, &'a String>,
-) -> HashSet<Cow<'a, str>> {
-    let mut required_names: HashSet<Cow<'a, str>> = Default::default();
+) -> HashSet<SymbolReference<'a>> {
+    let mut required_names: HashSet<SymbolReference<'a>> = Default::default();
     required_names.extend(
         pil_file
             .public_declarations
             .values()
-            .map(|p| p.polynomial.name.as_str().into()),
+            .map(|p| SymbolReference::from(&p.polynomial.name)),
     );
     for fun in &pil_file.prover_functions {
         for e in fun.all_children() {
-            if let Expression::Reference(_, Reference::Poly(PolynomialReference { name, .. })) = e {
-                required_names.insert(Cow::from(name));
+            if let Expression::Reference(_, Reference::Poly(poly_ref)) = e {
+                required_names.insert(SymbolReference::from(poly_ref));
             }
         }
     }

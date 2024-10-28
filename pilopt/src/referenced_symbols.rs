@@ -25,6 +25,7 @@ pub trait ReferencedSymbols {
 // are unused. If we handle a generic function, we always have specific types, so we substitute all type vars in the results.
 // this means the queue of symbols to handle is always a symbol and specific type args.
 
+#[derive(Clone, Hash, Ord, PartialOrd, Eq, PartialEq)]
 pub struct SymbolReference<'a> {
     pub name: Cow<'a, str>,
     pub type_args: Option<&'a Vec<Type>>,
@@ -32,8 +33,14 @@ pub struct SymbolReference<'a> {
 
 impl<'a> From<&'a String> for SymbolReference<'a> {
     fn from(name: &'a String) -> Self {
+        From::from(name.as_str())
+    }
+}
+
+impl<'a> From<&'a str> for SymbolReference<'a> {
+    fn from(name: &'a str) -> Self {
         SymbolReference {
-            name: name.as_str().into(),
+            name: name.into(),
             type_args: None,
         }
     }
@@ -44,6 +51,15 @@ impl<'a> From<&SymbolPath> for SymbolReference<'a> {
         SymbolReference {
             name: name.to_string().into(),
             type_args: None,
+        }
+    }
+}
+
+impl<'a> From<&'a PolynomialReference> for SymbolReference<'a> {
+    fn from(poly: &'a PolynomialReference) -> Self {
+        SymbolReference {
+            name: poly.name.as_str().into(),
+            type_args: poly.type_args.as_ref(),
         }
     }
 }
@@ -120,17 +136,13 @@ fn symbols_in_expression(
 ) -> Option<Box<dyn Iterator<Item = SymbolReference<'_>> + '_>> {
     match e {
         Expression::PublicReference(_, name) => Some(Box::new(once(SymbolReference::from(name)))),
-        Expression::Reference(_, Reference::Poly(PolynomialReference { name, type_args })) => {
+        Expression::Reference(_, Reference::Poly(pr @ PolynomialReference { type_args, .. })) => {
             let type_iter = type_args
                 .iter()
                 .flat_map(|t| t.iter())
                 .flat_map(|t| t.symbols());
 
-            let symbol_iter = once(SymbolReference {
-                name: name.into(),
-                type_args: type_args.as_ref(),
-            });
-            Some(Box::new(type_iter.chain(symbol_iter)))
+            Some(Box::new(type_iter.chain(once(SymbolReference::from(pr)))))
         }
         _ => None,
     }
