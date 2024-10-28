@@ -44,7 +44,7 @@ let new_bool: -> expr = constr || {
 ///
 /// Introduces one new witness column and one new constraint.
 let is_not_zero: expr -> expr = constr |x| {
-    // The inverse of "x" if it is not zero, otherwise undefined.
+    // The inverse of "x" if it is not zero, otherwise unconstrained.
     let inverse;
 
     // Ensures that "inverse * x" is either 0 or 1:
