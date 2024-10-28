@@ -1,4 +1,5 @@
-use std::protocols::permutation_via_bus::permutation;
+use std::protocols::permutation_via_bus::permutation_receive;
+use std::protocols::permutation_via_bus::permutation_send;
 
 machine Main with degree: 8 {
 
@@ -12,7 +13,8 @@ machine Main with degree: 8 {
     sub_y = sub_x + 1;
 
     // Connect machines
-    permutation(42, SEL $ [x, y] is sub_sel $ [sub_x, sub_y]);
+    permutation_receive(42, SEL $ [x, y] is sub_sel $ [sub_x, sub_y]);
+    permutation_send(42, SEL $ [x, y] is sub_sel $ [sub_x, sub_y]);
 
     // TODO: enforce bus values are equal
 }

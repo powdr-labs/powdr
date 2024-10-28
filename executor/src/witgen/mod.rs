@@ -194,16 +194,26 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             .identities_with_inlined_intermediate_polynomials()
             .into_iter()
             .filter(|identity| {
-                let discard = identity.expr_any(|expr| {
-                    if let AlgebraicExpression::Challenge(challenge) = expr {
+                let discard = identity.expr_any(|expr| match expr {
+                    AlgebraicExpression::Challenge(challenge) => {
                         challenge.stage >= self.stage.into()
-                    } else {
-                        false
                     }
+                    AlgebraicExpression::Reference(AlgebraicReference { name, .. }) => {
+                        // TODO: Shouldn't be using name? What about arrays?
+                        self.analyzed
+                            .definitions
+                            .get(name)
+                            .unwrap()
+                            .0
+                            .stage
+                            .unwrap_or_default()
+                            > self.stage.into()
+                    }
+                    _ => false,
                 });
                 if discard {
                     log::debug!(
-                        "Skipping identity that references challenge of later stage: {}",
+                        "Skipping identity that references a challenge or witness column of later stage: {}",
                         identity
                     );
                 }

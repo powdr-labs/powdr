@@ -6,13 +6,14 @@ use powdr_ast::{
     asm_analysis::{combine_flags, MachineDegree},
     object::{Link, Location, PILGraph},
     parsed::{
-        asm::{AbsoluteSymbolPath, SymbolPath},
+        asm::{AbsoluteSymbolPath, Part, SymbolPath},
         build::{index_access, lookup, namespaced_reference, permutation, selected},
+        visitor::{ExpressionVisitable, VisitOrder},
         ArrayLiteral, Expression, FunctionCall, NamespaceDegree, PILFile, PilStatement,
     },
 };
 use powdr_parser_util::SourceRef;
-use std::{collections::BTreeMap, iter::once, str::FromStr};
+use std::{collections::BTreeMap, iter::once, ops::ControlFlow, str::FromStr};
 
 const MAIN_OPERATION_NAME: &str = "main";
 /// The log of the default minimum degree
@@ -58,6 +59,7 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
         .clone();
 
     let mut pil = process_definitions(graph.statements);
+    let mut incoming_links: BTreeMap<String, Vec<PilStatement>> = BTreeMap::new();
 
     for (location, object) in graph.objects.into_iter() {
         // create a namespace for this object
@@ -73,7 +75,30 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
         ));
 
         pil.extend(object.pil);
-        pil.extend(object.links.into_iter().map(process_link));
+        let (caller_statements, callee_statements): (
+            Vec<PilStatement>,
+            Vec<(String, PilStatement)>,
+        ) = object
+            .links
+            .into_iter()
+            .map(|link| process_link(location.clone(), link))
+            .unzip();
+        pil.extend(caller_statements);
+
+        for (callee_location, callee_statement) in callee_statements {
+            incoming_links
+                .entry(callee_location)
+                .or_default()
+                .push(callee_statement);
+        }
+        // This assumes that graph.objects is topologically sorted
+        for incoming_link in incoming_links
+            .get(&location.to_string())
+            .cloned()
+            .unwrap_or_default()
+        {
+            pil.push(incoming_link.clone());
+        }
 
         if location == Location::main() {
             if let Some(main_operation) = graph
@@ -130,7 +155,37 @@ fn process_definitions(
         .collect()
 }
 
-fn process_link(link: Link) -> PilStatement {
+fn call_pil_link_function(function: &str, constraint: Expression) -> Expression {
+    Expression::FunctionCall(
+        SourceRef::unknown(),
+        FunctionCall {
+            function: Box::new(Expression::Reference(
+                SourceRef::unknown(),
+                SymbolPath::from_str(function).unwrap().into(),
+            )),
+            arguments: vec![42.into(), constraint],
+        },
+    )
+}
+
+fn namespaced_expression(namespace: String, mut expr: Expression) -> Expression {
+    expr.visit_expressions_mut(
+        &mut |expr| {
+            if let Expression::Reference(_, refs) = expr {
+                refs.path = SymbolPath::from_parts(
+                    once(Part::Named(namespace.clone())).chain(refs.path.clone().into_parts()),
+                );
+            }
+            // TODO: Why u64? :D
+            ControlFlow::Continue::<u64, _>(())
+        },
+        VisitOrder::Pre,
+    );
+    expr
+}
+
+fn process_link(from_location: Location, link: Link) -> (PilStatement, (String, PilStatement)) {
+    let from_namespace = from_location.to_string();
     let from = link.from;
     let to = link.to;
 
@@ -140,11 +195,15 @@ fn process_link(link: Link) -> PilStatement {
     let expr = if link.is_permutation {
         // permutation lhs is `flag { operation_id, inputs, outputs }`
         let lhs = selected(
-            combine_flags(from.instr_flag, from.link_flag),
+            namespaced_expression(
+                from_namespace.clone(),
+                combine_flags(from.instr_flag, from.link_flag),
+            ),
             ArrayLiteral {
                 items: op_id
                     .chain(from.params.inputs)
                     .chain(from.params.outputs)
+                    .map(|expr| namespaced_expression(from_namespace.clone(), expr))
                     .collect(),
             }
             .into(),
@@ -185,26 +244,28 @@ fn process_link(link: Link) -> PilStatement {
 
         let permutation_constraint = permutation(lhs, rhs);
 
-        Expression::FunctionCall(
-            SourceRef::unknown(),
-            FunctionCall {
-                function: Box::new(Expression::Reference(
-                    SourceRef::unknown(),
-                    SymbolPath::from_str("std::protocols::permutation_via_bus::permutation")
-                        .unwrap()
-                        .into(),
-                )),
-                arguments: vec![42.into(), permutation_constraint],
-            },
+        (
+            call_pil_link_function(
+                "std::protocols::permutation_via_bus::permutation_send",
+                permutation_constraint.clone(),
+            ),
+            call_pil_link_function(
+                "std::protocols::permutation_via_bus::permutation_receive",
+                permutation_constraint,
+            ),
         )
     } else {
         // plookup lhs is `flag $ [ operation_id, inputs, outputs ]`
         let lhs = selected(
-            combine_flags(from.instr_flag, from.link_flag),
+            namespaced_expression(
+                from_namespace.clone(),
+                combine_flags(from.instr_flag, from.link_flag),
+            ),
             ArrayLiteral {
                 items: op_id
                     .chain(from.params.inputs)
                     .chain(from.params.outputs)
+                    .map(|expr| namespaced_expression(from_namespace.clone(), expr))
                     .collect(),
             }
             .into(),
@@ -237,21 +298,25 @@ fn process_link(link: Link) -> PilStatement {
 
         let lookup_constraint = lookup(lhs, rhs);
 
-        Expression::FunctionCall(
-            SourceRef::unknown(),
-            FunctionCall {
-                function: Box::new(Expression::Reference(
-                    SourceRef::unknown(),
-                    SymbolPath::from_str("std::protocols::lookup_via_bus::lookup")
-                        .unwrap()
-                        .into(),
-                )),
-                arguments: vec![42.into(), lookup_constraint],
-            },
+        (
+            call_pil_link_function(
+                "std::protocols::lookup_via_bus::lookup_send",
+                lookup_constraint.clone(),
+            ),
+            call_pil_link_function(
+                "std::protocols::lookup_via_bus::lookup_receive",
+                lookup_constraint,
+            ),
         )
     };
 
-    PilStatement::Expression(SourceRef::unknown(), expr)
+    (
+        PilStatement::Expression(SourceRef::unknown(), expr.0),
+        (
+            to.machine.location.to_string(),
+            PilStatement::Expression(SourceRef::unknown(), expr.1),
+        ),
+    )
 }
 
 #[cfg(test)]

@@ -1,4 +1,5 @@
-use std::protocols::lookup_via_bus::lookup;
+use std::protocols::lookup_via_bus::lookup_send;
+use std::protocols::lookup_via_bus::lookup_receive;
 
 machine Main with degree: 8 {
 
@@ -9,7 +10,8 @@ machine Main with degree: 8 {
     col fixed INC_X = [1, 2, 3, 4, 5, 6, 7, 8];
     col fixed INC_Y = [2, 3, 4, 5, 6, 7, 8, 9];
 
-    lookup(42, [x, y] in [INC_X, INC_Y]);
+    lookup_send(42, [x, y] in [INC_X, INC_Y]);
+    lookup_receive(42, [x, y] in [INC_X, INC_Y]);
 
     // TODO: enforce bus values are equal
 }
