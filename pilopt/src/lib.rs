@@ -61,6 +61,7 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
                 value
                     .iter()
                     .flat_map(|v| v.symbols())
+                    .map(|s| s.name)
                     .chain(set_hint.into_iter()),
             )
         } else if let Some((_, value)) = pil_file.intermediate_columns.get(n.as_ref()) {

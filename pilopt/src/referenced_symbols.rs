@@ -109,27 +109,30 @@ impl ReferencedSymbols for Expression {
     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
         Box::new(
             self.all_children()
-                .flat_map(|e| match e {
-                    Expression::PublicReference(_, name) => {
-                        Some(Box::new(SymbolReference::from(name)))
-                    }
-                    Expression::Reference(
-                        _,
-                        Reference::Poly(PolynomialReference { name, type_args }),
-                    ) => Some(Box::new(
-                        type_args
-                            .iter()
-                            .flat_map(|t| t.iter())
-                            .flat_map(|t| t.symbols())
-                            .chain(once(SymbolReference {
-                                name: name.into(),
-                                type_args: type_args.as_ref(),
-                            })),
-                    )),
-                    _ => None,
-                })
+                .flat_map(|e| symbols_in_expression(e))
                 .flatten(),
         )
+    }
+}
+
+fn symbols_in_expression(
+    e: &Expression,
+) -> Option<Box<dyn Iterator<Item = SymbolReference<'_>> + '_>> {
+    match e {
+        Expression::PublicReference(_, name) => Some(Box::new(once(SymbolReference::from(name)))),
+        Expression::Reference(_, Reference::Poly(PolynomialReference { name, type_args })) => {
+            let type_iter = type_args
+                .iter()
+                .flat_map(|t| t.iter())
+                .flat_map(|t| t.symbols());
+
+            let symbol_iter = once(SymbolReference {
+                name: name.into(),
+                type_args: type_args.as_ref(),
+            });
+            Some(Box::new(type_iter.chain(symbol_iter)))
+        }
+        _ => None,
     }
 }
 
