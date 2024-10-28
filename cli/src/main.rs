@@ -50,7 +50,7 @@ fn bind_cli_args<F: FieldElement>(
     let pipeline = pipeline
         .with_output(output_dir.clone(), force_overwrite)
         .add_external_witness_values(witness_values.clone())
-        .with_witness_csv_settings(export_csv, csv_mode)
+        .with_witness_csv_settings(export_csv, false, csv_mode)
         .with_prover_inputs(inputs.clone());
 
     if pilo {
