@@ -9,7 +9,7 @@ use std::machines::small_field::memory::Memory;
 use std::machines::small_field::pointer_arith::increment_ptr;
 use std::machines::split::split_bb::SplitBB;
 
-// Implements the Poseidon2 permutation for the BabyBear.
+// Implements the Poseidon2 permutation for BabyBear field.
 //
 // Apparently it can be used to hash arbitrary sized data by using the
 // Merkle–Damgård construction, or it can be used as a compression function
