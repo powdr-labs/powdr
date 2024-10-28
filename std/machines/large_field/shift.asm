@@ -67,5 +67,9 @@ machine Shift(byte_shift: ByteShift) with
     unchanged_until(B, latch);
     C' = C * (1 - latch) + C_part;
 
-    link => C_part = byte_shift.run(operation_id', A_byte, B', FACTOR_ROW);
+    let operation_next;
+    operation_id' = operation_next;
+    let B_next;
+    B' = B_next;
+    link => C_part = byte_shift.run(operation_next, A_byte, B_next, FACTOR_ROW);
 }
