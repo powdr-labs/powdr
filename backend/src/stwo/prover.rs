@@ -62,7 +62,7 @@ impl<F: FieldElement> StwoProver<F> {
             .with_witgen_callback(witgen_callback.clone())
             .with_witness(witness)
             .generate_stwo_circuit_trace();
-        print!("witness from powdr {:?}", circuit.witness );
+       
 
         let circuitEval = PowdrCircuit::new(self.analyzed.clone())
             .with_witgen_callback(witgen_callback.clone())
@@ -88,11 +88,6 @@ impl<F: FieldElement> StwoProver<F> {
             );
         println!("generate prover channel");
 
-        let pretest_trace = PowdrCircuit::new(self.analyzed.clone())
-            .with_witgen_callback(witgen_callback.clone())
-            .with_witness(witness)
-            .generate_stwo_circuit_trace();
-        println!("\n the trace after convert to circle domain is {:?} \n", pretest_trace.elements);
 
         let trace = PowdrCircuit::new(self.analyzed.clone())
             .with_witgen_callback(witgen_callback)
@@ -110,7 +105,6 @@ impl<F: FieldElement> StwoProver<F> {
 
         println!("created component!");
 
-        println!("component eval is like this  \n {} ",component.log_n_rows);
 
         
 
@@ -143,50 +137,5 @@ impl<F: FieldElement> StwoProver<F> {
         //     println!("verify time is {:?} ",verifyduration);
 
         println!("prove_stwo in prover.rs is not complete yet");
-    }
-}
-
-#[cfg(feature = "stwo")]
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use num_traits::{ConstOne, One};
-    use powdr_ast::analyzed::{
-        AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, IdentityKind,
-        SelectedExpressions,
-    };
-    use powdr_number::Mersenne31Field as F;
-    use powdr_pipeline::Pipeline;
-    use stwo_prover::constraint_framework::EvalAtRow;
-    fn run_test(pil: &str) {
-        run_test_publics(pil, &None);
-    }
-    fn run_test_publics(pil: &str, malicious_publics: &Option<Vec<usize>>) {
-        let mut pipeline = Pipeline::<F>::default().from_pil_string(pil.to_string());
-
-        let pil = pipeline.compute_optimized_pil().unwrap(); // This is the analyzed
-        println!("This is the pil {}", pil);
-        println!("This is the identity {:?}", pil.identities);
-
-
-        let witness_callback = pipeline.witgen_callback().unwrap();
-        let witness = &mut pipeline.compute_witness().unwrap();
-        println!("{:?}", witness);
-
-        let fixed = pipeline.compute_fixed_cols().unwrap();
-
-        //let mut prover = StwoProver::new(pil, fixed);
-    }
-
-    #[test]
-    fn shuang_keep_doing() {
-        let content = r#"
-        namespace Mul(4);
-            col witness x;
-            col witness y;
-            col witness z;
-            x * y = z;
-        "#;
-        run_test(content);
     }
 }

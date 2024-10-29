@@ -50,14 +50,13 @@ pub struct PowdrCircuit<'a, T> {
 
 impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     pub fn new(analyzed: Arc<Analyzed<T>>) -> Self {
-
+        
         let witness_columns:BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
             .flat_map(|(symbol, _)| symbol.array_elements())
             .enumerate()
             .map(|(index, (_, id))| (id, index))
             .collect();
-        println!("this is the witness_columns {:?}", witness_columns);
 
         Self {
             log_n_rows: analyzed.degree().ilog2(),
@@ -105,7 +104,6 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                 })
                 .collect(),
         );
-        println!("this is the element from generate_stwo_circuit {:?}", element);
         Self {
             elements: element,
             ..self
@@ -115,15 +113,12 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     pub fn gen_trace(
         self,
     ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
-        println!("degree log 2 is {:?}", self.analyzed.degree().ilog2());
         let domain = CanonicCoset::new(self.analyzed.degree().ilog2()).circle_domain();
-        println!("domain size is {:?}", domain.size());
         self.elements
             .map(|elements| {
                 elements
                     .iter()
                     .map(|(_, base_column)| {
-                        println!("base_column is {:?}", base_column);
                         CircleEvaluation::new(domain, base_column.clone())
             })
                     .collect()
@@ -140,16 +135,9 @@ impl<'a, T: FieldElement> FrameworkEval for PowdrCircuit<'a, T> {
         self.log_n_rows + 1
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        
-        let witness_columns:BTreeMap<PolyID, usize> = self.analyzed
-            .definitions_in_source_order(PolynomialType::Committed)
-            .flat_map(|(symbol, _)| symbol.array_elements())
-            .enumerate()
-            .map(|(index, (_, id))| (id, index))
-            .collect();
 
-            let mut witness_eval = Vec::with_capacity(4);
-            for _ in 0..3 {
+            let mut witness_eval = Vec::with_capacity(self.witness.unwrap().len());
+            for _ in 0..self.witness.unwrap().len() {
                 witness_eval.push(eval.next_trace_mask());
             }
             
@@ -165,13 +153,8 @@ impl<'a, T: FieldElement> FrameworkEval for PowdrCircuit<'a, T> {
         if !identities.is_empty() {
             identities.iter().for_each(|id| {
                 let expr = id.expression_for_poly_id();
-                let name = id.to_string();
-                println!(
-                    "\n this is the name {:?}, \n this is the expr {:?} \n",
-                    name, expr
-                );
-                let expr = to_stwo_expression(&witness_columns,expr, &witness_eval,&eval);
-                println!("this is the expr {:?}", expr);
+                //let name = id.to_string();
+                let expr = to_stwo_expression(&self.witness_columns,expr, &witness_eval,&eval);
                 eval.add_constraint(expr);
             });
         }
@@ -192,11 +175,10 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
         }
         AlgebraicExpression::Reference(polyref) => {
             let poly_id = polyref.poly_id;
-            let interaction = match polyref.next {
-                false => println!("no constraint for rows"),
-                true => println!("next reference"),
-            };
-            //let index = self.constraint_system.fixed_columns[&poly_id];
+            // let interaction = match polyref.next {
+            //     false => println!("no constraint for rows"),
+            //     true => println!("next reference"),
+            // };
             let index = witness_columns[&poly_id];
             witness_eval[index].into()
         }
@@ -205,35 +187,17 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
             op,
             right: powdr_rhe,
         }) => {
-            println!("coming to BinaryOperation: left is {:?} \n, op is {:?} \n, right is {:?} \n", lhe, op, powdr_rhe);
-            let mut lhe = to_stwo_expression(witness_columns,lhe, witness_eval,eval);
-            let mut rhe = to_stwo_expression(witness_columns,powdr_rhe, witness_eval,eval);
-            println!("after recursion: lhe is {:?} \n, op is {:?} \n, rhe is {:?} \n", lhe, op, rhe);
-
+            let lhe = to_stwo_expression(witness_columns,lhe, witness_eval,eval);
+            let rhe = to_stwo_expression(witness_columns,powdr_rhe, witness_eval,eval);
             match op {
                 AlgebraicBinaryOperator::Add => {
-                    println!(
-                        "This is the addition, lhe is {:?}, and rhe is {:?}",
-                        lhe, rhe
-                    );
-                    println!("lhe + rhe is {:?}", lhe + rhe);
                     lhe + rhe
                 }
                 AlgebraicBinaryOperator::Sub => {
-                    println!(
-                        "This is the substraction, lhe is {:?}, and rhe is {:?}",
-                        lhe, rhe
-                    );
-                    println!("lhe - rhe is {:?}", lhe - rhe);
                     lhe - rhe
                 }
                 AlgebraicBinaryOperator::Mul => {
-                    lhe * rhe;
-                    println!(
-                        "This is the multiplication, lhe is {:?}, and rhe is {:?}",
-                        lhe, rhe
-                    );
-                    unimplemented!()
+                    lhe * rhe
                 }
                 AlgebraicBinaryOperator::Pow => {
                     let AlgebraicExpression::Number(e) = powdr_rhe.as_ref() else {

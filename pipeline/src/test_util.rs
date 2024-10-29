@@ -531,8 +531,6 @@ pub fn test_stwo(file_name: &str, inputs: Vec<Mersenne31Field>) {
         vec![Mersenne31Field::from(1),Mersenne31Field::from(2),Mersenne31Field::from(1),Mersenne31Field::from(2)]),("add::b".to_string(), 
         vec![Mersenne31Field::from(1),Mersenne31Field::from(2),Mersenne31Field::from(1),Mersenne31Field::from(2)]),("add::c".to_string(), 
         vec![Mersenne31Field::from(2),Mersenne31Field::from(4),Mersenne31Field::from(2),Mersenne31Field::from(4)])]);
-    println!("inputs from test file {:?}", inputs);
-
     // Generate a proof
     let _proof = pipeline.compute_proof().cloned().unwrap();
 }
