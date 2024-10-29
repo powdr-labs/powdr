@@ -6,13 +6,13 @@ use clap::{CommandFactory, Parser, Subcommand};
 use env_logger::fmt::Color;
 use env_logger::{Builder, Target};
 use log::{max_level, LevelFilter};
-use powdr_backend::BackendType;
-use powdr_number::{buffered_write_file, read_polys_csv_file, CsvRenderMode};
-use powdr_number::{
+use powdr::backend::BackendType;
+use powdr::number::{buffered_write_file, read_polys_csv_file, CsvRenderMode};
+use powdr::number::{
     BabyBearField, BigUint, Bn254Field, FieldElement, GoldilocksField, KoalaBearField,
     Mersenne31Field,
 };
-use powdr_pipeline::Pipeline;
+use powdr::Pipeline;
 use std::io;
 use std::path::PathBuf;
 use std::{fs, io::Write, path::Path};
@@ -423,7 +423,7 @@ fn run_command(command: Commands) {
     let result = match command {
         Commands::Reformat { file } => {
             let contents = fs::read_to_string(&file).unwrap();
-            match powdr_parser::parse(Some(&file), &contents) {
+            match powdr::parser::parse(Some(&file), &contents) {
                 Ok(ast) => println!("{ast}"),
                 Err(err) => err.output_to_stderr(),
             };
@@ -578,6 +578,7 @@ fn verification_key<T: FieldElement>(
     let mut pipeline = Pipeline::<T>::default()
         .from_file(file.to_path_buf())
         .read_constants(dir)
+        .map_err(|e| vec![e])?
         .with_setup_file(params.map(PathBuf::from))
         .with_vkey_app_file(vkey_app.map(PathBuf::from))
         .with_backend(*backend_type, backend_options);
@@ -603,6 +604,7 @@ fn export_verifier<T: FieldElement>(
     let mut pipeline = Pipeline::<T>::default()
         .from_file(file.to_path_buf())
         .read_constants(dir)
+        .map_err(|e| vec![e])?
         .with_setup_file(params.map(PathBuf::from))
         .with_vkey_file(vkey.map(PathBuf::from))
         .with_backend(*backend_type, backend_options);
@@ -695,6 +697,7 @@ fn read_and_prove<T: FieldElement>(
         .from_maybe_pil_object(file.to_path_buf())?
         .with_output(dir.to_path_buf(), true)
         .read_witness(dir)
+        .map_err(|e| vec![e])?
         .with_setup_file(params.map(PathBuf::from))
         .with_vkey_app_file(vkey_app.map(PathBuf::from))
         .with_vkey_file(vkey.map(PathBuf::from))
@@ -724,6 +727,7 @@ fn read_and_verify<T: FieldElement>(
     let mut pipeline = Pipeline::<T>::default()
         .from_file(file.to_path_buf())
         .read_constants(dir)
+        .map_err(|e| vec![e])?
         .with_setup_file(params.map(PathBuf::from))
         .with_vkey_file(Some(vkey))
         .with_backend(*backend_type, backend_options);
@@ -748,7 +752,7 @@ fn optimize_and_output<T: FieldElement>(file: &str) {
 #[cfg(test)]
 mod test {
     use crate::{run_command, Commands, CsvRenderModeCLI, FieldArgument};
-    use powdr_backend::BackendType;
+    use powdr::backend::BackendType;
     use test_log::test;
 
     #[test]
