@@ -6,9 +6,9 @@
 - [Installation](./installation.md)
 - [Hello World](./hello_world.md)
     - [in the CLI](./hello_world_cli.md)
-    - [using powdr as a library](./powdr_crate.md)
-    - [verified on Ethereum - CLI](./hello_world_ethereum.md)
-    - [verified on Ethereum with proof aggregation - CLI](./hello_world_ethereum_aggregation.md)
+    - [as a library](./powdr_crate.md)
+    - [verified on Ethereum](./hello_world_ethereum.md)
+    - [verified on Ethereum with proof aggregation](./hello_world_ethereum_aggregation.md)
 - [Examples](./examples.md)
 - [Using publics](./publics.md)
 

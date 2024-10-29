@@ -1,6 +1,6 @@
 # Hello World using the CLi
 
-Let's generate a proof of execution for the valid prover input `1` (since `1 - 1 == 0`)
+Let's generate a proof of execution for the valid prover input `0` (since `0 + 1 - 1 == 0`)
 
 ```console
 powdr pil test_data/asm/book/hello_world.asm --field bn254 --inputs 1 --prove-with halo2
@@ -15,7 +15,7 @@ We observe that several artifacts are created in the current directory:
 
 > Note that the output directory can be specified with option `-o|--output`, and `.` is used by default.
 
-Now let's try for the invalid input `2`:
+Now let's try for the invalid input `1`:
 
 ```console
 powdr pil test_data/asm/book/hello_world.asm --field bn254 --inputs 2 --prove-with halo2
