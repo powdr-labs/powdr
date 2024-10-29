@@ -656,7 +656,7 @@ fn exported_csv_as_external_witness() {
 
     // load witness back in and check that proving works
     let mut witness_path = temp_dir.to_path_buf();
-    witness_path.push(format!("{case}_columns.csv"));
+    witness_path.push(format!("{case}_witness.csv"));
     let witness_csv = std::fs::File::open(witness_path).unwrap();
     let witness = read_polys_csv_file(witness_csv);
     let mut pipeline = pipeline.add_external_witness_values(witness);
