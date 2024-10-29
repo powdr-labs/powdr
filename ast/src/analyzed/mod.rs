@@ -521,6 +521,9 @@ pub fn type_from_definition(
             FunctionValueDefinition::Expression(TypedExpression { e: _, type_scheme }) => {
                 type_scheme.clone()
             }
+            FunctionValueDefinition::TypeDeclaration(TypeDeclaration::Struct(struct_decl)) => {
+                Some(struct_decl.type_scheme())
+            }
             FunctionValueDefinition::TypeDeclaration(_) => {
                 panic!("Requested type of type declaration.")
             }

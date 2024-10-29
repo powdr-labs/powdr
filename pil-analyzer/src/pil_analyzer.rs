@@ -291,29 +291,15 @@ impl PILAnalyzer {
             }
         }
 
-        let struct_declarations: HashMap<String, StructDeclaration> = self
-            .definitions
-            .iter()
-            .filter_map(|(name, (_, value))| {
-                if let Some(FunctionValueDefinition::TypeDeclaration(TypeDeclaration::Struct(
-                    struct_decl,
-                ))) = value
-                {
-                    Some((name.clone(), struct_decl.clone()))
-                } else {
-                    None
-                }
-            })
-            .collect();
-
         let definitions = self
             .definitions
             .iter_mut()
             .filter(|(_name, (_symbol, value))| {
                 !matches!(
                     value,
-                    Some(FunctionValueDefinition::TypeDeclaration(_))
-                        | Some(FunctionValueDefinition::TraitDeclaration(_))
+                    Some(FunctionValueDefinition::TypeDeclaration(
+                        TypeDeclaration::Enum(_)
+                    )) | Some(FunctionValueDefinition::TraitDeclaration(_))
                 )
             })
             .flat_map(|(name, (symbol, value))| {
@@ -337,6 +323,15 @@ impl PILAnalyzer {
                             e,
                         })),
                     ) => (type_scheme.clone(), Some(e)),
+                    (
+                        _,
+                        value @ Some(FunctionValueDefinition::TypeDeclaration(
+                            TypeDeclaration::Struct(_),
+                        )),
+                    ) => {
+                        let type_scheme = type_from_definition(symbol, value);
+                        (type_scheme, None)
+                    }
                     (_, value) => {
                         let type_scheme = type_from_definition(symbol, value);
 
@@ -356,7 +351,7 @@ impl PILAnalyzer {
             expressions.push((expr, constr_function_statement_type()));
         }
 
-        let inferred_types = infer_types(definitions, &mut expressions, struct_declarations)?;
+        let inferred_types = infer_types(definitions, &mut expressions)?;
         // Store the inferred types.
         for (name, ty) in inferred_types {
             let Some(FunctionValueDefinition::Expression(TypedExpression {

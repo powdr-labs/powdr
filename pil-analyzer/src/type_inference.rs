@@ -32,9 +32,8 @@ use crate::{
 pub fn infer_types(
     definitions: HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
     expressions: &mut [(&mut Expression, ExpectedType)],
-    struct_declarations: HashMap<String, StructDeclaration>,
 ) -> Result<Vec<(String, Type)>, Vec<Error>> {
-    TypeChecker::new(struct_declarations).infer_types(definitions, expressions)
+    TypeChecker::new().infer_types(definitions, expressions)
 }
 
 /// A type to expect with a bit of flexibility.
@@ -804,50 +803,77 @@ impl TypeChecker {
                 let Reference::Poly(PolynomialReference { name, type_args }) = name else {
                     unreachable!()
                 };
-                let struct_decl = self.struct_declarations.get(name).unwrap();
+                // let struct_decl = self.struct_declarations.get(name).unwrap();
 
-                let fresh_type_vars: Vec<Type> = struct_decl
-                    .type_vars
-                    .vars()
-                    .map(|_| self.unifier.new_type_var())
-                    .collect();
+                // let fresh_type_vars: Vec<Type> = struct_decl
+                //     .type_vars
+                //     .vars()
+                //     .map(|_| self.unifier.new_type_var())
+                //     .collect();
 
+                // if let Some(requested_type_args) = type_args {
+                //     for (fresh_var, requested) in
+                //         fresh_type_vars.iter().zip(requested_type_args.iter())
+                //     {
+                //         self.unifier
+                //             .unify_types(fresh_var.clone(), requested.clone())
+                //             .map_err(|err| sr.with_error(err))?;
+                //     }
+                // }
+
+                // let vars_mapping = &struct_decl
+                //     .type_vars
+                //     .vars()
+                //     .zip(fresh_type_vars.iter())
+                //     .map(|(var, ty)| (var.clone(), ty.clone()))
+                //     .collect();
+
+                // let instantiated_field_types: HashMap<_, _> = struct_decl
+                //     .fields
+                //     .iter()
+                //     .map(|field| {
+                //         let mut field_type = field.ty.clone();
+                //         field_type.substitute_type_vars(vars_mapping);
+                //         (field.name.clone(), field_type)
+                //     })
+                //     .collect();
+
+                let type_decl = self.declared_types[name].clone();
+                let type_scheme = type_decl.scheme();
+                let DeclaredType {
+                    ty: TypeDeclaredType::Struct(_type, ref fields_types_map),
+                    ..
+                } = type_decl
+                else {
+                    unreachable!()
+                };
+
+                let (ty, args) = self.unifier.instantiate_scheme(type_scheme);
                 if let Some(requested_type_args) = type_args {
-                    for (fresh_var, requested) in
-                        fresh_type_vars.iter().zip(requested_type_args.iter())
-                    {
+                    if requested_type_args.len() != args.len() {
+                        return Err(sr.with_error(format!(
+                            "Expected {} type arguments for symbol {name}, but got {}: {}",
+                            args.len(),
+                            requested_type_args.len(),
+                            requested_type_args.iter().join(", ")
+                        )));
+                    }
+                    for (requested, inferred) in requested_type_args.iter_mut().zip(&args) {
+                        requested.substitute_type_vars(&self.declared_type_vars);
                         self.unifier
-                            .unify_types(fresh_var.clone(), requested.clone())
+                            .unify_types(requested.clone(), inferred.clone())
                             .map_err(|err| sr.with_error(err))?;
                     }
                 }
-
-                let vars_mapping = &struct_decl
-                    .type_vars
-                    .vars()
-                    .zip(fresh_type_vars.iter())
-                    .map(|(var, ty)| (var.clone(), ty.clone()))
-                    .collect();
-
-                let instantiated_field_types: HashMap<_, _> = struct_decl
-                    .fields
-                    .iter()
-                    .map(|field| {
-                        let mut field_type = field.ty.clone();
-                        field_type.substitute_type_vars(vars_mapping);
-                        (field.name.clone(), field_type)
-                    })
-                    .collect();
+                *type_args = Some(args);
 
                 for named_expr in fields.iter_mut() {
-                    let field_type = instantiated_field_types.get(&named_expr.name).unwrap();
+                    let field_type = fields_types_map.get(&named_expr.name).unwrap();
                     self.expect_type(field_type, named_expr.body.as_mut())?;
                 }
 
-                *type_args = Some(fresh_type_vars.clone());
-
                 // If type_arg is empty, it's also considered None
-                if type_args.as_ref().map_or(true, |args| args.is_empty()) {
+                if args.is_empty() {
                     Type::NamedType(SymbolPath::from_identifier(name.to_string()), None)
                 } else {
                     Type::NamedType(
