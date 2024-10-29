@@ -29,11 +29,11 @@ enum Commands {
     },
 }
 
-const HOST_CARGO_TOML_TEMPLATE: &str = include_str!("../template/Cargo.toml");
+const HOST_CARGO_TOML_TEMPLATE: &str = include_str!("../template/Cargo.toml.template");
 const HOST_TOOLCHAIN_TEMPLATE: &str = include_str!("../template/rust-toolchain.toml");
 const HOST_MAIN_TEMPLATE: &str = include_str!("../template/src/main.rs");
 const HOST_README_TEMPLATE: &str = include_str!("../template/README.md");
-const GUEST_CARGO_TOML_TEMPLATE: &str = include_str!("../template/guest/Cargo.toml");
+const GUEST_CARGO_TOML_TEMPLATE: &str = include_str!("../template/guest/Cargo.toml.template");
 const GUEST_MAIN_TEMPLATE: &str = include_str!("../template/guest/src/main.rs");
 
 fn main() -> Result<(), io::Error> {
