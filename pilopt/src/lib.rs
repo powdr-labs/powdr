@@ -455,8 +455,6 @@ fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
             }
             _ => {}
         }
-
-        {}
     }
     for (identity, source) in new_identities {
         pil_file.append_polynomial_identity(identity, source);
