@@ -20,17 +20,19 @@ enum Commands {
     /// Create a new powdr project.
     New {
         /// The name of the project
-        name: Option<String>,
+        name: String,
 
         /// The name of the guest
         #[arg(short, long)]
-        #[arg(default_value_t = String::from("my-powdr-guest"))]
+        #[arg(default_value_t = String::from("powdr-guest"))]
         guest_name: String,
     },
 }
 
 const HOST_CARGO_TOML_TEMPLATE: &str = include_str!("../template/Cargo.toml");
+const HOST_TOOLCHAIN_TEMPLATE: &str = include_str!("../template/rust-toolchain.toml");
 const HOST_MAIN_TEMPLATE: &str = include_str!("../template/src/main.rs");
+const HOST_README_TEMPLATE: &str = include_str!("../template/README.md");
 const GUEST_CARGO_TOML_TEMPLATE: &str = include_str!("../template/guest/Cargo.toml");
 const GUEST_MAIN_TEMPLATE: &str = include_str!("../template/guest/src/main.rs");
 
@@ -56,10 +58,7 @@ impl From<std::io::Error> for Error {
 #[allow(clippy::print_stderr)]
 fn run_command(command: Commands) {
     let result = match command {
-        Commands::New { name, guest_name } => new_project(
-            name.unwrap_or_else(|| "my-powdr-host".to_string()),
-            guest_name,
-        ),
+        Commands::New { name, guest_name } => new_project(name, guest_name),
     };
     if let Err(e) = result {
         eprintln!("{}", e.0);
@@ -86,6 +85,11 @@ fn new_project(project_name: String, guest_name: String) -> Result<(), Error> {
     }
 
     create_file(&project_dir.join("Cargo.toml"), HOST_CARGO_TOML_TEMPLATE)?;
+    create_file(
+        &project_dir.join("rust-toolchain.toml"),
+        HOST_TOOLCHAIN_TEMPLATE,
+    )?;
+    create_file(&project_dir.join("README.md"), HOST_README_TEMPLATE)?;
     create_file(&src_dir.join("main.rs"), HOST_MAIN_TEMPLATE)?;
     create_file(&guest_dir.join("Cargo.toml"), GUEST_CARGO_TOML_TEMPLATE)?;
     create_file(&guest_src_dir.join("main.rs"), GUEST_MAIN_TEMPLATE)?;
