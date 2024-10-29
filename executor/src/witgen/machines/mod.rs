@@ -288,8 +288,12 @@ pub fn compute_size_and_log(name: &str, used_rows: usize, degree_range: DegreeRa
     if size > MIN_REPORTING_SIZE && fraction_used < 0.5 {
         // In a machine configured to use VADCOP, we would expect the next power of two to be used.
         let percentage = fraction_used * 100.0;
+        let configuration_description = degree_range
+            .try_into_unique()
+            .map(|unique_degree| format!("be of static size {unique_degree}"))
+            .unwrap_or_else(|| format!("support sizes in the range {degree_range}"));
         log::info!(
-            "Only {used_rows} of {size} rows ({percentage:.2}%) are used in machine '{name}', which is configured to support sizes in the range {degree_range}. \
+            "Only {used_rows} of {size} rows ({percentage:.2}%) are used in machine '{name}', which is configured to {configuration_description}. \
             If the min_degree of this machine was lower, we could size it down such that the fraction of used rows is at least 50%. \
             If the backend supports it, consider lowering the min_degree.",
         );
