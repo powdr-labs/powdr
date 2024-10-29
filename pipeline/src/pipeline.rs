@@ -106,8 +106,8 @@ struct Arguments<T: FieldElement> {
     csv_render_mode: CsvRenderMode,
     /// Whether to export the witness as a CSV file.
     export_witness_csv: bool,
-    /// Exported witness CSV also contains fixed columns (file won't be valid as external witness).
-    exported_witness_with_fixed_columns: bool,
+    /// Whether to export all columns (witness and constants) to a CSV file.
+    export_all_columns_csv: bool,
     /// The optional setup file to use for proving.
     setup_file: Option<PathBuf>,
     /// The optional proving key file to use for proving.
@@ -295,16 +295,15 @@ impl<T: FieldElement> Pipeline<T> {
             .extend(external_witness_values);
     }
 
-    /// Make the pipeline export the witness as a CSV file.
-    /// If `include_fixed_columns` is `true`, the file won't be valid as an external witness.
+    /// Control what is exported to CSV files by the pipeline.
     pub fn with_witness_csv_settings(
         mut self,
         export_witness_csv: bool,
-        include_fixed_columns: bool,
+        export_all_columns_csv: bool,
         csv_render_mode: CsvRenderMode,
     ) -> Self {
         self.arguments.export_witness_csv = export_witness_csv;
-        self.arguments.exported_witness_with_fixed_columns = include_fixed_columns;
+        self.arguments.export_all_columns_csv = export_all_columns_csv;
         self.arguments.csv_render_mode = csv_render_mode;
         self
     }
@@ -508,8 +507,10 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn set_witness(mut self, witness: Vec<(String, Vec<T>)>) -> Self {
         if self.output_dir.is_some() {
             // Some future steps (e.g. Pilcom verification) require the witness to be persisted.
+            self.maybe_write_witness(&witness).unwrap();
             let fixed_cols = self.compute_fixed_cols().unwrap();
-            self.maybe_write_witness(&fixed_cols, &witness).unwrap();
+            self.maybe_write_all_columns_csv(&fixed_cols, &witness)
+                .unwrap();
         }
         Pipeline {
             artifact: Artifacts {
@@ -594,47 +595,16 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(())
     }
 
-    fn maybe_write_witness(
-        &self,
-        fixed: &VariablySizedColumns<T>,
-        witness: &Columns<T>,
-    ) -> Result<(), Vec<String>> {
+    fn maybe_write_witness(&self, witness: &Columns<T>) -> Result<(), Vec<String>> {
         if let Some(path) = self.path_if_should_write(|_| "commits.bin".to_string())? {
             witness.write(&path).map_err(|e| vec![format!("{}", e)])?;
         }
 
         if self.arguments.export_witness_csv {
-            if let Some(path) = self.path_if_should_write(|name| format!("{name}_columns.csv"))? {
-                let mut fixed_columns = vec![];
-                if self.arguments.exported_witness_with_fixed_columns {
-                    // get the column size for each namespace. This assumes all witness columns of the same namespace have the same size.
-                    let witness_sizes: HashMap<&str, u64> = witness
-                        .iter()
-                        .map(|(name, values)| {
-                            let namespace = name.split("::").next().unwrap();
-                            (namespace, values.len() as u64)
-                        })
-                        .collect();
-
-                    // choose the fixed column of the correct size. This assumes any namespace with no witness columns has a unique size
-                    fixed_columns = fixed
-                        .iter()
-                        .map(|(name, columns)| {
-                            let namespace = name.split("::").next().unwrap();
-                            let columns = witness_sizes
-                                .get(&namespace)
-                                // if we have witness columns, use their size
-                                .map(|size| columns.get_by_size(*size).unwrap())
-                                // otherwise, return the unique size
-                                .unwrap_or_else(|| columns.get_uniquely_sized().unwrap());
-                            (name, columns)
-                        })
-                        .collect();
-                }
-
-                let columns = fixed_columns
-                    .into_iter()
-                    .chain(witness.iter().map(|(name, values)| (name, values.as_ref())))
+            if let Some(path) = self.path_if_should_write(|name| format!("{name}_witness.csv"))? {
+                let columns = witness
+                    .iter()
+                    .map(|(name, values)| (name, values.as_ref()))
                     .collect::<Vec<_>>();
 
                 let csv_file = fs::File::create(path).map_err(|e| vec![format!("{}", e)])?;
@@ -655,6 +625,47 @@ impl<T: FieldElement> Pipeline<T> {
             fs::write(path, proof).unwrap();
         }
 
+        Ok(())
+    }
+
+    fn maybe_write_all_columns_csv(
+        &self,
+        fixed: &VariablySizedColumns<T>,
+        witness: &Columns<T>,
+    ) -> Result<(), Vec<String>> {
+        if self.arguments.export_all_columns_csv {
+            if let Some(path) =
+                self.path_if_should_write(|name| format!("{name}_all_columns.csv"))?
+            {
+                // get the column size for each namespace. This assumes all witness columns of the same namespace have the same size.
+                let witness_sizes: HashMap<&str, u64> = witness
+                    .iter()
+                    .map(|(name, values)| {
+                        let namespace = name.split("::").next().unwrap();
+                        (namespace, values.len() as u64)
+                    })
+                    .collect();
+
+                // choose the fixed column of the correct size. This assumes any namespace with no witness columns has a unique size
+                let fixed_columns = fixed.iter().map(|(name, columns)| {
+                    let namespace = name.split("::").next().unwrap();
+                    let columns = witness_sizes
+                        .get(&namespace)
+                        // if we have witness columns, use their size
+                        .map(|size| columns.get_by_size(*size).unwrap())
+                        // otherwise, return the unique size
+                        .unwrap_or_else(|| columns.get_uniquely_sized().unwrap());
+                    (name, columns)
+                });
+
+                let columns = fixed_columns
+                    .chain(witness.iter().map(|(name, values)| (name, values.as_ref())))
+                    .collect::<Vec<_>>();
+
+                let csv_file = fs::File::create(path).map_err(|e| vec![format!("{}", e)])?;
+                write_polys_csv_file(csv_file, self.arguments.csv_render_mode, &columns);
+            }
+        }
         Ok(())
     }
 
@@ -1000,7 +1011,7 @@ impl<T: FieldElement> Pipeline<T> {
                 start.elapsed().as_secs_f32()
             ));
 
-            self.maybe_write_witness(&fixed_cols, &witness)?;
+            self.maybe_write_witness(&witness)?;
 
             self.artifact.witness = Some(Arc::new(witness));
         }

@@ -31,7 +31,8 @@ fn bind_cli_args<F: FieldElement>(
     force_overwrite: bool,
     pilo: bool,
     witness_values: Option<String>,
-    export_csv: bool,
+    export_witness: bool,
+    export_all_columns: bool,
     csv_mode: CsvRenderModeCLI,
 ) -> Pipeline<F> {
     let witness_values = witness_values
@@ -50,7 +51,7 @@ fn bind_cli_args<F: FieldElement>(
     let pipeline = pipeline
         .with_output(output_dir.clone(), force_overwrite)
         .add_external_witness_values(witness_values.clone())
-        .with_witness_csv_settings(export_csv, false, csv_mode)
+        .with_witness_csv_settings(export_witness, export_all_columns, csv_mode)
         .with_prover_inputs(inputs.clone());
 
     if pilo {
@@ -152,10 +153,15 @@ enum Commands {
         #[arg(long)]
         backend_options: Option<String>,
 
-        /// Generate a CSV file containing the fixed and witness column values. Useful for debugging purposes.
+        /// Generate a CSV file containing the witness column values.
         #[arg(long)]
         #[arg(default_value_t = false)]
-        export_csv: bool,
+        export_witness_csv: bool,
+
+        /// Generate a CSV file containing all fixed and witness column values. Useful for debugging purposes.
+        #[arg(long)]
+        #[arg(default_value_t = false)]
+        export_all_columns_csv: bool,
 
         /// How to render field elements in the csv file
         #[arg(long)]
@@ -444,7 +450,8 @@ fn run_command(command: Commands) {
             prove_with,
             params,
             backend_options,
-            export_csv,
+            export_witness_csv,
+            export_all_columns_csv,
             csv_mode,
         } => {
             call_with_field!(run_pil::<field>(
@@ -457,7 +464,8 @@ fn run_command(command: Commands) {
                 prove_with,
                 params,
                 backend_options,
-                export_csv,
+                export_witness_csv,
+                export_all_columns_csv,
                 csv_mode
             ))
         }
@@ -643,7 +651,8 @@ fn run_pil<F: FieldElement>(
     prove_with: Option<BackendType>,
     params: Option<String>,
     backend_options: Option<String>,
-    export_csv: bool,
+    export_witness: bool,
+    export_all_columns: bool,
     csv_mode: CsvRenderModeCLI,
 ) -> Result<(), Vec<String>> {
     let inputs = split_inputs::<F>(&inputs);
@@ -655,7 +664,8 @@ fn run_pil<F: FieldElement>(
         force,
         pilo,
         witness_values,
-        export_csv,
+        export_witness,
+        export_all_columns,
         csv_mode,
     );
     run(pipeline, prove_with, params, backend_options)?;
@@ -772,7 +782,8 @@ mod test {
             prove_with: Some(BackendType::EStarkDump),
             params: None,
             backend_options: Some("stark_gl".to_string()),
-            export_csv: true,
+            export_witness_csv: false,
+            export_all_columns_csv: true,
             csv_mode: CsvRenderModeCLI::Hex,
         };
         run_command(pil_command);
