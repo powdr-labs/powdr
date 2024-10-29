@@ -26,7 +26,7 @@ use std::time::Instant;
 pub struct SessionBuilder {
     guest_path: String,
     out_path: String,
-    chunk_size: Option<u32>,
+    chunk_size_log2: Option<u8>,
 }
 
 pub struct Session {
@@ -38,10 +38,10 @@ const DEFAULT_PKEY: &str = "pkey.bin";
 const DEFAULT_VKEY: &str = "vkey.bin";
 
 // Minimum and maximum log of number of rows for the RISCV machine.
-const DEFAULT_MIN_DEGREE_LOG: u32 = 5;
-const DEFAULT_MAX_DEGREE_LOG: u32 = 20;
+const DEFAULT_MIN_DEGREE_LOG: u8 = 5;
+const DEFAULT_MAX_DEGREE_LOG: u8 = 20;
 // Minimum acceptable max degree.
-const DEFAULT_MIN_MAX_DEGREE_LOG: u32 = 18;
+const DEFAULT_MIN_MAX_DEGREE_LOG: u8 = 18;
 
 impl SessionBuilder {
     /// Builds a session with the given parameters.
@@ -51,7 +51,7 @@ impl SessionBuilder {
                 &self.guest_path,
                 Path::new(&self.out_path),
                 DEFAULT_MIN_DEGREE_LOG,
-                self.chunk_size.unwrap_or(DEFAULT_MAX_DEGREE_LOG),
+                self.chunk_size_log2.unwrap_or(DEFAULT_MAX_DEGREE_LOG),
             ),
             out_path: self.out_path,
         }
@@ -71,13 +71,13 @@ impl SessionBuilder {
     }
 
     /// Set the chunk size, represented by its log2.
-    /// Example: for a chunk size of 2^20, set chunk_size_log to 20.
-    /// If the execution trace is longer than the 2^chunk size,
-    /// the execution will be split into multiple chunks of length `chunk_size`.
+    /// Example: for a chunk size of 2^20, set chunk_size_log2 to 20.
+    /// If the execution trace is longer than the 2^chunk_size_log2,
+    /// the execution will be split into multiple chunks of length `2^chunk_size_log2`.
     /// Each chunk will be proven separately.
-    pub fn chunk_size(mut self, chunk_size: u32) -> Self {
-        assert!(chunk_size >= DEFAULT_MIN_MAX_DEGREE_LOG);
-        self.chunk_size = Some(chunk_size);
+    pub fn chunk_size_log2(mut self, chunk_size_log2: u8) -> Self {
+        assert!(chunk_size_log2 >= DEFAULT_MIN_MAX_DEGREE_LOG);
+        self.chunk_size_log2 = Some(chunk_size_log2);
         self
     }
 }
@@ -192,8 +192,8 @@ fn pil_file_path(asm_name: &Path) -> PathBuf {
 pub fn build_guest(
     guest_path: &str,
     out_path: &Path,
-    min_degree_log: u32,
-    max_degree_log: u32,
+    min_degree_log: u8,
+    max_degree_log: u8,
 ) -> (PathBuf, String) {
     riscv::compile_rust(
         guest_path,
@@ -213,8 +213,8 @@ pub fn build_guest(
 pub fn pipeline_from_guest(
     guest_path: &str,
     out_path: &Path,
-    min_degree_log: u32,
-    max_degree_log: u32,
+    min_degree_log: u8,
+    max_degree_log: u8,
 ) -> Pipeline<GoldilocksField> {
     println!("Compiling guest program...");
 
