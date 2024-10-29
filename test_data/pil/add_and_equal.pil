@@ -3,4 +3,5 @@ namespace Add(4);
     let b;
     let c;
     a + b = c;
+    a+1=a';
     a=b;
