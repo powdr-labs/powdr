@@ -653,16 +653,18 @@ impl SolvedTraitImpls {
     /// Assumes that `to_remove` is sorted.
     pub fn remove_trait_impls(&mut self, to_remove: &[usize]) {
         for map in self.impls.values_mut() {
-            for impl_data in map.values_mut() {
-                match to_remove.binary_search(&impl_data.index) {
-                    Ok(_index) => {
-                        // TODO remove this impl_data from map
+            *map = map
+                .drain()
+                .filter_map(|(type_args, mut impl_data)| {
+                    match to_remove.binary_search(&impl_data.index) {
+                        Ok(_) => None,
+                        Err(index) => {
+                            impl_data.index -= index;
+                            Some((type_args, impl_data))
+                        }
                     }
-                    Err(index) => {
-                        impl_data.index -= index;
-                    }
-                }
-            }
+                })
+                .collect();
         }
     }
 }
