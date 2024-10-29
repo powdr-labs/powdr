@@ -13,17 +13,7 @@ fn main() {
         panic!("Please provide two arguments: <challenge> <preimg>");
     }
 
-    let challenge: [u8; 32] = match Vec::from_hex(&args[1]) {
-        Ok(bytes) => {
-            if bytes.len() == 32 {
-                bytes.try_into().expect("length checked to be 32")
-            } else {
-                panic!("The pre-image must be exactly 64 hex characters (32 bytes).");
-            }
-        }
-        Err(e) => panic!("Error parsing the pre-image as hex: {e}"),
-    };
-
+    let challenge = parse_hash(&args[1]);
     let preimg = args[2].clone().into_bytes();
 
     let mut session = Session::builder()
@@ -38,4 +28,17 @@ fn main() {
 
     // Uncomment to compute the proof.
     //session.prove();
+}
+
+fn parse_hash(s: &str) -> [u8; 32] {
+    match Vec::from_hex(s) {
+        Ok(bytes) => {
+            if bytes.len() == 32 {
+                bytes.try_into().expect("length checked to be 32")
+            } else {
+                panic!("The pre-image must be exactly 64 hex characters (32 bytes).");
+            }
+        }
+        Err(e) => panic!("Error parsing the pre-image as hex: {e}"),
+    }
 }
