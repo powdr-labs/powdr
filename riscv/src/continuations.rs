@@ -25,6 +25,7 @@ use crate::continuations::bootloader::{
 
 use crate::code_gen::Register;
 
+// TODO: maybe we return the already transposed trace from the executor? `transposed_trace` seems to always be called on it.
 pub fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace<F>) -> HashMap<String, Vec<F>> {
     let mut reg_values: HashMap<&str, Vec<F>> = HashMap::with_capacity(trace.reg_map.len());
 
@@ -62,8 +63,8 @@ fn render_memory_hash<F: FieldElement>(hash: &[F]) -> String {
 ///
 /// # Arguments
 /// - `pipeline`: The pipeline that should be the starting point for all the chunks.
-/// - `pipeline_callback`: A function that will be called for each chunk. It will be passed the `pipeline`,
-///   but with the `PilWithEvaluatedFixedCols` stage already advanced to and all chunk-specific parameters set.
+/// - `pipeline_callback`: A function that will be called for each chunk. It will be passed a prepared `pipeline`,
+///    with all chunk-specific information set (witness, fixed cols, inputs, optimized pil)
 /// - `bootloader_inputs`: The inputs to the bootloader and the index of the row at which the shutdown routine
 ///   is supposed to execute, for each chunk, as returned by `rust_continuations_dry_run`.
 pub fn rust_continuations<F: FieldElement, PipelineCallback, E>(
@@ -241,7 +242,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
 
     // TODO: commit to the merkle_tree root in the verifier.
 
-    log::info!("Executing powdr-asm...");
+    log::info!("Initial execution...");
     let (full_trace, memory_accesses) = {
         let trace = powdr_riscv_executor::execute_ast::<F>(
             &program,

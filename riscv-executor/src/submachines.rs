@@ -119,16 +119,6 @@ impl<F: FieldElement> SubmachineTrace<F> {
         *self.cols.get_mut(col).unwrap().last_mut().unwrap() = value;
     }
 
-    /// get the value of a column in the given row
-    fn get_row_idx(&self, col: &str, idx: i64) -> Elem<F> {
-        let idx: usize = if idx < 0 {
-            (self.len() as i64 + idx) as usize
-        } else {
-            idx as usize
-        };
-        self.cols.get(col).unwrap()[idx]
-    }
-
     /// set the value of a column in the last row of the complete trace
     fn set_final_row(&mut self, col: &str, value: Elem<F>) {
         *self.last_row_overrides.get_mut(col).unwrap() = Some(value);

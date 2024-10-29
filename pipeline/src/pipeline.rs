@@ -503,8 +503,7 @@ impl<T: FieldElement> Pipeline<T> {
         if self.output_dir.is_some() {
             // Some future steps (e.g. Pilcom verification) require the witness to be persisted.
             let fixed_cols = self.compute_fixed_cols().unwrap();
-            // TODO uncomment this to test the executor in isolation
-            //self.maybe_write_witness(&fixed_cols, &witness).unwrap();
+            self.maybe_write_witness(&fixed_cols, &witness).unwrap();
         }
         Pipeline {
             artifact: Artifacts {
@@ -956,17 +955,8 @@ impl<T: FieldElement> Pipeline<T> {
         assert_eq!(pil.constant_count(), fixed_cols.len());
 
         self.log("Deducing witness columns...");
-        let start = Instant::now();
         let mut external_witness_values =
             std::mem::take(&mut self.arguments.external_witness_values);
-        let query_callback = self
-            .arguments
-            .query_callback
-            .clone()
-            .unwrap_or_else(|| Arc::new(unused_query_callback()));
-        let witness = WitnessGenerator::new(&pil, &fixed_cols, query_callback.borrow())
-            .with_external_witness_values(&external_witness_values)
-            .generate();
 
         let witness_cols: Vec<_> = pil
             .committed_polys_in_source_order()

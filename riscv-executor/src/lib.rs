@@ -320,7 +320,6 @@ impl<F: FieldElement> ExecutionTrace<F> {
             "main::instr_branch_if_diff_greater_than",
             "main::instr_branch_if_diff_greater_than_param_l",
             "main::instr_is_diff_greater_than",
-            "main::instr_is_greater_than",
             "main::instr_is_equal_zero",
             "main::instr_is_not_equal",
             "main::instr_and",
@@ -672,16 +671,6 @@ mod builder {
             *col.last().unwrap()
         }
 
-        // pub fn col_copy_prev_row(&mut self, name: &str) {
-        //     let col = self
-        //         .trace
-        //         .cols
-        //         .get_mut(name)
-        //         .unwrap_or_else(|| panic!("col not found: {name}"));
-        //     let prev = *col.get(col.len() - 2).unwrap();
-        //     *col.last_mut().unwrap() = prev;
-        // }
-
         pub fn push_row(&mut self) {
             self.trace
                 .cols
@@ -695,12 +684,6 @@ mod builder {
                 v.resize(len as usize, last);
             });
         }
-
-        // pub fn push_row_copy(&mut self) {
-        //     self.trace.cols.values_mut().for_each(|v| {
-        //         v.push(v.last().unwrap().clone());
-        //     });
-        // }
 
         /// advance to next row, returns the index to the statement that must be
         /// executed now, or None if the execution is finished
@@ -768,7 +751,8 @@ mod builder {
         }
 
         pub fn finish(mut self) -> (ExecutionTrace<F>, MemoryState, RegisterMemoryState<F>) {
-            const MIN_DEGREE: u32 = 1 << 5; // TODO: this is defined in the powdr_linker crate...
+            // TODO: figure this out...
+            const MIN_DEGREE: u32 = 1 << 5;
 
             // fill machine rows up to the next power of two
             let main_degree = std::cmp::max(self.len().next_power_of_two(), MIN_DEGREE);
@@ -1158,7 +1142,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         self.proc.set_col("main::instr_return", ret);
         self.proc.set_col("main::X_read_free", x_read_free);
 
-        // always 2 because we only have constrainted submachines
+        // always 2 because RISCV only uses constrainted submachines
         self.proc.set_col("main::_operation_id", 2.into());
     }
 
@@ -2481,10 +2465,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
     }
 }
 
+pub type FixedColumns<F> = Arc<Vec<(String, VariablySizedColumn<F>)>>;
+
 #[allow(clippy::too_many_arguments)]
 pub fn execute_ast<F: FieldElement>(
     program: &AnalysisASMFile,
-    fixed: Option<Arc<Vec<(String, VariablySizedColumn<F>)>>>,
+    fixed: Option<FixedColumns<F>>,
     initial_memory: MemoryState,
     inputs: &Callback<F>,
     bootloader_inputs: &[F],
