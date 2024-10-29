@@ -369,12 +369,7 @@ impl<T> Children<Expression> for Analyzed<T> {
                 .values()
                 .filter_map(|(_, def)| def.as_ref())
                 .flat_map(|def| def.children())
-                .chain(
-                    self.solved_impls
-                        .values()
-                        .flat_map(|impls| impls.iter())
-                        .flat_map(|(_, expr)| expr.children()),
-                )
+                .chain(self.trait_impls.iter().flat_map(|impls| impls.children()))
                 .chain(self.prover_functions.iter()),
         )
     }
@@ -386,10 +381,9 @@ impl<T> Children<Expression> for Analyzed<T> {
                 .filter_map(|(_, def)| def.as_mut())
                 .flat_map(|def| def.children_mut())
                 .chain(
-                    self.solved_impls
-                        .values_mut()
-                        .flat_map(|impls| impls.iter_mut())
-                        .flat_map(|(_, expr)| Arc::get_mut(expr).unwrap().children_mut()),
+                    self.trait_impls
+                        .iter_mut()
+                        .flat_map(|impls| impls.children_mut()),
                 )
                 .chain(self.prover_functions.iter_mut()),
         )

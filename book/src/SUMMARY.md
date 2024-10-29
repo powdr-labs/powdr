@@ -12,10 +12,11 @@
 
 # Getting Started with powdr SDK
 - [Installation](./installation_sdk.md)
-- [Hello World using the CLI](./hello_world.md)
-- [Hello World using powdr as a library](./powdr_crate.md)
-- [Hello World verified on Ethereum - CLI](./hello_world_ethereum.md)
-- [Hello World verified on Ethereum via proof aggregation - CLI](./hello_world_ethereum_aggregation.md)
+- [Hello World](./hello_world.md)
+    - [in the CLI](./hello_world_cli.md)
+    - [as a library](./powdr_crate.md)
+    - [verified on Ethereum](./hello_world_ethereum.md)
+    - [verified on Ethereum with proof aggregation](./hello_world_ethereum_aggregation.md)
 - [Examples](./examples.md)
 - [Using publics](./publics.md)
 
@@ -45,6 +46,7 @@
     - [Valida](./frontends/valida.md)
     - [EVM](./frontends/evm.md)
 - [Backends](./backends/README.md)
+    - [plonky3](./backends/plonky3.md)
     - [Halo2](./backends/halo2.md)
     - [eSTARK](./backends/estark.md)
 - [Architecture](./architecture/README.md)
