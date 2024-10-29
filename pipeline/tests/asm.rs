@@ -487,7 +487,7 @@ mod book {
 #[should_panic = "Witness generation failed."]
 fn hello_world_asm_fail() {
     let f = "asm/book/hello_world.asm";
-    let i = [1];
+    let i = [2];
     let pipeline = make_prepared_pipeline(f, slice_to_vec(&i), vec![]);
     test_pilcom(pipeline);
 }

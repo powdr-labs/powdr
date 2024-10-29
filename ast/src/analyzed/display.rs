@@ -316,10 +316,14 @@ impl<T: Display> Display for SelectedExpressions<T> {
         write!(
             f,
             "{}[{}]",
-            self.selector
-                .as_ref()
-                .map(|s| format!("{s} $ "))
-                .unwrap_or_default(),
+            {
+                // we only print the selector if it is not 1. The comparison is string-based to avoid introducing invasive type bounds on T.
+                let s = self.selector.to_string();
+                match s.as_str() {
+                    "1" => "".to_string(),
+                    s => format!("{s} $ "),
+                }
+            },
             self.expressions.iter().format(", ")
         )
     }

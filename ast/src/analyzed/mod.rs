@@ -5,11 +5,12 @@ use std::cmp::max;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
-use std::iter::{self, empty};
+use std::iter::{self, empty, once};
 use std::ops::{self, ControlFlow};
 use std::sync::Arc;
 
 use itertools::Itertools;
+use num_traits::One;
 use powdr_number::{DegreeType, FieldElement};
 use powdr_parser_util::SourceRef;
 use schemars::JsonSchema;
@@ -650,11 +651,11 @@ impl SolvedTraitImpls {
     /// Update the data structure after a certain set of trait impls have been removed.
     /// This just updates the `index` fields.
     /// Assumes that `to_remove` is sorted.
-    pub fn remove_trait_impls(&mut self, to_remove: &Vec<usize>) {
+    pub fn remove_trait_impls(&mut self, to_remove: &[usize]) {
         for map in self.impls.values_mut() {
             for impl_data in map.values_mut() {
                 match to_remove.binary_search(&impl_data.index) {
-                    Ok(index) => {
+                    Ok(_index) => {
                         // TODO remove this impl_data from map
                     }
                     Err(index) => {
@@ -856,14 +857,14 @@ impl PublicDeclaration {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SelectedExpressions<T> {
-    pub selector: Option<AlgebraicExpression<T>>,
+    pub selector: AlgebraicExpression<T>,
     pub expressions: Vec<AlgebraicExpression<T>>,
 }
 
-impl<T> Default for SelectedExpressions<T> {
+impl<T: One> Default for SelectedExpressions<T> {
     fn default() -> Self {
         Self {
-            selector: Default::default(),
+            selector: T::one().into(),
             expressions: vec![],
         }
     }
@@ -872,11 +873,11 @@ impl<T> Default for SelectedExpressions<T> {
 impl<T> Children<AlgebraicExpression<T>> for SelectedExpressions<T> {
     /// Returns an iterator over all (top-level) expressions in this SelectedExpressions.
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
-        Box::new(self.selector.iter().chain(self.expressions.iter()))
+        Box::new(once(&self.selector).chain(self.expressions.iter()))
     }
     /// Returns an iterator over all (top-level) expressions in this SelectedExpressions.
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
-        Box::new(self.selector.iter_mut().chain(self.expressions.iter_mut()))
+        Box::new(once(&mut self.selector).chain(self.expressions.iter_mut()))
     }
 }
 
@@ -1068,10 +1069,7 @@ impl<T> SelectedExpressions<T> {
     /// @returns true if the expression contains a reference to a next value of a
     /// (witness or fixed) column
     pub fn contains_next_ref(&self) -> bool {
-        self.selector
-            .iter()
-            .chain(self.expressions.iter())
-            .any(|e| e.contains_next_ref())
+        self.children().any(|e| e.contains_next_ref())
     }
 }
 
@@ -1250,6 +1248,12 @@ impl AlgebraicBinaryOperator {
             // .. ..= => RequireParentheses,
             _ => Left,
         }
+    }
+}
+
+impl<T: FieldElement> num_traits::One for AlgebraicExpression<T> {
+    fn one() -> Self {
+        AlgebraicExpression::Number(T::one())
     }
 }
 

@@ -265,11 +265,9 @@ fn build_machine<'a, T: FieldElement>(
         let latch = machine_parts.connections
             .values()
             .fold(None, |existing_latch, identity| {
-                let current_latch = identity
+                let current_latch = &identity
                     .right
-                    .selector
-                    .as_ref()
-                    .expect("Cannot handle lookup in this machine because it does not have a latch");
+                    .selector;
                 if let Some(existing_latch) = existing_latch {
                     assert_eq!(
                         &existing_latch, current_latch,

@@ -7,6 +7,7 @@ members = [
     "powdr-test",
     "number",
     "parser",
+    "cargo-powdr",
     "cli",
     "cli-rs",
     "executor",
