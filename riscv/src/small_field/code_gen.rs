@@ -205,9 +205,17 @@ fn riscv_machine(
 {}
 use std::machines::small_field::add_sub::AddSub;
 use std::machines::small_field::arith::Arith;
-machine Main with min_degree: {}, max_degree: {} {{
-AddSub add_sub(byte2);
-Arith arith_mul(byte, byte2);
+
+let MIN_DEGREE_LOG: int = {};
+let MIN_DEGREE: int = 2**MIN_DEGREE_LOG;
+let MAX_DEGREE_LOG: int = {};
+let MAIN_MAX_DEGREE: int = 2**MAX_DEGREE_LOG;
+let LARGE_SUBMACHINES_MAX_DEGREE: int = 2**(MAX_DEGREE_LOG + 2);
+
+machine Main with min_degree: MIN_DEGREE, max_degree: MAIN_MAX_DEGREE {{
+
+AddSub add_sub(byte2, MIN_DEGREE, LARGE_SUBMACHINES_MAX_DEGREE);
+Arith arith_mul(byte, byte2, MIN_DEGREE, MAIN_MAX_DEGREE);
 {}
 
 {}
@@ -219,7 +227,7 @@ let initial_memory: (fe, fe)[] = [
     function main {{
 {}
     }}
-}}    
+}}
 "#,
         runtime.submachines_import(),
         0, // TODO pass compiler options
@@ -288,7 +296,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
         + &memory(with_bootloader)
         + r#"
     // =============== Register memory =======================
-"# + "std::machines::small_field::memory::Memory regs(bit12, byte2);"
+"# + "std::machines::small_field::memory::Memory regs(bit12, byte2, MIN_DEGREE, LARGE_SUBMACHINES_MAX_DEGREE);"
         + r#"
     // Get the value in register YL.
     instr get_reg YL -> XH, XL link ~> (XH, XL) = regs.mload(0, YL, STEP);
@@ -664,7 +672,7 @@ fn memory(with_bootloader: bool) -> String {
         todo!()
     } else {
         r#"
-    std::machines::small_field::memory::Memory memory(bit12, byte2);
+    std::machines::small_field::memory::Memory memory(bit12, byte2, MIN_DEGREE, MAIN_MAX_DEGREE);
 "#
     };
 
