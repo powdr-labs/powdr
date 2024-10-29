@@ -22,6 +22,13 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::time::Instant;
 
+#[derive(Default)]
+pub struct SessionBuilder {
+    guest_path: String,
+    out_path: String,
+    chunk_size: Option<u32>,
+}
+
 pub struct Session {
     pipeline: Pipeline<GoldilocksField>,
     out_path: String,
@@ -36,34 +43,48 @@ const DEFAULT_MAX_DEGREE_LOG: u32 = 20;
 // Minimum acceptable max degree.
 const DEFAULT_MIN_MAX_DEGREE_LOG: u32 = 18;
 
-impl Session {
-    pub fn new(guest_path: &str, out_path: &str) -> Self {
+impl SessionBuilder {
+    /// Builds a session with the given parameters.
+    pub fn build(self) -> Session {
         Session {
             pipeline: pipeline_from_guest(
-                guest_path,
-                Path::new(out_path),
+                &self.guest_path,
+                Path::new(&self.out_path),
                 DEFAULT_MIN_DEGREE_LOG,
-                DEFAULT_MAX_DEGREE_LOG,
+                self.chunk_size.unwrap_or(DEFAULT_MAX_DEGREE_LOG),
             ),
-            out_path: out_path.into(),
+            out_path: self.out_path,
         }
         .with_backend(powdr_backend::BackendType::Plonky3)
     }
 
-    /// Create a new session with a specific chunk size, represented by its log2.
+    /// Sets the path to the guest program.
+    pub fn guest_path(mut self, guest_path: &str) -> Self {
+        self.guest_path = guest_path.into();
+        self
+    }
+
+    /// Sets the output path for the artifacts.
+    pub fn out_path(mut self, out_path: &str) -> Self {
+        self.out_path = out_path.into();
+        self
+    }
+
+    /// Set the chunk size, represented by its log2.
     /// Example: for a chunk size of 2^20, set chunk_size_log to 20.
-    pub fn new_with_chunk_size(guest_path: &str, out_path: &str, chunk_size_log: u32) -> Self {
-        assert!(chunk_size_log >= DEFAULT_MIN_MAX_DEGREE_LOG);
-        Session {
-            pipeline: pipeline_from_guest(
-                guest_path,
-                Path::new(out_path),
-                DEFAULT_MIN_DEGREE_LOG,
-                chunk_size_log,
-            ),
-            out_path: out_path.into(),
-        }
-        .with_backend(powdr_backend::BackendType::Plonky3)
+    /// If the execution trace is longer than the 2^chunk size,
+    /// the execution will be split into multiple chunks of length `chunk_size`.
+    /// Each chunk will be proven separately.
+    pub fn chunk_size(mut self, chunk_size: u32) -> Self {
+        assert!(chunk_size >= DEFAULT_MIN_MAX_DEGREE_LOG);
+        self.chunk_size = Some(chunk_size);
+        self
+    }
+}
+
+impl Session {
+    pub fn builder() -> SessionBuilder {
+        SessionBuilder::default()
     }
 
     pub fn into_pipeline(self) -> Pipeline<GoldilocksField> {
