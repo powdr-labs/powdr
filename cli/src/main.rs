@@ -6,13 +6,13 @@ use clap::{CommandFactory, Parser, Subcommand};
 use env_logger::fmt::Color;
 use env_logger::{Builder, Target};
 use log::{max_level, LevelFilter};
-use powdr_backend::BackendType;
-use powdr_number::{buffered_write_file, read_polys_csv_file, CsvRenderMode};
-use powdr_number::{
+use powdr::backend::BackendType;
+use powdr::number::{buffered_write_file, read_polys_csv_file, CsvRenderMode};
+use powdr::number::{
     BabyBearField, BigUint, Bn254Field, FieldElement, GoldilocksField, KoalaBearField,
     Mersenne31Field,
 };
-use powdr_pipeline::Pipeline;
+use powdr::Pipeline;
 use std::io;
 use std::path::PathBuf;
 use std::{fs, io::Write, path::Path};
@@ -423,7 +423,7 @@ fn run_command(command: Commands) {
     let result = match command {
         Commands::Reformat { file } => {
             let contents = fs::read_to_string(&file).unwrap();
-            match powdr_parser::parse(Some(&file), &contents) {
+            match powdr::parser::parse(Some(&file), &contents) {
                 Ok(ast) => println!("{ast}"),
                 Err(err) => err.output_to_stderr(),
             };
@@ -752,7 +752,7 @@ fn optimize_and_output<T: FieldElement>(file: &str) {
 #[cfg(test)]
 mod test {
     use crate::{run_command, Commands, CsvRenderModeCLI, FieldArgument};
-    use powdr_backend::BackendType;
+    use powdr::backend::BackendType;
     use test_log::test;
 
     #[test]

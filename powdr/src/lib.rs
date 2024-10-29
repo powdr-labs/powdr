@@ -2,7 +2,9 @@ pub use powdr_ast as ast;
 pub use powdr_backend as backend;
 pub use powdr_executor as executor;
 pub use powdr_number as number;
+pub use powdr_parser as parser;
 pub use powdr_pil_analyzer as pil_analyzer;
+pub use powdr_pilopt as pilopt;
 pub use powdr_pipeline as pipeline;
 pub use powdr_riscv as riscv;
 pub use powdr_riscv_executor as riscv_executor;
@@ -112,12 +114,14 @@ impl Session {
         let vkey = Path::new(&self.out_path).join(DEFAULT_VKEY);
 
         if generate_artifacts {
+            println!("Creating program ZK setup. This has to be done only once per program.");
             self.pipeline.compute_fixed_cols().unwrap();
             self.pipeline.setup_backend().unwrap();
             self.export_setup();
             self.pipeline.set_pkey_file(pkey.clone());
             self.pipeline.set_vkey_file(vkey.clone());
         } else {
+            println!("Loading program ZK setup.");
             if self
                 .pipeline
                 .read_constants_mut(Path::new(&self.out_path))
@@ -191,7 +195,7 @@ pub fn pipeline_from_guest(
     min_degree_log: u32,
     max_degree_log: u32,
 ) -> Pipeline<GoldilocksField> {
-    log::info!("Compiling guest program...");
+    println!("Compiling guest program...");
 
     let (asm_file_path, asm_contents) =
         build_guest(guest_path, out_path, min_degree_log, max_degree_log);
@@ -203,7 +207,7 @@ pub fn pipeline_from_guest(
 }
 
 pub fn run(pipeline: &mut Pipeline<GoldilocksField>) {
-    log::info!("Running powdr-riscv executor in fast mode...");
+    println!("Running powdr-riscv executor in fast mode...");
     let start = Instant::now();
 
     let program = pipeline.compute_analyzed_asm().unwrap().clone();
@@ -219,8 +223,8 @@ pub fn run(pipeline: &mut Pipeline<GoldilocksField>) {
     );
 
     let duration = start.elapsed();
-    log::info!("Fast executor took: {:?}", duration);
-    log::info!("Trace length: {}", trace.len);
+    println!("Fast executor took: {duration:?}");
+    println!("Trace length: {}", trace.len);
 }
 
 pub fn prove(pipeline: &mut Pipeline<GoldilocksField>) {
@@ -243,20 +247,20 @@ pub fn prove(pipeline: &mut Pipeline<GoldilocksField>) {
         let duration = start.elapsed();
         log::info!("Generating witness took: {duration:?}");
 
-        log::info!("Generating proof...");
+        println!("Generating proof...");
         let start = Instant::now();
 
         pipeline.compute_proof().unwrap();
 
         let duration = start.elapsed();
-        log::info!("Proof generation took: {:?}", duration);
+        println!("Proof generation took: {duration:?}");
 
         Ok(())
     };
 
     pipeline.rollback_from_witness();
 
-    log::info!("Running witness and proof generation for all chunks...");
+    println!("Running witness and proof generation for all chunks...");
     let start = Instant::now();
     riscv::continuations::rust_continuations(pipeline, generate_proof, bootloader_inputs).unwrap();
     let duration = start.elapsed();
