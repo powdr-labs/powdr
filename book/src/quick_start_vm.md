@@ -8,7 +8,7 @@ cargo-powdr new my-host
 
 - Your new crate `my-host` is the host of the virtual machine's execution,
 and is responsible for preparing data and running the prover.
-- The `guest` crate in your new project contains the Rust code that will be proven.
+- The `guest` crate in your new project contains the Rust code whose execution will be proven.
 
 Most of these details are abstracted by the `powdr` library.
 
