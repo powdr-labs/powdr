@@ -68,12 +68,15 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
         let machine = &input.get_machine(&ty).unwrap();
 
         queue.extend(machine.submachines.iter().map(|def| {
+            let called_machine = &input.get_machine(&def.ty).unwrap();
             // we need to pass at least as many arguments as we have submachines
-            assert!(def.args.len() >= machine.params.0.len());
+            assert!(def.args.len() >= called_machine.params.0.len());
             // and at most as many as submachines plus a min degree and a max degree
-            assert!(def.args.len() <= machine.params.0.len() + 2);
+            assert!(def.args.len() <= called_machine.params.0.len() + 2);
             let mut def_args = def.args.clone().into_iter();
-            let submachine_args: Vec<_> = (&mut def_args).take(machine.params.0.len()).collect();
+            let submachine_args: Vec<_> = (&mut def_args)
+                .take(called_machine.params.0.len())
+                .collect();
             let min_degree = def_args.next();
             let max_degree = def_args.next();
 

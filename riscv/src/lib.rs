@@ -74,7 +74,7 @@ impl CompilerOptions {
             libs,
             continuations,
             min_degree_log: 5,
-            max_degree_log: 22,
+            max_degree_log: 20,
         }
     }
 
