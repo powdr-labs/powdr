@@ -17,7 +17,7 @@ use powdr_number::FieldElement;
 use powdr_number::Mersenne31Field;
 use std::sync::Arc;
 
-use stwo_prover::constraint_framework::logup::ClaimedPrefixSum;
+use stwo_prover::{constraint_framework::logup::ClaimedPrefixSum, core::fields::m31::M31};
 use stwo_prover::constraint_framework::logup::LookupElements;
 use stwo_prover::constraint_framework::{
     assert_constraints, EvalAtRow, FrameworkComponent, FrameworkEval, TraceLocationAllocator,
@@ -25,6 +25,7 @@ use stwo_prover::constraint_framework::{
 use stwo_prover::core::backend::simd::column::BaseColumn;
 use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::fields::m31::BaseField;
+use stwo_prover::core::fields::m31;
 use stwo_prover::core::fields::qm31::SecureField;
 use stwo_prover::core::pcs::{CommitmentSchemeProver, PcsConfig, TreeSubspan};
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
@@ -138,8 +139,10 @@ impl<'a, T: FieldElement> FrameworkEval for PowdrCircuit<'a, T> {
 
             let mut witness_eval = Vec::with_capacity(self.witness.unwrap().len());
             for _ in 0..self.witness.unwrap().len() {
-                witness_eval.push(eval.next_trace_mask());
+                witness_eval.push(eval.next_interaction_mask(0,[0,1] ));
+    
             }
+            println!("This is the witness eval {:?}", self.witness);
             
         
         // Add polynomial identities
@@ -154,6 +157,7 @@ impl<'a, T: FieldElement> FrameworkEval for PowdrCircuit<'a, T> {
             identities.iter().for_each(|id| {
                 let expr = id.expression_for_poly_id();
                 //let name = id.to_string();
+                println!("This is the expression {:?}", expr);
                 let expr = to_stwo_expression(&self.witness_columns,expr, &witness_eval,&eval);
                 eval.add_constraint(expr);
             });
@@ -165,22 +169,29 @@ impl<'a, T: FieldElement> FrameworkEval for PowdrCircuit<'a, T> {
 fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
     witness_columns:&BTreeMap<PolyID, usize>,
     expr: &AlgebraicExpression<T>,
-    witness_eval: &Vec<<E as EvalAtRow>::F>,
+    witness_eval: &Vec<[<E as EvalAtRow>::F;2]>,
     eval:  &E,
 ) -> E::F {
     match expr {
         AlgebraicExpression::Number(n) => {
-            println!("This is the number {:?}", n);
-            unimplemented!("Number");
+            E::F::one()
         }
         AlgebraicExpression::Reference(polyref) => {
             let poly_id = polyref.poly_id;
-            // let interaction = match polyref.next {
-            //     false => println!("no constraint for rows"),
-            //     true => println!("next reference"),
-            // };
-            let index = witness_columns[&poly_id];
-            witness_eval[index].into()
+            let interaction = match polyref.next {
+                false => {
+                    let index = witness_columns[&poly_id];
+            witness_eval[index][0].into()
+
+                },
+                true => {
+                   
+                    let index = witness_columns[&poly_id];
+                    println!("witness_eval[index][1].into() is {:?}",witness_eval[index][1]);
+                    witness_eval[index][1].into()
+                }
+            };
+            interaction
         }
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
             left: lhe,
