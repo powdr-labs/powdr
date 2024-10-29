@@ -194,7 +194,7 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
 
     let input_low: col[STATE_SIZE];
     let input_high: col[STATE_SIZE];
-    // TODO: when link is availailable inside functions, we can turn this into array operations.
+    // TODO: when link is available inside functions, we can turn this into array operations.
     link if is_used ~> (input_high[0], input_low[0]) = mem.mload(input_addr_high[0], input_addr_low[0], time_step);
     link if is_used ~> (input_high[1], input_low[1]) = mem.mload(input_addr_high[1], input_addr_low[1], time_step);
     link if is_used ~> (input_high[2], input_low[2]) = mem.mload(input_addr_high[2], input_addr_low[2], time_step);
