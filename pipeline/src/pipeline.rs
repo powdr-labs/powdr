@@ -598,11 +598,9 @@ impl<T: FieldElement> Pipeline<T> {
         fixed: &VariablySizedColumns<T>,
         witness: &Columns<T>,
     ) -> Result<(), Vec<String>> {
-        /*
         if let Some(path) = self.path_if_should_write(|_| "commits.bin".to_string())? {
             witness.write(&path).map_err(|e| vec![format!("{}", e)])?;
         }
-        */
 
         if self.arguments.export_witness_csv {
             if let Some(path) = self.path_if_should_write(|name| format!("{name}_witness.csv"))? {
