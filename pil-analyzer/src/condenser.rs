@@ -17,7 +17,7 @@ use powdr_ast::{
         AlgebraicUnaryOperation, Analyzed, Challenge, ConnectIdentity, DegreeRange, Expression,
         FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity, PolyID,
         PolynomialIdentity, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
-        SelectedExpressions, StatementIdentifier, Symbol, SymbolKind,
+        SelectedExpressions, SolvedTraitImpls, StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
         self,
@@ -43,7 +43,7 @@ use crate::{
 
 pub fn condense<T: FieldElement>(
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
+    solved_impls: SolvedTraitImpls,
     public_declarations: HashMap<String, PublicDeclaration>,
     proof_items: &[Expression],
     trait_impls: Vec<TraitImplementation<Expression>>,
@@ -206,7 +206,7 @@ pub struct Condenser<'a, T> {
     /// All the definitions from the PIL file.
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     /// Pointers to expressions for all referenced trait implementations and the concrete types.
-    solved_impls: &'a HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
+    solved_impls: &'a SolvedTraitImpls,
     /// Evaluation cache.
     symbol_values: SymbolCache<'a, T>,
     /// Current namespace (for names of generated columns).
@@ -232,7 +232,7 @@ pub struct Condenser<'a, T> {
 impl<'a, T: FieldElement> Condenser<'a, T> {
     pub fn new(
         symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-        solved_impls: &'a HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
+        solved_impls: &'a SolvedTraitImpls,
     ) -> Self {
         let counters = Counters::with_existing(symbols.values().map(|(sym, _)| sym), None, None);
         Self {
