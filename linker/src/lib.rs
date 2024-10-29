@@ -300,7 +300,8 @@ namespace main__rom(4 + 4);
     #[test]
     fn compile_really_empty_vm() {
         let expectation = r#"namespace main(0..0);
-"#.to_string();
+"#
+        .to_string();
 
         let graph = parse_analyze_and_compile::<GoldilocksField>("");
         let pil = link(graph).unwrap();

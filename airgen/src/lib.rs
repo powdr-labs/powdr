@@ -228,15 +228,7 @@ struct SubmachineRef {
 
 struct ASMPILConverter<'a> {
     /// Map of all machine instances to their type and passed arguments
-    instances: &'a BTreeMap<
-        Location,
-        (
-            AbsoluteSymbolPath,
-            Vec<Location>,
-            Option<Expression>,
-            Option<Expression>,
-        ),
-    >,
+    instances: &'a BTreeMap<Location, Instance>,
     /// Current machine instance
     location: &'a Location,
     /// Input definitions and machines.
@@ -249,17 +241,16 @@ struct ASMPILConverter<'a> {
     incoming_permutations: &'a mut BTreeMap<Location, u64>,
 }
 
+type Instance = (
+    AbsoluteSymbolPath,
+    Vec<Location>,
+    Option<Expression>,
+    Option<Expression>,
+);
+
 impl<'a> ASMPILConverter<'a> {
     fn new(
-        instances: &'a BTreeMap<
-            Location,
-            (
-                AbsoluteSymbolPath,
-                Vec<Location>,
-                Option<Expression>,
-                Option<Expression>,
-            ),
-        >,
+        instances: &'a BTreeMap<Location, Instance>,
         location: &'a Location,
         input: &'a AnalysisASMFile,
         incoming_permutations: &'a mut BTreeMap<Location, u64>,
@@ -279,15 +270,7 @@ impl<'a> ASMPILConverter<'a> {
     }
 
     fn convert_machine(
-        instances: &'a BTreeMap<
-            Location,
-            (
-                AbsoluteSymbolPath,
-                Vec<Location>,
-                Option<Expression>,
-                Option<Expression>,
-            ),
-        >,
+        instances: &'a BTreeMap<Location, Instance>,
         location: &'a Location,
         input: &'a AnalysisASMFile,
         incoming_permutations: &'a mut BTreeMap<Location, u64>,
