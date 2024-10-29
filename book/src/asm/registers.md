@@ -6,7 +6,7 @@ Registers are central to a machine. powdr supports a few types of registers:
 
 Each machine can have at most one program counter. In the absence of a program counter, the machine is considered static, and no other register can be declared. The program counter is defined as follows:
 
-```
+```rust
 reg pc[@pc]
 ```
 
@@ -17,13 +17,13 @@ The program counter behaves like a [write register](#write-registers), with the 
 
 Write registers are the default type for registers. They are declared as follows:
 
-```
+```rust
 {{#include ../../../test_data/asm/book/write_register.asm:declaration}}
 ```
 
 They hold a field element, are initialized as 0 at the beginning of a function and keep their value by default. They can be read from and written to.
 
-```
+```rust
 {{#include ../../../test_data/asm/book/write_register.asm:component}}
 ```
 
@@ -31,11 +31,11 @@ They hold a field element, are initialized as 0 at the beginning of a function a
 
 Assignment registers are transient to an execution step: their value is not persisted across steps. They are required in order to pass inputs and receive outputs from instructions, as well as in assignments.
 For example, if we want to assert that write register `A` is `0`, we can use the following instruction:
-```
+```rust
 {{#include ../../../test_data/asm/book/assert_write_register.asm:component}}
 ```
 However, if we want the instruction to accept any write register as input, we use an assignment register.
-```
+```rust
 {{#include ../../../test_data/asm/book/assert_assignment_register.asm:component}}
 ```
 

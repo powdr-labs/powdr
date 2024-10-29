@@ -5,7 +5,10 @@ use powdr_ast::{
         TraitImplementation,
     },
 };
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use crate::type_unifier::Unifier;
 
@@ -15,8 +18,10 @@ pub type SolvedTraitImpls = HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>
 /// TraitsResolver helps to find the implementation for a given trait function
 /// and concrete type arguments.
 pub struct TraitsResolver<'a> {
+    /// All trait names, even if they have no implementation.
+    traits: HashSet<&'a str>,
     /// List of implementations for all traits.
-    trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
+    trait_impls: HashMap<String, Vec<&'a TraitImplementation<Expression>>>,
     /// Map from trait function names and type arguments to the corresponding trait implementations.
     solved_impls: SolvedTraitImpls,
 }
@@ -24,9 +29,20 @@ pub struct TraitsResolver<'a> {
 impl<'a> TraitsResolver<'a> {
     /// Creates a new instance of the resolver.
     /// The trait impls need to have a key for every trait name, even if it is not implemented at all.
-    pub fn new(trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>) -> Self {
+    pub fn new(
+        traits: HashSet<&'a str>,
+        trait_impls: &'a [TraitImplementation<Expression>],
+    ) -> Self {
+        let mut impls_by_trait: HashMap<String, Vec<_>> = HashMap::new();
+        for i in trait_impls {
+            impls_by_trait
+                .entry(i.name.to_string())
+                .or_default()
+                .push(i);
+        }
         Self {
-            trait_impls,
+            traits,
+            trait_impls: impls_by_trait,
             solved_impls: HashMap::new(),
         }
     }
@@ -52,8 +68,14 @@ impl<'a> TraitsResolver<'a> {
         let Some((trait_decl_name, trait_fn_name)) = reference.name.rsplit_once("::") else {
             return Ok(());
         };
-        let Some(trait_impls) = self.trait_impls.get(trait_decl_name) else {
+        if !self.traits.contains(trait_decl_name) {
+            // Not a trait function.
             return Ok(());
+        }
+        let Some(trait_impls) = self.trait_impls.get(trait_decl_name) else {
+            return Err(format!(
+                "Could not find an implementation for the trait function {reference} (trait is not implemented at all)"
+            ));
         };
 
         match find_trait_implementation(trait_fn_name, type_args, trait_impls) {
@@ -65,7 +87,7 @@ impl<'a> TraitsResolver<'a> {
                 Ok(())
             }
             None => Err(format!(
-                "Could not find an implementation for the trait function {reference}"
+                "Could not find a matching implementation for the trait function {reference}"
             )),
         }
     }
@@ -80,7 +102,7 @@ impl<'a> TraitsResolver<'a> {
 fn find_trait_implementation(
     function: &str,
     type_args: &[Type],
-    implementations: &[TraitImplementation<Expression>],
+    implementations: &[&TraitImplementation<Expression>],
 ) -> Option<Arc<Expression>> {
     let tuple_args = Type::Tuple(TupleType {
         items: type_args.to_vec(),

@@ -722,7 +722,7 @@ fn trait_user_defined_enum_wrong_type() {
 }
 
 #[test]
-#[should_panic = "Could not find an implementation for the trait function ToTuple::get::<int, (int, int)> at input:90-102"]
+#[should_panic = "Could not find an implementation for the trait function ToTuple::get::<int, (int, int)> (trait is not implemented at all) at input:90-102"]
 fn trait_no_impl() {
     let input = "
     trait ToTuple<S, I> {
@@ -734,7 +734,7 @@ fn trait_no_impl() {
 }
 
 #[test]
-#[should_panic = "Could not find an implementation for the trait function Trait::f::<string> at input:109-117"]
+#[should_panic = "Could not find a matching implementation for the trait function Trait::f::<string> at input:109-117"]
 fn trait_wrong_impl() {
     let input = r#"
     trait Trait<X> {
@@ -760,6 +760,78 @@ fn prover_functions() {
         };
     ";
     type_check(input, &[("a", "", "int"), ("b", "", "()[]")]);
+}
+
+#[test]
+#[should_panic = "Struct symbol not found: NotADot"]
+fn wrong_struct() {
+    let input = "
+    struct Dot { x: int, y: int }
+    let f: int -> Dot = |i| NotADot{x: 0, y: i};
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Struct 'Dot' has no field named 'a'"]
+fn struct_wrong_fields() {
+    let input = "
+    struct Dot { x: int, y: int }
+    let f: int -> Dot = |i| Dot{x: 0, y: i, a: 2};
+    let x = f(0);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Missing field 'z' in initializer of 'A'"]
+fn test_struct_unused_fields() {
+    let input = "    struct A {
+        x: int,
+        y: int,
+        z: int,
+    }
+    let x = A{ y: 0, x: 2 };
+";
+
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Field 'y' specified more than once"]
+fn test_struct_repeated_fields_expr() {
+    let input = "    struct A {
+        x: int,
+        y: int,
+    }
+    let x = A{ y: 0, x: 2, y: 1 };
+";
+
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Field 'x' is declared more than once"]
+fn test_struct_repeated_fields_decl() {
+    let input = "    struct A {
+        x: int,
+        y: int,
+        x: int,
+    }
+    let x = A{ y: 0, x: 2 };
+";
+
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic(expected = "Expected symbol of kind Struct but got Type: A")]
+fn enum_used_as_struct() {
+    let input = "
+    enum A { X }
+    let a = A{x: 8};
+    ";
+    type_check(input, &[]);
 }
 
 #[test]
