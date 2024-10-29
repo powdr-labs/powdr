@@ -21,12 +21,13 @@ use powdr_number::{FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
     type_from_definition, Analyzed, DegreeRange, Expression, FunctionValueDefinition,
-    PolynomialType, PublicDeclaration, Reference, StatementIdentifier, Symbol, SymbolKind,
+    PolynomialType, PublicDeclaration, Reference, SolvedTraitImpls, StatementIdentifier, Symbol,
+    SymbolKind,
 };
 use powdr_parser::{parse, parse_module, parse_type};
 use powdr_parser_util::Error;
 
-use crate::traits_resolver::{SolvedTraitImpls, TraitsResolver};
+use crate::traits_resolver::TraitsResolver;
 use crate::type_builtins::constr_function_statement_type;
 use crate::type_inference::infer_types;
 use crate::{side_effect_checker, AnalysisDriver};
@@ -417,7 +418,7 @@ impl PILAnalyzer {
 
     pub fn condense<T: FieldElement>(
         self,
-        solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
+        solved_impls: SolvedTraitImpls,
     ) -> Result<Analyzed<T>, Vec<Error>> {
         Ok(condenser::condense(
             self.definitions,

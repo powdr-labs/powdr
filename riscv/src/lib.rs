@@ -63,8 +63,8 @@ pub struct CompilerOptions {
     pub field: KnownField,
     pub libs: RuntimeLibs,
     pub continuations: bool,
-    pub min_degree_log: u32,
-    pub max_degree_log: u32,
+    pub min_degree_log: u8,
+    pub max_degree_log: u8,
 }
 
 impl CompilerOptions {
@@ -98,14 +98,14 @@ impl CompilerOptions {
         }
     }
 
-    pub fn with_min_degree_log(self, min_degree_log: u32) -> Self {
+    pub fn with_min_degree_log(self, min_degree_log: u8) -> Self {
         Self {
             min_degree_log,
             ..self
         }
     }
 
-    pub fn with_max_degree_log(self, max_degree_log: u32) -> Self {
+    pub fn with_max_degree_log(self, max_degree_log: u8) -> Self {
         Self {
             max_degree_log,
             ..self
