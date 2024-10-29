@@ -757,9 +757,6 @@ mod builder {
             // fill machine rows up to the next power of two
             let main_degree = std::cmp::max(self.len().next_power_of_two(), MIN_DEGREE);
 
-            println!("========================== MAIN DEGREE: {main_degree}");
-            println!("========================== MAIN LEN: {}", self.len());
-
             // fill up main trace to degree
             self.extend_rows(main_degree);
 
@@ -770,14 +767,8 @@ mod builder {
                     continue;
                 }
                 machine.final_row_override();
-                // push enough blocks to fill degree rows in submachines
+                // extend with dummy blocks up to the required machine degree
                 let machine_degree = std::cmp::max(machine.len().next_power_of_two(), MIN_DEGREE);
-                // let machine_degree = std::cmp::max(machine.len().next_power_of_two(), main_degree);
-                println!(
-                    "adding dummy rows for {name}: {} to {}...",
-                    machine.len(),
-                    machine_degree
-                );
                 while machine.len() < machine_degree {
                     machine.push_dummy_block();
                 }
@@ -787,28 +778,16 @@ mod builder {
             }
 
             // add regs memory trace
-            println!(
-                "getting main_regs rows: {} to {}...",
-                self.regs_machine.len(),
-                self.regs_machine.len().next_power_of_two()
-            );
             let regs_degree =
                 std::cmp::max(self.regs_machine.len().next_power_of_two(), MIN_DEGREE);
-            // let regs_degree = std::cmp::max(self.regs_machine.len().next_power_of_two(), main_degree);
 
             for (col_name, col) in self.regs_machine.take_cols(regs_degree) {
                 assert!(self.trace.cols.insert(col_name, col).is_none());
             }
 
             // add main memory trace
-            println!(
-                "getting main_memory rows: {} to {}...",
-                self.memory_machine.len(),
-                self.memory_machine.len().next_power_of_two()
-            );
             let mem_degree =
                 std::cmp::max(self.memory_machine.len().next_power_of_two(), MIN_DEGREE);
-            // let mem_degree = std::cmp::max(self.memory_machine.len().next_power_of_two(), main_degree);
             for (col_name, col) in self.memory_machine.take_cols(mem_degree) {
                 assert!(self.trace.cols.insert(col_name, col).is_none());
             }
