@@ -184,8 +184,11 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         );
         self.outer_query
             .as_ref()
-            .and_then(|outer_query| outer_query.connection.right.selector.as_ref())
-            .and_then(|latch| row_pair.evaluate(latch).ok())
+            .and_then(|outer_query| {
+                row_pair
+                    .evaluate(&outer_query.connection.right.selector)
+                    .ok()
+            })
             .and_then(|l| l.constant_value())
             .map(|l| l.is_one())
     }
@@ -291,13 +294,11 @@ Known values in current row (local: {row_index}, global {global_row_index}):
     ) -> Result<(bool, Constraints<AlgebraicVariable<'a>, T>), EvalError<T>> {
         let mut progress = false;
         let right = self.outer_query.as_ref().unwrap().connection.right;
-        if let Some(selector) = right.selector.as_ref() {
-            progress |= self
-                .set_value(row_index, selector, T::one(), || {
-                    "Set selector to 1".to_string()
-                })
-                .unwrap_or(false);
-        }
+        progress |= self
+            .set_value(row_index, &right.selector, T::one(), || {
+                "Set selector to 1".to_string()
+            })
+            .unwrap_or(false);
 
         let outer_query = self
             .outer_query

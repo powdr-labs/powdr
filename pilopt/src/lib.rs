@@ -26,7 +26,6 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     extract_constant_lookups(&mut pil_file);
     remove_constant_witness_columns(&mut pil_file);
     simplify_identities(&mut pil_file);
-    remove_trivial_selectors(&mut pil_file);
     remove_trivial_identities(&mut pil_file);
     remove_duplicate_identities(&mut pil_file);
     remove_unreferenced_definitions(&mut pil_file);
@@ -371,27 +370,6 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
     }
 }
 
-/// Removes lookup and permutation selectors which are equal to 1
-/// TODO: refactor `SelectedExpression` to not use an optional selector
-fn remove_trivial_selectors<T: FieldElement>(pil_file: &mut Analyzed<T>) {
-    let one = AlgebraicExpression::from(T::from(1));
-
-    for identity in &mut pil_file.identities.iter_mut() {
-        match identity {
-            Identity::Lookup(LookupIdentity { left, right, .. })
-            | Identity::Permutation(PermutationIdentity { left, right, .. }) => {
-                if left.selector.as_ref() == Some(&one) {
-                    left.selector = None;
-                }
-                if right.selector.as_ref() == Some(&one) {
-                    right.selector = None;
-                }
-            }
-            _ => {}
-        }
-    }
-}
-
 /// Extracts columns from lookups that are matched against constants and turns
 /// them into polynomial identities.
 fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
@@ -419,14 +397,8 @@ fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 })
             {
                 // TODO remove clones
-                let l_sel = left
-                    .selector
-                    .clone()
-                    .unwrap_or_else(|| AlgebraicExpression::from(T::one()));
-                let r_sel = right
-                    .selector
-                    .clone()
-                    .unwrap_or_else(|| AlgebraicExpression::from(T::one()));
+                let l_sel = left.selector.clone();
+                let r_sel = right.selector.clone();
                 let pol_id = (l_sel * l.clone()) - (r_sel * AlgebraicExpression::from(*r));
                 new_identities.push((simplify_expression(pol_id), source.clone()));
 

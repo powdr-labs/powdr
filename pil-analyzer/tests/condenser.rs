@@ -200,7 +200,7 @@ pub fn constructed_constraints() {
     col witness y;
     col witness z;
     Main::x = Main::y;
-    1 $ [Main::x, 3] in [Main::y, Main::z];
+    [Main::x, 3] in [Main::y, Main::z];
     [Main::x, 3] is Main::x $ [Main::y, Main::z];
     [Main::x, Main::y] connect [Main::z, 3];
 "#;
