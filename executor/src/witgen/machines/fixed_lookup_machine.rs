@@ -1,3 +1,4 @@
+use num_traits::One;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::Peekable;
 use std::mem;
@@ -198,7 +199,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         let connections = all_identities
             .into_iter()
             .filter_map(|i| match i {
-                Identity::Lookup(i) => (i.right.selector.is_none()
+                Identity::Lookup(i) => (i.right.selector.is_one()
                     && i.right.expressions.iter().all(|e| {
                         try_to_simple_poly_ref(e)
                             .map(|poly| poly.poly_id.ptype == PolynomialType::Constant)

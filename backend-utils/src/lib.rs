@@ -213,7 +213,8 @@ fn split_by_namespace<F: FieldElement>(
                     },
                 }
             }
-            StatementIdentifier::ProverFunction(_) => None,
+            StatementIdentifier::ProverFunction(_)
+            | StatementIdentifier::TraitImplementation(_) => None,
         })
         // collect into a map
         .fold(Default::default(), |mut acc, (namespace, statement)| {

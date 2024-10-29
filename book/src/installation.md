@@ -40,7 +40,19 @@ cargo install --git https://github.com/powdr-labs/powdr --features halo2,plonky3
 With SIMD support for the provers that support it:
 
 ```sh
-RUSTFLAGS='-C target-cpu=native' cargo install --git https://github.com/powdr-labs/powdr --features halo2,plonky3,simd powdr-cli
+RUSTFLAGS='-C target-cpu=native' cargo install --git https://github.com/powdr-labs/powdr --features halo2,plonky3,plonky3-simd powdr-cli
+```
+
+Or, by manually building from a local copy of the [powdr repository](https://github.com/powdr-labs/powdr):
+
+```sh
+# clone the repository
+git clone https://github.com/powdr-labs/powdr.git
+cd powdr
+# install powdr-cli
+cargo install --features halo2,plonky3 --path ./cli
+# install powdr-cli with SIMD support (only for the crates that support it)
+RUSTFLAGS='-C target-cpu=native' cargo install --features halo2,plonky3,plonky3-simd --path ./cli
 ```
 
 ## Building *powdr-rs*
