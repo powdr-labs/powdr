@@ -339,16 +339,14 @@ fn execute<F: FieldElement>(
         // no continuations
         // -------------------------------
         let fixed = pipeline.compute_fixed_cols().unwrap().clone();
-        let program = pipeline.compute_asm_string().unwrap().1.clone();
-
-        log::info!("Executing...");
-        let start = Instant::now();
-
+        let program = pipeline.compute_analyzed_asm().unwrap().clone();
         let exec_mode = if witness {
             powdr::riscv_executor::ExecMode::Trace
         } else {
             powdr::riscv_executor::ExecMode::Fast
         };
+
+        let start = Instant::now();
 
         let (trace, _memory_snapshot_update, _register_memory_snapshot) =
             powdr::riscv_executor::execute::<F>(
@@ -405,9 +403,9 @@ fn execute<F: FieldElement>(
                 .filter(|x| !keys.contains(x))
                 .collect::<Vec<_>>();
 
-            log::info!("All witness column names: {:?}\n", witness_cols);
-            log::info!("Executor provided columns: {:?}\n", keys);
-            log::info!("Executor missing columns: {:?}", missing_cols);
+            log::debug!("All witness column names: {:?}\n", witness_cols);
+            log::debug!("Executor provided columns: {:?}\n", keys);
+            log::debug!("Executor missing columns: {:?}", missing_cols);
 
             if executor_csv {
                 write_executor_csv(
@@ -419,13 +417,7 @@ fn execute<F: FieldElement>(
 
             pipeline = pipeline.add_external_witness_values(full_trace);
 
-            log::info!("Running witgen...");
-            let start = Instant::now();
-
             generate_witness(&mut pipeline)?;
-
-            let duration = start.elapsed();
-            log::info!("Witgen done in: {:?}", duration);
         }
     } else {
         // with continuations

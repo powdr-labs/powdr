@@ -2689,7 +2689,7 @@ pub enum ExecMode {
 /// Generic argument F is just used by the powdr_parser, before everything is
 /// converted to i64, so it is important to the execution itself.
 pub fn execute<F: FieldElement>(
-    asm_source: &str,
+    asm: &AnalysisASMFile,
     fixed: Option<Arc<Vec<(String, VariablySizedColumn<F>)>>>,
     initial_memory: MemoryState,
     inputs: &Callback<F>,
@@ -2697,16 +2697,9 @@ pub fn execute<F: FieldElement>(
     mode: ExecMode,
     profiling: Option<ProfilerOptions>,
 ) -> (ExecutionTrace<F>, MemoryState, RegisterMemoryState<F>) {
-    log::info!("Parsing...");
-    let parsed = powdr_parser::parse_asm(None, asm_source).unwrap();
-    log::info!("Resolving imports...");
-    let resolved = powdr_importer::load_dependencies_and_resolve(None, parsed).unwrap();
-    log::info!("Analyzing...");
-    let analyzed = powdr_analysis::analyze(resolved).unwrap();
-
     log::info!("Executing...");
     execute_ast(
-        &analyzed,
+        &asm,
         fixed,
         initial_memory,
         inputs,

@@ -982,12 +982,12 @@ impl<T: FieldElement> Pipeline<T> {
         external_witness_values
             .sort_by_key(|(name, _)| witness_cols.iter().position(|n| n == name).unwrap());
 
-        if witness_cols
+        let witness = if witness_cols
             .iter()
             .all(|name| external_witness_values.iter().any(|(e, _)| e == name))
         {
             self.log("All witness columns externally provided, skipping witness generation.");
-            self.artifact.witness = Some(Arc::new(external_witness_values));
+            external_witness_values
         } else {
             self.log("Deducing witness columns...");
             let start = Instant::now();
@@ -1006,10 +1006,11 @@ impl<T: FieldElement> Pipeline<T> {
                 start.elapsed().as_secs_f32()
             ));
 
-            self.maybe_write_witness(&fixed_cols, &witness)?;
+            witness
+        };
 
-            self.artifact.witness = Some(Arc::new(witness));
-        }
+        self.maybe_write_witness(&fixed_cols, &witness)?;
+        self.artifact.witness = Some(Arc::new(witness));
         self.artifact.proof = None;
 
         Ok(self.artifact.witness.as_ref().unwrap().clone())
