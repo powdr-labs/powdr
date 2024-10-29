@@ -345,13 +345,13 @@ impl<T: Display> Display for PhantomLookupIdentity<T> {
             self.left
                 .selector
                 .as_ref()
-                .map(|s| format!("Some({s})"))
-                .unwrap_or_else(|| "None".to_string()),
+                .map(|s| format!("Option::Some({s})"))
+                .unwrap_or_else(|| "Option::None".to_string()),
             self.right
                 .selector
                 .as_ref()
-                .map(|s| format!("Some({s})"))
-                .unwrap_or_else(|| "None".to_string()),
+                .map(|s| format!("Option::Some({s})"))
+                .unwrap_or_else(|| "Option::None".to_string()),
             self.left
                 .expressions
                 .iter()
@@ -377,13 +377,13 @@ impl<T: Display> Display for PhantomPermutationIdentity<T> {
             self.left
                 .selector
                 .as_ref()
-                .map(|s| format!("Some({s})"))
-                .unwrap_or_else(|| "None".to_string()),
+                .map(|s| format!("Option::Some({s})"))
+                .unwrap_or_else(|| "Option::None".to_string()),
             self.right
                 .selector
                 .as_ref()
-                .map(|s| format!("Some({s})"))
-                .unwrap_or_else(|| "None".to_string()),
+                .map(|s| format!("Option::Some({s})"))
+                .unwrap_or_else(|| "Option::None".to_string()),
             self.left
                 .expressions
                 .iter()

@@ -818,7 +818,7 @@ impl<T> Children<AlgebraicExpression<T>> for LookupIdentity<T> {
 
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PhantomLookupIdentity<T> {
-    // The ID is globally unique among identitites.
+    // The ID is globally unique among identities.
     pub id: u64,
     pub source: SourceRef,
     pub left: SelectedExpressions<T>,

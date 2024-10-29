@@ -165,38 +165,30 @@ fn permutation_via_challenges_ext() {
 }
 
 #[test]
-fn lookup_via_challenges_bn() {
+fn lookup_via_challenges() {
     let f = "std/lookup_via_challenges.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-}
 
-#[test]
-fn lookup_via_challenges_ext() {
-    let f = "std/lookup_via_challenges_ext.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-    // Note that this does not actually run the second-phase witness generation, because no
-    // Goldilocks backend support challenges yet.
+    // TODO: Plonky3 fails, not sure why...
+    // test_plonky3_pipeline(make_simple_prepared_pipeline::<GoldilocksField>(f));
+
+    // At least run witness generation on Goldilocks.
     make_simple_prepared_pipeline::<GoldilocksField>(f);
 }
 
 #[test]
-fn lookup_via_challenges_ext_simple() {
-    let f = "std/lookup_via_challenges_ext_simple.asm";
+#[should_panic = "Failed to merge the first and last row of the VM 'Main Machine'"]
+fn lookup_via_challenges_range_constraint() {
+    // This test currently fails, because witness generation for the multiplicity column
+    // does not yet work for range constraints, so the lookup constraints are not satisfied.
+    let f = "std/lookup_via_challenges_range_constraint.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-    // Note that this does not actually run the second-phase witness generation, because no
-    // Goldilocks backend support challenges yet.
-    make_simple_prepared_pipeline::<GoldilocksField>(f);
+    test_plonky3::<GoldilocksField>(f, vec![]);
 }
 
 #[test]
 fn bus_permutation_via_challenges_bn() {
     let f = "std/bus_permutation_via_challenges.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-}
-
-#[test]
-fn test_multiplicities() {
-    let f = "std/multiplicities.asm";
     test_halo2(make_simple_prepared_pipeline(f));
 }
 
@@ -209,12 +201,6 @@ fn bus_permutation_via_challenges_ext_bn() {
 #[test]
 fn bus_lookup_via_challenges_bn() {
     let f = "std/bus_lookup_via_challenges.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-}
-
-#[test]
-fn bus_lookup_via_challenges_ext_bn() {
-    let f = "std/bus_lookup_via_challenges_ext.asm";
     test_halo2(make_simple_prepared_pipeline(f));
 }
 

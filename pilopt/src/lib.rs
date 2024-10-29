@@ -379,7 +379,9 @@ fn remove_trivial_selectors<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     for identity in &mut pil_file.identities.iter_mut() {
         match identity {
             Identity::Lookup(LookupIdentity { left, right, .. })
-            | Identity::Permutation(PermutationIdentity { left, right, .. }) => {
+            | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. })
+            | Identity::Permutation(PermutationIdentity { left, right, .. })
+            | Identity::PhantomPermutation(PhantomPermutationIdentity { left, right, .. }) => {
                 if left.selector.as_ref() == Some(&one) {
                     left.selector = None;
                 }
@@ -397,53 +399,61 @@ fn remove_trivial_selectors<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let mut new_identities = vec![];
     for identity in &mut pil_file.identities.iter_mut() {
-        if let Identity::Lookup(LookupIdentity {
-            source,
-            left,
-            right,
-            ..
-        }) = identity
-        {
-            let mut extracted = HashSet::new();
-            for (i, (l, r)) in left
-                .expressions
-                .iter()
-                .zip(&right.expressions)
-                .enumerate()
-                .filter_map(|(i, (l, r))| {
-                    if let AlgebraicExpression::Number(n) = r {
-                        Some((i, (l, n)))
-                    } else {
-                        None
-                    }
-                })
-            {
-                // TODO remove clones
-                let l_sel = left
-                    .selector
-                    .clone()
-                    .unwrap_or_else(|| AlgebraicExpression::from(T::one()));
-                let r_sel = right
-                    .selector
-                    .clone()
-                    .unwrap_or_else(|| AlgebraicExpression::from(T::one()));
-                let pol_id = (l_sel * l.clone()) - (r_sel * AlgebraicExpression::from(*r));
-                new_identities.push((simplify_expression(pol_id), source.clone()));
+        match identity {
+            Identity::Lookup(LookupIdentity {
+                source,
+                left,
+                right,
+                ..
+            })
+            | Identity::PhantomLookup(PhantomLookupIdentity {
+                source,
+                left,
+                right,
+                ..
+            }) => {
+                let mut extracted = HashSet::new();
+                for (i, (l, r)) in left
+                    .expressions
+                    .iter()
+                    .zip(&right.expressions)
+                    .enumerate()
+                    .filter_map(|(i, (l, r))| {
+                        if let AlgebraicExpression::Number(n) = r {
+                            Some((i, (l, n)))
+                        } else {
+                            None
+                        }
+                    })
+                {
+                    // TODO remove clones
+                    let l_sel = left
+                        .selector
+                        .clone()
+                        .unwrap_or_else(|| AlgebraicExpression::from(T::one()));
+                    let r_sel = right
+                        .selector
+                        .clone()
+                        .unwrap_or_else(|| AlgebraicExpression::from(T::one()));
+                    let pol_id = (l_sel * l.clone()) - (r_sel * AlgebraicExpression::from(*r));
+                    new_identities.push((simplify_expression(pol_id), source.clone()));
 
-                extracted.insert(i);
+                    extracted.insert(i);
+                }
+                // TODO rust-ize this.
+                let mut c = 0usize;
+                left.expressions.retain(|_i| {
+                    c += 1;
+                    !extracted.contains(&(c - 1))
+                });
+                let mut c = 0usize;
+                right.expressions.retain(|_i| {
+                    c += 1;
+
+                    !extracted.contains(&(c - 1))
+                });
             }
-            // TODO rust-ize this.
-            let mut c = 0usize;
-            left.expressions.retain(|_i| {
-                c += 1;
-                !extracted.contains(&(c - 1))
-            });
-            let mut c = 0usize;
-            right.expressions.retain(|_i| {
-                c += 1;
-
-                !extracted.contains(&(c - 1))
-            });
+            _ => {}
         }
     }
     for (identity, source) in new_identities {
