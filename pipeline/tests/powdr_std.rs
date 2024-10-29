@@ -112,6 +112,7 @@ fn arith_large_test() {
     // Running gen_estark_proof(f, Default::default())
     // is too slow for the PR tests. This will only create a single
     // eStark proof instead of 3.
+    #[cfg(feature = "estark-starky")]
     pipeline
         .with_backend(powdr_backend::BackendType::EStarkStarky, None)
         .compute_proof()
@@ -149,79 +150,74 @@ fn memory_small_test() {
 }
 
 #[test]
-fn permutation_via_challenges_bn() {
+fn permutation_via_challenges() {
     let f = "std/permutation_via_challenges.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-}
-
-#[test]
-fn permutation_via_challenges_gl() {
-    let f = "std/permutation_via_challenges.asm";
-    make_simple_prepared_pipeline::<GoldilocksField>(f);
+    test_plonky3::<GoldilocksField>(f, vec![]);
 }
 
 #[test]
 fn permutation_via_challenges_ext() {
     let f = "std/permutation_via_challenges_ext.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-    // Note that this does not actually run the second-phase witness generation, because no
-    // Goldilocks backend support challenges yet. But at least it tests that the panic from
-    // the previous test is not happening.
-    make_simple_prepared_pipeline::<GoldilocksField>(f);
+    test_plonky3::<GoldilocksField>(f, vec![]);
 }
 
 #[test]
-fn lookup_via_challenges_bn() {
+fn lookup_via_challenges() {
     let f = "std/lookup_via_challenges.asm";
     test_halo2(make_simple_prepared_pipeline(f));
+    test_plonky3::<GoldilocksField>(f, vec![]);
 }
 
 #[test]
 fn lookup_via_challenges_ext() {
     let f = "std/lookup_via_challenges_ext.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-    // Note that this does not actually run the second-phase witness generation, because no
-    // Goldilocks backend support challenges yet.
-    make_simple_prepared_pipeline::<GoldilocksField>(f);
+    test_plonky3::<GoldilocksField>(f, vec![]);
 }
 
 #[test]
 fn lookup_via_challenges_ext_simple() {
     let f = "std/lookup_via_challenges_ext_simple.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-    // Note that this does not actually run the second-phase witness generation, because no
-    // Goldilocks backend support challenges yet.
-    make_simple_prepared_pipeline::<GoldilocksField>(f);
+    test_plonky3::<GoldilocksField>(f, vec![]);
 }
 
 #[test]
-fn bus_permutation_via_challenges_bn() {
+fn bus_permutation_via_challenges() {
     let f = "std/bus_permutation_via_challenges.asm";
     test_halo2(make_simple_prepared_pipeline(f));
+}
+
+#[test]
+fn bus_permutation_via_challenges_ext() {
+    let f = "std/bus_permutation_via_challenges_ext.asm";
+    test_halo2(make_simple_prepared_pipeline(f));
+    test_plonky3::<GoldilocksField>(f, vec![]);
 }
 
 #[test]
 fn test_multiplicities() {
     let f = "std/multiplicities.asm";
     test_halo2(make_simple_prepared_pipeline(f));
+
+    // This test currently has a native lookup to aid witness generation,
+    // which is not supported by the Plonky3 backend.
+    // test_plonky3::<GoldilocksField>(f, vec![]);
 }
 
 #[test]
-fn bus_permutation_via_challenges_ext_bn() {
-    let f = "std/bus_permutation_via_challenges_ext.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-}
-
-#[test]
-fn bus_lookup_via_challenges_bn() {
+fn bus_lookup_via_challenges() {
     let f = "std/bus_lookup_via_challenges.asm";
     test_halo2(make_simple_prepared_pipeline(f));
 }
 
 #[test]
-fn bus_lookup_via_challenges_ext_bn() {
+fn bus_lookup_via_challenges_ext() {
     let f = "std/bus_lookup_via_challenges_ext.asm";
     test_halo2(make_simple_prepared_pipeline(f));
+    test_plonky3::<GoldilocksField>(f, vec![]);
 }
 
 #[test]
