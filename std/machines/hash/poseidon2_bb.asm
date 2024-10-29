@@ -15,7 +15,7 @@ use std::machines::split::split_bb::SplitBB;
 // Merkle–Damgård construction, or it can be used as a compression function
 // for building a Merkle tree.
 //
-// As it stands, it can not be used in a Sponge construction, because we don't
+// As it stands, it cannot be used in a Sponge construction, because we don't
 // output the entire state.
 machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     latch: latch,
