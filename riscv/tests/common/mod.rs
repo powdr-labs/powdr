@@ -96,7 +96,7 @@ pub fn verify_riscv_asm_file(asm_file: &Path, options: CompilerOptions, use_pie:
 
     let case_name = asm_file.file_stem().unwrap().to_str().unwrap();
 
-    let powdr_asm = powdr_riscv::elf::translate(&executable, options.clone());
+    let powdr_asm = powdr_riscv::elf::translate(&executable, options);
 
     match options.field {
         KnownField::BabyBearField => {

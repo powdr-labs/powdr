@@ -427,7 +427,9 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             .map(|reg| {
                 let reg = reg.strip_prefix("main.").unwrap();
                 let id = Register::from(reg).addr();
-                *register_memory_snapshot.get(&(id as u32)).unwrap()
+                *register_memory_snapshot
+                    .get(&(id as u32))
+                    .unwrap_or(&0.into())
             })
             .collect::<Vec<_>>();
 

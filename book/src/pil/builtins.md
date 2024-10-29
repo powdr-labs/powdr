@@ -160,7 +160,7 @@ let std::prover::max_degree: -> int
 let std::prover::degree: -> int
 ```
 
-Returns the number of rows / the length of the witness columns, also
+The `degree` function returns the number of rows / the length of the witness columns, also
 known as the degree. Outside of fixed column definitions, `degree` fails if `min_degree` and `max_degree` are different.
 
 ### Hints

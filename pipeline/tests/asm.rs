@@ -334,6 +334,7 @@ fn pil_at_module_level() {
     regular_test(f, Default::default());
 }
 
+#[cfg(feature = "estark-starky")]
 #[test]
 fn read_poly_files() {
     let asm_files = ["asm/vm_to_block_unique_interface.asm", "asm/empty.asm"];
@@ -486,7 +487,7 @@ mod book {
 #[should_panic = "Witness generation failed."]
 fn hello_world_asm_fail() {
     let f = "asm/book/hello_world.asm";
-    let i = [1];
+    let i = [2];
     let pipeline = make_prepared_pipeline(f, slice_to_vec(&i), vec![]);
     test_pilcom(pipeline);
 }

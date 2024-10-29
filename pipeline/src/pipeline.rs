@@ -106,6 +106,8 @@ struct Arguments<T: FieldElement> {
     csv_render_mode: CsvRenderMode,
     /// Whether to export the witness as a CSV file.
     export_witness_csv: bool,
+    /// Whether to export all columns (witness and constants) to a CSV file.
+    export_all_columns_csv: bool,
     /// The optional setup file to use for proving.
     setup_file: Option<PathBuf>,
     /// The optional proving key file to use for proving.
@@ -293,12 +295,15 @@ impl<T: FieldElement> Pipeline<T> {
             .extend(external_witness_values);
     }
 
+    /// Control what is exported to CSV files by the pipeline.
     pub fn with_witness_csv_settings(
         mut self,
         export_witness_csv: bool,
+        export_all_columns_csv: bool,
         csv_render_mode: CsvRenderMode,
     ) -> Self {
         self.arguments.export_witness_csv = export_witness_csv;
+        self.arguments.export_all_columns_csv = export_all_columns_csv;
         self.arguments.csv_render_mode = csv_render_mode;
         self
     }
@@ -600,7 +605,21 @@ impl<T: FieldElement> Pipeline<T> {
         */
 
         if self.arguments.export_witness_csv {
-            if let Some(path) = self.path_if_should_write(|name| format!("{name}_columns.csv"))? {
+            if let Some(path) = self.path_if_should_write(|name| format!("{name}_witness.csv"))? {
+                let columns = witness
+                    .iter()
+                    .map(|(name, values)| (name, values.as_ref()))
+                    .collect::<Vec<_>>();
+
+                let csv_file = fs::File::create(path).map_err(|e| vec![format!("{}", e)])?;
+                write_polys_csv_file(csv_file, self.arguments.csv_render_mode, &columns);
+            }
+        }
+
+        if self.arguments.export_all_columns_csv {
+            if let Some(path) =
+                self.path_if_should_write(|name| format!("{name}_all_columns.csv"))?
+            {
                 // get the column size for each namespace. This assumes all witness columns of the same namespace have the same size.
                 let witness_sizes: HashMap<&str, u64> = witness
                     .iter()
@@ -611,7 +630,7 @@ impl<T: FieldElement> Pipeline<T> {
                     .collect();
 
                 // choose the fixed column of the correct size. This assumes any namespace with no witness columns has a unique size
-                let fixed = fixed.iter().map(|(name, columns)| {
+                let fixed_columns = fixed.iter().map(|(name, columns)| {
                     let namespace = name.split("::").next().unwrap();
                     let columns = witness_sizes
                         .get(&namespace)
@@ -622,7 +641,7 @@ impl<T: FieldElement> Pipeline<T> {
                     (name, columns)
                 });
 
-                let columns = fixed
+                let columns = fixed_columns
                     .chain(witness.iter().map(|(name, values)| (name, values.as_ref())))
                     .collect::<Vec<_>>();
 
@@ -954,26 +973,27 @@ impl<T: FieldElement> Pipeline<T> {
 
         assert_eq!(pil.constant_count(), fixed_cols.len());
 
-        self.log("Deducing witness columns...");
-        let mut external_witness_values =
-            std::mem::take(&mut self.arguments.external_witness_values);
-
         let witness_cols: Vec<_> = pil
             .committed_polys_in_source_order()
             .flat_map(|(s, _)| s.array_elements().map(|(name, _)| name))
             .collect();
+
+        let mut external_witness_values =
+            std::mem::take(&mut self.arguments.external_witness_values);
+        // witgen needs external witness columns sorted by source order
+        external_witness_values
+            .sort_by_key(|(name, _)| witness_cols.iter().position(|n| n == name).unwrap());
 
         if witness_cols
             .iter()
             .all(|name| external_witness_values.iter().any(|(e, _)| e == name))
         {
             self.log("All witness columns externally provided, skipping witness generation.");
-            // sort columns in pil source order
-            external_witness_values
-                .sort_by_key(|(name, _)| witness_cols.iter().position(|n| n == name).unwrap());
             self.artifact.witness = Some(Arc::new(external_witness_values));
         } else {
+            self.log("Deducing witness columns...");
             let start = Instant::now();
+
             let query_callback = self
                 .arguments
                 .query_callback
@@ -988,7 +1008,6 @@ impl<T: FieldElement> Pipeline<T> {
                 start.elapsed().as_secs_f32()
             ));
 
-            // TODO uncomment this to test the executor in isolation
             self.maybe_write_witness(&fixed_cols, &witness)?;
 
             self.artifact.witness = Some(Arc::new(witness));

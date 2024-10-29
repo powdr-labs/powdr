@@ -7,13 +7,13 @@ use env_logger::fmt::Color;
 use env_logger::{Builder, Target};
 use log::LevelFilter;
 
-use powdr_number::{
+use powdr::number::{
     write_polys_csv_file, BabyBearField, BigUint, Bn254Field, CsvRenderMode, FieldElement,
     GoldilocksField, KnownField, KoalaBearField,
 };
-use powdr_pipeline::Pipeline;
-use powdr_riscv::{CompilerOptions, RuntimeLibs};
-use powdr_riscv_executor::ProfilerOptions;
+use powdr::riscv::{CompilerOptions, RuntimeLibs};
+use powdr::riscv_executor::ProfilerOptions;
+use powdr::Pipeline;
 
 use std::ffi::OsStr;
 use std::time::Instant;
@@ -294,7 +294,7 @@ fn compile_rust(
 ) -> Result<(), Vec<String>> {
     let libs = coprocessors_to_options(coprocessors)?;
     let options = CompilerOptions::new(field, libs, continuations);
-    powdr_riscv::compile_rust(file_name, options, output_dir, true, None)
+    powdr::riscv::compile_rust(file_name, options, output_dir, true, None)
         .ok_or_else(|| vec!["could not compile rust".to_string()])?;
 
     Ok(())
@@ -309,7 +309,7 @@ fn compile_riscv_elf(
 ) -> Result<(), Vec<String>> {
     let libs = coprocessors_to_options(coprocessors)?;
     let options = CompilerOptions::new(field, libs, continuations);
-    powdr_riscv::compile_riscv_elf(input_file, Path::new(input_file), options, output_dir, true)
+    powdr::riscv::compile_riscv_elf(input_file, Path::new(input_file), options, output_dir, true)
         .ok_or_else(|| vec!["could not translate RISC-V executable".to_string()])?;
 
     Ok(())
@@ -344,18 +344,24 @@ fn execute<F: FieldElement>(
         log::info!("Executing...");
         let start = Instant::now();
 
+        let exec_mode = if witness {
+            powdr::riscv_executor::ExecMode::Trace
+        } else {
+            powdr::riscv_executor::ExecMode::Fast
+        };
+
         let (trace, _memory_snapshot_update, _register_memory_snapshot) =
-            powdr_riscv_executor::execute::<F>(
+            powdr::riscv_executor::execute::<F>(
                 &program,
                 Some(fixed),
-                powdr_riscv_executor::MemoryState::new(),
+                powdr::riscv_executor::MemoryState::new(),
                 pipeline.data_callback().unwrap(),
                 &[],
-                powdr_riscv_executor::ExecMode::Trace,
+                exec_mode,
                 profiling,
             );
 
-        let reg_trace = powdr_riscv::continuations::transposed_trace(&trace);
+        let reg_trace = powdr::riscv::continuations::transposed_trace(&trace);
         let trace_len = trace.len;
         let cols = trace.into_cols();
 
@@ -425,9 +431,9 @@ fn execute<F: FieldElement>(
         // executing with continuations
         // -------------------------------
         let dry_run =
-            powdr_riscv::continuations::rust_continuations_dry_run(&mut pipeline, profiling);
+            powdr::riscv::continuations::rust_continuations_dry_run(&mut pipeline, profiling);
         if witness {
-            powdr_riscv::continuations::rust_continuations(
+            powdr::riscv::continuations::rust_continuations(
                 &mut pipeline,
                 generate_witness,
                 dry_run,
