@@ -14,7 +14,7 @@ Dynamic machines are defined by:
 
 An example of a simple dynamic machine is the following:
 
-```
+```rust
 {{#include ../../../test_data/asm/book/hello_world.asm}}
 ```
 
@@ -32,7 +32,7 @@ They are defined by:
 
 An example of a simple constrained machine is the following:
 
-```
+```rust
 {{#include ../../../test_data/asm/book/simple_static.asm}}
 ```
 
@@ -42,7 +42,7 @@ For more details on the powdr-pil statements, check out the [pil](../pil) sectio
 
 Machines can have submachines which they access by defining [external instructions](./instructions.md) or [links](./links.md). They are declared as follows:
 
-```
+```rust
 machine MySubmachine {
     ...
 }
@@ -55,7 +55,7 @@ machine MyMachine {
 Machines can also receive submachines as construction parameters.
 A machine passed in as an argument can be accessed in the same way as locally declared submachines:
 
-```
+```rust
 machine MachineWithParam(subm: MySubmachine) {
     // `subm` can be accessed as a submachine
     ...
