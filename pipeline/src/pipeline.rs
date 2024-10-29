@@ -507,10 +507,8 @@ impl<T: FieldElement> Pipeline<T> {
     pub fn set_witness(mut self, witness: Vec<(String, Vec<T>)>) -> Self {
         if self.output_dir.is_some() {
             // Some future steps (e.g. Pilcom verification) require the witness to be persisted.
-            self.maybe_write_witness(&witness).unwrap();
             let fixed_cols = self.compute_fixed_cols().unwrap();
-            self.maybe_write_all_columns_csv(&fixed_cols, &witness)
-                .unwrap();
+            self.maybe_write_witness(&fixed_cols, &witness).unwrap();
         }
         Pipeline {
             artifact: Artifacts {
@@ -595,7 +593,11 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(())
     }
 
-    fn maybe_write_witness(&self, witness: &Columns<T>) -> Result<(), Vec<String>> {
+    fn maybe_write_witness(
+        &self,
+        fixed: &VariablySizedColumns<T>,
+        witness: &Columns<T>,
+    ) -> Result<(), Vec<String>> {
         if let Some(path) = self.path_if_should_write(|_| "commits.bin".to_string())? {
             witness.write(&path).map_err(|e| vec![format!("{}", e)])?;
         }
@@ -612,27 +614,6 @@ impl<T: FieldElement> Pipeline<T> {
             }
         }
 
-        Ok(())
-    }
-
-    fn maybe_write_proof(&self, proof: &Proof) -> Result<(), Vec<String>> {
-        let fname = if self.arguments.existing_proof_file.is_some() {
-            "proof_aggr.bin"
-        } else {
-            "proof.bin"
-        };
-        if let Some(path) = self.path_if_should_write(|name| format!("{name}_{fname}"))? {
-            fs::write(path, proof).unwrap();
-        }
-
-        Ok(())
-    }
-
-    fn maybe_write_all_columns_csv(
-        &self,
-        fixed: &VariablySizedColumns<T>,
-        witness: &Columns<T>,
-    ) -> Result<(), Vec<String>> {
         if self.arguments.export_all_columns_csv {
             if let Some(path) =
                 self.path_if_should_write(|name| format!("{name}_all_columns.csv"))?
@@ -666,6 +647,20 @@ impl<T: FieldElement> Pipeline<T> {
                 write_polys_csv_file(csv_file, self.arguments.csv_render_mode, &columns);
             }
         }
+
+        Ok(())
+    }
+
+    fn maybe_write_proof(&self, proof: &Proof) -> Result<(), Vec<String>> {
+        let fname = if self.arguments.existing_proof_file.is_some() {
+            "proof_aggr.bin"
+        } else {
+            "proof.bin"
+        };
+        if let Some(path) = self.path_if_should_write(|name| format!("{name}_{fname}"))? {
+            fs::write(path, proof).unwrap();
+        }
+
         Ok(())
     }
 
@@ -1011,7 +1006,7 @@ impl<T: FieldElement> Pipeline<T> {
                 start.elapsed().as_secs_f32()
             ));
 
-            self.maybe_write_witness(&witness)?;
+            self.maybe_write_witness(&fixed_cols, &witness)?;
 
             self.artifact.witness = Some(Arc::new(witness));
         }
