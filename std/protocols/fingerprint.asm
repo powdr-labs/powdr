@@ -57,6 +57,6 @@ mod test {
         // For a list [a, b, c] of length three, the fingerprint is a * x**2 + b * x + c
         assert_fingerprint_equal([123, 456, 789], 0, 789);
         assert_fingerprint_equal([123, 456, 789], 1, 1368);
-        assert_fingerprint_equal([123, 456, 789], 2, 2193);
+        assert_fingerprint_equal([123, 456, 789], 2, 123 * 4 + 456 * 2 + 789);
     };
 }
