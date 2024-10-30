@@ -4,7 +4,6 @@ use itertools::Itertools;
 use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference},
     parsed::{
-        asm::SymbolPath,
         display::format_type_scheme_around_name,
         types::{ArrayType, FunctionType, TupleType, Type, TypeBounds, TypeScheme},
         visitor::ExpressionVisitable,
@@ -62,7 +61,7 @@ impl From<Type> for ExpectedType {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 struct DeclaredType {
     pub source: SourceRef,
     pub vars: TypeBounds,
@@ -91,7 +90,7 @@ impl DeclaredType {
     }
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]
 enum TypeDeclaredType {
     Struct(Type, HashMap<String, Type>),
     Type(Type),
@@ -109,16 +108,19 @@ struct TypeChecker {
     unifier: Unifier,
     /// Keeps track of the kind of lambda we are currently type-checking.
     lambda_kind: FunctionKind,
+    ///
+    struct_declarations: HashMap<String, StructDeclaration>,
 }
 
 impl TypeChecker {
-    pub fn new() -> Self {
+    pub fn new(struct_declarations: HashMap<String, StructDeclaration>) -> Self {
         Self {
             local_var_types: Default::default(),
             declared_types: Default::default(),
             declared_type_vars: Default::default(),
             unifier: Default::default(),
             lambda_kind: FunctionKind::Constr,
+            struct_declarations,
         }
     }
 
@@ -266,6 +268,7 @@ impl TypeChecker {
                     // Store an (uninstantiated) type scheme for symbols with a declared polymorphic type.
                     (None, Some(type_scheme)) => {
                         let ty = match value {
+                            // TODO: This doesn't work because we never set value for Structs (since they are coming from the StructDeclaration)
                             Some(Expression::StructExpression(_, _)) => {
                                 let struct_decl = self.struct_declarations.get(name).unwrap();
                                 let mapping = struct_decl
@@ -784,42 +787,9 @@ impl TypeChecker {
                 let Reference::Poly(PolynomialReference { name, type_args }) = name else {
                     unreachable!()
                 };
-                // let struct_decl = self.struct_declarations.get(name).unwrap();
-
-                // let fresh_type_vars: Vec<Type> = struct_decl
-                //     .type_vars
-                //     .vars()
-                //     .map(|_| self.unifier.new_type_var())
-                //     .collect();
-
-                // if let Some(requested_type_args) = type_args {
-                //     for (fresh_var, requested) in
-                //         fresh_type_vars.iter().zip(requested_type_args.iter())
-                //     {
-                //         self.unifier
-                //             .unify_types(fresh_var.clone(), requested.clone())
-                //             .map_err(|err| sr.with_error(err))?;
-                //     }
-                // }
-
-                // let vars_mapping = &struct_decl
-                //     .type_vars
-                //     .vars()
-                //     .zip(fresh_type_vars.iter())
-                //     .map(|(var, ty)| (var.clone(), ty.clone()))
-                //     .collect();
-
-                // let instantiated_field_types: HashMap<_, _> = struct_decl
-                //     .fields
-                //     .iter()
-                //     .map(|field| {
-                //         let mut field_type = field.ty.clone();
-                //         field_type.substitute_type_vars(vars_mapping);
-                //         (field.name.clone(), field_type)
-                //     })
-                //     .collect();
 
                 let type_decl = self.declared_types[name].clone();
+                println!("type_decl: {type_decl:?}");
                 //let type_scheme = type_decl.scheme();
                 let DeclaredType {
                     ty: TypeDeclaredType::Struct(ref _type, ref fields_types_map),
