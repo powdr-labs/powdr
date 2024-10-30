@@ -48,7 +48,7 @@ impl Runtime {
             "std::machines::small_field::binary::Binary",
             None,
             "binary",
-            vec!["byte_binary"],
+            vec!["byte_binary", "MIN_DEGREE", "LARGE_SUBMACHINES_MAX_DEGREE"],
             [
                 r#"instr and XL, YL, ZH, ZL, WL
                             link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)
@@ -77,7 +77,7 @@ impl Runtime {
             "std::machines::small_field::shift::Shift",
             None,
             "shift",
-            vec!["byte_shift"],
+            vec!["byte_shift", "MIN_DEGREE", "LARGE_SUBMACHINES_MAX_DEGREE"],
             [
                 r#"instr shl XL, YL, ZH, ZL, WL
                     link ~> (tmp1_h, tmp1_l) = regs.mload(0, XL, STEP)

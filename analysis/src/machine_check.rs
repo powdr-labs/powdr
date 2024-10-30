@@ -84,12 +84,6 @@ impl TypeChecker {
                     pil.push(statement);
                 }
                 MachineStatement::Submachine(_, ty, name, args) => {
-                    args.iter().for_each(|arg| {
-                        if arg.try_to_identifier().is_none() {
-                            errors
-                                .push(format!("submachine argument not a machine instance: {arg}"))
-                        }
-                    });
                     submachines.push(SubmachineDeclaration {
                         name,
                         ty: AbsoluteSymbolPath::default().join(ty),
