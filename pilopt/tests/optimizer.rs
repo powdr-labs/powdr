@@ -239,3 +239,45 @@ fn test_trait_impl() {
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
 }
+
+#[test]
+fn enum_ref_by_trait() {
+    let input = r#"namespace N(65536);
+        enum O<T> { X, Y(T) }
+        enum Q<T> { A, B(T) }
+        trait X<T> { f: T -> O<T>, g: -> T }
+        impl X<fe> { f: |_| O::Y(1), g: || { let r = Q::B(1_int); 1 } }
+        let x: col = |i| { match X::f(1_fe) { O::Y(y) => y, _ => 0 } };
+        let w;
+        w = x;
+    "#;
+    let expectation = r#"namespace N(65536);
+    enum O<T> {
+        X,
+        Y(T),
+    }
+    enum Q<T> {
+        A,
+        B(T),
+    }
+    trait X<T> {
+        f: T -> N::O<T>,
+        g: -> T,
+    }
+    impl N::X<fe> {
+        f: |_| N::O::Y::<fe>(1_fe),
+        g: || {
+            let r: N::Q<int> = N::Q::B::<int>(1_int);
+            1_fe
+        },
+    }
+    col fixed x(i) { match N::X::f::<fe>(1_fe) {
+        N::O::Y(y) => y,
+        _ => 0_fe,
+    } };
+    col witness w;
+    N::w = N::x;
+"#;
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}

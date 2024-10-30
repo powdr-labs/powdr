@@ -306,6 +306,8 @@ impl<T> Analyzed<T> {
         self.post_visit_expressions_in_identities_mut(algebraic_visitor);
     }
 
+    /// Removes the given set of trait impls, identified by their index
+    /// in the list of trait impls.
     pub fn remove_trait_impls(&mut self, to_remove: &HashSet<usize>) {
         let to_remove_vec: Vec<usize> = to_remove.iter().copied().collect();
 
