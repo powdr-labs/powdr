@@ -11,7 +11,7 @@ env:
 
 jobs:
   check_if_needs_running:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       status: ${{ steps.count.outputs.status }}
 
@@ -22,7 +22,7 @@ jobs:
       run: echo "status=$(git log --oneline --since '24 hours ago' | wc -l)" >> $GITHUB_OUTPUT
 
   udeps:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: check_if_needs_running
     if: needs.check_if_needs_running.outputs.status > 0
 
@@ -43,7 +43,7 @@ jobs:
           args: '--all-targets'
 
   test_release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: check_if_needs_running
     if: needs.check_if_needs_running.outputs.status > 0
 
