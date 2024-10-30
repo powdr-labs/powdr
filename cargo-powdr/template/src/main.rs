@@ -9,7 +9,10 @@ fn main() {
     // Store all temporary and final artifacts in `powdr-target`.
     // Write `some_data` to channel 1 and the sum of `some_data` to channel 2.
     // Any serde-serializable type can be written to a channel.
-    let mut session = Session::new("./guest", "powdr-target")
+    let mut session = Session::builder()
+        .guest_path("./guest")
+        .out_path("powdr-target")
+        .build()
         .write(1, &some_data)
         .write(2, &some_data.iter().sum::<u32>());
 
@@ -18,7 +21,11 @@ fn main() {
     // When using this, make sure to also use
     // `$ export MAX_DEGREE_LOG=20`
     // to get faster setup times.
-    //let mut session = Session::new_with_chunk_size("./guest", "powdr-target", 18)
+    // let mut session = Session::builder()
+    //    .guest_path("./guest")
+    //    .out_path("powdr-target")
+    //    .chunk_size_log2(18)
+    //    .build()
     //    .write(1, &some_data)
     //    .write(2, &some_data.iter().sum::<u32>());
 
