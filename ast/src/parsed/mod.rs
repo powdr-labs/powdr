@@ -188,43 +188,6 @@ impl PilStatement {
     }
 }
 
-impl SourceReference for PilStatement {
-    fn source_reference(&self) -> &SourceRef {
-        match self {
-            PilStatement::Include(s, _)
-            | PilStatement::Namespace(s, _, _)
-            | PilStatement::LetStatement(s, _, _, _)
-            | PilStatement::PolynomialDefinition(s, _, _)
-            | PilStatement::PolynomialCommitDeclaration(s, _, _, _)
-            | PilStatement::PolynomialConstantDeclaration(s, _)
-            | PilStatement::PolynomialConstantDefinition(s, _, _)
-            | PilStatement::PublicDeclaration(s, _, _, _, _)
-            | PilStatement::EnumDeclaration(s, _)
-            | PilStatement::StructDeclaration(s, _)
-            | PilStatement::TraitDeclaration(s, _)
-            | PilStatement::TraitImplementation(s, _)
-            | PilStatement::Expression(s, _) => s,
-        }
-    }
-    fn source_reference_mut(&mut self) -> &mut SourceRef {
-        match self {
-            PilStatement::Include(s, _)
-            | PilStatement::Namespace(s, _, _)
-            | PilStatement::LetStatement(s, _, _, _)
-            | PilStatement::PolynomialDefinition(s, _, _)
-            | PilStatement::PolynomialCommitDeclaration(s, _, _, _)
-            | PilStatement::PolynomialConstantDeclaration(s, _)
-            | PilStatement::PolynomialConstantDefinition(s, _, _)
-            | PilStatement::PublicDeclaration(s, _, _, _, _)
-            | PilStatement::EnumDeclaration(s, _)
-            | PilStatement::StructDeclaration(s, _)
-            | PilStatement::TraitDeclaration(s, _)
-            | PilStatement::TraitImplementation(s, _)
-            | PilStatement::Expression(s, _) => s,
-        }
-    }
-}
-
 impl Children<Expression> for PilStatement {
     /// Returns an iterator over all (top-level) expressions in this statement.
     fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
@@ -650,25 +613,42 @@ pub trait SourceReference {
 }
 
 macro_rules! impl_source_reference {
-    ($enum:ident, $($variant:ident),*) => {
-        impl<E> SourceReference for $enum<E> {
+    // Version for types with generic parameter
+    ($enum:ident<$generic:ident>, $($variant:ident),*) => {
+        impl<$generic> SourceReference for $enum<$generic> {
             fn source_reference(&self) -> &SourceRef {
                 match self {
-                    $( $enum::$variant(src, _) => src, )*
+                    $( $enum::$variant(src, ..) => src, )*
                 }
             }
 
             fn source_reference_mut(&mut self) -> &mut SourceRef {
                 match self {
-                    $( $enum::$variant(src, _) => src, )*
+                    $( $enum::$variant(src, ..) => src, )*
                 }
             }
         }
-    }
+    };
+    // Version for types without generic parameter
+    ($enum:ident, $($variant:ident),*) => {
+        impl SourceReference for $enum {
+            fn source_reference(&self) -> &SourceRef {
+                match self {
+                    $( $enum::$variant(src, ..) => src, )*
+                }
+            }
+
+            fn source_reference_mut(&mut self) -> &mut SourceRef {
+                match self {
+                    $( $enum::$variant(src, ..) => src, )*
+                }
+            }
+        }
+    };
 }
 
 impl_source_reference!(
-    Expression,
+    Expression<E>,
     Reference,
     PublicReference,
     Number,
@@ -685,6 +665,23 @@ impl_source_reference!(
     IfExpression,
     BlockExpression,
     StructExpression
+);
+
+impl_source_reference!(
+    PilStatement,
+    Include,
+    Namespace,
+    LetStatement,
+    PolynomialDefinition,
+    PolynomialCommitDeclaration,
+    PolynomialConstantDeclaration,
+    PolynomialConstantDefinition,
+    PublicDeclaration,
+    EnumDeclaration,
+    StructDeclaration,
+    TraitDeclaration,
+    TraitImplementation,
+    Expression
 );
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]

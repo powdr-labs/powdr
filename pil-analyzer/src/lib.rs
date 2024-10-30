@@ -30,11 +30,13 @@ pub use pil_analyzer::{analyze_ast, analyze_file, analyze_string};
 pub trait AnalysisDriver: Clone + Copy {
     /// Turns a declaration into an absolute name.
     fn resolve_decl(&self, name: &String) -> Result<String, String> {
-        self.resolve_namespaced_decl(&[name])
-            .map(|path| path.relative_to(&Default::default()).to_string())
+        Ok(self
+            .resolve_namespaced_decl(&[name])
+            .relative_to(&Default::default())
+            .to_string())
     }
     /// Turns a nested declaration into an absolute name.
-    fn resolve_namespaced_decl(&self, path: &[&String]) -> Result<AbsoluteSymbolPath, String>;
+    fn resolve_namespaced_decl(&self, path: &[&String]) -> AbsoluteSymbolPath;
     fn resolve_value_ref(&self, path: &SymbolPath) -> Result<String, String> {
         self.resolve_ref(path, SymbolCategory::Value)
     }
@@ -49,12 +51,14 @@ pub trait AnalysisDriver: Clone + Copy {
         let (path, cat) = self
             .try_resolve_ref(path)
             .ok_or_else(|| format!("{symbol_category} symbol not found: {path}"))?;
-        if !cat.compatible_with_request(symbol_category) {
-            return Err(format!(
+
+        if cat.compatible_with_request(symbol_category) {
+            Ok(path)
+        } else {
+            Err(format!(
                 "Expected symbol of kind {symbol_category} but got {cat}: {path}"
-            ));
+            ))
         }
-        Ok(path)
     }
     /// Turns a reference to a name with an optional namespace into an absolute name.
     fn try_resolve_ref(&self, path: &SymbolPath) -> Option<(String, SymbolCategory)>;

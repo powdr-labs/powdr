@@ -576,7 +576,6 @@ where
                 (
                     self.driver
                         .resolve_namespaced_decl(&[&name, &variant.name])
-                        .unwrap()
                         .relative_to(&Default::default())
                         .to_string(),
                     FunctionValueDefinition::TypeConstructor(
@@ -677,7 +676,6 @@ where
                 (
                     self.driver
                         .resolve_namespaced_decl(&[&name, &function.name])
-                        .unwrap()
                         .relative_to(&Default::default())
                         .to_string(),
                     FunctionValueDefinition::TraitFunction(

@@ -449,8 +449,6 @@ impl PILAnalyzer {
                                 Some(sub_name) => self
                                     .driver()
                                     .resolve_namespaced_decl(&[name, sub_name])
-                                    .map_err(|e| stmt.source_reference().with_error(e))
-                                    .unwrap()
                                     .relative_to(&Default::default())
                                     .to_string(),
                             },
@@ -591,12 +589,11 @@ impl Children<Expression> for PILAnalyzer {
 struct Driver<'a>(&'a PILAnalyzer);
 
 impl<'a> AnalysisDriver for Driver<'a> {
-    fn resolve_namespaced_decl(&self, path: &[&String]) -> Result<AbsoluteSymbolPath, String> {
-        Ok(path
-            .iter()
+    fn resolve_namespaced_decl(&self, path: &[&String]) -> AbsoluteSymbolPath {
+        path.iter()
             .fold(self.0.current_namespace.clone(), |path, part| {
                 path.with_part(part)
-            }))
+            })
     }
 
     fn try_resolve_ref(&self, path: &SymbolPath) -> Option<(String, SymbolCategory)> {
