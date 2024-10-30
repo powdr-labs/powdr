@@ -109,7 +109,7 @@ struct TypeChecker {
     unifier: Unifier,
     /// Keeps track of the kind of lambda we are currently type-checking.
     lambda_kind: FunctionKind,
-    ///
+    /// Struct declarations.
     struct_declarations: HashMap<String, StructDeclaration>,
 }
 

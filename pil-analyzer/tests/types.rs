@@ -885,11 +885,31 @@ fn test_struct_repeated_fields_decl() {
 }
 
 #[test]
+#[should_panic(expected = "Value symbol not found: A::X")]
+fn struct_used_as_enum() {
+    let input = "
+    struct A { X: int }
+    let a = A::X(8);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
 #[should_panic(expected = "Expected symbol of kind Struct but got Type: A")]
 fn enum_used_as_struct() {
     let input = "
     enum A { X }
     let a = A{x: 8};
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic(expected = "Expected symbol of kind Struct but got TypeConstructor: A::X")]
+fn enum_variant_used_as_struct() {
+    let input = "
+    enum A { X }
+    let a = A::X{x: 8};
     ";
     type_check(input, &[]);
 }
