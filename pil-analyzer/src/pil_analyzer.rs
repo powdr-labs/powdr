@@ -14,7 +14,7 @@ use powdr_ast::parsed::asm::{
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_ast::parsed::{
-    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SourceReference, SymbolCategory,
+    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SymbolCategory,
     TraitImplementation, TypedExpression,
 };
 use powdr_number::{FieldElement, GoldilocksField};
@@ -439,17 +439,13 @@ impl PILAnalyzer {
                 vec![]
             }
             PilStatement::Include(_, _) => unreachable!(),
-            stmt => {
+            _ => {
                 let names = statement
                     .symbol_definition_names_and_contained()
                     .map(|(name, sub_name, symbol_category)| {
                         (
                             match sub_name {
-                                None => self
-                                    .driver()
-                                    .resolve_decl(name)
-                                    .map_err(|e| stmt.source_reference().with_error(e))
-                                    .unwrap(),
+                                None => self.driver().resolve_decl(name),
                                 Some(sub_name) => self
                                     .driver()
                                     .resolve_namespaced_decl(&[name, sub_name])

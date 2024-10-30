@@ -405,7 +405,7 @@ where
             id,
             source: source.clone(),
             stage,
-            absolute_name: self.driver.resolve_decl(&name).expect("TODO: Handle this"),
+            absolute_name: self.driver.resolve_decl(&name),
             kind: symbol_kind,
             length,
             degree: self.degree,
@@ -564,10 +564,7 @@ where
             .map(|v| self.process_enum_variant(v, &type_vars))
             .collect();
         let enum_decl = EnumDeclaration {
-            name: self
-                .driver
-                .resolve_decl(&enum_decl.name)
-                .expect("TODO: Handle this up in the code"),
+            name: self.driver.resolve_decl(&enum_decl.name),
             type_vars: enum_decl.type_vars,
             variants,
         };
@@ -636,10 +633,7 @@ where
             .collect();
 
         let struct_decl = StructDeclaration {
-            name: self
-                .driver
-                .resolve_decl(&name)
-                .expect("TODO: Handle this up in the code"),
+            name: self.driver.resolve_decl(&name),
             type_vars,
             fields,
         };
@@ -670,10 +664,7 @@ where
             })
             .collect();
         let trait_decl = TraitDeclaration {
-            name: self
-                .driver
-                .resolve_decl(&trait_decl.name)
-                .expect("TODO: Handle this up in the code"),
+            name: self.driver.resolve_decl(&trait_decl.name),
             type_vars: trait_decl.type_vars,
             functions,
         };
