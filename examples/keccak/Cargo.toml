@@ -1,5 +1,5 @@
 [package]
-name = "{{PROJECT_NAME}}"
+name = "keccak"
 version = "0.1.0"
 edition = "2021"
 
@@ -8,8 +8,8 @@ default = []
 simd = ["powdr/plonky3-simd"]
 
 [dependencies]
-powdr = { git = "https://github.com/powdr-labs/powdr", tag = "v0.1.0", features = ["plonky3"] }
-
+powdr = { git = "https://github.com/powdr-labs/powdr", features = ["plonky3"] }
+hex = "0.4"
 serde = { version = "1.0", default-features = false, features = [
   "alloc",
   "derive",

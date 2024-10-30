@@ -47,7 +47,7 @@ impl Runtime {
             "std::machines::large_field::binary::Binary",
             None,
             "binary",
-            vec!["byte_binary"],
+            vec!["byte_binary", "MIN_DEGREE", "LARGE_SUBMACHINES_MAX_DEGREE"],
             [
                 r#"instr and X, Y, Z, W
                     link ~> tmp1_col = regs.mload(X, STEP)
@@ -73,7 +73,7 @@ impl Runtime {
             "std::machines::large_field::shift::Shift",
             None,
             "shift",
-            vec!["byte_shift"],
+            vec!["byte_shift", "MIN_DEGREE", "LARGE_SUBMACHINES_MAX_DEGREE"],
             [
                 r#"instr shl X, Y, Z, W
                     link ~> tmp1_col = regs.mload(X, STEP)
@@ -94,7 +94,7 @@ impl Runtime {
             "std::machines::split::split_gl::SplitGL",
             None,
             "split_gl",
-            vec!["byte_compare"],
+            vec!["byte_compare", "MIN_DEGREE", "MAIN_MAX_DEGREE"],
             [r#"instr split_gl X, Z, W
                     link ~> tmp1_col = regs.mload(X, STEP)
                     link ~> (tmp3_col, tmp4_col) = split_gl.split(tmp1_col)
@@ -368,7 +368,7 @@ impl Runtime {
 
     fn with_arith(mut self) -> Self {
         self.add_submachine(
-            "std::machines::arith::Arith",
+            "std::machines::large_field::arith::Arith",
             None,
             "arith",
             vec![],
