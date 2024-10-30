@@ -205,13 +205,16 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
             |high, low| (high, low)
         );
 
+        array::fold(
             array::zip(
                 array::sub_array(addr, 0, array::len(addr) - 1),
                 array::sub_array(addr, 1, array::len(addr) - 1),
                 constr |(high, low), (next_high, next_low)| {
-                    increment_ptr(4, high, low, next_high, next_low);
+                    increment_ptr(4, high, low, next_high, next_low)
                 }
-            );
+            ), [],
+            |a, b| a + b
+        )
     };
 
     // Calculate the addresses and load all the inputs into the first time step
