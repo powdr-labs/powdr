@@ -39,7 +39,7 @@ p3-matrix = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf2
 p3-field = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0" }
 p3-uni-stark = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0" }
 p3-commit = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0", features = [
-    "test-utils",
+  "test-utils",
 ] }
 p3-poseidon2 = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0" }
 p3-poseidon = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0" }
@@ -47,7 +47,7 @@ p3-fri = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7
 # We don't use p3-maybe-rayon directly, but it is a dependency of p3-uni-stark.
 # Activating the "parallel" feature gives us parallelism in the prover.
 p3-maybe-rayon = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0", features = [
-    "parallel",
+  "parallel",
 ] }
 
 p3-mds = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0" }
@@ -71,6 +71,3 @@ serde = { version = "1.0", default-features = false, features = [
   "alloc",
 ] }
 
-[dev-dependencies]
-powdr-pipeline.workspace = true
-test-log = "0.2.12"

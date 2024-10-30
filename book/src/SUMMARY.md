@@ -1,9 +1,17 @@
 # Summary
 
-[Introduction](./README.md)
+# powdrVM
+- [Introduction](./powdr_vm_intro.md)
 
-# Getting Started
-- [Installation](./installation.md)
+# Getting Started with powdrVM
+- [Installation](./installation_vm.md)
+- [Quick Start](./quick_start_vm.md)
+
+# powdr SDK
+- [Introduction](./powdr_sdk_intro.md)
+
+# Getting Started with powdr SDK
+- [Installation](./installation_sdk.md)
 - [Hello World](./hello_world.md)
     - [in the CLI](./hello_world_cli.md)
     - [as a library](./powdr_crate.md)
@@ -12,7 +20,7 @@
 - [Examples](./examples.md)
 - [Using publics](./publics.md)
 
-# Reference Guide
+# powdr SDK Reference Guide
 <!-- markdown-link-check-disable-next-line -->
 - [CLI](./cli/README.md)
 - [asm](./asm/README.md)
