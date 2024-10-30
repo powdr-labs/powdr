@@ -214,7 +214,7 @@ let MAX_DEGREE_LOG: int = {};
 let MAIN_MAX_DEGREE: int = 2**MAX_DEGREE_LOG;
 let LARGE_SUBMACHINES_MAX_DEGREE: int = 2**(MAX_DEGREE_LOG + 2);
 
-machine Main with min_degree: MIN_DEGREE, max_degree: MAIN_MAX_DEGREE {{
+machine Main with min_degree: MIN_DEGREE, max_degree: {} {{
 
 AddSub add_sub(byte2, MIN_DEGREE, LARGE_SUBMACHINES_MAX_DEGREE);
 Arith arith_mul(byte, byte2, MIN_DEGREE, MAIN_MAX_DEGREE);
@@ -234,6 +234,10 @@ let initial_memory: (fe, fe)[] = [
         runtime.submachines_import(),
         options.min_degree_log,
         options.max_degree_log,
+        // We're passing this as well because continuations requires
+        // Main's max_degree to be a constant.
+        // We should fix that in the continuations code and remove this.
+        1 << options.max_degree_log,
         runtime.submachines_declare(),
         preamble,
         initial_memory
