@@ -53,7 +53,7 @@ pub struct ConstraintSystem<T> {
 
 impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
     fn from(analyzed: &Analyzed<T>) -> Self {
-        let identities = analyzed.identities_with_inlined_intermediate_polynomials();
+        let identities = analyzed.identities.clone();
         let constant_count = analyzed.constant_count();
         let stage_widths = (0..analyzed.stage_count() as u32)
             .map(|stage| {
