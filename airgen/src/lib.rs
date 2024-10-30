@@ -5,7 +5,7 @@
 use std::collections::BTreeMap;
 
 use powdr_ast::{
-    asm_analysis::{self, combine_flags, AnalysisASMFile, LinkDefinition},
+    asm_analysis::{self, combine_flags, AnalysisASMFile, LinkDefinition, MachineDegree},
     object::{Link, LinkFrom, LinkTo, Location, Machine, Object, Operation, PILGraph},
     parsed::{
         asm::{parse_absolute_path, AbsoluteSymbolPath, CallableRef, MachineParams},
@@ -59,29 +59,71 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
     };
 
     // get a list of all machines to instantiate and their arguments. The order does not matter.
-    let mut queue = vec![(main_location.clone(), main_ty.clone(), vec![])];
+    let mut queue = vec![(
+        main_location.clone(),
+        Instance {
+            machine_ty: main_ty.clone(),
+            submachine_locations: vec![],
+            min_degree: None,
+            max_degree: None,
+        },
+    )];
 
     // map instance location to (type, arguments)
     let mut instances = BTreeMap::default();
 
-    while let Some((location, ty, args)) = queue.pop() {
-        let machine = &input.get_machine(&ty).unwrap();
+    while let Some((
+        location,
+        Instance {
+            machine_ty,
+            submachine_locations,
+            min_degree,
+            max_degree,
+        },
+    )) = queue.pop()
+    {
+        let machine = &input.get_machine(&machine_ty).unwrap();
 
         queue.extend(machine.submachines.iter().map(|def| {
+            let called_machine = &input.get_machine(&def.ty).unwrap();
+            // we need to pass at least as many arguments as we have submachines
+            assert!(def.args.len() >= called_machine.params.0.len());
+            // and at most as many as submachines plus a min degree and a max degree
+            assert!(def.args.len() <= called_machine.params.0.len() + 2);
+            let mut def_args = def.args.clone().into_iter();
+            let submachine_args: Vec<_> = (&mut def_args)
+                .take(called_machine.params.0.len())
+                .collect();
+            let min_degree = def_args.next();
+            let max_degree = def_args.next();
+
             (
                 // get the absolute name for this submachine
                 location.clone().join(def.name.clone()),
-                // submachine type
-                def.ty.clone(),
-                // resolve each given machine arg to a proper instance location
-                def.args
-                    .iter()
-                    .map(|a| resolve_submachine_arg(&location, machine, &args, a))
-                    .collect(),
+                Instance {
+                    machine_ty: def.ty.clone(),
+                    // resolve each given machine arg to a proper instance location
+                    submachine_locations: submachine_args
+                        .iter()
+                        .map(|a| {
+                            resolve_submachine_arg(&location, machine, &submachine_locations, a)
+                        })
+                        .collect(),
+                    min_degree,
+                    max_degree,
+                },
             )
         }));
 
-        instances.insert(location, (ty, args));
+        instances.insert(
+            location,
+            Instance {
+                machine_ty,
+                submachine_locations,
+                min_degree,
+                max_degree,
+            },
+        );
     }
 
     // count incoming permutations for each machine.
@@ -215,9 +257,16 @@ struct SubmachineRef {
     pub ty: AbsoluteSymbolPath,
 }
 
+struct Instance {
+    machine_ty: AbsoluteSymbolPath,
+    submachine_locations: Vec<Location>,
+    min_degree: Option<Expression>,
+    max_degree: Option<Expression>,
+}
+
 struct ASMPILConverter<'a> {
     /// Map of all machine instances to their type and passed arguments
-    instances: &'a BTreeMap<Location, (AbsoluteSymbolPath, Vec<Location>)>,
+    instances: &'a BTreeMap<Location, Instance>,
     /// Current machine instance
     location: &'a Location,
     /// Input definitions and machines.
@@ -232,7 +281,7 @@ struct ASMPILConverter<'a> {
 
 impl<'a> ASMPILConverter<'a> {
     fn new(
-        instances: &'a BTreeMap<Location, (AbsoluteSymbolPath, Vec<Location>)>,
+        instances: &'a BTreeMap<Location, Instance>,
         location: &'a Location,
         input: &'a AnalysisASMFile,
         incoming_permutations: &'a mut BTreeMap<Location, u64>,
@@ -252,7 +301,7 @@ impl<'a> ASMPILConverter<'a> {
     }
 
     fn convert_machine(
-        instances: &'a BTreeMap<Location, (AbsoluteSymbolPath, Vec<Location>)>,
+        instances: &'a BTreeMap<Location, Instance>,
         location: &'a Location,
         input: &'a AnalysisASMFile,
         incoming_permutations: &'a mut BTreeMap<Location, u64>,
@@ -261,11 +310,19 @@ impl<'a> ASMPILConverter<'a> {
     }
 
     fn convert_machine_inner(mut self) -> Object {
-        let (ty, args) = self.instances.get(self.location).as_ref().unwrap();
-        // TODO: This clone doubles the current memory usage
-        let input = self.input.get_machine(ty).unwrap().clone();
+        let instance = self.instances.get(self.location).unwrap();
 
-        let degree = input.degree;
+        // TODO: This clone doubles the current memory usage
+        let input = self
+            .input
+            .get_machine(&instance.machine_ty)
+            .unwrap()
+            .clone();
+
+        // the passed degrees have priority over the ones defined in the machine type
+        let min = instance.min_degree.clone().or(input.degree.min);
+        let max = instance.max_degree.clone().or(input.degree.max);
+        let degree = MachineDegree { min, max };
 
         self.submachines = input
             .submachines
@@ -283,7 +340,7 @@ impl<'a> ASMPILConverter<'a> {
         assert!(input.callable.is_only_operations());
 
         // process machine parameters
-        self.handle_parameters(input.params, args);
+        self.handle_parameters(input.params, &instance.submachine_locations);
 
         for block in input.pil {
             self.handle_pil_statement(block);
@@ -341,7 +398,7 @@ impl<'a> ASMPILConverter<'a> {
             .iter()
             .find(|s| s.name == instance)
             .unwrap_or_else(|| {
-                let (ty, _) = self.instances.get(self.location).unwrap();
+                let ty = &self.instances.get(self.location).unwrap().machine_ty;
                 panic!("could not find submachine named `{instance}` in machine `{ty}`");
             });
         // get the machine type from the machine map

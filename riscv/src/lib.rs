@@ -63,8 +63,8 @@ pub struct CompilerOptions {
     pub field: KnownField,
     pub libs: RuntimeLibs,
     pub continuations: bool,
-    pub min_degree_log: Option<u32>,
-    pub max_degree_log: Option<u32>,
+    pub min_degree_log: u8,
+    pub max_degree_log: u8,
 }
 
 impl CompilerOptions {
@@ -73,8 +73,8 @@ impl CompilerOptions {
             field,
             libs,
             continuations,
-            min_degree_log: None,
-            max_degree_log: None,
+            min_degree_log: 5,
+            max_degree_log: 20,
         }
     }
 
@@ -83,8 +83,8 @@ impl CompilerOptions {
             field: KnownField::BabyBearField,
             libs: RuntimeLibs::new(),
             continuations: false,
-            min_degree_log: None,
-            max_degree_log: None,
+            min_degree_log: 5,
+            max_degree_log: 20,
         }
     }
 
@@ -93,21 +93,21 @@ impl CompilerOptions {
             field: KnownField::GoldilocksField,
             libs: RuntimeLibs::new(),
             continuations: false,
-            min_degree_log: None,
-            max_degree_log: None,
+            min_degree_log: 5,
+            max_degree_log: 20,
         }
     }
 
-    pub fn with_min_degree_log(self, log_min_degree: u32) -> Self {
+    pub fn with_min_degree_log(self, min_degree_log: u8) -> Self {
         Self {
-            min_degree_log: Some(log_min_degree),
+            min_degree_log,
             ..self
         }
     }
 
-    pub fn with_max_degree_log(self, log_max_degree: u32) -> Self {
+    pub fn with_max_degree_log(self, max_degree_log: u8) -> Self {
         Self {
-            max_degree_log: Some(log_max_degree),
+            max_degree_log,
             ..self
         }
     }

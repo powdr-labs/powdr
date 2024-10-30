@@ -4,19 +4,21 @@
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::iter::once;
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, ConnectIdentity, Expression,
     FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity, PolyID,
     PolynomialIdentity, PolynomialReference, PolynomialType, Reference, SymbolKind,
-    TypedExpression,
 };
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
-use powdr_ast::parsed::{EnumDeclaration, Number, StructDeclaration, TypeDeclaration};
+use powdr_ast::parsed::Number;
 use powdr_number::{BigUint, FieldElement};
+
+mod referenced_symbols;
+
+use referenced_symbols::ReferencedSymbols;
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
@@ -88,83 +90,6 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         .cloned()
         .collect();
     pil_file.remove_definitions(&definitions_to_remove);
-}
-
-trait ReferencedSymbols {
-    /// Returns an iterator over all referenced symbols in self including type names.
-    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_>;
-}
-
-impl ReferencedSymbols for FunctionValueDefinition {
-    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
-        match self {
-            FunctionValueDefinition::TypeDeclaration(type_decl) => type_decl.symbols(),
-            FunctionValueDefinition::TypeConstructor(enum_decl, _) => {
-                // This is the type constructor of an enum variant, it references the enum itself.
-                Box::new(once(enum_decl.name.as_str().into()))
-            }
-            FunctionValueDefinition::Expression(TypedExpression {
-                type_scheme: Some(type_scheme),
-                e,
-            }) => Box::new(type_scheme.ty.symbols().chain(e.symbols())),
-            _ => Box::new(self.children().flat_map(|e| e.symbols())),
-        }
-    }
-}
-
-impl ReferencedSymbols for TypeDeclaration {
-    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
-        match self {
-            TypeDeclaration::Enum(enum_decl) => enum_decl.symbols(),
-            TypeDeclaration::Struct(struct_decl) => struct_decl.symbols(),
-        }
-    }
-}
-
-impl ReferencedSymbols for EnumDeclaration {
-    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
-        Box::new(
-            self.variants
-                .iter()
-                .flat_map(|v| &v.fields)
-                .flat_map(|t| t.iter())
-                .flat_map(|t| t.symbols()),
-        )
-    }
-}
-
-impl ReferencedSymbols for StructDeclaration {
-    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
-        Box::new(self.fields.iter().flat_map(|named| named.ty.symbols()))
-    }
-}
-
-impl ReferencedSymbols for Expression {
-    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
-        Box::new(
-            self.all_children()
-                .flat_map(|e| match e {
-                    Expression::Reference(
-                        _,
-                        Reference::Poly(PolynomialReference { name, type_args }),
-                    ) => Some(
-                        type_args
-                            .iter()
-                            .flat_map(|t| t.iter())
-                            .flat_map(|t| t.symbols())
-                            .chain(once(name.into())),
-                    ),
-                    _ => None,
-                })
-                .flatten(),
-        )
-    }
-}
-
-impl ReferencedSymbols for Type {
-    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
-        Box::new(self.contained_named_types().map(|n| n.to_string().into()))
-    }
 }
 
 /// Builds a lookup-table that can be used to turn array elements
@@ -625,215 +550,4 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         })
         .collect();
     pil_file.remove_identities(&to_remove);
-}
-
-#[cfg(test)]
-mod test {
-    use powdr_number::GoldilocksField;
-    use powdr_pil_analyzer::analyze_string;
-
-    use crate::optimize;
-
-    use pretty_assertions::assert_eq;
-
-    #[test]
-    fn replace_fixed() {
-        let input = r#"namespace N(65536);
-    col fixed one = [1]*;
-    col fixed zero = [0]*;
-    col witness X;
-    col witness Y;
-    X * one = X * zero - zero + Y;
-    one * Y = zero * Y + 7 * X;
-"#;
-        let expectation = r#"namespace N(65536);
-    col witness X;
-    col witness Y;
-    N::X = N::Y;
-    N::Y = 7 * N::X;
-"#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
-        assert_eq!(optimized, expectation);
-    }
-
-    #[test]
-    fn replace_lookup() {
-        let input = r#"namespace N(65536);
-    col fixed one = [1]*;
-    col fixed zero = [0]*;
-    col fixed two = [2]*;
-    col fixed cnt(i) { i };
-    col witness X;
-    col witness Y;
-    col witness W;
-    col witness Z;
-    col witness A;
-    (1 - A) $ [ X, Y, A ] in [ zero, one, cnt ];
-    [ Y, W, Z, A ] in (1 + A) $ [ cnt, zero, two, one ];
-    [ W, Z ] in (1 + A) $ [ zero, one ];
-"#;
-        let expectation = r#"namespace N(65536);
-    col fixed cnt(i) { i };
-    col witness X;
-    col witness Y;
-    col witness Z;
-    col witness A;
-    1 - N::A $ [N::A] in [N::cnt];
-    [N::Y] in 1 + N::A $ [N::cnt];
-    (1 - N::A) * N::X = 0;
-    (1 - N::A) * N::Y = 1;
-    N::Z = (1 + N::A) * 2;
-    N::A = 1 + N::A;
-    N::Z = 1 + N::A;
-"#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
-        assert_eq!(optimized, expectation);
-    }
-
-    #[test]
-    fn intermediate() {
-        let input = r#"namespace N(65536);
-        col witness x;
-        col intermediate = x;
-        intermediate = intermediate;
-    "#;
-        let expectation = r#"namespace N(65536);
-    col witness x;
-    col intermediate = N::x;
-    N::intermediate = N::intermediate;
-"#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
-        assert_eq!(optimized, expectation);
-    }
-
-    #[test]
-    fn zero_sized_array() {
-        let input = r#"
-        namespace std::array(65536);
-            let<T> len: T[] -> int = [];
-        namespace N(65536);
-            col witness x[1];
-            col witness y[0];
-            let t: col = |i| std::array::len(y);
-            x[0] = t;
-    "#;
-        let expectation = r#"namespace std::array(65536);
-    let<T> len: T[] -> int = [];
-namespace N(65536);
-    col witness x[1];
-    col witness y[0];
-    col fixed t(i) { std::array::len::<expr>(N::y) };
-    N::x[0] = N::t;
-"#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
-        assert_eq!(optimized, expectation);
-    }
-
-    #[test]
-    fn remove_duplicates() {
-        let input = r#"namespace N(65536);
-        col witness x;
-        col fixed cnt(i) { i };
-
-        x * (x - 1) = 0;
-        x * (x - 1) = 0;
-        x * (x - 1) = 0;
-
-        [ x ] in [ cnt ];
-        [ x ] in [ cnt ];
-        [ x ] in [ cnt ];
-
-        [ x + 1 ] in [ cnt ];
-        [ x ] in [ cnt + 1 ];
-    "#;
-        let expectation = r#"namespace N(65536);
-    col witness x;
-    col fixed cnt(i) { i };
-    N::x * (N::x - 1) = 0;
-    [N::x] in [N::cnt];
-    [N::x + 1] in [N::cnt];
-    [N::x] in [N::cnt + 1];
-"#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
-        assert_eq!(optimized, expectation);
-    }
-
-    #[test]
-    fn remove_unreferenced() {
-        let input = r#"namespace N(65536);
-        col witness x;
-        col fixed cnt(i) { inc(i) };
-        let inc = |x| x + 1;
-        // these are removed
-        col witness k;
-        col k2 = k;
-        let rec: -> int = || rec();
-        let a: int -> int = |i| b(i + 1);
-        let b: int -> int = |j| 8;
-        // identity
-        [ x ] in [ cnt ];
-
-    "#;
-        let expectation = r#"namespace N(65536);
-    col witness x;
-    col fixed cnt(i) { N::inc(i) };
-    let inc: int -> int = |x| x + 1_int;
-    [N::x] in [N::cnt];
-"#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
-        assert_eq!(optimized, expectation);
-    }
-
-    #[test]
-    fn remove_unreferenced_parts_of_arrays() {
-        let input = r#"namespace N(65536);
-        col witness x[5];
-        let inte: inter[5] = x;
-        x[2] = inte[4];
-    "#;
-        let expectation = r#"namespace N(65536);
-    col witness x[5];
-    col inte[5] = [N::x[0], N::x[1], N::x[2], N::x[3], N::x[4]];
-    N::x[2] = N::inte[4];
-"#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap());
-        assert_eq!(optimized.intermediate_count(), 5);
-        assert_eq!(optimized.to_string(), expectation);
-    }
-
-    #[test]
-    fn remove_unreferenced_keep_enums() {
-        let input = r#"namespace N(65536);
-        enum X { A, B, C }
-        enum Y { D, E, F(R[]) }
-        enum R { T }
-        let t: X[] -> int = |r| 1;
-        // This references Y::F but even after type checking, the type
-        // Y is not mentioned anywhere.
-        let f: col = |i| if i == 0 { t([]) } else { (|x| 1)(Y::F([])) };
-        let x;
-        x = f;
-    "#;
-        let expectation = r#"namespace N(65536);
-    enum X {
-        A,
-        B,
-        C,
-    }
-    enum Y {
-        D,
-        E,
-        F(N::R[]),
-    }
-    enum R {
-        T,
-    }
-    let t: N::X[] -> int = |r| 1_int;
-    col fixed f(i) { if i == 0_int { N::t([]) } else { (|x| 1_int)(N::Y::F([])) } };
-    col witness x;
-    N::x = N::f;
-"#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
-        assert_eq!(optimized, expectation);
-    }
 }
