@@ -41,10 +41,17 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
                 operation_id: None,
                 call_selectors: None,
             };
+            let main_object = Object {
+                degree: MachineDegree {
+                    min: Some(0u32.into()),
+                    max: Some(0u32.into()),
+                },
+                ..Default::default()
+            };
             return PILGraph {
                 main,
                 entry_points: Default::default(),
-                objects: [(main_location, Default::default())].into(),
+                objects: [(main_location, main_object)].into(),
                 statements: utility_functions(input),
             };
         }

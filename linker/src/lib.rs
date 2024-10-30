@@ -14,25 +14,6 @@ use powdr_parser_util::SourceRef;
 use std::{collections::BTreeMap, iter::once};
 
 const MAIN_OPERATION_NAME: &str = "main";
-/// The log of the default minimum degree
-// pub const MIN_DEGREE_LOG: usize = 5;
-// lazy_static! {
-//     // The maximum degree can add a significant cost during setup, because
-//     // the fixed columns need to be committed to in all sizes up to the max degree.
-//     // This gives the user the possibility to overwrite the default value.
-//     /// The log of the default maximum degree
-//     pub static ref MAX_DEGREE_LOG: usize = {
-//         let default_max_degree_log = 22;
-
-//         let max_degree_log = match std::env::var("MAX_DEGREE_LOG") {
-//             Ok(val) => val.parse::<usize>().unwrap(),
-//             Err(_) => default_max_degree_log,
-//         };
-//         log::info!("For variably-sized machine, the maximum degree is 2^{max_degree_log}. \
-//             You can set the environment variable MAX_DEGREE_LOG to change this value.");
-//         max_degree_log
-//     };
-// }
 
 /// Convert a [MachineDegree] into a [NamespaceDegree], setting any unset bounds to the relevant default values
 fn to_namespace_degree(d: MachineDegree) -> NamespaceDegree {
@@ -299,7 +280,7 @@ namespace main__rom(4 + 4);
 
     #[test]
     fn compile_really_empty_vm() {
-        let expectation = r#"namespace main(0..0);
+        let expectation = r#"namespace main(0);
 "#
         .to_string();
 
