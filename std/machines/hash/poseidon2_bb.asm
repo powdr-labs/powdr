@@ -154,6 +154,32 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
         x7 = x3 * x3 * step_a;
 
         // Multiply with the diffusion matrix
+        //
+        // The diffusion matrix looks like this:
+        //
+        //                   [A, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        //                   [1, B, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        //                   [1, 1, C, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        //                   [1, 1, 1, D, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        //                   [1, 1, 1, 1, E, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        //                   [1, 1, 1, 1, 1, F, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        //                   [1, 1, 1, 1, 1, 1, G, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        //                   [1, 1, 1, 1, 1, 1, 1, H, 1, 1, 1, 1, 1, 1, 1, 1]
+        // DIFF_MULTIPLIER * [1, 1, 1, 1, 1, 1, 1, 1, I, 1, 1, 1, 1, 1, 1, 1]
+        //                   [1, 1, 1, 1, 1, 1, 1, 1, 1, J, 1, 1, 1, 1, 1, 1]
+        //                   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, K, 1, 1, 1, 1, 1]
+        //                   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, L, 1, 1, 1, 1]
+        //                   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, M, 1, 1, 1]
+        //                   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, O, 1, 1]
+        //                   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, P, 1]
+        //                   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, Q]
+        //
+        // Where A, B, C, ..., Q are the elements of the DIFF_DIAGONAL array plus 1.
+        //
+        // The idea of using such matrix in Poseidon2 is that, instead of performing
+        // a full matrix multiplication, we can optimize it by summing the elements
+        // of the input vector, and then adjusting each output[k] element by
+        // input[k] * DIFF_DIAGONAL[k].
         let line_sum = x7 + array::sum(array::sub_array(input, 1, STATE_SIZE - 1));
         output[0] = (line_sum + DIFF_DIAGONAL[0] * x7) * DIFF_MULTIPLIER;
         array::zip(
