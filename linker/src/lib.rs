@@ -89,7 +89,7 @@ pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
                         let linker_first_step = "_linker_first_step";
                         pil.extend([
                             parse_pil_statement(&format!(
-                                "col fixed {linker_first_step}(i) {{ if i == 0 {{ 1 }} else {{ 0 }} }};"
+                                "col fixed {linker_first_step}(i) {{ if i == 0_int {{ 1_fe }} else {{ 0_fe }} }};"
                             )),
                             parse_pil_statement(&format!(
                                 "{linker_first_step} * ({operation_id} - {main_operation_id}) = 0;"
