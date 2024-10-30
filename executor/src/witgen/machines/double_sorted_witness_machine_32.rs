@@ -11,7 +11,7 @@ use crate::witgen::{EvalValue, IncompleteCause};
 
 use powdr_number::{DegreeType, FieldElement};
 
-use powdr_ast::analyzed::{DegreeRange, IdentityKind, PolyID};
+use powdr_ast::analyzed::{DegreeRange, PolyID};
 
 /// If all witnesses of a machine have a name in this list (disregarding the namespace),
 /// we'll consider it to be a double-sorted machine.
@@ -100,24 +100,14 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
             return None;
         }
 
-        if !parts
-            .connecting_identities
-            .values()
-            .all(|i| i.kind == IdentityKind::Permutation)
-        {
+        if !parts.connections.values().all(|i| i.is_permutation()) {
             return None;
         }
 
         let selector_ids = parts
-            .connecting_identities
-            .values()
-            .map(|i| {
-                i.right
-                    .selector
-                    .as_ref()
-                    .and_then(|r| try_to_simple_poly(r))
-                    .map(|p| (i.id, p.poly_id))
-            })
+            .connections
+            .iter()
+            .map(|(id, i)| try_to_simple_poly(&i.right.selector).map(|p| (*id, p.poly_id)))
             .collect::<Option<BTreeMap<_, _>>>()?;
 
         let namespace = namespaces.drain().next().unwrap().into();
@@ -366,7 +356,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
         // - operation_id == 1: Write
         // - operation_id == 2: Bootloader write
 
-        let args = self.parts.connecting_identities[&identity_id]
+        let args = self.parts.connections[&identity_id]
             .left
             .expressions
             .iter()

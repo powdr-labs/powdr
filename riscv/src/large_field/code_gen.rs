@@ -25,6 +25,7 @@ pub fn translate_program(program: impl RiscVProgram, options: CompilerOptions) -
         translate_program_impl(program, options.field, &runtime, options.continuations);
 
     riscv_machine(
+        options,
         &runtime,
         &preamble(options.field, &runtime, options.continuations),
         initial_mem,
@@ -184,6 +185,7 @@ fn translate_program_impl(
 }
 
 fn riscv_machine(
+    options: CompilerOptions,
     runtime: &Runtime,
     preamble: &str,
     initial_memory: Vec<String>,
@@ -207,11 +209,15 @@ let initial_memory: (fe, fe)[] = [
 }}    
 "#,
         runtime.submachines_import(),
-        1 << powdr_linker::MIN_DEGREE_LOG,
+        1 << (options
+            .min_degree_log
+            .unwrap_or(powdr_linker::MIN_DEGREE_LOG as u8)),
         // We expect some machines (e.g. register memory) to use up to 4x the number
         // of rows as main. By setting the max degree of main to be smaller by a factor
         // of 4, we ensure that we don't run out of rows in those machines.
-        1 << (*powdr_linker::MAX_DEGREE_LOG - 2),
+        1 << options
+            .max_degree_log
+            .unwrap_or(*powdr_linker::MAX_DEGREE_LOG as u8 - 2),
         runtime.submachines_declare(),
         preamble,
         initial_memory

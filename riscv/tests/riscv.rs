@@ -2,11 +2,14 @@ mod common;
 
 use common::{verify_riscv_asm_file, verify_riscv_asm_string};
 use mktemp::Temp;
-use powdr_number::{BabyBearField, FieldElement, GoldilocksField, KnownField};
+use powdr_number::{
+    read_polys_csv_file, BabyBearField, CsvRenderMode, FieldElement, GoldilocksField, KnownField,
+};
 use powdr_pipeline::{
     test_util::{run_pilcom_with_backend_variant, BackendVariant},
     Pipeline,
 };
+use powdr_riscv_executor::ProfilerOptions;
 use std::path::{Path, PathBuf};
 use test_log::test;
 
@@ -44,13 +47,13 @@ fn run_continuations_test(case: &str, powdr_asm: String) {
         .from_asm_string(powdr_asm.clone(), Some(PathBuf::from(&case)))
         .with_prover_inputs(Default::default())
         .with_output(tmp_dir.to_path_buf(), false);
-    let pipeline_callback = |pipeline: Pipeline<GoldilocksField>| -> Result<(), ()> {
-        run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).unwrap();
+    let pipeline_callback = |pipeline: &mut Pipeline<GoldilocksField>| -> Result<(), ()> {
+        run_pilcom_with_backend_variant(pipeline.clone(), BackendVariant::Composite).unwrap();
 
         Ok(())
     };
     let bootloader_inputs = rust_continuations_dry_run(&mut pipeline, Default::default());
-    rust_continuations(pipeline, pipeline_callback, bootloader_inputs).unwrap();
+    rust_continuations(&mut pipeline, pipeline_callback, bootloader_inputs).unwrap();
 }
 
 #[test]
@@ -385,7 +388,7 @@ fn features_with_options<T: FieldElement>(options: CompilerOptions) {
     );
 
     log::info!("Verifying {case} converted from ELF file");
-    let from_elf = powdr_riscv::elf::translate(&executable, options.clone());
+    let from_elf = powdr_riscv::elf::translate(&executable, options);
     verify_riscv_asm_string::<T, usize>(
         &format!("{case}_from_elf.asm"),
         &from_elf,
@@ -402,7 +405,7 @@ fn features_with_options<T: FieldElement>(options: CompilerOptions) {
     );
 
     log::info!("Verifying {case} converted from ELF file");
-    let from_elf = powdr_riscv::elf::translate(&executable, options.clone());
+    let from_elf = powdr_riscv::elf::translate(&executable, options);
     verify_riscv_asm_string::<T, usize>(
         &format!("{case}_from_elf.asm"),
         &from_elf,
@@ -573,4 +576,91 @@ fn verify_riscv_crate_impl<T: FieldElement, S: serde::Serialize + Send + Sync + 
         &inputs,
         data.as_deref(),
     );
+}
+
+#[test]
+fn profiler_sanity_check() {
+    let case = "keccak";
+
+    let temp_dir = Temp::new_dir().unwrap();
+    let executable = powdr_riscv::compile_rust_crate_to_riscv(
+        &format!("tests/riscv_data/{case}/Cargo.toml"),
+        &temp_dir,
+        None,
+    );
+
+    let options = CompilerOptions::new(KnownField::GoldilocksField, RuntimeLibs::new(), false);
+    let asm = powdr_riscv::elf::translate(&executable, options);
+
+    let temp_dir = mktemp::Temp::new_dir().unwrap().release();
+    let file_name = format!("{case}.asm");
+    let mut pipeline = Pipeline::<GoldilocksField>::default()
+        .with_output(temp_dir.to_path_buf(), false)
+        .from_asm_string(asm, Some(PathBuf::from(file_name)));
+    let analyzed = pipeline.compute_analyzed_asm().unwrap().clone();
+    let profiler_opt = ProfilerOptions {
+        file_stem: Some("{case}".to_string()),
+        output_directory: temp_dir.to_path_buf().to_str().unwrap().to_string(),
+        flamegraph: true,
+        callgrind: true,
+    };
+    powdr_riscv_executor::execute_ast(
+        &analyzed,
+        Default::default(),
+        pipeline.data_callback().unwrap(),
+        &[],
+        usize::MAX,
+        powdr_riscv_executor::ExecMode::Fast,
+        Some(profiler_opt),
+    );
+
+    // check files were created in temp dir, and that they are not empty
+    let mut svg_path = temp_dir.to_path_buf();
+    svg_path.push("{case}.svg");
+    let flamegraph = std::fs::read_to_string(svg_path);
+    assert!(!flamegraph.unwrap().is_empty());
+
+    let mut callgrind_path = temp_dir.to_path_buf();
+    callgrind_path.push("{case}.callgrind");
+    let callgrind = std::fs::read_to_string(callgrind_path);
+    assert!(!callgrind.unwrap().is_empty());
+}
+
+#[test]
+#[ignore = "Too slow"]
+/// check that exported witness CSV can be loaded back in
+fn exported_csv_as_external_witness() {
+    let case = "keccak";
+
+    let temp_dir = Temp::new_dir().unwrap();
+    let executable = powdr_riscv::compile_rust_crate_to_riscv(
+        &format!("tests/riscv_data/{case}/Cargo.toml"),
+        &temp_dir,
+        None,
+    );
+
+    // compile
+    let options = CompilerOptions::new(KnownField::GoldilocksField, RuntimeLibs::new(), false);
+    let asm = powdr_riscv::elf::translate(&executable, options);
+
+    // export witness
+    let temp_dir = mktemp::Temp::new_dir().unwrap().release();
+    let file_name = format!("{case}.asm");
+    let mut pipeline = Pipeline::<GoldilocksField>::default()
+        .with_output(temp_dir.to_path_buf(), false)
+        .with_backend(powdr_backend::BackendType::Plonky3, None)
+        .with_witness_csv_settings(true, false, CsvRenderMode::Hex)
+        .from_asm_string(asm, Some(PathBuf::from(file_name)));
+    pipeline.compute_witness().unwrap();
+    pipeline.rollback_from_witness();
+
+    // load witness back in and check that proving works
+    let mut witness_path = temp_dir.to_path_buf();
+    witness_path.push(format!("{case}_witness.csv"));
+    let witness_csv = std::fs::File::open(witness_path).unwrap();
+    let witness = read_polys_csv_file(witness_csv);
+    let mut pipeline = pipeline.add_external_witness_values(witness);
+
+    // check we can generate a proof
+    pipeline.compute_proof().cloned().unwrap();
 }

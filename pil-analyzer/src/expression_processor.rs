@@ -7,8 +7,8 @@ use powdr_ast::{
         types::{ArrayType, Type},
         ArrayExpression, ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall,
         IfExpression, LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression,
-        NamespacedPolynomialReference, Number, Pattern, SelectedExpressions, SourceReference,
-        StatementInsideBlock, SymbolCategory, UnaryOperation,
+        NamedExpression, NamespacedPolynomialReference, Number, Pattern, SelectedExpressions,
+        SourceReference, StatementInsideBlock, StructExpression, SymbolCategory, UnaryOperation,
     },
 };
 
@@ -220,7 +220,28 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 self.process_block_expression(statements, expr, src)
             }
             PExpression::FreeInput(_, _) => panic!(),
-            PExpression::StructExpression(_, _) => unimplemented!("Structs are not supported yet"),
+            PExpression::StructExpression(src, StructExpression { name, fields }) => {
+                let type_args = name
+                    .type_args
+                    .map(|args| args.into_iter().map(|t| self.process_type(t)).collect());
+
+                Expression::StructExpression(
+                    src,
+                    StructExpression {
+                        name: Reference::Poly(PolynomialReference {
+                            name: self.driver.resolve_ref(&name.path, SymbolCategory::Struct),
+                            type_args,
+                        }),
+                        fields: fields
+                            .into_iter()
+                            .map(|named_expr| NamedExpression {
+                                name: named_expr.name,
+                                body: Box::new(self.process_expression(*named_expr.body)),
+                            })
+                            .collect(),
+                    },
+                )
+            }
         }
     }
 

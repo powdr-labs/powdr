@@ -1,12 +1,11 @@
 # Installation
 
 The only way to install powdr currently is to build it from source.
-There are two binaries, `powdr` and `powdr-rs`.
+There are two binaries, 
 
-The former can compile powdr-asm files to powdr-PIL, as well as generate
+- `powdr` compiles powdr-asm files to powdr-PIL and generates
 witnesses and proofs.
-
-The latter compiles Rust crates to powdr-asm via RISCV, and can execute
+- `powdr-rs` compiles Rust crates to powdr-asm via RISCV, and executes
 powdr-asm code with given inputs.
 
 ## Prerequisites
@@ -17,8 +16,8 @@ The easiest way to install both is with [`rustup.rs`](https://rustup.rs/).
 On Windows, you will also need a recent version of [Visual Studio](https://visualstudio.microsoft.com/downloads/),
 installed with the "Desktop Development With C++" Workloads option.
 
-If you want to enable feature `estark-polygon`, you also need the following
-runtime dependencies installed on the system:
+If you want to enable the `estark-polygon` feature, you also need the following
+runtime dependencies:
 
 - `gcc`
 - `nlohmann-json3-dev`
@@ -32,7 +31,7 @@ You will also need the following build time dependencies:
 
 ## Building *powdr*
 
-Using a single Cargo command (enable the Halo2 & Plonky3 backends to use it with the cli):
+Using a single Cargo command, enabling the Halo2 and Plonky3 backends:
 
 ```sh
 cargo install --git https://github.com/powdr-labs/powdr --features halo2,plonky3 powdr-cli
@@ -41,7 +40,7 @@ cargo install --git https://github.com/powdr-labs/powdr --features halo2,plonky3
 With SIMD support for the provers that support it:
 
 ```sh
-RUSTFLAGS='-C target-cpu=native' cargo install --git https://github.com/powdr-labs/powdr --features halo2,plonky3,simd powdr-cli
+RUSTFLAGS='-C target-cpu=native' cargo install --git https://github.com/powdr-labs/powdr --features halo2,plonky3,plonky3-simd powdr-cli
 ```
 
 Or, by manually building from a local copy of the [powdr repository](https://github.com/powdr-labs/powdr):
@@ -53,7 +52,7 @@ cd powdr
 # install powdr-cli
 cargo install --features halo2,plonky3 --path ./cli
 # install powdr-cli with SIMD support (only for the crates that support it)
-RUSTFLAGS='-C target-cpu=native' cargo install --features halo2,plonky3,simd --path ./cli
+RUSTFLAGS='-C target-cpu=native' cargo install --features halo2,plonky3,plonky3-simd --path ./cli
 ```
 
 ## Building *powdr-rs*

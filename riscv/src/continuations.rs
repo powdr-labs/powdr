@@ -67,12 +67,12 @@ fn render_memory_hash<F: FieldElement>(hash: &[F]) -> String {
 /// - `bootloader_inputs`: The inputs to the bootloader and the index of the row at which the shutdown routine
 ///   is supposed to execute, for each chunk, as returned by `rust_continuations_dry_run`.
 pub fn rust_continuations<F: FieldElement, PipelineCallback, E>(
-    mut pipeline: Pipeline<F>,
+    pipeline: &mut Pipeline<F>,
     pipeline_callback: PipelineCallback,
     dry_run_result: DryRunResult<F>,
 ) -> Result<(), E>
 where
-    PipelineCallback: Fn(Pipeline<F>) -> Result<(), E>,
+    PipelineCallback: Fn(&mut Pipeline<F>) -> Result<(), E>,
 {
     let bootloader_inputs = dry_run_result.bootloader_inputs;
     let num_chunks = bootloader_inputs.len();
@@ -90,8 +90,7 @@ where
         .map(
             |(i, (bootloader_inputs, start_of_shutdown_routine))| -> Result<(), E> {
                 log::info!("\nRunning chunk {} / {}...", i + 1, num_chunks);
-                let pipeline = pipeline.clone();
-                let pipeline = if let Some(parent_dir) = pipeline.output_dir() {
+                if let Some(parent_dir) = pipeline.output_dir() {
                     let force_overwrite = pipeline.is_force_overwrite();
 
                     let chunk_dir = parent_dir.join(format!("chunk_{i}"));
@@ -105,10 +104,8 @@ where
                     }
                     hard_link(parent_dir.join("constants.bin"), link_to_consts).unwrap();
 
-                    pipeline.with_output(chunk_dir, force_overwrite)
-                } else {
-                    pipeline
-                };
+                    pipeline.set_output(chunk_dir, force_overwrite)
+                }
 
                 // get the length of the main machine
                 // quite hacky, is there a better way?
@@ -123,13 +120,15 @@ where
                     })
                     .unwrap();
 
+                pipeline.rollback_from_witness();
+
                 // The `jump_to_shutdown_routine` column indicates when the execution should jump to the shutdown routine.
                 // In that row, the normal PC update is ignored and the PC is set to the address of the shutdown routine.
                 // In other words, it should be a one-hot encoding of `start_of_shutdown_routine`.
                 let jump_to_shutdown_routine = (0..length)
                     .map(|i| (i == start_of_shutdown_routine - 1).into())
                     .collect();
-                let pipeline = pipeline.add_external_witness_values(vec![
+                pipeline.add_external_witness_values_mut(vec![
                     (
                         "main_bootloader_inputs::value".to_string(),
                         bootloader_inputs,
@@ -425,7 +424,9 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             .map(|reg| {
                 let reg = reg.strip_prefix("main.").unwrap();
                 let id = Register::from(reg).addr();
-                *register_memory_snapshot.get(&(id as u32)).unwrap()
+                *register_memory_snapshot
+                    .get(&(id as u32))
+                    .unwrap_or(&0.into())
             })
             .collect::<Vec<_>>();
 
