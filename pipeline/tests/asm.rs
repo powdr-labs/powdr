@@ -714,6 +714,29 @@ fn trait_parsing() {
 }
 
 #[test]
+fn struct_parsing() {
+    let f = "asm/struct_parsing.asm";
+    make_simple_prepared_pipeline::<GoldilocksField>(f);
+    // No need to generate a proof here.
+}
+
+#[test]
+#[should_panic = "Expected symbol of kind Struct but got TypeConstructor: A::X"]
+fn enum_as_struct() {
+    let f = "asm/enum_as_struct.asm";
+    make_simple_prepared_pipeline::<GoldilocksField>(f);
+    // No need to generate a proof here.
+}
+
+#[test]
+#[should_panic = "symbol not found in `::`: `A`"]
+fn struct_as_enum() {
+    let f = "asm/struct_as_enum.asm";
+    make_simple_prepared_pipeline::<GoldilocksField>(f);
+    // No need to generate a proof here.
+}
+
+#[test]
 fn dynamic_fixed_cols() {
     let f = "asm/dynamic_fixed_cols.asm";
     let pipeline = make_simple_prepared_pipeline(f);
