@@ -59,13 +59,28 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
     };
 
     // get a list of all machines to instantiate and their arguments. The order does not matter.
-    let mut queue = vec![(main_location.clone(), (main_ty.clone(), vec![], None, None))];
+    let mut queue = vec![(
+        main_location.clone(),
+        Instance {
+            machine_ty: main_ty.clone(),
+            submachine_locations: vec![],
+            min_degree: None,
+            max_degree: None,
+        },
+    )];
 
     // map instance location to (type, arguments)
     let mut instances = BTreeMap::default();
 
-    while let Some((location, (machine_ty, submachine_locations, min_degree, max_degree))) =
-        queue.pop()
+    while let Some((
+        location,
+        Instance {
+            machine_ty,
+            submachine_locations,
+            min_degree,
+            max_degree,
+        },
+    )) = queue.pop()
     {
         let machine = &input.get_machine(&machine_ty).unwrap();
 
@@ -85,11 +100,10 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
             (
                 // get the absolute name for this submachine
                 location.clone().join(def.name.clone()),
-                (
-                    // submachine type
-                    def.ty.clone(),
+                Instance {
+                    machine_ty: def.ty.clone(),
                     // resolve each given machine arg to a proper instance location
-                    submachine_args
+                    submachine_locations: submachine_args
                         .iter()
                         .map(|a| {
                             resolve_submachine_arg(&location, machine, &submachine_locations, a)
@@ -97,7 +111,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
                         .collect(),
                     min_degree,
                     max_degree,
-                ),
+                },
             )
         }));
 
