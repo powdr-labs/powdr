@@ -93,7 +93,7 @@ fn main() {
         [BabyBear::zero(); WIDTH],
         [BabyBear::one(); WIDTH],
         [-BabyBear::one(); WIDTH],
-        // The test vector from goldilocks, that I don't know where it came from.
+        // The test vector from goldilocks, that came from polygon.
         [
             923978,
             235763497586,
