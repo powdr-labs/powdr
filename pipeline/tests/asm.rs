@@ -714,7 +714,7 @@ fn trait_parsing() {
 }
 
 #[test]
-fn struct_parsing() {
+fn simple_struct() {
     let f = "asm/struct_parsing.asm";
     make_simple_prepared_pipeline::<GoldilocksField>(f);
     // No need to generate a proof here.
