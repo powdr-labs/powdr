@@ -1,8 +1,6 @@
-# Hello World on Ethereum via proof aggregation
+# Hello World on Ethereum with proof aggregation
 
-This example is yet another variation of the previous [Hello World on Ethereum](./hello_world_ethereum.md)
-example, still targeting verification on Ethereum but supporting more complex
-VMs. As noted in the previous section, complex VMs can lead to large
+As noted in the previous section, complex VMs can lead to large
 Solidity verifiers that exceed the contract size limit on Ethereum. One
 solution to that problem is to create proofs using the Poseidon transcript, as
 we did in the [first example](./hello_world.md), and then use proof
@@ -14,7 +12,7 @@ recursively is [PSE's snark-verifier](https://github.com/privacy-scaling-explora
 to be able to prove complex programs that were proven initial with the Poseidon
 transcript, like our first example. Because of that our aggregation setup
 `params` and `verification key` are going to be larger than before and take
-longer to compute.  The good news are that (i) we can use a pre-computed setup
+longer to compute. The good news are that (i) we can use a pre-computed setup
 from a previous ceremony, and (ii) the verification key only has to be computed
 once per program.
 
@@ -61,17 +59,17 @@ powdr verification-key test_data/asm/book/hello_world.asm --field bn254 --backen
 
 > Note that this verification key can only be used to verify recursive proofs that verify other proofs using the application's key `vkey_app.bin`.
 
-We can now generate the recursive proof (can take 3 or more minutes and use 28gb RAM):
+We can now generate the recursive proof (this typically takes a few minutes and uses around 28gb RAM):
 ```console
 powdr prove test_data/asm/book/hello_world.asm --field bn254 --backend halo2 --backend-options "snark_aggr" --params params.bin --vkey vkey.bin --vkey-app vkey_app.bin --proof hello_world_proof_app.bin
 ```
 
-We have a proof! Note that the proof contents have two fields, `proof` and
+We have a proof! Note that it contains two fields, `proof` and
 `publics`.  The `proof` object contains the binary encoding of the proof
 points, and the `publics` object contains the public accumulator limbs that we
 need in order to verify the recursive proof.
 
-We can now verify the proof, using the `publics` object as input (your numbers will likely be different):
+We can now verify the proof, using the `publics` object as input (your numbers will be different):
 ```console
 powdr verify test_data/asm/book/hello_world.asm --field bn254 --backend halo2 --backend-options "snark_aggr" --params params.bin --vkey vkey.bin --proof hello_world_proof_aggr.bin --publics "269487626280642378794,9378970522278219882,62304027188881225691,811176493438944,234778270138968319485,3212529982775999134,171155758373806079356,207910400337448,188563849779606300850,155626297629081952942,194348356185923309508,433061951018270,34598221006207900280,283775241405787955338,79508596887913496910,354189825580534"
 ```

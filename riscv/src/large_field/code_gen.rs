@@ -194,7 +194,14 @@ fn riscv_machine(
     format!(
         r#"
 {}
-machine Main with min_degree: {}, max_degree: {} {{
+
+let MIN_DEGREE_LOG: int = {};
+let MIN_DEGREE: int = 2**MIN_DEGREE_LOG;
+let MAX_DEGREE_LOG: int = {};
+let MAIN_MAX_DEGREE: int = 2**MAX_DEGREE_LOG;
+let LARGE_SUBMACHINES_MAX_DEGREE: int = 2**(MAX_DEGREE_LOG + 2);
+
+machine Main with min_degree: MIN_DEGREE, max_degree: {} {{
 {}
 
 {}
@@ -209,15 +216,12 @@ let initial_memory: (fe, fe)[] = [
 }}    
 "#,
         runtime.submachines_import(),
-        1 << (options
-            .min_degree_log
-            .unwrap_or(powdr_linker::MIN_DEGREE_LOG as u32)),
-        // We expect some machines (e.g. register memory) to use up to 4x the number
-        // of rows as main. By setting the max degree of main to be smaller by a factor
-        // of 4, we ensure that we don't run out of rows in those machines.
-        1 << options
-            .max_degree_log
-            .unwrap_or(*powdr_linker::MAX_DEGREE_LOG as u32 - 2),
+        options.min_degree_log,
+        options.max_degree_log,
+        // We're passing this as well because continuations requires
+        // Main's max_degree to be a constant.
+        // We should fix that in the continuations code and remove this.
+        1 << options.max_degree_log,
         runtime.submachines_declare(),
         preamble,
         initial_memory
@@ -274,7 +278,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
         + &memory(with_bootloader)
         + r#"
     // =============== Register memory =======================
-"# + "std::machines::large_field::memory::Memory regs(byte2);"
+"# + "std::machines::large_field::memory::Memory regs(byte2, MIN_DEGREE, LARGE_SUBMACHINES_MAX_DEGREE);"
         + r#"
     // Get the value in register Y.
     instr get_reg Y -> X link ~> X = regs.mload(Y, STEP);
@@ -595,7 +599,7 @@ fn mul_instruction(field: KnownField, runtime: &Runtime) -> &'static str {
 fn memory(with_bootloader: bool) -> String {
     let memory_machine = if with_bootloader {
         r#"
-    std::machines::large_field::memory_with_bootloader_write::MemoryWithBootloaderWrite memory(byte2);
+    std::machines::large_field::memory_with_bootloader_write::MemoryWithBootloaderWrite memory(byte2, MIN_DEGREE, MAIN_MAX_DEGREE);
 
     // Stores val(W) at address (V = val(X) - val(Z) + Y) % 2**32.
     // V can be between 0 and 2**33.
@@ -610,7 +614,7 @@ fn memory(with_bootloader: bool) -> String {
 "#
     } else {
         r#"
-    std::machines::large_field::memory::Memory memory(byte2);
+    std::machines::large_field::memory::Memory memory(byte2, MIN_DEGREE, MAIN_MAX_DEGREE);
 "#
     };
 

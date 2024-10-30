@@ -28,6 +28,7 @@ pub fn translate_program(program: impl RiscVProgram, options: CompilerOptions) -
         translate_program_impl(program, options.field, &runtime, options.continuations);
 
     riscv_machine(
+        options,
         &runtime,
         &preamble(options.field, &runtime, options.continuations),
         initial_mem,
@@ -195,6 +196,7 @@ fn translate_program_impl(
 }
 
 fn riscv_machine(
+    options: CompilerOptions,
     runtime: &Runtime,
     preamble: &str,
     initial_memory: Vec<String>,
@@ -205,9 +207,17 @@ fn riscv_machine(
 {}
 use std::machines::small_field::add_sub::AddSub;
 use std::machines::small_field::arith::Arith;
-machine Main with min_degree: {}, max_degree: {} {{
-AddSub add_sub(byte2);
-Arith arith_mul(byte, byte2);
+
+let MIN_DEGREE_LOG: int = {};
+let MIN_DEGREE: int = 2**MIN_DEGREE_LOG;
+let MAX_DEGREE_LOG: int = {};
+let MAIN_MAX_DEGREE: int = 2**MAX_DEGREE_LOG;
+let LARGE_SUBMACHINES_MAX_DEGREE: int = 2**(MAX_DEGREE_LOG + 2);
+
+machine Main with min_degree: MIN_DEGREE, max_degree: {} {{
+
+AddSub add_sub(byte2, MIN_DEGREE, LARGE_SUBMACHINES_MAX_DEGREE);
+Arith arith_mul(byte, byte2, MIN_DEGREE, MAIN_MAX_DEGREE);
 {}
 
 {}
@@ -219,14 +229,15 @@ let initial_memory: (fe, fe)[] = [
     function main {{
 {}
     }}
-}}    
+}}
 "#,
         runtime.submachines_import(),
-        1 << powdr_linker::MIN_DEGREE_LOG,
-        // We expect some machines (e.g. register memory) to use up to 4x the number
-        // of rows as main. By setting the max degree of main to be smaller by a factor
-        // of 4, we ensure that we don't run out of rows in those machines.
-        1 << (*powdr_linker::MAX_DEGREE_LOG - 2),
+        options.min_degree_log,
+        options.max_degree_log,
+        // We're passing this as well because continuations requires
+        // Main's max_degree to be a constant.
+        // We should fix that in the continuations code and remove this.
+        1 << options.max_degree_log,
         runtime.submachines_declare(),
         preamble,
         initial_memory
@@ -288,7 +299,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
         + &memory(with_bootloader)
         + r#"
     // =============== Register memory =======================
-"# + "std::machines::small_field::memory::Memory regs(bit12, byte2);"
+"# + "std::machines::small_field::memory::Memory regs(bit12, byte2, MIN_DEGREE, LARGE_SUBMACHINES_MAX_DEGREE);"
         + r#"
     // Get the value in register YL.
     instr get_reg YL -> XH, XL link ~> (XH, XL) = regs.mload(0, YL, STEP);
@@ -664,7 +675,7 @@ fn memory(with_bootloader: bool) -> String {
         todo!()
     } else {
         r#"
-    std::machines::small_field::memory::Memory memory(bit12, byte2);
+    std::machines::small_field::memory::Memory memory(bit12, byte2, MIN_DEGREE, MAIN_MAX_DEGREE);
 "#
     };
 
