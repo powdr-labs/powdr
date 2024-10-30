@@ -178,31 +178,7 @@ fn utility_functions(asm_file: AnalysisASMFile) -> BTreeMap<AbsoluteSymbolPath, 
     asm_file
         .modules
         .into_iter()
-        .map(|(module_path, module)| {
-            (
-                module_path,
-                module
-                    .into_inner()
-                    .1
-                    .into_iter()
-                    .filter(|s| match s {
-                        PilStatement::EnumDeclaration(..)
-                        | PilStatement::StructDeclaration(..)
-                        | PilStatement::LetStatement(..) => true,
-                        PilStatement::Include(..) => false,
-                        PilStatement::Namespace(..) => false,
-                        PilStatement::PolynomialDefinition(..) => false,
-                        PilStatement::PublicDeclaration(..) => false,
-                        PilStatement::PolynomialConstantDeclaration(..) => false,
-                        PilStatement::PolynomialConstantDefinition(..) => false,
-                        PilStatement::PolynomialCommitDeclaration(..) => false,
-                        PilStatement::TraitImplementation(..) => false,
-                        PilStatement::TraitDeclaration(..) => false,
-                        PilStatement::Expression(..) => false,
-                    })
-                    .collect(),
-            )
-        })
+        .map(|(module_path, module)| (module_path, module.into_inner().1))
         .collect()
 }
 
