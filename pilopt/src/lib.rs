@@ -53,11 +53,10 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         let symbols: Box<dyn Iterator<Item = SymbolReference<'_>>> = if let Some((sym, value)) =
             pil_file.definitions.get(n.name.as_ref())
         {
-            // TODO remove this.
+            // TODO remove this once we only have stand-alone prover functions.
             let set_hint = (sym.kind == SymbolKind::Poly(PolynomialType::Committed)
                 && value.is_some())
             .then_some(SymbolReference::from("std::prelude::set_hint"));
-            // TODO substitute type args in what is returned here?
             if let Some(FunctionValueDefinition::TraitFunction(..)) = value {
                 let type_args = n.type_args.unwrap();
                 // If this is not be concrete at some point in the future,

@@ -12,8 +12,9 @@ use powdr_ast::{
     },
 };
 
-/// This trait can be used to iterate over all symbols to find a minimal set that
-/// is syntactically complete in the sense that it compiles and contains minimal dependencies.
+/// This trait can be used iteratively to find a minimal set that
+/// is syntactically complete in the sense that it compiles and
+/// contains minimal dependencies.
 pub trait ReferencedSymbols {
     /// Returns an iterator over all referenced symbols in self including type names.
     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_>;
@@ -57,10 +58,6 @@ impl<'a> From<&'a PolynomialReference> for SymbolReference<'a> {
         }
     }
 }
-
-// TODO if we call the following on a symbol, we also need to extract the
-// type variables, so we can then substitute them by the concrete types.
-// it should be a separate function and it might live in lib.rs.
 
 impl ReferencedSymbols for FunctionValueDefinition {
     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
