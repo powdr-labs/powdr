@@ -243,19 +243,19 @@ pub struct RegWrite<F: FieldElement> {
 }
 
 pub struct ExecutionTrace<F: FieldElement> {
-    pub reg_map: HashMap<String, u16>,
+    reg_map: HashMap<String, u16>,
 
     /// Values of the registers in the execution trace.
     ///
     /// Each N elements is a row with all registers, where N is the number of
     /// registers.
-    pub reg_writes: Vec<RegWrite<F>>,
+    reg_writes: Vec<RegWrite<F>>,
 
     /// Writes and reads to memory.
-    pub mem_ops: Vec<MemOperation>,
+    mem_ops: Vec<MemOperation>,
 
     /// The length of the trace, after applying the reg_writes.
-    pub len: usize,
+    len: usize,
 
     cols: HashMap<String, Vec<Elem<F>>>,
 }
@@ -355,18 +355,8 @@ impl<F: FieldElement> ExecutionTrace<F> {
         }
     }
 
-    pub fn into_cols(self) -> Vec<(String, Vec<F>)> {
-        self.cols
-            .into_iter()
-            .map(|(name, elems)| {
-                let fes = elems.into_iter().map(|e| e.into_fe()).collect();
-                (name, fes)
-            })
-            .collect()
-    }
-
     /// Replay the execution and get the register values per trace row.
-    pub fn replay(&self) -> TraceReplay<F> {
+    fn replay(&self) -> TraceReplay<F> {
         TraceReplay {
             trace: self,
             regs: vec![0.into(); self.reg_map.len()],
@@ -374,6 +364,27 @@ impl<F: FieldElement> ExecutionTrace<F> {
             next_write: 0,
             next_r: 0,
         }
+    }
+
+    /// transpose the register write operations into value columns
+    fn generate_registers_trace(&self) -> Vec<(String, Vec<Elem<F>>)> {
+        let mut reg_values: HashMap<&str, Vec<Elem<F>>> =
+            HashMap::with_capacity(self.reg_map.len());
+
+        let mut rows = self.replay();
+        while let Some(row) = rows.next_row() {
+            for (reg_name, &index) in self.reg_map.iter() {
+                reg_values
+                    .entry(reg_name)
+                    .or_default()
+                    .push(Elem::Field(row[index as usize]));
+            }
+        }
+
+        reg_values
+            .into_iter()
+            .map(|(n, c)| (format!("main::{n}"), c))
+            .collect()
     }
 }
 
@@ -434,9 +445,9 @@ mod builder {
     use powdr_number::FieldElement;
 
     use crate::{
-        BinaryMachine, Elem, ExecMode, ExecutionTrace, MemOperation, MemOperationKind,
-        MemoryMachine, MemoryState, RegWrite, RegisterMemory, RegisterMemoryState, ShiftMachine,
-        SplitGlMachine, Submachine, SubmachineBoxed, PC_INITIAL_VAL,
+        BinaryMachine, Elem, ExecMode, Execution, ExecutionTrace, MemOperation, MemOperationKind,
+        MemoryMachine, MemoryState, RegWrite, RegisterMemory, ShiftMachine, SplitGlMachine,
+        Submachine, SubmachineBoxed, PC_INITIAL_VAL,
     };
 
     fn register_names(main: &Machine) -> Vec<&str> {
@@ -504,7 +515,7 @@ mod builder {
             batch_to_line_map: &'b [u32],
             max_rows_len: usize,
             mode: ExecMode,
-        ) -> Result<Self, Box<(ExecutionTrace<F>, MemoryState, RegisterMemoryState<F>)>> {
+        ) -> Result<Self, Box<Execution<F>>> {
             let reg_map = register_names(main)
                 .into_iter()
                 .enumerate()
@@ -750,12 +761,17 @@ mod builder {
             self.reg_mem.second_last = self.reg_mem.last.clone();
         }
 
-        pub fn finish(mut self) -> (ExecutionTrace<F>, MemoryState, RegisterMemoryState<F>) {
+        pub fn finish(mut self) -> Execution<F> {
             // TODO: figure this out...
             const MIN_DEGREE: u32 = 1 << 5;
 
             // fill machine rows up to the next power of two
             let main_degree = std::cmp::max(self.len().next_power_of_two(), MIN_DEGREE);
+
+            // generate asm register columns from writes
+            // TODO: can/should we generate the columns directly instead of storing the writes and "transposing" here?
+            let main_regs = self.trace.generate_registers_trace();
+            self.trace.cols.extend(main_regs);
 
             // fill up main trace to degree
             self.extend_rows(main_degree);
@@ -791,7 +807,23 @@ mod builder {
             for (col_name, col) in self.memory_machine.take_cols(mem_degree) {
                 assert!(self.trace.cols.insert(col_name, col).is_none());
             }
-            (self.trace, self.mem, self.reg_mem.for_bootloader())
+
+            Execution {
+                main_trace_len: self.trace.cols["main::pc"].len(),
+                memory: self.mem,
+                memory_accesses: std::mem::take(&mut self.trace.mem_ops),
+                trace: self
+                    .trace
+                    .cols
+                    .into_iter()
+                    // convert Elem<F> into F
+                    .map(|(name, elems)| {
+                        let fes = elems.into_iter().map(|e| e.into_fe()).collect();
+                        (name, fes)
+                    })
+                    .collect(),
+                register_memory: self.reg_mem.for_bootloader(),
+            }
         }
 
         /// Should we stop the execution because the maximum number of rows has
@@ -2446,6 +2478,56 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
 pub type FixedColumns<F> = Arc<Vec<(String, VariablySizedColumn<F>)>>;
 
+pub struct Execution<F: FieldElement> {
+    /// length of main::pc
+    pub main_trace_len: usize,
+    /// witness columns
+    pub trace: HashMap<String, Vec<F>>,
+    /// final memory state
+    pub memory: MemoryState,
+    /// sequence of memory accesses
+    pub memory_accesses: Vec<MemOperation>,
+    /// final register memory state
+    pub register_memory: RegisterMemoryState<F>,
+}
+
+pub enum ExecMode {
+    Fast,
+    Trace,
+}
+
+/// Execute a Powdr/RISCV assembly source.
+///
+/// Generic argument F is just used by the powdr_parser, before everything is
+/// converted to i64, so it is important to the execution itself.
+pub fn execute<F: FieldElement>(
+    asm: &AnalysisASMFile,
+    fixed: Option<FixedColumns<F>>,
+    initial_memory: MemoryState,
+    inputs: &Callback<F>,
+    bootloader_inputs: &[F],
+    mode: ExecMode,
+    profiling: Option<ProfilerOptions>,
+) -> Execution<F> {
+    log::info!("Executing...");
+    execute_ast(
+        asm,
+        fixed,
+        initial_memory,
+        inputs,
+        bootloader_inputs,
+        usize::MAX,
+        mode,
+        profiling,
+    )
+}
+
+/// FIXME: copied from `riscv/runtime.rs` instead of adding dependency.
+/// Helper function for register names used in submachine instruction params.
+fn register_by_idx(idx: usize) -> String {
+    format!("xtra{idx}")
+}
+
 #[allow(clippy::too_many_arguments)]
 pub fn execute_ast<F: FieldElement>(
     program: &AnalysisASMFile,
@@ -2456,7 +2538,7 @@ pub fn execute_ast<F: FieldElement>(
     max_steps_to_execute: usize,
     mode: ExecMode,
     profiling: Option<ProfilerOptions>,
-) -> (ExecutionTrace<F>, MemoryState, RegisterMemoryState<F>) {
+) -> Execution<F> {
     let main_machine = get_main_machine(program);
 
     let PreprocessedMain {
@@ -2677,41 +2759,4 @@ pub fn execute_ast<F: FieldElement>(
     e.proc.set_col("main::_operation_id", sink_id.into());
 
     e.proc.finish()
-}
-
-pub enum ExecMode {
-    Fast,
-    Trace,
-}
-
-/// Execute a Powdr/RISCV assembly source.
-///
-/// Generic argument F is just used by the powdr_parser, before everything is
-/// converted to i64, so it is important to the execution itself.
-pub fn execute<F: FieldElement>(
-    asm: &AnalysisASMFile,
-    fixed: Option<Arc<Vec<(String, VariablySizedColumn<F>)>>>,
-    initial_memory: MemoryState,
-    inputs: &Callback<F>,
-    bootloader_inputs: &[F],
-    mode: ExecMode,
-    profiling: Option<ProfilerOptions>,
-) -> (ExecutionTrace<F>, MemoryState, RegisterMemoryState<F>) {
-    log::info!("Executing...");
-    execute_ast(
-        &asm,
-        fixed,
-        initial_memory,
-        inputs,
-        bootloader_inputs,
-        usize::MAX,
-        mode,
-        profiling,
-    )
-}
-
-/// FIXME: copied from `riscv/runtime.rs` instead of adding dependency.
-/// Helper function for register names used in submachine instruction params.
-fn register_by_idx(idx: usize) -> String {
-    format!("xtra{idx}")
 }

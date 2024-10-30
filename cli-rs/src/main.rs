@@ -348,24 +348,19 @@ fn execute<F: FieldElement>(
 
         let start = Instant::now();
 
-        let (trace, _memory_snapshot_update, _register_memory_snapshot) =
-            powdr::riscv_executor::execute::<F>(
-                &program,
-                Some(fixed),
-                powdr::riscv_executor::MemoryState::new(),
-                pipeline.data_callback().unwrap(),
-                &[],
-                exec_mode,
-                profiling,
-            );
-
-        let reg_trace = powdr::riscv::continuations::transposed_trace(&trace);
-        let trace_len = trace.len;
-        let cols = trace.into_cols();
+        let execution = powdr::riscv_executor::execute::<F>(
+            &program,
+            Some(fixed),
+            powdr::riscv_executor::MemoryState::new(),
+            pipeline.data_callback().unwrap(),
+            &[],
+            exec_mode,
+            profiling,
+        );
 
         let duration = start.elapsed();
         log::info!("Executor done in: {:?}", duration);
-        log::info!("Execution trace length: {}", trace_len);
+        log::info!("Execution trace length: {}", execution.main_trace_len);
 
         if witness {
             let pil = pipeline.compute_optimized_pil().unwrap();
@@ -374,25 +369,10 @@ fn execute<F: FieldElement>(
                 .flat_map(|(s, _)| s.array_elements().map(|(name, _)| name))
                 .collect();
 
-            let full_trace: Vec<_> = reg_trace
-                // extend reg trace to a proper length
+            let full_trace: Vec<_> = execution
+                .trace
                 .into_iter()
-                .map(|(name, mut rows)| {
-                    // TODO: figure this out
-                    const MIN_DEGREE: u32 = 1 << 5;
-                    let proper_len =
-                        std::cmp::max(rows.len().next_power_of_two(), MIN_DEGREE as usize);
-                    if rows.len() < proper_len {
-                        rows.extend(
-                            std::iter::repeat(*rows.last().unwrap()).take(proper_len - rows.len()),
-                        );
-                    }
-                    (name, rows)
-                })
-                // join with the rest of the trace columns
-                .chain(cols)
                 .filter(|(name, _)| witness_cols.contains(name))
-                // .map(|(name, rows)| (name, rows.into_iter().collect::<Vec<_>>()))
                 .collect();
 
             let mut keys: Vec<_> = full_trace.iter().map(|(a, _)| a.clone()).collect();

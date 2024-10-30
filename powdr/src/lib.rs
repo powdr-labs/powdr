@@ -233,7 +233,7 @@ pub fn run(pipeline: &mut Pipeline<GoldilocksField>) {
 
     let program = pipeline.compute_analyzed_asm().unwrap().clone();
     let initial_memory = riscv::continuations::load_initial_memory(&program);
-    let (trace, _mem, _reg_mem) = riscv_executor::execute_ast(
+    let execution = riscv_executor::execute_ast(
         &program,
         None,
         initial_memory,
@@ -246,7 +246,7 @@ pub fn run(pipeline: &mut Pipeline<GoldilocksField>) {
 
     let duration = start.elapsed();
     println!("Fast executor took: {duration:?}");
-    println!("Trace length: {}", trace.len);
+    println!("Trace length: {}", execution.main_trace_len);
 }
 
 pub fn prove(pipeline: &mut Pipeline<GoldilocksField>) {

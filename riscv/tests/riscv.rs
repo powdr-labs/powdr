@@ -607,6 +607,7 @@ fn profiler_sanity_check() {
     };
     powdr_riscv_executor::execute_ast(
         &analyzed,
+        None,
         Default::default(),
         pipeline.data_callback().unwrap(),
         &[],
