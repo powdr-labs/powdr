@@ -20,7 +20,7 @@ env:
 
 jobs:
   build:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: warp-ubuntu-latest-x64-8x
 
     steps:
     - uses: actions/checkout@v4
