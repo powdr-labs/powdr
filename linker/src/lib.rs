@@ -240,7 +240,7 @@ mod test {
 
     use pretty_assertions::assert_eq;
 
-    use crate::link;
+    use crate::{link, MAX_DEGREE_LOG, MIN_DEGREE_LOG};
 
     fn parse_analyze_and_compile_file<T: FieldElement>(file: &str) -> PILGraph {
         let contents = fs::read_to_string(file).unwrap();
@@ -304,9 +304,12 @@ namespace main__rom(4 + 4);
 
     #[test]
     fn compile_really_empty_vm() {
-        let expectation = r#"namespace main(0);
-"#
-        .to_string();
+        let expectation = format!(
+            r#"namespace main({}..{});
+"#,
+            1 << MIN_DEGREE_LOG,
+            1 << *MAX_DEGREE_LOG
+        );
 
         let graph = parse_analyze_and_compile::<GoldilocksField>("");
         let pil = link(graph).unwrap();

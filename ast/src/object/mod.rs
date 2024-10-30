@@ -48,7 +48,7 @@ pub struct PILGraph {
     pub statements: BTreeMap<AbsoluteSymbolPath, Vec<PilStatement>>,
 }
 
-#[derive(Clone, Default)]
+#[derive(Default, Clone)]
 pub struct Object {
     pub degree: MachineDegree,
     /// the pil identities for this machine

@@ -14,8 +14,8 @@ machine Main with degree: N {
     col fixed STEP(i) { i };
 
     Byte2 byte2;
-    Memory memory(byte2);
-    Child sub(memory);
+    Memory memory(byte2, 2 * N, 2 * N);
+    Child sub(memory, N, N);
 
     instr mload X -> Y link ~> Y = memory.mload(X, STEP);
     instr mstore X, Y -> link ~> memory.mstore(X, STEP, Y);
@@ -73,7 +73,7 @@ machine Main with degree: N {
     }
 }
 
-machine Child(mem: Memory) with degree: N {
+machine Child(mem: Memory) {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
@@ -81,7 +81,7 @@ machine Child(mem: Memory) with degree: N {
     reg A;
     reg B;
 
-    GrandChild sub(mem);
+    GrandChild sub(mem, N, N);
 
     instr mload X, Y -> Z link ~> Z = mem.mload(X, Y);
     instr mstore X, Y, Z -> link ~> mem.mstore(X, Y, Z);
@@ -110,7 +110,7 @@ machine Child(mem: Memory) with degree: N {
     }
 }
 
-machine GrandChild(mem: Memory) with degree: N {
+machine GrandChild(mem: Memory) {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
