@@ -19,12 +19,6 @@ pub trait ReferencedSymbols {
     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_>;
 }
 
-// TODO strategy: We start with entry points. Entry points have concrete types.
-// Then we iteratively handle all symbols. For trait functions we use the 'solved traits' from Analyzed.
-// If we encounter a trait impl function, we need to add (and traverse) the full impl, also the functions that
-// are unused. If we handle a generic function, we always have specific types, so we substitute all type vars in the results.
-// this means the queue of symbols to handle is always a symbol and specific type args.
-
 #[derive(Clone, Hash, Ord, PartialOrd, Eq, PartialEq)]
 pub struct SymbolReference<'a> {
     pub name: Cow<'a, str>,

@@ -59,9 +59,15 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
             .then_some(SymbolReference::from("std::prelude::set_hint"));
             // TODO substitute type args in what is returned here?
             if let Some(FunctionValueDefinition::TraitFunction(..)) = value {
+                let type_args = n.type_args.unwrap();
+                // If this is not be concrete at some point in the future,
+                // we need to substitute type variables while traversing the dependency graph.
+                // Currently, when we encounter a generic function, we just ignore the type arguments.
+                // This works well because we do not have bounds for user-defined traits yet.
+                assert!(type_args.iter().all(|t| t.is_concrete_type()));
                 let impl_index = pil_file
                     .solved_impls
-                    .resolve_trait_impl_index(&n.name, n.type_args.unwrap());
+                    .resolve_trait_impl_index(&n.name, type_args);
                 impls_to_retain.insert(impl_index);
                 Box::new(pil_file.trait_impls[impl_index].symbols())
             } else {
@@ -87,12 +93,6 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
             panic!("Symbol not found: {}", n.name);
         };
         for s in symbols {
-            if let Some(ta) = s.type_args {
-                assert!(
-                    ta.iter().all(|t| t.is_concrete_type()),
-                    "Referenced symbol should have concrete type arguments. Forgot to substitute?"
-                );
-            }
             if symbols_seen.insert(s.clone()) {
                 to_process.push(s);
             }
