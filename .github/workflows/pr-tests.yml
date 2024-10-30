@@ -60,6 +60,8 @@ jobs:
       run: cargo fmt --all --check --verbose
     - name: Build
       run: cargo build --all-targets --all --all-features --profile pr-tests --verbose
+      env:
+        RUSTC_LOG: rustc_incremental=info
     ###############################################################################
 
     - uses: taiki-e/install-action@nextest
