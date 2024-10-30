@@ -50,13 +50,13 @@ mod test {
 
         // For a list [a, b] of length two, the fingerprint is a * x + b
         assert_fingerprint_equal([123, 456], 0, 456);
-        assert_fingerprint_equal([123, 456], 1, 579);
-        assert_fingerprint_equal([123, 456], 2, 702);
-        assert_fingerprint_equal([123, 456], -1, 333);
+        assert_fingerprint_equal([123, 456], 1, 123 + 456);
+        assert_fingerprint_equal([123, 456], 2, 123 * 2 + 456);
+        assert_fingerprint_equal([123, 456], -1, -123 + 456);
 
         // For a list [a, b, c] of length three, the fingerprint is a * x**2 + b * x + c
         assert_fingerprint_equal([123, 456, 789], 0, 789);
-        assert_fingerprint_equal([123, 456, 789], 1, 1368);
+        assert_fingerprint_equal([123, 456, 789], 1, 123 + 456 + 789);
         assert_fingerprint_equal([123, 456, 789], 2, 123 * 4 + 456 * 2 + 789);
     };
 }
