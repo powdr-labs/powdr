@@ -38,7 +38,7 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
         output_addr_high[0], output_addr_low[0],
         time_step ->;
 
-    let latch: col =  |_| 1;
+    let latch = 1;
     let operation_id;
 
     let time_step;
