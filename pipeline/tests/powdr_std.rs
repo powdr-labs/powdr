@@ -441,6 +441,16 @@ fn fp4() {
 }
 
 #[test]
+fn fingerprint() {
+    let analyzed = std_analyzed::<GoldilocksField>();
+    evaluate_function(
+        &analyzed,
+        "std::protocols::fingerprint::test::test_fingerprint",
+        vec![],
+    );
+}
+
+#[test]
 fn sort() {
     let test_inputs = vec![
         vec![],
