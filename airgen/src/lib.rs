@@ -188,17 +188,17 @@ fn utility_functions(asm_file: AnalysisASMFile) -> BTreeMap<AbsoluteSymbolPath, 
                     .filter(|s| match s {
                         PilStatement::EnumDeclaration(..)
                         | PilStatement::StructDeclaration(..)
-                        | PilStatement::LetStatement(..) => true,
-                        PilStatement::Include(..) => false,
-                        PilStatement::Namespace(..) => false,
-                        PilStatement::PolynomialDefinition(..) => false,
-                        PilStatement::PublicDeclaration(..) => false,
-                        PilStatement::PolynomialConstantDeclaration(..) => false,
-                        PilStatement::PolynomialConstantDefinition(..) => false,
-                        PilStatement::PolynomialCommitDeclaration(..) => false,
-                        PilStatement::TraitImplementation(..) => false,
-                        PilStatement::TraitDeclaration(..) => false,
-                        PilStatement::Expression(..) => false,
+                        | PilStatement::LetStatement(..)
+                        | PilStatement::TraitImplementation(..)
+                        | PilStatement::TraitDeclaration(..) => true,
+                        PilStatement::Include(..)
+                        | PilStatement::Namespace(..)
+                        | PilStatement::PolynomialDefinition(..)
+                        | PilStatement::PublicDeclaration(..)
+                        | PilStatement::PolynomialConstantDeclaration(..)
+                        | PilStatement::PolynomialConstantDefinition(..)
+                        | PilStatement::PolynomialCommitDeclaration(..)
+                        | PilStatement::Expression(..) => unreachable!("Invalid in asm"),
                     })
                     .collect(),
             )
