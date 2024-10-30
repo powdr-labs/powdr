@@ -616,35 +616,31 @@ macro_rules! impl_source_reference {
     // Version for types with generic parameter
     ($enum:ident<$generic:ident>, $($variant:ident),*) => {
         impl<$generic> SourceReference for $enum<$generic> {
-            fn source_reference(&self) -> &SourceRef {
-                match self {
-                    $( $enum::$variant(src, ..) => src, )*
-                }
-            }
-
-            fn source_reference_mut(&mut self) -> &mut SourceRef {
-                match self {
-                    $( $enum::$variant(src, ..) => src, )*
-                }
-            }
+            impl_source_reference_inner!($enum, $($variant),*);
         }
     };
     // Version for types without generic parameter
     ($enum:ident, $($variant:ident),*) => {
         impl SourceReference for $enum {
-            fn source_reference(&self) -> &SourceRef {
-                match self {
-                    $( $enum::$variant(src, ..) => src, )*
-                }
-            }
-
-            fn source_reference_mut(&mut self) -> &mut SourceRef {
-                match self {
-                    $( $enum::$variant(src, ..) => src, )*
-                }
-            }
+            impl_source_reference_inner!($enum, $($variant),*);
         }
     };
+}
+
+macro_rules! impl_source_reference_inner {
+    ($enum:ident, $($variant:ident),*) => {
+        fn source_reference(&self) -> &SourceRef {
+            match self {
+                $( $enum::$variant(src, ..) => src, )*
+            }
+        }
+
+        fn source_reference_mut(&mut self) -> &mut SourceRef {
+            match self {
+                $( $enum::$variant(src, ..) => src, )*
+            }
+        }
+    }
 }
 
 impl_source_reference!(
