@@ -341,6 +341,13 @@ impl<F: FieldElement> ExecutionTrace<F> {
             "main::instr__loop",
             "main::instr_return",
             "main::instr_fail",
+            // TODO: get these from the runtime?
+            "main::instr_affine_256",
+            "main::instr_ec_add",
+            "main::instr_ec_double",
+            "main::instr_mod_256",
+            "main::instr_keccakf",
+            "main::instr_poseidon_gl",
         ]
         .iter()
         .map(|n| (n.to_string(), vec![f0, f0]))
@@ -467,8 +474,8 @@ mod builder {
     pub struct TraceBuilder<'b, F: FieldElement> {
         trace: ExecutionTrace<F>,
         pub submachines: HashMap<String, Box<dyn Submachine<F>>>,
-        pub regs_machine: MemoryMachine,
-        pub memory_machine: MemoryMachine,
+        pub regs_machine: MemoryMachine<F>,
+        pub memory_machine: MemoryMachine<F>,
 
         /// Maximum rows we can run before we stop the execution.
         max_rows: usize,
@@ -1220,7 +1227,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let addr = args[0].u();
                 let val = args[1];
                 self.proc.set_reg_mem(addr, val);
-                reg_write!(0, addr, val.u(), 3);
+                reg_write!(0, addr, val, 3);
 
                 tmp_y = val;
 
@@ -1238,7 +1245,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "get_reg" => {
                 let addr = args[0].u();
                 let val = self.proc.get_reg_mem(addr);
-                reg_read!(0, addr, val.u(), 0);
+                reg_read!(0, addr, val, 0);
 
                 //self.proc.set_reg("Y", addr);
                 //self.proc.set_reg("X", val);
@@ -1250,7 +1257,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "affine" => {
                 let read_reg = args[0].u();
                 let val1 = self.proc.get_reg_mem(read_reg);
-                reg_read!(0, read_reg, val1.u(), 0);
+                reg_read!(0, read_reg, val1, 0);
                 let write_reg = args[1].u();
                 let factor = args[2];
                 let offset = args[3];
@@ -1258,7 +1265,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let val3 = val1.mul(&factor).add(&offset);
 
                 self.proc.set_reg_mem(write_reg, val3);
-                reg_write!(1, write_reg, val3.u(), 3);
+                reg_write!(1, write_reg, val3, 3);
 
                 tmp1_col = val1;
                 tmp3_col = val3;
@@ -1275,13 +1282,13 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
                 let addr1 = self.proc.get_reg_mem(read_reg1);
-                reg_read!(0, read_reg1, addr1.u(), 0);
+                reg_read!(0, read_reg1, addr1, 0);
                 let addr2 = self.proc.get_reg_mem(read_reg2);
-                reg_read!(1, read_reg2, addr2.u(), 1);
+                reg_read!(1, read_reg2, addr2, 1);
                 let offset = args[2].bin();
                 let read_reg3 = args[3].u();
                 let value = self.proc.get_reg_mem(read_reg3);
-                reg_read!(2, read_reg3, value.u(), 2);
+                reg_read!(2, read_reg3, value, 2);
 
                 let addr = addr1.bin() - addr2.bin() + offset;
                 let addr = addr as u32;
@@ -1299,7 +1306,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 self.proc
                     .memory_machine
-                    .write(self.step + 3, addr, value.u(), 1);
+                    .write(self.step + 3, addr, value, 1);
 
                 tmp1_col = addr1;
                 tmp2_col = addr2;
@@ -1322,7 +1329,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "mload" => {
                 let read_reg = args[0].u();
                 let addr1 = self.proc.get_reg_mem(read_reg);
-                reg_read!(0, read_reg, addr1.u(), 0);
+                reg_read!(0, read_reg, addr1, 0);
                 let offset = args[1].bin();
                 let write_addr1 = args[2].u();
                 let write_addr2 = args[3].u();
@@ -1333,9 +1340,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let rem = addr % 4;
 
                 self.proc.set_reg_mem(write_addr1, val.into());
-                reg_write!(2, write_addr1, val, 3);
+                reg_write!(2, write_addr1, val.into(), 3);
                 self.proc.set_reg_mem(write_addr2, rem.into());
-                reg_write!(3, write_addr2, rem as u32, 4);
+                reg_write!(3, write_addr2, rem.into(), 4);
 
                 tmp1_col = addr1;
                 tmp3_col = Elem::from_u32_as_fe(val);
@@ -1349,9 +1356,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 tmp_x_b4 = Elem::from_u32_as_fe(b4.into());
                 tmp_wrap_bit = Elem::from_u32_as_fe(((v as u64 >> 32) & 1) as u32);
 
-                self.proc
-                    .memory_machine
-                    .read(self.step + 1, addr as u32 & 0xfffffffc, val, 0);
+                self.proc.memory_machine.read(
+                    self.step + 1,
+                    addr as u32 & 0xfffffffc,
+                    val.into(),
+                    0,
+                );
 
                 //self.proc.set_reg("X", read_reg);
                 //self.proc.set_reg("Y", offset);
@@ -1363,7 +1373,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             // TODO
             "load_bootloader_input" => {
                 let addr = self.proc.get_reg_mem(args[0].u());
-                reg_read!(0, args[0].u(), addr.u(), 0);
+                reg_read!(0, args[0].u(), addr, 0);
                 let write_addr = args[1].u();
                 let factor = args[2].bin();
                 let offset = args[3].bin();
@@ -1372,16 +1382,16 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let val = self.bootloader_inputs[addr as usize];
 
                 self.proc.set_reg_mem(write_addr, val);
-                reg_write!(2, write_addr, val.u(), 3);
+                reg_write!(2, write_addr, val, 3);
 
                 Vec::new()
             }
             // TODO
             "assert_bootloader_input" => {
                 let addr = self.proc.get_reg_mem(args[0].u());
-                reg_read!(0, args[0].u(), addr.u(), 0);
+                reg_read!(0, args[0].u(), addr, 0);
                 let val = self.proc.get_reg_mem(args[1].u());
-                reg_read!(1, args[1].u(), val.u(), 1);
+                reg_read!(1, args[1].u(), val, 1);
                 let factor = args[2].bin();
                 let offset = args[3].bin();
 
@@ -1396,7 +1406,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let write_reg = args[0].u();
                 let label = args[1];
                 self.proc.set_reg_mem(write_reg, label);
-                reg_write!(0, write_reg, label.u(), 3);
+                reg_write!(0, write_reg, label, 3);
 
                 tmp1_col = label;
 
@@ -1415,7 +1425,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let write_reg = args[1].u();
 
                 self.proc.set_reg_mem(write_reg, next_pc.into());
-                reg_write!(0, write_reg, next_pc, 3);
+                reg_write!(0, write_reg, next_pc.into(), 3);
 
                 self.proc.set_pc(label);
 
@@ -1430,13 +1440,13 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "jump_dyn" => {
                 let read_reg = args[0].u();
                 let addr = self.proc.get_reg_mem(read_reg);
-                reg_read!(0, read_reg, addr.u(), 0);
+                reg_read!(0, read_reg, addr, 0);
                 let next_pc = self.proc.get_pc().u() + 1;
                 let write_reg = args[1].u();
 
                 self.proc.set_reg_mem(write_reg, next_pc.into());
                 // TODO: change instruction step?
-                reg_write!(0, write_reg, next_pc, 3);
+                reg_write!(0, write_reg, next_pc.into(), 3);
 
                 self.proc.set_pc(addr);
 
@@ -1459,9 +1469,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
                 let val1 = self.proc.get_reg_mem(read_reg1);
-                reg_read!(0, read_reg1, val1.u(), 0);
+                reg_read!(0, read_reg1, val1, 0);
                 let val2 = self.proc.get_reg_mem(read_reg2);
-                reg_read!(1, read_reg2, val2.u(), 1);
+                reg_read!(1, read_reg2, val2, 1);
 
                 let val: Elem<F> = val1.sub(&val2);
                 let label = args[2];
@@ -1490,9 +1500,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
                 let val1 = self.proc.get_reg_mem(read_reg1);
-                reg_read!(0, read_reg1, val1.u(), 0);
+                reg_read!(0, read_reg1, val1, 0);
                 let val2 = self.proc.get_reg_mem(read_reg2);
-                reg_read!(1, read_reg2, val2.u(), 1);
+                reg_read!(1, read_reg2, val2, 1);
                 let offset = args[2];
                 let val: Elem<F> = val1.sub(&val2).sub(&offset);
                 let label = args[3];
@@ -1523,9 +1533,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
                 let val1 = self.proc.get_reg_mem(read_reg1);
-                reg_read!(0, read_reg1, val1.u(), 0);
+                reg_read!(0, read_reg1, val1, 0);
                 let val2 = self.proc.get_reg_mem(read_reg2);
-                reg_read!(1, read_reg2, val2.u(), 1);
+                reg_read!(1, read_reg2, val2, 1);
                 let offset = args[2];
                 let cond = args[3];
                 let val: Elem<F> = val1.sub(&val2).add(&offset);
@@ -1555,9 +1565,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 // We can't call u() because input registers may have come from
                 // a call to `to_signed`, which stores a signed integer.
                 let val1 = self.proc.get_reg_mem(read_reg1);
-                reg_read!(0, read_reg1, val1.bin() as u32, 0);
+                reg_read!(0, read_reg1, val1, 0);
                 let val2 = self.proc.get_reg_mem(read_reg2);
-                reg_read!(1, read_reg2, val2.bin() as u32, 1);
+                reg_read!(1, read_reg2, val2, 1);
                 let offset = args[2];
                 let val: Elem<F> = val1.sub(&val2).sub(&offset);
                 let label = args[3];
@@ -1598,9 +1608,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
                 let val1 = self.proc.get_reg_mem(read_reg1);
-                reg_read!(0, read_reg1, val1.u(), 0);
+                reg_read!(0, read_reg1, val1, 0);
                 let val2 = self.proc.get_reg_mem(read_reg2);
-                reg_read!(1, read_reg2, val2.u(), 1);
+                reg_read!(1, read_reg2, val2, 1);
 
                 let offset = args[2];
                 let write_reg = args[3].u();
@@ -1608,7 +1618,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 let r = if val.bin() > 0 { 1 } else { 0 };
                 self.proc.set_reg_mem(write_reg, r.into());
-                reg_write!(2, write_reg, r, 3);
+                reg_write!(2, write_reg, r.into(), 3);
 
                 tmp1_col = val1;
                 tmp2_col = val2;
@@ -1634,12 +1644,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "is_equal_zero" => {
                 let read_reg = args[0].u();
                 let val = self.proc.get_reg_mem(read_reg);
-                reg_read!(0, read_reg, val.u(), 0);
+                reg_read!(0, read_reg, val, 0);
                 let write_reg = args[1].u();
 
                 let r = if val.is_zero() { 1 } else { 0 };
                 self.proc.set_reg_mem(write_reg, r.into());
-                reg_write!(2, write_reg, r, 3);
+                reg_write!(2, write_reg, r.into(), 3);
 
                 tmp1_col = val;
                 tmp3_col = Elem::from_u32_as_fe(r);
@@ -1659,15 +1669,15 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
                 let val1 = self.proc.get_reg_mem(read_reg1);
-                reg_read!(0, read_reg1, val1.u(), 0);
+                reg_read!(0, read_reg1, val1, 0);
                 let val2 = self.proc.get_reg_mem(read_reg2);
-                reg_read!(1, read_reg2, val2.u(), 1);
+                reg_read!(1, read_reg2, val2, 1);
                 let write_reg = args[2].u();
                 let val: Elem<F> = (val1.bin() - val2.bin()).into();
 
                 let r = if !val.is_zero() { 1 } else { 0 };
                 self.proc.set_reg_mem(write_reg, r.into());
-                reg_write!(2, write_reg, r, 3);
+                reg_write!(2, write_reg, r.into(), 3);
 
                 tmp1_col = val1;
                 tmp2_col = val2;
@@ -1688,9 +1698,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
                 let val1 = self.proc.get_reg_mem(read_reg1);
-                reg_read!(0, read_reg1, val1.u(), 0);
+                reg_read!(0, read_reg1, val1, 0);
                 let val2 = self.proc.get_reg_mem(read_reg2);
-                reg_read!(1, read_reg2, val2.u(), 1);
+                reg_read!(1, read_reg2, val2, 1);
                 let offset = args[2];
                 let write_reg = args[3].u();
 
@@ -1699,7 +1709,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 // higher bits
                 let r = val.bin() as u32;
                 self.proc.set_reg_mem(write_reg, r.into());
-                reg_write!(2, write_reg, r, 3);
+                reg_write!(2, write_reg, r.into(), 3);
 
                 tmp1_col = val1;
                 tmp2_col = val2;
@@ -1727,7 +1737,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "wrap16" => {
                 let read_reg = args[0].u();
                 let val = self.proc.get_reg_mem(read_reg);
-                reg_read!(0, read_reg, val.u(), 0);
+                reg_read!(0, read_reg, val, 0);
                 let factor = args[1].bin();
                 let write_reg = args[2].u();
                 let val_offset: Elem<F> = (val.bin() * factor).into();
@@ -1737,7 +1747,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let r = val_offset.bin() as u32;
                 self.proc.set_reg_mem(write_reg, r.into());
                 // todo: change instruction step?
-                reg_write!(3, write_reg, r, 3);
+                reg_write!(3, write_reg, r.into(), 3);
 
                 tmp1_col = val;
                 tmp3_col = Elem::from_u32_as_fe(r);
@@ -1764,9 +1774,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
                 let val1 = self.proc.get_reg_mem(read_reg1);
-                reg_read!(0, read_reg1, val1.u(), 0);
+                reg_read!(0, read_reg1, val1, 0);
                 let val2 = self.proc.get_reg_mem(read_reg2);
-                reg_read!(1, read_reg2, val2.u(), 1);
+                reg_read!(1, read_reg2, val2, 1);
                 let offset = args[2];
                 let write_reg = args[3].u();
                 let val = val1.sub(&val2).add(&offset);
@@ -1774,7 +1784,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let r_i64: i64 = val.bin() + 0x100000000;
                 let r = r_i64 as u32;
                 self.proc.set_reg_mem(write_reg, r.into());
-                reg_write!(2, write_reg, r, 3);
+                reg_write!(2, write_reg, r.into(), 3);
 
                 tmp1_col = val1;
                 tmp2_col = val2;
@@ -1801,7 +1811,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "sign_extend_byte" => {
                 let read_reg = args[0].u();
                 let val = self.proc.get_reg_mem(read_reg);
-                reg_read!(0, read_reg, val.u(), 0);
+                reg_read!(0, read_reg, val, 0);
                 let write_reg = args[1].u();
 
                 //let r = val.u() as i8 as u32;
@@ -1811,8 +1821,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let byte_val = (val.u() as u8) as i8;
                 let extended_val = byte_val as i32 as u32;
                 self.proc.set_reg_mem(write_reg, extended_val.into());
-                // todo:change instruction step?
-                reg_write!(3, write_reg, extended_val, 3);
+                // TODO: change instruction step?
+                reg_write!(3, write_reg, extended_val.into(), 3);
 
                 tmp1_col = val;
                 //tmp3_col = Elem::from_u32_as_fe(r);
@@ -1843,7 +1853,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "sign_extend_16_bits" => {
                 let read_reg = args[0].u();
                 let val = self.proc.get_reg_mem(read_reg);
-                reg_read!(0, read_reg, val.u(), 0);
+                reg_read!(0, read_reg, val, 0);
                 let write_reg = args[1].u();
 
                 //let r = val.u() as i16 as u32;
@@ -1858,7 +1868,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 };
                 self.proc.set_reg_mem(write_reg, extended_val.into());
                 // todo: change instruction step
-                reg_write!(3, write_reg, extended_val, 3);
+                reg_write!(3, write_reg, extended_val.into(), 3);
 
                 tmp1_col = val;
                 //tmp3_col = Elem::from_u32_as_fe(r);
@@ -1887,12 +1897,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "to_signed" => {
                 let read_reg = args[0].u();
                 let val = self.proc.get_reg_mem(read_reg);
-                reg_read!(0, read_reg, val.u(), 0);
+                reg_read!(0, read_reg, val, 0);
                 let write_reg = args[1].u();
                 let r = val.u() as i32;
 
                 self.proc.set_reg_mem(write_reg, r.into());
-                reg_write!(1, write_reg, val.u(), 3);
+                reg_write!(1, write_reg, val, 3);
 
                 tmp1_col = val;
                 tmp3_col = Elem::from_i64_as_fe(r.into());
@@ -1924,9 +1934,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
                 let val1 = self.proc.get_reg_mem(read_reg1);
-                reg_read!(0, read_reg1, val1.u(), 0);
+                reg_read!(0, read_reg1, val1, 0);
                 let val2 = self.proc.get_reg_mem(read_reg2);
-                reg_read!(1, read_reg2, val2.u(), 1);
+                reg_read!(1, read_reg2, val2, 1);
                 let write_reg1 = args[2].u();
                 let write_reg2 = args[3].u();
 
@@ -1943,9 +1953,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 }
 
                 self.proc.set_reg_mem(write_reg1, div.into());
-                reg_write!(2, write_reg1, div, 3);
+                reg_write!(2, write_reg1, div.into(), 3);
                 self.proc.set_reg_mem(write_reg2, rem.into());
-                reg_write!(3, write_reg2, rem, 4);
+                reg_write!(3, write_reg2, rem.into(), 4);
 
                 tmp1_col = val1;
                 tmp2_col = val2;
@@ -1990,9 +2000,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
                 let val1 = self.proc.get_reg_mem(read_reg1);
-                reg_read!(0, read_reg1, val1.u(), 0);
+                reg_read!(0, read_reg1, val1, 0);
                 let val2 = self.proc.get_reg_mem(read_reg2);
-                reg_read!(1, read_reg2, val2.u(), 1);
+                reg_read!(1, read_reg2, val2, 1);
                 let write_reg1 = args[2].u();
                 let write_reg2 = args[3].u();
 
@@ -2001,9 +2011,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let hi = (r >> 32) as u32;
 
                 self.proc.set_reg_mem(write_reg1, lo.into());
-                reg_write!(2, write_reg1, lo, 3);
+                reg_write!(2, write_reg1, lo.into(), 3);
                 self.proc.set_reg_mem(write_reg2, hi.into());
-                reg_write!(3, write_reg2, hi, 4);
+                reg_write!(3, write_reg2, hi.into(), 4);
 
                 tmp1_col = val1;
                 tmp2_col = val2;
@@ -2030,9 +2040,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
                 let val1 = self.proc.get_reg_mem(read_reg1);
-                reg_read!(0, read_reg1, val1.u(), 0);
+                reg_read!(0, read_reg1, val1, 0);
                 let val2 = self.proc.get_reg_mem(read_reg2);
-                reg_read!(1, read_reg2, val2.u(), 1);
+                reg_read!(1, read_reg2, val2, 1);
                 let offset = args[2].bin();
                 let write_reg = args[3].u();
                 let val2_offset: Elem<F> = (val2.bin() + offset).into();
@@ -2052,7 +2062,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 self.proc.set_reg_mem(write_reg, r.into());
                 // TODO: change instruction STEP?
-                reg_write!(3, write_reg, r, 3);
+                reg_write!(3, write_reg, r.into(), 3);
 
                 tmp1_col = val1;
                 tmp2_col = val2;
@@ -2068,9 +2078,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
                 let val1 = self.proc.get_reg_mem(read_reg1);
-                reg_read!(0, read_reg1, val1.u(), 0);
+                reg_read!(0, read_reg1, val1, 0);
                 let val2 = self.proc.get_reg_mem(read_reg2);
-                reg_read!(1, read_reg2, val2.u(), 1);
+                reg_read!(1, read_reg2, val2, 1);
                 let offset = args[2].bin();
                 let write_reg = args[3].u();
                 let val2_offset: Elem<F> = (val2.bin() + offset).into();
@@ -2083,7 +2093,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 self.proc.set_reg_mem(write_reg, r.into());
                 // TODO: change instruction STEP?
-                reg_write!(3, write_reg, r, 3);
+                reg_write!(3, write_reg, r.into(), 3);
 
                 tmp1_col = val1;
                 tmp2_col = val2;
@@ -2105,7 +2115,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "split_gl" => {
                 let read_reg = args[0].u();
                 let val1 = self.proc.get_reg_mem(read_reg);
-                reg_read!(0, read_reg, val1.u(), 0);
+                reg_read!(0, read_reg, val1, 0);
                 let write_reg1 = args[1].u();
                 let write_reg2 = args[2].u();
 
@@ -2117,9 +2127,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let hi = (value >> 32) as u32;
 
                 self.proc.set_reg_mem(write_reg1, lo.into());
-                reg_write!(2, write_reg1, lo, 3);
+                reg_write!(2, write_reg1, lo.into(), 3);
                 self.proc.set_reg_mem(write_reg2, hi.into());
-                reg_write!(3, write_reg2, hi, 4);
+                reg_write!(3, write_reg2, hi.into(), 4);
 
                 tmp1_col = val1;
                 tmp3_col = Elem::from_u32_as_fe(lo);

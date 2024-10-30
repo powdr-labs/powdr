@@ -2,23 +2,23 @@ use powdr_number::FieldElement;
 
 use crate::Elem;
 
-#[derive(Debug, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Debug, Eq, PartialEq)]
 /// Order of fields matter: will be ordered by addr then step.
-struct Op {
+struct Op<F: FieldElement> {
     addr: u32,
     step: u32,
-    value: u32,
+    value: Elem<F>,
     write: u32,
     selector_idx: u32,
 }
 
-pub struct MemoryMachine {
+pub struct MemoryMachine<F: FieldElement> {
     name: String,
-    ops: Vec<Op>,
+    ops: Vec<Op<F>>,
     selector_count: usize,
 }
 
-impl MemoryMachine {
+impl<F: FieldElement> MemoryMachine<F> {
     pub fn new(name: &str) -> Self {
         MemoryMachine {
             name: name.to_string(),
@@ -27,7 +27,7 @@ impl MemoryMachine {
         }
     }
 
-    pub fn write(&mut self, step: u32, addr: u32, val: u32, selector_idx: u32) {
+    pub fn write(&mut self, step: u32, addr: u32, val: Elem<F>, selector_idx: u32) {
         self.selector_count = std::cmp::max(self.selector_count, selector_idx as usize + 1);
         self.ops.push(Op {
             addr,
@@ -38,7 +38,7 @@ impl MemoryMachine {
         });
     }
 
-    pub fn read(&mut self, step: u32, addr: u32, val: u32, selector_idx: u32) {
+    pub fn read(&mut self, step: u32, addr: u32, val: Elem<F>, selector_idx: u32) {
         self.selector_count = std::cmp::max(self.selector_count, selector_idx as usize + 1);
         self.ops.push(Op {
             addr,
@@ -53,7 +53,7 @@ impl MemoryMachine {
         self.ops.len() as u32
     }
 
-    pub fn take_cols<F: FieldElement>(mut self, len: u32) -> Vec<(String, Vec<Elem<F>>)> {
+    pub fn take_cols(mut self, len: u32) -> Vec<(String, Vec<Elem<F>>)> {
         assert!(
             len >= self.len(),
             "trying to take less rows than memory ops"
@@ -112,7 +112,7 @@ impl MemoryMachine {
         }
 
         // sort ops by (addr, step)
-        self.ops.sort();
+        self.ops.sort_by_key(|op| (op.addr, op.step));
 
         // generate rows from ops
         for (idx, op) in self.ops.iter().enumerate() {
@@ -137,7 +137,7 @@ impl MemoryMachine {
             cols[IsWrite as usize].1.push(op.write.into());
             cols[Step as usize].1.push(op.step.into());
             cols[Addr as usize].1.push(op.addr.into());
-            cols[Value as usize].1.push(op.value.into());
+            cols[Value as usize].1.push(op.value);
 
             for i in 0..self.selector_count as u32 {
                 cols[Selectors as usize + i as usize]
@@ -153,13 +153,15 @@ impl MemoryMachine {
         // extend rows if needed
         let last_step = self.ops.last().map(|op| op.step).unwrap_or(0);
         let last_addr = self.ops.last().map(|op| op.addr).unwrap_or(0);
-        let last_value = self.ops.last().map(|op| op.value).unwrap_or(0);
+        let last_value = self
+            .ops
+            .last()
+            .map(|op| op.value)
+            .unwrap_or(Elem::Field(0.into()));
         if self.len() < len {
             // addr and value are repeated
             cols[Addr as usize].1.resize(len as usize, last_addr.into());
-            cols[Value as usize]
-                .1
-                .resize(len as usize, last_value.into());
+            cols[Value as usize].1.resize(len as usize, last_value);
             // step increases
             cols[Step as usize].1.extend(
                 (last_step + 1..)
