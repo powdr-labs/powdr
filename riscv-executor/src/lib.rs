@@ -1262,13 +1262,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let factor = args[2];
                 let offset = args[3];
 
-                let val3 = val1.mul(&factor).add(&offset);
+                let res = val1.mul(&factor).add(&offset);
 
-                self.proc.set_reg_mem(write_reg, val3);
-                reg_write!(1, write_reg, val3, 3);
+                self.proc.set_reg_mem(write_reg, res);
+                reg_write!(1, write_reg, res, 3);
 
                 tmp1_col = val1;
-                tmp3_col = val3;
 
                 //self.proc.set_reg("X", read_reg);
                 //self.proc.set_reg("Y", write_reg);
