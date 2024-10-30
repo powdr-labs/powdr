@@ -64,9 +64,7 @@ impl<T: Display> Display for Analyzed<T> {
                         if matches!(
                             definition,
                             Some(FunctionValueDefinition::TypeConstructor(_, _))
-                        ) || matches!(
-                            definition,
-                            Some(FunctionValueDefinition::TraitFunction(_, _))
+                                | Some(FunctionValueDefinition::TraitFunction(_, _))
                         ) {
                             // These are printed as part of the enum / trait.
                             continue;
@@ -106,12 +104,18 @@ impl<T: Display> Display for Analyzed<T> {
                                     Some(FunctionValueDefinition::TypeDeclaration(
                                         TypeDeclaration::Struct(struct_declaration),
                                     )) => {
-                                        writeln_indented(f, struct_declaration)?;
+                                        writeln_indented(
+                                            f,
+                                            struct_declaration.to_string_with_name(&name),
+                                        )?;
                                     }
                                     Some(FunctionValueDefinition::TraitDeclaration(
                                         trait_declaration,
                                     )) => {
-                                        writeln_indented(f, trait_declaration)?;
+                                        writeln_indented(
+                                            f,
+                                            trait_declaration.to_string_with_name(&name),
+                                        )?;
                                     }
                                     _ => {
                                         unreachable!("Invalid definition for symbol: {}", name)
@@ -153,6 +157,9 @@ impl<T: Display> Display for Analyzed<T> {
                 }
                 StatementIdentifier::ProverFunction(i) => {
                     writeln_indented(f, format!("{};", &self.prover_functions[*i]))?;
+                }
+                StatementIdentifier::TraitImplementation(i) => {
+                    writeln_indented(f, format!("{}", self.trait_impls[*i]))?;
                 }
             }
         }
@@ -304,35 +311,59 @@ fn format_outer_function(e: &Expression, f: &mut Formatter<'_>) -> Result {
     }
 }
 
-impl<Expr: Display> Display for SelectedExpressions<Expr> {
+impl<T: Display> Display for SelectedExpressions<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
             "{}[{}]",
-            self.selector
-                .as_ref()
-                .map(|s| format!("{s} $ "))
-                .unwrap_or_default(),
+            {
+                // we only print the selector if it is not 1. The comparison is string-based to avoid introducing invasive type bounds on T.
+                let s = self.selector.to_string();
+                match s.as_str() {
+                    "1" => "".to_string(),
+                    s => format!("{s} $ "),
+                }
+            },
             self.expressions.iter().format(", ")
         )
     }
 }
 
-impl<T: Display> Display for Identity<SelectedExpressions<AlgebraicExpression<T>>> {
+impl<T: Display> Display for PolynomialIdentity<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        match self.kind {
-            IdentityKind::Polynomial => {
-                let (left, right) = self.as_polynomial_identity();
-                let right = right
-                    .as_ref()
-                    .map(|r| r.to_string())
-                    .unwrap_or_else(|| "0".into());
+        match &self.expression {
+            AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                left,
+                op: AlgebraicBinaryOperator::Sub,
+                right,
+            }) => {
                 write!(f, "{left} = {right};")
             }
-            IdentityKind::Plookup => write!(f, "{} in {};", self.left, self.right),
-            IdentityKind::Permutation => write!(f, "{} is {};", self.left, self.right),
-            IdentityKind::Connect => write!(f, "{} connect {};", self.left, self.right),
+            e => write!(f, "{e} = 0;"),
         }
+    }
+}
+
+impl<T: Display> Display for LookupIdentity<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{} in {};", self.left, self.right)
+    }
+}
+
+impl<T: Display> Display for PermutationIdentity<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{} is {};", self.left, self.right)
+    }
+}
+
+impl<T: Display> Display for ConnectIdentity<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "[{}] connect [{}];",
+            self.left.iter().format(", "),
+            self.right.iter().format(", ")
+        )
     }
 }
 

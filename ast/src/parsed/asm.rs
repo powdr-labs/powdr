@@ -15,8 +15,8 @@ use serde::{Deserialize, Serialize};
 use crate::parsed::{BinaryOperation, BinaryOperator};
 
 use super::{
-    types::TypeScheme, visitor::Children, EnumDeclaration, EnumVariant, Expression, PilStatement,
-    SourceReference, StructDeclaration, TraitDeclaration,
+    types::TypeScheme, visitor::Children, EnumDeclaration, EnumVariant, Expression, NamedType,
+    PilStatement, SourceReference, StructDeclaration, TraitDeclaration,
 };
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
@@ -88,6 +88,7 @@ pub enum SymbolValueRef<'a> {
     TypeConstructor(&'a EnumVariant<Expression>),
     /// A trait declaration
     TraitDeclaration(&'a TraitDeclaration<Expression>),
+    TraitFunction(&'a NamedType<Expression>),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, derive_more::Display)]

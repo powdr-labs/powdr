@@ -7,8 +7,8 @@ mod data_structures;
 mod interpreter;
 mod jit_compiler;
 
-/// Generates the fixed column values for all fixed columns that are defined
-/// (and not just declared).
+/// Generates the fixed column values for all fixed columns that are defined (and not just declared).
+///
 /// @returns the names (in source order) and the values for the columns.
 /// Arrays of columns are flattened, the name of the `i`th array element
 /// is `name[i]`.
@@ -49,6 +49,18 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, Variabl
     }
 
     fixed_cols
+        .into_iter()
+        .sorted_by_key(|((_, id), _)| *id)
+        .map(|((name, _), values)| (name, values))
+        .collect()
+}
+
+/// Generates the fixed column values only using JIT-compiled code.
+/// Might not return all fixed columns.
+pub fn generate_only_via_jit<T: FieldElement>(
+    analyzed: &Analyzed<T>,
+) -> Vec<(String, VariablySizedColumn<T>)> {
+    jit_compiler::generate_values(analyzed)
         .into_iter()
         .sorted_by_key(|((_, id), _)| *id)
         .map(|((name, _), values)| (name, values))
