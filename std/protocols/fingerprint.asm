@@ -27,8 +27,8 @@ mod test {
     use std::math::fp2::Fp2;
     use std::math::fp2::from_base;
 
-    // Helper function to assert that the fingerprint of a tuple is equal to the expected value
-    // We are working on integers here, wrapping them as Fp2 elements.
+    /// Helper function to assert that the fingerprint of a tuple is equal to the expected value.
+    /// We are working on integers here, wrapping them as Fp2 elements.
     let assert_fingerprint_equal: int[], int, int -> () = |tuple, challenge, expected| {
         let result = fingerprint(tuple, from_base(challenge));
         match result {
