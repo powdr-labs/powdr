@@ -20,7 +20,7 @@ env:
 
 jobs:
   build:
-    runs-on: warp-ubuntu-latest-x64-8x
+    runs-on: warp-ubuntu-2204-x64-8x
 
     steps:
     - uses: actions/checkout@v4
@@ -77,7 +77,7 @@ jobs:
 
   test_quick:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     strategy:
       matrix:
         test:
@@ -116,7 +116,7 @@ jobs:
         POWDR_STD: ${{ github.workspace }}/std/
 
   run_examples:
-    runs-on: warp-ubuntu-latest-x64-4x
+    runs-on: warp-ubuntu-2204-x64-4x
 
     steps:
     - uses: actions/checkout@v4
@@ -140,7 +140,7 @@ jobs:
 
   test_estark_polygon:
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
     - uses: actions/checkout@v4
       with:
@@ -189,7 +189,7 @@ jobs:
         - "7"
         - "8"
     needs: build
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
     - uses: actions/checkout@v4
