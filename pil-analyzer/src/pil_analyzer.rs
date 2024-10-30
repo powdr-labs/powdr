@@ -338,15 +338,6 @@ impl PILAnalyzer {
                             e,
                         })),
                     ) => (type_scheme.clone(), Some(e)),
-                    (
-                        _,
-                        value @ Some(FunctionValueDefinition::TypeDeclaration(
-                            TypeDeclaration::Struct(_),
-                        )),
-                    ) => {
-                        let type_scheme = type_from_definition(symbol, value);
-                        (type_scheme, None)
-                    }
                     (_, value) => {
                         let type_scheme = type_from_definition(symbol, value);
 

@@ -1,9 +1,10 @@
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 use itertools::Itertools;
 use powdr_ast::{
     analyzed::{Expression, PolynomialReference, Reference},
     parsed::{
+        asm::SymbolPath,
         display::format_type_scheme_around_name,
         types::{ArrayType, FunctionType, TupleType, Type, TypeBounds, TypeScheme},
         visitor::ExpressionVisitable,
@@ -267,10 +268,8 @@ impl TypeChecker {
                     }
                     // Store an (uninstantiated) type scheme for symbols with a declared polymorphic type.
                     (None, Some(type_scheme)) => {
-                        let ty = match value {
-                            // TODO: This doesn't work because we never set value for Structs (since they are coming from the StructDeclaration)
-                            Some(Expression::StructExpression(_, _)) => {
-                                let struct_decl = self.struct_declarations.get(name).unwrap();
+                        let ty = match self.struct_declarations.get(name) {
+                            Some(struct_decl) => {
                                 let mapping = struct_decl
                                     .fields
                                     .iter()
@@ -593,8 +592,8 @@ impl TypeChecker {
                 Reference::Poly(PolynomialReference { name, type_args }),
             ) => {
                 let scheme = self.declared_types[name].scheme().clone();
-                let ty =
-                    self.instantiate_type_scheme_with_args(name, type_args, scheme, source_ref)?;
+                let (ty, args) = self.unifier.instantiate_scheme(scheme);
+                self.instantiate_type_scheme_with_args(name, type_args, args, source_ref)?;
                 type_for_reference(&ty)
             }
             Expression::PublicReference(_, _) => Type::Expr,
@@ -789,8 +788,6 @@ impl TypeChecker {
                 };
 
                 let type_decl = self.declared_types[name].clone();
-                println!("type_decl: {type_decl:?}");
-                //let type_scheme = type_decl.scheme();
                 let DeclaredType {
                     ty: TypeDeclaredType::Struct(ref _type, ref fields_types_map),
                     ..
@@ -799,28 +796,35 @@ impl TypeChecker {
                     unreachable!()
                 };
 
-                let ty = self.instantiate_type_scheme_with_args(
+                let scheme = type_decl.scheme();
+                let new_args: BTreeMap<_, _> = scheme
+                    .vars
+                    .vars()
+                    .map(|t| (t, self.unifier.new_type_var()))
+                    .collect();
+
+                self.instantiate_type_scheme_with_args(
                     name,
                     type_args,
-                    type_decl.scheme(),
+                    new_args.values().cloned().collect(),
                     sr,
                 )?;
 
                 for named_expr in fields.iter_mut() {
                     let field_type = fields_types_map.get(&named_expr.name).unwrap();
-                    self.expect_type(field_type, named_expr.body.as_mut())?;
+                    let final_type = match field_type {
+                        Type::TypeVar(name) => new_args.get(name).unwrap().clone(),
+                        _ => field_type.clone(),
+                    };
+                    self.expect_type(&final_type, named_expr.body.as_mut())?;
                 }
 
-                ty
                 // If type_arg is empty, it's also considered None
-                // if type_args.as_ref().map_or(true, |args| args.is_empty()) {
-                //     Type::NamedType(SymbolPath::from_identifier(name.to_string()), None)
-                // } else {
-                //     Type::NamedType(
-                //         SymbolPath::from_identifier(name.to_string()),
-                //         type_args.clone(),
-                //     )
-                // }
+                if new_args.is_empty() {
+                    Type::NamedType(SymbolPath::from_identifier(name.clone()), None)
+                } else {
+                    Type::NamedType(SymbolPath::from_identifier(name.clone()), type_args.clone())
+                }
             }
         })
     }
@@ -829,10 +833,9 @@ impl TypeChecker {
         &mut self,
         name: &mut String,
         type_args: &mut Option<Vec<Type>>,
-        scheme: TypeScheme,
+        args: Vec<Type>,
         source_ref: &mut SourceRef,
-    ) -> Result<Type, Error> {
-        let (ty, args) = self.unifier.instantiate_scheme(scheme);
+    ) -> Result<(), Error> {
         if let Some(requested_type_args) = type_args {
             if requested_type_args.len() != args.len() {
                 return Err(source_ref.with_error(format!(
@@ -850,7 +853,8 @@ impl TypeChecker {
             }
         }
         *type_args = Some(args);
-        Ok(ty)
+
+        Ok(())
     }
 
     /// Returns the type expected at statement level, given the current function context.
