@@ -25,7 +25,7 @@ fn analyze_string(input: &str) -> Analyzed<GoldilocksField> {
 #[test]
 fn new_witness_column() {
     let input = r#"namespace N(16);
-    let even: col = |i| i * 2;
+    let even: col = |i| i * 2_int;
     let new_wit = constr || { let x; x };
     let new_wit_arr = constr || { let x; [x, x] };
     let x;
