@@ -16,7 +16,7 @@ use mktemp::Temp;
 use powdr_ast::{
     analyzed::Analyzed,
     asm_analysis::AnalysisASMFile,
-    object::PILGraph,
+    object::MachineInstanceGraph,
     parsed::{asm::ASMProgram, PILFile},
 };
 use powdr_backend::{Backend, BackendOptions, BackendType, Proof};
@@ -58,7 +58,7 @@ pub struct Artifacts<T: FieldElement> {
     constrained_machine_collection: Option<AnalysisASMFile>,
     /// The airgen graph, i.e. a collection of constrained machines with resolved
     /// links between them.
-    linked_machine_graph: Option<PILGraph>,
+    linked_machine_graph: Option<MachineInstanceGraph>,
     /// A single parsed pil file.
     parsed_pil_file: Option<PILFile>,
     /// The path to a single .pil file.
@@ -805,7 +805,7 @@ impl<T: FieldElement> Pipeline<T> {
             .unwrap())
     }
 
-    pub fn compute_linked_machine_graph(&mut self) -> Result<&PILGraph, Vec<String>> {
+    pub fn compute_linked_machine_graph(&mut self) -> Result<&MachineInstanceGraph, Vec<String>> {
         if self.artifact.linked_machine_graph.is_none() {
             self.artifact.linked_machine_graph = Some({
                 self.compute_constrained_machine_collection()?;
@@ -823,7 +823,7 @@ impl<T: FieldElement> Pipeline<T> {
         Ok(self.artifact.linked_machine_graph.as_ref().unwrap())
     }
 
-    pub fn linked_machine_graph(&self) -> Result<&PILGraph, Vec<String>> {
+    pub fn linked_machine_graph(&self) -> Result<&MachineInstanceGraph, Vec<String>> {
         Ok(self.artifact.linked_machine_graph.as_ref().unwrap())
     }
 
