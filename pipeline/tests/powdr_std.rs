@@ -6,10 +6,9 @@ use powdr_pil_analyzer::evaluator::Value;
 use powdr_pipeline::{
     test_runner::run_tests,
     test_util::{
-        evaluate_function, evaluate_integer_function, execute_test_file, gen_estark_proof,
-        gen_halo2_proof, make_simple_prepared_pipeline, regular_test,
-        regular_test_without_small_field, std_analyzed, test_halo2, test_pilcom, test_plonky3,
-        BackendVariant,
+        evaluate_function, evaluate_integer_function, gen_estark_proof, gen_halo2_proof,
+        make_simple_prepared_pipeline, regular_test, regular_test_without_small_field,
+        std_analyzed, test_halo2, test_pilcom, test_plonky3, BackendVariant,
     },
     Pipeline,
 };
