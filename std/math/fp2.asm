@@ -10,7 +10,7 @@ use std::field::KnownField;
 use std::math::ff::inv_field;
 use std::prover::eval;
 
-/// Corresponding Sage code to test irreduciblity
+/// Corresponding Sage code to test irreducibility
 /// BabyBear = 0x78000001
 /// M31 = 0x7fffffff
 /// BN254 = 0x30644e72e131a029b85045b68181585d2833e84879b9709143e1f593f0000001
@@ -62,6 +62,16 @@ let<T: Add + FromLiteral + Mul> mul_ext: Fp2<T>, Fp2<T> -> Fp2<T> = |a, b| match
         // (a0 + a1 * x) * (b0 + b1 * x) = a0 * b0 + 11 * a1 * b1 + (a1 * b0 + a0 * b1) * x (mod x^2 - 11)
         a0 * b0 + 11 * a1 * b1,
         a1 * b0 + a0 * b1
+    )
+};
+
+/// Extension field squaring
+/// This implementation yields a shorter expression than `mul_ext(a, a)` and should be preferred
+/// when squaring expressions many times.
+let<T: Add + FromLiteral + Mul> square_ext: Fp2<T> -> Fp2<T> = |a| match (a) {
+    Fp2::Fp2(a0, a1) => Fp2::Fp2(
+        a0 * a0 + 11 * a1 * a1,
+        2 * a1 * a0
     )
 };
 
@@ -162,6 +172,7 @@ mod test {
     use super::add_ext;
     use super::sub_ext;
     use super::mul_ext;
+    use super::square_ext;
     use super::inv_ext;
     use super::eq_ext;
     use std::check::assert;
@@ -209,6 +220,18 @@ mod test {
 
         // Multiplication with field overflow
         test_mul(Fp2::Fp2(-1, -2), Fp2::Fp2(-3, 4), Fp2::Fp2(3 - 11 * 8, 6 - 4))
+    };
+
+    let square = || {
+        // Tests consistency with mul_ext
+        let test_square = |a| assert(eq_ext(mul_ext(a, a), square_ext(a)), || "Wrong squaring result");
+
+        test_square(from_base(0));
+        test_square(from_base(1));
+        test_square(from_base(2));
+        test_square(Fp2::Fp2(1, 1));
+        test_square(Fp2::Fp2(123, 1234));
+        test_square(Fp2::Fp2(-1, -2));
     };
 
     let inverse = || {

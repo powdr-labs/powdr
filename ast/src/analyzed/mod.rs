@@ -617,10 +617,15 @@ impl SolvedTraitImpls {
         index: usize,
         function: Arc<Expression>,
     ) {
-        self.impls
+        let existing = self
+            .impls
             .entry(trait_function_name)
             .or_default()
             .insert(type_args, ImplData { index, function });
+        assert!(
+            existing.is_none(),
+            "Duplicate trait impl for the same type arguments."
+        );
     }
 }
 

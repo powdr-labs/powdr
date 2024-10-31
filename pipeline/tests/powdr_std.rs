@@ -401,18 +401,21 @@ fn fp2() {
     evaluate_function(&analyzed, "std::math::fp2::test::add", vec![]);
     evaluate_function(&analyzed, "std::math::fp2::test::sub", vec![]);
     evaluate_function(&analyzed, "std::math::fp2::test::mul", vec![]);
+    evaluate_function(&analyzed, "std::math::fp2::test::square", vec![]);
     evaluate_function(&analyzed, "std::math::fp2::test::inverse", vec![]);
 
     let analyzed = std_analyzed::<Bn254Field>();
     evaluate_function(&analyzed, "std::math::fp2::test::add", vec![]);
     evaluate_function(&analyzed, "std::math::fp2::test::sub", vec![]);
     evaluate_function(&analyzed, "std::math::fp2::test::mul", vec![]);
+    evaluate_function(&analyzed, "std::math::fp2::test::square", vec![]);
     evaluate_function(&analyzed, "std::math::fp2::test::inverse", vec![]);
 
     let analyzed = std_analyzed::<BabyBearField>();
     evaluate_function(&analyzed, "std::math::fp2::test::add", vec![]);
     evaluate_function(&analyzed, "std::math::fp2::test::sub", vec![]);
     evaluate_function(&analyzed, "std::math::fp2::test::mul", vec![]);
+    evaluate_function(&analyzed, "std::math::fp2::test::square", vec![]);
     evaluate_function(&analyzed, "std::math::fp2::test::inverse", vec![]);
 }
 
@@ -435,6 +438,16 @@ fn fp4() {
     evaluate_function(&analyzed, "std::math::fp4::test::sub", vec![]);
     evaluate_function(&analyzed, "std::math::fp4::test::mul", vec![]);
     evaluate_function(&analyzed, "std::math::fp4::test::inverse", vec![]);
+}
+
+#[test]
+fn fingerprint() {
+    let analyzed = std_analyzed::<GoldilocksField>();
+    evaluate_function(
+        &analyzed,
+        "std::protocols::fingerprint::test::test_fingerprint",
+        vec![],
+    );
 }
 
 #[test]
