@@ -306,6 +306,34 @@ impl<T> Analyzed<T> {
         self.post_visit_expressions_in_identities_mut(algebraic_visitor);
     }
 
+    /// Removes the given set of trait impls, identified by their index
+    /// in the list of trait impls.
+    pub fn remove_trait_impls(&mut self, to_remove: &BTreeSet<usize>) {
+        let to_remove_vec: Vec<usize> = to_remove.iter().copied().collect();
+
+        self.source_order.retain_mut(|s| {
+            if let StatementIdentifier::TraitImplementation(index) = s {
+                match to_remove_vec.binary_search(index) {
+                    Ok(_) => false,
+                    Err(insert_pos) => {
+                        // `insert_pos` is the number of removed elements before this one.
+                        *index -= insert_pos;
+                        true
+                    }
+                }
+            } else {
+                true
+            }
+        });
+        self.trait_impls = std::mem::take(&mut self.trait_impls)
+            .into_iter()
+            .enumerate()
+            .filter(|(i, _)| !to_remove.contains(i))
+            .map(|(_, impl_)| impl_)
+            .collect();
+        self.solved_impls.remove_trait_impls(&to_remove_vec);
+    }
+
     pub fn post_visit_expressions_in_identities_mut<F>(&mut self, f: &mut F)
     where
         F: FnMut(&mut AlgebraicExpression<T>),
@@ -626,6 +654,27 @@ impl SolvedTraitImpls {
             existing.is_none(),
             "Duplicate trait impl for the same type arguments."
         );
+    }
+
+    /// Update the data structure after a certain set of trait impls have been removed.
+    /// This just updates the `index` fields.
+    /// Assumes that `to_remove` is sorted.
+    pub fn remove_trait_impls(&mut self, to_remove: &[usize]) {
+        for map in self.impls.values_mut() {
+            *map = map
+                .drain()
+                .filter_map(|(type_args, mut impl_data)| {
+                    match to_remove.binary_search(&impl_data.index) {
+                        Ok(_) => None,
+                        Err(index) => {
+                            // `index` is the number of removed elements before this one.
+                            impl_data.index -= index;
+                            Some((type_args, impl_data))
+                        }
+                    }
+                })
+                .collect();
+        }
     }
 }
 
