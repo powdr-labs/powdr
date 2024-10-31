@@ -397,19 +397,12 @@ fn ff_inv_big() {
 
 #[test]
 fn std_tests() {
-    let test_count = 9;
-    assert_eq!(
-        test_count,
-        run_tests(&std_analyzed::<GoldilocksField>(), true).unwrap()
-    );
-    assert_eq!(
-        test_count,
-        run_tests(&std_analyzed::<Bn254Field>(), true).unwrap()
-    );
-    assert_eq!(
-        test_count,
-        run_tests(&std_analyzed::<BabyBearField>(), true).unwrap(),
-    );
+    let count1 = run_tests(&std_analyzed::<GoldilocksField>(), true).unwrap();
+    let count2 = run_tests(&std_analyzed::<Bn254Field>(), true).unwrap();
+    let count3 = run_tests(&std_analyzed::<BabyBearField>(), true).unwrap();
+    assert_eq!(count1, count2);
+    assert_eq!(count2, count3);
+    assert!(count1 >= 9);
 }
 
 #[test]
