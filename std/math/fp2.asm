@@ -75,6 +75,21 @@ let<T: Add + FromLiteral + Mul> square_ext: Fp2<T> -> Fp2<T> = |a| match (a) {
     )
 };
 
+/// Computes the power operation on an extension field element.
+let<T: Add + Mul + FromLiteral> pow_ext: Fp2<T>, int -> Fp2<T> = |x, i| match i {
+    0 => from_base(1),
+    1 => x,
+    _ => {
+        let z = square_ext(pow_ext(x, i / 2));
+        if i % 2 == 0 {
+            z
+        } else {
+            mul_ext(z, x)
+        }
+    }
+};
+
+
 /// Converts an Fp2<expr> into an Fp2<fe>
 let eval_ext: Fp2<expr> -> Fp2<fe> = query |a| match a {
     Fp2::Fp2(a0, a1) => Fp2::Fp2(eval(a0), eval(a1))
