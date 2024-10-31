@@ -10,7 +10,7 @@ use powdr_ast::{
         visitor::ExpressionVisitable,
         ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall, FunctionKind, IndexAccess,
         LambdaExpression, LetStatementInsideBlock, MatchArm, MatchExpression, Number, Pattern,
-        SourceReference, StatementInsideBlock, StructDeclaration, StructExpression, UnaryOperation,
+        SourceReference, StatementInsideBlock, StructExpression, UnaryOperation,
     },
 };
 use powdr_parser_util::{Error, SourceRef};
@@ -32,9 +32,8 @@ use crate::{
 pub fn infer_types(
     definitions: HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
     expressions: &mut [(&mut Expression, ExpectedType)],
-    struct_declarations: HashMap<String, &StructDeclaration>,
 ) -> Result<Vec<(String, Type)>, Vec<Error>> {
-    TypeChecker::new(struct_declarations).infer_types(definitions, expressions)
+    TypeChecker::new().infer_types(definitions, expressions)
 }
 
 /// A type to expect with a bit of flexibility.
@@ -63,16 +62,16 @@ impl From<Type> for ExpectedType {
 }
 
 #[derive(Debug, Clone)]
-struct DeclaredType {
+pub struct DeclaredType {
     pub source: SourceRef,
     pub vars: TypeBounds,
-    pub ty: TypeDeclaredType,
+    pub ty: DeclaredTypeKind,
 }
 
 impl DeclaredType {
     fn scheme(&self) -> TypeScheme {
         match &self.ty {
-            TypeDeclaredType::Struct(ty, _) | TypeDeclaredType::Type(ty) => TypeScheme {
+            DeclaredTypeKind::Struct(ty, _) | DeclaredTypeKind::Type(ty) => TypeScheme {
                 vars: self.vars.clone(),
                 ty: ty.clone(),
             },
@@ -81,19 +80,34 @@ impl DeclaredType {
 
     fn type_mut(&mut self) -> &mut Type {
         match &mut self.ty {
-            TypeDeclaredType::Struct(ty, _) => ty,
-            TypeDeclaredType::Type(ty) => ty,
+            DeclaredTypeKind::Struct(ty, _) => ty,
+            DeclaredTypeKind::Type(ty) => ty,
         }
+    }
+
+    fn with_source(mut self, source: SourceRef) -> Self {
+        self.source = source;
+        self
     }
 }
 
 #[derive(Debug, Clone)]
-enum TypeDeclaredType {
+pub enum DeclaredTypeKind {
     Struct(Type, HashMap<String, Type>),
     Type(Type),
 }
 
-struct TypeChecker<'a> {
+impl From<TypeScheme> for DeclaredType {
+    fn from(scheme: TypeScheme) -> Self {
+        Self {
+            source: SourceRef::unknown(),
+            vars: scheme.vars,
+            ty: DeclaredTypeKind::Type(scheme.ty),
+        }
+    }
+}
+
+struct TypeChecker {
     /// Types for local variables, might contain type variables.
     local_var_types: Vec<Type>,
     /// Declared types for all symbols and their source references.
@@ -105,19 +119,16 @@ struct TypeChecker<'a> {
     unifier: Unifier,
     /// Keeps track of the kind of lambda we are currently type-checking.
     lambda_kind: FunctionKind,
-    /// Struct declarations.
-    struct_declarations: HashMap<String, &'a StructDeclaration>,
 }
 
-impl<'a> TypeChecker<'a> {
-    pub fn new(struct_declarations: HashMap<String, &'a StructDeclaration>) -> Self {
+impl TypeChecker {
+    pub fn new() -> Self {
         Self {
             local_var_types: Default::default(),
             declared_types: Default::default(),
             declared_type_vars: Default::default(),
             unifier: Default::default(),
             lambda_kind: FunctionKind::Constr,
-            struct_declarations,
         }
     }
 
@@ -125,7 +136,7 @@ impl<'a> TypeChecker<'a> {
     /// returns the types for symbols without explicit type.
     pub fn infer_types(
         mut self,
-        mut definitions: HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
+        mut definitions: HashMap<String, (Option<DeclaredType>, Option<&mut Expression>)>,
         expressions: &mut [(&mut Expression, ExpectedType)],
     ) -> Result<Vec<(String, Type)>, Vec<Error>> {
         let type_var_mapping = self
@@ -149,7 +160,7 @@ impl<'a> TypeChecker<'a> {
     /// the type variables used by the type checker to those used in the declaration.
     fn infer_types_inner(
         &mut self,
-        definitions: &mut HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
+        definitions: &mut HashMap<String, (Option<DeclaredType>, Option<&mut Expression>)>,
         expressions: &mut [(&mut Expression, ExpectedType)],
     ) -> Result<HashMap<String, HashMap<String, Type>>, Error> {
         // TODO in order to fix type inference on recursive functions, we need to:
@@ -233,7 +244,7 @@ impl<'a> TypeChecker<'a> {
     /// Fills self.declared_types and checks that declared builtins have the correct type.
     fn setup_declared_types(
         &mut self,
-        definitions: &mut HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
+        definitions: &mut HashMap<String, (Option<DeclaredType>, Option<&mut Expression>)>,
     ) {
         // Add types from declarations. Type schemes are added without instantiating.
         self.declared_types = definitions
@@ -259,7 +270,7 @@ impl<'a> TypeChecker<'a> {
                         DeclaredType {
                             source,
                             vars: builtin.vars.clone(),
-                            ty: TypeDeclaredType::Type(builtin.ty.clone()),
+                            ty: DeclaredTypeKind::Type(builtin.ty.clone()),
                         }
                     }
                     // Store an (uninstantiated) type scheme for symbols with a declared polymorphic type.
@@ -271,9 +282,9 @@ impl<'a> TypeChecker<'a> {
                                     .iter()
                                     .map(|f| (f.name.clone(), f.ty.clone()))
                                     .collect();
-                                TypeDeclaredType::Struct(type_scheme.ty.clone(), mapping)
+                                DeclaredTypeKind::Struct(type_scheme.ty.clone(), mapping)
                             }
-                            _ => TypeDeclaredType::Type(type_scheme.ty.clone()),
+                            _ => DeclaredTypeKind::Type(type_scheme.ty.clone()),
                         };
 
                         DeclaredType {
@@ -287,7 +298,7 @@ impl<'a> TypeChecker<'a> {
                     (None, None) => DeclaredType {
                         source,
                         vars: Default::default(),
-                        ty: TypeDeclaredType::Type(self.unifier.new_type_var()),
+                        ty: DeclaredTypeKind::Type(self.unifier.new_type_var()),
                     },
                 };
                 (name.clone(), ty)
@@ -302,7 +313,7 @@ impl<'a> TypeChecker<'a> {
                 .or_insert_with(|| DeclaredType {
                     source: SourceRef::unknown(),
                     vars: scheme.vars.clone(),
-                    ty: TypeDeclaredType::Type(scheme.ty.clone()),
+                    ty: DeclaredTypeKind::Type(scheme.ty.clone()),
                 });
             definitions.remove(name);
         }
@@ -785,7 +796,7 @@ impl<'a> TypeChecker<'a> {
 
                 let type_decl = self.declared_types[name].clone();
                 let DeclaredType {
-                    ty: TypeDeclaredType::Struct(ref _type, ref fields_types_map),
+                    ty: DeclaredTypeKind::Struct(ref _type, ref fields_types_map),
                     ..
                 } = type_decl
                 else {

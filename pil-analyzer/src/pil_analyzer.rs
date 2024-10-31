@@ -15,8 +15,8 @@ use powdr_ast::parsed::asm::{
 use powdr_ast::parsed::types::{Type, TypeScheme};
 use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_ast::parsed::{
-    self, FunctionKind, LambdaExpression, PILFile, PilStatement, StructDeclaration, SymbolCategory,
-    TraitImplementation, TypeDeclaration, TypedExpression,
+    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SourceReference,
+    StructDeclaration, SymbolCategory, TraitImplementation, TypeDeclaration, TypedExpression,
 };
 use powdr_number::{FieldElement, GoldilocksField};
 
@@ -26,11 +26,11 @@ use powdr_ast::analyzed::{
     SymbolKind,
 };
 use powdr_parser::{parse, parse_module, parse_type};
-use powdr_parser_util::Error;
+use powdr_parser_util::{Error, SourceRef};
 
 use crate::traits_resolver::TraitsResolver;
 use crate::type_builtins::constr_function_statement_type;
-use crate::type_inference::infer_types;
+use crate::type_inference::{infer_types, DeclaredType, DeclaredTypeKind};
 use crate::{side_effect_checker, AnalysisDriver};
 
 use crate::statement_processor::{Counters, PILItem, StatementProcessor};
@@ -318,7 +318,11 @@ impl PILAnalyzer {
                         };
                         expressions.push((e, query_type.clone().into()));
 
-                        (type_scheme, None)
+                        let source = e.source_reference();
+                        let declared_type: Option<DeclaredType> =
+                            type_scheme.map(|ts| ts.into().with_source(source));
+
+                        (declared_type, None)
                     }
                     (
                         _,
@@ -326,32 +330,46 @@ impl PILAnalyzer {
                             type_scheme,
                             e,
                         })),
-                    ) => (type_scheme.clone(), Some(e)),
+                    ) => {
+                        let source = e.source_reference();
+                        let declared_type = type_scheme.map(|ts| ts.into().with_source(source));
+                        (declared_type, Some(e))
+                    }
                     (
                         _,
                         Some(FunctionValueDefinition::TypeDeclaration(TypeDeclaration::Struct(
                             struct_decl,
                         ))),
                     ) => {
-                        let scheme = TypeScheme {
+                        let mapping = struct_decl
+                            .fields
+                            .iter()
+                            .map(|f| (f.name.clone(), f.ty.clone()))
+                            .collect();
+                        let declared_type = DeclaredType {
+                            source: SourceRef::unknown(),
                             vars: struct_decl.type_vars.clone(),
-                            ty: Type::NamedType(
-                                SymbolPath::from_str(&struct_decl.name).unwrap(),
-                                None,
+                            ty: DeclaredTypeKind::Struct(
+                                Type::NamedType(
+                                    SymbolPath::from_str(&struct_decl.name).unwrap(),
+                                    None,
+                                ),
+                                mapping,
                             ),
                         };
-                        struct_declarations.insert(struct_decl.name.clone(), struct_decl);
-                        (Some(scheme), None)
+                        (Some(declared_type), None)
                     }
                     (_, value) => {
                         let type_scheme = type_from_definition(symbol, value);
+
+                        let declared_type = type_scheme.map(|ts| ts.into());
 
                         if let Some(FunctionValueDefinition::Array(items)) = value {
                             // Expect all items in the arrays to be field elements.
                             expressions.extend(items.children_mut().map(|e| (e, Type::Fe.into())));
                         }
 
-                        (type_scheme, None)
+                        (declared_type, None)
                     }
                 };
                 Some((name.clone(), (type_scheme, expr)))
@@ -362,7 +380,7 @@ impl PILAnalyzer {
             expressions.push((expr, constr_function_statement_type()));
         }
 
-        let inferred_types = infer_types(definitions, &mut expressions, struct_declarations)?;
+        let inferred_types = infer_types(definitions, &mut expressions)?;
         // Store the inferred types.
         for (name, ty) in inferred_types {
             let Some(FunctionValueDefinition::Expression(TypedExpression {
