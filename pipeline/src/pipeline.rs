@@ -37,8 +37,8 @@ use crate::{
 };
 use std::collections::BTreeMap;
 
-type Columns<T> = Vec<(String, Vec<T>)>;
-type VariablySizedColumns<T> = Vec<(String, VariablySizedColumn<T>)>;
+pub type Columns<T> = Vec<(String, Vec<T>)>;
+pub type VariablySizedColumns<T> = Vec<(String, VariablySizedColumn<T>)>;
 
 #[derive(Default)]
 pub struct Artifacts<T: FieldElement> {
