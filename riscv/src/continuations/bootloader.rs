@@ -90,6 +90,7 @@ pub fn bootloader_and_shutdown_routine(
 }
 
 /// The names of the registers in the order in which they are expected by the bootloader.
+/// These are the names of the RISCV registers that are stored in memory.
 pub const REGISTER_MEMORY_NAMES: [&str; 36] = [
     "main::x1",
     "main::x2",
@@ -129,6 +130,7 @@ pub const REGISTER_MEMORY_NAMES: [&str; 36] = [
     "main::lr_sc_reservation",
 ];
 
+/// List of machine registers, declared in the asm machine.
 pub const REGISTER_NAMES: [&str; 3] = ["main::query_arg_1", "main::query_arg_2", "main::pc"];
 
 /// Index of the PC in the bootloader input.

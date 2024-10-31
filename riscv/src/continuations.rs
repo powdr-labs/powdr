@@ -420,7 +420,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
                 );
         }
 
-        // Go over all registers except the PC
+        // Go over all memory registers
         register_values = REGISTER_MEMORY_NAMES
             .iter()
             .map(|reg| {
@@ -432,6 +432,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             })
             .collect::<Vec<_>>();
 
+        // Go over all machine registers
         for reg in REGISTER_NAMES {
             register_values.push(*chunk_trace[reg].last().unwrap());
         }
