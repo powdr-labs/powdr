@@ -293,20 +293,7 @@ impl PILAnalyzer {
             }
         }
 
-        let struct_declarations: HashMap<String, StructDeclaration> = self
-            .definitions
-            .iter()
-            .filter_map(|(name, (_, value))| {
-                if let Some(FunctionValueDefinition::TypeDeclaration(TypeDeclaration::Struct(
-                    struct_decl,
-                ))) = value
-                {
-                    Some((name.clone(), struct_decl.clone()))
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let mut struct_declarations: HashMap<String, &StructDeclaration> = HashMap::new();
 
         let definitions = self
             .definitions
@@ -353,6 +340,7 @@ impl PILAnalyzer {
                                 None,
                             ),
                         };
+                        struct_declarations.insert(struct_decl.name.clone(), struct_decl);
                         (Some(scheme), None)
                     }
                     (_, value) => {

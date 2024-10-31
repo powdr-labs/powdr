@@ -32,7 +32,7 @@ use crate::{
 pub fn infer_types(
     definitions: HashMap<String, (Option<TypeScheme>, Option<&mut Expression>)>,
     expressions: &mut [(&mut Expression, ExpectedType)],
-    struct_declarations: HashMap<String, StructDeclaration>,
+    struct_declarations: HashMap<String, &StructDeclaration>,
 ) -> Result<Vec<(String, Type)>, Vec<Error>> {
     TypeChecker::new(struct_declarations).infer_types(definitions, expressions)
 }
@@ -97,7 +97,7 @@ enum TypeDeclaredType {
     Type(Type),
 }
 
-struct TypeChecker {
+struct TypeChecker<'a> {
     /// Types for local variables, might contain type variables.
     local_var_types: Vec<Type>,
     /// Declared types for all symbols and their source references.
@@ -110,11 +110,11 @@ struct TypeChecker {
     /// Keeps track of the kind of lambda we are currently type-checking.
     lambda_kind: FunctionKind,
     /// Struct declarations.
-    struct_declarations: HashMap<String, StructDeclaration>,
+    struct_declarations: HashMap<String, &'a StructDeclaration>,
 }
 
-impl TypeChecker {
-    pub fn new(struct_declarations: HashMap<String, StructDeclaration>) -> Self {
+impl<'a> TypeChecker<'a> {
+    pub fn new(struct_declarations: HashMap<String, &'a StructDeclaration>) -> Self {
         Self {
             local_var_types: Default::default(),
             declared_types: Default::default(),
