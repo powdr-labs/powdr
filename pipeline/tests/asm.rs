@@ -457,11 +457,13 @@ mod reparse {
     use test_log::test;
 
     /// Files that we don't expect to parse, analyze, and optimize without error.
-    const BLACKLIST: [&str; 4] = [
+    const BLACKLIST: [&str; 6] = [
         "asm/failing_assertion.asm",
         "asm/multi_return_wrong_assignment_register_length.asm",
         "asm/multi_return_wrong_assignment_registers.asm",
         "asm/permutations/incoming_needs_selector.asm",
+        "asm/enum_as_struct.asm",
+        "asm/struct_as_enum.asm",
     ];
 
     fn run_reparse_test(file: &str) {
