@@ -366,7 +366,7 @@ enum Commands {
     },
 
     /// Executes all functions starting with `test_` in every module called
-    /// `test` starting from the given module.
+    /// `test` (or sub-module thereof) starting from the given module.
     Test {
         /// Input file.
         file: String,
@@ -718,7 +718,8 @@ fn run<F: FieldElement>(
 }
 
 fn run_test<T: FieldElement>(file: &str, include_std_tests: bool) -> Result<(), Vec<String>> {
-    test_runner::run_from_file::<T>(file, include_std_tests)
+    test_runner::run_from_file::<T>(file, include_std_tests)?;
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]

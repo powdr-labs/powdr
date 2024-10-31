@@ -398,9 +398,19 @@ fn ff_inv_big() {
 
 #[test]
 fn std_tests() {
-    run_tests(&std_analyzed::<GoldilocksField>(), true).unwrap();
-    run_tests(&std_analyzed::<Bn254Field>(), true).unwrap();
-    run_tests(&std_analyzed::<BabyBearField>(), true).unwrap();
+    let test_count = 9;
+    assert_eq!(
+        test_count,
+        run_tests(&std_analyzed::<GoldilocksField>(), true).unwrap()
+    );
+    assert_eq!(
+        test_count,
+        run_tests(&std_analyzed::<Bn254Field>(), true).unwrap()
+    );
+    assert_eq!(
+        test_count,
+        run_tests(&std_analyzed::<BabyBearField>(), true).unwrap(),
+    );
 }
 
 #[test]
@@ -446,14 +456,6 @@ fn sort() {
             .collect::<Vec<_>>();
         assert_eq!(input_sorted, result);
     }
-}
-
-// TOOD turn this into proper std test
-
-#[test]
-fn btree() {
-    let f = "std/btree_test.asm";
-    execute_test_file(f, Default::default(), vec![]).unwrap();
 }
 
 mod reparse {

@@ -10,5 +10,6 @@ mod math;
 mod prelude;
 mod protocols;
 mod prover;
+mod test;
 mod utils;
 mod well_known;

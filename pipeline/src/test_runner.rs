@@ -15,13 +15,13 @@ use powdr_pil_analyzer::evaluator::{self, SymbolLookup};
 use crate::Pipeline;
 
 /// Executes all functions in the given file that start with `test_` and are
-/// inside a module called `test`.
+/// inside a module called `test` (or a sub-module thereof).
 ///
 /// @param include_std_tests: Whether to run the tests inside the standard library.
 pub fn run_from_file<F: FieldElement>(
     input: &str,
     include_std_tests: bool,
-) -> Result<(), Vec<String>> {
+) -> Result<usize, Vec<String>> {
     let mut pipeline = Pipeline::<F>::default().from_file(PathBuf::from(&input));
 
     let analyzed = pipeline.compute_analyzed_pil()?;
@@ -29,10 +29,16 @@ pub fn run_from_file<F: FieldElement>(
 }
 
 #[allow(clippy::print_stdout)]
+/// Executes all functions in the given file that start with `test_` and are
+/// inside a module called `test` (or a sub-module thereof).
+///
+/// @param include_std_tests: Whether to run the tests inside the standard library.
+///
+/// Returns the number of tests executed.
 pub fn run_tests<F: FieldElement>(
     analyzed: &Analyzed<F>,
     include_std_tests: bool,
-) -> Result<(), Vec<String>> {
+) -> Result<usize, Vec<String>> {
     let mut symbols = evaluator::Definitions {
         definitions: &analyzed.definitions,
         solved_impls: &analyzed.solved_impls,
@@ -42,7 +48,9 @@ pub fn run_tests<F: FieldElement>(
     let tests: BTreeSet<&String> = analyzed
         .definitions
         .iter()
-        .filter(|(n, _)| n.starts_with("test::test_") || n.contains("::test::test_"))
+        .filter(|(n, _)| {
+            (n.starts_with("test::") || n.contains("::test::")) && n.contains("::test_")
+        })
         .filter(|(n, _)| include_std_tests || !n.starts_with("std::"))
         .filter(|(n, _)| SymbolPath::from_str(n).unwrap().name().starts_with("test_"))
         .sorted_by_key(|(n, _)| *n)
@@ -88,7 +96,7 @@ pub fn run_tests<F: FieldElement>(
     println!("{}", "-".repeat(85));
     if errors.is_empty() {
         println!("All {} tests passed!", tests.len());
-        Ok(())
+        Ok(tests.len())
     } else {
         println!(
             "Failed tests: {} / {}\n{}",
