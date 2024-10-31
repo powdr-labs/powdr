@@ -3,7 +3,7 @@ use std::{collections::BTreeSet, path::PathBuf, str::FromStr};
 use itertools::Itertools;
 
 use powdr_ast::{
-    analyzed::FunctionValueDefinition,
+    analyzed::{Analyzed, FunctionValueDefinition},
     parsed::{
         asm::SymbolPath,
         types::{FunctionType, Type},
@@ -18,11 +18,21 @@ use crate::Pipeline;
 /// inside a module called `test`.
 ///
 /// @param include_std_tests: Whether to run the tests inside the standard library.
-pub fn run<F: FieldElement>(input: &str, include_std_tests: bool) -> Result<(), Vec<String>> {
+pub fn run_from_file<F: FieldElement>(
+    input: &str,
+    include_std_tests: bool,
+) -> Result<(), Vec<String>> {
     let mut pipeline = Pipeline::<F>::default().from_file(PathBuf::from(&input));
 
     let analyzed = pipeline.compute_analyzed_pil()?;
+    run_tests::<F>(&analyzed, include_std_tests)
+}
 
+#[allow(clippy::print_stdout)]
+pub fn run_tests<F: FieldElement>(
+    analyzed: &Analyzed<F>,
+    include_std_tests: bool,
+) -> Result<(), Vec<String>> {
     let mut symbols = evaluator::Definitions {
         definitions: &analyzed.definitions,
         solved_impls: &analyzed.solved_impls,

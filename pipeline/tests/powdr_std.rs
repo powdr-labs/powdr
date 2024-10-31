@@ -4,6 +4,7 @@ use powdr_number::{BabyBearField, BigInt, Bn254Field, GoldilocksField};
 
 use powdr_pil_analyzer::evaluator::Value;
 use powdr_pipeline::{
+    test_runner::run_tests,
     test_util::{
         evaluate_function, evaluate_integer_function, execute_test_file, gen_estark_proof,
         gen_halo2_proof, make_simple_prepared_pipeline, regular_test,
@@ -396,58 +397,10 @@ fn ff_inv_big() {
 }
 
 #[test]
-fn fp2() {
-    let analyzed = std_analyzed::<GoldilocksField>();
-    evaluate_function(&analyzed, "std::math::fp2::test::add", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::sub", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::mul", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::square", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::inverse", vec![]);
-
-    let analyzed = std_analyzed::<Bn254Field>();
-    evaluate_function(&analyzed, "std::math::fp2::test::add", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::sub", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::mul", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::square", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::inverse", vec![]);
-
-    let analyzed = std_analyzed::<BabyBearField>();
-    evaluate_function(&analyzed, "std::math::fp2::test::add", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::sub", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::mul", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::square", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::inverse", vec![]);
-}
-
-#[test]
-fn fp4() {
-    let analyzed = std_analyzed::<GoldilocksField>();
-    evaluate_function(&analyzed, "std::math::fp4::test::add", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::sub", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::mul", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::inverse", vec![]);
-
-    let analyzed = std_analyzed::<Bn254Field>();
-    evaluate_function(&analyzed, "std::math::fp4::test::add", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::sub", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::mul", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::inverse", vec![]);
-
-    let analyzed = std_analyzed::<BabyBearField>();
-    evaluate_function(&analyzed, "std::math::fp4::test::add", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::sub", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::mul", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::inverse", vec![]);
-}
-
-#[test]
-fn fingerprint() {
-    let analyzed = std_analyzed::<GoldilocksField>();
-    evaluate_function(
-        &analyzed,
-        "std::protocols::fingerprint::test::test_fingerprint",
-        vec![],
-    );
+fn std_tests() {
+    run_tests(&std_analyzed::<GoldilocksField>(), true).unwrap();
+    run_tests(&std_analyzed::<Bn254Field>(), true).unwrap();
+    run_tests(&std_analyzed::<BabyBearField>(), true).unwrap();
 }
 
 #[test]
@@ -494,6 +447,9 @@ fn sort() {
         assert_eq!(input_sorted, result);
     }
 }
+
+// TOOD turn this into proper std test
+
 #[test]
 fn btree() {
     let f = "std/btree_test.asm";
