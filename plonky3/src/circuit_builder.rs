@@ -41,7 +41,7 @@ pub struct ConstraintSystem<T> {
     // for each fixed column, the index of this column in the fixed columns
     fixed_columns: BTreeMap<PolyID, usize>,
     // for each intermediate polynomial, the expression
-    intermediates: BTreeMap<u64, AlgebraicExpression<T>>,
+    intermediates: BTreeMap<PolyID, AlgebraicExpression<T>>,
     identities: Vec<Identity<T>>,
     // for each public column, the name, poly_id, index in the witness columns, and stage
     pub(crate) publics_by_stage: Vec<Vec<(String, PolyID, usize)>>,
@@ -80,7 +80,7 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
                 symbol
                     .array_elements()
                     .zip_eq(definitions)
-                    .map(|((_, id), expr)| (id.id, expr.clone()))
+                    .map(|((_, id), expr)| (id, expr.clone()))
             })
             .collect();
 
@@ -273,14 +273,16 @@ where
                             expr.clone()
                         } else {
                             let value = self.to_plonky3_expr::<AB>(
-                                &self.constraint_system.intermediates[&poly_id.id],
+                                &self.constraint_system.intermediates[&poly_id],
                                 traces_by_stage,
                                 fixed,
                                 intermediate_cache,
                                 publics,
                                 challenges,
                             );
-                            intermediate_cache.insert(poly_id.id, value.clone());
+                            assert!(intermediate_cache
+                                .insert(poly_id.id, value.clone())
+                                .is_none());
                             value
                         }
                     }
