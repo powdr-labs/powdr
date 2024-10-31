@@ -12,9 +12,10 @@ let<T: Add + Mul + FromLiteral> fingerprint: T[], Fp2<T> -> Fp2<T> = |expr_array
     // This expression does not use alpha though, which would be removed by the optimizer.
     from_base(expr_array[0])
 } else {
+    let n = len(expr_array);
     fold(
-        len(expr_array),
-        |i| mul_ext(pow_ext(alpha, i), from_base(expr_array[i])),
+        n,
+        |i| mul_ext(pow_ext(alpha, n - i - 1), from_base(expr_array[i])),
         from_base(0),
         |sum_acc, el| add_ext(sum_acc, el)
     )
