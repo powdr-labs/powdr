@@ -80,11 +80,11 @@ let<T: Add + Mul + FromLiteral> pow_ext: Fp2<T>, int -> Fp2<T> = |x, i| match i 
     0 => from_base(1),
     1 => x,
     _ => {
-        let half_pow = pow_ext(x, i / 2);
+        let z = square_ext(pow_ext(x, i / 2));
         if i % 2 == 0 {
-            mul_ext(half_pow, half_pow)
+            z
         } else {
-            mul_ext(mul_ext(half_pow, half_pow), x)
+            mul_ext(z, x)
         }
     }
 };
