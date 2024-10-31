@@ -281,3 +281,31 @@ fn enum_ref_by_trait() {
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
 }
+
+#[test]
+fn do_not_replace_selected_lookup() {
+    let input = r#"namespace N(65536);
+    col fixed one = [1]*;
+    col fixed zero = [0]*;
+    col fixed two = [2]*;
+    col fixed cnt(i) { i };
+    col fixed even = [0, 1]*;
+    col witness X;
+    col witness Y;
+    col witness A;
+    // We can only turn this into a polynomial identity if `even` is
+    // not constant zero, but it is difficult to determine this, so we only
+    // do it if it is a constant number.
+    [ X, Y, A ] in even $ [ zero, one, cnt ];
+"#;
+    let expectation = r#"namespace N(65536);
+    col fixed cnt(i) { i };
+    col fixed even = [0_fe, 1_fe]*;
+    col witness X;
+    col witness Y;
+    col witness A;
+    [N::X, N::Y, N::A] in N::even $ [0, 1, N::cnt];
+"#;
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}
