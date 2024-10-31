@@ -72,11 +72,7 @@ struct DeclaredType {
 impl DeclaredType {
     fn scheme(&self) -> TypeScheme {
         match &self.ty {
-            TypeDeclaredType::Struct(ty, _) => TypeScheme {
-                vars: self.vars.clone(),
-                ty: ty.clone(),
-            },
-            TypeDeclaredType::Type(ty) => TypeScheme {
+            TypeDeclaredType::Struct(ty, _) | TypeDeclaredType::Type(ty) => TypeScheme {
                 vars: self.vars.clone(),
                 ty: ty.clone(),
             },
