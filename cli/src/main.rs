@@ -12,7 +12,7 @@ use powdr::number::{
     BabyBearField, BigUint, Bn254Field, FieldElement, GoldilocksField, KoalaBearField,
     Mersenne31Field,
 };
-use powdr::pipeline::{pipeline, test_runner};
+use powdr::pipeline::test_runner;
 use powdr::Pipeline;
 use std::io;
 use std::path::PathBuf;
