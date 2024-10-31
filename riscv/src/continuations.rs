@@ -15,7 +15,9 @@ pub mod bootloader;
 mod memory_merkle_tree;
 
 use bootloader::split_fe;
-use bootloader::{default_input, PAGE_SIZE_BYTES_LOG, PC_INDEX, REGISTER_NAMES};
+use bootloader::{
+    default_input, PAGE_SIZE_BYTES_LOG, PC_INDEX, REGISTER_MEMORY_NAMES, REGISTER_NAMES,
+};
 use memory_merkle_tree::MerkleTree;
 
 use crate::continuations::bootloader::{
@@ -418,11 +420,11 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
                 );
         }
 
-        // Go over all registers except the PC
-        let register_iter = REGISTER_NAMES.iter().take(REGISTER_NAMES.len() - 1);
-        register_values = register_iter
+        // Go over all memory registers
+        register_values = REGISTER_MEMORY_NAMES
+            .iter()
             .map(|reg| {
-                let reg = reg.strip_prefix("main.").unwrap();
+                let reg = reg.strip_prefix("main::").unwrap();
                 let id = Register::from(reg).addr();
                 *register_memory_snapshot
                     .get(&(id as u32))
@@ -430,10 +432,14 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             })
             .collect::<Vec<_>>();
 
-        register_values.push(*chunk_trace["main::pc"].last().unwrap());
+        // Go over all machine registers
+        for reg in REGISTER_NAMES {
+            register_values.push(*chunk_trace[reg].last().unwrap());
+        }
 
         // Replace final register values of the current chunk
-        bootloader_inputs[REGISTER_NAMES.len()..2 * REGISTER_NAMES.len()]
+        bootloader_inputs[(REGISTER_MEMORY_NAMES.len() + REGISTER_NAMES.len())
+            ..2 * (REGISTER_MEMORY_NAMES.len() + REGISTER_NAMES.len())]
             .copy_from_slice(&register_values);
 
         // Replace the updated root hash
