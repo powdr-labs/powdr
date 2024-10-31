@@ -1,5 +1,6 @@
 //! The powdr CLI tool
 
+mod test_runner;
 mod util;
 
 use clap::{CommandFactory, Parser, Subcommand};
@@ -363,6 +364,24 @@ enum Commands {
         #[arg(value_parser = clap_enum_variants!(FieldArgument))]
         field: FieldArgument,
     },
+
+    /// Executes all functions starting with `test_` in every module called
+    /// `test` starting from the given module.
+    Test {
+        /// Input file.
+        file: String,
+
+        /// The field to use
+        #[arg(long)]
+        #[arg(default_value_t = FieldArgument::Gl)]
+        #[arg(value_parser = clap_enum_variants!(FieldArgument))]
+        field: FieldArgument,
+
+        /// Also run the tests inside the standard library.
+        #[arg(long)]
+        #[arg(default_value_t = false)]
+        include_std_tests: bool,
+    },
 }
 
 fn split_inputs<T: FieldElement>(inputs: &str) -> Vec<T> {
@@ -468,6 +487,13 @@ fn run_command(command: Commands) {
                 export_all_columns_csv,
                 csv_mode
             ))
+        }
+        Commands::Test {
+            file,
+            field,
+            include_std_tests,
+        } => {
+            call_with_field!(run_test::<field>(&file, include_std_tests))
         }
         Commands::Prove {
             file,
@@ -688,8 +714,11 @@ fn run<F: FieldElement>(
             .compute_proof()
             .unwrap();
     }
-
     Ok(())
+}
+
+fn run_test<T: FieldElement>(file: &str, include_std_tests: bool) -> Result<(), Vec<String>> {
+    test_runner::run::<T>(file, include_std_tests)
 }
 
 #[allow(clippy::too_many_arguments)]
