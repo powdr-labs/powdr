@@ -8,13 +8,15 @@ homepage = { workspace = true }
 repository = { workspace = true }
 
 [features]
-default = []                                      # halo2 is disabled by default
+default = []
 halo2 = ["powdr-backend/halo2"]
 plonky3 = ["powdr-backend/plonky3"]
+estark-starky = ["powdr-backend/estark-starky"]
 estark-polygon = ["powdr-backend/estark-polygon"]
 stwo = ["powdr-backend/stwo"]
 
-simd = ["powdr-backend/simd"]
+plonky3-simd = ["powdr-backend/plonky3-simd"]
+estark-starky-simd = ["powdr-backend/estark-starky-simd"]
 
 [dependencies]
 powdr-airgen.workspace = true

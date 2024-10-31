@@ -6,6 +6,7 @@ use powdr_ast::analyzed::Analyzed;
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
 use powdr_number::{BabyBearField, GoldilocksField, KoalaBearField, Mersenne31Field};
 use powdr_plonky3::{Commitment, FieldElementMap, ProverData};
+use serde::{Deserialize, Serialize};
 use stark::Plonky3Prover;
 
 use crate::{
@@ -16,7 +17,7 @@ struct RestrictedFactory;
 
 impl<T: FieldElementMap> BackendFactory<T> for RestrictedFactory
 where
-    ProverData<T>: Send,
+    ProverData<T>: Send + Serialize + for<'a> Deserialize<'a>,
     Commitment<T>: Send,
 {
     fn create(
@@ -25,6 +26,7 @@ where
         fixed: Arc<Vec<(String, VariablySizedColumn<T>)>>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
+        proving_key: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,
         _: BackendOptions,
@@ -38,10 +40,14 @@ where
 
         let mut p3 = Box::new(Plonky3Prover::new(pil.clone(), fixed));
 
-        if let Some(verification_key) = verification_key {
-            p3.set_verifying_key(verification_key);
-        } else {
-            p3.setup();
+        match (proving_key, verification_key) {
+            (Some(pk), Some(vk)) => {
+                p3.set_proving_key(pk);
+                p3.set_verifying_key(vk);
+            }
+            _ => {
+                p3.setup();
+            }
         }
 
         Ok(p3)
@@ -52,7 +58,7 @@ generalize_factory!(Factory <- RestrictedFactory, [BabyBearField, KoalaBearField
 
 impl<T: FieldElementMap> Backend<T> for Plonky3Prover<T>
 where
-    ProverData<T>: Send,
+    ProverData<T>: Send + Serialize + for<'a> Deserialize<'a>,
     Commitment<T>: Send,
 {
     fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
@@ -80,6 +86,14 @@ where
             .export_verifying_key()
             .map_err(|e| Error::BackendError(e.to_string()))?;
         output.write_all(&vk).unwrap();
+        Ok(())
+    }
+
+    fn export_proving_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {
+        let pk = self
+            .export_proving_key()
+            .map_err(|e| Error::BackendError(e.to_string()))?;
+        output.write_all(&pk).unwrap();
         Ok(())
     }
 }

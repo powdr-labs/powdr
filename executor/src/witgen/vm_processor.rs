@@ -1,6 +1,6 @@
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
-use powdr_ast::analyzed::{DegreeRange, IdentityKind};
+use powdr_ast::analyzed::DegreeRange;
 use powdr_ast::indent;
 use powdr_number::{DegreeType, FieldElement};
 use std::cmp::max;
@@ -8,6 +8,7 @@ use std::cmp::max;
 use std::time::Instant;
 
 use crate::witgen::identity_processor::{self};
+use crate::witgen::machines::compute_size_and_log;
 use crate::witgen::IncompleteCause;
 use crate::Identity;
 
@@ -187,17 +188,12 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                         "Found loop with period {p} starting at row {row_index}"
                     );
 
-                    let new_degree = self.processor.len().next_power_of_two() as DegreeType;
-                    let new_degree = self.degree_range.fit(new_degree);
-                    log::info!(
-                        "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
-                        self.machine_name,
-                        self.degree,
-                        new_degree,
-                        self.processor.len()
+                    self.degree = compute_size_and_log(
+                        &self.machine_name,
+                        self.processor.len(),
+                        self.degree_range,
                     );
-                    self.degree = new_degree;
-                    self.processor.set_size(new_degree);
+                    self.processor.set_size(self.degree);
                 }
             }
             if let Some(period) = looping_period {
@@ -358,8 +354,11 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         let pc_lookup_index = identities
             .iter_mut()
             .enumerate()
-            .filter(|(_, (ident, _))| ident.kind == IdentityKind::Plookup)
-            .max_by_key(|(_, (ident, _))| ident.left.expressions.len())
+            .filter_map(|(index, (ident, _))| match ident {
+                Identity::Lookup(i) => Some((index, i)),
+                _ => None,
+            })
+            .max_by_key(|(_, ident)| ident.left.expressions.len())
             .map(|(i, _)| i);
         loop {
             let mut progress = false;
@@ -448,10 +447,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             return Ok(None);
         }
 
-        let is_machine_call = matches!(
-            identity.kind,
-            IdentityKind::Plookup | IdentityKind::Permutation
-        );
+        let is_machine_call = matches!(identity, Identity::Lookup(..) | Identity::Permutation(..));
         if is_machine_call && unknown_strategy == UnknownStrategy::Zero {
             // The fact that we got to the point where we assume 0 for unknown cells, but this identity
             // is still not complete, means that either the inputs or the machine is under-constrained.

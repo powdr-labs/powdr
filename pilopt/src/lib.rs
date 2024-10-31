@@ -2,19 +2,23 @@
 #![deny(clippy::print_stdout)]
 
 use std::borrow::Cow;
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::iter::once;
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
-    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Expression, FunctionValueDefinition,
-    IdentityKind, PolyID, PolynomialReference, PolynomialType, Reference, SymbolKind,
-    TypedExpression,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, ConnectIdentity, Expression,
+    FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity, PolyID,
+    PolynomialIdentity, PolynomialReference, PolynomialType, Reference, SymbolKind,
 };
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
-use powdr_ast::parsed::{EnumDeclaration, Number, StructDeclaration, TypeDeclaration};
+use powdr_ast::parsed::Number;
 use powdr_number::{BigUint, FieldElement};
+
+mod referenced_symbols;
+
+use referenced_symbols::ReferencedSymbols;
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
@@ -24,7 +28,6 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     extract_constant_lookups(&mut pil_file);
     remove_constant_witness_columns(&mut pil_file);
     simplify_identities(&mut pil_file);
-    remove_trivial_selectors(&mut pil_file);
     remove_trivial_identities(&mut pil_file);
     remove_duplicate_identities(&mut pil_file);
     remove_unreferenced_definitions(&mut pil_file);
@@ -87,83 +90,6 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
         .cloned()
         .collect();
     pil_file.remove_definitions(&definitions_to_remove);
-}
-
-trait ReferencedSymbols {
-    /// Returns an iterator over all referenced symbols in self including type names.
-    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_>;
-}
-
-impl ReferencedSymbols for FunctionValueDefinition {
-    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
-        match self {
-            FunctionValueDefinition::TypeDeclaration(type_decl) => type_decl.symbols(),
-            FunctionValueDefinition::TypeConstructor(enum_decl, _) => {
-                // This is the type constructor of an enum variant, it references the enum itself.
-                Box::new(once(enum_decl.name.as_str().into()))
-            }
-            FunctionValueDefinition::Expression(TypedExpression {
-                type_scheme: Some(type_scheme),
-                e,
-            }) => Box::new(type_scheme.ty.symbols().chain(e.symbols())),
-            _ => Box::new(self.children().flat_map(|e| e.symbols())),
-        }
-    }
-}
-
-impl ReferencedSymbols for TypeDeclaration {
-    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
-        match self {
-            TypeDeclaration::Enum(enum_decl) => enum_decl.symbols(),
-            TypeDeclaration::Struct(struct_decl) => struct_decl.symbols(),
-        }
-    }
-}
-
-impl ReferencedSymbols for EnumDeclaration {
-    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
-        Box::new(
-            self.variants
-                .iter()
-                .flat_map(|v| &v.fields)
-                .flat_map(|t| t.iter())
-                .flat_map(|t| t.symbols()),
-        )
-    }
-}
-
-impl ReferencedSymbols for StructDeclaration {
-    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
-        Box::new(self.fields.iter().flat_map(|named| named.ty.symbols()))
-    }
-}
-
-impl ReferencedSymbols for Expression {
-    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
-        Box::new(
-            self.all_children()
-                .flat_map(|e| match e {
-                    Expression::Reference(
-                        _,
-                        Reference::Poly(PolynomialReference { name, type_args }),
-                    ) => Some(
-                        type_args
-                            .iter()
-                            .flat_map(|t| t.iter())
-                            .flat_map(|t| t.symbols())
-                            .chain(once(name.into())),
-                    ),
-                    _ => None,
-                })
-                .flatten(),
-        )
-    }
-}
-
-impl ReferencedSymbols for Type {
-    fn symbols(&self) -> Box<dyn Iterator<Item = Cow<'_, str>> + '_> {
-        Box::new(self.contained_named_types().map(|n| n.to_string().into()))
-    }
 }
 
 /// Builds a lookup-table that can be used to turn array elements
@@ -369,78 +295,53 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
     }
 }
 
-/// Removes lookup and permutation selectors which are equal to 1
-/// TODO: refactor `SelectedExpression` to not use an optional selector
-fn remove_trivial_selectors<T: FieldElement>(pil_file: &mut Analyzed<T>) {
-    let one = AlgebraicExpression::from(T::from(1));
-
-    for identity in &mut pil_file
-        .identities
-        .iter_mut()
-        .filter(|id| id.kind == IdentityKind::Plookup || id.kind == IdentityKind::Permutation)
-    {
-        if identity.left.selector.as_ref() == Some(&one) {
-            identity.left.selector = None;
-        }
-
-        if identity.right.selector.as_ref() == Some(&one) {
-            identity.right.selector = None;
-        }
-    }
-}
-
 /// Extracts columns from lookups that are matched against constants and turns
 /// them into polynomial identities.
 fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let mut new_identities = vec![];
-    for identity in &mut pil_file
-        .identities
-        .iter_mut()
-        .filter(|id| id.kind == IdentityKind::Plookup)
-    {
-        let mut extracted = HashSet::new();
-        for (i, (l, r)) in identity
-            .left
-            .expressions
-            .iter()
-            .zip(&identity.right.expressions)
-            .enumerate()
-            .filter_map(|(i, (l, r))| {
-                if let AlgebraicExpression::Number(n) = r {
-                    Some((i, (l, n)))
-                } else {
-                    None
-                }
-            })
+    for identity in &mut pil_file.identities.iter_mut() {
+        if let Identity::Lookup(LookupIdentity {
+            source,
+            left,
+            right,
+            ..
+        }) = identity
         {
-            // TODO remove clones
-            let l_sel = identity
-                .left
-                .selector
-                .clone()
-                .unwrap_or_else(|| AlgebraicExpression::from(T::one()));
-            let r_sel = identity
-                .right
-                .selector
-                .clone()
-                .unwrap_or_else(|| AlgebraicExpression::from(T::one()));
-            let pol_id = (l_sel * l.clone()) - (r_sel * AlgebraicExpression::from(*r));
-            new_identities.push((simplify_expression(pol_id), identity.source.clone()));
+            let mut extracted = HashSet::new();
+            for (i, (l, r)) in left
+                .expressions
+                .iter()
+                .zip(&right.expressions)
+                .enumerate()
+                .filter_map(|(i, (l, r))| {
+                    if let AlgebraicExpression::Number(n) = r {
+                        Some((i, (l, n)))
+                    } else {
+                        None
+                    }
+                })
+            {
+                // TODO remove clones
+                let l_sel = left.selector.clone();
+                let r_sel = right.selector.clone();
+                let pol_id = (l_sel * l.clone()) - (r_sel * AlgebraicExpression::from(*r));
+                new_identities.push((simplify_expression(pol_id), source.clone()));
 
-            extracted.insert(i);
+                extracted.insert(i);
+            }
+            // TODO rust-ize this.
+            let mut c = 0usize;
+            left.expressions.retain(|_i| {
+                c += 1;
+                !extracted.contains(&(c - 1))
+            });
+            let mut c = 0usize;
+            right.expressions.retain(|_i| {
+                c += 1;
+
+                !extracted.contains(&(c - 1))
+            });
         }
-        // TODO rust-ize this.
-        let mut c = 0usize;
-        identity.left.expressions.retain(|_i| {
-            c += 1;
-            !extracted.contains(&(c - 1))
-        });
-        let mut c = 0usize;
-        identity.right.expressions.retain(|_i| {
-            c += 1;
-
-            !extracted.contains(&(c - 1))
-        });
     }
     for (identity, source) in new_identities {
         pil_file.append_polynomial_identity(identity, source);
@@ -453,8 +354,13 @@ fn remove_constant_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) 
     let mut constant_polys = pil_file
         .identities
         .iter()
-        .filter(|&id| (id.kind == IdentityKind::Polynomial))
-        .map(|id| id.expression_for_poly_id())
+        .filter_map(|id| {
+            if let Identity::Polynomial(PolynomialIdentity { expression: e, .. }) = id {
+                Some(e)
+            } else {
+                None
+            }
+        })
         .filter_map(constrained_to_constant)
         .collect::<Vec<((String, PolyID), _)>>();
     // We cannot remove arrays or array elements, so filter them out.
@@ -541,9 +447,9 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .identities
         .iter()
         .enumerate()
-        .filter_map(|(index, identity)| match identity.kind {
-            IdentityKind::Polynomial => {
-                if let AlgebraicExpression::Number(n) = identity.expression_for_poly_id() {
+        .filter_map(|(index, identity)| match identity {
+            Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
+                if let AlgebraicExpression::Number(n) = expression {
                     if *n == 0.into() {
                         return Some(index);
                     }
@@ -552,21 +458,84 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 }
                 None
             }
-            IdentityKind::Plookup => {
-                assert_eq!(
-                    identity.left.expressions.len(),
-                    identity.right.expressions.len()
-                );
-                identity.left.expressions.is_empty().then_some(index)
+            Identity::Lookup(LookupIdentity { left, right, .. }) => {
+                assert_eq!(left.expressions.len(), right.expressions.len());
+                left.expressions.is_empty().then_some(index)
             }
-            IdentityKind::Permutation => None,
-            IdentityKind::Connect => None,
+            Identity::Permutation(..) => None,
+            Identity::Connect(..) => None,
         })
         .collect();
     pil_file.remove_identities(&to_remove);
 }
 
 fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
+    // TODO: there must be a less verbose way to do this...
+    /// Wrapper around `Identity` that implements `PartialEq` and `Ord` for canonical comparison, ignoring source information and id.
+    struct CanonicalIdentity<'a, T>(&'a Identity<T>);
+
+    impl<T: FieldElement> Ord for CanonicalIdentity<'_, T> {
+        fn cmp(&self, other: &Self) -> Ordering {
+            // we implement our own discriminant since std::mem::Discriminant does not implement Ord...
+            let discriminant = |i: &CanonicalIdentity<T>| match i.0 {
+                Identity::Polynomial(..) => 0,
+                Identity::Lookup(..) => 1,
+                Identity::Permutation(..) => 2,
+                Identity::Connect(..) => 3,
+            };
+
+            discriminant(self)
+                .cmp(&discriminant(other))
+                .then_with(|| match (self.0, other.0) {
+                    (
+                        Identity::Polynomial(PolynomialIdentity { expression: a, .. }),
+                        Identity::Polynomial(PolynomialIdentity { expression: b, .. }),
+                    ) => a.cmp(b),
+                    (
+                        Identity::Lookup(LookupIdentity {
+                            left: a, right: b, ..
+                        }),
+                        Identity::Lookup(LookupIdentity {
+                            left: c, right: d, ..
+                        }),
+                    ) => a.cmp(c).then_with(|| b.cmp(d)),
+                    (
+                        Identity::Permutation(PermutationIdentity {
+                            left: a, right: b, ..
+                        }),
+                        Identity::Permutation(PermutationIdentity {
+                            left: c, right: d, ..
+                        }),
+                    ) => a.cmp(c).then_with(|| b.cmp(d)),
+                    (
+                        Identity::Connect(ConnectIdentity {
+                            left: a, right: b, ..
+                        }),
+                        Identity::Connect(ConnectIdentity {
+                            left: c, right: d, ..
+                        }),
+                    ) => a.cmp(c).then_with(|| b.cmp(d)),
+                    _ => {
+                        unreachable!("Different identity types would have different discriminants.")
+                    }
+                })
+        }
+    }
+
+    impl<T: FieldElement> PartialEq for CanonicalIdentity<'_, T> {
+        fn eq(&self, other: &Self) -> bool {
+            self.cmp(other) == Ordering::Equal
+        }
+    }
+
+    impl<T: FieldElement> Eq for CanonicalIdentity<'_, T> {}
+
+    impl<T: FieldElement> PartialOrd for CanonicalIdentity<'_, T> {
+        fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+            Some(self.cmp(other))
+        }
+    }
+
     // Set of (left, right) tuples.
     let mut identity_expressions = BTreeSet::new();
     let to_remove = pil_file
@@ -574,222 +543,11 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .iter()
         .enumerate()
         .filter_map(|(index, identity)| {
-            match identity_expressions.insert((&identity.left, &identity.right)) {
+            match identity_expressions.insert(CanonicalIdentity(identity)) {
                 false => Some(index),
                 true => None,
             }
         })
         .collect();
     pil_file.remove_identities(&to_remove);
-}
-
-#[cfg(test)]
-mod test {
-    use powdr_number::GoldilocksField;
-    use powdr_pil_analyzer::analyze_string;
-
-    use crate::optimize;
-
-    use pretty_assertions::assert_eq;
-
-    #[test]
-    fn replace_fixed() {
-        let input = r#"namespace N(65536);
-    col fixed one = [1]*;
-    col fixed zero = [0]*;
-    col witness X;
-    col witness Y;
-    X * one = X * zero - zero + Y;
-    one * Y = zero * Y + 7 * X;
-"#;
-        let expectation = r#"namespace N(65536);
-    col witness X;
-    col witness Y;
-    N::X = N::Y;
-    N::Y = 7 * N::X;
-"#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
-        assert_eq!(optimized, expectation);
-    }
-
-    #[test]
-    fn replace_lookup() {
-        let input = r#"namespace N(65536);
-    col fixed one = [1]*;
-    col fixed zero = [0]*;
-    col fixed two = [2]*;
-    col fixed cnt(i) { i };
-    col witness X;
-    col witness Y;
-    col witness W;
-    col witness Z;
-    col witness A;
-    (1 - A) $ [ X, Y, A ] in [ zero, one, cnt ];
-    [ Y, W, Z, A ] in (1 + A) $ [ cnt, zero, two, one ];
-    [ W, Z ] in (1 + A) $ [ zero, one ];
-"#;
-        let expectation = r#"namespace N(65536);
-    col fixed cnt(i) { i };
-    col witness X;
-    col witness Y;
-    col witness Z;
-    col witness A;
-    1 - N::A $ [N::A] in [N::cnt];
-    [N::Y] in 1 + N::A $ [N::cnt];
-    (1 - N::A) * N::X = 0;
-    (1 - N::A) * N::Y = 1;
-    N::Z = (1 + N::A) * 2;
-    N::A = 1 + N::A;
-    N::Z = 1 + N::A;
-"#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
-        assert_eq!(optimized, expectation);
-    }
-
-    #[test]
-    fn intermediate() {
-        let input = r#"namespace N(65536);
-        col witness x;
-        col intermediate = x;
-        intermediate = intermediate;
-    "#;
-        let expectation = r#"namespace N(65536);
-    col witness x;
-    col intermediate = N::x;
-    N::intermediate = N::intermediate;
-"#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
-        assert_eq!(optimized, expectation);
-    }
-
-    #[test]
-    fn zero_sized_array() {
-        let input = r#"
-        namespace std::array(65536);
-            let<T> len: T[] -> int = [];
-        namespace N(65536);
-            col witness x[1];
-            col witness y[0];
-            let t: col = |i| std::array::len(y);
-            x[0] = t;
-    "#;
-        let expectation = r#"namespace std::array(65536);
-    let<T> len: T[] -> int = [];
-namespace N(65536);
-    col witness x[1];
-    col witness y[0];
-    col fixed t(i) { std::array::len::<expr>(N::y) };
-    N::x[0] = N::t;
-"#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
-        assert_eq!(optimized, expectation);
-    }
-
-    #[test]
-    fn remove_duplicates() {
-        let input = r#"namespace N(65536);
-        col witness x;
-        col fixed cnt(i) { i };
-
-        x * (x - 1) = 0;
-        x * (x - 1) = 0;
-        x * (x - 1) = 0;
-
-        [ x ] in [ cnt ];
-        [ x ] in [ cnt ];
-        [ x ] in [ cnt ];
-
-        [ x + 1 ] in [ cnt ];
-        [ x ] in [ cnt + 1 ];
-    "#;
-        let expectation = r#"namespace N(65536);
-    col witness x;
-    col fixed cnt(i) { i };
-    N::x * (N::x - 1) = 0;
-    [N::x] in [N::cnt];
-    [N::x + 1] in [N::cnt];
-    [N::x] in [N::cnt + 1];
-"#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
-        assert_eq!(optimized, expectation);
-    }
-
-    #[test]
-    fn remove_unreferenced() {
-        let input = r#"namespace N(65536);
-        col witness x;
-        col fixed cnt(i) { inc(i) };
-        let inc = |x| x + 1;
-        // these are removed
-        col witness k;
-        col k2 = k;
-        let rec: -> int = || rec();
-        let a: int -> int = |i| b(i + 1);
-        let b: int -> int = |j| 8;
-        // identity
-        [ x ] in [ cnt ];
-
-    "#;
-        let expectation = r#"namespace N(65536);
-    col witness x;
-    col fixed cnt(i) { N::inc(i) };
-    let inc: int -> int = |x| x + 1_int;
-    [N::x] in [N::cnt];
-"#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
-        assert_eq!(optimized, expectation);
-    }
-
-    #[test]
-    fn remove_unreferenced_parts_of_arrays() {
-        let input = r#"namespace N(65536);
-        col witness x[5];
-        let inte: inter[5] = x;
-        x[2] = inte[4];
-    "#;
-        let expectation = r#"namespace N(65536);
-    col witness x[5];
-    col inte[5] = [N::x[0], N::x[1], N::x[2], N::x[3], N::x[4]];
-    N::x[2] = N::inte[4];
-"#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap());
-        assert_eq!(optimized.intermediate_count(), 5);
-        assert_eq!(optimized.to_string(), expectation);
-    }
-
-    #[test]
-    fn remove_unreferenced_keep_enums() {
-        let input = r#"namespace N(65536);
-        enum X { A, B, C }
-        enum Y { D, E, F(R[]) }
-        enum R { T }
-        let t: X[] -> int = |r| 1;
-        // This references Y::F but even after type checking, the type
-        // Y is not mentioned anywhere.
-        let f: col = |i| if i == 0 { t([]) } else { (|x| 1)(Y::F([])) };
-        let x;
-        x = f;
-    "#;
-        let expectation = r#"namespace N(65536);
-    enum X {
-        A,
-        B,
-        C,
-    }
-    enum Y {
-        D,
-        E,
-        F(N::R[]),
-    }
-    enum R {
-        T,
-    }
-    let t: N::X[] -> int = |r| 1_int;
-    col fixed f(i) { if i == 0_int { N::t([]) } else { (|x| 1_int)(N::Y::F([])) } };
-    col witness x;
-    N::x = N::f;
-"#;
-        let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
-        assert_eq!(optimized, expectation);
-    }
 }

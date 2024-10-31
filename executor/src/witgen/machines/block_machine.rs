@@ -2,7 +2,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Display;
 use std::iter::{self, once};
 
-use super::{EvalResult, FixedData, MachineParts};
+use super::{
+    compute_size_and_log, Connection, ConnectionKind, EvalResult, FixedData, MachineParts,
+};
 
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::block_processor::BlockProcessor;
@@ -15,11 +17,8 @@ use crate::witgen::sequence_iterator::{
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause};
 use crate::witgen::{MutableState, QueryCallback};
-use crate::Identity;
 use itertools::Itertools;
-use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, DegreeRange, IdentityKind, PolyID, PolynomialType,
-};
+use powdr_ast::analyzed::{AlgebraicExpression as Expression, DegreeRange, PolyID, PolynomialType};
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_number::{DegreeType, FieldElement};
 
@@ -39,42 +38,15 @@ impl<'a, T: FieldElement> ProcessResult<'a, T> {
 
 fn collect_fixed_cols<T: FieldElement>(
     expression: &Expression<T>,
-    result: &mut BTreeSet<Option<Expression<T>>>,
+    result: &mut BTreeSet<Expression<T>>,
 ) {
     expression.pre_visit_expressions(&mut |e| {
         if let Expression::Reference(r) = e {
             if r.is_fixed() {
-                result.insert(Some(e.clone()));
+                result.insert(e.clone());
             }
         }
     });
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-enum ConnectionType {
-    Permutation,
-    Lookup,
-}
-
-impl From<ConnectionType> for IdentityKind {
-    fn from(value: ConnectionType) -> Self {
-        match value {
-            ConnectionType::Permutation => IdentityKind::Permutation,
-            ConnectionType::Lookup => IdentityKind::Plookup,
-        }
-    }
-}
-
-impl TryFrom<IdentityKind> for ConnectionType {
-    type Error = ();
-
-    fn try_from(value: IdentityKind) -> Result<Self, Self::Error> {
-        match value {
-            IdentityKind::Permutation => Ok(ConnectionType::Permutation),
-            IdentityKind::Plookup => Ok(ConnectionType::Lookup),
-            _ => Err(()),
-        }
-    }
 }
 
 impl<'a, T: FieldElement> Display for BlockMachine<'a, T> {
@@ -103,7 +75,7 @@ pub struct BlockMachine<'a, T: FieldElement> {
     /// The parts of the machine (identities, witness columns, etc.)
     parts: MachineParts<'a, T>,
     /// The type of constraint used to connect this machine to its caller.
-    connection_type: ConnectionType,
+    connection_type: ConnectionKind,
     /// The data of the machine.
     data: FinalizableData<T>,
     publics: BTreeMap<&'a str, T>,
@@ -128,9 +100,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let degree = degree_range.max;
 
         let (is_permutation, block_size, latch_row) =
-            detect_connection_type_and_block_size(fixed_data, &parts.connecting_identities)?;
+            detect_connection_type_and_block_size(fixed_data, &parts.connections)?;
 
-        for id in parts.connecting_identities.values() {
+        for id in parts.connections.values() {
             for r in id.right.expressions.iter() {
                 if let Some(poly) = try_to_simple_poly(r) {
                     if poly.poly_id.ptype == PolynomialType::Constant {
@@ -177,34 +149,33 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
 fn detect_connection_type_and_block_size<'a, T: FieldElement>(
     fixed_data: &'a FixedData<'a, T>,
-    connecting_identities: &BTreeMap<u64, &'a Identity<T>>,
-) -> Option<(ConnectionType, usize, usize)> {
+    connections: &BTreeMap<u64, Connection<'a, T>>,
+) -> Option<(ConnectionKind, usize, usize)> {
     // TODO we should check that the other constraints/fixed columns are also periodic.
 
     // Connecting identities should either all be permutations or all lookups.
-    let connection_type = connecting_identities
+    let connection_type = connections
         .values()
-        .map(|id| id.kind.try_into())
+        .map(|id| id.kind)
         .unique()
         .exactly_one()
-        .ok()?
         .ok()?;
 
     // Detect the block size.
     let (latch_row, block_size) = match connection_type {
-        ConnectionType::Lookup => {
+        ConnectionKind::Lookup => {
             // We'd expect all RHS selectors to be fixed columns of the same period.
-            connecting_identities
+            connections
                 .values()
                 .map(|id| try_to_period(&id.right.selector, fixed_data))
                 .unique()
                 .exactly_one()
                 .ok()??
         }
-        ConnectionType::Permutation => {
+        ConnectionKind::Permutation => {
             // We check all fixed columns appearing in RHS selectors. If there is none, the block size is 1.
 
-            let find_max_period = |latch_candidates: BTreeSet<Option<Expression<T>>>| {
+            let find_max_period = |latch_candidates: BTreeSet<Expression<T>>| {
                 latch_candidates
                     .iter()
                     .filter_map(|e| try_to_period(e, fixed_data))
@@ -212,10 +183,8 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
                     .max_by_key(|&(_, period)| period)
             };
             let mut latch_candidates = BTreeSet::new();
-            for id in connecting_identities.values() {
-                if let Some(selector) = &id.right.selector {
-                    collect_fixed_cols(selector, &mut latch_candidates);
-                }
+            for id in connections.values() {
+                collect_fixed_cols(&id.right.selector, &mut latch_candidates);
             }
             if latch_candidates.is_empty() {
                 (0, 1)
@@ -232,53 +201,48 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
 /// for some k < degree / 2, o.
 /// If so, returns (o, k).
 fn try_to_period<T: FieldElement>(
-    expr: &Option<Expression<T>>,
+    expr: &Expression<T>,
     fixed_data: &FixedData<T>,
 ) -> Option<(usize, usize)> {
-    match expr {
-        Some(expr) => {
-            if let Expression::Number(ref n) = expr {
-                if *n == T::one() {
-                    return Some((0, 1));
-                }
-            }
-
-            let poly = try_to_simple_poly(expr)?;
-            if !poly.is_fixed() {
-                return None;
-            }
-
-            let degree = fixed_data.common_degree_range(once(&poly.poly_id)).max;
-
-            let values = fixed_data.fixed_cols[&poly.poly_id].values(degree);
-
-            let offset = values.iter().position(|v| v.is_one())?;
-            let period = 1 + values.iter().skip(offset + 1).position(|v| v.is_one())?;
-            if period > degree as usize / 2 {
-                // This filters out columns like [0]* + [1], which might appear in a block machine
-                // but shouldn't be detected as the latch.
-                return None;
-            }
-            values
-                .iter()
-                .enumerate()
-                .all(|(i, v)| {
-                    let expected = if i % period == offset {
-                        1.into()
-                    } else {
-                        0.into()
-                    };
-                    *v == expected
-                })
-                .then_some((offset, period))
+    if let Expression::Number(ref n) = expr {
+        if *n == T::one() {
+            return Some((0, 1));
         }
-        None => Some((0, 1)),
     }
+
+    let poly = try_to_simple_poly(expr)?;
+    if !poly.is_fixed() {
+        return None;
+    }
+
+    let degree = fixed_data.common_degree_range(once(&poly.poly_id)).max;
+
+    let values = fixed_data.fixed_cols[&poly.poly_id].values(degree);
+
+    let offset = values.iter().position(|v| v.is_one())?;
+    let period = 1 + values.iter().skip(offset + 1).position(|v| v.is_one())?;
+    if period > degree as usize / 2 {
+        // This filters out columns like [0]* + [1], which might appear in a block machine
+        // but shouldn't be detected as the latch.
+        return None;
+    }
+    values
+        .iter()
+        .enumerate()
+        .all(|(i, v)| {
+            let expected = if i % period == offset {
+                1.into()
+            } else {
+                0.into()
+            };
+            *v == expected
+        })
+        .then_some((offset, period))
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
-        self.parts.connecting_identities.keys().copied().collect()
+        self.parts.connections.keys().copied().collect()
     }
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
@@ -312,19 +276,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                  This might violate some internal constraints."
             );
         }
+        self.degree = compute_size_and_log(&self.name, self.data.len(), self.degree_range);
 
-        let new_degree = self.data.len().next_power_of_two() as DegreeType;
-        let new_degree = self.degree_range.fit(new_degree);
-        log::info!(
-            "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
-            self.name,
-            self.degree,
-            new_degree,
-            self.data.len()
-        );
-        self.degree = new_degree;
-
-        if matches!(self.connection_type, ConnectionType::Permutation) {
+        if matches!(self.connection_type, ConnectionKind::Permutation) {
             // We have to make sure that *all* selectors are 0 in the dummy block,
             // because otherwise this block won't have a matching block on the LHS.
 
@@ -349,14 +303,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             );
 
             // Set all selectors to 0
-            for id in self.parts.connecting_identities.values() {
+            for id in self.parts.connections.values() {
                 processor
-                    .set_value(
-                        self.latch_row + 1,
-                        id.right.selector.as_ref().unwrap(),
-                        T::zero(),
-                        || "Zero selectors".to_string(),
-                    )
+                    .set_value(self.latch_row + 1, &id.right.selector, T::zero(), || {
+                        "Zero selectors".to_string()
+                    })
                     .unwrap();
             }
 
@@ -483,8 +434,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let outer_query =
-            OuterQuery::new(caller_rows, self.parts.connecting_identities[&identity_id]);
+        let outer_query = OuterQuery::new(caller_rows, self.parts.connections[&identity_id]);
 
         log::trace!("Start processing block machine '{}'", self.name());
         log::trace!("Left values of lookup:");

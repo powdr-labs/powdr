@@ -25,7 +25,7 @@ Now we can use podwr's RISCV executor to estimate how many cycles are needed:
 ```console
 powdr-rs execute many_chunks.asm
 ```
-```
+```console
 ...
 Execution trace length: 750329
 ```
