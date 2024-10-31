@@ -180,7 +180,7 @@ mod test {
         let test_sub = |a, b, c| assert(eq_ext(sub_ext(a, b), c), || "Wrong subtraction result");
 
         // Test subtracting 0
-        let _ = test_sub(from_base(0), from_base(0), from_base(9));
+        let _ = test_sub(from_base(0), from_base(0), from_base(0));
         let _ = test_sub(Fp2::Fp2(123, 1234), from_base(0), Fp2::Fp2(123, 1234));
 
         // Subtract arbitrary elements
