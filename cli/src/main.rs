@@ -376,11 +376,6 @@ enum Commands {
         #[arg(default_value_t = FieldArgument::Gl)]
         #[arg(value_parser = clap_enum_variants!(FieldArgument))]
         field: FieldArgument,
-
-        /// Also run the tests inside the standard library.
-        #[arg(long)]
-        #[arg(default_value_t = false)]
-        include_std_tests: bool,
     },
 }
 
@@ -488,12 +483,8 @@ fn run_command(command: Commands) {
                 csv_mode
             ))
         }
-        Commands::Test {
-            file,
-            field,
-            include_std_tests,
-        } => {
-            call_with_field!(run_test::<field>(&file, include_std_tests))
+        Commands::Test { file, field } => {
+            call_with_field!(run_test::<field>(&file))
         }
         Commands::Prove {
             file,
@@ -717,7 +708,8 @@ fn run<F: FieldElement>(
     Ok(())
 }
 
-fn run_test<T: FieldElement>(file: &str, include_std_tests: bool) -> Result<(), Vec<String>> {
+fn run_test<T: FieldElement>(file: &str) -> Result<(), Vec<String>> {
+    let include_std_tests = false;
     test_runner::run_from_file::<T>(file, include_std_tests)?;
     Ok(())
 }
