@@ -60,6 +60,13 @@ fn poseidon_bb_test() {
 
 #[test]
 #[ignore = "Too slow"]
+fn poseidon2_bb_test() {
+    let f = "std/poseidon2_bb_test.asm";
+    test_plonky3::<BabyBearField>(f, vec![]);
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn split_bn254_test() {
     let f = "std/split_bn254_test.asm";
     test_halo2(make_simple_prepared_pipeline(f));
