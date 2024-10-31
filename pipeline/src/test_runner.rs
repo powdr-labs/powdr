@@ -25,7 +25,7 @@ pub fn run_from_file<F: FieldElement>(
     let mut pipeline = Pipeline::<F>::default().from_file(PathBuf::from(&input));
 
     let analyzed = pipeline.compute_analyzed_pil()?;
-    run_tests::<F>(&analyzed, include_std_tests)
+    run_tests::<F>(analyzed, include_std_tests)
 }
 
 #[allow(clippy::print_stdout)]
@@ -60,7 +60,11 @@ pub fn run_tests<F: FieldElement>(
             .then_some(n)
         })
         .collect();
-    println!("Running {} tests...", tests.len());
+    let field_name = F::known_field().map_or_else(
+        || format!("with modulus {}", F::modulus()),
+        |f| f.to_string(),
+    );
+    println!("Running {} tests using field {field_name}...", tests.len());
     println!("{}", "-".repeat(85));
     for name in &tests {
         let name_len = name.len();
