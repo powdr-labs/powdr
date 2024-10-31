@@ -6,7 +6,7 @@ use std::collections::BTreeMap;
 
 use powdr_ast::{
     asm_analysis::{self, combine_flags, AnalysisASMFile, LinkDefinition, MachineDegree},
-    object::{Link, LinkFrom, LinkTo, Location, Machine, Object, Operation, PILGraph},
+    object::{Link, LinkFrom, LinkTo, Location, Machine, MachineInstanceGraph, Object, Operation},
     parsed::{
         asm::{parse_absolute_path, AbsoluteSymbolPath, CallableRef, MachineParams},
         Expression, PilStatement,
@@ -21,7 +21,7 @@ use powdr_analysis::utils::parse_pil_statement;
 const MAIN_MACHINE: &str = "::Main";
 const MAIN_FUNCTION: &str = "main";
 
-pub fn compile(input: AnalysisASMFile) -> PILGraph {
+pub fn compile(input: AnalysisASMFile) -> MachineInstanceGraph {
     let main_location = Location::main();
 
     let non_std_non_rom_machines = input
@@ -41,7 +41,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
                 operation_id: None,
                 call_selectors: None,
             };
-            return PILGraph {
+            return MachineInstanceGraph {
                 main,
                 entry_points: Default::default(),
                 objects: [(main_location, Default::default())].into(),
@@ -184,7 +184,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
         })
         .collect();
 
-    PILGraph {
+    MachineInstanceGraph {
         main,
         entry_points,
         objects,

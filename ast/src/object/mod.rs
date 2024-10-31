@@ -40,7 +40,7 @@ impl Location {
 }
 
 #[derive(Clone)]
-pub struct PILGraph {
+pub struct MachineInstanceGraph {
     pub main: Machine,
     pub entry_points: Vec<Operation>,
     pub objects: BTreeMap<Location, Object>,
