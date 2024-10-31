@@ -1621,7 +1621,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 tmp1_col = val1;
                 tmp2_col = val2;
-                tmp3_col = Elem::from_u32_as_fe(r);
 
                 let p = Elem::from_i64_as_fe((2 << 32) - 1);
                 let val = val.add(&p);
@@ -1631,7 +1630,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
                 tmp_x_b3 = Elem::from_u32_as_fe(b3.into());
                 tmp_x_b4 = Elem::from_u32_as_fe(b4.into());
-                tmp_wrap_bit = tmp3_col;
+                tmp_wrap_bit = Elem::from_u32_as_fe(r);
 
                 //self.proc.set_reg("X", read_reg1);
                 //self.proc.set_reg("Y", read_reg2);
