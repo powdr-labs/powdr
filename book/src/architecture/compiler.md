@@ -17,7 +17,7 @@ Block enforcement applies on constrained machines. It makes sure that the `opera
 ## AIR generation
 
 At this point, all machines contain only:
-- an optional degree
+- an optional degree range
 - constraints
 - links to other machines
 - operations

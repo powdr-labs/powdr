@@ -10,7 +10,8 @@ use powdr_ast::{
         visitor::AllChildren,
         ArrayLiteral, BinaryOperation, BinaryOperator, BlockExpression, EnumDeclaration,
         FunctionCall, IfExpression, IndexAccess, LambdaExpression, LetStatementInsideBlock,
-        MatchArm, MatchExpression, Number, Pattern, StatementInsideBlock, UnaryOperation,
+        MatchArm, MatchExpression, Number, Pattern, StatementInsideBlock, TypeDeclaration,
+        UnaryOperation,
     },
 };
 use powdr_number::{BigInt, BigUint, FieldElement, LargeInt};
@@ -92,11 +93,11 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
             .ok_or_else(|| format!("No definition for {symbol}."))?;
 
         match definition {
-            FunctionValueDefinition::TypeDeclaration(EnumDeclaration {
+            FunctionValueDefinition::TypeDeclaration(TypeDeclaration::Enum(EnumDeclaration {
                 type_vars,
                 variants,
                 ..
-            }) => Ok(format!(
+            })) => Ok(format!(
                 "#[derive(Clone)]\nenum {}<{type_vars}> {{\n{}\n}}\n",
                 escape_symbol(symbol),
                 variants
@@ -122,9 +123,8 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     .ok_or_else(|| format!("Symbol does not have a type: {symbol}"))?;
 
                 Ok(match (&value.e, type_scheme) {
-                    (Expression::LambdaExpression(_, expr), TypeScheme { vars, ty }) => {
-                        assert!(vars.is_empty());
-                        self.try_format_function(symbol, expr, ty)?
+                    (Expression::LambdaExpression(_, expr), type_scheme) => {
+                        self.try_format_function(symbol, expr, type_scheme)?
                     }
                     _ => {
                         let type_scheme = value.type_scheme.as_ref().unwrap();
@@ -160,11 +160,12 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
         &mut self,
         name: &str,
         LambdaExpression { params, body, .. }: &LambdaExpression<Expression>,
-        ty: &Type,
+        TypeScheme { vars, ty }: &TypeScheme,
     ) -> Result<String, String> {
         let (param_types, return_type) = &match ty {
             Type::Function(FunctionType { params, value }) => (params.clone(), (**value).clone()),
             Type::Col => {
+                assert!(vars.is_empty());
                 // TODO we assume it is an int -> fe function, even though other
                 // types are possible.
                 // At some point, the type inference algorithm should store the derived type.
@@ -177,8 +178,26 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
 
         let var_height = params.iter().map(|p| p.variables().count()).sum::<usize>();
 
+        let generics = if vars.is_empty() {
+            String::new()
+        } else {
+            // TODO The bounds here will probably not compile because
+            // some of the built-in ones do not exist as rust traits.
+            // Also traits are not yet implemented in this compiler.
+            format!(
+                "<{}>",
+                vars.bounds()
+                    .map(|(var, bounds)| {
+                        format!(
+                            "{var}: Clone + Send + Sync{} + 'static",
+                            bounds.iter().map(|b| format!(" + {b}")).format("")
+                        )
+                    })
+                    .format(", ")
+            )
+        };
         Ok(format!(
-            "fn {}(({}): ({})) -> {} {{ {} }}\n",
+            "fn {}{generics}(({}): ({})) -> {} {{ {} }}\n",
             escape_symbol(name),
             params.iter().format(", "),
             param_types.iter().map(map_type).format(", "),
@@ -211,7 +230,16 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                         .map_err(|_| "Large numbers for expr not yet implemented.".to_string())?;
                     format!("Expr::from({val}_u64)")
                 }
-                _ => return Err(format!("Unexpected type for literal number: {type_}")),
+                Type::TypeVar(tv) => {
+                    if let Ok(v) = u64::try_from(value) {
+                        format!("{tv}::from_u64({v}_u64)")
+                    } else {
+                        let v_bytes = value.to_le_bytes();
+                        let v = v_bytes.iter().map(|b| format!("{b}_u8")).format(", ");
+                        format!("{tv}::from_le_bytes([{v}])")
+                    }
+                }
+                _ => unreachable!(),
             },
             Expression::FunctionCall(
                 _,
@@ -243,6 +271,9 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
                     }
                     BinaryOperator::ShiftRight => {
                         format!("(({left}).clone() >> usize::try_from(({right}).clone()).unwrap())")
+                    }
+                    BinaryOperator::Add => {
+                        format!("Add::add(({left}).clone(), ({right}).clone())")
                     }
                     _ => format!("(({left}).clone() {op} ({right}).clone())"),
                 }
@@ -305,7 +336,7 @@ impl<'a, T: FieldElement> CodeGenerator<'a, T> {
             }
             Expression::ArrayLiteral(_, ArrayLiteral { items }) => {
                 format!(
-                    "vec![{}]",
+                    "PilVec::from(vec![{}])",
                     items
                         .iter()
                         .map(|i| self.format_expr(i, var_height))
@@ -601,7 +632,7 @@ fn map_type(ty: &Type) -> String {
         Type::Fe => "FieldElement".to_string(),
         Type::String => "String".to_string(),
         Type::Expr => "Expr".to_string(),
-        Type::Array(ArrayType { base, length: _ }) => format!("Vec<{}>", map_type(base)),
+        Type::Array(ArrayType { base, length: _ }) => format!("PilVec<{}>", map_type(base)),
         Type::Tuple(TupleType { items }) => format!("({})", items.iter().map(map_type).join(", ")),
         Type::Function(ft) => format!(
             "Callable<({}), {}>",
@@ -627,7 +658,7 @@ fn get_builtins<T: FieldElement>() -> &'static HashMap<String, String> {
         [
             (
                 "std::array::len",
-                "<T>(a: Vec<T>) -> ibig::IBig { ibig::IBig::from(a.len()) }".to_string(),
+                "<T>(a: PilVec<T>) -> ibig::IBig { ibig::IBig::from(a.len()) }".to_string(),
             ),
             (
                 "std::check::panic",
@@ -639,7 +670,7 @@ fn get_builtins<T: FieldElement>() -> &'static HashMap<String, String> {
             ),
             (
                 "std::convert::int",
-                "<T: Into<ibig::Ibig>>(n: T) -> ibig::IBig {{ n.into() }}".to_string(),
+                "<T: Into<ibig::IBig>>(n: T) -> ibig::IBig { n.into() }".to_string(),
             ),
             (
                 "std::field::modulus",
@@ -647,6 +678,11 @@ fn get_builtins<T: FieldElement>() -> &'static HashMap<String, String> {
                     "() -> ibig::IBig {{ {} }}",
                     format_unsigned_integer(&T::modulus().to_arbitrary_integer())
                 ),
+            ),
+            (
+                "std::prover::degree",
+                "(_: ()) -> ibig::IBig { DEGREE.read().unwrap().as_ref().unwrap().clone() }"
+                    .to_string(),
             ),
         ]
         .into_iter()
@@ -706,7 +742,7 @@ mod test {
         );
         assert_eq!(
             result,
-            "fn c((i): (ibig::IBig)) -> ibig::IBig { ((i).clone() + (ibig::IBig::from(20_u64)).clone()) }\n\
+            "fn c((i): (ibig::IBig)) -> ibig::IBig { Add::add((i).clone(), (ibig::IBig::from(20_u64)).clone()) }\n\
             \n\
             fn d((k): (ibig::IBig)) -> ibig::IBig { (Callable::Fn(c)).call((((k).clone() * (ibig::IBig::from(20_u64)).clone()).clone())) }\n\
             "

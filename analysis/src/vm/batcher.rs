@@ -18,7 +18,7 @@ struct Batch<'a> {
 }
 
 impl<'a> Batch<'a> {
-    fn from_statement(s: &'a FunctionStatement) -> Batch {
+    fn from_statement(s: &'a FunctionStatement) -> Batch<'a> {
         Batch {
             statements: vec![s],
         }

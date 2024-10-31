@@ -8,7 +8,8 @@ use std::{
 use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
-        AlgebraicExpression, Analyzed, IdentityKind, StatementIdentifier, Symbol, SymbolKind,
+        AlgebraicExpression, Analyzed, Identity, LookupIdentity, PermutationIdentity,
+        StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
@@ -25,7 +26,7 @@ const DUMMY_COLUMN_NAME: &str = "__dummy";
 /// 1. The PIL is split into namespaces
 /// 2. Namespaces without any columns are duplicated and merged with the other namespaces
 /// 3. Any lookups or permutations that reference multiple namespaces are removed.
-pub(crate) fn split_pil<F: FieldElement>(pil: &Analyzed<F>) -> BTreeMap<String, Analyzed<F>> {
+pub fn split_pil<F: FieldElement>(pil: &Analyzed<F>) -> BTreeMap<String, Analyzed<F>> {
     let statements_by_namespace = split_by_namespace(pil);
     let statements_by_machine = merge_empty_namespaces(statements_by_namespace, pil);
 
@@ -37,9 +38,9 @@ pub(crate) fn split_pil<F: FieldElement>(pil: &Analyzed<F>) -> BTreeMap<String, 
         .collect()
 }
 
-/// Given a set of columns and a PIL describing the machine, returns the witness column that belong to the machine.
+/// Given a set of columns and a PIL describing the machine, returns the witness columns that belong to the machine.
 /// Note that this also adds the dummy column.
-pub(crate) fn machine_witness_columns<F: FieldElement>(
+pub fn machine_witness_columns<F: FieldElement>(
     all_witness_columns: &[(String, Vec<F>)],
     machine_pil: &Analyzed<F>,
     machine_name: &str,
@@ -71,10 +72,10 @@ pub(crate) fn machine_witness_columns<F: FieldElement>(
 }
 
 /// Given a set of columns and a PIL describing the machine, returns the fixed column that belong to the machine.
-pub(crate) fn machine_fixed_columns<F: FieldElement>(
-    all_fixed_columns: &[(String, VariablySizedColumn<F>)],
-    machine_pil: &Analyzed<F>,
-) -> BTreeMap<DegreeType, Vec<(String, VariablySizedColumn<F>)>> {
+pub fn machine_fixed_columns<'a, F: FieldElement>(
+    all_fixed_columns: &'a [(String, VariablySizedColumn<F>)],
+    machine_pil: &'a Analyzed<F>,
+) -> BTreeMap<DegreeType, Vec<(String, &'a [F])>> {
     let machine_columns = select_machine_columns(
         all_fixed_columns,
         machine_pil.constant_polys_in_source_order(),
@@ -106,12 +107,7 @@ pub(crate) fn machine_fixed_columns<F: FieldElement>(
                 size,
                 machine_columns
                     .iter()
-                    .map(|(name, column)| {
-                        (
-                            name.clone(),
-                            column.get_by_size(size).unwrap().to_vec().into(),
-                        )
-                    })
+                    .map(|(name, column)| (name.clone(), column.get_by_size(size).unwrap()))
                     .collect::<Vec<_>>(),
             )
         })
@@ -173,6 +169,8 @@ fn referenced_namespaces<F: FieldElement>(
 fn split_by_namespace<F: FieldElement>(
     pil: &Analyzed<F>,
 ) -> BTreeMap<String, Vec<StatementIdentifier>> {
+    let mut current_namespace = "".to_string();
+
     pil.source_order
         .iter()
         // split, filtering out some statements
@@ -180,6 +178,7 @@ fn split_by_namespace<F: FieldElement>(
             StatementIdentifier::Definition(name)
             | StatementIdentifier::PublicDeclaration(name) => {
                 let namespace = extract_namespace(name);
+                current_namespace = namespace.clone();
                 // add `statement` to `namespace`
                 Some((namespace, statement))
             }
@@ -190,16 +189,18 @@ fn split_by_namespace<F: FieldElement>(
                 match namespaces.len() {
                     0 => panic!("Identity references no namespace: {identity}"),
                     // add this identity to the only referenced namespace
-                    1 => Some((namespaces.into_iter().next().unwrap(), statement)),
-                    _ => match identity.kind {
-                        IdentityKind::Plookup | IdentityKind::Permutation => {
+                    1 => (namespaces.into_iter().next().unwrap() == current_namespace)
+                        .then(|| (current_namespace.clone(), statement)),
+                    _ => match identity {
+                        Identity::Lookup(LookupIdentity { left, right, .. })
+                        | Identity::Permutation(PermutationIdentity { left, right, .. }) => {
                             assert_eq!(
-                                referenced_namespaces(&identity.left).len(),
+                                referenced_namespaces(left).len(),
                                 1,
                                 "LHS of identity references multiple namespaces: {identity}"
                             );
                             assert_eq!(
-                                referenced_namespaces(&identity.right).len(),
+                                referenced_namespaces(right).len(),
                                 1,
                                 "RHS of identity references multiple namespaces: {identity}"
                             );
@@ -212,7 +213,8 @@ fn split_by_namespace<F: FieldElement>(
                     },
                 }
             }
-            StatementIdentifier::ProverFunction(_) => None,
+            StatementIdentifier::ProverFunction(_)
+            | StatementIdentifier::TraitImplementation(_) => None,
         })
         // collect into a map
         .fold(Default::default(), |mut acc, (namespace, statement)| {

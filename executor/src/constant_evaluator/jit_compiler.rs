@@ -12,9 +12,10 @@ use super::VariablySizedColumn;
 pub fn generate_values<T: FieldElement>(
     analyzed: &Analyzed<T>,
 ) -> HashMap<(String, PolyID), VariablySizedColumn<T>> {
-    let fun_map = match powdr_jit_compiler::compile(analyzed, &symbols_to_compile(analyzed)) {
+    let compiled_pil = match powdr_jit_compiler::compile(analyzed, &symbols_to_compile(analyzed)) {
         Err(err) => {
-            log::error!("Failed to compile some constant columns: {}", err);
+            // TODO this should be changed back to Error after the introduction of the ToCol trait.
+            log::debug!("Failed to compile some constant columns: {}", err);
             return HashMap::new();
         }
         Ok(fun_map) => fun_map,
@@ -23,7 +24,7 @@ pub fn generate_values<T: FieldElement>(
     analyzed
         .constant_polys_in_source_order()
         .filter_map(|(symbol, _)| {
-            let fun = fun_map.get(symbol.absolute_name.as_str())?;
+            let fun = compiled_pil.get_fixed_column(symbol.absolute_name.as_str())?;
             Some((symbol, fun))
         })
         .map(|(symbol, fun)| {
@@ -32,6 +33,7 @@ pub fn generate_values<T: FieldElement>(
                 .unwrap()
                 .iter()
                 .map(|degree| {
+                    compiled_pil.set_degree(degree);
                     (0..degree)
                         .into_par_iter()
                         .map(|i| {

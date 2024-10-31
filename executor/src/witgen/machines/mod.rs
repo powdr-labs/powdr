@@ -1,9 +1,9 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
+use std::fmt::Display;
 
-use powdr_ast::analyzed;
-use powdr_ast::analyzed::DegreeRange;
-use powdr_ast::analyzed::PolyID;
+use powdr_ast::analyzed::{self, DegreeRange, PolyID};
 
+use powdr_number::DegreeType;
 use powdr_number::FieldElement;
 
 use crate::Identity;
@@ -48,7 +48,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     /// Returns a unique name for this machine.
     fn name(&self) -> &str;
 
-    /// Processes a connecting identity of a given ID (which must be known to the callee).
+    /// Processes a connection of a given ID (which must be known to the callee).
     /// Returns an error if the query leads to a constraint failure.
     /// Otherwise, it computes any updates to the caller row pair and returns them.
     fn process_plookup<'b, Q: QueryCallback<T>>(
@@ -151,6 +151,66 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
     }
 }
 
+#[derive(Clone, Copy)]
+/// A connection is a witness generation directive to propagate rows across machines
+pub struct Connection<'a, T> {
+    pub left: &'a analyzed::SelectedExpressions<T>,
+    pub right: &'a analyzed::SelectedExpressions<T>,
+    /// For [ConnectionKind::Permutation], rows of `left` are a permutation of rows of `right`. For [ConnectionKind::Lookup], all rows in `left` are in `right`.
+    pub kind: ConnectionKind,
+}
+
+impl<'a, T: Display> Display for Connection<'a, T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} {} {}", self.left, self.right, self.kind)
+    }
+}
+
+impl<'a, T> Connection<'a, T> {
+    fn is_permutation(&self) -> bool {
+        self.kind == ConnectionKind::Permutation
+    }
+
+    fn is_lookup(&self) -> bool {
+        self.kind == ConnectionKind::Lookup
+    }
+}
+
+impl<'a, T> TryFrom<&'a Identity<T>> for Connection<'a, T> {
+    type Error = &'a Identity<T>;
+
+    fn try_from(identity: &'a Identity<T>) -> Result<Self, Self::Error> {
+        match identity {
+            Identity::Lookup(i) => Ok(Connection {
+                left: &i.left,
+                right: &i.right,
+                kind: ConnectionKind::Lookup,
+            }),
+            Identity::Permutation(i) => Ok(Connection {
+                left: &i.left,
+                right: &i.right,
+                kind: ConnectionKind::Permutation,
+            }),
+            _ => Err(identity),
+        }
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub enum ConnectionKind {
+    Lookup,
+    Permutation,
+}
+
+impl Display for ConnectionKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConnectionKind::Lookup => write!(f, "in"),
+            ConnectionKind::Permutation => write!(f, "is"),
+        }
+    }
+}
+
 /// The parts of Analyzed that are assigned to a machine.
 /// Also includes FixedData for convenience.
 #[derive(Clone)]
@@ -159,7 +219,7 @@ pub struct MachineParts<'a, T: FieldElement> {
     /// Connecting identities, indexed by their ID.
     /// These are the identities that connect another machine to this one,
     /// where this one is on the RHS of a lookup.
-    pub connecting_identities: BTreeMap<u64, &'a Identity<T>>,
+    pub connections: BTreeMap<u64, Connection<'a, T>>,
     /// Identities relevant to this machine and only this machine.
     pub identities: Vec<&'a Identity<T>>,
     /// Witness columns relevant to this machine.
@@ -171,14 +231,14 @@ pub struct MachineParts<'a, T: FieldElement> {
 impl<'a, T: FieldElement> MachineParts<'a, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
-        connecting_identities: BTreeMap<u64, &'a Identity<T>>,
+        connections: BTreeMap<u64, Connection<'a, T>>,
         identities: Vec<&'a Identity<T>>,
         witnesses: HashSet<PolyID>,
         prover_functions: Vec<&'a analyzed::Expression>,
     ) -> Self {
         Self {
             fixed_data,
-            connecting_identities,
+            connections,
             identities,
             witnesses,
             prover_functions,
@@ -206,11 +266,39 @@ impl<'a, T: FieldElement> MachineParts<'a, T> {
 
     /// Returns the IDs of the connecting identities.
     pub fn identity_ids(&self) -> Vec<u64> {
-        self.connecting_identities.keys().cloned().collect()
+        self.connections.keys().cloned().collect()
     }
 
     /// Returns the name of a column.
     pub fn column_name(&self, poly_id: &PolyID) -> &str {
         self.fixed_data.column_name(poly_id)
     }
+}
+
+/// The minimum size for which a warning is logged if the used rows are less than half of the size.
+/// This number coincides with 2**powdr_linker::MIN_DEGREE_LOG.
+/// It's probably not worth introducing a dependency to the linker just for this constant.
+const MIN_REPORTING_SIZE: DegreeType = 32;
+
+pub fn compute_size_and_log(name: &str, used_rows: usize, degree_range: DegreeRange) -> DegreeType {
+    let size = used_rows.next_power_of_two() as DegreeType;
+    let size = degree_range.fit(size);
+    let fraction_used = used_rows as f64 / size as f64;
+
+    if size > MIN_REPORTING_SIZE && fraction_used < 0.5 {
+        // In a machine configured to use VADCOP, we would expect the next power of two to be used.
+        let percentage = fraction_used * 100.0;
+        let configuration_description = degree_range
+            .try_into_unique()
+            .map(|unique_degree| format!("be of static size {unique_degree}"))
+            .unwrap_or_else(|| format!("support sizes in the range {degree_range}"));
+        log::info!(
+            "Only {used_rows} of {size} rows ({percentage:.2}%) are used in machine '{name}', which is configured to {configuration_description}. \
+            If the min_degree of this machine was lower, we could size it down such that the fraction of used rows is at least 50%. \
+            If the backend supports it, consider lowering the min_degree.",
+        );
+    } else {
+        log::debug!("{used_rows} of {size} rows are used in machine '{name}'.");
+    }
+    size
 }

@@ -1,29 +1,44 @@
 use powdr_ast::{
-    analyzed::{Expression, PolynomialReference},
+    analyzed::{Expression, PolynomialReference, SolvedTraitImpls},
     parsed::{
         types::{TupleType, Type},
         TraitImplementation,
     },
 };
-use std::{collections::HashMap, sync::Arc};
+use std::{
+    collections::{HashMap, HashSet},
+    sync::Arc,
+};
 
 use crate::type_unifier::Unifier;
 
-type SolvedImpl = ((String, Vec<Type>), Arc<Expression>);
-
-/// TraitsResolver implements a trait resolver for polynomial references.
-/// For each reference to a trait function with type arguments, it finds the corresponding
-/// trait implementation and stores this association in a map that is returned.
+/// TraitsResolver helps to find the implementation for a given trait function
+/// and concrete type arguments.
 pub struct TraitsResolver<'a> {
-    trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>,
-    solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
+    /// All trait names, even if they have no implementation.
+    traits: HashSet<&'a str>,
+    /// List of implementations for all traits and their index in the list of trait impls.
+    trait_impls: HashMap<String, Vec<(&'a TraitImplementation<Expression>, usize)>>,
+    /// Index data structure that we are building up here.
+    solved_impls: SolvedTraitImpls,
 }
 
 impl<'a> TraitsResolver<'a> {
-    pub fn new(trait_impls: &'a HashMap<String, Vec<TraitImplementation<Expression>>>) -> Self {
+    pub fn new(
+        traits: HashSet<&'a str>,
+        trait_impls: &'a [TraitImplementation<Expression>],
+    ) -> Self {
+        let mut impls_by_trait: HashMap<String, Vec<_>> = HashMap::new();
+        for (i, impl_) in trait_impls.iter().enumerate() {
+            impls_by_trait
+                .entry(impl_.name.to_string())
+                .or_default()
+                .push((impl_, i));
+        }
         Self {
-            trait_impls,
-            solved_impls: HashMap::new(),
+            traits,
+            trait_impls: impls_by_trait,
+            solved_impls: Default::default(),
         }
     }
 
@@ -31,55 +46,73 @@ impl<'a> TraitsResolver<'a> {
     /// If successful, it stores the resolved implementation to be returned via `solved_impls()`.
     pub fn resolve_trait_function_reference(
         &mut self,
-        ref_poly: &PolynomialReference,
+        reference: &PolynomialReference,
     ) -> Result<(), String> {
-        if ref_poly.type_args.is_none() {
+        let Some(type_args) = reference.type_args.as_ref() else {
+            // Not generic, cannot be a trait function reference.
+            return Ok(());
+        };
+        // Shortcut if have already done this.
+        if self
+            .solved_impls
+            .try_resolve_trait_function(&reference.name, type_args)
+            .is_some()
+        {
             return Ok(());
         }
-        let type_args = ref_poly.type_args.as_ref().unwrap();
-        if let Some(inner_map) = self.solved_impls.get(&ref_poly.name) {
-            if inner_map.contains_key(type_args) {
-                return Ok(());
-            }
-        }
 
-        match self.resolve_trait(ref_poly) {
-            Some(((key, type_args), expr)) => {
+        // Now we need to find out if this is a trait function at all or just a generic function.
+        let Some((trait_decl_name, trait_fn_name)) = reference.name.rsplit_once("::") else {
+            return Ok(());
+        };
+        if !self.traits.contains(trait_decl_name) {
+            // Not a trait function.
+            return Ok(());
+        }
+        let Some(trait_impls) = self.trait_impls.get(trait_decl_name) else {
+            return Err(format!(
+                "Could not find an implementation for the trait function {reference} (trait is not implemented at all)"
+            ));
+        };
+
+        match find_trait_implementation(trait_fn_name, type_args, trait_impls) {
+            Some((expr, index)) => {
                 self.solved_impls
-                    .entry(key)
-                    .or_default()
-                    .insert(type_args, expr);
+                    .insert(reference.name.clone(), type_args.clone(), index, expr);
                 Ok(())
             }
-            None => Err(format!("Impl not found for {ref_poly}")),
+            None => Err(format!(
+                "Could not find a matching implementation for the trait function {reference}"
+            )),
         }
     }
 
-    /// Returns the solved implementations.
-    pub fn solved_impls(self) -> HashMap<String, HashMap<Vec<Type>, Arc<Expression>>> {
+    /// Returns a data structure that helps in mapping all referenced trait functions and all
+    /// their type arguments to the corresponding trait implementations.
+    pub fn solved_impls(self) -> SolvedTraitImpls {
         self.solved_impls
     }
+}
 
-    fn resolve_trait(&self, reference: &PolynomialReference) -> Option<SolvedImpl> {
-        let (trait_decl_name, trait_fn_name) = reference.name.rsplit_once("::")?;
-        if let Some(impls) = self.trait_impls.get(trait_decl_name) {
-            let type_args = reference.type_args.as_ref().unwrap().to_vec();
-            let tuple_args = Type::Tuple(TupleType {
-                items: type_args.clone(),
-            });
-            for impl_ in impls.iter() {
-                assert!(tuple_args.is_concrete_type());
+fn find_trait_implementation(
+    function: &str,
+    type_args: &[Type],
+    implementations: &[(&TraitImplementation<Expression>, usize)],
+) -> Option<(Arc<Expression>, usize)> {
+    let tuple_args = Type::Tuple(TupleType {
+        items: type_args.to_vec(),
+    });
+    assert!(tuple_args.is_concrete_type());
 
-                let mut unifier: Unifier = Default::default();
-
-                let res = unifier.unify_types(tuple_args.clone(), impl_.type_scheme.ty.clone());
-                if res.is_ok() {
-                    let expr = impl_.function_by_name(trait_fn_name).unwrap();
-                    return Some(((reference.name.clone(), type_args), Arc::clone(&expr.body)));
-                }
-            }
-        }
-
-        None
-    }
+    implementations.iter().find_map(|(impl_, index)| {
+        Unifier::default()
+            .unify_types(tuple_args.clone(), impl_.type_scheme.ty.clone())
+            .is_ok()
+            .then(|| {
+                (
+                    impl_.function_by_name(function).unwrap().body.clone(),
+                    *index,
+                )
+            })
+    })
 }

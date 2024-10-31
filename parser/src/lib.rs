@@ -471,6 +471,28 @@ namespace N(2);
     }
 
     #[test]
+    fn parse_impl3() {
+        let input = "impl ToCol<(int -> fe)> { to_col: |x| x }";
+        let expected = "impl ToCol<(int -> fe)> {
+        to_col: |x| x,
+    }";
+
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn parse_impl4() {
+        let input = "impl ToCol<(int -> fe), int[]> { to_col: |x| x }";
+        let expected = "impl ToCol<(int -> fe), int[]> {
+        to_col: |x| x,
+    }";
+
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
     fn parse_trait() {
         let input = r#"
     trait Add<T> {
@@ -628,6 +650,42 @@ machine Main(a: Byte, b: Byte) {
 }
 "#;
         let printed = format!("{}", parse_asm(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn struct_decls() {
+        let input = r#"
+namespace N(2);
+    struct X {
+    }
+    struct Y<T, U> {
+        a: int,
+        b: fe,
+        c: fe[3],
+        d: ((int, fe), fe[2] -> (fe -> int)),
+        e: ((int -> fe) -> int),
+        f: (T -> (U -> T)),
+        g: Y,
+    }
+"#;
+
+        let expected = r#"
+namespace N(2);
+    struct X {
+    }
+    struct Y<T, U> {
+        a: int,
+        b: fe,
+        c: fe[3],
+        d: (int, fe), fe[2] -> (fe -> int),
+        e: (int -> fe) -> int,
+        f: T -> (U -> T),
+        g: Y,
+    }
+"#;
+
+        let printed = format!("{}", parse(Some("input"), input).unwrap());
         assert_eq!(expected.trim(), printed.trim());
     }
 

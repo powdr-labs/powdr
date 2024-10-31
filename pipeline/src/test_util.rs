@@ -2,15 +2,20 @@ use powdr_ast::analyzed::Analyzed;
 use powdr_backend::BackendType;
 use powdr_number::{
     buffered_write_file, BabyBearField, BigInt, Bn254Field, FieldElement, GoldilocksField,
+    KoalaBearField,
 };
 use powdr_pil_analyzer::evaluator::{self, SymbolLookup};
+use std::env;
 use std::path::PathBuf;
-use std::{env, fs};
 
 use std::sync::Arc;
 
 use crate::pipeline::Pipeline;
+
+#[cfg(feature = "estark-starky")]
 use crate::verify::verify;
+#[cfg(feature = "estark-starky")]
+use std::fs;
 
 pub fn resolve_test_file(file_name: &str) -> PathBuf {
     PathBuf::from(format!("../test_data/{file_name}"))
@@ -72,9 +77,13 @@ pub fn regular_test(file_name: &str, inputs: &[i32]) {
     let inputs_bb = inputs.iter().map(|x| BabyBearField::from(*x)).collect();
     let pipeline_bb = make_prepared_pipeline(file_name, inputs_bb, vec![]);
     test_plonky3_pipeline(pipeline_bb);
+
+    let inputs_kb = inputs.iter().map(|x| KoalaBearField::from(*x)).collect();
+    let pipeline_kb = make_prepared_pipeline(file_name, inputs_kb, vec![]);
+    test_plonky3_pipeline(pipeline_kb);
 }
 
-pub fn regular_test_without_babybear(file_name: &str, inputs: &[i32]) {
+pub fn regular_test_without_small_field(file_name: &str, inputs: &[i32]) {
     let inputs_gl = inputs.iter().map(|x| GoldilocksField::from(*x)).collect();
     let pipeline_gl = make_prepared_pipeline(file_name, inputs_gl, vec![]);
     test_pilcom(pipeline_gl.clone());
@@ -97,6 +106,15 @@ pub fn asm_string_to_pil<T: FieldElement>(contents: &str) -> Arc<Analyzed<T>> {
         .unwrap()
 }
 
+#[cfg(not(feature = "estark-starky"))]
+pub fn run_pilcom_with_backend_variant(
+    _pipeline: Pipeline<GoldilocksField>,
+    _backend_variant: BackendVariant,
+) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(feature = "estark-starky")]
 pub fn run_pilcom_with_backend_variant(
     pipeline: Pipeline<GoldilocksField>,
     backend_variant: BackendVariant,
@@ -148,6 +166,14 @@ pub fn gen_estark_proof(pipeline: Pipeline<GoldilocksField>) {
     }
 }
 
+#[cfg(not(feature = "estark-starky"))]
+pub fn gen_estark_proof_with_backend_variant(
+    _pipeline: Pipeline<GoldilocksField>,
+    _backend_variant: BackendVariant,
+) {
+}
+
+#[cfg(feature = "estark-starky")]
 pub fn gen_estark_proof_with_backend_variant(
     pipeline: Pipeline<GoldilocksField>,
     backend_variant: BackendVariant,
@@ -180,7 +206,7 @@ pub fn gen_estark_proof_with_backend_variant(
         .publics()
         .unwrap()
         .iter()
-        .map(|(_name, v)| *v)
+        .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
         .collect();
 
     pipeline.verify(&proof, &[publics]).unwrap();
@@ -277,7 +303,7 @@ pub fn gen_halo2_proof(pipeline: Pipeline<Bn254Field>, backend: BackendVariant) 
         .publics()
         .unwrap()
         .iter()
-        .map(|(_name, v)| *v)
+        .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
         .collect();
 
     pipeline.verify(&proof, &[publics]).unwrap();
@@ -287,15 +313,8 @@ pub fn gen_halo2_proof(pipeline: Pipeline<Bn254Field>, backend: BackendVariant) 
 pub fn gen_halo2_proof(_pipeline: Pipeline<Bn254Field>, _backend: BackendVariant) {}
 
 #[cfg(feature = "plonky3")]
-pub fn test_plonky3_with_backend_variant<T: FieldElement>(
-    file_name: &str,
-    inputs: Vec<T>,
-    backend: BackendVariant,
-) {
-    let backend = match backend {
-        BackendVariant::Monolithic => powdr_backend::BackendType::Plonky3,
-        BackendVariant::Composite => powdr_backend::BackendType::Plonky3Composite,
-    };
+pub fn test_plonky3<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
+    let backend = powdr_backend::BackendType::Plonky3;
     let mut pipeline = Pipeline::default()
         .with_tmp_output()
         .from_file(resolve_test_file(file_name))
@@ -310,7 +329,7 @@ pub fn test_plonky3_with_backend_variant<T: FieldElement>(
         .clone()
         .unwrap()
         .iter()
-        .map(|(_name, v)| *v)
+        .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
         .collect();
 
     pipeline.verify(&proof, &[publics.clone()]).unwrap();
@@ -333,7 +352,7 @@ pub fn test_plonky3_with_backend_variant<T: FieldElement>(
 
 #[cfg(feature = "plonky3")]
 pub fn test_plonky3_pipeline<T: FieldElement>(pipeline: Pipeline<T>) {
-    let mut pipeline = pipeline.with_backend(powdr_backend::BackendType::Plonky3Composite, None);
+    let mut pipeline = pipeline.with_backend(powdr_backend::BackendType::Plonky3, None);
 
     pipeline.compute_witness().unwrap();
 
@@ -349,7 +368,7 @@ pub fn test_plonky3_pipeline<T: FieldElement>(pipeline: Pipeline<T>) {
         .clone()
         .unwrap()
         .iter()
-        .map(|(_name, v)| *v)
+        .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
         .collect();
 
     pipeline.verify(&proof, &[publics.clone()]).unwrap();
@@ -371,7 +390,10 @@ pub fn test_plonky3_pipeline<T: FieldElement>(pipeline: Pipeline<T>) {
 }
 
 #[cfg(not(feature = "plonky3"))]
-pub fn test_plonky3_with_backend_variant<T: FieldElement>(_: &str, _: Vec<T>, _: BackendVariant) {}
+pub fn test_plonky3<T: FieldElement>(_: &str, _: Vec<T>) {}
+
+#[cfg(not(feature = "plonky3"))]
+pub fn test_plonky3_pipeline<T: FieldElement>(_: Pipeline<T>) {}
 
 #[cfg(not(feature = "plonky3"))]
 pub fn gen_plonky3_proof<T: FieldElement>(_: &str, _: Vec<T>) {}
@@ -437,6 +459,14 @@ pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
     assert!(run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).is_err());
 }
 
+#[cfg(not(feature = "estark-starky"))]
+pub fn assert_proofs_fail_for_invalid_witnesses_estark(
+    _file_name: &str,
+    _witness: &[(String, Vec<u64>)],
+) {
+}
+
+#[cfg(feature = "estark-starky")]
 pub fn assert_proofs_fail_for_invalid_witnesses_estark(
     file_name: &str,
     witness: &[(String, Vec<u64>)],

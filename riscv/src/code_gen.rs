@@ -1,11 +1,12 @@
 use std::fmt;
 
 use powdr_isa_utils::SingleDataValue;
-use powdr_number::KnownField;
+use powdr_number::FieldSize;
 
 use crate::CompilerOptions;
 
 use crate::large_field;
+use crate::small_field;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Register {
@@ -107,11 +108,9 @@ pub trait RiscVProgram {
 ///
 /// Will call each of the methods in the `RiscVProgram` just once.
 pub fn translate_program(program: impl RiscVProgram, options: CompilerOptions) -> String {
-    match options.field {
-        KnownField::BabyBearField | KnownField::Mersenne31Field => todo!(),
-        KnownField::GoldilocksField | KnownField::Bn254Field => {
-            large_field::code_gen::translate_program(program, options)
-        }
+    match options.field.field_size() {
+        FieldSize::Small => small_field::code_gen::translate_program(program, options),
+        FieldSize::Large => large_field::code_gen::translate_program(program, options),
     }
 }
 

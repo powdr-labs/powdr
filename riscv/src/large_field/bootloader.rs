@@ -202,7 +202,7 @@ page_number_ok:
 
 // TODO currently the init call to poseidon_gl initializes the
 // scratch space with mstore_bootloader.
-// When the init call is removed, the calls below need to be replace by mstore_bootloader.
+// When the init call is removed, the calls below need to be replaced by mstore_bootloader.
 mstore 0, 0, 0, 0;
 mstore 0, 0, 4, 0;
 mstore 0, 0, 8, 0;

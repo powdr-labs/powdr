@@ -40,19 +40,25 @@ pub enum SymbolCategory {
     /// A type constructor, i.e. an enum variant, which can be used as a function or constant inside an expression
     /// or to deconstruct a value in a pattern.
     TypeConstructor,
-    /// A trait declaration, which can be used as a type.
+    /// A trait declaration
     TraitDeclaration,
+    /// A struct, which can be used as a type.
+    Struct,
 }
 impl SymbolCategory {
     /// Returns if a symbol of a given category can satisfy a request for a certain category.
     pub fn compatible_with_request(&self, request: SymbolCategory) -> bool {
         match self {
-            SymbolCategory::Value => request == SymbolCategory::Value,
-            SymbolCategory::Type => request == SymbolCategory::Type,
+            SymbolCategory::Struct => {
+                // Structs can also satisfy requests for types.
+                request == SymbolCategory::Struct || request == SymbolCategory::Type
+            }
             SymbolCategory::TypeConstructor => {
                 // Type constructors can also satisfy requests for values.
                 request == SymbolCategory::TypeConstructor || request == SymbolCategory::Value
             }
+            SymbolCategory::Value => request == SymbolCategory::Value,
+            SymbolCategory::Type => request == SymbolCategory::Type,
             SymbolCategory::TraitDeclaration => request == SymbolCategory::TraitDeclaration,
         }
     }
@@ -153,7 +159,7 @@ impl PilStatement {
                 ),
             ),
             PilStatement::StructDeclaration(_, StructDeclaration { name, .. }) => {
-                Box::new(once((name, None, SymbolCategory::Type)))
+                Box::new(once((name, None, SymbolCategory::Struct)))
             }
             PilStatement::TraitDeclaration(
                 _,
@@ -241,6 +247,44 @@ impl Children<Expression> for PilStatement {
             | PilStatement::Include(_, _)
             | PilStatement::Namespace(_, _, None)
             | PilStatement::PolynomialConstantDeclaration(_, _) => Box::new(empty()),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub enum TypeDeclaration<E = u64> {
+    Enum(EnumDeclaration<E>),
+    Struct(StructDeclaration<E>),
+}
+
+impl<R> Children<Expression<R>> for TypeDeclaration<Expression<R>> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        match self {
+            TypeDeclaration::Enum(e) => e.children(),
+            TypeDeclaration::Struct(s) => s.children(),
+        }
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        match self {
+            TypeDeclaration::Enum(e) => e.children_mut(),
+            TypeDeclaration::Struct(s) => s.children_mut(),
+        }
+    }
+}
+
+impl<R> Children<Expression<R>> for TypeDeclaration<u64> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        match self {
+            TypeDeclaration::Enum(e) => e.children(),
+            TypeDeclaration::Struct(s) => s.children(),
+        }
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        match self {
+            TypeDeclaration::Enum(e) => e.children_mut(),
+            TypeDeclaration::Struct(s) => s.children_mut(),
         }
     }
 }
@@ -569,25 +613,38 @@ pub trait SourceReference {
 }
 
 macro_rules! impl_source_reference {
+    // Version for types with generic parameter
+    ($enum:ident<$generic:ident>, $($variant:ident),*) => {
+        impl<$generic> SourceReference for $enum<$generic> {
+            impl_source_reference_inner!($enum, $($variant),*);
+        }
+    };
+    // Version for types without generic parameter
     ($enum:ident, $($variant:ident),*) => {
-        impl<E> SourceReference for $enum<E> {
-            fn source_reference(&self) -> &SourceRef {
-                match self {
-                    $( $enum::$variant(src, _) => src, )*
-                }
-            }
+        impl SourceReference for $enum {
+            impl_source_reference_inner!($enum, $($variant),*);
+        }
+    };
+}
 
-            fn source_reference_mut(&mut self) -> &mut SourceRef {
-                match self {
-                    $( $enum::$variant(src, _) => src, )*
-                }
+macro_rules! impl_source_reference_inner {
+    ($enum:ident, $($variant:ident),*) => {
+        fn source_reference(&self) -> &SourceRef {
+            match self {
+                $( $enum::$variant(src, ..) => src, )*
+            }
+        }
+
+        fn source_reference_mut(&mut self) -> &mut SourceRef {
+            match self {
+                $( $enum::$variant(src, ..) => src, )*
             }
         }
     }
 }
 
 impl_source_reference!(
-    Expression,
+    Expression<E>,
     Reference,
     PublicReference,
     Number,
@@ -604,6 +661,23 @@ impl_source_reference!(
     IfExpression,
     BlockExpression,
     StructExpression
+);
+
+impl_source_reference!(
+    PilStatement,
+    Include,
+    Namespace,
+    LetStatement,
+    PolynomialDefinition,
+    PolynomialCommitDeclaration,
+    PolynomialConstantDeclaration,
+    PolynomialConstantDefinition,
+    PublicDeclaration,
+    EnumDeclaration,
+    StructDeclaration,
+    TraitDeclaration,
+    TraitImplementation,
+    Expression
 );
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
@@ -1290,7 +1364,7 @@ pub enum FunctionDefinition {
     /// Generic expression
     Expression(Expression),
     /// A type declaration.
-    TypeDeclaration(EnumDeclaration<Expression>),
+    TypeDeclaration(TypeDeclaration<Expression>),
     /// A trait declaration.
     TraitDeclaration(TraitDeclaration<Expression>),
 }

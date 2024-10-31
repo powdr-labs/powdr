@@ -5,4 +5,6 @@ mod add_sub;
 mod arith;
 mod binary;
 mod memory;
+mod pointer_arith;
+mod rotate;
 mod shift;
