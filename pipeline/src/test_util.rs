@@ -21,19 +21,6 @@ pub fn resolve_test_file(file_name: &str) -> PathBuf {
     PathBuf::from(format!("../test_data/{file_name}"))
 }
 
-pub fn execute_test_file(
-    file_name: &str,
-    inputs: Vec<GoldilocksField>,
-    external_witness_values: Vec<(String, Vec<GoldilocksField>)>,
-) -> Result<(), Vec<String>> {
-    Pipeline::default()
-        .from_file(resolve_test_file(file_name))
-        .with_prover_inputs(inputs)
-        .add_external_witness_values(external_witness_values)
-        .compute_witness()
-        .map(|_| ())
-}
-
 /// Makes a new pipeline for the given file. All steps until witness generation are
 /// already computed, so that the test can branch off from there, without having to re-compute
 /// these steps.
