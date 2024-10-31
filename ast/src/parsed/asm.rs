@@ -753,9 +753,20 @@ pub enum RegisterFlag {
 
 #[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct Param {
+    pub source: SourceRef,
     pub name: String,
     pub index: Option<BigUint>,
     pub ty: Option<SymbolPath>,
+}
+
+impl SourceReference for Param {
+    fn source_reference(&self) -> &SourceRef {
+        &self.source
+    }
+
+    fn source_reference_mut(&mut self) -> &mut SourceRef {
+        &mut self.source
+    }
 }
 
 #[cfg(test)]
