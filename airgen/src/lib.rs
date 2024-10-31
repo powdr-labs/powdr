@@ -45,7 +45,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
                 main,
                 entry_points: Default::default(),
                 objects: [(main_location, Default::default())].into(),
-                statements: utility_functions(input),
+                statements: module_level_pil_statements(input),
             };
         }
         // if there is a single machine, treat it as main
@@ -188,7 +188,7 @@ pub fn compile(input: AnalysisASMFile) -> PILGraph {
         main,
         entry_points,
         objects,
-        statements: utility_functions(input),
+        statements: module_level_pil_statements(input),
     }
 }
 
@@ -216,7 +216,10 @@ fn resolve_submachine_arg(
     }
 }
 
-fn utility_functions(asm_file: AnalysisASMFile) -> BTreeMap<AbsoluteSymbolPath, Vec<PilStatement>> {
+/// Returns the pil statements at module level for each module.
+fn module_level_pil_statements(
+    asm_file: AnalysisASMFile,
+) -> BTreeMap<AbsoluteSymbolPath, Vec<PilStatement>> {
     asm_file
         .modules
         .into_iter()
