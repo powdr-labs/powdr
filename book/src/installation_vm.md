@@ -3,7 +3,7 @@
 The easiest way to start making ZK proofs with powdrVM is to install `cargo-powdr`:
 
 ```console
-cargo install --git https://github.com/powdr-labs/powdr cargo-powdr
+cargo install cargo-powdr
 ```
 
 `cargo-powdr` is used to create and manage powdrVM projects, similar to `cargo` itself.

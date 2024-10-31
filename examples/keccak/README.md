@@ -1,9 +1,11 @@
 # powdrVM tinykeccak example
 
-This example demonstrates how to use the `powdrVM` to run a simple keccak hash function using the `tinykeccak` crate.
+This example demonstrates how to use the `powdrVM` to run a simple
+keccak hash function using the `tinykeccak` crate.
 
 We want to prove that we know the pre-image of a hash.
-The host takes in a 32-byte challenge hash `C` as a hex string, and the pre-image string `P`, such that `Keccak(P) = C`.
+The host takes in a 32-byte challenge hash `C` as a hex string,
+and the pre-image string `P`, such that `Keccak(P) = C`.
 
 The guest receives the same data from the host and verifies that the claim is true.
 
