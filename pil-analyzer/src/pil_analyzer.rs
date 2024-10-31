@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::iter::once;
 use std::path::{Path, PathBuf};
+use std::str::FromStr;
 use std::sync::Arc;
 
 use crate::structural_checks::check_structs_fields;
@@ -11,7 +12,7 @@ use itertools::Itertools;
 use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, ModuleStatement, SymbolPath,
 };
-use powdr_ast::parsed::types::Type;
+use powdr_ast::parsed::types::{Type, TypeScheme};
 use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_ast::parsed::{
     self, FunctionKind, LambdaExpression, PILFile, PilStatement, StructDeclaration, SymbolCategory,
@@ -339,6 +340,21 @@ impl PILAnalyzer {
                             e,
                         })),
                     ) => (type_scheme.clone(), Some(e)),
+                    (
+                        _,
+                        Some(FunctionValueDefinition::TypeDeclaration(TypeDeclaration::Struct(
+                            struct_decl,
+                        ))),
+                    ) => {
+                        let scheme = TypeScheme {
+                            vars: struct_decl.type_vars.clone(),
+                            ty: Type::NamedType(
+                                SymbolPath::from_str(&struct_decl.name).unwrap(),
+                                None,
+                            ),
+                        };
+                        (Some(scheme), None)
+                    }
                     (_, value) => {
                         let type_scheme = type_from_definition(symbol, value);
 

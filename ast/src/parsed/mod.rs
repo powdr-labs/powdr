@@ -308,15 +308,6 @@ impl<E: Clone> StructDeclaration<E> {
     }
 }
 
-impl<E> StructDeclaration<E> {
-    pub fn type_scheme(&self) -> TypeScheme<E> {
-        TypeScheme {
-            vars: self.type_vars.clone(),
-            ty: Type::NamedType(SymbolPath::from_str(&self.name).unwrap(), None),
-        }
-    }
-}
-
 impl<R> Children<Expression<R>> for StructDeclaration<Expression<R>> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
         Box::new(self.fields.iter().flat_map(|f| f.ty.children()))
