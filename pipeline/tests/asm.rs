@@ -721,7 +721,7 @@ fn simple_struct() {
 }
 
 #[test]
-#[should_panic = "Expected symbol of kind Struct but got TypeConstructor: A::X"]
+#[should_panic = "Could not resolve struct path `A::X`: symbol not found in `::`: `A`"]
 fn enum_as_struct() {
     let f = "asm/enum_as_struct.asm";
     make_simple_prepared_pipeline::<GoldilocksField>(f);
