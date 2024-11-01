@@ -493,13 +493,13 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 }
                 None
             }
-            Identity::Lookup(LookupIdentity { left, right, .. }) => {
+            Identity::Lookup(LookupIdentity { left, right, .. })
+            | Identity::Permutation(PermutationIdentity { left, right, .. })
+            | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. })
+            | Identity::PhantomPermutation(PhantomPermutationIdentity { left, right, .. }) => {
                 assert_eq!(left.expressions.len(), right.expressions.len());
                 left.expressions.is_empty().then_some(index)
             }
-            Identity::PhantomLookup(..) => None,
-            Identity::PhantomPermutation(..) => None,
-            Identity::Permutation(..) => None,
             Identity::Connect(..) => None,
         })
         .collect();

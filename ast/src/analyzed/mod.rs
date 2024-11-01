@@ -927,6 +927,7 @@ impl<T> Children<AlgebraicExpression<T>> for LookupIdentity<T> {
     }
 }
 
+/// A witness generation helper for a lookup identity. This is ignored by the backend.
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PhantomLookupIdentity<T> {
     // The ID is globally unique among identities.
@@ -992,6 +993,7 @@ impl<T> Children<AlgebraicExpression<T>> for PermutationIdentity<T> {
     }
 }
 
+/// A witness generation helper for a permutation identity. This is ignored by the backend.
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PhantomPermutationIdentity<T> {
     // The ID is globally unique among identitites.
