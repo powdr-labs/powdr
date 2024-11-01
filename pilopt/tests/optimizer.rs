@@ -44,15 +44,14 @@ fn replace_lookup() {
     col fixed cnt(i) { i };
     col witness X;
     col witness Y;
+    col witness W;
     col witness Z;
     col witness A;
     1 - N::A $ [N::A] in [N::cnt];
-    [N::Y] in 1 + N::A $ [N::cnt];
+    [N::Y, N::W, N::Z, N::A] in 1 + N::A $ [N::cnt, 0, 2, 1];
+    [N::W, N::Z] in 1 + N::A $ [0, 1];
     (1 - N::A) * N::X = 0;
     (1 - N::A) * N::Y = 1;
-    N::Z = (1 + N::A) * 2;
-    N::A = 1 + N::A;
-    N::Z = 1 + N::A;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
