@@ -1040,7 +1040,7 @@ impl TypeChecker {
 
     fn instantiate_scheme_by_declared_name(&mut self, name: &str) -> (Type, Vec<Type>) {
         self.unifier
-            .instantiate_scheme(self.declared_types[&name.to_string()].scheme().clone())
+            .instantiate_scheme(self.declared_types[name].scheme().clone())
     }
 }
 
