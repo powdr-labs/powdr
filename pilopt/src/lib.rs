@@ -333,11 +333,10 @@ fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
             ..
         }) = identity
         {
-            let r_sel = &right.selector;
             // We can only do this if we know that the selector is one in at least
             // one row, but this is too complicated to detect (especially if we
             // have a dynamic degree), so we just do this for constant one to be safe.
-            if !matches!(r_sel, AlgebraicExpression::Number(n) if n == &T::one()) {
+            if !matches!(&right.selector, AlgebraicExpression::Number(n) if n == &T::one()) {
                 continue;
             }
             let mut extracted = HashSet::new();
