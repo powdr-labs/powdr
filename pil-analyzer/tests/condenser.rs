@@ -238,9 +238,12 @@ fn double_next() {
 
 #[test]
 fn new_fixed_column() {
-    let input = r#"namespace N(16);
+    let input = r#"
+    namespace std::convert;
+        let fe = 9;
+    namespace N(16);
         let f = constr || {
-            let even: col = |i| i * 2;
+            let even: col = |i| std::convert::fe(i * 2_int);
             even
         };
         let ev = f();
@@ -1055,7 +1058,7 @@ pub fn at_next_stage_intermediate_and_fixed() {
             std::prover::at_next_stage(constr || {
                 let b: inter = a * a;
                 let c;
-                let first: col = |i| if i == 0 { 1 } else { 0 };
+                let first: col = |i| if i == 0_int { 1_fe } else { 0 };
                 let d: inter = a + c;
                 c' = first;
             });
