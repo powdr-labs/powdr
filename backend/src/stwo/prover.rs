@@ -12,6 +12,8 @@ use stwo_prover::constraint_framework::{
     assert_constraints, EvalAtRow, FrameworkComponent, FrameworkEval, TraceLocationAllocator,
 };
 use stwo_prover::core::backend::simd::SimdBackend;
+use stwo_prover::core::prover::StarkProof;
+use stwo_prover::core::vcs::ops::MerkleHasher;
 
 use stwo_prover::core::air::Component;
 use stwo_prover::core::channel::Poseidon252Channel;
@@ -20,7 +22,8 @@ use stwo_prover::core::pcs::{
     CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig, TreeVec,
 };
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
-use stwo_prover::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
+use stwo_prover::core::vcs::poseidon252_merkle::{Poseidon252MerkleChannel,Poseidon252MerkleHasher};
+use stwo_prover::core::prover::ProvingError;
 
 use powdr_number::FieldElement;
 
@@ -49,19 +52,14 @@ impl<F: FieldElement> StwoProver<F> {
             _verifying_key: None,
         })
     }
-    pub fn prove(&self, witness: &[(String, Vec<F>)], witgen_callback: WitgenCallback<F>) {
+    pub fn prove(&self, witness: &[(String, Vec<F>)], witgen_callback: WitgenCallback<F>)-> Result<StarkProof<Poseidon252MerkleHasher>, ProvingError> {
         let config = PcsConfig {
             pow_bits: 16,                          // Any value you want to set for pow_bits
             fri_config: FriConfig::new(0, 1, 100), // Using different numbers for FriConfig
         };
 
-        //Trace
-        let circuit = PowdrCircuit::new(self.analyzed.clone())
-            .with_witgen_callback(witgen_callback.clone())
-            .with_witness(witness)
-            .generate_stwo_circuit_trace();
 
-        let circuitEval = PowdrCircuit::new(self.analyzed.clone())
+        let circuit_eval = PowdrCircuit::new(self.analyzed.clone())
             .with_witgen_callback(witgen_callback.clone())
             .with_witness(witness);
 
@@ -97,7 +95,7 @@ impl<F: FieldElement> StwoProver<F> {
         tree_builder.commit(prover_channel);
 
         //Constraints that are to be proved
-        let component = PowdrComponent::new(&mut TraceLocationAllocator::default(), circuitEval);
+        let component = PowdrComponent::new(&mut TraceLocationAllocator::default(), circuit_eval);
 
         println!("created component!");
 
@@ -108,33 +106,11 @@ impl<F: FieldElement> StwoProver<F> {
             commitment_scheme,
         )
         .unwrap();
+        
 
         println!("proof generated!");
-        //     let duration = start.elapsed();
-
-        //     // Verify.
-        let verifier_channel = &mut Poseidon252Channel::default();
-        let commitment_scheme =
-            &mut CommitmentSchemeVerifier::<Poseidon252MerkleChannel>::new(config);
-
-        // Retrieve the expected column sizes in each commitment interaction, from the AIR.
-        let sizes = component.trace_log_degree_bounds();
-        commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
-
-        //     println!("proving time for fibo length of {:?} is {:?}",fibonacci_y_length, duration);
-        //     println!("proof size is {:?} bytes",proof.size_estimate());
-
-        //     let verifystart = Instant::now();
-        stwo_prover::core::prover::verify(
-            &[&component],
-            verifier_channel,
-            commitment_scheme,
-            proof,
-        )
-        .unwrap();
-
-        //     println!("verify time is {:?} ",verifyduration);
-
-        println!("prove_stwo in prover.rs is not complete yet");
+       
+        Ok(proof)
     }
+
 }
