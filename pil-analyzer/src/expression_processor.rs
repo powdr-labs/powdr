@@ -35,16 +35,27 @@ pub struct ExpressionProcessor<'a, D: AnalysisDriver> {
 pub fn inject_column_conversion_if_needed(value: Expression, ty: &Option<Type<u64>>) -> Expression {
     let Some(ty) = ty else { return value };
     match ty {
-        Type::Col => inject_function_call(value, "std::prelude::ToCol::to_col"),
+        Type::Col => inject_function_call_unless_present(value, "std::prelude::ToCol::to_col"),
         Type::Array(ArrayType { base, length: _ }) if base.as_ref() == &Type::Col => {
-            inject_function_call(value, "std::prelude::ToColArray::to_col_array")
+            inject_function_call_unless_present(value, "std::prelude::ToColArray::to_col_array")
         }
         _ => value,
     }
 }
 
-/// Replaces `expr` by a function call to `name` with `expr` as argument.
-fn inject_function_call(expr: Expression, name: &str) -> Expression {
+/// Replaces `expr` by a function call to `name` with `expr` as argument,
+/// unless the expression is already a call to that function.
+fn inject_function_call_unless_present(expr: Expression, name: &str) -> Expression {
+    if let Expression::FunctionCall(_, FunctionCall { function, .. }) = &expr {
+        if let Expression::Reference(_, Reference::Poly(PolynomialReference { name: called, .. })) =
+            function.as_ref()
+        {
+            if called == name {
+                return expr;
+            }
+        }
+    }
+
     let function = Box::new(Expression::Reference(
         expr.source_reference().clone(),
         Reference::Poly(PolynomialReference {
