@@ -308,7 +308,7 @@ impl<T> Analyzed<T> {
 
     /// Removes the given set of trait impls, identified by their index
     /// in the list of trait impls.
-    pub fn remove_trait_impls(&mut self, to_remove: &HashSet<usize>) {
+    pub fn remove_trait_impls(&mut self, to_remove: &BTreeSet<usize>) {
         let to_remove_vec: Vec<usize> = to_remove.iter().copied().collect();
 
         self.source_order.retain_mut(|s| {
@@ -316,6 +316,7 @@ impl<T> Analyzed<T> {
                 match to_remove_vec.binary_search(index) {
                     Ok(_) => false,
                     Err(insert_pos) => {
+                        // `insert_pos` is the number of removed elements before this one.
                         *index -= insert_pos;
                         true
                     }
@@ -644,10 +645,15 @@ impl SolvedTraitImpls {
         index: usize,
         function: Arc<Expression>,
     ) {
-        self.impls
+        let existing = self
+            .impls
             .entry(trait_function_name)
             .or_default()
             .insert(type_args, ImplData { index, function });
+        assert!(
+            existing.is_none(),
+            "Duplicate trait impl for the same type arguments."
+        );
     }
 
     /// Update the data structure after a certain set of trait impls have been removed.
@@ -661,6 +667,7 @@ impl SolvedTraitImpls {
                     match to_remove.binary_search(&impl_data.index) {
                         Ok(_) => None,
                         Err(index) => {
+                            // `index` is the number of removed elements before this one.
                             impl_data.index -= index;
                             Some((type_args, impl_data))
                         }

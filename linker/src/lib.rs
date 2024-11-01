@@ -4,7 +4,7 @@ use lazy_static::lazy_static;
 use powdr_analysis::utils::parse_pil_statement;
 use powdr_ast::{
     asm_analysis::{combine_flags, MachineDegree},
-    object::{Link, Location, PILGraph},
+    object::{Link, Location, MachineInstanceGraph},
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         build::{index_access, lookup, namespaced_reference, permutation, selected},
@@ -48,7 +48,7 @@ fn to_namespace_degree(d: MachineDegree) -> NamespaceDegree {
 }
 
 /// The optional degree of the namespace is set to that of the object if it's set, to that of the main object otherwise.
-pub fn link(graph: PILGraph) -> Result<PILFile, Vec<String>> {
+pub fn link(graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
     let main_machine = graph.main;
     let main_degree = graph
         .objects
@@ -232,7 +232,7 @@ fn process_link(link: Link) -> PilStatement {
 mod test {
     use std::{fs, path::PathBuf};
 
-    use powdr_ast::object::PILGraph;
+    use powdr_ast::object::MachineInstanceGraph;
     use powdr_number::{FieldElement, GoldilocksField};
 
     use powdr_analysis::convert_asm_to_pil;
@@ -242,7 +242,7 @@ mod test {
 
     use crate::{link, MAX_DEGREE_LOG, MIN_DEGREE_LOG};
 
-    fn parse_analyze_and_compile_file<T: FieldElement>(file: &str) -> PILGraph {
+    fn parse_analyze_and_compile_file<T: FieldElement>(file: &str) -> MachineInstanceGraph {
         let contents = fs::read_to_string(file).unwrap();
         let parsed = parse_asm(Some(file), &contents).unwrap_or_else(|e| {
             e.output_to_stderr();
@@ -254,7 +254,7 @@ mod test {
         powdr_airgen::compile(convert_asm_to_pil::<T>(resolved).unwrap())
     }
 
-    fn parse_analyze_and_compile<T: FieldElement>(input: &str) -> PILGraph {
+    fn parse_analyze_and_compile<T: FieldElement>(input: &str) -> MachineInstanceGraph {
         let parsed = parse_asm(None, input).unwrap_or_else(|e| {
             e.output_to_stderr();
             panic!();

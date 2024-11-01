@@ -149,7 +149,8 @@ pub fn generate_machine_rom<T: FieldElement>(mut machine: Machine) -> (Machine, 
                 .inputs
                 .iter()
                 .enumerate()
-                .map(|(i, _)| Param {
+                .map(|(i, p)| Param {
+                    source: p.source.clone(),
                     name: input_at(i),
                     index: None,
                     ty: None,
@@ -160,7 +161,8 @@ pub fn generate_machine_rom<T: FieldElement>(mut machine: Machine) -> (Machine, 
                 .outputs
                 .iter()
                 .enumerate()
-                .map(|(i, _)| Param {
+                .map(|(i, p)| Param {
+                    source: p.source.clone(),
                     name: output_at(i),
                     index: None,
                     ty: None,

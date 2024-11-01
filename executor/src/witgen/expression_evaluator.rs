@@ -47,6 +47,9 @@ where
         // we could store the simplified values.
         match expr {
             Expression::Reference(poly) => self.variables.value(AlgebraicVariable::Column(poly)),
+            Expression::PublicReference(public) => {
+                self.variables.value(AlgebraicVariable::Public(public))
+            }
             Expression::Number(n) => Ok((*n).into()),
             Expression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
                 self.evaluate_binary_operation(left, op, right)
@@ -55,7 +58,6 @@ where
                 self.evaluate_unary_operation(op, expr)
             }
             Expression::Challenge(challenge) => self.variables.challenge(challenge),
-            e => unimplemented!("Unexpected expression: {}", e),
         }
     }
 
