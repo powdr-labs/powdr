@@ -173,6 +173,7 @@ mod test {
     use super::sub_ext;
     use super::mul_ext;
     use super::square_ext;
+    use super::pow_ext;
     use super::inv_ext;
     use super::eq_ext;
     use std::check::assert;
@@ -246,5 +247,21 @@ mod test {
 
             assert(eq_ext(mul_with_inverse, from_base(1)), || "Should be 1")
         })
+    };
+
+    let test_pow = || {
+        let test_pow = |a, i, b| assert(eq_ext(pow_ext(a, i), b), || "Wrong power result");
+
+        test_pow(from_base(0), 0, from_base(1));
+        test_pow(from_base(1), 0, from_base(1));
+        test_pow(Fp2::Fp2(123, 1234), 0, from_base(1));
+
+        test_pow(from_base(9), 1, from_base(9));
+        test_pow(Fp2::Fp2(123, 1234), 1, Fp2::Fp2(123, 1234));
+
+        test_pow(from_base(9), 2, from_base(9 * 9));
+        test_pow(Fp2::Fp2(123, 1234), 2, Fp2::Fp2(16765445, 303564));
+
+        test_pow(from_base(9), 20, from_base(std::convert::fe(12157665459056928801 % std::field::modulus())));
     };
 }
