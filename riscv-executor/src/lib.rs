@@ -342,13 +342,13 @@ impl<F: FieldElement> ExecutionTrace<F> {
             "main::instr__loop",
             "main::instr_return",
             "main::instr_fail",
-            // TODO: get these from the runtime?
-            "main::instr_affine_256",
-            "main::instr_ec_add",
-            "main::instr_ec_double",
-            "main::instr_mod_256",
-            "main::instr_keccakf",
-            "main::instr_poseidon_gl",
+            // TODO: handle coprocessor submachines
+            // "main::instr_affine_256",
+            // "main::instr_ec_add",
+            // "main::instr_ec_double",
+            // "main::instr_mod_256",
+            // "main::instr_keccakf",
+            // "main::instr_poseidon_gl",
         ]
         .iter()
         .map(|n| (n.to_string(), vec![f0, f0]))
@@ -1172,10 +1172,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             .collect::<Vec<_>>();
 
         self.proc.backup_reg_mem();
-
-        self.proc.push_row();
-        let pc = self.proc.get_pc().u();
-        self.set_program_columns(pc);
 
         let mut tmp1_col = Elem::Field(F::zero());
         let mut tmp2_col = Elem::Field(F::zero());
@@ -2471,6 +2467,9 @@ pub fn execute_ast<F: FieldElement>(
 
         match stm {
             FunctionStatement::Assignment(a) => {
+                e.proc.push_row();
+                let pc = e.proc.get_pc().u();
+                e.set_program_columns(pc);
                 if let Some(p) = &mut profiler {
                     p.add_instruction_cost(e.proc.get_pc().u() as usize);
                 }
@@ -2484,34 +2483,17 @@ pub fn execute_ast<F: FieldElement>(
                     assert_eq!(x, "X");
 
                     let x_const = e.proc.get_col("main::X_const");
-                    assert!(x_const.is_zero());
 
                     match a.rhs.as_ref() {
                         Expression::FreeInput(_, _expr) => {
-                            // The free input case is a bit annoying here because it's in a
-                            // different code path:
-                            // - Only X is used to move free inputs to assignments.
-                            // - exec_instruction is not called if this is the case, so we need to
-                            // call push_row here.
-                            // - X gets the result of the prover input.
-                            // - X_free_value gets the same.
-                            // - X_read_free flag gets whatever is in the fixed column.
-                            e.proc.push_row();
-                            e.set_program_columns(e.proc.get_pc().u());
-                            // TODO assert X_const = 0
+                            // we currently only use X for free inputs
+                            assert!(x_const.is_zero());
                             e.proc.set_col("main::X", results[0]);
                             e.proc.set_col("main::X_free_value", results[0]);
                         }
                         _ => {
-                            // If it's not a free input it's an instruction that returns through X.
-                            // - We need to use the result of the instruction to set X.
-                            // - Currently the only instruction that does this is `get_reg`.
-                            // - exec_instruction already called push_row.
-                            // - After `exec_instruction`, main::X has main::X_const.
-                            // - We need to:
-                            // - Set main::X to the result of the instruction.
-                            // - Set X_read_free to whatever is in the fixed column.
-                            // - Solve for X_free_value.
+                            // We're assinging a value or the result of an instruction.
+                            // Currently, only X used as the assignment register in this case.
                             let x = results[0];
                             e.proc.set_col("main::X", x);
 
@@ -2538,6 +2520,10 @@ pub fn execute_ast<F: FieldElement>(
                 }
             }
             FunctionStatement::Instruction(i) => {
+                e.proc.push_row();
+                let pc = e.proc.get_pc().u();
+                e.set_program_columns(pc);
+
                 if let Some(p) = &mut profiler {
                     p.add_instruction_cost(e.proc.get_pc().u() as usize);
                 }
@@ -2597,8 +2583,7 @@ pub fn execute_ast<F: FieldElement>(
 
         curr_pc = match e.proc.advance() {
             Some(pc) => {
-                // PC has been updated but we havent added a new row, so we do
-                // "pc_update = PC" here
+                // We set pc_update=PC here, after the PC has been updated but before "pushing" the next row
                 e.proc.set_col("main::pc_update", e.proc.get_pc());
                 pc
             }
@@ -2635,8 +2620,8 @@ pub fn execute_ast<F: FieldElement>(
     e.proc.set_pc(sink_id.into());
     assert!(e.proc.advance().is_none());
     e.proc.push_row();
-    e.proc.set_col("main::pc_update", sink_id.into());
     e.set_program_columns(sink_id);
+    e.proc.set_col("main::pc_update", sink_id.into());
     e.proc.set_col("main::_operation_id", sink_id.into());
 
     e.proc.finish()
