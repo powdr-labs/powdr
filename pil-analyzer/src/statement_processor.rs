@@ -401,13 +401,11 @@ where
         assert!(stage.is_none() || symbol_kind == SymbolKind::Poly(PolynomialType::Committed));
 
         let id = self.counters.dispense_symbol_id(symbol_kind, length);
-        let absolute_name = self.driver.resolve_decl(&name);
-
         let symbol = Symbol {
             id,
             source: source.clone(),
             stage,
-            absolute_name: absolute_name.clone(),
+            absolute_name: self.driver.resolve_decl(&name),
             kind: symbol_kind,
             length,
             degree: self.degree,
@@ -731,12 +729,16 @@ where
             })
             .collect();
 
-        let resolved_name = self
-            .driver
-            .resolve_ref(&trait_impl.name, SymbolCategory::TraitDeclaration);
+        let name = SymbolPath::from_str(
+            &self
+                .driver
+                .resolve_ref(&trait_impl.name, SymbolCategory::TraitDeclaration)
+                .expect("TODO: Handle this up in the code"),
+        )
+        .unwrap();
 
         TraitImplementation {
-            name: SymbolPath::from_str(&resolved_name).unwrap(),
+            name,
             source_ref: trait_impl.source_ref,
             type_scheme: TypeScheme {
                 vars: trait_impl.type_scheme.vars,

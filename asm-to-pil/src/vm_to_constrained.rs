@@ -89,6 +89,7 @@ fn rom_machine<'a>(
                         inputs: (&mut line_lookup)
                             .take(1)
                             .map(|x| Param {
+                                source: SourceRef::unknown(),
                                 name: x.to_string(),
                                 index: None,
                                 ty: None,
@@ -96,6 +97,7 @@ fn rom_machine<'a>(
                             .collect(),
                         outputs: line_lookup
                             .map(|x| Param {
+                                source: SourceRef::unknown(),
                                 name: x.to_string(),
                                 index: None,
                                 ty: None,

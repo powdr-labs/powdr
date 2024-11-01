@@ -12,11 +12,11 @@ use itertools::Itertools;
 use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, ModuleStatement, SymbolPath,
 };
-use powdr_ast::parsed::types::{Type, TypeScheme};
+use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_ast::parsed::{
-    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SourceReference,
-    StructDeclaration, SymbolCategory, TraitImplementation, TypeDeclaration, TypedExpression,
+    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SourceReference, SymbolCategory,
+    TraitImplementation, TypeDeclaration, TypedExpression,
 };
 use powdr_number::{FieldElement, GoldilocksField};
 
@@ -293,8 +293,6 @@ impl PILAnalyzer {
             }
         }
 
-        let mut struct_declarations: HashMap<String, &StructDeclaration> = HashMap::new();
-
         let definitions = self
             .definitions
             .iter_mut()
@@ -307,21 +305,20 @@ impl PILAnalyzer {
                 )
             })
             .flat_map(|(name, (symbol, value))| {
-                let (type_scheme, expr) = match (symbol.kind, value) {
+                let (declared_type, expr) = match (symbol.kind, value) {
                     (SymbolKind::Poly(PolynomialType::Committed), Some(value)) => {
                         // Witness column, move its value (query function) into the expressions to be checked separately.
-                        let type_scheme = type_from_definition(symbol, &None);
 
                         let FunctionValueDefinition::Expression(TypedExpression { e, .. }) = value
                         else {
                             panic!("Invalid value for query function")
                         };
+                        let source = e.source_reference().clone();
                         expressions.push((e, query_type.clone().into()));
 
-                        let source = e.source_reference();
-                        let declared_type: Option<DeclaredType> =
-                            type_scheme.map(|ts| ts.into().with_source(source));
-
+                        let declared_type = type_from_definition(symbol, &None)
+                            .map(|ts| ts.into())
+                            .map(|dec: DeclaredType| dec.with_source(source));
                         (declared_type, None)
                     }
                     (
@@ -332,7 +329,10 @@ impl PILAnalyzer {
                         })),
                     ) => {
                         let source = e.source_reference();
-                        let declared_type = type_scheme.map(|ts| ts.into().with_source(source));
+                        let declared_type = type_scheme
+                            .clone()
+                            .map(|ts| ts.into())
+                            .map(|dec: DeclaredType| dec.with_source(source.clone()));
                         (declared_type, Some(e))
                     }
                     (
@@ -346,6 +346,7 @@ impl PILAnalyzer {
                             .iter()
                             .map(|f| (f.name.clone(), f.ty.clone()))
                             .collect();
+
                         let declared_type = DeclaredType {
                             source: SourceRef::unknown(),
                             vars: struct_decl.type_vars.clone(),
@@ -360,9 +361,7 @@ impl PILAnalyzer {
                         (Some(declared_type), None)
                     }
                     (_, value) => {
-                        let type_scheme = type_from_definition(symbol, value);
-
-                        let declared_type = type_scheme.map(|ts| ts.into());
+                        let declared_type = type_from_definition(symbol, value).map(|ts| ts.into());
 
                         if let Some(FunctionValueDefinition::Array(items)) = value {
                             // Expect all items in the arrays to be field elements.
@@ -372,7 +371,7 @@ impl PILAnalyzer {
                         (declared_type, None)
                     }
                 };
-                Some((name.clone(), (type_scheme, expr)))
+                Some((name.clone(), (declared_type, expr)))
             })
             .collect();
         for expr in &mut self.proof_items {
