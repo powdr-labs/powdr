@@ -84,6 +84,12 @@ impl DeclaredType {
         }
     }
 
+    fn declared_type(&self) -> &Type {
+        match &self.ty {
+            DeclaredTypeKind::Struct(ty, _) | DeclaredTypeKind::Type(ty) => ty,
+        }
+    }
+
     pub fn with_source(mut self, source: SourceRef) -> Self {
         self.source = source;
         self
@@ -176,6 +182,14 @@ impl TypeChecker {
         );
 
         self.setup_declared_types(definitions);
+        // After we setup declared types, every definition
+        // related with a Struct Declaration is not nedded any more
+        let mut definitions: HashMap<_,_> = definitions
+        .into_iter()
+        .filter(|(_, (ty, _))| {
+            !matches!(ty, Some(declared) if matches!(declared.ty, DeclaredTypeKind::Struct(_, _)))
+        })
+        .collect();
 
         // These are the inferred types for symbols that are declared
         // as type schemes. They are compared to the declared types
@@ -195,7 +209,7 @@ impl TypeChecker {
             let declared_type = self.declared_types[&name].clone();
             if declared_type.vars.is_empty() {
                 self.declared_type_vars.clear();
-                self.process_concrete_symbol(declared_type.scheme().ty.clone(), value)?;
+                self.process_concrete_symbol(declared_type.declared_type().clone(), value)?;
             } else {
                 self.declared_type_vars = declared_type
                     .vars
@@ -218,7 +232,7 @@ impl TypeChecker {
         for (name, declared_type) in &self.declared_types {
             if declared_type.vars.is_empty() {
                 // It is not a type scheme, see if we were able to derive a concrete type.
-                let inferred = self.type_into_substituted(declared_type.scheme().ty.clone());
+                let inferred = self.type_into_substituted(declared_type.declared_type().clone());
                 if !inferred.is_concrete_type() {
                     let inferred_scheme = self.to_type_scheme(inferred);
                     return Err(declared_type.source.with_error(
@@ -569,9 +583,7 @@ impl TypeChecker {
                 source_ref,
                 Reference::Poly(PolynomialReference { name, type_args }),
             ) => {
-                let (ty, args) = self
-                    .unifier
-                    .instantiate_scheme(self.declared_types[name].scheme().clone());
+                let (ty, args) = self.instantiate_scheme_by_declared_name(name);
                 if let Some(requested_type_args) = type_args {
                     if requested_type_args.len() != args.len() {
                         return Err(source_ref.with_error(format!(
@@ -904,9 +916,8 @@ impl TypeChecker {
             Pattern::Enum(source_ref, name, data) => {
                 // We just ignore the generic args here, storing them in the pattern
                 // is not helpful because the type is obvious from the value.
-                let (ty, _generic_args) = self
-                    .unifier
-                    .instantiate_scheme(self.declared_types[&name.to_string()].scheme().clone());
+                let (ty, _generic_args) =
+                    self.instantiate_scheme_by_declared_name(&name.to_string());
                 let ty = type_for_reference(&ty);
 
                 match data {
@@ -972,7 +983,8 @@ impl TypeChecker {
                     format_type_scheme_around_name(&name, &Some(declared),
                 ))));
             }
-            let declared_type_vars = declared.ty.contained_type_vars();
+            let declared_ty = declared_type.scheme().ty;
+            let declared_type_vars = declared_ty.contained_type_vars();
             let inferred_type_vars = inferred_type.contained_type_vars();
             Ok((name.clone(),
                 inferred_type_vars
@@ -1024,6 +1036,11 @@ impl TypeChecker {
 
     pub fn local_var_type(&self, id: u64) -> Type {
         self.local_var_types[id as usize].clone()
+    }
+
+    fn instantiate_scheme_by_declared_name(&mut self, name: &str) -> (Type, Vec<Type>) {
+        self.unifier
+            .instantiate_scheme(self.declared_types[&name.to_string()].scheme().clone())
     }
 }
 
