@@ -282,6 +282,7 @@ impl<F: FieldElement> ExecutionTrace<F> {
             "main::Y_b7",
             "main::Y_b8",
             "main::Y_7bit",
+            "main::Y_15bit",
             "main::Y",
             "main::Y_const",
             "main::Y_read_free",
@@ -1193,6 +1194,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         let mut tmp_wrap_bit = Elem::Field(F::zero());
 
         let mut tmp_y_7bit = Elem::Field(F::zero());
+        let mut tmp_y_15bit = Elem::Field(F::zero());
 
         let mut tmp_rem_b1 = Elem::Field(F::zero());
         let mut tmp_rem_b2 = Elem::Field(F::zero());
@@ -1235,22 +1237,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     self.proc.set_col("main::Y_free_value", val);
                 }
 
-                //self.proc.set_reg("X", addr);
-                //self.proc.set_reg("Y", val);
-                //self.proc.set_reg("Z", 0);
-                //self.proc.set_reg("W", 0);
-
                 Vec::new()
             }
             "get_reg" => {
                 let addr = args[0].u();
                 let val = self.proc.get_reg_mem(addr);
                 reg_read!(0, addr, val, 0);
-
-                //self.proc.set_reg("Y", addr);
-                //self.proc.set_reg("X", val);
-                //self.proc.set_reg("Z", 0);
-                //self.proc.set_reg("W", 0);
 
                 vec![val]
             }
@@ -1268,11 +1260,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 reg_write!(1, write_reg, res, 3);
 
                 tmp1_col = val1;
-
-                //self.proc.set_reg("X", read_reg);
-                //self.proc.set_reg("Y", write_reg);
-                //self.proc.set_reg("Z", factor);
-                //self.proc.set_reg("W", offset);
 
                 Vec::new()
             }
@@ -1318,11 +1305,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 tmp_x_b4 = Elem::from_u32_as_fe(b4.into());
                 //tmp_wrap_bit = Elem::from_u32_as_fe(sign.into());
 
-                //self.proc.set_reg("X", read_reg1);
-                //self.proc.set_reg("Z", read_reg2);
-                //self.proc.set_reg("Y", offset);
-                //self.proc.set_reg("W", read_reg3);
-
                 Vec::new()
             }
             "mload" => {
@@ -1361,11 +1343,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     val.into(),
                     0,
                 );
-
-                //self.proc.set_reg("X", read_reg);
-                //self.proc.set_reg("Y", offset);
-                //self.proc.set_reg("Z", write_addr1);
-                //self.proc.set_reg("W", write_addr2);
 
                 Vec::new()
             }
@@ -1411,11 +1388,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 self.proc.set_col("main::instr_load_label_param_l", label);
 
-                //self.proc.set_reg("X", write_reg);
-                //self.proc.set_reg("Y", 0);
-                //self.proc.set_reg("Z", 0);
-                //self.proc.set_reg("W", 0);
-
                 Vec::new()
             }
             "jump" => {
@@ -1429,10 +1401,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 self.proc.set_pc(label);
 
                 self.proc.set_col("main::instr_jump_param_l", label);
-                //self.proc.set_reg("X", 0);
-                //self.proc.set_reg("Y", 0);
-                //self.proc.set_reg("Z", 0);
-                //self.proc.set_reg("W", write_reg);
 
                 Vec::new()
             }
@@ -1444,16 +1412,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let write_reg = args[1].u();
 
                 self.proc.set_reg_mem(write_reg, next_pc.into());
-                // TODO: change instruction step?
                 reg_write!(0, write_reg, next_pc.into(), 3);
 
                 self.proc.set_pc(addr);
 
                 tmp1_col = addr;
-                //self.proc.set_reg("X", read_reg);
-                //self.proc.set_reg("W", write_reg);
-                //self.proc.set_reg("Y", 0);
-                //self.proc.set_reg("Z", 0);
 
                 Vec::new()
             }
@@ -1488,10 +1451,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 self.proc
                     .set_col("main::instr_branch_if_diff_nonzero_param_l", label);
-                //self.proc.set_reg("X", read_reg1);
-                //self.proc.set_reg("Y", read_reg2);
-                //self.proc.set_reg("Z", 0);
-                //self.proc.set_reg("W", 0);
 
                 Vec::new()
             }
@@ -1521,11 +1480,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 self.proc
                     .set_col("main::instr_branch_if_diff_equal_param_l", label);
 
-                //self.proc.set_reg("X", read_reg1);
-                //self.proc.set_reg("Y", read_reg2);
-                //self.proc.set_reg("Z", offset);
-                //self.proc.set_reg("W", 0);
-
                 Vec::new()
             }
             "skip_if_equal" => {
@@ -1551,10 +1505,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 if !tmp_xx.is_zero() {
                     tmp_xx_inv = Elem::Field(F::one() / tmp_xx.into_fe());
                 }
-                //self.proc.set_reg("X", read_reg1);
-                //self.proc.set_reg("Y", read_reg2);
-                //self.proc.set_reg("Z", offset);
-                //self.proc.set_reg("W", cond);
 
                 Vec::new()
             }
@@ -1596,11 +1546,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     Elem::Field(F::zero())
                 };
 
-                //self.proc.set_reg("X", read_reg1);
-                //self.proc.set_reg("Y", read_reg2);
-                //self.proc.set_reg("Z", offset);
-                //self.proc.set_reg("W", 0);
-
                 Vec::new()
             }
             "is_diff_greater_than" => {
@@ -1632,11 +1577,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 tmp_x_b4 = Elem::from_u32_as_fe(b4.into());
                 tmp_wrap_bit = Elem::from_u32_as_fe(r);
 
-                //self.proc.set_reg("X", read_reg1);
-                //self.proc.set_reg("Y", read_reg2);
-                //self.proc.set_reg("Z", write_reg);
-                //self.proc.set_reg("W", 0);
-
                 Vec::new()
             }
             "is_equal_zero" => {
@@ -1650,16 +1590,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 reg_write!(2, write_reg, r.into(), 3);
 
                 tmp1_col = val;
-                tmp3_col = Elem::from_u32_as_fe(r);
                 tmp_xx = val;
                 tmp_xx_iszero = Elem::from_bool_as_fe(tmp_xx.is_zero());
                 if !tmp_xx.is_zero() {
                     tmp_xx_inv = Elem::Field(F::one() / tmp_xx.into_fe());
                 }
-                //self.proc.set_reg("X", read_reg);
-                //self.proc.set_reg("W", write_reg);
-                //self.proc.set_reg("Y", 0);
-                //self.proc.set_reg("Z", 0);
 
                 Vec::new()
             }
@@ -1685,10 +1620,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 if !tmp_xx.is_zero() {
                     tmp_xx_inv = Elem::Field(F::one() / tmp_xx.into_fe());
                 }
-                //self.proc.set_reg("X", read_reg1);
-                //self.proc.set_reg("Y", read_reg2);
-                //self.proc.set_reg("W", write_reg);
-                //self.proc.set_reg("Z", 0);
 
                 Vec::new()
             }
@@ -1725,11 +1656,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     Elem::Field(F::zero())
                 };
 
-                //self.proc.set_reg("X", read_reg1);
-                //self.proc.set_reg("Y", read_reg2);
-                //self.proc.set_reg("Z", offset);
-                //self.proc.set_reg("W", write_reg);
-
                 Vec::new()
             }
             "wrap16" => {
@@ -1744,7 +1670,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 // higher bits
                 let r = val_offset.bin() as u32;
                 self.proc.set_reg_mem(write_reg, r.into());
-                // todo: change instruction step?
                 reg_write!(3, write_reg, r.into(), 3);
 
                 tmp1_col = val;
@@ -1760,11 +1685,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let (b5, b6, _b7, _b8, _sign) = decompose_lower32(val_offset.bin() >> 32);
                 tmp_y_b5 = Elem::from_u32_as_fe(b5.into());
                 tmp_y_b6 = Elem::from_u32_as_fe(b6.into());
-
-                //self.proc.set_reg("X", read_reg);
-                //self.proc.set_reg("Y", factor);
-                //self.proc.set_reg("Z", write_reg);
-                //self.proc.set_reg("W", 0);
 
                 Vec::new()
             }
@@ -1799,11 +1719,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     Elem::Field(F::zero())
                 };
 
-                //self.proc.set_reg("X", read_reg1);
-                //self.proc.set_reg("Y", read_reg2);
-                //self.proc.set_reg("Z", offset);
-                //self.proc.set_reg("W", write_reg);
-
                 Vec::new()
             }
             "sign_extend_byte" => {
@@ -1819,7 +1734,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let byte_val = (val.u() as u8) as i8;
                 let extended_val = byte_val as i32 as u32;
                 self.proc.set_reg_mem(write_reg, extended_val.into());
-                // TODO: change instruction step?
                 reg_write!(3, write_reg, extended_val.into(), 3);
 
                 tmp1_col = val;
@@ -1841,11 +1755,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     Elem::Field(F::zero())
                 };
 
-                //self.proc.set_reg("X", read_reg);
-                //self.proc.set_reg("Y", write_reg);
-                //self.proc.set_reg("Z", 0);
-                //self.proc.set_reg("W", 0);
-
                 Vec::new()
             }
             "sign_extend_16_bits" => {
@@ -1854,8 +1763,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 reg_read!(0, read_reg, val, 0);
                 let write_reg = args[1].u();
 
-                //let r = val.u() as i16 as u32;
-                //self.proc.set_reg_mem(write_reg, r.into());
+                tmp1_col = val;
 
                 // Perform sign extension on the 16-bit value
                 let sign_bit = (val.u() & 0x8000) != 0;
@@ -1865,30 +1773,23 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     val.u() & 0x0000FFFF
                 };
                 self.proc.set_reg_mem(write_reg, extended_val.into());
-                // todo: change instruction step
                 reg_write!(3, write_reg, extended_val.into(), 3);
 
-                tmp1_col = val;
-                //tmp3_col = Elem::from_u32_as_fe(r);
                 tmp3_col = Elem::from_u32_as_fe(extended_val);
 
                 let v = tmp1_col.as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _) = decompose_lower32(v);
+
                 tmp_x_b1 = Elem::from_u32_as_fe(b1.into());
-                // no x_b2 here
                 tmp_x_b3 = Elem::from_u32_as_fe(b3.into());
                 tmp_x_b4 = Elem::from_u32_as_fe(b4.into());
                 tmp_y_7bit = Elem::from_u32_as_fe((b2 & 0x7f).into());
+                tmp_y_15bit = Elem::from_u32_as_fe(val.u() & 0x7fff);
                 tmp_wrap_bit = if sign_bit {
                     Elem::Field(F::one())
                 } else {
                     Elem::Field(F::zero())
                 };
-
-                //self.proc.set_reg("X", read_reg);
-                //self.proc.set_reg("Y", write_reg);
-                //self.proc.set_reg("Z", 0);
-                //self.proc.set_reg("W", 0);
 
                 Vec::new()
             }
@@ -1900,7 +1801,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let r = val.u() as i32;
 
                 self.proc.set_reg_mem(write_reg, r.into());
-                reg_write!(1, write_reg, val, 3);
+                reg_write!(1, write_reg, r.into(), 3);
 
                 tmp1_col = val;
                 tmp3_col = Elem::from_i64_as_fe(r.into());
@@ -1916,11 +1817,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 }
 
                 tmp_y_7bit = Elem::from_u32_as_fe(b4 as u32 & 0x7f);
-
-                //self.proc.set_reg("X", read_reg);
-                //self.proc.set_reg("Y", write_reg);
-                //self.proc.set_reg("Z", 0);
-                //self.proc.set_reg("W", 0);
 
                 Vec::new()
             }
@@ -1987,11 +1883,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     tmp_y_b8 = Elem::from_u32_as_fe(b8.into());
                 }
 
-                //self.proc.set_reg("Y", read_reg1);
-                //self.proc.set_reg("X", read_reg2);
-                //self.proc.set_reg("Z", write_reg1);
-                //self.proc.set_reg("W", write_reg2);
-
                 Vec::new()
             }
             "mul" => {
@@ -2027,11 +1918,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                         &[("output_low", lo.into()), ("output_high", hi.into())],
                     );
 
-                //self.proc.set_reg("X", read_reg1);
-                //self.proc.set_reg("Y", read_reg2);
-                //self.proc.set_reg("Z", write_reg1);
-                //self.proc.set_reg("W", write_reg2);
-
                 Vec::new()
             }
             "and" | "or" | "xor" => {
@@ -2044,6 +1930,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let offset = args[2].bin();
                 let write_reg = args[3].u();
                 let val2_offset: Elem<F> = (val2.bin() + offset).into();
+
+                tmp1_col = val1;
+                tmp2_col = val2;
 
                 let r = match name {
                     "and" => val1.u() & val2_offset.u(),
@@ -2059,16 +1948,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     .add_operation(name, &[("A", val1), ("B", val2_offset), ("C", r.into())]);
 
                 self.proc.set_reg_mem(write_reg, r.into());
-                // TODO: change instruction STEP?
                 reg_write!(3, write_reg, r.into(), 3);
 
-                tmp1_col = val1;
-                tmp2_col = val2;
                 tmp3_col = Elem::from_u32_as_fe(r);
-                //self.proc.set_reg("X", read_reg1);
-                //self.proc.set_reg("Y", read_reg2);
-                //self.proc.set_reg("Z", offset);
-                //self.proc.set_reg("W", write_reg);
 
                 Vec::new()
             }
@@ -2090,7 +1972,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 };
 
                 self.proc.set_reg_mem(write_reg, r.into());
-                // TODO: change instruction STEP?
                 reg_write!(3, write_reg, r.into(), 3);
 
                 tmp1_col = val1;
@@ -2102,11 +1983,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     .get_mut("shift")
                     .unwrap()
                     .add_operation(name, &[("A", val1), ("B", val2_offset), ("C", r.into())]);
-
-                //self.proc.set_reg("X", read_reg1);
-                //self.proc.set_reg("Y", read_reg2);
-                //self.proc.set_reg("Z", offset);
-                //self.proc.set_reg("W", write_reg);
 
                 Vec::new()
             }
@@ -2132,10 +2008,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 tmp1_col = val1;
                 tmp3_col = Elem::from_u32_as_fe(lo);
                 tmp4_col = Elem::from_u32_as_fe(hi);
-                //self.proc.set_reg("X", read_reg);
-                //self.proc.set_reg("Z", write_reg1);
-                //self.proc.set_reg("W", write_reg2);
-                //self.proc.set_reg("Y", 0);
 
                 self.proc
                     .submachines
@@ -2290,6 +2162,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         self.proc.set_col("main::wrap_bit", tmp_wrap_bit);
 
         self.proc.set_col("main::Y_7bit", tmp_y_7bit);
+        self.proc.set_col("main::Y_15bit", tmp_y_15bit);
 
         self.proc
             .set_col("main::X", self.proc.get_col("main::X_const"));
