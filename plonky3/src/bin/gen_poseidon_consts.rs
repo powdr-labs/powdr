@@ -3,6 +3,7 @@ use std::{collections::BTreeMap, iter::repeat};
 use itertools::Itertools;
 use p3_baby_bear::BabyBear;
 use p3_field::{AbstractField, PrimeField32};
+use p3_goldilocks::{Goldilocks, MATRIX_DIAG_8_GOLDILOCKS_U64};
 use p3_monty_31::DiffusionMatrixParameters;
 use p3_poseidon::Poseidon;
 use p3_poseidon2::Poseidon2ExternalMatrixGeneral;
@@ -17,6 +18,7 @@ fn main() {
     let choices = [
         ("poseidon-bb", poseidon_bb_consts as fn()),
         ("poseidon2-bb", poseidon2_bb_consts as fn()),
+        ("poseidon2-gl", poseidon2_gl_consts as fn()),
     ]
     .into_iter()
     .collect::<BTreeMap<_, _>>();
@@ -188,6 +190,43 @@ fn poseidon2_bb_consts() {
             println!("        assert_eq {}, {val};", i * 4);
         }
     }
+}
+
+fn poseidon2_gl_consts() {
+    use powdr_plonky3::goldilocks::{ROUNDS_F, ROUNDS_P, WIDTH};
+
+    println!("EXTERNAL_CONSTANTS = [");
+    let ec = poseidon2::external_constants::<Goldilocks, WIDTH>(*ROUNDS_F);
+    for row in ec {
+        println!("    [{}],", row.into_iter().format(", "));
+    }
+    println!("];");
+
+    println!("EXTERNAL_MATRIX = [");
+    let mds = extract_matrix::<Goldilocks, WIDTH>(Poseidon2ExternalMatrixGeneral);
+    for row in mds {
+        println!("    [{}],", row.into_iter().format(", "));
+    }
+    println!("];");
+
+    println!("INTERNAL_CONSTANTS = [");
+    let ic = poseidon2::internal_constants::<Goldilocks>(*ROUNDS_P);
+    for &elem in ic.iter() {
+        println!("    {},", elem);
+    }
+    println!("];");
+
+    println!("DIFFUSION_MATRIX = [");
+    let mds = extract_matrix::<Goldilocks, WIDTH>(p3_goldilocks::DiffusionMatrixGoldilocks);
+    for row in mds {
+        println!("    [{}],", row.into_iter().format(", "));
+    }
+    println!("];");
+
+    println!(
+        "DIFFUSION_DIAGONAL = [{}];",
+        MATRIX_DIAG_8_GOLDILOCKS_U64.iter().format(", ")
+    );
 }
 
 fn test_vectors<F: AbstractField + Copy, const W: usize>() -> [[F; W]; 4] {
