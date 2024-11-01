@@ -9,7 +9,6 @@ use powdr_executor::witgen::WitgenCallback;
 use powdr_number::FieldElement;
 use prover::StwoProver;
 
-
 mod circuit_builder;
 mod prover;
 use circuit_builder::PowdrCircuit;
@@ -58,8 +57,8 @@ impl<T: FieldElement> Backend<T> for StwoProver<T> {
             return Err(Error::NoAggregationAvailable);
         }
         let circuit = PowdrCircuit::new(self.analyzed.clone())
-        .with_witgen_callback(witgen_callback.clone())
-        .with_witness(witness);
+            .with_witgen_callback(witgen_callback.clone())
+            .with_witness(witness);
 
         self.prove(witness, witgen_callback);
         unimplemented!()

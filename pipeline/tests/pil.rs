@@ -1,7 +1,7 @@
 #[cfg(feature = "halo2")]
 use powdr_number::Bn254Field;
-use powdr_number::Mersenne31Field;
 use powdr_number::GoldilocksField;
+use powdr_number::Mersenne31Field;
 use powdr_pipeline::test_util::{
     assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_estark,
     assert_proofs_fail_for_invalid_witnesses_halo2,
