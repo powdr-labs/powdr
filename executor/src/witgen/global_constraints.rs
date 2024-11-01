@@ -255,7 +255,7 @@ fn propagate_constraints<T: FieldElement>(
                 }
             }
             if right.expressions.len() == 1 {
-                // We can only remove the lookup or permutation if the RHS is a fixed polynomial that
+                // We can only remove the lookup if the RHS is a fixed polynomial that
                 // provides all values in the span.
                 if let Some(name) = try_to_simple_poly(&right.expressions[0]) {
                     if try_to_simple_poly(&left.expressions[0]).is_some()

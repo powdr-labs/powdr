@@ -927,7 +927,10 @@ impl<T> Children<AlgebraicExpression<T>> for LookupIdentity<T> {
     }
 }
 
-/// A witness generation helper for a lookup identity. This is ignored by the backend.
+/// A witness generation helper for a lookup identity.
+///
+/// This identity is used as a replactement for a lookup identity which has been turned into challenge-based polynomial identities.
+/// This is ignored by the backend.
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PhantomLookupIdentity<T> {
     // The ID is globally unique among identities.
@@ -957,24 +960,6 @@ impl<T> Children<AlgebraicExpression<T>> for PhantomLookupIdentity<T> {
     }
 }
 
-impl<T> PhantomLookupIdentity<T> {
-    pub fn new(
-        id: u64,
-        source: SourceRef,
-        left: SelectedExpressions<T>,
-        right: SelectedExpressions<T>,
-        multiplicity: AlgebraicExpression<T>,
-    ) -> Self {
-        Self {
-            id,
-            source,
-            left,
-            right,
-            multiplicity,
-        }
-    }
-}
-
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PermutationIdentity<T> {
     // The ID is globally unique among identitites.
@@ -993,7 +978,10 @@ impl<T> Children<AlgebraicExpression<T>> for PermutationIdentity<T> {
     }
 }
 
-/// A witness generation helper for a permutation identity. This is ignored by the backend.
+/// A witness generation helper for a permutation identity.
+///
+/// This identity is used as a replactement for a permutation identity which has been turned into challenge-based polynomial identities.
+/// This is ignored by the backend.
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PhantomPermutationIdentity<T> {
     // The ID is globally unique among identitites.
@@ -1012,22 +1000,6 @@ impl<T> Children<AlgebraicExpression<T>> for PhantomPermutationIdentity<T> {
     }
 }
 
-impl<T> PhantomPermutationIdentity<T> {
-    pub fn new(
-        id: u64,
-        source: SourceRef,
-        left: SelectedExpressions<T>,
-        right: SelectedExpressions<T>,
-    ) -> Self {
-        Self {
-            id,
-            source,
-            left,
-            right,
-        }
-    }
-}
-
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct ConnectIdentity<T> {
     // The ID is globally unique among identitites.
@@ -1043,22 +1015,6 @@ impl<T> Children<AlgebraicExpression<T>> for ConnectIdentity<T> {
     }
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
         Box::new(self.left.iter().chain(self.right.iter()))
-    }
-}
-
-impl<T> ConnectIdentity<T> {
-    pub fn new(
-        id: u64,
-        source: SourceRef,
-        left: Vec<AlgebraicExpression<T>>,
-        right: Vec<AlgebraicExpression<T>>,
-    ) -> Self {
-        Self {
-            id,
-            source,
-            left,
-            right,
-        }
     }
 }
 
