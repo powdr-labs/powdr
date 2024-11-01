@@ -185,7 +185,7 @@ impl TypeChecker {
         // After we setup declared types, every definition
         // related with a Struct Declaration is not nedded any more
         let mut definitions: HashMap<_,_> = definitions
-        .into_iter()
+        .iter_mut()
         .filter(|(_, (ty, _))| {
             !matches!(ty, Some(declared) if matches!(declared.ty, DeclaredTypeKind::Struct(_, _)))
         })
