@@ -19,6 +19,7 @@ fn main() {
     let mut session = Session::builder()
         .guest_path("./guest")
         .out_path("powdr-target")
+        .chunk_size_log2(18)
         .build()
         .write(1, &challenge)
         .write(2, &preimg);
