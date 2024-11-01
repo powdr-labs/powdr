@@ -251,14 +251,16 @@ fn new_fixed_column() {
         x = ev;
     "#;
     let formatted = analyze_string(input).to_string();
-    let expected = r#"namespace N(16);
+    let expected = r#"namespace std::convert;
+    let fe = 9;
+namespace N(16);
     let f: -> expr = constr || {
-        let even: col = |i| i * 2_int;
+        let even: col = |i| std::convert::fe::<int>(i * 2_int);
         even
     };
     let ev: expr = N::f();
     col witness x;
-    col fixed even(i) { i * 2_int };
+    col fixed even(i) { std::convert::fe::<int>(i * 2_int) };
     N::x = N::even;
 "#;
     assert_eq!(formatted, expected);
