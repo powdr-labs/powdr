@@ -271,17 +271,22 @@ fn build_machine_pil<F: FieldElement>(
         source_order: statements,
         ..pil
     };
-    let pil_string = add_dummy_witness_column(&pil.to_string());
+    let pil_string = ensure_dummy_witness_column(&pil.to_string());
     let parsed_string = powdr_parser::parse(None, &pil_string).unwrap();
     powdr_pil_analyzer::analyze_ast(parsed_string).unwrap()
 }
 
 /// Insert a dummy witness column and identity into the PIL string, just after the namespace.
 /// This ensures that all machine PILs have at least one witness column and identity, which is
-/// assumed by most backends.
+/// assumed by most backends. If a dummy column is already there, this is a no-op.
 /// In the future, this will always be the case, as interacting with the bus will require
 /// at least one witness column & identity, so this is only necessary for now.
-fn add_dummy_witness_column(pil_string: &str) -> String {
+fn ensure_dummy_witness_column(pil_string: &str) -> String {
+    // check if we already have a dummy column
+    if pil_string.contains(DUMMY_COLUMN_NAME) {
+        return pil_string.to_string();
+    }
+
     let dummy_column = format!("    col witness {DUMMY_COLUMN_NAME};");
     let dummy_constraint = format!("    {DUMMY_COLUMN_NAME} = {DUMMY_COLUMN_NAME};");
     let mut has_inserted_dummy_lines = false;
@@ -298,4 +303,23 @@ fn add_dummy_witness_column(pil_string: &str) -> String {
             }
         })
         .join("\n")
+}
+
+#[cfg(test)]
+mod test {
+    use powdr_ast::analyzed::Analyzed;
+    use powdr_number::GoldilocksField;
+
+    #[test]
+    fn test_idempotence() {
+        let src = r#"namespace main;
+col witness a;
+"#;
+        let pil: Analyzed<GoldilocksField> =
+            powdr_pil_analyzer::analyze_ast(powdr_parser::parse(None, src).unwrap()).unwrap();
+        let split = super::split_pil(&pil).into_iter().next().unwrap().1;
+        let split_str = split.to_string();
+        let split_again = super::split_pil(&split).into_iter().next().unwrap().1;
+        assert_eq!(split_str, split_again.to_string());
+    }
 }
