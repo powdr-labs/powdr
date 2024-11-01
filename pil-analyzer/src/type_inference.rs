@@ -971,29 +971,51 @@ impl TypeChecker {
         &self,
         inferred_types: HashMap<String, Type>,
     ) -> Result<HashMap<String, HashMap<String, Type>>, Error> {
-        inferred_types.into_iter().map(|(name, inferred_type)| {
-            let declared_type = self.declared_types[&name].clone();
-            let inferred_type = self.type_into_substituted(inferred_type.clone());
-            let inferred = self.to_type_scheme(inferred_type.clone());
-            let declared = declared_type.scheme().clone().simplify_type_vars();
-            if inferred != declared {
-                return Err(declared_type.source.with_error(format!(
-                    "Inferred type scheme for symbol {name} does not match the declared type.\nInferred: let{}\nDeclared: let{}",
-                    format_type_scheme_around_name(&name, &Some(inferred)),
-                    format_type_scheme_around_name(&name, &Some(declared),
-                ))));
-            }
-            let declared_ty = declared_type.scheme().ty;
-            let declared_type_vars = declared_ty.contained_type_vars();
-            let inferred_type_vars = inferred_type.contained_type_vars();
-            Ok((name.clone(),
-                inferred_type_vars
-                    .into_iter()
-                    .cloned()
-                    .zip(declared_type_vars.into_iter().map(|tv| Type::TypeVar(tv.clone())))
-                    .collect(),
-            ))
-        }).collect::<Result<_, Error>>()
+        inferred_types
+            .into_iter()
+            .map(|(name, inferred_type)| {
+                let declared_type = self.declared_types[&name].clone();
+                let inferred_type = self.type_into_substituted(inferred_type.clone());
+
+                self.compare_type_schemes(&name, inferred_type, declared_type.scheme().clone())
+                    .map_err(|err| {
+                        declared_type
+                            .source
+                            .with_error(format!("For symbol {name}: {err}"))
+                    })
+                    .map(|mapping| (name, mapping))
+            })
+            .collect()
+    }
+
+    /// Compares two type schemes and returns a mapping from inferred type vars to declared type vars if they match
+    fn compare_type_schemes(
+        &self,
+        name: &str,
+        inferred_type: Type,
+        declared_scheme: TypeScheme,
+    ) -> Result<HashMap<String, Type>, String> {
+        let inferred = self.to_type_scheme(inferred_type.clone());
+        let declared = declared_scheme.clone().simplify_type_vars();
+
+        if inferred != declared {
+            return Err(format!(
+                "Inferred type scheme does not match the declared type.\nInferred: let{}\nDeclared: let{}",
+                format_type_scheme_around_name(&name, &Some(inferred)),
+                format_type_scheme_around_name(&name, &Some(declared))
+            ));
+        }
+
+        Ok(inferred_type
+            .contained_type_vars()
+            .cloned()
+            .zip(
+                declared_scheme
+                    .ty
+                    .contained_type_vars()
+                    .map(|tv| Type::TypeVar(tv.clone())),
+            )
+            .collect())
     }
 
     fn type_into_substituted(&self, mut ty: Type) -> Type {
@@ -1038,7 +1060,7 @@ impl TypeChecker {
         self.local_var_types[id as usize].clone()
     }
 
-    /// Returns a new type scheme for the given name.
+    /// Returns a new type scheme as a tuple (type, generic args) for the given name.
     fn instantiate_scheme_by_declared_name(&mut self, name: &str) -> (Type, Vec<Type>) {
         self.unifier
             .instantiate_scheme(self.declared_types[name].scheme().clone())
