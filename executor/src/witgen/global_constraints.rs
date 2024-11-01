@@ -6,8 +6,7 @@ use num_traits::Zero;
 use num_traits::One;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
-    PhantomPermutationIdentity, PolyID, PolynomialType,
+    AlgebraicReference, LookupIdentity, PhantomLookupIdentity, PolyID, PolynomialType,
 };
 
 use powdr_number::FieldElement;
@@ -239,9 +238,7 @@ fn propagate_constraints<T: FieldElement>(
             }
         }
         Identity::Lookup(LookupIdentity { left, right, .. })
-        | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. })
-        | Identity::Permutation(PermutationIdentity { left, right, .. })
-        | Identity::PhantomPermutation(PhantomPermutationIdentity { left, right, .. }) => {
+        | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. }) => {
             if !left.selector.is_one() || !right.selector.is_one() {
                 return (known_constraints, false);
             }
@@ -271,6 +268,9 @@ fn propagate_constraints<T: FieldElement>(
         }
         Identity::Connect(..) => {
             // we do not handle connect identities yet, so we do nothing
+        }
+        Identity::Permutation(..) | Identity::PhantomPermutation(..) => {
+            // permutation identities are stronger than just range constraints, so we do nothing
         }
     }
 
