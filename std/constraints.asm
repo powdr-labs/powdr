@@ -10,6 +10,14 @@ let make_conditional: Constr, expr -> Constr = |constraint, condition| match con
     Constr::Connection(_) => std::check::panic("Connection constraints cannot be conditional"),
 };
 
+/// Either one constraint or the other, depending on a boolean condition.
+let if_else: expr, Constr, Constr -> Constr = |condition, if_true, if_false| match (if_true, if_false) {
+    (Constr::Identity(l_t, r_t), Constr::Identity(l_f, r_f)) =>
+        condition * (l_t - r_t) +
+        (1 - condition) * (l_f - r_f) = 0,
+    _ => std::check::panic("if_else can only be used with two identity constraints"),
+};
+
 /// Converts a lookup constraint to a phantom lookup constraint.
 let to_phantom_lookup: Constr, expr -> Constr = |constraint, multiplicities| match constraint {
     Constr::Lookup(selectors, exprs) => Constr::PhantomLookup(selectors, exprs, multiplicities),

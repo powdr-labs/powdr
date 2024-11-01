@@ -8,13 +8,13 @@ use std::cmp::max;
 use std::time::Instant;
 
 use crate::witgen::identity_processor::{self};
+use crate::witgen::machines::compute_size_and_log;
 use crate::witgen::IncompleteCause;
 use crate::Identity;
 
 use super::affine_expression::AlgebraicVariable;
-use super::data_structures::finalizable_data::FinalizableData;
 use super::machines::MachineParts;
-use super::processor::{OuterQuery, Processor};
+use super::processor::{OuterQuery, Processor, SolverState};
 
 use super::rows::{Row, RowIndex, UnknownStrategy};
 use super::{Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCallback};
@@ -76,7 +76,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         row_offset: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
         parts: &'c MachineParts<'a, T>,
-        data: FinalizableData<T>,
+        mutable_data: SolverState<'a, T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
     ) -> Self {
         let degree_range = parts.common_degree_range();
@@ -87,7 +87,14 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             .identities
             .iter()
             .partition(|identity| identity.contains_next_ref());
-        let processor = Processor::new(row_offset, data, mutable_state, fixed_data, parts, degree);
+        let processor = Processor::new(
+            row_offset,
+            mutable_data,
+            mutable_state,
+            fixed_data,
+            parts,
+            degree,
+        );
 
         let progress_bar = ProgressBar::new(degree);
         progress_bar.set_style(
@@ -118,7 +125,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         Self { processor, ..self }
     }
 
-    pub fn finish(self) -> (FinalizableData<T>, DegreeType) {
+    /// Returns the updated data, values for publics, and the length of the block.
+    pub fn finish(self) -> (SolverState<'a, T>, DegreeType) {
         (self.processor.finish(), self.degree)
     }
 
@@ -180,17 +188,12 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                         "Found loop with period {p} starting at row {row_index}"
                     );
 
-                    let new_degree = self.processor.len().next_power_of_two() as DegreeType;
-                    let new_degree = self.degree_range.fit(new_degree);
-                    log::info!(
-                        "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
-                        self.machine_name,
-                        self.degree,
-                        new_degree,
-                        self.processor.len()
+                    self.degree = compute_size_and_log(
+                        &self.machine_name,
+                        self.processor.len(),
+                        self.degree_range,
                     );
-                    self.degree = new_degree;
-                    self.processor.set_size(new_degree);
+                    self.processor.set_size(self.degree);
                 }
             }
             if let Some(period) = looping_period {

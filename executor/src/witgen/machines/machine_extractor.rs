@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::LookupIdentity;
@@ -14,13 +14,11 @@ use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::KnownMachine;
 use crate::witgen::machines::Connection;
-use crate::{
-    witgen::{
-        generator::Generator,
-        machines::{write_once_memory::WriteOnceMemory, MachineParts},
-    },
-    Identity,
+use crate::witgen::{
+    generator::Generator,
+    machines::{write_once_memory::WriteOnceMemory, MachineParts},
 };
+use crate::Identity;
 
 use powdr_ast::analyzed::{
     self, AlgebraicExpression as Expression, PolyID, PolynomialReference, Reference,
@@ -61,6 +59,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
         .collect::<Vec<&analyzed::Expression>>();
 
     let all_witnesses = fixed.witness_cols.keys().collect::<HashSet<_>>();
+    let mut publics = PublicsTracker::default();
     let mut remaining_witnesses = all_witnesses.clone();
     let mut base_identities = identities.clone();
     let mut extracted_prover_functions = HashSet::new();
@@ -98,6 +97,8 @@ pub fn split_out_machines<'a, T: FieldElement>(
             });
         base_identities = remaining_identities;
         remaining_witnesses = &remaining_witnesses - &machine_witnesses;
+
+        publics.add_all(machine_identities.as_slice()).unwrap();
 
         // Identities that call into the current machine
         let connections = identities
@@ -179,6 +180,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
 
         machines.push(build_machine(fixed, machine_parts, name_with_type));
     }
+    publics.add_all(base_identities.as_slice()).unwrap();
 
     // Always add a fixed lookup machine.
     // Note that this machine comes last, because some machines do a fixed lookup
@@ -228,6 +230,40 @@ pub fn split_out_machines<'a, T: FieldElement>(
     }
 }
 
+#[derive(Default)]
+/// Keeps track of the global set of publics that are referenced by the machine's identities.
+struct PublicsTracker<'a>(BTreeSet<&'a String>);
+
+impl<'a> PublicsTracker<'a> {
+    /// Given a machine's identities, add all publics that are referenced by them.
+    /// Panics if a public is referenced by more than one machine.
+    fn add_all<T>(
+        &mut self,
+        identities: &[&'a powdr_ast::analyzed::Identity<T>],
+    ) -> Result<(), String> {
+        let referenced_publics = identities
+            .iter()
+            .flat_map(|id| id.all_children())
+            .filter_map(|expr| match expr {
+                Expression::PublicReference(public_name) => Some(public_name),
+                _ => None,
+            })
+            .collect();
+        let intersection = self
+            .0
+            .intersection(&referenced_publics)
+            .collect::<BTreeSet<_>>();
+        if !intersection.is_empty() {
+            let intersection_list = intersection.iter().format(", ");
+            return Err(format!(
+                "Publics are referenced by more than one machine: {intersection_list}",
+            ));
+        }
+        self.0.extend(referenced_publics);
+        Ok(())
+    }
+}
+
 fn build_machine<'a, T: FieldElement>(
     fixed_data: &'a FixedData<'a, T>,
     machine_parts: MachineParts<'a, T>,
@@ -269,11 +305,9 @@ fn build_machine<'a, T: FieldElement>(
         let latch = machine_parts.connections
             .values()
             .fold(None, |existing_latch, identity| {
-                let current_latch = identity
+                let current_latch = &identity
                     .right
-                    .selector
-                    .as_ref()
-                    .expect("Cannot handle lookup in this machine because it does not have a latch");
+                    .selector;
                 if let Some(existing_latch) = existing_latch {
                     assert_eq!(
                         &existing_latch, current_latch,

@@ -104,12 +104,18 @@ impl<T: Display> Display for Analyzed<T> {
                                     Some(FunctionValueDefinition::TypeDeclaration(
                                         TypeDeclaration::Struct(struct_declaration),
                                     )) => {
-                                        writeln_indented(f, struct_declaration)?;
+                                        writeln_indented(
+                                            f,
+                                            struct_declaration.to_string_with_name(&name),
+                                        )?;
                                     }
                                     Some(FunctionValueDefinition::TraitDeclaration(
                                         trait_declaration,
                                     )) => {
-                                        writeln_indented(f, trait_declaration)?;
+                                        writeln_indented(
+                                            f,
+                                            trait_declaration.to_string_with_name(&name),
+                                        )?;
                                     }
                                     _ => {
                                         unreachable!("Invalid definition for symbol: {}", name)
@@ -151,6 +157,9 @@ impl<T: Display> Display for Analyzed<T> {
                 }
                 StatementIdentifier::ProverFunction(i) => {
                     writeln_indented(f, format!("{};", &self.prover_functions[*i]))?;
+                }
+                StatementIdentifier::TraitImplementation(i) => {
+                    writeln_indented(f, format!("{}", self.trait_impls[*i]))?;
                 }
             }
         }
@@ -307,10 +316,14 @@ impl<T: Display> Display for SelectedExpressions<T> {
         write!(
             f,
             "{}[{}]",
-            self.selector
-                .as_ref()
-                .map(|s| format!("{s} $ "))
-                .unwrap_or_default(),
+            {
+                // we only print the selector if it is not 1. The comparison is string-based to avoid introducing invasive type bounds on T.
+                let s = self.selector.to_string();
+                match s.as_str() {
+                    "1" => "".to_string(),
+                    s => format!("{s} $ "),
+                }
+            },
             self.expressions.iter().format(", ")
         )
     }
@@ -337,21 +350,20 @@ impl<T: Display> Display for LookupIdentity<T> {
     }
 }
 
+fn format_selector<T: Display>(selector: &AlgebraicExpression<T>) -> String {
+    match selector.to_string().as_str() {
+        "1" => "Option::None".to_string(),
+        s => format!("Option::Some({s})"),
+    }
+}
+
 impl<T: Display> Display for PhantomLookupIdentity<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(
             f,
             "Constr::PhantomLookup(({}, {}), [{}], {});",
-            self.left
-                .selector
-                .as_ref()
-                .map(|s| format!("Option::Some({s})"))
-                .unwrap_or_else(|| "Option::None".to_string()),
-            self.right
-                .selector
-                .as_ref()
-                .map(|s| format!("Option::Some({s})"))
-                .unwrap_or_else(|| "Option::None".to_string()),
+            format_selector(&self.left.selector),
+            format_selector(&self.right.selector),
             self.left
                 .expressions
                 .iter()
@@ -374,16 +386,8 @@ impl<T: Display> Display for PhantomPermutationIdentity<T> {
         write!(
             f,
             "Constr::PhantomPermutation(({}, {}), [{}]);",
-            self.left
-                .selector
-                .as_ref()
-                .map(|s| format!("Option::Some({s})"))
-                .unwrap_or_else(|| "Option::None".to_string()),
-            self.right
-                .selector
-                .as_ref()
-                .map(|s| format!("Option::Some({s})"))
-                .unwrap_or_else(|| "Option::None".to_string()),
+            format_selector(&self.left.selector),
+            format_selector(&self.right.selector),
             self.left
                 .expressions
                 .iter()

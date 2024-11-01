@@ -3,6 +3,7 @@ use std::marker::PhantomData;
 
 use num_traits::Zero;
 
+use num_traits::One;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
     AlgebraicReference, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
@@ -39,7 +40,8 @@ impl<'a, T: FieldElement> RangeConstraintSet<AlgebraicVariable<'a>, T>
                 assert!(!id.next);
                 self.range_constraints.get(&id.poly_id).cloned()
             }
-            AlgebraicVariable::Public(_) => unimplemented!(),
+            // No range constraints stored for publics.
+            AlgebraicVariable::Public(_) => None,
         }
     }
 }
@@ -240,7 +242,7 @@ fn propagate_constraints<T: FieldElement>(
         | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. })
         | Identity::Permutation(PermutationIdentity { left, right, .. })
         | Identity::PhantomPermutation(PhantomPermutationIdentity { left, right, .. }) => {
-            if left.selector.is_some() || right.selector.is_some() {
+            if !left.selector.is_one() || !right.selector.is_one() {
                 return (known_constraints, false);
             }
             for (left, right) in left.expressions.iter().zip(right.expressions.iter()) {

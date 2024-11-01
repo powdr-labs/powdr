@@ -1,3 +1,4 @@
+use num_traits::One;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::Peekable;
 use std::mem;
@@ -205,7 +206,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
                 })
                 | Identity::PhantomLookup(PhantomLookupIdentity {
                     id, left, right, ..
-                }) => (right.selector.is_none()
+                }) => (right.selector.is_one()
                     && right.expressions.iter().all(|e| {
                         try_to_simple_poly_ref(e)
                             .map(|poly| poly.poly_id.ptype == PolynomialType::Constant)

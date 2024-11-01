@@ -1,3 +1,4 @@
+use num_traits::One;
 use powdr_ast::parsed::SourceReference;
 use powdr_number::FieldElement;
 use std::collections::HashMap;
@@ -104,9 +105,9 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                     }),
                     Identity::Lookup(identity) => {
                         plookup_identities.push(PlookupIdentity {
-                            selF: exporter.extract_expression_opt(&identity.left.selector, 1),
+                            selF: exporter.extract_selector(&identity.left.selector, 1),
                             f: Some(exporter.extract_expression_vec(&identity.left.expressions, 1)),
-                            selT: exporter.extract_expression_opt(&identity.right.selector, 1),
+                            selT: exporter.extract_selector(&identity.right.selector, 1),
                             t: Some(
                                 exporter.extract_expression_vec(&identity.right.expressions, 1),
                             ),
@@ -116,9 +117,9 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                     }
                     Identity::Permutation(identity) => {
                         permutation_identities.push(PermutationIdentity {
-                            selF: exporter.extract_expression_opt(&identity.left.selector, 1),
+                            selF: exporter.extract_selector(&identity.left.selector, 1),
                             f: Some(exporter.extract_expression_vec(&identity.left.expressions, 1)),
-                            selT: exporter.extract_expression_opt(&identity.right.selector, 1),
+                            selT: exporter.extract_selector(&identity.right.selector, 1),
                             t: Some(
                                 exporter.extract_expression_vec(&identity.right.expressions, 1),
                             ),
@@ -139,7 +140,8 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                     }
                 }
             }
-            StatementIdentifier::ProverFunction(_) => {}
+            StatementIdentifier::ProverFunction(_)
+            | StatementIdentifier::TraitImplementation(_) => {}
         }
     }
     PIL {
@@ -269,13 +271,11 @@ impl<'a, T: FieldElement> Exporter<'a, T> {
         id
     }
 
-    fn extract_expression_opt(
-        &mut self,
-        expr: &Option<Expression<T>>,
-        max_degree: u32,
-    ) -> Option<usize> {
-        expr.as_ref()
-            .map(|e| self.extract_expression(e, max_degree))
+    fn extract_selector(&mut self, expr: &Expression<T>, max_degree: u32) -> Option<usize> {
+        match expr.is_one() {
+            true => None,
+            false => Some(self.extract_expression(expr, max_degree)),
+        }
     }
 
     fn extract_expression_vec(&mut self, expr: &[Expression<T>], max_degree: u32) -> Vec<usize> {

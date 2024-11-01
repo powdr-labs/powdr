@@ -280,12 +280,7 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
         let beta = Expression::Challenge(meta.challenge_usable_after(FirstPhase));
 
         let to_lookup_tuple = |expr: &SelectedExpressions<T>, meta: &mut VirtualCells<'_, F>| {
-            let selector = expr
-                .selector
-                .as_ref()
-                .map_or(Expression::Constant(F::from(1)), |selector| {
-                    to_halo2_expression(selector, &config, meta)
-                });
+            let selector = to_halo2_expression(&expr.selector, &config, meta);
             let selector = selector * meta.query_fixed(config.enable, Rotation::cur());
 
             expr.expressions

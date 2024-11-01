@@ -187,10 +187,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         left: &'a powdr_ast::analyzed::SelectedExpressions<T>,
         rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        if let Some(left_selector) = &left.selector {
-            if let Some(status) = self.handle_left_selector(left_selector, rows) {
-                return Ok(status);
-            }
+        if let Some(status) = self.handle_left_selector(&left.selector, rows) {
+            return Ok(status);
         }
 
         self.mutable_state
@@ -214,18 +212,12 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
     ) -> EvalResult<'a, T> {
         let right = outer_query.connection.right;
         // sanity check that the right hand side selector is active
-        let selector_value = right
-            .selector
-            .as_ref()
-            .map(|s| {
-                current_rows
-                    .evaluate(s)
-                    .ok()
-                    .and_then(|affine_expression| affine_expression.constant_value())
-                    .ok_or(EvalError::Generic("Selector is not 1!".to_string()))
-            })
-            .unwrap_or(Ok(T::one()))?;
-        assert_eq!(selector_value, T::one());
+        current_rows
+            .evaluate(&right.selector)
+            .ok()
+            .and_then(|affine_expression| affine_expression.constant_value())
+            .and_then(|v| v.is_one().then_some(()))
+            .ok_or(EvalError::Generic("Selector is not 1!".to_string()))?;
 
         let range_constraint =
             CombinedRangeConstraintSet::new(outer_query.caller_rows, current_rows);

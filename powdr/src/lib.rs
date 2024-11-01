@@ -2,7 +2,9 @@ pub use powdr_ast as ast;
 pub use powdr_backend as backend;
 pub use powdr_executor as executor;
 pub use powdr_number as number;
+pub use powdr_parser as parser;
 pub use powdr_pil_analyzer as pil_analyzer;
+pub use powdr_pilopt as pilopt;
 pub use powdr_pipeline as pipeline;
 pub use powdr_riscv as riscv;
 pub use powdr_riscv_executor as riscv_executor;
@@ -20,6 +22,13 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::time::Instant;
 
+#[derive(Default)]
+pub struct SessionBuilder {
+    guest_path: String,
+    out_path: String,
+    chunk_size_log2: Option<u8>,
+}
+
 pub struct Session {
     pipeline: Pipeline<GoldilocksField>,
     out_path: String,
@@ -29,39 +38,53 @@ const DEFAULT_PKEY: &str = "pkey.bin";
 const DEFAULT_VKEY: &str = "vkey.bin";
 
 // Minimum and maximum log of number of rows for the RISCV machine.
-const DEFAULT_MIN_DEGREE_LOG: u32 = 5;
-const DEFAULT_MAX_DEGREE_LOG: u32 = 20;
+const DEFAULT_MIN_DEGREE_LOG: u8 = 5;
+const DEFAULT_MAX_DEGREE_LOG: u8 = 20;
 // Minimum acceptable max degree.
-const DEFAULT_MIN_MAX_DEGREE_LOG: u32 = 18;
+const DEFAULT_MIN_MAX_DEGREE_LOG: u8 = 18;
 
-impl Session {
-    pub fn new(guest_path: &str, out_path: &str) -> Self {
+impl SessionBuilder {
+    /// Builds a session with the given parameters.
+    pub fn build(self) -> Session {
         Session {
             pipeline: pipeline_from_guest(
-                guest_path,
-                Path::new(out_path),
+                &self.guest_path,
+                Path::new(&self.out_path),
                 DEFAULT_MIN_DEGREE_LOG,
-                DEFAULT_MAX_DEGREE_LOG,
+                self.chunk_size_log2.unwrap_or(DEFAULT_MAX_DEGREE_LOG),
             ),
-            out_path: out_path.into(),
+            out_path: self.out_path,
         }
         .with_backend(powdr_backend::BackendType::Plonky3)
     }
 
-    /// Create a new session with a specific chunk size, represented by its log2.
-    /// Example: for a chunk size of 2^20, set chunk_size_log to 20.
-    pub fn new_with_chunk_size(guest_path: &str, out_path: &str, chunk_size_log: u32) -> Self {
-        assert!(chunk_size_log >= DEFAULT_MIN_MAX_DEGREE_LOG);
-        Session {
-            pipeline: pipeline_from_guest(
-                guest_path,
-                Path::new(out_path),
-                DEFAULT_MIN_DEGREE_LOG,
-                chunk_size_log,
-            ),
-            out_path: out_path.into(),
-        }
-        .with_backend(powdr_backend::BackendType::Plonky3)
+    /// Sets the path to the guest program.
+    pub fn guest_path(mut self, guest_path: &str) -> Self {
+        self.guest_path = guest_path.into();
+        self
+    }
+
+    /// Sets the output path for the artifacts.
+    pub fn out_path(mut self, out_path: &str) -> Self {
+        self.out_path = out_path.into();
+        self
+    }
+
+    /// Set the chunk size, represented by its log2.
+    /// Example: for a chunk size of 2^20, set chunk_size_log2 to 20.
+    /// If the execution trace is longer than the 2^chunk_size_log2,
+    /// the execution will be split into multiple chunks of length `2^chunk_size_log2`.
+    /// Each chunk will be proven separately.
+    pub fn chunk_size_log2(mut self, chunk_size_log2: u8) -> Self {
+        assert!(chunk_size_log2 >= DEFAULT_MIN_MAX_DEGREE_LOG);
+        self.chunk_size_log2 = Some(chunk_size_log2);
+        self
+    }
+}
+
+impl Session {
+    pub fn builder() -> SessionBuilder {
+        SessionBuilder::default()
     }
 
     pub fn into_pipeline(self) -> Pipeline<GoldilocksField> {
@@ -169,8 +192,8 @@ fn pil_file_path(asm_name: &Path) -> PathBuf {
 pub fn build_guest(
     guest_path: &str,
     out_path: &Path,
-    min_degree_log: u32,
-    max_degree_log: u32,
+    min_degree_log: u8,
+    max_degree_log: u8,
 ) -> (PathBuf, String) {
     riscv::compile_rust(
         guest_path,
@@ -190,8 +213,8 @@ pub fn build_guest(
 pub fn pipeline_from_guest(
     guest_path: &str,
     out_path: &Path,
-    min_degree_log: u32,
-    max_degree_log: u32,
+    min_degree_log: u8,
+    max_degree_log: u8,
 ) -> Pipeline<GoldilocksField> {
     println!("Compiling guest program...");
 

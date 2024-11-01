@@ -2,12 +2,14 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Display;
 use std::iter::{self, once};
 
-use super::{Connection, ConnectionKind, EvalResult, FixedData, MachineParts};
+use super::{
+    compute_size_and_log, Connection, ConnectionKind, EvalResult, FixedData, MachineParts,
+};
 
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
-use crate::witgen::processor::{OuterQuery, Processor};
+use crate::witgen::processor::{OuterQuery, Processor, SolverState};
 use crate::witgen::rows::{Row, RowIndex, RowPair};
 use crate::witgen::sequence_iterator::{
     DefaultSequenceIterator, ProcessingSequenceCache, ProcessingSequenceIterator,
@@ -21,12 +23,12 @@ use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_number::{DegreeType, FieldElement};
 
 enum ProcessResult<'a, T: FieldElement> {
-    Success(FinalizableData<T>, EvalValue<AlgebraicVariable<'a>, T>),
+    Success(SolverState<'a, T>, EvalValue<AlgebraicVariable<'a>, T>),
     Incomplete(EvalValue<AlgebraicVariable<'a>, T>),
 }
 
 impl<'a, T: FieldElement> ProcessResult<'a, T> {
-    fn new(data: FinalizableData<T>, updates: EvalValue<AlgebraicVariable<'a>, T>) -> Self {
+    fn new(data: SolverState<'a, T>, updates: EvalValue<AlgebraicVariable<'a>, T>) -> Self {
         match updates.is_complete() {
             true => ProcessResult::Success(data, updates),
             false => ProcessResult::Incomplete(updates),
@@ -36,12 +38,12 @@ impl<'a, T: FieldElement> ProcessResult<'a, T> {
 
 fn collect_fixed_cols<T: FieldElement>(
     expression: &Expression<T>,
-    result: &mut BTreeSet<Option<Expression<T>>>,
+    result: &mut BTreeSet<Expression<T>>,
 ) {
     expression.pre_visit_expressions(&mut |e| {
         if let Expression::Reference(r) = e {
             if r.is_fixed() {
-                result.insert(Some(e.clone()));
+                result.insert(e.clone());
             }
         }
     });
@@ -76,6 +78,7 @@ pub struct BlockMachine<'a, T: FieldElement> {
     connection_type: ConnectionKind,
     /// The data of the machine.
     data: FinalizableData<T>,
+    publics: BTreeMap<&'a str, T>,
     /// The index of the first row that has not been finalized yet.
     /// At all times, all rows in the range [block_size..first_in_progress_row) are finalized.
     first_in_progress_row: usize,
@@ -133,6 +136,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             parts: parts.clone(),
             connection_type: is_permutation,
             data,
+            publics: Default::default(),
             first_in_progress_row: block_size,
             processing_sequence_cache: ProcessingSequenceCache::new(
                 block_size,
@@ -171,7 +175,7 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
         ConnectionKind::Permutation => {
             // We check all fixed columns appearing in RHS selectors. If there is none, the block size is 1.
 
-            let find_max_period = |latch_candidates: BTreeSet<Option<Expression<T>>>| {
+            let find_max_period = |latch_candidates: BTreeSet<Expression<T>>| {
                 latch_candidates
                     .iter()
                     .filter_map(|e| try_to_period(e, fixed_data))
@@ -180,9 +184,7 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
             };
             let mut latch_candidates = BTreeSet::new();
             for id in connections.values() {
-                if let Some(selector) = &id.right.selector {
-                    collect_fixed_cols(selector, &mut latch_candidates);
-                }
+                collect_fixed_cols(&id.right.selector, &mut latch_candidates);
             }
             if latch_candidates.is_empty() {
                 (0, 1)
@@ -199,48 +201,43 @@ fn detect_connection_type_and_block_size<'a, T: FieldElement>(
 /// for some k < degree / 2, o.
 /// If so, returns (o, k).
 fn try_to_period<T: FieldElement>(
-    expr: &Option<Expression<T>>,
+    expr: &Expression<T>,
     fixed_data: &FixedData<T>,
 ) -> Option<(usize, usize)> {
-    match expr {
-        Some(expr) => {
-            if let Expression::Number(ref n) = expr {
-                if *n == T::one() {
-                    return Some((0, 1));
-                }
-            }
-
-            let poly = try_to_simple_poly(expr)?;
-            if !poly.is_fixed() {
-                return None;
-            }
-
-            let degree = fixed_data.common_degree_range(once(&poly.poly_id)).max;
-
-            let values = fixed_data.fixed_cols[&poly.poly_id].values(degree);
-
-            let offset = values.iter().position(|v| v.is_one())?;
-            let period = 1 + values.iter().skip(offset + 1).position(|v| v.is_one())?;
-            if period > degree as usize / 2 {
-                // This filters out columns like [0]* + [1], which might appear in a block machine
-                // but shouldn't be detected as the latch.
-                return None;
-            }
-            values
-                .iter()
-                .enumerate()
-                .all(|(i, v)| {
-                    let expected = if i % period == offset {
-                        1.into()
-                    } else {
-                        0.into()
-                    };
-                    *v == expected
-                })
-                .then_some((offset, period))
+    if let Expression::Number(ref n) = expr {
+        if *n == T::one() {
+            return Some((0, 1));
         }
-        None => Some((0, 1)),
     }
+
+    let poly = try_to_simple_poly(expr)?;
+    if !poly.is_fixed() {
+        return None;
+    }
+
+    let degree = fixed_data.common_degree_range(once(&poly.poly_id)).max;
+
+    let values = fixed_data.fixed_cols[&poly.poly_id].values(degree);
+
+    let offset = values.iter().position(|v| v.is_one())?;
+    let period = 1 + values.iter().skip(offset + 1).position(|v| v.is_one())?;
+    if period > degree as usize / 2 {
+        // This filters out columns like [0]* + [1], which might appear in a block machine
+        // but shouldn't be detected as the latch.
+        return None;
+    }
+    values
+        .iter()
+        .enumerate()
+        .all(|(i, v)| {
+            let expected = if i % period == offset {
+                1.into()
+            } else {
+                0.into()
+            };
+            *v == expected
+        })
+        .then_some((offset, period))
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
@@ -279,17 +276,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                  This might violate some internal constraints."
             );
         }
-
-        let new_degree = self.data.len().next_power_of_two() as DegreeType;
-        let new_degree = self.degree_range.fit(new_degree);
-        log::info!(
-            "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
-            self.name,
-            self.degree,
-            new_degree,
-            self.data.len()
-        );
-        self.degree = new_degree;
+        self.degree = compute_size_and_log(&self.name, self.data.len(), self.degree_range);
 
         if matches!(self.connection_type, ConnectionKind::Permutation) {
             // We have to make sure that *all* selectors are 0 in the dummy block,
@@ -308,7 +295,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             let row_offset = RowIndex::from_i64(-1, self.degree);
             let mut processor = Processor::new(
                 row_offset,
-                dummy_block,
+                SolverState::new(dummy_block, self.publics.clone()),
                 mutable_state,
                 self.fixed_data,
                 &self.parts,
@@ -318,12 +305,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             // Set all selectors to 0
             for id in self.parts.connections.values() {
                 processor
-                    .set_value(
-                        self.latch_row + 1,
-                        id.right.selector.as_ref().unwrap(),
-                        T::zero(),
-                        || "Zero selectors".to_string(),
-                    )
+                    .set_value(self.latch_row + 1, &id.right.selector, T::zero(), || {
+                        "Zero selectors".to_string()
+                    })
                     .unwrap();
             }
 
@@ -333,7 +317,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 DefaultSequenceIterator::new(self.block_size, self.parts.identities.len(), None),
             );
             processor.solve(&mut sequence_iterator).unwrap();
-            let mut dummy_block = processor.finish();
+            let mut dummy_block = processor.finish().block;
 
             // Replace the dummy block, discarding first and last row
             dummy_block.pop().unwrap();
@@ -482,12 +466,13 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             self.process(mutable_state, &mut sequence_iterator, outer_query.clone())?;
 
         match process_result {
-            ProcessResult::Success(new_block, updates) => {
+            ProcessResult::Success(updated_data, updates) => {
                 log::trace!(
                     "End processing block machine '{}' (successfully)",
                     self.name()
                 );
-                self.append_block(new_block)?;
+                self.append_block(updated_data.block)?;
+                self.publics.extend(updated_data.publics);
 
                 let updates = updates.report_side_effect();
 
@@ -524,7 +509,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         );
         let mut processor = BlockProcessor::new(
             row_offset,
-            block,
+            SolverState::new(block, self.publics.clone()),
             mutable_state,
             self.fixed_data,
             &self.parts,
@@ -533,9 +518,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         .with_outer_query(outer_query);
 
         let outer_assignments = processor.solve(sequence_iterator)?;
-        let new_block = processor.finish();
+        let updated_data = processor.finish();
 
-        Ok(ProcessResult::new(new_block, outer_assignments))
+        Ok(ProcessResult::new(updated_data, outer_assignments))
     }
 
     /// Takes a block of rows, which contains the last row of its previous block

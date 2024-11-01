@@ -18,7 +18,7 @@ use powdr_ast::{
         FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity,
         PhantomLookupIdentity, PhantomPermutationIdentity, PolyID, PolynomialIdentity,
         PolynomialReference, PolynomialType, PublicDeclaration, Reference, SelectedExpressions,
-        StatementIdentifier, Symbol, SymbolKind,
+        SolvedTraitImpls, StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
         self,
@@ -28,7 +28,7 @@ use powdr_ast::{
         visitor::{AllChildren, ExpressionVisitable},
         ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall, FunctionKind,
         LambdaExpression, LetStatementInsideBlock, Number, Pattern, SourceReference,
-        TypedExpression, UnaryOperation,
+        TraitImplementation, TypedExpression, UnaryOperation,
     },
 };
 use powdr_number::{BigUint, FieldElement};
@@ -44,9 +44,10 @@ use crate::{
 
 pub fn condense<T: FieldElement>(
     mut definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
+    solved_impls: SolvedTraitImpls,
     public_declarations: HashMap<String, PublicDeclaration>,
     proof_items: &[Expression],
+    trait_impls: Vec<TraitImplementation<Expression>>,
     source_order: Vec<StatementIdentifier>,
     auto_added_symbols: HashSet<String>,
 ) -> Analyzed<T> {
@@ -193,6 +194,7 @@ pub fn condense<T: FieldElement>(
         intermediate_columns,
         identities: condensed_identities,
         prover_functions,
+        trait_impls,
         source_order,
         auto_added_symbols,
     }
@@ -205,7 +207,7 @@ pub struct Condenser<'a, T> {
     /// All the definitions from the PIL file.
     symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     /// Pointers to expressions for all referenced trait implementations and the concrete types.
-    solved_impls: &'a HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
+    solved_impls: &'a SolvedTraitImpls,
     /// Evaluation cache.
     symbol_values: SymbolCache<'a, T>,
     /// Current namespace (for names of generated columns).
@@ -231,7 +233,7 @@ pub struct Condenser<'a, T> {
 impl<'a, T: FieldElement> Condenser<'a, T> {
     pub fn new(
         symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-        solved_impls: &'a HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
+        solved_impls: &'a SolvedTraitImpls,
     ) -> Self {
         let counters = Counters::with_existing(symbols.values().map(|(sym, _)| sym), None, None);
         Self {
@@ -776,27 +778,28 @@ fn to_constraint<T: FieldElement>(
     }
 }
 
-fn to_selected_exprs<'a, T: Clone + Debug>(
+fn to_selected_exprs<'a, T: FieldElement>(
     selector: &Value<'a, T>,
     exprs: Vec<&Value<'a, T>>,
 ) -> SelectedExpressions<T> {
     SelectedExpressions {
-        selector: to_option_expr(selector),
+        selector: to_selector_expr(selector),
         expressions: exprs.into_iter().map(to_expr).collect(),
     }
 }
 
-fn to_option_expr<T: Clone + Debug>(value: &Value<'_, T>) -> Option<AlgebraicExpression<T>> {
+/// Turns an optional selector expression into an algebraic expression. `None` gets turned into 1.
+fn to_selector_expr<T: FieldElement>(value: &Value<'_, T>) -> AlgebraicExpression<T> {
     let Value::Enum(enum_value) = value else {
         panic!("Expected option but got {value:?}")
     };
     assert_eq!(enum_value.enum_decl.name, "std::prelude::Option");
     match enum_value.variant {
-        "None" => None,
+        "None" => T::one().into(),
         "Some" => {
             let fields = enum_value.data.as_ref().unwrap();
             assert_eq!(fields.len(), 1);
-            Some(to_expr(&fields[0]))
+            to_expr(&fields[0])
         }
         _ => panic!(),
     }

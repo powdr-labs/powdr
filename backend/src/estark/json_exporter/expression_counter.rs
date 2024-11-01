@@ -1,12 +1,16 @@
 use std::collections::HashMap;
 
+use num_traits::One;
 use powdr_ast::analyzed::{
     Analyzed, Identity, PolynomialType, PublicDeclaration, SelectedExpressions,
     StatementIdentifier, Symbol, SymbolKind,
 };
+use powdr_number::FieldElement;
 
 /// Computes expression IDs for each intermediate polynomial.
-pub fn compute_intermediate_expression_ids<T>(analyzed: &Analyzed<T>) -> HashMap<u64, u64> {
+pub fn compute_intermediate_expression_ids<T: FieldElement>(
+    analyzed: &Analyzed<T>,
+) -> HashMap<u64, u64> {
     let mut expression_counter: usize = 0;
     let mut ids = HashMap::new();
     for item in &analyzed.source_order {
@@ -29,7 +33,8 @@ pub fn compute_intermediate_expression_ids<T>(analyzed: &Analyzed<T>) -> HashMap
                 analyzed.public_declarations[name].expression_count()
             }
             StatementIdentifier::ProofItem(id) => analyzed.identities[*id].expression_count(),
-            StatementIdentifier::ProverFunction(_) => 0,
+            StatementIdentifier::ProverFunction(_)
+            | StatementIdentifier::TraitImplementation(_) => 0,
         }
     }
     ids
@@ -40,7 +45,7 @@ trait ExpressionCounter {
     fn expression_count(&self) -> usize;
 }
 
-impl<T> ExpressionCounter for Identity<T> {
+impl<T: FieldElement> ExpressionCounter for Identity<T> {
     fn expression_count(&self) -> usize {
         match self {
             Identity::Polynomial(_) => 1,
@@ -76,8 +81,8 @@ impl ExpressionCounter for PublicDeclaration {
     }
 }
 
-impl<T> ExpressionCounter for SelectedExpressions<T> {
+impl<T: FieldElement> ExpressionCounter for SelectedExpressions<T> {
     fn expression_count(&self) -> usize {
-        self.selector.is_some() as usize + self.expressions.len()
+        (if self.selector.is_one() { 0 } else { 1 }) + self.expressions.len()
     }
 }

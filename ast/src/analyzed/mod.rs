@@ -5,11 +5,12 @@ use std::cmp::max;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fmt::Display;
 use std::hash::{Hash, Hasher};
-use std::iter::{self, empty};
+use std::iter::{self, empty, once};
 use std::ops::{self, ControlFlow};
 use std::sync::Arc;
 
 use itertools::Itertools;
+use num_traits::One;
 use powdr_number::{DegreeType, FieldElement};
 use powdr_parser_util::SourceRef;
 use schemars::JsonSchema;
@@ -21,7 +22,7 @@ pub use crate::parsed::BinaryOperator;
 pub use crate::parsed::UnaryOperator;
 use crate::parsed::{
     self, ArrayExpression, EnumDeclaration, EnumVariant, NamedType, SourceReference,
-    TraitDeclaration, TypeDeclaration,
+    TraitDeclaration, TraitImplementation, TypeDeclaration,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
@@ -29,20 +30,23 @@ pub enum StatementIdentifier {
     /// Either an intermediate column or a definition.
     Definition(String),
     PublicDeclaration(String),
-    /// Index into the vector of proof items.
+    /// Index into the vector of proof items / identities.
     ProofItem(usize),
     /// Index into the vector of prover functions.
     ProverFunction(usize),
+    /// Index into the vector of trait implementations.
+    TraitImplementation(usize),
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
 pub struct Analyzed<T> {
     pub definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    pub solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
+    pub solved_impls: SolvedTraitImpls,
     pub public_declarations: HashMap<String, PublicDeclaration>,
     pub intermediate_columns: HashMap<String, (Symbol, Vec<AlgebraicExpression<T>>)>,
     pub identities: Vec<Identity<T>>,
     pub prover_functions: Vec<Expression>,
+    pub trait_impls: Vec<TraitImplementation<Expression>>,
     /// The order in which definitions and identities
     /// appear in the source.
     pub source_order: Vec<StatementIdentifier>,
@@ -302,6 +306,34 @@ impl<T> Analyzed<T> {
         self.post_visit_expressions_in_identities_mut(algebraic_visitor);
     }
 
+    /// Removes the given set of trait impls, identified by their index
+    /// in the list of trait impls.
+    pub fn remove_trait_impls(&mut self, to_remove: &BTreeSet<usize>) {
+        let to_remove_vec: Vec<usize> = to_remove.iter().copied().collect();
+
+        self.source_order.retain_mut(|s| {
+            if let StatementIdentifier::TraitImplementation(index) = s {
+                match to_remove_vec.binary_search(index) {
+                    Ok(_) => false,
+                    Err(insert_pos) => {
+                        // `insert_pos` is the number of removed elements before this one.
+                        *index -= insert_pos;
+                        true
+                    }
+                }
+            } else {
+                true
+            }
+        });
+        self.trait_impls = std::mem::take(&mut self.trait_impls)
+            .into_iter()
+            .enumerate()
+            .filter(|(i, _)| !to_remove.contains(i))
+            .map(|(_, impl_)| impl_)
+            .collect();
+        self.solved_impls.remove_trait_impls(&to_remove_vec);
+    }
+
     pub fn post_visit_expressions_in_identities_mut<F>(&mut self, f: &mut F)
     where
         F: FnMut(&mut AlgebraicExpression<T>),
@@ -365,12 +397,7 @@ impl<T> Children<Expression> for Analyzed<T> {
                 .values()
                 .filter_map(|(_, def)| def.as_ref())
                 .flat_map(|def| def.children())
-                .chain(
-                    self.solved_impls
-                        .values()
-                        .flat_map(|impls| impls.iter())
-                        .flat_map(|(_, expr)| expr.children()),
-                )
+                .chain(self.trait_impls.iter().flat_map(|impls| impls.children()))
                 .chain(self.prover_functions.iter()),
         )
     }
@@ -382,10 +409,9 @@ impl<T> Children<Expression> for Analyzed<T> {
                 .filter_map(|(_, def)| def.as_mut())
                 .flat_map(|def| def.children_mut())
                 .chain(
-                    self.solved_impls
-                        .values_mut()
-                        .flat_map(|impls| impls.iter_mut())
-                        .flat_map(|(_, expr)| Arc::get_mut(expr).unwrap().children_mut()),
+                    self.trait_impls
+                        .iter_mut()
+                        .flat_map(|impls| impls.children_mut()),
                 )
                 .chain(self.prover_functions.iter_mut()),
         )
@@ -563,6 +589,91 @@ pub fn type_from_definition(
             )
         } else {
             Some(Type::Col.into())
+        }
+    }
+}
+
+/// Data structure to help with finding the correct implementation of a trait function
+/// given a list of type arguments.
+#[derive(Default, Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct SolvedTraitImpls {
+    impls: HashMap<String, HashMap<Vec<Type>, ImplData>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+struct ImplData {
+    index: usize,
+    function: Arc<Expression>,
+}
+
+impl SolvedTraitImpls {
+    /// Returns an index into the list of trait implementations such that the corresponding
+    /// trait implementation contains the matching function for a given trait function name
+    /// and type arguments. It returns an index into the list provided by `Analyzed`.
+    pub fn resolve_trait_impl_index(&self, trait_function_name: &str, type_args: &[Type]) -> usize {
+        self.impls[trait_function_name][type_args].index
+    }
+
+    /// Returns the correct trait impl function for a given trait function name and type arguments,
+    /// if it is stored here, otherwise returns None.
+    pub fn try_resolve_trait_function(
+        &self,
+        trait_function_name: &str,
+        type_args: &[Type],
+    ) -> Option<&Expression> {
+        self.impls
+            .get(trait_function_name)
+            .and_then(|map| map.get(type_args))
+            .map(|impl_data| impl_data.function.as_ref())
+    }
+
+    /// Returns the correct trait impl function for a given trait function name and type arguments.
+    /// It returns just the function of the trait impl.
+    pub fn resolve_trait_function(
+        &self,
+        trait_function_name: &str,
+        type_args: &[Type],
+    ) -> &Expression {
+        self.try_resolve_trait_function(trait_function_name, type_args)
+            .unwrap()
+    }
+
+    pub fn insert(
+        &mut self,
+        trait_function_name: String,
+        type_args: Vec<Type>,
+        index: usize,
+        function: Arc<Expression>,
+    ) {
+        let existing = self
+            .impls
+            .entry(trait_function_name)
+            .or_default()
+            .insert(type_args, ImplData { index, function });
+        assert!(
+            existing.is_none(),
+            "Duplicate trait impl for the same type arguments."
+        );
+    }
+
+    /// Update the data structure after a certain set of trait impls have been removed.
+    /// This just updates the `index` fields.
+    /// Assumes that `to_remove` is sorted.
+    pub fn remove_trait_impls(&mut self, to_remove: &[usize]) {
+        for map in self.impls.values_mut() {
+            *map = map
+                .drain()
+                .filter_map(|(type_args, mut impl_data)| {
+                    match to_remove.binary_search(&impl_data.index) {
+                        Ok(_) => None,
+                        Err(index) => {
+                            // `index` is the number of removed elements before this one.
+                            impl_data.index -= index;
+                            Some((type_args, impl_data))
+                        }
+                    }
+                })
+                .collect();
         }
     }
 }
@@ -757,14 +868,14 @@ impl PublicDeclaration {
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct SelectedExpressions<T> {
-    pub selector: Option<AlgebraicExpression<T>>,
+    pub selector: AlgebraicExpression<T>,
     pub expressions: Vec<AlgebraicExpression<T>>,
 }
 
-impl<T> Default for SelectedExpressions<T> {
+impl<T: One> Default for SelectedExpressions<T> {
     fn default() -> Self {
         Self {
-            selector: Default::default(),
+            selector: T::one().into(),
             expressions: vec![],
         }
     }
@@ -773,11 +884,11 @@ impl<T> Default for SelectedExpressions<T> {
 impl<T> Children<AlgebraicExpression<T>> for SelectedExpressions<T> {
     /// Returns an iterator over all (top-level) expressions in this SelectedExpressions.
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
-        Box::new(self.selector.iter().chain(self.expressions.iter()))
+        Box::new(once(&self.selector).chain(self.expressions.iter()))
     }
     /// Returns an iterator over all (top-level) expressions in this SelectedExpressions.
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut AlgebraicExpression<T>> + '_> {
-        Box::new(self.selector.iter_mut().chain(self.expressions.iter_mut()))
+        Box::new(once(&mut self.selector).chain(self.expressions.iter_mut()))
     }
 }
 
@@ -1066,10 +1177,7 @@ impl<T> SelectedExpressions<T> {
     /// @returns true if the expression contains a reference to a next value of a
     /// (witness or fixed) column
     pub fn contains_next_ref(&self) -> bool {
-        self.selector
-            .iter()
-            .chain(self.expressions.iter())
-            .any(|e| e.contains_next_ref())
+        self.children().any(|e| e.contains_next_ref())
     }
 }
 
@@ -1248,6 +1356,12 @@ impl AlgebraicBinaryOperator {
             // .. ..= => RequireParentheses,
             _ => Left,
         }
+    }
+}
+
+impl<T: FieldElement> num_traits::One for AlgebraicExpression<T> {
+    fn one() -> Self {
+        AlgebraicExpression::Number(T::one())
     }
 }
 
