@@ -1038,6 +1038,7 @@ impl TypeChecker {
         self.local_var_types[id as usize].clone()
     }
 
+    /// Returns a new type scheme for the given name.
     fn instantiate_scheme_by_declared_name(&mut self, name: &str) -> (Type, Vec<Type>) {
         self.unifier
             .instantiate_scheme(self.declared_types[name].scheme().clone())
