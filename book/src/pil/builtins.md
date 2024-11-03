@@ -231,7 +231,6 @@ let<T: Ord> <: T, T -> bool
 let<T: Ord> <=: T, T -> bool
 let<T: Ord> >: T, T -> bool
 let<T: Ord> >=: T, T -> bool
-let<T: Ord> <: T, T -> bool
 
 let<T: Eq> ==: T, T -> bool
 let<T: Eq> !=: T, T -> bool
