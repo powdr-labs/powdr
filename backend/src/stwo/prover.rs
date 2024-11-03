@@ -116,4 +116,31 @@ impl<F: FieldElement> StwoProver<F> {
 
         Ok(proof)
     }
+    pub fn verify(&self, proof: &[u8], instances: &[Vec<F>]) -> Result<(), ProvingError> {
+        let config = PcsConfig {
+            pow_bits: 16,                          // Any value you want to set for pow_bits
+            fri_config: FriConfig::new(0, 1, 100), // Using different numbers for FriConfig
+        };
+
+        let verifier_channel = &mut Poseidon252Channel::default();
+        let commitment_scheme =
+            &mut CommitmentSchemeVerifier::<Poseidon252MerkleChannel>::new(config);
+
+        // Retrieve the expected column sizes in each commitment interaction, from the AIR.
+        let sizes = component.trace_log_degree_bounds();
+        commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
+
+        //     println!("proving time for fibo length of {:?} is {:?}",fibonacci_y_length, duration);
+        //     println!("proof size is {:?} bytes",proof.size_estimate());
+
+        //     let verifystart = Instant::now();
+        stwo_prover::core::prover::verify(
+            &[&component],
+            verifier_channel,
+            commitment_scheme,
+            proof,
+        )
+        .unwrap();
+
+}  
 }

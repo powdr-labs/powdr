@@ -6,7 +6,7 @@ mod estark;
 mod halo2;
 #[cfg(feature = "plonky3")]
 mod plonky3;
-#[cfg(feature = "stwo")]
+#[cfg(all(feature = "stwo", nightly))]
 mod stwo;
 
 mod composite;
