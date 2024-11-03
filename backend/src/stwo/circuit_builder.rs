@@ -16,7 +16,7 @@ use powdr_number::FieldElement;
 use powdr_number::Mersenne31Field;
 use std::sync::Arc;
 
-use powdr_ast::analyzed::{PolyID, PolynomialType};
+use powdr_ast::analyzed::{Identity, PolyID, PolynomialIdentity, PolynomialType};
 use stwo_prover::constraint_framework::logup::LookupElements;
 use stwo_prover::constraint_framework::{
     assert_constraints, EvalAtRow, FrameworkComponent, FrameworkEval, TraceLocationAllocator,
@@ -137,21 +137,19 @@ impl<'a, T: FieldElement> FrameworkEval for PowdrCircuit<'a, T> {
         println!("This is the witness eval {:?}", self.witness);
 
         // Add polynomial identities
-        let identities = self
+        let polynomial_identities: Vec<PolynomialIdentity<_>> = self
             .analyzed
             .identities_with_inlined_intermediate_polynomials()
             .into_iter()
-            .filter(|id| id.kind == IdentityKind::Polynomial)
+            .filter_map(|id| id.try_into().ok())
             .collect::<Vec<_>>();
 
-        if !identities.is_empty() {
-            identities.iter().for_each(|id| {
-                let expr = id.expression_for_poly_id();
-                //let name = id.to_string();
-                println!("This is the expression {:?}", expr);
-                let expr = to_stwo_expression(&self.witness_columns, expr, &witness_eval, &eval);
+        if !polynomial_identities.is_empty() {
+            polynomial_identities.iter().for_each(|id| {
+                let expr =
+                    to_stwo_expression(&self.witness_columns, &id.expression, &witness_eval, &eval);
                 eval.add_constraint(expr);
-            });
+            })
         }
         eval
     }

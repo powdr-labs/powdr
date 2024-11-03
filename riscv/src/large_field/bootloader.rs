@@ -3,7 +3,8 @@ use crate::code_gen::Register;
 use crate::continuations::bootloader::{
     BOOTLOADER_INPUTS_PER_PAGE, BYTES_PER_WORD, DEFAULT_PC, MEMORY_HASH_START_INDEX,
     MERKLE_TREE_DEPTH, NUM_PAGES_INDEX, N_LEAVES_LOG, PAGE_INPUTS_OFFSET, PAGE_NUMBER_MASK,
-    PAGE_SIZE_BYTES, PC_INDEX, REGISTER_NAMES, SHUTDOWN_START, WORDS_PER_HASH, WORDS_PER_PAGE,
+    PAGE_SIZE_BYTES, PC_INDEX, REGISTER_MEMORY_NAMES, REGISTER_NAMES, SHUTDOWN_START,
+    WORDS_PER_HASH, WORDS_PER_PAGE,
 };
 
 pub const BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES: [&str; 2] =
@@ -38,17 +39,25 @@ pub fn bootloader_preamble() -> String {
     // Expose initial register values as public outputs
 "#.to_string();
 
-    for (i, reg) in REGISTER_NAMES.iter().enumerate() {
-        let reg = reg.strip_prefix("main.").unwrap();
+    for (i, reg) in REGISTER_MEMORY_NAMES
+        .iter()
+        .chain(&REGISTER_NAMES)
+        .enumerate()
+    {
+        let reg = reg.strip_prefix("main::").unwrap();
         preamble.push_str(&format!(
             "    //public initial_{reg} = main_bootloader_inputs::value({i});\n"
         ));
     }
-    for (i, reg) in REGISTER_NAMES.iter().enumerate() {
-        let reg = reg.strip_prefix("main.").unwrap();
+    for (i, reg) in REGISTER_MEMORY_NAMES
+        .iter()
+        .chain(&REGISTER_NAMES)
+        .enumerate()
+    {
+        let reg = reg.strip_prefix("main::").unwrap();
         preamble.push_str(&format!(
             "    //public final_{reg} = main_bootloader_inputs::value({});\n",
-            i + REGISTER_NAMES.len()
+            i + REGISTER_MEMORY_NAMES.len() + REGISTER_NAMES.len()
         ));
     }
     preamble.push_str(&format!(
@@ -202,7 +211,7 @@ page_number_ok:
 
 // TODO currently the init call to poseidon_gl initializes the
 // scratch space with mstore_bootloader.
-// When the init call is removed, the calls below need to be replace by mstore_bootloader.
+// When the init call is removed, the calls below need to be replaced by mstore_bootloader.
 mstore 0, 0, 0, 0;
 mstore 0, 0, 4, 0;
 mstore 0, 0, 8, 0;
@@ -473,14 +482,26 @@ assert_bootloader_input 0, 25, 1, {MEMORY_HASH_START_INDEX} + 15;
 "#
     ));
 
-    // Go over all registers except the PC
-    let register_iter = REGISTER_NAMES.iter().take(REGISTER_NAMES.len() - 1);
-
-    for (i, reg) in register_iter.enumerate() {
-        let reg = reg.strip_prefix("main.").unwrap();
+    // Go over all memory registers
+    for (i, reg) in REGISTER_MEMORY_NAMES.iter().enumerate() {
+        let reg = reg.strip_prefix("main::").unwrap();
         bootloader.push_str(&format!(
             r#"load_bootloader_input 0, {}, 1, {i};"#,
             Register::from(reg).addr()
+        ));
+        bootloader.push('\n');
+    }
+
+    // Go over all machine registers except the PC
+    let register_iter = REGISTER_NAMES.iter().take(REGISTER_NAMES.len() - 1);
+    for (i, reg) in register_iter.enumerate() {
+        let reg = reg.strip_prefix("main::").unwrap();
+        bootloader.push_str(&format!(
+            r#"
+            load_bootloader_input 0, 90, 1, {};
+            {reg} <== get_reg(90);
+            "#,
+            i + REGISTER_MEMORY_NAMES.len()
         ));
         bootloader.push('\n');
     }
@@ -523,15 +544,26 @@ shutdown_start:
 "#,
     );
 
-    // Go over all registers except the PC
-    let register_iter = REGISTER_NAMES.iter().take(REGISTER_NAMES.len() - 1);
-
-    for (i, reg) in register_iter.enumerate() {
-        let reg = reg.strip_prefix("main.").unwrap();
+    // Go over all memory registers
+    for (i, reg) in REGISTER_MEMORY_NAMES.iter().enumerate() {
+        let reg = reg.strip_prefix("main::").unwrap();
         bootloader.push_str(&format!(
-            "assert_bootloader_input {i}, {}, 1, {};\n",
+            "assert_bootloader_input 0, {}, 1, {};\n",
             Register::from(reg).addr(),
-            REGISTER_NAMES.len()
+            i + REGISTER_MEMORY_NAMES.len() + REGISTER_NAMES.len()
+        ));
+    }
+
+    // Go over all machine registers except the PC
+    let register_iter = REGISTER_NAMES.iter().take(REGISTER_NAMES.len() - 1);
+    for (i, reg) in register_iter.enumerate() {
+        let reg = reg.strip_prefix("main::").unwrap();
+        bootloader.push_str(&format!(
+            r#"
+            set_reg 90, {reg};
+            assert_bootloader_input 0, 90, 1, {};
+            "#,
+            i + 2 * REGISTER_MEMORY_NAMES.len() + REGISTER_NAMES.len()
         ));
     }
 

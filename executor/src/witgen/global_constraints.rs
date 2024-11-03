@@ -5,7 +5,7 @@ use num_traits::Zero;
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, IdentityKind, PolyID, PolynomialType,
+    AlgebraicReference, LookupIdentity, PermutationIdentity, PolyID, PolynomialType,
 };
 
 use powdr_number::FieldElement;
@@ -38,7 +38,8 @@ impl<'a, T: FieldElement> RangeConstraintSet<AlgebraicVariable<'a>, T>
                 assert!(!id.next);
                 self.range_constraints.get(&id.poly_id).cloned()
             }
-            AlgebraicVariable::Public(_) => unimplemented!(),
+            // No range constraints stored for publics.
+            AlgebraicVariable::Public(_) => None,
         }
     }
 }
@@ -219,17 +220,15 @@ fn propagate_constraints<T: FieldElement>(
     full_span: &BTreeSet<PolyID>,
 ) -> (BTreeMap<PolyID, RangeConstraint<T>>, bool) {
     let mut remove = false;
-    match identity.kind {
-        IdentityKind::Polynomial => {
-            if let Some(p) = is_binary_constraint(identity.expression_for_poly_id()) {
+    match identity {
+        Identity::Polynomial(identity) => {
+            if let Some(p) = is_binary_constraint(&identity.expression) {
                 assert!(known_constraints
                     .insert(p, RangeConstraint::from_max_bit(0))
                     .is_none());
                 remove = true;
             } else {
-                for (p, c) in
-                    try_transfer_constraints(identity.expression_for_poly_id(), &known_constraints)
-                {
+                for (p, c) in try_transfer_constraints(&identity.expression, &known_constraints) {
                     known_constraints
                         .entry(p)
                         .and_modify(|existing| *existing = existing.conjunction(&c))
@@ -237,16 +236,12 @@ fn propagate_constraints<T: FieldElement>(
                 }
             }
         }
-        IdentityKind::Plookup | IdentityKind::Permutation | IdentityKind::Connect => {
-            if identity.left.selector.is_some() || identity.right.selector.is_some() {
+        Identity::Lookup(LookupIdentity { left, right, .. })
+        | Identity::Permutation(PermutationIdentity { left, right, .. }) => {
+            if left.selector != T::one().into() || right.selector != T::one().into() {
                 return (known_constraints, false);
             }
-            for (left, right) in identity
-                .left
-                .expressions
-                .iter()
-                .zip(identity.right.expressions.iter())
-            {
+            for (left, right) in left.expressions.iter().zip(right.expressions.iter()) {
                 if let (Some(left), Some(right)) =
                     (try_to_simple_poly(left), try_to_simple_poly(right))
                 {
@@ -258,17 +253,20 @@ fn propagate_constraints<T: FieldElement>(
                     }
                 }
             }
-            if identity.kind == IdentityKind::Plookup && identity.right.expressions.len() == 1 {
+            if right.expressions.len() == 1 {
                 // We can only remove the lookup if the RHS is a fixed polynomial that
                 // provides all values in the span.
-                if let Some(name) = try_to_simple_poly(&identity.right.expressions[0]) {
-                    if try_to_simple_poly(&identity.left.expressions[0]).is_some()
+                if let Some(name) = try_to_simple_poly(&right.expressions[0]) {
+                    if try_to_simple_poly(&left.expressions[0]).is_some()
                         && full_span.contains(&name.poly_id)
                     {
                         remove = true;
                     }
                 }
             }
+        }
+        Identity::Connect(..) => {
+            // we do not handle connect identities yet, so we do nothing
         }
     }
 

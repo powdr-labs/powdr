@@ -23,8 +23,7 @@ use p3_air::{Air, AirBuilder, BaseAir, PairBuilder};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression,
-    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Identity, IdentityKind, PolyID,
-    PolynomialType, SelectedExpressions,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Identity, PolyID, PolynomialType,
 };
 
 use crate::{CallbackResult, MultiStageAir, MultistageAirBuilder};
@@ -41,7 +40,9 @@ pub struct ConstraintSystem<T> {
     witness_columns: BTreeMap<PolyID, (usize, usize)>,
     // for each fixed column, the index of this column in the fixed columns
     fixed_columns: BTreeMap<PolyID, usize>,
-    identities: Vec<Identity<SelectedExpressions<AlgebraicExpression<T>>>>,
+    // for each intermediate polynomial, the expression
+    intermediates: BTreeMap<PolyID, AlgebraicExpression<T>>,
+    identities: Vec<Identity<T>>,
     // for each public column, the name, poly_id, index in the witness columns, and stage
     pub(crate) publics_by_stage: Vec<Vec<(String, PolyID, usize)>>,
     constant_count: usize,
@@ -52,7 +53,7 @@ pub struct ConstraintSystem<T> {
 
 impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
     fn from(analyzed: &Analyzed<T>) -> Self {
-        let identities = analyzed.identities_with_inlined_intermediate_polynomials();
+        let identities = analyzed.identities.clone();
         let constant_count = analyzed.constant_count();
         let stage_widths = (0..analyzed.stage_count() as u32)
             .map(|stage| {
@@ -73,6 +74,16 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
             .map(|(index, (_, id))| (id, index))
             .collect();
 
+        let intermediates = analyzed
+            .intermediate_polys_in_source_order()
+            .flat_map(|(symbol, definitions)| {
+                symbol
+                    .array_elements()
+                    .zip_eq(definitions)
+                    .map(|((_, id), expr)| (id, expr.clone()))
+            })
+            .collect();
+
         let witness_columns = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
             .into_group_map_by(|(s, _)| s.stage.unwrap_or_default())
@@ -88,14 +99,21 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
             })
             .collect();
 
-        let mut challenges_by_stage = vec![vec![]; analyzed.stage_count()];
+        // we use a set to collect all used challenges
+        let mut challenges_by_stage = vec![BTreeSet::new(); analyzed.stage_count()];
         for identity in &identities {
             identity.pre_visit_expressions(&mut |expr| {
                 if let AlgebraicExpression::Challenge(challenge) = expr {
-                    challenges_by_stage[challenge.stage as usize].push(challenge.id);
+                    challenges_by_stage[challenge.stage as usize].insert(challenge.id);
                 }
             });
         }
+
+        // finally, we convert the set to a vector
+        let challenges_by_stage = challenges_by_stage
+            .into_iter()
+            .map(|set| set.into_iter().collect())
+            .collect();
 
         let publics_by_stage = analyzed.get_publics().into_iter().fold(
             vec![vec![]; analyzed.stage_count()],
@@ -112,6 +130,7 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
             stage_widths,
             witness_columns,
             fixed_columns,
+            intermediates,
             challenges_by_stage,
         }
     }
@@ -229,6 +248,7 @@ where
         e: &AlgebraicExpression<T>,
         traces_by_stage: &[AB::M],
         fixed: &AB::M,
+        intermediate_cache: &mut BTreeMap<u64, AB::Expr>,
         publics: &BTreeMap<&String, <AB as MultistageAirBuilder>::PublicVar>,
         challenges: &[BTreeMap<&u64, <AB as MultistageAirBuilder>::Challenge>],
     ) -> AB::Expr {
@@ -249,7 +269,22 @@ where
                         fixed.row_slice(r.next as usize)[index].into()
                     }
                     PolynomialType::Intermediate => {
-                        unreachable!("intermediate polynomials should have been inlined")
+                        if let Some(expr) = intermediate_cache.get(&poly_id.id) {
+                            expr.clone()
+                        } else {
+                            let value = self.to_plonky3_expr::<AB>(
+                                &self.constraint_system.intermediates[&poly_id],
+                                traces_by_stage,
+                                fixed,
+                                intermediate_cache,
+                                publics,
+                                challenges,
+                            );
+                            assert!(intermediate_cache
+                                .insert(poly_id.id, value.clone())
+                                .is_none());
+                            value
+                        }
                     }
                 }
             }
@@ -268,6 +303,7 @@ where
                         left,
                         traces_by_stage,
                         fixed,
+                        intermediate_cache,
                         publics,
                         challenges,
                     );
@@ -279,10 +315,22 @@ where
                 _ => unimplemented!("pow with non-constant exponent"),
             },
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-                let left =
-                    self.to_plonky3_expr::<AB>(left, traces_by_stage, fixed, publics, challenges);
-                let right =
-                    self.to_plonky3_expr::<AB>(right, traces_by_stage, fixed, publics, challenges);
+                let left = self.to_plonky3_expr::<AB>(
+                    left,
+                    traces_by_stage,
+                    fixed,
+                    intermediate_cache,
+                    publics,
+                    challenges,
+                );
+                let right = self.to_plonky3_expr::<AB>(
+                    right,
+                    traces_by_stage,
+                    fixed,
+                    intermediate_cache,
+                    publics,
+                    challenges,
+                );
 
                 match op {
                     Add => left + right,
@@ -292,8 +340,14 @@ where
                 }
             }
             AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
-                let expr: <AB as AirBuilder>::Expr =
-                    self.to_plonky3_expr::<AB>(expr, traces_by_stage, fixed, publics, challenges);
+                let expr: <AB as AirBuilder>::Expr = self.to_plonky3_expr::<AB>(
+                    expr,
+                    traces_by_stage,
+                    fixed,
+                    intermediate_cache,
+                    publics,
+                    challenges,
+                );
 
                 match op {
                     AlgebraicUnaryOperator::Minus => -expr,
@@ -335,6 +389,7 @@ where
         let traces_by_stage: Vec<AB::M> =
             (0..stage_count).map(|i| builder.stage_trace(i)).collect();
         let fixed = builder.preprocessed();
+        let mut intermediate_cache = BTreeMap::new();
         let public_input_values_by_stage = (0..stage_count)
             .map(|i| builder.stage_public_values(i))
             .collect_vec();
@@ -393,27 +448,24 @@ where
 
         // circuit constraints
         for identity in &self.constraint_system.identities {
-            match identity.kind {
-                IdentityKind::Polynomial => {
-                    assert_eq!(identity.left.expressions.len(), 0);
-                    assert_eq!(identity.right.expressions.len(), 0);
-                    assert!(identity.right.selector.is_none());
-
-                    let left = self.to_plonky3_expr::<AB>(
-                        identity.left.selector.as_ref().unwrap(),
+            match identity {
+                Identity::Polynomial(identity) => {
+                    let e = self.to_plonky3_expr::<AB>(
+                        &identity.expression,
                         &traces_by_stage,
                         &fixed,
+                        &mut intermediate_cache,
                         &public_vals_by_id,
                         &challenges_by_stage,
                     );
 
-                    builder.assert_zero(left);
+                    builder.assert_zero(e);
                 }
-                IdentityKind::Plookup => unimplemented!("Plonky3 does not support plookup"),
-                IdentityKind::Permutation => {
+                Identity::Lookup(..) => unimplemented!("Plonky3 does not support plookup"),
+                Identity::Permutation(..) => {
                     unimplemented!("Plonky3 does not support permutations")
                 }
-                IdentityKind::Connect => unimplemented!("Plonky3 does not support connections"),
+                Identity::Connect(..) => unimplemented!("Plonky3 does not support connections"),
             }
         }
     }

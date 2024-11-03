@@ -9,6 +9,6 @@ full relative paths in the form of e.g. ``super::super::module_name::symbol``.
 
 Here are some examples of how to define and use symbols:
 
-```
+```rust
 {{#include ../../../test_data/asm/book/declarations.asm}}
 ```

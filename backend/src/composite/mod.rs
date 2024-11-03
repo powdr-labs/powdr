@@ -66,10 +66,14 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
         fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
+        proving_key: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
         verification_app_key: Option<&mut dyn std::io::Read>,
         backend_options: BackendOptions,
     ) -> Result<Box<dyn Backend<F>>, Error> {
+        if proving_key.is_some() {
+            unimplemented!();
+        }
         if verification_app_key.is_some() {
             unimplemented!();
         }
@@ -135,6 +139,7 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
                             fixed,
                             output_dir,
                             setup,
+                            None, // TODO
                             verification_key,
                             // TODO: Handle verification_app_key
                             None,
@@ -178,7 +183,7 @@ fn log_machine_stats<T: FieldElement>(machine_name: &str, pil: &Analyzed<T>) {
     let num_identities_by_kind = pil
         .identities
         .iter()
-        .map(|i| i.kind)
+        .map(|i| i.kind())
         .counts()
         .into_iter()
         .collect::<BTreeMap<_, _>>();

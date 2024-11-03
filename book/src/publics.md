@@ -1,9 +1,9 @@
 # Using publics
 
-Public values are a small but important part of verifying ZK proofs.  Often, a
-verifier is interested inputs and/or outputs to a public function.
+Public values are a small but important part of verifying ZK proofs. Often, the
+verifier is interested in inputs and/or outputs to a public function.
 
-In the toy example below the prover can show that they know the square root of
+In the toy example below, the prover can show that they know the square root of
 a public value that is published with the proof.
 
 You can also run this example directly in the [powdr
@@ -19,7 +19,7 @@ You can also enable logs to know what is happening internally:
 RUST_LOG=info cargo run --example sqrt_with_public
 ```
 
-```
+```rust
 {{#include ../../test_data/asm/sqrt_with_public.asm}}
 ```
 

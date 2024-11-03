@@ -22,8 +22,10 @@ use stwo_prover::core::pcs::{
     CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig, TreeVec,
 };
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
-use stwo_prover::core::vcs::poseidon252_merkle::{Poseidon252MerkleChannel,Poseidon252MerkleHasher};
 use stwo_prover::core::prover::ProvingError;
+use stwo_prover::core::vcs::poseidon252_merkle::{
+    Poseidon252MerkleChannel, Poseidon252MerkleHasher,
+};
 
 use powdr_number::FieldElement;
 
@@ -52,12 +54,15 @@ impl<F: FieldElement> StwoProver<F> {
             _verifying_key: None,
         })
     }
-    pub fn prove(&self, witness: &[(String, Vec<F>)], witgen_callback: WitgenCallback<F>)-> Result<StarkProof<Poseidon252MerkleHasher>, ProvingError> {
+    pub fn prove(
+        &self,
+        witness: &[(String, Vec<F>)],
+        witgen_callback: WitgenCallback<F>,
+    ) -> Result<StarkProof<Poseidon252MerkleHasher>, ProvingError> {
         let config = PcsConfig {
             pow_bits: 16,                          // Any value you want to set for pow_bits
             fri_config: FriConfig::new(0, 1, 100), // Using different numbers for FriConfig
         };
-
 
         let circuit_eval = PowdrCircuit::new(self.analyzed.clone())
             .with_witgen_callback(witgen_callback.clone())
@@ -106,11 +111,9 @@ impl<F: FieldElement> StwoProver<F> {
             commitment_scheme,
         )
         .unwrap();
-        
 
         println!("proof generated!");
-       
+
         Ok(proof)
     }
-
 }

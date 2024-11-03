@@ -4,11 +4,11 @@ use powdr_number::{BabyBearField, BigInt, Bn254Field, GoldilocksField};
 
 use powdr_pil_analyzer::evaluator::Value;
 use powdr_pipeline::{
+    test_runner::run_tests,
     test_util::{
-        evaluate_function, evaluate_integer_function, execute_test_file, gen_estark_proof,
-        gen_halo2_proof, make_simple_prepared_pipeline, regular_test,
-        regular_test_without_small_field, std_analyzed, test_halo2, test_pilcom, test_plonky3,
-        BackendVariant,
+        evaluate_function, evaluate_integer_function, gen_estark_proof, gen_halo2_proof,
+        make_simple_prepared_pipeline, regular_test, regular_test_without_small_field,
+        std_analyzed, test_halo2, test_pilcom, test_plonky3, BackendVariant,
     },
     Pipeline,
 };
@@ -60,6 +60,13 @@ fn poseidon_bb_test() {
 
 #[test]
 #[ignore = "Too slow"]
+fn poseidon2_bb_test() {
+    let f = "std/poseidon2_bb_test.asm";
+    test_plonky3::<BabyBearField>(f, vec![]);
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn split_bn254_test() {
     let f = "std/split_bn254_test.asm";
     test_halo2(make_simple_prepared_pipeline(f));
@@ -105,6 +112,7 @@ fn arith_large_test() {
     // Running gen_estark_proof(f, Default::default())
     // is too slow for the PR tests. This will only create a single
     // eStark proof instead of 3.
+    #[cfg(feature = "estark-starky")]
     pipeline
         .with_backend(powdr_backend::BackendType::EStarkStarky, None)
         .compute_proof()
@@ -142,79 +150,74 @@ fn memory_small_test() {
 }
 
 #[test]
-fn permutation_via_challenges_bn() {
+fn permutation_via_challenges() {
     let f = "std/permutation_via_challenges.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-}
-
-#[test]
-fn permutation_via_challenges_gl() {
-    let f = "std/permutation_via_challenges.asm";
-    make_simple_prepared_pipeline::<GoldilocksField>(f);
+    test_plonky3::<GoldilocksField>(f, vec![]);
 }
 
 #[test]
 fn permutation_via_challenges_ext() {
     let f = "std/permutation_via_challenges_ext.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-    // Note that this does not actually run the second-phase witness generation, because no
-    // Goldilocks backend support challenges yet. But at least it tests that the panic from
-    // the previous test is not happening.
-    make_simple_prepared_pipeline::<GoldilocksField>(f);
+    test_plonky3::<GoldilocksField>(f, vec![]);
 }
 
 #[test]
-fn lookup_via_challenges_bn() {
+fn lookup_via_challenges() {
     let f = "std/lookup_via_challenges.asm";
     test_halo2(make_simple_prepared_pipeline(f));
+    test_plonky3::<GoldilocksField>(f, vec![]);
 }
 
 #[test]
 fn lookup_via_challenges_ext() {
     let f = "std/lookup_via_challenges_ext.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-    // Note that this does not actually run the second-phase witness generation, because no
-    // Goldilocks backend support challenges yet.
-    make_simple_prepared_pipeline::<GoldilocksField>(f);
+    test_plonky3::<GoldilocksField>(f, vec![]);
 }
 
 #[test]
 fn lookup_via_challenges_ext_simple() {
     let f = "std/lookup_via_challenges_ext_simple.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-    // Note that this does not actually run the second-phase witness generation, because no
-    // Goldilocks backend support challenges yet.
-    make_simple_prepared_pipeline::<GoldilocksField>(f);
+    test_plonky3::<GoldilocksField>(f, vec![]);
 }
 
 #[test]
-fn bus_permutation_via_challenges_bn() {
+fn bus_permutation_via_challenges() {
     let f = "std/bus_permutation_via_challenges.asm";
     test_halo2(make_simple_prepared_pipeline(f));
+}
+
+#[test]
+fn bus_permutation_via_challenges_ext() {
+    let f = "std/bus_permutation_via_challenges_ext.asm";
+    test_halo2(make_simple_prepared_pipeline(f));
+    test_plonky3::<GoldilocksField>(f, vec![]);
 }
 
 #[test]
 fn test_multiplicities() {
     let f = "std/multiplicities.asm";
     test_halo2(make_simple_prepared_pipeline(f));
+
+    // This test currently has a native lookup to aid witness generation,
+    // which is not supported by the Plonky3 backend.
+    // test_plonky3::<GoldilocksField>(f, vec![]);
 }
 
 #[test]
-fn bus_permutation_via_challenges_ext_bn() {
-    let f = "std/bus_permutation_via_challenges_ext.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-}
-
-#[test]
-fn bus_lookup_via_challenges_bn() {
+fn bus_lookup_via_challenges() {
     let f = "std/bus_lookup_via_challenges.asm";
     test_halo2(make_simple_prepared_pipeline(f));
 }
 
 #[test]
-fn bus_lookup_via_challenges_ext_bn() {
+fn bus_lookup_via_challenges_ext() {
     let f = "std/bus_lookup_via_challenges_ext.asm";
     test_halo2(make_simple_prepared_pipeline(f));
+    test_plonky3::<GoldilocksField>(f, vec![]);
 }
 
 #[test]
@@ -400,45 +403,13 @@ fn ff_inv_big() {
 }
 
 #[test]
-fn fp2() {
-    let analyzed = std_analyzed::<GoldilocksField>();
-    evaluate_function(&analyzed, "std::math::fp2::test::add", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::sub", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::mul", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::inverse", vec![]);
-
-    let analyzed = std_analyzed::<Bn254Field>();
-    evaluate_function(&analyzed, "std::math::fp2::test::add", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::sub", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::mul", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::inverse", vec![]);
-
-    let analyzed = std_analyzed::<BabyBearField>();
-    evaluate_function(&analyzed, "std::math::fp2::test::add", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::sub", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::mul", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::inverse", vec![]);
-}
-
-#[test]
-fn fp4() {
-    let analyzed = std_analyzed::<GoldilocksField>();
-    evaluate_function(&analyzed, "std::math::fp4::test::add", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::sub", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::mul", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::inverse", vec![]);
-
-    let analyzed = std_analyzed::<Bn254Field>();
-    evaluate_function(&analyzed, "std::math::fp4::test::add", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::sub", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::mul", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::inverse", vec![]);
-
-    let analyzed = std_analyzed::<BabyBearField>();
-    evaluate_function(&analyzed, "std::math::fp4::test::add", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::sub", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::mul", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::inverse", vec![]);
+fn std_tests() {
+    let count1 = run_tests(&std_analyzed::<GoldilocksField>(), true).unwrap();
+    let count2 = run_tests(&std_analyzed::<Bn254Field>(), true).unwrap();
+    let count3 = run_tests(&std_analyzed::<BabyBearField>(), true).unwrap();
+    assert_eq!(count1, count2);
+    assert_eq!(count2, count3);
+    assert!(count1 >= 9);
 }
 
 #[test]
@@ -484,11 +455,6 @@ fn sort() {
             .collect::<Vec<_>>();
         assert_eq!(input_sorted, result);
     }
-}
-#[test]
-fn btree() {
-    let f = "std/btree_test.asm";
-    execute_test_file(f, Default::default(), vec![]).unwrap();
 }
 
 mod reparse {

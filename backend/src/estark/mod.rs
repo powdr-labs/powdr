@@ -141,17 +141,22 @@ fn write_json_file<T: ?Sized + Serialize>(path: &Path, data: &T) -> Result<(), E
 }
 
 impl<'a, F: FieldElement> EStarkFilesCommon<F> {
+    #[allow(clippy::too_many_arguments)]
     fn create(
         analyzed: &'a Analyzed<F>,
         fixed: Arc<Fixed<F>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
+        proving_key: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
         verification_app_key: Option<&mut dyn std::io::Read>,
         options: BackendOptions,
     ) -> Result<Self, Error> {
         if setup.is_some() {
             return Err(Error::NoSetupAvailable);
+        }
+        if proving_key.is_some() {
+            return Err(Error::NoProvingKeyAvailable);
         }
         if verification_key.is_some() {
             return Err(Error::NoVerificationAvailable);
@@ -228,6 +233,7 @@ impl<F: FieldElement> BackendFactory<F> for DumpFactory {
         fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
+        proving_key: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
         verification_app_key: Option<&mut dyn std::io::Read>,
         options: BackendOptions,
@@ -240,6 +246,7 @@ impl<F: FieldElement> BackendFactory<F> for DumpFactory {
             fixed,
             output_dir,
             setup,
+            proving_key,
             verification_key,
             verification_app_key,
             options,

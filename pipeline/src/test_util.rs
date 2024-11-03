@@ -5,29 +5,20 @@ use powdr_number::{
     KoalaBearField, Mersenne31Field,
 };
 use powdr_pil_analyzer::evaluator::{self, SymbolLookup};
+use std::env;
 use std::path::PathBuf;
-use std::{env, fs};
 
 use std::sync::Arc;
 
 use crate::pipeline::Pipeline;
+
+#[cfg(feature = "estark-starky")]
 use crate::verify::verify;
+#[cfg(feature = "estark-starky")]
+use std::fs;
 
 pub fn resolve_test_file(file_name: &str) -> PathBuf {
     PathBuf::from(format!("../test_data/{file_name}"))
-}
-
-pub fn execute_test_file(
-    file_name: &str,
-    inputs: Vec<GoldilocksField>,
-    external_witness_values: Vec<(String, Vec<GoldilocksField>)>,
-) -> Result<(), Vec<String>> {
-    Pipeline::default()
-        .from_file(resolve_test_file(file_name))
-        .with_prover_inputs(inputs)
-        .add_external_witness_values(external_witness_values)
-        .compute_witness()
-        .map(|_| ())
 }
 
 /// Makes a new pipeline for the given file. All steps until witness generation are
@@ -102,6 +93,15 @@ pub fn asm_string_to_pil<T: FieldElement>(contents: &str) -> Arc<Analyzed<T>> {
         .unwrap()
 }
 
+#[cfg(not(feature = "estark-starky"))]
+pub fn run_pilcom_with_backend_variant(
+    _pipeline: Pipeline<GoldilocksField>,
+    _backend_variant: BackendVariant,
+) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(feature = "estark-starky")]
 pub fn run_pilcom_with_backend_variant(
     pipeline: Pipeline<GoldilocksField>,
     backend_variant: BackendVariant,
@@ -153,6 +153,14 @@ pub fn gen_estark_proof(pipeline: Pipeline<GoldilocksField>) {
     }
 }
 
+#[cfg(not(feature = "estark-starky"))]
+pub fn gen_estark_proof_with_backend_variant(
+    _pipeline: Pipeline<GoldilocksField>,
+    _backend_variant: BackendVariant,
+) {
+}
+
+#[cfg(feature = "estark-starky")]
 pub fn gen_estark_proof_with_backend_variant(
     pipeline: Pipeline<GoldilocksField>,
     backend_variant: BackendVariant,
@@ -440,6 +448,14 @@ pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
     assert!(run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).is_err());
 }
 
+#[cfg(not(feature = "estark-starky"))]
+pub fn assert_proofs_fail_for_invalid_witnesses_estark(
+    _file_name: &str,
+    _witness: &[(String, Vec<u64>)],
+) {
+}
+
+#[cfg(feature = "estark-starky")]
 pub fn assert_proofs_fail_for_invalid_witnesses_estark(
     file_name: &str,
     witness: &[(String, Vec<u64>)],
