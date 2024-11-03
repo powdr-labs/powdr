@@ -60,12 +60,7 @@ impl<T: FieldElement> Backend<T> for StwoProver<T> {
         if prev_proof.is_some() {
             return Err(Error::NoAggregationAvailable);
         }
-        let circuit = PowdrCircuit::new(self.analyzed.clone())
-            .with_witgen_callback(witgen_callback.clone())
-            .with_witness(witness);
-
-        self.prove(witness, witgen_callback);
-        unimplemented!()
+        Ok(self.prove(witness, witgen_callback)?)
     }
     #[allow(unused_variables)]
     fn export_verification_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {

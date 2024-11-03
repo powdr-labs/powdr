@@ -6,7 +6,7 @@ mod estark;
 mod halo2;
 #[cfg(feature = "plonky3")]
 mod plonky3;
-#[cfg(all(feature = "stwo", nightly))]
+#[cfg(all(feature = "stwo"))]
 mod stwo;
 
 mod composite;
@@ -53,7 +53,7 @@ pub enum BackendType {
     #[cfg(feature = "plonky3")]
     #[strum(serialize = "plonky3")]
     Plonky3,
-    #[cfg(feature = "stwo")]
+     #[cfg(all(feature = "stwo"))]
     #[strum(serialize = "stwo")]
     Stwo,
 }
@@ -99,15 +99,8 @@ impl BackendType {
             }
             #[cfg(feature = "plonky3")]
             BackendType::Plonky3 => Box::new(plonky3::Factory),
-            #[cfg(feature = "stwo")]
+            #[cfg(all(feature = "stwo"))]
             BackendType::Stwo => Box::new(stwo::StwoProverFactory),
-            #[cfg(not(any(
-                feature = "halo2",
-                feature = "estark-polygon",
-                feature = "estark-starky",
-                feature = "plonky3",
-                feature = "stwo"
-            )))]
             _ => panic!("Empty backend."),
         }
     }

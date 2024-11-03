@@ -13,7 +13,7 @@ use powdr_pipeline::{
     },
     Pipeline,
 };
-#[cfg(all(feature = "stwo", nightly))]
+#[cfg(all(feature = "stwo"))]
 use powdr_pipeline::{test_util::test_stwo};
 
 use test_log::test;
@@ -258,7 +258,7 @@ fn add() {
     test_plonky3::<GoldilocksField>(f, Default::default());
 }
 
-#[cfg(all(feature = "stwo", nightly))]
+#[cfg(feature = "stwo")]
 #[test]
 fn stwo_add_and_equal() {
     let f = "pil/add_and_equal.pil";

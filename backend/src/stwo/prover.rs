@@ -14,6 +14,7 @@ use stwo_prover::constraint_framework::{
 use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::prover::StarkProof;
 use stwo_prover::core::vcs::ops::MerkleHasher;
+use stwo_prover::core::vcs::hash::Hash;
 
 use stwo_prover::core::air::Component;
 use stwo_prover::core::channel::Poseidon252Channel;
@@ -26,7 +27,7 @@ use stwo_prover::core::prover::ProvingError;
 use stwo_prover::core::vcs::poseidon252_merkle::{
     Poseidon252MerkleChannel, Poseidon252MerkleHasher,
 };
-
+use stwo_prover::core::channel::MerkleChannel;
 use powdr_number::FieldElement;
 
 #[allow(unused_variables)]
@@ -58,7 +59,7 @@ impl<F: FieldElement> StwoProver<F> {
         &self,
         witness: &[(String, Vec<F>)],
         witgen_callback: WitgenCallback<F>,
-    ) -> Result<StarkProof<Poseidon252MerkleHasher>, ProvingError> {
+    ) -> Result<Vec<u8>, String> {
         let config = PcsConfig {
             pow_bits: 16,                          // Any value you want to set for pow_bits
             fri_config: FriConfig::new(0, 1, 100), // Using different numbers for FriConfig
@@ -114,9 +115,12 @@ impl<F: FieldElement> StwoProver<F> {
 
         println!("proof generated!");
 
-        Ok(proof)
+        Ok(bincode::serialize(&proof).unwrap())
     }
-    pub fn verify(&self, proof: &[u8], instances: &[Vec<F>]) -> Result<(), ProvingError> {
+    
+    pub fn verify<MC: MerkleChannel>(
+        &self, proof: StarkProof<MC::H>, 
+        instances: &[Vec<F>]) -> Result<(), ProvingError> {
         let config = PcsConfig {
             pow_bits: 16,                          // Any value you want to set for pow_bits
             fri_config: FriConfig::new(0, 1, 100), // Using different numbers for FriConfig
@@ -127,20 +131,21 @@ impl<F: FieldElement> StwoProver<F> {
             &mut CommitmentSchemeVerifier::<Poseidon252MerkleChannel>::new(config);
 
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.
-        let sizes = component.trace_log_degree_bounds();
-        commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
+        // let sizes = component.trace_log_degree_bounds();
+        // commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
 
         //     println!("proving time for fibo length of {:?} is {:?}",fibonacci_y_length, duration);
         //     println!("proof size is {:?} bytes",proof.size_estimate());
 
         //     let verifystart = Instant::now();
-        stwo_prover::core::prover::verify(
-            &[&component],
-            verifier_channel,
-            commitment_scheme,
-            proof,
-        )
-        .unwrap();
+        // stwo_prover::core::prover::verify(
+        //     &[&component],
+        //     verifier_channel,
+        //     commitment_scheme,
+        //     proof,
+        // )
+        //.unwrap();
+    unimplemented!()
 
 }  
 }
