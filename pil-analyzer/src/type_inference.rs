@@ -263,7 +263,7 @@ impl TypeChecker {
 
         match declared_type.ty {
             DeclaredTypeKind::Struct(_, _) => {
-                unreachable!("Struct declarations should have been removed at this point")
+                unreachable!("Declared types for Structs should have been removed at this point")
             }
             DeclaredTypeKind::Type(_) => declared_type.scheme(),
         }
