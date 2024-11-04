@@ -49,7 +49,7 @@ let increment_ptr: expr, expr, expr, expr, expr -> Constr[] = constr |
 // - The first address must be aligned to 4 bytes.
 // - The last address must not overflow the 32-bit address space.
 //
-// Returns the flatenned array of constraints.
+// Returns the flattened array of constraints.
 let address_array_elems = constr |addr_high, addr_low| {
     let addr = array::zip(
         addr_high,
