@@ -175,6 +175,13 @@ impl TypeChecker {
         // - analyze each such group in an environment, where their type schemes
         //   are instantiated once at the start and not anymore for the symbol lookup.
 
+        // Sort the names such that called names occur first.
+        let names = sort_called_first(
+            definitions
+                .iter()
+                .map(|(n, (_, v))| (n.as_str(), v.as_deref())),
+        );
+
         self.setup_declared_types(definitions);
         // After we setup declared types, every definition
         // related with a Struct Declaration is not nedded any more
@@ -184,13 +191,6 @@ impl TypeChecker {
             !matches!(ty, Some(declared) if matches!(declared.ty, DeclaredTypeKind::Struct(_, _)))
         })
         .collect();
-
-        // Sort the names such that called names occur first.
-        let names = sort_called_first(
-            definitions
-                .iter()
-                .map(|(n, (_, v))| (n.as_str(), v.as_deref())),
-        );
 
         // These are the inferred types for symbols that are declared
         // as type schemes. They are compared to the declared types
