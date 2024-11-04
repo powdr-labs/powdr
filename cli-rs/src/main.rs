@@ -339,7 +339,8 @@ fn execute<F: FieldElement>(
         // no continuations
         // -------------------------------
         let fixed = pipeline.compute_fixed_cols().unwrap().clone();
-        let program = pipeline.compute_analyzed_asm().unwrap().clone();
+        let asm = pipeline.compute_analyzed_asm().unwrap().clone();
+        let pil = pipeline.compute_optimized_pil().unwrap();
         let exec_mode = if witness {
             powdr::riscv_executor::ExecMode::Trace
         } else {
@@ -349,7 +350,8 @@ fn execute<F: FieldElement>(
         let start = Instant::now();
 
         let execution = powdr::riscv_executor::execute::<F>(
-            &program,
+            &asm,
+            &pil,
             Some(fixed),
             powdr::riscv_executor::MemoryState::new(),
             pipeline.data_callback().unwrap(),

@@ -205,8 +205,9 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     // Initial register values for the current chunk.
     let mut register_values = default_register_values();
 
-    let program = pipeline.compute_analyzed_asm().unwrap().clone();
-    let main_machine = program.get_machine(&parse_absolute_path("::Main")).unwrap();
+    let asm = pipeline.compute_analyzed_asm().unwrap().clone();
+    let pil = pipeline.compute_optimized_pil().unwrap();
+    let main_machine = asm.get_machine(&parse_absolute_path("::Main")).unwrap();
     sanity_check(main_machine, field);
 
     log::info!("Initializing memory merkle tree...");
@@ -215,7 +216,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     // In the first full run, we use it as the memory contents of the executor;
     // on the independent chunk runs, the executor uses zeroed initial memory,
     // and the pages are loaded via the bootloader.
-    let initial_memory = load_initial_memory(&program);
+    let initial_memory = load_initial_memory(&asm);
 
     let mut merkle_tree = MerkleTree::<F>::new();
     merkle_tree.update(initial_memory.iter().map(|(k, v)| (*k, *v)));
@@ -224,7 +225,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
 
     log::info!("Initial execution...");
     let full_exec = powdr_riscv_executor::execute_ast::<F>(
-        &program,
+        &asm,
+        &pil,
         None,
         initial_memory,
         pipeline.data_callback().unwrap(),
@@ -327,7 +329,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
 
         log::info!("Simulating chunk execution...");
         let chunk_exec = powdr_riscv_executor::execute_ast::<F>(
-            &program,
+            &asm,
+            &pil,
             None,
             MemoryState::new(),
             pipeline.data_callback().unwrap(),

@@ -19,10 +19,10 @@ use builder::TraceBuilder;
 
 use itertools::Itertools;
 use powdr_ast::{
+    analyzed::Analyzed,
     asm_analysis::{AnalysisASMFile, CallableSymbol, FunctionStatement, LabelStatement, Machine},
     parsed::{
-        asm::AssignmentRegister,
-        asm::{parse_absolute_path, DebugDirective},
+        asm::{parse_absolute_path, AssignmentRegister, DebugDirective},
         BinaryOperation, Expression, FunctionCall, Number, UnaryOperation,
     },
 };
@@ -261,98 +261,108 @@ pub struct ExecutionTrace<F: FieldElement> {
 }
 
 impl<F: FieldElement> ExecutionTrace<F> {
-    pub fn new(reg_map: HashMap<String, u16>, reg_writes: Vec<RegWrite<F>>, pc: usize) -> Self {
-        let f0 = Elem::Field(F::zero());
-        let cols: HashMap<String, _> = vec![
-            "main::pc_update",
-            "main::reg_write_X_query_arg_1",
-            "main::reg_write_X_query_arg_2",
-            "main::read_Y_query_arg_1", // TODO: double check this column
-            "main::X_b1",
-            "main::X_b2",
-            "main::X_b3",
-            "main::X_b4",
-            "main::wrap_bit",
-            "main::X",
-            "main::X_const",
-            "main::X_read_free",
-            "main::X_free_value",
-            "main::Y_b5",
-            "main::Y_b6",
-            "main::Y_b7",
-            "main::Y_b8",
-            "main::Y_7bit",
-            "main::Y_15bit",
-            "main::Y",
-            "main::Y_const",
-            "main::Y_read_free",
-            "main::Y_free_value",
-            "main::Z",
-            "main::Z_const",
-            "main::W",
-            "main::W_const",
-            "main::tmp1_col",
-            "main::tmp2_col",
-            "main::tmp3_col",
-            "main::tmp4_col",
-            "main::XX",
-            "main::XXIsZero",
-            "main::XX_inv",
-            "main::REM_b1",
-            "main::REM_b2",
-            "main::REM_b3",
-            "main::REM_b4",
-            "main::_operation_id",
-            "main::instr_set_reg",
-            "main::instr_get_reg",
-            "main::instr_affine",
-            "main::instr_mload",
-            "main::instr_mstore",
-            "main::instr_load_label",
-            "main::instr_load_label_param_l",
-            "main::instr_jump",
-            "main::instr_jump_param_l",
-            "main::instr_jump_dyn",
-            "main::instr_branch_if_diff_nonzero",
-            "main::instr_branch_if_diff_nonzero_param_l",
-            "main::instr_branch_if_diff_equal",
-            "main::instr_branch_if_diff_equal_param_l",
-            "main::instr_skip_if_equal",
-            "main::instr_branch_if_diff_greater_than",
-            "main::instr_branch_if_diff_greater_than_param_l",
-            "main::instr_is_diff_greater_than",
-            "main::instr_is_equal_zero",
-            "main::instr_is_not_equal",
-            "main::instr_and",
-            "main::instr_or",
-            "main::instr_xor",
-            "main::instr_shl",
-            "main::instr_shr",
-            "main::instr_split_gl",
-            "main::instr_wrap16",
-            "main::instr_divremu",
-            "main::instr_add_wrap",
-            "main::instr_sub_wrap_with_offset",
-            "main::instr_sign_extend_byte",
-            "main::instr_sign_extend_16_bits",
-            "main::instr_to_signed",
-            "main::instr_mul",
-            "main::instr__jump_to_operation",
-            "main::instr__reset",
-            "main::instr__loop",
-            "main::instr_return",
-            "main::instr_fail",
-            // TODO: handle coprocessor submachines
-            // "main::instr_affine_256",
-            // "main::instr_ec_add",
-            // "main::instr_ec_double",
-            // "main::instr_mod_256",
-            // "main::instr_keccakf",
-            // "main::instr_poseidon_gl",
-        ]
-        .iter()
-        .map(|n| (n.to_string(), vec![f0, f0]))
-        .collect();
+    pub fn new(
+        witness_cols: Vec<String>,
+        reg_map: HashMap<String, u16>,
+        reg_writes: Vec<RegWrite<F>>,
+        pc: usize,
+    ) -> Self {
+        // let cols: HashMap<String, _> = vec![
+        //     "main::pc_update",
+        //     "main::reg_write_X_query_arg_1",
+        //     "main::reg_write_X_query_arg_2",
+        //     "main::read_Y_query_arg_1", // TODO: double check this column
+        //     "main::X_b1",
+        //     "main::X_b2",
+        //     "main::X_b3",
+        //     "main::X_b4",
+        //     "main::wrap_bit",
+        //     "main::X",
+        //     "main::X_const",
+        //     "main::X_read_free",
+        //     "main::X_free_value",
+        //     "main::Y_b5",
+        //     "main::Y_b6",
+        //     "main::Y_b7",
+        //     "main::Y_b8",
+        //     "main::Y_7bit",
+        //     "main::Y_15bit",
+        //     "main::Y",
+        //     "main::Y_const",
+        //     "main::Y_read_free",
+        //     "main::Y_free_value",
+        //     "main::Z",
+        //     "main::Z_const",
+        //     "main::W",
+        //     "main::W_const",
+        //     "main::tmp1_col",
+        //     "main::tmp2_col",
+        //     "main::tmp3_col",
+        //     "main::tmp4_col",
+        //     "main::XX",
+        //     "main::XXIsZero",
+        //     "main::XX_inv",
+        //     "main::REM_b1",
+        //     "main::REM_b2",
+        //     "main::REM_b3",
+        //     "main::REM_b4",
+        //     "main::_operation_id",
+        //     "main::instr_set_reg",
+        //     "main::instr_get_reg",
+        //     "main::instr_affine",
+        //     "main::instr_mload",
+        //     "main::instr_mstore",
+        //     "main::instr_load_label",
+        //     "main::instr_load_label_param_l",
+        //     "main::instr_jump",
+        //     "main::instr_jump_param_l",
+        //     "main::instr_jump_dyn",
+        //     "main::instr_branch_if_diff_nonzero",
+        //     "main::instr_branch_if_diff_nonzero_param_l",
+        //     "main::instr_branch_if_diff_equal",
+        //     "main::instr_branch_if_diff_equal_param_l",
+        //     "main::instr_skip_if_equal",
+        //     "main::instr_branch_if_diff_greater_than",
+        //     "main::instr_branch_if_diff_greater_than_param_l",
+        //     "main::instr_is_diff_greater_than",
+        //     "main::instr_is_equal_zero",
+        //     "main::instr_is_not_equal",
+        //     "main::instr_and",
+        //     "main::instr_or",
+        //     "main::instr_xor",
+        //     "main::instr_shl",
+        //     "main::instr_shr",
+        //     "main::instr_split_gl",
+        //     "main::instr_wrap16",
+        //     "main::instr_divremu",
+        //     "main::instr_add_wrap",
+        //     "main::instr_sub_wrap_with_offset",
+        //     "main::instr_sign_extend_byte",
+        //     "main::instr_sign_extend_16_bits",
+        //     "main::instr_to_signed",
+        //     "main::instr_mul",
+        //     "main::instr__jump_to_operation",
+        //     "main::instr__reset",
+        //     "main::instr__loop",
+        //     "main::instr_return",
+        //     "main::instr_fail",
+        //     // TODO: handle coprocessor submachines
+        //     // "main::instr_affine_256",
+        //     // "main::instr_ec_add",
+        //     // "main::instr_ec_double",
+        //     // "main::instr_mod_256",
+        //     // "main::instr_keccakf",
+        //     // "main::instr_poseidon_gl",
+        // ]
+        // .iter()
+        // .map(|n| (n.to_string(), vec![Elem::Field(F::zero()), Elem::Field(F::zero())]))
+        // .collect();
+
+        let cols: HashMap<String, _> = witness_cols
+            .into_iter()
+            .filter(|n| n.starts_with("main::"))
+            .map(|n| (n, vec![Elem::Field(F::zero()), Elem::Field(F::zero())]))
+            .collect();
 
         ExecutionTrace {
             reg_map,
@@ -519,6 +529,7 @@ mod builder {
         #[allow(clippy::type_complexity)]
         pub fn new(
             main: &'a Machine,
+            witness_cols: Vec<String>,
             mem: MemoryState,
             batch_to_line_map: &'b [u32],
             max_rows_len: usize,
@@ -560,16 +571,7 @@ mod builder {
             let mut ret = Self {
                 pc_idx,
                 curr_pc: PC_INITIAL_VAL.into(),
-                /*
-                trace: ExecutionTrace {
-                    reg_map,
-                    reg_writes,
-                    mem_ops: Vec::new(),
-                    len: PC_INITIAL_VAL + 1,
-                    cols: HashMap::new(),
-                },
-                */
-                trace: ExecutionTrace::new(reg_map, reg_writes, PC_INITIAL_VAL + 1),
+                trace: ExecutionTrace::new(witness_cols, reg_map, reg_writes, PC_INITIAL_VAL + 1),
                 submachines,
                 regs_machine: MemoryMachine::new("main_regs"),
                 memory_machine: MemoryMachine::new("main_memory"),
@@ -970,6 +972,8 @@ struct Executor<'a, 'b, F: FieldElement> {
     inputs: &'b Callback<'b, F>,
     bootloader_inputs: Vec<Elem<F>>,
     fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
+    // program columns: maps fixed cols to respective witness cols
+    program_cols: HashMap<String, String>,
     step: u32,
 }
 
@@ -977,46 +981,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
     fn init(&mut self) {
         self.step = 4;
         for i in 0..2 {
-            let jump_to_op = Elem::Field(
-                *self
-                    .get_fixed("main__rom::p_instr__jump_to_operation")
-                    .unwrap_or(&Vec::new())
-                    .get(i)
-                    .unwrap_or(&F::zero()),
-            );
+            self.set_program_columns(i);
             self.proc
-                .set_col_idx("main::instr__jump_to_operation", i, jump_to_op);
-
-            let reset = Elem::Field(
-                *self
-                    .get_fixed("main__rom::p_instr__reset")
-                    .unwrap_or(&Vec::new())
-                    .get(i)
-                    .unwrap_or(&F::zero()),
-            );
-            self.proc.set_col_idx("main::instr__reset", i, reset);
-
-            let end_loop = Elem::Field(
-                *self
-                    .get_fixed("main__rom::p_instr__loop")
-                    .unwrap_or(&Vec::new())
-                    .get(i)
-                    .unwrap_or(&F::zero()),
-            );
-            self.proc.set_col_idx("main::instr__loop", i, end_loop);
-
-            let ret = Elem::Field(
-                *self
-                    .get_fixed("main__rom::p_instr_return")
-                    .unwrap_or(&Vec::new())
-                    .get(i)
-                    .unwrap_or(&F::zero()),
-            );
-            self.proc.set_col_idx("main::instr_return", i, ret);
-
-            self.proc.set_col_idx("main::_operation_id", i, 2.into());
-
-            self.proc.set_col_idx("main::pc_update", i, (i + 1).into());
+                .set_col_idx("main::_operation_id", i as usize, 2.into());
+            self.proc
+                .set_col_idx("main::pc_update", i as usize, (i + 1).into());
         }
     }
 
@@ -1043,124 +1012,35 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
         panic!("could not find sink_id by looking at the p_instr__loop column");
     }
 
+    /// read register value, updating the register memory machine
+    fn reg_read(&mut self, step_offset: u32, reg: u32, selector_idx: u32) -> Elem<F> {
+        let val = self.proc.get_reg_mem(reg);
+        self.proc
+            .regs_machine
+            .read(self.step + step_offset, reg, val, selector_idx);
+        val
+    }
+
+    /// write value to register, updating the register memory machine
+    fn reg_write(&mut self, step_offset: u32, reg: u32, val: Elem<F>, selector_idx: u32) {
+        self.proc
+            .regs_machine
+            .write(self.step + step_offset, reg, val, selector_idx);
+        self.proc.set_reg_mem(reg, val);
+    }
+
     fn set_program_columns(&mut self, pc: u32) {
-        let x_const = Elem::Field(
-            *self
-                .get_fixed("main__rom::p_X_const")
-                .unwrap_or(&Vec::new())
-                .get(pc as usize)
-                .unwrap_or(&F::zero()),
-        );
-        let y_const = Elem::Field(
-            *self
-                .get_fixed("main__rom::p_Y_const")
-                .unwrap_or(&Vec::new())
-                .get(pc as usize)
-                .unwrap_or(&F::zero()),
-        );
-        let z_const = Elem::Field(
-            *self
-                .get_fixed("main__rom::p_Z_const")
-                .unwrap_or(&Vec::new())
-                .get(pc as usize)
-                .unwrap_or(&F::zero()),
-        );
-        let w_const = Elem::Field(
-            *self
-                .get_fixed("main__rom::p_W_const")
-                .unwrap_or(&Vec::new())
-                .get(pc as usize)
-                .unwrap_or(&F::zero()),
-        );
-
-        let jump_to_op = Elem::Field(
-            *self
-                .get_fixed("main__rom::p_instr__jump_to_operation")
-                .unwrap_or(&Vec::new())
-                .get(pc as usize)
-                .unwrap_or(&F::zero()),
-        );
-        let reset = Elem::Field(
-            *self
-                .get_fixed("main__rom::p_instr__reset")
-                .unwrap_or(&Vec::new())
-                .get(pc as usize)
-                .unwrap_or(&F::zero()),
-        );
-        let end_loop = Elem::Field(
-            *self
-                .get_fixed("main__rom::p_instr__loop")
-                .unwrap_or(&Vec::new())
-                .get(pc as usize)
-                .unwrap_or(&F::zero()),
-        );
-        let ret = Elem::Field(
-            *self
-                .get_fixed("main__rom::p_instr_return")
-                .unwrap_or(&Vec::new())
-                .get(pc as usize)
-                .unwrap_or(&F::zero()),
-        );
-
-        let read_y_val1 = Elem::Field(
-            *self
-                .get_fixed("main__rom::p_read_Y_query_arg_1")
-                .unwrap_or(&Vec::new())
-                .get(pc as usize)
-                .unwrap_or(&F::zero()),
-        );
-
-        let reg_write_x_val1 = Elem::Field(
-            *self
-                .get_fixed("main__rom::p_reg_write_X_query_arg_1")
-                .unwrap_or(&Vec::new())
-                .get(pc as usize)
-                .unwrap_or(&F::zero()),
-        );
-
-        let reg_write_x_val2 = Elem::Field(
-            *self
-                .get_fixed("main__rom::p_reg_write_X_query_arg_2")
-                .unwrap_or(&Vec::new())
-                .get(pc as usize)
-                .unwrap_or(&F::zero()),
-        );
-
-        let y_read_free = Elem::Field(
-            *self
-                .get_fixed("main__rom::p_Y_read_free")
-                .unwrap_or(&Vec::new())
-                .get(pc as usize)
-                .unwrap_or(&F::zero()),
-        );
-
-        // TODO I think we can actually remove X_read_free and X_free_value from here and only do
-        // it in Assignment handling.
-        let x_read_free = Elem::Field(
-            *self
-                .get_fixed("main__rom::p_X_read_free")
-                .unwrap_or(&Vec::new())
-                .get(pc as usize)
-                .unwrap_or(&F::zero()),
-        );
-
-        self.proc.set_col("main::X_const", x_const);
-        self.proc.set_col("main::Y_const", y_const);
-        self.proc.set_col("main::Z_const", z_const);
-        self.proc.set_col("main::W_const", w_const);
-        self.proc
-            .set_col("main::reg_write_X_query_arg_1", reg_write_x_val1);
-        self.proc
-            .set_col("main::reg_write_X_query_arg_2", reg_write_x_val2);
-        self.proc.set_col("main::read_Y_query_arg_1", read_y_val1);
-        self.proc.set_col("main::Y_read_free", y_read_free);
-        self.proc
-            .set_col("main::instr__jump_to_operation", jump_to_op);
-        self.proc.set_col("main::instr__reset", reset);
-        self.proc.set_col("main::instr__loop", end_loop);
-        self.proc.set_col("main::instr_return", ret);
-        self.proc.set_col("main::X_read_free", x_read_free);
-
+        // set witness from the program definition
+        for (fixed, col) in &self.program_cols {
+            let val = Elem::Field(
+                *self
+                    .get_fixed(fixed)
+                    .unwrap_or(&Vec::new())
+                    .get(pc as usize)
+                    .unwrap_or(&F::zero()),
+            );
+            self.proc.set_col(col, val);
+        }
         // always 2 because RISCV only uses constrainted submachines
         self.proc.set_col("main::_operation_id", 2.into());
     }
@@ -1173,61 +1053,48 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
         self.proc.backup_reg_mem();
 
-        let mut tmp1_col = Elem::Field(F::zero());
-        let mut tmp2_col = Elem::Field(F::zero());
-        let mut tmp3_col = Elem::Field(F::zero());
-        let mut tmp4_col = Elem::Field(F::zero());
+        let mut tmp1_col = None;
+        let mut tmp2_col = None;
+        let mut tmp3_col = None;
+        let mut tmp4_col = None;
+        let mut tmp_xx = None;
+        let mut tmp_xx_iszero = None;
+        let mut tmp_xx_inv = None;
+        let mut tmp_x_b1 = None;
+        let mut tmp_x_b2 = None;
+        let mut tmp_x_b3 = None;
+        let mut tmp_x_b4 = None;
+        let mut tmp_wrap_bit = None;
+        let mut tmp_y_7bit = None;
+        let mut tmp_y_15bit = None;
+        let mut tmp_rem_b1 = None;
+        let mut tmp_rem_b2 = None;
+        let mut tmp_rem_b3 = None;
+        let mut tmp_rem_b4 = None;
+        let mut tmp_y_b5 = None;
+        let mut tmp_y_b6 = None;
+        let mut tmp_y_b7 = None;
+        let mut tmp_y_b8 = None;
+        let mut tmp_y = None;
 
-        let mut tmp_xx = Elem::Field(F::zero());
-        // see comments in .asm: XXISZero constraint is not always active
-        let mut tmp_xx_iszero = Elem::Field(F::zero());
-        let mut tmp_xx_inv = Elem::from_u32_as_fe(0);
-
-        let mut tmp_x_b1 = Elem::Field(F::zero());
-        let mut tmp_x_b2 = Elem::Field(F::zero());
-        let mut tmp_x_b3 = Elem::Field(F::zero());
-        let mut tmp_x_b4 = Elem::Field(F::zero());
-        let mut tmp_wrap_bit = Elem::Field(F::zero());
-
-        let mut tmp_y_7bit = Elem::Field(F::zero());
-        let mut tmp_y_15bit = Elem::Field(F::zero());
-
-        let mut tmp_rem_b1 = Elem::Field(F::zero());
-        let mut tmp_rem_b2 = Elem::Field(F::zero());
-        let mut tmp_rem_b3 = Elem::Field(F::zero());
-        let mut tmp_rem_b4 = Elem::Field(F::zero());
-
-        let mut tmp_y_b5 = Elem::Field(F::zero());
-        let mut tmp_y_b6 = Elem::Field(F::zero());
-        let mut tmp_y_b7 = Elem::Field(F::zero());
-        let mut tmp_y_b8 = Elem::Field(F::zero());
-
-        let mut tmp_y = self.proc.get_col("main::Y_const");
-
-        // macros to read and write to self.proc.regs_machine
-        macro_rules! reg_read {
-            ($i:expr, $reg:expr, $val:expr, $sel:expr) => {
-                self.proc
-                    .regs_machine
-                    .read(self.step + $i, $reg, $val, $sel);
-            };
-        }
-        macro_rules! reg_write {
-            ($i:expr, $reg:expr, $val:expr, $sel:expr) => {
-                self.proc
-                    .regs_machine
-                    .write(self.step + $i, $reg, $val, $sel);
-            };
-        }
+        self.proc
+            .set_col("main::X", self.proc.get_col("main::X_const"));
+        self.proc
+            .set_col("main::Y", self.proc.get_col("main::Y_const"));
+        self.proc
+            .set_col("main::Z", self.proc.get_col("main::Z_const"));
+        self.proc
+            .set_col("main::W", self.proc.get_col("main::W_const"));
+        self.proc
+            .set_col(&format!("main::instr_{name}"), Elem::from_u32_as_fe(1));
 
         let r = match name {
             "set_reg" => {
                 let addr = args[0].u();
                 let val = args[1];
-                self.proc.set_reg_mem(addr, val);
-                reg_write!(0, addr, val, 3);
+                self.reg_write(0, addr, val, 3);
 
-                tmp_y = val;
+                tmp_y = Some(val);
 
                 if !self.proc.get_col("main::Y_read_free").is_zero() {
                     self.proc.set_col("main::Y_free_value", val);
@@ -1237,25 +1104,22 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             }
             "get_reg" => {
                 let addr = args[0].u();
-                let val = self.proc.get_reg_mem(addr);
-                reg_read!(0, addr, val, 0);
+                let val = self.reg_read(0, addr, 0);
 
                 vec![val]
             }
             "affine" => {
                 let read_reg = args[0].u();
-                let val1 = self.proc.get_reg_mem(read_reg);
-                reg_read!(0, read_reg, val1, 0);
+                let val1 = self.reg_read(0, read_reg, 0);
                 let write_reg = args[1].u();
                 let factor = args[2];
                 let offset = args[3];
 
                 let res = val1.mul(&factor).add(&offset);
 
-                self.proc.set_reg_mem(write_reg, res);
-                reg_write!(1, write_reg, res, 3);
+                self.reg_write(1, write_reg, res, 3);
 
-                tmp1_col = val1;
+                tmp1_col = Some(val1);
 
                 Vec::new()
             }
@@ -1263,14 +1127,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "mstore" | "mstore_bootloader" => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let addr1 = self.proc.get_reg_mem(read_reg1);
-                reg_read!(0, read_reg1, addr1, 0);
-                let addr2 = self.proc.get_reg_mem(read_reg2);
-                reg_read!(1, read_reg2, addr2, 1);
+                let addr1 = self.reg_read(0, read_reg1, 0);
+                let addr2 = self.reg_read(1, read_reg2, 1);
                 let offset = args[2].bin();
                 let read_reg3 = args[3].u();
-                let value = self.proc.get_reg_mem(read_reg3);
-                reg_read!(2, read_reg3, value, 2);
+                let value = self.reg_read(2, read_reg3, 2);
 
                 let addr = addr1.bin() - addr2.bin() + offset;
                 let addr = addr as u32;
@@ -1281,32 +1142,30 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let addr_full = addr1.bin() - addr2.bin() + offset;
                 // let addr_wrapped = (addr_full % (2_u64.pow(32) as i64)) as u32;
                 tmp_wrap_bit = if addr_full >= 2_i64.pow(32) || addr_full < 0 {
-                    Elem::Field(F::one())
+                    Some(Elem::Field(F::one()))
                 } else {
-                    Elem::Field(F::zero())
+                    Some(Elem::Field(F::zero()))
                 };
 
                 self.proc
                     .memory_machine
                     .write(self.step + 3, addr, value, 1);
 
-                tmp1_col = addr1;
-                tmp2_col = addr2;
-                tmp3_col = value;
+                tmp1_col = Some(addr1);
+                tmp2_col = Some(addr2);
+                tmp3_col = Some(value);
 
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(addr.into());
-                tmp_x_b1 = Elem::from_u32_as_fe(b1.into());
-                tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
-                tmp_x_b3 = Elem::from_u32_as_fe(b3.into());
-                tmp_x_b4 = Elem::from_u32_as_fe(b4.into());
-                //tmp_wrap_bit = Elem::from_u32_as_fe(sign.into());
+                tmp_x_b1 = Some(Elem::from_u32_as_fe(b1.into()));
+                tmp_x_b2 = Some(Elem::from_u32_as_fe(b2.into()));
+                tmp_x_b3 = Some(Elem::from_u32_as_fe(b3.into()));
+                tmp_x_b4 = Some(Elem::from_u32_as_fe(b4.into()));
 
                 Vec::new()
             }
             "mload" => {
                 let read_reg = args[0].u();
-                let addr1 = self.proc.get_reg_mem(read_reg);
-                reg_read!(0, read_reg, addr1, 0);
+                let addr1 = self.reg_read(0, read_reg, 0);
                 let offset = args[1].bin();
                 let write_addr1 = args[2].u();
                 let write_addr2 = args[3].u();
@@ -1316,22 +1175,20 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let val = self.proc.get_mem(addr as u32 & 0xfffffffc);
                 let rem = addr % 4;
 
-                self.proc.set_reg_mem(write_addr1, val.into());
-                reg_write!(2, write_addr1, val.into(), 3);
-                self.proc.set_reg_mem(write_addr2, rem.into());
-                reg_write!(3, write_addr2, rem.into(), 4);
+                self.reg_write(2, write_addr1, val.into(), 3);
+                self.reg_write(3, write_addr2, rem.into(), 4);
 
-                tmp1_col = addr1;
-                tmp3_col = Elem::from_u32_as_fe(val);
-                tmp4_col = Elem::from_i64_as_fe(rem);
+                tmp1_col = Some(addr1);
+                tmp3_col = Some(Elem::from_u32_as_fe(val));
+                tmp4_col = Some(Elem::from_i64_as_fe(rem));
 
-                let v = tmp1_col.add(&args[1]).as_i64_from_lower_bytes();
+                let v = addr1.add(&args[1]).as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
-                tmp_x_b1 = Elem::from_u32_as_fe((b1 / 4).into());
-                tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
-                tmp_x_b3 = Elem::from_u32_as_fe(b3.into());
-                tmp_x_b4 = Elem::from_u32_as_fe(b4.into());
-                tmp_wrap_bit = Elem::from_u32_as_fe(((v as u64 >> 32) & 1) as u32);
+                tmp_x_b1 = Some(Elem::from_u32_as_fe((b1 / 4).into()));
+                tmp_x_b2 = Some(Elem::from_u32_as_fe(b2.into()));
+                tmp_x_b3 = Some(Elem::from_u32_as_fe(b3.into()));
+                tmp_x_b4 = Some(Elem::from_u32_as_fe(b4.into()));
+                tmp_wrap_bit = Some(Elem::from_u32_as_fe(((v as u64 >> 32) & 1) as u32));
 
                 self.proc.memory_machine.read(
                     self.step + 1,
@@ -1342,10 +1199,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-            // TODO
+            // TODO: not updated for witness generation
             "load_bootloader_input" => {
-                let addr = self.proc.get_reg_mem(args[0].u());
-                reg_read!(0, args[0].u(), addr, 0);
+                let addr = self.reg_read(0, args[0].u(), 0);
                 let write_addr = args[1].u();
                 let factor = args[2].bin();
                 let offset = args[3].bin();
@@ -1353,17 +1209,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let addr = addr.bin() * factor + offset;
                 let val = self.bootloader_inputs[addr as usize];
 
-                self.proc.set_reg_mem(write_addr, val);
-                reg_write!(2, write_addr, val, 3);
+                self.reg_write(2, write_addr, val, 3);
 
                 Vec::new()
             }
-            // TODO
+            // TODO: not updated for witness generation
             "assert_bootloader_input" => {
-                let addr = self.proc.get_reg_mem(args[0].u());
-                reg_read!(0, args[0].u(), addr, 0);
-                let val = self.proc.get_reg_mem(args[1].u());
-                reg_read!(1, args[1].u(), val, 1);
+                let addr = self.reg_read(0, args[0].u(), 0);
+                let val = self.reg_read(1, args[1].u(), 1);
                 let factor = args[2].bin();
                 let offset = args[3].bin();
 
@@ -1377,10 +1230,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "load_label" => {
                 let write_reg = args[0].u();
                 let label = args[1];
-                self.proc.set_reg_mem(write_reg, label);
-                reg_write!(0, write_reg, label, 3);
+                self.reg_write(0, write_reg, label, 3);
 
-                tmp1_col = label;
+                tmp1_col = Some(label);
 
                 self.proc.set_col("main::instr_load_label_param_l", label);
 
@@ -1391,8 +1243,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let next_pc = self.proc.get_pc().u() + 1;
                 let write_reg = args[1].u();
 
-                self.proc.set_reg_mem(write_reg, next_pc.into());
-                reg_write!(0, write_reg, next_pc.into(), 3);
+                self.reg_write(0, write_reg, next_pc.into(), 3);
 
                 self.proc.set_pc(label);
 
@@ -1402,17 +1253,15 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             }
             "jump_dyn" => {
                 let read_reg = args[0].u();
-                let addr = self.proc.get_reg_mem(read_reg);
-                reg_read!(0, read_reg, addr, 0);
+                let addr = self.reg_read(0, read_reg, 0);
                 let next_pc = self.proc.get_pc().u() + 1;
                 let write_reg = args[1].u();
 
-                self.proc.set_reg_mem(write_reg, next_pc.into());
-                reg_write!(0, write_reg, next_pc.into(), 3);
+                self.reg_write(0, write_reg, next_pc.into(), 3);
 
                 self.proc.set_pc(addr);
 
-                tmp1_col = addr;
+                tmp1_col = Some(addr);
 
                 Vec::new()
             }
@@ -1426,10 +1275,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "branch_if_diff_nonzero" => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let val1 = self.proc.get_reg_mem(read_reg1);
-                reg_read!(0, read_reg1, val1, 0);
-                let val2 = self.proc.get_reg_mem(read_reg2);
-                reg_read!(1, read_reg2, val2, 1);
+                let val1 = self.reg_read(0, read_reg1, 0);
+                let val2 = self.reg_read(1, read_reg2, 1);
 
                 let val: Elem<F> = val1.sub(&val2);
                 let label = args[2];
@@ -1437,12 +1284,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     self.proc.set_pc(label);
                 }
 
-                tmp1_col = val1;
-                tmp2_col = val2;
-                tmp_xx = val;
-                tmp_xx_iszero = Elem::from_bool_as_fe(tmp_xx.is_zero());
-                if !tmp_xx.is_zero() {
-                    tmp_xx_inv = Elem::Field(F::one() / tmp_xx.into_fe());
+                tmp1_col = Some(val1);
+                tmp2_col = Some(val2);
+                tmp_xx = Some(val);
+                tmp_xx_iszero = Some(Elem::from_bool_as_fe(tmp_xx.unwrap().is_zero()));
+                if !tmp_xx.unwrap().is_zero() {
+                    tmp_xx_inv = Some(Elem::Field(F::one() / tmp_xx.unwrap().into_fe()));
                 }
 
                 self.proc
@@ -1453,10 +1300,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "branch_if_diff_equal" => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let val1 = self.proc.get_reg_mem(read_reg1);
-                reg_read!(0, read_reg1, val1, 0);
-                let val2 = self.proc.get_reg_mem(read_reg2);
-                reg_read!(1, read_reg2, val2, 1);
+                let val1 = self.reg_read(0, read_reg1, 0);
+                let val2 = self.reg_read(1, read_reg2, 1);
                 let offset = args[2];
                 let val: Elem<F> = val1.sub(&val2).sub(&offset);
                 let label = args[3];
@@ -1465,12 +1310,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     self.proc.set_pc(label);
                 }
 
-                tmp1_col = val1;
-                tmp2_col = val2;
-                tmp_xx = val;
-                tmp_xx_iszero = Elem::from_bool_as_fe(tmp_xx.is_zero());
-                if !tmp_xx.is_zero() {
-                    tmp_xx_inv = Elem::Field(F::one() / tmp_xx.into_fe());
+                tmp1_col = Some(val1);
+                tmp2_col = Some(val2);
+                tmp_xx = Some(val);
+                tmp_xx_iszero = Some(Elem::from_bool_as_fe(tmp_xx.unwrap().is_zero()));
+                if !tmp_xx.unwrap().is_zero() {
+                    tmp_xx_inv = Some(Elem::Field(F::one() / tmp_xx.unwrap().into_fe()));
                 }
 
                 self.proc
@@ -1481,10 +1326,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "skip_if_equal" => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let val1 = self.proc.get_reg_mem(read_reg1);
-                reg_read!(0, read_reg1, val1, 0);
-                let val2 = self.proc.get_reg_mem(read_reg2);
-                reg_read!(1, read_reg2, val2, 1);
+                let val1 = self.reg_read(0, read_reg1, 0);
+                let val2 = self.reg_read(1, read_reg2, 1);
                 let offset = args[2];
                 let cond = args[3];
                 let val: Elem<F> = val1.sub(&val2).add(&offset);
@@ -1494,12 +1337,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     self.proc.set_pc((pc + cond.s() + 1).into());
                 }
 
-                tmp1_col = val1;
-                tmp2_col = val2;
-                tmp_xx = val;
-                tmp_xx_iszero = Elem::from_bool_as_fe(tmp_xx.is_zero());
-                if !tmp_xx.is_zero() {
-                    tmp_xx_inv = Elem::Field(F::one() / tmp_xx.into_fe());
+                tmp1_col = Some(val1);
+                tmp2_col = Some(val2);
+                tmp_xx = Some(val);
+                tmp_xx_iszero = Some(Elem::from_bool_as_fe(tmp_xx.unwrap().is_zero()));
+                if !tmp_xx.unwrap().is_zero() {
+                    tmp_xx_inv = Some(Elem::Field(F::one() / tmp_xx.unwrap().into_fe()));
                 }
 
                 Vec::new()
@@ -1509,10 +1352,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let read_reg2 = args[1].u();
                 // We can't call u() because input registers may have come from
                 // a call to `to_signed`, which stores a signed integer.
-                let val1 = self.proc.get_reg_mem(read_reg1);
-                reg_read!(0, read_reg1, val1, 0);
-                let val2 = self.proc.get_reg_mem(read_reg2);
-                reg_read!(1, read_reg2, val2, 1);
+                let val1 = self.reg_read(0, read_reg1, 0);
+                let val2 = self.reg_read(1, read_reg2, 1);
                 let offset = args[2];
                 let val: Elem<F> = val1.sub(&val2).sub(&offset);
                 let label = args[3];
@@ -1521,8 +1362,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     self.proc.set_pc(label);
                 }
 
-                tmp1_col = val1;
-                tmp2_col = val2;
+                tmp1_col = Some(val1);
+                tmp2_col = Some(val2);
 
                 self.proc
                     .set_col("main::instr_branch_if_diff_greater_than_param_l", label);
@@ -1532,14 +1373,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 let v = val_p.as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
-                tmp_x_b1 = Elem::from_u32_as_fe(b1.into());
-                tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
-                tmp_x_b3 = Elem::from_u32_as_fe(b3.into());
-                tmp_x_b4 = Elem::from_u32_as_fe(b4.into());
+                tmp_x_b1 = Some(Elem::from_u32_as_fe(b1.into()));
+                tmp_x_b2 = Some(Elem::from_u32_as_fe(b2.into()));
+                tmp_x_b3 = Some(Elem::from_u32_as_fe(b3.into()));
+                tmp_x_b4 = Some(Elem::from_u32_as_fe(b4.into()));
                 tmp_wrap_bit = if val.bin() > 0 {
-                    Elem::Field(F::one())
+                    Some(Elem::Field(F::one()))
                 } else {
-                    Elem::Field(F::zero())
+                    Some(Elem::Field(F::zero()))
                 };
 
                 Vec::new()
@@ -1547,49 +1388,44 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "is_diff_greater_than" => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let val1 = self.proc.get_reg_mem(read_reg1);
-                reg_read!(0, read_reg1, val1, 0);
-                let val2 = self.proc.get_reg_mem(read_reg2);
-                reg_read!(1, read_reg2, val2, 1);
+                let val1 = self.reg_read(0, read_reg1, 0);
+                let val2 = self.reg_read(1, read_reg2, 1);
 
                 let offset = args[2];
                 let write_reg = args[3].u();
                 let val = val1.sub(&val2).sub(&offset);
 
                 let r = if val.bin() > 0 { 1 } else { 0 };
-                self.proc.set_reg_mem(write_reg, r.into());
-                reg_write!(2, write_reg, r.into(), 3);
+                self.reg_write(2, write_reg, r.into(), 3);
 
-                tmp1_col = val1;
-                tmp2_col = val2;
+                tmp1_col = Some(val1);
+                tmp2_col = Some(val2);
 
                 let p = Elem::from_i64_as_fe((2 << 32) - 1);
                 let val = val.add(&p);
                 let v = val.as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
-                tmp_x_b1 = Elem::from_u32_as_fe(b1.into());
-                tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
-                tmp_x_b3 = Elem::from_u32_as_fe(b3.into());
-                tmp_x_b4 = Elem::from_u32_as_fe(b4.into());
-                tmp_wrap_bit = Elem::from_u32_as_fe(r);
+                tmp_x_b1 = Some(Elem::from_u32_as_fe(b1.into()));
+                tmp_x_b2 = Some(Elem::from_u32_as_fe(b2.into()));
+                tmp_x_b3 = Some(Elem::from_u32_as_fe(b3.into()));
+                tmp_x_b4 = Some(Elem::from_u32_as_fe(b4.into()));
+                tmp_wrap_bit = Some(Elem::from_u32_as_fe(r));
 
                 Vec::new()
             }
             "is_equal_zero" => {
                 let read_reg = args[0].u();
-                let val = self.proc.get_reg_mem(read_reg);
-                reg_read!(0, read_reg, val, 0);
+                let val = self.reg_read(0, read_reg, 0);
                 let write_reg = args[1].u();
 
                 let r = if val.is_zero() { 1 } else { 0 };
-                self.proc.set_reg_mem(write_reg, r.into());
-                reg_write!(2, write_reg, r.into(), 3);
+                self.reg_write(2, write_reg, r.into(), 3);
 
-                tmp1_col = val;
-                tmp_xx = val;
-                tmp_xx_iszero = Elem::from_bool_as_fe(tmp_xx.is_zero());
-                if !tmp_xx.is_zero() {
-                    tmp_xx_inv = Elem::Field(F::one() / tmp_xx.into_fe());
+                tmp1_col = Some(val);
+                tmp_xx = Some(val);
+                tmp_xx_iszero = Some(Elem::from_bool_as_fe(tmp_xx.unwrap().is_zero()));
+                if !tmp_xx.unwrap().is_zero() {
+                    tmp_xx_inv = Some(Elem::Field(F::one() / tmp_xx.unwrap().into_fe()));
                 }
 
                 Vec::new()
@@ -1597,24 +1433,21 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "is_not_equal" => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let val1 = self.proc.get_reg_mem(read_reg1);
-                reg_read!(0, read_reg1, val1, 0);
-                let val2 = self.proc.get_reg_mem(read_reg2);
-                reg_read!(1, read_reg2, val2, 1);
+                let val1 = self.reg_read(0, read_reg1, 0);
+                let val2 = self.reg_read(1, read_reg2, 1);
                 let write_reg = args[2].u();
                 let val: Elem<F> = (val1.bin() - val2.bin()).into();
 
                 let r = if !val.is_zero() { 1 } else { 0 };
-                self.proc.set_reg_mem(write_reg, r.into());
-                reg_write!(2, write_reg, r.into(), 3);
+                self.reg_write(2, write_reg, r.into(), 3);
 
-                tmp1_col = val1;
-                tmp2_col = val2;
-                tmp3_col = Elem::from_u32_as_fe(r);
-                tmp_xx = val;
-                tmp_xx_iszero = Elem::from_bool_as_fe(tmp_xx.is_zero());
-                if !tmp_xx.is_zero() {
-                    tmp_xx_inv = Elem::Field(F::one() / tmp_xx.into_fe());
+                tmp1_col = Some(val1);
+                tmp2_col = Some(val2);
+                tmp3_col = Some(Elem::from_u32_as_fe(r));
+                tmp_xx = Some(val);
+                tmp_xx_iszero = Some(Elem::from_bool_as_fe(tmp_xx.unwrap().is_zero()));
+                if !tmp_xx.unwrap().is_zero() {
+                    tmp_xx_inv = Some(Elem::Field(F::one() / tmp_xx.unwrap().into_fe()));
                 }
 
                 Vec::new()
@@ -1622,10 +1455,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "add_wrap" => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let val1 = self.proc.get_reg_mem(read_reg1);
-                reg_read!(0, read_reg1, val1, 0);
-                let val2 = self.proc.get_reg_mem(read_reg2);
-                reg_read!(1, read_reg2, val2, 1);
+                let val1 = self.reg_read(0, read_reg1, 0);
+                let val2 = self.reg_read(1, read_reg2, 1);
                 let offset = args[2];
                 let write_reg = args[3].u();
 
@@ -1633,31 +1464,29 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 // don't use .u() here: we are deliberately discarding the
                 // higher bits
                 let r = val.bin() as u32;
-                self.proc.set_reg_mem(write_reg, r.into());
-                reg_write!(2, write_reg, r.into(), 3);
+                self.reg_write(2, write_reg, r.into(), 3);
 
-                tmp1_col = val1;
-                tmp2_col = val2;
-                tmp3_col = Elem::from_u32_as_fe(r);
+                tmp1_col = Some(val1);
+                tmp2_col = Some(val2);
+                tmp3_col = Some(Elem::from_u32_as_fe(r));
 
                 let v = val.as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
-                tmp_x_b1 = Elem::from_u32_as_fe(b1.into());
-                tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
-                tmp_x_b3 = Elem::from_u32_as_fe(b3.into());
-                tmp_x_b4 = Elem::from_u32_as_fe(b4.into());
+                tmp_x_b1 = Some(Elem::from_u32_as_fe(b1.into()));
+                tmp_x_b2 = Some(Elem::from_u32_as_fe(b2.into()));
+                tmp_x_b3 = Some(Elem::from_u32_as_fe(b3.into()));
+                tmp_x_b4 = Some(Elem::from_u32_as_fe(b4.into()));
                 tmp_wrap_bit = if v > 0xffffffff {
-                    Elem::Field(F::one())
+                    Some(Elem::Field(F::one()))
                 } else {
-                    Elem::Field(F::zero())
+                    Some(Elem::Field(F::zero()))
                 };
 
                 Vec::new()
             }
             "wrap16" => {
                 let read_reg = args[0].u();
-                let val = self.proc.get_reg_mem(read_reg);
-                reg_read!(0, read_reg, val, 0);
+                let val = self.reg_read(0, read_reg, 0);
                 let factor = args[1].bin();
                 let write_reg = args[2].u();
                 let val_offset: Elem<F> = (val.bin() * factor).into();
@@ -1665,62 +1494,57 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 // don't use .u() here: we are deliberately discarding the
                 // higher bits
                 let r = val_offset.bin() as u32;
-                self.proc.set_reg_mem(write_reg, r.into());
-                reg_write!(3, write_reg, r.into(), 3);
+                self.reg_write(3, write_reg, r.into(), 3);
 
-                tmp1_col = val;
-                tmp3_col = Elem::from_u32_as_fe(r);
+                tmp1_col = Some(val);
+                tmp3_col = Some(Elem::from_u32_as_fe(r));
 
-                let v = tmp3_col.as_i64_from_lower_bytes();
+                let v = tmp3_col.unwrap().as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
-                tmp_x_b1 = Elem::from_u32_as_fe(b1.into());
-                tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
-                tmp_x_b3 = Elem::from_u32_as_fe(b3.into());
-                tmp_x_b4 = Elem::from_u32_as_fe(b4.into());
+                tmp_x_b1 = Some(Elem::from_u32_as_fe(b1.into()));
+                tmp_x_b2 = Some(Elem::from_u32_as_fe(b2.into()));
+                tmp_x_b3 = Some(Elem::from_u32_as_fe(b3.into()));
+                tmp_x_b4 = Some(Elem::from_u32_as_fe(b4.into()));
 
                 let (b5, b6, _b7, _b8, _sign) = decompose_lower32(val_offset.bin() >> 32);
-                tmp_y_b5 = Elem::from_u32_as_fe(b5.into());
-                tmp_y_b6 = Elem::from_u32_as_fe(b6.into());
+                tmp_y_b5 = Some(Elem::from_u32_as_fe(b5.into()));
+                tmp_y_b6 = Some(Elem::from_u32_as_fe(b6.into()));
 
                 Vec::new()
             }
             "sub_wrap_with_offset" => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let val1 = self.proc.get_reg_mem(read_reg1);
-                reg_read!(0, read_reg1, val1, 0);
-                let val2 = self.proc.get_reg_mem(read_reg2);
-                reg_read!(1, read_reg2, val2, 1);
+                let val1 = self.reg_read(0, read_reg1, 0);
+                let val2 = self.reg_read(1, read_reg2, 1);
                 let offset = args[2];
                 let write_reg = args[3].u();
                 let val = val1.sub(&val2).add(&offset);
 
                 let r_i64: i64 = val.bin() + 0x100000000;
                 let r = r_i64 as u32;
-                self.proc.set_reg_mem(write_reg, r.into());
-                reg_write!(2, write_reg, r.into(), 3);
+                self.reg_write(2, write_reg, r.into(), 3);
 
-                tmp1_col = val1;
-                tmp2_col = val2;
-                tmp3_col = Elem::from_u32_as_fe(r);
+                tmp1_col = Some(val1);
+                tmp2_col = Some(val2);
+                tmp3_col = Some(Elem::from_u32_as_fe(r));
 
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(r_i64);
-                tmp_x_b1 = Elem::from_u32_as_fe(b1.into());
-                tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
-                tmp_x_b3 = Elem::from_u32_as_fe(b3.into());
-                tmp_x_b4 = Elem::from_u32_as_fe(b4.into());
+                tmp_x_b1 = Some(Elem::from_u32_as_fe(b1.into()));
+                tmp_x_b2 = Some(Elem::from_u32_as_fe(b2.into()));
+                tmp_x_b3 = Some(Elem::from_u32_as_fe(b3.into()));
+                tmp_x_b4 = Some(Elem::from_u32_as_fe(b4.into()));
                 tmp_wrap_bit = if r_i64 > 0xffffffff {
-                    Elem::Field(F::one())
+                    Some(Elem::Field(F::one()))
                 } else {
-                    Elem::Field(F::zero())
+                    Some(Elem::Field(F::zero()))
                 };
 
                 Vec::new()
             }
             "sign_extend_byte" => {
                 let read_reg = args[0].u();
-                let val = self.proc.get_reg_mem(read_reg);
-                reg_read!(0, read_reg, val, 0);
+                let val = self.reg_read(0, read_reg, 0);
                 let write_reg = args[1].u();
 
                 //let r = val.u() as i8 as u32;
@@ -1729,37 +1553,35 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 // Sign extend the byte
                 let byte_val = (val.u() as u8) as i8;
                 let extended_val = byte_val as i32 as u32;
-                self.proc.set_reg_mem(write_reg, extended_val.into());
-                reg_write!(3, write_reg, extended_val.into(), 3);
+                self.reg_write(3, write_reg, extended_val.into(), 3);
 
-                tmp1_col = val;
+                tmp1_col = Some(val);
                 //tmp3_col = Elem::from_u32_as_fe(r);
-                tmp3_col = Elem::from_u32_as_fe(extended_val);
+                tmp3_col = Some(Elem::from_u32_as_fe(extended_val));
 
-                let v = tmp1_col.as_i64_from_lower_bytes();
+                let v = tmp1_col.unwrap().as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
                 // first 7bits
-                tmp_y_7bit = Elem::from_u32_as_fe((b1 & 0x7f).into());
+                tmp_y_7bit = Some(Elem::from_u32_as_fe((b1 & 0x7f).into()));
                 // no X_b1 needed here
-                tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
-                tmp_x_b3 = Elem::from_u32_as_fe(b3.into());
-                tmp_x_b4 = Elem::from_u32_as_fe(b4.into());
+                tmp_x_b2 = Some(Elem::from_u32_as_fe(b2.into()));
+                tmp_x_b3 = Some(Elem::from_u32_as_fe(b3.into()));
+                tmp_x_b4 = Some(Elem::from_u32_as_fe(b4.into()));
                 //tmp_wrap_bit = Elem::from_u32_as_fe((b2 & 0x80).into());
                 tmp_wrap_bit = if byte_val < 0 {
-                    Elem::Field(F::one())
+                    Some(Elem::Field(F::one()))
                 } else {
-                    Elem::Field(F::zero())
+                    Some(Elem::Field(F::zero()))
                 };
 
                 Vec::new()
             }
             "sign_extend_16_bits" => {
                 let read_reg = args[0].u();
-                let val = self.proc.get_reg_mem(read_reg);
-                reg_read!(0, read_reg, val, 0);
+                let val = self.reg_read(0, read_reg, 0);
                 let write_reg = args[1].u();
 
-                tmp1_col = val;
+                tmp1_col = Some(val);
 
                 // Perform sign extension on the 16-bit value
                 let sign_bit = (val.u() & 0x8000) != 0;
@@ -1768,51 +1590,48 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 } else {
                     val.u() & 0x0000FFFF
                 };
-                self.proc.set_reg_mem(write_reg, extended_val.into());
-                reg_write!(3, write_reg, extended_val.into(), 3);
+                self.reg_write(3, write_reg, extended_val.into(), 3);
 
-                tmp3_col = Elem::from_u32_as_fe(extended_val);
+                tmp3_col = Some(Elem::from_u32_as_fe(extended_val));
 
-                let v = tmp1_col.as_i64_from_lower_bytes();
+                let v = tmp1_col.unwrap().as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _) = decompose_lower32(v);
 
-                tmp_x_b1 = Elem::from_u32_as_fe(b1.into());
-                tmp_x_b3 = Elem::from_u32_as_fe(b3.into());
-                tmp_x_b4 = Elem::from_u32_as_fe(b4.into());
-                tmp_y_7bit = Elem::from_u32_as_fe((b2 & 0x7f).into());
-                tmp_y_15bit = Elem::from_u32_as_fe(val.u() & 0x7fff);
+                tmp_x_b1 = Some(Elem::from_u32_as_fe(b1.into()));
+                tmp_x_b3 = Some(Elem::from_u32_as_fe(b3.into()));
+                tmp_x_b4 = Some(Elem::from_u32_as_fe(b4.into()));
+                tmp_y_7bit = Some(Elem::from_u32_as_fe((b2 & 0x7f).into()));
+                tmp_y_15bit = Some(Elem::from_u32_as_fe(val.u() & 0x7fff));
                 tmp_wrap_bit = if sign_bit {
-                    Elem::Field(F::one())
+                    Some(Elem::Field(F::one()))
                 } else {
-                    Elem::Field(F::zero())
+                    Some(Elem::Field(F::zero()))
                 };
 
                 Vec::new()
             }
             "to_signed" => {
                 let read_reg = args[0].u();
-                let val = self.proc.get_reg_mem(read_reg);
-                reg_read!(0, read_reg, val, 0);
+                let val = self.reg_read(0, read_reg, 0);
                 let write_reg = args[1].u();
                 let r = val.u() as i32;
 
-                self.proc.set_reg_mem(write_reg, r.into());
-                reg_write!(1, write_reg, r.into(), 3);
+                self.reg_write(1, write_reg, r.into(), 3);
 
-                tmp1_col = val;
-                tmp3_col = Elem::from_i64_as_fe(r.into());
+                tmp1_col = Some(val);
+                tmp3_col = Some(Elem::from_i64_as_fe(r.into()));
 
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(val.u().into());
-                tmp_x_b1 = Elem::from_u32_as_fe(b1.into());
-                tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
-                tmp_x_b3 = Elem::from_u32_as_fe(b3.into());
+                tmp_x_b1 = Some(Elem::from_u32_as_fe(b1.into()));
+                tmp_x_b2 = Some(Elem::from_u32_as_fe(b2.into()));
+                tmp_x_b3 = Some(Elem::from_u32_as_fe(b3.into()));
                 if b4 & 0x80 != 0 {
-                    tmp_wrap_bit = Elem::Field(F::one());
+                    tmp_wrap_bit = Some(Elem::Field(F::one()));
                 } else {
-                    tmp_wrap_bit = Elem::Field(F::zero());
+                    tmp_wrap_bit = Some(Elem::Field(F::zero()));
                 }
 
-                tmp_y_7bit = Elem::from_u32_as_fe(b4 as u32 & 0x7f);
+                tmp_y_7bit = Some(Elem::from_u32_as_fe(b4 as u32 & 0x7f));
 
                 Vec::new()
             }
@@ -1823,10 +1642,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "divremu" => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let val1 = self.proc.get_reg_mem(read_reg1);
-                reg_read!(0, read_reg1, val1, 0);
-                let val2 = self.proc.get_reg_mem(read_reg2);
-                reg_read!(1, read_reg2, val2, 1);
+                let val1 = self.reg_read(0, read_reg1, 0);
+                let val2 = self.reg_read(1, read_reg2, 1);
                 let write_reg1 = args[2].u();
                 let write_reg2 = args[3].u();
 
@@ -1842,41 +1659,39 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     rem = y;
                 }
 
-                self.proc.set_reg_mem(write_reg1, div.into());
-                reg_write!(2, write_reg1, div.into(), 3);
-                self.proc.set_reg_mem(write_reg2, rem.into());
-                reg_write!(3, write_reg2, rem.into(), 4);
+                self.reg_write(2, write_reg1, div.into(), 3);
+                self.reg_write(3, write_reg2, rem.into(), 4);
 
-                tmp1_col = val1;
-                tmp2_col = val2;
-                tmp3_col = Elem::from_u32_as_fe(div);
-                tmp4_col = Elem::from_u32_as_fe(rem);
-                tmp_xx = val2;
-                tmp_xx_iszero = Elem::from_bool_as_fe(tmp_xx.is_zero());
-                if !tmp_xx.is_zero() {
-                    tmp_xx_inv = Elem::Field(F::one() / tmp_xx.into_fe());
+                tmp1_col = Some(val1);
+                tmp2_col = Some(val2);
+                tmp3_col = Some(Elem::from_u32_as_fe(div));
+                tmp4_col = Some(Elem::from_u32_as_fe(rem));
+                tmp_xx = Some(val2);
+                tmp_xx_iszero = Some(Elem::from_bool_as_fe(tmp_xx.unwrap().is_zero()));
+                if !tmp_xx.unwrap().is_zero() {
+                    tmp_xx_inv = Some(Elem::Field(F::one() / tmp_xx.unwrap().into_fe()));
                 }
 
-                let v = tmp3_col.as_i64_from_lower_bytes();
+                let v = tmp3_col.unwrap().as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
-                tmp_x_b1 = Elem::from_u32_as_fe(b1.into());
-                tmp_x_b2 = Elem::from_u32_as_fe(b2.into());
-                tmp_x_b3 = Elem::from_u32_as_fe(b3.into());
-                tmp_x_b4 = Elem::from_u32_as_fe(b4.into());
+                tmp_x_b1 = Some(Elem::from_u32_as_fe(b1.into()));
+                tmp_x_b2 = Some(Elem::from_u32_as_fe(b2.into()));
+                tmp_x_b3 = Some(Elem::from_u32_as_fe(b3.into()));
+                tmp_x_b4 = Some(Elem::from_u32_as_fe(b4.into()));
 
                 let (rem_b1, rem_b2, rem_b3, rem_b4, _sign) = decompose_lower32(rem.into());
-                tmp_rem_b1 = Elem::from_u32_as_fe(rem_b1.into());
-                tmp_rem_b2 = Elem::from_u32_as_fe(rem_b2.into());
-                tmp_rem_b3 = Elem::from_u32_as_fe(rem_b3.into());
-                tmp_rem_b4 = Elem::from_u32_as_fe(rem_b4.into());
+                tmp_rem_b1 = Some(Elem::from_u32_as_fe(rem_b1.into()));
+                tmp_rem_b2 = Some(Elem::from_u32_as_fe(rem_b2.into()));
+                tmp_rem_b3 = Some(Elem::from_u32_as_fe(rem_b3.into()));
+                tmp_rem_b4 = Some(Elem::from_u32_as_fe(rem_b4.into()));
 
                 if x > 0 {
                     let diff = x - rem - 1;
                     let (b5, b6, b7, b8, _sign) = decompose_lower32(diff.into());
-                    tmp_y_b5 = Elem::from_u32_as_fe(b5.into());
-                    tmp_y_b6 = Elem::from_u32_as_fe(b6.into());
-                    tmp_y_b7 = Elem::from_u32_as_fe(b7.into());
-                    tmp_y_b8 = Elem::from_u32_as_fe(b8.into());
+                    tmp_y_b5 = Some(Elem::from_u32_as_fe(b5.into()));
+                    tmp_y_b6 = Some(Elem::from_u32_as_fe(b6.into()));
+                    tmp_y_b7 = Some(Elem::from_u32_as_fe(b7.into()));
+                    tmp_y_b8 = Some(Elem::from_u32_as_fe(b8.into()));
                 }
 
                 Vec::new()
@@ -1884,10 +1699,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "mul" => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let val1 = self.proc.get_reg_mem(read_reg1);
-                reg_read!(0, read_reg1, val1, 0);
-                let val2 = self.proc.get_reg_mem(read_reg2);
-                reg_read!(1, read_reg2, val2, 1);
+                let val1 = self.reg_read(0, read_reg1, 0);
+                let val2 = self.reg_read(1, read_reg2, 1);
                 let write_reg1 = args[2].u();
                 let write_reg2 = args[3].u();
 
@@ -1895,15 +1708,13 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let lo = r as u32;
                 let hi = (r >> 32) as u32;
 
-                self.proc.set_reg_mem(write_reg1, lo.into());
-                reg_write!(2, write_reg1, lo.into(), 3);
-                self.proc.set_reg_mem(write_reg2, hi.into());
-                reg_write!(3, write_reg2, hi.into(), 4);
+                self.reg_write(2, write_reg1, lo.into(), 3);
+                self.reg_write(3, write_reg2, hi.into(), 4);
 
-                tmp1_col = val1;
-                tmp2_col = val2;
-                tmp3_col = Elem::from_u32_as_fe(lo);
-                tmp4_col = Elem::from_u32_as_fe(hi);
+                tmp1_col = Some(val1);
+                tmp2_col = Some(val2);
+                tmp3_col = Some(Elem::from_u32_as_fe(lo));
+                tmp4_col = Some(Elem::from_u32_as_fe(hi));
 
                 self.proc
                     .submachines
@@ -1919,16 +1730,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             "and" | "or" | "xor" => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let val1 = self.proc.get_reg_mem(read_reg1);
-                reg_read!(0, read_reg1, val1, 0);
-                let val2 = self.proc.get_reg_mem(read_reg2);
-                reg_read!(1, read_reg2, val2, 1);
+                let val1 = self.reg_read(0, read_reg1, 0);
+                let val2 = self.reg_read(1, read_reg2, 1);
                 let offset = args[2].bin();
                 let write_reg = args[3].u();
                 let val2_offset: Elem<F> = (val2.bin() + offset).into();
 
-                tmp1_col = val1;
-                tmp2_col = val2;
+                tmp1_col = Some(val1);
+                tmp2_col = Some(val2);
 
                 let r = match name {
                     "and" => val1.u() & val2_offset.u(),
@@ -1943,20 +1752,17 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     .unwrap()
                     .add_operation(name, &[("A", val1), ("B", val2_offset), ("C", r.into())]);
 
-                self.proc.set_reg_mem(write_reg, r.into());
-                reg_write!(3, write_reg, r.into(), 3);
+                self.reg_write(3, write_reg, r.into(), 3);
 
-                tmp3_col = Elem::from_u32_as_fe(r);
+                tmp3_col = Some(Elem::from_u32_as_fe(r));
 
                 Vec::new()
             }
             "shl" | "shr" => {
                 let read_reg1 = args[0].u();
                 let read_reg2 = args[1].u();
-                let val1 = self.proc.get_reg_mem(read_reg1);
-                reg_read!(0, read_reg1, val1, 0);
-                let val2 = self.proc.get_reg_mem(read_reg2);
-                reg_read!(1, read_reg2, val2, 1);
+                let val1 = self.reg_read(0, read_reg1, 0);
+                let val2 = self.reg_read(1, read_reg2, 1);
                 let offset = args[2].bin();
                 let write_reg = args[3].u();
                 let val2_offset: Elem<F> = (val2.bin() + offset).into();
@@ -1967,12 +1773,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     _ => unreachable!(),
                 };
 
-                self.proc.set_reg_mem(write_reg, r.into());
-                reg_write!(3, write_reg, r.into(), 3);
+                self.reg_write(3, write_reg, r.into(), 3);
 
-                tmp1_col = val1;
-                tmp2_col = val2;
-                tmp3_col = Elem::from_u32_as_fe(r);
+                tmp1_col = Some(val1);
+                tmp2_col = Some(val2);
+                tmp3_col = Some(Elem::from_u32_as_fe(r));
 
                 self.proc
                     .submachines
@@ -1984,8 +1789,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             }
             "split_gl" => {
                 let read_reg = args[0].u();
-                let val1 = self.proc.get_reg_mem(read_reg);
-                reg_read!(0, read_reg, val1, 0);
+                let val1 = self.reg_read(0, read_reg, 0);
                 let write_reg1 = args[1].u();
                 let write_reg2 = args[2].u();
 
@@ -1996,14 +1800,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let lo = (value & 0xffffffff) as u32;
                 let hi = (value >> 32) as u32;
 
-                self.proc.set_reg_mem(write_reg1, lo.into());
-                reg_write!(2, write_reg1, lo.into(), 3);
-                self.proc.set_reg_mem(write_reg2, hi.into());
-                reg_write!(3, write_reg2, hi.into(), 4);
+                self.reg_write(2, write_reg1, lo.into(), 3);
+                self.reg_write(3, write_reg2, hi.into(), 4);
 
-                tmp1_col = val1;
-                tmp3_col = Elem::from_u32_as_fe(lo);
-                tmp4_col = Elem::from_u32_as_fe(hi);
+                tmp1_col = Some(val1);
+                tmp3_col = Some(Elem::from_u32_as_fe(lo));
+                tmp4_col = Some(Elem::from_u32_as_fe(hi));
 
                 self.proc
                     .submachines
@@ -2147,44 +1949,80 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             }
         };
 
-        self.proc.set_col("main::X_b1", tmp_x_b1);
-        self.proc.set_col("main::X_b2", tmp_x_b2);
-        self.proc.set_col("main::X_b3", tmp_x_b3);
-        self.proc.set_col("main::X_b4", tmp_x_b4);
-        self.proc.set_col("main::Y_b5", tmp_y_b5);
-        self.proc.set_col("main::Y_b6", tmp_y_b6);
-        self.proc.set_col("main::Y_b7", tmp_y_b7);
-        self.proc.set_col("main::Y_b8", tmp_y_b8);
-        self.proc.set_col("main::wrap_bit", tmp_wrap_bit);
+        if let Some(tmp_x_b1) = tmp_x_b1 {
+            self.proc.set_col("main::X_b1", tmp_x_b1);
+        }
+        if let Some(tmp_x_b2) = tmp_x_b2 {
+            self.proc.set_col("main::X_b2", tmp_x_b2);
+        }
+        if let Some(tmp_x_b3) = tmp_x_b3 {
+            self.proc.set_col("main::X_b3", tmp_x_b3);
+        }
+        if let Some(tmp_x_b4) = tmp_x_b4 {
+            self.proc.set_col("main::X_b4", tmp_x_b4);
+        }
+        if let Some(tmp_y_b5) = tmp_y_b5 {
+            self.proc.set_col("main::Y_b5", tmp_y_b5);
+        }
+        if let Some(tmp_y_b6) = tmp_y_b6 {
+            self.proc.set_col("main::Y_b6", tmp_y_b6);
+        }
+        if let Some(tmp_y_b7) = tmp_y_b7 {
+            self.proc.set_col("main::Y_b7", tmp_y_b7);
+        }
+        if let Some(tmp_y_b8) = tmp_y_b8 {
+            self.proc.set_col("main::Y_b8", tmp_y_b8);
+        }
+        if let Some(tmp_wrap_bit) = tmp_wrap_bit {
+            self.proc.set_col("main::wrap_bit", tmp_wrap_bit);
+        }
 
-        self.proc.set_col("main::Y_7bit", tmp_y_7bit);
-        self.proc.set_col("main::Y_15bit", tmp_y_15bit);
+        if let Some(tmp_y_7bit) = tmp_y_7bit {
+            self.proc.set_col("main::Y_7bit", tmp_y_7bit);
+        }
+        if let Some(tmp_y_15bit) = tmp_y_15bit {
+            self.proc.set_col("main::Y_15bit", tmp_y_15bit);
+        }
 
-        self.proc
-            .set_col("main::X", self.proc.get_col("main::X_const"));
+        if let Some(tmp_y) = tmp_y {
+            self.proc.set_col("main::Y", tmp_y);
+        }
 
-        self.proc.set_col("main::Y", tmp_y);
-        self.proc
-            .set_col("main::Z", self.proc.get_col("main::Z_const"));
-        self.proc
-            .set_col("main::W", self.proc.get_col("main::W_const"));
+        if let Some(tmp_rem_b1) = tmp_rem_b1 {
+            self.proc.set_col("main::REM_b1", tmp_rem_b1);
+        }
+        if let Some(tmp_rem_b2) = tmp_rem_b2 {
+            self.proc.set_col("main::REM_b2", tmp_rem_b2);
+        }
+        if let Some(tmp_rem_b3) = tmp_rem_b3 {
+            self.proc.set_col("main::REM_b3", tmp_rem_b3);
+        }
+        if let Some(tmp_rem_b4) = tmp_rem_b4 {
+            self.proc.set_col("main::REM_b4", tmp_rem_b4);
+        }
 
-        self.proc.set_col("main::REM_b1", tmp_rem_b1);
-        self.proc.set_col("main::REM_b2", tmp_rem_b2);
-        self.proc.set_col("main::REM_b3", tmp_rem_b3);
-        self.proc.set_col("main::REM_b4", tmp_rem_b4);
+        if let Some(tmp1_col) = tmp1_col {
+            self.proc.set_col("main::tmp1_col", tmp1_col);
+        }
+        if let Some(tmp2_col) = tmp2_col {
+            self.proc.set_col("main::tmp2_col", tmp2_col);
+        }
+        if let Some(tmp3_col) = tmp3_col {
+            self.proc.set_col("main::tmp3_col", tmp3_col);
+        }
+        if let Some(tmp4_col) = tmp4_col {
+            self.proc.set_col("main::tmp4_col", tmp4_col);
+        }
 
-        self.proc.set_col("main::tmp1_col", tmp1_col);
-        self.proc.set_col("main::tmp2_col", tmp2_col);
-        self.proc.set_col("main::tmp3_col", tmp3_col);
-        self.proc.set_col("main::tmp4_col", tmp4_col);
-
-        self.proc.set_col("main::XX", tmp_xx);
-        self.proc.set_col("main::XXIsZero", tmp_xx_iszero);
-        self.proc.set_col("main::XX_inv", tmp_xx_inv);
-
-        let instr_col = format!("main::instr_{name}");
-        self.proc.set_col(&instr_col, Elem::from_u32_as_fe(1));
+        if let Some(tmp_xx) = tmp_xx {
+            self.proc.set_col("main::XX", tmp_xx);
+        }
+        if let Some(tmp_xx_iszero) = tmp_xx_iszero {
+            self.proc.set_col("main::XXIsZero", tmp_xx_iszero);
+        }
+        if let Some(tmp_xx_inv) = tmp_xx_inv {
+            self.proc.set_col("main::XX_inv", tmp_xx_inv);
+        }
 
         r
     }
@@ -2377,8 +2215,10 @@ pub enum ExecMode {
 ///
 /// Generic argument F is just used by the powdr_parser, before everything is
 /// converted to i64, so it is important to the execution itself.
+#[allow(clippy::too_many_arguments)]
 pub fn execute<F: FieldElement>(
     asm: &AnalysisASMFile,
+    opt_pil: &Analyzed<F>,
     fixed: Option<FixedColumns<F>>,
     initial_memory: MemoryState,
     inputs: &Callback<F>,
@@ -2389,6 +2229,7 @@ pub fn execute<F: FieldElement>(
     log::info!("Executing...");
     execute_ast(
         asm,
+        opt_pil,
         fixed,
         initial_memory,
         inputs,
@@ -2407,7 +2248,8 @@ fn register_by_idx(idx: usize) -> String {
 
 #[allow(clippy::too_many_arguments)]
 pub fn execute_ast<F: FieldElement>(
-    program: &AnalysisASMFile,
+    asm: &AnalysisASMFile,
+    opt_pil: &Analyzed<F>,
     fixed: Option<FixedColumns<F>>,
     initial_memory: MemoryState,
     inputs: &Callback<F>,
@@ -2416,7 +2258,7 @@ pub fn execute_ast<F: FieldElement>(
     mode: ExecMode,
     profiling: Option<ProfilerOptions>,
 ) -> Execution<F> {
-    let main_machine = get_main_machine(program);
+    let main_machine = get_main_machine(asm);
 
     let PreprocessedMain {
         statements,
@@ -2427,8 +2269,33 @@ pub fn execute_ast<F: FieldElement>(
         location_starts,
     } = preprocess_main_function(main_machine);
 
+    let witness_cols: Vec<_> = opt_pil
+        .committed_polys_in_source_order()
+        .flat_map(|(s, _)| s.array_elements().map(|(name, _)| name))
+        .collect();
+
+    // program columns to witness columns
+    let program_cols: HashMap<_, _> = if let Some(fixed) = &fixed {
+        fixed
+            .iter()
+            .filter_map(|(name, _col)| {
+                if !name.starts_with("main__rom::p_") {
+                    return None;
+                }
+                let wit_name = format!("main::{}", name.strip_prefix("main__rom::p_").unwrap());
+                if !witness_cols.contains(&wit_name) {
+                    return None;
+                }
+                Some((name.clone(), wit_name))
+            })
+            .collect()
+    } else {
+        Default::default()
+    };
+
     let proc = match TraceBuilder::<'_, F>::new(
         main_machine,
+        witness_cols,
         initial_memory,
         &batch_to_line_map,
         max_steps_to_execute,
@@ -2449,6 +2316,7 @@ pub fn execute_ast<F: FieldElement>(
         inputs,
         bootloader_inputs,
         fixed: fixed.unwrap_or_default(),
+        program_cols,
         step: 0,
     };
 
