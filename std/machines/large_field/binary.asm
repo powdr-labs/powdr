@@ -35,6 +35,7 @@ machine Binary(byte_binary: ByteBinary) with
     B' = B * (1 - latch) + B_byte * FACTOR;
     C' = C * (1 - latch) + C_byte * FACTOR;
 
+    /*
     query |row| {
         if row % 4 == 3 {
             let a = std::convert::int(std::prover::eval(A));
@@ -48,7 +49,7 @@ machine Binary(byte_binary: ByteBinary) with
             std::prover::provide_value(C, row, std::convert::fe(c));
         } else {
         }
-    };
+    };*/
 
     link => C_byte = byte_binary.run(operation_id', A_byte, B_byte);
 }

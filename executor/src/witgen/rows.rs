@@ -151,6 +151,7 @@ impl<T: FieldElement> CellValue<T> {
     ///
     /// # Panics
     /// Panics if the update is not an improvement.
+    #[inline]
     pub fn apply_update(&mut self, c: &Constraint<T>) {
         match (&self, c) {
             (CellValue::Known(_), _) => {
@@ -239,6 +240,7 @@ impl<T: FieldElement> Row<T> {
         self.values[poly_id] = CellValue::Unknown;
     }
 
+    #[inline]
     pub fn apply_update(&mut self, poly_id: &PolyID, constr: &Constraint<T>) {
         self.values[poly_id].apply_update(constr);
     }

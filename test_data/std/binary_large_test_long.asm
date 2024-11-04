@@ -8,8 +8,8 @@ machine Main with degree: 262144 {
     reg X2[<=];
     reg A;
 
-    ByteBinary byte_binary;
-    Binary binary(byte_binary, 262144, 262144);
+    ByteBinary byte_binary(262144, 262144);
+    Binary binary(byte_binary, 1048576, 1048576);
 
     instr and X0, X1 -> X2 link ~> X2 = binary.and(X0, X1);
     instr or X0, X1 -> X2 link ~> X2 = binary.or(X0, X1);
@@ -19,8 +19,8 @@ machine Main with degree: 262144 {
         X0 = X1
     }
 
-    instr jmp: label {
-        pc' = label
+    instr jmp d: label {
+        pc' = d
     }
 
     function main {
@@ -68,7 +68,7 @@ machine Main with degree: 262144 {
         A <== xor(0xabcdef01, 0);
         assert_eq A, 0xabcdef01;
 
-        jmp start
+        jmp start;
 
         return;
     }

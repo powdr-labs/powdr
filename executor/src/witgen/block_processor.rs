@@ -72,17 +72,33 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
     ) -> Result<EvalValue<AlgebraicVariable<'a>, T>, EvalError<T>> {
         let mut outer_assignments = vec![];
 
+        // println!("Starting to solve block\n===================================================================");
         let mut is_identity_complete =
             vec![vec![false; self.identities.len()]; self.processor.len()];
 
+        let mut cnt = 0;
         while let Some(SequenceStep { row_delta, action }) = sequence_iterator.next() {
+            cnt += 1;
+            if self.identities.len() == 5 && cnt > 3 {
+                break;
+            }
             let row_index = (1 + row_delta) as usize;
+            // println!("Cnt: {cnt}, row: {row_index}");
+            // println!("Processing row {}", row_index);
             let progress = match action {
                 Action::InternalIdentity(identity_index) => {
                     if is_identity_complete[row_index][identity_index] {
+                        // println!(
+                        //     "Identity {} has already been completed for row {}",
+                        //     identity_index, row_index
+                        // );
                         // The identity has been completed already, there is no point in processing it again.
                         false
                     } else {
+                        // println!(
+                        //     "Processing identity {}: {}",
+                        //     identity_index, &self.identities[identity_index]
+                        // );
                         let res = self.processor.process_identity(
                             row_index,
                             self.identities[identity_index],
@@ -93,18 +109,26 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
                     }
                 }
                 Action::OuterQuery => {
+                    // println!("Processing outer query");
                     let (progress, new_outer_assignments) =
                         self.processor.process_outer_query(row_index)?;
                     outer_assignments.extend(new_outer_assignments);
                     progress
                 }
-                Action::ProverQueries => self.processor.process_queries(row_index)?,
-                Action::ProverFunctionsOnLatch => self
-                    .processor
-                    .process_prover_functions_on_latch(row_index)?,
+                Action::ProverQueries => {
+                    // println!("Processing prover queries");
+                    self.processor.process_queries(row_index)?
+                }
+                Action::ProverFunctionsOnLatch => {
+                    // println!("Processing prover functions on latch");
+                    self.processor
+                        .process_prover_functions_on_latch(row_index)?
+                }
             };
             sequence_iterator.report_progress(progress);
         }
+
+        // println!("=====================================================================");
 
         match self.processor.finished_outer_query() {
             true => Ok(EvalValue::complete(outer_assignments)),

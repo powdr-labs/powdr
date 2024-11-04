@@ -251,6 +251,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
+        let start = std::time::Instant::now();
         let previous_len = self.data.len();
         let result = self.process_plookup_internal(mutable_state, identity_id, caller_rows);
         if let Ok(assignments) = &result {
@@ -259,6 +260,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 self.data.truncate(previous_len);
             }
         }
+        let end = std::time::Instant::now();
+        println!(
+            "BlockMachine::process_plookup took {} ns",
+            (end - start).as_nanos()
+        );
         result
     }
 

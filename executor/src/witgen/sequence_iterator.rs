@@ -77,8 +77,8 @@ impl DefaultSequenceIterator {
 
     fn has_more_actions(&self) -> bool {
         let action_count = if self.is_on_outer_query_row() {
-            // On the query row, we do [outer query, prover functions, identities, prover queries, outer query].
-            self.identities_count as i32 + 4
+            // On the query row, we do [outer query, prover functions, outer query, identities, prover queries, outer query].
+            self.identities_count as i32 + 5
         } else {
             // Otherwise, we do [identities, prover queries]
             self.identities_count as i32 + 1
@@ -138,7 +138,7 @@ impl DefaultSequenceIterator {
         let row_delta = self.row_deltas[self.cur_row_delta_index];
         let action_index = if self.is_on_outer_query_row() {
             // On outer query row, we have the actions:
-            // outer query, prover functions, identities, prover queries, outer query
+            // outer query, prover functions, outer query, identities, prover queries, outer query
             match self.cur_action_index {
                 0 => {
                     return SequenceStep {
@@ -152,9 +152,15 @@ impl DefaultSequenceIterator {
                         action: Action::ProverFunctionsOnLatch,
                     }
                 }
+                2 => {
+                    return SequenceStep {
+                        row_delta,
+                        action: Action::OuterQuery,
+                    }
+                }
                 _ => {}
             };
-            self.cur_action_index - 2
+            self.cur_action_index - 3
         } else {
             // Here we have identities, prover queries.
             self.cur_action_index

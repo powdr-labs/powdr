@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::sync::{Arc, OnceLock};
 
 use powdr_ast::analyzed::PolynomialType;
 use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
@@ -266,6 +267,16 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         row_index: usize,
     ) -> Result<bool, EvalError<T>> {
         let mut progress = false;
+        if !self.processed_prover_functions.has_run(row_index, 0) {
+            progress |= hack_binary_machine(
+                self.fixed_data,
+                &mut self.data,
+                self.row_offset,
+                row_index,
+                self.size,
+            );
+            self.processed_prover_functions.mark_as_run(row_index, 0);
+        }
         let mut runner = ProverFunctionRunner::new(
             self.fixed_data,
             &mut self.data,
@@ -273,6 +284,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             row_index,
             self.size,
         );
+
         for (i, fun) in self.parts.prover_functions.iter().enumerate() {
             if !self.processed_prover_functions.has_run(row_index, i) {
                 progress |= runner.process_prover_function(fun)?;
@@ -671,4 +683,144 @@ impl ProcessedProverFunctions {
         let index = row_index * self.function_count + function_index;
         (index / 8, index % 8)
     }
+}
+
+struct BinCols {
+    a: PolyID,
+    b: PolyID,
+    c: PolyID,
+    a_byte: PolyID,
+    b_byte: PolyID,
+    c_byte: PolyID,
+    op_id: PolyID,
+}
+
+fn hack_binary_machine<'a, T: FieldElement>(
+    fixed_data: &'a FixedData<'a, T>,
+    data: &mut FinalizableData<T>,
+    row_offset: RowIndex,
+    row_index: usize,
+    size: DegreeType,
+) -> bool {
+    let start = std::time::Instant::now();
+    static BIN_COLS: OnceLock<BinCols> = OnceLock::new();
+    let row_nr = u64::from(row_offset + row_index);
+    let r = if row_nr % 4 == 3 {
+        let BinCols {
+            a,
+            b,
+            c,
+            a_byte,
+            b_byte,
+            c_byte,
+            op_id,
+        } = BIN_COLS.get_or_init(|| {
+            let a = fixed_data.try_column_by_name("main_binary::A").unwrap();
+            let b = fixed_data.try_column_by_name("main_binary::B").unwrap();
+            let c = fixed_data.try_column_by_name("main_binary::C").unwrap();
+            let a_byte = fixed_data
+                .try_column_by_name("main_binary::A_byte")
+                .unwrap();
+            let b_byte = fixed_data
+                .try_column_by_name("main_binary::B_byte")
+                .unwrap();
+            let c_byte = fixed_data
+                .try_column_by_name("main_binary::C_byte")
+                .unwrap();
+            let op_id = fixed_data
+                .try_column_by_name("main_binary::operation_id")
+                .unwrap();
+            BinCols {
+                a,
+                b,
+                c,
+                a_byte,
+                b_byte,
+                c_byte,
+                op_id,
+            }
+        });
+        let latch_row = &mut data[row_index];
+        let op_id_v = latch_row.value(&op_id).unwrap();
+        let a_v = latch_row.value(&a).unwrap().to_integer();
+        let b_v = latch_row.value(&b).unwrap().to_integer();
+
+        let c_v = if op_id_v == 0.into() {
+            a_v & b_v
+        } else if op_id_v == 1.into() {
+            a_v | b_v
+        } else if op_id_v == 2.into() {
+            a_v ^ b_v
+        } else {
+            return false;
+        };
+        latch_row.apply_update(&c, &Constraint::Assignment(T::from(c_v)));
+        data[row_index - 1]
+            .apply_update(&a, &Constraint::Assignment(T::from(a_v & 0xffffff.into())));
+        data[row_index - 1]
+            .apply_update(&b, &Constraint::Assignment(T::from(b_v & 0xffffff.into())));
+        data[row_index - 1]
+            .apply_update(&c, &Constraint::Assignment(T::from(c_v & 0xffffff.into())));
+        data[row_index - 1].apply_update(
+            &a_byte,
+            &Constraint::Assignment(T::from((a_v >> 24) & 0xff.into())),
+        );
+        data[row_index - 1].apply_update(
+            &b_byte,
+            &Constraint::Assignment(T::from((b_v >> 24) & 0xff.into())),
+        );
+        data[row_index - 1].apply_update(
+            &c_byte,
+            &Constraint::Assignment(T::from((c_v >> 24) & 0xff.into())),
+        );
+        data[row_index - 1].apply_update(&op_id, &Constraint::Assignment(op_id_v));
+        data[row_index - 2].apply_update(&a, &Constraint::Assignment(T::from(a_v & 0xffff.into())));
+        data[row_index - 2].apply_update(&b, &Constraint::Assignment(T::from(b_v & 0xffff.into())));
+        data[row_index - 2].apply_update(&c, &Constraint::Assignment(T::from(c_v & 0xffff.into())));
+        data[row_index - 2].apply_update(
+            &a_byte,
+            &Constraint::Assignment(T::from((a_v >> 16) & 0xff.into())),
+        );
+        data[row_index - 2].apply_update(
+            &b_byte,
+            &Constraint::Assignment(T::from((b_v >> 16) & 0xff.into())),
+        );
+        data[row_index - 2].apply_update(
+            &c_byte,
+            &Constraint::Assignment(T::from((c_v >> 16) & 0xff.into())),
+        );
+        data[row_index - 2].apply_update(&op_id, &Constraint::Assignment(op_id_v));
+        data[row_index - 3].apply_update(&a, &Constraint::Assignment(T::from(a_v & 0xff.into())));
+        data[row_index - 3].apply_update(&b, &Constraint::Assignment(T::from(b_v & 0xff.into())));
+        data[row_index - 3].apply_update(&c, &Constraint::Assignment(T::from(c_v & 0xff.into())));
+        data[row_index - 3].apply_update(
+            &a_byte,
+            &Constraint::Assignment(T::from((a_v >> 8) & 0xff.into())),
+        );
+        data[row_index - 3].apply_update(
+            &b_byte,
+            &Constraint::Assignment(T::from((b_v >> 8) & 0xff.into())),
+        );
+        data[row_index - 3].apply_update(
+            &c_byte,
+            &Constraint::Assignment(T::from((c_v >> 8) & 0xff.into())),
+        );
+        data[row_index - 3].apply_update(&op_id, &Constraint::Assignment(op_id_v));
+
+        data[row_index - 4]
+            .apply_update(&a_byte, &Constraint::Assignment(T::from(a_v & 0xff.into())));
+        data[row_index - 4]
+            .apply_update(&b_byte, &Constraint::Assignment(T::from(b_v & 0xff.into())));
+        data[row_index - 4]
+            .apply_update(&c_byte, &Constraint::Assignment(T::from(c_v & 0xff.into())));
+
+        true
+    } else {
+        false
+    };
+    let end = std::time::Instant::now();
+    if r {
+        //        println!("Binary machine took {} ns", (end - start).as_nanos());
+    }
+    r
 }
