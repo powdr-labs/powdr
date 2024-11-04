@@ -21,7 +21,7 @@ First we need to compile the Rust code to powdr-asm:
 powdr-rs compile riscv/tests/riscv_data/many_chunks
 ```
 
-Now we can use podwr's RISCV executor to estimate how many cycles are needed:
+Now we can use powdr's RISCV executor to estimate how many cycles are needed:
 ```console
 powdr-rs execute many_chunks.asm
 ```
