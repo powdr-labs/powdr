@@ -31,7 +31,7 @@ machine Main with degree: 65536 {
         link ~> poseidon2.poseidon2_permutation(
             ADDR1_HIGH, ADDR1_LOW,
             ADDR2_HIGH, ADDR2_LOW,
-            STEP
+            0, STEP
         );
 
     col witness val_low, val_high;
