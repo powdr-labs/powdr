@@ -242,6 +242,7 @@ fn propagate_constraints<T: FieldElement>(
             if !left.selector.is_one() || !right.selector.is_one() {
                 return (known_constraints, false);
             }
+            // We learn range constraints from both lookups and permutations
             for (left, right) in left.expressions.iter().zip(right.expressions.iter()) {
                 if let (Some(left), Some(right)) =
                     (try_to_simple_poly(left), try_to_simple_poly(right))
@@ -254,7 +255,11 @@ fn propagate_constraints<T: FieldElement>(
                     }
                 }
             }
-            if right.expressions.len() == 1 {
+
+            // We only remove lookups, since permutations hold more information than just range constraints.
+            if right.expressions.len() == 1
+                && matches!(identity, Identity::Lookup(..) | Identity::PhantomLookup(..))
+            {
                 // We can only remove the lookup if the RHS is a fixed polynomial that
                 // provides all values in the span.
                 if let Some(name) = try_to_simple_poly(&right.expressions[0]) {
