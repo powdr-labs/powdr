@@ -213,7 +213,8 @@ where
             }
             PilStatement::Expression(_, expr) => vec![PILItem::ProofItem(
                 self.expression_processor(&Default::default())
-                    .process_expression(expr),
+                    .process_expression(expr)
+                    .expect("Expression processing failed"),
             )],
             PilStatement::StructDeclaration(source, struct_declaration) => self
                 .handle_symbol_definition(
@@ -461,7 +462,8 @@ where
         let value = FunctionValueDefinition::Expression(TypedExpression {
             e: self
                 .expression_processor(&type_vars)
-                .process_expression(expr),
+                .process_expression(expr)
+                .expect("Failed to process expression"),
             type_scheme,
         });
 
@@ -476,7 +478,8 @@ where
     ) -> Vec<PILItem> {
         let expression = self
             .expression_processor(&Default::default())
-            .process_array_expression(value);
+            .process_array_expression(value)
+            .expect("Failed to process array expression");
         assert!(type_scheme.is_none() || type_scheme == Some(Type::Col.into()));
         let value = FunctionValueDefinition::Array(expression);
 
@@ -517,7 +520,8 @@ where
         let id = self.counters.dispense_public_id();
         let polynomial = self
             .expression_processor(&Default::default())
-            .process_namespaced_polynomial_reference(poly);
+            .process_namespaced_polynomial_reference(poly)
+            .expect("Failed to process polynomial reference");
         let array_index = array_index.map(|i| {
             let index: u64 = untyped_evaluator::evaluate_expression_to_int(self.driver, i)
                 .unwrap()
@@ -712,7 +716,8 @@ where
                 name: named.name,
                 body: Arc::new(
                     self.expression_processor(&type_vars)
-                        .process_expression(Arc::try_unwrap(named.body).unwrap()),
+                        .process_expression(Arc::try_unwrap(named.body).unwrap())
+                        .expect("Failed to process expression inside trait"),
                 ),
             })
             .collect();
