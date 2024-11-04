@@ -14,9 +14,8 @@ use std::machines::split::split_gl::SplitGL;
 // by discarding a part of the output, it can be used as compression function
 // for building a Merkle tree.
 //
-// Differently from our Poseidon Goldilocks implementation, we will only use
-// 8 field element states, because we don't use the a sponge construction and
-// only have 4 elements of output anyway, so we don't need the capacity.
+// Differently from our Poseidon Goldilocks implementation, we will use a
+// state size of 8 field elements instead of 12.
 machine Poseidon2GL(mem: Memory, split_GL: SplitGL) with
     latch: latch,
     operation_id: operation_id,
@@ -48,9 +47,6 @@ machine Poseidon2GL(mem: Memory, split_GL: SplitGL) with
     // The the number of rounds to get 128-bit security was taken from here:
     // https://github.com/Plonky3/Plonky3/blob/2df15fd05e2181b31b39525361aef0213fc76144/poseidon2/src/round_numbers.rs#L55
 
-    // S-box degree (this constant is actually not used, because we have to break the exponentiation into steps of at most degree 3).
-    let SBOX_DEGREE: int = 7;
-
     // Number of field elements in the state
     let STATE_SIZE: int = 8;
 
@@ -62,136 +58,58 @@ machine Poseidon2GL(mem: Memory, split_GL: SplitGL) with
 
     // External round MDS matrix
     let MDS = [
-        [4, 6, 2, 2, 2, 3, 1, 1, 2, 3, 1, 1, 2, 3, 1, 1],
-        [2, 4, 6, 2, 1, 2, 3, 1, 1, 2, 3, 1, 1, 2, 3, 1],
-        [2, 2, 4, 6, 1, 1, 2, 3, 1, 1, 2, 3, 1, 1, 2, 3],
-        [6, 2, 2, 4, 3, 1, 1, 2, 3, 1, 1, 2, 3, 1, 1, 2],
-        [2, 3, 1, 1, 4, 6, 2, 2, 2, 3, 1, 1, 2, 3, 1, 1],
-        [1, 2, 3, 1, 2, 4, 6, 2, 1, 2, 3, 1, 1, 2, 3, 1],
-        [1, 1, 2, 3, 2, 2, 4, 6, 1, 1, 2, 3, 1, 1, 2, 3],
-        [3, 1, 1, 2, 6, 2, 2, 4, 3, 1, 1, 2, 3, 1, 1, 2],
-        [2, 3, 1, 1, 2, 3, 1, 1, 4, 6, 2, 2, 2, 3, 1, 1],
-        [1, 2, 3, 1, 1, 2, 3, 1, 2, 4, 6, 2, 1, 2, 3, 1],
-        [1, 1, 2, 3, 1, 1, 2, 3, 2, 2, 4, 6, 1, 1, 2, 3],
-        [3, 1, 1, 2, 3, 1, 1, 2, 6, 2, 2, 4, 3, 1, 1, 2],
-        [2, 3, 1, 1, 2, 3, 1, 1, 2, 3, 1, 1, 4, 6, 2, 2],
-        [1, 2, 3, 1, 1, 2, 3, 1, 1, 2, 3, 1, 2, 4, 6, 2],
-        [1, 1, 2, 3, 1, 1, 2, 3, 1, 1, 2, 3, 2, 2, 4, 6],
-        [3, 1, 1, 2, 3, 1, 1, 2, 3, 1, 1, 2, 6, 2, 2, 4]
+        [4, 6, 2, 2, 2, 3, 1, 1],
+        [2, 4, 6, 2, 1, 2, 3, 1],
+        [2, 2, 4, 6, 1, 1, 2, 3],
+        [6, 2, 2, 4, 3, 1, 1, 2],
+        [2, 3, 1, 1, 4, 6, 2, 2],
+        [1, 2, 3, 1, 2, 4, 6, 2],
+        [1, 1, 2, 3, 2, 2, 4, 6],
+        [3, 1, 1, 2, 6, 2, 2, 4],
     ];
 
     // Diagonal of the internal round diffusion matrix
-    let DIFF_DIAGONAL = [-2, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048, 4096, 8192, 32768];
+    let DIFF_DIAGONAL = [12216033376705242021, 2072934925475504800, 16432743296706583078, 1287600597097751715, 10482065724875379356, 3057917794534811537, 4460508886913832365, 4574242228824269566];
 
-    // A multiplier for our diffusion matrix. Not in the original Poseidon2 paper,
-    // but needed to match the choice of matrix in the Plonky3 implementation.
-    // (They decided to use a scaled form of the matrix, to facilitate operations in montgomery form.)
-    let DIFF_MULTIPLIER = 943718400;
+    let DIFF_MULTIPLIER = 1;
 
     // External round constants, one STATE_SIZE array for each round
     let EXTERNAL_ROUND_CONSTANTS = [
-        [781065863, 1704334099, 1614250469, 858342508, 1331255579, 94027721, 1633402383, 1774536800, 967783090, 1429869924, 37790139, 1067472776, 1703182141, 1722007170, 826573738, 1380955441],
-        [1173986918, 427450465, 703550610, 214947471, 810976863, 1569294983, 1294224805, 40193270, 858808123, 1982585188, 797628021, 273000383, 570536182, 1015052027, 1622799895, 1845434468],
-        [393329457, 870203221, 56318764, 1364908618, 929735258, 410647527, 1272874215, 1250307830, 1985094168, 1183107810, 290944485, 1431023892, 1514015400, 150034509, 1932176786, 113929158],
-        [314648554, 412945090, 1799565197, 1437543685, 210037341, 267254220, 1123299502, 1012046526, 1811748296, 1082880104, 452117508, 591556198, 26422375, 928482204, 1782339126, 471400423],
-        [1715755484, 1620279079, 898856400, 1060851389, 1774418870, 1523201093, 9015542, 500181102, 1011868729, 1943785875, 410764106, 1856107565, 1977593067, 1362094997, 1586847440, 1751322463],
-        [1820671903, 712390866, 1344285673, 1301479607, 1447437124, 1817620797, 796225227, 1958608680, 1934746594, 688362361, 1897565392, 242159596, 1362690728, 1540780945, 309719651, 1780905031],
-        [1403665294, 1889289665, 1998617149, 1455767632, 497240095, 309963516, 1683981810, 1877298991, 868046153, 890940275, 283303262, 145680600, 1105472003, 1676373559, 940577289, 233213338],
-        [369884595, 39502463, 1425277724, 951005540, 1216021342, 381524560, 1062589222, 1537626390, 347091819, 781614254, 1465862749, 611525604, 1661958720, 1585470899, 726892227, 1080833156]
+        [12578764544318200737, 17529487244874322312, 7886285670807131020, 11572758976476374866, 5323617429756461744, 2766252901828231838, 5682345367224914708, 14828835203913492612],
+        [14227028876630821888, 4401121311800897944, 9350043436605376040, 16635332319643196323, 17653354571726536749, 10938523927967171405, 13443959161786668970, 3304483495961147300],
+        [10614130117109688397, 3168455021757892323, 8191319777620403455, 1409165301955871501, 2851098036599004855, 5910904342370227653, 12906965256452577593, 1446325983400578370],
+        [709353063579077124, 4829755133369728407, 15491131302928388465, 14008986064507162301, 12396337209942585769, 12582931927345169831, 12437814383306842903, 1841754590950016055],
+        [3737970769775807255, 4043632453527161836, 14119089074600487752, 12841494857048962050, 7827611443821146160, 1210377924565601529, 16261214877113852211, 12103329371965197203],
+        [14238676389184304018, 15176458182096690865, 780357387251526735, 15349465161478006477, 17286451399960384764, 13079134536770605075, 8356410918827354631, 15955292684331040254],
+        [10768994993414235838, 17790760810741022106, 4258058340480579026, 11495260958956685938, 6757499677441634868, 8154916564929059096, 2491620347296466053, 2539630113571147954],
+        [12496384437728543601, 14624197358522713851, 13091146861108865698, 8408456943069069277, 429031222017980611, 11395676813394475848, 16066918610446053799, 6410343575632282534],
     ];
 
     // Internal round constants, one for each round
     let INTERNAL_ROUND_CONSTANTS = [
-        24257283,
-        674575296,
-        1088287909,
-        1109797649,
-        1389124060,
-        1378384487,
-        973925592,
-        675566589,
-        772033245,
-        402697045,
-        386924216,
-        310894738,
-        1235941928
+        1473335034287276021,
+        11944545153990782003,
+        13940168329529015387,
+        8372698434105336528,
+        15678928713513790275,
+        6984930233113222930,
+        14331318031617034210,
+        17505767401781684616,
+        17698337720020297936,
+        9633568280404517874,
+        11117879087462060958,
+        4255041930486373420,
+        1134773948522875929,
+        11154602431214364740,
+        10727322033320176806,
+        14681358658821901434,
+        11951109496186819297,
+        5291109736568350150,
+        7939321512312132141,
+        2652718896006920980,
+        1755505308795057920,
+        17087002564333290124,
     ];
-
-    // The linear layer of the external round.
-    //
-    // Doesn't have to be a complete matrix multiplication, as the last round discards
-    // part of the state, so we can skip the corresponding rows in the matrix.
-    let apply_mds = |input, output_len| {
-        let dot_product = |v1, v2| array::sum(array::zip(v1, v2, |v1_i, v2_i| v1_i * v2_i));
-        array::map(array::sub_array(MDS, 0, output_len), |row| dot_product(row, input))
-    };
-
-    let s_box = constr |x| {
-        let x3;
-        x3 = x * x * x;
-        let x7;
-        x7 = x3 * x3 * x;
-        x7
-    };
-
-    let external_round = constr |c_idx, input, output| {
-        // Add constants
-        let step_a = array::zip(input, EXTERNAL_ROUND_CONSTANTS[c_idx], |v, c| v + c);
-
-        // Apply S-box
-        let x7 = array::map(step_a, s_box);
-
-        // Multiply with MDS Matrix
-        array::zip(output, apply_mds(x7, array::len(output)), |out, x| out = x);
-    };
-
-    let internal_round = constr |c_idx, input, output| {
-        // Add constant (weird, I thought the entire state was used here,
-        // but this is how Plonky3 does it).
-        let step_a = input[0] + INTERNAL_ROUND_CONSTANTS[c_idx];
-
-        // Apply S-box
-        let x7 = s_box(step_a);
-
-        // Multiply with the diffusion matrix
-        //
-        // The diffusion matrix looks like this:
-        //
-        //                   [A, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-        //                   [1, B, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-        //                   [1, 1, C, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-        //                   [1, 1, 1, D, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-        //                   [1, 1, 1, 1, E, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-        //                   [1, 1, 1, 1, 1, F, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-        //                   [1, 1, 1, 1, 1, 1, G, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-        //                   [1, 1, 1, 1, 1, 1, 1, H, 1, 1, 1, 1, 1, 1, 1, 1]
-        // DIFF_MULTIPLIER * [1, 1, 1, 1, 1, 1, 1, 1, I, 1, 1, 1, 1, 1, 1, 1]
-        //                   [1, 1, 1, 1, 1, 1, 1, 1, 1, J, 1, 1, 1, 1, 1, 1]
-        //                   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, K, 1, 1, 1, 1, 1]
-        //                   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, L, 1, 1, 1, 1]
-        //                   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, M, 1, 1, 1]
-        //                   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, O, 1, 1]
-        //                   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, P, 1]
-        //                   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, Q]
-        //
-        // Where A, B, C, ..., Q are the elements of the DIFF_DIAGONAL array plus 1.
-        //
-        // The idea of using such matrix in Poseidon2 is that, instead of performing
-        // a full matrix multiplication, we can optimize it by summing the elements
-        // of the input vector, and then adjusting each output[k] element by
-        // input[k] * DIFF_DIAGONAL[k].
-        let line_sum = x7 + array::sum(array::sub_array(input, 1, STATE_SIZE - 1));
-        output[0] = (line_sum + DIFF_DIAGONAL[0] * x7) * DIFF_MULTIPLIER;
-        array::zip(
-            array::zip(
-                array::sub_array(input, 1, STATE_SIZE - 1),
-                array::sub_array(output, 1, STATE_SIZE - 1),
-                constr |in_v, out_v| (in_v, out_v)
-            ),
-            array::sub_array(DIFF_DIAGONAL, 1, STATE_SIZE - 1),
-            constr |(in_v, out_v), diag| out_v = (line_sum + diag * in_v) * DIFF_MULTIPLIER
-        );
-    };
 
     // Creates a sequence of 4-byte sparsed addresses.
     let address_inc = constr |addr_high, addr_low| {
@@ -238,52 +156,8 @@ machine Poseidon2GL(mem: Memory, split_GL: SplitGL) with
     link if is_used ~> (input_high[14], input_low[14]) = mem.mload(input_addr_high[14], input_addr_low[14], time_step);
     link if is_used ~> (input_high[15], input_low[15]) = mem.mload(input_addr_high[15], input_addr_low[15], time_step);
 
+    // Assemble the two limbs of the input
     let input = array::zip(input_low, input_high, |low, high| low + 0x10000 * high);
-
-    // Perform the inital MDS step
-    let pre_rounds = apply_mds(input, STATE_SIZE);
-
-    // Perform most of the rounds
-    let final_full_state = (constr || {
-        // Perform the first half of the external rounds
-        let after_initial_rounds = utils::fold(
-            HALF_EXTERNAL_ROUNDS, |round_idx| round_idx, pre_rounds,
-            constr |pre_state, round_idx| {
-            //    let post_state: col[STATE_SIZE];
-                let post_state = array::new(STATE_SIZE, |_| { let x; x});
-                external_round(round_idx, pre_state, post_state);
-                post_state
-            }
-        );
-
-        // Perform the internal rounds
-        let after_internal_rounds = utils::fold(
-            INTERNAL_ROUNDS, |round_idx| round_idx, after_initial_rounds,
-            constr |pre_state, round_idx| {
-                let post_state = array::new(STATE_SIZE, |_| { let x; x});
-                internal_round(round_idx, pre_state, post_state);
-                post_state
-            }
-        );
-
-        // Perform the second half of the external rounds, except the last one
-        utils::fold(
-            HALF_EXTERNAL_ROUNDS - 1,
-            |round_idx| round_idx + HALF_EXTERNAL_ROUNDS,
-            after_internal_rounds,
-            constr |pre_state, round_idx| {
-                let post_state = array::new(STATE_SIZE, |_| { let x; x});
-                external_round(round_idx, pre_state, post_state);
-                post_state
-            }
-        )
-    })();
-
-    // Perform the last external round
-    // It is special because the output is smaller than the entire state,
-    // so the MDS matrix multiplication is only partial.
-    let output: col[OUTPUT_SIZE];
-    external_round(2 * HALF_EXTERNAL_ROUNDS - 1, final_full_state, output);
 
     // Split the output into high and low limbs
     let output_low: col[OUTPUT_SIZE];
