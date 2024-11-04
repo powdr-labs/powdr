@@ -206,12 +206,12 @@ impl TypeChecker {
                 continue;
             };
 
-            let declared_type = self.declared_types[&name].clone();
-            if declared_type.vars.is_empty() {
+            let declared_type_scheme = self.type_scheme_from_declared_type(&name);
+            if declared_type_scheme.vars.is_empty() {
                 self.declared_type_vars.clear();
-                self.process_concrete_symbol(declared_type.declared_type().clone(), value)?;
+                self.process_concrete_symbol(declared_type_scheme.ty.clone(), value)?;
             } else {
-                self.declared_type_vars = declared_type
+                self.declared_type_vars = declared_type_scheme
                     .vars
                     .vars()
                     .map(|v| (v.clone(), self.unifier.new_type_var()))
@@ -229,24 +229,25 @@ impl TypeChecker {
 
         // Now we check for all symbols that are not declared as a type scheme that they
         // can resolve to a concrete type.
-        for (name, declared_type) in &self.declared_types {
-            if declared_type.vars.is_empty() {
-                // It is not a type scheme, see if we were able to derive a concrete type.
-
-                let inferred = self.type_into_substituted(declared_type.declared_type().clone());
-                if !inferred.is_concrete_type() {
-                    let inferred_scheme = self.to_type_scheme(inferred);
-                    return Err(declared_type.source.with_error(
-                        format!(
-                            "Could not derive a concrete type for symbol {name}.\nInferred type scheme: {}\n",
-                            format_type_scheme_around_name(
-                                name,
-                                &Some(inferred_scheme),
-                            )
-                        )));
-                }
-            }
-        }
+        self.declared_types
+            .iter()
+            .filter(|(_, declared_type)| declared_type.vars.is_empty())
+            // It is not a type scheme, see if we were able to derive a concrete type.
+            .map(|(name, declared_type)| {
+                (
+                    name,
+                    declared_type.source.clone(),
+                    self.type_into_substituted(declared_type.declared_type().clone()),
+                )
+            })
+            .filter(|(_, _, inferred)| !inferred.is_concrete_type())
+            .try_for_each(|(name, source, inferred)| {
+                let inferred_scheme = self.to_type_scheme(inferred);
+                Err(source.with_error(format!(
+            "Could not derive a concrete type for symbol {name}.\nInferred type scheme: {}\n",
+            format_type_scheme_around_name(name, &Some(inferred_scheme))
+        )))
+            })?;
 
         // We check type schemes last, because only at this point do we know
         // that other types that should be concrete do not occur as type variables in the
@@ -254,6 +255,17 @@ impl TypeChecker {
         // This also computes and returns a mapping from the internal names of the type vars
         // in the type scheme to the type vars of the declarations.
         self.verify_type_schemes(inferred_types)
+    }
+
+    fn type_scheme_from_declared_type(&mut self, name: &String) -> TypeScheme {
+        let declared_type = self.declared_types[name].clone();
+
+        match declared_type.ty {
+            DeclaredTypeKind::Struct(_, _) => {
+                unreachable!("Declared types for Structs should have been removed at this point")
+            }
+            DeclaredTypeKind::Type(_) => declared_type.scheme(),
+        }
     }
 
     /// Fills self.declared_types and checks that declared builtins have the correct type.
