@@ -267,97 +267,6 @@ impl<F: FieldElement> ExecutionTrace<F> {
         reg_writes: Vec<RegWrite<F>>,
         pc: usize,
     ) -> Self {
-        // let cols: HashMap<String, _> = vec![
-        //     "main::pc_update",
-        //     "main::reg_write_X_query_arg_1",
-        //     "main::reg_write_X_query_arg_2",
-        //     "main::read_Y_query_arg_1", // TODO: double check this column
-        //     "main::X_b1",
-        //     "main::X_b2",
-        //     "main::X_b3",
-        //     "main::X_b4",
-        //     "main::wrap_bit",
-        //     "main::X",
-        //     "main::X_const",
-        //     "main::X_read_free",
-        //     "main::X_free_value",
-        //     "main::Y_b5",
-        //     "main::Y_b6",
-        //     "main::Y_b7",
-        //     "main::Y_b8",
-        //     "main::Y_7bit",
-        //     "main::Y_15bit",
-        //     "main::Y",
-        //     "main::Y_const",
-        //     "main::Y_read_free",
-        //     "main::Y_free_value",
-        //     "main::Z",
-        //     "main::Z_const",
-        //     "main::W",
-        //     "main::W_const",
-        //     "main::tmp1_col",
-        //     "main::tmp2_col",
-        //     "main::tmp3_col",
-        //     "main::tmp4_col",
-        //     "main::XX",
-        //     "main::XXIsZero",
-        //     "main::XX_inv",
-        //     "main::REM_b1",
-        //     "main::REM_b2",
-        //     "main::REM_b3",
-        //     "main::REM_b4",
-        //     "main::_operation_id",
-        //     "main::instr_set_reg",
-        //     "main::instr_get_reg",
-        //     "main::instr_affine",
-        //     "main::instr_mload",
-        //     "main::instr_mstore",
-        //     "main::instr_load_label",
-        //     "main::instr_load_label_param_l",
-        //     "main::instr_jump",
-        //     "main::instr_jump_param_l",
-        //     "main::instr_jump_dyn",
-        //     "main::instr_branch_if_diff_nonzero",
-        //     "main::instr_branch_if_diff_nonzero_param_l",
-        //     "main::instr_branch_if_diff_equal",
-        //     "main::instr_branch_if_diff_equal_param_l",
-        //     "main::instr_skip_if_equal",
-        //     "main::instr_branch_if_diff_greater_than",
-        //     "main::instr_branch_if_diff_greater_than_param_l",
-        //     "main::instr_is_diff_greater_than",
-        //     "main::instr_is_equal_zero",
-        //     "main::instr_is_not_equal",
-        //     "main::instr_and",
-        //     "main::instr_or",
-        //     "main::instr_xor",
-        //     "main::instr_shl",
-        //     "main::instr_shr",
-        //     "main::instr_split_gl",
-        //     "main::instr_wrap16",
-        //     "main::instr_divremu",
-        //     "main::instr_add_wrap",
-        //     "main::instr_sub_wrap_with_offset",
-        //     "main::instr_sign_extend_byte",
-        //     "main::instr_sign_extend_16_bits",
-        //     "main::instr_to_signed",
-        //     "main::instr_mul",
-        //     "main::instr__jump_to_operation",
-        //     "main::instr__reset",
-        //     "main::instr__loop",
-        //     "main::instr_return",
-        //     "main::instr_fail",
-        //     // TODO: handle coprocessor submachines
-        //     // "main::instr_affine_256",
-        //     // "main::instr_ec_add",
-        //     // "main::instr_ec_double",
-        //     // "main::instr_mod_256",
-        //     // "main::instr_keccakf",
-        //     // "main::instr_poseidon_gl",
-        // ]
-        // .iter()
-        // .map(|n| (n.to_string(), vec![Elem::Field(F::zero()), Elem::Field(F::zero())]))
-        // .collect();
-
         let cols: HashMap<String, _> = witness_cols
             .into_iter()
             .filter(|n| n.starts_with("main::"))
@@ -981,7 +890,16 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
     fn init(&mut self) {
         self.step = 4;
         for i in 0..2 {
-            self.set_program_columns(i);
+            for (fixed, col) in &self.program_cols {
+                let val = Elem::Field(
+                    *self
+                        .get_fixed(fixed)
+                        .unwrap_or(&Vec::new())
+                        .get(i as usize)
+                        .unwrap_or(&F::zero()),
+                );
+                self.proc.set_col_idx(col, i as usize, val);
+            }
             self.proc
                 .set_col_idx("main::_operation_id", i as usize, 2.into());
             self.proc
