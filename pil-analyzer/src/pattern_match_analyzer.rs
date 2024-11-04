@@ -35,11 +35,11 @@ enum InfinitePatternSpace {
 }
 
 impl PartialEq for PatternSpace {
+    /// Checks if two PatternSpace instances are equal.
+    /// PatternSpace::Any always returns false when compared with any other PatternSpace.
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Contained(a, b1), Self::Contained(c, b2)) => {
-                b1 == b2 && a.len() == c.len() && a.iter().all(|item| c.contains(item))
-            }
+            (Self::Contained(a, b1), Self::Contained(c, b2)) => b1 == b2 && a == c,
             (Self::Finite(a), Self::Finite(b)) => a == b,
             (Self::Infinite(a, f1), Self::Infinite(b, f2)) => a == b && f1 == f2,
             _ => false,
@@ -127,13 +127,13 @@ impl PatternSpace {
         match (self, other) {
             (p, PatternSpace::Any) => p,
             (PatternSpace::Any, p) => p.clone(),
-            (PatternSpace::Contained(ps, b), PatternSpace::Contained(os, _)) => {
+            (PatternSpace::Contained(ps, f1), PatternSpace::Contained(os, f2)) => {
                 let mut new_ps = Vec::new();
                 for (o, p) in os.iter().zip(ps.iter()) {
                     new_ps.push(p.clone().union(o));
                 }
 
-                PatternSpace::Contained(new_ps, b)
+                PatternSpace::Contained(new_ps, f1 || *f2)
             }
             (
                 PatternSpace::Infinite(InfinitePatternSpace::Number(ns), full1),
@@ -166,8 +166,9 @@ impl PatternSpace {
                         })
                     })
             }
-            PatternSpace::Contained(items, _) => items.iter().all(|item| item.all_covered()),
-            //_ => unimplemented!(),
+            PatternSpace::Contained(items, covered) => {
+                *covered || items.iter().all(|item| item.all_covered())
+            }
         }
     }
 
@@ -223,8 +224,15 @@ pub fn analyze_match_patterns(
             println!("Iguales: {:?} {:?}", covered_space, substracted_space);
             redundant_patterns.push(pattern_index);
         } else {
+            println!("Desiguales: {:?} {:?}", covered_space, substracted_space);
             needed_patterns.push(pattern);
             covered_space = substracted_space;
+        }
+
+        if covered_space.all_covered() {
+            // Add all remaining patterns as redundant
+            redundant_patterns.extend((pattern_index + 1)..patterns.len());
+            break;
         }
     }
 
@@ -271,23 +279,27 @@ fn solve_ellipsis(patterns: &[Pattern]) -> Vec<Pattern> {
 fn expand_ellipsis(items: &[Pattern], max_size: usize) -> Vec<Pattern> {
     let mut new_items = Vec::new();
     let mut ellipsis_found = false;
-    let mut remaining_size = max_size;
 
-    for item in items {
+    for (i, item) in items.iter().enumerate() {
         match item {
             Pattern::Ellipsis(sr) => {
                 if ellipsis_found {
                     panic!("Multiple ellipsis patterns are not supported"); // TODO: Report error (if is not already cached before)
                 }
                 ellipsis_found = true;
-                while new_items.len() < max_size {
+
+                // Calculate remaining items after ellipsis
+                let remaining_items = items.len() - (i + 1);
+                // Calculate how many CatchAll patterns we need
+                let catchall_count = max_size - (new_items.len() + remaining_items);
+
+                // Add the required CatchAll patterns
+                for _ in 0..catchall_count {
                     new_items.push(Pattern::CatchAll(sr.clone()));
-                    remaining_size -= 1;
                 }
             }
             p => {
                 new_items.push(p.clone());
-                remaining_size -= 1;
             }
         }
     }
@@ -323,12 +335,18 @@ fn create_pattern_space(pattern: &Pattern) -> PatternSpace {
         }
         Pattern::Variable(_, _) => PatternSpace::Any,
         Pattern::Tuple(_, p) => {
+            let full = p
+                .iter()
+                .all(|pattern| matches!(pattern, Pattern::CatchAll(_) | Pattern::Variable(_, _)));
             let inner_space = p.iter().map(create_pattern_space).collect();
-            PatternSpace::Contained(inner_space, false)
+            PatternSpace::Contained(inner_space, full)
         }
         Pattern::Array(_, p) => {
+            let full = p
+                .iter()
+                .all(|pattern| matches!(pattern, Pattern::CatchAll(_) | Pattern::Variable(_, _)));
             let inner_space = p.iter().map(create_pattern_space).collect();
-            PatternSpace::Contained(inner_space, false)
+            PatternSpace::Contained(inner_space, full)
         }
         Pattern::Enum(_, name, fields) => {
             let inner_space = fields
@@ -345,7 +363,8 @@ fn create_pattern_space(pattern: &Pattern) -> PatternSpace {
 // Expands a pattern to cover all its variations.
 fn expand_pattern_space(pattern: PatternSpace, enums: &EnumDefinitions) -> Vec<PatternSpace> {
     let vec = match pattern {
-        PatternSpace::Contained(inner, _) => {
+        PatternSpace::Contained(inner, full) => {
+            // TODO: Check if when full is true, we can avoid expansion
             let mut expanded_enums = Vec::new();
             for inner_space in inner {
                 let expanded = expand_pattern_space(inner_space, enums);
@@ -355,7 +374,7 @@ fn expand_pattern_space(pattern: PatternSpace, enums: &EnumDefinitions) -> Vec<P
 
             product
                 .iter()
-                .map(|p| PatternSpace::Contained(p.to_vec(), false))
+                .map(|p| PatternSpace::Contained(p.to_vec(), full))
                 .collect()
         }
         PatternSpace::Finite(FinitePatternSpace::Enum(variants)) => {
@@ -479,15 +498,11 @@ mod tests {
     use powdr_ast::parsed::asm::{Part, SymbolPath};
     use powdr_parser_util::SourceRef;
 
-    fn dummy_sr() -> SourceRef {
-        SourceRef::unknown()
-    }
-
     #[test]
     fn test_basic_match_analysis() {
         let patterns = vec![
-            Pattern::String(dummy_sr(), "A".to_string()),
-            Pattern::String(dummy_sr(), "B".to_string()),
+            Pattern::String(SourceRef::unknown(), "A".to_string()),
+            Pattern::String(SourceRef::unknown(), "B".to_string()),
         ];
         let enums = HashMap::new();
         let report = analyze_match_patterns(&patterns, &enums);
@@ -498,9 +513,9 @@ mod tests {
     #[test]
     fn test_match_analysis_repeated_pattern() {
         let patterns = vec![
-            Pattern::String(dummy_sr(), "A".to_string()),
-            Pattern::String(dummy_sr(), "A".to_string()),
-            Pattern::String(dummy_sr(), "A".to_string()),
+            Pattern::String(SourceRef::unknown(), "A".to_string()),
+            Pattern::String(SourceRef::unknown(), "A".to_string()),
+            Pattern::String(SourceRef::unknown(), "A".to_string()),
         ];
 
         let enums = HashMap::new();
@@ -557,6 +572,56 @@ mod tests {
         let report = analyze_match_patterns(&patterns, &enums);
         assert!(!report.is_exhaustive);
         assert!(report.redundant_patterns.is_empty());
+    }
+
+    #[test]
+    fn test_match_analysis_catchall_array() {
+        let patterns = vec![
+            Pattern::Array(
+                SourceRef::unknown(),
+                vec![
+                    Pattern::CatchAll(SourceRef::unknown()),
+                    Pattern::CatchAll(SourceRef::unknown()),
+                ],
+            ),
+            Pattern::Array(
+                SourceRef::unknown(),
+                vec![
+                    Pattern::Number(SourceRef::unknown(), 9.into()),
+                    Pattern::Number(SourceRef::unknown(), 8.into()),
+                ],
+            ),
+        ];
+
+        let enums = HashMap::new();
+        let report = analyze_match_patterns(&patterns, &enums);
+        assert!(report.is_exhaustive);
+        assert_eq!(report.redundant_patterns, vec![1]);
+    }
+
+    #[test]
+    fn test_match_analysis_double_catchall_array() {
+        let patterns = vec![
+            Pattern::Array(
+                SourceRef::unknown(),
+                vec![
+                    Pattern::CatchAll(SourceRef::unknown()),
+                    Pattern::CatchAll(SourceRef::unknown()),
+                ],
+            ),
+            Pattern::Array(
+                SourceRef::unknown(),
+                vec![
+                    Pattern::CatchAll(SourceRef::unknown()),
+                    Pattern::CatchAll(SourceRef::unknown()),
+                ],
+            ),
+        ];
+
+        let enums = HashMap::new();
+        let report = analyze_match_patterns(&patterns, &enums);
+        assert!(report.is_exhaustive);
+        assert_eq!(report.redundant_patterns, vec![1]);
     }
 
     #[test]
@@ -829,7 +894,7 @@ mod tests {
                 SourceRef::unknown(),
                 vec![
                     Pattern::Number(SourceRef::unknown(), 1.into()),
-                    Pattern::Ellipsis(dummy_sr()),
+                    Pattern::Ellipsis(SourceRef::unknown()),
                 ],
             ),
             Pattern::Array(
@@ -845,4 +910,70 @@ mod tests {
         assert!(!report.is_exhaustive);
         assert!(report.redundant_patterns.is_empty());
     }
+
+    #[test]
+    fn test_array_ellipsis_redundant_patterns() {
+        let patterns = vec![
+            Pattern::Array(
+                SourceRef::unknown(),
+                vec![
+                    Pattern::CatchAll(SourceRef::unknown()),
+                    Pattern::Ellipsis(SourceRef::unknown()),
+                ],
+            ),
+            Pattern::Array(
+                SourceRef::unknown(),
+                vec![
+                    Pattern::Number(SourceRef::unknown(), 1.into()),
+                    Pattern::Ellipsis(SourceRef::unknown()),
+                ],
+            ),
+        ];
+        let enums = HashMap::new();
+        let report = analyze_match_patterns(&patterns, &enums);
+        assert!(report.is_exhaustive);
+        assert_eq!(report.redundant_patterns, vec![1]);
+    }
+
+    #[test]
+    fn test_array_ellipsis_exhaustive() {
+        let patterns = vec![Pattern::Array(
+            SourceRef::unknown(),
+            vec![
+                Pattern::CatchAll(SourceRef::unknown()),
+                Pattern::Ellipsis(SourceRef::unknown()),
+                Pattern::CatchAll(SourceRef::unknown()),
+            ],
+        )];
+        let enums = HashMap::new();
+        let report = analyze_match_patterns(&patterns, &enums);
+        assert!(report.is_exhaustive);
+        assert!(report.redundant_patterns.is_empty());
+    }
+
+    // #[test]
+    // fn test_array_ellipsis_non_exhaustive() {
+    //     let patterns = vec![
+    //         Pattern::Array(
+    //             SourceRef::unknown(),
+    //             vec![
+    //                 Pattern::Number(SourceRef::unknown(), 1.into()),
+    //                 Pattern::Ellipsis(SourceRef::unknown()),
+    //                 Pattern::Number(SourceRef::unknown(), 2.into()),
+    //             ],
+    //         ),
+    //         Pattern::Array(
+    //             SourceRef::unknown(),
+    //             vec![
+    //                 Pattern::Number(SourceRef::unknown(), 1.into()),
+    //                 Pattern::Ellipsis(SourceRef::unknown()),
+    //                 Pattern::Number(SourceRef::unknown(), 2.into()),
+    //             ],
+    //         ),
+    //     ];
+    //     let enums = HashMap::new();
+    //     let report = analyze_match_patterns(&patterns, &enums);
+    //     assert!(!report.is_exhaustive);
+    //     assert_eq!(report.redundant_patterns, vec![1]);
+    // }
 }

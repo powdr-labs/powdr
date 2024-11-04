@@ -15,7 +15,7 @@ use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_ast::parsed::{
     self, FunctionKind, LambdaExpression, PILFile, PilStatement, SymbolCategory,
-    TraitImplementation, TypedExpression,
+    TraitImplementation, TypeDeclaration, TypedExpression,
 };
 use powdr_number::{FieldElement, GoldilocksField};
 
@@ -366,7 +366,10 @@ impl PILAnalyzer {
             .definitions
             .iter()
             .filter_map(|(_, (_, def))| {
-                if let Some(FunctionValueDefinition::TypeDeclaration(enum_decl)) = def {
+                if let Some(FunctionValueDefinition::TypeDeclaration(TypeDeclaration::Enum(
+                    enum_decl,
+                ))) = def
+                {
                     Some((
                         enum_decl.name.as_str(),
                         enum_decl
