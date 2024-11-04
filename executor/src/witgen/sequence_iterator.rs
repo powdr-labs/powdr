@@ -23,7 +23,7 @@ pub struct DefaultSequenceIterator {
     /// The current row delta index.
     cur_row_delta_index: usize,
     /// Index of the current action. Actions are:
-    /// [process identity 1, ..., process identity <identities_count>, process queries, process outer query (if on outer_query_row)]
+    /// [prover functions on full block, process identity 1, ..., process identity <identities_count>, process queries, process outer query (if on outer_query_row)]
     /// Can be -1 to indicate that the round has just started.
     cur_action_index: i32,
     /// The number of rounds for the current row delta.
@@ -39,13 +39,18 @@ const MAX_ROUNDS_PER_ROW_DELTA: usize = 100;
 impl DefaultSequenceIterator {
     pub fn new(block_size: usize, identities_count: usize, outer_query_row: Option<i64>) -> Self {
         let max_row = block_size as i64 - 1;
+        // Start on the outer query row if it is provided.
+        let row_deltas = outer_query_row
+            .iter()
+            .cloned()
+            .chain(-1..=max_row)
+            .chain((-1..max_row).rev())
+            .chain(0..=max_row)
+            .chain((-1..max_row).rev())
+            .collect();
         DefaultSequenceIterator {
             identities_count,
-            row_deltas: (-1..=max_row)
-                .chain((-1..max_row).rev())
-                .chain(0..=max_row)
-                .chain((-1..max_row).rev())
-                .collect(),
+            row_deltas,
             outer_query_row,
             progress_in_current_round: false,
             cur_row_delta_index: 0,
@@ -71,18 +76,15 @@ impl DefaultSequenceIterator {
     }
 
     fn has_more_actions(&self) -> bool {
-        let row_delta = self.row_deltas[self.cur_row_delta_index];
-        let is_on_row_with_outer_query = self.outer_query_row == Some(row_delta);
-
-        let last_action_index = if is_on_row_with_outer_query {
-            // In the last row, we want to do one more action, processing the outer query.
-            self.identities_count as i32 + 1
+        let action_count = if self.is_on_outer_query_row() {
+            // On the query row, we do [outer query, prover functions, identities, prover queries, outer query].
+            self.identities_count as i32 + 4
         } else {
-            // Otherwise, we want to process all identities + 1 action processing the prover queries
-            self.identities_count as i32
+            // Otherwise, we do [identities, prover queries]
+            self.identities_count as i32 + 1
         };
 
-        self.cur_action_index < last_action_index
+        self.cur_action_index < action_count - 1
     }
 
     fn start_next_round(&mut self) {
@@ -126,23 +128,50 @@ impl DefaultSequenceIterator {
         Some(self.current_step())
     }
 
+    fn is_on_outer_query_row(&self) -> bool {
+        let row_delta = self.row_deltas[self.cur_row_delta_index];
+        self.outer_query_row == Some(row_delta)
+    }
+
     fn current_step(&self) -> SequenceStep {
         assert!(self.cur_action_index != -1);
-        SequenceStep {
-            row_delta: self.row_deltas[self.cur_row_delta_index],
-            action: match self.cur_action_index.cmp(&(self.identities_count as i32)) {
-                std::cmp::Ordering::Less => {
-                    Action::InternalIdentity(self.cur_action_index as usize)
+        let row_delta = self.row_deltas[self.cur_row_delta_index];
+        let action_index = if self.is_on_outer_query_row() {
+            // On outer query row, we have the actions:
+            // outer query, prover functions, identities, prover queries, outer query
+            match self.cur_action_index {
+                0 => {
+                    return SequenceStep {
+                        row_delta,
+                        action: Action::OuterQuery,
+                    }
                 }
-                std::cmp::Ordering::Equal => Action::ProverQueries,
-                std::cmp::Ordering::Greater => Action::OuterQuery,
-            },
-        }
+                1 => {
+                    return SequenceStep {
+                        row_delta,
+                        action: Action::ProverFunctionsOnLatch,
+                    }
+                }
+                _ => {}
+            };
+            self.cur_action_index - 2
+        } else {
+            // Here we have identities, prover queries.
+            self.cur_action_index
+        };
+        let action = match action_index.cmp(&(self.identities_count as i32)) {
+            std::cmp::Ordering::Less => Action::InternalIdentity(action_index as usize),
+            std::cmp::Ordering::Equal => Action::ProverQueries,
+            std::cmp::Ordering::Greater => Action::OuterQuery,
+        };
+
+        SequenceStep { row_delta, action }
     }
 }
 
 #[derive(Clone, Copy, Debug)]
 pub enum Action {
+    ProverFunctionsOnLatch,
     InternalIdentity(usize),
     OuterQuery,
     ProverQueries,

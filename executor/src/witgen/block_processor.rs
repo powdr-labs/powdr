@@ -99,6 +99,10 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
                     progress
                 }
                 Action::ProverQueries => self.processor.process_queries(row_index)?,
+                Action::ProverFunctionsOnLatch => {
+                    // TODO
+                    false
+                }
             };
             sequence_iterator.report_progress(progress);
         }
