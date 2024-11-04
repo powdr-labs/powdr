@@ -1,6 +1,5 @@
 use std::array;
 use std::check::assert;
-use std::utils;
 use std::utils::unchanged_until;
 use std::utils::force_bool;
 use std::utils::sum;
@@ -15,7 +14,7 @@ use std::machines::split::split_gl::SplitGL;
 // for building a Merkle tree.
 //
 // Differently from our Poseidon Goldilocks implementation, we will use a
-// state size of 8 field elements instead of 12.
+// state size of 8 field elements instead of 12, matching Plonky3's implementation.
 machine Poseidon2GL(mem: Memory, split_GL: SplitGL) with
     latch: latch,
     operation_id: operation_id,
@@ -24,17 +23,17 @@ machine Poseidon2GL(mem: Memory, split_GL: SplitGL) with
 {
     // Is this a used row?
     let is_used = array::sum(sel);
-    utils::force_bool(is_used);
+    force_bool(is_used);
 
     // The input data is passed via a memory pointer: the machine will read STATE_SIZE
-    // field elements from memory, in pairs of 16-bit limbs for BabyBear.
+    // field elements from memory.
     //
     // Similarly, the output data is written to memory at the provided pointer.
     //
     // Reads happen at the provided time step; writes happen at the next time step.
     operation poseidon2_permutation<0>
-        input_addr_high[0], input_addr_low[0],
-        output_addr_high[0], output_addr_low[0],
+        input_addr[0],
+        output_addr[0],
         time_step ->;
 
     let latch = 1;
@@ -111,29 +110,8 @@ machine Poseidon2GL(mem: Memory, split_GL: SplitGL) with
         17087002564333290124,
     ];
 
-    // Creates a sequence of 4-byte sparsed addresses.
-    let address_inc = constr |addr_high, addr_low| {
-        let addr = array::zip(
-            addr_high,
-            addr_low,
-            |high, low| (high, low)
-        );
-
-        array::fold(
-            array::zip(
-                array::sub_array(addr, 0, array::len(addr) - 1),
-                array::sub_array(addr, 1, array::len(addr) - 1),
-                constr |(high, low), (next_high, next_low)| {
-                    increment_ptr(4, high, low, next_high, next_low)
-                }
-            ), [],
-            |a, b| a + b
-        )
-    };
-
     // Calculate the addresses and load all the inputs into the first time step
-    let input_addr_high: col[STATE_SIZE];
-    let input_addr_low: col[STATE_SIZE];
+    let input_addr: col[STATE_SIZE];
     address_inc(input_addr_high, input_addr_low);
 
     let input_low: col[STATE_SIZE];

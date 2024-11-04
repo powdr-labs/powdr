@@ -11,26 +11,6 @@ let pow_7 = constr |x| {
     x7
 };
 
-// Creates a sequence of 4-byte sparsed addresses.
-let address_inc = constr |addr_high, addr_low| {
-    let addr = array::zip(
-        addr_high,
-        addr_low,
-        |high, low| (high, low)
-    );
-
-    array::fold(
-        array::zip(
-            array::sub_array(addr, 0, array::len(addr) - 1),
-            array::sub_array(addr, 1, array::len(addr) - 1),
-            constr |(high, low), (next_high, next_low)| {
-                increment_ptr(4, high, low, next_high, next_low)
-            }
-        ), [],
-        |a, b| a + b
-    )
-};
-
 // A full poseidon2 permutation.
 let poseidon2 = constr |
     state_size,
