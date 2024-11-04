@@ -118,9 +118,10 @@ impl<F: FieldElement> StwoProver<F> {
         Ok(bincode::serialize(&proof).unwrap())
     }
     
-    pub fn verify<MC: MerkleChannel>(
-        &self, proof: StarkProof<MC::H>, 
-        instances: &[Vec<F>]) -> Result<(), ProvingError> {
+    pub fn verify(&self, proof: &[u8], instances: &Vec<F>) -> Result<(), String> {
+            let proof: StarkProof<<Poseidon252MerkleChannel as MerkleChannel>::H> =
+            bincode::deserialize(proof).map_err(|e| format!("Failed to deserialize proof: {e}"))?;
+
         let config = PcsConfig {
             pow_bits: 16,                          // Any value you want to set for pow_bits
             fri_config: FriConfig::new(0, 1, 100), // Using different numbers for FriConfig
@@ -128,24 +129,18 @@ impl<F: FieldElement> StwoProver<F> {
 
         let verifier_channel = &mut Poseidon252Channel::default();
         let commitment_scheme =
-            &mut CommitmentSchemeVerifier::<Poseidon252MerkleChannel>::new(config);
+        &mut CommitmentSchemeVerifier::<Poseidon252MerkleChannel>::new(config);
 
-        // Retrieve the expected column sizes in each commitment interaction, from the AIR.
-        // let sizes = component.trace_log_degree_bounds();
-        // commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
+          // Retrieve the expected column sizes in each commitment interaction, from the AIR.
+          let sizes = component.trace_log_degree_bounds();
+          commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
 
-        //     println!("proving time for fibo length of {:?} is {:?}",fibonacci_y_length, duration);
-        //     println!("proof size is {:?} bytes",proof.size_estimate());
-
-        //     let verifystart = Instant::now();
-        // stwo_prover::core::prover::verify(
-        //     &[&component],
-        //     verifier_channel,
-        //     commitment_scheme,
-        //     proof,
-        // )
-        //.unwrap();
-    unimplemented!()
+          stwo_prover::core::prover::verify(
+              &[&component],
+              verifier_channel,
+              commitment_scheme,
+              proof,
+          ).map_err(|e| e.to_string())
 
 }  
 }

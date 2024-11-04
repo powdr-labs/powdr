@@ -46,8 +46,10 @@ impl<F: FieldElement> BackendFactory<F> for StwoProverFactory {
 impl<T: FieldElement> Backend<T> for StwoProver<T> {
     #[allow(unused_variables)]
     fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
-        assert!(instances.len() == 1);
-        unimplemented!()
+        assert_eq!(instances.len(), 1);
+        let instances = &instances[0];
+
+        Ok(self.verify(proof, instances)?)
     }
     #[allow(unreachable_code)]
     #[allow(unused_variables)]
