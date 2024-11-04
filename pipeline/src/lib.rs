@@ -3,6 +3,7 @@
 #![deny(clippy::print_stdout)]
 
 pub mod pipeline;
+pub mod test_runner;
 pub mod test_util;
 pub mod util;
 pub mod verify;

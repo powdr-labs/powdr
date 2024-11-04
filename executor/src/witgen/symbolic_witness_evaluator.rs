@@ -64,7 +64,7 @@ where
                     Ok(values[row as usize].into())
                 }
             }
-            _ => todo!(),
+            AlgebraicVariable::Public(_) => self.witness_access.value(var),
         }
     }
 

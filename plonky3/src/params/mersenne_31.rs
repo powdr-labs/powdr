@@ -1,14 +1,12 @@
 //! The concrete parameters used in the prover for Mersenne-31
+//!
 //! Inspired from [this example](https://github.com/Plonky3/Plonky3/blob/7c5deb0eab7191a97f7bb088637c1a68b2e6eb68/keccak-air/examples/prove_m31_poseidon2.rs)
 
-use std::marker::PhantomData;
+use core::marker::PhantomData;
 
 use lazy_static::lazy_static;
 
-use crate::params::{
-    poseidon2::{poseidon2_external_constants, poseidon2_internal_constants},
-    Challenger, FieldElementMap, Plonky3Field,
-};
+use crate::params::{poseidon2, Challenger, FieldElementMap, Plonky3Field};
 use p3_challenger::DuplexChallenger;
 use p3_circle::CirclePcs;
 use p3_commit::ExtensionMmcs;
@@ -60,10 +58,10 @@ lazy_static! {
     static ref ROUNDS_P: usize = ROUNDS.1;
     static ref PERM_M31: Perm = Perm::new(
         *ROUNDS_F,
-        poseidon2_external_constants(*ROUNDS_F),
+        poseidon2::external_constants(*ROUNDS_F),
         Poseidon2ExternalMatrixGeneral,
         *ROUNDS_P,
-        poseidon2_internal_constants(*ROUNDS_P),
+        poseidon2::internal_constants(*ROUNDS_P),
         DiffusionMatrixMersenne31
     );
 }

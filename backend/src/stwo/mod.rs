@@ -23,10 +23,14 @@ impl<F: FieldElement> BackendFactory<F> for StwoProverFactory {
         fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
         _output_dir: Option<PathBuf>,
         setup: Option<&mut dyn io::Read>,
+        proving_key: Option<&mut dyn io::Read>,
         verification_key: Option<&mut dyn io::Read>,
         verification_app_key: Option<&mut dyn io::Read>,
         options: BackendOptions,
     ) -> Result<Box<dyn crate::Backend<F>>, Error> {
+        if proving_key.is_some() {
+            return Err(Error::BackendError("Proving key unused".to_string()));
+        }
         if pil.degrees().len() > 1 {
             return Err(Error::NoVariableDegreeAvailable);
         }

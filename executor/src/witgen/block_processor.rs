@@ -4,9 +4,8 @@ use crate::Identity;
 
 use super::{
     affine_expression::AlgebraicVariable,
-    data_structures::finalizable_data::FinalizableData,
     machines::MachineParts,
-    processor::{OuterQuery, Processor},
+    processor::{OuterQuery, Processor, SolverState},
     rows::{RowIndex, UnknownStrategy},
     sequence_iterator::{Action, ProcessingSequenceIterator, SequenceStep},
     EvalError, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
@@ -27,13 +26,20 @@ pub struct BlockProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c, T, Q> {
     pub fn new(
         row_offset: RowIndex,
-        data: FinalizableData<T>,
+        mutable_data: SolverState<'a, T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
         fixed_data: &'a FixedData<'a, T>,
         parts: &'c MachineParts<'a, T>,
         size: DegreeType,
     ) -> Self {
-        let processor = Processor::new(row_offset, data, mutable_state, fixed_data, parts, size);
+        let processor = Processor::new(
+            row_offset,
+            mutable_data,
+            mutable_state,
+            fixed_data,
+            parts,
+            size,
+        );
         Self {
             processor,
             identities: &parts.identities,
@@ -106,7 +112,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         }
     }
 
-    pub fn finish(self) -> FinalizableData<T> {
+    /// Returns the updated data and values for publics
+    pub fn finish(self) -> SolverState<'a, T> {
         self.processor.finish()
     }
 }
@@ -125,6 +132,7 @@ mod tests {
             data_structures::finalizable_data::FinalizableData,
             identity_processor::Machines,
             machines::MachineParts,
+            processor::SolverState,
             rows::{Row, RowIndex},
             sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator},
             unused_query_callback, FixedData, MutableState, QueryCallback,
@@ -192,7 +200,7 @@ mod tests {
 
         let processor = BlockProcessor::new(
             row_offset,
-            data,
+            SolverState::without_publics(data),
             &mut mutable_state,
             &fixed_data,
             &machine_parts,
@@ -219,7 +227,7 @@ mod tests {
                 assert!(outer_updates.is_complete());
                 assert!(outer_updates.is_empty());
 
-                let data = processor.finish();
+                let data = processor.finish().block;
 
                 for &(i, name, expected) in asserted_values.iter() {
                     let poly_id = poly_ids[name];

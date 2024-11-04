@@ -5,6 +5,7 @@ use p3_commit::Pcs;
 use p3_matrix::dense::RowMajorMatrix;
 use powdr_backend_utils::machine_fixed_columns;
 use powdr_executor::constant_evaluator::VariablySizedColumn;
+use serde::{Deserialize, Serialize};
 
 use core::fmt;
 use std::collections::BTreeMap;
@@ -14,17 +15,12 @@ use powdr_ast::analyzed::Analyzed;
 
 use powdr_executor::witgen::WitgenCallback;
 
-use crate::{
-    circuit_builder::ConstraintSystem, prove, verify, Proof, StarkProvingKey, StarkVerifyingKey,
-    TableProvingKey, TableProvingKeyCollection,
+use powdr_plonky3::{
+    prove, verify, Challenger, Commitment, ConstraintSystem, FieldElementMap, PowdrCircuit, Proof,
+    ProverData, StarkProvingKey, StarkVerifyingKey, TableProvingKey, TableProvingKeyCollection,
 };
 
 use p3_uni_stark::StarkGenericConfig;
-
-use crate::{
-    circuit_builder::PowdrCircuit,
-    params::{Challenger, Commitment, FieldElementMap, ProverData},
-};
 
 pub struct Plonky3Prover<T: FieldElementMap>
 where
@@ -43,13 +39,15 @@ where
     verifying_key: Option<StarkVerifyingKey<T::Config>>,
 }
 
-pub enum VerificationKeyExportError {
+pub enum KeyExportError {
+    NoProvingKey,
     NoVerificationKey,
 }
 
-impl fmt::Display for VerificationKeyExportError {
+impl fmt::Display for KeyExportError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::NoProvingKey => write!(f, "No proving key set"),
             Self::NoVerificationKey => write!(f, "No verification key set"),
         }
     }
@@ -57,7 +55,7 @@ impl fmt::Display for VerificationKeyExportError {
 
 impl<T: FieldElementMap> Plonky3Prover<T>
 where
-    ProverData<T>: Send,
+    ProverData<T>: Send + Serialize + for<'a> Deserialize<'a>,
     Commitment<T>: Send,
 {
     pub fn new(
@@ -79,19 +77,28 @@ where
         }
     }
 
-    pub fn analyzed(&self) -> &Analyzed<T> {
-        &self.analyzed
+    pub fn set_proving_key(&mut self, rdr: &mut dyn std::io::Read) {
+        self.proving_key = Some(bincode::deserialize_from(rdr).unwrap());
     }
 
     pub fn set_verifying_key(&mut self, rdr: &mut dyn std::io::Read) {
         self.verifying_key = Some(bincode::deserialize_from(rdr).unwrap());
     }
 
-    pub fn export_verifying_key(&self) -> Result<Vec<u8>, VerificationKeyExportError> {
+    pub fn export_proving_key(&self) -> Result<Vec<u8>, KeyExportError> {
+        Ok(bincode::serialize(
+            self.proving_key
+                .as_ref()
+                .ok_or(KeyExportError::NoProvingKey)?,
+        )
+        .unwrap())
+    }
+
+    pub fn export_verifying_key(&self) -> Result<Vec<u8>, KeyExportError> {
         Ok(bincode::serialize(
             self.verifying_key
                 .as_ref()
-                .ok_or(VerificationKeyExportError::NoVerificationKey)?,
+                .ok_or(KeyExportError::NoVerificationKey)?,
         )
         .unwrap())
     }
@@ -235,7 +242,11 @@ where
 
         verify(
             verifying_key,
-            &circuit,
+            &circuit
+                .split
+                .iter()
+                .map(|(name, (_, constraints))| (name, constraints))
+                .collect(),
             &mut challenger,
             &proof,
             public_values,
@@ -275,7 +286,11 @@ where
 
         verify(
             verifying_key,
-            &PowdrCircuit::new(&self.split),
+            &self
+                .split
+                .iter()
+                .map(|(name, (_, constraints))| (name, constraints))
+                .collect(),
             &mut challenger,
             &proof,
             instance_map,
@@ -287,11 +302,12 @@ where
 #[cfg(test)]
 mod tests {
 
+    use super::Plonky3Prover;
     use powdr_number::{BabyBearField, GoldilocksField, Mersenne31Field};
     use powdr_pipeline::Pipeline;
     use test_log::test;
 
-    use crate::{Commitment, FieldElementMap, Plonky3Prover, ProverData};
+    use powdr_plonky3::{Commitment, FieldElementMap, ProverData};
 
     /// Prove and verify execution over all supported fields
     fn run_test(pil: &str) {
@@ -306,7 +322,7 @@ mod tests {
 
     fn run_test_publics_aux<F: FieldElementMap>(pil: &str, malicious_publics: &Option<Vec<usize>>)
     where
-        ProverData<F>: Send,
+        ProverData<F>: Send + serde::Serialize + for<'a> serde::Deserialize<'a>,
         Commitment<F>: Send,
     {
         let mut pipeline = Pipeline::<F>::default().from_pil_string(pil.to_string());
@@ -342,7 +358,7 @@ mod tests {
     }
 
     #[test]
-    #[should_panic = "not implemented: Unexpected expression: :oldstate"]
+    #[should_panic = "Witness generation failed."]
     fn public_reference() {
         let content = r#"
         namespace Global(8);

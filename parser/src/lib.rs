@@ -471,6 +471,28 @@ namespace N(2);
     }
 
     #[test]
+    fn parse_impl3() {
+        let input = "impl ToCol<(int -> fe)> { to_col: |x| x }";
+        let expected = "impl ToCol<(int -> fe)> {
+        to_col: |x| x,
+    }";
+
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
+    fn parse_impl4() {
+        let input = "impl ToCol<(int -> fe), int[]> { to_col: |x| x }";
+        let expected = "impl ToCol<(int -> fe), int[]> {
+        to_col: |x| x,
+    }";
+
+        let printed = format!("{}", parse(Some("input"), input).unwrap_err_to_stderr());
+        assert_eq!(expected.trim(), printed.trim());
+    }
+
+    #[test]
     fn parse_trait() {
         let input = r#"
     trait Add<T> {

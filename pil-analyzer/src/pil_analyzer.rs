@@ -6,6 +6,7 @@ use std::iter::once;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::structural_checks::check_structs_fields;
 use itertools::Itertools;
 use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, ModuleStatement, SymbolPath,
@@ -14,19 +15,19 @@ use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_ast::parsed::{
     self, FunctionKind, LambdaExpression, PILFile, PilStatement, SymbolCategory,
-    TraitImplementation,
+    TraitImplementation, TypedExpression,
 };
 use powdr_number::{FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
     type_from_definition, Analyzed, DegreeRange, Expression, FunctionValueDefinition,
-    PolynomialType, PublicDeclaration, Reference, StatementIdentifier, Symbol, SymbolKind,
-    TypedExpression,
+    PolynomialType, PublicDeclaration, Reference, SolvedTraitImpls, StatementIdentifier, Symbol,
+    SymbolKind,
 };
 use powdr_parser::{parse, parse_module, parse_type};
 use powdr_parser_util::Error;
 
-use crate::traits_resolver::{SolvedTraitImpls, TraitsResolver};
+use crate::traits_resolver::TraitsResolver;
 use crate::type_builtins::constr_function_statement_type;
 use crate::type_inference::infer_types;
 use crate::{side_effect_checker, AnalysisDriver};
@@ -44,11 +45,7 @@ pub fn analyze_ast<T: FieldElement>(pil_file: PILFile) -> Result<Analyzed<T>, Ve
 }
 
 pub fn analyze_string<T: FieldElement>(contents: &str) -> Result<Analyzed<T>, Vec<Error>> {
-    let pil_file = powdr_parser::parse(Some("input"), contents).unwrap_or_else(|err| {
-        eprintln!("Error parsing .pil file:");
-        err.output_to_stderr();
-        panic!();
-    });
+    let pil_file = powdr_parser::parse(Some("input"), contents).map_err(|e| vec![e])?;
     analyze(vec![pil_file])
 }
 
@@ -56,6 +53,7 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Result<Analyzed<T>, Vec<Erro
     let mut analyzer = PILAnalyzer::new();
     analyzer.process(files)?;
     analyzer.side_effect_check()?;
+    analyzer.validate_structs()?;
     analyzer.type_check()?;
     let solved_impls = analyzer.resolve_trait_impls()?;
     analyzer.condense(solved_impls)
@@ -78,9 +76,8 @@ struct PILAnalyzer {
     symbol_counters: Option<Counters>,
     /// Symbols from the core that were added automatically but will not be printed.
     auto_added_symbols: HashSet<String>,
-    /// All trait implementations found, organized according to their associated trait name.
-    /// If a trait has no implementations, it is still present.
-    trait_impls: HashMap<String, Vec<TraitImplementation<Expression>>>,
+    /// All trait implementations found, in source order.
+    trait_impls: Vec<TraitImplementation<Expression>>,
 }
 
 /// Reads and parses the given path and all its imports.
@@ -234,15 +231,12 @@ impl PILAnalyzer {
                 .unwrap_or_else(|err| errors.push(err));
         }
 
-        for v in self.trait_impls.values() {
-            for impl_ in v {
-                impl_
-                    .children()
-                    .try_for_each(|e| {
-                        side_effect_checker::check(&self.definitions, FunctionKind::Pure, e)
-                    })
-                    .unwrap_or_else(|err| errors.push(err));
-            }
+        for i in &self.trait_impls {
+            i.children()
+                .try_for_each(|e| {
+                    side_effect_checker::check(&self.definitions, FunctionKind::Pure, e)
+                })
+                .unwrap_or_else(|err| errors.push(err));
         }
 
         // for all proof items, check that they call pure or constr functions
@@ -257,6 +251,14 @@ impl PILAnalyzer {
         }
     }
 
+    pub fn validate_structs(&self) -> Result<(), Vec<Error>> {
+        let structs_exprs = self
+            .all_children()
+            .filter(|expr| matches!(expr, Expression::StructExpression(_, _)));
+
+        check_structs_fields(structs_exprs, &self.definitions)
+    }
+
     pub fn type_check(&mut self) -> Result<(), Vec<Error>> {
         let query_type: Type = parse_type("int -> std::prelude::Query").unwrap().into();
         let mut expressions = vec![];
@@ -265,30 +267,28 @@ impl PILAnalyzer {
         // by the statement processor already).
         // For Arrays, we also collect the inner expressions and expect them to be field elements.
 
-        for (name, trait_impls) in self.trait_impls.iter_mut() {
+        for trait_impl in self.trait_impls.iter_mut() {
             let (_, def) = self
                 .definitions
-                .get(name)
+                .get(&trait_impl.name.to_string())
                 .expect("Trait definition not found");
-
             let Some(FunctionValueDefinition::TraitDeclaration(trait_decl)) = def else {
                 unreachable!();
             };
-            for impl_ in trait_impls {
-                let specialized_types: Vec<_> = impl_
-                    .functions
-                    .iter()
-                    .map(|named_expr| impl_.type_of_function(trait_decl, &named_expr.name))
-                    .collect();
 
-                for (named_expr, specialized_type) in
-                    impl_.functions.iter_mut().zip(specialized_types)
-                {
-                    expressions.push((
-                        Arc::get_mut(&mut named_expr.body).unwrap(),
-                        specialized_type.into(),
-                    ));
-                }
+            let specialized_types: Vec<_> = trait_impl
+                .functions
+                .iter()
+                .map(|named_expr| trait_impl.type_of_function(trait_decl, &named_expr.name))
+                .collect();
+
+            for (named_expr, specialized_type) in
+                trait_impl.functions.iter_mut().zip(specialized_types)
+            {
+                expressions.push((
+                    Arc::get_mut(&mut named_expr.body).unwrap(),
+                    specialized_type.into(),
+                ));
             }
         }
 
@@ -361,7 +361,18 @@ impl PILAnalyzer {
     /// Creates and returns a map for every referenced trait function with concrete type to the
     /// corresponding trait implementation function.
     fn resolve_trait_impls(&mut self) -> Result<SolvedTraitImpls, Vec<Error>> {
-        let mut trait_solver = TraitsResolver::new(&self.trait_impls);
+        let all_traits = self
+            .definitions
+            .iter()
+            .filter_map(|(name, (_, value))| {
+                if let Some(FunctionValueDefinition::TraitDeclaration(..)) = value {
+                    Some(name.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let mut trait_solver = TraitsResolver::new(all_traits, &self.trait_impls);
 
         // TODO building this impl map should be different from checking that all trait references
         // have an implementation.
@@ -382,10 +393,7 @@ impl PILAnalyzer {
             })
             .flat_map(|d| d.children());
         let proof_items = self.proof_items.iter();
-        let trait_impls = self
-            .trait_impls
-            .values()
-            .flat_map(|impls| impls.iter().flat_map(|i| i.children()));
+        let trait_impls = self.trait_impls.iter().flat_map(|i| i.children());
         let mut errors = vec![];
         for expr in definitions
             .chain(proof_items)
@@ -410,13 +418,14 @@ impl PILAnalyzer {
 
     pub fn condense<T: FieldElement>(
         self,
-        solved_impls: HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
+        solved_impls: SolvedTraitImpls,
     ) -> Result<Analyzed<T>, Vec<Error>> {
         Ok(condenser::condense(
             self.definitions,
             solved_impls,
             self.public_declarations,
             &self.proof_items,
+            self.trait_impls,
             self.source_order,
             self.auto_added_symbols,
         ))
@@ -476,12 +485,6 @@ impl PILAnalyzer {
                     match item {
                         PILItem::Definition(symbol, value) => {
                             let name = symbol.absolute_name.clone();
-                            if matches!(value, Some(FunctionValueDefinition::TraitDeclaration(_))) {
-                                // Ensure that `trait_impls` has an entry for every trait,
-                                // even if it has no implementations.
-                                // We use this to distinguish generic functions from trait functions.
-                                self.trait_impls.entry(name.clone()).or_default();
-                            }
                             let is_new = self
                                 .definitions
                                 .insert(name.clone(), (symbol, value))
@@ -502,11 +505,12 @@ impl PILAnalyzer {
                                 .push(StatementIdentifier::ProofItem(index));
                             self.proof_items.push(item)
                         }
-                        PILItem::TraitImplementation(trait_impl) => self
-                            .trait_impls
-                            .entry(trait_impl.name.to_string())
-                            .or_default()
-                            .push(trait_impl),
+                        PILItem::TraitImplementation(trait_impl) => {
+                            let index = self.trait_impls.len();
+                            self.source_order
+                                .push(StatementIdentifier::TraitImplementation(index));
+                            self.trait_impls.push(trait_impl)
+                        }
                     }
                 }
             }
@@ -539,6 +543,34 @@ impl PILAnalyzer {
 
     fn driver(&self) -> Driver {
         Driver(self)
+    }
+}
+
+impl Children<Expression> for PILAnalyzer {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(
+            self.definitions
+                .values()
+                .filter_map(|(_, def)| def.as_ref())
+                .flat_map(|def| def.children())
+                .chain(self.trait_impls.iter().flat_map(|impl_| impl_.children()))
+                .chain(self.proof_items.iter()),
+        )
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(
+            self.definitions
+                .values_mut()
+                .filter_map(|(_, def)| def.as_mut())
+                .flat_map(|def| def.children_mut())
+                .chain(
+                    self.trait_impls
+                        .iter_mut()
+                        .flat_map(|impl_| impl_.children_mut()),
+                )
+                .chain(self.proof_items.iter_mut()),
+        )
     }
 }
 
