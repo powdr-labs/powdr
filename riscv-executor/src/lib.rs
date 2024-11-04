@@ -1046,6 +1046,19 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
     }
 
     fn exec_instruction(&mut self, name: &str, args: &[Expression]) -> Vec<Elem<F>> {
+        // shorthand macros for setting/getting witness column values
+        macro_rules! set_col {
+            ($name:ident, $val:expr) => {
+                self.proc
+                    .set_col(concat!("main::", stringify!($name)), $val);
+            };
+        }
+        macro_rules! get_col {
+            ($name:ident) => {
+                self.proc.get_col(concat!("main::", stringify!($name)))
+            };
+        }
+
         let args = args
             .iter()
             .map(|expr| self.eval_expression(expr)[0])
@@ -1053,38 +1066,10 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
         self.proc.backup_reg_mem();
 
-        let mut tmp1_col = None;
-        let mut tmp2_col = None;
-        let mut tmp3_col = None;
-        let mut tmp4_col = None;
-        let mut tmp_xx = None;
-        let mut tmp_xx_iszero = None;
-        let mut tmp_xx_inv = None;
-        let mut tmp_x_b1 = None;
-        let mut tmp_x_b2 = None;
-        let mut tmp_x_b3 = None;
-        let mut tmp_x_b4 = None;
-        let mut tmp_wrap_bit = None;
-        let mut tmp_y_7bit = None;
-        let mut tmp_y_15bit = None;
-        let mut tmp_rem_b1 = None;
-        let mut tmp_rem_b2 = None;
-        let mut tmp_rem_b3 = None;
-        let mut tmp_rem_b4 = None;
-        let mut tmp_y_b5 = None;
-        let mut tmp_y_b6 = None;
-        let mut tmp_y_b7 = None;
-        let mut tmp_y_b8 = None;
-        let mut tmp_y = None;
-
-        self.proc
-            .set_col("main::X", self.proc.get_col("main::X_const"));
-        self.proc
-            .set_col("main::Y", self.proc.get_col("main::Y_const"));
-        self.proc
-            .set_col("main::Z", self.proc.get_col("main::Z_const"));
-        self.proc
-            .set_col("main::W", self.proc.get_col("main::W_const"));
+        set_col!(X, get_col!(X_const));
+        set_col!(Y, get_col!(Y_const));
+        set_col!(Z, get_col!(Z_const));
+        set_col!(W, get_col!(W_const));
         self.proc
             .set_col(&format!("main::instr_{name}"), Elem::from_u32_as_fe(1));
 
@@ -1094,10 +1079,10 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let val = args[1];
                 self.reg_write(0, addr, val, 3);
 
-                tmp_y = Some(val);
+                set_col!(Y, val);
 
-                if !self.proc.get_col("main::Y_read_free").is_zero() {
-                    self.proc.set_col("main::Y_free_value", val);
+                if !get_col!(Y_read_free).is_zero() {
+                    set_col!(Y_free_value, val);
                 }
 
                 Vec::new()
@@ -1118,8 +1103,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let res = val1.mul(&factor).add(&offset);
 
                 self.reg_write(1, write_reg, res, 3);
-
-                tmp1_col = Some(val1);
+                set_col!(tmp1_col, val1);
 
                 Vec::new()
             }
@@ -1141,25 +1125,28 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 // Calculate the address with wrapping
                 let addr_full = addr1.bin() - addr2.bin() + offset;
                 // let addr_wrapped = (addr_full % (2_u64.pow(32) as i64)) as u32;
-                tmp_wrap_bit = if addr_full >= 2_i64.pow(32) || addr_full < 0 {
-                    Some(Elem::Field(F::one()))
-                } else {
-                    Some(Elem::Field(F::zero()))
-                };
+                set_col!(
+                    wrap_bit,
+                    if addr_full >= 2_i64.pow(32) || addr_full < 0 {
+                        Elem::Field(F::one())
+                    } else {
+                        Elem::Field(F::zero())
+                    }
+                );
 
                 self.proc
                     .memory_machine
                     .write(self.step + 3, addr, value, 1);
 
-                tmp1_col = Some(addr1);
-                tmp2_col = Some(addr2);
-                tmp3_col = Some(value);
+                set_col!(tmp1_col, addr1);
+                set_col!(tmp2_col, addr2);
+                set_col!(tmp3_col, value);
 
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(addr.into());
-                tmp_x_b1 = Some(Elem::from_u32_as_fe(b1.into()));
-                tmp_x_b2 = Some(Elem::from_u32_as_fe(b2.into()));
-                tmp_x_b3 = Some(Elem::from_u32_as_fe(b3.into()));
-                tmp_x_b4 = Some(Elem::from_u32_as_fe(b4.into()));
+                set_col!(X_b1, Elem::from_u32_as_fe(b1.into()));
+                set_col!(X_b2, Elem::from_u32_as_fe(b2.into()));
+                set_col!(X_b3, Elem::from_u32_as_fe(b3.into()));
+                set_col!(X_b4, Elem::from_u32_as_fe(b4.into()));
 
                 Vec::new()
             }
@@ -1178,17 +1165,20 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 self.reg_write(2, write_addr1, val.into(), 3);
                 self.reg_write(3, write_addr2, rem.into(), 4);
 
-                tmp1_col = Some(addr1);
-                tmp3_col = Some(Elem::from_u32_as_fe(val));
-                tmp4_col = Some(Elem::from_i64_as_fe(rem));
+                set_col!(tmp1_col, addr1);
+                set_col!(tmp3_col, Elem::from_u32_as_fe(val));
+                set_col!(tmp4_col, Elem::from_i64_as_fe(rem));
 
                 let v = addr1.add(&args[1]).as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
-                tmp_x_b1 = Some(Elem::from_u32_as_fe((b1 / 4).into()));
-                tmp_x_b2 = Some(Elem::from_u32_as_fe(b2.into()));
-                tmp_x_b3 = Some(Elem::from_u32_as_fe(b3.into()));
-                tmp_x_b4 = Some(Elem::from_u32_as_fe(b4.into()));
-                tmp_wrap_bit = Some(Elem::from_u32_as_fe(((v as u64 >> 32) & 1) as u32));
+                set_col!(X_b1, Elem::from_u32_as_fe((b1 / 4).into()));
+                set_col!(X_b2, Elem::from_u32_as_fe(b2.into()));
+                set_col!(X_b3, Elem::from_u32_as_fe(b3.into()));
+                set_col!(X_b4, Elem::from_u32_as_fe(b4.into()));
+                set_col!(
+                    wrap_bit,
+                    Elem::from_u32_as_fe(((v as u64 >> 32) & 1) as u32)
+                );
 
                 self.proc.memory_machine.read(
                     self.step + 1,
@@ -1232,7 +1222,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let label = args[1];
                 self.reg_write(0, write_reg, label, 3);
 
-                tmp1_col = Some(label);
+                set_col!(tmp1_col, label);
 
                 self.proc.set_col("main::instr_load_label_param_l", label);
 
@@ -1261,7 +1251,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 self.proc.set_pc(addr);
 
-                tmp1_col = Some(addr);
+                set_col!(tmp1_col, addr);
 
                 Vec::new()
             }
@@ -1284,12 +1274,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     self.proc.set_pc(label);
                 }
 
-                tmp1_col = Some(val1);
-                tmp2_col = Some(val2);
-                tmp_xx = Some(val);
-                tmp_xx_iszero = Some(Elem::from_bool_as_fe(tmp_xx.unwrap().is_zero()));
-                if !tmp_xx.unwrap().is_zero() {
-                    tmp_xx_inv = Some(Elem::Field(F::one() / tmp_xx.unwrap().into_fe()));
+                set_col!(tmp1_col, val1);
+                set_col!(tmp2_col, val2);
+                set_col!(XX, val);
+                set_col!(XXIsZero, Elem::from_bool_as_fe(get_col!(XX).is_zero()));
+                if !get_col!(XX).is_zero() {
+                    set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
                 }
 
                 self.proc
@@ -1310,12 +1300,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     self.proc.set_pc(label);
                 }
 
-                tmp1_col = Some(val1);
-                tmp2_col = Some(val2);
-                tmp_xx = Some(val);
-                tmp_xx_iszero = Some(Elem::from_bool_as_fe(tmp_xx.unwrap().is_zero()));
-                if !tmp_xx.unwrap().is_zero() {
-                    tmp_xx_inv = Some(Elem::Field(F::one() / tmp_xx.unwrap().into_fe()));
+                set_col!(tmp1_col, val1);
+                set_col!(tmp2_col, val2);
+                set_col!(XX, val);
+                set_col!(XXIsZero, Elem::from_bool_as_fe(get_col!(XX).is_zero()));
+                if !get_col!(XX).is_zero() {
+                    set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
                 }
 
                 self.proc
@@ -1337,12 +1327,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     self.proc.set_pc((pc + cond.s() + 1).into());
                 }
 
-                tmp1_col = Some(val1);
-                tmp2_col = Some(val2);
-                tmp_xx = Some(val);
-                tmp_xx_iszero = Some(Elem::from_bool_as_fe(tmp_xx.unwrap().is_zero()));
-                if !tmp_xx.unwrap().is_zero() {
-                    tmp_xx_inv = Some(Elem::Field(F::one() / tmp_xx.unwrap().into_fe()));
+                set_col!(tmp1_col, val1);
+                set_col!(tmp2_col, val2);
+                set_col!(XX, val);
+                set_col!(XXIsZero, Elem::from_bool_as_fe(get_col!(XX).is_zero()));
+                if !get_col!(XX).is_zero() {
+                    set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
                 }
 
                 Vec::new()
@@ -1362,8 +1352,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     self.proc.set_pc(label);
                 }
 
-                tmp1_col = Some(val1);
-                tmp2_col = Some(val2);
+                set_col!(tmp1_col, val1);
+                set_col!(tmp2_col, val2);
 
                 self.proc
                     .set_col("main::instr_branch_if_diff_greater_than_param_l", label);
@@ -1373,15 +1363,18 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 let v = val_p.as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
-                tmp_x_b1 = Some(Elem::from_u32_as_fe(b1.into()));
-                tmp_x_b2 = Some(Elem::from_u32_as_fe(b2.into()));
-                tmp_x_b3 = Some(Elem::from_u32_as_fe(b3.into()));
-                tmp_x_b4 = Some(Elem::from_u32_as_fe(b4.into()));
-                tmp_wrap_bit = if val.bin() > 0 {
-                    Some(Elem::Field(F::one()))
-                } else {
-                    Some(Elem::Field(F::zero()))
-                };
+                set_col!(X_b1, Elem::from_u32_as_fe(b1.into()));
+                set_col!(X_b2, Elem::from_u32_as_fe(b2.into()));
+                set_col!(X_b3, Elem::from_u32_as_fe(b3.into()));
+                set_col!(X_b4, Elem::from_u32_as_fe(b4.into()));
+                set_col!(
+                    wrap_bit,
+                    if val.bin() > 0 {
+                        Elem::Field(F::one())
+                    } else {
+                        Elem::Field(F::zero())
+                    }
+                );
 
                 Vec::new()
             }
@@ -1398,18 +1391,18 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let r = if val.bin() > 0 { 1 } else { 0 };
                 self.reg_write(2, write_reg, r.into(), 3);
 
-                tmp1_col = Some(val1);
-                tmp2_col = Some(val2);
+                set_col!(tmp1_col, val1);
+                set_col!(tmp2_col, val2);
 
                 let p = Elem::from_i64_as_fe((2 << 32) - 1);
                 let val = val.add(&p);
                 let v = val.as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
-                tmp_x_b1 = Some(Elem::from_u32_as_fe(b1.into()));
-                tmp_x_b2 = Some(Elem::from_u32_as_fe(b2.into()));
-                tmp_x_b3 = Some(Elem::from_u32_as_fe(b3.into()));
-                tmp_x_b4 = Some(Elem::from_u32_as_fe(b4.into()));
-                tmp_wrap_bit = Some(Elem::from_u32_as_fe(r));
+                set_col!(X_b1, Elem::from_u32_as_fe(b1.into()));
+                set_col!(X_b2, Elem::from_u32_as_fe(b2.into()));
+                set_col!(X_b3, Elem::from_u32_as_fe(b3.into()));
+                set_col!(X_b4, Elem::from_u32_as_fe(b4.into()));
+                set_col!(wrap_bit, Elem::from_u32_as_fe(r));
 
                 Vec::new()
             }
@@ -1421,11 +1414,11 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let r = if val.is_zero() { 1 } else { 0 };
                 self.reg_write(2, write_reg, r.into(), 3);
 
-                tmp1_col = Some(val);
-                tmp_xx = Some(val);
-                tmp_xx_iszero = Some(Elem::from_bool_as_fe(tmp_xx.unwrap().is_zero()));
-                if !tmp_xx.unwrap().is_zero() {
-                    tmp_xx_inv = Some(Elem::Field(F::one() / tmp_xx.unwrap().into_fe()));
+                set_col!(tmp1_col, val);
+                set_col!(XX, val);
+                set_col!(XXIsZero, Elem::from_bool_as_fe(get_col!(XX).is_zero()));
+                if !get_col!(XX).is_zero() {
+                    set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
                 }
 
                 Vec::new()
@@ -1441,13 +1434,13 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let r = if !val.is_zero() { 1 } else { 0 };
                 self.reg_write(2, write_reg, r.into(), 3);
 
-                tmp1_col = Some(val1);
-                tmp2_col = Some(val2);
-                tmp3_col = Some(Elem::from_u32_as_fe(r));
-                tmp_xx = Some(val);
-                tmp_xx_iszero = Some(Elem::from_bool_as_fe(tmp_xx.unwrap().is_zero()));
-                if !tmp_xx.unwrap().is_zero() {
-                    tmp_xx_inv = Some(Elem::Field(F::one() / tmp_xx.unwrap().into_fe()));
+                set_col!(tmp1_col, val1);
+                set_col!(tmp2_col, val2);
+                set_col!(tmp3_col, Elem::from_u32_as_fe(r));
+                set_col!(XX, val);
+                set_col!(XXIsZero, Elem::from_bool_as_fe(get_col!(XX).is_zero()));
+                if !get_col!(XX).is_zero() {
+                    set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
                 }
 
                 Vec::new()
@@ -1466,21 +1459,24 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let r = val.bin() as u32;
                 self.reg_write(2, write_reg, r.into(), 3);
 
-                tmp1_col = Some(val1);
-                tmp2_col = Some(val2);
-                tmp3_col = Some(Elem::from_u32_as_fe(r));
+                set_col!(tmp1_col, val1);
+                set_col!(tmp2_col, val2);
+                set_col!(tmp3_col, Elem::from_u32_as_fe(r));
 
                 let v = val.as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
-                tmp_x_b1 = Some(Elem::from_u32_as_fe(b1.into()));
-                tmp_x_b2 = Some(Elem::from_u32_as_fe(b2.into()));
-                tmp_x_b3 = Some(Elem::from_u32_as_fe(b3.into()));
-                tmp_x_b4 = Some(Elem::from_u32_as_fe(b4.into()));
-                tmp_wrap_bit = if v > 0xffffffff {
-                    Some(Elem::Field(F::one()))
-                } else {
-                    Some(Elem::Field(F::zero()))
-                };
+                set_col!(X_b1, Elem::from_u32_as_fe(b1.into()));
+                set_col!(X_b2, Elem::from_u32_as_fe(b2.into()));
+                set_col!(X_b3, Elem::from_u32_as_fe(b3.into()));
+                set_col!(X_b4, Elem::from_u32_as_fe(b4.into()));
+                set_col!(
+                    wrap_bit,
+                    if v > 0xffffffff {
+                        Elem::Field(F::one())
+                    } else {
+                        Elem::Field(F::zero())
+                    }
+                );
 
                 Vec::new()
             }
@@ -1496,19 +1492,19 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let r = val_offset.bin() as u32;
                 self.reg_write(3, write_reg, r.into(), 3);
 
-                tmp1_col = Some(val);
-                tmp3_col = Some(Elem::from_u32_as_fe(r));
+                set_col!(tmp1_col, val);
+                set_col!(tmp3_col, Elem::from_u32_as_fe(r));
 
-                let v = tmp3_col.unwrap().as_i64_from_lower_bytes();
+                let v = get_col!(tmp3_col).as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
-                tmp_x_b1 = Some(Elem::from_u32_as_fe(b1.into()));
-                tmp_x_b2 = Some(Elem::from_u32_as_fe(b2.into()));
-                tmp_x_b3 = Some(Elem::from_u32_as_fe(b3.into()));
-                tmp_x_b4 = Some(Elem::from_u32_as_fe(b4.into()));
+                set_col!(X_b1, Elem::from_u32_as_fe(b1.into()));
+                set_col!(X_b2, Elem::from_u32_as_fe(b2.into()));
+                set_col!(X_b3, Elem::from_u32_as_fe(b3.into()));
+                set_col!(X_b4, Elem::from_u32_as_fe(b4.into()));
 
                 let (b5, b6, _b7, _b8, _sign) = decompose_lower32(val_offset.bin() >> 32);
-                tmp_y_b5 = Some(Elem::from_u32_as_fe(b5.into()));
-                tmp_y_b6 = Some(Elem::from_u32_as_fe(b6.into()));
+                set_col!(Y_b5, Elem::from_u32_as_fe(b5.into()));
+                set_col!(Y_b6, Elem::from_u32_as_fe(b6.into()));
 
                 Vec::new()
             }
@@ -1525,20 +1521,23 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let r = r_i64 as u32;
                 self.reg_write(2, write_reg, r.into(), 3);
 
-                tmp1_col = Some(val1);
-                tmp2_col = Some(val2);
-                tmp3_col = Some(Elem::from_u32_as_fe(r));
+                set_col!(tmp1_col, val1);
+                set_col!(tmp2_col, val2);
+                set_col!(tmp3_col, Elem::from_u32_as_fe(r));
 
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(r_i64);
-                tmp_x_b1 = Some(Elem::from_u32_as_fe(b1.into()));
-                tmp_x_b2 = Some(Elem::from_u32_as_fe(b2.into()));
-                tmp_x_b3 = Some(Elem::from_u32_as_fe(b3.into()));
-                tmp_x_b4 = Some(Elem::from_u32_as_fe(b4.into()));
-                tmp_wrap_bit = if r_i64 > 0xffffffff {
-                    Some(Elem::Field(F::one()))
-                } else {
-                    Some(Elem::Field(F::zero()))
-                };
+                set_col!(X_b1, Elem::from_u32_as_fe(b1.into()));
+                set_col!(X_b2, Elem::from_u32_as_fe(b2.into()));
+                set_col!(X_b3, Elem::from_u32_as_fe(b3.into()));
+                set_col!(X_b4, Elem::from_u32_as_fe(b4.into()));
+                set_col!(
+                    wrap_bit,
+                    if r_i64 > 0xffffffff {
+                        Elem::Field(F::one())
+                    } else {
+                        Elem::Field(F::zero())
+                    }
+                );
 
                 Vec::new()
             }
@@ -1555,24 +1554,25 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let extended_val = byte_val as i32 as u32;
                 self.reg_write(3, write_reg, extended_val.into(), 3);
 
-                tmp1_col = Some(val);
-                //tmp3_col = Elem::from_u32_as_fe(r);
-                tmp3_col = Some(Elem::from_u32_as_fe(extended_val));
+                set_col!(tmp1_col, val);
+                set_col!(tmp3_col, Elem::from_u32_as_fe(extended_val));
 
-                let v = tmp1_col.unwrap().as_i64_from_lower_bytes();
+                let v = get_col!(tmp1_col).as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
                 // first 7bits
-                tmp_y_7bit = Some(Elem::from_u32_as_fe((b1 & 0x7f).into()));
+                set_col!(Y_7bit, Elem::from_u32_as_fe((b1 & 0x7f).into()));
                 // no X_b1 needed here
-                tmp_x_b2 = Some(Elem::from_u32_as_fe(b2.into()));
-                tmp_x_b3 = Some(Elem::from_u32_as_fe(b3.into()));
-                tmp_x_b4 = Some(Elem::from_u32_as_fe(b4.into()));
-                //tmp_wrap_bit = Elem::from_u32_as_fe((b2 & 0x80).into());
-                tmp_wrap_bit = if byte_val < 0 {
-                    Some(Elem::Field(F::one()))
-                } else {
-                    Some(Elem::Field(F::zero()))
-                };
+                set_col!(X_b2, Elem::from_u32_as_fe(b2.into()));
+                set_col!(X_b3, Elem::from_u32_as_fe(b3.into()));
+                set_col!(X_b4, Elem::from_u32_as_fe(b4.into()));
+                set_col!(
+                    wrap_bit,
+                    if byte_val < 0 {
+                        Elem::Field(F::one())
+                    } else {
+                        Elem::Field(F::zero())
+                    }
+                );
 
                 Vec::new()
             }
@@ -1580,8 +1580,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let read_reg = args[0].u();
                 let val = self.reg_read(0, read_reg, 0);
                 let write_reg = args[1].u();
-
-                tmp1_col = Some(val);
 
                 // Perform sign extension on the 16-bit value
                 let sign_bit = (val.u() & 0x8000) != 0;
@@ -1592,21 +1590,25 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 };
                 self.reg_write(3, write_reg, extended_val.into(), 3);
 
-                tmp3_col = Some(Elem::from_u32_as_fe(extended_val));
+                set_col!(tmp1_col, val);
+                set_col!(tmp3_col, Elem::from_u32_as_fe(extended_val));
 
-                let v = tmp1_col.unwrap().as_i64_from_lower_bytes();
+                let v = get_col!(tmp1_col).as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _) = decompose_lower32(v);
 
-                tmp_x_b1 = Some(Elem::from_u32_as_fe(b1.into()));
-                tmp_x_b3 = Some(Elem::from_u32_as_fe(b3.into()));
-                tmp_x_b4 = Some(Elem::from_u32_as_fe(b4.into()));
-                tmp_y_7bit = Some(Elem::from_u32_as_fe((b2 & 0x7f).into()));
-                tmp_y_15bit = Some(Elem::from_u32_as_fe(val.u() & 0x7fff));
-                tmp_wrap_bit = if sign_bit {
-                    Some(Elem::Field(F::one()))
-                } else {
-                    Some(Elem::Field(F::zero()))
-                };
+                set_col!(X_b1, Elem::from_u32_as_fe(b1.into()));
+                set_col!(X_b3, Elem::from_u32_as_fe(b3.into()));
+                set_col!(X_b4, Elem::from_u32_as_fe(b4.into()));
+                set_col!(Y_7bit, Elem::from_u32_as_fe((b2 & 0x7f).into()));
+                set_col!(Y_15bit, Elem::from_u32_as_fe(val.u() & 0x7fff));
+                set_col!(
+                    wrap_bit,
+                    if sign_bit {
+                        Elem::Field(F::one())
+                    } else {
+                        Elem::Field(F::zero())
+                    }
+                );
 
                 Vec::new()
             }
@@ -1618,20 +1620,23 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 self.reg_write(1, write_reg, r.into(), 3);
 
-                tmp1_col = Some(val);
-                tmp3_col = Some(Elem::from_i64_as_fe(r.into()));
+                set_col!(tmp1_col, val);
+                set_col!(tmp3_col, Elem::from_i64_as_fe(r.into()));
 
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(val.u().into());
-                tmp_x_b1 = Some(Elem::from_u32_as_fe(b1.into()));
-                tmp_x_b2 = Some(Elem::from_u32_as_fe(b2.into()));
-                tmp_x_b3 = Some(Elem::from_u32_as_fe(b3.into()));
-                if b4 & 0x80 != 0 {
-                    tmp_wrap_bit = Some(Elem::Field(F::one()));
-                } else {
-                    tmp_wrap_bit = Some(Elem::Field(F::zero()));
-                }
+                set_col!(X_b1, Elem::from_u32_as_fe(b1.into()));
+                set_col!(X_b2, Elem::from_u32_as_fe(b2.into()));
+                set_col!(X_b3, Elem::from_u32_as_fe(b3.into()));
+                set_col!(
+                    wrap_bit,
+                    if b4 & 0x80 != 0 {
+                        Elem::Field(F::one())
+                    } else {
+                        Elem::Field(F::zero())
+                    }
+                );
 
-                tmp_y_7bit = Some(Elem::from_u32_as_fe(b4 as u32 & 0x7f));
+                set_col!(Y_7bit, Elem::from_u32_as_fe(b4 as u32 & 0x7f));
 
                 Vec::new()
             }
@@ -1662,36 +1667,36 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 self.reg_write(2, write_reg1, div.into(), 3);
                 self.reg_write(3, write_reg2, rem.into(), 4);
 
-                tmp1_col = Some(val1);
-                tmp2_col = Some(val2);
-                tmp3_col = Some(Elem::from_u32_as_fe(div));
-                tmp4_col = Some(Elem::from_u32_as_fe(rem));
-                tmp_xx = Some(val2);
-                tmp_xx_iszero = Some(Elem::from_bool_as_fe(tmp_xx.unwrap().is_zero()));
-                if !tmp_xx.unwrap().is_zero() {
-                    tmp_xx_inv = Some(Elem::Field(F::one() / tmp_xx.unwrap().into_fe()));
+                set_col!(tmp1_col, val1);
+                set_col!(tmp2_col, val2);
+                set_col!(tmp3_col, Elem::from_u32_as_fe(div));
+                set_col!(tmp4_col, Elem::from_u32_as_fe(rem));
+                set_col!(XX, val2);
+                set_col!(XXIsZero, Elem::from_bool_as_fe(get_col!(XX).is_zero()));
+                if !get_col!(XX).is_zero() {
+                    set_col!(XX_inv, Elem::Field(F::one() / get_col!(XX).into_fe()));
                 }
 
-                let v = tmp3_col.unwrap().as_i64_from_lower_bytes();
+                let v = get_col!(tmp3_col).as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
-                tmp_x_b1 = Some(Elem::from_u32_as_fe(b1.into()));
-                tmp_x_b2 = Some(Elem::from_u32_as_fe(b2.into()));
-                tmp_x_b3 = Some(Elem::from_u32_as_fe(b3.into()));
-                tmp_x_b4 = Some(Elem::from_u32_as_fe(b4.into()));
+                set_col!(X_b1, Elem::from_u32_as_fe(b1.into()));
+                set_col!(X_b2, Elem::from_u32_as_fe(b2.into()));
+                set_col!(X_b3, Elem::from_u32_as_fe(b3.into()));
+                set_col!(X_b4, Elem::from_u32_as_fe(b4.into()));
 
                 let (rem_b1, rem_b2, rem_b3, rem_b4, _sign) = decompose_lower32(rem.into());
-                tmp_rem_b1 = Some(Elem::from_u32_as_fe(rem_b1.into()));
-                tmp_rem_b2 = Some(Elem::from_u32_as_fe(rem_b2.into()));
-                tmp_rem_b3 = Some(Elem::from_u32_as_fe(rem_b3.into()));
-                tmp_rem_b4 = Some(Elem::from_u32_as_fe(rem_b4.into()));
+                set_col!(REM_b1, Elem::from_u32_as_fe(rem_b1.into()));
+                set_col!(REM_b2, Elem::from_u32_as_fe(rem_b2.into()));
+                set_col!(REM_b3, Elem::from_u32_as_fe(rem_b3.into()));
+                set_col!(REM_b4, Elem::from_u32_as_fe(rem_b4.into()));
 
                 if x > 0 {
                     let diff = x - rem - 1;
                     let (b5, b6, b7, b8, _sign) = decompose_lower32(diff.into());
-                    tmp_y_b5 = Some(Elem::from_u32_as_fe(b5.into()));
-                    tmp_y_b6 = Some(Elem::from_u32_as_fe(b6.into()));
-                    tmp_y_b7 = Some(Elem::from_u32_as_fe(b7.into()));
-                    tmp_y_b8 = Some(Elem::from_u32_as_fe(b8.into()));
+                    set_col!(Y_b5, Elem::from_u32_as_fe(b5.into()));
+                    set_col!(Y_b6, Elem::from_u32_as_fe(b6.into()));
+                    set_col!(Y_b7, Elem::from_u32_as_fe(b7.into()));
+                    set_col!(Y_b8, Elem::from_u32_as_fe(b8.into()));
                 }
 
                 Vec::new()
@@ -1711,10 +1716,10 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 self.reg_write(2, write_reg1, lo.into(), 3);
                 self.reg_write(3, write_reg2, hi.into(), 4);
 
-                tmp1_col = Some(val1);
-                tmp2_col = Some(val2);
-                tmp3_col = Some(Elem::from_u32_as_fe(lo));
-                tmp4_col = Some(Elem::from_u32_as_fe(hi));
+                set_col!(tmp1_col, val1);
+                set_col!(tmp2_col, val2);
+                set_col!(tmp3_col, Elem::from_u32_as_fe(lo));
+                set_col!(tmp4_col, Elem::from_u32_as_fe(hi));
 
                 self.proc
                     .submachines
@@ -1736,8 +1741,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let write_reg = args[3].u();
                 let val2_offset: Elem<F> = (val2.bin() + offset).into();
 
-                tmp1_col = Some(val1);
-                tmp2_col = Some(val2);
+                set_col!(tmp1_col, val1);
+                set_col!(tmp2_col, val2);
 
                 let r = match name {
                     "and" => val1.u() & val2_offset.u(),
@@ -1754,7 +1759,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 self.reg_write(3, write_reg, r.into(), 3);
 
-                tmp3_col = Some(Elem::from_u32_as_fe(r));
+                set_col!(tmp3_col, Elem::from_u32_as_fe(r));
 
                 Vec::new()
             }
@@ -1775,9 +1780,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 self.reg_write(3, write_reg, r.into(), 3);
 
-                tmp1_col = Some(val1);
-                tmp2_col = Some(val2);
-                tmp3_col = Some(Elem::from_u32_as_fe(r));
+                set_col!(tmp1_col, val1);
+                set_col!(tmp2_col, val2);
+                set_col!(tmp3_col, Elem::from_u32_as_fe(r));
 
                 self.proc
                     .submachines
@@ -1803,9 +1808,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 self.reg_write(2, write_reg1, lo.into(), 3);
                 self.reg_write(3, write_reg2, hi.into(), 4);
 
-                tmp1_col = Some(val1);
-                tmp3_col = Some(Elem::from_u32_as_fe(lo));
-                tmp4_col = Some(Elem::from_u32_as_fe(hi));
+                set_col!(tmp1_col, val1);
+                set_col!(tmp3_col, Elem::from_u32_as_fe(lo));
+                set_col!(tmp4_col, Elem::from_u32_as_fe(hi));
 
                 self.proc
                     .submachines
@@ -1948,81 +1953,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 panic!("unknown instruction: {instr}");
             }
         };
-
-        if let Some(tmp_x_b1) = tmp_x_b1 {
-            self.proc.set_col("main::X_b1", tmp_x_b1);
-        }
-        if let Some(tmp_x_b2) = tmp_x_b2 {
-            self.proc.set_col("main::X_b2", tmp_x_b2);
-        }
-        if let Some(tmp_x_b3) = tmp_x_b3 {
-            self.proc.set_col("main::X_b3", tmp_x_b3);
-        }
-        if let Some(tmp_x_b4) = tmp_x_b4 {
-            self.proc.set_col("main::X_b4", tmp_x_b4);
-        }
-        if let Some(tmp_y_b5) = tmp_y_b5 {
-            self.proc.set_col("main::Y_b5", tmp_y_b5);
-        }
-        if let Some(tmp_y_b6) = tmp_y_b6 {
-            self.proc.set_col("main::Y_b6", tmp_y_b6);
-        }
-        if let Some(tmp_y_b7) = tmp_y_b7 {
-            self.proc.set_col("main::Y_b7", tmp_y_b7);
-        }
-        if let Some(tmp_y_b8) = tmp_y_b8 {
-            self.proc.set_col("main::Y_b8", tmp_y_b8);
-        }
-        if let Some(tmp_wrap_bit) = tmp_wrap_bit {
-            self.proc.set_col("main::wrap_bit", tmp_wrap_bit);
-        }
-
-        if let Some(tmp_y_7bit) = tmp_y_7bit {
-            self.proc.set_col("main::Y_7bit", tmp_y_7bit);
-        }
-        if let Some(tmp_y_15bit) = tmp_y_15bit {
-            self.proc.set_col("main::Y_15bit", tmp_y_15bit);
-        }
-
-        if let Some(tmp_y) = tmp_y {
-            self.proc.set_col("main::Y", tmp_y);
-        }
-
-        if let Some(tmp_rem_b1) = tmp_rem_b1 {
-            self.proc.set_col("main::REM_b1", tmp_rem_b1);
-        }
-        if let Some(tmp_rem_b2) = tmp_rem_b2 {
-            self.proc.set_col("main::REM_b2", tmp_rem_b2);
-        }
-        if let Some(tmp_rem_b3) = tmp_rem_b3 {
-            self.proc.set_col("main::REM_b3", tmp_rem_b3);
-        }
-        if let Some(tmp_rem_b4) = tmp_rem_b4 {
-            self.proc.set_col("main::REM_b4", tmp_rem_b4);
-        }
-
-        if let Some(tmp1_col) = tmp1_col {
-            self.proc.set_col("main::tmp1_col", tmp1_col);
-        }
-        if let Some(tmp2_col) = tmp2_col {
-            self.proc.set_col("main::tmp2_col", tmp2_col);
-        }
-        if let Some(tmp3_col) = tmp3_col {
-            self.proc.set_col("main::tmp3_col", tmp3_col);
-        }
-        if let Some(tmp4_col) = tmp4_col {
-            self.proc.set_col("main::tmp4_col", tmp4_col);
-        }
-
-        if let Some(tmp_xx) = tmp_xx {
-            self.proc.set_col("main::XX", tmp_xx);
-        }
-        if let Some(tmp_xx_iszero) = tmp_xx_iszero {
-            self.proc.set_col("main::XXIsZero", tmp_xx_iszero);
-        }
-        if let Some(tmp_xx_inv) = tmp_xx_inv {
-            self.proc.set_col("main::XX_inv", tmp_xx_inv);
-        }
 
         r
     }
