@@ -91,10 +91,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 },
             )),
             PExpression::LambdaExpression(src, lambda_expression) => {
-                Ok(Expression::LambdaExpression(
-                    src,
-                    self.process_lambda_expression(lambda_expression)?,
-                ))
+                Ok(self.process_lambda_expression(src, lambda_expression)?)
             }
             PExpression::BinaryOperation(
                 src,
@@ -226,7 +223,8 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                     .count()
                     > 1
                 {
-                    panic!("Only one \"..\"-item allowed in array pattern");
+                    return Err(source_ref
+                        .with_error("Only one \"..\"-item allowed in array pattern".to_string()));
                 }
                 Ok(Pattern::Array(source_ref, self.process_pattern_vec(items)?))
             }
@@ -246,20 +244,22 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                         // It's a single identifier that does not resolve to an enum variant.
                         self.process_variable_pattern(source_ref, identifier.clone())
                     } else {
-                        panic!("Expected enum variant but got {category}: {resolved_name}");
+                        return Err(source_ref.with_error(format!(
+                            "Expected enum variant but got {category}: {resolved_name}"
+                        )));
                     }
                 } else if let Some(identifier) = name.try_to_identifier() {
                     // It's a single identifier that does not resolve to an enum variant.
                     self.process_variable_pattern(source_ref, identifier.clone())
                 } else {
-                    panic!("Symbol not found: {name}");
+                    return Err(source_ref.with_error(format!("Symbol not found: {name}")));
                 }
             }
             Pattern::Enum(source_ref, name, fields) => {
                 let name = self
                     .driver
                     .resolve_value_ref(&name)
-                    .expect("TODO: Handle this up in the code");
+                    .map_err(|msg| source_ref.with_error(msg))?;
                 self.process_enum_pattern(source_ref, name, fields)
             }
         }
@@ -279,7 +279,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
     ) -> Result<Pattern, Error> {
         let id = self.local_variable_counter;
         if self.local_variables.insert(name.clone(), id).is_some() {
-            panic!("Variable already defined: {name}");
+            return Err(source_ref.with_error(format!("Variable already defined: {name}")));
         }
         self.local_variable_counter += 1;
         Ok(Pattern::Variable(source_ref, name))
@@ -324,10 +324,11 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
 
     pub fn process_lambda_expression(
         &mut self,
+        source_ref: SourceRef,
         LambdaExpression {
             kind, params, body, ..
         }: LambdaExpression,
-    ) -> Result<LambdaExpression<Expression>, Error> {
+    ) -> Result<Expression, Error> {
         let previous_local_vars = self.save_local_variables();
 
         let params = params
@@ -337,18 +338,23 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
 
         for param in &params {
             if !param.is_irrefutable() {
-                panic!("Function parameters must be irrefutable, but {param} is refutable.");
+                return Err(source_ref.with_error(format!(
+                    "Function parameters must be irrefutable, but {param} is refutable."
+                )));
             }
         }
         let body = Box::new(self.process_expression(*body)?);
 
         self.reset_local_variables(previous_local_vars);
-        Ok(LambdaExpression {
-            kind,
-            params,
-            body,
-            param_types: vec![],
-        })
+        Ok(Expression::LambdaExpression(
+            source_ref,
+            LambdaExpression {
+                kind,
+                params,
+                body,
+                param_types: vec![],
+            },
+        ))
     }
 
     fn process_block_expression(
