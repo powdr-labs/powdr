@@ -236,7 +236,7 @@ fn poseidon2_gl_consts() {
         Poseidon2ExternalMatrixGeneral,
         *goldilocks::ROUNDS_P,
         poseidon2::internal_constants::<Goldilocks>(*ROUNDS_P),
-        p3_goldilocks::DiffusionMatrixGoldilocks::default(),
+        p3_goldilocks::DiffusionMatrixGoldilocks,
     );
 
     let test_vectors = test_vectors::<Goldilocks, WIDTH>();
