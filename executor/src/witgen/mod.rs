@@ -37,6 +37,7 @@ mod global_constraints;
 mod identity_processor;
 mod machines;
 mod processor;
+mod prover_function_runner;
 mod query_processor;
 mod range_constraints;
 mod rows;

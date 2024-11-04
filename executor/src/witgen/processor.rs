@@ -10,6 +10,7 @@ use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, C
 use crate::Identity;
 
 use super::machines::{Connection, MachineParts};
+use super::prover_function_runner::ProverFunctionRunner;
 use super::FixedData;
 use super::{
     affine_expression::AffineExpression,
@@ -257,6 +258,23 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
             }
         }
         Ok(self.apply_updates(row_index, &updates, || "queries".to_string()))
+    }
+
+    /// Processes all prover functions on the latch row, giving them full access to the current block.
+    pub fn process_prover_functions_on_latch(
+        &mut self,
+        row_index: usize,
+    ) -> Result<bool, EvalError<T>> {
+        let mut progress = false;
+        let mut runner =
+            ProverFunctionRunner::new(self.fixed_data, &mut self.data, row_index, self.size);
+        for (i, fun) in self.parts.prover_functions.iter().enumerate() {
+            if !self.processed_prover_functions.has_run(row_index, i) {
+                progress |= runner.process_prover_function(fun)?;
+                self.processed_prover_functions.mark_as_run(row_index, i);
+            }
+        }
+        Ok(progress)
     }
 
     /// Given a row and identity index, computes any updates and applies them.
