@@ -5,8 +5,7 @@ use powdr_ast::{
         self, asm::SymbolPath, types::Type, ArrayExpression, ArrayLiteral, BinaryOperation,
         BlockExpression, IfExpression, LambdaExpression, LetStatementInsideBlock, MatchArm,
         MatchExpression, NamedExpression, NamespacedPolynomialReference, Number, Pattern,
-        SelectedExpressions, StatementInsideBlock, StructExpression, SymbolCategory,
-        UnaryOperation,
+        StatementInsideBlock, StructExpression, SymbolCategory, UnaryOperation,
     },
 };
 
@@ -39,16 +38,6 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         }
     }
 
-    pub fn process_selected_expressions(
-        &mut self,
-        expr: SelectedExpressions<parsed::Expression>,
-    ) -> SelectedExpressions<Expression> {
-        SelectedExpressions {
-            selector: expr.selector.map(|e| self.process_expression(e)),
-            expressions: Box::new(self.process_expression(*expr.expressions)),
-        }
-    }
-
     pub fn process_array_expression(
         &mut self,
         array_expression: ::powdr_ast::parsed::ArrayExpression,
@@ -73,23 +62,6 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             .into_iter()
             .map(|e| self.process_expression(e))
             .collect()
-    }
-
-    pub fn process_vec_into_selected_expression(
-        &mut self,
-        exprs: Vec<parsed::Expression>,
-    ) -> SelectedExpressions<Expression> {
-        let exprs = Expression::ArrayLiteral(
-            SourceRef::unknown(),
-            ArrayLiteral {
-                items: self.process_expressions(exprs),
-            },
-        );
-
-        SelectedExpressions {
-            selector: None,
-            expressions: Box::new(exprs),
-        }
     }
 
     pub fn process_expression(&mut self, expr: parsed::Expression) -> Expression {
