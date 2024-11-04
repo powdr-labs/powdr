@@ -74,7 +74,17 @@ machine Main with degree: 65536 {
         assert_eq 0, 392, 0xeac9, 0xf006;
         assert_eq 0, 396, 0x664d, 0xeb35;
 
-        // Test 2: Input/output address computations have carry.
+        // Test 2: Same as Test 1 but sets input and output addresses to be the same.
+        // No need to rerun the mstores because input values from Test 1 should be intact.
+        keccakf16_memory 0, 0, 0, 0;
+        // Selectively checking a few registers only.
+        // Test vector generated from Tiny Keccak.
+        assert_eq 0, 0, 0xfdbb, 0xbbdf;
+        assert_eq 0, 4, 0x9001, 0x405f;
+        assert_eq 0, 192, 0xeac9, 0xf006;
+        assert_eq 0, 196, 0x664d, 0xeb35;
+
+        // Test 3: Input/output address computations have carry.
         // 0 for all 25 64-bit inputs except setting the second 64-bit input to 1. All 64-bit inputs in chunks of 4 16-bit big endian limbs.
         mstore 100, 65520, 0, 0;
         mstore 100, 65524, 0, 0;

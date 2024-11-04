@@ -17,53 +17,53 @@ machine Keccakf16Memory(mem: Memory, add_sub: AddSub) with
     operation_id: operation_id,
     call_selectors: sel,
 {
-    // ------------- Begin memory read / write ---------------
-    // Additional columns compared to the non-memory version:
-    // - 2 columns (1 high and 1 low) for user input address (of first byte of input).
-    // - 2 columns (1 high and 1 low) for user output address (of first byte of output).
-    // - 98 columns (49 high and 49 low) for computed input/output address of all bytes.
-    // Overall, given that there are 2,600+ columns in the non-memory version, this isn't a huge cost.
-
-    // Methodology description:
-    // 1. User latch in the input and output addresses in the first row of each block.
-    // 2. Input addresses for all bytes are calculated from user input address in the first row using permutation links to add_sub.add operations.
-    // 3. Load all input bytes from memory to the preimage columns.
-    // 4. User output address is kept the same for use in the last row.
-    // 5. Keccak is computed from top to bottom.
-    // 6. Output addresses for all bytes are calculated from user output address in the last row using permutation links to add_sub.add operations.
-    // 7. Store all output bytes from keccak computation columns to memory.
-    // Note that this methodology reuses the same 98 columns of addr_h (49) and addr_l (49) to calculate input and output addresses of all bytes.
-    // However, these 98 columns are only used in the first and last rows of each block.
-    // Essentially, we conduct all memory reads in the first row and all memory writes in the last row.
-    // This might seem wasteful, but it's still cheaper than spreading memory reads/writes over different rows while using as few columns as possible, 
-    // which requires 100 columns to make outputs available in all rows in additional to the memory columns.
-    // This alternative methodology (memory reads/writes over different rows) also doesn't work well with our auto witgen infrastructure, 
-    // because one would need to do memory read -> keccak computation -> memory write as three sequential passes during witgen.
-    // On the contrary, our current methodology performs all memory reads at once in the first row, then immediately does the keccak computation,
-    // and finally performs all memory writes at once in the last row, and thus only requires one pass with auto witgen.
+    /*
+    ------------- Begin memory read / write ---------------
+    Additional columns compared to the non-memory version:
+    - 2 columns (1 high and 1 low) for user input address (of first byte of input).
+    - 2 columns (1 high and 1 low) for user output address (of first byte of output).
+    - 98 columns (49 high and 49 low) for computed input/output address of all bytes.
+    Overall, given that there are 2,600+ columns in the non-memory version, this isn't a huge cost    Methodology description:
+    1. The latch with the input and output addresses + time step is in the first row of each block.
+    2. Input addresses for all bytes are calculated from user input address in the first row using permutation links to add_sub.add operations.
+    3. Load all input bytes from memory to the preimage columns.
+    4. User output address is kept the same for use in the last row.
+    5. Keccak is computed from top to bottom.
+    6. Output addresses for all bytes are calculated from user output address in the last row using permutation links to add_sub.add operations.
+    7. Store all output bytes from keccak computation columns to memory.
+    Note that this methodology reuses the same 98 columns of addr_h (49) and addr_l (49) to calculate input and output addresses of all bytes.
+    However, these 98 columns are only used in the first and last rows of each block.
+    Essentially, we conduct all memory reads in the first row and all memory writes in the last row.
+    This might seem wasteful, but it's still cheaper than spreading memory reads/writes over different rows while using as few columns as possible, 
+    which requires 100 columns to make outputs available in all rows in additional to the memory columns.
+    This alternative methodology (memory reads/writes over different rows) also doesn't work well with our auto witgen infrastructure, 
+    because one would need to do memory read -> keccak computation -> memory write as three sequential passes during witgen.
+    On the contrary, our current methodology performs all memory reads at once in the first row, then immediately does the keccak computation,
+    and finally performs all memory writes at once in the last row, and thus only requires one pass with auto witgen.
+    */
 
     operation keccakf16_memory<0> input_addr_h, input_addr_l, output_addr_h, output_addr_l, time_step ->;
 
     // Repeat the time step and input / output address in the whole block.
-    let time_step;
+    col witness time_step;
     unchanged_until(time_step, final_step + is_last);
 
     // Input address for the first byte of input array from the user.
     // Used immediately in the first row and therefore doesn't need to be kept constant throughout the block.
-    pol commit input_addr_h;
-    pol commit input_addr_l;
+    col witness input_addr_h;
+    col witness input_addr_l;
 
     // Output address for the first byte of output array from the user.
     // Used in the last row and therefore needs to be kept constant throughout the block.
-    pol commit output_addr_h;
-    pol commit output_addr_l;
+    col witness output_addr_h;
+    col witness output_addr_l;
     unchanged_until(output_addr_h, final_step + is_last);
     unchanged_until(output_addr_l, final_step + is_last);
 
     // Address high and address low, used for memory read in the first row and memory write in the last row of each block.
     // Not used in any other rows.
-    pol commit addr_h[49];
-    pol commit addr_l[49];
+    col witness addr_h[49];
+    col witness addr_l[49];
 
     // Calculate address of all bytes in the input address array using permutation links to the add_sub machine.
     link if first_step ~> (addr_h[0], addr_l[0]) = add_sub.add(input_addr_h, input_addr_l, 0, 4);
@@ -284,7 +284,7 @@ machine Keccakf16Memory(mem: Memory, add_sub: AddSub) with
 
     // Adapted from Plonky3 implementation of Keccak: https://github.com/Plonky3/Plonky3/tree/main/keccak-air/src
 
-    std::check::assert(std::field::modulus() >= 65535, || "The field modulo should be at least 2^16 - 1 to work in the keccakf16 machine.");
+    std::check::require_field_bits(16, || "The field modulus should be at least 2^16 - 1 to work in the keccakf16 machine.");
 
     col witness operation_id;
 
@@ -335,17 +335,17 @@ machine Keccakf16Memory(mem: Memory, add_sub: AddSub) with
     //     pub a_prime_prime_prime_0_0_limbs: [T; U64_LIMBS],
     // }
 
-    pol commit preimage[5 * 5 * 4];
-    pol commit a[5 * 5 * 4];
-    pol commit c[5 * 64];
+    col witness preimage[5 * 5 * 4];
+    col witness a[5 * 5 * 4];
+    col witness c[5 * 64];
     array::map(c, |i| force_bool(i));
-    pol commit c_prime[5 * 64];
-    pol commit a_prime[5 * 5 * 64];
+    col witness c_prime[5 * 64];
+    col witness a_prime[5 * 5 * 64];
     array::map(a_prime, |i| force_bool(i));
-    pol commit a_prime_prime[5 * 5 * 4];
-    pol commit a_prime_prime_0_0_bits[64];
+    col witness a_prime_prime[5 * 5 * 4];
+    col witness a_prime_prime_0_0_bits[64];
     array::map(a_prime_prime_0_0_bits, |i| force_bool(i));
-    pol commit a_prime_prime_prime_0_0_limbs[4];
+    col witness a_prime_prime_prime_0_0_limbs[4];
 
     // Initially, the first step flag should be 1 while the others should be 0.
     // builder.when_first_row().assert_one(local.step_flags[0]);
