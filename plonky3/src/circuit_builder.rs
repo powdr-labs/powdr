@@ -466,6 +466,9 @@ where
                     unimplemented!("Plonky3 does not support permutations")
                 }
                 Identity::Connect(..) => unimplemented!("Plonky3 does not support connections"),
+                Identity::PhantomPermutation(..) | Identity::PhantomLookup(..) => {
+                    // phantom identities are only used in witgen
+                }
             }
         }
     }

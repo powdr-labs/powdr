@@ -113,11 +113,9 @@ let lookup: Constr, expr -> () = constr |lookup_constraint, multiplicities| {
     is_first * acc_2 = 0;
     constrain_eq_ext(update_expr, from_base(0));
 
-    // Build an annotation for witness generation
-    let witgen_annotation = to_phantom_lookup(lookup_constraint, multiplicities);
-    // TODO: Adding it to the constraint set currently fails
-    // witgen_annotation;
-
+    // Add an annotation for witness generation
+    to_phantom_lookup(lookup_constraint, multiplicities);
+    
     // In the extension field, we need a prover function for the accumulator.
     if needs_extension() {
         // TODO: Helper columns, because we can't access the previous row in hints

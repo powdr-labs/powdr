@@ -320,6 +320,9 @@ impl<'a, T: FieldElement, F: PrimeField<Repr = [u8; 32]>> Circuit<F> for PowdrCi
                             .collect()
                     });
                 }
+                Identity::PhantomLookup(..) | Identity::PhantomPermutation(..) => {
+                    // Phantom identities are only used in witness generation
+                }
             }
         }
 

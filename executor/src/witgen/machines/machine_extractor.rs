@@ -3,6 +3,8 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 use itertools::Itertools;
 use powdr_ast::analyzed::LookupIdentity;
 use powdr_ast::analyzed::PermutationIdentity;
+use powdr_ast::analyzed::PhantomLookupIdentity;
+use powdr_ast::analyzed::PhantomPermutationIdentity;
 
 use super::block_machine::BlockMachine;
 use super::double_sorted_witness_machine_16::DoubleSortedWitnesses16;
@@ -66,7 +68,9 @@ pub fn split_out_machines<'a, T: FieldElement>(
         // Extract all witness columns in the RHS of the lookup.
         let lookup_witnesses = match id {
             Identity::Lookup(LookupIdentity { right, .. })
-            | Identity::Permutation(PermutationIdentity { right, .. }) => {
+            | Identity::PhantomLookup(PhantomLookupIdentity { right, .. })
+            | Identity::Permutation(PermutationIdentity { right, .. })
+            | Identity::PhantomPermutation(PhantomPermutationIdentity { right, .. }) => {
                 &refs_in_selected_expressions(right) & (&remaining_witnesses)
             }
             _ => Default::default(),
@@ -344,7 +348,11 @@ fn all_row_connected_witnesses<T>(
                     }
                 }
                 Identity::Lookup(LookupIdentity { left, right, .. })
-                | Identity::Permutation(PermutationIdentity { left, right, .. }) => {
+                | Identity::Permutation(PermutationIdentity { left, right, .. })
+                | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. })
+                | Identity::PhantomPermutation(PhantomPermutationIdentity {
+                    left, right, ..
+                }) => {
                     // If we already have witnesses on the LHS, include the LHS,
                     // and vice-versa, but not across the "sides".
                     let in_lhs = &refs_in_selected_expressions(left) & all_witnesses;
@@ -378,7 +386,9 @@ fn refs_in_selected_expressions<T>(sel_expr: &SelectedExpressions<T>) -> HashSet
 fn refs_in_identity_left<T>(identity: &Identity<T>) -> HashSet<PolyID> {
     match identity {
         Identity::Lookup(LookupIdentity { left, .. })
-        | Identity::Permutation(PermutationIdentity { left, .. }) => {
+        | Identity::PhantomLookup(PhantomLookupIdentity { left, .. })
+        | Identity::Permutation(PermutationIdentity { left, .. })
+        | Identity::PhantomPermutation(PhantomPermutationIdentity { left, .. }) => {
             refs_in_selected_expressions(left)
         }
         Identity::Polynomial(i) => refs_in_expression(&i.expression).collect(),
