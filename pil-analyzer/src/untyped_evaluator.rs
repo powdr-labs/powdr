@@ -17,7 +17,9 @@ pub fn evaluate_expression_to_int(
     expr: parsed::Expression,
 ) -> Result<BigInt, EvalError> {
     evaluator::evaluate_expression::<GoldilocksField>(
-        &ExpressionProcessor::new(driver, &Default::default()).process_expression(expr),
+        &ExpressionProcessor::new(driver, &Default::default())
+            .process_expression(expr)
+            .map_err(|e| EvalError::TypeError(e.message().to_string()))?, //TODO: better error type
         driver.definitions(),
         &Default::default(),
     )?
