@@ -266,8 +266,13 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         row_index: usize,
     ) -> Result<bool, EvalError<T>> {
         let mut progress = false;
-        let mut runner =
-            ProverFunctionRunner::new(self.fixed_data, &mut self.data, row_index, self.size);
+        let mut runner = ProverFunctionRunner::new(
+            self.fixed_data,
+            &mut self.data,
+            self.row_offset,
+            row_index,
+            self.size,
+        );
         for (i, fun) in self.parts.prover_functions.iter().enumerate() {
             if !self.processed_prover_functions.has_run(row_index, i) {
                 progress |= runner.process_prover_function(fun)?;

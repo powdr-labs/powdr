@@ -7,7 +7,9 @@ use powdr_ast::{
 use powdr_number::{BigInt, DegreeType, FieldElement};
 use powdr_pil_analyzer::evaluator::{self, Definitions, EvalError, SymbolLookup, Value};
 
-use super::{data_structures::finalizable_data::FinalizableData, Constraint, FixedData};
+use super::{
+    data_structures::finalizable_data::FinalizableData, rows::RowIndex, Constraint, FixedData,
+};
 
 /// Runs prover functions, giving it access to all rows in a block, directly
 /// filling cell values.
@@ -16,8 +18,9 @@ pub struct ProverFunctionRunner<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     /// The cell data.
     data: &'a mut FinalizableData<T>,
-    /// The index of the row to evaluate on / relative to.
-    /// TODO is it a global or a local index?
+    /// The global row index of the first row of `self.data`.
+    row_offset: RowIndex,
+    /// The relative row index to evaluate the functions on.
     row_index: usize,
     /// The total number of rows.
     size: DegreeType,
@@ -31,15 +34,19 @@ impl<'a, T: FieldElement> ProverFunctionRunner<'a, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
         data: &'a mut FinalizableData<T>,
+        row_offset: RowIndex,
         row_index: usize,
         size: DegreeType,
     ) -> Self {
         Self {
             fixed_data,
             data,
+            row_offset,
             row_index,
             size,
-            fun_args: vec![Arc::new(Value::Integer(BigInt::from(row_index)))],
+            fun_args: vec![Arc::new(Value::Integer(BigInt::from(usize::from(
+                row_offset + row_index,
+            ))))],
             progress: false,
         }
     }
@@ -58,7 +65,7 @@ impl<'a, T: FieldElement> ProverFunctionRunner<'a, T> {
                 // "DataNotAvailable" error (like in the QueryProcessor).
                 super::EvalError::ProverQueryError(format!(
                     "Error occurred when evaluating prover function {fun} on {}:\n{e:?}",
-                    self.row_index
+                    self.row_offset + self.row_index
                 ))
             })?;
 
@@ -112,16 +119,15 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for ProverFunctionRunner<'a, T> {
     ) -> Result<Arc<Value<'a, T>>, EvalError> {
         Ok(Value::FieldElement(match poly_ref.poly_id.ptype {
             PolynomialType::Committed => {
-                if poly_ref.next {
-                    todo!()
-                };
-                self.data[self.row_index]
+                let index = self.row_index + usize::from(poly_ref.next);
+                self.data[index]
                     .value(&poly_ref.poly_id)
                     .ok_or(EvalError::DataNotAvailable)?
             }
             PolynomialType::Intermediate => todo!(),
             PolynomialType::Constant => {
                 let values = self.fixed_data.fixed_cols[&poly_ref.poly_id].values(self.size);
+                //TODO convert local to glabel indx.
                 let row = self.row_index + if poly_ref.next { 1 } else { 0 };
                 values[usize::from(row)]
             }
@@ -170,7 +176,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for ProverFunctionRunner<'a, T> {
         let Value::FieldElement(value) = value.as_ref() else {
             unreachable!()
         };
-        let row = usize::try_from(row).unwrap();
+        let row = self.row_offset.relative_to(u64::try_from(row).unwrap()) as usize;
         // TODO could return a proper ProverError if the value is already known.
         self.data[row].apply_update(poly_id, &Constraint::Assignment(*value));
         self.progress = true;

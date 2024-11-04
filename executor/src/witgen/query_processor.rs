@@ -219,6 +219,7 @@ impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>> Symbol
             }
             PolynomialType::Constant => {
                 let values = self.fixed_data.fixed_cols[&poly_ref.poly_id].values(self.size);
+                //TODO convert local to glabel indx.
                 let row = self.rows.current_row_index + if poly_ref.next { 1 } else { 0 };
                 values[usize::from(row)]
             }

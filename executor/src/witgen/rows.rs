@@ -70,6 +70,12 @@ impl RowIndex {
             (row_index + self.num_rows - row_offset).try_into().unwrap()
         }
     }
+
+    /// Turns a global row index into one relative to Self.
+    pub fn relative_to(&self, global_index: DegreeType) -> i64 {
+        // TOOD chekc if this is correct
+        global_index as i64 - self.index
+    }
 }
 
 impl<T> Add<T> for RowIndex
