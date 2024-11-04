@@ -1,22 +1,19 @@
 use std::array;
 use std::check::assert;
-use std::utils;
 use std::utils::unchanged_until;
 use std::utils::force_bool;
 use std::utils::sum;
 use std::convert::expr;
 use std::machines::small_field::memory::Memory;
-use std::machines::small_field::pointer_arith::increment_ptr;
 use std::machines::split::split_bb::SplitBB;
+use super::poseidon2_common::address_inc;
+use super::poseidon2_common::pow_7;
+use super::poseidon2_common::poseidon2;
 
 // Implements the Poseidon2 permutation for BabyBear field.
 //
-// Apparently it can be used to hash arbitrary sized data by using the
-// Merkle–Damgård construction, or it can be used as a compression function
-// for building a Merkle tree.
-//
-// As it stands, it cannot be used in a Sponge construction, because we don't
-// output the entire state.
+// It can be used to hash arbitrary sized data with sponge construction, or
+// it can be used as a compression function for building a Merkle tree.
 machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     latch: latch,
     operation_id: operation_id,
@@ -25,7 +22,7 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
 {
     // Is this a used row?
     let is_used = array::sum(sel);
-    utils::force_bool(is_used);
+    force_bool(is_used);
 
     // The input data is passed via a memory pointer: the machine will read STATE_SIZE
     // field elements from memory, in pairs of 16-bit limbs for BabyBear.
@@ -33,23 +30,25 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     // Similarly, the output data is written to memory at the provided pointer.
     //
     // Reads happen at the provided time step; writes happen at the next time step.
+    //
+    // output_capacity is expected to be a boolean value. If false, the "capacity"
+    // part of the state size is discarded and not written back to memory. This is
+    // useful for merkle tree compression, where the capacity part is not needed.
     operation poseidon2_permutation<0>
         input_addr_high[0], input_addr_low[0],
         output_addr_high[0], output_addr_low[0],
-        time_step ->;
+        output_capacity, time_step ->;
 
     let latch = 1;
     let operation_id;
 
     let time_step;
+    let output_capacity;
 
     // Poseidon2 parameters, compatible with our powdr-plonky3 implementation.
     //
     // The the number of rounds to get 128-bit security was taken from here:
     // https://github.com/Plonky3/Plonky3/blob/2df15fd05e2181b31b39525361aef0213fc76144/poseidon2/src/round_numbers.rs#L42
-
-    // S-box degree (this constant is actually not used, because we have to break the exponentiation into steps of at most degree 3).
-    let SBOX_DEGREE: int = 7;
 
     // Number of field elements in the state
     let STATE_SIZE: int = 16;
@@ -121,102 +120,6 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
         1235941928
     ];
 
-    // The linear layer of the external round.
-    //
-    // Doesn't have to be a complete matrix multiplication, as the last round discards
-    // part of the state, so we can skip the corresponding rows in the matrix.
-    let apply_mds = |input, output_len| {
-        let dot_product = |v1, v2| array::sum(array::zip(v1, v2, |v1_i, v2_i| v1_i * v2_i));
-        array::map(array::sub_array(MDS, 0, output_len), |row| dot_product(row, input))
-    };
-
-    let s_box = constr |x| {
-        let x3;
-        x3 = x * x * x;
-        let x7;
-        x7 = x3 * x3 * x;
-        x7
-    };
-
-    let external_round = constr |c_idx, input, output| {
-        // Add constants
-        let step_a = array::zip(input, EXTERNAL_ROUND_CONSTANTS[c_idx], |v, c| v + c);
-
-        // Apply S-box
-        let x7 = array::map(step_a, s_box);
-
-        // Multiply with MDS Matrix
-        array::zip(output, apply_mds(x7, array::len(output)), |out, x| out = x);
-    };
-
-    let internal_round = constr |c_idx, input, output| {
-        // Add constant (weird, I thought the entire state was used here,
-        // but this is how Plonky3 does it).
-        let step_a = input[0] + INTERNAL_ROUND_CONSTANTS[c_idx];
-
-        // Apply S-box
-        let x7 = s_box(step_a);
-
-        // Multiply with the diffusion matrix
-        //
-        // The diffusion matrix looks like this:
-        //
-        //                   [A, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-        //                   [1, B, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-        //                   [1, 1, C, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-        //                   [1, 1, 1, D, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-        //                   [1, 1, 1, 1, E, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-        //                   [1, 1, 1, 1, 1, F, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-        //                   [1, 1, 1, 1, 1, 1, G, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-        //                   [1, 1, 1, 1, 1, 1, 1, H, 1, 1, 1, 1, 1, 1, 1, 1]
-        // DIFF_MULTIPLIER * [1, 1, 1, 1, 1, 1, 1, 1, I, 1, 1, 1, 1, 1, 1, 1]
-        //                   [1, 1, 1, 1, 1, 1, 1, 1, 1, J, 1, 1, 1, 1, 1, 1]
-        //                   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, K, 1, 1, 1, 1, 1]
-        //                   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, L, 1, 1, 1, 1]
-        //                   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, M, 1, 1, 1]
-        //                   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, O, 1, 1]
-        //                   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, P, 1]
-        //                   [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, Q]
-        //
-        // Where A, B, C, ..., Q are the elements of the DIFF_DIAGONAL array plus 1.
-        //
-        // The idea of using such matrix in Poseidon2 is that, instead of performing
-        // a full matrix multiplication, we can optimize it by summing the elements
-        // of the input vector, and then adjusting each output[k] element by
-        // input[k] * DIFF_DIAGONAL[k].
-        let line_sum = x7 + array::sum(array::sub_array(input, 1, STATE_SIZE - 1));
-        output[0] = (line_sum + DIFF_DIAGONAL[0] * x7) * DIFF_MULTIPLIER;
-        array::zip(
-            array::zip(
-                array::sub_array(input, 1, STATE_SIZE - 1),
-                array::sub_array(output, 1, STATE_SIZE - 1),
-                constr |in_v, out_v| (in_v, out_v)
-            ),
-            array::sub_array(DIFF_DIAGONAL, 1, STATE_SIZE - 1),
-            constr |(in_v, out_v), diag| out_v = (line_sum + diag * in_v) * DIFF_MULTIPLIER
-        );
-    };
-
-    // Creates a sequence of 4-byte sparsed addresses.
-    let address_inc = constr |addr_high, addr_low| {
-        let addr = array::zip(
-            addr_high,
-            addr_low,
-            |high, low| (high, low)
-        );
-
-        array::fold(
-            array::zip(
-                array::sub_array(addr, 0, array::len(addr) - 1),
-                array::sub_array(addr, 1, array::len(addr) - 1),
-                constr |(high, low), (next_high, next_low)| {
-                    increment_ptr(4, high, low, next_high, next_low)
-                }
-            ), [],
-            |a, b| a + b
-        )
-    };
-
     // Calculate the addresses and load all the inputs into the first time step
     let input_addr_high: col[STATE_SIZE];
     let input_addr_low: col[STATE_SIZE];
@@ -242,56 +145,27 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     link if is_used ~> (input_high[14], input_low[14]) = mem.mload(input_addr_high[14], input_addr_low[14], time_step);
     link if is_used ~> (input_high[15], input_low[15]) = mem.mload(input_addr_high[15], input_addr_low[15], time_step);
 
+    // Assemble the two limbs of the input
     let input = array::zip(input_low, input_high, |low, high| low + 0x10000 * high);
 
-    // Perform the inital MDS step
-    let pre_rounds = apply_mds(input, STATE_SIZE);
-
-    // Perform most of the rounds
-    let final_full_state = (constr || {
-        // Perform the first half of the external rounds
-        let after_initial_rounds = utils::fold(
-            HALF_EXTERNAL_ROUNDS, |round_idx| round_idx, pre_rounds,
-            constr |pre_state, round_idx| {
-            //    let post_state: col[STATE_SIZE];
-                let post_state = array::new(STATE_SIZE, |_| { let x; x});
-                external_round(round_idx, pre_state, post_state);
-                post_state
-            }
-        );
-
-        // Perform the internal rounds
-        let after_internal_rounds = utils::fold(
-            INTERNAL_ROUNDS, |round_idx| round_idx, after_initial_rounds,
-            constr |pre_state, round_idx| {
-                let post_state = array::new(STATE_SIZE, |_| { let x; x});
-                internal_round(round_idx, pre_state, post_state);
-                post_state
-            }
-        );
-
-        // Perform the second half of the external rounds, except the last one
-        utils::fold(
-            HALF_EXTERNAL_ROUNDS - 1,
-            |round_idx| round_idx + HALF_EXTERNAL_ROUNDS,
-            after_internal_rounds,
-            constr |pre_state, round_idx| {
-                let post_state = array::new(STATE_SIZE, |_| { let x; x});
-                external_round(round_idx, pre_state, post_state);
-                post_state
-            }
-        )
-    })();
-
-    // Perform the last external round
-    // It is special because the output is smaller than the entire state,
-    // so the MDS matrix multiplication is only partial.
-    let output: col[OUTPUT_SIZE];
-    external_round(2 * HALF_EXTERNAL_ROUNDS - 1, final_full_state, output);
+    // Generate the Poseidon2 permutation
+    let output = poseidon2(
+        STATE_SIZE,
+        HALF_EXTERNAL_ROUNDS,
+        INTERNAL_ROUNDS,
+        MDS,
+        EXTERNAL_ROUND_CONSTANTS,
+        DIFF_DIAGONAL,
+        DIFF_MULTIPLIER,
+        INTERNAL_ROUND_CONSTANTS,
+        pow_7,
+        input
+    );
 
     // Split the output into high and low limbs
-    let output_low: col[OUTPUT_SIZE];
-    let output_high: col[OUTPUT_SIZE];
+    let write_capacity = is_used * output_capacity;
+    let output_low: col[STATE_SIZE];
+    let output_high: col[STATE_SIZE];
     // TODO: turn this into array operations
     link if is_used ~> (output_low[0], output_high[0]) = split_BB.split(output[0]);
     link if is_used ~> (output_low[1], output_high[1]) = split_BB.split(output[1]);
@@ -301,18 +175,50 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     link if is_used ~> (output_low[5], output_high[5]) = split_BB.split(output[5]);
     link if is_used ~> (output_low[6], output_high[6]) = split_BB.split(output[6]);
     link if is_used ~> (output_low[7], output_high[7]) = split_BB.split(output[7]);
+    link if write_capacity ~> (output_low[8], output_high[8]) = split_BB.split(output[8]);
+    link if write_capacity ~> (output_low[9], output_high[9]) = split_BB.split(output[9]);
+    link if write_capacity ~> (output_low[10], output_high[10]) = split_BB.split(output[10]);
+    link if write_capacity ~> (output_low[11], output_high[11]) = split_BB.split(output[11]);
+    link if write_capacity ~> (output_low[12], output_high[12]) = split_BB.split(output[12]);
+    link if write_capacity ~> (output_low[13], output_high[13]) = split_BB.split(output[13]);
+    link if write_capacity ~> (output_low[14], output_high[14]) = split_BB.split(output[14]);
+    link if write_capacity ~> (output_low[15], output_high[15]) = split_BB.split(output[15]);
 
     // Write the output to memory at the next time step
-    let output_addr_high: col[OUTPUT_SIZE];
-    let output_addr_low: col[OUTPUT_SIZE];
+    let output_addr_high: col[STATE_SIZE];
+    let output_addr_low: col[STATE_SIZE];
     address_inc(output_addr_high, output_addr_low);
     // TODO: turn this into array operations
-    link if is_used ~> mem.mstore(output_addr_high[0], output_addr_low[0], time_step + 1, output_high[0], output_low[0]);
-    link if is_used ~> mem.mstore(output_addr_high[1], output_addr_low[1], time_step + 1, output_high[1], output_low[1]);
-    link if is_used ~> mem.mstore(output_addr_high[2], output_addr_low[2], time_step + 1, output_high[2], output_low[2]);
-    link if is_used ~> mem.mstore(output_addr_high[3], output_addr_low[3], time_step + 1, output_high[3], output_low[3]);
-    link if is_used ~> mem.mstore(output_addr_high[4], output_addr_low[4], time_step + 1, output_high[4], output_low[4]);
-    link if is_used ~> mem.mstore(output_addr_high[5], output_addr_low[5], time_step + 1, output_high[5], output_low[5]);
-    link if is_used ~> mem.mstore(output_addr_high[6], output_addr_low[6], time_step + 1, output_high[6], output_low[6]);
-    link if is_used ~> mem.mstore(output_addr_high[7], output_addr_low[7], time_step + 1, output_high[7], output_low[7]);
+    link if is_used ~>
+        mem.mstore(output_addr_high[0], output_addr_low[0], time_step + 1, output_high[0], output_low[0]);
+    link if is_used ~>
+        mem.mstore(output_addr_high[1], output_addr_low[1], time_step + 1, output_high[1], output_low[1]);
+    link if is_used ~>
+        mem.mstore(output_addr_high[2], output_addr_low[2], time_step + 1, output_high[2], output_low[2]);
+    link if is_used ~>
+        mem.mstore(output_addr_high[3], output_addr_low[3], time_step + 1, output_high[3], output_low[3]);
+    link if is_used ~>
+        mem.mstore(output_addr_high[4], output_addr_low[4], time_step + 1, output_high[4], output_low[4]);
+    link if is_used ~>
+        mem.mstore(output_addr_high[5], output_addr_low[5], time_step + 1, output_high[5], output_low[5]);
+    link if is_used ~>
+        mem.mstore(output_addr_high[6], output_addr_low[6], time_step + 1, output_high[6], output_low[6]);
+    link if is_used ~>
+        mem.mstore(output_addr_high[7], output_addr_low[7], time_step + 1, output_high[7], output_low[7]);
+    link if write_capacity ~>
+        mem.mstore(output_addr_high[8], output_addr_low[8], time_step + 1, output_high[8], output_low[8]);
+    link if write_capacity ~>
+        mem.mstore(output_addr_high[9], output_addr_low[9], time_step + 1, output_high[9], output_low[9]);
+    link if write_capacity ~>
+        mem.mstore(output_addr_high[10], output_addr_low[10], time_step + 1, output_high[10], output_low[10]);
+    link if write_capacity ~>
+        mem.mstore(output_addr_high[11], output_addr_low[11], time_step + 1, output_high[11], output_low[11]);
+    link if write_capacity ~>
+        mem.mstore(output_addr_high[12], output_addr_low[12], time_step + 1, output_high[12], output_low[12]);
+    link if write_capacity ~>
+        mem.mstore(output_addr_high[13], output_addr_low[13], time_step + 1, output_high[13], output_low[13]);
+    link if write_capacity ~>
+        mem.mstore(output_addr_high[14], output_addr_low[14], time_step + 1, output_high[14], output_low[14]);
+    link if write_capacity ~>
+        mem.mstore(output_addr_high[15], output_addr_low[15], time_step + 1, output_high[15], output_low[15]);
 }
