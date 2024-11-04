@@ -6,6 +6,8 @@ use std::utils::sum;
 use std::convert::expr;
 use std::machines::large_field::memory::Memory;
 use std::machines::split::split_gl::SplitGL;
+use super::poseidon2_common::pow_7;
+use super::poseidon2_common::poseidon2;
 
 // Implements the Poseidon2 permutation for Goldilocks field.
 //
@@ -45,6 +47,7 @@ machine Poseidon2GL(mem: Memory, split_GL: SplitGL) with
     let operation_id;
 
     let time_step;
+    let output_capacity;
 
     // Poseidon2 parameters, compatible with our powdr-plonky3 implementation.
     //
@@ -144,7 +147,7 @@ machine Poseidon2GL(mem: Memory, split_GL: SplitGL) with
     link if is_used ~> input_high[7] = mem.mload(input_addr + 60, time_step);
 
     // Assemble the two limbs of the input
-    let input = array::zip(input_low, input_high, |low, high| low + 0x100000000 * high);
+    let input = array::zip(input_low, input_high, |low, high| low + 2**32 * high);
 
     // Generate the Poseidon2 permutation
     let output = poseidon2(
@@ -162,8 +165,8 @@ machine Poseidon2GL(mem: Memory, split_GL: SplitGL) with
 
     // Split the output into high and low limbs
     let write_capacity = is_used * output_capacity;
-    let output_low: col[OUTPUT_SIZE];
-    let output_high: col[OUTPUT_SIZE];
+    let output_low: col[STATE_SIZE];
+    let output_high: col[STATE_SIZE];
     // TODO: turn this into array operations
     link if is_used ~> (output_low[0], output_high[0]) = split_GL.split(output[0]);
     link if is_used ~> (output_low[1], output_high[1]) = split_GL.split(output[1]);

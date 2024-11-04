@@ -67,6 +67,15 @@ fn poseidon2_bb_test() {
 
 #[test]
 #[ignore = "Too slow"]
+fn poseidon2_gl_test() {
+    let f = "std/poseidon2_gl_test.asm";
+    let pipeline = make_simple_prepared_pipeline(f);
+    test_pilcom(pipeline.clone());
+    gen_estark_proof(pipeline);
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn split_bn254_test() {
     let f = "std/split_bn254_test.asm";
     test_halo2(make_simple_prepared_pipeline(f));

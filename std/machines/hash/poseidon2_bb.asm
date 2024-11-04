@@ -53,10 +53,6 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     // Number of field elements in the state
     let STATE_SIZE: int = 16;
 
-    // Number of output elements
-    // (TODO: to use the Sponge construction, the entire state should be output)
-    let OUTPUT_SIZE: int = 8;
-
     // Half the number of external rounds (half of external rounds happen before and half after the internal rounds).
     let HALF_EXTERNAL_ROUNDS: int = 4;
 

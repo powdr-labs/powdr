@@ -8,7 +8,7 @@ use p3_monty_31::DiffusionMatrixParameters;
 use p3_poseidon::Poseidon;
 use p3_poseidon2::Poseidon2ExternalMatrixGeneral;
 use p3_symmetric::Permutation;
-use powdr_plonky3::poseidon2;
+use powdr_plonky3::{goldilocks, poseidon2};
 use rand::{distributions::Standard, Rng, SeedableRng};
 
 fn main() {
@@ -193,6 +193,7 @@ fn poseidon2_bb_consts() {
 }
 
 fn poseidon2_gl_consts() {
+    use p3_field::PrimeField64;
     use powdr_plonky3::goldilocks::{ROUNDS_F, ROUNDS_P, WIDTH};
 
     println!("EXTERNAL_CONSTANTS = [");
@@ -227,6 +228,56 @@ fn poseidon2_gl_consts() {
         "DIFFUSION_DIAGONAL = [{}];",
         MATRIX_DIAG_8_GOLDILOCKS_U64.iter().format(", ")
     );
+
+    println!("\n\nTESTS:");
+    let poseidon2 = goldilocks::Perm::new(
+        *goldilocks::ROUNDS_F,
+        poseidon2::external_constants::<Goldilocks, WIDTH>(*ROUNDS_F),
+        Poseidon2ExternalMatrixGeneral,
+        *goldilocks::ROUNDS_P,
+        poseidon2::internal_constants::<Goldilocks>(*ROUNDS_P),
+        p3_goldilocks::DiffusionMatrixGoldilocks::default(),
+    );
+
+    let test_vectors = test_vectors::<Goldilocks, WIDTH>();
+
+    let mut first_test_vector = test_vectors[0];
+
+    for (test_num, mut test_vector) in test_vectors.into_iter().enumerate() {
+        println!("\n        // Test vector {}:\n", test_num);
+        for (i, val) in test_vector.iter().enumerate() {
+            let val = val.as_canonical_u64();
+            println!(
+                "        mstore_le {}, {}, {};",
+                i * 8,
+                val >> 32,
+                val & 0xffffffff,
+            );
+        }
+        println!("\n        poseidon2 0, 0;\n");
+        poseidon2.permute_mut(&mut test_vector);
+        for (i, val) in test_vector[..8].iter().enumerate() {
+            println!("        assert_eq {}, {val};", i * 8);
+        }
+    }
+
+    // Repeat the first test, but where input starts at address 100, and output
+    // starts at address 104.
+    println!("\n        // Test vector 0, but with input at 100 and output at 104:\n");
+    for (i, val) in first_test_vector.iter().enumerate() {
+        let val = val.as_canonical_u64();
+        println!(
+            "        mstore_le {}, {}, {};",
+            100 + i * 8,
+            val >> 32,
+            val & 0xffffffff,
+        );
+    }
+    println!("\n        poseidon2 100, 104;\n");
+    poseidon2.permute_mut(&mut first_test_vector);
+    for (i, val) in first_test_vector[..8].iter().enumerate() {
+        println!("        assert_eq {}, {val};", 104 + i * 8);
+    }
 }
 
 fn test_vectors<F: AbstractField + Copy, const W: usize>() -> [[F; W]; 4] {
