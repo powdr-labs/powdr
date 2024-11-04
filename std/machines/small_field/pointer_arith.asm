@@ -40,12 +40,16 @@ let increment_ptr: expr, expr, expr, expr, expr -> Constr[] = constr |
     ]
 };
 
-// Creates a sequence of 4-byte sparsed addresses.
+// Takes two arrays of 16-bit limbs (high and low), each position being a 32-bit address,
+// and calls `increment_ptr` on every 2 consecutive positions.
 //
-// Takes two arrays of 16-bit limbs addresses, and constrains all the elements of
-// the arrays to 4-bytes after the previous one.
+// The resulting constraint set ensures that each address is incremented by 4 bytes.
 //
-// Returns an array of constraints.
+// Mind the preconditions of `increment_ptr` when using this function. Particularly:
+// - The first address must be aligned to 4 bytes.
+// - The last address must not overflow the 32-bit address space.
+//
+// Returns the flattened array of constraints.
 let address_array_elems = constr |addr_high, addr_low| {
     let addr = array::zip(
         addr_high,
