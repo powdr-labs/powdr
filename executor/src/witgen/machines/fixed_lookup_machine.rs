@@ -1,11 +1,16 @@
+use num_traits::One;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::Peekable;
 use std::mem;
 use std::num::NonZeroUsize;
+use std::str::FromStr;
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicReference, IdentityKind, PolyID, PolynomialType};
-use powdr_number::FieldElement;
+use powdr_ast::analyzed::{
+    AlgebraicReference, LookupIdentity, PhantomLookupIdentity, PolyID, PolynomialType,
+};
+use powdr_ast::parsed::asm::SymbolPath;
+use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::affine_expression::{AffineExpression, AlgebraicVariable};
 use crate::witgen::global_constraints::{GlobalConstraints, RangeConstraintSet};
@@ -17,7 +22,7 @@ use crate::witgen::{EvalError, EvalValue, IncompleteCause, MutableState, QueryCa
 use crate::witgen::{EvalResult, FixedData};
 use crate::Identity;
 
-use super::Machine;
+use super::{Connection, ConnectionKind, Machine};
 
 type Application = (Vec<PolyID>, Vec<PolyID>);
 type Index<T> = BTreeMap<Vec<T>, IndexValue>;
@@ -169,39 +174,82 @@ impl<T: FieldElement> IndexedColumns<T> {
     }
 }
 
+const MULTIPLICITY_LOOKUP_COLUMN: &str = "m_logup_multiplicity";
+
 /// Machine to perform a lookup in fixed columns only.
 pub struct FixedLookup<'a, T: FieldElement> {
+    degree: DegreeType,
     global_constraints: GlobalConstraints<T>,
     indices: IndexedColumns<T>,
-    connecting_identities: BTreeMap<u64, &'a Identity<T>>,
+    connections: BTreeMap<u64, Connection<'a, T>>,
     fixed_data: &'a FixedData<'a, T>,
+    /// multiplicities column values for each identity id
+    multiplicities: BTreeMap<u64, Vec<T>>,
+    logup_multiplicity_column: Option<PolyID>,
 }
 
 impl<'a, T: FieldElement> FixedLookup<'a, T> {
+    pub fn witness_columns(&self) -> HashSet<PolyID> {
+        self.logup_multiplicity_column.iter().cloned().collect()
+    }
+
     pub fn new(
         global_constraints: GlobalConstraints<T>,
         all_identities: Vec<&'a Identity<T>>,
         fixed_data: &'a FixedData<'a, T>,
     ) -> Self {
-        let connecting_identities = all_identities
+        let connections = all_identities
             .into_iter()
-            .filter_map(|i| {
-                (i.kind == IdentityKind::Plookup
-                    && i.right.selector.is_none()
-                    && i.right.expressions.iter().all(|e| {
+            .filter_map(|i| match i {
+                Identity::Lookup(LookupIdentity {
+                    id, left, right, ..
+                })
+                | Identity::PhantomLookup(PhantomLookupIdentity {
+                    id, left, right, ..
+                }) => (right.selector.is_one()
+                    && right.expressions.iter().all(|e| {
                         try_to_simple_poly_ref(e)
                             .map(|poly| poly.poly_id.ptype == PolynomialType::Constant)
                             .unwrap_or(false)
                     })
-                    && !i.right.expressions.is_empty())
-                .then_some((i.id, i))
+                    && !right.expressions.is_empty())
+                .then_some((
+                    *id,
+                    Connection {
+                        left,
+                        right,
+                        kind: ConnectionKind::Lookup,
+                    },
+                )),
+                _ => None,
             })
             .collect();
+
+        let degree = fixed_data
+            .fixed_cols
+            .values()
+            .map(|col| col.values_max_size().len())
+            .max()
+            .unwrap_or(0) as u64;
+
+        // This currently just takes one element with the correct name
+        // When we support more than one element, we need to have a vector of logup_multiplicity_columns: Vec<Option<PolyId>>
+        let logup_multiplicity_column: Option<PolyID> = fixed_data
+            .witness_cols
+            .values()
+            .find(|col| {
+                SymbolPath::from_str(&col.poly.name).unwrap().name() == MULTIPLICITY_LOOKUP_COLUMN
+            })
+            .map(|col| col.poly.poly_id);
+
         Self {
+            degree,
             global_constraints,
             indices: Default::default(),
-            connecting_identities,
+            connections,
             fixed_data,
+            multiplicities: Default::default(),
+            logup_multiplicity_column,
         }
     }
 
@@ -210,6 +258,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         rows: &RowPair<'_, '_, T>,
         left: &[AffineExpression<AlgebraicVariable<'a>, T>],
         mut right: Peekable<impl Iterator<Item = &'a AlgebraicReference>>,
+        identity_id: u64,
     ) -> EvalResult<'a, T> {
         if left.len() == 1
             && !left.first().unwrap().is_constant()
@@ -269,6 +318,13 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             }
         };
 
+        // Update the multiplicities
+        if self.logup_multiplicity_column.is_some() {
+            self.multiplicities
+                .entry(identity_id)
+                .or_insert_with(|| vec![T::zero(); self.degree as usize])[row] += T::one();
+        }
+
         let output = output_columns
             .iter()
             .map(|column| self.fixed_data.fixed_cols[column].values_max_size()[row]);
@@ -289,7 +345,6 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
                 }
             }
         }
-
         Ok(result)
     }
 
@@ -336,8 +391,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let identity = self.connecting_identities[&identity_id];
-        let right = &identity.right;
+        let identity = self.connections[&identity_id];
+        let right = identity.right;
 
         // get the values of the fixed columns
         let right = right
@@ -347,18 +402,36 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
             .peekable();
 
         let outer_query = OuterQuery::new(caller_rows, identity);
-        self.process_plookup_internal(caller_rows, &outer_query.left, right)
+        self.process_plookup_internal(caller_rows, &outer_query.left, right, identity_id)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
-        Default::default()
+        let mut witness_col_values = HashMap::new();
+        if self.logup_multiplicity_column.is_some() {
+            assert!(
+                self.multiplicities.len() <= 1,
+                "LogUp witness generation not yet supported for > 1 lookups"
+            );
+            log::trace!("Detected LogUp Multiplicity Column");
+
+            for (_, values) in self.multiplicities.iter() {
+                witness_col_values.insert(
+                    self.logup_multiplicity_column
+                        .map(|poly_id| self.fixed_data.column_name(&poly_id).to_string())
+                        .unwrap(),
+                    values.clone(),
+                );
+            }
+        }
+
+        witness_col_values
     }
 
     fn identity_ids(&self) -> Vec<u64> {
-        self.connecting_identities.keys().copied().collect()
+        self.connections.keys().copied().collect()
     }
 }
 

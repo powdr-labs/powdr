@@ -387,9 +387,15 @@ mod builder {
             }
         }
 
-        /// get current value of PC
+        /// get the value of PC as of the start of the execution of the current row.
         pub(crate) fn get_pc(&self) -> Elem<F> {
             self.curr_pc
+        }
+
+        /// get the value of PC as updated by the last executed instruction.
+        /// The actual PC is only updated when moving to a new row.
+        pub(crate) fn get_next_pc(&self) -> Elem<F> {
+            self.regs[self.pc_idx as usize]
         }
 
         /// get current value of register
@@ -1297,18 +1303,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
             Expression::IfExpression(_, _) => panic!(),
             Expression::BlockExpression(_, _) => panic!(),
             Expression::IndexAccess(_, _) => todo!(),
+            Expression::StructExpression(_, _) => todo!(),
         }
     }
-}
-
-/// return true if the expression is a jump instruction
-fn is_jump(e: &Expression) -> bool {
-    if let Expression::FunctionCall(_, FunctionCall { function, .. }) = e {
-        if let Expression::Reference(_, f) = function.as_ref() {
-            return ["jump", "jump_dyn"].contains(&f.try_to_identifier().unwrap().as_str());
-        }
-    }
-    false
 }
 
 pub fn execute_ast<F: FieldElement>(
@@ -1369,29 +1366,8 @@ pub fn execute_ast<F: FieldElement>(
                     p.add_instruction_cost(e.proc.get_pc().u() as usize);
                 }
 
-                let pc_before = e.proc.get_reg("pc").u() as usize;
-
                 let results = e.eval_expression(a.rhs.as_ref());
                 assert_eq!(a.lhs_with_reg.len(), results.len());
-
-                let pc_after = e.proc.get_reg("pc").u() as usize;
-
-                if is_jump(a.rhs.as_ref()) {
-                    let pc_return = results[0].u() as usize;
-                    assert_eq!(a.lhs_with_reg.len(), 1);
-                    if let Some(p) = &mut profiler {
-                        // in the generated powdr asm, writing to `tmp1` means the returning pc is ignored
-                        if a.lhs_with_reg[0].0 == "tmp1" {
-                            p.jump(pc_after);
-                        } else {
-                            p.jump_and_link(
-                                pc_before as usize,
-                                pc_after as usize,
-                                pc_return as usize,
-                            );
-                        }
-                    }
-                }
 
                 for ((dest, _), val) in a.lhs_with_reg.iter().zip(results) {
                     e.proc.set_reg(dest, val);
@@ -1403,18 +1379,19 @@ pub fn execute_ast<F: FieldElement>(
                 }
 
                 if ["jump", "jump_dyn"].contains(&i.instruction.as_str()) {
-                    let pc_return = e.proc.get_pc().u() + 1;
-                    let pc_before = e.proc.get_reg("pc").u();
+                    let pc_before = e.proc.get_pc().u();
 
                     e.exec_instruction(&i.instruction, &i.inputs);
 
-                    let pc_after = e.proc.get_reg("pc").u();
+                    // we can't use `get_pc/get_reg`, as its value is only updated when moving to the next row
+                    let pc_after = e.proc.get_next_pc().u();
 
                     let target_reg = e.eval_expression(&i.inputs[1]);
                     assert_eq!(target_reg.len(), 1);
                     let target_reg = target_reg[0].u();
 
                     if let Some(p) = &mut profiler {
+                        let pc_return = e.proc.get_reg_mem(target_reg).u();
                         // in the generated powdr asm, not writing to `x1` means the returning pc is ignored
                         if target_reg != 1 {
                             p.jump(pc_after as usize);

@@ -2,7 +2,7 @@ use ::powdr_pipeline::Pipeline;
 use powdr_number::GoldilocksField;
 
 use powdr_riscv::{
-    compile_rust_crate_to_riscv, continuations::bootloader::default_input, elf, Runtime,
+    compile_rust_crate_to_riscv, continuations::bootloader::default_input, elf, CompilerOptions,
 };
 
 use criterion::{criterion_group, criterion_main, Criterion};
@@ -18,7 +18,8 @@ fn executor_benchmark(c: &mut Criterion) {
     let tmp_dir = Temp::new_dir().unwrap();
     let executable =
         compile_rust_crate_to_riscv("./tests/riscv_data/keccak/Cargo.toml", &tmp_dir, None);
-    let contents = elf::translate::<T>(&executable, &Runtime::base(), false);
+    let options = CompilerOptions::new_gl();
+    let contents = elf::translate(&executable, options);
     let mut pipeline = Pipeline::<T>::default().from_asm_string(contents, None);
     pipeline.compute_optimized_pil().unwrap();
     pipeline.compute_fixed_cols().unwrap();
@@ -30,11 +31,8 @@ fn executor_benchmark(c: &mut Criterion) {
     // The first chunk of `many_chunks`, with Poseidon co-processor & bootloader
     let executable =
         compile_rust_crate_to_riscv("./tests/riscv_data/many_chunks/Cargo.toml", &tmp_dir, None);
-    let contents = elf::translate::<T>(
-        &executable,
-        &Runtime::base().with_poseidon_for_continuations(),
-        true,
-    );
+    let options = options.with_continuations().with_poseidon();
+    let contents = elf::translate(&executable, options);
     let mut pipeline = Pipeline::<T>::default().from_asm_string(contents, None);
     pipeline.compute_optimized_pil().unwrap();
     pipeline.compute_fixed_cols().unwrap();

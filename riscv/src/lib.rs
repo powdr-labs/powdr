@@ -8,34 +8,166 @@ use std::{
     process::Command,
 };
 
-use powdr_number::FieldElement;
+use powdr_number::KnownField;
 use std::fs;
-
-pub use crate::runtime::Runtime;
 
 mod code_gen;
 pub mod continuations;
 pub mod elf;
+pub mod large_field;
 pub mod runtime;
+pub mod small_field;
 
 static TARGET_STD: &str = "riscv32im-risc0-zkvm-elf";
 static TARGET_NO_STD: &str = "riscv32imac-unknown-none-elf";
 
+#[derive(Copy, Default, Clone)]
+pub struct RuntimeLibs {
+    pub arith: bool,
+    pub keccak: bool,
+    pub poseidon: bool,
+}
+
+impl RuntimeLibs {
+    pub fn new() -> Self {
+        Self {
+            arith: false,
+            keccak: false,
+            poseidon: false,
+        }
+    }
+
+    pub fn with_arith(self) -> Self {
+        Self {
+            arith: true,
+            ..self
+        }
+    }
+
+    pub fn with_keccak(self) -> Self {
+        Self {
+            keccak: true,
+            ..self
+        }
+    }
+
+    pub fn with_poseidon(self) -> Self {
+        Self {
+            poseidon: true,
+            ..self
+        }
+    }
+}
+#[derive(Copy, Clone)]
+pub struct CompilerOptions {
+    pub field: KnownField,
+    pub libs: RuntimeLibs,
+    pub continuations: bool,
+    pub min_degree_log: u8,
+    pub max_degree_log: u8,
+}
+
+impl CompilerOptions {
+    pub fn new(field: KnownField, libs: RuntimeLibs, continuations: bool) -> Self {
+        Self {
+            field,
+            libs,
+            continuations,
+            min_degree_log: 5,
+            max_degree_log: 20,
+        }
+    }
+
+    pub fn new_bb() -> Self {
+        Self {
+            field: KnownField::BabyBearField,
+            libs: RuntimeLibs::new(),
+            continuations: false,
+            min_degree_log: 5,
+            max_degree_log: 20,
+        }
+    }
+
+    pub fn new_gl() -> Self {
+        Self {
+            field: KnownField::GoldilocksField,
+            libs: RuntimeLibs::new(),
+            continuations: false,
+            min_degree_log: 5,
+            max_degree_log: 20,
+        }
+    }
+
+    pub fn with_min_degree_log(self, min_degree_log: u8) -> Self {
+        Self {
+            min_degree_log,
+            ..self
+        }
+    }
+
+    pub fn with_max_degree_log(self, max_degree_log: u8) -> Self {
+        Self {
+            max_degree_log,
+            ..self
+        }
+    }
+
+    pub fn with_continuations(self) -> Self {
+        Self {
+            continuations: true,
+            ..self
+        }
+    }
+
+    pub fn with_arith(self) -> Self {
+        Self {
+            libs: self.libs.with_arith(),
+            ..self
+        }
+    }
+
+    pub fn with_keccak(self) -> Self {
+        Self {
+            libs: self.libs.with_keccak(),
+            ..self
+        }
+    }
+
+    pub fn with_poseidon(self) -> Self {
+        Self {
+            libs: self.libs.with_poseidon(),
+            ..self
+        }
+    }
+}
+
 /// Compiles a rust file to Powdr asm.
 #[allow(clippy::print_stderr)]
-pub fn compile_rust<T: FieldElement>(
+pub fn compile_rust(
     file_name: &str,
+    options: CompilerOptions,
     output_dir: &Path,
     force_overwrite: bool,
-    runtime: &Runtime,
-    with_bootloader: bool,
     features: Option<Vec<String>>,
 ) -> Option<(PathBuf, String)> {
-    if with_bootloader {
-        assert!(
-            runtime.has_submachine("poseidon_gl"),
-            "PoseidonGL coprocessor is required for bootloader"
-        );
+    if options.continuations {
+        match options.field {
+            KnownField::BabyBearField => {
+                todo!()
+            }
+            KnownField::KoalaBearField => {
+                todo!()
+            }
+            KnownField::Mersenne31Field => {
+                todo!()
+            }
+            KnownField::GoldilocksField | KnownField::Bn254Field => {
+                assert!(
+                    options.libs.poseidon,
+                    "Poseidon library is required for bootloader"
+                );
+            }
+        }
     }
 
     let file_path = if file_name.ends_with("Cargo.toml") {
@@ -48,24 +180,16 @@ pub fn compile_rust<T: FieldElement>(
 
     let elf_path = compile_rust_crate_to_riscv(&file_path, output_dir, features);
 
-    compile_riscv_elf::<T>(
-        file_name,
-        &elf_path,
-        output_dir,
-        force_overwrite,
-        runtime,
-        with_bootloader,
-    )
+    compile_riscv_elf(file_name, &elf_path, options, output_dir, force_overwrite)
 }
 
 fn compile_program<P>(
     original_file_name: &str,
     input_program: P,
+    options: CompilerOptions,
     output_dir: &Path,
     force_overwrite: bool,
-    runtime: &Runtime,
-    with_bootloader: bool,
-    translator: impl FnOnce(P, &Runtime, bool) -> String,
+    translator: impl FnOnce(P, CompilerOptions) -> String,
 ) -> Option<(PathBuf, String)> {
     let powdr_asm_file_name = output_dir.join(format!(
         "{}.asm",
@@ -83,7 +207,7 @@ fn compile_program<P>(
         return None;
     }
 
-    let powdr_asm = translator(input_program, runtime, with_bootloader);
+    let powdr_asm = translator(input_program, options);
 
     fs::write(powdr_asm_file_name.clone(), &powdr_asm).unwrap();
     log::info!("Wrote {}", powdr_asm_file_name.to_str().unwrap());
@@ -92,22 +216,20 @@ fn compile_program<P>(
 }
 
 /// Translates a RISC-V ELF file to powdr asm.
-pub fn compile_riscv_elf<T: FieldElement>(
+pub fn compile_riscv_elf(
     original_file_name: &str,
     input_file: &Path,
+    options: CompilerOptions,
     output_dir: &Path,
     force_overwrite: bool,
-    runtime: &Runtime,
-    with_bootloader: bool,
 ) -> Option<(PathBuf, String)> {
     compile_program::<&Path>(
         original_file_name,
         input_file,
+        options,
         output_dir,
         force_overwrite,
-        runtime,
-        with_bootloader,
-        elf::translate::<T>,
+        elf::translate,
     )
 }
 
@@ -257,6 +379,8 @@ fn build_cargo_command(
         "RUSTFLAGS",
         "-g -C link-arg=-Tpowdr.x -C link-arg=--emit-relocs -C passes=lower-atomic -C panic=abort",
     );
+    // keep debug info for the profiler (callgrind/flamegraph)
+    cmd.env("CARGO_PROFILE_RELEASE_DEBUG", "true");
 
     let mut args: Vec<&OsStr> = as_ref![
         OsStr;

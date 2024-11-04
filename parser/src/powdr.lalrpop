@@ -6,6 +6,8 @@ use crate::{ParserContext, unescape_string};
 use powdr_parser_util::Error;
 use std::sync::Arc;
 
+use lalrpop_util::ParseError;
+
 grammar(ctx: &ParserContext);
 
 extern {
@@ -96,6 +98,7 @@ TypeSymbolPathPart: Part = {
 pub PilStatementAtModuleLevel = {
     LetStatement,
     <start:@L> <decl:EnumDeclaration> <end:@R> => PilStatement::EnumDeclaration(ctx.source_ref(start, end), decl),
+    <start:@L> <decl:StructDeclaration> <end:@R> => PilStatement::StructDeclaration(ctx.source_ref(start, end), decl),
     <start:@L> <impl_:TraitImplementation> <end:@R> => PilStatement::TraitImplementation(ctx.source_ref(start, end), impl_),
     <start:@L> <decl:TraitDeclaration> <end:@R> => PilStatement::TraitDeclaration(ctx.source_ref(start, end), decl),
 }
@@ -110,6 +113,7 @@ pub PilStatement = {
     PolynomialConstantDefinition,
     PolynomialCommitDeclaration,
     <start:@L> <decl:EnumDeclaration> <end:@R> => PilStatement::EnumDeclaration(ctx.source_ref(start, end), decl),
+    <start:@L> <decl:StructDeclaration> <end:@R> => PilStatement::StructDeclaration(ctx.source_ref(start, end), decl),
     <start:@L> <impl_:TraitImplementation> <end:@R> => PilStatement::TraitImplementation(ctx.source_ref(start, end), impl_),
     <start:@L> <decl:TraitDeclaration> <end:@R> => PilStatement::TraitDeclaration(ctx.source_ref(start, end), decl),
     ExpressionStatement,
@@ -159,7 +163,8 @@ FunctionDefinition: FunctionDefinition = {
         => FunctionDefinition::Expression(Expression::LambdaExpression(ctx.source_ref(start, end), LambdaExpression{
             kind: FunctionKind::Pure,
             params,
-            body
+            body,
+            param_types: vec![],
         })),
     <start:@L> "=" <array:ArrayLiteralExpression> <end:@R> => FunctionDefinition::Array(array),
 }
@@ -188,7 +193,8 @@ PolynomialCommitDeclaration: PilStatement = {
         Some(FunctionDefinition::Expression(Expression::LambdaExpression(ctx.source_ref(start, end), LambdaExpression{
             kind: FunctionKind::Query,
             params,
-            body
+            body,
+            param_types: vec![],
         })))
     )
 }
@@ -198,7 +204,7 @@ Stage: u32 = {
 }
 
 PolynomialNameList: Vec<PolynomialName> = {
-    <mut list:( <PolynomialName> "," )*> <end:PolynomialName>  => { list.push(end); list }
+    <mut list:( <PolynomialName> "," )*> <end:PolynomialName> ","? => { list.push(end); list }
 }
 
 PolynomialName: PolynomialName = {
@@ -317,7 +323,7 @@ pub InstructionBody: InstructionBody = {
 }
 
 InstructionBodyElements: Vec<PilStatement> = {
-    <mut list:( <InstructionBodyElement> "," )*> <end:InstructionBodyElement>  => { list.push(end); list },
+    <mut list:( <InstructionBodyElement> "," )*> <end:InstructionBodyElement> ","?  => { list.push(end); list },
     => vec![]
 }
 
@@ -333,11 +339,11 @@ Params: Params<Param> = {
 
 ParamList: Vec<Param> = {
     => vec![],
-    <mut list:( <Param> "," )*> <end:Param>  => { list.push(end); list }
+    <mut list:( <Param> "," )*> <end:Param> ","? => { list.push(end); list }
 }
 
 Param: Param = {
-    <name: Identifier> <index:("[" <Number> "]")?> <ty:(":" <SymbolPath>)?> => Param{<>}
+    <start:@L> <name: Identifier> <index:("[" <Number> "]")?> <ty:(":" <SymbolPath>)?> <end:@R> => Param{source: ctx.source_ref(start, end), name, index, ty},
 }
 
 FunctionDeclaration: MachineStatement = {
@@ -366,7 +372,7 @@ AssignmentStatement: FunctionStatement = {
 }
 
 IdentifierList: Vec<String> = {
-    <mut list:( <Identifier> "," )*> <end:Identifier>  => { list.push(end); list },
+    <mut list:( <Identifier> "," )*> <end:Identifier> ","? => { list.push(end); list },
     => vec![]
 }
 
@@ -376,7 +382,7 @@ AssignOperator: Option<Vec<AssignmentRegister>> = {
 }
 
 AssignmentRegisterList: Vec<AssignmentRegister> = {
-    <mut list:( <AssignmentRegister> "," )*> <end:AssignmentRegister>  => { list.push(end); list },
+    <mut list:( <AssignmentRegister> "," )*> <end:AssignmentRegister> ","? => { list.push(end); list },
     => vec![]
 }
 
@@ -415,7 +421,7 @@ LabelStatement: FunctionStatement = {
 
 ExpressionList: Vec<Expression> = {
     => vec![],
-    <mut list:( <Expression> "," )*> <end:Expression>  => { list.push(end); list }
+    <mut list:( <Expression> "," )*> <end:Expression> ","?  => { list.push(end); list }
 }
 
 pub Expression = MacroExpression<TermWithStruct>;
@@ -446,9 +452,9 @@ SelectedExpressions<StructOption>: Box<Expression> = {
 
 LambdaExpression<StructOption>: Box<Expression> = {
     <start:@L> <kind:FunctionKind> "||" <body:LambdaExpression<StructOption>> <end:@R>
-        => ctx.to_expr_with_source_ref(LambdaExpression{kind, params: vec![], body}, start, end),
+        => ctx.to_expr_with_source_ref(LambdaExpression{kind, params: vec![], body, param_types: vec![]}, start, end),
     <start:@L> <kind:FunctionKind> "|" <params:ParameterList> "|" <body:LambdaExpression<StructOption>> <end:@R>
-        => ctx.to_expr_with_source_ref(LambdaExpression{kind, params, body}, start, end),
+        => ctx.to_expr_with_source_ref(LambdaExpression{kind, params, body, param_types: vec![]}, start, end),
     LogicalOr<StructOption>
 }
 
@@ -590,6 +596,7 @@ TermCommon<StructOption>: Box<Expression> = {
     <start:@L> <g:GenericReference> <end:@R> => ctx.to_expr_with_source_ref(g, start, end),
     <start:@L> <p:PublicIdentifier> <end:@R> => Box::new(Expression::PublicReference(ctx.source_ref(start, end), p)),
     <start:@L> <value:Number> <end:@R> => ctx.to_expr_with_source_ref(Number {value: value.into(), type_: None}, start, end),
+    <start:@L> <number:TypedNumber> <end:@R> => { let (value, ty) = number; ctx.to_expr_with_source_ref(Number {value, type_: Some(ty)}, start, end) },
     <start:@L> <s:StringLiteral> <end:@R> => Box::new(Expression::String(ctx.source_ref(start, end), s)),
     MatchExpression,
     IfExpression,
@@ -629,7 +636,7 @@ MatchArms: Vec<MatchArm> = {
 }
 
 MatchArm: MatchArm = {
-    <pattern:Pattern> "=>" <value: RestrictedExpression> => MatchArm{pattern, value},
+    <pattern:Pattern> "=>" <value: Expression> => MatchArm{pattern, value},
 }
 
 IfExpression: Box<Expression> = {
@@ -638,6 +645,10 @@ IfExpression: Box<Expression> = {
         "else"
         <else_body:BlockExpression>
         <end:@R> => ctx.to_expr_with_source_ref(IfExpression{condition, body, else_body}, start, end),
+}
+
+StructExpression: Box<Expression> = {	
+    <start:@L> <name:NamespacedPolynomialReference> "{" <fields:NamedExpressions> "}" <end:@R> => ctx.to_expr_with_source_ref(StructExpression{name, fields}, start, end),
 }
 
 BlockExpression: Box<Expression> = {
@@ -650,24 +661,18 @@ StatementInsideBlock: StatementInsideBlock = {
     <Expression> ";" => StatementInsideBlock::Expression(<>),
 }
 
-
-// This rules are placeholder to test the parser. Structs are not implemented yet.
-StructExpression: Box<Expression> = {
-    <start:@L> <name:Identifier> "{" <fields:NamedExpressions> "}" <end:@R> => Box::new(Expression::Tuple(ctx.source_ref(start, end), vec![])),
-}
-
-NamedExpressions: Vec<NamedExpression<Expression>> = {
+NamedExpressions: Vec<NamedExpression<Box<Expression>>> = {
     => vec![],
     <mut list:( <NamedExpression> "," )*> <end:NamedExpression> ","?  => { list.push(end); list }
 }
 
-NamedExpression: NamedExpression<Expression> = {
-    <name:Identifier> ":" <body:Expression> => NamedExpression { name, body }
+NamedExpression: NamedExpression<Box<Expression>> = {
+    <name:Identifier> ":" <body:BoxedExpression> => NamedExpression { name, body }
 }
 
 NamedTypes: Vec<NamedType<Expression>> = {
     => vec![],
-    <mut list:( <NamedType> "," )*> <end:NamedType> ","  => { list.push(end); list }
+    <mut list:( <NamedType> "," )*> <end:NamedType> ","?  => { list.push(end); list }
 }
 
 NamedType: NamedType<Expression> = {
@@ -712,7 +717,7 @@ EnumPattern: Pattern = {
 }
 
 PatternList: Vec<Pattern> = {
-    <mut list:( <Pattern> "," )*> <end:Pattern>  => { list.push(end); list },
+    <mut list:( <Pattern> "," )*> <end:Pattern> ","? => { list.push(end); list },
     => vec![]
 }
 
@@ -728,7 +733,7 @@ TraitVars: Vec<String> = {
 
 TraitFunctions: Vec<NamedType<Expression>> = {
     => vec![],
-    <mut list:( <TraitFunction> "," )*> <end:TraitFunction> ","  => { list.push(end); list }
+    <mut list:( <TraitFunction> "," )*> <end:TraitFunction> ","?  => { list.push(end); list }
 }
 
 TraitFunction: NamedType<Expression> = {
@@ -771,6 +776,11 @@ EnumVariant: EnumVariant<Expression> = {
     <name:Identifier> <fields:("(" <TypeTermList<Expression>> ")")?> => EnumVariant{<>}
 }
 
+StructDeclaration: StructDeclaration<Expression> = {
+    "struct" <name:Identifier> <type_vars:("<" <TypeVarBounds> ">")?> "{" <fields:NamedTypes> "}"
+        => StructDeclaration{name, type_vars: type_vars.unwrap_or_default(), fields}
+}
+
 // ---------------------------- Type Names -----------------------------
 
 pub TypeExpr = Type<Expression>;
@@ -783,7 +793,7 @@ Type<ArrayLength>: Type<ArrayLength> = {
 
 TypeTermList<ArrayLength>: Vec<Type<ArrayLength>> = {
     => vec![],
-    <mut list:( <TypeTerm<ArrayLength>> "," )*> <end:TypeTerm<ArrayLength>>  => { list.push(end); list }
+    <mut list:( <TypeTerm<ArrayLength>> "," )*> <end:TypeTerm<ArrayLength>> ","? => { list.push(end); list }
 }
 
 TypeTermBox<ArrayLength>: Box<Type<ArrayLength>> = {
@@ -824,7 +834,7 @@ TypeVar: String = {
 // bounds should be SymbolPaths in the future.
 pub TypeVarBounds: TypeBounds = {
     => Default::default(),
-    <list:( <TypeVarWithBounds> "," )*> <end:TypeVarWithBounds> => TypeBounds::new(list.into_iter().chain(std::iter::once(end)))
+    <list:( <TypeVarWithBounds> "," )*> <end:TypeVarWithBounds> ","? => TypeBounds::new(list.into_iter().chain(std::iter::once(end)))
 }
 
 TypeVarWithBounds: (String, BTreeSet<String>) = {
@@ -885,7 +895,22 @@ PublicIdentifier: String = {
 
 Number: BigUint = {
     r"[0-9][0-9_]*" => BigUint::from_str(&<>.replace('_', "")).unwrap().into(),
-    r"0x[0-9A-Fa-f][0-9A-Fa-f_]*" => BigUint::from_str_radix(&<>[2..].replace('_', ""), 16).unwrap().into(),
+    <start:@L> <v:r"0x[0-9A-Fa-f][0-9A-Fa-f_]*"> <end:@R> =>?
+        if v.ends_with("_fe") {
+            // It would be too easy to confuse e.g. 0x12_fe with the field element 0x12.
+            Err(ParseError::User{ error: ctx.source_ref(start, end).with_error("Hex literals cannot end in '_fe'.".to_string()) })
+        } else {
+            Ok(BigUint::from_str_radix(&v[2..].replace('_', ""), 16).unwrap().into())
+        },
+}
+
+TypedNumber: (BigUint, Type) = {
+    r"[0-9][0-9_]*_fe" => (BigUint::from_str(&<>.strip_suffix("_fe").unwrap().replace('_', "")).unwrap().into(), Type::Fe),
+    // No hex with _fe suffix for now, because 'fe' is valid hex.
+    r"[0-9][0-9_]*_int" => (BigUint::from_str(&<>.strip_suffix("_int").unwrap().replace('_', "")).unwrap().into(), Type::Int),
+    r"0x[0-9A-Fa-f][0-9A-Fa-f_]*_int" => (BigUint::from_str_radix(&<>[2..].strip_suffix("_int").unwrap().replace('_', ""), 16).unwrap().into(), Type::Int),
+    r"[0-9][0-9_]*_expr" => (BigUint::from_str(&<>.strip_suffix("_expr").unwrap().replace('_', "")).unwrap().into(), Type::Expr),
+    r"0x[0-9A-Fa-f][0-9A-Fa-f_]*_expr" => (BigUint::from_str_radix(&<>[2..].strip_suffix("_expr").unwrap().replace('_', ""), 16).unwrap().into(), Type::Expr),
 }
 
 UnsignedInteger: BigUint = {

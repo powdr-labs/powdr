@@ -1,15 +1,14 @@
 use std::collections::BTreeMap;
 
 use powdr_backend::BackendType;
-use powdr_executor::constant_evaluator::get_uniquely_sized;
+use powdr_executor::constant_evaluator::{self, get_uniquely_sized};
 use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
 use powdr_pipeline::{
     test_util::{
         asm_string_to_pil, gen_estark_proof_with_backend_variant, make_prepared_pipeline,
-        make_simple_prepared_pipeline, regular_test, regular_test_without_babybear,
+        make_simple_prepared_pipeline, regular_test, regular_test_without_small_field,
         resolve_test_file, run_pilcom_with_backend_variant, test_halo2,
-        test_halo2_with_backend_variant, test_pilcom, test_plonky3_with_backend_variant,
-        BackendVariant,
+        test_halo2_with_backend_variant, test_pilcom, test_plonky3, BackendVariant,
     },
     util::{FixedPolySet, PolySet, WitnessPolySet},
     Pipeline,
@@ -24,7 +23,7 @@ fn slice_to_vec<T: FieldElement>(arr: &[i32]) -> Vec<T> {
 fn sqrt_asm() {
     let f = "asm/sqrt.asm";
     let i = [3];
-    regular_test(f, &i);
+    regular_test_without_small_field(f, &i);
 }
 
 #[test]
@@ -39,11 +38,7 @@ fn simple_sum_asm() {
     let f = "asm/simple_sum.asm";
     let i = [16, 4, 1, 2, 8, 5];
     regular_test(f, &i);
-    test_plonky3_with_backend_variant::<GoldilocksField>(
-        f,
-        slice_to_vec(&i),
-        BackendVariant::Composite,
-    );
+    test_plonky3::<GoldilocksField>(f, slice_to_vec(&i));
 }
 
 #[test]
@@ -57,7 +52,7 @@ fn secondary_machine_plonk() {
 #[test]
 fn secondary_block_machine_add2() {
     let f = "asm/secondary_block_machine_add2.asm";
-    regular_test(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
@@ -91,14 +86,14 @@ fn mem_write_once_external_write() {
 #[test]
 fn block_machine_cache_miss() {
     let f = "asm/block_machine_cache_miss.asm";
-    regular_test(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
 fn palindrome() {
     let f = "asm/palindrome.asm";
     let i = [7, 1, 7, 3, 9, 3, 7, 1];
-    regular_test(f, &i);
+    regular_test_without_small_field(f, &i);
 }
 
 #[test]
@@ -128,7 +123,7 @@ fn empty_vm() {
 #[test]
 fn vm_to_block_unique_interface() {
     let f = "asm/vm_to_block_unique_interface.asm";
-    regular_test(f, &[]);
+    regular_test_without_small_field(f, &[]);
 }
 
 #[test]
@@ -247,25 +242,25 @@ fn vm_to_block_multiple_links() {
 #[test]
 fn mem_read_write() {
     let f = "asm/mem_read_write.asm";
-    regular_test(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
 fn mem_read_write_no_memory_accesses() {
     let f = "asm/mem_read_write_no_memory_accesses.asm";
-    regular_test(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
 fn mem_read_write_with_bootloader() {
     let f = "asm/mem_read_write_with_bootloader.asm";
-    regular_test(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
 fn mem_read_write_large_diffs() {
     let f = "asm/mem_read_write_large_diffs.asm";
-    regular_test(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
@@ -299,20 +294,20 @@ fn multi_return_wrong_assignment_register_length() {
 fn bit_access() {
     let f = "asm/bit_access.asm";
     let i = [20];
-    regular_test_without_babybear(f, &i);
+    regular_test_without_small_field(f, &i);
 }
 
 #[test]
 fn sqrt() {
     let f = "asm/sqrt.asm";
-    regular_test(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
 fn functional_instructions() {
     let f = "asm/functional_instructions.asm";
     let i = [20];
-    regular_test_without_babybear(f, &i);
+    regular_test_without_small_field(f, &i);
 }
 
 #[test]
@@ -339,6 +334,7 @@ fn pil_at_module_level() {
     regular_test(f, Default::default());
 }
 
+#[cfg(feature = "estark-starky")]
 #[test]
 fn read_poly_files() {
     let asm_files = ["asm/vm_to_block_unique_interface.asm", "asm/empty.asm"];
@@ -355,14 +351,14 @@ fn read_poly_files() {
         pipeline.compute_proof().unwrap();
 
         // check fixed cols (may have no fixed cols)
-        let fixed = FixedPolySet::<Bn254Field>::read(tmp_dir.as_path());
+        let fixed = FixedPolySet::<Bn254Field>::read(tmp_dir.as_path()).unwrap();
         let fixed = get_uniquely_sized(&fixed).unwrap();
         if !fixed.is_empty() {
             assert_eq!(pil.degree(), fixed[0].1.len() as u64);
         }
 
         // check witness cols (examples assumed to have at least one witness col)
-        let witness = WitnessPolySet::<Bn254Field>::read(tmp_dir.as_path());
+        let witness = WitnessPolySet::<Bn254Field>::read(tmp_dir.as_path()).unwrap();
         assert_eq!(pil.degree(), witness[0].1.len() as u64);
     }
 }
@@ -376,13 +372,13 @@ fn enum_in_asm() {
 #[test]
 fn pass_range_constraints() {
     let f = "asm/pass_range_constraints.asm";
-    regular_test(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
 fn side_effects() {
     let f = "asm/side_effects.asm";
-    regular_test(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
@@ -394,13 +390,13 @@ fn multiple_signatures() {
 #[test]
 fn permutation_simple() {
     let f = "asm/permutations/simple.asm";
-    regular_test_without_babybear(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
 fn permutation_to_block() {
     let f = "asm/permutations/vm_to_block.asm";
-    regular_test_without_babybear(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
@@ -414,7 +410,7 @@ fn permutation_to_vm() {
 #[test]
 fn permutation_to_block_to_block() {
     let f = "asm/permutations/block_to_block.asm";
-    regular_test_without_babybear(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
@@ -427,20 +423,20 @@ fn permutation_incoming_needs_selector() {
 #[test]
 fn call_selectors_with_no_permutation() {
     let f = "asm/permutations/call_selectors_with_no_permutation.asm";
-    regular_test_without_babybear(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn vm_args() {
     let f = "asm/vm_args.asm";
-    regular_test_without_babybear(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
 fn vm_args_memory() {
     let f = "asm/vm_args_memory.asm";
-    regular_test(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 #[test]
@@ -452,7 +448,7 @@ fn vm_args_relative_path() {
 #[test]
 fn vm_args_two_levels() {
     let f = "asm/vm_args_two_levels.asm";
-    regular_test(f, Default::default());
+    regular_test_without_small_field(f, Default::default());
 }
 
 mod reparse {
@@ -491,7 +487,7 @@ mod book {
 #[should_panic = "Witness generation failed."]
 fn hello_world_asm_fail() {
     let f = "asm/book/hello_world.asm";
-    let i = [1];
+    let i = [2];
     let pipeline = make_prepared_pipeline(f, slice_to_vec(&i), vec![]);
     test_pilcom(pipeline);
 }
@@ -759,4 +755,23 @@ fn types_in_expressions() {
 fn set_hint() {
     let f = "asm/set_hint.asm";
     regular_test(f, Default::default());
+}
+
+#[test]
+fn expand_fixed_jit() {
+    // Test some more or less complicated code and see that it all JIT-compiles.
+    let file_name = "asm/expand_fixed.asm";
+
+    let mut pipeline = Pipeline::<GoldilocksField>::default()
+        .with_tmp_output()
+        .from_file(resolve_test_file(file_name));
+    let pil = pipeline.compute_optimized_pil().unwrap();
+
+    let fixed_cols = constant_evaluator::generate_only_via_jit(&pil);
+
+    let fixed_col_names = fixed_cols
+        .into_iter()
+        .map(|(name, _)| name)
+        .collect::<Vec<_>>();
+    assert_eq!(fixed_col_names, vec!["main::LAST"]);
 }

@@ -514,6 +514,7 @@ impl Display for PilStatement {
             ),
             PilStatement::Expression(_, e) => write!(f, "{e};"),
             PilStatement::EnumDeclaration(_, enum_decl) => write!(f, "{enum_decl}"),
+            PilStatement::StructDeclaration(_, struct_decl) => write!(f, "{struct_decl}"),
             PilStatement::TraitImplementation(_, trait_impl) => write!(f, "{trait_impl}"),
             PilStatement::TraitDeclaration(_, trait_decl) => write!(f, "{trait_decl}"),
         }
@@ -564,12 +565,17 @@ impl Display for FunctionDefinition {
 
 impl<E: Display> Display for TraitDeclaration<E> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
-        write!(
-            f,
-            "trait {name}<{type_vars}> {{\n{functions}}}",
-            name = self.name,
-            type_vars = self.type_vars.iter().format(", "),
-            functions = indent(
+        write!(f, "{}", self.to_string_with_name(&self.name))
+    }
+}
+
+impl<E: Display> TraitDeclaration<E> {
+    /// Formats the trait declaration, exchanging its name by the provided one.
+    pub fn to_string_with_name(&self, name: &str) -> String {
+        format!(
+            "trait {name}<{}> {{\n{}}}",
+            self.type_vars.iter().format(", "),
+            indent(
                 self.functions.iter().map(|m| format!("{m},\n")).format(""),
                 1
             )
@@ -619,16 +625,11 @@ impl<E: Display> Display for TraitImplementation<E> {
             panic!("Type from trait scheme is not a tuple.")
         };
 
-        let trait_vars = if items.is_empty() {
-            Default::default()
-        } else {
-            format!("<{}>", items.iter().format(", "))
-        };
-
         write!(
             f,
-            "impl{type_vars} {trait_name}{trait_vars} {{\n{methods}}}",
+            "impl{type_vars} {trait_name}{type_args} {{\n{methods}}}",
             trait_name = self.name,
+            type_args = format_type_args(items),
             methods = indent(
                 self.functions.iter().map(|m| format!("{m},\n")).format(""),
                 1
@@ -647,6 +648,44 @@ impl<Expr: Display> Display for SelectedExpressions<Expr> {
                 .map(|s| format!("{s} $ "))
                 .unwrap_or_default(),
             self.expressions
+        )
+    }
+}
+
+impl<E: Display> Display for StructDeclaration<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(f, "{}", self.to_string_with_name(&self.name))
+    }
+}
+
+impl<E: Display> StructDeclaration<E> {
+    /// Formats the struct declaration, exchanging its name by the provided one.
+    pub fn to_string_with_name(&self, name: &str) -> String {
+        format!(
+            "struct {name}{} {{\n{}}}",
+            type_vars_to_string(&self.type_vars),
+            indent(
+                self.fields
+                    .iter()
+                    .map(|named| format!("{}: {},\n", named.name, named.ty))
+                    .format(""),
+                1
+            )
+        )
+    }
+}
+
+impl<E: Display> Display for StructExpression<E> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "{}{}",
+            self.name,
+            if self.fields.is_empty() {
+                "{}".to_string()
+            } else {
+                format!("{{ {} }}", self.fields.iter().join(", "))
+            }
         )
     }
 }
@@ -680,7 +719,7 @@ impl<Ref: Display> Display for Expression<Ref> {
         match self {
             Expression::Reference(_, reference) => write!(f, "{reference}"),
             Expression::PublicReference(_, name) => write!(f, ":{name}"),
-            Expression::Number(_, Number { value, .. }) => write!(f, "{value}"),
+            Expression::Number(_, n) => write!(f, "{n}"),
             Expression::String(_, value) => write!(f, "{}", quote(value)),
             Expression::Tuple(_, items) => write!(f, "({})", format_list(items)),
             Expression::LambdaExpression(_, lambda) => write!(f, "{lambda}"),
@@ -701,6 +740,7 @@ impl<Ref: Display> Display for Expression<Ref> {
             Expression::BlockExpression(_, block_expr) => {
                 write!(f, "{block_expr}")
             }
+            Expression::StructExpression(_, s) => write!(f, "{s}"),
         }
     }
 }
@@ -725,6 +765,18 @@ impl Display for NamespacedPolynomialReference {
             write!(f, "{}::{}", self.path, format_type_args(type_args))
         } else {
             write!(f, "{}", self.path)
+        }
+    }
+}
+
+impl Display for Number {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        let Number { value, type_ } = self;
+        write!(f, "{value}")?;
+        match type_ {
+            Some(ty @ (Type::Int | Type::Fe | Type::Expr)) => write!(f, "_{ty}"),
+            Some(Type::TypeVar(_)) | None => Ok(()),
+            Some(_) => unreachable!(),
         }
     }
 }
@@ -976,19 +1028,22 @@ fn format_list_of_types<E: Display>(types: &[Type<E>]) -> String {
 
 /// Formats a list of types to be used as values for type arguments
 /// and puts them in angle brackets.
-/// Puts the last item in parentheses if it ends in `>` to avoid parser problems.
+/// It might add parentheses and spaces to avoid parser problems.
 pub fn format_type_args<E: Display>(args: &[Type<E>]) -> String {
     format!(
         "<{}>",
         args.iter()
-            .map(|arg| arg.to_string())
-            .map(|s| {
-                if s.contains('>') {
-                    format!("({s})")
-                } else {
-                    s
-                }
+            .rev()
+            .enumerate()
+            .map(|(i, t)| match t {
+                // Function types need parentheses if at the outermost level,
+                // because of the '>' in '->'
+                Type::Function(_) => format!("({t})"),
+                // For generic types we add a space to avoid '>>' at the end.
+                Type::NamedType(_, Some(_)) if i == 0 => format!("{t} "),
+                _ => format!("{t}"),
             })
+            .rev()
             .join(", ")
     )
 }
@@ -1005,6 +1060,14 @@ pub fn format_type_scheme_around_name<E: Display, N: Display>(
         )
     } else {
         format!(" {name}")
+    }
+}
+
+pub fn type_vars_to_string(type_vars: &TypeBounds) -> String {
+    if type_vars.is_empty() {
+        Default::default()
+    } else {
+        format!("<{type_vars}>")
     }
 }
 
@@ -1028,6 +1091,7 @@ mod tests {
     #[test]
     fn params() {
         let p = Param {
+            source: SourceRef::unknown(),
             name: "abc".into(),
             index: None,
             ty: "ty".parse().ok(),
@@ -1039,11 +1103,13 @@ mod tests {
         let in_out = Params {
             inputs: vec![
                 Param {
+                    source: SourceRef::unknown(),
                     name: "abc".into(),
                     index: Some(7u32.into()),
                     ty: "ty0".parse().ok(),
                 },
                 Param {
+                    source: SourceRef::unknown(),
                     name: "def".into(),
                     index: None,
                     ty: "ty1".parse().ok(),
@@ -1051,11 +1117,13 @@ mod tests {
             ],
             outputs: vec![
                 Param {
+                    source: SourceRef::unknown(),
                     name: "abc".into(),
                     index: None,
                     ty: "ty0".parse().ok(),
                 },
                 Param {
+                    source: SourceRef::unknown(),
                     name: "def".into(),
                     index: Some(2u32.into()),
                     ty: "ty1".parse().ok(),
@@ -1073,6 +1141,7 @@ mod tests {
         let out = Params {
             inputs: vec![],
             outputs: vec![Param {
+                source: SourceRef::unknown(),
                 name: "abc".into(),
                 index: None,
                 ty: "ty".parse().ok(),
@@ -1082,6 +1151,7 @@ mod tests {
         assert_eq!(out.prepend_space_if_non_empty(), " -> abc: ty");
         let _in = Params {
             inputs: vec![Param {
+                source: SourceRef::unknown(),
                 name: "abc".into(),
                 index: None,
                 ty: "ty".parse().ok(),

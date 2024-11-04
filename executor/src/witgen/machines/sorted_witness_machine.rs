@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap};
 
 use super::super::affine_expression::AffineExpression;
-use super::{EvalResult, FixedData};
+use super::{Connection, EvalResult, FixedData};
 use super::{Machine, MachineParts};
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::rows::RowPair;
@@ -12,8 +12,10 @@ use crate::witgen::{
 use crate::witgen::{EvalValue, IncompleteCause, MutableState, QueryCallback};
 use crate::Identity;
 use itertools::Itertools;
+use num_traits::One;
 use powdr_ast::analyzed::{
-    AlgebraicExpression as Expression, AlgebraicReference, IdentityKind, PolyID,
+    AlgebraicExpression as Expression, AlgebraicReference, LookupIdentity, PhantomLookupIdentity,
+    PolyID,
 };
 use powdr_number::{DegreeType, FieldElement};
 
@@ -27,7 +29,7 @@ use powdr_number::{DegreeType, FieldElement};
 pub struct SortedWitnesses<'a, T: FieldElement> {
     degree: DegreeType,
     rhs_references: BTreeMap<u64, Vec<&'a AlgebraicReference>>,
-    connecting_identities: BTreeMap<u64, &'a Identity<T>>,
+    connections: BTreeMap<u64, Connection<'a, T>>,
     key_col: PolyID,
     /// Position of the witness columns in the data.
     witness_positions: HashMap<PolyID, usize>,
@@ -59,10 +61,10 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                 .collect();
 
             let rhs_references = parts
-                .connecting_identities
-                .values()
-                .filter_map(|&id| {
-                    let rhs_expressions = id
+                .connections
+                .iter()
+                .filter_map(|(id, &identity)| {
+                    let rhs_expressions = identity
                         .right
                         .expressions
                         .iter()
@@ -73,11 +75,11 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
                         })
                         .collect::<Option<Vec<_>>>()?;
 
-                    Some((id.id, rhs_expressions))
+                    Some((*id, rhs_expressions))
                 })
                 .collect::<BTreeMap<_, _>>();
 
-            if rhs_references.len() != parts.connecting_identities.len() {
+            if rhs_references.len() != parts.connections.len() {
                 // Not all connected identities meet the criteria above, so this is not a DoubleSortedWitnesses machine.
                 return None;
             }
@@ -93,7 +95,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
             Some(SortedWitnesses {
                 degree,
                 rhs_references,
-                connecting_identities: parts.connecting_identities.clone(),
+                connections: parts.connections.clone(),
                 name,
                 key_col,
                 witness_positions,
@@ -109,19 +111,23 @@ fn check_identity<T: FieldElement>(
     id: &Identity<T>,
     degree: DegreeType,
 ) -> Option<PolyID> {
+    // Looking for a lookup
+    let (left, right) = match id {
+        Identity::Lookup(LookupIdentity { left, right, .. })
+        | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. }) => (left, right),
+        _ => return None,
+    };
+
     // Looking for NOTLAST $ [ A' - A ] in [ POSITIVE ]
-    if id.kind != IdentityKind::Plookup
-        || id.right.selector.is_some()
-        || id.left.expressions.len() != 1
-    {
+    if !right.selector.is_one() || left.expressions.len() != 1 {
         return None;
     }
 
     // Check for A' - A in the LHS
-    let key_column = check_constraint(id.left.expressions.first().unwrap())?;
+    let key_column = check_constraint(left.expressions.first().unwrap())?;
 
-    let not_last = id.left.selector.as_ref()?;
-    let positive = id.right.expressions.first().unwrap();
+    let not_last = &left.selector;
+    let positive = right.expressions.first().unwrap();
 
     // TODO this could be rather slow. We should check the code for identity instead
     // of evaluating it.
@@ -231,7 +237,7 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
         identity_id: u64,
         caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let left = self.connecting_identities[&identity_id]
+        let left = self.connections[&identity_id]
             .left
             .expressions
             .iter()

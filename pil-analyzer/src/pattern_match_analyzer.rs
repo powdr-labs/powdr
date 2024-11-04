@@ -223,7 +223,6 @@ pub fn analyze_match_patterns(
             println!("Iguales: {:?} {:?}", covered_space, substracted_space);
             redundant_patterns.push(pattern_index);
         } else {
-            //println!("Desiguales: {:?} {:?}", covered_space, substracted_space);
             needed_patterns.push(pattern);
             covered_space = substracted_space;
         }
@@ -250,7 +249,6 @@ fn solve_ellipsis(patterns: &[Pattern]) -> Vec<Pattern> {
                 _ => (max_size, has_ellipsis),
             });
 
-    println!("max_size: {}, has_ellipsis: {}", max_size, has_ellipsis);
     if max_size == 0 || !has_ellipsis {
         return patterns.to_vec();
     }

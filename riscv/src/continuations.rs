@@ -7,7 +7,7 @@ use powdr_ast::{
     asm_analysis::{AnalysisASMFile, Machine},
     parsed::{asm::parse_absolute_path, Expression, Number, PilStatement},
 };
-use powdr_number::{FieldElement, LargeInt};
+use powdr_number::{FieldElement, KnownField, LargeInt};
 use powdr_pipeline::Pipeline;
 use powdr_riscv_executor::{get_main_machine, ExecutionTrace, MemoryState, ProfilerOptions};
 
@@ -15,13 +15,14 @@ pub mod bootloader;
 mod memory_merkle_tree;
 
 use bootloader::split_fe;
-use bootloader::{default_input, PAGE_SIZE_BYTES_LOG, PC_INDEX, REGISTER_NAMES};
+use bootloader::{
+    default_input, PAGE_SIZE_BYTES_LOG, PC_INDEX, REGISTER_MEMORY_NAMES, REGISTER_NAMES,
+};
 use memory_merkle_tree::MerkleTree;
 
 use crate::continuations::bootloader::{
-    default_register_values, shutdown_routine_upper_bound, BOOTLOADER_INPUTS_PER_PAGE,
-    BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES, DEFAULT_PC, MEMORY_HASH_START_INDEX, PAGE_INPUTS_OFFSET,
-    WORDS_PER_PAGE,
+    default_register_values, shutdown_routine_upper_bound, BOOTLOADER_INPUTS_PER_PAGE, DEFAULT_PC,
+    MEMORY_HASH_START_INDEX, PAGE_INPUTS_OFFSET, WORDS_PER_PAGE,
 };
 
 use crate::code_gen::Register;
@@ -68,12 +69,12 @@ fn render_memory_hash<F: FieldElement>(hash: &[F]) -> String {
 /// - `bootloader_inputs`: The inputs to the bootloader and the index of the row at which the shutdown routine
 ///   is supposed to execute, for each chunk, as returned by `rust_continuations_dry_run`.
 pub fn rust_continuations<F: FieldElement, PipelineCallback, E>(
-    mut pipeline: Pipeline<F>,
+    pipeline: &mut Pipeline<F>,
     pipeline_callback: PipelineCallback,
     dry_run_result: DryRunResult<F>,
 ) -> Result<(), E>
 where
-    PipelineCallback: Fn(Pipeline<F>) -> Result<(), E>,
+    PipelineCallback: Fn(&mut Pipeline<F>) -> Result<(), E>,
 {
     let bootloader_inputs = dry_run_result.bootloader_inputs;
     let num_chunks = bootloader_inputs.len();
@@ -91,10 +92,11 @@ where
         .map(
             |(i, (bootloader_inputs, start_of_shutdown_routine))| -> Result<(), E> {
                 log::info!("\nRunning chunk {} / {}...", i + 1, num_chunks);
-                let pipeline = pipeline.clone();
-                let pipeline = if let Some(parent_dir) = pipeline.output_dir() {
-                    let force_overwrite = pipeline.is_force_overwrite();
 
+                let parent_dir = pipeline.output_dir().clone();
+                let force_overwrite = pipeline.is_force_overwrite();
+
+                if let Some(parent_dir) = parent_dir.clone() {
                     let chunk_dir = parent_dir.join(format!("chunk_{i}"));
                     create_dir_all(&chunk_dir).unwrap();
 
@@ -106,10 +108,11 @@ where
                     }
                     hard_link(parent_dir.join("constants.bin"), link_to_consts).unwrap();
 
-                    pipeline.with_output(chunk_dir, force_overwrite)
-                } else {
-                    pipeline
-                };
+                    // The output directory is set here to output witness and proof artifacts
+                    // inside the chunk directory.
+                    // TODO This is hacky and should be improved.
+                    pipeline.set_output(chunk_dir, force_overwrite)
+                }
 
                 // get the length of the main machine
                 // quite hacky, is there a better way?
@@ -124,13 +127,15 @@ where
                     })
                     .unwrap();
 
+                pipeline.rollback_from_witness();
+
                 // The `jump_to_shutdown_routine` column indicates when the execution should jump to the shutdown routine.
                 // In that row, the normal PC update is ignored and the PC is set to the address of the shutdown routine.
                 // In other words, it should be a one-hot encoding of `start_of_shutdown_routine`.
                 let jump_to_shutdown_routine = (0..length)
                     .map(|i| (i == start_of_shutdown_routine - 1).into())
                     .collect();
-                let pipeline = pipeline.add_external_witness_values(vec![
+                pipeline.add_external_witness_values_mut(vec![
                     (
                         "main_bootloader_inputs::value".to_string(),
                         bootloader_inputs,
@@ -141,6 +146,11 @@ where
                     ),
                 ]);
                 pipeline_callback(pipeline)?;
+
+                if let Some(original_dir) = parent_dir {
+                    pipeline.set_output(original_dir, force_overwrite);
+                }
+
                 Ok(())
             },
         )
@@ -148,8 +158,8 @@ where
     Ok(())
 }
 
-fn sanity_check(main_machine: &Machine) {
-    for expected_instruction in BOOTLOADER_SPECIFIC_INSTRUCTION_NAMES {
+fn sanity_check(main_machine: &Machine, field: KnownField) {
+    for expected_instruction in bootloader::bootloader_specific_instruction_names(field) {
         if !main_machine
             .instructions
             .iter()
@@ -218,6 +228,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     pipeline: &mut Pipeline<F>,
     profiler_opt: Option<ProfilerOptions>,
 ) -> DryRunResult<F> {
+    let field = F::known_field().unwrap();
+
     // All inputs for all chunks.
     let mut bootloader_inputs_and_num_rows = vec![];
 
@@ -226,7 +238,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
 
     let program = pipeline.compute_analyzed_asm().unwrap().clone();
     let main_machine = program.get_machine(&parse_absolute_path("::Main")).unwrap();
-    sanity_check(main_machine);
+    sanity_check(main_machine, field);
 
     log::info!("Initializing memory merkle tree...");
 
@@ -418,20 +430,26 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
                 );
         }
 
-        // Go over all registers except the PC
-        let register_iter = REGISTER_NAMES.iter().take(REGISTER_NAMES.len() - 1);
-        register_values = register_iter
+        // Go over all memory registers
+        register_values = REGISTER_MEMORY_NAMES
+            .iter()
             .map(|reg| {
-                let reg = reg.strip_prefix("main.").unwrap();
+                let reg = reg.strip_prefix("main::").unwrap();
                 let id = Register::from(reg).addr();
-                *register_memory_snapshot.get(&(id as u32)).unwrap()
+                *register_memory_snapshot
+                    .get(&(id as u32))
+                    .unwrap_or(&0.into())
             })
             .collect::<Vec<_>>();
 
-        register_values.push(*chunk_trace["main::pc"].last().unwrap());
+        // Go over all machine registers
+        for reg in REGISTER_NAMES {
+            register_values.push(*chunk_trace[reg].last().unwrap());
+        }
 
         // Replace final register values of the current chunk
-        bootloader_inputs[REGISTER_NAMES.len()..2 * REGISTER_NAMES.len()]
+        bootloader_inputs[(REGISTER_MEMORY_NAMES.len() + REGISTER_NAMES.len())
+            ..2 * (REGISTER_MEMORY_NAMES.len() + REGISTER_NAMES.len())]
             .copy_from_slice(&register_values);
 
         // Replace the updated root hash

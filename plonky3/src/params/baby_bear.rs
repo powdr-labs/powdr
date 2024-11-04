@@ -1,4 +1,5 @@
 //! The concrete parameters used in the prover
+//!
 //! Inspired from [this example](https://github.com/Plonky3/Plonky3/blob/6a1b0710fdf85136d0fdd645b92933615867740a/keccak-air/examples/prove_baby_bear_poseidon2.rs)
 
 use lazy_static::lazy_static;
@@ -11,21 +12,18 @@ use p3_dft::Radix2DitParallel;
 use p3_field::{extension::BinomialExtensionField, Field};
 use p3_fri::{FriConfig, TwoAdicFriPcs};
 use p3_merkle_tree::MerkleTreeMmcs;
-use p3_poseidon2::{Poseidon2, Poseidon2ExternalMatrixGeneral};
+use p3_poseidon2::{poseidon2_round_numbers_128, Poseidon2, Poseidon2ExternalMatrixGeneral};
 use p3_symmetric::{PaddingFreeSponge, TruncatedPermutation};
 use p3_uni_stark::StarkConfig;
 
-use rand::{distributions::Standard, Rng, SeedableRng};
+use crate::params::poseidon2;
 
 use powdr_number::BabyBearField;
 
 const D: u64 = 7;
-// params directly taken from plonky3's poseidon2_round_numbers_128 function
-// to guarantee 128-bit security.
-const ROUNDS_F: usize = 8;
-const ROUNDS_P: usize = 13;
-const WIDTH: usize = 16;
-type Perm = Poseidon2<BabyBear, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, WIDTH, D>;
+pub const WIDTH: usize = 16;
+pub type Perm =
+    Poseidon2<BabyBear, Poseidon2ExternalMatrixGeneral, DiffusionMatrixBabyBear, WIDTH, D>;
 
 const DEGREE: usize = 4;
 type FriChallenge = BinomialExtensionField<BabyBear, DEGREE>;
@@ -48,28 +46,23 @@ type ValMmcs = MerkleTreeMmcs<
 >;
 
 type ChallengeMmcs = ExtensionMmcs<BabyBear, FriChallenge, ValMmcs>;
-type Dft = Radix2DitParallel;
+type Dft = Radix2DitParallel<BabyBear>;
 type MyPcs = TwoAdicFriPcs<BabyBear, Dft, ValMmcs, ChallengeMmcs>;
 
 const FRI_LOG_BLOWUP: usize = 1;
 const FRI_NUM_QUERIES: usize = 100;
 const FRI_PROOF_OF_WORK_BITS: usize = 16;
 
-const RNG_SEED: u64 = 42;
-
 lazy_static! {
+    static ref ROUNDS: (usize, usize) = poseidon2_round_numbers_128::<BabyBear>(WIDTH, D);
+    pub static ref ROUNDS_F: usize = ROUNDS.0;
+    pub static ref ROUNDS_P: usize = ROUNDS.1;
     static ref PERM_BB: Perm = Perm::new(
-        ROUNDS_F,
-        rand_chacha::ChaCha8Rng::seed_from_u64(RNG_SEED)
-            .sample_iter(Standard)
-            .take(ROUNDS_F)
-            .collect::<Vec<[BabyBear; WIDTH]>>(),
+        *ROUNDS_F,
+        poseidon2::external_constants(*ROUNDS_F),
         Poseidon2ExternalMatrixGeneral,
-        ROUNDS_P,
-        rand_chacha::ChaCha8Rng::seed_from_u64(RNG_SEED)
-            .sample_iter(Standard)
-            .take(ROUNDS_P)
-            .collect(),
+        *ROUNDS_P,
+        poseidon2::internal_constants(*ROUNDS_P),
         DiffusionMatrixBabyBear::default()
     );
 }
@@ -97,7 +90,7 @@ impl FieldElementMap for BabyBearField {
 
         let challenge_mmcs = ChallengeMmcs::new(val_mmcs.clone());
 
-        let dft = Dft {};
+        let dft = Dft::default();
 
         let fri_config = FriConfig {
             log_blowup: FRI_LOG_BLOWUP,

@@ -11,7 +11,7 @@ use powdr_ast::{
     analyzed::{
         AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
         AlgebraicUnaryOperation, AlgebraicUnaryOperator, Challenge, Expression,
-        FunctionValueDefinition, Reference, Symbol, SymbolKind, TypedExpression,
+        FunctionValueDefinition, Reference, SolvedTraitImpls, Symbol, SymbolKind, TypedExpression,
     },
     parsed::{
         display::quote,
@@ -29,7 +29,7 @@ use powdr_parser_util::SourceRef;
 pub fn evaluate_expression<'a, T: FieldElement>(
     expr: &'a Expression,
     definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    solved_impls: &'a HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
+    solved_impls: &'a SolvedTraitImpls,
 ) -> Result<Arc<Value<'a, T>>, EvalError> {
     evaluate(
         expr,
@@ -529,7 +529,7 @@ impl<'a, T> Closure<'a, T> {
 
 pub struct Definitions<'a> {
     pub definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-    pub solved_impls: &'a HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
+    pub solved_impls: &'a SolvedTraitImpls,
 }
 
 impl<'a> Definitions<'a> {
@@ -537,7 +537,7 @@ impl<'a> Definitions<'a> {
     /// of SymbolLookup for the recursive call.
     pub fn lookup_with_symbols<T: FieldElement>(
         definitions: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
-        solved_impls: &'a HashMap<String, HashMap<Vec<Type>, Arc<Expression>>>,
+        solved_impls: &'a SolvedTraitImpls,
         name: &str,
         type_args: &Option<Vec<Type>>,
         symbols: &mut impl SymbolLookup<'a, T>,
@@ -595,9 +595,9 @@ impl<'a> Definitions<'a> {
                     }
                 }
                 Some(FunctionValueDefinition::TraitFunction(_, _)) => {
-                    let type_arg = type_args.as_ref().unwrap();
+                    let type_args = type_args.as_ref().unwrap();
                     let Expression::LambdaExpression(_, lambda) =
-                        solved_impls[&name][type_arg].as_ref()
+                        solved_impls.resolve_trait_function(&name, type_args)
                     else {
                         unreachable!()
                     };
@@ -976,6 +976,9 @@ impl<'a, 'b, T: FieldElement, S: SymbolLookup<'a, T>> Evaluator<'a, 'b, T, S> {
             Expression::FreeInput(_, _) => Err(EvalError::Unsupported(
                 "Cannot evaluate free input.".to_string(),
             ))?,
+            Expression::StructExpression(_, _) => {
+                unimplemented!("Struct expressions are not yet supported.")
+            }
         };
         Ok(())
     }
