@@ -5,8 +5,8 @@ use std::utils::force_bool;
 use std::utils::sum;
 use std::convert::expr;
 use std::machines::small_field::memory::Memory;
+use std::machines::small_field::pointer_arith::address_array_elems;
 use std::machines::split::split_bb::SplitBB;
-use super::poseidon2_common::address_inc;
 use super::poseidon2_common::pow_7;
 use super::poseidon2_common::poseidon2;
 
@@ -123,7 +123,7 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     // Calculate the addresses and load all the inputs into the first time step
     let input_addr_high: col[STATE_SIZE];
     let input_addr_low: col[STATE_SIZE];
-    address_inc(input_addr_high, input_addr_low);
+    address_array_elems(input_addr_high, input_addr_low);
 
     let input_low: col[STATE_SIZE];
     let input_high: col[STATE_SIZE];
@@ -187,7 +187,7 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     // Write the output to memory at the next time step
     let output_addr_high: col[STATE_SIZE];
     let output_addr_low: col[STATE_SIZE];
-    address_inc(output_addr_high, output_addr_low);
+    address_array_elems(output_addr_high, output_addr_low);
     // TODO: turn this into array operations
     link if is_used ~>
         mem.mstore(output_addr_high[0], output_addr_low[0], time_step + 1, output_high[0], output_low[0]);
