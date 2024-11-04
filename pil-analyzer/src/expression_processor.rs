@@ -9,7 +9,7 @@ use powdr_ast::{
     },
 };
 
-use powdr_parser_util::SourceRef;
+use powdr_parser_util::{Error, SourceRef};
 use std::{
     collections::{HashMap, HashSet},
     str::FromStr,
@@ -41,51 +41,57 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
     pub fn process_array_expression(
         &mut self,
         array_expression: ::powdr_ast::parsed::ArrayExpression,
-    ) -> ArrayExpression<Reference> {
+    ) -> Result<ArrayExpression<Reference>, Error> {
         match array_expression {
             ArrayExpression::Value(expressions) => {
-                let values = self.process_expressions(expressions);
-                ArrayExpression::Value(values)
+                let values = self.process_expressions(expressions)?;
+                Ok(ArrayExpression::Value(values))
             }
-            ArrayExpression::RepeatedValue(expressions) => {
-                ArrayExpression::RepeatedValue(self.process_expressions(expressions))
-            }
-            ArrayExpression::Concat(left, right) => ArrayExpression::Concat(
-                Box::new(self.process_array_expression(*left)),
-                Box::new(self.process_array_expression(*right)),
-            ),
+            ArrayExpression::RepeatedValue(expressions) => Ok(ArrayExpression::RepeatedValue(
+                self.process_expressions(expressions)?,
+            )),
+            ArrayExpression::Concat(left, right) => Ok(ArrayExpression::Concat(
+                Box::new(self.process_array_expression(*left)?),
+                Box::new(self.process_array_expression(*right)?),
+            )),
         }
     }
 
-    pub fn process_expressions(&mut self, exprs: Vec<parsed::Expression>) -> Vec<Expression> {
+    pub fn process_expressions(
+        &mut self,
+        exprs: Vec<parsed::Expression>,
+    ) -> Result<Vec<Expression>, Error> {
         exprs
             .into_iter()
             .map(|e| self.process_expression(e))
-            .collect()
+            .collect::<Result<Vec<_>, _>>()
     }
 
-    pub fn process_expression(&mut self, expr: parsed::Expression) -> Expression {
+    pub fn process_expression(&mut self, expr: parsed::Expression) -> Result<Expression, Error> {
         use parsed::Expression as PExpression;
         match expr {
             PExpression::Reference(src, poly) => {
-                Expression::Reference(src, self.process_reference(poly))
+                Ok(Expression::Reference(src, self.process_reference(poly)))
             }
-            PExpression::PublicReference(src, name) => Expression::PublicReference(src, name),
+            PExpression::PublicReference(src, name) => Ok(Expression::PublicReference(src, name)),
             PExpression::Number(src, Number { value: n, type_: t }) => {
-                Expression::Number(src, Number { value: n, type_: t })
+                Ok(Expression::Number(src, Number { value: n, type_: t }))
             }
-            PExpression::String(src, value) => Expression::String(src, value),
+            PExpression::String(src, value) => Ok(Expression::String(src, value)),
             PExpression::Tuple(src, items) => {
-                Expression::Tuple(src, self.process_expressions(items))
+                Ok(Expression::Tuple(src, self.process_expressions(items)?))
             }
-            PExpression::ArrayLiteral(src, ArrayLiteral { items }) => Expression::ArrayLiteral(
+            PExpression::ArrayLiteral(src, ArrayLiteral { items }) => Ok(Expression::ArrayLiteral(
                 src,
                 ArrayLiteral {
-                    items: self.process_expressions(items),
+                    items: self.process_expressions(items)?,
                 },
-            ),
+            )),
             PExpression::LambdaExpression(src, lambda_expression) => {
-                Expression::LambdaExpression(src, self.process_lambda_expression(lambda_expression))
+                Ok(Expression::LambdaExpression(
+                    src,
+                    self.process_lambda_expression(lambda_expression)?,
+                ))
             }
             PExpression::BinaryOperation(
                 src,
@@ -94,54 +100,59 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                     op,
                     right: r,
                 },
-            ) => Expression::BinaryOperation(
+            ) => Ok(Expression::BinaryOperation(
                 src,
                 BinaryOperation {
-                    left: Box::new(self.process_expression(*l)),
+                    left: Box::new(self.process_expression(*l)?),
                     op,
-                    right: Box::new(self.process_expression(*r)),
+                    right: Box::new(self.process_expression(*r)?),
                 },
-            ),
+            )),
             PExpression::UnaryOperation(src, UnaryOperation { op, expr: value }) => {
-                Expression::UnaryOperation(
+                Ok(Expression::UnaryOperation(
                     src,
                     UnaryOperation {
                         op,
-                        expr: Box::new(self.process_expression(*value)),
+                        expr: Box::new(self.process_expression(*value)?),
                     },
-                )
+                ))
             }
-            PExpression::IndexAccess(src, index_access) => Expression::IndexAccess(
+            PExpression::IndexAccess(src, index_access) => Ok(Expression::IndexAccess(
                 src,
                 parsed::IndexAccess {
-                    array: Box::new(self.process_expression(*index_access.array)),
-                    index: Box::new(self.process_expression(*index_access.index)),
+                    array: Box::new(self.process_expression(*index_access.array)?),
+                    index: Box::new(self.process_expression(*index_access.index)?),
                 },
-            ),
-            PExpression::FunctionCall(src, c) => Expression::FunctionCall(
+            )),
+            PExpression::FunctionCall(src, c) => Ok(Expression::FunctionCall(
                 src,
                 parsed::FunctionCall {
-                    function: Box::new(self.process_expression(*c.function)),
-                    arguments: self.process_expressions(c.arguments),
+                    function: Box::new(self.process_expression(*c.function)?),
+                    arguments: self.process_expressions(c.arguments)?,
                 },
-            ),
+            )),
             PExpression::MatchExpression(src, MatchExpression { scrutinee, arms }) => {
-                Expression::MatchExpression(
+                Ok(Expression::MatchExpression(
                     src,
                     MatchExpression {
-                        scrutinee: Box::new(self.process_expression(*scrutinee)),
+                        scrutinee: Box::new(self.process_expression(*scrutinee)?),
                         arms: arms
                             .into_iter()
                             .map(|MatchArm { pattern, value }| {
                                 let vars = self.save_local_variables();
-                                let pattern = self.process_pattern(pattern);
-                                let value = self.process_expression(value);
+                                let result = match (
+                                    self.process_pattern(pattern),
+                                    self.process_expression(value),
+                                ) {
+                                    (Ok(pattern), Ok(value)) => Ok(MatchArm { pattern, value }),
+                                    (Err(e), _) | (_, Err(e)) => Err(e),
+                                };
                                 self.reset_local_variables(vars);
-                                MatchArm { pattern, value }
+                                result
                             })
-                            .collect(),
+                            .collect::<Result<Vec<_>, _>>()?,
                     },
-                )
+                ))
             }
             PExpression::IfExpression(
                 src,
@@ -150,16 +161,16 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                     body,
                     else_body,
                 },
-            ) => Expression::IfExpression(
+            ) => Ok(Expression::IfExpression(
                 src,
                 IfExpression {
-                    condition: Box::new(self.process_expression(*condition)),
-                    body: Box::new(self.process_expression(*body)),
-                    else_body: Box::new(self.process_expression(*else_body)),
+                    condition: Box::new(self.process_expression(*condition)?),
+                    body: Box::new(self.process_expression(*body)?),
+                    else_body: Box::new(self.process_expression(*else_body)?),
                 },
-            ),
+            )),
             PExpression::BlockExpression(src, BlockExpression { statements, expr }) => {
-                self.process_block_expression(statements, expr, src)
+                Ok(self.process_block_expression(statements, expr, src)?)
             }
             PExpression::FreeInput(_, _) => panic!(),
             PExpression::StructExpression(src, StructExpression { name, fields }) => {
@@ -167,25 +178,30 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                     .type_args
                     .map(|args| args.into_iter().map(|t| self.process_type(t)).collect());
 
-                Expression::StructExpression(
+                let name = self
+                    .driver
+                    .resolve_ref(&name.path, SymbolCategory::Struct)
+                    .map_err(|msg| src.with_error(msg))?;
+
+                Ok(Expression::StructExpression(
                     src,
                     StructExpression {
-                        name: Reference::Poly(PolynomialReference {
-                            name: self
-                                .driver
-                                .resolve_ref(&name.path, SymbolCategory::Struct)
-                                .expect("TODO: Handle this up in the code"),
-                            type_args,
-                        }),
+                        name: Reference::Poly(PolynomialReference { name, type_args }),
                         fields: fields
                             .into_iter()
-                            .map(|named_expr| NamedExpression {
-                                name: named_expr.name,
-                                body: Box::new(self.process_expression(*named_expr.body)),
+                            .map(|named_expr| {
+                                let processed_body = self.process_expression(*named_expr.body);
+                                match processed_body {
+                                    Ok(body) => Ok(NamedExpression {
+                                        name: named_expr.name,
+                                        body: Box::new(body),
+                                    }),
+                                    Err(e) => Err(e),
+                                }
                             })
-                            .collect(),
+                            .collect::<Result<Vec<_>, _>>()?,
                     },
-                )
+                ))
             }
         }
     }
@@ -193,12 +209,12 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
     /// Processes a pattern, registering all variables bound in there.
     /// It also changes EnumPatterns consisting of a single identifier that does not resolve
     /// to anything into Variable patterns.
-    fn process_pattern(&mut self, pattern: Pattern) -> Pattern {
+    fn process_pattern(&mut self, pattern: Pattern) -> Result<Pattern, Error> {
         match pattern {
             Pattern::CatchAll(_)
             | Pattern::Ellipsis(_)
             | Pattern::Number(_, _)
-            | Pattern::String(_, _) => pattern,
+            | Pattern::String(_, _) => Ok(pattern),
             Pattern::Array(source_ref, items) => {
                 // If there is more than one Pattern::Ellipsis in items, it is an error
                 if items
@@ -209,10 +225,10 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 {
                     panic!("Only one \"..\"-item allowed in array pattern");
                 }
-                Pattern::Array(source_ref, self.process_pattern_vec(items))
+                Ok(Pattern::Array(source_ref, self.process_pattern_vec(items)?))
             }
             Pattern::Tuple(source_ref, items) => {
-                Pattern::Tuple(source_ref, self.process_pattern_vec(items))
+                Ok(Pattern::Tuple(source_ref, self.process_pattern_vec(items)?))
             }
             Pattern::Variable(source_ref, name) => self.process_variable_pattern(source_ref, name),
             Pattern::Enum(source_ref, name, None) => {
@@ -246,20 +262,24 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         }
     }
 
-    fn process_pattern_vec(&mut self, patterns: Vec<Pattern>) -> Vec<Pattern> {
+    fn process_pattern_vec(&mut self, patterns: Vec<Pattern>) -> Result<Vec<Pattern>, Error> {
         patterns
             .into_iter()
             .map(|p| self.process_pattern(p))
             .collect()
     }
 
-    fn process_variable_pattern(&mut self, source_ref: SourceRef, name: String) -> Pattern {
+    fn process_variable_pattern(
+        &mut self,
+        source_ref: SourceRef,
+        name: String,
+    ) -> Result<Pattern, Error> {
         let id = self.local_variable_counter;
         if self.local_variables.insert(name.clone(), id).is_some() {
             panic!("Variable already defined: {name}");
         }
         self.local_variable_counter += 1;
-        Pattern::Variable(source_ref, name)
+        Ok(Pattern::Variable(source_ref, name))
     }
 
     fn process_enum_pattern(
@@ -267,17 +287,19 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         source_ref: SourceRef,
         name: String,
         fields: Option<Vec<Pattern>>,
-    ) -> Pattern {
-        Pattern::Enum(
+    ) -> Result<Pattern, Error> {
+        let fields = fields.map(|fields| {
+            fields
+                .into_iter()
+                .map(|p| self.process_pattern(p))
+                .collect()
+        });
+
+        Ok(Pattern::Enum(
             source_ref,
             SymbolPath::from_str(&name).unwrap(),
-            fields.map(|fields| {
-                fields
-                    .into_iter()
-                    .map(|p| self.process_pattern(p))
-                    .collect()
-            }),
-        )
+            fields,
+        ))
     }
 
     fn process_reference(&mut self, reference: NamespacedPolynomialReference) -> Reference {
@@ -295,7 +317,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         LambdaExpression {
             kind, params, body, ..
         }: LambdaExpression,
-    ) -> LambdaExpression<Expression> {
+    ) -> Result<LambdaExpression<Expression>, Error> {
         let previous_local_vars = self.save_local_variables();
 
         let params = params
@@ -308,15 +330,15 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 panic!("Function parameters must be irrefutable, but {param} is refutable.");
             }
         }
-        let body = Box::new(self.process_expression(*body));
+        let body = Box::new(self.process_expression(*body)?);
 
         self.reset_local_variables(previous_local_vars);
-        LambdaExpression {
+        Ok(LambdaExpression {
             kind,
             params,
             body,
             param_types: vec![],
-        }
+        })
     }
 
     fn process_block_expression(
@@ -324,14 +346,14 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         statements: Vec<StatementInsideBlock>,
         expr: Option<Box<::powdr_ast::parsed::Expression>>,
         src: SourceRef,
-    ) -> Expression {
+    ) -> Result<Expression, Error> {
         let vars = self.save_local_variables();
 
         let processed_statements = statements
             .into_iter()
             .map(|statement| match statement {
                 StatementInsideBlock::LetStatement(LetStatementInsideBlock { pattern, ty, value }) => {
-                    let value = value.map(|v| self.process_expression(v));
+                    let value = value.map(|v| self.process_expression(v)?);
                     let pattern = self.process_pattern(pattern);
                     let ty = ty.map(|ty| self.process_number_type(ty));
                     if value.is_none() && !matches!(pattern, Pattern::Variable(_, _)) {
@@ -343,21 +365,21 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                     StatementInsideBlock::LetStatement(LetStatementInsideBlock { pattern, ty, value })
                 }
                 StatementInsideBlock::Expression(expr) => {
-                    StatementInsideBlock::Expression(self.process_expression(expr))
+                    StatementInsideBlock::Expression(self.process_expression(expr)?)
                 }
             })
             .collect::<Vec<_>>();
 
-        let processed_expr = expr.map(|expr| Box::new(self.process_expression(*expr)));
+        let processed_expr = expr.map(|expr| Box::new(self.process_expression(*expr)?));
 
         self.reset_local_variables(vars);
-        Expression::BlockExpression(
+        Ok(Expression::BlockExpression(
             src,
             BlockExpression {
                 statements: processed_statements,
                 expr: processed_expr,
             },
-        )
+        ))
     }
 
     pub fn process_namespaced_polynomial_reference(
