@@ -146,6 +146,7 @@ fn block_to_block_with_bus_monolithic() {
     test_halo2_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic);
 }
 
+#[cfg(feature = "halo2")]
 #[test]
 #[should_panic = "called `Result::unwrap()` on an `Err` value: [\"Circuit was not satisfied\"]"]
 fn block_to_block_with_bus_composite() {
