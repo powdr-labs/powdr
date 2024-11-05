@@ -2,13 +2,14 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::fmt::Display;
 use std::iter::{self, once};
 
-use super::{Connection, ConnectionKind, EvalResult, FixedData, MachineParts};
+use super::{
+    compute_size_and_log, Connection, ConnectionKind, EvalResult, FixedData, MachineParts,
+};
 
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
-use crate::witgen::machines::compute_size_and_log;
-use crate::witgen::processor::{OuterQuery, Processor};
+use crate::witgen::processor::{OuterQuery, Processor, SolverState};
 use crate::witgen::rows::{Row, RowIndex, RowPair};
 use crate::witgen::sequence_iterator::{
     DefaultSequenceIterator, ProcessingSequenceCache, ProcessingSequenceIterator,
@@ -22,12 +23,12 @@ use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_number::{DegreeType, FieldElement};
 
 enum ProcessResult<'a, T: FieldElement> {
-    Success(FinalizableData<T>, EvalValue<AlgebraicVariable<'a>, T>),
+    Success(SolverState<'a, T>, EvalValue<AlgebraicVariable<'a>, T>),
     Incomplete(EvalValue<AlgebraicVariable<'a>, T>),
 }
 
 impl<'a, T: FieldElement> ProcessResult<'a, T> {
-    fn new(data: FinalizableData<T>, updates: EvalValue<AlgebraicVariable<'a>, T>) -> Self {
+    fn new(data: SolverState<'a, T>, updates: EvalValue<AlgebraicVariable<'a>, T>) -> Self {
         match updates.is_complete() {
             true => ProcessResult::Success(data, updates),
             false => ProcessResult::Incomplete(updates),
@@ -77,6 +78,7 @@ pub struct BlockMachine<'a, T: FieldElement> {
     connection_type: ConnectionKind,
     /// The data of the machine.
     data: FinalizableData<T>,
+    publics: BTreeMap<&'a str, T>,
     /// The index of the first row that has not been finalized yet.
     /// At all times, all rows in the range [block_size..first_in_progress_row) are finalized.
     first_in_progress_row: usize,
@@ -134,6 +136,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             parts: parts.clone(),
             connection_type: is_permutation,
             data,
+            publics: Default::default(),
             first_in_progress_row: block_size,
             processing_sequence_cache: ProcessingSequenceCache::new(
                 block_size,
@@ -292,7 +295,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             let row_offset = RowIndex::from_i64(-1, self.degree);
             let mut processor = Processor::new(
                 row_offset,
-                dummy_block,
+                SolverState::new(dummy_block, self.publics.clone()),
                 mutable_state,
                 self.fixed_data,
                 &self.parts,
@@ -314,7 +317,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 DefaultSequenceIterator::new(self.block_size, self.parts.identities.len(), None),
             );
             processor.solve(&mut sequence_iterator).unwrap();
-            let mut dummy_block = processor.finish();
+            let mut dummy_block = processor.finish().block;
 
             // Replace the dummy block, discarding first and last row
             dummy_block.pop().unwrap();
@@ -463,12 +466,13 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             self.process(mutable_state, &mut sequence_iterator, outer_query.clone())?;
 
         match process_result {
-            ProcessResult::Success(new_block, updates) => {
+            ProcessResult::Success(updated_data, updates) => {
                 log::trace!(
                     "End processing block machine '{}' (successfully)",
                     self.name()
                 );
-                self.append_block(new_block)?;
+                self.append_block(updated_data.block)?;
+                self.publics.extend(updated_data.publics);
 
                 let updates = updates.report_side_effect();
 
@@ -505,7 +509,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         );
         let mut processor = BlockProcessor::new(
             row_offset,
-            block,
+            SolverState::new(block, self.publics.clone()),
             mutable_state,
             self.fixed_data,
             &self.parts,
@@ -514,9 +518,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         .with_outer_query(outer_query);
 
         let outer_assignments = processor.solve(sequence_iterator)?;
-        let new_block = processor.finish();
+        let updated_data = processor.finish();
 
-        Ok(ProcessResult::new(new_block, outer_assignments))
+        Ok(ProcessResult::new(updated_data, outer_assignments))
     }
 
     /// Takes a block of rows, which contains the last row of its previous block

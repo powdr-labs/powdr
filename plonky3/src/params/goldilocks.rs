@@ -6,10 +6,7 @@
 use lazy_static::lazy_static;
 use p3_poseidon2::{poseidon2_round_numbers_128, Poseidon2, Poseidon2ExternalMatrixGeneral};
 
-use crate::params::{
-    poseidon2::{poseidon2_external_constants, poseidon2_internal_constants},
-    Challenger, FieldElementMap, Plonky3Field,
-};
+use crate::params::{poseidon2, Challenger, FieldElementMap, Plonky3Field};
 use p3_challenger::DuplexChallenger;
 use p3_commit::ExtensionMmcs;
 use p3_dft::Radix2DitParallel;
@@ -23,8 +20,8 @@ use powdr_number::{FieldElement, GoldilocksField, LargeInt};
 
 // From: https://github.com/Plonky3/Plonky3/blob/64e79fe28c51ab35b509c68242256f253b61d612/poseidon2/benches/poseidon2.rs#L31
 const D: u64 = 7;
-const WIDTH: usize = 8;
-type Perm =
+pub const WIDTH: usize = 8;
+pub type Perm =
     Poseidon2<Goldilocks, Poseidon2ExternalMatrixGeneral, DiffusionMatrixGoldilocks, WIDTH, D>;
 
 const DEGREE: usize = 2;
@@ -58,14 +55,14 @@ const FRI_PROOF_OF_WORK_BITS: usize = 16;
 
 lazy_static! {
     static ref ROUNDS: (usize, usize) = poseidon2_round_numbers_128::<Goldilocks>(WIDTH, D);
-    static ref ROUNDS_F: usize = ROUNDS.0;
-    static ref ROUNDS_P: usize = ROUNDS.1;
+    pub static ref ROUNDS_F: usize = ROUNDS.0;
+    pub static ref ROUNDS_P: usize = ROUNDS.1;
     static ref PERM_GL: Perm = Perm::new(
         *ROUNDS_F,
-        poseidon2_external_constants(*ROUNDS_F),
+        poseidon2::external_constants(*ROUNDS_F),
         Poseidon2ExternalMatrixGeneral,
         *ROUNDS_P,
-        poseidon2_internal_constants(*ROUNDS_P),
+        poseidon2::internal_constants(*ROUNDS_P),
         DiffusionMatrixGoldilocks
     );
 }

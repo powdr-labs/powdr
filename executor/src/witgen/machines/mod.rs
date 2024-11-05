@@ -186,7 +186,17 @@ impl<'a, T> TryFrom<&'a Identity<T>> for Connection<'a, T> {
                 right: &i.right,
                 kind: ConnectionKind::Lookup,
             }),
+            Identity::PhantomLookup(i) => Ok(Connection {
+                left: &i.left,
+                right: &i.right,
+                kind: ConnectionKind::Lookup,
+            }),
             Identity::Permutation(i) => Ok(Connection {
+                left: &i.left,
+                right: &i.right,
+                kind: ConnectionKind::Permutation,
+            }),
+            Identity::PhantomPermutation(i) => Ok(Connection {
                 left: &i.left,
                 right: &i.right,
                 kind: ConnectionKind::Permutation,

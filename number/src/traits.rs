@@ -1,4 +1,9 @@
-use std::{fmt, hash::Hash, ops::*, str::FromStr};
+use std::{
+    fmt::{self, Display},
+    hash::Hash,
+    ops::*,
+    str::FromStr,
+};
 
 use num_traits::{ConstOne, ConstZero, One, Zero};
 use schemars::JsonSchema;
@@ -86,6 +91,18 @@ impl KnownField {
             | KnownField::KoalaBearField
             | KnownField::Mersenne31Field => FieldSize::Small,
             KnownField::GoldilocksField | KnownField::Bn254Field => FieldSize::Large,
+        }
+    }
+}
+
+impl Display for KnownField {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            KnownField::BabyBearField => write!(f, "BabyBear"),
+            KnownField::KoalaBearField => write!(f, "KoalaBear"),
+            KnownField::Mersenne31Field => write!(f, "Mersenne31"),
+            KnownField::GoldilocksField => write!(f, "Goldilocks"),
+            KnownField::Bn254Field => write!(f, "Bn254"),
         }
     }
 }

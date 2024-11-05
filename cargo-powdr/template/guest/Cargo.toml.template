@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-powdr-riscv-syscalls = { git = "https://github.com/powdr-labs/powdr", tag = "v0.1.0" }
-powdr-riscv-runtime = { git = "https://github.com/powdr-labs/powdr", tag = "v0.1.0", features = ["std"]}
+powdr-riscv-syscalls = { git = "https://github.com/powdr-labs/powdr", tag = "v0.1.1" }
+powdr-riscv-runtime = { git = "https://github.com/powdr-labs/powdr", tag = "v0.1.1", features = ["std"]}
 
 [workspace]

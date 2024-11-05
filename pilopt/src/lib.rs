@@ -1,15 +1,15 @@
 //! PIL-based optimizer
 #![deny(clippy::print_stdout)]
 
-use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, ConnectIdentity, Expression,
-    FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity, PolyID,
-    PolynomialIdentity, PolynomialReference, PolynomialType, Reference, SymbolKind,
+    FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
+    PhantomPermutationIdentity, PolyID, PolynomialIdentity, PolynomialReference, PolynomialType,
+    Reference, SymbolKind,
 };
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
@@ -18,7 +18,7 @@ use powdr_number::{BigUint, FieldElement};
 
 mod referenced_symbols;
 
-use referenced_symbols::ReferencedSymbols;
+use referenced_symbols::{ReferencedSymbols, SymbolReference};
 
 pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
@@ -46,23 +46,41 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
 /// or witness column hint.
 fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let poly_id_to_definition_name = build_poly_id_to_definition_name_lookup(pil_file);
-    let mut required_names = collect_required_names(pil_file, &poly_id_to_definition_name);
-    let mut to_process = required_names.iter().cloned().collect::<Vec<_>>();
+    let mut symbols_seen = collect_required_symbols(pil_file, &poly_id_to_definition_name);
+    let mut impls_to_retain = HashSet::new();
+
+    let mut to_process = symbols_seen.iter().cloned().collect::<Vec<_>>();
     while let Some(n) = to_process.pop() {
-        let symbols: Box<dyn Iterator<Item = Cow<'_, str>>> = if let Some((sym, value)) =
-            pil_file.definitions.get(n.as_ref())
+        let symbols: Box<dyn Iterator<Item = SymbolReference<'_>>> = if let Some((sym, value)) =
+            pil_file.definitions.get(n.name.as_ref())
         {
-            // TODO remove this.
+            // TODO remove this once we only have stand-alone prover functions.
             let set_hint = (sym.kind == SymbolKind::Poly(PolynomialType::Committed)
                 && value.is_some())
-            .then_some(Cow::from("std::prelude::set_hint"));
-            Box::new(
-                value
-                    .iter()
-                    .flat_map(|v| v.symbols())
-                    .chain(set_hint.into_iter()),
-            )
-        } else if let Some((_, value)) = pil_file.intermediate_columns.get(n.as_ref()) {
+            .then_some(SymbolReference::from("std::prelude::set_hint"));
+            if let Some(FunctionValueDefinition::TraitFunction(..)) = value {
+                let type_args = n.type_args.unwrap();
+                // If this is not concrete at some point in the future,
+                // we need to substitute type variables while traversing the dependency graph.
+                // Currently, when we encounter a generic function, we just ignore the type arguments.
+                // This works well because we do not have bounds for user-defined traits yet
+                // and also no generic trait impls.
+                assert!(type_args.iter().all(|t| t.is_concrete_type()));
+                let impl_index = pil_file
+                    .solved_impls
+                    .resolve_trait_impl_index(&n.name, type_args);
+                impls_to_retain.insert(impl_index);
+                Box::new(pil_file.trait_impls[impl_index].symbols())
+            } else {
+                Box::new(
+                    value
+                        .iter()
+                        .flat_map(|v| v.symbols())
+                        .chain(set_hint.into_iter()),
+                )
+            }
+        } else if let Some((_, value)) = pil_file.intermediate_columns.get(n.name.as_ref()) {
+            assert!(n.type_args.is_none());
             Box::new(value.iter().flat_map(|v| {
                 v.all_children().flat_map(|e| {
                     if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = e {
@@ -73,23 +91,32 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
                 })
             }))
         } else {
-            panic!("Symbol not found: {n}");
+            panic!("Symbol not found: {}", n.name);
         };
         for s in symbols {
-            if required_names.insert(s.clone()) {
+            if symbols_seen.insert(s.clone()) {
                 to_process.push(s);
             }
         }
     }
 
+    let required_names = symbols_seen
+        .iter()
+        .map(|s| s.name.as_ref())
+        .collect::<HashSet<_>>();
+
     let definitions_to_remove: BTreeSet<_> = pil_file
         .definitions
         .keys()
         .chain(pil_file.intermediate_columns.keys())
-        .filter(|name| !required_names.contains(&Cow::from(*name)))
+        .filter(|name| !required_names.contains(name.as_str()))
         .cloned()
         .collect();
     pil_file.remove_definitions(&definitions_to_remove);
+    let impls_to_remove = (0..pil_file.trait_impls.len())
+        .filter(|i| !impls_to_retain.contains(i))
+        .collect();
+    pil_file.remove_trait_impls(&impls_to_remove);
 }
 
 /// Builds a lookup-table that can be used to turn array elements
@@ -114,21 +141,21 @@ fn build_poly_id_to_definition_name_lookup(
 }
 
 /// Collect all names that are referenced in identities and public declarations.
-fn collect_required_names<'a, T: FieldElement>(
+fn collect_required_symbols<'a, T: FieldElement>(
     pil_file: &'a Analyzed<T>,
     poly_id_to_definition_name: &BTreeMap<PolyID, &'a String>,
-) -> HashSet<Cow<'a, str>> {
-    let mut required_names: HashSet<Cow<'a, str>> = Default::default();
+) -> HashSet<SymbolReference<'a>> {
+    let mut required_names: HashSet<SymbolReference<'a>> = Default::default();
     required_names.extend(
         pil_file
             .public_declarations
             .values()
-            .map(|p| p.polynomial.name.as_str().into()),
+            .map(|p| SymbolReference::from(&p.polynomial.name)),
     );
     for fun in &pil_file.prover_functions {
         for e in fun.all_children() {
-            if let Expression::Reference(_, Reference::Poly(PolynomialReference { name, .. })) = e {
-                required_names.insert(Cow::from(name));
+            if let Expression::Reference(_, Reference::Poly(poly_ref)) = e {
+                required_names.insert(SymbolReference::from(poly_ref));
             }
         }
     }
@@ -300,47 +327,55 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
 fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let mut new_identities = vec![];
     for identity in &mut pil_file.identities.iter_mut() {
-        if let Identity::Lookup(LookupIdentity {
-            source,
-            left,
-            right,
-            ..
-        }) = identity
-        {
-            let mut extracted = HashSet::new();
-            for (i, (l, r)) in left
-                .expressions
-                .iter()
-                .zip(&right.expressions)
-                .enumerate()
-                .filter_map(|(i, (l, r))| {
-                    if let AlgebraicExpression::Number(n) = r {
-                        Some((i, (l, n)))
-                    } else {
-                        None
-                    }
-                })
-            {
-                // TODO remove clones
-                let l_sel = left.selector.clone();
-                let r_sel = right.selector.clone();
-                let pol_id = (l_sel * l.clone()) - (r_sel * AlgebraicExpression::from(*r));
-                new_identities.push((simplify_expression(pol_id), source.clone()));
+        match identity {
+            Identity::Lookup(LookupIdentity {
+                source,
+                left,
+                right,
+                ..
+            })
+            | Identity::PhantomLookup(PhantomLookupIdentity {
+                source,
+                left,
+                right,
+                ..
+            }) => {
+                let mut extracted = HashSet::new();
+                for (i, (l, r)) in left
+                    .expressions
+                    .iter()
+                    .zip(&right.expressions)
+                    .enumerate()
+                    .filter_map(|(i, (l, r))| {
+                        if let AlgebraicExpression::Number(n) = r {
+                            Some((i, (l, n)))
+                        } else {
+                            None
+                        }
+                    })
+                {
+                    // TODO remove clones
+                    let l_sel = left.selector.clone();
+                    let r_sel = right.selector.clone();
+                    let pol_id = (l_sel * l.clone()) - (r_sel * AlgebraicExpression::from(*r));
+                    new_identities.push((simplify_expression(pol_id), source.clone()));
 
-                extracted.insert(i);
+                    extracted.insert(i);
+                }
+                // TODO rust-ize this.
+                let mut c = 0usize;
+                left.expressions.retain(|_i| {
+                    c += 1;
+                    !extracted.contains(&(c - 1))
+                });
+                let mut c = 0usize;
+                right.expressions.retain(|_i| {
+                    c += 1;
+
+                    !extracted.contains(&(c - 1))
+                });
             }
-            // TODO rust-ize this.
-            let mut c = 0usize;
-            left.expressions.retain(|_i| {
-                c += 1;
-                !extracted.contains(&(c - 1))
-            });
-            let mut c = 0usize;
-            right.expressions.retain(|_i| {
-                c += 1;
-
-                !extracted.contains(&(c - 1))
-            });
+            _ => {}
         }
     }
     for (identity, source) in new_identities {
@@ -458,11 +493,13 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 }
                 None
             }
-            Identity::Lookup(LookupIdentity { left, right, .. }) => {
+            Identity::Lookup(LookupIdentity { left, right, .. })
+            | Identity::Permutation(PermutationIdentity { left, right, .. })
+            | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. })
+            | Identity::PhantomPermutation(PhantomPermutationIdentity { left, right, .. }) => {
                 assert_eq!(left.expressions.len(), right.expressions.len());
                 left.expressions.is_empty().then_some(index)
             }
-            Identity::Permutation(..) => None,
             Identity::Connect(..) => None,
         })
         .collect();
@@ -480,8 +517,10 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
             let discriminant = |i: &CanonicalIdentity<T>| match i.0 {
                 Identity::Polynomial(..) => 0,
                 Identity::Lookup(..) => 1,
-                Identity::Permutation(..) => 2,
-                Identity::Connect(..) => 3,
+                Identity::PhantomLookup(..) => 2,
+                Identity::Permutation(..) => 3,
+                Identity::PhantomPermutation(..) => 4,
+                Identity::Connect(..) => 5,
             };
 
             discriminant(self)
@@ -500,11 +539,37 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                         }),
                     ) => a.cmp(c).then_with(|| b.cmp(d)),
                     (
+                        Identity::PhantomLookup(PhantomLookupIdentity {
+                            left: a,
+                            right: b,
+                            multiplicity: c,
+                            ..
+                        }),
+                        Identity::PhantomLookup(PhantomLookupIdentity {
+                            left: d,
+                            right: e,
+                            multiplicity: f,
+                            ..
+                        }),
+                    ) => a.cmp(d).then_with(|| b.cmp(e)).then_with(|| c.cmp(f)),
+                    (
                         Identity::Permutation(PermutationIdentity {
                             left: a, right: b, ..
                         }),
                         Identity::Permutation(PermutationIdentity {
                             left: c, right: d, ..
+                        }),
+                    ) => a.cmp(c).then_with(|| b.cmp(d)),
+                    (
+                        Identity::PhantomPermutation(PhantomPermutationIdentity {
+                            left: a,
+                            right: b,
+                            ..
+                        }),
+                        Identity::PhantomPermutation(PhantomPermutationIdentity {
+                            left: c,
+                            right: d,
+                            ..
                         }),
                     ) => a.cmp(c).then_with(|| b.cmp(d)),
                     (

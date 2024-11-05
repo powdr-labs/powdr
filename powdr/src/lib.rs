@@ -284,7 +284,10 @@ pub fn prove(pipeline: &mut Pipeline<GoldilocksField>) {
 
     pipeline.rollback_from_witness();
 
-    println!("Running witness and proof generation for all chunks...");
+    println!(
+        "Running witness and proof generation for {} chunks...",
+        bootloader_inputs.bootloader_inputs.len()
+    );
     let start = Instant::now();
     riscv::continuations::rust_continuations(pipeline, generate_proof, bootloader_inputs).unwrap();
     let duration = start.elapsed();

@@ -3,9 +3,10 @@ use std::marker::PhantomData;
 
 use num_traits::Zero;
 
+use num_traits::One;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, LookupIdentity, PermutationIdentity, PolyID, PolynomialType,
+    AlgebraicReference, LookupIdentity, PhantomLookupIdentity, PolyID, PolynomialType,
 };
 
 use powdr_number::FieldElement;
@@ -38,7 +39,8 @@ impl<'a, T: FieldElement> RangeConstraintSet<AlgebraicVariable<'a>, T>
                 assert!(!id.next);
                 self.range_constraints.get(&id.poly_id).cloned()
             }
-            AlgebraicVariable::Public(_) => unimplemented!(),
+            // No range constraints stored for publics.
+            AlgebraicVariable::Public(_) => None,
         }
     }
 }
@@ -236,10 +238,11 @@ fn propagate_constraints<T: FieldElement>(
             }
         }
         Identity::Lookup(LookupIdentity { left, right, .. })
-        | Identity::Permutation(PermutationIdentity { left, right, .. }) => {
-            if left.selector != T::one().into() || right.selector != T::one().into() {
+        | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. }) => {
+            if !left.selector.is_one() || !right.selector.is_one() {
                 return (known_constraints, false);
             }
+            // We learn range constraints from both lookups and permutations
             for (left, right) in left.expressions.iter().zip(right.expressions.iter()) {
                 if let (Some(left), Some(right)) =
                     (try_to_simple_poly(left), try_to_simple_poly(right))
@@ -252,7 +255,11 @@ fn propagate_constraints<T: FieldElement>(
                     }
                 }
             }
-            if right.expressions.len() == 1 {
+
+            // We only remove lookups, since permutations hold more information than just range constraints.
+            if right.expressions.len() == 1
+                && matches!(identity, Identity::Lookup(..) | Identity::PhantomLookup(..))
+            {
                 // We can only remove the lookup if the RHS is a fixed polynomial that
                 // provides all values in the span.
                 if let Some(name) = try_to_simple_poly(&right.expressions[0]) {
@@ -266,6 +273,9 @@ fn propagate_constraints<T: FieldElement>(
         }
         Identity::Connect(..) => {
             // we do not handle connect identities yet, so we do nothing
+        }
+        Identity::Permutation(..) | Identity::PhantomPermutation(..) => {
+            // permutation identities are stronger than just range constraints, so we do nothing
         }
     }
 
@@ -433,10 +443,12 @@ mod test {
     #[test]
     fn constraints_propagation() {
         let pil_source = r"
+namespace std::convert;
+    let fe = [];
 namespace Global(2**20);
-    col fixed BYTE(i) { i & 0xff };
-    col fixed BYTE2(i) { i & 0xffff };
-    col fixed SHIFTED(i) { i & 0xff0 };
+    col fixed BYTE(i) { std::convert::fe(i & 0xff) };
+    col fixed BYTE2(i) { std::convert::fe(i & 0xffff) };
+    col fixed SHIFTED(i) { std::convert::fe(i & 0xff0) };
     col witness A;
     // A bit more complicated to see that the 'pattern matcher' works properly.
     (1 - A + 0) * (A + 1 - 1) = 0;
@@ -507,8 +519,10 @@ namespace Global(2**20);
         // incorrectly determined it to be a pure range constraint, but it would actually not
         // be able to derive the full constraint.
         let pil_source = r"
+namespace std::convert;
+    let fe = [];
 namespace Global(1024);
-    let bytes: col = |i| i % 256;
+    let bytes: col = |i| std::convert::fe(i % 256);
     let X;
     [ X * 4 ] in [ bytes ];
 ";

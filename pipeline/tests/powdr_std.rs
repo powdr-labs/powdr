@@ -4,11 +4,11 @@ use powdr_number::{BabyBearField, BigInt, Bn254Field, GoldilocksField};
 
 use powdr_pil_analyzer::evaluator::Value;
 use powdr_pipeline::{
+    test_runner::run_tests,
     test_util::{
-        evaluate_function, evaluate_integer_function, execute_test_file, gen_estark_proof,
-        gen_halo2_proof, make_simple_prepared_pipeline, regular_test,
-        regular_test_without_small_field, std_analyzed, test_halo2, test_pilcom, test_plonky3,
-        BackendVariant,
+        evaluate_function, evaluate_integer_function, gen_estark_proof, gen_halo2_proof,
+        make_simple_prepared_pipeline, regular_test, regular_test_without_small_field,
+        std_analyzed, test_halo2, test_pilcom, test_plonky3, BackendVariant,
     },
     Pipeline,
 };
@@ -56,6 +56,22 @@ fn keccakf16_test() {
 fn poseidon_bb_test() {
     let f = "std/poseidon_bb_test.asm";
     test_plonky3::<BabyBearField>(f, vec![]);
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn poseidon2_bb_test() {
+    let f = "std/poseidon2_bb_test.asm";
+    test_plonky3::<BabyBearField>(f, vec![]);
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn poseidon2_gl_test() {
+    let f = "std/poseidon2_gl_test.asm";
+    let pipeline = make_simple_prepared_pipeline(f);
+    test_pilcom(pipeline.clone());
+    gen_estark_proof(pipeline);
 }
 
 #[test]
@@ -164,15 +180,11 @@ fn lookup_via_challenges() {
 }
 
 #[test]
-fn lookup_via_challenges_ext() {
-    let f = "std/lookup_via_challenges_ext.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-    test_plonky3::<GoldilocksField>(f, vec![]);
-}
-
-#[test]
-fn lookup_via_challenges_ext_simple() {
-    let f = "std/lookup_via_challenges_ext_simple.asm";
+#[should_panic = "Failed to merge the first and last row of the VM 'Main Machine'"]
+fn lookup_via_challenges_range_constraint() {
+    // This test currently fails, because witness generation for the multiplicity column
+    // does not yet work for range constraints, so the lookup constraints are not satisfied.
+    let f = "std/lookup_via_challenges_range_constraint.asm";
     test_halo2(make_simple_prepared_pipeline(f));
     test_plonky3::<GoldilocksField>(f, vec![]);
 }
@@ -184,33 +196,15 @@ fn bus_permutation_via_challenges() {
 }
 
 #[test]
-fn bus_permutation_via_challenges_ext() {
+fn bus_permutation_via_challenges_ext_bn() {
     let f = "std/bus_permutation_via_challenges_ext.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-    test_plonky3::<GoldilocksField>(f, vec![]);
 }
 
 #[test]
-fn test_multiplicities() {
-    let f = "std/multiplicities.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-
-    // This test currently has a native lookup to aid witness generation,
-    // which is not supported by the Plonky3 backend.
-    // test_plonky3::<GoldilocksField>(f, vec![]);
-}
-
-#[test]
-fn bus_lookup_via_challenges() {
+fn bus_lookup_via_challenges_bn() {
     let f = "std/bus_lookup_via_challenges.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-}
-
-#[test]
-fn bus_lookup_via_challenges_ext() {
-    let f = "std/bus_lookup_via_challenges_ext.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-    test_plonky3::<GoldilocksField>(f, vec![]);
 }
 
 #[test]
@@ -396,48 +390,13 @@ fn ff_inv_big() {
 }
 
 #[test]
-fn fp2() {
-    let analyzed = std_analyzed::<GoldilocksField>();
-    evaluate_function(&analyzed, "std::math::fp2::test::add", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::sub", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::mul", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::square", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::inverse", vec![]);
-
-    let analyzed = std_analyzed::<Bn254Field>();
-    evaluate_function(&analyzed, "std::math::fp2::test::add", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::sub", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::mul", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::square", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::inverse", vec![]);
-
-    let analyzed = std_analyzed::<BabyBearField>();
-    evaluate_function(&analyzed, "std::math::fp2::test::add", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::sub", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::mul", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::square", vec![]);
-    evaluate_function(&analyzed, "std::math::fp2::test::inverse", vec![]);
-}
-
-#[test]
-fn fp4() {
-    let analyzed = std_analyzed::<GoldilocksField>();
-    evaluate_function(&analyzed, "std::math::fp4::test::add", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::sub", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::mul", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::inverse", vec![]);
-
-    let analyzed = std_analyzed::<Bn254Field>();
-    evaluate_function(&analyzed, "std::math::fp4::test::add", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::sub", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::mul", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::inverse", vec![]);
-
-    let analyzed = std_analyzed::<BabyBearField>();
-    evaluate_function(&analyzed, "std::math::fp4::test::add", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::sub", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::mul", vec![]);
-    evaluate_function(&analyzed, "std::math::fp4::test::inverse", vec![]);
+fn std_tests() {
+    let count1 = run_tests(&std_analyzed::<GoldilocksField>(), true).unwrap();
+    let count2 = run_tests(&std_analyzed::<Bn254Field>(), true).unwrap();
+    let count3 = run_tests(&std_analyzed::<BabyBearField>(), true).unwrap();
+    assert_eq!(count1, count2);
+    assert_eq!(count2, count3);
+    assert!(count1 >= 9);
 }
 
 #[test]
@@ -483,11 +442,6 @@ fn sort() {
             .collect::<Vec<_>>();
         assert_eq!(input_sorted, result);
     }
-}
-#[test]
-fn btree() {
-    let f = "std/btree_test.asm";
-    execute_test_file(f, Default::default(), vec![]).unwrap();
 }
 
 mod reparse {

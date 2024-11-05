@@ -12,6 +12,7 @@ use powdr::number::{
     BabyBearField, BigUint, Bn254Field, FieldElement, GoldilocksField, KoalaBearField,
     Mersenne31Field,
 };
+use powdr::pipeline::test_runner;
 use powdr::Pipeline;
 use std::io;
 use std::path::PathBuf;
@@ -363,6 +364,19 @@ enum Commands {
         #[arg(value_parser = clap_enum_variants!(FieldArgument))]
         field: FieldArgument,
     },
+
+    /// Executes all functions starting with `test_` in every module called
+    /// `test` (or sub-module thereof) starting from the given module.
+    Test {
+        /// Input file.
+        file: String,
+
+        /// The field to use
+        #[arg(long)]
+        #[arg(default_value_t = FieldArgument::Gl)]
+        #[arg(value_parser = clap_enum_variants!(FieldArgument))]
+        field: FieldArgument,
+    },
 }
 
 fn split_inputs<T: FieldElement>(inputs: &str) -> Vec<T> {
@@ -468,6 +482,9 @@ fn run_command(command: Commands) {
                 export_all_columns_csv,
                 csv_mode
             ))
+        }
+        Commands::Test { file, field } => {
+            call_with_field!(run_test::<field>(&file))
         }
         Commands::Prove {
             file,
@@ -688,7 +705,12 @@ fn run<F: FieldElement>(
             .compute_proof()
             .unwrap();
     }
+    Ok(())
+}
 
+fn run_test<T: FieldElement>(file: &str) -> Result<(), Vec<String>> {
+    let include_std_tests = false;
+    test_runner::run_from_file::<T>(file, include_std_tests)?;
     Ok(())
 }
 

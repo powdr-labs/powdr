@@ -1,8 +1,10 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::LookupIdentity;
 use powdr_ast::analyzed::PermutationIdentity;
+use powdr_ast::analyzed::PhantomLookupIdentity;
+use powdr_ast::analyzed::PhantomPermutationIdentity;
 
 use super::block_machine::BlockMachine;
 use super::double_sorted_witness_machine_16::DoubleSortedWitnesses16;
@@ -12,13 +14,11 @@ use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::KnownMachine;
 use crate::witgen::machines::Connection;
-use crate::{
-    witgen::{
-        generator::Generator,
-        machines::{write_once_memory::WriteOnceMemory, MachineParts},
-    },
-    Identity,
+use crate::witgen::{
+    generator::Generator,
+    machines::{write_once_memory::WriteOnceMemory, MachineParts},
 };
+use crate::Identity;
 
 use powdr_ast::analyzed::{
     self, AlgebraicExpression as Expression, PolyID, PolynomialReference, Reference,
@@ -59,6 +59,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
         .collect::<Vec<&analyzed::Expression>>();
 
     let all_witnesses = fixed.witness_cols.keys().collect::<HashSet<_>>();
+    let mut publics = PublicsTracker::default();
     let mut remaining_witnesses = all_witnesses.clone();
     let mut base_identities = identities.clone();
     let mut extracted_prover_functions = HashSet::new();
@@ -67,7 +68,9 @@ pub fn split_out_machines<'a, T: FieldElement>(
         // Extract all witness columns in the RHS of the lookup.
         let lookup_witnesses = match id {
             Identity::Lookup(LookupIdentity { right, .. })
-            | Identity::Permutation(PermutationIdentity { right, .. }) => {
+            | Identity::PhantomLookup(PhantomLookupIdentity { right, .. })
+            | Identity::Permutation(PermutationIdentity { right, .. })
+            | Identity::PhantomPermutation(PhantomPermutationIdentity { right, .. }) => {
                 &refs_in_selected_expressions(right) & (&remaining_witnesses)
             }
             _ => Default::default(),
@@ -94,6 +97,8 @@ pub fn split_out_machines<'a, T: FieldElement>(
             });
         base_identities = remaining_identities;
         remaining_witnesses = &remaining_witnesses - &machine_witnesses;
+
+        publics.add_all(machine_identities.as_slice()).unwrap();
 
         // Identities that call into the current machine
         let connections = identities
@@ -175,6 +180,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
 
         machines.push(build_machine(fixed, machine_parts, name_with_type));
     }
+    publics.add_all(base_identities.as_slice()).unwrap();
 
     // Always add a fixed lookup machine.
     // Note that this machine comes last, because some machines do a fixed lookup
@@ -221,6 +227,40 @@ pub fn split_out_machines<'a, T: FieldElement>(
             remaining_witnesses,
             base_prover_functions,
         ),
+    }
+}
+
+#[derive(Default)]
+/// Keeps track of the global set of publics that are referenced by the machine's identities.
+struct PublicsTracker<'a>(BTreeSet<&'a String>);
+
+impl<'a> PublicsTracker<'a> {
+    /// Given a machine's identities, add all publics that are referenced by them.
+    /// Panics if a public is referenced by more than one machine.
+    fn add_all<T>(
+        &mut self,
+        identities: &[&'a powdr_ast::analyzed::Identity<T>],
+    ) -> Result<(), String> {
+        let referenced_publics = identities
+            .iter()
+            .flat_map(|id| id.all_children())
+            .filter_map(|expr| match expr {
+                Expression::PublicReference(public_name) => Some(public_name),
+                _ => None,
+            })
+            .collect();
+        let intersection = self
+            .0
+            .intersection(&referenced_publics)
+            .collect::<BTreeSet<_>>();
+        if !intersection.is_empty() {
+            let intersection_list = intersection.iter().format(", ");
+            return Err(format!(
+                "Publics are referenced by more than one machine: {intersection_list}",
+            ));
+        }
+        self.0.extend(referenced_publics);
+        Ok(())
     }
 }
 
@@ -308,7 +348,11 @@ fn all_row_connected_witnesses<T>(
                     }
                 }
                 Identity::Lookup(LookupIdentity { left, right, .. })
-                | Identity::Permutation(PermutationIdentity { left, right, .. }) => {
+                | Identity::Permutation(PermutationIdentity { left, right, .. })
+                | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. })
+                | Identity::PhantomPermutation(PhantomPermutationIdentity {
+                    left, right, ..
+                }) => {
                     // If we already have witnesses on the LHS, include the LHS,
                     // and vice-versa, but not across the "sides".
                     let in_lhs = &refs_in_selected_expressions(left) & all_witnesses;
@@ -342,7 +386,9 @@ fn refs_in_selected_expressions<T>(sel_expr: &SelectedExpressions<T>) -> HashSet
 fn refs_in_identity_left<T>(identity: &Identity<T>) -> HashSet<PolyID> {
     match identity {
         Identity::Lookup(LookupIdentity { left, .. })
-        | Identity::Permutation(PermutationIdentity { left, .. }) => {
+        | Identity::PhantomLookup(PhantomLookupIdentity { left, .. })
+        | Identity::Permutation(PermutationIdentity { left, .. })
+        | Identity::PhantomPermutation(PhantomPermutationIdentity { left, .. }) => {
             refs_in_selected_expressions(left)
         }
         Identity::Polynomial(i) => refs_in_expression(&i.expression).collect(),

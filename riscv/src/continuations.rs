@@ -15,7 +15,9 @@ pub mod bootloader;
 mod memory_merkle_tree;
 
 use bootloader::split_fe;
-use bootloader::{default_input, PAGE_SIZE_BYTES_LOG, PC_INDEX, REGISTER_NAMES};
+use bootloader::{
+    default_input, PAGE_SIZE_BYTES_LOG, PC_INDEX, REGISTER_MEMORY_NAMES, REGISTER_NAMES,
+};
 use memory_merkle_tree::MerkleTree;
 
 use crate::continuations::bootloader::{
@@ -71,9 +73,11 @@ where
         .map(
             |(i, (bootloader_inputs, start_of_shutdown_routine))| -> Result<(), E> {
                 log::info!("\nRunning chunk {} / {}...", i + 1, num_chunks);
-                if let Some(parent_dir) = pipeline.output_dir() {
-                    let force_overwrite = pipeline.is_force_overwrite();
 
+                let parent_dir = pipeline.output_dir().clone();
+                let force_overwrite = pipeline.is_force_overwrite();
+
+                if let Some(parent_dir) = parent_dir.clone() {
                     let chunk_dir = parent_dir.join(format!("chunk_{i}"));
                     create_dir_all(&chunk_dir).unwrap();
 
@@ -85,6 +89,9 @@ where
                     }
                     hard_link(parent_dir.join("constants.bin"), link_to_consts).unwrap();
 
+                    // The output directory is set here to output witness and proof artifacts
+                    // inside the chunk directory.
+                    // TODO This is hacky and should be improved.
                     pipeline.set_output(chunk_dir, force_overwrite)
                 }
 
@@ -120,6 +127,11 @@ where
                     ),
                 ]);
                 pipeline_callback(pipeline)?;
+
+                if let Some(original_dir) = parent_dir {
+                    pipeline.set_output(original_dir, force_overwrite);
+                }
+
                 Ok(())
             },
         )
@@ -393,11 +405,11 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
                 );
         }
 
-        // Go over all registers except the PC
-        let register_iter = REGISTER_NAMES.iter().take(REGISTER_NAMES.len() - 1);
-        register_values = register_iter
+        // Go over all memory registers
+        register_values = REGISTER_MEMORY_NAMES
+            .iter()
             .map(|reg| {
-                let reg = reg.strip_prefix("main.").unwrap();
+                let reg = reg.strip_prefix("main::").unwrap();
                 let id = Register::from(reg).addr();
                 *chunk_exec
                     .register_memory
@@ -406,10 +418,14 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             })
             .collect::<Vec<_>>();
 
-        register_values.push(*chunk_exec.trace["main::pc"].last().unwrap());
+        // Go over all machine registers
+        for reg in REGISTER_NAMES {
+            register_values.push(*chunk_exec.trace[reg].last().unwrap());
+        }
 
         // Replace final register values of the current chunk
-        bootloader_inputs[REGISTER_NAMES.len()..2 * REGISTER_NAMES.len()]
+        bootloader_inputs[(REGISTER_MEMORY_NAMES.len() + REGISTER_NAMES.len())
+            ..2 * (REGISTER_MEMORY_NAMES.len() + REGISTER_NAMES.len())]
             .copy_from_slice(&register_values);
 
         // Replace the updated root hash

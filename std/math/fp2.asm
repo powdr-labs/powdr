@@ -75,6 +75,21 @@ let<T: Add + FromLiteral + Mul> square_ext: Fp2<T> -> Fp2<T> = |a| match (a) {
     )
 };
 
+/// Computes the power operation on an extension field element.
+let<T: Add + Mul + FromLiteral> pow_ext: Fp2<T>, int -> Fp2<T> = |x, i| match i {
+    0 => from_base(1),
+    1 => x,
+    _ => {
+        let z = square_ext(pow_ext(x, i / 2));
+        if i % 2 == 0 {
+            z
+        } else {
+            mul_ext(z, x)
+        }
+    }
+};
+
+
 /// Converts an Fp2<expr> into an Fp2<fe>
 let eval_ext: Fp2<expr> -> Fp2<fe> = query |a| match a {
     Fp2::Fp2(a0, a1) => Fp2::Fp2(eval(a0), eval(a1))
@@ -158,12 +173,13 @@ mod test {
     use super::sub_ext;
     use super::mul_ext;
     use super::square_ext;
+    use super::pow_ext;
     use super::inv_ext;
     use super::eq_ext;
     use std::check::assert;
     use std::array::map;
 
-    let add = || {
+    let test_add = || {
         let test_add = |a, b, c| assert(eq_ext(add_ext(a, b), c), || "Wrong addition result");
 
         // Test adding 0
@@ -176,7 +192,7 @@ mod test {
         test_add(Fp2::Fp2(-1, -1), Fp2::Fp2(3, 4), Fp2::Fp2(2, 3))
     };
 
-    let sub = || {
+    let test_sub = || {
         let test_sub = |a, b, c| assert(eq_ext(sub_ext(a, b), c), || "Wrong subtraction result");
 
         // Test subtracting 0
@@ -188,7 +204,7 @@ mod test {
         test_sub(Fp2::Fp2(-1, -1), Fp2::Fp2(0x78000000, 1), Fp2::Fp2(-0x78000000 - 1, -2))
     };
 
-    let mul = || {
+    let test_mul = || {
         let test_mul = |a, b, c| assert(eq_ext(mul_ext(a, b), c), || "Wrong multiplication result");
 
         // Test multiplication by 1
@@ -207,7 +223,7 @@ mod test {
         test_mul(Fp2::Fp2(-1, -2), Fp2::Fp2(-3, 4), Fp2::Fp2(3 - 11 * 8, 6 - 4))
     };
 
-    let square = || {
+    let test_square = || {
         // Tests consistency with mul_ext
         let test_square = |a| assert(eq_ext(mul_ext(a, a), square_ext(a)), || "Wrong squaring result");
 
@@ -219,7 +235,7 @@ mod test {
         test_square(Fp2::Fp2(-1, -2));
     };
 
-    let inverse = || {
+    let test_inverse = || {
         let test_elements = [
             from_base(1),
             Fp2::Fp2(123, 1234),
@@ -231,5 +247,21 @@ mod test {
 
             assert(eq_ext(mul_with_inverse, from_base(1)), || "Should be 1")
         })
+    };
+
+    let test_pow = || {
+        let test_pow = |a, i, b| assert(eq_ext(pow_ext(a, i), b), || "Wrong power result");
+
+        test_pow(from_base(0), 0, from_base(1));
+        test_pow(from_base(1), 0, from_base(1));
+        test_pow(Fp2::Fp2(123, 1234), 0, from_base(1));
+
+        test_pow(from_base(9), 1, from_base(9));
+        test_pow(Fp2::Fp2(123, 1234), 1, Fp2::Fp2(123, 1234));
+
+        test_pow(from_base(9), 2, from_base(9 * 9));
+        test_pow(Fp2::Fp2(123, 1234), 2, Fp2::Fp2(16765445, 303564));
+
+        test_pow(from_base(9), 20, from_base(std::convert::fe(12157665459056928801 % std::field::modulus())));
     };
 }

@@ -14,21 +14,6 @@ let cmp: int, int -> CmpResult = |a, b|
             CmpResult::Greater
         }
     };
-let b1 = new::<int, string>();
-let b2 = insert(b1, (1, "a"), cmp);
-let b3 = insert(b2, (8, "b"), cmp);
-let b4 = insert(b3, (4, "c"), cmp);
-let b5 = insert(b4, (2, "d"), cmp);
-let b6 = insert(b5, (9, "e"), cmp);
-let b7 = insert(b6, (3, "f"), cmp);
-let b8 = insert(b7, (7, "g"), cmp);
-let b9 = insert(b8, (5, "h"), cmp);
-let b10 = insert(b9, (6, "i"), cmp);
-let b11 = insert(b10, (0, "j"), cmp);
-let b12 = insert(b11, (10, "k"), cmp);
-// this one replaces
-let b13 = insert(b12, (4, "l"), cmp);
-let b14 = insert(b13, (6, "m"), cmp);
 
 let one: int = 1;
 let false: bool = one == 0;
@@ -82,7 +67,23 @@ let do_print: BTree<int, string> -> () = |b_tree| {
     ()
 };
 
-machine Main {
+let test_btree = || {
+    let b1 = new::<int, string>();
+    let b2 = insert(b1, (1, "a"), cmp);
+    let b3 = insert(b2, (8, "b"), cmp);
+    let b4 = insert(b3, (4, "c"), cmp);
+    let b5 = insert(b4, (2, "d"), cmp);
+    let b6 = insert(b5, (9, "e"), cmp);
+    let b7 = insert(b6, (3, "f"), cmp);
+    let b8 = insert(b7, (7, "g"), cmp);
+    let b9 = insert(b8, (5, "h"), cmp);
+    let b10 = insert(b9, (6, "i"), cmp);
+    let b11 = insert(b10, (0, "j"), cmp);
+    let b12 = insert(b11, (10, "k"), cmp);
+    // this one replaces
+    let b13 = insert(b12, (4, "l"), cmp);
+    let b14 = insert(b13, (6, "m"), cmp);
+
     expect(b14, 6, "m");
     expect(b13, 6, "i");
     expect(b14, 4, "l");
@@ -91,8 +92,8 @@ machine Main {
     expect(b14, 7, "g");
     expect(b14, 0, "j");
     expect(b14, 9, "e");
-    do_print(b14);
+    //do_print(b14);
 
     let skewed = std::utils::fold(200, |i| i, new::<int, string>(), |tree, i| insert(tree, (i, ""), cmp));
-    do_print(skewed);
-}
+    //do_print(skewed);
+};

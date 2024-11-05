@@ -1,9 +1,8 @@
 use powdr_number::GoldilocksField;
 use powdr_pil_analyzer::analyze_string;
 
-use pretty_assertions::assert_eq;
-
 use powdr_pilopt::optimize;
+use pretty_assertions::assert_eq;
 
 #[test]
 fn replace_fixed() {
@@ -201,6 +200,83 @@ fn remove_unreferenced_keep_enums() {
     col fixed f(i) { if i == 0_int { N::t([]) } else { (|x| 1_int)(N::Y::F([])) } };
     col witness x;
     N::x = N::f;
+"#;
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}
+
+#[test]
+fn test_trait_impl() {
+    let input = r#"namespace N(65536);
+        trait Default<T> { f: -> T, g: T -> T }
+        impl Default<fe> {
+            f: || 1,
+            // This is unused but should not be removed, nor should its dependencies.
+            g: |x| dep(x)
+        }
+        trait UnusedTrait<T> { f: -> T }
+        let dep: fe -> fe = |x| x + 1;
+        // this should be removed.
+        impl Default<int> { f: || 1, g: |x| x }
+        let x: col = |_| Default::f();
+        let w;
+        w = x;
+    "#;
+    let expectation = r#"namespace N(65536);
+    trait Default<T> {
+        f: -> T,
+        g: T -> T,
+    }
+    impl N::Default<fe> {
+        f: || 1_fe,
+        g: |x| N::dep(x),
+    }
+    let dep: fe -> fe = |x| x + 1_fe;
+    col fixed x(_) { N::Default::f::<fe>() };
+    col witness w;
+    N::w = N::x;
+"#;
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}
+
+#[test]
+fn enum_ref_by_trait() {
+    let input = r#"namespace N(65536);
+        enum O<T> { X, Y(T) }
+        enum Q<T> { A, B(T) }
+        trait X<T> { f: T -> O<T>, g: -> T }
+        impl X<fe> { f: |_| O::Y(1), g: || { let r = Q::B(1_int); 1 } }
+        let x: col = |i| { match X::f(1_fe) { O::Y(y) => y, _ => 0 } };
+        let w;
+        w = x;
+    "#;
+    let expectation = r#"namespace N(65536);
+    enum O<T> {
+        X,
+        Y(T),
+    }
+    enum Q<T> {
+        A,
+        B(T),
+    }
+    trait X<T> {
+        f: T -> N::O<T>,
+        g: -> T,
+    }
+    impl N::X<fe> {
+        f: |_| N::O::Y::<fe>(1_fe),
+        g: || {
+            let r: N::Q<int> = N::Q::B::<int>(1_int);
+            1_fe
+        },
+    }
+    col fixed x(i) { match N::X::f::<fe>(1_fe) {
+        N::O::Y(y) => y,
+        _ => 0_fe,
+    } };
+    col witness w;
+    N::w = N::x;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
