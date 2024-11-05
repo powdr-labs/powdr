@@ -1,10 +1,13 @@
 use powdr_ast::{
-    analyzed::{Expression, PolynomialReference, SolvedTraitImpls},
+    analyzed::{
+        Expression, FunctionValueDefinition, PolynomialReference, SolvedTraitImpls, Symbol,
+    },
     parsed::{
         types::{TupleType, Type, TypeScheme},
         TraitDeclaration, TraitImplementation,
     },
 };
+use powdr_parser_util::Error;
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
@@ -35,6 +38,7 @@ impl<'a> TraitsResolver<'a> {
                 .or_default()
                 .push((impl_, i));
         }
+
         Self {
             traits,
             trait_impls: impls_by_trait,
@@ -75,9 +79,6 @@ impl<'a> TraitsResolver<'a> {
             ));
         };
 
-        //self.validate_impl_definitions(trait_impls, trait_decl);
-        //self.ensure_unique_impls(trait_impls);
-
         match find_trait_implementation(trait_fn_name, type_args, trait_impls) {
             Some((expr, index)) => {
                 self.solved_impls
@@ -96,13 +97,57 @@ impl<'a> TraitsResolver<'a> {
         self.solved_impls
     }
 
+    /// Checks for overlapping trait implementations.
+    ///
+    /// This method iterates through all the trait implementations.
+    /// For each implementation, it checks that there are no traits with the same name and overlapping type variables.
+    /// Overlapping implementations can lead to ambiguity in trait function calls, even when all types
+    /// are fully concrete. This check helps prevent such ambiguities and ensures clear resolution
+    /// of trait function calls.
+    ///
+    /// It also checks that the number of type variables in the implementation matches
+    /// the number of type variables in the corresponding trait declaration.
+    pub fn validate_trait_implementations(
+        &self,
+        definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    ) -> Result<(), Vec<Error>> {
+        let mut errors = Vec::new();
+        for (_name, (_symbol, definition)) in definitions.iter() {
+            if let Some(FunctionValueDefinition::TraitDeclaration(trait_decl)) = definition {
+                let name = trait_decl.name.clone();
+                if let Some(trait_impls) = self.trait_impls.get(&name) {
+                    match self.validate_impl_definitions(trait_impls, trait_decl) {
+                        Ok(_) => {
+                            if let Err(e) = self.ensure_unique_impls(trait_impls) {
+                                errors.push(e);
+                            }
+                        }
+                        Err(e) => {
+                            errors.push(e);
+                        }
+                    }
+                } else {
+                    errors.push(trait_decl.source_ref.with_error(format!(
+                        "Could not find an implementation for the trait {name}"
+                    )));
+                }
+            }
+        }
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    }
+
     /// Validates the trait implementation definitions in the given `implementations` map against the trait
     /// declarations in the `definitions` map.
     fn validate_impl_definitions(
         &self,
         implementations: &[(&TraitImplementation<Expression>, usize)],
         trait_decl: &TraitDeclaration,
-    ) {
+    ) -> Result<(), Error> {
         for trait_impl in implementations {
             let Type::Tuple(TupleType { items: mut types }) = trait_impl.0.type_scheme.ty.clone()
             else {
@@ -111,15 +156,12 @@ impl<'a> TraitsResolver<'a> {
             let trait_name = trait_impl.0.name.clone();
 
             if types.len() != trait_decl.type_vars.len() {
-                panic!(
-                    "{}",
-                    trait_impl.0.source_ref.with_error(format!(
-                        "Trait {} has {} type parameters, but implementation has {}",
-                        trait_name,
-                        trait_decl.type_vars.len(),
-                        types.len(),
-                    ))
-                );
+                return Err(trait_impl.0.source_ref.with_error(format!(
+                    "Trait {} has {} type parameters, but implementation has {}",
+                    trait_name,
+                    trait_decl.type_vars.len(),
+                    types.len(),
+                )));
             }
 
             let type_vars_in_tuple: Vec<_> = types
@@ -131,15 +173,13 @@ impl<'a> TraitsResolver<'a> {
 
             for var in type_vars_in_scheme {
                 if !type_vars_in_tuple.contains(&var) {
-                    panic!(
-                        "{}",
-                        trait_impl.0.source_ref.with_error(format!(
-                            "Impl {trait_name} introduces a type variable {var} that is never used",
-                        ))
-                    );
+                    return Err(trait_impl.0.source_ref.with_error(format!(
+                        "Impl {trait_name} introduces a type variable {var} that's never used",
+                    )));
                 }
             }
         }
+        Ok(())
     }
 
     /// Ensures that there are no overlapping trait implementations in the given `implementations` map.
@@ -148,37 +188,27 @@ impl<'a> TraitsResolver<'a> {
     /// there are no traits with overlapping type variables.
     fn ensure_unique_impls(
         &self,
-        implementations: &mut [(TraitImplementation<Expression>, usize)],
-    ) {
+        implementations: &[(&TraitImplementation<Expression>, usize)],
+    ) -> Result<(), Error> {
         for i in 0..implementations.len() {
+            let mut _impl1 = implementations[i].0.clone();
             let type_vars: HashSet<_> = implementations[i].0.type_scheme.vars.vars().collect();
-            implementations[i]
-                .0
-                .type_scheme
-                .ty
-                .map_to_type_vars(&type_vars);
+            _impl1.type_scheme.ty.map_to_type_vars(&type_vars);
 
             for j in (i + 1)..implementations.len() {
-                let type_vars: HashSet<_> = implementations[j].0.type_scheme.vars.vars().collect();
-                implementations[j]
-                    .0
-                    .type_scheme
-                    .ty
-                    .map_to_type_vars(&type_vars);
+                let mut _impl2 = implementations[j].0.clone();
+                let type_vars: HashSet<_> = _impl2.type_scheme.vars.vars().collect();
+                _impl2.type_scheme.ty.map_to_type_vars(&type_vars);
 
-                self.unify_traits_types(
-                    &implementations[i].0.type_scheme,
-                    &implementations[j].0.type_scheme,
-                )
-                .map_err(|err| {
-                    implementations[i]
-                        .0
+                if let Err(err) = self.unify_traits_types(&_impl1.type_scheme, &_impl2.type_scheme)
+                {
+                    return Err(_impl1
                         .source_ref
-                        .with_error(format!("Impls for {}: {err}", implementations[i].0.name))
-                })
-                .unwrap()
+                        .with_error(format!("Impls for {}: {err}", implementations[i].0.name)));
+                }
             }
         }
+        Ok(())
     }
 
     fn unify_traits_types(&self, ty1: &TypeScheme, ty2: &TypeScheme) -> Result<(), String> {

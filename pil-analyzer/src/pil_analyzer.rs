@@ -55,7 +55,6 @@ fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Result<Analyzed<T>, Vec<Erro
     analyzer.side_effect_check()?;
     analyzer.validate_structs()?;
     analyzer.type_check()?;
-    analyzer.check_traits_overlap();
     let solved_impls = analyzer.resolve_trait_impls()?;
     analyzer.condense(solved_impls)
 }
@@ -252,10 +251,6 @@ impl PILAnalyzer {
         }
     }
 
-    pub fn check_traits_overlap(&mut self) {
-        //traits_unification(&self.definitions, &mut self.implementations);
-    }
-
     pub fn validate_structs(&self) -> Result<(), Vec<Error>> {
         let structs_exprs = self
             .all_children()
@@ -378,6 +373,8 @@ impl PILAnalyzer {
             })
             .collect();
         let mut trait_solver = TraitsResolver::new(all_traits, &self.trait_impls);
+
+        trait_solver.validate_trait_implementations(&self.definitions)?;
 
         // TODO building this impl map should be different from checking that all trait references
         // have an implementation.

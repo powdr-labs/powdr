@@ -479,6 +479,7 @@ impl<R> Children<Expression<R>> for NamedExpression<Arc<Expression<R>>> {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct TraitDeclaration<E = u64> {
     pub name: String,
+    pub source_ref: SourceRef,
     pub type_vars: Vec<String>,
     pub functions: Vec<NamedType<E>>,
 }
