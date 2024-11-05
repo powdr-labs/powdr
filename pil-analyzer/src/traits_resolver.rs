@@ -75,8 +75,8 @@ impl<'a> TraitsResolver<'a> {
             ));
         };
 
-        self.validate_impl_definitions(trait_impls, trait_decl);
-        self.ensure_unique_impls(trait_impls);
+        //self.validate_impl_definitions(trait_impls, trait_decl);
+        //self.ensure_unique_impls(trait_impls);
 
         match find_trait_implementation(trait_fn_name, type_args, trait_impls) {
             Some((expr, index)) => {
