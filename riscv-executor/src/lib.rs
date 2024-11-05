@@ -2351,34 +2351,36 @@ pub fn execute_ast<F: FieldElement>(
         p.finish();
     }
 
-    let sink_id = e.sink_id();
+    if let ExecMode::Trace = mode {
+        let sink_id = e.sink_id();
 
-    // reset
-    e.proc.set_col("main::pc_update", 0.into());
-    e.proc.set_pc(0.into());
-    assert!(e.proc.advance().is_none());
-    e.proc.push_row();
-    e.set_program_columns(0);
-    e.proc.set_col("main::_operation_id", sink_id.into());
+        // reset
+        e.proc.set_col("main::pc_update", 0.into());
+        e.proc.set_pc(0.into());
+        assert!(e.proc.advance().is_none());
+        e.proc.push_row();
+        e.set_program_columns(0);
+        e.proc.set_col("main::_operation_id", sink_id.into());
 
-    // jump_to_operation
-    e.proc.set_col("main::pc_update", 1.into());
-    e.proc.set_pc(1.into());
-    e.proc.set_reg("query_arg_1", 0);
-    e.proc.set_reg("query_arg_2", 0);
-    assert!(e.proc.advance().is_none());
-    e.proc.push_row();
-    e.set_program_columns(1);
-    e.proc.set_col("main::_operation_id", sink_id.into());
+        // jump_to_operation
+        e.proc.set_col("main::pc_update", 1.into());
+        e.proc.set_pc(1.into());
+        e.proc.set_reg("query_arg_1", 0);
+        e.proc.set_reg("query_arg_2", 0);
+        assert!(e.proc.advance().is_none());
+        e.proc.push_row();
+        e.set_program_columns(1);
+        e.proc.set_col("main::_operation_id", sink_id.into());
 
-    // loop
-    e.proc.set_col("main::pc_update", sink_id.into());
-    e.proc.set_pc(sink_id.into());
-    assert!(e.proc.advance().is_none());
-    e.proc.push_row();
-    e.set_program_columns(sink_id);
-    e.proc.set_col("main::pc_update", sink_id.into());
-    e.proc.set_col("main::_operation_id", sink_id.into());
+        // loop
+        e.proc.set_col("main::pc_update", sink_id.into());
+        e.proc.set_pc(sink_id.into());
+        assert!(e.proc.advance().is_none());
+        e.proc.push_row();
+        e.set_program_columns(sink_id);
+        e.proc.set_col("main::pc_update", sink_id.into());
+        e.proc.set_col("main::_operation_id", sink_id.into());
+    }
 
     e.proc.finish()
 }
