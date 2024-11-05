@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::sync::OnceLock;
 
 use powdr_ast::analyzed::PolynomialType;
 use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
