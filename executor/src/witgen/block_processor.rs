@@ -76,6 +76,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         let mut is_identity_complete =
             vec![vec![false; self.identities.len()]; self.processor.len()];
 
+        let start = std::time::Instant::now();
         let mut cnt = 0;
         while let Some(SequenceStep { row_delta, action }) = sequence_iterator.next() {
             cnt += 1;
@@ -121,12 +122,22 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
                 }
                 Action::ProverFunctionsOnLatch => {
                     // println!("Processing prover functions on latch");
-                    self.processor
-                        .process_prover_functions_on_latch(row_index)?
+                    let start = std::time::Instant::now();
+                    let r = self
+                        .processor
+                        .process_prover_functions_on_latch(row_index)?;
+                    let end = std::time::Instant::now();
+                    println!(
+                        "Prover functions on latch solving time: {} ns",
+                        (end - start).as_nanos()
+                    );
+                    r
                 }
             };
             sequence_iterator.report_progress(progress);
         }
+        let end = std::time::Instant::now();
+        println!("Block solving time: {} ns", (end - start).as_nanos());
 
         // println!("=====================================================================");
 

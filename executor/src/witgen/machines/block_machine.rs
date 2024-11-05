@@ -251,7 +251,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let start = std::time::Instant::now();
+        // let start = std::time::Instant::now();
         let previous_len = self.data.len();
         let result = self.process_plookup_internal(mutable_state, identity_id, caller_rows);
         if let Ok(assignments) = &result {
@@ -260,11 +260,11 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 self.data.truncate(previous_len);
             }
         }
-        let end = std::time::Instant::now();
-        println!(
-            "BlockMachine::process_plookup took {} ns",
-            (end - start).as_nanos()
-        );
+        // let end = std::time::Instant::now();
+        // println!(
+        //     "BlockMachine::process_plookup took {} ns",
+        //     (end - start).as_nanos()
+        // );
         result
     }
 
@@ -468,8 +468,11 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             return Err(EvalError::RowsExhausted(self.name.clone()));
         }
 
+        let start = std::time::Instant::now();
         let process_result =
             self.process(mutable_state, &mut sequence_iterator, outer_query.clone())?;
+        let end = std::time::Instant::now();
+        println!("sequence iter took {} ns", (end - start).as_nanos());
 
         match process_result {
             ProcessResult::Success(updated_data, updates) => {
@@ -477,7 +480,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                     "End processing block machine '{}' (successfully)",
                     self.name()
                 );
+                // let start = std::time::Instant::now();
                 self.append_block(updated_data.block)?;
+                // let end = std::time::Instant::now();
+                // println!("append block took {} ns", (end - start).as_nanos());
                 self.publics.extend(updated_data.publics);
 
                 let updates = updates.report_side_effect();
@@ -523,8 +529,15 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         )
         .with_outer_query(outer_query);
 
+        // let start = std::time::Instant::now();
+
         let outer_assignments = processor.solve(sequence_iterator)?;
         let updated_data = processor.finish();
+        // let end = std::time::Instant::now();
+        // println!(
+        //     "outer assignments and finishing took {} ns",
+        //     (end - start).as_nanos()
+        // );
 
         Ok(ProcessResult::new(updated_data, outer_assignments))
     }
