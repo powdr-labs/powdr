@@ -20,6 +20,7 @@ use crate::witgen::{EvalError, EvalValue, IncompleteCause, MutableState, QueryCa
 use crate::witgen::{EvalResult, FixedData};
 use crate::Identity;
 
+use super::multiplicity_counter::MultiplicityCounter;
 use super::{Connection, ConnectionKind, Machine};
 
 type Application = (Vec<PolyID>, Vec<PolyID>);
