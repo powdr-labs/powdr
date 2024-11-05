@@ -384,7 +384,7 @@ pub fn test_plonky3_pipeline<T: FieldElement>(pipeline: Pipeline<T>) {
 }
 
 #[cfg(not(feature = "plonky3"))]
-pub fn test_plonky3_with_backend_variant<T: FieldElement>(_: &str, _: Vec<T>) {}
+pub fn test_plonky3_with_backend_variant<T: FieldElement>(_: &str, _: Vec<T>, _: BackendVariant) {}
 
 #[cfg(not(feature = "plonky3"))]
 pub fn test_plonky3_pipeline<T: FieldElement>(_: Pipeline<T>) {}
