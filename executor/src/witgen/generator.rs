@@ -117,7 +117,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         latch: Option<Expression<T>>,
     ) -> Self {
         let data = FinalizableData::new(&parts.witnesses);
-        let multiplicity_counter = MultiplicityCounter::new(parts.multiplicity_columns.clone());
+        let multiplicity_counter =
+            MultiplicityCounter::new(parts.identity_id_to_multiplicity.clone());
 
         Self {
             degree: parts.common_degree_range().max,

@@ -235,7 +235,10 @@ pub struct MachineParts<'a, T: FieldElement> {
     pub identities: Vec<&'a Identity<T>>,
     /// Witness columns relevant to this machine.
     pub witnesses: HashSet<PolyID>,
-    pub multiplicity_columns: BTreeMap<u64, PolyID>,
+    /// Maps an identity ID to the corresponding multiplicity column.
+    /// Only contains identity IDs of identities stored in `connections`.
+    /// Note that multiple identity IDs can map to the same multiplicity column.
+    pub identity_id_to_multiplicity: BTreeMap<u64, PolyID>,
     /// Prover functions that are relevant for this machine.
     pub prover_functions: Vec<&'a analyzed::Expression>,
 }
@@ -246,7 +249,7 @@ impl<'a, T: FieldElement> MachineParts<'a, T> {
         connections: BTreeMap<u64, Connection<'a, T>>,
         identities: Vec<&'a Identity<T>>,
         witnesses: HashSet<PolyID>,
-        multiplicity_columns: BTreeMap<u64, PolyID>,
+        identity_id_to_multiplicity: BTreeMap<u64, PolyID>,
         prover_functions: Vec<&'a analyzed::Expression>,
     ) -> Self {
         Self {
@@ -254,7 +257,7 @@ impl<'a, T: FieldElement> MachineParts<'a, T> {
             connections,
             identities,
             witnesses,
-            multiplicity_columns,
+            identity_id_to_multiplicity,
             prover_functions,
         }
     }

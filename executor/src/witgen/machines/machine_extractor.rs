@@ -7,6 +7,7 @@ use powdr_ast::analyzed::LookupIdentity;
 use powdr_ast::analyzed::PermutationIdentity;
 use powdr_ast::analyzed::PhantomLookupIdentity;
 use powdr_ast::analyzed::PhantomPermutationIdentity;
+use powdr_number::DegreeType;
 
 use super::block_machine::BlockMachine;
 use super::double_sorted_witness_machine_16::DoubleSortedWitnesses16;
@@ -67,40 +68,32 @@ pub fn split_out_machines<'a, T: FieldElement>(
     let mut extracted_prover_functions = HashSet::new();
     let mut id_counter = 0;
 
-    let id_to_multiplicity = identities
+    let phantom_lookups = identities
         .iter()
         .filter_map(|identity| match identity {
-            Identity::PhantomLookup(PhantomLookupIdentity {
-                id, multiplicity, ..
-            }) => {
-                let multiplicity_id = match multiplicity {
-                    AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) => poly_id,
-                    _ => {
-                        unimplemented!("Only simple references are supported, got: {multiplicity}")
-                    }
-                };
-                Some((*id, *multiplicity_id))
-            }
+            Identity::PhantomLookup(phantom_lookup) => Some(phantom_lookup.clone()),
             _ => None,
+        })
+        .collect::<Vec<_>>();
+
+    // Compute mapping: <identity ID> -> <multiplicity column ID>
+    let identity_id_to_multiplicity = phantom_lookups
+        .iter()
+        .map(|id| match id.multiplicity {
+            AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) => (id.id, poly_id),
+            _ => {
+                unimplemented!(
+                    "Only simple references are supported, got: {}",
+                    id.multiplicity
+                )
+            }
         })
         .collect::<BTreeMap<_, _>>();
 
-    let multiplicities = id_to_multiplicity.values().collect::<BTreeSet<_>>();
-    assert_eq!(
-        multiplicities.len(),
-        id_to_multiplicity.len(),
-        "Multiplicity columns must be unique, but mapping is {id_to_multiplicity:?}"
-    );
-
-    // Remove multiplicity columns
-    for id in &identities {
-        if let Identity::PhantomLookup(PhantomLookupIdentity { multiplicity, .. }) = id {
-            let multiplicity_id = match multiplicity {
-                AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) => poly_id,
-                _ => unimplemented!("Only simple references are supported, got: {multiplicity}"),
-            };
-            remaining_witnesses.remove(multiplicity_id);
-        }
+    // Multiplicity columns are not connected to any machine, because we removed identities that reference
+    // challenges. We remove them here, so that they don't end up in the main machine.
+    for multiplicity_id in identity_id_to_multiplicity.values() {
+        remaining_witnesses.remove(multiplicity_id);
     }
 
     for id in &identities {
@@ -209,9 +202,14 @@ pub fn split_out_machines<'a, T: FieldElement>(
         id_counter += 1;
         let name_with_type = |t: &str| format!("Secondary machine {id}: {name} ({t})");
 
-        let multiplicity_columns = connections
+        let identity_id_to_multiplicity_local = connections
             .keys()
-            .filter_map(|id| id_to_multiplicity.get(id).cloned().map(|m| (*id, m)))
+            .filter_map(|id| {
+                identity_id_to_multiplicity
+                    .get(id)
+                    .cloned()
+                    .map(|m| (*id, m))
+            })
             .collect::<BTreeMap<_, _>>();
 
         let machine_parts = MachineParts::new(
@@ -219,7 +217,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             connections,
             machine_identities,
             machine_witnesses,
-            multiplicity_columns,
+            identity_id_to_multiplicity_local,
             prover_functions.iter().map(|&(_, pf)| pf).collect(),
         );
 
@@ -233,33 +231,28 @@ pub fn split_out_machines<'a, T: FieldElement>(
     // TODO: We should also split this up and have several instances instead.
 
     // Compute sizes of fixed lookup multiplicity columns.
-    let fixed_lookup_machine_sizes = identities
+    let fixed_lookup_machine_sizes = phantom_lookups
         .iter()
-        .filter_map(|identity| match identity {
-            // We're only interested for fixed phantom lookups.
-            Identity::PhantomLookup(PhantomLookupIdentity { id, right, .. }) => {
-                let refs = refs_in_selected_expressions(right);
-                (&refs & &all_witnesses).is_empty().then_some((*id, refs))
-            }
-            _ => None,
+        .filter_map(|id| {
+            // Phantom lookups that point to FixedLookup
+            let refs = refs_in_selected_expressions(&id.right);
+            (&refs & &all_witnesses).is_empty().then_some((id.id, refs))
         })
         .map(|(identity_id, fixed_columns)| {
             let size = fixed_columns
                 .iter()
                 .map(|fixed_col| {
                     // Get unique size for fixed column
-                    let sizes = fixed.fixed_cols[fixed_col].values.available_sizes();
-                    assert_eq!(
-                        sizes.len(),
-                        1,
-                        "Multiplicity columns must have a single size, but got: {sizes:?}"
-                    );
-                    *sizes.iter().next().unwrap()
+                    fixed.fixed_cols[fixed_col]
+                        .values
+                        .get_uniquely_sized()
+                        .unwrap()
+                        .len() as DegreeType
                 })
                 .unique()
                 .exactly_one()
                 .expect("All fixed columns on the same RHS must have the same size");
-            let poly_id = id_to_multiplicity[&identity_id];
+            let poly_id = identity_id_to_multiplicity[&identity_id];
             (poly_id, size)
         })
         .collect();
@@ -268,7 +261,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
         identities.clone(),
         fixed,
         fixed_lookup_machine_sizes,
-        id_to_multiplicity,
+        identity_id_to_multiplicity,
     );
 
     machines.push(KnownMachine::FixedLookup(fixed_lookup));

@@ -203,8 +203,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                 });
                 if discard {
                     log::debug!(
-                        "Skipping identity that references challenge of later stage: {}",
-                        identity
+                        "Skipping identity that references challenge of later stage: {identity}",
                     );
                 }
                 !discard
