@@ -160,7 +160,7 @@ impl<'a, T: FieldElement> FrameworkEval for PowdrEval<T> {
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
         let mut witness_eval = Vec::with_capacity(self.col_count);
         for _ in 0..self.col_count {
-            witness_eval.push(eval.next_interaction_mask(0, [0, 1]));
+            witness_eval.push(eval.next_trace_mask());
         }
 
         // Add polynomial identities
@@ -185,7 +185,7 @@ impl<'a, T: FieldElement> FrameworkEval for PowdrEval<T> {
 fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
     witness_columns: &BTreeMap<PolyID, usize>,
     expr: &AlgebraicExpression<T>,
-    witness_eval: &Vec<[<E as EvalAtRow>::F; 2]>,
+    witness_eval: &Vec<<E as EvalAtRow>::F>,
     eval: &E,
 ) -> E::F {
     match expr {
@@ -195,15 +195,11 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
             let interaction = match polyref.next {
                 false => {
                     let index = witness_columns[&poly_id];
-                    witness_eval[index][0].into()
+                    witness_eval[index].into()
                 }
                 true => {
                     let index = witness_columns[&poly_id];
-                    println!(
-                        "witness_eval[index][1].into() is {:?}",
-                        witness_eval[index][1]
-                    );
-                    witness_eval[index][1].into()
+                    witness_eval[index].into()
                 }
             };
             interaction

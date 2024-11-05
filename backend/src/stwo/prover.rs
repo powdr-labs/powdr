@@ -66,10 +66,6 @@ impl<F: FieldElement> StwoProver<F> {
             fri_config: FriConfig::new(0, 1, 100), // Using different numbers for FriConfig
         };
 
-        let circuit_eval = PowdrCircuit::new(self.analyzed.clone())
-            .with_witgen_callback(witgen_callback.clone())
-            .with_witness(witness);
-
         // Precompute twiddles.
         let twiddles = SimdBackend::precompute_twiddles(
             CanonicCoset::new(
