@@ -51,7 +51,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         }
     }
 
-    pub(crate) fn generate_stwo_circuit_trace(
+    pub(crate) fn into_stwo_circuit_trace(
         self,
     ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
         let element: Option<Vec<(String, BaseColumn)>> = Some(

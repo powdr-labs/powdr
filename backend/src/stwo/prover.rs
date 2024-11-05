@@ -75,7 +75,7 @@ impl<F: FieldElement> StwoProver<F> {
         let trace = PowdrCircuit::new(self.analyzed.clone())
             .with_witgen_callback(witgen_callback)
             .with_witness(witness)
-            .generate_stwo_circuit_trace();
+            .into_stwo_circuit_trace();
 
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals(trace);
