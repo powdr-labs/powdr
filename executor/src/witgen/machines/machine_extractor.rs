@@ -254,7 +254,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
                         1,
                         "Multiplicity columns must have a single size, but got: {sizes:?}"
                     );
-                    sizes.iter().next().unwrap().clone()
+                    *sizes.iter().next().unwrap()
                 })
                 .unique()
                 .exactly_one()
