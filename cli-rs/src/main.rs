@@ -421,9 +421,11 @@ fn execute<F: FieldElement>(
         Ok(())
     };
 
-    if !continuations {
-        // no continuations
-        // -------------------------------
+    if continuations {
+        let dry_run =
+            powdr::riscv::continuations::rust_continuations_dry_run(&mut pipeline, profiling);
+        powdr::riscv::continuations::rust_continuations(&mut pipeline, generate_witness, dry_run)?;
+    } else {
         let fixed = pipeline.compute_fixed_cols().unwrap().clone();
         let asm = pipeline.compute_analyzed_asm().unwrap().clone();
         let pil = pipeline.compute_optimized_pil().unwrap();
@@ -481,12 +483,6 @@ fn execute<F: FieldElement>(
         pipeline = pipeline.add_external_witness_values(full_trace);
 
         generate_witness(&mut pipeline)?;
-    } else {
-        // with continuations
-        // -------------------------------
-        let dry_run =
-            powdr::riscv::continuations::rust_continuations_dry_run(&mut pipeline, profiling);
-        powdr::riscv::continuations::rust_continuations(&mut pipeline, generate_witness, dry_run)?;
     }
 
     Ok(())
