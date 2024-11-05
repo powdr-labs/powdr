@@ -28,28 +28,36 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
         pipeline = pipeline.add_data_vec(data);
     }
 
-    // TODO remove the guard once the executor is implemented for BB
+    // verify with PILCOM
     if T::known_field().unwrap() == KnownField::GoldilocksField {
-        let analyzed = pipeline.compute_analyzed_asm().unwrap().clone();
-        let pil = pipeline.compute_optimized_pil().unwrap();
-        powdr_riscv_executor::execute_ast(
-            &analyzed,
-            &pil,
-            None,
-            Default::default(),
-            pipeline.data_callback().unwrap(),
-            // Assume the RISC-V program was compiled without a bootloader, otherwise this will fail.
-            &[],
-            usize::MAX,
-            powdr_riscv_executor::ExecMode::Fast,
-            Default::default(),
-        );
         let pipeline_gl: Pipeline<GoldilocksField> =
             unsafe { std::mem::transmute(pipeline.clone()) };
         run_pilcom_with_backend_variant(pipeline_gl, BackendVariant::Composite).unwrap();
     }
 
-    test_plonky3_pipeline::<T>(pipeline);
+    test_plonky3_pipeline::<T>(pipeline.clone());
+
+    // verify using executor generated witness
+    // TODO remove the guard once the executor is implemented for BB
+    if T::known_field().unwrap() == KnownField::GoldilocksField {
+        let analyzed = pipeline.compute_analyzed_asm().unwrap().clone();
+        let pil = pipeline.compute_optimized_pil().unwrap();
+        let fixed = pipeline.compute_fixed_cols().unwrap().clone();
+        let execution = powdr_riscv_executor::execute(
+            &analyzed,
+            &pil,
+            Some(fixed),
+            Default::default(),
+            pipeline.data_callback().unwrap(),
+            &[],
+            powdr_riscv_executor::ExecMode::Trace,
+            None,
+        );
+        pipeline.rollback_from_witness();
+        let executor_trace: Vec<_> = execution.trace.into_iter().collect();
+        let pipeline = pipeline.add_external_witness_values(executor_trace);
+        test_plonky3_pipeline::<T>(pipeline);
+    }
 }
 
 fn find_assembler() -> &'static str {
@@ -62,7 +70,7 @@ fn find_assembler() -> &'static str {
     panic!("No RISC-V assembler found");
 }
 
-pub fn verify_riscv_asm_file(asm_file: &Path, options: CompilerOptions, use_pie: bool) {
+pub fn compile_riscv_asm_file(asm_file: &Path, options: CompilerOptions, use_pie: bool) -> String {
     let tmp_dir = Temp::new_dir().unwrap();
     let executable = tmp_dir.join("executable");
     let obj_file = tmp_dir.join("obj.o");
@@ -96,9 +104,12 @@ pub fn verify_riscv_asm_file(asm_file: &Path, options: CompilerOptions, use_pie:
         .status()
         .unwrap();
 
-    let case_name = asm_file.file_stem().unwrap().to_str().unwrap();
+    powdr_riscv::elf::translate(&executable, options)
+}
 
-    let powdr_asm = powdr_riscv::elf::translate(&executable, options);
+pub fn verify_riscv_asm_file(asm_file: &Path, options: CompilerOptions, use_pie: bool) {
+    let powdr_asm = compile_riscv_asm_file(asm_file, options, use_pie);
+    let case_name = asm_file.file_stem().unwrap().to_str().unwrap();
 
     match options.field {
         KnownField::BabyBearField => {

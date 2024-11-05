@@ -12,6 +12,7 @@
 use std::{
     collections::{BTreeMap, HashMap},
     fmt::{self, Display, Formatter},
+    path::Path,
     sync::Arc,
 };
 
@@ -27,7 +28,7 @@ use powdr_ast::{
     },
 };
 use powdr_executor::constant_evaluator::VariablySizedColumn;
-use powdr_number::{FieldElement, LargeInt};
+use powdr_number::{write_polys_csv_file, FieldElement, LargeInt};
 pub use profiler::ProfilerOptions;
 
 pub mod arith;
@@ -2380,4 +2381,38 @@ pub fn execute_ast<F: FieldElement>(
     e.proc.set_col("main::_operation_id", sink_id.into());
 
     e.proc.finish()
+}
+
+/// Utility function for writing the executor witness CSV file.
+///
+/// If `all_witness_cols` is given, all columns there will also be outuput, but have empty values when not present in the executor witness
+/// (this is useful for debugging, for easy comparison with with auto witgen export CSV file).
+pub fn write_executor_csv<F: FieldElement, P: AsRef<Path>>(
+    file_path: P,
+    executor_witness: &[(String, Vec<F>)],
+    all_witness_cols: Option<&[String]>,
+) {
+    let columns: Vec<_> = if let Some(witness_cols) = all_witness_cols {
+        witness_cols
+            .iter()
+            .map(|name| {
+                if let Some((_, values)) = executor_witness.iter().find(|(n, _)| n == name) {
+                    (name, values.as_ref())
+                } else {
+                    (name, [].as_ref())
+                }
+            })
+            .collect()
+    } else {
+        executor_witness
+            .iter()
+            .map(|(name, values)| (name, values.as_ref()))
+            .collect()
+    };
+
+    write_polys_csv_file(
+        std::fs::File::create(file_path.as_ref()).unwrap(),
+        powdr_number::CsvRenderMode::Hex,
+        &columns[..],
+    );
 }

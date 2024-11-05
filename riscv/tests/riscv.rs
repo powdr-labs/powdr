@@ -82,8 +82,10 @@ fn bn254_sanity_check() {
         .from_asm_string(from_elf, Some(PathBuf::from(file_name)));
 
     let analyzed = pipeline.compute_analyzed_asm().unwrap().clone();
+    let pil = pipeline.compute_optimized_pil().unwrap();
     powdr_riscv_executor::execute_ast(
         &analyzed,
+        &pil,
         None,
         Default::default(),
         pipeline.data_callback().unwrap(),
@@ -599,6 +601,7 @@ fn profiler_sanity_check() {
         .with_output(temp_dir.to_path_buf(), false)
         .from_asm_string(asm, Some(PathBuf::from(file_name)));
     let analyzed = pipeline.compute_analyzed_asm().unwrap().clone();
+    let pil = pipeline.compute_optimized_pil().unwrap();
     let profiler_opt = ProfilerOptions {
         file_stem: Some("{case}".to_string()),
         output_directory: temp_dir.to_path_buf().to_str().unwrap().to_string(),
@@ -607,6 +610,7 @@ fn profiler_sanity_check() {
     };
     powdr_riscv_executor::execute_ast(
         &analyzed,
+        &pil,
         None,
         Default::default(),
         pipeline.data_callback().unwrap(),
