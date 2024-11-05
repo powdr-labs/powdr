@@ -257,6 +257,7 @@ pub struct ExecutionTrace<F: FieldElement> {
     /// The length of the trace, after applying the reg_writes.
     len: usize,
 
+    /// witness columns
     cols: HashMap<String, Vec<Elem<F>>>,
 }
 
@@ -376,6 +377,9 @@ mod builder {
         MemoryMachine, MemoryState, RegWrite, RegisterMemory, ShiftMachine, SplitGlMachine,
         Submachine, SubmachineBoxed, PC_INITIAL_VAL,
     };
+
+    // TODO: where do we get this from? I don't think we want to depend on the linker crate just for this
+    const MIN_DEGREE: u32 = 1 << 5;
 
     fn register_names(main: &Machine) -> Vec<&str> {
         main.registers
@@ -561,8 +565,7 @@ mod builder {
 
         /// raw set next value of register by register index instead of name
         fn set_reg_idx(&mut self, idx: u16, value: Elem<F>) {
-            // Record register write in trace.
-            // TODO do not record if asgn reg
+            // Record register write in trace. Only for non-assignment registers.
             if let ExecMode::Trace = self.mode {
                 self.trace.reg_writes.push(RegWrite {
                     row: self.trace.len,
@@ -681,14 +684,10 @@ mod builder {
         }
 
         pub fn finish(mut self) -> Execution<F> {
-            // TODO: figure this out...
-            const MIN_DEGREE: u32 = 1 << 5;
-
             // fill machine rows up to the next power of two
             let main_degree = std::cmp::max(self.len().next_power_of_two(), MIN_DEGREE);
 
-            // generate asm register columns from writes
-            // TODO: can/should we generate the columns directly instead of storing the writes and "transposing" here?
+            // turn register write operations into witness columns
             let main_regs = self.trace.generate_registers_trace();
             self.trace.cols.extend(main_regs);
 
@@ -964,7 +963,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
     }
 
     fn exec_instruction(&mut self, name: &str, args: &[Expression]) -> Vec<Elem<F>> {
-        // shorthand macros for setting/getting witness column values
+        // shorthand macros for setting/getting main machine witness values in the current row
         macro_rules! set_col {
             ($name:ident, $val:expr) => {
                 self.proc
@@ -1107,7 +1106,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-            // TODO: not updated for witness generation
+            // TODO: update to witness generation for continuations
             "load_bootloader_input" => {
                 let addr = self.reg_read(0, args[0].u(), 0);
                 let write_addr = args[1].u();
@@ -1121,7 +1120,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-            // TODO: not updated for witness generation
+            // TODO: update to witness generation for continuations
             "assert_bootloader_input" => {
                 let addr = self.reg_read(0, args[0].u(), 0);
                 let val = self.reg_read(1, args[1].u(), 1);
@@ -1173,6 +1172,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
+            // TODO: update to witness generation for continuations
             "jump_to_bootloader_input" => {
                 let bootloader_input_idx = args[0].bin() as usize;
                 let addr = self.bootloader_inputs[bootloader_input_idx];
@@ -2193,11 +2193,9 @@ pub fn execute_ast<F: FieldElement>(
                 let results = e.eval_expression(a.rhs.as_ref());
                 assert_eq!(a.lhs_with_reg.len(), results.len());
 
-                // TODO very hacky, fix
                 let asgn_reg = a.lhs_with_reg[0].1.clone();
                 if let AssignmentRegister::Register(x) = asgn_reg {
-                    assert_eq!(x, "X");
-
+                    assert_eq!(x, "X"); // we currently only assign through X
                     let x_const = e.proc.get_col("main::X_const");
 
                     match a.rhs.as_ref() {
