@@ -11,7 +11,6 @@ use prover::StwoProver;
 
 mod circuit_builder;
 mod prover;
-use circuit_builder::PowdrCircuit;
 #[allow(dead_code)]
 pub(crate) struct StwoProverFactory;
 

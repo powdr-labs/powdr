@@ -1,69 +1,46 @@
-use itertools::Itertools;
-use num_traits::Pow;
-use num_traits::{ConstOne, One};
+use num_traits::One;
 extern crate alloc;
-use alloc::{
-    collections::{btree_map::BTreeMap, btree_set::BTreeSet},
-    string::{String, ToString},
-    vec,
-    vec::Vec,
-};
+use alloc::{collections::btree_map::BTreeMap, string::String, vec::Vec};
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, Analyzed, IdentityKind,
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, Analyzed,
 };
-use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::FieldElement;
-use powdr_number::Mersenne31Field;
 use std::sync::Arc;
 
-use powdr_ast::analyzed::{Identity, PolyID, PolynomialIdentity, PolynomialType};
-use stwo_prover::constraint_framework::logup::LookupElements;
-use stwo_prover::constraint_framework::{
-    assert_constraints, EvalAtRow, FrameworkComponent, FrameworkEval, TraceLocationAllocator,
-};
+use powdr_ast::analyzed::{PolyID, PolynomialIdentity, PolynomialType};
+use stwo_prover::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 use stwo_prover::core::backend::simd::column::BaseColumn;
 use stwo_prover::core::backend::simd::SimdBackend;
-use stwo_prover::core::fields::m31;
 use stwo_prover::core::fields::m31::BaseField;
-use stwo_prover::core::fields::qm31::SecureField;
-use stwo_prover::core::pcs::{CommitmentSchemeProver, PcsConfig, TreeSubspan};
-use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
+use stwo_prover::core::fields::m31::M31;
+use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::ColumnVec;
-use stwo_prover::{constraint_framework::logup::ClaimedPrefixSum, core::fields::m31::M31};
 
-pub type PowdrComponent<'a, F: FieldElement> = FrameworkComponent<PowdrEval<F>>;
+pub type PowdrComponent<'a, F> = FrameworkComponent<PowdrEval<F>>;
 
 pub struct PowdrCircuit<'a, T> {
     analyzed: Arc<Analyzed<T>>,
     /// Callback to augment the witness in the later stages.
-    witgen_callback: Option<WitgenCallback<T>>,
+    _witgen_callback: Option<WitgenCallback<T>>,
     /// The value of the witness columns, if set
     pub witness: Option<&'a [(String, Vec<T>)]>,
-    witness_columns: BTreeMap<PolyID, usize>,
 }
 
 impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     pub fn new(analyzed: Arc<Analyzed<T>>) -> Self {
-        let witness_columns: BTreeMap<PolyID, usize> = analyzed
-            .definitions_in_source_order(PolynomialType::Committed)
-            .flat_map(|(symbol, _)| symbol.array_elements())
-            .enumerate()
-            .map(|(index, (_, id))| (id, index))
-            .collect();
 
         Self {
             analyzed,
-            witgen_callback: None,
-            witness_columns: witness_columns,
+            _witgen_callback: None,
             witness: None,
         }
     }
 
     pub(crate) fn with_witgen_callback(self, witgen_callback: WitgenCallback<T>) -> Self {
         Self {
-            witgen_callback: Some(witgen_callback),
+            _witgen_callback: Some(witgen_callback),
             ..self
         }
     }
@@ -132,7 +109,7 @@ impl<T: FieldElement> PowdrEval<T> {
     }
 }
 
-impl<'a, T: FieldElement> FrameworkEval for PowdrEval<T> {
+impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
     fn log_size(&self) -> u32 {
         self.analyzed.degree().ilog2()
     }
@@ -168,31 +145,30 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
     witness_columns: &BTreeMap<PolyID, usize>,
     expr: &AlgebraicExpression<T>,
     witness_eval: &Vec<<E as EvalAtRow>::F>,
-    eval: &E,
+    _eval: &E,
 ) -> E::F {
     match expr {
-        AlgebraicExpression::Number(n) => E::F::one(),
+        AlgebraicExpression::Number(_n) => E::F::one(),
         AlgebraicExpression::Reference(polyref) => {
             let poly_id = polyref.poly_id;
-            let interaction = match polyref.next {
+            match polyref.next {
                 false => {
                     let index = witness_columns[&poly_id];
-                    witness_eval[index].into()
+                    witness_eval[index]
                 }
                 true => {
                     let index = witness_columns[&poly_id];
-                    witness_eval[index].into()
+                    witness_eval[index]
                 }
-            };
-            interaction
+            }
         }
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
             left: lhe,
             op,
             right: powdr_rhe,
         }) => {
-            let lhe = to_stwo_expression(witness_columns, lhe, witness_eval, eval);
-            let rhe = to_stwo_expression(witness_columns, powdr_rhe, witness_eval, eval);
+            let lhe = to_stwo_expression(witness_columns, lhe, witness_eval, _eval);
+            let rhe = to_stwo_expression(witness_columns, powdr_rhe, witness_eval, _eval);
             match op {
                 AlgebraicBinaryOperator::Add => lhe + rhe,
                 AlgebraicBinaryOperator::Sub => lhe - rhe,
@@ -207,15 +183,14 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
                         .unwrap_or_else(|_| panic!("Exponent has to fit 32 bits."));
                     if e == 0 {
                         //Expression::Constant(F::from(1))
-                        println!("This is the power");
                         unimplemented!()
                     } else {
-                        (0..e).fold(lhe.clone(), |acc, _| acc * lhe.clone())
+                        (0..e).fold(lhe, |acc, _| acc * lhe)
                     }
                 }
             }
         }
-        AlgebraicExpression::Challenge(challenge) => {
+        AlgebraicExpression::Challenge(_challenge) => {
             unimplemented!()
         }
         _ => unimplemented!("{:?}", expr),

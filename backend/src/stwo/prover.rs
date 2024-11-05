@@ -1,6 +1,5 @@
-use powdr_ast::analyzed::{Analyzed, IdentityKind};
+use powdr_ast::analyzed::Analyzed;
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::Mersenne31Field;
 use std::io;
 use std::sync::Arc;
 
@@ -9,27 +8,18 @@ use crate::stwo::circuit_builder::PowdrEval;
 
 use super::circuit_builder::PowdrComponent;
 
-use stwo_prover::constraint_framework::{
-    assert_constraints, EvalAtRow, FrameworkComponent, FrameworkEval, TraceLocationAllocator,
-};
+use stwo_prover::constraint_framework::TraceLocationAllocator;
 use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::prover::StarkProof;
-use stwo_prover::core::vcs::hash::Hash;
-use stwo_prover::core::vcs::ops::MerkleHasher;
 
 use powdr_number::FieldElement;
 use stwo_prover::core::air::Component;
 use stwo_prover::core::channel::MerkleChannel;
 use stwo_prover::core::channel::Poseidon252Channel;
 use stwo_prover::core::fri::FriConfig;
-use stwo_prover::core::pcs::{
-    CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig, TreeVec,
-};
-use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation, PolyOps};
-use stwo_prover::core::prover::ProvingError;
-use stwo_prover::core::vcs::poseidon252_merkle::{
-    Poseidon252MerkleChannel, Poseidon252MerkleHasher,
-};
+use stwo_prover::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig};
+use stwo_prover::core::poly::circle::{CanonicCoset, PolyOps};
+use stwo_prover::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
 
 #[allow(unused_variables)]
 pub struct StwoProver<T> {
@@ -74,18 +64,13 @@ impl<F: FieldElement> StwoProver<F> {
             .circle_domain()
             .half_coset,
         );
-        println!(
-            "canonic coset size: {:?}",
-            (self.analyzed.degree() as u32) + 1 + config.fri_config.log_blowup_factor
-        );
-        println!("generate twiddles");
+
         // Setup protocol.
         let prover_channel = &mut Poseidon252Channel::default();
         let commitment_scheme =
             &mut CommitmentSchemeProver::<SimdBackend, Poseidon252MerkleChannel>::new(
                 config, &twiddles,
             );
-        println!("generate prover channel");
 
         let trace = PowdrCircuit::new(self.analyzed.clone())
             .with_witgen_callback(witgen_callback)
@@ -106,8 +91,6 @@ impl<F: FieldElement> StwoProver<F> {
             ),
         );
 
-        println!("created component!");
-
         //let start = Instant::now();
         let proof = stwo_prover::core::prover::prove::<SimdBackend, Poseidon252MerkleChannel>(
             &[&component],
@@ -116,12 +99,10 @@ impl<F: FieldElement> StwoProver<F> {
         )
         .unwrap();
 
-        println!("proof generated!");
-
         Ok(bincode::serialize(&proof).unwrap())
     }
 
-    pub fn verify(&self, proof: &[u8], instances: &Vec<F>) -> Result<(), String> {
+    pub fn verify(&self, proof: &[u8], _instances: &[F]) -> Result<(), String> {
         let proof: StarkProof<<Poseidon252MerkleChannel as MerkleChannel>::H> =
             bincode::deserialize(proof).map_err(|e| format!("Failed to deserialize proof: {e}"))?;
 

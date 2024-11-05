@@ -301,14 +301,12 @@ pub fn gen_halo2_proof(_pipeline: Pipeline<Bn254Field>, _backend: BackendVariant
 
 #[cfg(feature = "plonky3")]
 pub fn test_plonky3<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
-    println!("inputs from test file {inputs:?}");
     let backend = powdr_backend::BackendType::Plonky3;
     let mut pipeline = Pipeline::default()
         .with_tmp_output()
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs.clone())
         .with_backend(backend, None);
-    println!("inputs from test file {inputs:?}");
 
     // Generate a proof
     let proof = pipeline.compute_proof().cloned().unwrap();
@@ -536,7 +534,9 @@ pub fn run_reparse_test_with_blacklist(file: &str, blacklist: &[&str]) {
 }
 
 // TODO: Add #[cfg(feature = "stwo")] to conditionally compile this function. now when I add it, this code is disabled. how to eable by default?
-#[cfg(all(feature = "stwo"))]
+
+use powdr_number::Mersenne31Field;
+#[cfg(feature = "stwo")]
 pub fn test_stwo(file_name: &str, inputs: Vec<Mersenne31Field>) {
     let backend = powdr_backend::BackendType::Stwo;
     let mut pipeline = Pipeline::default()
@@ -574,5 +574,13 @@ pub fn test_stwo(file_name: &str, inputs: Vec<Mersenne31Field>) {
             ),
         ]);
     // Generate a proof
-    let _proof = pipeline.compute_proof().cloned().unwrap();
+    let proof = pipeline.compute_proof().cloned().unwrap();
+    let publics: Vec<Mersenne31Field> = pipeline
+        .publics()
+        .clone()
+        .unwrap()
+        .iter()
+        .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
+        .collect();
+    pipeline.verify(&proof, &[publics]).unwrap();
 }

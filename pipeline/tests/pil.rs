@@ -1,7 +1,7 @@
 #[cfg(feature = "halo2")]
 use powdr_number::Bn254Field;
 use powdr_number::GoldilocksField;
-#[cfg(all(feature = "stwo"))]
+#[cfg(feature = "stwo")]
 use powdr_pipeline::test_util::test_stwo;
 use powdr_pipeline::{
     test_util::{
