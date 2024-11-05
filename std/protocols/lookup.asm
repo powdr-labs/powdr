@@ -62,9 +62,8 @@ let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr, expr -> fe[] = quer
 /// the used challenges would overlap.
 /// TODO: Implement this for an array of constraints.
 /// Arguments:
-/// - lookup_constraint: The lookup constraint
-/// - multiplicities: A multiplicities column which shows how many times each row of the RHS value appears in the LHS                  
-let lookup: Constr, expr -> () = constr |lookup_constraint, multiplicities| {
+/// - lookup_constraint: The lookup constraint               
+let lookup: Constr, expr -> () = constr |lookup_constraint| {
     std::check::assert(required_extension_size() <= 2, || "Invalid extension size");
     // Alpha is used to compress the LHS and RHS arrays.
     let alpha = fp2_from_array(array::new(required_extension_size(), |i| challenge(0, i + 1)));
@@ -75,6 +74,7 @@ let lookup: Constr, expr -> () = constr |lookup_constraint, multiplicities| {
 
     let lhs_denom = sub_ext(beta, fingerprint(lhs, alpha));
     let rhs_denom = sub_ext(beta, fingerprint(rhs, alpha));
+    let multiplicities = std::prover::new_witness_col_at_stage("multiplicities", 0);
     let m_ext = from_base(multiplicities);
 
     let acc = array::new(required_extension_size(), |i| std::prover::new_witness_col_at_stage("acc", 1));
