@@ -232,33 +232,42 @@ pub fn split_out_machines<'a, T: FieldElement>(
     // in their take_witness_col_values() implementation.
     // TODO: We should also split this up and have several instances instead.
 
-    let machine_sizes = identities
+    // Compute sizes of fixed lookup multiplicity columns.
+    let fixed_lookup_machine_sizes = identities
         .iter()
-        .filter_map(|id| {
-            if let Identity::PhantomLookup(PhantomLookupIdentity { id, right, .. }) = id {
+        .filter_map(|identity| match identity {
+            // We're only interested for fixed phantom lookups.
+            Identity::PhantomLookup(PhantomLookupIdentity { id, right, .. }) => {
                 let refs = refs_in_selected_expressions(right);
-                if (&refs & &all_witnesses).is_empty() {
-                    let sizes = fixed.fixed_cols[refs.iter().next().unwrap()]
-                        .values
-                        .available_sizes();
+                (&refs & &all_witnesses).is_empty().then_some((*id, refs))
+            }
+            _ => None,
+        })
+        .map(|(identity_id, fixed_columns)| {
+            let size = fixed_columns
+                .iter()
+                .map(|fixed_col| {
+                    // Get unique size for fixed column
+                    let sizes = fixed.fixed_cols[fixed_col].values.available_sizes();
                     assert_eq!(
                         sizes.len(),
                         1,
                         "Multiplicity columns must have a single size, but got: {sizes:?}"
                     );
-                    let poly_id = id_to_multiplicity[id];
-                    let size = sizes.iter().next().unwrap();
-                    return Some((poly_id, *size));
-                }
-            }
-            None
+                    sizes.iter().next().unwrap().clone()
+                })
+                .unique()
+                .exactly_one()
+                .expect("All fixed columns on the same RHS must have the same size");
+            let poly_id = id_to_multiplicity[&identity_id];
+            (poly_id, size)
         })
         .collect();
     let fixed_lookup = FixedLookup::new(
         fixed.global_range_constraints().clone(),
         identities.clone(),
         fixed,
-        machine_sizes,
+        fixed_lookup_machine_sizes,
         id_to_multiplicity,
     );
 

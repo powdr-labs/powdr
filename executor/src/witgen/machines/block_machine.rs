@@ -485,9 +485,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
                 let updates = updates.report_side_effect();
 
-                let latch_row_index = self.data.len() - 1 - self.block_size + self.latch_row;
+                let global_latch_row_index = self.data.len() - 1 - self.block_size + self.latch_row;
                 self.multiplicity_counter
-                    .increment(identity_id, latch_row_index);
+                    .increment(identity_id, global_latch_row_index);
 
                 // We solved the query, so report it to the cache.
                 self.processing_sequence_cache

@@ -179,7 +179,7 @@ pub struct FixedLookup<'a, T: FieldElement> {
     indices: IndexedColumns<T>,
     connections: BTreeMap<u64, Connection<'a, T>>,
     fixed_data: &'a FixedData<'a, T>,
-    machine_sizes: BTreeMap<PolyID, DegreeType>,
+    multiplicity_column_sizes: BTreeMap<PolyID, DegreeType>,
     multiplicity_counter: MultiplicityCounter,
 }
 
@@ -188,7 +188,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         global_constraints: GlobalConstraints<T>,
         all_identities: Vec<&'a Identity<T>>,
         fixed_data: &'a FixedData<'a, T>,
-        machine_sizes: BTreeMap<PolyID, DegreeType>,
+        multiplicity_column_sizes: BTreeMap<PolyID, DegreeType>,
         id_to_multiplicity: BTreeMap<u64, PolyID>,
     ) -> Self {
         let connections = all_identities
@@ -223,7 +223,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             indices: Default::default(),
             connections,
             fixed_data,
-            machine_sizes,
+            multiplicity_column_sizes,
             multiplicity_counter: MultiplicityCounter::new(id_to_multiplicity),
         }
     }
@@ -380,7 +380,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         self.multiplicity_counter
-            .generate_columns_different_sizes(self.machine_sizes.clone())
+            .generate_columns_different_sizes(self.multiplicity_column_sizes.clone())
             .into_iter()
             .map(|(poly_id, column)| (self.fixed_data.column_name(&poly_id).to_string(), column))
             .collect()
