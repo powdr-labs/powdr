@@ -4,8 +4,8 @@ use powdr_ast::{
     parsed::{
         self, asm::SymbolPath, types::Type, ArrayExpression, ArrayLiteral, BinaryOperation,
         BlockExpression, IfExpression, LambdaExpression, LetStatementInsideBlock, MatchArm,
-        MatchExpression, NamespacedPolynomialReference, Number, Pattern, SelectedExpressions,
-        StatementInsideBlock, SymbolCategory, UnaryOperation,
+        MatchExpression, NamedExpression, NamespacedPolynomialReference, Number, Pattern,
+        StatementInsideBlock, StructExpression, SymbolCategory, UnaryOperation,
     },
 };
 
@@ -18,6 +18,7 @@ use std::{
 use crate::{type_processor::TypeProcessor, AnalysisDriver};
 
 /// The ExpressionProcessor turns parsed expressions into analyzed expressions.
+///
 /// Its main job is to resolve references:
 /// It turns simple references into fully namespaced references and resolves local function variables.
 pub struct ExpressionProcessor<'a, D: AnalysisDriver> {
@@ -34,16 +35,6 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             type_vars,
             local_variables: Default::default(),
             local_variable_counter: 0,
-        }
-    }
-
-    pub fn process_selected_expressions(
-        &mut self,
-        expr: SelectedExpressions<parsed::Expression>,
-    ) -> SelectedExpressions<Expression> {
-        SelectedExpressions {
-            selector: expr.selector.map(|e| self.process_expression(e)),
-            expressions: Box::new(self.process_expression(*expr.expressions)),
         }
     }
 
@@ -71,23 +62,6 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             .into_iter()
             .map(|e| self.process_expression(e))
             .collect()
-    }
-
-    pub fn process_vec_into_selected_expression(
-        &mut self,
-        exprs: Vec<parsed::Expression>,
-    ) -> SelectedExpressions<Expression> {
-        let exprs = Expression::ArrayLiteral(
-            SourceRef::unknown(),
-            ArrayLiteral {
-                items: self.process_expressions(exprs),
-            },
-        );
-
-        SelectedExpressions {
-            selector: None,
-            expressions: Box::new(exprs),
-        }
     }
 
     pub fn process_expression(&mut self, expr: parsed::Expression) -> Expression {
@@ -188,6 +162,31 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 self.process_block_expression(statements, expr, src)
             }
             PExpression::FreeInput(_, _) => panic!(),
+            PExpression::StructExpression(src, StructExpression { name, fields }) => {
+                let type_args = name
+                    .type_args
+                    .map(|args| args.into_iter().map(|t| self.process_type(t)).collect());
+
+                Expression::StructExpression(
+                    src,
+                    StructExpression {
+                        name: Reference::Poly(PolynomialReference {
+                            name: self
+                                .driver
+                                .resolve_ref(&name.path, SymbolCategory::Struct)
+                                .expect("TODO: Handle this up in the code"),
+                            type_args,
+                        }),
+                        fields: fields
+                            .into_iter()
+                            .map(|named_expr| NamedExpression {
+                                name: named_expr.name,
+                                body: Box::new(self.process_expression(*named_expr.body)),
+                            })
+                            .collect(),
+                    },
+                )
+            }
         }
     }
 
@@ -238,7 +237,11 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                 }
             }
             Pattern::Enum(source_ref, name, fields) => {
-                self.process_enum_pattern(source_ref, self.driver.resolve_value_ref(&name), fields)
+                let name = self
+                    .driver
+                    .resolve_value_ref(&name)
+                    .expect("TODO: Handle this up in the code");
+                self.process_enum_pattern(source_ref, name, fields)
             }
         }
     }
@@ -289,7 +292,9 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
 
     pub fn process_lambda_expression(
         &mut self,
-        LambdaExpression { kind, params, body }: LambdaExpression,
+        LambdaExpression {
+            kind, params, body, ..
+        }: LambdaExpression,
     ) -> LambdaExpression<Expression> {
         let previous_local_vars = self.save_local_variables();
 
@@ -306,7 +311,12 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
         let body = Box::new(self.process_expression(*body));
 
         self.reset_local_variables(previous_local_vars);
-        LambdaExpression { kind, params, body }
+        LambdaExpression {
+            kind,
+            params,
+            body,
+            param_types: vec![],
+        }
     }
 
     fn process_block_expression(
@@ -358,7 +368,10 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
             .type_args
             .map(|args| args.into_iter().map(|t| self.process_type(t)).collect());
         PolynomialReference {
-            name: self.driver.resolve_value_ref(&reference.path),
+            name: self
+                .driver
+                .resolve_value_ref(&reference.path)
+                .expect("TODO: Handle this up in the code"),
             type_args,
         }
     }

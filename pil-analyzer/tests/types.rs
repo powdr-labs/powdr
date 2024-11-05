@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use powdr_ast::parsed::display::format_type_scheme_around_name;
 use powdr_number::GoldilocksField;
 use powdr_parser::parse_type_scheme;
@@ -6,7 +7,18 @@ use powdr_pil_analyzer::analyze_string;
 use pretty_assertions::assert_eq;
 
 fn type_check(input: &str, expected: &[(&str, &str, &str)]) {
-    let analyzed = analyze_string::<GoldilocksField>(input);
+    let analyzed = analyze_string::<GoldilocksField>(input)
+        .map_err(|errors| {
+            errors
+                .into_iter()
+                .map(|e| {
+                    e.output_to_stderr();
+                    e.to_string()
+                })
+                .format("\n")
+        })
+        .expect("Failed to analyze test input.");
+
     for (name, bounds, ty) in expected {
         let type_scheme = analyzed.type_of_symbol(name);
         assert_eq!(
@@ -47,7 +59,7 @@ fn use_fun_in_expr_context() {
     let w;
     w = id;
 "#;
-    analyze_string::<GoldilocksField>(input);
+    type_check(input, &[]);
 }
 
 #[test]
@@ -567,128 +579,10 @@ fn defined_trait() {
     trait Add<T> {
         add: T, T -> T,
     }
-    impl Add<int> {
+    impl Add<fe> {
         add: |a, b| a + b,
     }
-    let r: int = Add::add(3, 4);
-    ";
-    type_check(input, &[("r", "", "int")]);
-}
-
-#[test]
-//TODO GZ: Change this when correct error is implemented
-#[should_panic = "TraitDeclaration symbol not found: Add"]
-fn undefined_trait() {
-    let input = "
-    impl Add<int> {
-        add: |a, b| a + b,
-    }
-    ";
-    type_check(input, &[]);
-}
-
-#[test]
-fn defined_trait_generic() {
-    let input = "
-    namespace std::convert(4);
-        let fe = || fe();
-    namespace F(4);
-        trait Add<T, Q> {
-            add: T, T -> Q,
-        }
-        impl<T> Add<T, fe> {
-            add: |a, b| std::convert::fe(a + b),
-        }
-    ";
-    type_check(input, &[]);
-}
-
-#[test]
-#[should_panic = "Impls for F::Add: Types (int, fe) and (int, fe) overlap"]
-fn duplicated_trait() {
-    let input = "
-    namespace std::convert(4);
-        let fe = || fe();
-    namespace F(4);
-        trait Add<T, Q> {
-            add: T, T -> Q,
-        }
-        impl Add<int, fe> {
-            add: |a, b| std::convert::fe(a + b),
-        }
-        impl Add<int, fe> {
-            add: |a, b| std::convert::fe(a + b),
-        }
-    ";
-    type_check(input, &[]);
-}
-
-#[test]
-#[should_panic = "Impls for F::Add: Types (int, fe) and (T, fe) overlap"]
-fn duplicated_trait_generic() {
-    let input = "
-    namespace std::convert(4);
-        let fe = || fe();
-    namespace F(4);
-        trait Add<T, Q> {
-            add: T, T -> Q,
-        }
-        impl Add<int, fe> {
-            add: |a, b| std::convert::fe(a + b),
-        }
-        impl<T> Add<T, fe> {
-            add: |a, b| std::convert::fe(a + b),
-        }
-    ";
-    type_check(input, &[]);
-}
-
-#[test]
-#[should_panic = "Trait Add has 2 type parameters, but implementation has 1"]
-fn impl_with_diff_length() {
-    let input = "
-    trait Add<T, Q> {
-        add: T, T -> Q,
-    }
-    impl Add<int> {
-        add: |a, b| a + b,
-    }
-    ";
-    type_check(input, &[]);
-}
-
-#[test]
-fn impl_combined_test() {
-    let input = "
-    namespace std::convert(4);
-        let fe = || fe();
-    namespace F(4);
-        trait Add<T, Q> {
-            add: T, T -> Q,
-        }
-        impl<Q> Add<int, Q> {
-            add: |a, b| std::convert::fe(a + b),
-        }
-        
-        let x: int -> fe = |q| match Add::add(q, 4) {
-            v => v,
-        };
-        let res: fe = x(5);
-    ";
-
-    type_check(input, &[("F::res", "", "fe")]);
-}
-
-#[test]
-#[should_panic = "Impl Add introduces a type variable Q that is not used"]
-fn unused_type_var_error() {
-    let input = "
-    trait Add<T> {
-        add: T, T -> T,
-    }
-    impl<Q> Add<int> {
-        add: |a, b| a + b,
-    }
+    let r: fe = Add::add(3, 4);
     ";
     type_check(input, &[]);
 }
@@ -745,4 +639,216 @@ fn new_fixed_column_wrong_type() {
         f();
     "#;
     type_check(input, &[]);
+}
+
+#[test]
+fn trait_multi_generics() {
+    let input = "
+    trait ToTuple<S, I> {
+        get: S -> (S, I),
+    }
+    impl ToTuple<int, (int, int)> {
+        get: |n| (n, (1, n+2)),
+    }
+    let r: (int, (int, int)) = ToTuple::get(3);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn trait_with_user_defined_enum() {
+    let input = "
+    enum Bool { True, False }
+    
+    trait Not<T> {
+        not: T -> T,
+    }
+    
+    impl Not<Bool> {
+        not: |b| match b {
+            Bool::True => Bool::False,
+            Bool::False => Bool::True,
+        },
+    }
+    let b = Not::not(Bool::True);
+    ";
+    type_check(input, &[("b", "", "Bool")]);
+}
+
+#[test]
+fn trait_with_user_defined_enum2() {
+    let input = "
+    enum V1 { A1, B1 }
+    enum V2 { A2, B2 }
+
+    trait Convert<T, U> {
+        convert: T -> U,
+    }
+
+    impl Convert<V1, V2> {
+        convert: |x| match x {
+            V1::A1 => V2::A2,
+            V1::B1 => V2::B2,
+        },
+    }
+    impl Convert<V2, V1> {
+        convert: |x| match x {
+            V2::B2 => V1::B1,
+            V2::A2 => V1::A1,
+        },
+    }
+
+    let r1: V2 = Convert::convert(V1::A1);
+    let r2: V1 = Convert::convert(V2::B2);
+    ";
+    type_check(input, &[("r1", "", "V2"), ("r2", "", "V1")]);
+}
+
+#[test]
+#[should_panic = "Could not derive a concrete type for symbol r1."]
+fn trait_user_defined_enum_wrong_type() {
+    let input = "
+    enum V1 { A1, B1 }
+    enum V2 { A2, B2 }
+
+    trait Convert<T, U> {
+        convert: T -> U,
+    }
+
+    let n: int = 7;
+    let r1 = Convert::convert(n);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Could not find an implementation for the trait function ToTuple::get::<int, (int, int)> (trait is not implemented at all) at input:90-102"]
+fn trait_no_impl() {
+    let input = "
+    trait ToTuple<S, I> {
+        get: S -> (S, I),
+    }
+    let r: (int, (int, int)) = ToTuple::get(3);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Could not find a matching implementation for the trait function Trait::f::<string> at input:109-117"]
+fn trait_wrong_impl() {
+    let input = r#"
+    trait Trait<X> {
+        f: X -> ()
+    }
+    impl Trait<int> {
+        f: |_| ()
+    }
+    let r: () = Trait::f("");
+    "#;
+    type_check(input, &[]);
+}
+
+#[test]
+fn prover_functions() {
+    let input = "
+        let a = 9;
+        let b = [];
+        query |i| if a == i {
+            b[0]
+        } else {
+            b[0]
+        };
+    ";
+    type_check(input, &[("a", "", "int"), ("b", "", "()[]")]);
+}
+
+#[test]
+#[should_panic = "Struct symbol not found: NotADot"]
+fn wrong_struct() {
+    let input = "
+    struct Dot { x: int, y: int }
+    let f: int -> Dot = |i| NotADot{x: 0, y: i};
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Struct 'Dot' has no field named 'a'"]
+fn struct_wrong_fields() {
+    let input = "
+    struct Dot { x: int, y: int }
+    let f: int -> Dot = |i| Dot{x: 0, y: i, a: 2};
+    let x = f(0);
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Missing field 'z' in initializer of 'A'"]
+fn test_struct_unused_fields() {
+    let input = "    struct A {
+        x: int,
+        y: int,
+        z: int,
+    }
+    let x = A{ y: 0, x: 2 };
+";
+
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Field 'y' specified more than once"]
+fn test_struct_repeated_fields_expr() {
+    let input = "    struct A {
+        x: int,
+        y: int,
+    }
+    let x = A{ y: 0, x: 2, y: 1 };
+";
+
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic = "Field 'x' is declared more than once"]
+fn test_struct_repeated_fields_decl() {
+    let input = "    struct A {
+        x: int,
+        y: int,
+        x: int,
+    }
+    let x = A{ y: 0, x: 2 };
+";
+
+    type_check(input, &[]);
+}
+
+#[test]
+#[should_panic(expected = "Expected symbol of kind Struct but got Type: A")]
+fn enum_used_as_struct() {
+    let input = "
+    enum A { X }
+    let a = A{x: 8};
+    ";
+    type_check(input, &[]);
+}
+
+#[test]
+fn typed_literals() {
+    let input = "
+        let a = -1_int;
+        let b = -1_2_fe;
+        let c = -0x7_8_int;
+        let d = [1, 0_int, 2];
+        ";
+    type_check(
+        input,
+        &[
+            ("a", "", "int"),
+            ("b", "", "fe"),
+            ("c", "", "int"),
+            ("d", "", "int[]"),
+        ],
+    );
 }

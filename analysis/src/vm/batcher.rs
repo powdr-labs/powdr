@@ -3,8 +3,7 @@
 use itertools::Itertools;
 use powdr_ast::{
     asm_analysis::{
-        AnalysisASMFile, BatchMetadata, FunctionStatement, Incompatible, IncompatibleSet, Item,
-        Machine,
+        AnalysisASMFile, BatchMetadata, FunctionStatement, Incompatible, IncompatibleSet, Machine,
     },
     parsed::asm::AbsoluteSymbolPath,
 };
@@ -19,7 +18,7 @@ struct Batch<'a> {
 }
 
 impl<'a> Batch<'a> {
-    fn from_statement(s: &'a FunctionStatement) -> Batch {
+    fn from_statement(s: &'a FunctionStatement) -> Batch<'a> {
         Batch {
             statements: vec![s],
         }
@@ -132,14 +131,8 @@ impl RomBatcher {
     }
 
     pub fn batch(&mut self, mut asm_file: AnalysisASMFile) -> AnalysisASMFile {
-        for (name, machine) in asm_file.items.iter_mut().filter_map(|(n, m)| match m {
-            Item::Machine(m) => Some((n, m)),
-            Item::Expression(_)
-            | Item::TypeDeclaration(_)
-            | Item::TraitDeclaration(_)
-            | Item::TraitImplementation(_) => None,
-        }) {
-            self.extract_batches(name, machine);
+        for (name, machine) in asm_file.machines_mut() {
+            self.extract_batches(&name, machine);
         }
 
         asm_file
@@ -149,7 +142,7 @@ impl RomBatcher {
 #[cfg(test)]
 mod tests {
 
-    use std::{fs, path::PathBuf};
+    use std::{fs, path::Path};
 
     use powdr_ast::asm_analysis::AnalysisASMFile;
     use pretty_assertions::assert_eq;
@@ -158,10 +151,7 @@ mod tests {
     use crate::vm::test_utils::batch_str;
 
     fn test_batching(path: &str) {
-        let base_path = PathBuf::from(format!(
-            "{}/../test_data/asm/batching",
-            env!("CARGO_MANIFEST_DIR")
-        ));
+        let base_path = Path::new("../test_data/asm/batching");
         let file_name = base_path.join(path);
         let expected = fs::read_to_string(file_name).unwrap();
 

@@ -10,16 +10,14 @@ use std::{
 
 use itertools::Itertools;
 use powdr_ast::analyzed::Analyzed;
+use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
 use powdr_number::{DegreeType, FieldElement};
 use serde::{Deserialize, Serialize};
-use split::{machine_fixed_columns, machine_witness_columns};
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
 use self::sub_prover::RunStatus;
-
-mod split;
 
 /// Maps each size to the corresponding verification key.
 type VerificationKeyBySize = BTreeMap<DegreeType, Vec<u8>>;
@@ -68,15 +66,19 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
         fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
         output_dir: Option<PathBuf>,
         setup: Option<&mut dyn std::io::Read>,
+        proving_key: Option<&mut dyn std::io::Read>,
         verification_key: Option<&mut dyn std::io::Read>,
         verification_app_key: Option<&mut dyn std::io::Read>,
         backend_options: BackendOptions,
     ) -> Result<Box<dyn Backend<F>>, Error> {
+        if proving_key.is_some() {
+            unimplemented!();
+        }
         if verification_app_key.is_some() {
             unimplemented!();
         }
 
-        let pils = split::split_pil(&pil);
+        let pils = powdr_backend_utils::split_pil(&pil);
 
         // Read the setup once (if any) to pass to all backends.
         let setup_bytes = setup.map(|setup| {
@@ -109,6 +111,10 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
                 machine_fixed_columns(&fixed, &pil)
                     .into_iter()
                     .map(|(size, fixed)| {
+                        let fixed = fixed
+                            .into_iter()
+                            .map(|(name, values)| (name, values.to_vec().into()))
+                            .collect();
                         let pil = set_size(pil.clone(), size as DegreeType);
                         // Set up readers for the setup and verification key
                         let mut setup_cursor = setup_bytes.as_ref().map(Cursor::new);
@@ -133,6 +139,7 @@ impl<F: FieldElement, B: BackendFactory<F>> BackendFactory<F> for CompositeBacke
                             fixed,
                             output_dir,
                             setup,
+                            None, // TODO
                             verification_key,
                             // TODO: Handle verification_app_key
                             None,
@@ -176,7 +183,7 @@ fn log_machine_stats<T: FieldElement>(machine_name: &str, pil: &Analyzed<T>) {
     let num_identities_by_kind = pil
         .identities
         .iter()
-        .map(|i| i.kind)
+        .map(|i| i.kind())
         .counts()
         .into_iter()
         .collect::<BTreeMap<_, _>>();

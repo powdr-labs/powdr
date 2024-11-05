@@ -6,9 +6,11 @@ pub mod types;
 pub mod visitor;
 
 use std::{
+    collections::HashMap,
     iter::{empty, once},
     ops,
     str::FromStr,
+    sync::Arc,
 };
 
 use auto_enums::auto_enum;
@@ -27,6 +29,8 @@ use self::{
     visitor::{Children, ExpressionVisitable},
 };
 
+use crate::parsed::types::TupleType;
+
 #[derive(Display, Clone, Copy, PartialEq, Eq)]
 pub enum SymbolCategory {
     /// A value, which has a type and can be referenced in expressions (a variable, function, constant, ...).
@@ -36,19 +40,25 @@ pub enum SymbolCategory {
     /// A type constructor, i.e. an enum variant, which can be used as a function or constant inside an expression
     /// or to deconstruct a value in a pattern.
     TypeConstructor,
-    /// A trait declaration, which can be used as a type.
+    /// A trait declaration
     TraitDeclaration,
+    /// A struct, which can be used as a type.
+    Struct,
 }
 impl SymbolCategory {
     /// Returns if a symbol of a given category can satisfy a request for a certain category.
     pub fn compatible_with_request(&self, request: SymbolCategory) -> bool {
         match self {
-            SymbolCategory::Value => request == SymbolCategory::Value,
-            SymbolCategory::Type => request == SymbolCategory::Type,
+            SymbolCategory::Struct => {
+                // Structs can also satisfy requests for types.
+                request == SymbolCategory::Struct || request == SymbolCategory::Type
+            }
             SymbolCategory::TypeConstructor => {
                 // Type constructors can also satisfy requests for values.
                 request == SymbolCategory::TypeConstructor || request == SymbolCategory::Value
             }
+            SymbolCategory::Value => request == SymbolCategory::Value,
+            SymbolCategory::Type => request == SymbolCategory::Type,
             SymbolCategory::TraitDeclaration => request == SymbolCategory::TraitDeclaration,
         }
     }
@@ -108,18 +118,8 @@ pub enum PilStatement {
         // Value (prover query / hint)
         Option<FunctionDefinition>,
     ),
-    PlookupIdentity(
-        SourceRef,
-        SelectedExpressions<Expression>,
-        SelectedExpressions<Expression>,
-    ),
-    PermutationIdentity(
-        SourceRef,
-        SelectedExpressions<Expression>,
-        SelectedExpressions<Expression>,
-    ),
-    ConnectIdentity(SourceRef, Vec<Expression>, Vec<Expression>),
     EnumDeclaration(SourceRef, EnumDeclaration<Expression>),
+    StructDeclaration(SourceRef, StructDeclaration<Expression>),
     TraitImplementation(SourceRef, TraitImplementation<Expression>),
     TraitDeclaration(SourceRef, TraitDeclaration<Expression>),
     Expression(SourceRef, Expression),
@@ -158,6 +158,9 @@ impl PilStatement {
                         .map(move |v| (name, Some(&v.name), SymbolCategory::TypeConstructor)),
                 ),
             ),
+            PilStatement::StructDeclaration(_, StructDeclaration { name, .. }) => {
+                Box::new(once((name, None, SymbolCategory::Struct)))
+            }
             PilStatement::TraitDeclaration(
                 _,
                 TraitDeclaration {
@@ -179,9 +182,6 @@ impl PilStatement {
 
             PilStatement::Include(_, _)
             | PilStatement::Namespace(_, _, _)
-            | PilStatement::PlookupIdentity(_, _, _)
-            | PilStatement::PermutationIdentity(_, _, _)
-            | PilStatement::ConnectIdentity(_, _, _)
             | PilStatement::Expression(_, _)
             | PilStatement::TraitImplementation(_, _) => Box::new(empty()),
         }
@@ -192,13 +192,6 @@ impl Children<Expression> for PilStatement {
     /// Returns an iterator over all (top-level) expressions in this statement.
     fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
         match self {
-            PilStatement::PlookupIdentity(_, left, right)
-            | PilStatement::PermutationIdentity(_, left, right) => {
-                Box::new(left.children().chain(right.children()))
-            }
-            PilStatement::ConnectIdentity(_start, left, right) => {
-                Box::new(left.iter().chain(right.iter()))
-            }
             PilStatement::Expression(_, e) => Box::new(once(e)),
             PilStatement::Namespace(_, _, Some(d)) => d.children(),
             PilStatement::PolynomialDefinition(_, PolynomialName { array_size, .. }, e) => {
@@ -206,6 +199,7 @@ impl Children<Expression> for PilStatement {
             }
 
             PilStatement::EnumDeclaration(_, enum_decl) => enum_decl.children(),
+            PilStatement::StructDeclaration(_, struct_decl) => struct_decl.children(),
             PilStatement::TraitImplementation(_, trait_impl) => trait_impl.children(),
             PilStatement::TraitDeclaration(_, trait_decl) => trait_decl.children(),
 
@@ -230,13 +224,6 @@ impl Children<Expression> for PilStatement {
     /// Returns an iterator over all (top-level) expressions in this statement.
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
         match self {
-            PilStatement::PlookupIdentity(_, left, right)
-            | PilStatement::PermutationIdentity(_, left, right) => {
-                Box::new(left.children_mut().chain(right.children_mut()))
-            }
-            PilStatement::ConnectIdentity(_start, left, right) => {
-                Box::new(left.iter_mut().chain(right.iter_mut()))
-            }
             PilStatement::Expression(_, e) => Box::new(once(e)),
             PilStatement::Namespace(_, _, Some(d)) => d.children_mut(),
             PilStatement::PolynomialDefinition(_, PolynomialName { array_size, .. }, e) => {
@@ -244,6 +231,7 @@ impl Children<Expression> for PilStatement {
             }
 
             PilStatement::EnumDeclaration(_, enum_decl) => enum_decl.children_mut(),
+            PilStatement::StructDeclaration(_, struct_decl) => struct_decl.children_mut(),
             PilStatement::TraitImplementation(_, trait_impl) => trait_impl.children_mut(),
             PilStatement::TraitDeclaration(_, trait_decl) => trait_decl.children_mut(),
 
@@ -260,6 +248,81 @@ impl Children<Expression> for PilStatement {
             | PilStatement::Namespace(_, _, None)
             | PilStatement::PolynomialConstantDeclaration(_, _) => Box::new(empty()),
         }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub enum TypeDeclaration<E = u64> {
+    Enum(EnumDeclaration<E>),
+    Struct(StructDeclaration<E>),
+}
+
+impl<R> Children<Expression<R>> for TypeDeclaration<Expression<R>> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        match self {
+            TypeDeclaration::Enum(e) => e.children(),
+            TypeDeclaration::Struct(s) => s.children(),
+        }
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        match self {
+            TypeDeclaration::Enum(e) => e.children_mut(),
+            TypeDeclaration::Struct(s) => s.children_mut(),
+        }
+    }
+}
+
+impl<R> Children<Expression<R>> for TypeDeclaration<u64> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        match self {
+            TypeDeclaration::Enum(e) => e.children(),
+            TypeDeclaration::Struct(s) => s.children(),
+        }
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        match self {
+            TypeDeclaration::Enum(e) => e.children_mut(),
+            TypeDeclaration::Struct(s) => s.children_mut(),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct StructDeclaration<E = u64> {
+    pub name: String,
+    pub type_vars: TypeBounds,
+    pub fields: Vec<NamedType<E>>,
+}
+
+impl<E: Clone> StructDeclaration<E> {
+    pub fn type_of_field(&self, name: &str) -> Option<TypeScheme<E>> {
+        self.fields
+            .iter()
+            .find(|named| named.name == name)
+            .map(|named| TypeScheme {
+                vars: self.type_vars.clone(),
+                ty: named.ty.clone(),
+            })
+    }
+}
+
+impl<R> Children<Expression<R>> for StructDeclaration<Expression<R>> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        Box::new(self.fields.iter().flat_map(|f| f.ty.children()))
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        Box::new(self.fields.iter_mut().flat_map(|f| f.ty.children_mut()))
+    }
+}
+
+impl<R> Children<Expression<R>> for StructDeclaration<u64> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        Box::new(empty())
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        Box::new(empty())
     }
 }
 
@@ -350,38 +413,83 @@ pub struct TraitImplementation<Expr> {
     pub name: SymbolPath,
     pub source_ref: SourceRef,
     pub type_scheme: TypeScheme,
-    pub functions: Vec<NamedExpression<Expr>>,
+    pub functions: Vec<NamedExpression<Arc<Expr>>>,
+}
+
+impl<R> TraitImplementation<Expression<R>> {
+    pub fn function_by_name(&self, name: &str) -> Option<&NamedExpression<Arc<Expression<R>>>> {
+        self.functions.iter().find(|f| f.name == name)
+    }
+
+    pub fn type_of_function(&self, trait_decl: &TraitDeclaration, fn_name: &str) -> Type {
+        let Type::Tuple(TupleType { items }) = &self.type_scheme.ty else {
+            panic!("Expected tuple type for trait implementation");
+        };
+
+        let type_var_mapping: HashMap<String, Type> = trait_decl
+            .type_vars
+            .iter()
+            .cloned()
+            .zip(items.iter().cloned())
+            .collect();
+
+        let trait_fn = trait_decl
+            .function_by_name(fn_name)
+            .expect("Function not found in trait declaration");
+
+        let mut trait_type = trait_fn.ty.clone();
+        trait_type.substitute_type_vars(&type_var_mapping);
+        trait_type
+    }
 }
 
 impl<R> Children<Expression<R>> for TraitImplementation<Expression<R>> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
-        Box::new(self.functions.iter().flat_map(|m| m.body.children()))
+        Box::new(self.functions.iter().flat_map(|m| m.children()))
     }
     fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
-        Box::new(
-            self.functions
-                .iter_mut()
-                .flat_map(|m| m.body.children_mut()),
-        )
+        Box::new(self.functions.iter_mut().flat_map(|m| m.children_mut()))
     }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct NamedExpression<Expr> {
     pub name: String,
-    pub body: Box<Expr>,
+    pub body: Expr,
+}
+
+impl<R> Children<Expression<R>> for NamedExpression<Box<Expression<R>>> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        Box::new(once(self.body.as_ref()))
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        Box::new(once(self.body.as_mut()))
+    }
+}
+
+impl<R> Children<Expression<R>> for NamedExpression<Arc<Expression<R>>> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        Box::new(once(self.body.as_ref()))
+    }
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        Box::new(once(Arc::get_mut(&mut self.body).unwrap()))
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct TraitDeclaration<E = u64> {
     pub name: String,
     pub type_vars: Vec<String>,
-    pub functions: Vec<TraitFunction<E>>,
+    pub functions: Vec<NamedType<E>>,
 }
 
 impl TraitDeclaration<u64> {
-    pub fn function_by_name(&self, name: &str) -> Option<&TraitFunction> {
+    pub fn function_by_name(&self, name: &str) -> Option<&NamedType> {
         self.functions.iter().find(|f| f.name == name)
+    }
+
+    pub fn function_by_name_mut(&mut self, name: &str) -> Option<&mut NamedType> {
+        self.functions.iter_mut().find(|f| f.name == name)
     }
 }
 
@@ -395,12 +503,12 @@ impl<R> Children<Expression<R>> for TraitDeclaration<Expression<R>> {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
-pub struct TraitFunction<E = u64> {
+pub struct NamedType<E = u64> {
     pub name: String,
     pub ty: Type<E>,
 }
 
-impl<R> Children<Expression<R>> for TraitFunction<Expression<R>> {
+impl<R> Children<Expression<R>> for NamedType<Expression<R>> {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
         self.ty.children()
     }
@@ -458,6 +566,7 @@ pub enum Expression<Ref = NamespacedPolynomialReference> {
     MatchExpression(SourceRef, MatchExpression<Self>),
     IfExpression(SourceRef, IfExpression<Self>),
     BlockExpression(SourceRef, BlockExpression<Self>),
+    StructExpression(SourceRef, StructExpression<Ref>),
 }
 
 /// Comparison function for expressions that ignore source information.
@@ -494,7 +603,8 @@ impl_partial_eq_for_expression!(
     FreeInput,
     MatchExpression,
     IfExpression,
-    BlockExpression
+    BlockExpression,
+    StructExpression
 );
 
 pub trait SourceReference {
@@ -503,25 +613,38 @@ pub trait SourceReference {
 }
 
 macro_rules! impl_source_reference {
+    // Version for types with generic parameter
+    ($enum:ident<$generic:ident>, $($variant:ident),*) => {
+        impl<$generic> SourceReference for $enum<$generic> {
+            impl_source_reference_inner!($enum, $($variant),*);
+        }
+    };
+    // Version for types without generic parameter
     ($enum:ident, $($variant:ident),*) => {
-        impl<E> SourceReference for $enum<E> {
-            fn source_reference(&self) -> &SourceRef {
-                match self {
-                    $( $enum::$variant(src, _) => src, )*
-                }
-            }
+        impl SourceReference for $enum {
+            impl_source_reference_inner!($enum, $($variant),*);
+        }
+    };
+}
 
-            fn source_reference_mut(&mut self) -> &mut SourceRef {
-                match self {
-                    $( $enum::$variant(src, _) => src, )*
-                }
+macro_rules! impl_source_reference_inner {
+    ($enum:ident, $($variant:ident),*) => {
+        fn source_reference(&self) -> &SourceRef {
+            match self {
+                $( $enum::$variant(src, ..) => src, )*
+            }
+        }
+
+        fn source_reference_mut(&mut self) -> &mut SourceRef {
+            match self {
+                $( $enum::$variant(src, ..) => src, )*
             }
         }
     }
 }
 
 impl_source_reference!(
-    Expression,
+    Expression<E>,
     Reference,
     PublicReference,
     Number,
@@ -536,7 +659,25 @@ impl_source_reference!(
     FreeInput,
     MatchExpression,
     IfExpression,
-    BlockExpression
+    BlockExpression,
+    StructExpression
+);
+
+impl_source_reference!(
+    PilStatement,
+    Include,
+    Namespace,
+    LetStatement,
+    PolynomialDefinition,
+    PolynomialCommitDeclaration,
+    PolynomialConstantDeclaration,
+    PolynomialConstantDefinition,
+    PublicDeclaration,
+    EnumDeclaration,
+    StructDeclaration,
+    TraitDeclaration,
+    TraitImplementation,
+    Expression
 );
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
@@ -764,6 +905,7 @@ impl<R> Expression<R> {
             Expression::MatchExpression(_, match_expr) => match_expr.children(),
             Expression::IfExpression(_, if_expr) => if_expr.children(),
             Expression::BlockExpression(_, block_expr) => block_expr.children(),
+            Expression::StructExpression(_, struct_expr) => struct_expr.children(),
         }
     }
 
@@ -789,6 +931,7 @@ impl<R> Expression<R> {
             Expression::MatchExpression(_, match_expr) => match_expr.children_mut(),
             Expression::IfExpression(_, if_expr) => if_expr.children_mut(),
             Expression::BlockExpression(_, block_expr) => block_expr.children_mut(),
+            Expression::StructExpression(_, struct_expr) => struct_expr.children_mut(),
         }
     }
 
@@ -860,6 +1003,8 @@ pub struct LambdaExpression<E = Expression<NamespacedPolynomialReference>> {
     pub kind: FunctionKind,
     pub params: Vec<Pattern>,
     pub body: Box<E>,
+    /// Type of the parameters, filled in during type inference.
+    pub param_types: Vec<Type>,
 }
 
 impl<Ref> From<LambdaExpression<Expression<Ref>>> for Expression<Ref> {
@@ -951,6 +1096,10 @@ pub enum BinaryOperator {
     NotEqual,
     GreaterEqual,
     Greater,
+    In,
+    Is,
+    Connect,
+    Select, // $
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -1003,8 +1152,10 @@ impl Precedence for BinaryOperator {
             LogicalAnd => 11,
             // ||
             LogicalOr => 12,
-            // .. ..=
-            // ??
+            // $
+            Select => 14,
+            // in is connect
+            In | Is | Connect => 15,
         };
 
         Some(precedence)
@@ -1138,7 +1289,30 @@ impl<E> Children<E> for IfExpression<E> {
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct StructExpression<Ref = NamespacedPolynomialReference> {
+    pub name: Ref,
+    pub fields: Vec<NamedExpression<Box<Expression<Ref>>>>,
+}
+
+impl<Ref> From<StructExpression<Ref>> for Expression<Ref> {
+    fn from(call: StructExpression<Ref>) -> Self {
+        Expression::StructExpression(SourceRef::unknown(), call)
+    }
+}
+
+impl<R> Children<Expression<R>> for StructExpression<R> {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression<R>> + '_> {
+        Box::new(self.fields.iter().flat_map(|f| f.children()))
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression<R>> + '_> {
+        Box::new(self.fields.iter_mut().flat_map(|f| f.children_mut()))
+    }
+}
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum StatementInsideBlock<E = Expression<NamespacedPolynomialReference>> {
+    // TODO add a source ref here.
     LetStatement(LetStatementInsideBlock<E>),
     Expression(E),
 }
@@ -1190,7 +1364,7 @@ pub enum FunctionDefinition {
     /// Generic expression
     Expression(Expression),
     /// A type declaration.
-    TypeDeclaration(EnumDeclaration<Expression>),
+    TypeDeclaration(TypeDeclaration<Expression>),
     /// A trait declaration.
     TraitDeclaration(TraitDeclaration<Expression>),
 }

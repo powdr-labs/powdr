@@ -47,6 +47,11 @@ impl Unifier {
                     self.ensure_bound(c, "ToString".to_string())?;
                 }
             }
+            Type::NamedType(n, _)
+                if bound == "ToSelectedExprs" && n.to_string() == "std::prelude::SelectedExprs" =>
+            {
+                return Ok(())
+            }
             Type::NamedType(n, _) => {
                 // Change this as soon as we support user-implemented traits.
                 return Err(format!("Type {n} does not satisfy trait {bound}."));

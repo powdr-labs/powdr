@@ -1,6 +1,6 @@
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicReference, DegreeRange, IdentityKind};
+use powdr_ast::analyzed::{DegreeRange, LookupIdentity, PhantomLookupIdentity};
 use powdr_ast::indent;
 use powdr_number::{DegreeType, FieldElement};
 use std::cmp::max;
@@ -8,12 +8,13 @@ use std::cmp::max;
 use std::time::Instant;
 
 use crate::witgen::identity_processor::{self};
+use crate::witgen::machines::compute_size_and_log;
 use crate::witgen::IncompleteCause;
 use crate::Identity;
 
-use super::data_structures::finalizable_data::FinalizableData;
+use super::affine_expression::AlgebraicVariable;
 use super::machines::MachineParts;
-use super::processor::{OuterQuery, Processor};
+use super::processor::{OuterQuery, Processor, SolverState};
 
 use super::rows::{Row, RowIndex, UnknownStrategy};
 use super::{Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCallback};
@@ -75,7 +76,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         row_offset: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
         parts: &'c MachineParts<'a, T>,
-        data: FinalizableData<T>,
+        mutable_data: SolverState<'a, T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
     ) -> Self {
         let degree_range = parts.common_degree_range();
@@ -86,7 +87,14 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             .identities
             .iter()
             .partition(|identity| identity.contains_next_ref());
-        let processor = Processor::new(row_offset, data, mutable_state, fixed_data, parts, degree);
+        let processor = Processor::new(
+            row_offset,
+            mutable_data,
+            mutable_state,
+            fixed_data,
+            parts,
+            degree,
+        );
 
         let progress_bar = ProgressBar::new(degree);
         progress_bar.set_style(
@@ -117,13 +125,14 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         Self { processor, ..self }
     }
 
-    pub fn finish(self) -> (FinalizableData<T>, DegreeType) {
+    /// Returns the updated data, values for publics, and the length of the block.
+    pub fn finish(self) -> (SolverState<'a, T>, DegreeType) {
         (self.processor.finish(), self.degree)
     }
 
     /// Starting out with a single row (at a given offset), iteratively append rows
     /// until we have exhausted the rows or the latch expression (if available) evaluates to 1.
-    pub fn run(&mut self, is_main_run: bool) -> EvalValue<&'a AlgebraicReference, T> {
+    pub fn run(&mut self, is_main_run: bool) -> EvalValue<AlgebraicVariable<'a>, T> {
         assert!(self.processor.len() == 1);
 
         if is_main_run {
@@ -179,17 +188,12 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
                         "Found loop with period {p} starting at row {row_index}"
                     );
 
-                    let new_degree = self.processor.len().next_power_of_two() as DegreeType;
-                    let new_degree = self.degree_range.fit(new_degree);
-                    log::info!(
-                        "Resizing variable length machine '{}': {} -> {} (rounded up from {})",
-                        self.machine_name,
-                        self.degree,
-                        new_degree,
-                        self.processor.len()
+                    self.degree = compute_size_and_log(
+                        &self.machine_name,
+                        self.processor.len(),
+                        self.degree_range,
                     );
-                    self.degree = new_degree;
-                    self.processor.set_size(new_degree);
+                    self.processor.set_size(self.degree);
                 }
             }
             if let Some(period) = looping_period {
@@ -273,7 +277,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         }
     }
 
-    fn compute_row(&mut self, row_index: DegreeType) -> Constraints<&'a AlgebraicReference, T> {
+    fn compute_row(&mut self, row_index: DegreeType) -> Constraints<AlgebraicVariable<'a>, T> {
         log::trace!(
             "===== Starting to process row: {}",
             row_index + self.row_offset
@@ -342,7 +346,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         &mut self,
         row_index: DegreeType,
         identities: &mut CompletableIdentities<'a, T>,
-    ) -> Result<Constraints<&'a AlgebraicReference, T>, Vec<EvalError<T>>> {
+    ) -> Result<Constraints<AlgebraicVariable<'a>, T>, Vec<EvalError<T>>> {
         let mut outer_assignments = vec![];
 
         // The PC lookup fills most of the columns and enables hints thus it should be run first.
@@ -350,8 +354,14 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         let pc_lookup_index = identities
             .iter_mut()
             .enumerate()
-            .filter(|(_, (ident, _))| ident.kind == IdentityKind::Plookup)
-            .max_by_key(|(_, (ident, _))| ident.left.expressions.len())
+            .filter_map(|(index, (ident, _))| match ident {
+                Identity::Lookup(LookupIdentity { left, .. })
+                | Identity::PhantomLookup(PhantomLookupIdentity { left, .. }) => {
+                    Some((index, left))
+                }
+                _ => None,
+            })
+            .max_by_key(|(_, left)| left.expressions.len())
             .map(|(i, _)| i);
         loop {
             let mut progress = false;
@@ -394,6 +404,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
     /// Arguments:
     /// * `identities`: Identities to process. Completed identities are removed from the list.
     /// * `unknown_strategy`: How to process unknown variables. Either use zero or keep it symbolic.
+    ///
     /// Returns:
     /// * `Ok(true)`: If progress was made.
     /// * `Ok(false)`: If no progress was made.
@@ -440,8 +451,11 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         }
 
         let is_machine_call = matches!(
-            identity.kind,
-            IdentityKind::Plookup | IdentityKind::Permutation
+            identity,
+            Identity::Lookup(..)
+                | Identity::Permutation(..)
+                | Identity::PhantomLookup(..)
+                | Identity::PhantomPermutation(..)
         );
         if is_machine_call && unknown_strategy == UnknownStrategy::Zero {
             // The fact that we got to the point where we assume 0 for unknown cells, but this identity

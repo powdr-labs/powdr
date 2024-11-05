@@ -4,7 +4,10 @@ use std::{
 };
 
 use lazy_static::lazy_static;
-use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, IdentityKind};
+use powdr_ast::analyzed::{
+    AlgebraicExpression as Expression, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
+    PhantomPermutationIdentity, PolynomialIdentity,
+};
 use powdr_number::FieldElement;
 
 use crate::{
@@ -13,8 +16,8 @@ use crate::{
 };
 
 use super::{
-    machines::KnownMachine, processor::OuterQuery, rows::RowPair, EvalResult, EvalValue,
-    IncompleteCause, MutableState, QueryCallback,
+    affine_expression::AlgebraicVariable, machines::KnownMachine, processor::OuterQuery,
+    rows::RowPair, EvalResult, EvalValue, IncompleteCause, MutableState, QueryCallback,
 };
 
 /// A list of mutable references to machines.
@@ -147,12 +150,15 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         identity: &'a Identity<T>,
         rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let result = match identity.kind {
-            IdentityKind::Polynomial => self.process_polynomial_identity(identity, rows),
-            IdentityKind::Plookup | IdentityKind::Permutation => {
-                self.process_plookup(identity, rows)
+        let result = match identity {
+            Identity::Polynomial(identity) => self.process_polynomial_identity(identity, rows),
+            Identity::Lookup(LookupIdentity { left, id, .. })
+            | Identity::Permutation(PermutationIdentity { left, id, .. })
+            | Identity::PhantomLookup(PhantomLookupIdentity { left, id, .. })
+            | Identity::PhantomPermutation(PhantomPermutationIdentity { left, id, .. }) => {
+                self.process_lookup_or_permutation(*id, left, rows)
             }
-            IdentityKind::Connect => {
+            Identity::Connect(..) => {
                 // TODO this is not the right cause.
                 Ok(EvalValue::incomplete(IncompleteCause::SolvingFailed))
                 // unimplemented!(
@@ -166,29 +172,28 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
 
     fn process_polynomial_identity(
         &self,
-        identity: &'a Identity<T>,
+        identity: &'a PolynomialIdentity<T>,
         rows: &RowPair<T>,
     ) -> EvalResult<'a, T> {
-        match rows.evaluate(identity.expression_for_poly_id()) {
+        match rows.evaluate(&identity.expression) {
             Err(incomplete_cause) => Ok(EvalValue::incomplete(incomplete_cause)),
             Ok(evaluated) => evaluated.solve_with_range_constraints(rows),
         }
     }
 
-    fn process_plookup(
+    fn process_lookup_or_permutation(
         &mut self,
-        identity: &'a Identity<T>,
+        id: u64,
+        left: &'a powdr_ast::analyzed::SelectedExpressions<T>,
         rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        if let Some(left_selector) = &identity.left.selector {
-            if let Some(status) = self.handle_left_selector(left_selector, rows) {
-                return Ok(status);
-            }
+        if let Some(status) = self.handle_left_selector(&left.selector, rows) {
+            return Ok(status);
         }
 
         self.mutable_state
             .machines
-            .call(identity.id, rows, self.mutable_state.query_callback)
+            .call(id, rows, self.mutable_state.query_callback)
     }
 
     /// Handles the lookup that connects the current machine to the calling machine.
@@ -196,6 +201,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
     /// - `left`: The evaluation of the left side of the lookup (symbolic for unknown values).
     /// - `right`: The expressions on the right side of the lookup.
     /// - `current_rows`: The [RowPair] needed to evaluate the right side of the lookup.
+    ///
     /// Returns:
     /// - `Ok(updates)`: The updates for the lookup.
     /// - `Err(e)`: If the constraint system is not satisfiable.
@@ -204,20 +210,14 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         outer_query: &OuterQuery<'a, '_, T>,
         current_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let right = &outer_query.connecting_identity.right;
+        let right = outer_query.connection.right;
         // sanity check that the right hand side selector is active
-        let selector_value = right
-            .selector
-            .as_ref()
-            .map(|s| {
-                current_rows
-                    .evaluate(s)
-                    .ok()
-                    .and_then(|affine_expression| affine_expression.constant_value())
-                    .ok_or(EvalError::Generic("Selector is not 1!".to_string()))
-            })
-            .unwrap_or(Ok(T::one()))?;
-        assert_eq!(selector_value, T::one());
+        current_rows
+            .evaluate(&right.selector)
+            .ok()
+            .and_then(|affine_expression| affine_expression.constant_value())
+            .and_then(|v| v.is_one().then_some(()))
+            .ok_or(EvalError::Generic("Selector is not 1!".to_string()))?;
 
         let range_constraint =
             CombinedRangeConstraintSet::new(outer_query.caller_rows, current_rows);
@@ -243,7 +243,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         &self,
         left_selector: &'a Expression<T>,
         rows: &RowPair<T>,
-    ) -> Option<EvalValue<&'a AlgebraicReference, T>> {
+    ) -> Option<EvalValue<AlgebraicVariable<'a>, T>> {
         let value = match rows.evaluate(left_selector) {
             Err(incomplete_cause) => return Some(EvalValue::incomplete(incomplete_cause)),
             Ok(value) => value,
@@ -273,7 +273,7 @@ lazy_static! {
 fn report_identity_solving<T: FieldElement, K>(identity: &Identity<T>, result: &EvalResult<T, K>) {
     let success = result.as_ref().map(|r| r.is_complete()).unwrap_or_default() as u64;
     let mut stat = STATISTICS.lock().unwrap();
-    stat.entry(identity.id)
+    stat.entry(identity.id())
         .and_modify(|s| {
             s.invocations += 1;
             s.success += success;

@@ -6,7 +6,7 @@ use crate::{
     asm_analysis::MachineDegree,
     parsed::{
         asm::{AbsoluteSymbolPath, CallableParams, OperationParams},
-        EnumDeclaration, Expression, PilStatement, TypedExpression,
+        Expression, PilStatement,
     },
 };
 
@@ -40,17 +40,13 @@ impl Location {
 }
 
 #[derive(Clone)]
-pub struct PILGraph {
+pub struct MachineInstanceGraph {
     pub main: Machine,
     pub entry_points: Vec<Operation>,
     pub objects: BTreeMap<Location, Object>,
-    pub definitions: BTreeMap<AbsoluteSymbolPath, TypeOrExpression>,
-}
-
-#[derive(Clone)]
-pub enum TypeOrExpression {
-    Type(EnumDeclaration<Expression>),
-    Expression(TypedExpression),
+    /// List of module-level PIL statements (utility functions,
+    /// data structures, etc) by module path
+    pub statements: BTreeMap<AbsoluteSymbolPath, Vec<PilStatement>>,
 }
 
 #[derive(Default, Clone)]

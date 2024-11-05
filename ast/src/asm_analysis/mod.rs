@@ -19,8 +19,7 @@ use crate::parsed::{
         MachineParams, OperationId, OperationParams,
     },
     visitor::{ExpressionVisitable, VisitOrder},
-    EnumDeclaration, NamespacedPolynomialReference, PilStatement, TraitDeclaration,
-    TraitImplementation, TypedExpression,
+    NamespacedPolynomialReference, PilStatement,
 };
 
 pub use crate::parsed::Expression;
@@ -674,29 +673,6 @@ pub struct SubmachineDeclaration {
     pub args: Vec<Expression>,
 }
 
-/// An item that is part of the module tree after all modules,
-/// imports and references have been resolved.
-#[derive(Clone, Debug)]
-pub enum Item {
-    Machine(Machine),
-    Expression(TypedExpression),
-    TypeDeclaration(EnumDeclaration<Expression>),
-    TraitImplementation(TraitImplementation<Expression>),
-    TraitDeclaration(TraitDeclaration<Expression>),
-}
-
-impl Item {
-    pub fn try_to_machine(&self) -> Option<&Machine> {
-        match self {
-            Item::Machine(m) => Some(m),
-            Item::Expression(_)
-            | Item::TypeDeclaration(_)
-            | Item::TraitImplementation(_)
-            | Item::TraitDeclaration(_) => None,
-        }
-    }
-}
-
 #[derive(Default, Debug, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct MachineDegree {
     pub min: Option<Expression>,
@@ -830,27 +806,97 @@ pub struct Rom {
 
 #[derive(Default, Clone, Debug)]
 pub struct AnalysisASMFile {
-    pub items: BTreeMap<AbsoluteSymbolPath, Item>,
+    pub modules: BTreeMap<AbsoluteSymbolPath, Module>,
 }
-
 impl AnalysisASMFile {
-    pub fn machines(&self) -> impl Iterator<Item = (&AbsoluteSymbolPath, &Machine)> {
-        self.items.iter().filter_map(|(n, m)| match m {
-            Item::Machine(m) => Some((n, m)),
-            Item::Expression(_)
-            | Item::TypeDeclaration(_)
-            | Item::TraitDeclaration(_)
-            | Item::TraitImplementation(_) => None,
+    pub fn machines_mut(&mut self) -> impl Iterator<Item = (AbsoluteSymbolPath, &mut Machine)> {
+        self.modules.iter_mut().flat_map(|(module_path, module)| {
+            module.machines.iter_mut().map(move |(name, machine)| {
+                let mut machine_path = module_path.clone();
+                machine_path.push(name.to_string());
+                (machine_path, machine)
+            })
         })
     }
-    pub fn machines_mut(&mut self) -> impl Iterator<Item = (&AbsoluteSymbolPath, &mut Machine)> {
-        self.items.iter_mut().filter_map(|(n, m)| match m {
-            Item::Machine(m) => Some((n, m)),
-            Item::Expression(_)
-            | Item::TypeDeclaration(_)
-            | Item::TraitDeclaration(_)
-            | Item::TraitImplementation(_) => None,
+
+    pub fn machines(&self) -> impl Iterator<Item = (AbsoluteSymbolPath, &Machine)> {
+        self.modules.iter().flat_map(|(module_path, module)| {
+            module.machines.iter().map(move |(name, machine)| {
+                let mut machine_path = module_path.clone();
+                machine_path.push(name.to_string());
+                (machine_path, machine)
+            })
         })
+    }
+
+    pub fn into_machines(self) -> impl Iterator<Item = (AbsoluteSymbolPath, Machine)> {
+        self.modules.into_iter().flat_map(|(module_path, module)| {
+            module.machines.into_iter().map(move |(name, machine)| {
+                let mut machine_path = module_path.clone();
+                machine_path.push(name.to_string());
+                (machine_path, machine)
+            })
+        })
+    }
+
+    pub fn get_machine(&self, ty: &AbsoluteSymbolPath) -> Option<&Machine> {
+        let mut path = ty.clone();
+        let name = path.pop().unwrap();
+        self.modules[&path].machines.get(&name)
+    }
+}
+
+#[derive(Clone, Debug)]
+pub enum StatementReference {
+    MachineDeclaration(String),
+    Pil,
+    Module(String),
+}
+
+#[derive(Default, Clone, Debug)]
+pub struct Module {
+    machines: BTreeMap<String, Machine>,
+    /// Module-level PIL statements.
+    statements: Vec<PilStatement>,
+    ordering: Vec<StatementReference>,
+}
+
+impl Module {
+    pub fn new(
+        machines: BTreeMap<String, Machine>,
+        statements: Vec<PilStatement>,
+        ordering: Vec<StatementReference>,
+    ) -> Self {
+        Self {
+            machines,
+            statements,
+            ordering,
+        }
+    }
+
+    pub fn push_machine(&mut self, name: String, machine: Machine) {
+        self.machines.insert(name.clone(), machine);
+        self.ordering
+            .push(StatementReference::MachineDeclaration(name));
+    }
+
+    pub fn push_pil_statement(&mut self, s: PilStatement) {
+        self.statements.push(s);
+        self.ordering.push(StatementReference::Pil);
+    }
+
+    pub fn push_module(&mut self, name: String) {
+        self.ordering.push(StatementReference::Module(name));
+    }
+
+    pub fn into_inner(
+        self,
+    ) -> (
+        BTreeMap<String, Machine>,
+        Vec<PilStatement>,
+        Vec<StatementReference>,
+    ) {
+        (self.machines, self.statements, self.ordering)
     }
 }
 

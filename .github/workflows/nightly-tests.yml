@@ -11,24 +11,24 @@ env:
 
 jobs:
   check_if_needs_running:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     outputs:
       status: ${{ steps.count.outputs.status }}
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Count recent commits
       id: count
       run: echo "status=$(git log --oneline --since '24 hours ago' | wc -l)" >> $GITHUB_OUTPUT
 
   udeps:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs: check_if_needs_running
     if: needs.check_if_needs_running.outputs.status > 0
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
 
       - name: Install nightly toolchain
         uses: actions-rs/toolchain@v1
@@ -43,16 +43,16 @@ jobs:
           args: '--all-targets'
 
   test_release:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     needs: check_if_needs_running
     if: needs.check_if_needs_running.outputs.status > 0
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
       with:
         submodules: recursive
     - name: ⚡ Cache rust
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/.cargo/registry
@@ -60,17 +60,19 @@ jobs:
           target
         key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.toml') }}
     - name: ⚡ Cache nodejs
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: |
           ~/pilcom/node_modules
         key: ${{ runner.os }}-pilcom-node-modules
-    - name: Install Rust toolchain 1.77
-      run: rustup toolchain install 1.77-x86_64-unknown-linux-gnu
+    - name: Install Rust toolchain 1.81
+      run: rustup toolchain install 1.81-x86_64-unknown-linux-gnu
     - name: Install nightly
       run: rustup toolchain install nightly-2024-08-01-x86_64-unknown-linux-gnu
-    - name: Install stdlib
+    - name: Install std source
       run: rustup component add rust-src --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
+    - name: Install riscv target
+      run: rustup target add riscv32imac-unknown-none-elf --toolchain nightly-2024-08-01-x86_64-unknown-linux-gnu
     - name: Install EStarkPolygon prover dependencies
       run: sudo apt-get install -y nlohmann-json3-dev libpqxx-dev nasm
     - name: Install pilcom

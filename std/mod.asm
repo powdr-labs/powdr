@@ -1,6 +1,7 @@
 mod array;
 mod btree;
 mod check;
+mod constraints;
 mod convert;
 mod debug;
 mod field;
@@ -9,5 +10,6 @@ mod math;
 mod prelude;
 mod protocols;
 mod prover;
+mod test;
 mod utils;
 mod well_known;

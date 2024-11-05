@@ -3,9 +3,10 @@ use std::marker::PhantomData;
 
 use num_traits::Zero;
 
+use num_traits::One;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
-    AlgebraicReference, IdentityKind, PolyID, PolynomialType,
+    AlgebraicReference, LookupIdentity, PhantomLookupIdentity, PolyID, PolynomialType,
 };
 
 use powdr_number::FieldElement;
@@ -13,6 +14,7 @@ use powdr_number::FieldElement;
 use crate::witgen::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 use crate::Identity;
 
+use super::affine_expression::AlgebraicVariable;
 use super::expression_evaluator::ExpressionEvaluator;
 use super::range_constraints::RangeConstraint;
 use super::symbolic_evaluator::SymbolicEvaluator;
@@ -28,12 +30,18 @@ pub struct SimpleRangeConstraintSet<'a, T: FieldElement> {
     range_constraints: &'a BTreeMap<PolyID, RangeConstraint<T>>,
 }
 
-impl<'a, T: FieldElement> RangeConstraintSet<&AlgebraicReference, T>
+impl<'a, T: FieldElement> RangeConstraintSet<AlgebraicVariable<'a>, T>
     for SimpleRangeConstraintSet<'a, T>
 {
-    fn range_constraint(&self, id: &AlgebraicReference) -> Option<RangeConstraint<T>> {
-        assert!(!id.next);
-        self.range_constraints.get(&id.poly_id).cloned()
+    fn range_constraint(&self, id: AlgebraicVariable<'a>) -> Option<RangeConstraint<T>> {
+        match id {
+            AlgebraicVariable::Column(id) => {
+                assert!(!id.next);
+                self.range_constraints.get(&id.poly_id).cloned()
+            }
+            // No range constraints stored for publics.
+            AlgebraicVariable::Public(_) => None,
+        }
     }
 }
 
@@ -186,7 +194,7 @@ pub fn set_global_constraints<'a, T: FieldElement>(
 /// TODO do this on the symbolic definition instead of the values.
 fn process_fixed_column<T: FieldElement>(fixed: &[T]) -> Option<(RangeConstraint<T>, bool)> {
     if let Some(bit) = smallest_period_candidate(fixed) {
-        let mask = T::Integer::from(((1 << bit) - 1) as u64);
+        let mask = T::Integer::from((1u64 << bit) - 1);
         if fixed
             .iter()
             .enumerate()
@@ -213,17 +221,15 @@ fn propagate_constraints<T: FieldElement>(
     full_span: &BTreeSet<PolyID>,
 ) -> (BTreeMap<PolyID, RangeConstraint<T>>, bool) {
     let mut remove = false;
-    match identity.kind {
-        IdentityKind::Polynomial => {
-            if let Some(p) = is_binary_constraint(identity.expression_for_poly_id()) {
+    match identity {
+        Identity::Polynomial(identity) => {
+            if let Some(p) = is_binary_constraint(&identity.expression) {
                 assert!(known_constraints
                     .insert(p, RangeConstraint::from_max_bit(0))
                     .is_none());
                 remove = true;
             } else {
-                for (p, c) in
-                    try_transfer_constraints(identity.expression_for_poly_id(), &known_constraints)
-                {
+                for (p, c) in try_transfer_constraints(&identity.expression, &known_constraints) {
                     known_constraints
                         .entry(p)
                         .and_modify(|existing| *existing = existing.conjunction(&c))
@@ -231,16 +237,13 @@ fn propagate_constraints<T: FieldElement>(
                 }
             }
         }
-        IdentityKind::Plookup | IdentityKind::Permutation | IdentityKind::Connect => {
-            if identity.left.selector.is_some() || identity.right.selector.is_some() {
+        Identity::Lookup(LookupIdentity { left, right, .. })
+        | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. }) => {
+            if !left.selector.is_one() || !right.selector.is_one() {
                 return (known_constraints, false);
             }
-            for (left, right) in identity
-                .left
-                .expressions
-                .iter()
-                .zip(identity.right.expressions.iter())
-            {
+            // We learn range constraints from both lookups and permutations
+            for (left, right) in left.expressions.iter().zip(right.expressions.iter()) {
                 if let (Some(left), Some(right)) =
                     (try_to_simple_poly(left), try_to_simple_poly(right))
                 {
@@ -252,17 +255,27 @@ fn propagate_constraints<T: FieldElement>(
                     }
                 }
             }
-            if identity.kind == IdentityKind::Plookup && identity.right.expressions.len() == 1 {
+
+            // We only remove lookups, since permutations hold more information than just range constraints.
+            if right.expressions.len() == 1
+                && matches!(identity, Identity::Lookup(..) | Identity::PhantomLookup(..))
+            {
                 // We can only remove the lookup if the RHS is a fixed polynomial that
                 // provides all values in the span.
-                if let Some(name) = try_to_simple_poly(&identity.right.expressions[0]) {
-                    if try_to_simple_poly(&identity.left.expressions[0]).is_some()
+                if let Some(name) = try_to_simple_poly(&right.expressions[0]) {
+                    if try_to_simple_poly(&left.expressions[0]).is_some()
                         && full_span.contains(&name.poly_id)
                     {
                         remove = true;
                     }
                 }
             }
+        }
+        Identity::Connect(..) => {
+            // we do not handle connect identities yet, so we do nothing
+        }
+        Identity::Permutation(..) | Identity::PhantomPermutation(..) => {
+            // permutation identities are stronger than just range constraints, so we do nothing
         }
     }
 
@@ -301,11 +314,15 @@ fn is_binary_constraint<T: FieldElement>(expr: &Expression<T>) -> Option<PolyID>
         if let ([(id1, Constraint::Assignment(value1))], [(id2, Constraint::Assignment(value2))]) =
             (&left_root.constraints[..], &right_root.constraints[..])
         {
-            if id1 != id2 || !id2.is_witness() {
-                return None;
-            }
-            if (value1.is_zero() && value2.is_one()) || (value1.is_one() && value2.is_zero()) {
-                return Some(id1.poly_id);
+            // We expect range constraints only on columns, because the verifier could easily
+            // check range constraints on publics themselves.
+            if let (AlgebraicVariable::Column(id1), AlgebraicVariable::Column(id2)) = (id1, id2) {
+                if id1 != id2 || !id2.is_witness() {
+                    return None;
+                }
+                if (value1.is_zero() && value2.is_one()) || (value1.is_one() && value2.is_zero()) {
+                    return Some(id1.poly_id);
+                }
             }
         }
     }
@@ -338,13 +355,16 @@ fn try_transfer_constraints<T: FieldElement>(
     result
         .constraints
         .into_iter()
-        .flat_map(|(poly, cons)| {
-            if let Constraint::RangeConstraint(cons) = cons {
-                assert!(!poly.next);
-                Some((poly.poly_id, cons))
-            } else {
-                None
+        .flat_map(|(poly, cons)| match poly {
+            AlgebraicVariable::Column(poly) => {
+                if let Constraint::RangeConstraint(cons) = cons {
+                    assert!(!poly.next);
+                    Some((poly.poly_id, cons))
+                } else {
+                    None
+                }
             }
+            AlgebraicVariable::Public(_) => unimplemented!(),
         })
         .collect()
 }
@@ -353,7 +373,8 @@ fn smallest_period_candidate<T: FieldElement>(fixed: &[T]) -> Option<u64> {
     if fixed.first() != Some(&0.into()) {
         return None;
     }
-    (1..63).find(|bit| fixed.last() == Some(&((1u64 << bit) - 1).into()))
+    let max_bits = T::BITS.min(64);
+    (1..max_bits as u64).find(|bit| fixed.last() == Some(&((1u64 << bit) - 1).into()))
 }
 
 #[cfg(test)]
@@ -422,10 +443,12 @@ mod test {
     #[test]
     fn constraints_propagation() {
         let pil_source = r"
+namespace std::convert;
+    let fe = [];
 namespace Global(2**20);
-    col fixed BYTE(i) { i & 0xff };
-    col fixed BYTE2(i) { i & 0xffff };
-    col fixed SHIFTED(i) { i & 0xff0 };
+    col fixed BYTE(i) { std::convert::fe(i & 0xff) };
+    col fixed BYTE2(i) { std::convert::fe(i & 0xffff) };
+    col fixed SHIFTED(i) { std::convert::fe(i & 0xff0) };
     col witness A;
     // A bit more complicated to see that the 'pattern matcher' works properly.
     (1 - A + 0) * (A + 1 - 1) = 0;
@@ -437,7 +460,7 @@ namespace Global(2**20);
     [ D ] in [ BYTE ];
     [ D ] in [ SHIFTED ];
 ";
-        let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(pil_source);
+        let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(pil_source).unwrap();
         let constants = crate::constant_evaluator::generate(&analyzed);
         let constants = get_uniquely_sized(&constants).unwrap();
         let fixed_polys = (0..constants.len())
@@ -496,12 +519,14 @@ namespace Global(2**20);
         // incorrectly determined it to be a pure range constraint, but it would actually not
         // be able to derive the full constraint.
         let pil_source = r"
+namespace std::convert;
+    let fe = [];
 namespace Global(1024);
-    let bytes: col = |i| i % 256;
+    let bytes: col = |i| std::convert::fe(i % 256);
     let X;
     [ X * 4 ] in [ bytes ];
 ";
-        let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(pil_source);
+        let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(pil_source).unwrap();
         let known_constraints = vec![(constant_poly_id(0), RangeConstraint::from_max_bit(7))]
             .into_iter()
             .collect();

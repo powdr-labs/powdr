@@ -1,28 +1,31 @@
-use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference};
+use powdr_ast::analyzed::AlgebraicExpression as Expression;
 use powdr_number::{DegreeType, FieldElement};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::machines::profiling::{record_end, record_start};
 use crate::witgen::processor::OuterQuery;
 use crate::witgen::EvalValue;
 
+use super::affine_expression::AlgebraicVariable;
 use super::block_processor::BlockProcessor;
 use super::machines::{Machine, MachineParts};
+use super::processor::SolverState;
 use super::rows::{Row, RowIndex, RowPair};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use super::vm_processor::VmProcessor;
 use super::{EvalResult, FixedData, MutableState, QueryCallback};
 
 struct ProcessResult<'a, T: FieldElement> {
-    eval_value: EvalValue<&'a AlgebraicReference, T>,
-    block: FinalizableData<T>,
+    eval_value: EvalValue<AlgebraicVariable<'a>, T>,
+    updated_data: SolverState<'a, T>,
 }
 
 pub struct Generator<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     parts: MachineParts<'a, T>,
     data: FinalizableData<T>,
+    publics: BTreeMap<&'a str, T>,
     latch: Option<Expression<T>>,
     name: String,
     degree: DegreeType,
@@ -43,7 +46,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
-        let identity = self.parts.connecting_identities.get(&identity_id).unwrap();
+        let identity = *self.parts.connections.get(&identity_id).unwrap();
         let outer_query = OuterQuery::new(caller_rows, identity);
 
         log::trace!("Start processing secondary VM '{}'", self.name());
@@ -58,15 +61,18 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
             .cloned()
             .unwrap_or_else(|| self.compute_partial_first_row(mutable_state));
 
-        let ProcessResult { eval_value, block } =
-            self.process(first_row, 0, mutable_state, Some(outer_query), false);
+        let ProcessResult {
+            eval_value,
+            updated_data,
+        } = self.process(first_row, 0, mutable_state, Some(outer_query), false);
 
         let eval_value = if eval_value.is_complete() {
             log::trace!("End processing VM '{}' (successfully)", self.name());
             // Remove the last row of the previous block, as it is the first row of the current
             // block.
             self.data.pop();
-            self.data.extend(block);
+            self.data.extend(updated_data.block);
+            self.publics.extend(updated_data.publics);
 
             eval_value.report_side_effect()
         } else {
@@ -107,6 +113,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             fixed_data,
             parts,
             data,
+            publics: Default::default(),
             latch,
         }
     }
@@ -116,7 +123,10 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         record_start(self.name());
         assert!(self.data.is_empty());
         let first_row = self.compute_partial_first_row(mutable_state);
-        self.data = self.process(first_row, 0, mutable_state, None, true).block;
+        self.data = self
+            .process(first_row, 0, mutable_state, None, true)
+            .updated_data
+            .block;
         record_end(self.name());
     }
 
@@ -128,7 +138,10 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             assert!(self.latch.is_some());
 
             let first_row = self.data.pop().unwrap();
-            let ProcessResult { block, eval_value } = self.process(
+            let ProcessResult {
+                updated_data,
+                eval_value,
+            } = self.process(
                 first_row,
                 self.data.len() as DegreeType,
                 mutable_state,
@@ -137,7 +150,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             );
             assert!(eval_value.is_complete());
 
-            self.data.extend(block);
+            self.data.extend(updated_data.block);
+            self.publics.extend(updated_data.publics);
         }
     }
 
@@ -169,7 +183,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         let next_parts = self.parts.restricted_to_identities_with_next_references();
         let mut processor = BlockProcessor::new(
             RowIndex::from_i64(-1, self.degree),
-            data,
+            // Shouldn't need any publics at this point
+            SolverState::without_publics(data),
             mutable_state,
             self.fixed_data,
             &next_parts,
@@ -180,7 +195,9 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         );
         processor.solve(&mut sequence_iterator).unwrap();
 
-        processor.finish().remove(1)
+        // Ignore any updates to the publics at this point, as we'll re-visit the last row again.
+        let mut block = processor.finish().block;
+        block.remove(1)
     }
 
     fn process<'b, Q: QueryCallback<T>>(
@@ -205,19 +222,22 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             RowIndex::from_degree(row_offset, self.degree),
             self.fixed_data,
             &self.parts,
-            data,
+            SolverState::new(data, self.publics.clone()),
             mutable_state,
         );
         if let Some(outer_query) = outer_query {
             processor = processor.with_outer_query(outer_query);
         }
         let eval_value = processor.run(is_main_run);
-        let (block, degree) = processor.finish();
+        let (updated_data, degree) = processor.finish();
 
         // The processor might have detected a loop, in which case the degree has changed
         self.degree = degree;
 
-        ProcessResult { eval_value, block }
+        ProcessResult {
+            eval_value,
+            updated_data,
+        }
     }
 
     /// At the end of the solving algorithm, we'll have computed the first row twice

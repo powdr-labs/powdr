@@ -1,29 +1,33 @@
+use core::panic;
 use std::collections::{HashMap, HashSet};
 
 use std::fs;
 use std::iter::once;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
+use crate::structural_checks::check_structs_fields;
 use itertools::Itertools;
 use powdr_ast::parsed::asm::{
     parse_absolute_path, AbsoluteSymbolPath, ModuleStatement, SymbolPath,
 };
-use powdr_ast::parsed::types::{ArrayType, Type};
-use powdr_ast::parsed::visitor::Children;
+use powdr_ast::parsed::types::Type;
+use powdr_ast::parsed::visitor::{AllChildren, Children};
 use powdr_ast::parsed::{
-    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SelectedExpressions,
-    SymbolCategory, TraitImplementation,
+    self, FunctionKind, LambdaExpression, PILFile, PilStatement, SymbolCategory,
+    TraitImplementation, TypedExpression,
 };
 use powdr_number::{FieldElement, GoldilocksField};
 
 use powdr_ast::analyzed::{
-    type_from_definition, Analyzed, DegreeRange, Expression, FunctionValueDefinition, Identity,
-    IdentityKind, PolynomialType, PublicDeclaration, StatementIdentifier, Symbol, SymbolKind,
-    TypedExpression,
+    type_from_definition, Analyzed, DegreeRange, Expression, FunctionValueDefinition,
+    PolynomialType, PublicDeclaration, Reference, SolvedTraitImpls, StatementIdentifier, Symbol,
+    SymbolKind,
 };
 use powdr_parser::{parse, parse_module, parse_type};
+use powdr_parser_util::Error;
 
-use crate::traits_resolver::traits_unification;
+use crate::traits_resolver::TraitsResolver;
 use crate::type_builtins::constr_function_statement_type;
 use crate::type_inference::infer_types;
 use crate::{side_effect_checker, AnalysisDriver};
@@ -31,31 +35,29 @@ use crate::{side_effect_checker, AnalysisDriver};
 use crate::statement_processor::{Counters, PILItem, StatementProcessor};
 use crate::{condenser, evaluator, expression_processor::ExpressionProcessor};
 
-pub fn analyze_file<T: FieldElement>(path: &Path) -> Analyzed<T> {
+pub fn analyze_file<T: FieldElement>(path: &Path) -> Result<Analyzed<T>, Vec<Error>> {
     let files = import_all_dependencies(path);
     analyze(files)
 }
 
-pub fn analyze_ast<T: FieldElement>(pil_file: PILFile) -> Analyzed<T> {
+pub fn analyze_ast<T: FieldElement>(pil_file: PILFile) -> Result<Analyzed<T>, Vec<Error>> {
     analyze(vec![pil_file])
 }
 
-pub fn analyze_string<T: FieldElement>(contents: &str) -> Analyzed<T> {
-    let pil_file = powdr_parser::parse(Some("input"), contents).unwrap_or_else(|err| {
-        eprintln!("Error parsing .pil file:");
-        err.output_to_stderr();
-        panic!();
-    });
+pub fn analyze_string<T: FieldElement>(contents: &str) -> Result<Analyzed<T>, Vec<Error>> {
+    let pil_file = powdr_parser::parse(Some("input"), contents).map_err(|e| vec![e])?;
     analyze(vec![pil_file])
 }
 
-fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Analyzed<T> {
+fn analyze<T: FieldElement>(files: Vec<PILFile>) -> Result<Analyzed<T>, Vec<Error>> {
     let mut analyzer = PILAnalyzer::new();
-    analyzer.process(files);
-    analyzer.side_effect_check();
+    analyzer.process(files)?;
+    analyzer.side_effect_check()?;
+    analyzer.validate_structs()?;
+    analyzer.type_check()?;
     analyzer.check_traits_overlap();
-    analyzer.type_check();
-    analyzer.condense()
+    let solved_impls = analyzer.resolve_trait_impls()?;
+    analyzer.condense(solved_impls)
 }
 
 #[derive(Default)]
@@ -67,15 +69,16 @@ struct PILAnalyzer {
     /// Map of definitions, gradually being built up here.
     definitions: HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     public_declarations: HashMap<String, PublicDeclaration>,
-    identities: Vec<Identity<SelectedExpressions<Expression>>>,
+    /// The list of proof items, i.e. statements that evaluate to constraints or prover functions.
+    proof_items: Vec<Expression>,
     /// The order in which definitions and identities
     /// appear in the source.
     source_order: Vec<StatementIdentifier>,
     symbol_counters: Option<Counters>,
     /// Symbols from the core that were added automatically but will not be printed.
     auto_added_symbols: HashSet<String>,
-    /// Trait implementations found, organized according to their associated trait name.
-    implementations: HashMap<String, Vec<TraitImplementation<Expression>>>,
+    /// All trait implementations found, in source order.
+    trait_impls: Vec<TraitImplementation<Expression>>,
 }
 
 /// Reads and parses the given path and all its imports.
@@ -129,7 +132,7 @@ impl PILAnalyzer {
         }
     }
 
-    pub fn process(&mut self, mut files: Vec<PILFile>) {
+    pub fn process(&mut self, mut files: Vec<PILFile>) -> Result<(), Vec<Error>> {
         for PILFile(file) in &files {
             self.current_namespace = Default::default();
             for statement in file {
@@ -153,6 +156,7 @@ impl PILAnalyzer {
                 self.handle_statement(statement);
             }
         }
+        Ok(())
     }
 
     /// Adds core types if they are not present in the input.
@@ -181,20 +185,27 @@ impl PILAnalyzer {
             let missing_symbols = module
                 .statements
                 .into_iter()
-                .filter_map(|s| match s {
-                    ModuleStatement::SymbolDefinition(s) => missing_symbols
-                        .contains(&s.name.as_str())
-                        .then_some(format!("{s}")),
-                    ModuleStatement::TraitImplementation(_) => None,
+                .filter_map(|s| {
+                    match &s {
+                        ModuleStatement::SymbolDefinition(s) => {
+                            missing_symbols.contains(&s.name.as_str())
+                        }
+                        ModuleStatement::PilStatement(s) => s
+                            .symbol_definition_names()
+                            .any(|(name, _)| missing_symbols.contains(&name.as_str())),
+                    }
+                    .then_some(vec![format!("{s}")])
                 })
+                .flatten()
                 .join("\n");
             parse(None, &format!("namespace std::prelude;\n{missing_symbols}")).unwrap()
         })
     }
 
     /// Check that query and constr functions are used in the correct contexts.
-    pub fn side_effect_check(&self) {
-        for (name, (symbol, value)) in &self.definitions {
+    pub fn side_effect_check(&self) -> Result<(), Vec<Error>> {
+        let mut errors = vec![];
+        for (symbol, value) in self.definitions.values() {
             let Some(value) = value else { continue };
             let context = match symbol.kind {
                 // Witness column value is query function
@@ -218,30 +229,74 @@ impl PILAnalyzer {
             value
                 .children()
                 .try_for_each(|e| side_effect_checker::check(&self.definitions, context, e))
-                .unwrap_or_else(|err| panic!("Error checking side-effects of {name}: {err}"))
+                .unwrap_or_else(|err| errors.push(err));
         }
 
-        // for all identities, check that they call pure or constr functions
-        for id in &self.identities {
-            id.children()
+        for i in &self.trait_impls {
+            i.children()
                 .try_for_each(|e| {
-                    side_effect_checker::check(&self.definitions, FunctionKind::Constr, e)
+                    side_effect_checker::check(&self.definitions, FunctionKind::Pure, e)
                 })
-                .unwrap_or_else(|err| panic!("Error checking side-effects of identity {id}: {err}"))
+                .unwrap_or_else(|err| errors.push(err));
+        }
+
+        // for all proof items, check that they call pure or constr functions
+        errors.extend(self.proof_items.iter().filter_map(|e| {
+            side_effect_checker::check(&self.definitions, FunctionKind::Constr, e).err()
+        }));
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
         }
     }
 
     pub fn check_traits_overlap(&mut self) {
-        traits_unification(&self.definitions, &mut self.implementations);
+        //traits_unification(&self.definitions, &mut self.implementations);
     }
 
-    pub fn type_check(&mut self) {
+    pub fn validate_structs(&self) -> Result<(), Vec<Error>> {
+        let structs_exprs = self
+            .all_children()
+            .filter(|expr| matches!(expr, Expression::StructExpression(_, _)));
+
+        check_structs_fields(structs_exprs, &self.definitions)
+    }
+
+    pub fn type_check(&mut self) -> Result<(), Vec<Error>> {
         let query_type: Type = parse_type("int -> std::prelude::Query").unwrap().into();
         let mut expressions = vec![];
-        // Collect all definitions with their types and expressions.
+        // Collect all definitions and traits implementations with their types and expressions.
         // We filter out enum type declarations (the constructor functions have been added
         // by the statement processor already).
         // For Arrays, we also collect the inner expressions and expect them to be field elements.
+
+        for trait_impl in self.trait_impls.iter_mut() {
+            let (_, def) = self
+                .definitions
+                .get(&trait_impl.name.to_string())
+                .expect("Trait definition not found");
+            let Some(FunctionValueDefinition::TraitDeclaration(trait_decl)) = def else {
+                unreachable!();
+            };
+
+            let specialized_types: Vec<_> = trait_impl
+                .functions
+                .iter()
+                .map(|named_expr| trait_impl.type_of_function(trait_decl, &named_expr.name))
+                .collect();
+
+            for (named_expr, specialized_type) in
+                trait_impl.functions.iter_mut().zip(specialized_types)
+            {
+                expressions.push((
+                    Arc::get_mut(&mut named_expr.body).unwrap(),
+                    specialized_type.into(),
+                ));
+            }
+        }
+
         let definitions = self
             .definitions
             .iter_mut()
@@ -288,39 +343,12 @@ impl PILAnalyzer {
                 Some((name.clone(), (type_scheme, expr)))
             })
             .collect();
-        for id in &mut self.identities {
-            if id.kind == IdentityKind::Polynomial {
-                // At statement level, we allow Constr, Constr[] or ().
-                expressions.push((
-                    id.expression_for_poly_id_mut(),
-                    constr_function_statement_type(),
-                ));
-            } else {
-                for part in [&mut id.left, &mut id.right] {
-                    if let Some(selector) = &mut part.selector {
-                        expressions.push((selector, Type::Expr.into()))
-                    }
-
-                    expressions.push((
-                        part.expressions.as_mut(),
-                        Type::Array(ArrayType {
-                            base: Box::new(Type::Expr),
-                            length: None,
-                        })
-                        .into(),
-                    ))
-                }
-            }
+        for expr in &mut self.proof_items {
+            // At statement level, we allow Constr, Constr[], (int -> ()) or ().
+            expressions.push((expr, constr_function_statement_type()));
         }
-        let inferred_types = infer_types(definitions, &mut expressions)
-            .map_err(|mut errors| {
-                eprintln!("\nError during type inference:");
-                for e in &errors {
-                    e.output_to_stderr();
-                }
-                errors.pop().unwrap()
-            })
-            .unwrap();
+
+        let inferred_types = infer_types(definitions, &mut expressions)?;
         // Store the inferred types.
         for (name, ty) in inferred_types {
             let Some(FunctionValueDefinition::Expression(TypedExpression {
@@ -332,16 +360,80 @@ impl PILAnalyzer {
             };
             *ts = Some(ty.into());
         }
+        Ok(())
     }
 
-    pub fn condense<T: FieldElement>(self) -> Analyzed<T> {
-        condenser::condense(
+    /// Creates and returns a map for every referenced trait function with concrete type to the
+    /// corresponding trait implementation function.
+    fn resolve_trait_impls(&mut self) -> Result<SolvedTraitImpls, Vec<Error>> {
+        let all_traits = self
+            .definitions
+            .iter()
+            .filter_map(|(name, (_, value))| {
+                if let Some(FunctionValueDefinition::TraitDeclaration(..)) = value {
+                    Some(name.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        let mut trait_solver = TraitsResolver::new(all_traits, &self.trait_impls);
+
+        // TODO building this impl map should be different from checking that all trait references
+        // have an implementation.
+        // The reason is that for building the map, we need to unfold all generic functions,
+        // which could cause an exponential blow-up. Checking that an implementation exists
+        // could maybe already done at the type-checking level.
+        // If we do that earlier, then errors here should be panics.
+        // Also we should only build the impl map for code that is reachable from entry points.
+        let definitions = self
+            .definitions
+            .values()
+            .flat_map(|(_, def)| match def {
+                Some(
+                    v
+                    @ (FunctionValueDefinition::Expression(_) | FunctionValueDefinition::Array(_)),
+                ) => Some(v),
+                _ => None,
+            })
+            .flat_map(|d| d.children());
+        let proof_items = self.proof_items.iter();
+        let trait_impls = self.trait_impls.iter().flat_map(|i| i.children());
+        let mut errors = vec![];
+        for expr in definitions
+            .chain(proof_items)
+            .chain(trait_impls)
+            .flat_map(|i| i.all_children())
+        {
+            if let Expression::Reference(source_ref, Reference::Poly(reference)) = expr {
+                if reference.type_args.is_some() {
+                    if let Err(e) = trait_solver.resolve_trait_function_reference(reference) {
+                        errors.push(source_ref.with_error(e));
+                    }
+                }
+            }
+        }
+
+        if !errors.is_empty() {
+            Err(errors)
+        } else {
+            Ok(trait_solver.solved_impls())
+        }
+    }
+
+    pub fn condense<T: FieldElement>(
+        self,
+        solved_impls: SolvedTraitImpls,
+    ) -> Result<Analyzed<T>, Vec<Error>> {
+        Ok(condenser::condense(
             self.definitions,
+            solved_impls,
             self.public_declarations,
-            &self.identities,
+            &self.proof_items,
+            self.trait_impls,
             self.source_order,
             self.auto_added_symbols,
-        )
+        ))
     }
 
     /// A step to collect all defined names in the statement.
@@ -412,10 +504,17 @@ impl PILAnalyzer {
                             self.source_order
                                 .push(StatementIdentifier::PublicDeclaration(name));
                         }
-                        PILItem::Identity(identity) => {
-                            let index = self.identities.len();
-                            self.source_order.push(StatementIdentifier::Identity(index));
-                            self.identities.push(identity)
+                        PILItem::ProofItem(item) => {
+                            let index = self.proof_items.len();
+                            self.source_order
+                                .push(StatementIdentifier::ProofItem(index));
+                            self.proof_items.push(item)
+                        }
+                        PILItem::TraitImplementation(trait_impl) => {
+                            let index = self.trait_impls.len();
+                            self.source_order
+                                .push(StatementIdentifier::TraitImplementation(index));
+                            self.trait_impls.push(trait_impl)
                         }
                         PILItem::TraitImplementation(trait_impl) => self
                             .implementations
@@ -433,10 +532,14 @@ impl PILAnalyzer {
             let e =
                 ExpressionProcessor::new(self.driver(), &Default::default()).process_expression(e);
             u64::try_from(
-                evaluator::evaluate_expression::<GoldilocksField>(&e, &self.definitions)
-                    .unwrap()
-                    .try_to_integer()
-                    .unwrap(),
+                evaluator::evaluate_expression::<GoldilocksField>(
+                    &e,
+                    &self.definitions,
+                    &Default::default(),
+                )
+                .unwrap()
+                .try_to_integer()
+                .unwrap(),
             )
             .unwrap()
         };
@@ -450,6 +553,34 @@ impl PILAnalyzer {
 
     fn driver(&self) -> Driver {
         Driver(self)
+    }
+}
+
+impl Children<Expression> for PILAnalyzer {
+    fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
+        Box::new(
+            self.definitions
+                .values()
+                .filter_map(|(_, def)| def.as_ref())
+                .flat_map(|def| def.children())
+                .chain(self.trait_impls.iter().flat_map(|impl_| impl_.children()))
+                .chain(self.proof_items.iter()),
+        )
+    }
+
+    fn children_mut(&mut self) -> Box<dyn Iterator<Item = &mut Expression> + '_> {
+        Box::new(
+            self.definitions
+                .values_mut()
+                .filter_map(|(_, def)| def.as_mut())
+                .flat_map(|def| def.children_mut())
+                .chain(
+                    self.trait_impls
+                        .iter_mut()
+                        .flat_map(|impl_| impl_.children_mut()),
+                )
+                .chain(self.proof_items.iter_mut()),
+        )
     }
 }
 

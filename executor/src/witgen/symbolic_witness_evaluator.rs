@@ -1,13 +1,17 @@
-use powdr_ast::analyzed::{AlgebraicReference, Challenge};
+use powdr_ast::analyzed::Challenge;
 use powdr_number::{DegreeType, FieldElement};
 
-use super::{affine_expression::AffineResult, expression_evaluator::SymbolicVariables, FixedData};
+use super::{
+    affine_expression::{AffineResult, AlgebraicVariable},
+    expression_evaluator::SymbolicVariables,
+    FixedData,
+};
 
 pub trait WitnessColumnEvaluator<T> {
     /// Returns a symbolic or concrete value for the given witness column and next flag.
     /// This function defines the mapping to IDs.
     /// It should be used together with a matching reverse mapping in WitnessColumnNamer.
-    fn value<'b>(&self, poly: &'b AlgebraicReference) -> AffineResult<&'b AlgebraicReference, T>;
+    fn value<'b>(&self, poly: AlgebraicVariable<'b>) -> AffineResult<AlgebraicVariable<'b>, T>;
 }
 
 /// An evaluator (to be used together with ExpressionEvaluator) that performs concrete
@@ -46,20 +50,25 @@ impl<'a, T: FieldElement, WA> SymbolicVariables<T> for SymbolicWitnessEvaluator<
 where
     WA: WitnessColumnEvaluator<T>,
 {
-    fn value<'b>(&self, poly: &'b AlgebraicReference) -> AffineResult<&'b AlgebraicReference, T> {
-        // TODO arrays
-        if poly.is_witness() {
-            self.witness_access.value(poly)
-        } else {
-            // Constant polynomial (or something else)
-            let values = self.fixed_data.fixed_cols[&poly.poly_id].values(self.size);
-            let row =
-                if poly.next { self.row + 1 } else { self.row } % (values.len() as DegreeType);
-            Ok(values[row as usize].into())
+    fn value<'b>(&self, var: AlgebraicVariable<'b>) -> AffineResult<AlgebraicVariable<'b>, T> {
+        match var {
+            AlgebraicVariable::Column(poly) => {
+                // TODO arrays
+                if poly.is_witness() {
+                    self.witness_access.value(var)
+                } else {
+                    // Constant polynomial (or something else)
+                    let values = self.fixed_data.fixed_cols[&poly.poly_id].values(self.size);
+                    let row = if poly.next { self.row + 1 } else { self.row }
+                        % (values.len() as DegreeType);
+                    Ok(values[row as usize].into())
+                }
+            }
+            AlgebraicVariable::Public(_) => self.witness_access.value(var),
         }
     }
 
-    fn challenge<'b>(&self, challenge: &'b Challenge) -> AffineResult<&'b AlgebraicReference, T> {
+    fn challenge<'b>(&self, challenge: &'b Challenge) -> AffineResult<AlgebraicVariable<'b>, T> {
         Ok(self
             .fixed_data
             .challenges
