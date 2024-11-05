@@ -63,7 +63,7 @@ let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr, expr -> fe[] = quer
 /// TODO: Implement this for an array of constraints.
 /// Arguments:
 /// - lookup_constraint: The lookup constraint               
-let lookup: Constr, expr -> () = constr |lookup_constraint| {
+let lookup: Constr -> () = constr |lookup_constraint| {
     std::check::assert(required_extension_size() <= 2, || "Invalid extension size");
     // Alpha is used to compress the LHS and RHS arrays.
     let alpha = fp2_from_array(array::new(required_extension_size(), |i| challenge(0, i + 1)));
