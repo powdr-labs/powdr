@@ -281,7 +281,9 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             .filter(|(symbol, _)| symbol.stage.unwrap_or_default() <= self.stage.into())
             .flat_map(|(p, _)| p.array_elements())
             .map(|(name, _id)| {
-                let column = columns.remove(&name).unwrap();
+                let column = columns
+                    .remove(&name)
+                    .unwrap_or_else(|| panic!("No machine generated witness for column: {}", name));
                 assert!(!column.is_empty());
                 (name, column)
             })
