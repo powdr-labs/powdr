@@ -12,7 +12,5 @@ machine Main with degree: 8 {
     col fixed INC_X = [1, 2, 3, 4, 5, 6, 7, 8];
     col fixed INC_Y = [2, 3, 4, 5, 6, 7, 8, 9];
 
-    let lookup_constraint = [x, y] in [INC_X, INC_Y];
-
-    lookup(lookup_constraint);
+    lookup([x, y] in [INC_X, INC_Y]);
 }
