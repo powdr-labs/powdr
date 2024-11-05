@@ -350,9 +350,51 @@ impl<T: Display> Display for LookupIdentity<T> {
     }
 }
 
+fn format_selector<T: Display>(selector: &AlgebraicExpression<T>) -> String {
+    match selector.to_string().as_str() {
+        "1" => "Option::None".to_string(),
+        s => format!("Option::Some({s})"),
+    }
+}
+
+impl<T: Display> Display for PhantomLookupIdentity<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "Constr::PhantomLookup(({}, {}), [{}], {});",
+            format_selector(&self.left.selector),
+            format_selector(&self.right.selector),
+            self.left
+                .expressions
+                .iter()
+                .zip_eq(&self.right.expressions)
+                .map(|(left, right)| format!("({left}, {right})"))
+                .format(", "),
+            self.multiplicity
+        )
+    }
+}
+
 impl<T: Display> Display for PermutationIdentity<T> {
     fn fmt(&self, f: &mut Formatter<'_>) -> Result {
         write!(f, "{} is {};", self.left, self.right)
+    }
+}
+
+impl<T: Display> Display for PhantomPermutationIdentity<T> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> Result {
+        write!(
+            f,
+            "Constr::PhantomPermutation(({}, {}), [{}]);",
+            format_selector(&self.left.selector),
+            format_selector(&self.right.selector),
+            self.left
+                .expressions
+                .iter()
+                .zip_eq(&self.right.expressions)
+                .map(|(left, right)| format!("({left}, {right})"))
+                .format(", ")
+        )
     }
 }
 

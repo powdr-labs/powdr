@@ -1,3 +1,5 @@
+use std::array;
+
 /// Creates constraints that increments a 32-bits pointer by `amount` bytes.
 ///
 /// Preconditions:
@@ -36,4 +38,33 @@ let increment_ptr: expr, expr, expr, expr, expr -> Constr[] = constr |
         // Set high limb, incremented if low overflowed:
         post_high = pre_high + carry
     ]
+};
+
+// Takes two arrays of 16-bit limbs (high and low), each position being a 32-bit address,
+// and calls `increment_ptr` on every 2 consecutive positions.
+//
+// The resulting constraint set ensures that each address is incremented by 4 bytes.
+//
+// Mind the preconditions of `increment_ptr` when using this function. Particularly:
+// - The first address must be aligned to 4 bytes.
+// - The last address must not overflow the 32-bit address space.
+//
+// Returns the flattened array of constraints.
+let address_array_elems = constr |addr_high, addr_low| {
+    let addr = array::zip(
+        addr_high,
+        addr_low,
+        |high, low| (high, low)
+    );
+
+    array::fold(
+        array::zip(
+            array::sub_array(addr, 0, array::len(addr) - 1),
+            array::sub_array(addr, 1, array::len(addr) - 1),
+            constr |(high, low), (next_high, next_low)| {
+                increment_ptr(4, high, low, next_high, next_low)
+            }
+        ), [],
+        |a, b| a + b
+    )
 };

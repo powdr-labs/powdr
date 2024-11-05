@@ -67,6 +67,15 @@ fn poseidon2_bb_test() {
 
 #[test]
 #[ignore = "Too slow"]
+fn poseidon2_gl_test() {
+    let f = "std/poseidon2_gl_test.asm";
+    let pipeline = make_simple_prepared_pipeline(f);
+    test_pilcom(pipeline.clone());
+    gen_estark_proof(pipeline);
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn split_bn254_test() {
     let f = "std/split_bn254_test.asm";
     test_halo2(make_simple_prepared_pipeline(f));
@@ -171,15 +180,11 @@ fn lookup_via_challenges() {
 }
 
 #[test]
-fn lookup_via_challenges_ext() {
-    let f = "std/lookup_via_challenges_ext.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-    test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
-}
-
-#[test]
-fn lookup_via_challenges_ext_simple() {
-    let f = "std/lookup_via_challenges_ext_simple.asm";
+#[should_panic = "Failed to merge the first and last row of the VM 'Main Machine'"]
+fn lookup_via_challenges_range_constraint() {
+    // This test currently fails, because witness generation for the multiplicity column
+    // does not yet work for range constraints, so the lookup constraints are not satisfied.
+    let f = "std/lookup_via_challenges_range_constraint.asm";
     test_halo2(make_simple_prepared_pipeline(f));
     test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
 }
@@ -191,33 +196,15 @@ fn bus_permutation_via_challenges() {
 }
 
 #[test]
-fn bus_permutation_via_challenges_ext() {
+fn bus_permutation_via_challenges_ext_bn() {
     let f = "std/bus_permutation_via_challenges_ext.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-    test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
-fn test_multiplicities() {
-    let f = "std/multiplicities.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-
-    // This test currently has a native lookup to aid witness generation,
-    // which is not supported by the Plonky3 backend.
-    // test_plonky3::<GoldilocksField>(f, vec![]);
-}
-
-#[test]
-fn bus_lookup_via_challenges() {
+fn bus_lookup_via_challenges_bn() {
     let f = "std/bus_lookup_via_challenges.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-}
-
-#[test]
-fn bus_lookup_via_challenges_ext() {
-    let f = "std/bus_lookup_via_challenges_ext.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-    test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
