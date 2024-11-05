@@ -124,8 +124,11 @@ impl ClearSourceRefs for PilStatement {
             | PilStatement::Expression(s, _)
             | PilStatement::EnumDeclaration(s, _)
             | PilStatement::StructDeclaration(s, _)
-            | PilStatement::TraitDeclaration(s, _)
             | PilStatement::TraitImplementation(s, _) => *s = SourceRef::unknown(),
+            PilStatement::TraitDeclaration(s, trait_decl) => {
+                *s = SourceRef::unknown();
+                trait_decl.source_ref = SourceRef::unknown();
+            }
         }
     }
 }
