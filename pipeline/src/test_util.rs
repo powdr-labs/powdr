@@ -2,7 +2,7 @@ use powdr_ast::analyzed::Analyzed;
 use powdr_backend::BackendType;
 use powdr_number::{
     buffered_write_file, BabyBearField, BigInt, Bn254Field, FieldElement, GoldilocksField,
-    KoalaBearField, Mersenne31Field,
+    KoalaBearField,
 };
 use powdr_pil_analyzer::evaluator::{self, SymbolLookup};
 use std::env;
@@ -301,14 +301,14 @@ pub fn gen_halo2_proof(_pipeline: Pipeline<Bn254Field>, _backend: BackendVariant
 
 #[cfg(feature = "plonky3")]
 pub fn test_plonky3<T: FieldElement>(file_name: &str, inputs: Vec<T>) {
-    println!("inputs from test file {:?}", inputs);
+    println!("inputs from test file {inputs:?}");
     let backend = powdr_backend::BackendType::Plonky3;
     let mut pipeline = Pipeline::default()
         .with_tmp_output()
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs.clone())
         .with_backend(backend, None);
-    println!("inputs from test file {:?}", inputs);
+    println!("inputs from test file {inputs:?}");
 
     // Generate a proof
     let proof = pipeline.compute_proof().cloned().unwrap();
