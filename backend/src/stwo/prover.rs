@@ -5,6 +5,7 @@ use std::io;
 use std::sync::Arc;
 
 use crate::stwo::circuit_builder::PowdrCircuit;
+use crate::stwo::circuit_builder::PowdrEval;
 
 use super::circuit_builder::PowdrComponent;
 
@@ -100,8 +101,14 @@ impl<F: FieldElement> StwoProver<F> {
         tree_builder.extend_evals(trace);
         tree_builder.commit(prover_channel);
 
-        //Constraints that are to be proved
-        let component = PowdrComponent::new(&mut TraceLocationAllocator::default(), circuit_eval);
+        
+        let component = PowdrComponent::new(&mut TraceLocationAllocator::default(), 
+        PowdrEval::new(
+            self.analyzed.clone(),
+            self.analyzed.commitment_count()
+            +self.analyzed.constant_count()
+            +self.analyzed.publics_count(),
+        ));
 
         println!("created component!");
 
@@ -130,6 +137,15 @@ impl<F: FieldElement> StwoProver<F> {
         let verifier_channel = &mut Poseidon252Channel::default();
         let commitment_scheme =
         &mut CommitmentSchemeVerifier::<Poseidon252MerkleChannel>::new(config);
+
+        //Constraints that are to be proved
+        let component = PowdrComponent::new(&mut TraceLocationAllocator::default(), 
+        PowdrEval::new(
+            self.analyzed.clone(),
+            self.analyzed.commitment_count()
+            +self.analyzed.constant_count()
+            +self.analyzed.publics_count(),
+        ));
 
           // Retrieve the expected column sizes in each commitment interaction, from the AIR.
           let sizes = component.trace_log_degree_bounds();

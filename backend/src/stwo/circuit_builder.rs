@@ -15,6 +15,7 @@ use powdr_executor::witgen::WitgenCallback;
 use powdr_number::FieldElement;
 use powdr_number::Mersenne31Field;
 use std::sync::Arc;
+use powdr_executor::constant_evaluator::VariablySizedColumn;
 
 use powdr_ast::analyzed::{Identity, PolyID, PolynomialIdentity, PolynomialType};
 use stwo_prover::constraint_framework::logup::LookupElements;
@@ -32,7 +33,7 @@ use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::ColumnVec;
 use stwo_prover::{constraint_framework::logup::ClaimedPrefixSum, core::fields::m31::M31};
 
-pub type PowdrComponent<'a, F: FieldElement> = FrameworkComponent<PowdrCircuit<'a, F>>;
+pub type PowdrComponent<'a, F: FieldElement> = FrameworkComponent<PowdrEval<F>>;
 
 pub struct PowdrCircuit<'a, T> {
     pub log_n_rows: u32,
@@ -122,19 +123,45 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement> FrameworkEval for PowdrCircuit<'a, T> {
+pub struct PowdrEval<T> {
+    analyzed: Arc<Analyzed<T>>,
+    col_count: usize,
+    witness_columns: BTreeMap<PolyID, usize>,
+}
+
+impl <T:FieldElement>PowdrEval<T> {
+    pub fn new(
+        analyzed: Arc<Analyzed<T>>,
+        col_count: usize,
+    ) -> Self {
+        let witness_columns: BTreeMap<PolyID, usize> = analyzed
+            .definitions_in_source_order(PolynomialType::Committed)
+            .flat_map(|(symbol, _)| symbol.array_elements())
+            .enumerate()
+            .map(|(index, (_, id))| (id, index))
+            .collect();
+
+        Self {
+            analyzed,
+            col_count,
+            witness_columns,
+        }
+    }
+}
+
+
+impl<'a, T: FieldElement> FrameworkEval for PowdrEval<T> {
     fn log_size(&self) -> u32 {
-        self.log_n_rows
+        self.analyzed.degree().ilog2()
     }
     fn max_constraint_log_degree_bound(&self) -> u32 {
-        self.log_n_rows + 1
+        self.analyzed.degree().ilog2() + 1
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let mut witness_eval = Vec::with_capacity(self.witness.unwrap().len());
-        for _ in 0..self.witness.unwrap().len() {
+        let mut witness_eval = Vec::with_capacity(self.col_count);
+        for _ in 0..self.col_count {
             witness_eval.push(eval.next_interaction_mask(0, [0, 1]));
         }
-        println!("This is the witness eval {:?}", self.witness);
 
         // Add polynomial identities
         let polynomial_identities: Vec<PolynomialIdentity<_>> = self
