@@ -504,18 +504,19 @@ mod builder {
             }
         }
 
-        pub(crate) fn len(&self) -> u32 {
-            // TODO: update self.trace.len inside push_row_* ?.
-            // Right now only advance does it, maybe advance should call push_row itself
+        pub(crate) fn len(&self) -> usize {
             let cols_len = self
                 .trace
                 .cols
                 .values()
                 .next()
                 .map(|v| v.len())
-                .unwrap_or(0) as u32;
+                .unwrap_or(0);
 
-            std::cmp::max(self.trace.len as u32, cols_len)
+            // sanity check
+            assert!(cols_len <= self.trace.len);
+
+            self.trace.len
         }
 
         /// get the value of PC as of the start of the execution of the current row.
@@ -578,44 +579,56 @@ mod builder {
         }
 
         pub fn set_col_idx(&mut self, name: &str, idx: usize, value: Elem<F>) {
-            let col = self
-                .trace
-                .cols
-                .get_mut(name)
-                .unwrap_or_else(|| panic!("col not found: {name}"));
-            *col.get_mut(idx).unwrap() = value;
+            if let ExecMode::Trace = self.mode {
+                let col = self
+                    .trace
+                    .cols
+                    .get_mut(name)
+                    .unwrap_or_else(|| panic!("col not found: {name}"));
+                *col.get_mut(idx).unwrap() = value;
+            }
         }
 
         pub fn set_col(&mut self, name: &str, value: Elem<F>) {
-            let col = self
-                .trace
-                .cols
-                .get_mut(name)
-                .unwrap_or_else(|| panic!("col not found: {name}"));
-            *col.last_mut().unwrap() = value;
+            if let ExecMode::Trace = self.mode {
+                let col = self
+                    .trace
+                    .cols
+                    .get_mut(name)
+                    .unwrap_or_else(|| panic!("col not found: {name}"));
+                *col.last_mut().unwrap() = value;
+            }
         }
 
         pub fn get_col(&self, name: &str) -> Elem<F> {
-            let col = self
-                .trace
-                .cols
-                .get(name)
-                .unwrap_or_else(|| panic!("col not found: {name}"));
-            *col.last().unwrap()
+            if let ExecMode::Trace = self.mode {
+                let col = self
+                    .trace
+                    .cols
+                    .get(name)
+                    .unwrap_or_else(|| panic!("col not found: {name}"));
+                *col.last().unwrap()
+            } else {
+                Elem::Field(F::zero())
+            }
         }
 
         pub fn push_row(&mut self) {
-            self.trace
-                .cols
-                .values_mut()
-                .for_each(|v| v.push(Elem::Field(0.into())));
+            if let ExecMode::Trace = self.mode {
+                self.trace
+                    .cols
+                    .values_mut()
+                    .for_each(|v| v.push(Elem::Field(0.into())));
+            }
         }
 
         pub fn extend_rows(&mut self, len: u32) {
-            self.trace.cols.values_mut().for_each(|v| {
-                let last = *v.last().unwrap();
-                v.resize(len as usize, last);
-            });
+            if let ExecMode::Trace = self.mode {
+                self.trace.cols.values_mut().for_each(|v| {
+                    let last = *v.last().unwrap();
+                    v.resize(len as usize, last);
+                });
+            }
         }
 
         /// advance to next row, returns the index to the statement that must be
@@ -684,8 +697,19 @@ mod builder {
         }
 
         pub fn finish(mut self) -> Execution<F> {
+            if let ExecMode::Fast = self.mode {
+                return Execution {
+                    // TODO: in FAST mode we don't extend the trace to next power of two. What should this value be in TRACE/FAST?
+                    main_trace_len: self.len(),
+                    memory: self.mem,
+                    memory_accesses: Vec::new(),
+                    trace: HashMap::new(),
+                    register_memory: HashMap::new(),
+                };
+            }
+
             // fill machine rows up to the next power of two
-            let main_degree = std::cmp::max(self.len().next_power_of_two(), MIN_DEGREE);
+            let main_degree = std::cmp::max(self.len().next_power_of_two() as u32, MIN_DEGREE);
 
             // turn register write operations into witness columns
             let main_regs = self.trace.generate_registers_trace();
@@ -883,6 +907,7 @@ struct Executor<'a, 'b, F: FieldElement> {
     // program columns: maps fixed cols to respective witness cols
     program_cols: HashMap<String, String>,
     step: u32,
+    mode: ExecMode,
 }
 
 impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
@@ -940,26 +965,30 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
     /// write value to register, updating the register memory machine
     fn reg_write(&mut self, step_offset: u32, reg: u32, val: Elem<F>, selector_idx: u32) {
-        self.proc
-            .regs_machine
-            .write(self.step + step_offset, reg, val, selector_idx);
+        if let ExecMode::Trace = self.mode {
+            self.proc
+                .regs_machine
+                .write(self.step + step_offset, reg, val, selector_idx);
+        }
         self.proc.set_reg_mem(reg, val);
     }
 
     fn set_program_columns(&mut self, pc: u32) {
-        // set witness from the program definition
-        for (fixed, col) in &self.program_cols {
-            let val = Elem::Field(
-                *self
-                    .get_fixed(fixed)
-                    .unwrap_or(&Vec::new())
-                    .get(pc as usize)
-                    .unwrap_or(&F::zero()),
-            );
-            self.proc.set_col(col, val);
+        if let ExecMode::Trace = self.mode {
+            // set witness from the program definition
+            for (fixed, col) in &self.program_cols {
+                let val = Elem::Field(
+                    *self
+                        .get_fixed(fixed)
+                        .unwrap_or(&Vec::new())
+                        .get(pc as usize)
+                        .unwrap_or(&F::zero()),
+                );
+                self.proc.set_col(col, val);
+            }
+            // always 2 because RISCV only uses constrainted submachines
+            self.proc.set_col("main::_operation_id", 2.into());
         }
-        // always 2 because RISCV only uses constrainted submachines
-        self.proc.set_col("main::_operation_id", 2.into());
     }
 
     fn exec_instruction(&mut self, name: &str, args: &[Expression]) -> Vec<Elem<F>> {
@@ -1639,14 +1668,16 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp3_col, Elem::from_u32_as_fe(lo));
                 set_col!(tmp4_col, Elem::from_u32_as_fe(hi));
 
-                self.proc
-                    .submachines
-                    .get_mut("split_gl")
-                    .unwrap()
-                    .add_operation(
-                        "split_gl",
-                        &[("output_low", lo.into()), ("output_high", hi.into())],
-                    );
+                if let ExecMode::Trace = self.mode {
+                    self.proc
+                        .submachines
+                        .get_mut("split_gl")
+                        .unwrap()
+                        .add_operation(
+                            "split_gl",
+                            &[("output_low", lo.into()), ("output_high", hi.into())],
+                        );
+                }
 
                 Vec::new()
             }
@@ -1669,11 +1700,13 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     _ => unreachable!(),
                 };
 
-                self.proc
-                    .submachines
-                    .get_mut("binary")
-                    .unwrap()
-                    .add_operation(name, &[("A", val1), ("B", val2_offset), ("C", r.into())]);
+                if let ExecMode::Trace = self.mode {
+                    self.proc
+                        .submachines
+                        .get_mut("binary")
+                        .unwrap()
+                        .add_operation(name, &[("A", val1), ("B", val2_offset), ("C", r.into())]);
+                }
 
                 self.reg_write(3, write_reg, r.into(), 3);
 
@@ -1702,11 +1735,13 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp2_col, val2);
                 set_col!(tmp3_col, Elem::from_u32_as_fe(r));
 
-                self.proc
-                    .submachines
-                    .get_mut("shift")
-                    .unwrap()
-                    .add_operation(name, &[("A", val1), ("B", val2_offset), ("C", r.into())]);
+                if let ExecMode::Trace = self.mode {
+                    self.proc
+                        .submachines
+                        .get_mut("shift")
+                        .unwrap()
+                        .add_operation(name, &[("A", val1), ("B", val2_offset), ("C", r.into())]);
+                }
 
                 Vec::new()
             }
@@ -1730,14 +1765,16 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp3_col, Elem::from_u32_as_fe(lo));
                 set_col!(tmp4_col, Elem::from_u32_as_fe(hi));
 
-                self.proc
-                    .submachines
-                    .get_mut("split_gl")
-                    .unwrap()
-                    .add_operation(
-                        "split_gl",
-                        &[("output_low", lo.into()), ("output_high", hi.into())],
-                    );
+                if let ExecMode::Trace = self.mode {
+                    self.proc
+                        .submachines
+                        .get_mut("split_gl")
+                        .unwrap()
+                        .add_operation(
+                            "split_gl",
+                            &[("output_low", lo.into()), ("output_high", hi.into())],
+                        );
+                }
 
                 Vec::new()
             }
@@ -2041,6 +2078,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
 pub type FixedColumns<F> = Arc<Vec<(String, VariablySizedColumn<F>)>>;
 
+/// Result of the execution.
+/// If executing in ExecMode::Fast, trace and memory fields will be empty.
 pub struct Execution<F: FieldElement> {
     /// length of main::pc
     pub main_trace_len: usize,
@@ -2054,6 +2093,7 @@ pub struct Execution<F: FieldElement> {
     pub register_memory: RegisterMemoryState<F>,
 }
 
+#[derive(Clone, Copy)]
 pub enum ExecMode {
     Fast,
     Trace,
@@ -2166,6 +2206,7 @@ pub fn execute_ast<F: FieldElement>(
         fixed: fixed.unwrap_or_default(),
         program_cols,
         step: 0,
+        mode,
     };
 
     e.init();

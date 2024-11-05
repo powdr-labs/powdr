@@ -146,7 +146,7 @@ enum Commands {
         #[arg(default_value_t = false)]
         witness: bool,
 
-        /// Export executor-only witness columns as a CSV. Mostly useful for debugging executor issues.
+        /// Export riscv executor generated witness columns as a CSV. Useful for debugging executor issues.
         #[arg(long)]
         #[arg(default_value_t = false)]
         executor_csv: bool,
