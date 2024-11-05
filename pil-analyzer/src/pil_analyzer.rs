@@ -516,11 +516,6 @@ impl PILAnalyzer {
                                 .push(StatementIdentifier::TraitImplementation(index));
                             self.trait_impls.push(trait_impl)
                         }
-                        PILItem::TraitImplementation(trait_impl) => self
-                            .implementations
-                            .entry(trait_impl.name.to_string())
-                            .or_default()
-                            .push(trait_impl),
                     }
                 }
             }
