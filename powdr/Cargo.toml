@@ -27,7 +27,7 @@ serde = { version = "1.0", default-features = false, features = [
 ] }
 
 [features]
-default = ["halo2", "plonky3", "stwo"]
+default = ["halo2", "plonky3"]
 plonky3 = ["powdr-backend/plonky3", "powdr-pipeline/plonky3"]
 halo2 = ["powdr-backend/halo2", "powdr-pipeline/halo2"]
 estark-starky = ["powdr-backend/estark-starky", "powdr-pipeline/estark-starky"]
