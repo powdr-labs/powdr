@@ -30,7 +30,6 @@ pub struct PowdrCircuit<'a, T> {
 
 impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     pub fn new(analyzed: Arc<Analyzed<T>>) -> Self {
-
         Self {
             analyzed,
             _witgen_callback: None,
