@@ -209,7 +209,7 @@ page_number_ok:
 // construction. The initial [0, 32) values are 0, and the capacity [64, 96) is 0 throughout the
 // bootloader execution.
 
-// TODO currently the init call to poseidon_gl initializes the
+// TODO currently the init call to poseidon initializes the
 // scratch space with mstore_bootloader.
 // When the init call is removed, the calls below need to be replaced by mstore_bootloader.
 mstore 0, 0, 0, 0;
@@ -255,7 +255,7 @@ mstore_bootloader 90, 0, 0, 91;"#
 
         // Hash if buffer is full
         if i % 4 == 3 {
-            bootloader.push_str("poseidon_gl 0, 0;");
+            bootloader.push_str("poseidon 0, 0;");
         }
     }
 
@@ -380,7 +380,7 @@ load_bootloader_input 2, 90, {BOOTLOADER_INPUTS_PER_PAGE}, {PAGE_INPUTS_OFFSET} 
 mstore 0, 0, 28, 90;
 
 bootloader_level_{i}_end:
-    poseidon_gl 0, 0;
+    poseidon 0, 0;
 "#
         ));
     }
@@ -628,7 +628,7 @@ mstore 0, 0, 92, 0;
 
         // Hash if buffer is full
         if i % 4 == 3 {
-            bootloader.push_str("poseidon_gl 0, 0;\n");
+            bootloader.push_str("poseidon 0, 0;\n");
         }
     }
 

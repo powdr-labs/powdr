@@ -214,6 +214,8 @@ impl Runtime {
 
         r.add_syscall(Syscall::Halt, ["return;"]);
 
+        r.add_syscall(Syscall::CommitPublic, ["commit_public 10, 11;"]);
+
         r
     }
 
@@ -272,8 +274,15 @@ impl Runtime {
         }
     }
 
-    fn with_poseidon(self, _continuations: bool) -> Self {
-        todo!()
+    // TODO This implementation is just a placeholder,
+    // needed by the runtime "finalize" code.
+    fn with_poseidon(mut self, continuations: bool) -> Self {
+        assert!(!continuations);
+
+        let implementation = std::iter::once("affine 0, 0, 0, 0, 0, 0;".to_string());
+
+        self.add_syscall(Syscall::Poseidon, implementation);
+        self
     }
 
     pub fn has_submachine(&self, name: &str) -> bool {

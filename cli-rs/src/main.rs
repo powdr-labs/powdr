@@ -364,7 +364,6 @@ fn coprocessors_to_options(coprocessors: Option<String>) -> Result<RuntimeLibs, 
         let names = list.split(',').collect::<Vec<_>>();
         for name in names {
             match name {
-                "poseidon_gl" => libs = libs.with_poseidon(),
                 "keccakf" => libs = libs.with_keccak(),
                 "arith" => libs = libs.with_arith(),
                 _ => return Err(vec![format!("Invalid co-processor specified: {name}")]),

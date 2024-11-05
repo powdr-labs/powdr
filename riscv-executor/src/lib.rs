@@ -1012,7 +1012,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-            "poseidon_gl" => {
+            "poseidon" => {
                 let input_ptr = self.proc.get_reg_mem(args[0].u()).u();
                 assert_eq!(input_ptr % 4, 0);
 
@@ -1136,6 +1136,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                         .set_reg(&register_by_idx(i + 8), Elem::Field(result.1[i]))
                 });
 
+                vec![]
+            }
+            "commit_public" => {
+                let idx = self.proc.get_reg_mem(args[0].u());
+                let limb = self.proc.get_reg_mem(args[1].u());
+                log::debug!("Committing public: idx={idx}, limb={limb}");
                 vec![]
             }
             instr => {

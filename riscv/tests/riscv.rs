@@ -56,6 +56,11 @@ fn run_continuations_test(case: &str, powdr_asm: String) {
     rust_continuations(&mut pipeline, pipeline_callback, bootloader_inputs).unwrap();
 }
 
+/*
+
+The RISCV GL machine cannot be used for BN anymore.
+Uncomment if we ever write proper support for RISCV BN.
+
 #[test]
 #[ignore = "Too slow"]
 // TODO: this a temporary test so we at least go through the bn254 code path.
@@ -94,6 +99,7 @@ fn bn254_sanity_check() {
     );
     run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).unwrap();
 }
+*/
 
 #[test]
 #[ignore = "Too slow"]

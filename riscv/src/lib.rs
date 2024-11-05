@@ -33,7 +33,8 @@ impl RuntimeLibs {
         Self {
             arith: false,
             keccak: false,
-            poseidon: false,
+            // Poseidon is required for publics.
+            poseidon: true,
         }
     }
 
