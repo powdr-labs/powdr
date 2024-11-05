@@ -11,11 +11,11 @@ use alloc::{
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, Analyzed, IdentityKind,
 };
+use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::FieldElement;
 use powdr_number::Mersenne31Field;
 use std::sync::Arc;
-use powdr_executor::constant_evaluator::VariablySizedColumn;
 
 use powdr_ast::analyzed::{Identity, PolyID, PolynomialIdentity, PolynomialType};
 use stwo_prover::constraint_framework::logup::LookupElements;
@@ -36,15 +36,12 @@ use stwo_prover::{constraint_framework::logup::ClaimedPrefixSum, core::fields::m
 pub type PowdrComponent<'a, F: FieldElement> = FrameworkComponent<PowdrEval<F>>;
 
 pub struct PowdrCircuit<'a, T> {
-    pub log_n_rows: u32,
     analyzed: Arc<Analyzed<T>>,
     /// Callback to augment the witness in the later stages.
     witgen_callback: Option<WitgenCallback<T>>,
     /// The value of the witness columns, if set
     pub witness: Option<&'a [(String, Vec<T>)]>,
     witness_columns: BTreeMap<PolyID, usize>,
-
-    pub elements: Option<Vec<(String, BaseColumn)>>,
 }
 
 impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
@@ -57,12 +54,10 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
             .collect();
 
         Self {
-            log_n_rows: analyzed.degree().ilog2(),
             analyzed,
             witgen_callback: None,
             witness_columns: witness_columns,
             witness: None,
-            elements: None,
         }
     }
 
@@ -80,7 +75,9 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
         }
     }
 
-    pub(crate) fn generate_stwo_circuit_trace(self) -> Self {
+    pub(crate) fn generate_stwo_circuit_trace(
+        self,
+    ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
         let element: Option<Vec<(String, BaseColumn)>> = Some(
             self.witness
                 .as_ref()
@@ -90,29 +87,18 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                     let values = values
                         .iter()
                         .map(|v| {
-                            let ptr = v as *const T as *const u32;
-
-                            let value = unsafe {
-                                *ptr // Dereference the pointer to get the u32 value
-                            };
-                            value.into()
+                            match v.try_into_i32() {
+                                Some(val) => M31::from(val), // Convert from i32 to M31
+                                None => M31::default(), // Handle None case, assuming M31::default() is valid
+                            }
                         })
                         .collect();
                     (name.clone(), values)
                 })
                 .collect(),
         );
-        Self {
-            elements: element,
-            ..self
-        }
-    }
-
-    pub fn gen_trace(
-        self,
-    ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
         let domain = CanonicCoset::new(self.analyzed.degree().ilog2()).circle_domain();
-        self.elements
+        element
             .map(|elements| {
                 elements
                     .iter()
@@ -129,11 +115,8 @@ pub struct PowdrEval<T> {
     witness_columns: BTreeMap<PolyID, usize>,
 }
 
-impl <T:FieldElement>PowdrEval<T> {
-    pub fn new(
-        analyzed: Arc<Analyzed<T>>,
-        col_count: usize,
-    ) -> Self {
+impl<T: FieldElement> PowdrEval<T> {
+    pub fn new(analyzed: Arc<Analyzed<T>>, col_count: usize) -> Self {
         let witness_columns: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
             .flat_map(|(symbol, _)| symbol.array_elements())
@@ -148,7 +131,6 @@ impl <T:FieldElement>PowdrEval<T> {
         }
     }
 }
-
 
 impl<'a, T: FieldElement> FrameworkEval for PowdrEval<T> {
     fn log_size(&self) -> u32 {

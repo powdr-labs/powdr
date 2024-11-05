@@ -14,10 +14,12 @@ use stwo_prover::constraint_framework::{
 };
 use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::prover::StarkProof;
-use stwo_prover::core::vcs::ops::MerkleHasher;
 use stwo_prover::core::vcs::hash::Hash;
+use stwo_prover::core::vcs::ops::MerkleHasher;
 
+use powdr_number::FieldElement;
 use stwo_prover::core::air::Component;
+use stwo_prover::core::channel::MerkleChannel;
 use stwo_prover::core::channel::Poseidon252Channel;
 use stwo_prover::core::fri::FriConfig;
 use stwo_prover::core::pcs::{
@@ -28,8 +30,6 @@ use stwo_prover::core::prover::ProvingError;
 use stwo_prover::core::vcs::poseidon252_merkle::{
     Poseidon252MerkleChannel, Poseidon252MerkleHasher,
 };
-use stwo_prover::core::channel::MerkleChannel;
-use powdr_number::FieldElement;
 
 #[allow(unused_variables)]
 pub struct StwoProver<T> {
@@ -90,21 +90,21 @@ impl<F: FieldElement> StwoProver<F> {
         let trace = PowdrCircuit::new(self.analyzed.clone())
             .with_witgen_callback(witgen_callback)
             .with_witness(witness)
-            .generate_stwo_circuit_trace()
-            .gen_trace();
+            .generate_stwo_circuit_trace();
 
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals(trace);
         tree_builder.commit(prover_channel);
 
-        
-        let component = PowdrComponent::new(&mut TraceLocationAllocator::default(), 
-        PowdrEval::new(
-            self.analyzed.clone(),
-            self.analyzed.commitment_count()
-            +self.analyzed.constant_count()
-            +self.analyzed.publics_count(),
-        ));
+        let component = PowdrComponent::new(
+            &mut TraceLocationAllocator::default(),
+            PowdrEval::new(
+                self.analyzed.clone(),
+                self.analyzed.commitment_count()
+                    + self.analyzed.constant_count()
+                    + self.analyzed.publics_count(),
+            ),
+        );
 
         println!("created component!");
 
@@ -120,9 +120,9 @@ impl<F: FieldElement> StwoProver<F> {
 
         Ok(bincode::serialize(&proof).unwrap())
     }
-    
+
     pub fn verify(&self, proof: &[u8], instances: &Vec<F>) -> Result<(), String> {
-            let proof: StarkProof<<Poseidon252MerkleChannel as MerkleChannel>::H> =
+        let proof: StarkProof<<Poseidon252MerkleChannel as MerkleChannel>::H> =
             bincode::deserialize(proof).map_err(|e| format!("Failed to deserialize proof: {e}"))?;
 
         let config = PcsConfig {
@@ -132,27 +132,24 @@ impl<F: FieldElement> StwoProver<F> {
 
         let verifier_channel = &mut Poseidon252Channel::default();
         let commitment_scheme =
-        &mut CommitmentSchemeVerifier::<Poseidon252MerkleChannel>::new(config);
+            &mut CommitmentSchemeVerifier::<Poseidon252MerkleChannel>::new(config);
 
         //Constraints that are to be proved
-        let component = PowdrComponent::new(&mut TraceLocationAllocator::default(), 
-        PowdrEval::new(
-            self.analyzed.clone(),
-            self.analyzed.commitment_count()
-            +self.analyzed.constant_count()
-            +self.analyzed.publics_count(),
-        ));
+        let component = PowdrComponent::new(
+            &mut TraceLocationAllocator::default(),
+            PowdrEval::new(
+                self.analyzed.clone(),
+                self.analyzed.commitment_count()
+                    + self.analyzed.constant_count()
+                    + self.analyzed.publics_count(),
+            ),
+        );
 
-          // Retrieve the expected column sizes in each commitment interaction, from the AIR.
-          let sizes = component.trace_log_degree_bounds();
-          commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
+        // Retrieve the expected column sizes in each commitment interaction, from the AIR.
+        let sizes = component.trace_log_degree_bounds();
+        commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
 
-          stwo_prover::core::prover::verify(
-              &[&component],
-              verifier_channel,
-              commitment_scheme,
-              proof,
-          ).map_err(|e| e.to_string())
-
-}  
+        stwo_prover::core::prover::verify(&[&component], verifier_channel, commitment_scheme, proof)
+            .map_err(|e| e.to_string())
+    }
 }

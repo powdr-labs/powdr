@@ -2,6 +2,8 @@
 use powdr_number::Bn254Field;
 use powdr_number::GoldilocksField;
 use powdr_number::Mersenne31Field;
+#[cfg(all(feature = "stwo"))]
+use powdr_pipeline::test_util::test_stwo;
 use powdr_pipeline::{
     test_util::{
         assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_estark,
@@ -13,8 +15,6 @@ use powdr_pipeline::{
     },
     Pipeline,
 };
-#[cfg(all(feature = "stwo"))]
-use powdr_pipeline::{test_util::test_stwo};
 
 use test_log::test;
 

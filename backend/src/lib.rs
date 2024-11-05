@@ -53,7 +53,7 @@ pub enum BackendType {
     #[cfg(feature = "plonky3")]
     #[strum(serialize = "plonky3")]
     Plonky3,
-     #[cfg(all(feature = "stwo"))]
+    #[cfg(all(feature = "stwo"))]
     #[strum(serialize = "stwo")]
     Stwo,
 }
