@@ -129,7 +129,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for ProverFunctionRunner<'a, T> {
                 let values = self.fixed_data.fixed_cols[&poly_ref.poly_id].values(self.size);
                 //TODO convert local to glabel indx.
                 let row = self.row_index + if poly_ref.next { 1 } else { 0 };
-                values[usize::from(row)]
+                values[row]
             }
         })
         .into())

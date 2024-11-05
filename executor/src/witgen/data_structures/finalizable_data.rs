@@ -7,7 +7,7 @@ use bit_vec::BitVec;
 use powdr_ast::analyzed::PolyID;
 use powdr_number::FieldElement;
 
-use crate::witgen::{rows::Row, Constraint};
+use crate::witgen::rows::Row;
 
 /// A row entry in [FinalizableData].
 #[derive(Clone)]

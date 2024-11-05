@@ -5,6 +5,7 @@ use powdr_ast::analyzed::LookupIdentity;
 use powdr_ast::analyzed::PermutationIdentity;
 
 use super::block_machine::BlockMachine;
+use super::block_machine_jit::BlockMachineJIT;
 use super::double_sorted_witness_machine_16::DoubleSortedWitnesses16;
 use super::double_sorted_witness_machine_32::DoubleSortedWitnesses32;
 use super::fixed_lookup_machine::FixedLookup;
@@ -291,6 +292,13 @@ fn build_machine<'a, T: FieldElement>(
     ) {
         log::debug!("Detected machine: write-once memory");
         KnownMachine::WriteOnceMemory(machine)
+    } else if let Some(machine) = BlockMachineJIT::try_new(
+        name_with_type("BlockMachine(JIT)"),
+        fixed_data,
+        &machine_parts,
+    ) {
+        log::debug!("Detected machine: {machine} (JIT)");
+        KnownMachine::BlockMachineJIT(machine)
     } else if let Some(machine) =
         BlockMachine::try_new(name_with_type("BlockMachine"), fixed_data, &machine_parts)
     {

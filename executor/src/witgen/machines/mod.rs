@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Display;
 
+use block_machine_jit::BlockMachineJIT;
 use powdr_ast::analyzed::{self, DegreeRange, PolyID};
 
 use powdr_number::DegreeType;
@@ -21,6 +22,7 @@ use super::rows::RowPair;
 use super::{EvalResult, FixedData, MutableState, QueryCallback};
 
 mod block_machine;
+mod block_machine_jit;
 mod double_sorted_witness_machine_16;
 mod double_sorted_witness_machine_32;
 mod fixed_lookup_machine;
@@ -77,6 +79,7 @@ pub enum KnownMachine<'a, T: FieldElement> {
     DoubleSortedWitnesses32(DoubleSortedWitnesses32<'a, T>),
     WriteOnceMemory(WriteOnceMemory<'a, T>),
     BlockMachine(BlockMachine<'a, T>),
+    BlockMachineJIT(BlockMachineJIT<'a, T>),
     Vm(Generator<'a, T>),
     FixedLookup(FixedLookup<'a, T>),
 }
@@ -104,6 +107,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
             KnownMachine::BlockMachine(m) => {
                 m.process_plookup(mutable_state, identity_id, caller_rows)
             }
+            KnownMachine::BlockMachineJIT(m) => {
+                m.process_plookup(mutable_state, identity_id, caller_rows)
+            }
             KnownMachine::Vm(m) => m.process_plookup(mutable_state, identity_id, caller_rows),
             KnownMachine::FixedLookup(m) => {
                 m.process_plookup(mutable_state, identity_id, caller_rows)
@@ -117,6 +123,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
             KnownMachine::DoubleSortedWitnesses16(m) => m.name(),
             KnownMachine::DoubleSortedWitnesses32(m) => m.name(),
             KnownMachine::WriteOnceMemory(m) => m.name(),
+            KnownMachine::BlockMachineJIT(m) => m.name(),
             KnownMachine::BlockMachine(m) => m.name(),
             KnownMachine::Vm(m) => m.name(),
             KnownMachine::FixedLookup(m) => m.name(),
@@ -132,6 +139,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
             KnownMachine::DoubleSortedWitnesses16(m) => m.take_witness_col_values(mutable_state),
             KnownMachine::DoubleSortedWitnesses32(m) => m.take_witness_col_values(mutable_state),
             KnownMachine::WriteOnceMemory(m) => m.take_witness_col_values(mutable_state),
+            KnownMachine::BlockMachineJIT(m) => m.take_witness_col_values(mutable_state),
             KnownMachine::BlockMachine(m) => m.take_witness_col_values(mutable_state),
             KnownMachine::Vm(m) => m.take_witness_col_values(mutable_state),
             KnownMachine::FixedLookup(m) => m.take_witness_col_values(mutable_state),
@@ -144,6 +152,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
             KnownMachine::DoubleSortedWitnesses16(m) => m.identity_ids(),
             KnownMachine::DoubleSortedWitnesses32(m) => m.identity_ids(),
             KnownMachine::WriteOnceMemory(m) => m.identity_ids(),
+            KnownMachine::BlockMachineJIT(m) => m.identity_ids(),
             KnownMachine::BlockMachine(m) => m.identity_ids(),
             KnownMachine::Vm(m) => m.identity_ids(),
             KnownMachine::FixedLookup(m) => m.identity_ids(),

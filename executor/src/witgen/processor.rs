@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::sync::{Arc, OnceLock};
+use std::sync::OnceLock;
 
 use powdr_ast::analyzed::PolynomialType;
 use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
@@ -741,9 +741,9 @@ fn hack_binary_machine<'a, T: FieldElement>(
             }
         });
         let latch_row = &mut data[row_index];
-        let op_id_v = latch_row.value(&op_id).unwrap();
-        let a_v = latch_row.value(&a).unwrap().to_integer();
-        let b_v = latch_row.value(&b).unwrap().to_integer();
+        let op_id_v = latch_row.value(op_id).unwrap();
+        let a_v = latch_row.value(a).unwrap().to_integer();
+        let b_v = latch_row.value(b).unwrap().to_integer();
 
         let c_v = if op_id_v == 0.into() {
             a_v & b_v
@@ -754,65 +754,65 @@ fn hack_binary_machine<'a, T: FieldElement>(
         } else {
             return false;
         };
-        latch_row.apply_update(&c, &Constraint::Assignment(T::from(c_v)));
+        latch_row.apply_update(c, &Constraint::Assignment(T::from(c_v)));
         data[row_index - 1]
-            .apply_update(&a, &Constraint::Assignment(T::from(a_v & 0xffffff.into())));
+            .apply_update(a, &Constraint::Assignment(T::from(a_v & 0xffffff.into())));
         data[row_index - 1]
-            .apply_update(&b, &Constraint::Assignment(T::from(b_v & 0xffffff.into())));
+            .apply_update(b, &Constraint::Assignment(T::from(b_v & 0xffffff.into())));
         data[row_index - 1]
-            .apply_update(&c, &Constraint::Assignment(T::from(c_v & 0xffffff.into())));
+            .apply_update(c, &Constraint::Assignment(T::from(c_v & 0xffffff.into())));
         data[row_index - 1].apply_update(
-            &a_byte,
+            a_byte,
             &Constraint::Assignment(T::from((a_v >> 24) & 0xff.into())),
         );
         data[row_index - 1].apply_update(
-            &b_byte,
+            b_byte,
             &Constraint::Assignment(T::from((b_v >> 24) & 0xff.into())),
         );
         data[row_index - 1].apply_update(
-            &c_byte,
+            c_byte,
             &Constraint::Assignment(T::from((c_v >> 24) & 0xff.into())),
         );
-        data[row_index - 1].apply_update(&op_id, &Constraint::Assignment(op_id_v));
-        data[row_index - 2].apply_update(&a, &Constraint::Assignment(T::from(a_v & 0xffff.into())));
-        data[row_index - 2].apply_update(&b, &Constraint::Assignment(T::from(b_v & 0xffff.into())));
-        data[row_index - 2].apply_update(&c, &Constraint::Assignment(T::from(c_v & 0xffff.into())));
+        data[row_index - 1].apply_update(op_id, &Constraint::Assignment(op_id_v));
+        data[row_index - 2].apply_update(a, &Constraint::Assignment(T::from(a_v & 0xffff.into())));
+        data[row_index - 2].apply_update(b, &Constraint::Assignment(T::from(b_v & 0xffff.into())));
+        data[row_index - 2].apply_update(c, &Constraint::Assignment(T::from(c_v & 0xffff.into())));
         data[row_index - 2].apply_update(
-            &a_byte,
+            a_byte,
             &Constraint::Assignment(T::from((a_v >> 16) & 0xff.into())),
         );
         data[row_index - 2].apply_update(
-            &b_byte,
+            b_byte,
             &Constraint::Assignment(T::from((b_v >> 16) & 0xff.into())),
         );
         data[row_index - 2].apply_update(
-            &c_byte,
+            c_byte,
             &Constraint::Assignment(T::from((c_v >> 16) & 0xff.into())),
         );
-        data[row_index - 2].apply_update(&op_id, &Constraint::Assignment(op_id_v));
-        data[row_index - 3].apply_update(&a, &Constraint::Assignment(T::from(a_v & 0xff.into())));
-        data[row_index - 3].apply_update(&b, &Constraint::Assignment(T::from(b_v & 0xff.into())));
-        data[row_index - 3].apply_update(&c, &Constraint::Assignment(T::from(c_v & 0xff.into())));
+        data[row_index - 2].apply_update(op_id, &Constraint::Assignment(op_id_v));
+        data[row_index - 3].apply_update(a, &Constraint::Assignment(T::from(a_v & 0xff.into())));
+        data[row_index - 3].apply_update(b, &Constraint::Assignment(T::from(b_v & 0xff.into())));
+        data[row_index - 3].apply_update(c, &Constraint::Assignment(T::from(c_v & 0xff.into())));
         data[row_index - 3].apply_update(
-            &a_byte,
+            a_byte,
             &Constraint::Assignment(T::from((a_v >> 8) & 0xff.into())),
         );
         data[row_index - 3].apply_update(
-            &b_byte,
+            b_byte,
             &Constraint::Assignment(T::from((b_v >> 8) & 0xff.into())),
         );
         data[row_index - 3].apply_update(
-            &c_byte,
+            c_byte,
             &Constraint::Assignment(T::from((c_v >> 8) & 0xff.into())),
         );
-        data[row_index - 3].apply_update(&op_id, &Constraint::Assignment(op_id_v));
+        data[row_index - 3].apply_update(op_id, &Constraint::Assignment(op_id_v));
 
         data[row_index - 4]
-            .apply_update(&a_byte, &Constraint::Assignment(T::from(a_v & 0xff.into())));
+            .apply_update(a_byte, &Constraint::Assignment(T::from(a_v & 0xff.into())));
         data[row_index - 4]
-            .apply_update(&b_byte, &Constraint::Assignment(T::from(b_v & 0xff.into())));
+            .apply_update(b_byte, &Constraint::Assignment(T::from(b_v & 0xff.into())));
         data[row_index - 4]
-            .apply_update(&c_byte, &Constraint::Assignment(T::from(c_v & 0xff.into())));
+            .apply_update(c_byte, &Constraint::Assignment(T::from(c_v & 0xff.into())));
 
         true
     } else {
