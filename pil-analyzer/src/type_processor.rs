@@ -51,10 +51,10 @@ impl<'a, D: AnalysisDriver> TypeProcessor<'a, D> {
         // Any expression inside a type name has to be an array length,
         // so we expect an integer that fits u64.
         t.children_mut().try_for_each(|e: &mut Expression| {
-            let e = &mut ExpressionProcessor::new(self.driver, &Default::default())
+            let analyzed_expr = ExpressionProcessor::new(self.driver, &Default::default())
                 .process_expression(e.clone())
                 .map_err(|e| EvalError::TypeError(e.message().to_string()))?; // TODO: Replace with a proper error type
-            let v = untyped_evaluator::evaluate_expression_to_int(self.driver, e.clone())?;
+            let v = untyped_evaluator::evaluate_expression_to_int(self.driver, analyzed_expr)?;
             let v_u64: u64 = v.clone().try_into().map_err(|_| {
                 EvalError::TypeError(format!("Number too large, expected u64, but got {v}"))
             })?;
