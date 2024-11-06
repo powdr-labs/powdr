@@ -114,7 +114,7 @@ enum Commands {
         #[arg(default_value_t = false)]
         continuations: bool,
     },
-    /// Execute a powdr-asm file with given inputs.
+    /// Execute a RISCV powdr-asm file with given inputs.
     /// Does not generate a witness.
     Execute {
         /// input powdr-asm code compiled from Rust/RISCV
@@ -146,7 +146,7 @@ enum Commands {
         #[arg(default_value_t = false)]
         generate_callgrind: bool,
     },
-    /// Execute and generate a valid witness for a powdr-asm file with the given inputs.
+    /// Execute and generate a valid witness for a RISCV powdr-asm file with the given inputs.
     Witgen {
         /// input powdr-asm code compiled from Rust/RISCV
         file: String,
@@ -443,7 +443,6 @@ fn execute<F: FieldElement>(
         log::info!("Executor done in: {:?}", duration);
         log::info!("Execution trace length: {}", execution.trace_len);
 
-        let pil = pipeline.compute_optimized_pil().unwrap();
         let witness_cols: Vec<_> = pil
             .committed_polys_in_source_order()
             .flat_map(|(s, _)| s.array_elements().map(|(name, _)| name))
