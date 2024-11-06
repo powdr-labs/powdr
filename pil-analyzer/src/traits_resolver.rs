@@ -176,21 +176,6 @@ impl<'a> TraitsResolver<'a> {
                     types.len(),
                 )));
             }
-
-            // let type_vars_in_tuple: Vec<_> = types
-            //     .iter_mut()
-            //     .flat_map(|t| t.contained_type_vars())
-            //     .collect();
-
-            // let type_vars_in_scheme: Vec<_> = trait_impl.0.type_scheme.vars.vars().collect();
-
-            // for var in type_vars_in_scheme {
-            //     if !type_vars_in_tuple.contains(&var) {
-            //         return Err(trait_impl.0.source_ref.with_error(format!(
-            //             "Impl {trait_name} introduces a type variable {var} that's never used",
-            //         )));
-            //     }
-            // }
         }
         Ok(())
     }
@@ -204,18 +189,18 @@ impl<'a> TraitsResolver<'a> {
         implementations: &[(&TraitImplementation<Expression>, usize)],
     ) -> Result<(), Error> {
         for i in 0..implementations.len() {
-            let mut _impl1 = implementations[i].0.clone();
+            let impl_i_type_scheme = &mut implementations[i].0.type_scheme.clone();
             let type_vars: HashSet<_> = implementations[i].0.type_scheme.vars.vars().collect();
-            _impl1.type_scheme.ty.map_to_type_vars(&type_vars);
+            impl_i_type_scheme.ty.map_to_type_vars(&type_vars);
 
             for j in (i + 1)..implementations.len() {
-                let mut _impl2 = implementations[j].0.clone();
-                let type_vars: HashSet<_> = _impl2.type_scheme.vars.vars().collect();
-                _impl2.type_scheme.ty.map_to_type_vars(&type_vars);
+                let impl_j_type_scheme = &mut implementations[j].0.type_scheme.clone();
+                let type_vars: HashSet<_> = impl_j_type_scheme.vars.vars().collect();
+                impl_j_type_scheme.ty.map_to_type_vars(&type_vars);
 
-                if let Err(err) = self.unify_traits_types(&_impl1.type_scheme, &_impl2.type_scheme)
-                {
-                    return Err(_impl1
+                if let Err(err) = self.unify_traits_types(impl_i_type_scheme, impl_j_type_scheme) {
+                    return Err(implementations[i]
+                        .0
                         .source_ref
                         .with_error(format!("Impls for {}: {err}", implementations[i].0.name)));
                 }
@@ -226,11 +211,11 @@ impl<'a> TraitsResolver<'a> {
 
     fn unify_traits_types(&self, ty1: &TypeScheme, ty2: &TypeScheme) -> Result<(), String> {
         let mut unifier = Unifier::new();
-        let instantiated_ty1 = unifier.instantiate_scheme(ty1.clone());
-        let instantiated_ty2 = unifier.instantiate_scheme(ty2.clone());
+        let (ins_ty1, _) = unifier.instantiate_scheme(ty1.clone());
+        let (ins_ty2, _) = unifier.instantiate_scheme(ty2.clone());
 
-        match unifier.unify_types(instantiated_ty1.0.clone(), instantiated_ty2.0.clone()) {
-            Ok(_) => Err(format!("Types {} and {} overlap", ty1.ty, ty2.ty)),
+        match unifier.unify_types(ins_ty1.clone(), ins_ty2.clone()) {
+            Ok(_) => Err(format!("Types {} and {} overlap", ins_ty1, ins_ty2)),
             Err(_) => Ok(()),
         }
     }
