@@ -11,9 +11,8 @@ machine Main with degree: 8 {
 
     col fixed BIT3 = [0, 1, 2, 3, 4, 5, 6, 7];
 
-    col witness m_low, m_high;
-    lookup([x_low] in [BIT3], m_low);
-    lookup([x_high] in [BIT3], m_high);
+    lookup([x_low] in [BIT3]);
+    lookup([x_high] in [BIT3]);
 
     x = x_low + 8 * x_high;
 }
