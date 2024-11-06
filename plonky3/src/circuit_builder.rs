@@ -391,7 +391,7 @@ where
         let fixed = builder.preprocessed();
         let mut intermediate_cache = BTreeMap::new();
         let public_input_values_by_stage = (0..stage_count)
-            .map(|i| builder.stage_public_values(i))
+            .map(|i| builder.stage_public_values(i).to_vec())
             .collect_vec();
 
         // for each stage, the values of the challenges drawn at the end of that stage
@@ -418,14 +418,12 @@ where
             );
 
         // public constraints
-        let public_vals_by_id = self
-            .constraint_system
-            .publics_by_stage
-            .iter()
-            .zip_eq(public_input_values_by_stage)
-            .flat_map(|(publics, values)| publics.iter().zip_eq(values.iter()))
-            .map(|((id, _, _), pi)| (id, *pi))
-            .collect::<BTreeMap<&String, <AB as MultistageAirBuilder>::PublicVar>>();
+        let public_vals_flattened: Vec<<AB as MultistageAirBuilder>::PublicVar> =
+            public_input_values_by_stage
+                .iter()
+                .flat_map(|values| values.iter())
+                .copied()
+                .collect_vec();
 
         // constrain public inputs using witness columns in stage 0
         let fixed_local = fixed.row_slice(0);
@@ -435,16 +433,25 @@ where
             .publics_by_stage
             .iter()
             .flatten()
+            .zip_eq(&public_vals_flattened)
             .enumerate()
-            .for_each(|(index, (pub_id, poly_id, _))| {
-                let selector = fixed_local[public_offset + index];
-                let (stage, index) = self.constraint_system.witness_columns[poly_id];
-                let witness_col = traces_by_stage[stage].row_slice(0)[index];
-                let public_value = public_vals_by_id[pub_id];
+            .for_each(|(flat_index, ((_, poly_id, _), public_value))| {
+                let selector = fixed_local[public_offset + flat_index];
+                let (stage, witness_index) = self.constraint_system.witness_columns[poly_id];
+                let witness_col = traces_by_stage[stage].row_slice(0)[witness_index];
 
                 // constraining s(i) * (pub[i] - x(i)) = 0
-                builder.assert_zero(selector * (public_value.into() - witness_col));
+                builder.assert_zero(selector * ((*public_value).into() - witness_col));
             });
+
+        let public_vals_by_id = self
+            .constraint_system
+            .publics_by_stage
+            .iter()
+            .zip_eq(public_input_values_by_stage)
+            .flat_map(|(publics, values)| publics.iter().zip_eq(values))
+            .map(|((id, _, _), pi)| (id, pi))
+            .collect::<BTreeMap<&String, <AB as MultistageAirBuilder>::PublicVar>>();
 
         // circuit constraints
         for identity in &self.constraint_system.identities {
