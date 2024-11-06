@@ -385,7 +385,6 @@ mod builder {
     fn register_names(main: &Machine) -> Vec<&str> {
         main.registers
             .iter()
-            //.map(|statement| &statement.name[..])
             .filter_map(|statement| {
                 if statement.ty != RegisterTy::Assignment {
                     Some(&statement.name[..])
@@ -555,8 +554,7 @@ mod builder {
         ///
         /// to set the PC, use set_pc() instead of this
         pub(crate) fn set_reg(&mut self, idx: &str, value: impl Into<Elem<F>>) {
-            let v = value.into();
-            self.set_reg_impl(idx, v)
+            self.set_reg_impl(idx, value.into())
         }
 
         fn set_reg_impl(&mut self, idx: &str, value: Elem<F>) {
@@ -907,7 +905,7 @@ struct Executor<'a, 'b, F: FieldElement> {
     inputs: &'b Callback<'b, F>,
     bootloader_inputs: Vec<Elem<F>>,
     fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
-    // program columns: maps fixed cols to respective witness cols
+    // program columns: maps "ROM" fixed cols to respective witness cols
     program_cols: HashMap<String, String>,
     step: u32,
     mode: ExecMode,
@@ -944,17 +942,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
     fn sink_id(&self) -> u32 {
         // sink_id is the length of the ROM. we find it by looking at the line instr__loop activates
-        for (i, &val) in self
-            .get_fixed("main__rom::p_instr__loop")
+        self.get_fixed("main__rom::p_instr__loop")
             .unwrap()
             .iter()
-            .enumerate()
-        {
-            if val.is_one() {
-                return i as u32;
-            }
-        }
-        panic!("could not find sink_id by looking at the p_instr__loop column");
+            .position(|val| val.is_one())
+            .map(|pos| pos as u32)
+            .expect("could not find sink_id by looking at the p_instr__loop column")
     }
 
     /// read register value, updating the register memory machine
