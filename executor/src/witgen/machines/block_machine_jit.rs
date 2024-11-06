@@ -341,7 +341,41 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachineJIT<'a, T> {
         &mut self,
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
-        todo!()
+        println!("Number of blocks: {}", self.blocks_generated);
+        // TODO handle dummy block, move first row to last, etc.
+
+        let mut columns = vec![
+            Vec::with_capacity(self.blocks_generated * self.block_size);
+            self.parts.witnesses.len()
+        ];
+        let column_count = self.parts.witnesses.len();
+        let mut vec_idx = 0;
+        for v in self.data.iter_row_major() {
+            columns[vec_idx].push(*v);
+            vec_idx += 1;
+            if vec_idx >= column_count {
+                vec_idx = 0;
+            }
+        }
+        let first_col_id = self
+            .parts
+            .witnesses
+            .iter()
+            .map(|col| col.id)
+            .min()
+            .unwrap_or(0) as usize;
+        columns
+            .into_iter()
+            .enumerate()
+            .map(|(i, v)| {
+                let poly_id = PolyID {
+                    id: i as u64 + first_col_id as u64,
+                    ptype: PolynomialType::Committed,
+                };
+                let col_name = self.fixed_data.column_name(&poly_id).to_string();
+                (col_name, v)
+            })
+            .collect()
     }
 }
 
@@ -385,6 +419,19 @@ impl<'a, T: FieldElement> CompactData<'a, T> {
     pub fn get(&self, row: usize, column: &PolyID) -> &T {
         let index = self.index(row, column);
         &self.data[index]
+    }
+
+    #[inline]
+    pub fn iter_column(&self, column: &PolyID) -> impl Iterator<Item = &T> {
+        self.data
+            .iter()
+            .skip(self.index(0, column))
+            .step_by(self.column_count)
+    }
+
+    #[inline]
+    pub fn iter_row_major(&self) -> impl Iterator<Item = &T> {
+        self.data.iter()
     }
 }
 
