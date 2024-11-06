@@ -180,7 +180,7 @@ fn lookup_via_challenges() {
 }
 
 #[test]
-#[should_panic = "No machine generated witness for column: main::multiplicities"]
+#[should_panic = "Failed to merge the first and last row of the VM 'Main Machine'"]
 fn lookup_via_challenges_range_constraint() {
     // This test currently fails, because witness generation for the multiplicity column
     // does not yet work for range constraints, so the lookup constraints are not satisfied.
