@@ -413,7 +413,7 @@ impl SubmachineKind for SplitGlMachine {
         let hi = args["output_high"].u() as u64;
 
         fn hi_and_lo<F: FieldElement>(hi: u64, lo: u64) -> Elem<F> {
-            Elem::from_u64_as_fe((hi << 32) | lo)
+            Elem::from_u64_as_fe_unchecked((hi << 32) | lo)
         }
 
         let (b0, b1, b2, b3, _) = decompose_lower32(lo as i64);
@@ -455,9 +455,9 @@ impl SubmachineKind for SplitGlMachine {
         // split_gl needs 8 rows:
         // 0
         trace.push_row();
-        trace.set_row("output_low", Elem::from_u64_as_fe(lo & 0xff));
+        trace.set_row("output_low", Elem::from_u64_as_fe_unchecked(lo & 0xff));
         trace.set_row("output_high", 0.into());
-        trace.set_row("in_acc", Elem::from_u64_as_fe(lo & 0xff));
+        trace.set_row("in_acc", Elem::from_u64_as_fe_unchecked(lo & 0xff));
         trace.set_row("bytes", b[1].into());
         trace.set_row("lt", lt[1].into());
         trace.set_row("gt", gt[1].into());
@@ -465,9 +465,9 @@ impl SubmachineKind for SplitGlMachine {
 
         // 1
         trace.push_row();
-        trace.set_row("output_low", Elem::from_u64_as_fe(lo & 0xffff));
+        trace.set_row("output_low", Elem::from_u64_as_fe_unchecked(lo & 0xffff));
         trace.set_row("output_high", 0.into());
-        trace.set_row("in_acc", Elem::from_u64_as_fe(lo & 0xffff));
+        trace.set_row("in_acc", Elem::from_u64_as_fe_unchecked(lo & 0xffff));
         trace.set_row("bytes", b[2].into());
         trace.set_row("lt", lt[2].into());
         trace.set_row("gt", gt[2].into());
@@ -475,9 +475,9 @@ impl SubmachineKind for SplitGlMachine {
 
         // 2
         trace.push_row();
-        trace.set_row("output_low", Elem::from_u64_as_fe(lo & 0xffffff));
+        trace.set_row("output_low", Elem::from_u64_as_fe_unchecked(lo & 0xffffff));
         trace.set_row("output_high", 0.into());
-        trace.set_row("in_acc", Elem::from_u64_as_fe(lo & 0xffffff));
+        trace.set_row("in_acc", Elem::from_u64_as_fe_unchecked(lo & 0xffffff));
         trace.set_row("bytes", b[3].into());
         trace.set_row("lt", lt[3].into());
         trace.set_row("gt", gt[3].into());
@@ -485,9 +485,9 @@ impl SubmachineKind for SplitGlMachine {
 
         // 3
         trace.push_row();
-        trace.set_row("output_low", Elem::from_u64_as_fe(lo));
+        trace.set_row("output_low", Elem::from_u64_as_fe_unchecked(lo));
         trace.set_row("output_high", 0.into());
-        trace.set_row("in_acc", Elem::from_u64_as_fe(lo));
+        trace.set_row("in_acc", Elem::from_u64_as_fe_unchecked(lo));
         trace.set_row("bytes", b[4].into());
         trace.set_row("lt", lt[4].into());
         trace.set_row("gt", gt[4].into());
@@ -495,8 +495,8 @@ impl SubmachineKind for SplitGlMachine {
 
         // 4
         trace.push_row();
-        trace.set_row("output_low", Elem::from_u64_as_fe(lo));
-        trace.set_row("output_high", Elem::from_u64_as_fe(hi & 0xff));
+        trace.set_row("output_low", Elem::from_u64_as_fe_unchecked(lo));
+        trace.set_row("output_high", Elem::from_u64_as_fe_unchecked(hi & 0xff));
         trace.set_row("in_acc", hi_and_lo(hi & 0xff, lo));
         trace.set_row("bytes", b[5].into());
         trace.set_row("lt", lt[5].into());
@@ -505,8 +505,8 @@ impl SubmachineKind for SplitGlMachine {
 
         // 5
         trace.push_row();
-        trace.set_row("output_low", Elem::from_u64_as_fe(lo));
-        trace.set_row("output_high", Elem::from_u64_as_fe(hi & 0xffff));
+        trace.set_row("output_low", Elem::from_u64_as_fe_unchecked(lo));
+        trace.set_row("output_high", Elem::from_u64_as_fe_unchecked(hi & 0xffff));
         trace.set_row("in_acc", hi_and_lo(hi & 0xffff, lo));
         trace.set_row("bytes", b[6].into());
         trace.set_row("lt", lt[6].into());
@@ -515,8 +515,8 @@ impl SubmachineKind for SplitGlMachine {
 
         // 6
         trace.push_row();
-        trace.set_row("output_low", Elem::from_u64_as_fe(lo));
-        trace.set_row("output_high", Elem::from_u64_as_fe(hi & 0xffffff));
+        trace.set_row("output_low", Elem::from_u64_as_fe_unchecked(lo));
+        trace.set_row("output_high", Elem::from_u64_as_fe_unchecked(hi & 0xffffff));
         trace.set_row("in_acc", hi_and_lo(hi & 0xffffff, lo));
         trace.set_row("bytes", b[7].into());
         trace.set_row("lt", lt[7].into());
@@ -526,8 +526,8 @@ impl SubmachineKind for SplitGlMachine {
         // 7: bytes/lt/gt/was_lt are set by the next row
         trace.push_row();
         trace.set_row("sel[0]", 1.into());
-        trace.set_row("output_low", Elem::from_u64_as_fe(lo));
-        trace.set_row("output_high", Elem::from_u64_as_fe(hi));
+        trace.set_row("output_low", Elem::from_u64_as_fe_unchecked(lo));
+        trace.set_row("output_high", Elem::from_u64_as_fe_unchecked(hi));
         trace.set_row("in_acc", hi_and_lo(hi, lo));
     }
 }

@@ -72,11 +72,11 @@ impl<F: FieldElement> Elem<F> {
         Self::Field(F::from(value))
     }
 
-    pub fn from_i64_as_fe(value: i64) -> Self {
+    pub fn from_i32_as_fe(value: i32) -> Self {
         Self::Field(F::from(value))
     }
 
-    pub fn from_u64_as_fe(value: u64) -> Self {
+    pub fn from_u64_as_fe_unchecked(value: u64) -> Self {
         Self::Field(F::from(value))
     }
 
@@ -1116,7 +1116,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 set_col!(tmp1_col, addr1);
                 set_col!(tmp3_col, Elem::from_u32_as_fe(val));
-                set_col!(tmp4_col, Elem::from_i64_as_fe(rem));
+                set_col!(tmp4_col, Elem::from_u32_as_fe(rem as u32));
 
                 let v = addr1.add(&args[1]).as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
@@ -1308,7 +1308,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 self.proc
                     .set_col("main::instr_branch_if_diff_greater_than_param_l", label);
 
-                let p = Elem::from_i64_as_fe((2 << 32) - 1);
+                let p = Elem::from_u32_as_fe(u32::MAX);
                 let val_p = val.add(&p);
 
                 let v = val_p.as_i64_from_lower_bytes();
@@ -1344,7 +1344,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp1_col, val1);
                 set_col!(tmp2_col, val2);
 
-                let p = Elem::from_i64_as_fe((2 << 32) - 1);
+                let p = Elem::from_u32_as_fe(u32::MAX);
                 let val = val.add(&p);
                 let v = val.as_i64_from_lower_bytes();
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(v);
@@ -1571,7 +1571,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 self.reg_write(1, write_reg, r.into(), 3);
 
                 set_col!(tmp1_col, val);
-                set_col!(tmp3_col, Elem::from_i64_as_fe(r.into()));
+                set_col!(tmp3_col, Elem::from_i32_as_fe(r));
 
                 let (b1, b2, b3, b4, _sign) = decompose_lower32(val.u().into());
                 set_col!(X_b1, Elem::from_u32_as_fe(b1.into()));
