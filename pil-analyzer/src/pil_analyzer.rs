@@ -524,6 +524,7 @@ impl PILAnalyzer {
             {
                 Ok(e) => e,
                 Err(e) => {
+                    // TODO propagate this error up
                     panic!("Failed to evaluate degree bound: {e}");
                 }
             };
