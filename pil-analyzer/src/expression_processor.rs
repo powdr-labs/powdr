@@ -144,11 +144,10 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                                 let value = self.process_expression(value);
                                 self.reset_local_variables(vars);
 
-                                let result = Ok(MatchArm {
+                                Ok(MatchArm {
                                     pattern: pattern?,
                                     value: value?,
-                                });
-                                result
+                                })
                             })
                             .collect::<Result<Vec<_>, _>>()?,
                     },
@@ -189,14 +188,15 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                         name: Reference::Poly(PolynomialReference { name, type_args }),
                         fields: fields
                             .into_iter()
-                            .map(|named_expr| {
-                                let processed_body = self.process_expression(*named_expr.body)?;
-                                NamedExpression {
-                                    name: named_expr.name,
-                                    body: Box::new(body),
-                                }
-                            })
-                            .collect::<Vec<_>, _>(),
+                            .map(
+                                |named_expr| -> Result<NamedExpression<Box<Expression>>, Error> {
+                                    Ok(NamedExpression {
+                                        name: named_expr.name,
+                                        body: Box::new(self.process_expression(*named_expr.body)?),
+                                    })
+                                },
+                            )
+                            .collect::<Result<Vec<_>, _>>()?,
                     },
                 )
             }

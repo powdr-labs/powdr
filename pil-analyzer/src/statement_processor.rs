@@ -239,6 +239,11 @@ where
         let ty = Some(match array_size {
             None => base_type.into(),
             Some(len) => {
+                let len = self
+                    .expression_processor(&Default::default())
+                    .process_expression(len)
+                    // TODO propagate this error up
+                    .expect("Failed to process length expression");
                 let length = untyped_evaluator::evaluate_expression_to_int(self.driver, len)
                     .map(|length| {
                         length
@@ -523,7 +528,13 @@ where
             .expression_processor(&Default::default())
             .process_namespaced_polynomial_reference(poly)
             .expect("Failed to process polynomial reference");
+        let type_vars = Default::default();
+        let mut expression_processor = self.expression_processor(&type_vars);
         let array_index = array_index.map(|i| {
+            let i = expression_processor
+                .process_expression(i)
+                // TODO propagate this error up
+                .expect("Failed to process array index expression");
             let index: u64 = untyped_evaluator::evaluate_expression_to_int(self.driver, i)
                 .unwrap()
                 .try_into()
@@ -531,6 +542,10 @@ where
             assert!(index <= usize::MAX as u64);
             index as usize
         });
+
+        let index = expression_processor
+            .process_expression(index) // TODO propagate this error up
+            .expect("Failed to process index");
         vec![PILItem::PublicDeclaration(PublicDeclaration {
             id,
             source,

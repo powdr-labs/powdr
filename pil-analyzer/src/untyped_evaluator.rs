@@ -1,9 +1,8 @@
-use powdr_ast::parsed;
+use powdr_ast::analyzed;
 use powdr_number::{BigInt, GoldilocksField};
 
 use crate::{
     evaluator::{self, EvalError},
-    expression_processor::ExpressionProcessor,
     AnalysisDriver,
 };
 
@@ -14,12 +13,10 @@ use crate::{
 /// This is mainly used to evaluate array lengths in types and namespace degrees.
 pub fn evaluate_expression_to_int(
     driver: impl AnalysisDriver,
-    expr: parsed::Expression,
+    expr: analyzed::Expression,
 ) -> Result<BigInt, EvalError> {
     evaluator::evaluate_expression::<GoldilocksField>(
-        &ExpressionProcessor::new(driver, &Default::default())
-            .process_expression(expr)
-            .map_err(|e| EvalError::TypeError(e.message().to_string()))?, //TODO: better error type
+        &expr,
         driver.definitions(),
         &Default::default(),
     )?
