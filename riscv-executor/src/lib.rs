@@ -2095,36 +2095,58 @@ pub struct Execution<F: FieldElement> {
 }
 
 #[derive(Clone, Copy)]
-pub enum ExecMode {
+enum ExecMode {
     Fast,
     Trace,
 }
 
-/// Execute a Powdr/RISCV assembly source.
-///
-/// Generic argument F is just used by the powdr_parser, before everything is
-/// converted to i64, so it is important to the execution itself.
-#[allow(clippy::too_many_arguments)]
-pub fn execute<F: FieldElement>(
+/// Execute a Powdr/RISCV assembly program, without generating a witness.
+/// Returns the execution trace length.
+pub fn execute_fast<F: FieldElement>(
     asm: &AnalysisASMFile,
     opt_pil: &Analyzed<F>,
-    fixed: Option<FixedColumns<F>>,
     initial_memory: MemoryState,
     inputs: &Callback<F>,
     bootloader_inputs: &[F],
-    mode: ExecMode,
     profiling: Option<ProfilerOptions>,
-) -> Execution<F> {
+) -> usize {
     log::info!("Executing...");
-    execute_ast(
+    execute_inner(
         asm,
         opt_pil,
-        fixed,
+        None,
         initial_memory,
         inputs,
         bootloader_inputs,
         usize::MAX,
-        mode,
+        ExecMode::Fast,
+        profiling,
+    )
+    .main_trace_len
+}
+
+/// Execute and generate a valid witness for a Powdr/RISCV assembly program.
+#[allow(clippy::too_many_arguments)]
+pub fn execute<F: FieldElement>(
+    asm: &AnalysisASMFile,
+    opt_pil: &Analyzed<F>,
+    fixed: FixedColumns<F>,
+    initial_memory: MemoryState,
+    inputs: &Callback<F>,
+    bootloader_inputs: &[F],
+    max_steps_to_execute: Option<usize>,
+    profiling: Option<ProfilerOptions>,
+) -> Execution<F> {
+    log::info!("Executing...");
+    execute_inner(
+        asm,
+        opt_pil,
+        Some(fixed),
+        initial_memory,
+        inputs,
+        bootloader_inputs,
+        max_steps_to_execute.unwrap_or(usize::MAX),
+        ExecMode::Trace,
         profiling,
     )
 }
@@ -2136,7 +2158,7 @@ fn register_by_idx(idx: usize) -> String {
 }
 
 #[allow(clippy::too_many_arguments)]
-pub fn execute_ast<F: FieldElement>(
+fn execute_inner<F: FieldElement>(
     asm: &AnalysisASMFile,
     opt_pil: &Analyzed<F>,
     fixed: Option<FixedColumns<F>>,

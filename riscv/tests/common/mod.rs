@@ -46,11 +46,11 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
         let execution = powdr_riscv_executor::execute(
             &analyzed,
             &pil,
-            Some(fixed),
+            fixed,
             Default::default(),
             pipeline.data_callback().unwrap(),
             &[],
-            powdr_riscv_executor::ExecMode::Trace,
+            None,
             None,
         );
         pipeline.rollback_from_witness();

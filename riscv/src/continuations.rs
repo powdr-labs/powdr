@@ -219,6 +219,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
 
     let asm = pipeline.compute_analyzed_asm().unwrap().clone();
     let pil = pipeline.compute_optimized_pil().unwrap();
+    let fixed = pipeline.compute_fixed_cols().unwrap();
     let main_machine = asm.get_machine(&parse_absolute_path("::Main")).unwrap();
     sanity_check(main_machine, field);
 
@@ -236,10 +237,10 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     // TODO: commit to the merkle_tree root in the verifier.
 
     log::info!("Initial execution...");
-    let full_exec = powdr_riscv_executor::execute_ast::<F>(
+    let full_exec = powdr_riscv_executor::execute::<F>(
         &asm,
         &pil,
-        None,
+        fixed.clone(),
         initial_memory,
         pipeline.data_callback().unwrap(),
         // Run full trace without any accessed pages. This would actually violate the
@@ -247,8 +248,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         // cell has never been accessed). We can't pass the accessed pages here, because
         // we only know them after the full trace has been generated.
         &default_input(&[]),
-        usize::MAX,
-        powdr_riscv_executor::ExecMode::Trace,
+        None,
         profiler_opt,
     );
 
@@ -340,15 +340,14 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         );
 
         log::info!("Simulating chunk execution...");
-        let chunk_exec = powdr_riscv_executor::execute_ast::<F>(
+        let chunk_exec = powdr_riscv_executor::execute::<F>(
             &asm,
             &pil,
-            None,
+            fixed.clone(),
             MemoryState::new(),
             pipeline.data_callback().unwrap(),
             &bootloader_inputs,
-            num_rows,
-            powdr_riscv_executor::ExecMode::Trace,
+            Some(num_rows),
             // profiling was done when full trace was generated
             None,
         );

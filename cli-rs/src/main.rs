@@ -378,27 +378,23 @@ fn execute_fast<F: FieldElement>(
         .with_prover_inputs(inputs)
         .with_output(output_dir.into(), true);
 
-    let fixed = pipeline.compute_fixed_cols().unwrap().clone();
     let asm = pipeline.compute_analyzed_asm().unwrap().clone();
     let pil = pipeline.compute_optimized_pil().unwrap();
-    let exec_mode = powdr::riscv_executor::ExecMode::Fast;
 
     let start = Instant::now();
 
-    let execution = powdr::riscv_executor::execute::<F>(
+    let trace_len = powdr::riscv_executor::execute_fast::<F>(
         &asm,
         &pil,
-        Some(fixed),
         powdr::riscv_executor::MemoryState::new(),
         pipeline.data_callback().unwrap(),
         &[],
-        exec_mode,
         profiling,
     );
 
     let duration = start.elapsed();
     log::info!("Executor done in: {:?}", duration);
-    log::info!("Execution trace length: {}", execution.main_trace_len);
+    log::info!("Execution trace length: {}", trace_len);
     Ok(())
 }
 
@@ -429,18 +425,17 @@ fn execute<F: FieldElement>(
         let fixed = pipeline.compute_fixed_cols().unwrap().clone();
         let asm = pipeline.compute_analyzed_asm().unwrap().clone();
         let pil = pipeline.compute_optimized_pil().unwrap();
-        let exec_mode = powdr::riscv_executor::ExecMode::Trace;
 
         let start = Instant::now();
 
         let execution = powdr::riscv_executor::execute::<F>(
             &asm,
             &pil,
-            Some(fixed),
+            fixed,
             powdr::riscv_executor::MemoryState::new(),
             pipeline.data_callback().unwrap(),
             &[],
-            exec_mode,
+            None,
             profiling,
         );
 

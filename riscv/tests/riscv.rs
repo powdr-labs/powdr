@@ -83,16 +83,13 @@ fn bn254_sanity_check() {
 
     let analyzed = pipeline.compute_analyzed_asm().unwrap().clone();
     let pil = pipeline.compute_optimized_pil().unwrap();
-    powdr_riscv_executor::execute_ast(
+    powdr_riscv_executor::execute_fast(
         &analyzed,
         &pil,
-        None,
         Default::default(),
         pipeline.data_callback().unwrap(),
         // Assume the RISC-V program was compiled without a bootloader, otherwise this will fail.
         &[],
-        usize::MAX,
-        powdr_riscv_executor::ExecMode::Fast,
         Default::default(),
     );
     run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).unwrap();
@@ -608,15 +605,12 @@ fn profiler_sanity_check() {
         flamegraph: true,
         callgrind: true,
     };
-    powdr_riscv_executor::execute_ast(
+    powdr_riscv_executor::execute_fast(
         &analyzed,
         &pil,
-        None,
         Default::default(),
         pipeline.data_callback().unwrap(),
         &[],
-        usize::MAX,
-        powdr_riscv_executor::ExecMode::Fast,
         Some(profiler_opt),
     );
 
