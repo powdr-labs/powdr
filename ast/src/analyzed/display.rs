@@ -43,10 +43,10 @@ impl<T: Display> Display for Analyzed<T> {
             })
             .unique()
             .fold(BTreeMap::default(), |mut degrees, (namespace, degree)| {
-                let inserted = degrees.insert(namespace.clone(), degree).is_none();
+                let is_new = degrees.insert(namespace.clone(), degree).is_none();
                 assert!(
-                    inserted,
-                    "Found symbols with different degrees in namespace {namespace}",
+                    is_new,
+                    "Found symbols with different degrees in namespace {namespace}"
                 );
                 degrees
             });
