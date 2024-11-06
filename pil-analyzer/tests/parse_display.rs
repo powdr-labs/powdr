@@ -828,6 +828,54 @@ fn array_type_trait() {
 
 #[test]
 #[should_panic = "Duplicate symbol definition: Add"]
+fn trait_overlap() {
+    let input = "trait Add<T, Q> {
+        add: T, T -> Q,
+    }
+    trait Add<T, Q> {
+        add: T, T -> Q,
+    }
+    impl Add<int, int> {
+        add: |x, y| x + y,
+    }
+";
+
+    analyze_string(input);
+}
+
+#[test]
+#[should_panic = "Impls for Add: Types (int, int) and (int, int) overlap"]
+fn trait_overlap_impl() {
+    let input = "trait Add<T, Q> {
+        add: T, T -> Q,
+    }
+    impl Add<int, int> {
+        add: |x, y| x + y,
+    }
+    impl Add<int, int> {
+        add: |x, y| x + y,
+    }
+";
+
+    analyze_string(input);
+}
+
+#[test]
+#[should_panic = "Trait Add has 2 type parameters, but implementation has 1"]
+fn trait_wrong_impl() {
+    let input = "trait Add<T, Q> {
+        add: T, T -> Q,
+    }
+    impl Add<int> {
+        add: |x, y| x + y,
+    }
+";
+
+    analyze_string(input);
+}
+
+#[test]
+#[should_panic = "Duplicate symbol definition: Add"]
 fn trait_enum_collisions() {
     let input = "trait Add<T, Q> {
         add: T, T -> Q,
