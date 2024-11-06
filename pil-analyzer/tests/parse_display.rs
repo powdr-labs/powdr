@@ -875,6 +875,20 @@ fn trait_wrong_impl() {
 }
 
 #[test]
+#[should_panic = "Type variable Q is declared but never used in trait declaration Add"]
+fn trait_unused_type_arg() {
+    let input = "trait Add<T, Q> {
+        add: T, T -> T,
+    }
+    impl Add<int, fe> {
+        add: |x, y| x + y,
+    }
+";
+
+    analyze_string(input);
+}
+
+#[test]
 #[should_panic = "Duplicate symbol definition: Add"]
 fn trait_enum_collisions() {
     let input = "trait Add<T, Q> {

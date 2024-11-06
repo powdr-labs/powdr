@@ -99,8 +99,8 @@ impl<'a> TraitsResolver<'a> {
 
     /// Checks for overlapping trait implementations.
     ///
-    /// This method iterates through all the trait implementations.
-    /// For each implementation, it checks that there are no traits with the same name and overlapping type variables.
+    /// This method iterates through all the trait declarations.
+    /// For each declaration, it checks that there are no traits with the same name and overlapping type variables.
     /// Overlapping implementations can lead to ambiguity in trait function calls, even when all types
     /// are fully concrete. This check helps prevent such ambiguities and ensures clear resolution
     /// of trait function calls.
@@ -141,16 +141,29 @@ impl<'a> TraitsResolver<'a> {
         }
     }
 
-    /// Validates the trait implementation definitions in the given `implementations` map against the trait
-    /// declarations in the `definitions` map.
+    /// Validates the trait implementations in the given `implementations` list against the trait
+    /// declarations passed in the `trait_decl` parameter.
     fn validate_impl_definitions(
         &self,
         implementations: &[(&TraitImplementation<Expression>, usize)],
         trait_decl: &TraitDeclaration,
     ) -> Result<(), Error> {
         for trait_impl in implementations {
-            let Type::Tuple(TupleType { items: mut types }) = trait_impl.0.type_scheme.ty.clone()
-            else {
+            let decl_vars_set: HashSet<_> = trait_decl.type_vars.clone().into_iter().collect();
+            let used_vars_set: HashSet<_> = trait_decl
+                .functions
+                .iter()
+                .flat_map(|nt| nt.ty.contained_type_vars())
+                .collect();
+            for var in decl_vars_set.iter() {
+                if !used_vars_set.contains(var) {
+                    return Err(trait_decl.source_ref.with_error(format!(
+                        "Type variable {var} is declared but never used in trait declaration {}",
+                        trait_decl.name
+                    )));
+                }
+            }
+            let Type::Tuple(TupleType { items: ref types }) = trait_impl.0.type_scheme.ty else {
                 panic!("Type from trait scheme is not a tuple.")
             };
             let trait_name = trait_impl.0.name.clone();
@@ -164,25 +177,25 @@ impl<'a> TraitsResolver<'a> {
                 )));
             }
 
-            let type_vars_in_tuple: Vec<_> = types
-                .iter_mut()
-                .flat_map(|t| t.contained_type_vars())
-                .collect();
+            // let type_vars_in_tuple: Vec<_> = types
+            //     .iter_mut()
+            //     .flat_map(|t| t.contained_type_vars())
+            //     .collect();
 
-            let type_vars_in_scheme: Vec<_> = trait_impl.0.type_scheme.vars.vars().collect();
+            // let type_vars_in_scheme: Vec<_> = trait_impl.0.type_scheme.vars.vars().collect();
 
-            for var in type_vars_in_scheme {
-                if !type_vars_in_tuple.contains(&var) {
-                    return Err(trait_impl.0.source_ref.with_error(format!(
-                        "Impl {trait_name} introduces a type variable {var} that's never used",
-                    )));
-                }
-            }
+            // for var in type_vars_in_scheme {
+            //     if !type_vars_in_tuple.contains(&var) {
+            //         return Err(trait_impl.0.source_ref.with_error(format!(
+            //             "Impl {trait_name} introduces a type variable {var} that's never used",
+            //         )));
+            //     }
+            // }
         }
         Ok(())
     }
 
-    /// Ensures that there are no overlapping trait implementations in the given `implementations` map.
+    /// Ensures that there are no overlapping trait implementations in the given `implementations` list.
     ///
     /// This function iterates through all the trait implementations comparing them with each other and ensuring that
     /// there are no traits with overlapping type variables.
