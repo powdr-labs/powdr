@@ -787,10 +787,16 @@ fn trait_def() {
     let input = "trait Add<T, Q> {
         add: T, T -> Q,
     }
+    impl Add<int, int> {
+        add: |x, y| x + y,
+    }
 ";
 
     let expected = "    trait Add<T, Q> {
         add: T, T -> Q,
+    }
+    impl Add<int, int> {
+        add: |x, y| x + y,
     }
 ";
 
@@ -803,10 +809,16 @@ fn array_type_trait() {
     let input = "trait ArraySum<T> {
         array_sum: T[4 + 1] -> T,
     }
+    impl ArraySum<int> {
+        array_sum: |x| 5,
+    }
 ";
 
     let expected = "    trait ArraySum<T> {
         array_sum: T[5] -> T,
+    }
+    impl ArraySum<int> {
+        array_sum: |x| 5_int,
     }
 ";
 
