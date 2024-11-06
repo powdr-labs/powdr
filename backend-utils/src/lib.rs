@@ -189,8 +189,10 @@ fn split_by_namespace<F: FieldElement>(
                 match namespaces.len() {
                     0 => panic!("Identity references no namespace: {identity}"),
                     // add this identity to the only referenced namespace
-                    1 => (namespaces.into_iter().next().unwrap() == current_namespace)
-                        .then(|| (current_namespace.clone(), statement)),
+                    1 => {
+                        current_namespace = namespaces.into_iter().next().unwrap();
+                        Some((current_namespace.clone(), statement))
+                    }
                     _ => match identity {
                         Identity::Lookup(LookupIdentity { left, right, .. })
                         | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. })
