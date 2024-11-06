@@ -327,7 +327,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
         link ~> regs.mstore(W, STEP, pc + 1)
     {
         // TODO: using a tmp col here avoids an extra selector column, because
-        // links with next references on LHS can't currenlty be merged with other links
+        // links with next references on LHS can't currently be merged with other links
         pc' = tmp1_col
     }
 

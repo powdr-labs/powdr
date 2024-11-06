@@ -8,13 +8,18 @@ struct Op<F: FieldElement> {
     addr: u32,
     step: u32,
     value: Elem<F>,
-    write: u32,
+    write: bool,
+    // each machine that's called via permutation has selector array, with one entry per incoming permutation.
+    // This is the idx assigned to the `link` triggering the memory operation.
     selector_idx: u32,
 }
 
 pub struct MemoryMachine<F: FieldElement> {
     name: String,
     ops: Vec<Op<F>>,
+    // this is the size of the "selector array" for this machine. We deduce it
+    // from the largest idx given in incoming read/write operations. Each
+    // element becomes a column in the final trace.
     selector_count: usize,
 }
 
@@ -33,7 +38,7 @@ impl<F: FieldElement> MemoryMachine<F> {
             addr,
             step,
             value: val,
-            write: 1,
+            write: true,
             selector_idx,
         });
     }
@@ -44,7 +49,7 @@ impl<F: FieldElement> MemoryMachine<F> {
             addr,
             step,
             value: val,
-            write: 0,
+            write: false,
             selector_idx,
         });
     }
@@ -134,7 +139,9 @@ impl<F: FieldElement> MemoryMachine<F> {
                 cols[DiffLower as usize].1.push(0.into());
                 cols[Change as usize].1.push(0.into());
             }
-            cols[IsWrite as usize].1.push(op.write.into());
+            cols[IsWrite as usize]
+                .1
+                .push(if op.write { 1.into() } else { 0.into() });
             cols[Step as usize].1.push(op.step.into());
             cols[Addr as usize].1.push(op.addr.into());
             cols[Value as usize].1.push(op.value);

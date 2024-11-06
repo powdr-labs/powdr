@@ -1489,9 +1489,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let val = self.reg_read(0, read_reg, 0);
                 let write_reg = args[1].u();
 
-                //let r = val.u() as i8 as u32;
-                //self.proc.set_reg_mem(write_reg, r.into());
-
                 // Sign extend the byte
                 let byte_val = (val.u() as u8) as i8;
                 let extended_val = byte_val as i32 as u32;
@@ -2404,8 +2401,8 @@ fn execute_inner<F: FieldElement>(
 
 /// Utility function for writing the executor witness CSV file.
 ///
-/// If `all_witness_cols` is given, all columns there will also be outuput, but have empty values when not present in the executor witness
-/// (this is useful for debugging, for easy comparison with with auto witgen export CSV file).
+/// If `all_witness_cols` is given, all columns there will also be output, but have empty values when not present in the executor witness
+/// (this is useful for debugging, for easy comparison with auto witgen export CSV file).
 pub fn write_executor_csv<F: FieldElement, P: AsRef<Path>>(
     file_path: P,
     executor_witness: &[(String, Vec<F>)],

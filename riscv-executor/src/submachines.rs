@@ -32,7 +32,7 @@ impl<F: FieldElement, M: SubmachineKind + 'static> SubmachineBoxed<F> for M {
 }
 
 /// Submachine interface, implemented by SubmachineImpl.
-/// Each specific submachine only need to implement the SubmachineKind trait.
+/// Each specific submachine only needs to implement the SubmachineKind trait.
 /// Trace is built by calling these methods.
 /// It being a trait also allows us to put different submachines in the same hashmap.
 pub trait Submachine<F: FieldElement> {
