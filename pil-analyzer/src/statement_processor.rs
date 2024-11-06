@@ -214,6 +214,7 @@ where
             PilStatement::Expression(_, expr) => vec![PILItem::ProofItem(
                 self.expression_processor(&Default::default())
                     .process_expression(expr)
+                    // TODO propagate this error up
                     .expect("Expression processing failed"),
             )],
             PilStatement::StructDeclaration(source, struct_declaration) => self
