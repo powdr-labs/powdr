@@ -441,7 +441,7 @@ fn execute<F: FieldElement>(
 
         let duration = start.elapsed();
         log::info!("Executor done in: {:?}", duration);
-        log::info!("Execution trace length: {}", execution.main_trace_len);
+        log::info!("Execution trace length: {}", execution.trace_len);
 
         let pil = pipeline.compute_optimized_pil().unwrap();
         let witness_cols: Vec<_> = pil

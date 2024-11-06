@@ -252,7 +252,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         profiler_opt,
     );
 
-    let full_trace_length = full_exec.main_trace_len;
+    let full_trace_length = full_exec.trace_len;
     log::info!("Total trace length: {}", full_trace_length);
 
     let (first_real_execution_row, _) = full_exec.trace["main::pc"]
@@ -450,11 +450,11 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             )
         );
 
-        let actual_num_rows = chunk_exec.trace["main::pc"].len();
+        let actual_num_rows = chunk_exec.trace_len;
         let bootloader_pc = bootloader_inputs[PC_INDEX];
         bootloader_inputs_and_num_rows.push((bootloader_inputs, actual_num_rows as u64));
 
-        log::info!("Chunk trace length: {}", chunk_exec.trace["main::pc"].len());
+        log::info!("Chunk trace length: {}", chunk_exec.trace_len);
         log::info!("Validating chunk...");
         log::info!("Looking for pc = {}...", bootloader_pc);
         let (start, _) = chunk_exec.trace["main::pc"]
@@ -469,7 +469,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             length,
             (length - start - shutdown_routine_rows) * 100 / length
         );
-        for i in 0..(chunk_exec.trace["main::pc"].len() - start) {
+        for i in 0..(chunk_exec.trace_len - start) {
             for &reg in ["main::pc", "main::query_arg_1", "main::query_arg_2"].iter() {
                 let chunk_i = i + start;
                 let full_i = i + proven_trace;
@@ -494,11 +494,11 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             }
         }
 
-        if chunk_exec.trace["main::pc"].len() < num_rows {
+        if chunk_exec.trace_len < num_rows {
             log::info!("Done!");
             break;
         }
-        assert_eq!(chunk_exec.trace["main::pc"].len(), num_rows);
+        assert_eq!(chunk_exec.trace_len, num_rows);
 
         // Minus one, because the last row will have to be repeated in the next chunk.
         let new_rows = num_rows - start - 1;

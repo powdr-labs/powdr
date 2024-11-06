@@ -505,7 +505,7 @@ mod builder {
             }
         }
 
-        pub(crate) fn len(&self) -> usize {
+        pub(crate) fn main_columns_len(&self) -> usize {
             let cols_len = self
                 .trace
                 .cols
@@ -515,9 +515,9 @@ mod builder {
                 .unwrap_or(0);
 
             // sanity check
-            assert!(cols_len <= self.trace.len);
+            assert!(self.trace.len <= cols_len);
 
-            self.trace.len
+            cols_len
         }
 
         /// get the value of PC as of the start of the execution of the current row.
@@ -700,8 +700,7 @@ mod builder {
         pub fn finish(mut self) -> Execution<F> {
             if let ExecMode::Fast = self.mode {
                 return Execution {
-                    // TODO: in FAST mode we don't extend the trace to next power of two. What should this value be in TRACE/FAST?
-                    main_trace_len: self.len(),
+                    trace_len: self.trace.len,
                     memory: self.mem,
                     memory_accesses: Vec::new(),
                     trace: HashMap::new(),
@@ -710,7 +709,10 @@ mod builder {
             }
 
             // fill machine rows up to the next power of two
-            let main_degree = std::cmp::max(self.len().next_power_of_two() as u32, MIN_DEGREE);
+            let main_degree = std::cmp::max(
+                self.main_columns_len().next_power_of_two() as u32,
+                MIN_DEGREE,
+            );
 
             // turn register write operations into witness columns
             let main_regs = self.trace.generate_registers_trace();
@@ -752,7 +754,7 @@ mod builder {
             }
 
             Execution {
-                main_trace_len: self.trace.cols["main::pc"].len(),
+                trace_len: self.trace.len,
                 memory: self.mem,
                 memory_accesses: std::mem::take(&mut self.trace.mem_ops),
                 trace: self
@@ -2082,8 +2084,8 @@ pub type FixedColumns<F> = Arc<Vec<(String, VariablySizedColumn<F>)>>;
 /// Result of the execution.
 /// If executing in ExecMode::Fast, trace and memory fields will be empty.
 pub struct Execution<F: FieldElement> {
-    /// length of main::pc
-    pub main_trace_len: usize,
+    /// number of rows used by the execution (not of the full main columns, which are extended to a power-of-two)
+    pub trace_len: usize,
     /// witness columns
     pub trace: HashMap<String, Vec<F>>,
     /// final memory state
@@ -2122,7 +2124,7 @@ pub fn execute_fast<F: FieldElement>(
         ExecMode::Fast,
         profiling,
     )
-    .main_trace_len
+    .trace_len
 }
 
 /// Execute and generate a valid witness for a Powdr/RISCV assembly program.
