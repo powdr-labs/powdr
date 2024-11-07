@@ -328,7 +328,7 @@ fn handle_array_references_in_prover_functions() {
     col witness x[1];
     N::x[0]' = N::x[0] + 1;
     {
-        let intermediate = N::x[0] + 1_expr;
+        let intermediate = N::x[0_int] + 1_expr;
         query |i| {
             let _: expr = intermediate;
         }

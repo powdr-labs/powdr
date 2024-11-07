@@ -2,20 +2,21 @@
 //! i.e. it turns more complex expressions in identities to simpler expressions.
 
 use std::collections::{BTreeMap, HashMap};
+use std::ops::Bound;
 
 use num_traits::sign::Signed;
 
 use powdr_ast::analyzed::{
     self, AlgebraicBinaryOperation, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, Challenge, Expression, FunctionValueDefinition, PolynomialReference,
-    Reference, Symbol,
+    PolynomialType, Reference, Symbol, SymbolKind,
 };
 use powdr_ast::parsed::{
     self,
     types::Type,
     visitor::{AllChildren, ExpressionVisitable},
-    ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall, FunctionKind, LambdaExpression,
-    LetStatementInsideBlock, Number, Pattern, TypedExpression, UnaryOperation,
+    ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall, FunctionKind, IndexAccess,
+    LambdaExpression, LetStatementInsideBlock, Number, Pattern, TypedExpression, UnaryOperation,
 };
 use powdr_number::{BigUint, FieldElement};
 use powdr_parser_util::SourceRef;
@@ -31,7 +32,7 @@ pub fn try_to_function_value_definition<T: FieldElement>(
     value: &Value<'_, T>,
     expected_kind: FunctionKind,
 ) -> Result<FunctionValueDefinition, EvalError> {
-    let mut e = Expressionizer { symbols }.try_value_to_expression(value)?;
+    let mut e = Expressionizer::new(symbols).try_value_to_expression(value)?;
 
     // Set the lambda kind since this is used to detect hints in some cases.
     // Can probably be removed once we have prover functions.
@@ -55,14 +56,25 @@ pub fn try_value_to_expression<T: FieldElement>(
     symbols: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     value: &Value<'_, T>,
 ) -> Result<Expression, EvalError> {
-    Expressionizer { symbols }.try_value_to_expression(value)
+    Expressionizer::new(symbols).try_value_to_expression(value)
 }
 
 struct Expressionizer<'a> {
-    symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    poly_id_to_name: BTreeMap<(PolynomialType, u64), &'a str>,
 }
 
 impl<'a> Expressionizer<'a> {
+    pub fn new(symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>) -> Self {
+        let poly_id_to_name = symbols
+            .iter()
+            .filter_map(|(name, (symbol, _))| match &symbol.kind {
+                SymbolKind::Poly(poly_type) => Some(((*poly_type, symbol.id), name.as_str())),
+                _ => None,
+            })
+            .collect();
+        Self { poly_id_to_name }
+    }
+
     /// Turns a closure back into a (source) expression by prefixing
     /// potentially captured variables as let statements.
     fn try_closure_to_expression<T: FieldElement>(
@@ -233,27 +245,8 @@ impl<'a> Expressionizer<'a> {
         e: &AlgebraicExpression<T>,
     ) -> Result<Expression, EvalError> {
         Ok(match e {
-            AlgebraicExpression::Reference(AlgebraicReference {
-                name,
-                poly_id: _,
-                next,
-            }) => {
-                let e = Expression::Reference(
-                    SourceRef::unknown(),
-                    Reference::Poly(PolynomialReference {
-                        name: name.clone(),
-                        type_args: None,
-                    }),
-                );
-                if *next {
-                    UnaryOperation {
-                        op: parsed::UnaryOperator::Next,
-                        expr: Box::new(e),
-                    }
-                    .into()
-                } else {
-                    e
-                }
+            AlgebraicExpression::Reference(reference) => {
+                self.algebraic_reference_to_expression(reference)
             }
 
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
@@ -305,6 +298,66 @@ impl<'a> Expressionizer<'a> {
                 Expression::PublicReference(SourceRef::unknown(), s.clone())
             }
         })
+    }
+
+    fn algebraic_reference_to_expression(
+        &self,
+        AlgebraicReference {
+            name,
+            poly_id,
+            next,
+        }: &AlgebraicReference,
+    ) -> Expression {
+        // First we need to find out if the reference is an array element
+        // or a single symbol.
+        let ((_, array_start), symbol_name) = self
+            .poly_id_to_name
+            .range((
+                Bound::Unbounded,
+                Bound::Included((poly_id.ptype, poly_id.id)),
+            ))
+            .last()
+            .unwrap();
+        let e = if *array_start == poly_id.id && symbol_name == name {
+            // Not an array element, just a single symbol
+            Expression::Reference(
+                SourceRef::unknown(),
+                Reference::Poly(PolynomialReference {
+                    name: name.clone(),
+                    type_args: None,
+                }),
+            )
+        } else {
+            // Array element: Construct an index access expression
+            // and use the name of the array, not the array element.
+            let r = Expression::Reference(
+                SourceRef::unknown(),
+                Reference::Poly(PolynomialReference {
+                    name: symbol_name.to_string(),
+                    type_args: None,
+                }),
+            );
+            let index = Number {
+                value: BigUint::from(poly_id.id - *array_start),
+                type_: Some(Type::Int),
+            }
+            .into();
+            IndexAccess {
+                array: Box::new(r),
+                index: Box::new(index),
+            }
+            .into()
+        };
+        // Add next operator if necessary.
+        if *next {
+            UnaryOperation {
+                op: parsed::UnaryOperator::Next,
+                expr: Box::new(e),
+            }
+            .into()
+        } else {
+            e
+        }
     }
 }
 
