@@ -25,21 +25,21 @@ use crate::Identity;
 use super::{Connection, ConnectionKind, Machine};
 
 type Application = (Vec<PolyID>, Vec<PolyID>);
-type Index<T> = BTreeMap<Vec<T>, IndexValue>;
+type Index<T> = BTreeMap<Vec<T>, IndexValue<T>>;
 
 #[derive(Debug)]
-struct IndexValue(Option<NonZeroUsize>);
+struct IndexValue<T>(Vec<T>);
 
-impl IndexValue {
+impl<T> IndexValue<T> {
     pub fn multiple_matches() -> Self {
-        Self(None)
+        Self(vec![])
     }
-    pub fn single_row(row: usize) -> Self {
+    pub fn single_row(&[T]row: usize) -> Self {
         // TODO check how expensive the check is
         // We negate to make it actually nonzero.
         Self(NonZeroUsize::new(!row))
     }
-    fn row(&self) -> Option<usize> {
+    fn values(&self) -> &[T] {
         self.0.map(|row| (!row.get()))
     }
 }
@@ -89,7 +89,7 @@ impl<T: FieldElement> IndexedColumns<T> {
         let (sorted_input_fixed_columns, sorted_output_fixed_columns) = &sorted_fixed_columns;
 
         // create index for this lookup
-        log::trace!(
+        log::info!(
             "Generating index for lookup in columns (in: {}, out: {})",
             sorted_input_fixed_columns
                 .iter()
@@ -156,13 +156,21 @@ impl<T: FieldElement> IndexedColumns<T> {
             )
             .0;
 
-        log::trace!(
+        log::info!(
             "Done creating index. Size (as flat list): entries * (num_inputs * input_size + row_pointer_size) = {} * ({} * {} bytes + {} bytes) = {} bytes",
             index.len(),
             input_column_values.len(),
             mem::size_of::<T>(),
             mem::size_of::<IndexValue>(),
             index.len() * (input_column_values.len() * mem::size_of::<T>() + mem::size_of::<IndexValue>())
+        );
+        println!("Size as full rows: entries * (num_inputs * input_size + num_outputs * output_size) = {} * ({} * {} bytes + {} * {} bytes) = {} MB",
+            index.len(),
+            input_column_values.len(),
+            mem::size_of::<T>(),
+            output_column_values.len(),
+            mem::size_of::<T>(),
+            (index.len() * (input_column_values.len() * mem::size_of::<T>() + output_column_values.len() * mem::size_of::<T>())) / 1024 / 1024
         );
         self.indices.insert(
             (
