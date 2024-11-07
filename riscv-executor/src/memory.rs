@@ -15,7 +15,7 @@ struct Op<F: FieldElement> {
 }
 
 pub struct MemoryMachine<F: FieldElement> {
-    name: String,
+    pub namespace: String,
     ops: Vec<Op<F>>,
     // this is the size of the "selector array" for this machine. We deduce it
     // from the largest idx given in incoming read/write operations. Each
@@ -24,9 +24,9 @@ pub struct MemoryMachine<F: FieldElement> {
 }
 
 impl<F: FieldElement> MemoryMachine<F> {
-    pub fn new(name: &str) -> Self {
+    pub fn new(namespace: &str) -> Self {
         MemoryMachine {
-            name: name.to_string(),
+            namespace: namespace.to_string(),
             ops: Vec::new(),
             selector_count: 0,
         }
@@ -81,37 +81,37 @@ impl<F: FieldElement> MemoryMachine<F> {
 
         let mut cols = vec![
             (
-                format!("{}::m_addr", self.name),
+                format!("{}::m_addr", self.namespace),
                 Vec::with_capacity(len as usize),
             ),
             (
-                format!("{}::m_step", self.name),
+                format!("{}::m_step", self.namespace),
                 Vec::with_capacity(len as usize),
             ),
             (
-                format!("{}::m_change", self.name),
+                format!("{}::m_change", self.namespace),
                 Vec::with_capacity(len as usize),
             ),
             (
-                format!("{}::m_value", self.name),
+                format!("{}::m_value", self.namespace),
                 Vec::with_capacity(len as usize),
             ),
             (
-                format!("{}::m_is_write", self.name),
+                format!("{}::m_is_write", self.namespace),
                 Vec::with_capacity(len as usize),
             ),
             (
-                format!("{}::m_diff_lower", self.name),
+                format!("{}::m_diff_lower", self.namespace),
                 Vec::with_capacity(len as usize),
             ),
             (
-                format!("{}::m_diff_upper", self.name),
+                format!("{}::m_diff_upper", self.namespace),
                 Vec::with_capacity(len as usize),
             ),
         ];
         for i in 0..self.selector_count as u32 {
             cols.push((
-                format!("{}::selectors[{}]", self.name, i),
+                format!("{}::selectors[{}]", self.namespace, i),
                 Vec::with_capacity(len as usize),
             ));
         }

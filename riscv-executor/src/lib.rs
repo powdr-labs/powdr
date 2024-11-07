@@ -370,7 +370,10 @@ impl<F: FieldElement> RegisterMemory<F> {
 mod builder {
     use std::{cmp, collections::HashMap};
 
-    use powdr_ast::asm_analysis::{Machine, RegisterTy};
+    use powdr_ast::{
+        analyzed::{Analyzed, DegreeRange},
+        asm_analysis::{Machine, RegisterTy},
+    };
     use powdr_number::FieldElement;
 
     use crate::{
@@ -379,8 +382,19 @@ mod builder {
         Submachine, SubmachineBoxed, PC_INITIAL_VAL,
     };
 
-    // TODO: where do we get this from? I don't think we want to depend on the linker crate just for this
-    const MIN_DEGREE: u32 = 1 << 5;
+    fn namespace_degree_range<F: FieldElement>(
+        opt_pil: &Analyzed<F>,
+        namespace: &str,
+    ) -> DegreeRange {
+        opt_pil
+            .committed_polys_in_source_order()
+            .find(|(s, _)| s.absolute_name.contains(&format!("{namespace}::")))
+            .and_then(|(s, _)| s.degree)
+            .unwrap_or(DegreeRange {
+                min: 0,
+                max: u32::MAX as u64,
+            })
+    }
 
     fn register_names(main: &Machine) -> Vec<&str> {
         main.registers
@@ -397,6 +411,7 @@ mod builder {
 
     pub struct TraceBuilder<'b, F: FieldElement> {
         trace: ExecutionTrace<F>,
+
         pub submachines: HashMap<String, Box<dyn Submachine<F>>>,
         pub regs_machine: MemoryMachine<F>,
         pub memory_machine: MemoryMachine<F>,
@@ -439,9 +454,9 @@ mod builder {
         /// May fail if max_rows_len is too small or if the main machine is
         /// empty. In this case, the final (empty) execution trace is returned
         /// in Err.
-        #[allow(clippy::type_complexity)]
         pub fn new(
             main: &'a Machine,
+            opt_pil: Option<&Analyzed<F>>,
             witness_cols: Vec<String>,
             mem: MemoryState,
             batch_to_line_map: &'b [u32],
@@ -498,7 +513,7 @@ mod builder {
             };
 
             if ret.has_enough_rows() || ret.set_next_pc().is_none() {
-                Err(Box::new(ret.finish()))
+                Err(Box::new(ret.finish(opt_pil)))
             } else {
                 Ok(ret)
             }
@@ -695,7 +710,7 @@ mod builder {
             self.reg_mem.second_last = self.reg_mem.last.clone();
         }
 
-        pub fn finish(mut self) -> Execution<F> {
+        pub fn finish(mut self, opt_pil: Option<&Analyzed<F>>) -> Execution<F> {
             if let ExecMode::Fast = self.mode {
                 return Execution {
                     trace_len: self.trace.len,
@@ -706,11 +721,21 @@ mod builder {
                 };
             }
 
-            // fill machine rows up to the next power of two
-            let main_degree = std::cmp::max(
-                self.main_columns_len().next_power_of_two() as u32,
-                MIN_DEGREE,
-            );
+            let pil = opt_pil.unwrap();
+
+            let main_degree = {
+                let range = namespace_degree_range(pil, "main");
+                assert!(
+                    self.main_columns_len().next_power_of_two() <= range.max as usize,
+                    "main machine larger than PIL's max degree: {} > {}",
+                    self.main_columns_len().next_power_of_two(),
+                    range.max as usize
+                );
+                std::cmp::max(
+                    self.main_columns_len().next_power_of_two() as u32,
+                    range.min as u32,
+                )
+            };
 
             // turn register write operations into witness columns
             let main_regs = self.trace.generate_registers_trace();
@@ -720,14 +745,22 @@ mod builder {
             self.extend_rows(main_degree);
 
             // add submachine traces to main trace
-            for (name, mut machine) in self.submachines {
-                if name.is_empty() {
+            // ----------------------------
+            for (_, mut machine) in self.submachines {
+                if machine.len() == 0 {
                     // ignore empty machines
                     continue;
                 }
                 machine.final_row_override();
+                let range = namespace_degree_range(pil, &machine.namespace());
+                assert!(
+                    machine.len().next_power_of_two() <= range.max as u32,
+                    "machine {} larger than PIL's max degree",
+                    machine.namespace()
+                );
                 // extend with dummy blocks up to the required machine degree
-                let machine_degree = std::cmp::max(machine.len().next_power_of_two(), MIN_DEGREE);
+                let machine_degree =
+                    std::cmp::max(machine.len().next_power_of_two(), range.min as u32);
                 while machine.len() < machine_degree {
                     machine.push_dummy_block();
                 }
@@ -737,16 +770,35 @@ mod builder {
             }
 
             // add regs memory trace
-            let regs_degree =
-                std::cmp::max(self.regs_machine.len().next_power_of_two(), MIN_DEGREE);
-
+            // ----------------------------
+            let regs_degree = {
+                let range = namespace_degree_range(pil, &self.regs_machine.namespace);
+                assert!(
+                    self.regs_machine.len().next_power_of_two() <= range.max as u32,
+                    "register memory machine larger than PIL's max degree",
+                );
+                std::cmp::max(
+                    self.regs_machine.len().next_power_of_two(),
+                    range.min as u32,
+                )
+            };
             for (col_name, col) in self.regs_machine.take_cols(regs_degree) {
                 assert!(self.trace.cols.insert(col_name, col).is_none());
             }
 
             // add main memory trace
-            let mem_degree =
-                std::cmp::max(self.memory_machine.len().next_power_of_two(), MIN_DEGREE);
+            // ----------------------------
+            let mem_degree = {
+                let range = namespace_degree_range(pil, &self.memory_machine.namespace);
+                assert!(
+                    self.memory_machine.len().next_power_of_two() <= range.max as u32,
+                    "register memory machine larger than PIL's max degree",
+                );
+                std::cmp::max(
+                    self.memory_machine.len().next_power_of_two(),
+                    range.min as u32,
+                )
+            };
             for (col_name, col) in self.memory_machine.take_cols(mem_degree) {
                 assert!(self.trace.cols.insert(col_name, col).is_none());
             }
@@ -2197,6 +2249,7 @@ fn execute_inner<F: FieldElement>(
 
     let proc = match TraceBuilder::<'_, F>::new(
         main_machine,
+        opt_pil,
         witness_cols,
         initial_memory,
         &batch_to_line_map,
@@ -2395,7 +2448,7 @@ fn execute_inner<F: FieldElement>(
         e.proc.set_col("main::_operation_id", sink_id.into());
     }
 
-    e.proc.finish()
+    e.proc.finish(opt_pil)
 }
 
 /// Utility function for writing the executor witness CSV file.

@@ -87,6 +87,10 @@ enum Commands {
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         continuations: bool,
+
+        /// Maximum trace length for powdr machines (2 ^ max_degree_log).
+        #[arg(long)]
+        max_degree_log: Option<u8>,
     },
     /// Translate a RISC-V statically linked executable to powdr assembly.
     RiscvElf {
@@ -247,12 +251,14 @@ fn run_command(command: Commands) {
             output_directory,
             coprocessors,
             continuations,
+            max_degree_log,
         } => compile_rust(
             &file,
             field.as_known_field(),
             Path::new(&output_directory),
             coprocessors,
             continuations,
+            max_degree_log,
         ),
         Commands::RiscvElf {
             file,
@@ -343,9 +349,13 @@ fn compile_rust(
     output_dir: &Path,
     coprocessors: Option<String>,
     continuations: bool,
+    max_degree_log: Option<u8>,
 ) -> Result<(), Vec<String>> {
     let libs = coprocessors_to_options(coprocessors)?;
-    let options = CompilerOptions::new(field, libs, continuations);
+    let mut options = CompilerOptions::new(field, libs, continuations);
+    if let Some(max_degree_log) = max_degree_log {
+        options = options.with_max_degree_log(max_degree_log);
+    }
     powdr::riscv::compile_rust(file_name, options, output_dir, true, None)
         .ok_or_else(|| vec!["could not compile rust".to_string()])?;
 

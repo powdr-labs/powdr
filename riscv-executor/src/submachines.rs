@@ -36,6 +36,8 @@ impl<F: FieldElement, M: SubmachineKind + 'static> SubmachineBoxed<F> for M {
 /// Trace is built by calling these methods.
 /// It being a trait also allows us to put different submachines in the same hashmap.
 pub trait Submachine<F: FieldElement> {
+    /// submachine namespace
+    fn namespace(&self) -> &str;
     /// current number of rows
     fn len(&self) -> u32;
     /// add a new operation to the trace
@@ -51,15 +53,15 @@ pub trait Submachine<F: FieldElement> {
 
 /// Concrete implementation of the Submachine trait
 struct SubmachineImpl<F: FieldElement, M: SubmachineKind> {
-    name: String,
+    namespace: String,
     trace: SubmachineTrace<F>,
     m: std::marker::PhantomData<M>,
 }
 
 impl<F: FieldElement, M: SubmachineKind> SubmachineImpl<F, M> {
-    pub fn new(name: &str) -> Self {
+    pub fn new(namespace: &str) -> Self {
         SubmachineImpl {
-            name: name.to_string(),
+            namespace: namespace.to_string(),
             trace: SubmachineTrace::new(M::COLS),
             m: std::marker::PhantomData,
         }
@@ -67,9 +69,14 @@ impl<F: FieldElement, M: SubmachineKind> SubmachineImpl<F, M> {
 }
 
 impl<F: FieldElement, M: SubmachineKind> Submachine<F> for SubmachineImpl<F, M> {
+    fn namespace(&self) -> &str {
+        self.namespace.as_str()
+    }
+
     fn len(&self) -> u32 {
         self.trace.len()
     }
+
     fn add_operation(&mut self, name: &str, args: &[(&str, Elem<F>)]) {
         M::add_operation(&mut self.trace, name, args);
     }
@@ -85,7 +92,7 @@ impl<F: FieldElement, M: SubmachineKind> Submachine<F> for SubmachineImpl<F, M> 
     fn take_cols(&mut self) -> Vec<(String, Vec<Elem<F>>)> {
         self.trace
             .take_cols()
-            .map(|(k, v)| (format!("{}::{}", self.name, k), v))
+            .map(|(k, v)| (format!("{}::{}", self.namespace, k), v))
             .collect()
     }
 }
