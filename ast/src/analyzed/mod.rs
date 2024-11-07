@@ -361,8 +361,8 @@ impl<T> Analyzed<T> {
             .for_each(|definition| definition.post_visit_expressions_mut(f))
     }
 
-    /// Retrieves (col_name, poly_id, offset, stage) of each public witness in the trace.
-    pub fn get_publics(&self) -> Vec<(String, PolyID, usize, u8)> {
+    /// Retrieves (name, col_name, poly_id, offset, stage) of each public witness in the trace.
+    pub fn get_publics(&self) -> Vec<(String, String, PolyID, usize, u8)> {
         let mut publics = self
             .public_declarations
             .values()
@@ -380,7 +380,13 @@ impl<T> Analyzed<T> {
                     )
                 };
                 let row_offset = public_declaration.index as usize;
-                (column_name, poly_id, row_offset, stage)
+                (
+                    public_declaration.name.clone(),
+                    column_name,
+                    poly_id,
+                    row_offset,
+                    stage,
+                )
             })
             .collect::<Vec<_>>();
 
