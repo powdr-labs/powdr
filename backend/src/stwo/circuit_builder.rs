@@ -22,8 +22,6 @@ pub type PowdrComponent<'a, F> = FrameworkComponent<PowdrEval<F>>;
 
 pub struct PowdrCircuit<'a, T> {
     analyzed: Arc<Analyzed<T>>,
-    /// Callback to augment the witness in the later stages.
-    _witgen_callback: Option<WitgenCallback<T>>,
     /// The value of the witness columns, if set
     pub witness: Option<&'a [(String, Vec<T>)]>,
 }
@@ -32,17 +30,10 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
     pub fn new(analyzed: Arc<Analyzed<T>>) -> Self {
         Self {
             analyzed,
-            _witgen_callback: None,
             witness: None,
         }
     }
 
-    pub(crate) fn with_witgen_callback(self, witgen_callback: WitgenCallback<T>) -> Self {
-        Self {
-            _witgen_callback: Some(witgen_callback),
-            ..self
-        }
-    }
 
     pub(crate) fn with_witness(self, witness: &'a [(String, Vec<T>)]) -> Self {
         Self {

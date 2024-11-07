@@ -73,7 +73,6 @@ impl<F: FieldElement> StwoProver<F> {
             );
 
         let trace = PowdrCircuit::new(self.analyzed.clone())
-            .with_witgen_callback(witgen_callback)
             .with_witness(witness)
             .into_stwo_circuit_trace();
 
