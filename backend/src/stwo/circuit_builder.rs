@@ -54,10 +54,7 @@ impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
                     let values = values
                         .iter()
                         .map(|v| {
-                            match v.try_into_i32() {
-                                Some(val) => M31::from(val), // Convert from i32 to M31
-                                None => M31::default(), // Handle None case, assuming M31::default() is valid
-                            }
+v.try_into_i32().unwrap().into()
                         })
                         .collect();
                     (name.clone(), values)
