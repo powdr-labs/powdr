@@ -392,7 +392,7 @@ impl Runtime {
         // they can overlap.
         let implementation = std::iter::once("poseidon2_gl 10, 11;".to_string());
 
-        self.add_syscall(Syscall::PoseidonGL, implementation);
+        self.add_syscall(Syscall::Poseidon2GL, implementation);
         self
     }
 
