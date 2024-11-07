@@ -28,21 +28,17 @@ type Application = (Vec<PolyID>, Vec<PolyID>);
 type Index<T> = BTreeMap<Vec<T>, IndexValue<T>>;
 
 #[derive(Debug)]
-struct IndexValue<T>(usize, Vec<T>);
+struct IndexValue<T>(Option<(usize, Vec<T>)>);
 
 impl<T> IndexValue<T> {
     pub fn multiple_matches() -> Self {
-        Self(0, vec![])
+        Self(None)
     }
     pub fn single_row(row: usize, values: Vec<T>) -> Self {
-        Self(row, values)
+        Self(Some((row, values)))
     }
-    pub fn row_and_values(&self) -> Option<(usize, &Vec<T>)> {
-        if self.1.is_empty() {
-            None
-        } else {
-            Some((self.0, &self.1))
-        }
+    pub fn get(&self) -> Option<(usize, &Vec<T>)> {
+        self.0.as_ref().map(|(row, values)| (*row, values))
     }
 }
 
@@ -63,10 +59,10 @@ impl<T: FieldElement> IndexedColumns<T> {
         mut output_fixed_columns: Vec<PolyID>,
     ) -> Option<&IndexValue<T>> {
         // sort in order to have a single index for [X, Y] and for [Y, X]
-        assignment.sort_by(|(name0, _), (name1, _)| name0.cmp(name1));
+        //assignment.sort_by(|(name0, _), (name1, _)| name0.cmp(name1));
         let (input_fixed_columns, values): (Vec<_>, Vec<_>) = assignment.into_iter().unzip();
         // sort the output as well
-        output_fixed_columns.sort();
+        //output_fixed_columns.sort();
 
         let fixed_columns = (input_fixed_columns, output_fixed_columns);
 
@@ -82,16 +78,13 @@ impl<T: FieldElement> IndexedColumns<T> {
 
     /// Create an index for a set of columns to be queried, if does not exist already
     /// `input_fixed_columns` is assumed to be sorted
-    fn ensure_index(&mut self, fixed_data: &FixedData<T>, sorted_fixed_columns: &Application) {
+    fn ensure_index(&mut self, fixed_data: &FixedData<T>, fixed_columns: &Application) {
         // we do not use the Entry API here because we want to clone `sorted_input_fixed_columns` only on index creation
-        if self.indices.contains_key(sorted_fixed_columns) {
+        if self.indices.contains_key(fixed_columns) {
             return;
         }
 
-        let (sorted_input_fixed_columns, sorted_output_fixed_columns) = &sorted_fixed_columns;
-
-        // A non-empty index vector equals "multiple matches".
-        assert!(!sorted_input_fixed_columns.is_empty());
+        let (sorted_input_fixed_columns, sorted_output_fixed_columns) = &fixed_columns;
 
         // create index for this lookup
         log::info!(
@@ -313,7 +306,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
                 EvalError::FixedLookupFailed(input_assignment)
             })?;
 
-        let Some((row, output)) = index_value.row_and_values() else {
+        let Some((row, output)) = index_value.get() else {
             // multiple matches, we stop and learnt nothing
             return Ok(EvalValue::incomplete(
                 IncompleteCause::MultipleLookupMatches,
