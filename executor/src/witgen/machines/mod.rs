@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Display;
 
-use powdr_ast::analyzed::{self, DegreeRange, PolyID};
+use powdr_ast::analyzed::{self, AlgebraicExpression, DegreeRange, PolyID};
 
 use powdr_number::DegreeType;
 use powdr_number::FieldElement;
@@ -151,13 +151,16 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 /// A connection is a witness generation directive to propagate rows across machines
 pub struct Connection<'a, T> {
     pub left: &'a analyzed::SelectedExpressions<T>,
     pub right: &'a analyzed::SelectedExpressions<T>,
     /// For [ConnectionKind::Permutation], rows of `left` are a permutation of rows of `right`. For [ConnectionKind::Lookup], all rows in `left` are in `right`.
     pub kind: ConnectionKind,
+    /// If the connection comes from a phantom lookup, this is the multiplicity column.
+    /// Note that multiple connections can share the same multiplicity column.
+    pub multiplicity_column: Option<PolyID>,
 }
 
 impl<'a, T: Display> Display for Connection<'a, T> {
@@ -176,7 +179,7 @@ impl<'a, T> Connection<'a, T> {
     }
 }
 
-impl<'a, T> TryFrom<&'a Identity<T>> for Connection<'a, T> {
+impl<'a, T: Display> TryFrom<&'a Identity<T>> for Connection<'a, T> {
     type Error = &'a Identity<T>;
 
     fn try_from(identity: &'a Identity<T>) -> Result<Self, Self::Error> {
@@ -185,28 +188,38 @@ impl<'a, T> TryFrom<&'a Identity<T>> for Connection<'a, T> {
                 left: &i.left,
                 right: &i.right,
                 kind: ConnectionKind::Lookup,
+                multiplicity_column: None,
             }),
             Identity::PhantomLookup(i) => Ok(Connection {
                 left: &i.left,
                 right: &i.right,
                 kind: ConnectionKind::Lookup,
+                multiplicity_column: Some(match &i.multiplicity {
+                    AlgebraicExpression::Reference(reference) => reference.poly_id,
+                    _ => unimplemented!(
+                        "Only simple references are supported, got: {}",
+                        i.multiplicity
+                    ),
+                }),
             }),
             Identity::Permutation(i) => Ok(Connection {
                 left: &i.left,
                 right: &i.right,
                 kind: ConnectionKind::Permutation,
+                multiplicity_column: None,
             }),
             Identity::PhantomPermutation(i) => Ok(Connection {
                 left: &i.left,
                 right: &i.right,
                 kind: ConnectionKind::Permutation,
+                multiplicity_column: None,
             }),
             _ => Err(identity),
         }
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum ConnectionKind {
     Lookup,
     Permutation,
@@ -234,10 +247,6 @@ pub struct MachineParts<'a, T: FieldElement> {
     pub identities: Vec<&'a Identity<T>>,
     /// Witness columns relevant to this machine.
     pub witnesses: HashSet<PolyID>,
-    /// Maps an identity ID to the corresponding multiplicity column.
-    /// Only contains identity IDs of identities stored in `connections`.
-    /// Note that multiple identity IDs can map to the same multiplicity column.
-    pub identity_id_to_multiplicity: BTreeMap<u64, PolyID>,
     /// Prover functions that are relevant for this machine.
     pub prover_functions: Vec<&'a analyzed::Expression>,
 }
@@ -248,7 +257,6 @@ impl<'a, T: FieldElement> MachineParts<'a, T> {
         connections: BTreeMap<u64, Connection<'a, T>>,
         identities: Vec<&'a Identity<T>>,
         witnesses: HashSet<PolyID>,
-        identity_id_to_multiplicity: BTreeMap<u64, PolyID>,
         prover_functions: Vec<&'a analyzed::Expression>,
     ) -> Self {
         Self {
@@ -256,7 +264,6 @@ impl<'a, T: FieldElement> MachineParts<'a, T> {
             connections,
             identities,
             witnesses,
-            identity_id_to_multiplicity,
             prover_functions,
         }
     }

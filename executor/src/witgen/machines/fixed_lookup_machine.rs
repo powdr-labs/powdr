@@ -1,13 +1,10 @@
-use num_traits::One;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::Peekable;
 use std::mem;
 use std::num::NonZeroUsize;
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{
-    AlgebraicReference, LookupIdentity, PhantomLookupIdentity, PolyID, PolynomialType,
-};
+use powdr_ast::analyzed::{AlgebraicReference, PolyID, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::affine_expression::{AffineExpression, AlgebraicVariable};
@@ -19,9 +16,8 @@ use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly_ref;
 use crate::witgen::{EvalError, EvalValue, IncompleteCause, MutableState, QueryCallback};
 use crate::witgen::{EvalResult, FixedData};
-use crate::Identity;
 
-use super::{Connection, ConnectionKind, Machine};
+use super::{Connection, Machine};
 
 type Application = (Vec<PolyID>, Vec<PolyID>);
 type Index<T> = BTreeMap<Vec<T>, IndexValue>;
@@ -186,37 +182,11 @@ pub struct FixedLookup<'a, T: FieldElement> {
 impl<'a, T: FieldElement> FixedLookup<'a, T> {
     pub fn new(
         global_constraints: GlobalConstraints<T>,
-        all_identities: Vec<&'a Identity<T>>,
         fixed_data: &'a FixedData<'a, T>,
         multiplicity_column_sizes: BTreeMap<PolyID, DegreeType>,
-        id_to_multiplicity: BTreeMap<u64, PolyID>,
+        connections: BTreeMap<u64, Connection<'a, T>>,
     ) -> Self {
-        let connections = all_identities
-            .into_iter()
-            .filter_map(|i| match i {
-                Identity::Lookup(LookupIdentity {
-                    id, left, right, ..
-                })
-                | Identity::PhantomLookup(PhantomLookupIdentity {
-                    id, left, right, ..
-                }) => (right.selector.is_one()
-                    && right.expressions.iter().all(|e| {
-                        try_to_simple_poly_ref(e)
-                            .map(|poly| poly.poly_id.ptype == PolynomialType::Constant)
-                            .unwrap_or(false)
-                    })
-                    && !right.expressions.is_empty())
-                .then_some((
-                    *id,
-                    Connection {
-                        left,
-                        right,
-                        kind: ConnectionKind::Lookup,
-                    },
-                )),
-                _ => None,
-            })
-            .collect();
+        let multiplicity_counter = MultiplicityCounter::new(&connections);
 
         Self {
             global_constraints,
@@ -224,7 +194,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             connections,
             fixed_data,
             multiplicity_column_sizes,
-            multiplicity_counter: MultiplicityCounter::new(id_to_multiplicity),
+            multiplicity_counter,
         }
     }
 

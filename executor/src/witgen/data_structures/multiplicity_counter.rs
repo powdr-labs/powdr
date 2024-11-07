@@ -3,6 +3,8 @@ use std::collections::BTreeMap;
 use powdr_ast::analyzed::PolyID;
 use powdr_number::{DegreeType, FieldElement};
 
+use crate::witgen::machines::Connection;
+
 /// Utility for counting the multiplicities for lookups.
 pub struct MultiplicityCounter {
     /// Maps an identity ID to the corresponding multiplicity column.
@@ -15,11 +17,16 @@ pub struct MultiplicityCounter {
 }
 
 impl MultiplicityCounter {
-    pub fn new(identity_id_to_multiplicity_column: BTreeMap<u64, PolyID>) -> Self {
+    pub fn new<T: FieldElement>(connections: &BTreeMap<u64, Connection<T>>) -> Self {
+        let identity_id_to_multiplicity_column = connections
+            .iter()
+            .filter_map(|(identity_id, connection)| {
+                connection.multiplicity_column.map(|m| (*identity_id, m))
+            })
+            .collect::<BTreeMap<_, _>>();
         let counts = identity_id_to_multiplicity_column
             .values()
-            .cloned()
-            .map(|poly_id| (poly_id, BTreeMap::new()))
+            .map(|poly_id| (*poly_id, BTreeMap::new()))
             .collect();
         Self {
             identity_id_to_multiplicity_column,

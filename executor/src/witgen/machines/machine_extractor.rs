@@ -1,12 +1,14 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use itertools::Itertools;
+use num_traits::One;
 use powdr_ast::analyzed::AlgebraicExpression;
 use powdr_ast::analyzed::AlgebraicReference;
 use powdr_ast::analyzed::LookupIdentity;
 use powdr_ast::analyzed::PermutationIdentity;
 use powdr_ast::analyzed::PhantomLookupIdentity;
 use powdr_ast::analyzed::PhantomPermutationIdentity;
+use powdr_ast::analyzed::PolynomialType;
 use powdr_number::DegreeType;
 
 use super::block_machine::BlockMachine;
@@ -17,6 +19,7 @@ use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::KnownMachine;
 use crate::witgen::machines::Connection;
+use crate::witgen::util::try_to_simple_poly_ref;
 use crate::witgen::{
     generator::Generator,
     machines::{write_once_memory::WriteOnceMemory, MachineParts},
@@ -90,12 +93,6 @@ pub fn split_out_machines<'a, T: FieldElement>(
         })
         .collect::<BTreeMap<_, _>>();
 
-    // Multiplicity columns are not connected to any machine, because we removed identities that reference
-    // challenges. We remove them here, so that they don't end up in the main machine.
-    for multiplicity_id in identity_id_to_multiplicity.values() {
-        remaining_witnesses.remove(multiplicity_id);
-    }
-
     for id in &identities {
         // Extract all witness columns in the RHS of the lookup.
         let lookup_witnesses = match id {
@@ -113,7 +110,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
 
         // Recursively extend the set to all witnesses connected through identities that preserve
         // a fixed row relation.
-        let machine_witnesses =
+        let core_machine_witnesses =
             all_row_connected_witnesses(lookup_witnesses, &remaining_witnesses, &identities);
 
         // Split identities into those that only concern the machine
@@ -125,10 +122,10 @@ pub fn split_out_machines<'a, T: FieldElement>(
                 // For lookups, any lookup calling from the current machine belongs
                 // to the machine; lookups to the machine do not.
                 let all_refs = &refs_in_identity_left(i) & (&all_witnesses);
-                !all_refs.is_empty() && all_refs.is_subset(&machine_witnesses)
+                !all_refs.is_empty() && all_refs.is_subset(&core_machine_witnesses)
             });
         base_identities = remaining_identities;
-        remaining_witnesses = &remaining_witnesses - &machine_witnesses;
+        remaining_witnesses = &remaining_witnesses - &core_machine_witnesses;
 
         publics.add_all(machine_identities.as_slice()).unwrap();
 
@@ -142,13 +139,20 @@ pub fn split_out_machines<'a, T: FieldElement>(
 
                 // check if the identity connects to the current machine
                 refs_in_selected_expressions(i.right)
-                    .intersection(&machine_witnesses)
+                    .intersection(&core_machine_witnesses)
                     .next()
                     .is_some()
                     .then_some((id, i))
             })
             .collect::<BTreeMap<_, _>>();
         assert!(connections.contains_key(&id.id()));
+
+        // Multiplicity columns are not part of the "core" machine witness, so we collect and remove them here.
+        let multiplicity_columns = connections
+            .values()
+            .filter_map(|c| c.multiplicity_column)
+            .collect();
+        remaining_witnesses = &remaining_witnesses - &multiplicity_columns;
 
         let prover_functions = prover_functions
             .iter()
@@ -159,13 +163,13 @@ pub fn split_out_machines<'a, T: FieldElement>(
                     .unique()
                     .filter_map(|n| fixed.column_by_name.get(n).cloned())
                     .collect::<HashSet<_>>();
-                refs.intersection(&machine_witnesses).next().is_some()
+                refs.intersection(&core_machine_witnesses).next().is_some()
             })
             .collect::<Vec<(_, &analyzed::Expression)>>();
 
         log::trace!(
             "\nExtracted a machine with the following witnesses:\n{}\n identities:\n{}\n connecting identities:\n{}\n and prover functions:\n{}",
-            machine_witnesses
+            core_machine_witnesses
                 .iter()
                 .map(|s| fixed.column_name(s))
                 .sorted()
@@ -189,7 +193,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             }
         }
 
-        let first_witness = machine_witnesses.iter().next().unwrap();
+        let first_witness = core_machine_witnesses.iter().next().unwrap();
         let first_witness_name = fixed.column_name(first_witness);
         let namespace = first_witness_name
             .rfind("::")
@@ -202,22 +206,11 @@ pub fn split_out_machines<'a, T: FieldElement>(
         id_counter += 1;
         let name_with_type = |t: &str| format!("Secondary machine {id}: {name} ({t})");
 
-        let identity_id_to_multiplicity_local = connections
-            .keys()
-            .filter_map(|id| {
-                identity_id_to_multiplicity
-                    .get(id)
-                    .cloned()
-                    .map(|m| (*id, m))
-            })
-            .collect::<BTreeMap<_, _>>();
-
         let machine_parts = MachineParts::new(
             fixed,
             connections,
             machine_identities,
-            machine_witnesses,
-            identity_id_to_multiplicity_local,
+            core_machine_witnesses,
             prover_functions.iter().map(|&(_, pf)| pf).collect(),
         );
 
@@ -229,6 +222,8 @@ pub fn split_out_machines<'a, T: FieldElement>(
     // Note that this machine comes last, because some machines do a fixed lookup
     // in their take_witness_col_values() implementation.
     // TODO: We should also split this up and have several instances instead.
+
+    // TODO: Simplify and reduce code duplication.
 
     // Compute sizes of fixed lookup multiplicity columns.
     let fixed_lookup_machine_sizes = phantom_lookups
@@ -256,12 +251,37 @@ pub fn split_out_machines<'a, T: FieldElement>(
             (poly_id, size)
         })
         .collect();
+
+    let connections = identities
+        .into_iter()
+        .filter_map(|i| match i {
+            Identity::Lookup(LookupIdentity { id, right, .. })
+            | Identity::PhantomLookup(PhantomLookupIdentity { id, right, .. }) => {
+                (right.selector.is_one()
+                    && right.expressions.iter().all(|e| {
+                        try_to_simple_poly_ref(e)
+                            .map(|poly| poly.poly_id.ptype == PolynomialType::Constant)
+                            .unwrap_or(false)
+                    })
+                    && !right.expressions.is_empty())
+                .then_some((*id, i.try_into().unwrap()))
+            }
+            _ => None,
+        })
+        .collect::<BTreeMap<_, Connection<T>>>();
+
+    // Multiplicity columns are not part of the "core" machine witness, so we collect and remove them here.
+    let multiplicity_columns = connections
+        .values()
+        .filter_map(|c| c.multiplicity_column)
+        .collect();
+    remaining_witnesses = &remaining_witnesses - &multiplicity_columns;
+
     let fixed_lookup = FixedLookup::new(
         fixed.global_range_constraints().clone(),
-        identities.clone(),
         fixed,
         fixed_lookup_machine_sizes,
-        identity_id_to_multiplicity,
+        connections,
     );
 
     machines.push(KnownMachine::FixedLookup(fixed_lookup));
@@ -293,7 +313,6 @@ pub fn split_out_machines<'a, T: FieldElement>(
             Default::default(),
             base_identities,
             remaining_witnesses,
-            Default::default(),
             base_prover_functions,
         ),
     }

@@ -140,9 +140,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             data,
             publics: Default::default(),
             first_in_progress_row: block_size,
-            multiplicity_counter: MultiplicityCounter::new(
-                parts.identity_id_to_multiplicity.clone(),
-            ),
+            multiplicity_counter: MultiplicityCounter::new(&parts.connections),
             processing_sequence_cache: ProcessingSequenceCache::new(
                 block_size,
                 latch_row,
