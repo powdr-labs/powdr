@@ -130,7 +130,9 @@ where
                                 let publics = pil
                                     .get_publics()
                                     .into_iter()
-                                    .map(|(_, _, row_id, _)| move |i| T::from(i == row_id as u64))
+                                    .map(|(_, _, _, row_id, _)| {
+                                        move |i| T::from(i == row_id as u64)
+                                    })
                                     .collect::<Vec<_>>();
 
                                 // get the config
@@ -276,7 +278,7 @@ where
             .get_publics()
             .iter()
             .zip_eq(instances.iter())
-            .map(|((poly_name, _, _, stage), value)| {
+            .map(|((_, poly_name, _, _, stage), value)| {
                 let namespace = poly_name.split("::").next().unwrap();
                 (namespace, stage, value)
             })
