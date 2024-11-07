@@ -24,7 +24,7 @@ use crate::Identity;
 use super::{Connection, ConnectionKind, Machine};
 
 type Application = (Vec<PolyID>, Vec<PolyID>);
-type Index<T> = BTreeMap<Vec<T>, IndexValue<T>>;
+type Index<T> = HashMap<Vec<T>, IndexValue<T>>;
 
 #[derive(Debug)]
 struct IndexValue<T>(Option<(usize, Vec<T>)>);
@@ -117,10 +117,10 @@ impl<T: FieldElement> IndexedColumns<T> {
             .exactly_one()
             .expect("all columns in a given lookup are expected to have the same degree");
 
-        let index: BTreeMap<Vec<T>, IndexValue<T>> = (0..degree)
+        let index: HashMap<Vec<T>, IndexValue<T>> = (0..degree)
             .fold(
                 (
-                    BTreeMap::<Vec<T>, IndexValue<T>>::default(),
+                    HashMap::<Vec<T>, IndexValue<T>>::default(),
                     HashSet::<(Vec<T>, Vec<T>)>::default(),
                 ),
                 |(mut acc, mut set), row| {
