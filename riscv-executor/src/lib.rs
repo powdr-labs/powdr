@@ -755,8 +755,10 @@ mod builder {
                 let range = namespace_degree_range(pil, machine.namespace());
                 assert!(
                     machine.len().next_power_of_two() <= range.max as u32,
-                    "machine {} larger than PIL's max degree",
-                    machine.namespace()
+                    "machine {} larger than PIL's max degree: {} > {}",
+                    machine.namespace(),
+                    machine.len().next_power_of_two(),
+                    range.max as u32
                 );
                 // extend with dummy blocks up to the required machine degree
                 let machine_degree =
@@ -775,7 +777,9 @@ mod builder {
                 let range = namespace_degree_range(pil, &self.regs_machine.namespace);
                 assert!(
                     self.regs_machine.len().next_power_of_two() <= range.max as u32,
-                    "register memory machine larger than PIL's max degree",
+                    "register memory machine larger than PIL's max degree: {} > {}",
+                    self.regs_machine.len().next_power_of_two(),
+                    range.max as u32
                 );
                 std::cmp::max(
                     self.regs_machine.len().next_power_of_two(),
@@ -792,7 +796,9 @@ mod builder {
                 let range = namespace_degree_range(pil, &self.memory_machine.namespace);
                 assert!(
                     self.memory_machine.len().next_power_of_two() <= range.max as u32,
-                    "register memory machine larger than PIL's max degree",
+                    "register memory machine larger than PIL's max degree: {} > {}",
+                    self.memory_machine.len().next_power_of_two(),
+                    range.max as u32
                 );
                 std::cmp::max(
                     self.memory_machine.len().next_power_of_two(),
