@@ -364,6 +364,7 @@ fn coprocessors_to_options(coprocessors: Option<String>) -> Result<RuntimeLibs, 
         let names = list.split(',').collect::<Vec<_>>();
         for name in names {
             match name {
+                "poseidon2_gl" => libs = libs.with_poseidon2(),
                 "poseidon_gl" => libs = libs.with_poseidon(),
                 "keccakf" => libs = libs.with_keccak(),
                 "arith" => libs = libs.with_arith(),

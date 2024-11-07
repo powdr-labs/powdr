@@ -27,6 +27,9 @@ impl Runtime {
         if libs.poseidon {
             runtime = runtime.with_poseidon(continuations);
         }
+        if libs.poseidon2 {
+            runtime = runtime.with_poseidon2();
+        }
         if libs.keccak {
             runtime = runtime.with_keccak();
         }
@@ -273,6 +276,10 @@ impl Runtime {
     }
 
     fn with_poseidon(self, _continuations: bool) -> Self {
+        todo!()
+    }
+
+    fn with_poseidon2(self) -> Self {
         todo!()
     }
 

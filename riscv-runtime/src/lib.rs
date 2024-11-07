@@ -13,6 +13,7 @@ mod allocator;
 pub mod arith;
 pub mod ec;
 pub mod fmt;
+pub mod goldilocks;
 pub mod hash;
 pub mod io;
 

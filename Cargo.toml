@@ -60,6 +60,7 @@ powdr-parser-util = { path = "./parser-util", version = "0.1.1" }
 powdr-pil-analyzer = { path = "./pil-analyzer", version = "0.1.1" }
 powdr-pilopt = { path = "./pilopt", version = "0.1.1" }
 powdr-pipeline = { path = "./pipeline", version = "0.1.1" }
+powdr-plonky3 = { path = "./plonky3", version = "0.1.1" }
 powdr-riscv = { path = "./riscv", version = "0.1.1" }
 powdr-riscv-executor = { path = "./riscv-executor", version = "0.1.1" }
 powdr-riscv-syscalls = { path = "./riscv-syscalls", version = "0.1.1" }
