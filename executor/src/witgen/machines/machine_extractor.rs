@@ -242,6 +242,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
     // Compute sizes of fixed lookup multiplicity columns.
     let fixed_lookup_machine_sizes = fixed_lookup_connections
         .iter()
+        .filter(|(_, connection)| connection.multiplicity_column.is_some())
         .map(|(identity_id, connection)| {
             let fixed_columns = refs_in_selected_expressions(connection.right);
             let size = fixed_columns
