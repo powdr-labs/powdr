@@ -357,9 +357,13 @@ mod tests {
         namespace Global(8);
             pol fixed FIRST = [1] + [0]*;
             pol witness x;
+            pol witness y;
+            y * y = y;
             x' = (1 - FIRST') * (x + 1);
             public out0 = x(6);
             public out1 = x(7);
+            public out2 = y(3);
+            public out3 = y(5);
         ";
         run_test(content);
     }
