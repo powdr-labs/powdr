@@ -4,7 +4,7 @@ pub const PRIME: u64 = 0xffffffff00000001;
 #[derive(Copy, Clone, PartialEq, Eq)]
 pub struct Goldilocks(
     // TODO: maybe represent this as a u32, which ends up as a full word in Powdr.
-    // (the conversion to and from u64 would require ecall
+    // (the conversion to and from u64 would require ecalls)
     u64,
 );
 
