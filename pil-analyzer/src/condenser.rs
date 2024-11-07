@@ -9,20 +9,17 @@ use std::{
     sync::Arc,
 };
 
-use powdr_ast::{
-    analyzed::{
-        AlgebraicExpression, AlgebraicReference, Analyzed, ConnectIdentity, DegreeRange,
-        Expression, FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity,
-        PhantomLookupIdentity, PhantomPermutationIdentity, PolyID, PolynomialIdentity,
-        PolynomialType, PublicDeclaration, SelectedExpressions, SolvedTraitImpls,
-        StatementIdentifier, Symbol, SymbolKind,
-    },
-    parsed::{
-        asm::{AbsoluteSymbolPath, SymbolPath},
-        display::format_type_scheme_around_name,
-        types::{ArrayType, Type},
-        FunctionKind, SourceReference, TraitImplementation,
-    },
+use powdr_ast::analyzed::{
+    AlgebraicExpression, AlgebraicReference, Analyzed, ConnectIdentity, DegreeRange, Expression,
+    FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
+    PhantomPermutationIdentity, PolyID, PolynomialIdentity, PolynomialType, PublicDeclaration,
+    SelectedExpressions, SolvedTraitImpls, StatementIdentifier, Symbol, SymbolKind,
+};
+use powdr_ast::parsed::{
+    asm::{AbsoluteSymbolPath, SymbolPath},
+    display::format_type_scheme_around_name,
+    types::{ArrayType, Type},
+    FunctionKind, SourceReference, TraitImplementation,
 };
 use powdr_number::FieldElement;
 use powdr_parser_util::SourceRef;

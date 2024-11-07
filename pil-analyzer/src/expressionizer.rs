@@ -5,20 +5,17 @@ use std::collections::{BTreeMap, HashMap};
 
 use num_traits::sign::Signed;
 
-use powdr_ast::{
-    analyzed::{
-        self, AlgebraicBinaryOperation, AlgebraicExpression, AlgebraicReference,
-        AlgebraicUnaryOperation, Challenge, Expression, FunctionValueDefinition,
-        PolynomialReference, Reference, Symbol,
-    },
-    parsed::{
-        self,
-        types::Type,
-        visitor::{AllChildren, ExpressionVisitable},
-        ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall, FunctionKind,
-        LambdaExpression, LetStatementInsideBlock, Number, Pattern, TypedExpression,
-        UnaryOperation,
-    },
+use powdr_ast::analyzed::{
+    self, AlgebraicBinaryOperation, AlgebraicExpression, AlgebraicReference,
+    AlgebraicUnaryOperation, Challenge, Expression, FunctionValueDefinition, PolynomialReference,
+    Reference, Symbol,
+};
+use powdr_ast::parsed::{
+    self,
+    types::Type,
+    visitor::{AllChildren, ExpressionVisitable},
+    ArrayLiteral, BinaryOperation, BlockExpression, FunctionCall, FunctionKind, LambdaExpression,
+    LetStatementInsideBlock, Number, Pattern, TypedExpression, UnaryOperation,
 };
 use powdr_number::{BigUint, FieldElement};
 use powdr_parser_util::SourceRef;
