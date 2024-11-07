@@ -98,7 +98,28 @@ pub fn split_out_machines<'a, T: FieldElement>(
         .filter_map(|i| Connection::try_from(*i).ok())
         .collect::<Vec<_>>();
 
+    let mut fixed_lookup_connections = BTreeMap::new();
+
     for connection in &all_connections {
+        // If the RHS only consists of fixed columns, record the connection and continue.
+        if connection.is_lookup()
+            && connection.right.selector.is_one()
+            && connection.right.expressions.iter().all(|e| {
+                try_to_simple_poly_ref(e)
+                    .map(|poly| poly.poly_id.ptype == PolynomialType::Constant)
+                    .unwrap_or(false)
+            })
+            && !connection.right.expressions.is_empty()
+        {
+            assert!(fixed_lookup_connections
+                .insert(connection.id, *connection)
+                .is_none());
+            if let Some(multiplicity) = connection.multiplicity_column {
+                remaining_witnesses.remove(&multiplicity);
+            }
+            continue;
+        }
+
         // Extract all witness columns in the RHS of the lookup.
         let lookup_witnesses = {
             let callee_columns = refs_in_selected_expressions(connection.right)
@@ -219,14 +240,10 @@ pub fn split_out_machines<'a, T: FieldElement>(
     // TODO: Simplify and reduce code duplication.
 
     // Compute sizes of fixed lookup multiplicity columns.
-    let fixed_lookup_machine_sizes = phantom_lookups
+    let fixed_lookup_machine_sizes = fixed_lookup_connections
         .iter()
-        .filter_map(|id| {
-            // Phantom lookups that point to FixedLookup
-            let refs = refs_in_selected_expressions(&id.right);
-            (&refs & &all_witnesses).is_empty().then_some((id.id, refs))
-        })
-        .map(|(identity_id, fixed_columns)| {
+        .map(|(identity_id, connection)| {
+            let fixed_columns = refs_in_selected_expressions(connection.right);
             let size = fixed_columns
                 .iter()
                 .map(|fixed_col| {
@@ -240,41 +257,16 @@ pub fn split_out_machines<'a, T: FieldElement>(
                 .unique()
                 .exactly_one()
                 .expect("All fixed columns on the same RHS must have the same size");
-            let poly_id = identity_id_to_multiplicity[&identity_id];
+            let poly_id = identity_id_to_multiplicity[identity_id];
             (poly_id, size)
         })
         .collect();
-
-    let connections = identities
-        .into_iter()
-        .filter_map(|i| match i {
-            Identity::Lookup(LookupIdentity { id, right, .. })
-            | Identity::PhantomLookup(PhantomLookupIdentity { id, right, .. }) => {
-                (right.selector.is_one()
-                    && right.expressions.iter().all(|e| {
-                        try_to_simple_poly_ref(e)
-                            .map(|poly| poly.poly_id.ptype == PolynomialType::Constant)
-                            .unwrap_or(false)
-                    })
-                    && !right.expressions.is_empty())
-                .then_some((*id, i.try_into().unwrap()))
-            }
-            _ => None,
-        })
-        .collect::<BTreeMap<_, Connection<T>>>();
-
-    // Multiplicity columns are not part of the "core" machine witness, so we collect and remove them here.
-    let multiplicity_columns = connections
-        .values()
-        .filter_map(|c| c.multiplicity_column)
-        .collect();
-    remaining_witnesses = &remaining_witnesses - &multiplicity_columns;
 
     let fixed_lookup = FixedLookup::new(
         fixed.global_range_constraints().clone(),
         fixed,
         fixed_lookup_machine_sizes,
-        connections,
+        fixed_lookup_connections,
     );
 
     machines.push(KnownMachine::FixedLookup(fixed_lookup));
