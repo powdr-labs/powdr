@@ -110,7 +110,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
 
         // Recursively extend the set to all witnesses connected through identities that preserve
         // a fixed row relation.
-        let core_machine_witnesses =
+        let machine_witnesses =
             all_row_connected_witnesses(lookup_witnesses, &remaining_witnesses, &identities);
 
         // Split identities into those that only concern the machine
@@ -122,10 +122,10 @@ pub fn split_out_machines<'a, T: FieldElement>(
                 // For lookups, any lookup calling from the current machine belongs
                 // to the machine; lookups to the machine do not.
                 let all_refs = &refs_in_identity_left(i) & (&all_witnesses);
-                !all_refs.is_empty() && all_refs.is_subset(&core_machine_witnesses)
+                !all_refs.is_empty() && all_refs.is_subset(&machine_witnesses)
             });
         base_identities = remaining_identities;
-        remaining_witnesses = &remaining_witnesses - &core_machine_witnesses;
+        remaining_witnesses = &remaining_witnesses - &machine_witnesses;
 
         publics.add_all(machine_identities.as_slice()).unwrap();
 
@@ -135,7 +135,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             .filter_map(|connection| {
                 // check if the identity connects to the current machine
                 refs_in_selected_expressions(connection.right)
-                    .intersection(&core_machine_witnesses)
+                    .intersection(&machine_witnesses)
                     .next()
                     .is_some()
                     .then_some((connection.id, *connection))
@@ -152,13 +152,13 @@ pub fn split_out_machines<'a, T: FieldElement>(
                     .unique()
                     .filter_map(|n| fixed.column_by_name.get(n).cloned())
                     .collect::<HashSet<_>>();
-                refs.intersection(&core_machine_witnesses).next().is_some()
+                refs.intersection(&machine_witnesses).next().is_some()
             })
             .collect::<Vec<(_, &analyzed::Expression)>>();
 
         log::trace!(
             "\nExtracted a machine with the following witnesses:\n{}\n identities:\n{}\n connecting identities:\n{}\n and prover functions:\n{}",
-            core_machine_witnesses
+            machine_witnesses
                 .iter()
                 .map(|s| fixed.column_name(s))
                 .sorted()
@@ -182,7 +182,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             }
         }
 
-        let first_witness = core_machine_witnesses.iter().next().unwrap();
+        let first_witness = machine_witnesses.iter().next().unwrap();
         let first_witness_name = fixed.column_name(first_witness);
         let namespace = first_witness_name
             .rfind("::")
@@ -199,7 +199,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             fixed,
             machine_connections,
             machine_identities,
-            core_machine_witnesses,
+            machine_witnesses,
             prover_functions.iter().map(|&(_, pf)| pf).collect(),
         );
 
