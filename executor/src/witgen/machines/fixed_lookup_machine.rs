@@ -2,7 +2,6 @@ use num_traits::One;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::Peekable;
 use std::mem;
-use std::num::NonZeroUsize;
 use std::str::FromStr;
 
 use itertools::Itertools;
@@ -55,8 +54,8 @@ impl<T: FieldElement> IndexedColumns<T> {
     fn get_match(
         &mut self,
         fixed_data: &FixedData<T>,
-        mut assignment: Vec<(PolyID, T)>,
-        mut output_fixed_columns: Vec<PolyID>,
+        assignment: Vec<(PolyID, T)>,
+        output_fixed_columns: Vec<PolyID>,
     ) -> Option<&IndexValue<T>> {
         // sort in order to have a single index for [X, Y] and for [Y, X]
         //assignment.sort_by(|(name0, _), (name1, _)| name0.cmp(name1));
