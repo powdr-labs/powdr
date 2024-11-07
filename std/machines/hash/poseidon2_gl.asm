@@ -33,21 +33,15 @@ machine Poseidon2GL(mem: Memory, split_GL: SplitGL) with
     // Similarly, the output data is written to memory at the provided pointer.
     //
     // Reads happen at the provided time step; writes happen at the next time step.
-    //
-    // output_capacity is expected to be a boolean value. If false, the "capacity"
-    // part of the state size is discarded and not written back to memory. This is
-    // useful for merkle tree compression, where the capacity part is not needed.
     operation poseidon2_permutation<0>
         input_addr,
         output_addr,
-        output_capacity,
         time_step ->;
 
     let latch = 1;
     let operation_id;
 
     let time_step;
-    let output_capacity;
 
     // Poseidon2 parameters, compatible with our powdr-plonky3 implementation.
     //
@@ -164,7 +158,6 @@ machine Poseidon2GL(mem: Memory, split_GL: SplitGL) with
     );
 
     // Split the output into high and low limbs
-    let write_capacity = is_used * output_capacity;
     let output_low: col[STATE_SIZE];
     let output_high: col[STATE_SIZE];
     // TODO: turn this into array operations
@@ -172,10 +165,10 @@ machine Poseidon2GL(mem: Memory, split_GL: SplitGL) with
     link if is_used ~> (output_low[1], output_high[1]) = split_GL.split(output[1]);
     link if is_used ~> (output_low[2], output_high[2]) = split_GL.split(output[2]);
     link if is_used ~> (output_low[3], output_high[3]) = split_GL.split(output[3]);
-    link if write_capacity ~> (output_low[4], output_high[4]) = split_GL.split(output[4]);
-    link if write_capacity ~> (output_low[5], output_high[5]) = split_GL.split(output[5]);
-    link if write_capacity ~> (output_low[6], output_high[6]) = split_GL.split(output[6]);
-    link if write_capacity ~> (output_low[7], output_high[7]) = split_GL.split(output[7]);
+    link if is_used ~> (output_low[4], output_high[4]) = split_GL.split(output[4]);
+    link if is_used ~> (output_low[5], output_high[5]) = split_GL.split(output[5]);
+    link if is_used ~> (output_low[6], output_high[6]) = split_GL.split(output[6]);
+    link if is_used ~> (output_low[7], output_high[7]) = split_GL.split(output[7]);
 
     // Write the output to memory at the next time step
     let output_addr;
@@ -192,15 +185,15 @@ machine Poseidon2GL(mem: Memory, split_GL: SplitGL) with
     link if is_used ~> mem.mstore(output_addr + 24, time_step + 1, output_low[3]);
     link if is_used ~> mem.mstore(output_addr + 28, time_step + 1, output_high[3]);
 
-    link if write_capacity ~> mem.mstore(output_addr + 32, time_step + 1, output_low[4]);
-    link if write_capacity ~> mem.mstore(output_addr + 36, time_step + 1, output_high[4]);
+    link if is_used ~> mem.mstore(output_addr + 32, time_step + 1, output_low[4]);
+    link if is_used ~> mem.mstore(output_addr + 36, time_step + 1, output_high[4]);
 
-    link if write_capacity ~> mem.mstore(output_addr + 40, time_step + 1, output_low[5]);
-    link if write_capacity ~> mem.mstore(output_addr + 44, time_step + 1, output_high[5]);
+    link if is_used ~> mem.mstore(output_addr + 40, time_step + 1, output_low[5]);
+    link if is_used ~> mem.mstore(output_addr + 44, time_step + 1, output_high[5]);
 
-    link if write_capacity ~> mem.mstore(output_addr + 48, time_step + 1, output_low[6]);
-    link if write_capacity ~> mem.mstore(output_addr + 52, time_step + 1, output_high[6]);
+    link if is_used ~> mem.mstore(output_addr + 48, time_step + 1, output_low[6]);
+    link if is_used ~> mem.mstore(output_addr + 52, time_step + 1, output_high[6]);
 
-    link if write_capacity ~> mem.mstore(output_addr + 56, time_step + 1, output_low[7]);
-    link if write_capacity ~> mem.mstore(output_addr + 60, time_step + 1, output_high[7]);
+    link if is_used ~> mem.mstore(output_addr + 56, time_step + 1, output_low[7]);
+    link if is_used ~> mem.mstore(output_addr + 60, time_step + 1, output_high[7]);
 }
