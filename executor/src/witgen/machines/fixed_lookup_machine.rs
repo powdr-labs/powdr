@@ -23,7 +23,13 @@ use crate::Identity;
 
 use super::{Connection, ConnectionKind, Machine};
 
-type Application = (Vec<PolyID>, Vec<PolyID>);
+#[derive(Hash, Eq, PartialEq, Ord, PartialOrd, Clone)]
+struct Application {
+    pub identity_id: u64,
+    /// The sequence of known columns.
+    pub inputs: Vec<bool>,
+}
+
 type Index<T> = HashMap<Vec<T>, IndexValue<T>>;
 
 #[derive(Debug)]
@@ -41,9 +47,6 @@ impl<T> IndexValue<T> {
     }
 }
 
-/// Indices for applications of fixed columns. For each application `(INPUT_COLS, OUTPUT_COLS)`, stores
-/// - `(V, None)` if there exists two different rows where `INPUT_COLS == V` match but `OUTPUT_COLS` differ. TODO: store bitmasks of all possible outputs instead.
-/// - `(V, Some(row)` if the value of `OUTPUT_COLS` is unique when `INPUT_COLS == V`, and `row` is the first row where `INPUT_COLS ==V`
 #[derive(Default)]
 pub struct IndexedColumns<T> {
     indices: HashMap<Application, Index<T>>,
@@ -54,106 +57,120 @@ impl<T: FieldElement> IndexedColumns<T> {
     fn get_match(
         &mut self,
         fixed_data: &FixedData<T>,
-        assignment: Vec<(PolyID, T)>,
-        output_fixed_columns: Vec<PolyID>,
+        application: Application,
+        input_values: Vec<T>,
+        connections: &BTreeMap<u64, Connection<'_, T>>,
     ) -> Option<&IndexValue<T>> {
-        // sort in order to have a single index for [X, Y] and for [Y, X]
-        //assignment.sort_by(|(name0, _), (name1, _)| name0.cmp(name1));
-        let (input_fixed_columns, values): (Vec<_>, Vec<_>) = assignment.into_iter().unzip();
-        // sort the output as well
-        //output_fixed_columns.sort();
-
-        let fixed_columns = (input_fixed_columns, output_fixed_columns);
-
-        self.ensure_index(fixed_data, &fixed_columns);
-
-        // get the rows at which the input matches
         self.indices
-            .get(&fixed_columns)
-            .as_ref()
-            .unwrap()
-            .get(&values)
+            .entry(application)
+            .or_insert_with_key(|application| create_index(fixed_data, application, connections))
+            .get(&input_values)
     }
+}
 
-    /// Create an index for a set of columns to be queried, if does not exist already
-    /// `input_fixed_columns` is assumed to be sorted
-    fn ensure_index(&mut self, fixed_data: &FixedData<T>, fixed_columns: &Application) {
-        // we do not use the Entry API here because we want to clone `sorted_input_fixed_columns` only on index creation
-        if self.indices.contains_key(fixed_columns) {
-            return;
-        }
+/// Create an index for a set of columns to be queried, if does not exist already
+/// `input_fixed_columns` is assumed to be sorted
+fn create_index<T: FieldElement>(
+    fixed_data: &FixedData<T>,
+    application: &Application,
+    connections: &BTreeMap<u64, Connection<'_, T>>,
+) -> HashMap<Vec<T>, IndexValue<T>> {
+    let right = connections[&application.identity_id].right;
 
-        let (sorted_input_fixed_columns, sorted_output_fixed_columns) = &fixed_columns;
-
-        // create index for this lookup
-        log::info!(
-            "Generating index for lookup in columns (in: {}, out: {})",
-            sorted_input_fixed_columns
-                .iter()
-                .map(|c| fixed_data.column_name(c).to_string())
-                .join(", "),
-            sorted_output_fixed_columns
-                .iter()
-                .map(|c| fixed_data.column_name(c).to_string())
-                .join(", ")
-        );
-
-        // get all values for the columns to be indexed
-        let input_column_values = sorted_input_fixed_columns
+    // TODO use partition
+    let input_fixed_columns = right
+        .expressions
+        .iter()
+        .enumerate()
+        .filter_map(|(i, e)| {
+            if application.inputs[i] {
+                Some(try_to_simple_poly_ref(e).unwrap().poly_id)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    let output_fixed_columns = right
+        .expressions
+        .iter()
+        .enumerate()
+        .filter_map(|(i, e)| {
+            if !application.inputs[i] {
+                Some(try_to_simple_poly_ref(e).unwrap().poly_id)
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    // create index for this lookup
+    log::info!(
+        "Generating index for lookup in columns (in: {}, out: {})",
+        input_fixed_columns
             .iter()
-            .map(|id| fixed_data.fixed_cols[id].values_max_size())
-            .collect::<Vec<_>>();
-
-        let output_column_values = sorted_output_fixed_columns
+            .map(|c| fixed_data.column_name(c).to_string())
+            .join(", "),
+        output_fixed_columns
             .iter()
-            .map(|id| fixed_data.fixed_cols[id].values_max_size())
-            .collect::<Vec<_>>();
+            .map(|c| fixed_data.column_name(c).to_string())
+            .join(", ")
+    );
 
-        let degree = input_column_values
-            .iter()
-            .chain(output_column_values.iter())
-            .map(|values| values.len())
-            .unique()
-            .exactly_one()
-            .expect("all columns in a given lookup are expected to have the same degree");
+    // get all values for the columns to be indexed
+    let input_column_values = input_fixed_columns
+        .iter()
+        .map(|id| fixed_data.fixed_cols[id].values_max_size())
+        .collect::<Vec<_>>();
 
-        let index: HashMap<Vec<T>, IndexValue<T>> = (0..degree)
-            .fold(
-                (
-                    HashMap::<Vec<T>, IndexValue<T>>::default(),
-                    HashSet::<(Vec<T>, Vec<T>)>::default(),
-                ),
-                |(mut acc, mut set), row| {
-                    let input: Vec<_> = input_column_values
-                        .iter()
-                        .map(|column| column[row])
-                        .collect();
+    let output_column_values = output_fixed_columns
+        .iter()
+        .map(|id| fixed_data.fixed_cols[id].values_max_size())
+        .collect::<Vec<_>>();
 
-                    let output: Vec<_> = output_column_values
-                        .iter()
-                        .map(|column| column[row])
-                        .collect();
+    let degree = input_column_values
+        .iter()
+        .chain(output_column_values.iter())
+        .map(|values| values.len())
+        .unique()
+        .exactly_one()
+        .expect("all columns in a given lookup are expected to have the same degree");
 
-                    let input_output = (input, output);
+    let index: HashMap<Vec<T>, IndexValue<T>> = (0..degree)
+        .fold(
+            (
+                HashMap::<Vec<T>, IndexValue<T>>::default(),
+                HashSet::<(Vec<T>, Vec<T>)>::default(),
+            ),
+            |(mut acc, mut set), row| {
+                let input: Vec<_> = input_column_values
+                    .iter()
+                    .map(|column| column[row])
+                    .collect();
 
-                    if !set.contains(&input_output) {
-                        set.insert(input_output.clone());
+                let output: Vec<_> = output_column_values
+                    .iter()
+                    .map(|column| column[row])
+                    .collect();
 
-                        let (input, output) = input_output;
+                let input_output = (input, output);
 
-                        acc.entry(input)
-                            // we have a new, different output, so we lose knowledge
-                            .and_modify(|value| {
-                                *value = IndexValue::multiple_matches();
-                            })
-                            .or_insert_with(|| IndexValue::single_row(row, output));
-                    }
-                    (acc, set)
-                },
-            )
-            .0;
+                if !set.contains(&input_output) {
+                    set.insert(input_output.clone());
 
-        log::info!(
+                    let (input, output) = input_output;
+
+                    acc.entry(input)
+                        // we have a new, different output, so we lose knowledge
+                        .and_modify(|value| {
+                            *value = IndexValue::multiple_matches();
+                        })
+                        .or_insert_with(|| IndexValue::single_row(row, output));
+                }
+                (acc, set)
+            },
+        )
+        .0;
+
+    log::info!(
             "Done creating index. Size (as flat list): entries * (num_inputs * input_size + num_outputs * output_size) = {} * ({} * {} bytes + {} * {} bytes) = {:.2} MB",
             index.len(),
             input_column_values.len(),
@@ -162,14 +179,7 @@ impl<T: FieldElement> IndexedColumns<T> {
             mem::size_of::<T>(),
             (index.len() * (input_column_values.len() * mem::size_of::<T>() + output_column_values.len() * mem::size_of::<T>())) as f64 / 1024.0 / 1024.0
         );
-        self.indices.insert(
-            (
-                sorted_input_fixed_columns.clone(),
-                sorted_output_fixed_columns.clone(),
-            ),
-            index,
-        );
-    }
+    index
 }
 
 const MULTIPLICITY_LOOKUP_COLUMN: &str = "m_logup_multiplicity";
@@ -273,36 +283,40 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         // split the fixed columns depending on whether their associated lookup variable is constant or not. Preserve the value of the constant arguments.
         // [1, 2, x] in [A, B, C] -> [[(A, 1), (B, 2)], [C, x]]
 
-        let mut input_assignment = vec![];
-        let mut output_columns = vec![];
+        let mut input_values = vec![];
+        let mut known_inputs = vec![];
         let mut output_expressions = vec![];
 
-        left.iter().zip(right).for_each(|(l, r)| {
+        for l in left {
             if let Some(value) = l.constant_value() {
-                input_assignment.push((r, value));
+                input_values.push(value);
+                known_inputs.push(true);
             } else {
-                output_columns.push(r.poly_id);
                 output_expressions.push(l);
+                known_inputs.push(false);
             }
-        });
+        }
 
-        let input_assignment_with_ids = input_assignment
-            .iter()
-            .map(|(poly_ref, v)| (poly_ref.poly_id, *v))
-            .collect();
+        let application = Application {
+            identity_id,
+            inputs: known_inputs,
+        };
+
         let index_value = self
             .indices
             .get_match(
                 self.fixed_data,
-                input_assignment_with_ids,
-                output_columns.clone(),
+                application,
+                input_values,
+                &self.connections,
             )
             .ok_or_else(|| {
-                let input_assignment = input_assignment
-                    .into_iter()
-                    .map(|(poly_ref, v)| (poly_ref.name.clone(), v))
-                    .collect();
-                EvalError::FixedLookupFailed(input_assignment)
+                // TODO
+                // let input_assignment = input_values
+                //     .into_iter()
+                //     .map(|(poly_ref, v)| (poly_ref.name.clone(), v))
+                //     .collect();
+                EvalError::FixedLookupFailed(vec![]) //input_assignment)
             })?;
 
         let Some((row, output)) = index_value.get() else {
@@ -335,6 +349,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
                 }
             }
         }
+
         Ok(result)
     }
 
