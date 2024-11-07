@@ -198,7 +198,6 @@ pub fn build_guest(
     riscv::compile_rust(
         guest_path,
         CompilerOptions::new_gl()
-            .with_poseidon()
             .with_continuations()
             .with_min_degree_log(min_degree_log)
             .with_max_degree_log(max_degree_log),

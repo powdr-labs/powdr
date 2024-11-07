@@ -25,7 +25,6 @@ static TARGET_NO_STD: &str = "riscv32imac-unknown-none-elf";
 pub struct RuntimeLibs {
     pub arith: bool,
     pub keccak: bool,
-    pub poseidon: bool,
 }
 
 impl RuntimeLibs {
@@ -33,8 +32,6 @@ impl RuntimeLibs {
         Self {
             arith: false,
             keccak: false,
-            // Poseidon is required for publics.
-            poseidon: true,
         }
     }
 
@@ -48,13 +45,6 @@ impl RuntimeLibs {
     pub fn with_keccak(self) -> Self {
         Self {
             keccak: true,
-            ..self
-        }
-    }
-
-    pub fn with_poseidon(self) -> Self {
-        Self {
-            poseidon: true,
             ..self
         }
     }
@@ -133,13 +123,6 @@ impl CompilerOptions {
             ..self
         }
     }
-
-    pub fn with_poseidon(self) -> Self {
-        Self {
-            libs: self.libs.with_poseidon(),
-            ..self
-        }
-    }
 }
 
 /// Compiles a rust file to Powdr asm.
@@ -151,26 +134,6 @@ pub fn compile_rust(
     force_overwrite: bool,
     features: Option<Vec<String>>,
 ) -> Option<(PathBuf, String)> {
-    if options.continuations {
-        match options.field {
-            KnownField::BabyBearField => {
-                todo!()
-            }
-            KnownField::KoalaBearField => {
-                todo!()
-            }
-            KnownField::Mersenne31Field => {
-                todo!()
-            }
-            KnownField::GoldilocksField | KnownField::Bn254Field => {
-                assert!(
-                    options.libs.poseidon,
-                    "Poseidon library is required for bootloader"
-                );
-            }
-        }
-    }
-
     let file_path = if file_name.ends_with("Cargo.toml") {
         Cow::Borrowed(file_name)
     } else if fs::metadata(file_name).unwrap().is_dir() {

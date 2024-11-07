@@ -23,10 +23,7 @@ pub struct Runtime {
 
 impl Runtime {
     pub fn new(libs: RuntimeLibs, continuations: bool) -> Self {
-        let mut runtime = Runtime::base();
-        if libs.poseidon {
-            runtime = runtime.with_poseidon(continuations);
-        }
+        let mut runtime = Runtime::base(continuations);
         if libs.keccak {
             runtime = runtime.with_keccak();
         }
@@ -36,7 +33,7 @@ impl Runtime {
         runtime
     }
 
-    pub fn base() -> Self {
+    pub fn base(continuations: bool) -> Self {
         let mut r = Runtime {
             submachines: Default::default(),
             syscalls: Default::default(),
@@ -216,7 +213,7 @@ impl Runtime {
 
         r.add_syscall(Syscall::CommitPublic, ["commit_public 10, 11;"]);
 
-        r
+        r.with_poseidon(continuations)
     }
 
     fn with_keccak(self) -> Self {
