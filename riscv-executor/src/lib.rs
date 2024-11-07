@@ -752,7 +752,7 @@ mod builder {
                     continue;
                 }
                 machine.final_row_override();
-                let range = namespace_degree_range(pil, &machine.namespace());
+                let range = namespace_degree_range(pil, machine.namespace());
                 assert!(
                     machine.len().next_power_of_two() <= range.max as u32,
                     "machine {} larger than PIL's max degree",
