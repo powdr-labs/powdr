@@ -1,7 +1,7 @@
-// Very simple write-once memory that let's you store any field element at
-// an address from 0 to N-1. Any value can be written only once, writing two
+// Very simple write-once memory that lets you store any field element at
+// an address from 0 to 7. Any value can be written only once, writing two
 // different values to the same address fails. If an uninitialized cell is
-// read, the returned values is unconstrained.
+// read, the returned value is unconstrained.
 // A typical use-case would be to pass the `value` column as an "external"
 // witness. This way the prover can provide some input vector and the program
 // can read the same input multiple times.
