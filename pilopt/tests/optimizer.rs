@@ -283,9 +283,7 @@ fn enum_ref_by_trait() {
 }
 
 #[test]
-#[should_panic = "Symbol not found: N::x[0]"]
 fn handle_array_references_in_prover_functions() {
-    // Reproduces https://github.com/powdr-labs/powdr/issues/2051
     let input = r#"namespace N(8);
     col witness x[1];
     
@@ -300,5 +298,16 @@ fn handle_array_references_in_prover_functions() {
         }
     };
     "#;
-    optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    let expectation = r#"namespace N(8);
+    col witness x[1];
+    N::x[0]' = N::x[0] + 1;
+    {
+        let intermediate = N::x[0] + 1_expr;
+        query |i| {
+            let _: expr = intermediate;
+        }
+    };
+"#;
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
 }
