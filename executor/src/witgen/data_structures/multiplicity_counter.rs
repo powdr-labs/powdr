@@ -11,6 +11,9 @@ pub struct MultiplicityCounter {
     /// Note that multiple identity IDs can map to the same multiplicity column.
     identity_id_to_multiplicity_column: BTreeMap<u64, PolyID>,
 
+    /// Optional poly_id -> size map.
+    sizes: Option<BTreeMap<PolyID, DegreeType>>,
+
     /// A map poly_id -> (row -> count).
     /// Has a (possibly entry) entry for each value in `identity_id_to_multiplicity_column`.
     counts: BTreeMap<PolyID, BTreeMap<usize, usize>>,
@@ -18,6 +21,13 @@ pub struct MultiplicityCounter {
 
 impl MultiplicityCounter {
     pub fn new<T: FieldElement>(connections: &BTreeMap<u64, Connection<T>>) -> Self {
+        Self::new_with_sizes(connections, BTreeMap::new())
+    }
+
+    pub fn new_with_sizes<T: FieldElement>(
+        connections: &BTreeMap<u64, Connection<T>>,
+        sizes: BTreeMap<PolyID, DegreeType>,
+    ) -> Self {
         let identity_id_to_multiplicity_column = connections
             .iter()
             .filter_map(|(identity_id, connection)| {
@@ -30,6 +40,7 @@ impl MultiplicityCounter {
             .collect();
         Self {
             identity_id_to_multiplicity_column,
+            sizes: Some(sizes),
             counts,
         }
     }
@@ -48,16 +59,20 @@ impl MultiplicityCounter {
         &self,
         size: DegreeType,
     ) -> BTreeMap<PolyID, Vec<T>> {
-        self.generate_columns_different_sizes(
+        self.generate_columns_with_sizes(
             // All polynomials have size `size`.
-            self.counts.keys().map(|poly_id| (*poly_id, size)).collect(),
+            &self.counts.keys().map(|poly_id| (*poly_id, size)).collect(),
         )
     }
 
     /// Materializes the multiplicity columns, using different sizes for each of them.
-    pub fn generate_columns_different_sizes<T: FieldElement>(
+    pub fn generate_columns_different_sizes<T: FieldElement>(&self) -> BTreeMap<PolyID, Vec<T>> {
+        self.generate_columns_with_sizes(self.sizes.as_ref().expect("Did not provide sizes!"))
+    }
+
+    fn generate_columns_with_sizes<T: FieldElement>(
         &self,
-        sizes: BTreeMap<PolyID, DegreeType>,
+        sizes: &BTreeMap<PolyID, DegreeType>,
     ) -> BTreeMap<PolyID, Vec<T>> {
         self.counts
             .iter()

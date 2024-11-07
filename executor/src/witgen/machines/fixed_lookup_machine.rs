@@ -5,7 +5,6 @@ use std::num::NonZeroUsize;
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
-use powdr_ast::parsed::visitor::Children;
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::affine_expression::{AffineExpression, AlgebraicVariable};
@@ -176,7 +175,6 @@ pub struct FixedLookup<'a, T: FieldElement> {
     indices: IndexedColumns<T>,
     connections: BTreeMap<u64, Connection<'a, T>>,
     fixed_data: &'a FixedData<'a, T>,
-    multiplicity_column_sizes: BTreeMap<PolyID, DegreeType>,
     multiplicity_counter: MultiplicityCounter,
 }
 
@@ -186,43 +184,22 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         fixed_data: &'a FixedData<'a, T>,
         connections: BTreeMap<u64, Connection<'a, T>>,
     ) -> Self {
-        let multiplicity_counter = MultiplicityCounter::new(&connections);
         let multiplicity_column_sizes = connections
             .values()
-            .filter(|connection| connection.multiplicity_column.is_some())
-            .map(|connection| {
-                let fixed_columns = connection
-                    .right
-                    .children()
-                    .map(|expr| match expr {
-                        AlgebraicExpression::Reference(poly) => poly.poly_id,
-                        _ => unreachable!(),
-                    })
-                    .collect::<Vec<_>>();
-                let size = fixed_columns
-                    .iter()
-                    .map(|fixed_col| {
-                        // Get unique size for fixed column
-                        fixed_data.fixed_cols[&fixed_col]
-                            .values
-                            .get_uniquely_sized()
-                            .unwrap()
-                            .len() as DegreeType
-                    })
-                    .unique()
-                    .exactly_one()
-                    .expect("All fixed columns on the same RHS must have the same size");
-                let poly_id = connection.multiplicity_column.unwrap();
-                (poly_id, size)
+            .filter_map(|connection| {
+                connection
+                    .multiplicity_column
+                    .map(|poly_id| (poly_id, unique_size(fixed_data, connection)))
             })
             .collect();
+        let multiplicity_counter =
+            MultiplicityCounter::new_with_sizes(&connections, multiplicity_column_sizes);
 
         Self {
             global_constraints,
             indices: Default::default(),
             connections,
             fixed_data,
-            multiplicity_column_sizes,
             multiplicity_counter,
         }
     }
@@ -349,6 +326,37 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
     }
 }
 
+/// Get the unique size of the fixed lookup machine referenced by the provided connection.
+/// Panics if any expression in the connection's RHS is not a reference to a fixed column,
+/// if the fixed columns are variably-sized, or if the fixed columns have different sizes.
+fn unique_size<T: FieldElement>(
+    fixed_data: &FixedData<T>,
+    connection: &Connection<T>,
+) -> DegreeType {
+    let fixed_columns = connection
+        .right
+        .expressions
+        .iter()
+        .map(|expr| match expr {
+            AlgebraicExpression::Reference(poly) => poly.poly_id,
+            _ => unreachable!(),
+        })
+        .collect::<Vec<_>>();
+    fixed_columns
+        .iter()
+        .map(|fixed_col| {
+            // Get unique size for fixed column
+            fixed_data.fixed_cols[fixed_col]
+                .values
+                .get_uniquely_sized()
+                .unwrap()
+                .len() as DegreeType
+        })
+        .unique()
+        .exactly_one()
+        .expect("All fixed columns on the same RHS must have the same size")
+}
+
 impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
     fn name(&self) -> &str {
         "FixedLookup"
@@ -379,7 +387,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         self.multiplicity_counter
-            .generate_columns_different_sizes(self.multiplicity_column_sizes.clone())
+            .generate_columns_different_sizes()
             .into_iter()
             .map(|(poly_id, column)| (self.fixed_data.column_name(&poly_id).to_string(), column))
             .collect()
