@@ -4,7 +4,6 @@ use alloc::{collections::btree_map::BTreeMap, string::String, vec::Vec};
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, Analyzed,
 };
-use powdr_executor::witgen::WitgenCallback;
 use powdr_number::FieldElement;
 use std::sync::Arc;
 
@@ -13,41 +12,16 @@ use stwo_prover::constraint_framework::{EvalAtRow, FrameworkComponent, Framework
 use stwo_prover::core::backend::simd::column::BaseColumn;
 use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::fields::m31::BaseField;
-use stwo_prover::core::fields::m31::M31;
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::ColumnVec;
 
 pub type PowdrComponent<'a, F> = FrameworkComponent<PowdrEval<F>>;
 
-pub struct PowdrCircuit<'a, T> {
-    analyzed: Arc<Analyzed<T>>,
-    /// The value of the witness columns, if set
-    pub witness: Option<&'a [(String, Vec<T>)]>,
-}
-
-impl<'a, T: FieldElement> PowdrCircuit<'a, T> {
-    pub fn new(analyzed: Arc<Analyzed<T>>) -> Self {
-        Self {
-            analyzed,
-            witness: None,
-        }
-    }
-
-
-    pub(crate) fn with_witness(self, witness: &'a [(String, Vec<T>)]) -> Self {
-        Self {
-            witness: Some(witness),
-            ..self
-        }
-    }
-
-    pub(crate) fn into_stwo_circuit_trace(
-        self,
+pub(crate) fn gen_stwo_circuit_trace<'a,T:FieldElement>(witness: Option<&'a [(String, Vec<T>)]>,analyzed: Arc<Analyzed<T>>
     ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
         let element: Option<Vec<(String, BaseColumn)>> = Some(
-            self.witness
-                .as_ref()
+            witness.as_ref()
                 .expect("Witness needs to be set")
                 .iter()
                 .map(|(name, values)| {
@@ -61,7 +35,7 @@ v.try_into_i32().unwrap().into()
                 })
                 .collect(),
         );
-        let domain = CanonicCoset::new(self.analyzed.degree().ilog2()).circle_domain();
+        let domain = CanonicCoset::new(analyzed.degree().ilog2()).circle_domain();
         element
             .map(|elements| {
                 elements
@@ -71,7 +45,7 @@ v.try_into_i32().unwrap().into()
             })
             .unwrap()
     }
-}
+
 
 pub struct PowdrEval<T> {
     analyzed: Arc<Analyzed<T>>,

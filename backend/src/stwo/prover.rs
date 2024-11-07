@@ -3,7 +3,7 @@ use powdr_executor::witgen::WitgenCallback;
 use std::io;
 use std::sync::Arc;
 
-use crate::stwo::circuit_builder::PowdrCircuit;
+use crate::stwo::circuit_builder::gen_stwo_circuit_trace;
 use crate::stwo::circuit_builder::PowdrEval;
 
 use super::circuit_builder::PowdrComponent;
@@ -72,9 +72,8 @@ impl<F: FieldElement> StwoProver<F> {
                 config, &twiddles,
             );
 
-        let trace = PowdrCircuit::new(self.analyzed.clone())
-            .with_witness(witness)
-            .into_stwo_circuit_trace();
+        let trace = gen_stwo_circuit_trace(Some(witness), self.analyzed.clone());
+
 
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals(trace);

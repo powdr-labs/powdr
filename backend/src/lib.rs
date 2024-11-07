@@ -101,6 +101,7 @@ impl BackendType {
             BackendType::Plonky3 => Box::new(plonky3::Factory),
             #[cfg(feature = "stwo")]
             BackendType::Stwo => Box::new(stwo::StwoProverFactory),
+            _ => panic!("Empty backend."),
         }
     }
 }
