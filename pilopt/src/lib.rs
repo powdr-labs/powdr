@@ -152,10 +152,23 @@ fn collect_required_symbols<'a, T: FieldElement>(
             .values()
             .map(|p| SymbolReference::from(&p.polynomial.name)),
     );
+
+    let poly_ref_to_id = pil_file
+        .definitions
+        .values()
+        .filter_map(|(symbol, _)| matches!(symbol.kind, SymbolKind::Poly(_)).then_some(symbol))
+        .flat_map(|symbol| symbol.array_elements())
+        .collect::<BTreeMap<_, _>>();
+    
     for fun in &pil_file.prover_functions {
         for e in fun.all_children() {
             if let Expression::Reference(_, Reference::Poly(poly_ref)) = e {
-                required_names.insert(SymbolReference::from(poly_ref));
+                let symbol_ref = match poly_ref_to_id.get(&poly_ref.name) {
+                    Some(poly_id) => poly_id_to_definition_name[poly_id].into(),
+                    None => SymbolReference::from(poly_ref),
+                };
+
+                required_names.insert(symbol_ref);
             }
         }
     }
