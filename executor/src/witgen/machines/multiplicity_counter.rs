@@ -9,7 +9,7 @@ pub struct MultiplicityCounter {
     /// Note that multiple identity IDs can map to the same multiplicity column.
     identity_id_to_multiplicity_column: BTreeMap<u64, PolyID>,
 
-    /// A map poly_id -> (index -> count).
+    /// A map poly_id -> (row -> count).
     /// Has a (possibly entry) entry for each value in `identity_id_to_multiplicity_column`.
     counts: BTreeMap<PolyID, BTreeMap<usize, usize>>,
 }
