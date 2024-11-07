@@ -178,7 +178,7 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
             }
         }
         AlgebraicExpression::Challenge(_challenge) => {
-            unimplemented!()
+            unimplemented!("challenges are not supported in this stwo yet")
         }
         _ => unimplemented!("{:?}", expr),
     }
