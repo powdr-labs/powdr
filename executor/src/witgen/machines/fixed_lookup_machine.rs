@@ -28,19 +28,21 @@ type Application = (Vec<PolyID>, Vec<PolyID>);
 type Index<T> = BTreeMap<Vec<T>, IndexValue<T>>;
 
 #[derive(Debug)]
-struct IndexValue<T>(Vec<T>);
+struct IndexValue<T>(usize, Vec<T>);
 
 impl<T> IndexValue<T> {
     pub fn multiple_matches() -> Self {
-        Self(vec![])
+        Self(0, vec![])
     }
-    pub fn single_row(&[T]row: usize) -> Self {
-        // TODO check how expensive the check is
-        // We negate to make it actually nonzero.
-        Self(NonZeroUsize::new(!row))
+    pub fn single_row(row: usize, values: Vec<T>) -> Self {
+        Self(row, values)
     }
-    fn values(&self) -> &[T] {
-        self.0.map(|row| (!row.get()))
+    pub fn row_and_values(&self) -> Option<(usize, &Vec<T>)> {
+        if self.1.is_empty() {
+            None
+        } else {
+            Some((self.0, &self.1))
+        }
     }
 }
 
@@ -59,7 +61,7 @@ impl<T: FieldElement> IndexedColumns<T> {
         fixed_data: &FixedData<T>,
         mut assignment: Vec<(PolyID, T)>,
         mut output_fixed_columns: Vec<PolyID>,
-    ) -> Option<&IndexValue> {
+    ) -> Option<&IndexValue<T>> {
         // sort in order to have a single index for [X, Y] and for [Y, X]
         assignment.sort_by(|(name0, _), (name1, _)| name0.cmp(name1));
         let (input_fixed_columns, values): (Vec<_>, Vec<_>) = assignment.into_iter().unzip();
@@ -87,6 +89,9 @@ impl<T: FieldElement> IndexedColumns<T> {
         }
 
         let (sorted_input_fixed_columns, sorted_output_fixed_columns) = &sorted_fixed_columns;
+
+        // A non-empty index vector equals "multiple matches".
+        assert!(!sorted_input_fixed_columns.is_empty());
 
         // create index for this lookup
         log::info!(
@@ -120,10 +125,10 @@ impl<T: FieldElement> IndexedColumns<T> {
             .exactly_one()
             .expect("all columns in a given lookup are expected to have the same degree");
 
-        let index: BTreeMap<Vec<T>, IndexValue> = (0..degree)
+        let index: BTreeMap<Vec<T>, IndexValue<T>> = (0..degree)
             .fold(
                 (
-                    BTreeMap::<Vec<T>, IndexValue>::default(),
+                    BTreeMap::<Vec<T>, IndexValue<T>>::default(),
                     HashSet::<(Vec<T>, Vec<T>)>::default(),
                 ),
                 |(mut acc, mut set), row| {
@@ -142,14 +147,14 @@ impl<T: FieldElement> IndexedColumns<T> {
                     if !set.contains(&input_output) {
                         set.insert(input_output.clone());
 
-                        let (input, _) = input_output;
+                        let (input, output) = input_output;
 
                         acc.entry(input)
                             // we have a new, different output, so we lose knowledge
                             .and_modify(|value| {
                                 *value = IndexValue::multiple_matches();
                             })
-                            .or_insert_with(|| IndexValue::single_row(row));
+                            .or_insert_with(|| IndexValue::single_row(row, output));
                     }
                     (acc, set)
                 },
@@ -157,20 +162,13 @@ impl<T: FieldElement> IndexedColumns<T> {
             .0;
 
         log::info!(
-            "Done creating index. Size (as flat list): entries * (num_inputs * input_size + row_pointer_size) = {} * ({} * {} bytes + {} bytes) = {} bytes",
-            index.len(),
-            input_column_values.len(),
-            mem::size_of::<T>(),
-            mem::size_of::<IndexValue>(),
-            index.len() * (input_column_values.len() * mem::size_of::<T>() + mem::size_of::<IndexValue>())
-        );
-        println!("Size as full rows: entries * (num_inputs * input_size + num_outputs * output_size) = {} * ({} * {} bytes + {} * {} bytes) = {} MB",
+            "Done creating index. Size (as flat list): entries * (num_inputs * input_size + num_outputs * output_size) = {} * ({} * {} bytes + {} * {} bytes) = {:.2} MB",
             index.len(),
             input_column_values.len(),
             mem::size_of::<T>(),
             output_column_values.len(),
             mem::size_of::<T>(),
-            (index.len() * (input_column_values.len() * mem::size_of::<T>() + output_column_values.len() * mem::size_of::<T>())) / 1024 / 1024
+            (index.len() * (input_column_values.len() * mem::size_of::<T>() + output_column_values.len() * mem::size_of::<T>())) as f64 / 1024.0 / 1024.0
         );
         self.indices.insert(
             (
@@ -315,15 +313,11 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
                 EvalError::FixedLookupFailed(input_assignment)
             })?;
 
-        let row = match index_value.row() {
-            // a single match, we continue
-            Some(row) => row,
+        let Some((row, output)) = index_value.row_and_values() else {
             // multiple matches, we stop and learnt nothing
-            None => {
-                return Ok(EvalValue::incomplete(
-                    IncompleteCause::MultipleLookupMatches,
-                ))
-            }
+            return Ok(EvalValue::incomplete(
+                IncompleteCause::MultipleLookupMatches,
+            ));
         };
 
         // Update the multiplicities
@@ -333,13 +327,9 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
                 .or_insert_with(|| vec![T::zero(); self.degree as usize])[row] += T::one();
         }
 
-        let output = output_columns
-            .iter()
-            .map(|column| self.fixed_data.fixed_cols[column].values_max_size()[row]);
-
         let mut result = EvalValue::complete(vec![]);
         for (l, r) in output_expressions.into_iter().zip(output) {
-            let evaluated = l.clone() - r.into();
+            let evaluated = l.clone() - (*r).into();
             // TODO we could use bit constraints here
             match evaluated.solve() {
                 Ok(constraints) => {
