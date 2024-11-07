@@ -390,10 +390,8 @@ mod builder {
             .committed_polys_in_source_order()
             .find(|(s, _)| s.absolute_name.contains(&format!("{namespace}::")))
             .and_then(|(s, _)| s.degree)
-            .unwrap_or(DegreeRange {
-                min: 0,
-                max: u32::MAX as u64,
-            })
+            // all machines/columns should have a degree range defined
+            .unwrap()
     }
 
     fn register_names(main: &Machine) -> Vec<&str> {
@@ -1121,19 +1119,20 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 assert!(addr >= 0);
                 assert_eq!(addr % 4, 0);
 
-                let wrap_bit = if addr > u32::MAX as i64 {
-                    Elem::Field(F::one())
-                } else {
-                    Elem::Field(F::zero())
-                };
-                let addr = addr as u32;
+                set_col!(
+                    wrap_bit,
+                    if addr > u32::MAX as i64 {
+                        Elem::Field(F::one())
+                    } else {
+                        Elem::Field(F::zero())
+                    }
+                );
 
+                let addr = addr as u32;
                 self.proc.set_mem(addr, value.u());
                 self.proc
                     .memory_machine
                     .write(self.step + 3, addr, value, 1);
-
-                set_col!(wrap_bit, wrap_bit);
 
                 set_col!(tmp1_col, addr1);
                 set_col!(tmp2_col, addr2);
