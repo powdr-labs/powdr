@@ -76,9 +76,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
             self.data.extend(updated_data.block);
             self.publics.extend(updated_data.publics);
 
-            // The last row is the latch row.
+            let latch_row = self.data.len() - 1;
             self.multiplicity_counter
-                .increment(identity_id, self.data.len() - 1);
+                .increment(identity_id, latch_row);
 
             eval_value.report_side_effect()
         } else {
