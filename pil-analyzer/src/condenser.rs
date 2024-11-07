@@ -572,7 +572,6 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             }
         };
 
-        // TOOD we already need the updated symbols here!
         let value = try_to_function_value_definition(
             &self.poly_id_to_name,
             expr.as_ref(),

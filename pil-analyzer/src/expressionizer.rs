@@ -302,10 +302,7 @@ impl<'a> Expressionizer<'a> {
 
         let ((_, array_start), symbol_name) = self
             .poly_id_to_name
-            .range((
-                Bound::Unbounded,
-                Bound::Included((poly_id.ptype, poly_id.id)),
-            ))
+            .range(..=(poly_id.ptype, poly_id.id))
             .last()
             .unwrap();
         let e = if *array_start == poly_id.id && symbol_name == name {
