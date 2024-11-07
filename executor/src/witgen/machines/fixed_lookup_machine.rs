@@ -11,6 +11,7 @@ use powdr_ast::analyzed::{
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::affine_expression::{AffineExpression, AlgebraicVariable};
+use crate::witgen::data_structures::multiplicity_counter::MultiplicityCounter;
 use crate::witgen::global_constraints::{GlobalConstraints, RangeConstraintSet};
 use crate::witgen::processor::OuterQuery;
 use crate::witgen::range_constraints::RangeConstraint;
@@ -20,7 +21,6 @@ use crate::witgen::{EvalError, EvalValue, IncompleteCause, MutableState, QueryCa
 use crate::witgen::{EvalResult, FixedData};
 use crate::Identity;
 
-use super::multiplicity_counter::MultiplicityCounter;
 use super::{Connection, ConnectionKind, Machine};
 
 type Application = (Vec<PolyID>, Vec<PolyID>);

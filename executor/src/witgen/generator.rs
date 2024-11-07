@@ -9,7 +9,7 @@ use crate::witgen::EvalValue;
 
 use super::affine_expression::AlgebraicVariable;
 use super::block_processor::BlockProcessor;
-use super::machines::multiplicity_counter::MultiplicityCounter;
+use super::data_structures::multiplicity_counter::MultiplicityCounter;
 use super::machines::{Machine, MachineParts};
 use super::processor::SolverState;
 use super::rows::{Row, RowIndex, RowPair};

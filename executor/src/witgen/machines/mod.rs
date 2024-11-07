@@ -25,7 +25,6 @@ mod double_sorted_witness_machine_16;
 mod double_sorted_witness_machine_32;
 mod fixed_lookup_machine;
 pub mod machine_extractor;
-pub(crate) mod multiplicity_counter;
 pub mod profiling;
 mod sorted_witness_machine;
 mod write_once_memory;
