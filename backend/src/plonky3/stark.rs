@@ -353,7 +353,14 @@ mod tests {
 
     #[test]
     fn public_values() {
-        let content = "namespace Global(8); pol witness x; x * (x - 1) = 0; public out = x(7);";
+        let content = "
+        namespace Global(8);
+            pol fixed FIRST = [1] + [0]*;
+            pol witness x;
+            x' = (1 - FIRST') * (x + 1);
+            public out0 = x(6);
+            public out1 = x(7);
+        ";
         run_test(content);
     }
 
