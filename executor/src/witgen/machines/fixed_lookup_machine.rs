@@ -4,7 +4,8 @@ use std::mem;
 use std::num::NonZeroUsize;
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicReference, PolyID, PolynomialType};
+use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
+use powdr_ast::parsed::visitor::Children;
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::affine_expression::{AffineExpression, AlgebraicVariable};
@@ -183,10 +184,38 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
     pub fn new(
         global_constraints: GlobalConstraints<T>,
         fixed_data: &'a FixedData<'a, T>,
-        multiplicity_column_sizes: BTreeMap<PolyID, DegreeType>,
         connections: BTreeMap<u64, Connection<'a, T>>,
     ) -> Self {
         let multiplicity_counter = MultiplicityCounter::new(&connections);
+        let multiplicity_column_sizes = connections
+            .values()
+            .filter(|connection| connection.multiplicity_column.is_some())
+            .map(|connection| {
+                let fixed_columns = connection
+                    .right
+                    .children()
+                    .map(|expr| match expr {
+                        AlgebraicExpression::Reference(poly) => poly.poly_id,
+                        _ => unreachable!(),
+                    })
+                    .collect::<Vec<_>>();
+                let size = fixed_columns
+                    .iter()
+                    .map(|fixed_col| {
+                        // Get unique size for fixed column
+                        fixed_data.fixed_cols[&fixed_col]
+                            .values
+                            .get_uniquely_sized()
+                            .unwrap()
+                            .len() as DegreeType
+                    })
+                    .unique()
+                    .exactly_one()
+                    .expect("All fixed columns on the same RHS must have the same size");
+                let poly_id = connection.multiplicity_column.unwrap();
+                (poly_id, size)
+            })
+            .collect();
 
         Self {
             global_constraints,

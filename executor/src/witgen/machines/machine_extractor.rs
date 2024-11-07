@@ -2,14 +2,11 @@ use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use itertools::Itertools;
 use num_traits::One;
-use powdr_ast::analyzed::AlgebraicExpression;
-use powdr_ast::analyzed::AlgebraicReference;
 use powdr_ast::analyzed::LookupIdentity;
 use powdr_ast::analyzed::PermutationIdentity;
 use powdr_ast::analyzed::PhantomLookupIdentity;
 use powdr_ast::analyzed::PhantomPermutationIdentity;
 use powdr_ast::analyzed::PolynomialType;
-use powdr_number::DegreeType;
 
 use super::block_machine::BlockMachine;
 use super::double_sorted_witness_machine_16::DoubleSortedWitnesses16;
@@ -70,28 +67,6 @@ pub fn split_out_machines<'a, T: FieldElement>(
     let mut base_identities = identities.clone();
     let mut extracted_prover_functions = HashSet::new();
     let mut id_counter = 0;
-
-    let phantom_lookups = identities
-        .iter()
-        .filter_map(|identity| match identity {
-            Identity::PhantomLookup(phantom_lookup) => Some(phantom_lookup.clone()),
-            _ => None,
-        })
-        .collect::<Vec<_>>();
-
-    // Compute mapping: <identity ID> -> <multiplicity column ID>
-    let identity_id_to_multiplicity = phantom_lookups
-        .iter()
-        .map(|id| match id.multiplicity {
-            AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) => (id.id, poly_id),
-            _ => {
-                unimplemented!(
-                    "Only simple references are supported, got: {}",
-                    id.multiplicity
-                )
-            }
-        })
-        .collect::<BTreeMap<_, _>>();
 
     let all_connections = identities
         .iter()
@@ -236,37 +211,9 @@ pub fn split_out_machines<'a, T: FieldElement>(
     // Note that this machine comes last, because some machines do a fixed lookup
     // in their take_witness_col_values() implementation.
     // TODO: We should also split this up and have several instances instead.
-
-    // TODO: Simplify and reduce code duplication.
-
-    // Compute sizes of fixed lookup multiplicity columns.
-    let fixed_lookup_machine_sizes = fixed_lookup_connections
-        .iter()
-        .filter(|(_, connection)| connection.multiplicity_column.is_some())
-        .map(|(identity_id, connection)| {
-            let fixed_columns = refs_in_selected_expressions(connection.right);
-            let size = fixed_columns
-                .iter()
-                .map(|fixed_col| {
-                    // Get unique size for fixed column
-                    fixed.fixed_cols[fixed_col]
-                        .values
-                        .get_uniquely_sized()
-                        .unwrap()
-                        .len() as DegreeType
-                })
-                .unique()
-                .exactly_one()
-                .expect("All fixed columns on the same RHS must have the same size");
-            let poly_id = identity_id_to_multiplicity[identity_id];
-            (poly_id, size)
-        })
-        .collect();
-
     let fixed_lookup = FixedLookup::new(
         fixed.global_range_constraints().clone(),
         fixed,
-        fixed_lookup_machine_sizes,
         fixed_lookup_connections,
     );
 
