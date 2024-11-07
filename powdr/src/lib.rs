@@ -243,21 +243,19 @@ pub fn run(pipeline: &mut Pipeline<GoldilocksField>) {
     println!("Running powdr-riscv executor in fast mode...");
     let start = Instant::now();
 
-    let program = pipeline.compute_analyzed_asm().unwrap().clone();
-    let initial_memory = riscv::continuations::load_initial_memory(&program);
-    let (trace, _mem, _reg_mem) = riscv_executor::execute_ast(
-        &program,
+    let asm = pipeline.compute_analyzed_asm().unwrap().clone();
+    let initial_memory = riscv::continuations::load_initial_memory(&asm);
+    let trace_len = riscv_executor::execute_fast(
+        &asm,
         initial_memory,
         pipeline.data_callback().unwrap(),
         &riscv::continuations::bootloader::default_input(&[]),
-        usize::MAX,
-        riscv_executor::ExecMode::Fast,
         None,
     );
 
     let duration = start.elapsed();
     println!("Fast executor took: {duration:?}");
-    println!("Trace length: {}", trace.len);
+    println!("Trace length: {trace_len}");
 }
 
 pub fn prove(pipeline: &mut Pipeline<GoldilocksField>) {
