@@ -379,13 +379,11 @@ fn execute_fast<F: FieldElement>(
         .with_output(output_dir.into(), true);
 
     let asm = pipeline.compute_analyzed_asm().unwrap().clone();
-    let pil = pipeline.compute_optimized_pil().unwrap();
 
     let start = Instant::now();
 
     let trace_len = powdr::riscv_executor::execute_fast::<F>(
         &asm,
-        &pil,
         powdr::riscv_executor::MemoryState::new(),
         pipeline.data_callback().unwrap(),
         &[],

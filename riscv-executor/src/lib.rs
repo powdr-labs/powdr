@@ -2093,7 +2093,6 @@ enum ExecMode {
 /// Returns the execution trace length.
 pub fn execute_fast<F: FieldElement>(
     asm: &AnalysisASMFile,
-    opt_pil: &Analyzed<F>,
     initial_memory: MemoryState,
     inputs: &Callback<F>,
     bootloader_inputs: &[F],
@@ -2102,7 +2101,7 @@ pub fn execute_fast<F: FieldElement>(
     log::info!("Executing...");
     execute_inner(
         asm,
-        opt_pil,
+        None,
         None,
         initial_memory,
         inputs,
@@ -2129,7 +2128,7 @@ pub fn execute<F: FieldElement>(
     log::info!("Executing...");
     execute_inner(
         asm,
-        opt_pil,
+        Some(opt_pil),
         Some(fixed),
         initial_memory,
         inputs,
@@ -2149,7 +2148,7 @@ fn register_by_idx(idx: usize) -> String {
 #[allow(clippy::too_many_arguments)]
 fn execute_inner<F: FieldElement>(
     asm: &AnalysisASMFile,
-    opt_pil: &Analyzed<F>,
+    opt_pil: Option<&Analyzed<F>>,
     fixed: Option<FixedColumns<F>>,
     initial_memory: MemoryState,
     inputs: &Callback<F>,
@@ -2169,10 +2168,13 @@ fn execute_inner<F: FieldElement>(
         location_starts,
     } = preprocess_main_function(main_machine);
 
-    let witness_cols: Vec<_> = opt_pil
-        .committed_polys_in_source_order()
-        .flat_map(|(s, _)| s.array_elements().map(|(name, _)| name))
-        .collect();
+    let witness_cols: Vec<String> = opt_pil
+        .map(|pil| {
+            pil.committed_polys_in_source_order()
+                .flat_map(|(s, _)| s.array_elements().map(|(name, _)| name))
+                .collect()
+        })
+        .unwrap_or_default();
 
     // program columns to witness columns
     let program_cols: HashMap<_, _> = if let Some(fixed) = &fixed {

@@ -232,11 +232,9 @@ pub fn run(pipeline: &mut Pipeline<GoldilocksField>) {
     let start = Instant::now();
 
     let asm = pipeline.compute_analyzed_asm().unwrap().clone();
-    let pil = pipeline.compute_optimized_pil().unwrap();
     let initial_memory = riscv::continuations::load_initial_memory(&asm);
     let trace_len = riscv_executor::execute_fast(
         &asm,
-        &pil,
         initial_memory,
         pipeline.data_callback().unwrap(),
         &riscv::continuations::bootloader::default_input(&[]),
