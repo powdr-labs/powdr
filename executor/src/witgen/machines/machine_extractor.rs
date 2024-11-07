@@ -93,18 +93,22 @@ pub fn split_out_machines<'a, T: FieldElement>(
         })
         .collect::<BTreeMap<_, _>>();
 
-    for id in &identities {
+    let all_connections = identities
+        .iter()
+        .filter_map(|i| Connection::try_from(*i).ok())
+        .collect::<Vec<_>>();
+
+    for connection in &all_connections {
         // Extract all witness columns in the RHS of the lookup.
-        let lookup_witnesses = match id {
-            Identity::Lookup(LookupIdentity { right, .. })
-            | Identity::PhantomLookup(PhantomLookupIdentity { right, .. })
-            | Identity::Permutation(PermutationIdentity { right, .. })
-            | Identity::PhantomPermutation(PhantomPermutationIdentity { right, .. }) => {
-                &refs_in_selected_expressions(right) & (&remaining_witnesses)
-            }
-            _ => Default::default(),
+        let lookup_witnesses = {
+            let callee_columns = refs_in_selected_expressions(connection.right)
+                .into_iter()
+                .chain(connection.multiplicity_column.iter().cloned())
+                .collect();
+            &callee_columns & (&remaining_witnesses)
         };
         if lookup_witnesses.is_empty() {
+            // Skip connections to machines that were already created or point to FixedLookup.
             continue;
         }
 
@@ -129,30 +133,19 @@ pub fn split_out_machines<'a, T: FieldElement>(
 
         publics.add_all(machine_identities.as_slice()).unwrap();
 
-        // Identities that call into the current machine
-        let connections = identities
+        // Connections that call into the current machine
+        let machine_connections = all_connections
             .iter()
-            .filter_map(|i| {
-                let id = i.id();
-                // identify potential connecting identities
-                let i = Connection::try_from(*i).ok()?;
-
+            .filter_map(|connection| {
                 // check if the identity connects to the current machine
-                refs_in_selected_expressions(i.right)
+                refs_in_selected_expressions(connection.right)
                     .intersection(&core_machine_witnesses)
                     .next()
                     .is_some()
-                    .then_some((id, i))
+                    .then_some((connection.id, *connection))
             })
             .collect::<BTreeMap<_, _>>();
-        assert!(connections.contains_key(&id.id()));
-
-        // Multiplicity columns are not part of the "core" machine witness, so we collect and remove them here.
-        let multiplicity_columns = connections
-            .values()
-            .filter_map(|c| c.multiplicity_column)
-            .collect();
-        remaining_witnesses = &remaining_witnesses - &multiplicity_columns;
+        assert!(machine_connections.contains_key(&connection.id));
 
         let prover_functions = prover_functions
             .iter()
@@ -177,7 +170,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             machine_identities
                 .iter()
                 .format("\n"),
-            connections
+            machine_connections
                 .values()
                 .map(|id| id.to_string())
                 .format("\n"),
@@ -208,7 +201,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
 
         let machine_parts = MachineParts::new(
             fixed,
-            connections,
+            machine_connections,
             machine_identities,
             core_machine_witnesses,
             prover_functions.iter().map(|&(_, pf)| pf).collect(),
