@@ -982,7 +982,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 );
                 self.proc.set_col(col, val);
             }
-            // always 2 because RISCV only uses constrainted submachines
             self.proc.set_col("main::_operation_id", 2.into());
         }
     }
@@ -1060,25 +1059,23 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let value = self.reg_read(2, read_reg3, 2);
 
                 let addr = addr1.bin() - addr2.bin() + offset;
-                let addr = addr as u32;
+                // assumptions from the asm machine
+                assert!(addr >= 0);
                 assert_eq!(addr % 4, 0);
+
+                let wrap_bit = if addr > u32::MAX as i64 {
+                    Elem::Field(F::one())
+                } else {
+                    Elem::Field(F::zero())
+                };
+                let addr = addr as u32;
+
                 self.proc.set_mem(addr, value.u());
-
-                // Calculate the address with wrapping
-                let addr_full = addr1.bin() - addr2.bin() + offset;
-                // let addr_wrapped = (addr_full % (2_u64.pow(32) as i64)) as u32;
-                set_col!(
-                    wrap_bit,
-                    if addr_full >= 2_i64.pow(32) || addr_full < 0 {
-                        Elem::Field(F::one())
-                    } else {
-                        Elem::Field(F::zero())
-                    }
-                );
-
                 self.proc
                     .memory_machine
                     .write(self.step + 3, addr, value, 1);
+
+                set_col!(wrap_bit, wrap_bit);
 
                 set_col!(tmp1_col, addr1);
                 set_col!(tmp2_col, addr2);
