@@ -78,7 +78,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
 
             // The last row is the latch row.
             self.multiplicity_counter
-                .increment(identity_id, self.data.len() - 1);
+                .increment_at_row(identity_id, self.data.len() - 1);
 
             eval_value.report_side_effect()
         } else {

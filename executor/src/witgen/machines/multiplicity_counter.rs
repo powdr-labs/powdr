@@ -28,7 +28,7 @@ impl MultiplicityCounter {
     }
 
     /// For a given identity ID, increments the count of the corresponding multiplicity column at the given index.
-    pub fn increment(&mut self, identity_id: u64, index: usize) {
+    pub fn increment_at_row(&mut self, identity_id: u64, index: usize) {
         if let Some(poly_id) = self.identity_id_to_multiplicity_column.get(&identity_id) {
             // Every value of `identity_id_to_multiplicity_column` should have an entry in `counts`.
             let count = self.counts.get_mut(poly_id).unwrap();
@@ -41,16 +41,10 @@ impl MultiplicityCounter {
         &self,
         size: DegreeType,
     ) -> BTreeMap<PolyID, Vec<T>> {
-        self.counts
-            .iter()
-            .map(|(poly_id, counts)| {
-                let mut column = vec![T::zero(); size as usize];
-                for (index, count) in counts {
-                    column[*index] = T::from(*count as u64);
-                }
-                (*poly_id, column)
-            })
-            .collect()
+        self.generate_columns_different_sizes(
+            // All polynomials have size `size`.
+            self.counts.keys().map(|poly_id| (*poly_id, size)).collect(),
+        )
     }
 
     /// Materializes the multiplicity columns, using different sizes for each of them.

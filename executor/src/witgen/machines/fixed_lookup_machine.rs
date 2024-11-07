@@ -293,7 +293,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             }
         };
 
-        self.multiplicity_counter.increment(identity_id, row);
+        self.multiplicity_counter.increment_at_row(identity_id, row);
 
         let output = output_columns
             .iter()
