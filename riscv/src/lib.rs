@@ -119,6 +119,10 @@ impl CompilerOptions {
         }
     }
 
+    pub fn with_runtime_libs(self, libs: RuntimeLibs) -> Self {
+        Self { libs, ..self }
+    }
+
     pub fn with_arith(self) -> Self {
         Self {
             libs: self.libs.with_arith(),

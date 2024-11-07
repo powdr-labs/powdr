@@ -15,7 +15,7 @@ pub use powdr_number::Bn254Field;
 pub use powdr_number::FieldElement;
 pub use powdr_number::GoldilocksField;
 
-use riscv::CompilerOptions;
+use riscv::{CompilerOptions, RuntimeLibs};
 
 use std::fs::{self, File};
 use std::path::Path;
@@ -27,6 +27,7 @@ pub struct SessionBuilder {
     guest_path: String,
     out_path: String,
     chunk_size_log2: Option<u8>,
+    precompiles: RuntimeLibs,
 }
 
 pub struct Session {
@@ -52,6 +53,7 @@ impl SessionBuilder {
                 Path::new(&self.out_path),
                 DEFAULT_MIN_DEGREE_LOG,
                 self.chunk_size_log2.unwrap_or(DEFAULT_MAX_DEGREE_LOG),
+                self.precompiles,
             ),
             out_path: self.out_path,
         }
@@ -80,11 +82,19 @@ impl SessionBuilder {
         self.chunk_size_log2 = Some(chunk_size_log2);
         self
     }
+
+    pub fn precompiles(mut self, precompiles: RuntimeLibs) -> Self {
+        self.precompiles = precompiles;
+        self
+    }
 }
 
 impl Session {
     pub fn builder() -> SessionBuilder {
-        SessionBuilder::default()
+        SessionBuilder {
+            precompiles: RuntimeLibs::new().with_poseidon(),
+            ..SessionBuilder::default()
+        }
     }
 
     pub fn into_pipeline(self) -> Pipeline<GoldilocksField> {
@@ -194,20 +204,16 @@ pub fn build_guest(
     out_path: &Path,
     min_degree_log: u8,
     max_degree_log: u8,
+    precompiles: RuntimeLibs,
 ) -> (PathBuf, String) {
-    riscv::compile_rust(
-        guest_path,
-        CompilerOptions::new_gl()
-            .with_poseidon()
-            .with_continuations()
-            .with_min_degree_log(min_degree_log)
-            .with_max_degree_log(max_degree_log),
-        out_path,
-        true,
-        None,
-    )
-    .ok_or_else(|| vec!["could not compile rust".to_string()])
-    .unwrap()
+    let options = CompilerOptions::new_gl()
+        .with_runtime_libs(precompiles)
+        .with_continuations()
+        .with_min_degree_log(min_degree_log)
+        .with_max_degree_log(max_degree_log);
+    riscv::compile_rust(guest_path, options, out_path, true, None)
+        .ok_or_else(|| vec!["could not compile rust".to_string()])
+        .unwrap()
 }
 
 pub fn pipeline_from_guest(
@@ -215,11 +221,17 @@ pub fn pipeline_from_guest(
     out_path: &Path,
     min_degree_log: u8,
     max_degree_log: u8,
+    precompiles: RuntimeLibs,
 ) -> Pipeline<GoldilocksField> {
     println!("Compiling guest program...");
 
-    let (asm_file_path, asm_contents) =
-        build_guest(guest_path, out_path, min_degree_log, max_degree_log);
+    let (asm_file_path, asm_contents) = build_guest(
+        guest_path,
+        out_path,
+        min_degree_log,
+        max_degree_log,
+        precompiles,
+    );
 
     // Create a pipeline from the asm program
     Pipeline::<GoldilocksField>::default()
