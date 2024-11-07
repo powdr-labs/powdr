@@ -32,6 +32,35 @@ pub fn poseidon_gl(data: &mut [u64; 12]) -> &[u64; 4] {
     poseidon_gl_unsafe(data)
 }
 
+/// Perform one Poseidon2 permutation with 8 Goldilocks field elements.
+///
+/// Calls the Poseidon2 PIL machine, which performs the permutation in-place.
+///
+/// This is unsafe because it does not check if the u64 elements fit the
+/// Goldilocks field.
+pub fn poseidon2_gl_unsafe(data: &mut [u64; 8]) {
+    unsafe {
+        asm!("ecall",
+            in("a0") data as *mut [u64; 8],
+            in("t0") u32::from(Syscall::Poseidon2GL)
+        );
+    }
+}
+
+/// Perform one Poseidon2 permutation with 8 Goldilocks field elements.
+///
+/// Calls the Poseidon2 PIL machine, which performs the permutation in-place.
+///
+/// This function will panic if any of the u64 elements doesn't fit the
+/// Goldilocks field.
+pub fn poseidon2_gl(data: &mut [u64; 8]) {
+    for &n in data.iter() {
+        assert!(n < GOLDILOCKS);
+    }
+
+    poseidon2_gl_unsafe(data)
+}
+
 /// Calls the keccakf machine.
 /// Return value is placed in the output array.
 pub fn keccakf(input: &[u64; 25], output: &mut [u64; 25]) {
