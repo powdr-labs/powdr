@@ -92,7 +92,7 @@ impl SessionBuilder {
 impl Session {
     pub fn builder() -> SessionBuilder {
         SessionBuilder {
-            precompiles: RuntimeLibs::new().with_poseidon(),
+            precompiles: RuntimeLibs::new(),
             ..SessionBuilder::default()
         }
     }
