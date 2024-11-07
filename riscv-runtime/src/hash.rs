@@ -10,7 +10,7 @@ use powdr_riscv_syscalls::Syscall;
 /// sub-array is returned.
 pub fn poseidon_gl(data: &mut [Goldilocks; 12]) -> &[Goldilocks; 4] {
     unsafe {
-        asm!("ecall", in("a0") data as *mut _ as *mut [u64; 12], in("t0") u32::from(Syscall::PoseidonGL));
+        asm!("ecall", in("a0") data as *mut _, in("t0") u32::from(Syscall::PoseidonGL));
     }
     data[..4].try_into().unwrap()
 }
