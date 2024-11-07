@@ -92,9 +92,11 @@ where
         .map(
             |(i, (bootloader_inputs, start_of_shutdown_routine))| -> Result<(), E> {
                 log::info!("\nRunning chunk {} / {}...", i + 1, num_chunks);
-                if let Some(parent_dir) = pipeline.output_dir() {
-                    let force_overwrite = pipeline.is_force_overwrite();
 
+                let parent_dir = pipeline.output_dir().clone();
+                let force_overwrite = pipeline.is_force_overwrite();
+
+                if let Some(parent_dir) = parent_dir.clone() {
                     let chunk_dir = parent_dir.join(format!("chunk_{i}"));
                     create_dir_all(&chunk_dir).unwrap();
 
@@ -106,6 +108,9 @@ where
                     }
                     hard_link(parent_dir.join("constants.bin"), link_to_consts).unwrap();
 
+                    // The output directory is set here to output witness and proof artifacts
+                    // inside the chunk directory.
+                    // TODO This is hacky and should be improved.
                     pipeline.set_output(chunk_dir, force_overwrite)
                 }
 
@@ -141,6 +146,11 @@ where
                     ),
                 ]);
                 pipeline_callback(pipeline)?;
+
+                if let Some(original_dir) = parent_dir {
+                    pipeline.set_output(original_dir, force_overwrite);
+                }
+
                 Ok(())
             },
         )
