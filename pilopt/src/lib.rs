@@ -159,7 +159,7 @@ fn collect_required_symbols<'a, T: FieldElement>(
         .filter_map(|(symbol, _)| matches!(symbol.kind, SymbolKind::Poly(_)).then_some(symbol))
         .flat_map(|symbol| symbol.array_elements())
         .collect::<BTreeMap<_, _>>();
-    
+
     for fun in &pil_file.prover_functions {
         for e in fun.all_children() {
             if let Expression::Reference(_, Reference::Poly(poly_ref)) = e {
