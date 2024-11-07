@@ -24,7 +24,7 @@ machine Main with degree: 65536 {
         link ~> memory.mstore(ADDR1 + 4, STEP, X1);
 
     Poseidon2GL poseidon2(memory, split);
-    instr poseidon2 ADDR1, ADDR2 -> link ~> poseidon2.poseidon2_permutation(ADDR1, ADDR2, 1, STEP);
+    instr poseidon2 ADDR1, ADDR2 -> link ~> poseidon2.poseidon2_permutation(ADDR1, ADDR2, STEP);
 
     col witness val_low, val_high;
     instr assert_eq ADDR1, X1 ->

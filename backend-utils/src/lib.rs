@@ -171,16 +171,29 @@ fn split_by_namespace<F: FieldElement>(
 ) -> BTreeMap<String, Vec<StatementIdentifier>> {
     let mut current_namespace = "".to_string();
 
+    // Publics end up in the empty namespace, but we can find the correct namespace by looking
+    // at the referenced polynomial.
+    let public_to_namespace = pil
+        .public_declarations
+        .iter()
+        .map(|(public_name, public)| {
+            let ns = extract_namespace(&public.polynomial.name);
+            (public_name.clone(), ns)
+        })
+        .collect::<BTreeMap<_, _>>();
+
     pil.source_order
         .iter()
         // split, filtering out some statements
         .filter_map(|statement| match &statement {
-            StatementIdentifier::Definition(name)
-            | StatementIdentifier::PublicDeclaration(name) => {
+            StatementIdentifier::Definition(name) => {
                 let namespace = extract_namespace(name);
                 current_namespace = namespace.clone();
                 // add `statement` to `namespace`
                 Some((namespace, statement))
+            }
+            StatementIdentifier::PublicDeclaration(name) => {
+                Some((public_to_namespace[name].clone(), statement))
             }
             StatementIdentifier::ProofItem(i) => {
                 let identity = &pil.identities[*i];
