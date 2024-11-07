@@ -1,7 +1,7 @@
 //! Component that turns data from the PILAnalyzer into Analyzed,
 //! i.e. it turns more complex expressions in identities to simpler expressions.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use std::ops::Bound;
 
 use num_traits::sign::Signed;
@@ -9,7 +9,7 @@ use num_traits::sign::Signed;
 use powdr_ast::analyzed::{
     self, AlgebraicBinaryOperation, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, Challenge, Expression, FunctionValueDefinition, PolynomialReference,
-    PolynomialType, Reference, Symbol, SymbolKind,
+    PolynomialType, Reference,
 };
 use powdr_ast::parsed::{
     self,
@@ -28,11 +28,11 @@ use crate::evaluator::{self, Closure, EvalError, Value};
 /// Does allow some forms of captured variables by prefixing them
 /// via let statements.
 pub fn try_to_function_value_definition<T: FieldElement>(
-    symbols: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    poly_id_to_name: &BTreeMap<(PolynomialType, u64), String>,
     value: &Value<'_, T>,
     expected_kind: FunctionKind,
 ) -> Result<FunctionValueDefinition, EvalError> {
-    let mut e = Expressionizer::new(symbols).try_value_to_expression(value)?;
+    let mut e = Expressionizer { poly_id_to_name }.try_value_to_expression(value)?;
 
     // Set the lambda kind since this is used to detect hints in some cases.
     // Can probably be removed once we have prover functions.
@@ -53,28 +53,17 @@ pub fn try_to_function_value_definition<T: FieldElement>(
 
 /// Tries to convert an evaluator value to an expression with the same value.
 pub fn try_value_to_expression<T: FieldElement>(
-    symbols: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
+    poly_id_to_name: &BTreeMap<(PolynomialType, u64), String>,
     value: &Value<'_, T>,
 ) -> Result<Expression, EvalError> {
-    Expressionizer::new(symbols).try_value_to_expression(value)
+    Expressionizer { poly_id_to_name }.try_value_to_expression(value)
 }
 
 struct Expressionizer<'a> {
-    poly_id_to_name: BTreeMap<(PolynomialType, u64), &'a str>,
+    poly_id_to_name: &'a BTreeMap<(PolynomialType, u64), String>,
 }
 
 impl<'a> Expressionizer<'a> {
-    pub fn new(symbols: &'a HashMap<String, (Symbol, Option<FunctionValueDefinition>)>) -> Self {
-        let poly_id_to_name = symbols
-            .iter()
-            .filter_map(|(name, (symbol, _))| match &symbol.kind {
-                SymbolKind::Poly(poly_type) => Some(((*poly_type, symbol.id), name.as_str())),
-                _ => None,
-            })
-            .collect();
-        Self { poly_id_to_name }
-    }
-
     /// Turns a closure back into a (source) expression by prefixing
     /// potentially captured variables as let statements.
     fn try_closure_to_expression<T: FieldElement>(
@@ -310,6 +299,7 @@ impl<'a> Expressionizer<'a> {
     ) -> Expression {
         // First we need to find out if the reference is an array element
         // or a single symbol.
+
         let ((_, array_start), symbol_name) = self
             .poly_id_to_name
             .range((

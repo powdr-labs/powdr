@@ -200,6 +200,9 @@ pub struct Condenser<'a, T> {
     solved_impls: &'a SolvedTraitImpls,
     /// Evaluation cache.
     symbol_values: SymbolCache<'a, T>,
+    /// Mapping from polynomial ID to name (does not contain array elements),
+    /// updated with new columns.
+    poly_id_to_name: BTreeMap<(PolynomialType, u64), String>,
     /// Current namespace (for names of generated columns).
     namespace: AbsoluteSymbolPath,
     /// ID dispensers.
@@ -226,11 +229,20 @@ impl<'a, T: FieldElement> Condenser<'a, T> {
         solved_impls: &'a SolvedTraitImpls,
     ) -> Self {
         let counters = Counters::with_existing(symbols.values().map(|(sym, _)| sym), None, None);
+        let poly_id_to_name = symbols
+            .iter()
+            .filter_map(|(name, (symbol, _))| match &symbol.kind {
+                SymbolKind::Poly(poly_type) => Some(((*poly_type, symbol.id), name.clone())),
+                _ => None,
+            })
+            .collect();
+
         Self {
             degree: None,
             symbols,
             solved_impls,
             symbol_values: Default::default(),
+            poly_id_to_name,
             namespace: Default::default(),
             counters,
             new_columns: vec![],
@@ -402,17 +414,17 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         let name = self.find_unused_name(name);
         let mut length = None;
         let mut is_array = false;
-        let kind = match (ty, &value) {
-            (Some(Type::Inter), Some(_)) => SymbolKind::Poly(PolynomialType::Intermediate),
+        let poly_type = match (ty, &value) {
+            (Some(Type::Inter), Some(_)) => PolynomialType::Intermediate,
             (Some(Type::Array(ArrayType { base, length: len })), Some(_))
                 if base.as_ref() == &Type::Inter =>
             {
                 is_array = true;
                 length = *len;
-                SymbolKind::Poly(PolynomialType::Intermediate)
+                PolynomialType::Intermediate
             }
-            (Some(Type::Col) | None, Some(_)) => SymbolKind::Poly(PolynomialType::Constant),
-            (Some(Type::Col) | None, None) => SymbolKind::Poly(PolynomialType::Committed),
+            (Some(Type::Col) | None, Some(_)) => PolynomialType::Constant,
+            (Some(Type::Col) | None, None) => PolynomialType::Committed,
             _ => {
                 return Err(EvalError::TypeError(format!(
                     "Invalid type for new column {name}: {}.",
@@ -421,7 +433,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             }
         };
 
-        if kind == SymbolKind::Poly(PolynomialType::Intermediate) {
+        if poly_type == PolynomialType::Intermediate {
             let expr = if is_array {
                 let Value::Array(exprs) = value.unwrap().as_ref().clone() else {
                     panic!("Expected array");
@@ -454,14 +466,17 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             self.new_intermediate_column_values
                 .insert(name.clone(), expr);
         } else if let Some(value) = value {
-            let value =
-                try_to_function_value_definition(self.symbols, value.as_ref(), FunctionKind::Pure)
-                    .map_err(|e| match e {
-                        EvalError::TypeError(e) => EvalError::TypeError(format!(
-                            "Error creating fixed column {name}:\n{e}"
-                        )),
-                        _ => e,
-                    })?;
+            let value = try_to_function_value_definition(
+                &self.poly_id_to_name,
+                value.as_ref(),
+                FunctionKind::Pure,
+            )
+            .map_err(|e| match e {
+                EvalError::TypeError(e) => {
+                    EvalError::TypeError(format!("Error creating fixed column {name}:\n{e}"))
+                }
+                _ => e,
+            })?;
 
             self.new_column_values.insert(name.clone(), value);
         }
@@ -474,8 +489,8 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
         }
 
         let stage = if matches!(
-            kind,
-            SymbolKind::Poly(PolynomialType::Constant | PolynomialType::Intermediate)
+            poly_type,
+            PolynomialType::Constant | PolynomialType::Intermediate
         ) {
             // Fixed columns are pre-stage 0 and the stage of an intermediate column
             // is the max of the stages in the value, so we omit it in both cases.
@@ -485,8 +500,10 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             Some(stage.unwrap_or(self.stage))
         };
 
+        let kind = SymbolKind::Poly(poly_type);
+        let id = self.counters.dispense_symbol_id(kind, length);
         let symbol = Symbol {
-            id: self.counters.dispense_symbol_id(kind, length),
+            id,
             source,
             absolute_name: name.clone(),
             stage,
@@ -497,6 +514,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
 
         self.new_symbols.insert(name.clone());
         self.new_columns.push(symbol.clone());
+        self.poly_id_to_name.insert((poly_type, id), name.clone());
 
         Ok((if is_array {
             Value::Array(
@@ -554,14 +572,18 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
             }
         };
 
-        let value =
-            try_to_function_value_definition(self.symbols, expr.as_ref(), FunctionKind::Query)
-                .map_err(|e| match e {
-                    EvalError::TypeError(e) => {
-                        EvalError::TypeError(format!("Error setting hint for column {col}:\n{e}"))
-                    }
-                    _ => e,
-                })?;
+        // TOOD we already need the updated symbols here!
+        let value = try_to_function_value_definition(
+            &self.poly_id_to_name,
+            expr.as_ref(),
+            FunctionKind::Query,
+        )
+        .map_err(|e| match e {
+            EvalError::TypeError(e) => {
+                EvalError::TypeError(format!("Error setting hint for column {col}:\n{e}"))
+            }
+            _ => e,
+        })?;
         match self.new_column_values.entry(name) {
             Entry::Vacant(entry) => entry.insert(value),
             Entry::Occupied(_) => {
@@ -585,7 +607,7 @@ impl<'a, T: FieldElement> SymbolLookup<'a, T> for Condenser<'a, T> {
                 }
             }
             Value::Closure(..) => {
-                let e = try_value_to_expression(self.symbols, &items).map_err(|e| {
+                let e = try_value_to_expression(&self.poly_id_to_name, &items).map_err(|e| {
                     EvalError::TypeError(format!("Error adding prover function:\n{e}"))
                 })?;
 
