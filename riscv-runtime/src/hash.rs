@@ -5,9 +5,9 @@ use core::mem::{self, MaybeUninit};
 use crate::goldilocks::Goldilocks;
 use powdr_riscv_syscalls::Syscall;
 
-pub fn native_hash(data: &mut [u64; 12]) -> &[u64; 4] {
+pub fn native_hash(data: &mut [Goldilocks; 12]) -> &[Goldilocks; 4] {
     unsafe {
-        asm!("ecall", in("a0") data as *mut [u64; 12], in("t0") u32::from(Syscall::NativeHash));
+        asm!("ecall", in("a0") data as *mut _, in("t0") u32::from(Syscall::NativeHash));
     }
     data[..4].try_into().unwrap()
 }
