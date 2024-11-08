@@ -380,9 +380,9 @@ fn all_row_connected_witnesses<T: Display + Debug>(
 
 /// Like refs_in_selected_expressions(connection.right), but also includes the multiplicity column.
 fn refs_in_connection_rhs<T>(connection: &Connection<T>) -> HashSet<PolyID> {
-    refs_in_selected_expressions(&connection.right)
+    refs_in_selected_expressions(connection.right)
         .into_iter()
-        .chain(connection.multiplicity_column.into_iter())
+        .chain(connection.multiplicity_column)
         .collect()
 }
 
