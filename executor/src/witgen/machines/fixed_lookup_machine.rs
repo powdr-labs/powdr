@@ -4,7 +4,7 @@ use std::iter::Peekable;
 use std::mem;
 use std::str::FromStr;
 
-use itertools::Itertools;
+use itertools::{Either, Itertools};
 use powdr_ast::analyzed::{
     AlgebraicReference, LookupIdentity, PhantomLookupIdentity, PolyID, PolynomialType,
 };
@@ -27,7 +27,8 @@ use super::{Connection, ConnectionKind, Machine};
 #[derive(Hash, Eq, PartialEq, Ord, PartialOrd, Clone)]
 struct Application {
     pub identity_id: u64,
-    /// The sequence of known columns.
+    /// Booleans indicating if the respective column is a known input column (true)
+    /// or an unknown output column (false).
     pub inputs: Vec<bool>,
 }
 
@@ -57,31 +58,19 @@ fn create_index<T: FieldElement>(
 ) -> HashMap<Vec<T>, IndexValue<T>> {
     let right = connections[&application.identity_id].right;
 
-    // TODO use partition
-    let input_fixed_columns = right
+    let (input_fixed_columns, output_fixed_columns): (Vec<_>, Vec<_>) = right
         .expressions
         .iter()
+        .map(|e| try_to_simple_poly_ref(e).unwrap().poly_id)
         .enumerate()
-        .filter_map(|(i, e)| {
+        .partition_map(|(i, poly_id)| {
             if application.inputs[i] {
-                Some(try_to_simple_poly_ref(e).unwrap().poly_id)
+                Either::Left(poly_id)
             } else {
-                None
+                Either::Right(poly_id)
             }
-        })
-        .collect::<Vec<_>>();
-    let output_fixed_columns = right
-        .expressions
-        .iter()
-        .enumerate()
-        .filter_map(|(i, e)| {
-            if !application.inputs[i] {
-                Some(try_to_simple_poly_ref(e).unwrap().poly_id)
-            } else {
-                None
-            }
-        })
-        .collect::<Vec<_>>();
+        });
+
     // create index for this lookup
     log::info!(
         "Generating index for lookup in columns (in: {}, out: {})",
@@ -263,10 +252,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             );
         }
 
-        // TODO
-        // split the fixed columns depending on whether their associated lookup variable is constant or not. Preserve the value of the constant arguments.
-        // [1, 2, x] in [A, B, C] -> [[(A, 1), (B, 2)], [C, x]]
-
+        // Split the left-hand-side into known input values and unknon output expressions.
         let mut input_values = vec![];
         let mut known_inputs = vec![];
         let mut output_expressions = vec![];
