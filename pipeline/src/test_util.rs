@@ -539,20 +539,48 @@ use powdr_number::Mersenne31Field;
 #[cfg(feature = "stwo")]
 pub fn test_stwo(file_name: &str, inputs: Vec<Mersenne31Field>) {
     let backend = powdr_backend::BackendType::Stwo;
-    let _proof = Pipeline::default()
+    let mut pipeline = Pipeline::default()
         .with_tmp_output()
         .from_file(resolve_test_file(file_name))
         .with_prover_inputs(inputs.clone())
         .with_backend(backend, None)
-        .compute_proof().cloned().unwrap();
-    // Generate a proof 
-    // let proof = pipeline.compute_proof().cloned().unwrap();
-    // let publics: Vec<Mersenne31Field> = pipeline
-    //     .publics()
-    //     .clone()
-    //     .unwrap()
-    //     .iter()
-    //     .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
-    //     .collect();
-    // pipeline.verify(&proof, &[publics]).unwrap();
+        .set_witness(vec![
+            (
+                "add::a".to_string(),
+                vec![
+                    Mersenne31Field::from(1),
+                    Mersenne31Field::from(2147483646),
+                    Mersenne31Field::from(1),
+                    Mersenne31Field::from(2147483646),
+                ],
+            ),
+            (
+                "add::b".to_string(),
+                vec![
+                    Mersenne31Field::from(1),
+                    Mersenne31Field::from(2),
+                    Mersenne31Field::from(1),
+                    Mersenne31Field::from(2),
+                ],
+            ),
+            (
+                "add::c".to_string(),
+                vec![
+                    Mersenne31Field::from(1),
+                    Mersenne31Field::from(2),
+                    Mersenne31Field::from(1),
+                    Mersenne31Field::from(2),
+                ],
+            ),
+        ]);
+    // Generate a proof
+    let proof = pipeline.compute_proof().cloned().unwrap();
+    let publics: Vec<Mersenne31Field> = pipeline
+        .publics()
+        .clone()
+        .unwrap()
+        .iter()
+        .map(|(_name, v)| v.expect("all publics should be known since we created a proof"))
+        .collect();
+    pipeline.verify(&proof, &[publics]).unwrap();
 }

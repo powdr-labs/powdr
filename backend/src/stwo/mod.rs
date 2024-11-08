@@ -61,7 +61,7 @@ impl<T: FieldElement> Backend<T> for StwoProver<T> {
         if prev_proof.is_some() {
             return Err(Error::NoAggregationAvailable);
         }
-        Ok(self.prove(witness, witgen_callback)?)
+        Ok(self.prove(witness)?)
     }
     #[allow(unused_variables)]
     fn export_verification_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {

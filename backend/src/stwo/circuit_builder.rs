@@ -18,43 +18,42 @@ use stwo_prover::core::ColumnVec;
 
 pub type PowdrComponent<'a, F> = FrameworkComponent<PowdrEval<F>>;
 
-pub(crate) fn gen_stwo_circuit_trace<'a,T:FieldElement>(witness: Option<&'a [(String, Vec<T>)]>,analyzed: Arc<Analyzed<T>>
-    ) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
-        let element: Option<Vec<(String, BaseColumn)>> = Some(
-            witness.as_ref()
-                .expect("Witness needs to be set")
-                .iter()
-                .map(|(name, values)| {
-                    let values = values
-                        .iter()
-                        .map(|v| {
-v.try_into_i32().unwrap().into()
-                        })
-                        .collect();
-                    (name.clone(), values)
-                })
-                .collect(),
-        );
-        let domain = CanonicCoset::new(analyzed.degree().ilog2()).circle_domain();
-        element
-            .map(|elements| {
-                elements
+pub(crate) fn gen_stwo_circuit_trace<'a, T: FieldElement>(
+    witness: Option<&'a [(String, Vec<T>)]>,
+    analyzed: Arc<Analyzed<T>>,
+) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
+    let element: Option<Vec<(String, BaseColumn)>> = Some(
+        witness
+            .as_ref()
+            .expect("Witness needs to be set")
+            .iter()
+            .map(|(name, values)| {
+                let values = values
                     .iter()
-                    .map(|(_, base_column)| CircleEvaluation::new(domain, base_column.clone()))
-                    .collect()
+                    .map(|v| v.try_into_i32().unwrap().into())
+                    .collect();
+                (name.clone(), values)
             })
-            .unwrap()
-    }
-
+            .collect(),
+    );
+    let domain = CanonicCoset::new(analyzed.degree().ilog2()).circle_domain();
+    element
+        .map(|elements| {
+            elements
+                .iter()
+                .map(|(_, base_column)| CircleEvaluation::new(domain, base_column.clone()))
+                .collect()
+        })
+        .unwrap()
+}
 
 pub struct PowdrEval<T> {
     analyzed: Arc<Analyzed<T>>,
-    col_count: usize,
     witness_columns: BTreeMap<PolyID, usize>,
 }
 
 impl<T: FieldElement> PowdrEval<T> {
-    pub fn new(analyzed: Arc<Analyzed<T>>, col_count: usize) -> Self {
+    pub fn new(analyzed: Arc<Analyzed<T>>) -> Self {
         let witness_columns: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
             .flat_map(|(symbol, _)| symbol.array_elements())
@@ -64,7 +63,6 @@ impl<T: FieldElement> PowdrEval<T> {
 
         Self {
             analyzed,
-            col_count,
             witness_columns,
         }
     }
@@ -78,9 +76,12 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
         self.analyzed.degree().ilog2() + 1
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
-        let mut witness_eval = Vec::with_capacity(self.col_count);
-        for _ in 0..self.col_count {
-            witness_eval.push(eval.next_trace_mask());
+        let col_count = self.analyzed.commitment_count()
+            + self.analyzed.constant_count()
+            + self.analyzed.publics_count();
+        let mut witness_eval = Vec::with_capacity(col_count);
+        for _ in 0..col_count {
+            witness_eval.push(eval.next_interaction_mask(0, [0, 1]));
         }
 
         // Add polynomial identities
@@ -105,7 +106,7 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
 fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
     witness_columns: &BTreeMap<PolyID, usize>,
     expr: &AlgebraicExpression<T>,
-    witness_eval: &Vec<<E as EvalAtRow>::F>,
+    witness_eval: &Vec<[<E as EvalAtRow>::F; 2]>,
     _eval: &E,
 ) -> E::F {
     match expr {
@@ -115,11 +116,11 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
             match polyref.next {
                 false => {
                     let index = witness_columns[&poly_id];
-                    witness_eval[index]
+                    witness_eval[index][0].into()
                 }
                 true => {
                     let index = witness_columns[&poly_id];
-                    witness_eval[index]
+                    witness_eval[index][1].into()
                 }
             }
         }

@@ -46,11 +46,7 @@ impl<F: FieldElement> StwoProver<F> {
             _verifying_key: None,
         })
     }
-    pub fn prove(
-        &self,
-        witness: &[(String, Vec<F>)],
-        witgen_callback: WitgenCallback<F>,
-    ) -> Result<Vec<u8>, String> {
+    pub fn prove(&self, witness: &[(String, Vec<F>)]) -> Result<Vec<u8>, String> {
         let config = PcsConfig {
             pow_bits: 16,                          // Any value you want to set for pow_bits
             fri_config: FriConfig::new(0, 1, 100), // Using different numbers for FriConfig
@@ -74,19 +70,13 @@ impl<F: FieldElement> StwoProver<F> {
 
         let trace = gen_stwo_circuit_trace(Some(witness), self.analyzed.clone());
 
-
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals(trace);
         tree_builder.commit(prover_channel);
 
         let component = PowdrComponent::new(
             &mut TraceLocationAllocator::default(),
-            PowdrEval::new(
-                self.analyzed.clone(),
-                self.analyzed.commitment_count()
-                    + self.analyzed.constant_count()
-                    + self.analyzed.publics_count(),
-            ),
+            PowdrEval::new(self.analyzed.clone()),
         );
 
         //let start = Instant::now();
@@ -116,12 +106,7 @@ impl<F: FieldElement> StwoProver<F> {
         //Constraints that are to be proved
         let component = PowdrComponent::new(
             &mut TraceLocationAllocator::default(),
-            PowdrEval::new(
-                self.analyzed.clone(),
-                self.analyzed.commitment_count()
-                    + self.analyzed.constant_count()
-                    + self.analyzed.publics_count(),
-            ),
+            PowdrEval::new(self.analyzed.clone()),
         );
 
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.
