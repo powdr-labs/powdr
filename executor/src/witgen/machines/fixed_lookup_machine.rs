@@ -154,7 +154,7 @@ fn create_index<T: FieldElement>(
     index
 }
 
-const MULTIPLICITY_LOOKUP_COLUMN: &str = "m_logup_multiplicity";
+const MULTIPLICITY_LOOKUP_COLUMN: &str = "multiplicities";
 
 /// Machine to perform a lookup in fixed columns only.
 pub struct FixedLookup<'a, T: FieldElement> {
