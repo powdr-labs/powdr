@@ -59,6 +59,9 @@ pub fn try_value_to_expression<T: FieldElement>(
 }
 
 struct Expressionizer<'a> {
+    /// Maps polynomial IDs to their names.
+    /// For arrays, this does not include the array elements, just the ID
+    /// of the first element (the array itself).
     poly_id_to_name: &'a BTreeMap<(PolynomialType, u64), String>,
 }
 
@@ -299,6 +302,10 @@ impl<'a> Expressionizer<'a> {
         // First we need to find out if the reference is an array element
         // or a single symbol.
 
+        // For an array element, this will return the name of the array
+        // and the ID of the first array element, since all array elements
+        // have consecutive IDs starting with the first, but only the first
+        // element is stored in `poly_id_to_name`.
         let ((_, array_start), symbol_name) = self
             .poly_id_to_name
             .range(..=(poly_id.ptype, poly_id.id))
