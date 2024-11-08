@@ -25,6 +25,7 @@ static TARGET_NO_STD: &str = "riscv32imac-unknown-none-elf";
 pub struct RuntimeLibs {
     pub arith: bool,
     pub keccak: bool,
+    pub poseidon2: bool,
 }
 
 impl RuntimeLibs {
@@ -32,6 +33,7 @@ impl RuntimeLibs {
         Self {
             arith: false,
             keccak: false,
+            poseidon2: false,
         }
     }
 
@@ -45,6 +47,13 @@ impl RuntimeLibs {
     pub fn with_keccak(self) -> Self {
         Self {
             keccak: true,
+            ..self
+        }
+    }
+
+    pub fn with_poseidon2(self) -> Self {
+        Self {
+            poseidon2: true,
             ..self
         }
     }
@@ -124,6 +133,13 @@ impl CompilerOptions {
     pub fn with_keccak(self) -> Self {
         Self {
             libs: self.libs.with_keccak(),
+            ..self
+        }
+    }
+
+    pub fn with_poseidon2(self) -> Self {
+        Self {
+            libs: self.libs.with_poseidon2(),
             ..self
         }
     }

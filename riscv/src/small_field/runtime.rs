@@ -24,6 +24,9 @@ pub struct Runtime {
 impl Runtime {
     pub fn new(libs: RuntimeLibs, continuations: bool) -> Self {
         let mut runtime = Runtime::base(continuations);
+        if libs.poseidon2 {
+            runtime = runtime.with_poseidon2();
+        }
         if libs.keccak {
             runtime = runtime.with_keccak();
         }
@@ -280,6 +283,10 @@ impl Runtime {
 
         self.add_syscall(Syscall::NativeHash, implementation);
         self
+    }
+
+    fn with_poseidon2(self) -> Self {
+        todo!()
     }
 
     pub fn has_submachine(&self, name: &str) -> bool {

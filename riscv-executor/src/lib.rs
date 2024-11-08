@@ -32,6 +32,7 @@ use powdr_number::{write_polys_csv_file, FieldElement, LargeInt};
 pub use profiler::ProfilerOptions;
 
 pub mod arith;
+mod poseidon2_gl;
 pub mod poseidon_gl;
 mod profiler;
 mod submachines;
@@ -1851,6 +1852,35 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let output_ptr = self.proc.get_reg_mem(args[1].u()).u();
                 assert_eq!(output_ptr % 4, 0);
                 result.iter().enumerate().for_each(|(i, &v)| {
+                    self.proc.set_mem(output_ptr + i as u32 * 4, v);
+                });
+
+                vec![]
+            }
+            "poseidon2_gl" => {
+                let input_ptr = self.proc.get_reg_mem(args[0].u()).u();
+                assert_eq!(input_ptr % 4, 0);
+
+                let inputs: [u64; 8] = (0..16)
+                    .map(|i| self.proc.get_mem(input_ptr + i * 4))
+                    .chunks(2)
+                    .into_iter()
+                    .map(|mut chunk| {
+                        let low = chunk.next().unwrap() as u64;
+                        let high = chunk.next().unwrap() as u64;
+                        (high << 32) | low
+                    })
+                    .collect::<Vec<_>>()
+                    .try_into()
+                    .unwrap();
+
+                let result = poseidon2_gl::poseidon2_gl(&inputs)
+                    .into_iter()
+                    .flat_map(|v| vec![(v & 0xffffffff) as u32, (v >> 32) as u32]);
+
+                let output_ptr = self.proc.get_reg_mem(args[1].u()).u();
+                assert_eq!(output_ptr % 4, 0);
+                result.enumerate().for_each(|(i, v)| {
                     self.proc.set_mem(output_ptr + i as u32 * 4, v);
                 });
 

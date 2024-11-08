@@ -55,6 +55,7 @@ syscalls!(
     (7, KeccakF, "keccakf"),
     (8, Mod256, "mod_256"),
     (9, Halt, "halt"),
-    (10, CommitPublic, "commit_public"),
+    (10, Poseidon2GL, "poseidon2_gl"),
     (11, NativeHash, "native_hash"),
+    (12, CommitPublic, "commit_public"),
 );

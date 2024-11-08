@@ -57,7 +57,7 @@ lazy_static! {
     static ref ROUNDS: (usize, usize) = poseidon2_round_numbers_128::<Goldilocks>(WIDTH, D);
     pub static ref ROUNDS_F: usize = ROUNDS.0;
     pub static ref ROUNDS_P: usize = ROUNDS.1;
-    static ref PERM_GL: Perm = Perm::new(
+    pub static ref PERM_GL: Perm = Perm::new(
         *ROUNDS_F,
         poseidon2::external_constants(*ROUNDS_F),
         Poseidon2ExternalMatrixGeneral,
