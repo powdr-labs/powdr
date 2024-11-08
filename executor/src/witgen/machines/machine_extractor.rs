@@ -1,12 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use itertools::Itertools;
-use num_traits::One;
 use powdr_ast::analyzed::LookupIdentity;
 use powdr_ast::analyzed::PermutationIdentity;
 use powdr_ast::analyzed::PhantomLookupIdentity;
 use powdr_ast::analyzed::PhantomPermutationIdentity;
-use powdr_ast::analyzed::PolynomialType;
 
 use super::block_machine::BlockMachine;
 use super::double_sorted_witness_machine_16::DoubleSortedWitnesses16;
@@ -16,7 +14,6 @@ use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::KnownMachine;
 use crate::witgen::machines::Connection;
-use crate::witgen::util::try_to_simple_poly_ref;
 use crate::witgen::{
     generator::Generator,
     machines::{write_once_memory::WriteOnceMemory, MachineParts},
@@ -77,15 +74,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
 
     for connection in &all_connections {
         // If the RHS only consists of fixed columns, record the connection and continue.
-        if connection.is_lookup()
-            && connection.right.selector.is_one()
-            && connection.right.expressions.iter().all(|e| {
-                try_to_simple_poly_ref(e)
-                    .map(|poly| poly.poly_id.ptype == PolynomialType::Constant)
-                    .unwrap_or(false)
-            })
-            && !connection.right.expressions.is_empty()
-        {
+        if FixedLookup::is_responsible(connection) {
             assert!(fixed_lookup_connections
                 .insert(connection.id, *connection)
                 .is_none());

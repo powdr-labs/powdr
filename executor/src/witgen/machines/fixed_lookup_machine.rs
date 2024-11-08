@@ -1,3 +1,4 @@
+use num_traits::One;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::Peekable;
 use std::mem;
@@ -179,6 +180,17 @@ pub struct FixedLookup<'a, T: FieldElement> {
 }
 
 impl<'a, T: FieldElement> FixedLookup<'a, T> {
+    pub fn is_responsible(connection: &Connection<T>) -> bool {
+        connection.is_lookup()
+            && connection.right.selector.is_one()
+            && connection.right.expressions.iter().all(|e| {
+                try_to_simple_poly_ref(e)
+                    .map(|poly| poly.poly_id.ptype == PolynomialType::Constant)
+                    .unwrap_or(false)
+            })
+            && !connection.right.expressions.is_empty()
+    }
+
     pub fn new(
         global_constraints: GlobalConstraints<T>,
         fixed_data: &'a FixedData<'a, T>,
