@@ -1,0 +1,12 @@
+[package]
+name = "powdr-executor-utils"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+powdr-number.workspace = true
+
+serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }
