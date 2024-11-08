@@ -60,6 +60,7 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
             let pipeline = pipeline.add_external_witness_values(executor_trace);
             test_plonky3_pipeline::<T>(pipeline);
         }
+    */
 }
 
 fn find_assembler() -> &'static str {
