@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::fmt::{Debug, Display};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::LookupIdentity;
@@ -85,13 +86,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
         }
 
         // Extract all witness columns in the RHS of the lookup.
-        let lookup_witnesses = {
-            let callee_columns = refs_in_selected_expressions(connection.right)
-                .into_iter()
-                .chain(connection.multiplicity_column.iter().cloned())
-                .collect();
-            &callee_columns & (&remaining_witnesses)
-        };
+        let lookup_witnesses = &refs_in_connection_rhs(connection) & (&remaining_witnesses);
         if lookup_witnesses.is_empty() {
             // Skip connections to machines that were already created or point to FixedLookup.
             continue;
@@ -123,7 +118,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             .iter()
             .filter_map(|connection| {
                 // check if the identity connects to the current machine
-                refs_in_selected_expressions(connection.right)
+                refs_in_connection_rhs(connection)
                     .intersection(&machine_witnesses)
                     .next()
                     .is_some()
@@ -341,7 +336,7 @@ fn build_machine<'a, T: FieldElement>(
 /// Extends a set of witnesses to the full set of row-connected witnesses.
 /// Two witnesses are row-connected if they are part of a polynomial identity
 /// or part of the same side of a lookup.
-fn all_row_connected_witnesses<T>(
+fn all_row_connected_witnesses<T: Display + Debug>(
     mut witnesses: HashSet<PolyID>,
     all_witnesses: &HashSet<PolyID>,
     identities: &[&Identity<T>],
@@ -357,16 +352,15 @@ fn all_row_connected_witnesses<T>(
                         witnesses.extend(in_identity);
                     }
                 }
-                Identity::Lookup(LookupIdentity { left, right, .. })
-                | Identity::Permutation(PermutationIdentity { left, right, .. })
-                | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. })
-                | Identity::PhantomPermutation(PhantomPermutationIdentity {
-                    left, right, ..
-                }) => {
+                Identity::Lookup(LookupIdentity { left, .. })
+                | Identity::Permutation(PermutationIdentity { left, .. })
+                | Identity::PhantomLookup(PhantomLookupIdentity { left, .. })
+                | Identity::PhantomPermutation(PhantomPermutationIdentity { left, .. }) => {
                     // If we already have witnesses on the LHS, include the LHS,
                     // and vice-versa, but not across the "sides".
                     let in_lhs = &refs_in_selected_expressions(left) & all_witnesses;
-                    let in_rhs = &refs_in_selected_expressions(right) & all_witnesses;
+                    let in_rhs =
+                        &refs_in_connection_rhs(&Connection::try_from(*i).unwrap()) & all_witnesses;
                     if in_lhs.intersection(&witnesses).next().is_some() {
                         witnesses.extend(in_lhs);
                     } else if in_rhs.intersection(&witnesses).next().is_some() {
@@ -382,6 +376,14 @@ fn all_row_connected_witnesses<T>(
             return witnesses;
         }
     }
+}
+
+/// Like refs_in_selected_expressions(connection.right), but also includes the multiplicity column.
+fn refs_in_connection_rhs<T>(connection: &Connection<T>) -> HashSet<PolyID> {
+    refs_in_selected_expressions(&connection.right)
+        .into_iter()
+        .chain(connection.multiplicity_column.into_iter())
+        .collect()
 }
 
 /// Extracts all references to names from selected expressions.
