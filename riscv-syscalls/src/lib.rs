@@ -48,7 +48,7 @@ macro_rules! syscalls {
 syscalls!(
     (1, Input, "input"),
     (2, Output, "output"),
-    (3, Poseidon, "poseidon"),
+    (3, PoseidonGL, "poseidon_gl"),
     (4, Affine256, "affine_256"),
     (5, EcAdd, "ec_add"),
     (6, EcDouble, "ec_double"),
@@ -56,4 +56,5 @@ syscalls!(
     (8, Mod256, "mod_256"),
     (9, Halt, "halt"),
     (10, CommitPublic, "commit_public"),
+    (11, PoseidonNative, "poseidon_native"),
 );

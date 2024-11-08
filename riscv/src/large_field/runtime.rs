@@ -325,17 +325,17 @@ impl Runtime {
                 "mstore_bootloader 0, 0, 84, 0;",
                 "mstore_bootloader 0, 0, 88, 0;",
                 "mstore_bootloader 0, 0, 92, 0;",
-                "poseidon 0, 0;",
+                "poseidon_gl 0, 0;",
             ]
         } else {
-            vec!["poseidon 0, 0;"]
+            vec!["poseidon_gl 0, 0;"]
         };
         self.add_submachine(
             "std::machines::hash::poseidon_gl_memory::PoseidonGLMemory",
             None,
             "poseidon_gl",
             vec!["memory", "split_gl"],
-            [r#"instr poseidon X, Y
+            [r#"instr poseidon_gl X, Y
                     link ~> tmp1_col = regs.mload(X, STEP)
                     link ~> tmp2_col = regs.mload(Y, STEP + 1)
                     link ~> poseidon_gl.poseidon_permutation(tmp1_col, tmp2_col, STEP)
@@ -355,9 +355,10 @@ impl Runtime {
         // The poseidon syscall has a single argument passed on x10, the
         // memory address of the 12 field element input array. Since the memory
         // offset is chosen by LLVM, we assume it's properly aligned.
-        let implementation = std::iter::once("poseidon 10, 10;".to_string());
+        let implementation = std::iter::once("poseidon_gl 10, 10;".to_string());
 
-        self.add_syscall(Syscall::Poseidon, implementation);
+        self.add_syscall(Syscall::PoseidonGL, implementation.clone());
+        self.add_syscall(Syscall::PoseidonNative, implementation);
         self
     }
 

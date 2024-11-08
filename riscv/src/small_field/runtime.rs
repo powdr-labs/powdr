@@ -278,7 +278,7 @@ impl Runtime {
 
         let implementation = std::iter::once("affine 0, 0, 0, 0, 0, 0;".to_string());
 
-        self.add_syscall(Syscall::Poseidon, implementation);
+        self.add_syscall(Syscall::PoseidonNative, implementation);
         self
     }
 

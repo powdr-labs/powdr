@@ -1012,7 +1012,7 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 Vec::new()
             }
-            "poseidon" => {
+            "poseidon_gl" => {
                 let input_ptr = self.proc.get_reg_mem(args[0].u()).u();
                 assert_eq!(input_ptr % 4, 0);
 

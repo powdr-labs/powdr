@@ -14,7 +14,7 @@ const GOLDILOCKS: u64 = 0xffffffff00000001;
 /// Goldilocks field.
 pub fn poseidon_gl_unsafe(data: &mut [u64; 12]) -> &[u64; 4] {
     unsafe {
-        asm!("ecall", in("a0") data as *mut [u64; 12], in("t0") u32::from(Syscall::Poseidon));
+        asm!("ecall", in("a0") data as *mut [u64; 12], in("t0") u32::from(Syscall::PoseidonGL));
     }
     data[..4].try_into().unwrap()
 }
