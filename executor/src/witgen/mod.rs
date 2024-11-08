@@ -47,6 +47,7 @@ mod util;
 mod vm_processor;
 
 static OUTER_CODE_NAME: &str = "witgen (outer code)";
+static RANGE_CONSTRAINT_MULTIPLICITY_WITGEN: &str = "range constraint multiplicity witgen";
 
 // TODO change this so that it has functions
 // input_from_channel, output_to_channel
@@ -270,6 +271,31 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             columns.extend(generator.take_witness_col_values(&mut mutable_state));
         }
 
+        record_start(RANGE_CONSTRAINT_MULTIPLICITY_WITGEN);
+
+        for (source_id, (fixed_col_id, multiplicity_id)) in &fixed
+            .global_range_constraints
+            .range_constraint_multiplicities
+        {
+            let size = fixed.fixed_cols[&fixed_col_id]
+                .values
+                .get_uniquely_sized()
+                .unwrap()
+                .len();
+            let mut multiplicities = vec![0; size];
+            for value in columns.get(fixed.column_name(source_id)).unwrap() {
+                let index = value.to_degree() as usize;
+                multiplicities[index] += 1;
+            }
+            let multiplicities = multiplicities.into_iter().map(T::from).collect::<Vec<_>>();
+            columns.insert(
+                fixed.column_name(multiplicity_id).to_string(),
+                multiplicities,
+            );
+        }
+
+        record_end(RANGE_CONSTRAINT_MULTIPLICITY_WITGEN);
+
         record_end(OUTER_CODE_NAME);
         reset_and_print_profile_summary();
 
@@ -412,6 +438,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         let global_range_constraints = GlobalConstraints {
             witness_constraints: WitnessColumnMap::new(None, witness_cols.len()),
             fixed_constraints: FixedColumnMap::new(None, fixed_cols.len()),
+            range_constraint_multiplicities: BTreeMap::new(),
         };
 
         FixedData {

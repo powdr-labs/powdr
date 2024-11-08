@@ -16,6 +16,7 @@ use crate::Identity;
 
 use super::affine_expression::AlgebraicVariable;
 use super::expression_evaluator::ExpressionEvaluator;
+use super::machines::Connection;
 use super::range_constraints::RangeConstraint;
 use super::symbolic_evaluator::SymbolicEvaluator;
 use super::util::try_to_simple_poly;
@@ -97,6 +98,7 @@ where
 pub struct GlobalConstraints<T: FieldElement> {
     pub witness_constraints: WitnessColumnMap<Option<RangeConstraint<T>>>,
     pub fixed_constraints: FixedColumnMap<Option<RangeConstraint<T>>>,
+    pub range_constraint_multiplicities: BTreeMap<PolyID, (PolyID, PolyID)>,
 }
 
 impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for GlobalConstraints<T> {
@@ -140,10 +142,16 @@ pub fn set_global_constraints<'a, T: FieldElement>(
 
     let mut retained_identities = vec![];
     let mut removed_identities = vec![];
+    let mut range_constraint_multiplicities = BTreeMap::new();
     for identity in identities.into_iter() {
-        let remove;
-        (known_constraints, remove) =
+        let (new_known_constraints, new_range_constraint_multiplicity, remove) =
             propagate_constraints(known_constraints, identity, &full_span);
+
+        known_constraints = new_known_constraints;
+        if let Some((poly_id, multiplicity)) = new_range_constraint_multiplicity {
+            range_constraint_multiplicities.insert(poly_id, multiplicity);
+        }
+
         (if remove {
             &mut removed_identities
         } else {
@@ -164,6 +172,17 @@ pub fn set_global_constraints<'a, T: FieldElement>(
         log::debug!("  {id}");
     }
 
+    if !range_constraint_multiplicities.is_empty() {
+        log::debug!("Recorded the following range constraint multiplicity columns:");
+    }
+    for (poly_id, (_, multiplicity)) in &range_constraint_multiplicities {
+        log::debug!(
+            "  {} -> {}",
+            fixed_data.column_name(poly_id),
+            fixed_data.column_name(multiplicity)
+        );
+    }
+
     let mut witness_constraints: WitnessColumnMap<Option<RangeConstraint<T>>> =
         fixed_data.witness_map_with(None);
     for (poly_id, con) in known_constraints {
@@ -181,6 +200,7 @@ pub fn set_global_constraints<'a, T: FieldElement>(
     let global_constraints = GlobalConstraints {
         witness_constraints,
         fixed_constraints,
+        range_constraint_multiplicities,
     };
 
     (
@@ -219,15 +239,18 @@ fn propagate_constraints<T: FieldElement>(
     mut known_constraints: BTreeMap<PolyID, RangeConstraint<T>>,
     identity: &Identity<T>,
     full_span: &BTreeSet<PolyID>,
-) -> (BTreeMap<PolyID, RangeConstraint<T>>, bool) {
-    let mut remove = false;
+) -> (
+    BTreeMap<PolyID, RangeConstraint<T>>,
+    Option<(PolyID, (PolyID, PolyID))>,
+    bool,
+) {
     match identity {
         Identity::Polynomial(identity) => {
             if let Some(p) = is_binary_constraint(&identity.expression) {
                 assert!(known_constraints
                     .insert(p, RangeConstraint::from_max_bit(0))
                     .is_none());
-                remove = true;
+                (known_constraints, None, true)
             } else {
                 for (p, c) in try_transfer_constraints(&identity.expression, &known_constraints) {
                     known_constraints
@@ -235,14 +258,18 @@ fn propagate_constraints<T: FieldElement>(
                         .and_modify(|existing| *existing = existing.conjunction(&c))
                         .or_insert(c);
                 }
+                (known_constraints, None, false)
             }
         }
         Identity::Lookup(LookupIdentity { left, right, .. })
         | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. }) => {
             if !left.selector.is_one() || !right.selector.is_one() {
-                return (known_constraints, false);
+                return (known_constraints, None, false);
             }
-            // We learn range constraints from both lookups and permutations
+
+            // For lookups of the form [ a, b, ... ] in [ c, d, ... ], where a, b, ... are columns,
+            // transfer constraints from the right to the left side.
+            // A special case of this would be [ x ] in [ RANGE ], where RANGE is in the full span.
             for (left, right) in left.expressions.iter().zip(right.expressions.iter()) {
                 if let (Some(left), Some(right)) =
                     (try_to_simple_poly(left), try_to_simple_poly(right))
@@ -256,30 +283,40 @@ fn propagate_constraints<T: FieldElement>(
                 }
             }
 
-            // We only remove lookups, since permutations hold more information than just range constraints.
-            if right.expressions.len() == 1
-                && matches!(identity, Identity::Lookup(..) | Identity::PhantomLookup(..))
-            {
-                // We can only remove the lookup if the RHS is a fixed polynomial that
-                // provides all values in the span.
-                if let Some(name) = try_to_simple_poly(&right.expressions[0]) {
-                    if try_to_simple_poly(&left.expressions[0]).is_some()
-                        && full_span.contains(&name.poly_id)
-                    {
-                        remove = true;
+            // Detect [ x ] in [ RANGE ], where RANGE is in the full span.
+            // In that case, we can remove the lookup, because it's only function is to enforce
+            // the range constraint.
+            let mut remove = false;
+            let mut new_multiplicity = None;
+            if right.expressions.len() == 1 {
+                match (
+                    try_to_simple_poly(&left.expressions[0]),
+                    try_to_simple_poly(&right.expressions[0]),
+                ) {
+                    (Some(left_ref), Some(right_ref)) => {
+                        if full_span.contains(&right_ref.poly_id) {
+                            let connection = Connection::try_from(identity).unwrap();
+                            if let Some(multiplicity) = connection.multiplicity_column {
+                                new_multiplicity =
+                                    Some((left_ref.poly_id, (right_ref.poly_id, multiplicity)));
+                            }
+                            remove = true;
+                        }
                     }
+                    _ => {}
                 }
             }
+            (known_constraints, new_multiplicity, remove)
         }
         Identity::Connect(..) => {
             // we do not handle connect identities yet, so we do nothing
+            (known_constraints, None, false)
         }
         Identity::Permutation(..) | Identity::PhantomPermutation(..) => {
             // permutation identities are stronger than just range constraints, so we do nothing
+            (known_constraints, None, false)
         }
     }
-
-    (known_constraints, remove)
 }
 
 /// Tries to find "X * (1 - X) = 0"
@@ -487,7 +524,7 @@ namespace Global(2**20);
             .collect()
         );
         for identity in &analyzed.identities {
-            (known_constraints, _) =
+            (known_constraints, _, _) =
                 propagate_constraints(known_constraints, identity, &Default::default());
         }
         assert_eq!(
@@ -531,7 +568,7 @@ namespace Global(1024);
             .into_iter()
             .collect();
         assert_eq!(analyzed.identities.len(), 1);
-        let (_, removed) = propagate_constraints(
+        let (_, _, removed) = propagate_constraints(
             known_constraints,
             analyzed.identities.first().unwrap(),
             &Default::default(),
