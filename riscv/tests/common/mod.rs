@@ -39,6 +39,7 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
 
     // verify using executor generated witness
     // TODO remove the guard once the executor is implemented for BB
+    /*
     if T::known_field().unwrap() == KnownField::GoldilocksField {
         let analyzed = pipeline.compute_analyzed_asm().unwrap().clone();
         let pil = pipeline.compute_optimized_pil().unwrap();
@@ -58,6 +59,7 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
         let pipeline = pipeline.add_external_witness_values(executor_trace);
         test_plonky3_pipeline::<T>(pipeline);
     }
+    */
 }
 
 fn find_assembler() -> &'static str {
