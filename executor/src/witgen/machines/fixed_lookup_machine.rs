@@ -3,14 +3,9 @@ use num_traits::One;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::Peekable;
 use std::mem;
-use std::num::NonZeroUsize;
-use std::str::FromStr;
 
-use itertools::Itertools;
-use powdr_ast::analyzed::{
-    AlgebraicReference, LookupIdentity, PhantomLookupIdentity, PolyID, PolynomialType,
-};
-use powdr_ast::parsed::asm::SymbolPath;
+use itertools::{Either, Itertools};
+use powdr_ast::analyzed::{AlgebraicReference, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::affine_expression::{AffineExpression, AlgebraicVariable};
@@ -23,7 +18,7 @@ use crate::witgen::util::try_to_simple_poly_ref;
 use crate::witgen::{EvalError, EvalValue, IncompleteCause, MutableState, QueryCallback};
 use crate::witgen::{EvalResult, FixedData};
 
-use super::{Connection, ConnectionKind, Machine};
+use super::{Connection, Machine};
 
 /// An Application specifies a lookup cache.
 #[derive(Hash, Eq, PartialEq, Ord, PartialOrd, Clone)]
@@ -149,8 +144,9 @@ fn create_index<T: FieldElement>(
             index.len(),
             input_column_values.len(),
             mem::size_of::<T>(),
-            mem::size_of::<IndexValue>(),
-            index.len() * (input_column_values.len() * mem::size_of::<T>() + mem::size_of::<IndexValue>())
+            output_column_values.len(),
+            mem::size_of::<T>(),
+            (index.len() * (input_column_values.len() * mem::size_of::<T>() + output_column_values.len() * mem::size_of::<T>())) as f64 / 1024.0 / 1024.0
         );
     index
 }
@@ -263,7 +259,6 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         };
 
         self.multiplicity_counter.increment_at_row(identity_id, row);
-        
 
         let mut result = EvalValue::complete(vec![]);
         for (l, r) in output_expressions.into_iter().zip(output) {
@@ -328,10 +323,7 @@ fn unique_size<T: FieldElement>(
         .right
         .expressions
         .iter()
-        .map(|expr| match expr {
-            AlgebraicExpression::Reference(poly) => poly.poly_id,
-            _ => unreachable!(),
-        })
+        .map(|expr| try_to_simple_poly_ref(expr).unwrap().poly_id)
         .collect::<Vec<_>>();
     fixed_columns
         .iter()
