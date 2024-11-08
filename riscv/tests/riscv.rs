@@ -124,6 +124,14 @@ fn runtime_poseidon_gl() {
 
 #[test]
 #[ignore = "Too slow"]
+fn runtime_poseidon2_gl() {
+    let case = "poseidon2_gl_via_coprocessor";
+    let options = CompilerOptions::new_gl().with_poseidon2();
+    verify_riscv_crate_gl_with_options(case, Default::default(), options);
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn sum() {
     let case = "sum";
     verify_riscv_crate(case, &[16u64, 4, 1, 2, 8, 5]);
