@@ -162,6 +162,7 @@ pub struct Connection<'a, T> {
     /// For [ConnectionKind::Permutation], rows of `left` are a permutation of rows of `right`. For [ConnectionKind::Lookup], all rows in `left` are in `right`.
     pub kind: ConnectionKind,
     /// If the connection comes from a phantom lookup, this is the multiplicity column.
+    /// For each row of `right` it counts how often that row occurs in `left`.
     /// Note that multiple connections can share the same multiplicity column.
     pub multiplicity_column: Option<PolyID>,
 }
