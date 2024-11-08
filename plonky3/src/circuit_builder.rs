@@ -37,6 +37,7 @@ use powdr_number::{FieldElement, LargeInt};
 /// A description of the constraint system.
 /// All of the data is derived from the analyzed PIL, but is materialized
 /// here for performance reasons.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct ConstraintSystem<T> {
     // for each witness column, the stage and index of this column in this stage
     witness_columns: BTreeMap<PolyID, (usize, usize)>,

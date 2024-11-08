@@ -267,6 +267,15 @@ where
             public_values,
         )
         .unwrap();
+
+        let split: BTreeMap<String, ConstraintSystem<T>> = circuit
+            .split
+            .iter()
+            .map(|(name, (_, constraints))| (name.clone(), constraints.clone()))
+            .collect();
+        let split = bincode::serialize(&split).unwrap();
+        write_binary_file("powdr-target/split.bin", &split).unwrap();
+
         Ok(bincode::serialize(&proof).unwrap())
     }
 
@@ -312,6 +321,14 @@ where
         )
         .map_err(|e| format!("Failed to verify proof: {e:?}"))
     }
+}
+
+use std::fs::File;
+use std::io::{self, Write};
+fn write_binary_file(file_path: &str, data: &[u8]) -> io::Result<()> {
+    let mut file = File::create(file_path)?;
+    file.write_all(data)?;
+    Ok(())
 }
 
 #[cfg(test)]

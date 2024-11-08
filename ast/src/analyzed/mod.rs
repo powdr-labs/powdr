@@ -1202,7 +1202,9 @@ pub enum Reference {
     Poly(PolynomialReference),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+)]
 /// Like [[AlgebraicReference]], but without the name.
 pub struct AlgebraicReferenceThin {
     pub poly_id: PolyID,
