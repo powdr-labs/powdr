@@ -94,7 +94,7 @@ where
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 /// The RHS of a range constraint of the form `[ w ] in [ RANGE ]`, including the multiplicity column.
 pub struct PhantomRangeConstraintTarget {
     pub column: PolyID,
@@ -508,12 +508,20 @@ namespace Global(2**20);
         let fixed_polys = (0..constants.len())
             .map(|i| constant_poly_id(i as u64))
             .collect::<Vec<_>>();
-        let mut known_constraints = fixed_polys
+        let constraints_and_spans = fixed_polys
             .iter()
             .zip(&constants)
             .filter_map(|(&poly_id, (_, values))| {
-                process_fixed_column(values).map(|(constraint, _full)| (poly_id, constraint))
+                process_fixed_column(values).map(|(constraint, full)| (poly_id, (constraint, full)))
             })
+            .collect::<BTreeMap<_, _>>();
+        let full_span = constraints_and_spans
+            .iter()
+            .filter_map(|(p, (_, full))| full.then_some(*p))
+            .collect();
+        let mut known_constraints = constraints_and_spans
+            .into_iter()
+            .map(|(p, (c, _))| (p, c))
             .collect::<BTreeMap<_, _>>();
         assert_eq!(
             known_constraints,
@@ -534,7 +542,7 @@ namespace Global(2**20);
                 &mut known_constraints,
                 &mut range_constraint_multiplicities,
                 identity,
-                &Default::default(),
+                &full_span,
             );
         }
         assert_eq!(
@@ -558,6 +566,128 @@ namespace Global(2**20);
             .into_iter()
             .collect::<BTreeMap<_, _>>()
         );
+    }
+
+    #[test]
+    fn constraints_propagation_phantom_lookups() {
+        // The same test as above, but with a phantom lookups.
+        let pil_source = r"
+namespace std::convert;
+    let fe = [];
+namespace Global(2**20);
+    // Add multiplicity columns
+    col witness byte_multiplicities;
+    col witness shifted_multiplicities;
+
+    col fixed BYTE(i) { std::convert::fe(i & 0xff) };
+    col fixed BYTE2(i) { std::convert::fe(i & 0xffff) };
+    col fixed SHIFTED(i) { std::convert::fe(i & 0xff0) };
+    col witness A;
+    // A bit more complicated to see that the 'pattern matcher' works properly.
+    (1 - A + 0) * (A + 1 - 1) = 0;
+    col witness B;
+    Constr::PhantomLookup((Option::None, Option::None), [(B, BYTE)], byte_multiplicities);
+    col witness C;
+    C = A * 512 + B;
+    col witness D;
+    Constr::PhantomLookup((Option::None, Option::None), [(D, BYTE)], byte_multiplicities);
+    Constr::PhantomLookup((Option::None, Option::None), [(D, SHIFTED)], shifted_multiplicities);
+";
+        let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(pil_source).unwrap();
+        let constants = crate::constant_evaluator::generate(&analyzed);
+        let constants = get_uniquely_sized(&constants).unwrap();
+        let fixed_polys = (0..constants.len())
+            .map(|i| constant_poly_id(i as u64))
+            .collect::<Vec<_>>();
+        let constraints_and_spans = fixed_polys
+            .iter()
+            .zip(&constants)
+            .filter_map(|(&poly_id, (_, values))| {
+                process_fixed_column(values).map(|(constraint, full)| (poly_id, (constraint, full)))
+            })
+            .collect::<BTreeMap<_, _>>();
+        let full_span = constraints_and_spans
+            .iter()
+            .filter_map(|(p, (_, full))| full.then_some(*p))
+            .collect();
+        let mut known_constraints = constraints_and_spans
+            .into_iter()
+            .map(|(p, (c, _))| (p, c))
+            .collect::<BTreeMap<_, _>>();
+        assert_eq!(
+            known_constraints,
+            vec![
+                // Global.BYTE
+                (constant_poly_id(0), RangeConstraint::from_max_bit(7)),
+                // Global.BYTE2
+                (constant_poly_id(1), RangeConstraint::from_max_bit(15)),
+                // Global.SHIFTED
+                (constant_poly_id(2), RangeConstraint::from_mask(0xff0_u32)),
+            ]
+            .into_iter()
+            .collect()
+        );
+        let mut range_constraint_multiplicities = BTreeMap::new();
+        for identity in &analyzed.identities {
+            propagate_constraints(
+                &mut known_constraints,
+                &mut range_constraint_multiplicities,
+                identity,
+                &full_span,
+            );
+        }
+        println!(
+            "range_constraint_multiplicities: {:?}",
+            range_constraint_multiplicities
+        );
+        assert_eq!(
+            known_constraints,
+            vec![
+                // Global.A
+                (witness_poly_id(2), RangeConstraint::from_max_bit(0)),
+                // Global.B
+                (witness_poly_id(3), RangeConstraint::from_max_bit(7)),
+                // Global.C
+                (witness_poly_id(4), RangeConstraint::from_mask(0x2ff_u32)),
+                // Global.D
+                (witness_poly_id(5), RangeConstraint::from_mask(0xf0_u32)),
+                // Global.BYTE
+                (constant_poly_id(0), RangeConstraint::from_max_bit(7)),
+                // Global.BYTE2
+                (constant_poly_id(1), RangeConstraint::from_max_bit(15)),
+                // Global.SHIFTED
+                (constant_poly_id(2), RangeConstraint::from_mask(0xff0_u32)),
+            ]
+            .into_iter()
+            .collect::<BTreeMap<_, _>>()
+        );
+        assert_eq!(
+            range_constraint_multiplicities,
+            vec![
+                (
+                    // Global.B
+                    witness_poly_id(3),
+                    PhantomRangeConstraintTarget {
+                        // Global.BYTE
+                        column: constant_poly_id(0),
+                        // Global.byte_multiplicities
+                        multiplicity_column: witness_poly_id(0)
+                    }
+                ),
+                (
+                    // Global.D
+                    witness_poly_id(5),
+                    PhantomRangeConstraintTarget {
+                        // Global.BYTE
+                        column: constant_poly_id(0),
+                        // Global.byte_multiplicities
+                        multiplicity_column: witness_poly_id(0)
+                    }
+                ),
+            ]
+            .into_iter()
+            .collect::<BTreeMap<_, _>>()
+        )
     }
 
     #[test]
