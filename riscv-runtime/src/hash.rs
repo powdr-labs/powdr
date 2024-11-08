@@ -6,6 +6,13 @@ use powdr_riscv_syscalls::Syscall;
 
 const GOLDILOCKS: u64 = 0xffffffff00000001;
 
+pub fn native_hash(data: &mut [u64; 12]) -> &[u64; 4] {
+    unsafe {
+        asm!("ecall", in("a0") data as *mut [u64; 12], in("t0") u32::from(Syscall::NativeHash));
+    }
+    data[..4].try_into().unwrap()
+}
+
 /// Calls the low level Poseidon PIL machine, where the last 4 elements are the
 /// "cap", the return value is placed in data[..4] and the reference to this
 /// sub-array is returned.

@@ -56,5 +56,5 @@ syscalls!(
     (8, Mod256, "mod_256"),
     (9, Halt, "halt"),
     (10, CommitPublic, "commit_public"),
-    (11, PoseidonNative, "poseidon_native"),
+    (11, NativeHash, "native_hash"),
 );

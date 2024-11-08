@@ -358,7 +358,7 @@ impl Runtime {
         let implementation = std::iter::once("poseidon_gl 10, 10;".to_string());
 
         self.add_syscall(Syscall::PoseidonGL, implementation.clone());
-        self.add_syscall(Syscall::PoseidonNative, implementation);
+        self.add_syscall(Syscall::NativeHash, implementation);
         self
     }
 

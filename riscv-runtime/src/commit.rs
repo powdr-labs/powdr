@@ -33,7 +33,7 @@ impl CommittedPublics {
     }
 
     fn update_state(&mut self) {
-        crate::hash::poseidon_gl_unsafe(&mut self.state);
+        crate::hash::native_hash(&mut self.state);
     }
 
     pub fn finalize(&mut self) -> [u64; 4] {
