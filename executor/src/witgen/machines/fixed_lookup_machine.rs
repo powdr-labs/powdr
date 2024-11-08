@@ -23,6 +23,7 @@ use crate::Identity;
 
 use super::{Connection, ConnectionKind, Machine};
 
+/// An Application specifies a lookup cache.
 #[derive(Hash, Eq, PartialEq, Ord, PartialOrd, Clone)]
 struct Application {
     pub identity_id: u64,
@@ -44,27 +45,6 @@ impl<T> IndexValue<T> {
     }
     pub fn get(&self) -> Option<(usize, &Vec<T>)> {
         self.0.as_ref().map(|(row, values)| (*row, values))
-    }
-}
-
-#[derive(Default)]
-pub struct IndexedColumns<T> {
-    indices: HashMap<Application, Index<T>>,
-}
-
-impl<T: FieldElement> IndexedColumns<T> {
-    /// get the row at which the assignment is satisfied uniquely
-    fn get_match(
-        &mut self,
-        fixed_data: &FixedData<T>,
-        application: Application,
-        input_values: Vec<T>,
-        connections: &BTreeMap<u64, Connection<'_, T>>,
-    ) -> Option<&IndexValue<T>> {
-        self.indices
-            .entry(application)
-            .or_insert_with_key(|application| create_index(fixed_data, application, connections))
-            .get(&input_values)
     }
 }
 
@@ -188,7 +168,7 @@ const MULTIPLICITY_LOOKUP_COLUMN: &str = "m_logup_multiplicity";
 pub struct FixedLookup<'a, T: FieldElement> {
     degree: DegreeType,
     global_constraints: GlobalConstraints<T>,
-    indices: IndexedColumns<T>,
+    indices: HashMap<Application, Index<T>>,
     connections: BTreeMap<u64, Connection<'a, T>>,
     fixed_data: &'a FixedData<'a, T>,
     /// multiplicities column values for each identity id
@@ -280,6 +260,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             );
         }
 
+        // TODO
         // split the fixed columns depending on whether their associated lookup variable is constant or not. Preserve the value of the constant arguments.
         // [1, 2, x] in [A, B, C] -> [[(A, 1), (B, 2)], [C, x]]
 
@@ -302,22 +283,20 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             inputs: known_inputs,
         };
 
-        let index_value = self
+        let index = self
             .indices
-            .get_match(
-                self.fixed_data,
-                application,
-                input_values,
-                &self.connections,
-            )
-            .ok_or_else(|| {
-                // TODO
-                // let input_assignment = input_values
-                //     .into_iter()
-                //     .map(|(poly_ref, v)| (poly_ref.name.clone(), v))
-                //     .collect();
-                EvalError::FixedLookupFailed(vec![]) //input_assignment)
-            })?;
+            .entry(application)
+            .or_insert_with_key(|application| {
+                create_index(self.fixed_data, application, &self.connections)
+            });
+        let index_value = index.get(&input_values).ok_or_else(|| {
+            let input_assignment = left
+                .iter()
+                .zip(right)
+                .filter_map(|(l, r)| l.constant_value().map(|v| (r.name.clone(), v)))
+                .collect();
+            EvalError::FixedLookupFailed(input_assignment)
+        })?;
 
         let Some((row, output)) = index_value.get() else {
             // multiple matches, we stop and learnt nothing

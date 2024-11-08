@@ -476,10 +476,6 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                 v.get(row as usize).cloned()
             })
     }
-
-    pub fn identity(&self, id: u64) -> &Identity<T> {
-        &self.analyzed.identities[id as usize]
-    }
 }
 
 pub struct FixedColumn<'a, T> {
