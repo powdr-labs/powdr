@@ -69,7 +69,7 @@ fn create_index<T: FieldElement>(
         });
 
     // create index for this lookup
-    log::info!(
+    log::trace!(
         "Generating index for lookup in columns (in: {}, out: {})",
         input_fixed_columns
             .iter()
@@ -139,7 +139,7 @@ fn create_index<T: FieldElement>(
         .0;
 
     let elapsed = start.elapsed().as_millis();
-    log::info!(
+    log::trace!(
             "Done creating index in {elapsed} ms. Size (as flat list): entries * (num_inputs * input_size + num_outputs * output_size) = {} * ({} * {} bytes + {} * {} bytes) = {:.2} MB",
             index.len(),
             input_column_values.len(),
