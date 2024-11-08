@@ -2,7 +2,6 @@
 //! i.e. it turns more complex expressions in identities to simpler expressions.
 
 use std::collections::BTreeMap;
-use std::ops::Bound;
 
 use num_traits::sign::Signed;
 
