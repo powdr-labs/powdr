@@ -29,7 +29,7 @@ use powdr_ast::analyzed::{
 use crate::{CallbackResult, MultiStageAir, MultistageAirBuilder};
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 
-use powdr_executor::witgen::WitgenCallback;
+use powdr_executor_utils::WitgenCallback;
 use powdr_number::{FieldElement, LargeInt};
 
 /// A description of the constraint system.

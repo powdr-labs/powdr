@@ -28,7 +28,7 @@ members = [
     "riscv-executor",
     "riscv-syscalls",
     "schemas",
-    "backend-utils",
+    "backend-utils", "executor-utils",
 ]
 
 exclude = [ "riscv-runtime" ]
@@ -51,6 +51,7 @@ powdr-analysis = { path = "./analysis", version = "0.1.2" }
 powdr-backend = { path = "./backend", version = "0.1.2" }
 powdr-backend-utils = { path = "./backend-utils", version = "0.1.2" }
 powdr-executor = { path = "./executor", version = "0.1.2" }
+powdr-executor-utils = { path = "./executor-utils", version = "0.1.2" }
 powdr-importer = { path = "./importer", version = "0.1.2" }
 powdr-jit-compiler = { path = "./jit-compiler", version = "0.1.2" }
 powdr-linker = { path = "./linker", version = "0.1.2" }

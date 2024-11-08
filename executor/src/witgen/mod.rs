@@ -55,6 +55,9 @@ static OUTER_CODE_NAME: &str = "witgen (outer code)";
 pub trait QueryCallback<T>: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 impl<T, F> QueryCallback<T> for F where F: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 
+pub use powdr_executor_utils::{WitgenCallback, WitgenCallbackFn};
+
+/*
 type WitgenCallbackFn<T> =
     Arc<dyn Fn(&[(String, Vec<T>)], BTreeMap<u64, T>, u8) -> Vec<(String, Vec<T>)> + Send + Sync>;
 
@@ -76,6 +79,7 @@ impl<T: FieldElement> WitgenCallback<T> {
         (self.0)(current_witness, challenges, stage)
     }
 }
+*/
 
 pub struct WitgenCallbackContext<T> {
     /// TODO: all these fields probably don't need to be Arc anymore, since the
