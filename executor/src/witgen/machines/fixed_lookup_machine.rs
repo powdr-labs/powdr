@@ -253,7 +253,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             );
         }
 
-        // Split the left-hand-side into known input values and unknon output expressions.
+        // Split the left-hand-side into known input values and unknown output expressions.
         let mut input_values = vec![];
         let mut known_inputs: BitVec = Default::default();
         let mut output_expressions = vec![];
