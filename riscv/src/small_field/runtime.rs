@@ -27,9 +27,6 @@ impl Runtime {
         if libs.poseidon2 {
             runtime = runtime.with_poseidon2();
         }
-        if libs.poseidon2 {
-            runtime = runtime.with_poseidon2();
-        }
         if libs.keccak {
             runtime = runtime.with_keccak();
         }
@@ -286,10 +283,6 @@ impl Runtime {
 
         self.add_syscall(Syscall::NativeHash, implementation);
         self
-    }
-
-    fn with_poseidon2(self) -> Self {
-        todo!()
     }
 
     fn with_poseidon2(self) -> Self {

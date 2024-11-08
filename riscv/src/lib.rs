@@ -57,13 +57,6 @@ impl RuntimeLibs {
             ..self
         }
     }
-
-    pub fn with_poseidon2(self) -> Self {
-        Self {
-            poseidon2: true,
-            ..self
-        }
-    }
 }
 #[derive(Copy, Clone)]
 pub struct CompilerOptions {
@@ -140,13 +133,6 @@ impl CompilerOptions {
     pub fn with_keccak(self) -> Self {
         Self {
             libs: self.libs.with_keccak(),
-            ..self
-        }
-    }
-
-    pub fn with_poseidon2(self) -> Self {
-        Self {
-            libs: self.libs.with_poseidon2(),
             ..self
         }
     }
