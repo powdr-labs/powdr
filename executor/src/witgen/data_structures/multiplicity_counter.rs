@@ -15,7 +15,7 @@ pub struct MultiplicityCounter {
     sizes: Option<BTreeMap<PolyID, DegreeType>>,
 
     /// A map poly_id -> (row -> count).
-    /// Has a (possibly entry) entry for each value in `identity_id_to_multiplicity_column`.
+    /// Has a (possibly empty) entry for each value in `identity_id_to_multiplicity_column`.
     counts: BTreeMap<PolyID, BTreeMap<usize, usize>>,
 }
 
@@ -46,11 +46,12 @@ impl MultiplicityCounter {
     }
 
     /// For a given identity ID, increments the count of the corresponding multiplicity column at the given index.
-    pub fn increment_at_row(&mut self, identity_id: u64, index: usize) {
+    /// Does not fail if the identity does not have a multiplicity column.
+    pub fn increment_at_row(&mut self, identity_id: u64, row: usize) {
         if let Some(poly_id) = self.identity_id_to_multiplicity_column.get(&identity_id) {
             // Every value of `identity_id_to_multiplicity_column` should have an entry in `counts`.
             let count = self.counts.get_mut(poly_id).unwrap();
-            *count.entry(index).or_insert(0) += 1;
+            *count.entry(row).or_insert(0) += 1;
         }
     }
 
