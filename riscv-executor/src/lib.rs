@@ -2317,10 +2317,16 @@ fn execute_inner<F: FieldElement>(
         profiling.map(|opt| Profiler::new(opt, &debug_files[..], function_starts, location_starts));
 
     let mut curr_pc = 0u32;
+    let mut cycles = 0;
     loop {
         let stm = statements[curr_pc as usize];
 
         log::trace!("l {curr_pc}: {stm}",);
+
+        if cycles % 10000000 == 0 {
+            log::info!("Executing instruction {cycles}");
+        }
+        cycles += 1;
 
         e.step += 4;
 
