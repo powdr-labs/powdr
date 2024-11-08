@@ -271,30 +271,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             columns.extend(generator.take_witness_col_values(&mut mutable_state));
         }
 
-        record_start(RANGE_CONSTRAINT_MULTIPLICITY_WITGEN);
-
-        for (source_id, target) in &fixed
-            .global_range_constraints
-            .range_constraint_multiplicities
-        {
-            let size = fixed.fixed_cols[&target.target_column]
-                .values
-                .get_uniquely_sized()
-                .unwrap()
-                .len();
-            let mut multiplicities = vec![0; size];
-            for value in columns.get(fixed.column_name(source_id)).unwrap() {
-                let index = value.to_degree() as usize;
-                multiplicities[index] += 1;
-            }
-            let multiplicities = multiplicities.into_iter().map(T::from).collect::<Vec<_>>();
-            columns.insert(
-                fixed.column_name(&target.multiplicity_column).to_string(),
-                multiplicities,
-            );
-        }
-
-        record_end(RANGE_CONSTRAINT_MULTIPLICITY_WITGEN);
+        Self::range_constraint_multiplicity_witgen(&fixed, &mut columns);
 
         record_end(OUTER_CODE_NAME);
         reset_and_print_profile_summary();
@@ -324,6 +301,43 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             );
         }
         witness_cols
+    }
+
+    fn range_constraint_multiplicity_witgen(
+        fixed: &FixedData<T>,
+        columns: &mut HashMap<String, Vec<T>>,
+    ) {
+        record_start(RANGE_CONSTRAINT_MULTIPLICITY_WITGEN);
+
+        // Several range constraints might point to the same target
+        let mut multiplicity_columns = BTreeMap::new();
+
+        // Count multiplicities
+        for (source_id, target) in &fixed.global_range_constraints.phantom_range_constraints {
+            let size = fixed.fixed_cols[&target.column]
+                .values
+                .get_uniquely_sized()
+                .unwrap()
+                .len();
+            let multiplicities = multiplicity_columns
+                .entry(target.multiplicity_column)
+                .or_insert_with(|| vec![0; size]);
+            assert_eq!(multiplicities.len(), size);
+            for value in columns.get(fixed.column_name(source_id)).unwrap() {
+                let index = value.to_degree() as usize;
+                multiplicities[index] += 1;
+            }
+        }
+
+        // Convert to field elements and insert into columns
+        for (poly_id, values) in multiplicity_columns {
+            columns.insert(
+                fixed.column_name(&poly_id).to_string(),
+                values.into_iter().map(T::from).collect(),
+            );
+        }
+
+        record_end(RANGE_CONSTRAINT_MULTIPLICITY_WITGEN);
     }
 }
 
@@ -438,7 +452,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         let global_range_constraints = GlobalConstraints {
             witness_constraints: WitnessColumnMap::new(None, witness_cols.len()),
             fixed_constraints: FixedColumnMap::new(None, fixed_cols.len()),
-            range_constraint_multiplicities: BTreeMap::new(),
+            phantom_range_constraints: BTreeMap::new(),
         };
 
         FixedData {
