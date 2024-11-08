@@ -95,6 +95,8 @@ fn create_index<T: FieldElement>(
             .join(", ")
     );
 
+    let start = std::time::Instant::now();
+
     // get all values for the columns to be indexed
     let input_column_values = input_fixed_columns
         .iter()
@@ -150,8 +152,9 @@ fn create_index<T: FieldElement>(
         )
         .0;
 
+    let elapsed = start.elapsed().as_millis();
     log::info!(
-            "Done creating index. Size (as flat list): entries * (num_inputs * input_size + num_outputs * output_size) = {} * ({} * {} bytes + {} * {} bytes) = {:.2} MB",
+            "Done creating index in {elapsed} ms. Size (as flat list): entries * (num_inputs * input_size + num_outputs * output_size) = {} * ({} * {} bytes + {} * {} bytes) = {:.2} MB",
             index.len(),
             input_column_values.len(),
             mem::size_of::<T>(),
