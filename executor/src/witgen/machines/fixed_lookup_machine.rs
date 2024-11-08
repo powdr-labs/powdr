@@ -63,9 +63,9 @@ fn create_index<T: FieldElement>(
         .expressions
         .iter()
         .map(|e| try_to_simple_poly_ref(e).unwrap().poly_id)
-        .enumerate()
-        .partition_map(|(i, poly_id)| {
-            if application.inputs[i] {
+        .zip(&application.inputs)
+        .partition_map(|(poly_id, is_input)| {
+            if is_input {
                 Either::Left(poly_id)
             } else {
                 Either::Right(poly_id)
