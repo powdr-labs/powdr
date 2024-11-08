@@ -49,6 +49,16 @@ pub fn machine_witness_columns<F: FieldElement>(
         all_witness_columns,
         machine_pil.committed_polys_in_source_order(),
     );
+
+    let dummy_column_name = format!("{machine_name}::{DUMMY_COLUMN_NAME}");
+
+    if machine_columns
+        .iter()
+        .any(|(name, _)| name == &dummy_column_name)
+    {
+        return machine_columns.into_iter().cloned().collect();
+    }
+
     let size = machine_columns
         .iter()
         .map(|(_, column)| column.len())
@@ -64,7 +74,6 @@ pub fn machine_witness_columns<F: FieldElement>(
                 panic!("Machine {machine_name} has witness columns of different sizes")
             }
         });
-    let dummy_column_name = format!("{machine_name}::{DUMMY_COLUMN_NAME}");
     let dummy_column = vec![F::zero(); size];
     iter::once((dummy_column_name, dummy_column))
         .chain(machine_columns.into_iter().cloned())
