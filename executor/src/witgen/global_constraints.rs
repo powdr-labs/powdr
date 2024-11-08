@@ -564,7 +564,7 @@ namespace Global(1024);
     [ X * 4 ] in [ bytes ];
 ";
         let analyzed = powdr_pil_analyzer::analyze_string::<GoldilocksField>(pil_source).unwrap();
-        let known_constraints = vec![(constant_poly_id(0), RangeConstraint::from_max_bit(7))]
+        let mut known_constraints = vec![(constant_poly_id(0), RangeConstraint::from_max_bit(7))]
             .into_iter()
             .collect();
         assert_eq!(analyzed.identities.len(), 1);
