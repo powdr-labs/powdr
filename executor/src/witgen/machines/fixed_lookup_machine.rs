@@ -1,11 +1,11 @@
+use bit_vec::BitVec;
 use num_traits::One;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::Peekable;
 use std::mem;
-use std::num::NonZeroUsize;
 
-use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference, PolyID, PolynomialType};
+use itertools::{Either, Itertools};
+use powdr_ast::analyzed::{AlgebraicReference, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::affine_expression::{AffineExpression, AlgebraicVariable};
@@ -20,160 +20,141 @@ use crate::witgen::{EvalResult, FixedData};
 
 use super::{Connection, Machine};
 
-type Application = (Vec<PolyID>, Vec<PolyID>);
-type Index<T> = BTreeMap<Vec<T>, IndexValue>;
+/// An Application specifies a lookup cache.
+#[derive(Hash, Eq, PartialEq, Ord, PartialOrd, Clone)]
+struct Application {
+    pub identity_id: u64,
+    /// Booleans indicating if the respective column is a known input column (true)
+    /// or an unknown output column (false).
+    pub inputs: BitVec,
+}
+
+type Index<T> = HashMap<Vec<T>, IndexValue<T>>;
 
 #[derive(Debug)]
-struct IndexValue(Option<NonZeroUsize>);
+struct IndexValue<T>(Option<(usize, Vec<T>)>);
 
-impl IndexValue {
+impl<T> IndexValue<T> {
     pub fn multiple_matches() -> Self {
         Self(None)
     }
-    pub fn single_row(row: usize) -> Self {
-        // TODO check how expensive the check is
-        // We negate to make it actually nonzero.
-        Self(NonZeroUsize::new(!row))
+    pub fn single_row(row: usize, values: Vec<T>) -> Self {
+        Self(Some((row, values)))
     }
-    fn row(&self) -> Option<usize> {
-        self.0.map(|row| (!row.get()))
+    pub fn get(&self) -> Option<(usize, &Vec<T>)> {
+        self.0.as_ref().map(|(row, values)| (*row, values))
     }
 }
 
-/// Indices for applications of fixed columns. For each application `(INPUT_COLS, OUTPUT_COLS)`, stores
-/// - `(V, None)` if there exists two different rows where `INPUT_COLS == V` match but `OUTPUT_COLS` differ. TODO: store bitmasks of all possible outputs instead.
-/// - `(V, Some(row)` if the value of `OUTPUT_COLS` is unique when `INPUT_COLS == V`, and `row` is the first row where `INPUT_COLS ==V`
-#[derive(Default)]
-pub struct IndexedColumns<T> {
-    indices: HashMap<Application, Index<T>>,
-}
+/// Create an index for a set of columns to be queried, if does not exist already
+/// `input_fixed_columns` is assumed to be sorted
+fn create_index<T: FieldElement>(
+    fixed_data: &FixedData<T>,
+    application: &Application,
+    connections: &BTreeMap<u64, Connection<'_, T>>,
+) -> HashMap<Vec<T>, IndexValue<T>> {
+    let right = connections[&application.identity_id].right;
 
-impl<T: FieldElement> IndexedColumns<T> {
-    /// get the row at which the assignment is satisfied uniquely
-    fn get_match(
-        &mut self,
-        fixed_data: &FixedData<T>,
-        mut assignment: Vec<(PolyID, T)>,
-        mut output_fixed_columns: Vec<PolyID>,
-    ) -> Option<&IndexValue> {
-        // sort in order to have a single index for [X, Y] and for [Y, X]
-        assignment.sort_by(|(name0, _), (name1, _)| name0.cmp(name1));
-        let (input_fixed_columns, values): (Vec<_>, Vec<_>) = assignment.into_iter().unzip();
-        // sort the output as well
-        output_fixed_columns.sort();
+    let (input_fixed_columns, output_fixed_columns): (Vec<_>, Vec<_>) = right
+        .expressions
+        .iter()
+        .map(|e| try_to_simple_poly_ref(e).unwrap().poly_id)
+        .zip(&application.inputs)
+        .partition_map(|(poly_id, is_input)| {
+            if is_input {
+                Either::Left(poly_id)
+            } else {
+                Either::Right(poly_id)
+            }
+        });
 
-        let fixed_columns = (input_fixed_columns, output_fixed_columns);
-
-        self.ensure_index(fixed_data, &fixed_columns);
-
-        // get the rows at which the input matches
-        self.indices
-            .get(&fixed_columns)
-            .as_ref()
-            .unwrap()
-            .get(&values)
-    }
-
-    /// Create an index for a set of columns to be queried, if does not exist already
-    /// `input_fixed_columns` is assumed to be sorted
-    fn ensure_index(&mut self, fixed_data: &FixedData<T>, sorted_fixed_columns: &Application) {
-        // we do not use the Entry API here because we want to clone `sorted_input_fixed_columns` only on index creation
-        if self.indices.contains_key(sorted_fixed_columns) {
-            return;
-        }
-
-        let (sorted_input_fixed_columns, sorted_output_fixed_columns) = &sorted_fixed_columns;
-
-        // create index for this lookup
-        log::trace!(
-            "Generating index for lookup in columns (in: {}, out: {})",
-            sorted_input_fixed_columns
-                .iter()
-                .map(|c| fixed_data.column_name(c).to_string())
-                .join(", "),
-            sorted_output_fixed_columns
-                .iter()
-                .map(|c| fixed_data.column_name(c).to_string())
-                .join(", ")
-        );
-
-        // get all values for the columns to be indexed
-        let input_column_values = sorted_input_fixed_columns
+    // create index for this lookup
+    log::trace!(
+        "Generating index for lookup in columns (in: {}, out: {})",
+        input_fixed_columns
             .iter()
-            .map(|id| fixed_data.fixed_cols[id].values_max_size())
-            .collect::<Vec<_>>();
-
-        let output_column_values = sorted_output_fixed_columns
+            .map(|c| fixed_data.column_name(c).to_string())
+            .join(", "),
+        output_fixed_columns
             .iter()
-            .map(|id| fixed_data.fixed_cols[id].values_max_size())
-            .collect::<Vec<_>>();
+            .map(|c| fixed_data.column_name(c).to_string())
+            .join(", ")
+    );
 
-        let degree = input_column_values
-            .iter()
-            .chain(output_column_values.iter())
-            .map(|values| values.len())
-            .unique()
-            .exactly_one()
-            .expect("all columns in a given lookup are expected to have the same degree");
+    let start = std::time::Instant::now();
 
-        let index: BTreeMap<Vec<T>, IndexValue> = (0..degree)
-            .fold(
-                (
-                    BTreeMap::<Vec<T>, IndexValue>::default(),
-                    HashSet::<(Vec<T>, Vec<T>)>::default(),
-                ),
-                |(mut acc, mut set), row| {
-                    let input: Vec<_> = input_column_values
-                        .iter()
-                        .map(|column| column[row])
-                        .collect();
+    // get all values for the columns to be indexed
+    let input_column_values = input_fixed_columns
+        .iter()
+        .map(|id| fixed_data.fixed_cols[id].values_max_size())
+        .collect::<Vec<_>>();
 
-                    let output: Vec<_> = output_column_values
-                        .iter()
-                        .map(|column| column[row])
-                        .collect();
+    let output_column_values = output_fixed_columns
+        .iter()
+        .map(|id| fixed_data.fixed_cols[id].values_max_size())
+        .collect::<Vec<_>>();
 
-                    let input_output = (input, output);
+    let degree = input_column_values
+        .iter()
+        .chain(output_column_values.iter())
+        .map(|values| values.len())
+        .unique()
+        .exactly_one()
+        .expect("all columns in a given lookup are expected to have the same degree");
 
-                    if !set.contains(&input_output) {
-                        set.insert(input_output.clone());
+    let index: HashMap<Vec<T>, IndexValue<T>> = (0..degree)
+        .fold(
+            (
+                HashMap::<Vec<T>, IndexValue<T>>::default(),
+                HashSet::<(Vec<T>, Vec<T>)>::default(),
+            ),
+            |(mut acc, mut set), row| {
+                let input: Vec<_> = input_column_values
+                    .iter()
+                    .map(|column| column[row])
+                    .collect();
 
-                        let (input, _) = input_output;
+                let output: Vec<_> = output_column_values
+                    .iter()
+                    .map(|column| column[row])
+                    .collect();
 
-                        acc.entry(input)
-                            // we have a new, different output, so we lose knowledge
-                            .and_modify(|value| {
-                                *value = IndexValue::multiple_matches();
-                            })
-                            .or_insert_with(|| IndexValue::single_row(row));
-                    }
-                    (acc, set)
-                },
-            )
-            .0;
+                let input_output = (input, output);
 
-        log::trace!(
-            "Done creating index. Size (as flat list): entries * (num_inputs * input_size + row_pointer_size) = {} * ({} * {} bytes + {} bytes) = {} bytes",
+                if !set.contains(&input_output) {
+                    set.insert(input_output.clone());
+
+                    let (input, output) = input_output;
+
+                    acc.entry(input)
+                        // we have a new, different output, so we lose knowledge
+                        .and_modify(|value| {
+                            *value = IndexValue::multiple_matches();
+                        })
+                        .or_insert_with(|| IndexValue::single_row(row, output));
+                }
+                (acc, set)
+            },
+        )
+        .0;
+
+    let elapsed = start.elapsed().as_millis();
+    log::trace!(
+            "Done creating index in {elapsed} ms. Size (as flat list): entries * (num_inputs * input_size + num_outputs * output_size) = {} * ({} * {} bytes + {} * {} bytes) = {:.2} MB",
             index.len(),
             input_column_values.len(),
             mem::size_of::<T>(),
-            mem::size_of::<IndexValue>(),
-            index.len() * (input_column_values.len() * mem::size_of::<T>() + mem::size_of::<IndexValue>())
+            output_column_values.len(),
+            mem::size_of::<T>(),
+            (index.len() * (input_column_values.len() * mem::size_of::<T>() + output_column_values.len() * mem::size_of::<T>())) as f64 / 1024.0 / 1024.0
         );
-        self.indices.insert(
-            (
-                sorted_input_fixed_columns.clone(),
-                sorted_output_fixed_columns.clone(),
-            ),
-            index,
-        );
-    }
+    index
 }
 
 /// Machine to perform a lookup in fixed columns only.
 pub struct FixedLookup<'a, T: FieldElement> {
     global_constraints: GlobalConstraints<T>,
-    indices: IndexedColumns<T>,
+    indices: HashMap<Application, Index<T>>,
     connections: BTreeMap<u64, Connection<'a, T>>,
     fixed_data: &'a FixedData<'a, T>,
     multiplicity_counter: MultiplicityCounter,
@@ -235,61 +216,53 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             );
         }
 
-        // split the fixed columns depending on whether their associated lookup variable is constant or not. Preserve the value of the constant arguments.
-        // [1, 2, x] in [A, B, C] -> [[(A, 1), (B, 2)], [C, x]]
-
-        let mut input_assignment = vec![];
-        let mut output_columns = vec![];
+        // Split the left-hand-side into known input values and unknown output expressions.
+        let mut input_values = vec![];
+        let mut known_inputs: BitVec = Default::default();
         let mut output_expressions = vec![];
 
-        left.iter().zip(right).for_each(|(l, r)| {
+        for l in left {
             if let Some(value) = l.constant_value() {
-                input_assignment.push((r, value));
+                input_values.push(value);
+                known_inputs.push(true);
             } else {
-                output_columns.push(r.poly_id);
                 output_expressions.push(l);
+                known_inputs.push(false);
             }
-        });
+        }
 
-        let input_assignment_with_ids = input_assignment
-            .iter()
-            .map(|(poly_ref, v)| (poly_ref.poly_id, *v))
-            .collect();
-        let index_value = self
+        let application = Application {
+            identity_id,
+            inputs: known_inputs,
+        };
+
+        let index = self
             .indices
-            .get_match(
-                self.fixed_data,
-                input_assignment_with_ids,
-                output_columns.clone(),
-            )
-            .ok_or_else(|| {
-                let input_assignment = input_assignment
-                    .into_iter()
-                    .map(|(poly_ref, v)| (poly_ref.name.clone(), v))
-                    .collect();
-                EvalError::FixedLookupFailed(input_assignment)
-            })?;
+            .entry(application)
+            .or_insert_with_key(|application| {
+                create_index(self.fixed_data, application, &self.connections)
+            });
+        let index_value = index.get(&input_values).ok_or_else(|| {
+            let input_assignment = left
+                .iter()
+                .zip(right)
+                .filter_map(|(l, r)| l.constant_value().map(|v| (r.name.clone(), v)))
+                .collect();
+            EvalError::FixedLookupFailed(input_assignment)
+        })?;
 
-        let row = match index_value.row() {
-            // a single match, we continue
-            Some(row) => row,
+        let Some((row, output)) = index_value.get() else {
             // multiple matches, we stop and learnt nothing
-            None => {
-                return Ok(EvalValue::incomplete(
-                    IncompleteCause::MultipleLookupMatches,
-                ))
-            }
+            return Ok(EvalValue::incomplete(
+                IncompleteCause::MultipleLookupMatches,
+            ));
         };
 
         self.multiplicity_counter.increment_at_row(identity_id, row);
 
-        let output = output_columns
-            .iter()
-            .map(|column| self.fixed_data.fixed_cols[column].values_max_size()[row]);
-
         let mut result = EvalValue::complete(vec![]);
         for (l, r) in output_expressions.into_iter().zip(output) {
-            let evaluated = l.clone() - r.into();
+            let evaluated = l.clone() - (*r).into();
             // TODO we could use bit constraints here
             match evaluated.solve() {
                 Ok(constraints) => {
@@ -303,6 +276,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
                 }
             }
         }
+
         Ok(result)
     }
 
@@ -349,10 +323,7 @@ fn unique_size<T: FieldElement>(
         .right
         .expressions
         .iter()
-        .map(|expr| match expr {
-            AlgebraicExpression::Reference(poly) => poly.poly_id,
-            _ => unreachable!(),
-        })
+        .map(|expr| try_to_simple_poly_ref(expr).unwrap().poly_id)
         .collect::<Vec<_>>();
     fixed_columns
         .iter()
