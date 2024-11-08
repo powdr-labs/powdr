@@ -935,7 +935,7 @@ impl<T> Children<AlgebraicExpression<T>> for LookupIdentity<T> {
 
 /// A witness generation helper for a lookup identity.
 ///
-/// This identity is used as a replactement for a lookup identity which has been turned into challenge-based polynomial identities.
+/// This identity is used as a replacement for a lookup identity which has been turned into challenge-based polynomial identities.
 /// This is ignored by the backend.
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PhantomLookupIdentity<T> {
