@@ -20,7 +20,7 @@ use self::write_once_memory::WriteOnceMemory;
 
 use super::generator::Generator;
 use super::rows::RowPair;
-use super::{EvalResult, FixedData, MutableState, QueryCallback};
+use super::{EvalError, EvalResult, FixedData, MutableState, QueryCallback};
 
 mod block_machine;
 mod double_sorted_witness_machine_16;
@@ -60,6 +60,25 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T>;
 
+    /// Process a connection of a given ID (which must be known to the callee).
+    /// This is a more direct version of `process_plookup`, where the caller
+    /// provides values or targets to where to write the results directly.
+    /// The length of `values` needs to be the same as the number of expressions
+    /// in the LHS / RHS of the connection.
+    /// It does not allow to return range constraints or complex expressions.
+    /// The boolean return value indicates whether the lookup was successful.
+    /// If it returns true, all output values in `values` need to have been set.
+    /// If it returns false, none of them should be changed.
+    /// An error is always unrecoverable.
+    fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
+        &mut self,
+        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        _identity_id: u64,
+        _values: Vec<LookupCell<'c, T>>,
+    ) -> Result<bool, EvalError<T>> {
+        unimplemented!("Direct lookup is not supported for this machine.");
+    }
+
     /// Returns the final values of the witness columns.
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
@@ -68,6 +87,13 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
 
     /// Returns the identity IDs of the connecting identities that this machine is responsible for.
     fn identity_ids(&self) -> Vec<u64>;
+}
+
+pub enum LookupCell<'a, T> {
+    /// Value is known (i.e. an input)
+    Input(&'a T),
+    /// Value is not known (i.e. an output)
+    Output(&'a mut T),
 }
 
 /// All known implementations of [Machine].
