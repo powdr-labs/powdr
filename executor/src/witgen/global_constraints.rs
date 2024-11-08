@@ -95,10 +95,16 @@ where
 }
 
 #[derive(Clone)]
+pub struct PhantomRangeConstraintTarget {
+    pub target_column: PolyID,
+    pub multiplicity_column: PolyID,
+}
+
+#[derive(Clone)]
 pub struct GlobalConstraints<T: FieldElement> {
     pub witness_constraints: WitnessColumnMap<Option<RangeConstraint<T>>>,
     pub fixed_constraints: FixedColumnMap<Option<RangeConstraint<T>>>,
-    pub range_constraint_multiplicities: BTreeMap<PolyID, (PolyID, PolyID)>,
+    pub range_constraint_multiplicities: BTreeMap<PolyID, PhantomRangeConstraintTarget>,
 }
 
 impl<T: FieldElement> RangeConstraintSet<&AlgebraicReference, T> for GlobalConstraints<T> {
@@ -144,10 +150,9 @@ pub fn set_global_constraints<'a, T: FieldElement>(
     let mut removed_identities = vec![];
     let mut range_constraint_multiplicities = BTreeMap::new();
     for identity in identities.into_iter() {
-        let (new_known_constraints, new_range_constraint_multiplicity, remove) =
-            propagate_constraints(known_constraints, identity, &full_span);
+        let (new_range_constraint_multiplicity, remove) =
+            propagate_constraints(&mut known_constraints, identity, &full_span);
 
-        known_constraints = new_known_constraints;
         if let Some((poly_id, multiplicity)) = new_range_constraint_multiplicity {
             range_constraint_multiplicities.insert(poly_id, multiplicity);
         }
@@ -175,11 +180,11 @@ pub fn set_global_constraints<'a, T: FieldElement>(
     if !range_constraint_multiplicities.is_empty() {
         log::debug!("Recorded the following range constraint multiplicity columns:");
     }
-    for (poly_id, (_, multiplicity)) in &range_constraint_multiplicities {
+    for (poly_id, target) in &range_constraint_multiplicities {
         log::debug!(
             "  {} -> {}",
             fixed_data.column_name(poly_id),
-            fixed_data.column_name(multiplicity)
+            fixed_data.column_name(&target.multiplicity_column)
         );
     }
 
@@ -236,35 +241,31 @@ fn process_fixed_column<T: FieldElement>(fixed: &[T]) -> Option<(RangeConstraint
 /// If the returned flag is true, the identity can be removed, because it contains
 /// no further information than the range constraint.
 fn propagate_constraints<T: FieldElement>(
-    mut known_constraints: BTreeMap<PolyID, RangeConstraint<T>>,
+    known_constraints: &mut BTreeMap<PolyID, RangeConstraint<T>>,
     identity: &Identity<T>,
     full_span: &BTreeSet<PolyID>,
-) -> (
-    BTreeMap<PolyID, RangeConstraint<T>>,
-    Option<(PolyID, (PolyID, PolyID))>,
-    bool,
-) {
+) -> (Option<(PolyID, PhantomRangeConstraintTarget)>, bool) {
     match identity {
         Identity::Polynomial(identity) => {
             if let Some(p) = is_binary_constraint(&identity.expression) {
                 assert!(known_constraints
                     .insert(p, RangeConstraint::from_max_bit(0))
                     .is_none());
-                (known_constraints, None, true)
+                (None, true)
             } else {
-                for (p, c) in try_transfer_constraints(&identity.expression, &known_constraints) {
+                for (p, c) in try_transfer_constraints(&identity.expression, known_constraints) {
                     known_constraints
                         .entry(p)
                         .and_modify(|existing| *existing = existing.conjunction(&c))
                         .or_insert(c);
                 }
-                (known_constraints, None, false)
+                (None, false)
             }
         }
         Identity::Lookup(LookupIdentity { left, right, .. })
         | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. }) => {
             if !left.selector.is_one() || !right.selector.is_one() {
-                return (known_constraints, None, false);
+                return (None, false);
             }
 
             // For lookups of the form [ a, b, ... ] in [ c, d, ... ], where a, b, ... are columns,
@@ -289,32 +290,32 @@ fn propagate_constraints<T: FieldElement>(
             let mut remove = false;
             let mut new_multiplicity = None;
             if right.expressions.len() == 1 {
-                match (
+                if let (Some(left_ref), Some(right_ref)) = (
                     try_to_simple_poly(&left.expressions[0]),
                     try_to_simple_poly(&right.expressions[0]),
                 ) {
-                    (Some(left_ref), Some(right_ref)) => {
-                        if full_span.contains(&right_ref.poly_id) {
-                            let connection = Connection::try_from(identity).unwrap();
-                            if let Some(multiplicity) = connection.multiplicity_column {
-                                new_multiplicity =
-                                    Some((left_ref.poly_id, (right_ref.poly_id, multiplicity)));
-                            }
-                            remove = true;
+                    if full_span.contains(&right_ref.poly_id) {
+                        let connection = Connection::try_from(identity).unwrap();
+                        if let Some(multiplicity) = connection.multiplicity_column {
+                            let target = PhantomRangeConstraintTarget {
+                                target_column: right_ref.poly_id,
+                                multiplicity_column: multiplicity,
+                            };
+                            new_multiplicity = Some((left_ref.poly_id, target));
                         }
+                        remove = true;
                     }
-                    _ => {}
                 }
             }
-            (known_constraints, new_multiplicity, remove)
+            (new_multiplicity, remove)
         }
         Identity::Connect(..) => {
             // we do not handle connect identities yet, so we do nothing
-            (known_constraints, None, false)
+            (None, false)
         }
         Identity::Permutation(..) | Identity::PhantomPermutation(..) => {
             // permutation identities are stronger than just range constraints, so we do nothing
-            (known_constraints, None, false)
+            (None, false)
         }
     }
 }
@@ -524,8 +525,7 @@ namespace Global(2**20);
             .collect()
         );
         for identity in &analyzed.identities {
-            (known_constraints, _, _) =
-                propagate_constraints(known_constraints, identity, &Default::default());
+            propagate_constraints(&mut known_constraints, identity, &Default::default());
         }
         assert_eq!(
             known_constraints,
@@ -568,8 +568,8 @@ namespace Global(1024);
             .into_iter()
             .collect();
         assert_eq!(analyzed.identities.len(), 1);
-        let (_, _, removed) = propagate_constraints(
-            known_constraints,
+        let (_, removed) = propagate_constraints(
+            &mut known_constraints,
             analyzed.identities.first().unwrap(),
             &Default::default(),
         );

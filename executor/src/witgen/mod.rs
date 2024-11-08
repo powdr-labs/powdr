@@ -273,11 +273,11 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
 
         record_start(RANGE_CONSTRAINT_MULTIPLICITY_WITGEN);
 
-        for (source_id, (fixed_col_id, multiplicity_id)) in &fixed
+        for (source_id, target) in &fixed
             .global_range_constraints
             .range_constraint_multiplicities
         {
-            let size = fixed.fixed_cols[&fixed_col_id]
+            let size = fixed.fixed_cols[&target.target_column]
                 .values
                 .get_uniquely_sized()
                 .unwrap()
@@ -289,7 +289,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             }
             let multiplicities = multiplicities.into_iter().map(T::from).collect::<Vec<_>>();
             columns.insert(
-                fixed.column_name(multiplicity_id).to_string(),
+                fixed.column_name(&target.multiplicity_column).to_string(),
                 multiplicities,
             );
         }
