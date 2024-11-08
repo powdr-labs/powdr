@@ -11,10 +11,11 @@ use powdr::number::{
     BabyBearField, BigUint, Bn254Field, FieldElement, GoldilocksField, KnownField, KoalaBearField,
 };
 use powdr::riscv::{CompilerOptions, RuntimeLibs};
-use powdr::riscv_executor::ProfilerOptions;
+use powdr::riscv_executor::{write_executor_csv, ProfilerOptions};
 use powdr::Pipeline;
 
 use std::ffi::OsStr;
+use std::time::Instant;
 use std::{
     io::{self, Write},
     path::Path,
@@ -61,7 +62,7 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Compiles rust code to Powdr assembly.
+    /// Compile rust code to Powdr assembly.
     /// Needs `rustup component add rust-src --toolchain nightly-2024-08-01`.
     Compile {
         /// input rust code, points to a crate dir or its Cargo.toml file
@@ -86,8 +87,12 @@ enum Commands {
         #[arg(short, long)]
         #[arg(default_value_t = false)]
         continuations: bool,
+
+        /// Maximum trace length for powdr machines (2 ^ max_degree_log).
+        #[arg(long)]
+        max_degree_log: Option<u8>,
     },
-    /// Translates a RISC-V statically linked executable to powdr assembly.
+    /// Translate a RISC-V statically linked executable to powdr assembly.
     RiscvElf {
         /// Input file
         #[arg(required = true)]
@@ -113,8 +118,40 @@ enum Commands {
         #[arg(default_value_t = false)]
         continuations: bool,
     },
-    /// Executes a powdr-asm file with given inputs.
+    /// Execute a RISCV powdr-asm file with given inputs.
+    /// Does not generate a witness.
     Execute {
+        /// input powdr-asm code compiled from Rust/RISCV
+        file: String,
+
+        /// The field to use
+        #[arg(long)]
+        #[arg(default_value_t = FieldArgument::Gl)]
+        #[arg(value_parser = clap_enum_variants!(FieldArgument))]
+        field: FieldArgument,
+
+        /// Comma-separated list of free inputs (numbers).
+        #[arg(short, long)]
+        #[arg(default_value_t = String::new())]
+        inputs: String,
+
+        /// Directory for output files.
+        #[arg(short, long)]
+        #[arg(default_value_t = String::from("."))]
+        output_directory: String,
+
+        /// Generate a flamegraph plot of the execution ("[file].svg")
+        #[arg(long)]
+        #[arg(default_value_t = false)]
+        generate_flamegraph: bool,
+
+        /// Generate callgrind file of the execution ("[file].callgrind")
+        #[arg(long)]
+        #[arg(default_value_t = false)]
+        generate_callgrind: bool,
+    },
+    /// Execute and generate a valid witness for a RISCV powdr-asm file with the given inputs.
+    Witgen {
         /// input powdr-asm code compiled from Rust/RISCV
         file: String,
 
@@ -139,10 +176,10 @@ enum Commands {
         #[arg(default_value_t = false)]
         continuations: bool,
 
-        /// Generate witness(es) that can be used for proofs.
-        #[arg(short, long)]
+        /// Export the executor generated witness columns as a CSV file. Useful for debugging executor issues.
+        #[arg(long)]
         #[arg(default_value_t = false)]
-        witness: bool,
+        executor_csv: bool,
 
         /// Generate a flamegraph plot of the execution ("[file].svg")
         #[arg(long)]
@@ -214,12 +251,14 @@ fn run_command(command: Commands) {
             output_directory,
             coprocessors,
             continuations,
+            max_degree_log,
         } => compile_rust(
             &file,
             field.as_known_field(),
             Path::new(&output_directory),
             coprocessors,
             continuations,
+            max_degree_log,
         ),
         Commands::RiscvElf {
             file,
@@ -239,8 +278,36 @@ fn run_command(command: Commands) {
             field,
             inputs,
             output_directory,
+            generate_flamegraph,
+            generate_callgrind,
+        } => {
+            let profiling = if generate_callgrind || generate_flamegraph {
+                Some(ProfilerOptions {
+                    file_stem: Path::new(&file)
+                        .file_stem()
+                        .and_then(OsStr::to_str)
+                        .map(String::from),
+                    output_directory: output_directory.clone(),
+                    flamegraph: generate_flamegraph,
+                    callgrind: generate_callgrind,
+                })
+            } else {
+                None
+            };
+            call_with_field!(execute_fast::<field>(
+                Path::new(&file),
+                split_inputs(&inputs),
+                Path::new(&output_directory),
+                profiling
+            ))
+        }
+        Commands::Witgen {
+            file,
+            field,
+            inputs,
+            output_directory,
             continuations,
-            witness,
+            executor_csv,
             generate_flamegraph,
             generate_callgrind,
         } => {
@@ -262,7 +329,7 @@ fn run_command(command: Commands) {
                 split_inputs(&inputs),
                 Path::new(&output_directory),
                 continuations,
-                witness,
+                executor_csv,
                 profiling
             ))
         }
@@ -282,9 +349,13 @@ fn compile_rust(
     output_dir: &Path,
     coprocessors: Option<String>,
     continuations: bool,
+    max_degree_log: Option<u8>,
 ) -> Result<(), Vec<String>> {
     let libs = coprocessors_to_options(coprocessors)?;
-    let options = CompilerOptions::new(field, libs, continuations);
+    let mut options = CompilerOptions::new(field, libs, continuations);
+    if let Some(max_degree_log) = max_degree_log {
+        options = options.with_max_degree_log(max_degree_log);
+    }
     powdr::riscv::compile_rust(file_name, options, output_dir, true, None)
         .ok_or_else(|| vec!["could not compile rust".to_string()])?;
 
@@ -306,13 +377,42 @@ fn compile_riscv_elf(
     Ok(())
 }
 
+fn execute_fast<F: FieldElement>(
+    file_name: &Path,
+    inputs: Vec<F>,
+    output_dir: &Path,
+    profiling: Option<ProfilerOptions>,
+) -> Result<(), Vec<String>> {
+    let mut pipeline = Pipeline::<F>::default()
+        .from_file(file_name.to_path_buf())
+        .with_prover_inputs(inputs)
+        .with_output(output_dir.into(), true);
+
+    let asm = pipeline.compute_analyzed_asm().unwrap().clone();
+
+    let start = Instant::now();
+
+    let trace_len = powdr::riscv_executor::execute_fast::<F>(
+        &asm,
+        powdr::riscv_executor::MemoryState::new(),
+        pipeline.data_callback().unwrap(),
+        &[],
+        profiling,
+    );
+
+    let duration = start.elapsed();
+    log::info!("Executor done in: {:?}", duration);
+    log::info!("Execution trace length: {}", trace_len);
+    Ok(())
+}
+
 #[allow(clippy::too_many_arguments)]
 fn execute<F: FieldElement>(
     file_name: &Path,
     inputs: Vec<F>,
     output_dir: &Path,
     continuations: bool,
-    witness: bool,
+    executor_csv: bool,
     profiling: Option<ProfilerOptions>,
 ) -> Result<(), Vec<String>> {
     let mut pipeline = Pipeline::<F>::default()
@@ -325,34 +425,66 @@ fn execute<F: FieldElement>(
         Ok(())
     };
 
-    match (witness, continuations) {
-        (false, true) => {
+    if continuations {
+        let dry_run =
             powdr::riscv::continuations::rust_continuations_dry_run(&mut pipeline, profiling);
-        }
-        (false, false) => {
-            let program = pipeline.compute_asm_string().unwrap().clone();
-            let (trace, _mem, _reg_mem) = powdr::riscv_executor::execute::<F>(
-                &program.1,
-                powdr::riscv_executor::MemoryState::new(),
-                pipeline.data_callback().unwrap(),
-                &[],
-                powdr::riscv_executor::ExecMode::Fast,
-                profiling,
+        powdr::riscv::continuations::rust_continuations(&mut pipeline, generate_witness, dry_run)?;
+    } else {
+        let fixed = pipeline.compute_fixed_cols().unwrap().clone();
+        let asm = pipeline.compute_analyzed_asm().unwrap().clone();
+        let pil = pipeline.compute_optimized_pil().unwrap();
+
+        let start = Instant::now();
+
+        let execution = powdr::riscv_executor::execute::<F>(
+            &asm,
+            &pil,
+            fixed,
+            powdr::riscv_executor::MemoryState::new(),
+            pipeline.data_callback().unwrap(),
+            &[],
+            None,
+            profiling,
+        );
+
+        let duration = start.elapsed();
+        log::info!("Executor done in: {:?}", duration);
+        log::info!("Execution trace length: {}", execution.trace_len);
+
+        let witness_cols: Vec<_> = pil
+            .committed_polys_in_source_order()
+            .flat_map(|(s, _)| s.array_elements().map(|(name, _)| name))
+            .collect();
+
+        let full_trace: Vec<_> = execution
+            .trace
+            .into_iter()
+            .filter(|(name, _)| witness_cols.contains(name))
+            .collect();
+
+        let mut keys: Vec<_> = full_trace.iter().map(|(a, _)| a.clone()).collect();
+        keys.sort();
+
+        let missing_cols = witness_cols
+            .iter()
+            .filter(|x| !keys.contains(x))
+            .collect::<Vec<_>>();
+
+        log::debug!("All witness column names: {:?}\n", witness_cols);
+        log::debug!("Executor provided columns: {:?}\n", keys);
+        log::debug!("Executor missing columns: {:?}", missing_cols);
+
+        if executor_csv {
+            let file_name = format!(
+                "{}_executor.csv",
+                file_name.file_stem().unwrap().to_str().unwrap()
             );
-            log::info!("Execution trace length: {}", trace.len);
+            write_executor_csv(file_name, &full_trace, Some(&witness_cols));
         }
-        (true, true) => {
-            let dry_run =
-                powdr::riscv::continuations::rust_continuations_dry_run(&mut pipeline, profiling);
-            powdr::riscv::continuations::rust_continuations(
-                &mut pipeline,
-                generate_witness,
-                dry_run,
-            )?;
-        }
-        (true, false) => {
-            generate_witness(&mut pipeline)?;
-        }
+
+        pipeline = pipeline.add_external_witness_values(full_trace);
+
+        generate_witness(&mut pipeline)?;
     }
 
     Ok(())
