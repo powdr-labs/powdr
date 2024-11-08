@@ -636,10 +636,6 @@ namespace Global(2**20);
                 &full_span,
             );
         }
-        println!(
-            "range_constraint_multiplicities: {:?}",
-            range_constraint_multiplicities
-        );
         assert_eq!(
             known_constraints,
             vec![
