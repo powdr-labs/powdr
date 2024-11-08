@@ -1,3 +1,4 @@
+use bit_vec::BitVec;
 use num_traits::One;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::iter::Peekable;
@@ -29,7 +30,7 @@ struct Application {
     pub identity_id: u64,
     /// Booleans indicating if the respective column is a known input column (true)
     /// or an unknown output column (false).
-    pub inputs: Vec<bool>,
+    pub inputs: BitVec,
 }
 
 type Index<T> = HashMap<Vec<T>, IndexValue<T>>;
@@ -254,7 +255,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
 
         // Split the left-hand-side into known input values and unknon output expressions.
         let mut input_values = vec![];
-        let mut known_inputs = vec![];
+        let mut known_inputs: BitVec = Default::default();
         let mut output_expressions = vec![];
 
         for l in left {
