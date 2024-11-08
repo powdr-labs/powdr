@@ -5,6 +5,13 @@ use core::mem::{self, MaybeUninit};
 use crate::goldilocks::Goldilocks;
 use powdr_riscv_syscalls::Syscall;
 
+pub fn native_hash(data: &mut [u64; 12]) -> &[u64; 4] {
+    unsafe {
+        asm!("ecall", in("a0") data as *mut _, in("t0") u32::from(Syscall::NativeHash));
+    }
+    data[..4].try_into().unwrap()
+}
+
 /// Calls the low level Poseidon PIL machine, where the last 4 elements are the
 /// "cap", the return value is placed in data[..4] and the reference to this
 /// sub-array is returned.

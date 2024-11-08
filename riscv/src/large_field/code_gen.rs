@@ -296,6 +296,13 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
     col witness tmp3_col;
     col witness tmp4_col;
 
+    // ================ Publics ==================
+    std::machines::write_once_memory_with_8_publics::WriteOnceMemoryWith8Publics publics;
+    instr commit_public X, Y link => publics.access(tmp1_col, tmp2_col)
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link ~> tmp2_col = regs.mload(Y, STEP);
+    // ===========================================
+
     // We need to add these inline instead of using std::utils::is_zero
     // because when XX is not constrained, witgen will try to set XX,
     // XX_inv and XXIsZero to zero, which fails this constraint.

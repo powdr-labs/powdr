@@ -25,7 +25,6 @@ static TARGET_NO_STD: &str = "riscv32imac-unknown-none-elf";
 pub struct RuntimeLibs {
     pub arith: bool,
     pub keccak: bool,
-    pub poseidon: bool,
     pub poseidon2: bool,
 }
 
@@ -34,7 +33,6 @@ impl RuntimeLibs {
         Self {
             arith: false,
             keccak: false,
-            poseidon: false,
             poseidon2: false,
         }
     }
@@ -49,13 +47,6 @@ impl RuntimeLibs {
     pub fn with_keccak(self) -> Self {
         Self {
             keccak: true,
-            ..self
-        }
-    }
-
-    pub fn with_poseidon(self) -> Self {
-        Self {
-            poseidon: true,
             ..self
         }
     }
@@ -146,13 +137,6 @@ impl CompilerOptions {
         }
     }
 
-    pub fn with_poseidon(self) -> Self {
-        Self {
-            libs: self.libs.with_poseidon(),
-            ..self
-        }
-    }
-
     pub fn with_poseidon2(self) -> Self {
         Self {
             libs: self.libs.with_poseidon2(),
@@ -170,26 +154,6 @@ pub fn compile_rust(
     force_overwrite: bool,
     features: Option<Vec<String>>,
 ) -> Option<(PathBuf, String)> {
-    if options.continuations {
-        match options.field {
-            KnownField::BabyBearField => {
-                todo!()
-            }
-            KnownField::KoalaBearField => {
-                todo!()
-            }
-            KnownField::Mersenne31Field => {
-                todo!()
-            }
-            KnownField::GoldilocksField | KnownField::Bn254Field => {
-                assert!(
-                    options.libs.poseidon,
-                    "Poseidon library is required for bootloader"
-                );
-            }
-        }
-    }
-
     let file_path = if file_name.ends_with("Cargo.toml") {
         Cow::Borrowed(file_name)
     } else if fs::metadata(file_name).unwrap().is_dir() {

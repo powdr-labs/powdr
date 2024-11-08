@@ -1981,6 +1981,12 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
                 vec![]
             }
+            "commit_public" => {
+                let idx = self.proc.get_reg_mem(args[0].u());
+                let limb = self.proc.get_reg_mem(args[1].u());
+                log::debug!("Committing public: idx={idx}, limb={limb}");
+                vec![]
+            }
             instr => {
                 panic!("unknown instruction: {instr}");
             }

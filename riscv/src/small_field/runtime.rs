@@ -23,10 +23,7 @@ pub struct Runtime {
 
 impl Runtime {
     pub fn new(libs: RuntimeLibs, continuations: bool) -> Self {
-        let mut runtime = Runtime::base();
-        if libs.poseidon {
-            runtime = runtime.with_poseidon(continuations);
-        }
+        let mut runtime = Runtime::base(continuations);
         if libs.poseidon2 {
             runtime = runtime.with_poseidon2();
         }
@@ -39,7 +36,7 @@ impl Runtime {
         runtime
     }
 
-    pub fn base() -> Self {
+    pub fn base(continuations: bool) -> Self {
         let mut r = Runtime {
             submachines: Default::default(),
             syscalls: Default::default(),
@@ -217,7 +214,9 @@ impl Runtime {
 
         r.add_syscall(Syscall::Halt, ["return;"]);
 
-        r
+        r.add_syscall(Syscall::CommitPublic, ["commit_public 10, 11;"]);
+
+        r.with_poseidon(continuations)
     }
 
     fn with_keccak(self) -> Self {
@@ -275,8 +274,15 @@ impl Runtime {
         }
     }
 
-    fn with_poseidon(self, _continuations: bool) -> Self {
-        todo!()
+    // TODO This implementation is just a placeholder,
+    // needed by the runtime "finalize" code.
+    fn with_poseidon(mut self, continuations: bool) -> Self {
+        assert!(!continuations);
+
+        let implementation = std::iter::once("affine 0, 0, 0, 0, 0, 0;".to_string());
+
+        self.add_syscall(Syscall::NativeHash, implementation);
+        self
     }
 
     fn with_poseidon2(self) -> Self {
