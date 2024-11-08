@@ -6,7 +6,6 @@ use super::{Connection, ConnectionKind, EvalResult, FixedData, MachineParts};
 
 use crate::witgen::affine_expression::{AffineExpression, AlgebraicVariable};
 use crate::witgen::machines::Machine;
-use crate::witgen::processor::OuterQuery;
 use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{
