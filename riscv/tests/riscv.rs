@@ -82,14 +82,12 @@ fn bn254_sanity_check() {
         .from_asm_string(from_elf, Some(PathBuf::from(file_name)));
 
     let analyzed = pipeline.compute_analyzed_asm().unwrap().clone();
-    powdr_riscv_executor::execute_ast(
+    powdr_riscv_executor::execute_fast(
         &analyzed,
         Default::default(),
         pipeline.data_callback().unwrap(),
         // Assume the RISC-V program was compiled without a bootloader, otherwise this will fail.
         &[],
-        usize::MAX,
-        powdr_riscv_executor::ExecMode::Fast,
         Default::default(),
     );
     run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).unwrap();
@@ -121,6 +119,14 @@ fn zero_with_values() {
 fn runtime_poseidon_gl() {
     let case = "poseidon_gl_via_coprocessor";
     let options = CompilerOptions::new_gl().with_poseidon();
+    verify_riscv_crate_gl_with_options(case, Default::default(), options);
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn runtime_poseidon2_gl() {
+    let case = "poseidon2_gl_via_coprocessor";
+    let options = CompilerOptions::new_gl().with_poseidon2();
     verify_riscv_crate_gl_with_options(case, Default::default(), options);
 }
 
@@ -604,13 +610,11 @@ fn profiler_sanity_check() {
         flamegraph: true,
         callgrind: true,
     };
-    powdr_riscv_executor::execute_ast(
+    powdr_riscv_executor::execute_fast(
         &analyzed,
         Default::default(),
         pipeline.data_callback().unwrap(),
         &[],
-        usize::MAX,
-        powdr_riscv_executor::ExecMode::Fast,
         Some(profiler_opt),
     );
 

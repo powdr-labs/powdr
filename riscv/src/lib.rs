@@ -26,6 +26,7 @@ pub struct RuntimeLibs {
     pub arith: bool,
     pub keccak: bool,
     pub poseidon: bool,
+    pub poseidon2: bool,
 }
 
 impl RuntimeLibs {
@@ -34,6 +35,7 @@ impl RuntimeLibs {
             arith: false,
             keccak: false,
             poseidon: false,
+            poseidon2: false,
         }
     }
 
@@ -54,6 +56,13 @@ impl RuntimeLibs {
     pub fn with_poseidon(self) -> Self {
         Self {
             poseidon: true,
+            ..self
+        }
+    }
+
+    pub fn with_poseidon2(self) -> Self {
+        Self {
+            poseidon2: true,
             ..self
         }
     }
@@ -119,6 +128,10 @@ impl CompilerOptions {
         }
     }
 
+    pub fn with_runtime_libs(self, libs: RuntimeLibs) -> Self {
+        Self { libs, ..self }
+    }
+
     pub fn with_arith(self) -> Self {
         Self {
             libs: self.libs.with_arith(),
@@ -136,6 +149,13 @@ impl CompilerOptions {
     pub fn with_poseidon(self) -> Self {
         Self {
             libs: self.libs.with_poseidon(),
+            ..self
+        }
+    }
+
+    pub fn with_poseidon2(self) -> Self {
+        Self {
+            libs: self.libs.with_poseidon2(),
             ..self
         }
     }

@@ -30,20 +30,15 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     // Similarly, the output data is written to memory at the provided pointer.
     //
     // Reads happen at the provided time step; writes happen at the next time step.
-    //
-    // output_capacity is expected to be a boolean value. If false, the "capacity"
-    // part of the state size is discarded and not written back to memory. This is
-    // useful for merkle tree compression, where the capacity part is not needed.
     operation poseidon2_permutation<0>
         input_addr_high[0], input_addr_low[0],
         output_addr_high[0], output_addr_low[0],
-        output_capacity, time_step ->;
+        time_step ->;
 
     let latch = 1;
     let operation_id;
 
     let time_step;
-    let output_capacity;
 
     // Poseidon2 parameters, compatible with our powdr-plonky3 implementation.
     //
@@ -159,7 +154,6 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     );
 
     // Split the output into high and low limbs
-    let write_capacity = is_used * output_capacity;
     let output_low: col[STATE_SIZE];
     let output_high: col[STATE_SIZE];
     // TODO: turn this into array operations
@@ -171,14 +165,14 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
     link if is_used ~> (output_low[5], output_high[5]) = split_BB.split(output[5]);
     link if is_used ~> (output_low[6], output_high[6]) = split_BB.split(output[6]);
     link if is_used ~> (output_low[7], output_high[7]) = split_BB.split(output[7]);
-    link if write_capacity ~> (output_low[8], output_high[8]) = split_BB.split(output[8]);
-    link if write_capacity ~> (output_low[9], output_high[9]) = split_BB.split(output[9]);
-    link if write_capacity ~> (output_low[10], output_high[10]) = split_BB.split(output[10]);
-    link if write_capacity ~> (output_low[11], output_high[11]) = split_BB.split(output[11]);
-    link if write_capacity ~> (output_low[12], output_high[12]) = split_BB.split(output[12]);
-    link if write_capacity ~> (output_low[13], output_high[13]) = split_BB.split(output[13]);
-    link if write_capacity ~> (output_low[14], output_high[14]) = split_BB.split(output[14]);
-    link if write_capacity ~> (output_low[15], output_high[15]) = split_BB.split(output[15]);
+    link if is_used ~> (output_low[8], output_high[8]) = split_BB.split(output[8]);
+    link if is_used ~> (output_low[9], output_high[9]) = split_BB.split(output[9]);
+    link if is_used ~> (output_low[10], output_high[10]) = split_BB.split(output[10]);
+    link if is_used ~> (output_low[11], output_high[11]) = split_BB.split(output[11]);
+    link if is_used ~> (output_low[12], output_high[12]) = split_BB.split(output[12]);
+    link if is_used ~> (output_low[13], output_high[13]) = split_BB.split(output[13]);
+    link if is_used ~> (output_low[14], output_high[14]) = split_BB.split(output[14]);
+    link if is_used ~> (output_low[15], output_high[15]) = split_BB.split(output[15]);
 
     // Write the output to memory at the next time step
     let output_addr_high: col[STATE_SIZE];
@@ -201,20 +195,20 @@ machine Poseidon2BB(mem: Memory, split_BB: SplitBB) with
         mem.mstore(output_addr_high[6], output_addr_low[6], time_step + 1, output_high[6], output_low[6]);
     link if is_used ~>
         mem.mstore(output_addr_high[7], output_addr_low[7], time_step + 1, output_high[7], output_low[7]);
-    link if write_capacity ~>
+    link if is_used ~>
         mem.mstore(output_addr_high[8], output_addr_low[8], time_step + 1, output_high[8], output_low[8]);
-    link if write_capacity ~>
+    link if is_used ~>
         mem.mstore(output_addr_high[9], output_addr_low[9], time_step + 1, output_high[9], output_low[9]);
-    link if write_capacity ~>
+    link if is_used ~>
         mem.mstore(output_addr_high[10], output_addr_low[10], time_step + 1, output_high[10], output_low[10]);
-    link if write_capacity ~>
+    link if is_used ~>
         mem.mstore(output_addr_high[11], output_addr_low[11], time_step + 1, output_high[11], output_low[11]);
-    link if write_capacity ~>
+    link if is_used ~>
         mem.mstore(output_addr_high[12], output_addr_low[12], time_step + 1, output_high[12], output_low[12]);
-    link if write_capacity ~>
+    link if is_used ~>
         mem.mstore(output_addr_high[13], output_addr_low[13], time_step + 1, output_high[13], output_low[13]);
-    link if write_capacity ~>
+    link if is_used ~>
         mem.mstore(output_addr_high[14], output_addr_low[14], time_step + 1, output_high[14], output_low[14]);
-    link if write_capacity ~>
+    link if is_used ~>
         mem.mstore(output_addr_high[15], output_addr_low[15], time_step + 1, output_high[15], output_low[15]);
 }

@@ -323,8 +323,13 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
     
     // Jump to the address in register X and store the return program counter in register W.
     instr jump_dyn X, W
-        link ~> pc' = regs.mload(X, STEP)
-        link ~> regs.mstore(W, STEP, pc + 1);
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link ~> regs.mstore(W, STEP, pc + 1)
+    {
+        // TODO: using a tmp col here avoids an extra selector column, because
+        // links with next references on LHS can't currently be merged with other links
+        pc' = tmp1_col
+    }
 
     // Jump to `l` if val(X) - val(Y) is nonzero, where X and Y are register ids.
     instr branch_if_diff_nonzero X, Y, l: label
