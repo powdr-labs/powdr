@@ -187,6 +187,20 @@ fn lookup_via_challenges_range_constraint() {
 }
 
 #[test]
+fn bus_lookup() {
+    let f = "std/bus_lookup.asm";
+    test_halo2(make_simple_prepared_pipeline(f));
+    test_plonky3::<GoldilocksField>(f, vec![]);
+}
+
+#[test]
+fn bus_permutation() {
+    let f = "std/bus_permutation.asm";
+    test_halo2(make_simple_prepared_pipeline(f));
+    test_plonky3::<GoldilocksField>(f, vec![]);
+}
+
+#[test]
 fn write_once_memory_test() {
     let f = "std/write_once_memory_test.asm";
     regular_test(f, &[]);
@@ -432,12 +446,7 @@ mod reparse {
     /// but these tests panic if the field is too small. This is *probably*
     /// fine, because all of these tests have a similar variant that does
     /// run on Goldilocks.
-    const BLACKLIST: [&str; 4] = [
-        "std/bus_permutation_via_challenges.asm",
-        "std/poseidon_bn254_test.asm",
-        "std/split_bn254_test.asm",
-        "std/bus_lookup_via_challenges.asm",
-    ];
+    const BLACKLIST: [&str; 2] = ["std/poseidon_bn254_test.asm", "std/split_bn254_test.asm"];
 
     fn run_reparse_test(file: &str) {
         run_reparse_test_with_blacklist(file, &BLACKLIST);
