@@ -5,14 +5,16 @@ use std::sync::OnceLock;
 use super::{Connection, ConnectionKind, EvalResult, FixedData, MachineParts};
 
 use crate::witgen::affine_expression::{AffineExpression, AlgebraicVariable};
-use crate::witgen::machines::Machine;
+use crate::witgen::machines::{LookupCell, Machine};
 use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{
     Constraint, EvalError, EvalValue, IncompleteCause, MutableState, QueryCallback,
 };
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicExpression as Expression, DegreeRange, PolyID, PolynomialType};
+use powdr_ast::analyzed::{
+    AlgebraicExpression as Expression, DegreeRange, Identity, PolyID, PolynomialType,
+};
 use powdr_ast::parsed::visitor::AllChildren;
 use powdr_number::{DegreeType, FieldElement};
 use std::iter::once;
@@ -318,6 +320,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachineJIT<'a, T> {
 
         hack_binary_machine(
             self.fixed_data,
+            mutable_state,
+            &self.parts.identities,
             &mut self.data,
             shifted_latch_row,
             self.row_shift,
@@ -421,6 +425,12 @@ impl<'a, T: FieldElement> CompactData<'a, T> {
     }
 
     #[inline]
+    pub fn get_mut(&mut self, row: usize, column: &PolyID) -> &mut T {
+        let index = self.index(row, column);
+        &mut self.data[index]
+    }
+
+    #[inline]
     pub fn iter_row_major(&self) -> impl Iterator<Item = &T> {
         self.data.iter()
     }
@@ -438,6 +448,8 @@ struct BinCols {
 
 fn hack_binary_machine<'a, T: FieldElement>(
     fixed_data: &'a FixedData<'a, T>,
+    mutable_state: &mut MutableState<'a, '_, T, impl QueryCallback<T>>,
+    identities: &[&'a Identity<T>],
     data: &mut CompactData<T>,
     row_index: usize,
     row_shift: usize,
@@ -445,6 +457,7 @@ fn hack_binary_machine<'a, T: FieldElement>(
 ) -> bool {
     let start = std::time::Instant::now();
     static BIN_COLS: OnceLock<BinCols> = OnceLock::new();
+    static LOOKUP_ID: OnceLock<u64> = OnceLock::new();
     // TODO underflow?
     let row_nr = row_index - row_shift;
     if row_nr % 4 == 3 {
@@ -482,50 +495,108 @@ fn hack_binary_machine<'a, T: FieldElement>(
                 op_id,
             }
         });
+        let lookup_id = *LOOKUP_ID.get_or_init(|| {
+            let identity = identities
+                .iter()
+                .find(|id| id.to_string().contains("main_byte_binary"))
+                .unwrap();
+            println!("Lookup identity: {identity}");
+            identity.id()
+        });
         let op_id_v = *data.get(row_index, op_id);
         let a_v = data.get(row_index, a).to_integer();
         let b_v = data.get(row_index, b).to_integer();
 
-        let c_v = if op_id_v == 0.into() {
-            a_v & b_v
-        } else if op_id_v == 1.into() {
-            a_v | b_v
-        } else if op_id_v == 2.into() {
-            a_v ^ b_v
-        } else {
-            return false;
-        };
-        data.set(row_index, c, c_v.into());
-        data.set(row_index - 1, a, (a_v & 0xffffff.into()).into());
-        data.set(row_index - 1, b, (b_v & 0xffffff.into()).into());
-        data.set(row_index - 1, c, (c_v & 0xffffff.into()).into());
-        data.set(row_index - 1, a_byte, ((a_v >> 24) & 0xff.into()).into());
-        data.set(row_index - 1, b_byte, ((b_v >> 24) & 0xff.into()).into());
-        data.set(row_index - 1, c_byte, ((c_v >> 24) & 0xff.into()).into());
-        data.set(row_index - 1, op_id, op_id_v);
+        let a_byte_v = T::from(a_v & 0xff.into());
+        data.set(row_index - 4, a_byte, a_byte_v);
+        let b_byte_v = T::from(b_v & 0xff.into());
+        data.set(row_index - 4, b_byte, b_byte_v);
+        let c_byte_v =
+            call_fixed_three_ret(mutable_state, lookup_id, &op_id_v, &a_byte_v, &b_byte_v);
+        data.set(row_index - 4, c_byte, c_byte_v);
 
-        data.set(row_index - 2, a, (a_v & 0xffff.into()).into());
-        data.set(row_index - 2, b, (b_v & 0xffff.into()).into());
-        data.set(row_index - 2, c, (c_v & 0xffff.into()).into());
-        data.set(row_index - 2, a_byte, ((a_v >> 16) & 0xff.into()).into());
-        data.set(row_index - 2, b_byte, ((b_v >> 16) & 0xff.into()).into());
-        data.set(row_index - 2, c_byte, ((c_v >> 16) & 0xff.into()).into());
-        data.set(row_index - 2, op_id, op_id_v);
-
+        data.set(row_index - 3, c, c_byte_v);
+        let mut c_v = c_byte_v.to_integer();
+        let a_byte_v = T::from((a_v >> 8) & 0xff.into());
+        let b_byte_v = T::from((b_v >> 8) & 0xff.into());
+        let c_byte_v =
+            call_fixed_three_ret(mutable_state, lookup_id, &op_id_v, &a_byte_v, &b_byte_v);
+        data.set(row_index - 3, a_byte, a_byte_v);
+        data.set(row_index - 3, b_byte, b_byte_v);
+        data.set(row_index - 3, c_byte, c_byte_v);
         data.set(row_index - 3, a, (a_v & 0xff.into()).into());
         data.set(row_index - 3, b, (b_v & 0xff.into()).into());
-        data.set(row_index - 3, c, (c_v & 0xff.into()).into());
-        data.set(row_index - 3, a_byte, ((a_v >> 8) & 0xff.into()).into());
-        data.set(row_index - 3, b_byte, ((b_v >> 8) & 0xff.into()).into());
-        data.set(row_index - 3, c_byte, ((c_v >> 8) & 0xff.into()).into());
         data.set(row_index - 3, op_id, op_id_v);
 
-        data.set(row_index - 4, a_byte, (a_v & 0xff.into()).into());
-        data.set(row_index - 4, b_byte, (b_v & 0xff.into()).into());
-        data.set(row_index - 4, c_byte, (c_v & 0xff.into()).into());
+        let a_byte_v = T::from((a_v >> 16) & 0xff.into());
+        let b_byte_v = T::from((b_v >> 16) & 0xff.into());
+        let c_byte_v =
+            call_fixed_three_ret(mutable_state, lookup_id, &op_id_v, &a_byte_v, &b_byte_v);
+        data.set(row_index - 2, a_byte, a_byte_v);
+        data.set(row_index - 2, b_byte, b_byte_v);
+        data.set(row_index - 2, c_byte, c_byte_v);
+        c_v = c_v | (c_byte_v.to_integer() << 16);
+        data.set(row_index - 2, c, c_v.into());
+        data.set(row_index - 2, a, (a_v & 0xffff.into()).into());
+        data.set(row_index - 2, b, (b_v & 0xffff.into()).into());
+        data.set(row_index - 2, op_id, op_id_v);
 
+        let a_byte_v = T::from((a_v >> 24) & 0xff.into());
+        let b_byte_v = T::from((b_v >> 24) & 0xff.into());
+        let c_byte_v =
+            call_fixed_three_ret(mutable_state, lookup_id, &op_id_v, &a_byte_v, &b_byte_v);
+        data.set(row_index - 1, a_byte, a_byte_v);
+        data.set(row_index - 1, b_byte, b_byte_v);
+        data.set(row_index - 1, c_byte, c_byte_v);
+        c_v = c_v | (c_byte_v.to_integer() << 24);
+        data.set(row_index - 1, c, c_v.into());
+        data.set(row_index - 1, a, (a_v & 0xffffff.into()).into());
+        data.set(row_index - 1, b, (b_v & 0xffffff.into()).into());
+        data.set(row_index - 1, op_id, op_id_v);
+
+        data.set(row_index, c, c_v.into());
+
+        let end = std::time::Instant::now();
+        //println!("Time: {}", (end - start).as_nanos());
         true
     } else {
         false
     }
+}
+
+#[inline]
+fn call_fixed_three<'a, T: FieldElement>(
+    mutable_state: &mut MutableState<'a, '_, T, impl QueryCallback<T>>,
+    identity_id: u64,
+    op_id: &T,
+    a: &T,
+    b: &T,
+    c: &mut T,
+) {
+    let s = mutable_state
+        .machines
+        .call_direct(
+            identity_id,
+            vec![
+                LookupCell::Input(op_id),
+                LookupCell::Input(a),
+                LookupCell::Input(b),
+                LookupCell::Output(c),
+            ],
+        )
+        .unwrap();
+    assert!(s);
+}
+
+#[inline]
+fn call_fixed_three_ret<'a, T: FieldElement>(
+    mutable_state: &mut MutableState<'a, '_, T, impl QueryCallback<T>>,
+    identity_id: u64,
+    op_id: &T,
+    a: &T,
+    b: &T,
+) -> T {
+    let mut c = T::zero();
+    call_fixed_three(mutable_state, identity_id, op_id, a, b, &mut c);
+    c
 }

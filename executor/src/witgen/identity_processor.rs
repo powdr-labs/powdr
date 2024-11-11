@@ -16,11 +16,15 @@ use crate::{
 };
 
 use super::{
-    affine_expression::AlgebraicVariable, machines::KnownMachine, processor::OuterQuery,
-    rows::RowPair, EvalResult, EvalValue, IncompleteCause, MutableState, QueryCallback,
+    affine_expression::AlgebraicVariable,
+    machines::{KnownMachine, LookupCell},
+    processor::OuterQuery,
+    rows::RowPair,
+    EvalResult, EvalValue, IncompleteCause, MutableState, QueryCallback,
 };
 
 /// A list of mutable references to machines.
+#[derive(Default)]
 pub struct Machines<'a, 'b, T: FieldElement> {
     identity_to_machine_index: BTreeMap<u64, usize>,
     machines: Vec<&'b mut KnownMachine<'a, T>>,
@@ -86,6 +90,18 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
         };
 
         current.process_plookup_timed(&mut mutable_state, identity_id, caller_rows)
+    }
+
+    pub fn call_direct<'c>(
+        &mut self,
+        identity_id: u64,
+        values: Vec<LookupCell<'c, T>>,
+    ) -> Result<bool, EvalError<T>> {
+        let machine = self
+            .machines
+            .get_mut(self.identity_to_machine_index[&identity_id])
+            .unwrap();
+        machine.process_lookup_direct(identity_id, values)
     }
 
     pub fn take_witness_col_values<Q: QueryCallback<T>>(

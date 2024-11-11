@@ -232,7 +232,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
             })
             .collect::<Vec<_>>();
 
-        if !self.process_lookup_direct(mutable_state, identity_id, values)? {
+        if !self.process_lookup_direct(identity_id, values)? {
             // multiple matches, we stop and learnt nothing
             return Ok(EvalValue::incomplete(
                 IncompleteCause::MultipleLookupMatches,
@@ -352,9 +352,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         )
     }
 
-    fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
+    fn process_lookup_direct<'c>(
         &mut self,
-        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         identity_id: u64,
         values: Vec<LookupCell<'c, T>>,
     ) -> Result<bool, EvalError<T>> {

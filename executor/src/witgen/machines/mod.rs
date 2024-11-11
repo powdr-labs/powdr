@@ -72,9 +72,8 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     /// If it returns true, all output values in `values` need to have been set.
     /// If it returns false, none of them should be changed.
     /// An error is always unrecoverable.
-    fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
+    fn process_lookup_direct<'c>(
         &mut self,
-        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         _identity_id: u64,
         _values: Vec<LookupCell<'c, T>>,
     ) -> Result<bool, EvalError<T>> {
@@ -142,6 +141,28 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
             KnownMachine::FixedLookup(m) => {
                 m.process_plookup(mutable_state, identity_id, caller_rows)
             }
+        }
+    }
+
+    fn process_lookup_direct<'c>(
+        &mut self,
+        _identity_id: u64,
+        _values: Vec<LookupCell<'c, T>>,
+    ) -> Result<bool, EvalError<T>> {
+        // TODO why not use a vtable?
+        match self {
+            KnownMachine::SortedWitnesses(m) => m.process_lookup_direct(_identity_id, _values),
+            KnownMachine::DoubleSortedWitnesses16(m) => {
+                m.process_lookup_direct(_identity_id, _values)
+            }
+            KnownMachine::DoubleSortedWitnesses32(m) => {
+                m.process_lookup_direct(_identity_id, _values)
+            }
+            KnownMachine::WriteOnceMemory(m) => m.process_lookup_direct(_identity_id, _values),
+            KnownMachine::BlockMachine(m) => m.process_lookup_direct(_identity_id, _values),
+            KnownMachine::BlockMachineJIT(m) => m.process_lookup_direct(_identity_id, _values),
+            KnownMachine::Vm(m) => m.process_lookup_direct(_identity_id, _values),
+            KnownMachine::FixedLookup(m) => m.process_lookup_direct(_identity_id, _values),
         }
     }
 
