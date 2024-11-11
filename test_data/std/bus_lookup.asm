@@ -1,9 +1,5 @@
-use std::convert::fe;
 use std::protocols::lookup_via_bus::lookup_send;
 use std::protocols::lookup_via_bus::lookup_receive;
-use std::protocols::bus::bus_send;
-use std::math::fp2::from_base;
-use std::prover::challenge;
 
 machine Main with degree: 8 {
 

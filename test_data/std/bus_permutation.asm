@@ -1,9 +1,5 @@
-use std::convert::fe;
 use std::protocols::permutation_via_bus::permutation_send;
 use std::protocols::permutation_via_bus::permutation_receive;
-use std::protocols::bus::bus_send;
-use std::math::fp2::from_base;
-use std::prover::challenge;
 
 machine Main with degree: 8 {
 
