@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Display;
 
+use block_machine_jit::BlockMachineJIT;
 use powdr_ast::analyzed::{
     self, AlgebraicExpression, DegreeRange, PermutationIdentity, PhantomPermutationIdentity, PolyID,
 };
@@ -20,9 +21,10 @@ use self::write_once_memory::WriteOnceMemory;
 
 use super::generator::Generator;
 use super::rows::RowPair;
-use super::{EvalResult, FixedData, MutableState, QueryCallback};
+use super::{EvalError, EvalResult, FixedData, MutableState, QueryCallback};
 
 mod block_machine;
+mod block_machine_jit;
 mod double_sorted_witness_machine_16;
 mod double_sorted_witness_machine_32;
 mod fixed_lookup_machine;
@@ -60,6 +62,24 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T>;
 
+    /// Process a connection of a given ID (which must be known to the callee).
+    /// This is a more direct version of `process_plookup`, where the caller
+    /// provides values or targets to where to write the results directly.
+    /// The length of `values` needs to be the same as the number of expressions
+    /// in the LHS / RHS of the connection.
+    /// It does not allow to return range constraints or complex expressions.
+    /// The boolean return value indicates whether the lookup was successful.
+    /// If it returns true, all output values in `values` need to have been set.
+    /// If it returns false, none of them should be changed.
+    /// An error is always unrecoverable.
+    fn process_lookup_direct<'c>(
+        &mut self,
+        _identity_id: u64,
+        _values: Vec<LookupCell<'c, T>>,
+    ) -> Result<bool, EvalError<T>> {
+        unimplemented!("Direct lookup is not supported for this machine.");
+    }
+
     /// Returns the final values of the witness columns.
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
@@ -68,6 +88,13 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
 
     /// Returns the identity IDs of the connecting identities that this machine is responsible for.
     fn identity_ids(&self) -> Vec<u64>;
+}
+
+pub enum LookupCell<'a, T> {
+    /// Value is known (i.e. an input)
+    Input(&'a T),
+    /// Value is not known (i.e. an output)
+    Output(&'a mut T),
 }
 
 /// All known implementations of [Machine].
@@ -79,6 +106,7 @@ pub enum KnownMachine<'a, T: FieldElement> {
     DoubleSortedWitnesses32(DoubleSortedWitnesses32<'a, T>),
     WriteOnceMemory(WriteOnceMemory<'a, T>),
     BlockMachine(BlockMachine<'a, T>),
+    BlockMachineJIT(BlockMachineJIT<'a, T>),
     Vm(Generator<'a, T>),
     FixedLookup(FixedLookup<'a, T>),
 }
@@ -106,10 +134,35 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
             KnownMachine::BlockMachine(m) => {
                 m.process_plookup(mutable_state, identity_id, caller_rows)
             }
+            KnownMachine::BlockMachineJIT(m) => {
+                m.process_plookup(mutable_state, identity_id, caller_rows)
+            }
             KnownMachine::Vm(m) => m.process_plookup(mutable_state, identity_id, caller_rows),
             KnownMachine::FixedLookup(m) => {
                 m.process_plookup(mutable_state, identity_id, caller_rows)
             }
+        }
+    }
+
+    fn process_lookup_direct<'c>(
+        &mut self,
+        _identity_id: u64,
+        _values: Vec<LookupCell<'c, T>>,
+    ) -> Result<bool, EvalError<T>> {
+        // TODO why not use a vtable?
+        match self {
+            KnownMachine::SortedWitnesses(m) => m.process_lookup_direct(_identity_id, _values),
+            KnownMachine::DoubleSortedWitnesses16(m) => {
+                m.process_lookup_direct(_identity_id, _values)
+            }
+            KnownMachine::DoubleSortedWitnesses32(m) => {
+                m.process_lookup_direct(_identity_id, _values)
+            }
+            KnownMachine::WriteOnceMemory(m) => m.process_lookup_direct(_identity_id, _values),
+            KnownMachine::BlockMachine(m) => m.process_lookup_direct(_identity_id, _values),
+            KnownMachine::BlockMachineJIT(m) => m.process_lookup_direct(_identity_id, _values),
+            KnownMachine::Vm(m) => m.process_lookup_direct(_identity_id, _values),
+            KnownMachine::FixedLookup(m) => m.process_lookup_direct(_identity_id, _values),
         }
     }
 
@@ -119,6 +172,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
             KnownMachine::DoubleSortedWitnesses16(m) => m.name(),
             KnownMachine::DoubleSortedWitnesses32(m) => m.name(),
             KnownMachine::WriteOnceMemory(m) => m.name(),
+            KnownMachine::BlockMachineJIT(m) => m.name(),
             KnownMachine::BlockMachine(m) => m.name(),
             KnownMachine::Vm(m) => m.name(),
             KnownMachine::FixedLookup(m) => m.name(),
@@ -134,6 +188,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
             KnownMachine::DoubleSortedWitnesses16(m) => m.take_witness_col_values(mutable_state),
             KnownMachine::DoubleSortedWitnesses32(m) => m.take_witness_col_values(mutable_state),
             KnownMachine::WriteOnceMemory(m) => m.take_witness_col_values(mutable_state),
+            KnownMachine::BlockMachineJIT(m) => m.take_witness_col_values(mutable_state),
             KnownMachine::BlockMachine(m) => m.take_witness_col_values(mutable_state),
             KnownMachine::Vm(m) => m.take_witness_col_values(mutable_state),
             KnownMachine::FixedLookup(m) => m.take_witness_col_values(mutable_state),
@@ -146,6 +201,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
             KnownMachine::DoubleSortedWitnesses16(m) => m.identity_ids(),
             KnownMachine::DoubleSortedWitnesses32(m) => m.identity_ids(),
             KnownMachine::WriteOnceMemory(m) => m.identity_ids(),
+            KnownMachine::BlockMachineJIT(m) => m.identity_ids(),
             KnownMachine::BlockMachine(m) => m.identity_ids(),
             KnownMachine::Vm(m) => m.identity_ids(),
             KnownMachine::FixedLookup(m) => m.identity_ids(),
