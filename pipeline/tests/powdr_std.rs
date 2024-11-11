@@ -190,14 +190,14 @@ fn lookup_via_challenges_range_constraint() {
 fn bus_lookup() {
     let f = "std/bus_lookup.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-    test_plonky3::<GoldilocksField>(f, vec![]);
+    test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
 fn bus_permutation() {
     let f = "std/bus_permutation.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-    test_plonky3::<GoldilocksField>(f, vec![]);
+    test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
