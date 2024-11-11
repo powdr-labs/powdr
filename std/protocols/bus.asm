@@ -1,5 +1,4 @@
 use std::check::assert;
-use std::check::panic;
 use std::array;
 use std::math::fp2::Fp2;
 use std::math::fp2::add_ext;
@@ -7,12 +6,10 @@ use std::math::fp2::sub_ext;
 use std::math::fp2::mul_ext;
 use std::math::fp2::inv_ext;
 use std::math::fp2::eval_ext;
-use std::math::fp2::unpack_ext;
 use std::math::fp2::unpack_ext_array;
 use std::math::fp2::next_ext;
 use std::math::fp2::from_base;
 use std::math::fp2::needs_extension;
-use std::math::fp2::is_extension;
 use std::math::fp2::fp2_from_array;
 use std::math::fp2::constrain_eq_ext;
 use std::protocols::fingerprint::fingerprint_with_id;
@@ -79,7 +76,7 @@ let bus_interaction: expr, expr[], expr -> () = constr |id, tuple, multiplicity|
     }
 };
 
-/// Compute acc' = acc * (1 - is_first') + multiplicity' / fingerprint_with_id(id, (a1', a2')),
+/// Compute acc' = acc * (1 - is_first') + multiplicity' / fingerprint(id, tuple...),
 /// using extension field arithmetic.
 /// This is intended to be used as a hint in the extension field case; for the base case
 /// automatic witgen is smart enough to figure out the value of the accumulator.
@@ -95,7 +92,7 @@ let compute_next_z: expr, expr, expr[], expr, Fp2<expr>, Fp2<expr>, Fp2<expr> ->
     let is_first_next = eval(is_first');
     let current_acc = if is_first_next == 1 {from_base(0)} else {eval_ext(acc)};
     
-    // acc' = acc * (1 - is_first') + multiplicity / fingerprint_with_id(id, (a1', a2'))
+    // acc' = current_acc + multiplicity' / folded'
     let res = add_ext(
         current_acc,
         mul_ext(eval_ext(m_ext_next), inv_ext(eval_ext(folded_next)))
