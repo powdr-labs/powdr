@@ -1,30 +1,36 @@
 use num_traits::One;
 extern crate alloc;
 use alloc::{collections::btree_map::BTreeMap, string::String, vec::Vec};
+use powdr_ast::analyzed::Identity;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, Analyzed,
 };
 use powdr_number::FieldElement;
-use powdr_ast::analyzed::Identity;
 use std::sync::Arc;
 
 use powdr_ast::analyzed::{PolyID, PolynomialIdentity, PolynomialType};
 use stwo_prover::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
-use stwo_prover::core::backend::simd::column::BaseColumn;
-use stwo_prover::core::backend::simd::SimdBackend;
+use stwo_prover::core::backend::ColumnOps;
+use stwo_prover::core::backend::Col;
 use stwo_prover::core::fields::m31::BaseField;
+use stwo_prover::core::fields::m31::M31;
+use stwo_prover::core::fields::{ExtensionOf, FieldOps};
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::ColumnVec;
 
-
 pub type PowdrComponent<'a, F> = FrameworkComponent<PowdrEval<F>>;
 
-pub(crate) fn gen_stwo_circuit_trace<'a, T: FieldElement>(
+pub(crate) fn gen_stwo_circuit_trace<'a, T, B, F>(
     witness: Option<&'a [(String, Vec<T>)]>,
     analyzed: Arc<Analyzed<T>>,
-) -> ColumnVec<CircleEvaluation<SimdBackend, BaseField, BitReversedOrder>> {
-    let element: Option<Vec<(String, BaseColumn)>> = Some(
+) -> ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>
+where
+    T: FieldElement,
+    B: FieldOps<M31> + ColumnOps<F>, // Ensure B implements FieldOps for M31
+    F: ExtensionOf<BaseField>,
+{
+    let element: Option<Vec<(String, Col<B, M31>)>> = Some(
         witness
             .as_ref()
             .expect("Witness needs to be set")
@@ -95,21 +101,22 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
             .filter_map(|id| id.try_into().ok())
             .collect::<Vec<_>>();
 
-        
-            polynomial_identities.iter().for_each(|id| {
-                let expr =
-                    to_stwo_expression(&self.witness_columns, &id.expression, &witness_eval, &eval);
-                eval.add_constraint(expr);
-            });
-        
+        polynomial_identities.iter().for_each(|id| {
+            let expr =
+                to_stwo_expression(&self.witness_columns, &id.expression, &witness_eval, &eval);
+            eval.add_constraint(expr);
+        });
 
-        for id in self.analyzed.identities_with_inlined_intermediate_polynomials() {
+        for id in self
+            .analyzed
+            .identities_with_inlined_intermediate_polynomials()
+        {
             match id {
                 // Already handled above
                 Identity::Polynomial(..) => {}
                 Identity::Connect(..) => unimplemented!(),
                 Identity::Lookup(..) => unimplemented!(),
-                Identity::Permutation(..) =>unimplemented!(),
+                Identity::Permutation(..) => unimplemented!(),
             }
         }
         eval
@@ -122,7 +129,10 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
     witness_eval: &Vec<[<E as EvalAtRow>::F; 2]>,
     _eval: &E,
 ) -> E::F {
-     println!("\n This is the expression in the beginning of to stwo expression {:?} \n", expr);
+    println!(
+        "\n This is the expression in the beginning of to stwo expression {:?} \n",
+        expr
+    );
     match expr {
         AlgebraicExpression::Number(_n) => E::F::one(),
         AlgebraicExpression::Reference(polyref) => {

@@ -1,3 +1,5 @@
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -8,6 +10,12 @@ use powdr_executor::constant_evaluator::{get_uniquely_sized_cloned, VariablySize
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::FieldElement;
 use prover::StwoProver;
+use stwo_prover::core::backend::simd::SimdBackend;
+use stwo_prover::core::backend::BackendForChannel;
+use stwo_prover::core::channel::Channel;
+use stwo_prover::core::channel::MerkleChannel;
+use stwo_prover::core::channel::Poseidon252Channel;
+use stwo_prover::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
 
 mod circuit_builder;
 mod prover;
@@ -37,12 +45,20 @@ impl<F: FieldElement> BackendFactory<F> for StwoProverFactory {
         let fixed = Arc::new(
             get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
         );
-        let stwo = Box::new(StwoProver::new(pil, fixed)?);
+        let stwo: Box<StwoProver<F, SimdBackend, Poseidon252MerkleChannel, Poseidon252Channel>> =
+            Box::new(StwoProver::new(pil, fixed)?);
         Ok(stwo)
     }
 }
 
-impl<T: FieldElement> Backend<T> for StwoProver<T> {
+impl<T: FieldElement, MC: MerkleChannel + Send, C: Channel + Send> Backend<T>
+    for StwoProver<T, SimdBackend, MC, C>
+where
+    SimdBackend: BackendForChannel<MC>, // Ensure B implements BackendForChannel<MC>
+    MC: MerkleChannel,
+    C: Channel,
+    MC::H: DeserializeOwned + Serialize,
+{
     #[allow(unused_variables)]
     fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
         assert_eq!(instances.len(), 1);
@@ -61,7 +77,7 @@ impl<T: FieldElement> Backend<T> for StwoProver<T> {
         if prev_proof.is_some() {
             return Err(Error::NoAggregationAvailable);
         }
-        Ok(self.prove(witness)?)
+        Ok(StwoProver::prove(self, witness)?)
     }
     #[allow(unused_variables)]
     fn export_verification_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {
