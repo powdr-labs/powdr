@@ -94,7 +94,7 @@ impl Runtime {
             "std::machines::split::split_gl::SplitGL",
             None,
             "split_gl",
-            vec!["byte_compare", "MIN_DEGREE", "MAIN_MAX_DEGREE"],
+            vec!["byte_compare", "MIN_DEGREE", "LARGE_SUBMACHINES_MAX_DEGREE"],
             [r#"instr split_gl X, Z, W
                     link ~> tmp1_col = regs.mload(X, STEP)
                     link ~> (tmp3_col, tmp4_col) = split_gl.split(tmp1_col)
