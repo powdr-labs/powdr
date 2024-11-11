@@ -39,7 +39,9 @@ lazy_static! {
 #[derive(Clone, EnumString, EnumVariantNames, Display, Copy, Default)]
 pub enum LinkerMode {
     #[default]
+    #[strum(serialize = "native")]
     Native,
+    #[strum(serialize = "bus")]
     Bus,
 }
 
@@ -54,7 +56,8 @@ pub enum DegreesMode {
 struct Linker {
     mode: LinkerMode,
     degrees: DegreesMode,
-    namespaces: BTreeMap<String, Vec<PilStatement>>,
+    /// for each namespace, we store the statements resulting from processing the links separatly, because we need to make sure they do not come first.
+    namespaces: BTreeMap<String, (Vec<PilStatement>, Vec<PilStatement>)>,
     next_interaction_id: u32,
 }
 
@@ -105,7 +108,7 @@ impl Linker {
                         (Some(operation_id), Some(main_operation_id)) => {
                             // call the main operation by initializing `operation_id` to that of the main operation
                             let linker_first_step = "_linker_first_step";
-                            self.namespaces.get_mut(&location.to_string()).unwrap().extend([
+                            self.namespaces.get_mut(&location.to_string()).unwrap().0.extend([
                                 parse_pil_statement(&format!(
                                     "col fixed {linker_first_step}(i) {{ if i == 0 {{ 1 }} else {{ 0 }} }};"
                                 )),
@@ -124,7 +127,11 @@ impl Linker {
         Ok(PILFile(
             common_definitions
                 .into_iter()
-                .chain(self.namespaces.into_iter().flat_map(|(_, v)| v.into_iter()))
+                .chain(
+                    self.namespaces
+                        .into_iter()
+                        .flat_map(|(_, (statements, links))| statements.into_iter().chain(links)),
+                )
                 .collect(),
         ))
     }
@@ -138,7 +145,7 @@ impl Linker {
         let namespace = location.to_string();
         let namespace_degree = to_namespace_degree(degree);
 
-        let pil = self.namespaces.entry(namespace).or_default();
+        let (pil, _) = self.namespaces.entry(namespace).or_default();
 
         // create a namespace for this object
         pil.push(PilStatement::Namespace(
@@ -260,10 +267,11 @@ impl Linker {
                 self.namespaces
                     .entry(from.to_string())
                     .or_default()
+                    .1
                     .push(PilStatement::Expression(SourceRef::unknown(), lookup));
             }
             LinkerMode::Bus => {
-                self.namespaces.entry(from.to_string()).or_default().push(
+                self.namespaces.entry(from.to_string()).or_default().1.push(
                     PilStatement::Expression(
                         SourceRef::unknown(),
                         call_pil_link_function(
@@ -273,17 +281,16 @@ impl Linker {
                         ),
                     ),
                 );
-                self.namespaces
-                    .entry(to.to_string())
-                    .or_default()
-                    .push(PilStatement::Expression(
+                self.namespaces.entry(to.to_string()).or_default().1.push(
+                    PilStatement::Expression(
                         SourceRef::unknown(),
                         call_pil_link_function(
                             "std::protocols::lookup_via_bus::lookup_receive",
                             lookup,
                             interaction_id,
                         ),
-                    ));
+                    ),
+                );
             }
         }
     }
@@ -296,10 +303,11 @@ impl Linker {
                 self.namespaces
                     .entry(from.to_string())
                     .or_default()
+                    .1
                     .push(PilStatement::Expression(SourceRef::unknown(), lookup));
             }
             LinkerMode::Bus => {
-                self.namespaces.entry(from.to_string()).or_default().push(
+                self.namespaces.entry(from.to_string()).or_default().1.push(
                     PilStatement::Expression(
                         SourceRef::unknown(),
                         call_pil_link_function(
@@ -309,17 +317,16 @@ impl Linker {
                         ),
                     ),
                 );
-                self.namespaces
-                    .entry(to.to_string())
-                    .or_default()
-                    .push(PilStatement::Expression(
+                self.namespaces.entry(to.to_string()).or_default().1.push(
+                    PilStatement::Expression(
                         SourceRef::unknown(),
                         call_pil_link_function(
                             "std::protocols::permmutation_via_bus::permmutation_receive",
                             lookup,
                             interaction_id,
                         ),
-                    ));
+                    ),
+                );
             }
         }
     }
