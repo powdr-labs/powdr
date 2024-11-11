@@ -62,6 +62,8 @@ struct Expressionizer<'a> {
     /// Maps polynomial IDs to their names.
     /// For arrays, this does not include the array elements, just the ID
     /// of the first element (the array itself).
+    /// Crucially, the polynomial type comes first, so that we can still find
+    /// the array's name given an element's ID by using the next smaller entry.
     poly_id_to_name: &'a BTreeMap<(PolynomialType, u64), String>,
 }
 
