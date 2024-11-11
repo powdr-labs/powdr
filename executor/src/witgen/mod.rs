@@ -28,6 +28,7 @@ use self::machines::Machine;
 
 mod affine_expression;
 pub(crate) mod analysis;
+pub(crate) mod auto;
 mod block_processor;
 mod data_structures;
 mod eval_result;

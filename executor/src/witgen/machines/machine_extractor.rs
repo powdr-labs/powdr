@@ -14,6 +14,7 @@ use super::fixed_lookup_machine::FixedLookup;
 use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::KnownMachine;
+use crate::witgen::auto;
 use crate::witgen::machines::Connection;
 use crate::witgen::{
     generator::Generator,

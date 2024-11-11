@@ -141,6 +141,7 @@ impl<T: FieldElement> RangeConstraint<T> {
     }
 
     /// The constraint of an integer multiple of an expression.
+    /// TODO is this correct for factor = -1?
     pub fn multiple(&self, factor: T) -> Self {
         let mask = log2_exact(factor.to_arbitrary_integer()).and_then(|exponent| {
             (self.mask.to_arbitrary_integer() << exponent < T::modulus().to_arbitrary_integer())
@@ -155,6 +156,14 @@ impl<T: FieldElement> RangeConstraint<T> {
             min,
             max,
             mask: mask.unwrap_or_else(|| Self::from_range(min, max).mask),
+        }
+    }
+
+    pub fn try_to_single_value(&self) -> Option<T> {
+        if self.min == self.max {
+            Some(self.min)
+        } else {
+            None
         }
     }
 }
