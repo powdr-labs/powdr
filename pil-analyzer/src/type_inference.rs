@@ -95,6 +95,10 @@ impl DeclaredType {
         self.source = source;
         self
     }
+
+    fn is_concrete(&self) -> bool {
+        self.vars.is_empty()
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -155,7 +159,7 @@ impl TypeChecker {
             .filter(|(_, (ty, _))| ty.is_none())
             .map(|(name, _)| {
                 let mut declared_type = self.declared_types.remove(&name).unwrap();
-                assert!(declared_type.vars.is_empty());
+                assert!(declared_type.is_concrete());
                 self.substitute(declared_type.type_mut());
                 assert!(declared_type.scheme().ty.is_concrete_type());
                 (name, declared_type.scheme().ty)
@@ -232,7 +236,7 @@ impl TypeChecker {
         // can resolve to a concrete type.
         self.declared_types
             .iter()
-            .filter(|(_, declared_type)| declared_type.vars.is_empty())
+            .filter(|(_, declared_type)| declared_type.is_concrete())
             // It is not a type scheme, see if we were able to derive a concrete type.
             .map(|(name, declared_type)| {
                 (
@@ -313,7 +317,7 @@ impl TypeChecker {
         for (name, scheme) in builtin_schemes() {
             self.declared_types
                 .entry(name.clone())
-                .or_insert_with(|| Into::<DeclaredType>::into(scheme.clone()));
+                .or_insert_with(|| DeclaredType::from(scheme.clone()));
             definitions.remove(name);
         }
     }
