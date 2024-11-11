@@ -14,7 +14,7 @@ use crate::witgen::global_constraints::{GlobalConstraints, RangeConstraintSet};
 use crate::witgen::processor::OuterQuery;
 use crate::witgen::range_constraints::RangeConstraint;
 use crate::witgen::rows::RowPair;
-use crate::witgen::util::try_to_simple_poly_ref;
+use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{EvalError, EvalValue, IncompleteCause, MutableState, QueryCallback};
 use crate::witgen::{EvalResult, FixedData};
 
@@ -58,7 +58,7 @@ fn create_index<T: FieldElement>(
     let (input_fixed_columns, output_fixed_columns): (Vec<_>, Vec<_>) = right
         .expressions
         .iter()
-        .map(|e| try_to_simple_poly_ref(e).unwrap().poly_id)
+        .map(|e| try_to_simple_poly(e).unwrap().poly_id)
         .zip(&application.inputs)
         .partition_map(|(poly_id, is_input)| {
             if is_input {
@@ -165,7 +165,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         connection.is_lookup()
             && connection.right.selector.is_one()
             && connection.right.expressions.iter().all(|e| {
-                try_to_simple_poly_ref(e)
+                try_to_simple_poly(e)
                     .map(|poly| poly.poly_id.ptype == PolynomialType::Constant)
                     .unwrap_or(false)
             })
@@ -304,7 +304,7 @@ fn unique_size<T: FieldElement>(
         .right
         .expressions
         .iter()
-        .map(|expr| try_to_simple_poly_ref(expr).unwrap().poly_id)
+        .map(|expr| try_to_simple_poly(expr).unwrap().poly_id)
         .collect::<Vec<_>>();
     fixed_columns
         .iter()
@@ -339,7 +339,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         let right = right
             .expressions
             .iter()
-            .map(|e| try_to_simple_poly_ref(e).unwrap())
+            .map(|e| try_to_simple_poly(e).unwrap())
             .peekable();
 
         let outer_query = OuterQuery::new(caller_rows, identity);
@@ -389,7 +389,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
                 .zip(&right.expressions)
                 .filter_map(|(l, r)| match l {
                     LookupCell::Input(v) => {
-                        let name = try_to_simple_poly_ref(r).unwrap().name.clone();
+                        let name = try_to_simple_poly(r).unwrap().name.clone();
                         Some((name, **v))
                     }
                     _ => None,
