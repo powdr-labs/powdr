@@ -21,8 +21,8 @@ use stwo_prover::core::ColumnVec;
 
 pub type PowdrComponent<'a, F> = FrameworkComponent<PowdrEval<F>>;
 
-pub(crate) fn gen_stwo_circuit_trace<'a, T, B, F>(
-    witness: Option<&'a [(String, Vec<T>)]>,
+pub(crate) fn gen_stwo_circuit_trace<T, B, F>(
+    witness: Option<&[(String, Vec<T>)]>,
     analyzed: Arc<Analyzed<T>>,
 ) -> ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>
 where
@@ -44,7 +44,7 @@ where
             })
             .collect(),
     );
-    println!("This is the witness {:?}", witness);
+
     let domain = CanonicCoset::new(analyzed.degree().ilog2()).circle_domain();
     element
         .map(|elements| {
@@ -129,10 +129,6 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
     witness_eval: &Vec<[<E as EvalAtRow>::F; 2]>,
     _eval: &E,
 ) -> E::F {
-    println!(
-        "\n This is the expression in the beginning of to stwo expression {:?} \n",
-        expr
-    );
     match expr {
         AlgebraicExpression::Number(_n) => E::F::one(),
         AlgebraicExpression::Reference(polyref) => {
@@ -140,11 +136,11 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
             match polyref.next {
                 false => {
                     let index = witness_columns[&poly_id];
-                    witness_eval[index][0].into()
+                    witness_eval[index][0]
                 }
                 true => {
                     let index = witness_columns[&poly_id];
-                    witness_eval[index][1].into()
+                    witness_eval[index][1]
                 }
             }
         }

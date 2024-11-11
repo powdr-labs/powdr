@@ -24,8 +24,6 @@ use stwo_prover::core::fields::m31::M31;
 use stwo_prover::core::fri::FriConfig;
 use stwo_prover::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig};
 use stwo_prover::core::poly::circle::CanonicCoset;
-use stwo_prover::core::poly::twiddles::TwiddleTree;
-use stwo_prover::core::prover::ProvingError;
 
 const FRI_LOG_BLOWUP: usize = 1;
 const FRI_NUM_QUERIES: usize = 100;

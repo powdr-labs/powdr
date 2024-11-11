@@ -12,10 +12,10 @@ use powdr_number::FieldElement;
 use prover::StwoProver;
 use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::backend::BackendForChannel;
+use stwo_prover::core::channel::Blake2sChannel;
 use stwo_prover::core::channel::Channel;
 use stwo_prover::core::channel::MerkleChannel;
-use stwo_prover::core::channel::Poseidon252Channel;
-use stwo_prover::core::vcs::poseidon252_merkle::Poseidon252MerkleChannel;
+use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
 
 mod circuit_builder;
 mod prover;
@@ -45,7 +45,7 @@ impl<F: FieldElement> BackendFactory<F> for StwoProverFactory {
         let fixed = Arc::new(
             get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
         );
-        let stwo: Box<StwoProver<F, SimdBackend, Poseidon252MerkleChannel, Poseidon252Channel>> =
+        let stwo: Box<StwoProver<F, SimdBackend, Blake2sMerkleChannel, Blake2sChannel>> =
             Box::new(StwoProver::new(pil, fixed)?);
         Ok(stwo)
     }
