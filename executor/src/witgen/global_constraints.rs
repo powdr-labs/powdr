@@ -289,7 +289,7 @@ fn propagate_constraints<T: FieldElement>(
             }
 
             // Detect [ x ] in [ RANGE ], where RANGE is in the full span.
-            // In that case, we can remove the lookup, because it's only function is to enforce
+            // In that case, we can remove the lookup, because its only function is to enforce
             // the range constraint.
             if right.expressions.len() == 1 {
                 if let (Some(left_ref), Some(right_ref)) = (
