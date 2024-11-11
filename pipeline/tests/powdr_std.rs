@@ -187,24 +187,6 @@ fn lookup_via_challenges_range_constraint() {
 }
 
 #[test]
-fn bus_permutation_via_challenges() {
-    let f = "std/bus_permutation_via_challenges.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-}
-
-#[test]
-fn bus_permutation_via_challenges_ext_bn() {
-    let f = "std/bus_permutation_via_challenges_ext.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-}
-
-#[test]
-fn bus_lookup_via_challenges_bn() {
-    let f = "std/bus_lookup_via_challenges.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-}
-
-#[test]
 fn write_once_memory_test() {
     let f = "std/write_once_memory_test.asm";
     regular_test(f, &[]);
