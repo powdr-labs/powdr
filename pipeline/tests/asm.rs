@@ -28,6 +28,14 @@ fn sqrt_asm() {
 }
 
 #[test]
+fn block_machine_exact_number_of_rows_asm() {
+    let f = "asm/block_machine_exact_number_of_rows.asm";
+    // This test needs machines to be of unequal length. Also, this is mostly testing witgen, so
+    // we just run one backend that supports variable-length machines.
+    test_plonky3_with_backend_variant::<GoldilocksField>(f, Vec::new(), BackendVariant::Monolithic);
+}
+
+#[test]
 fn challenges_asm() {
     let f = "asm/challenges.asm";
     let pipeline = make_simple_prepared_pipeline(f);
