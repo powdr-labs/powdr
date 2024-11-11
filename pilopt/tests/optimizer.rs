@@ -308,3 +308,32 @@ fn do_not_replace_selected_lookup() {
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
 }
+
+#[test]
+fn handle_array_references_in_prover_functions() {
+    let input = r#"namespace N(8);
+    col witness x[1];
+    
+    // non-trivial constraint so that `x[0]` does not get removed.
+    x[0]' = x[0] + 1;
+    {
+        let intermediate = x[0] + 1;
+        query |i| {
+            // No-op, but references `x[0]`.
+            let _ = intermediate;
+        }
+    };
+    "#;
+    let expectation = r#"namespace N(8);
+    col witness x[1];
+    N::x[0]' = N::x[0] + 1;
+    {
+        let intermediate = N::x[0_int] + 1_expr;
+        query |i| {
+            let _: expr = intermediate;
+        }
+    };
+"#;
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}
