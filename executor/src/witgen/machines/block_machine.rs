@@ -279,7 +279,13 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                  This might violate some internal constraints."
             );
         }
-        self.degree = compute_size_and_log(&self.name, self.data.len(), self.degree_range);
+        self.degree = compute_size_and_log(
+            &self.name,
+            // At this point, the still contains the dummy block, which will be removed below.
+            // Therefore, we subtract the block size here.
+            self.data.len() - self.block_size,
+            self.degree_range,
+        );
 
         if matches!(self.connection_type, ConnectionKind::Permutation) {
             // We have to make sure that *all* selectors are 0 in the dummy block,
@@ -465,7 +471,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             ));
         }
 
-        if self.rows() + self.block_size as DegreeType >= self.degree {
+        if self.rows() + self.block_size as DegreeType > self.degree {
             return Err(EvalError::RowsExhausted(self.name.clone()));
         }
 
@@ -541,7 +547,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     /// unused cells in the previous block.
     fn append_block(&mut self, mut new_block: FinalizableData<T>) -> Result<(), EvalError<T>> {
         assert!(
-            (self.rows() + self.block_size as DegreeType) < self.degree,
+            (self.rows() + self.block_size as DegreeType) <= self.degree,
             "Block machine is full (this should have been checked before)"
         );
 
