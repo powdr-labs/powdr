@@ -27,7 +27,6 @@ use stwo_prover::core::poly::circle::CanonicCoset;
 use stwo_prover::core::poly::twiddles::TwiddleTree;
 use stwo_prover::core::prover::ProvingError;
 
-
 const FRI_LOG_BLOWUP: usize = 1;
 const FRI_NUM_QUERIES: usize = 100;
 const FRI_PROOF_OF_WORK_BITS: usize = 16;
@@ -84,14 +83,19 @@ where
         })
     }
     pub fn prove(&self, witness: &[(String, Vec<F>)]) -> Result<Vec<u8>, String> {
-        // let proofconfig: ProofConfig<SimdBackend, Poseidon252MerkleChannel, Poseidon252Channel> =
-        //     ProofConfig::new();
-
-        let twiddles = self.get_twiddles(self.analyzed.degree().ilog2());
+        // twiddles are used for FFT, it is computed in a bigger group than the eval domain.
+        // eval domain half coset G_{2n} + <G_{n/2}>
+        // twiddles are computed in half coset G_{4n} + <G_{n}>, double the size of eval doamin.
+        let twiddles = B::precompute_twiddles(
+            CanonicCoset::new(self.analyzed.degree().ilog2() + 1 + FRI_LOG_BLOWUP as u32)
+                .circle_domain()
+                .half_coset,
+        );
 
         // Setup protocol.
-        let mut prover_channel = self.get_prover_channel();
-        let commitment_scheme = &mut self.get_commitment_scheme(&twiddles);
+        let mut prover_channel = <MC as MerkleChannel>::C::default();
+        let commitment_scheme =
+            &mut CommitmentSchemeProver::<B, MC>::new(self.pcs_config, &twiddles);
 
         let trace = gen_stwo_circuit_trace::<F, B, M31>(Some(witness), self.analyzed.clone());
 
@@ -104,22 +108,22 @@ where
             PowdrEval::new(self.analyzed.clone()),
         );
 
-        let proof = self
-            .get_proof(&[&component], &mut prover_channel, commitment_scheme)
-            .unwrap();
-        // .unwrap();
-
-        //let proof=stwo_prover::core::prover::prove::<B, MC>(&[&component], &mut prover_channel, commitment_scheme);
-        println!("Serialized data: {:?}", &proof);
+        let proof = stwo_prover::core::prover::prove::<B, MC>(
+            &[&component],
+            &mut prover_channel,
+            commitment_scheme,
+        )
+        .unwrap();
 
         Ok(bincode::serialize(&proof).unwrap())
     }
 
     pub fn verify(&self, proof: &[u8], _instances: &[F]) -> Result<(), String> {
-        let proof: StarkProof<MC::H> = self.deserialize_proof(proof)?;
+        let proof: StarkProof<MC::H> =
+            bincode::deserialize(proof).map_err(|e| format!("Failed to deserialize proof: {e}"))?;
 
-        let mut verifier_channel = self.get_verifier_channel();
-        let mut commitment_scheme = self.get_new_commitment_scheme();
+        let mut verifier_channel = <MC as MerkleChannel>::C::default();
+        let mut commitment_scheme = CommitmentSchemeVerifier::<MC>::new(self.pcs_config);
 
         //Constraints that are to be proved
         let component = PowdrComponent::new(
@@ -138,45 +142,5 @@ where
             proof,
         )
         .map_err(|e| e.to_string())
-    }
-    pub fn get_twiddles(&self, log_degree: u32) -> TwiddleTree<B> {
-        // twiddles are used for FFT, it is computed in a bigger group than the eval domain.
-        // eval domain half coset G_{2n} + <G_{n/2}>
-        // twiddles are computed in half coset G_{4n} + <G_{n}>
-        let domain_size = log_degree + 1 + FRI_LOG_BLOWUP as u32;
-        let half_coset = CanonicCoset::new(domain_size).circle_domain().half_coset;
-
-        B::precompute_twiddles(half_coset)
-    }
-
-    pub fn get_prover_channel(&self) -> <MC as MerkleChannel>::C {
-        <MC as MerkleChannel>::C::default()
-    }
-
-    pub fn get_verifier_channel(&self) -> <MC as MerkleChannel>::C {
-        <MC as MerkleChannel>::C::default()
-    }
-
-    pub fn get_commitment_scheme<'b>(
-        &self,
-        twiddles: &'b TwiddleTree<B>,
-    ) -> CommitmentSchemeProver<'b, B, MC> {
-        CommitmentSchemeProver::<B, MC>::new(self.pcs_config, &twiddles)
-    }
-
-    pub fn get_proof(
-        &self,
-        components: &[&dyn ComponentProver<B>],
-        channel: &mut MC::C,
-        commitment_scheme: &mut CommitmentSchemeProver<'_, B, MC>,
-    ) -> Result<StarkProof<MC::H>, ProvingError> {
-        stwo_prover::core::prover::prove::<B, MC>(components, channel, commitment_scheme)
-    }
-
-    pub fn deserialize_proof(&self, proof: &[u8]) -> Result<StarkProof<MC::H>, String> {
-        bincode::deserialize(proof).map_err(|e| format!("Failed to deserialize proof: {e}"))
-    }
-    pub fn get_new_commitment_scheme(&self) -> CommitmentSchemeVerifier<MC> {
-        CommitmentSchemeVerifier::<MC>::new(self.pcs_config)
     }
 }

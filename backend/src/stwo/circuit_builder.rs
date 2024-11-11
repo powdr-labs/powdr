@@ -10,8 +10,8 @@ use std::sync::Arc;
 
 use powdr_ast::analyzed::{PolyID, PolynomialIdentity, PolynomialType};
 use stwo_prover::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
-use stwo_prover::core::backend::ColumnOps;
 use stwo_prover::core::backend::Col;
+use stwo_prover::core::backend::ColumnOps;
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::m31::M31;
 use stwo_prover::core::fields::{ExtensionOf, FieldOps};
