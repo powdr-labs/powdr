@@ -4,15 +4,16 @@ use lazy_static::lazy_static;
 use powdr_analysis::utils::parse_pil_statement;
 use powdr_ast::{
     asm_analysis::{combine_flags, MachineDegree},
-    object::{Link, Location, MachineInstanceGraph},
+    object::{Link, Location, MachineInstanceGraph, Object},
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         build::{index_access, lookup, namespaced_reference, permutation, selected},
-        ArrayLiteral, Expression, NamespaceDegree, PILFile, PilStatement,
+        ArrayLiteral, Expression, FunctionCall, NamespaceDegree, PILFile, PilStatement,
     },
 };
 use powdr_parser_util::SourceRef;
-use std::{collections::BTreeMap, iter::once};
+use std::{collections::BTreeMap, iter::once, str::FromStr};
+use strum::{Display, EnumString, EnumVariantNames};
 
 const MAIN_OPERATION_NAME: &str = "main";
 /// The log of the default minimum degree
@@ -35,6 +36,312 @@ lazy_static! {
     };
 }
 
+#[derive(Clone, EnumString, EnumVariantNames, Display, Copy, Default)]
+pub enum LinkerMode {
+    #[default]
+    Native,
+    Bus,
+}
+
+#[derive(Default)]
+pub enum DegreesMode {
+    Monolithic(MachineDegree),
+    #[default]
+    Vadcop,
+}
+
+#[derive(Default)]
+struct Linker {
+    mode: LinkerMode,
+    degrees: DegreesMode,
+    namespaces: BTreeMap<String, Vec<PilStatement>>,
+    next_interaction_id: u32,
+}
+
+impl Linker {
+    fn new(mode: LinkerMode) -> Self {
+        Self {
+            mode,
+            ..Default::default()
+        }
+    }
+
+    fn next_interaction_id(&mut self) -> u32 {
+        let id = self.next_interaction_id;
+        self.next_interaction_id += 1;
+        id
+    }
+
+    /// The optional degree of the namespace is set to that of the object if it's set, to that of the main object otherwise.
+    pub fn link(mut self, graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
+        let main_machine = graph.main;
+        let main_degree = graph
+            .objects
+            .get(&main_machine.location)
+            .unwrap()
+            .degree
+            .clone();
+
+        // If the main object has a static degree, we use the monolithic mode with that degree.
+        self.degrees = match main_degree.is_static() {
+            true => DegreesMode::Monolithic(main_degree),
+            false => DegreesMode::Vadcop,
+        };
+
+        let common_definitions = process_definitions(graph.statements);
+
+        for (location, object) in graph.objects.into_iter() {
+            self.process_object(location.clone(), object);
+
+            if location == Location::main() {
+                if let Some(main_operation) = graph
+                    .entry_points
+                    .iter()
+                    .find(|f| f.name == MAIN_OPERATION_NAME)
+                {
+                    let main_operation_id = main_operation.id.clone();
+                    let operation_id = main_machine.operation_id.clone();
+                    match (operation_id, main_operation_id) {
+                        (Some(operation_id), Some(main_operation_id)) => {
+                            // call the main operation by initializing `operation_id` to that of the main operation
+                            let linker_first_step = "_linker_first_step";
+                            self.namespaces.get_mut(&location.to_string()).unwrap().extend([
+                                parse_pil_statement(&format!(
+                                    "col fixed {linker_first_step}(i) {{ if i == 0 {{ 1 }} else {{ 0 }} }};"
+                                )),
+                                parse_pil_statement(&format!(
+                                    "{linker_first_step} * ({operation_id} - {main_operation_id}) = 0;"
+                                )),
+                            ]);
+                        }
+                        (None, None) => {}
+                        _ => unreachable!(),
+                    }
+                }
+            }
+        }
+
+        Ok(PILFile(
+            common_definitions
+                .into_iter()
+                .chain(self.namespaces.into_iter().flat_map(|(_, v)| v.into_iter()))
+                .collect(),
+        ))
+    }
+
+    fn process_object(&mut self, location: Location, object: Object) {
+        let degree = match &self.degrees {
+            DegreesMode::Monolithic(d) => d.clone(),
+            DegreesMode::Vadcop => object.degree,
+        };
+
+        let namespace = location.to_string();
+        let namespace_degree = to_namespace_degree(degree);
+
+        let pil = self.namespaces.entry(namespace).or_default();
+
+        // create a namespace for this object
+        pil.push(PilStatement::Namespace(
+            SourceRef::unknown(),
+            SymbolPath::from_identifier(location.to_string()),
+            Some(namespace_degree),
+        ));
+
+        pil.extend(object.pil);
+        for link in object.links {
+            self.process_link(link, location.clone());
+        }
+    }
+
+    fn process_link(&mut self, link: Link, from_location: Location) {
+        let from = link.from;
+        let to = link.to;
+
+        let to_location = to.machine.location.clone();
+
+        // the lhs is `instr_flag { operation_id, inputs, outputs }`
+        let op_id = to.operation.id.iter().cloned().map(|n| n.into());
+
+        if link.is_permutation {
+            // permutation lhs is `flag { operation_id, inputs, outputs }`
+            let lhs = selected(
+                combine_flags(from.instr_flag, from.link_flag),
+                ArrayLiteral {
+                    items: op_id
+                        .chain(from.params.inputs)
+                        .chain(from.params.outputs)
+                        .collect(),
+                }
+                .into(),
+            );
+
+            // permutation rhs is `(latch * selector[idx]) { operation_id, inputs, outputs }`
+            let to_namespace = to.machine.location.clone().to_string();
+            let op_id = to
+                .machine
+                .operation_id
+                .map(|oid| namespaced_reference(to_namespace.clone(), oid))
+                .into_iter();
+
+            let latch = namespaced_reference(to_namespace.clone(), to.machine.latch.unwrap());
+            let rhs_selector = if let Some(call_selectors) = to.machine.call_selectors {
+                let call_selector_array =
+                    namespaced_reference(to_namespace.clone(), call_selectors);
+                let call_selector =
+                    index_access(call_selector_array, Some(to.selector_idx.unwrap().into()));
+                latch * call_selector
+            } else {
+                latch
+            };
+
+            let rhs = selected(
+                rhs_selector,
+                ArrayLiteral {
+                    items: op_id
+                        .chain(to.operation.params.inputs_and_outputs().map(|i| {
+                            index_access(
+                                namespaced_reference(to_namespace.clone(), &i.name),
+                                i.index.clone(),
+                            )
+                        }))
+                        .collect(),
+                }
+                .into(),
+            );
+
+            self.insert_permutation(from_location, to_location, permutation(lhs, rhs));
+        } else {
+            // plookup lhs is `flag $ [ operation_id, inputs, outputs ]`
+            let lhs = selected(
+                combine_flags(from.instr_flag, from.link_flag),
+                ArrayLiteral {
+                    items: op_id
+                        .chain(from.params.inputs)
+                        .chain(from.params.outputs)
+                        .collect(),
+                }
+                .into(),
+            );
+
+            let to_namespace = to.machine.location.clone().to_string();
+            let op_id = to
+                .machine
+                .operation_id
+                .map(|oid| namespaced_reference(to_namespace.clone(), oid))
+                .into_iter();
+
+            let latch = namespaced_reference(to_namespace.clone(), to.machine.latch.unwrap());
+
+            // plookup rhs is `latch $ [ operation_id, inputs, outputs ]`
+            let rhs = selected(
+                latch,
+                ArrayLiteral {
+                    items: op_id
+                        .chain(to.operation.params.inputs_and_outputs().map(|i| {
+                            index_access(
+                                namespaced_reference(to_namespace.clone(), &i.name),
+                                i.index.clone(),
+                            )
+                        }))
+                        .collect(),
+                }
+                .into(),
+            );
+
+            self.insert_lookup(from_location, to_location, lookup(lhs, rhs));
+        };
+    }
+
+    fn insert_lookup(&mut self, from: Location, to: Location, lookup: Expression) {
+        let interaction_id = self.next_interaction_id();
+
+        match self.mode {
+            LinkerMode::Native => {
+                self.namespaces
+                    .entry(from.to_string())
+                    .or_default()
+                    .push(PilStatement::Expression(SourceRef::unknown(), lookup));
+            }
+            LinkerMode::Bus => {
+                self.namespaces.entry(from.to_string()).or_default().push(
+                    PilStatement::Expression(
+                        SourceRef::unknown(),
+                        call_pil_link_function(
+                            "std::protocols::lookup_via_bus::lookup_send",
+                            lookup.clone(),
+                            interaction_id,
+                        ),
+                    ),
+                );
+                self.namespaces
+                    .entry(to.to_string())
+                    .or_default()
+                    .push(PilStatement::Expression(
+                        SourceRef::unknown(),
+                        call_pil_link_function(
+                            "std::protocols::lookup_via_bus::lookup_receive",
+                            lookup,
+                            interaction_id,
+                        ),
+                    ));
+            }
+        }
+    }
+
+    fn insert_permutation(&mut self, from: Location, to: Location, lookup: Expression) {
+        let interaction_id = self.next_interaction_id();
+
+        match self.mode {
+            LinkerMode::Native => {
+                self.namespaces
+                    .entry(from.to_string())
+                    .or_default()
+                    .push(PilStatement::Expression(SourceRef::unknown(), lookup));
+            }
+            LinkerMode::Bus => {
+                self.namespaces.entry(from.to_string()).or_default().push(
+                    PilStatement::Expression(
+                        SourceRef::unknown(),
+                        call_pil_link_function(
+                            "std::protocols::permmutation_via_bus::permmutation_send",
+                            lookup.clone(),
+                            interaction_id,
+                        ),
+                    ),
+                );
+                self.namespaces
+                    .entry(to.to_string())
+                    .or_default()
+                    .push(PilStatement::Expression(
+                        SourceRef::unknown(),
+                        call_pil_link_function(
+                            "std::protocols::permmutation_via_bus::permmutation_receive",
+                            lookup,
+                            interaction_id,
+                        ),
+                    ));
+            }
+        }
+    }
+}
+
+fn call_pil_link_function(
+    function: &str,
+    constraint: Expression,
+    interaction_id: u32,
+) -> Expression {
+    Expression::FunctionCall(
+        SourceRef::unknown(),
+        FunctionCall {
+            function: Box::new(Expression::Reference(
+                SourceRef::unknown(),
+                SymbolPath::from_str(function).unwrap().into(),
+            )),
+            arguments: vec![interaction_id.into(), constraint],
+        },
+    )
+}
+
 /// Convert a [MachineDegree] into a [NamespaceDegree], setting any unset bounds to the relevant default values
 fn to_namespace_degree(d: MachineDegree) -> NamespaceDegree {
     NamespaceDegree {
@@ -47,63 +354,8 @@ fn to_namespace_degree(d: MachineDegree) -> NamespaceDegree {
     }
 }
 
-/// The optional degree of the namespace is set to that of the object if it's set, to that of the main object otherwise.
-pub fn link(graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
-    let main_machine = graph.main;
-    let main_degree = graph
-        .objects
-        .get(&main_machine.location)
-        .unwrap()
-        .degree
-        .clone();
-
-    let mut pil = process_definitions(graph.statements);
-
-    for (location, object) in graph.objects.into_iter() {
-        // create a namespace for this object
-        let degree = match main_degree.is_static() {
-            true => main_degree.clone(),
-            false => object.degree,
-        };
-
-        pil.push(PilStatement::Namespace(
-            SourceRef::unknown(),
-            SymbolPath::from_identifier(location.to_string()),
-            Some(to_namespace_degree(degree)),
-        ));
-
-        pil.extend(object.pil);
-        pil.extend(object.links.into_iter().map(process_link));
-
-        if location == Location::main() {
-            if let Some(main_operation) = graph
-                .entry_points
-                .iter()
-                .find(|f| f.name == MAIN_OPERATION_NAME)
-            {
-                let main_operation_id = main_operation.id.clone();
-                let operation_id = main_machine.operation_id.clone();
-                match (operation_id, main_operation_id) {
-                    (Some(operation_id), Some(main_operation_id)) => {
-                        // call the main operation by initializing `operation_id` to that of the main operation
-                        let linker_first_step = "_linker_first_step";
-                        pil.extend([
-                            parse_pil_statement(&format!(
-                                "col fixed {linker_first_step}(i) {{ if i == 0 {{ 1 }} else {{ 0 }} }};"
-                            )),
-                            parse_pil_statement(&format!(
-                                "{linker_first_step} * ({operation_id} - {main_operation_id}) = 0;"
-                            )),
-                        ]);
-                    }
-                    (None, None) => {}
-                    _ => unreachable!(),
-                }
-            }
-        }
-    }
-
-    Ok(PILFile(pil))
+pub fn link(graph: MachineInstanceGraph, mode: LinkerMode) -> Result<PILFile, Vec<String>> {
+    Linker::new(mode).link(graph)
 }
 
 // Extract the utilities and sort them into namespaces where possible.
@@ -130,109 +382,11 @@ fn process_definitions(
         .collect()
 }
 
-fn process_link(link: Link) -> PilStatement {
-    let from = link.from;
-    let to = link.to;
-
-    // the lhs is `instr_flag { operation_id, inputs, outputs }`
-    let op_id = to.operation.id.iter().cloned().map(|n| n.into());
-
-    let expr = if link.is_permutation {
-        // permutation lhs is `flag { operation_id, inputs, outputs }`
-        let lhs = selected(
-            combine_flags(from.instr_flag, from.link_flag),
-            ArrayLiteral {
-                items: op_id
-                    .chain(from.params.inputs)
-                    .chain(from.params.outputs)
-                    .collect(),
-            }
-            .into(),
-        );
-
-        // permutation rhs is `(latch * selector[idx]) { operation_id, inputs, outputs }`
-        let to_namespace = to.machine.location.clone().to_string();
-        let op_id = to
-            .machine
-            .operation_id
-            .map(|oid| namespaced_reference(to_namespace.clone(), oid))
-            .into_iter();
-
-        let latch = namespaced_reference(to_namespace.clone(), to.machine.latch.unwrap());
-        let rhs_selector = if let Some(call_selectors) = to.machine.call_selectors {
-            let call_selector_array = namespaced_reference(to_namespace.clone(), call_selectors);
-            let call_selector =
-                index_access(call_selector_array, Some(to.selector_idx.unwrap().into()));
-            latch * call_selector
-        } else {
-            latch
-        };
-
-        let rhs = selected(
-            rhs_selector,
-            ArrayLiteral {
-                items: op_id
-                    .chain(to.operation.params.inputs_and_outputs().map(|i| {
-                        index_access(
-                            namespaced_reference(to_namespace.clone(), &i.name),
-                            i.index.clone(),
-                        )
-                    }))
-                    .collect(),
-            }
-            .into(),
-        );
-
-        permutation(lhs, rhs)
-    } else {
-        // plookup lhs is `flag $ [ operation_id, inputs, outputs ]`
-        let lhs = selected(
-            combine_flags(from.instr_flag, from.link_flag),
-            ArrayLiteral {
-                items: op_id
-                    .chain(from.params.inputs)
-                    .chain(from.params.outputs)
-                    .collect(),
-            }
-            .into(),
-        );
-
-        let to_namespace = to.machine.location.clone().to_string();
-        let op_id = to
-            .machine
-            .operation_id
-            .map(|oid| namespaced_reference(to_namespace.clone(), oid))
-            .into_iter();
-
-        let latch = namespaced_reference(to_namespace.clone(), to.machine.latch.unwrap());
-
-        // plookup rhs is `latch $ [ operation_id, inputs, outputs ]`
-        let rhs = selected(
-            latch,
-            ArrayLiteral {
-                items: op_id
-                    .chain(to.operation.params.inputs_and_outputs().map(|i| {
-                        index_access(
-                            namespaced_reference(to_namespace.clone(), &i.name),
-                            i.index.clone(),
-                        )
-                    }))
-                    .collect(),
-            }
-            .into(),
-        );
-
-        lookup(lhs, rhs)
-    };
-
-    PilStatement::Expression(SourceRef::unknown(), expr)
-}
-
 #[cfg(test)]
 mod test {
     use std::{fs, path::PathBuf};
 
-    use powdr_ast::object::MachineInstanceGraph;
+    use powdr_ast::{object::MachineInstanceGraph, parsed::PILFile};
     use powdr_number::{FieldElement, GoldilocksField};
 
     use powdr_analysis::convert_asm_to_pil;
@@ -240,7 +394,11 @@ mod test {
 
     use pretty_assertions::assert_eq;
 
-    use crate::{link, MAX_DEGREE_LOG, MIN_DEGREE_LOG};
+    use crate::{MAX_DEGREE_LOG, MIN_DEGREE_LOG};
+
+    fn link(graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
+        super::link(graph, super::LinkerMode::Native)
+    }
 
     fn parse_analyze_and_compile_file<T: FieldElement>(file: &str) -> MachineInstanceGraph {
         let contents = fs::read_to_string(file).unwrap();
