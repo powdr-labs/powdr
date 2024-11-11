@@ -10,8 +10,8 @@ repository.workspace = true
 name = "powdr_plonky3"
 
 [[bin]]
-name = "gen_poseidon_bb_consts"
-path = "src/bin/gen_poseidon_bb_consts.rs"
+name = "gen_poseidon_consts"
+path = "src/bin/gen_poseidon_consts.rs"
 
 [features]
 default = []
@@ -49,6 +49,7 @@ p3-maybe-rayon = { git = "https://github.com/plonky3/Plonky3.git", rev = "219243
 p3-mds = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0" }
 p3-merkle-tree = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0" }
 p3-mersenne-31 = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0" }
+p3-monty-31 = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0" }
 p3-circle = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0" }
 p3-baby-bear = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0" }
 p3-koala-bear = { git = "https://github.com/plonky3/Plonky3.git", rev = "2192432ddf28e7359dd2c577447886463e6124f0" }

@@ -1,9 +1,8 @@
 use powdr_number::GoldilocksField;
 use powdr_pil_analyzer::analyze_string;
 
-use pretty_assertions::assert_eq;
-
 use powdr_pilopt::optimize;
+use pretty_assertions::assert_eq;
 
 #[test]
 fn replace_fixed() {
@@ -45,15 +44,14 @@ fn replace_lookup() {
     col fixed cnt(i) { i };
     col witness X;
     col witness Y;
+    col witness W;
     col witness Z;
     col witness A;
     1 - N::A $ [N::A] in [N::cnt];
-    [N::Y] in 1 + N::A $ [N::cnt];
+    [N::Y, N::W, N::Z, N::A] in 1 + N::A $ [N::cnt, 0, 2, 1];
+    [N::W, N::Z] in 1 + N::A $ [0, 1];
     (1 - N::A) * N::X = 0;
     (1 - N::A) * N::Y = 1;
-    N::Z = (1 + N::A) * 2;
-    N::A = 1 + N::A;
-    N::Z = 1 + N::A;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
@@ -201,6 +199,140 @@ fn remove_unreferenced_keep_enums() {
     col fixed f(i) { if i == 0_int { N::t([]) } else { (|x| 1_int)(N::Y::F([])) } };
     col witness x;
     N::x = N::f;
+"#;
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}
+
+#[test]
+fn test_trait_impl() {
+    let input = r#"namespace N(65536);
+        trait Default<T> { f: -> T, g: T -> T }
+        impl Default<fe> {
+            f: || 1,
+            // This is unused but should not be removed, nor should its dependencies.
+            g: |x| dep(x)
+        }
+        trait UnusedTrait<T> { f: -> T }
+        let dep: fe -> fe = |x| x + 1;
+        // this should be removed.
+        impl Default<int> { f: || 1, g: |x| x }
+        let x: col = |_| Default::f();
+        let w;
+        w = x;
+    "#;
+    let expectation = r#"namespace N(65536);
+    trait Default<T> {
+        f: -> T,
+        g: T -> T,
+    }
+    impl N::Default<fe> {
+        f: || 1_fe,
+        g: |x| N::dep(x),
+    }
+    let dep: fe -> fe = |x| x + 1_fe;
+    col fixed x(_) { N::Default::f::<fe>() };
+    col witness w;
+    N::w = N::x;
+"#;
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}
+
+#[test]
+fn enum_ref_by_trait() {
+    let input = r#"namespace N(65536);
+        enum O<T> { X, Y(T) }
+        enum Q<T> { A, B(T) }
+        trait X<T> { f: T -> O<T>, g: -> T }
+        impl X<fe> { f: |_| O::Y(1), g: || { let r = Q::B(1_int); 1 } }
+        let x: col = |i| { match X::f(1_fe) { O::Y(y) => y, _ => 0 } };
+        let w;
+        w = x;
+    "#;
+    let expectation = r#"namespace N(65536);
+    enum O<T> {
+        X,
+        Y(T),
+    }
+    enum Q<T> {
+        A,
+        B(T),
+    }
+    trait X<T> {
+        f: T -> N::O<T>,
+        g: -> T,
+    }
+    impl N::X<fe> {
+        f: |_| N::O::Y::<fe>(1_fe),
+        g: || {
+            let r: N::Q<int> = N::Q::B::<int>(1_int);
+            1_fe
+        },
+    }
+    col fixed x(i) { match N::X::f::<fe>(1_fe) {
+        N::O::Y(y) => y,
+        _ => 0_fe,
+    } };
+    col witness w;
+    N::w = N::x;
+"#;
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}
+
+#[test]
+fn do_not_replace_selected_lookup() {
+    let input = r#"namespace N(65536);
+    col fixed one = [1]*;
+    col fixed zero = [0]*;
+    col fixed two = [2]*;
+    col fixed cnt(i) { i };
+    col fixed even = [0, 1]*;
+    col witness X;
+    col witness Y;
+    col witness A;
+    // We can only turn this into a polynomial identity if `even` is
+    // not constant zero, but it is difficult to determine this, so we only
+    // do it if it is a constant number.
+    [ X, Y, A ] in even $ [ zero, one, cnt ];
+"#;
+    let expectation = r#"namespace N(65536);
+    col fixed cnt(i) { i };
+    col fixed even = [0_fe, 1_fe]*;
+    col witness X;
+    col witness Y;
+    col witness A;
+    [N::X, N::Y, N::A] in N::even $ [0, 1, N::cnt];
+"#;
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}
+
+#[test]
+fn handle_array_references_in_prover_functions() {
+    let input = r#"namespace N(8);
+    col witness x[1];
+    
+    // non-trivial constraint so that `x[0]` does not get removed.
+    x[0]' = x[0] + 1;
+    {
+        let intermediate = x[0] + 1;
+        query |i| {
+            // No-op, but references `x[0]`.
+            let _ = intermediate;
+        }
+    };
+    "#;
+    let expectation = r#"namespace N(8);
+    col witness x[1];
+    N::x[0]' = N::x[0] + 1;
+    {
+        let intermediate = N::x[0_int] + 1_expr;
+        query |i| {
+            let _: expr = intermediate;
+        }
+    };
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);

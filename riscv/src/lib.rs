@@ -25,7 +25,7 @@ static TARGET_NO_STD: &str = "riscv32imac-unknown-none-elf";
 pub struct RuntimeLibs {
     pub arith: bool,
     pub keccak: bool,
-    pub poseidon: bool,
+    pub poseidon2: bool,
 }
 
 impl RuntimeLibs {
@@ -33,7 +33,7 @@ impl RuntimeLibs {
         Self {
             arith: false,
             keccak: false,
-            poseidon: false,
+            poseidon2: false,
         }
     }
 
@@ -51,9 +51,9 @@ impl RuntimeLibs {
         }
     }
 
-    pub fn with_poseidon(self) -> Self {
+    pub fn with_poseidon2(self) -> Self {
         Self {
-            poseidon: true,
+            poseidon2: true,
             ..self
         }
     }
@@ -63,8 +63,8 @@ pub struct CompilerOptions {
     pub field: KnownField,
     pub libs: RuntimeLibs,
     pub continuations: bool,
-    pub min_degree_log: Option<u8>,
-    pub max_degree_log: Option<u8>,
+    pub min_degree_log: u8,
+    pub max_degree_log: u8,
 }
 
 impl CompilerOptions {
@@ -73,8 +73,8 @@ impl CompilerOptions {
             field,
             libs,
             continuations,
-            min_degree_log: None,
-            max_degree_log: None,
+            min_degree_log: 5,
+            max_degree_log: 20,
         }
     }
 
@@ -83,8 +83,8 @@ impl CompilerOptions {
             field: KnownField::BabyBearField,
             libs: RuntimeLibs::new(),
             continuations: false,
-            min_degree_log: None,
-            max_degree_log: None,
+            min_degree_log: 5,
+            max_degree_log: 20,
         }
     }
 
@@ -93,21 +93,21 @@ impl CompilerOptions {
             field: KnownField::GoldilocksField,
             libs: RuntimeLibs::new(),
             continuations: false,
-            min_degree_log: None,
-            max_degree_log: None,
+            min_degree_log: 5,
+            max_degree_log: 20,
         }
     }
 
-    pub fn with_min_degree_log(self, log_min_degree: u8) -> Self {
+    pub fn with_min_degree_log(self, min_degree_log: u8) -> Self {
         Self {
-            min_degree_log: Some(log_min_degree),
+            min_degree_log,
             ..self
         }
     }
 
-    pub fn with_max_degree_log(self, log_max_degree: u8) -> Self {
+    pub fn with_max_degree_log(self, max_degree_log: u8) -> Self {
         Self {
-            max_degree_log: Some(log_max_degree),
+            max_degree_log,
             ..self
         }
     }
@@ -117,6 +117,10 @@ impl CompilerOptions {
             continuations: true,
             ..self
         }
+    }
+
+    pub fn with_runtime_libs(self, libs: RuntimeLibs) -> Self {
+        Self { libs, ..self }
     }
 
     pub fn with_arith(self) -> Self {
@@ -133,9 +137,9 @@ impl CompilerOptions {
         }
     }
 
-    pub fn with_poseidon(self) -> Self {
+    pub fn with_poseidon2(self) -> Self {
         Self {
-            libs: self.libs.with_poseidon(),
+            libs: self.libs.with_poseidon2(),
             ..self
         }
     }
@@ -150,26 +154,6 @@ pub fn compile_rust(
     force_overwrite: bool,
     features: Option<Vec<String>>,
 ) -> Option<(PathBuf, String)> {
-    if options.continuations {
-        match options.field {
-            KnownField::BabyBearField => {
-                todo!()
-            }
-            KnownField::KoalaBearField => {
-                todo!()
-            }
-            KnownField::Mersenne31Field => {
-                todo!()
-            }
-            KnownField::GoldilocksField | KnownField::Bn254Field => {
-                assert!(
-                    options.libs.poseidon,
-                    "Poseidon library is required for bootloader"
-                );
-            }
-        }
-    }
-
     let file_path = if file_name.ends_with("Cargo.toml") {
         Cow::Borrowed(file_name)
     } else if fs::metadata(file_name).unwrap().is_dir() {

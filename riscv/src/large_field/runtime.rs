@@ -22,9 +22,9 @@ pub struct Runtime {
 
 impl Runtime {
     pub fn new(libs: RuntimeLibs, continuations: bool) -> Self {
-        let mut runtime = Runtime::base();
-        if libs.poseidon {
-            runtime = runtime.with_poseidon(continuations);
+        let mut runtime = Runtime::base(continuations);
+        if libs.poseidon2 {
+            runtime = runtime.with_poseidon2();
         }
         if libs.keccak {
             runtime = runtime.with_keccak();
@@ -35,7 +35,7 @@ impl Runtime {
         runtime
     }
 
-    pub fn base() -> Self {
+    pub fn base(continuations: bool) -> Self {
         let mut r = Runtime {
             submachines: Default::default(),
             syscalls: Default::default(),
@@ -47,7 +47,7 @@ impl Runtime {
             "std::machines::large_field::binary::Binary",
             None,
             "binary",
-            vec!["byte_binary"],
+            vec!["byte_binary", "MIN_DEGREE", "LARGE_SUBMACHINES_MAX_DEGREE"],
             [
                 r#"instr and X, Y, Z, W
                     link ~> tmp1_col = regs.mload(X, STEP)
@@ -73,7 +73,7 @@ impl Runtime {
             "std::machines::large_field::shift::Shift",
             None,
             "shift",
-            vec!["byte_shift"],
+            vec!["byte_shift", "MIN_DEGREE", "LARGE_SUBMACHINES_MAX_DEGREE"],
             [
                 r#"instr shl X, Y, Z, W
                     link ~> tmp1_col = regs.mload(X, STEP)
@@ -94,7 +94,7 @@ impl Runtime {
             "std::machines::split::split_gl::SplitGL",
             None,
             "split_gl",
-            vec!["byte_compare"],
+            vec!["byte_compare", "MIN_DEGREE", "MAIN_MAX_DEGREE"],
             [r#"instr split_gl X, Z, W
                     link ~> tmp1_col = regs.mload(X, STEP)
                     link ~> (tmp3_col, tmp4_col) = split_gl.split(tmp1_col)
@@ -209,7 +209,9 @@ impl Runtime {
 
         r.add_syscall(Syscall::Halt, ["return;"]);
 
-        r
+        r.add_syscall(Syscall::CommitPublic, ["commit_public 10, 11;"]);
+
+        r.with_poseidon(continuations)
     }
 
     fn with_keccak(mut self) -> Self {
@@ -358,7 +360,39 @@ impl Runtime {
         // offset is chosen by LLVM, we assume it's properly aligned.
         let implementation = std::iter::once("poseidon_gl 10, 10;".to_string());
 
-        self.add_syscall(Syscall::PoseidonGL, implementation);
+        self.add_syscall(Syscall::PoseidonGL, implementation.clone());
+        self.add_syscall(Syscall::NativeHash, implementation);
+        self
+    }
+
+    fn with_poseidon2(mut self) -> Self {
+        self.add_submachine(
+            "std::machines::hash::poseidon2_gl::Poseidon2GL",
+            None,
+            "poseidon2_gl",
+            vec!["memory", "split_gl"],
+            [r#"instr poseidon2_gl X, Y
+                    link ~> tmp1_col = regs.mload(X, STEP)
+                    link ~> tmp2_col = regs.mload(Y, STEP + 1)
+                    link ~> poseidon2_gl.poseidon2_permutation(tmp1_col, tmp2_col, STEP)
+                {
+                    // make sure tmp1_col and tmp2_col are aligned memory addresses
+                    tmp3_col * 4 = tmp1_col,
+                    tmp4_col * 4 = tmp2_col,
+                    // make sure the factors fit in 32 bits
+                    tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
+                    tmp4_col = Y_b5 + Y_b6 * 0x100 + Y_b7 * 0x10000 + Y_b8 * 0x1000000
+                }
+            "#],
+            0,
+            vec!["poseidon2_gl 0, 0;"],
+        );
+
+        // The poseidon2 syscall has input address passed on x10 and output address passed on x11,
+        // they can overlap.
+        let implementation = std::iter::once("poseidon2_gl 10, 11;".to_string());
+
+        self.add_syscall(Syscall::Poseidon2GL, implementation);
         self
     }
 
@@ -368,7 +402,7 @@ impl Runtime {
 
     fn with_arith(mut self) -> Self {
         self.add_submachine(
-            "std::machines::arith::Arith",
+            "std::machines::large_field::arith::Arith",
             None,
             "arith",
             vec![],

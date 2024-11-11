@@ -1,8 +1,11 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::fmt::{Debug, Display};
 
 use itertools::Itertools;
 use powdr_ast::analyzed::LookupIdentity;
 use powdr_ast::analyzed::PermutationIdentity;
+use powdr_ast::analyzed::PhantomLookupIdentity;
+use powdr_ast::analyzed::PhantomPermutationIdentity;
 
 use super::block_machine::BlockMachine;
 use super::double_sorted_witness_machine_16::DoubleSortedWitnesses16;
@@ -12,13 +15,11 @@ use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::KnownMachine;
 use crate::witgen::machines::Connection;
-use crate::{
-    witgen::{
-        generator::Generator,
-        machines::{write_once_memory::WriteOnceMemory, MachineParts},
-    },
-    Identity,
+use crate::witgen::{
+    generator::Generator,
+    machines::{write_once_memory::WriteOnceMemory, MachineParts},
 };
+use crate::Identity;
 
 use powdr_ast::analyzed::{
     self, AlgebraicExpression as Expression, PolyID, PolynomialReference, Reference,
@@ -59,20 +60,35 @@ pub fn split_out_machines<'a, T: FieldElement>(
         .collect::<Vec<&analyzed::Expression>>();
 
     let all_witnesses = fixed.witness_cols.keys().collect::<HashSet<_>>();
+    let mut publics = PublicsTracker::default();
     let mut remaining_witnesses = all_witnesses.clone();
     let mut base_identities = identities.clone();
     let mut extracted_prover_functions = HashSet::new();
     let mut id_counter = 0;
-    for id in &identities {
-        // Extract all witness columns in the RHS of the lookup.
-        let lookup_witnesses = match id {
-            Identity::Lookup(LookupIdentity { right, .. })
-            | Identity::Permutation(PermutationIdentity { right, .. }) => {
-                &refs_in_selected_expressions(right) & (&remaining_witnesses)
+
+    let all_connections = identities
+        .iter()
+        .filter_map(|i| Connection::try_from(*i).ok())
+        .collect::<Vec<_>>();
+
+    let mut fixed_lookup_connections = BTreeMap::new();
+
+    for connection in &all_connections {
+        // If the RHS only consists of fixed columns, record the connection and continue.
+        if FixedLookup::is_responsible(connection) {
+            assert!(fixed_lookup_connections
+                .insert(connection.id, *connection)
+                .is_none());
+            if let Some(multiplicity) = connection.multiplicity_column {
+                remaining_witnesses.remove(&multiplicity);
             }
-            _ => Default::default(),
-        };
+            continue;
+        }
+
+        // Extract all witness columns in the RHS of the lookup.
+        let lookup_witnesses = &refs_in_connection_rhs(connection) & (&remaining_witnesses);
         if lookup_witnesses.is_empty() {
+            // Skip connections to machines that were already created or point to FixedLookup.
             continue;
         }
 
@@ -95,23 +111,21 @@ pub fn split_out_machines<'a, T: FieldElement>(
         base_identities = remaining_identities;
         remaining_witnesses = &remaining_witnesses - &machine_witnesses;
 
-        // Identities that call into the current machine
-        let connections = identities
-            .iter()
-            .filter_map(|i| {
-                let id = i.id();
-                // identify potential connecting identities
-                let i = Connection::try_from(*i).ok()?;
+        publics.add_all(machine_identities.as_slice()).unwrap();
 
+        // Connections that call into the current machine
+        let machine_connections = all_connections
+            .iter()
+            .filter_map(|connection| {
                 // check if the identity connects to the current machine
-                refs_in_selected_expressions(i.right)
+                refs_in_connection_rhs(connection)
                     .intersection(&machine_witnesses)
                     .next()
                     .is_some()
-                    .then_some((id, i))
+                    .then_some((connection.id, *connection))
             })
             .collect::<BTreeMap<_, _>>();
-        assert!(connections.contains_key(&id.id()));
+        assert!(machine_connections.contains_key(&connection.id));
 
         let prover_functions = prover_functions
             .iter()
@@ -136,7 +150,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
             machine_identities
                 .iter()
                 .format("\n"),
-            connections
+            machine_connections
                 .values()
                 .map(|id| id.to_string())
                 .format("\n"),
@@ -167,7 +181,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
 
         let machine_parts = MachineParts::new(
             fixed,
-            connections,
+            machine_connections,
             machine_identities,
             machine_witnesses,
             prover_functions.iter().map(|&(_, pf)| pf).collect(),
@@ -175,6 +189,7 @@ pub fn split_out_machines<'a, T: FieldElement>(
 
         machines.push(build_machine(fixed, machine_parts, name_with_type));
     }
+    publics.add_all(base_identities.as_slice()).unwrap();
 
     // Always add a fixed lookup machine.
     // Note that this machine comes last, because some machines do a fixed lookup
@@ -182,13 +197,9 @@ pub fn split_out_machines<'a, T: FieldElement>(
     // TODO: We should also split this up and have several instances instead.
     let fixed_lookup = FixedLookup::new(
         fixed.global_range_constraints().clone(),
-        identities.clone(),
         fixed,
+        fixed_lookup_connections,
     );
-
-    // Prevent the fixed lookup witnesses to overwrite the base witnesses.
-    let fixed_lookup_witnesses = fixed_lookup.witness_columns();
-    remaining_witnesses = &remaining_witnesses - &fixed_lookup_witnesses;
 
     machines.push(KnownMachine::FixedLookup(fixed_lookup));
 
@@ -221,6 +232,40 @@ pub fn split_out_machines<'a, T: FieldElement>(
             remaining_witnesses,
             base_prover_functions,
         ),
+    }
+}
+
+#[derive(Default)]
+/// Keeps track of the global set of publics that are referenced by the machine's identities.
+struct PublicsTracker<'a>(BTreeSet<&'a String>);
+
+impl<'a> PublicsTracker<'a> {
+    /// Given a machine's identities, add all publics that are referenced by them.
+    /// Panics if a public is referenced by more than one machine.
+    fn add_all<T>(
+        &mut self,
+        identities: &[&'a powdr_ast::analyzed::Identity<T>],
+    ) -> Result<(), String> {
+        let referenced_publics = identities
+            .iter()
+            .flat_map(|id| id.all_children())
+            .filter_map(|expr| match expr {
+                Expression::PublicReference(public_name) => Some(public_name),
+                _ => None,
+            })
+            .collect();
+        let intersection = self
+            .0
+            .intersection(&referenced_publics)
+            .collect::<BTreeSet<_>>();
+        if !intersection.is_empty() {
+            let intersection_list = intersection.iter().format(", ");
+            return Err(format!(
+                "Publics are referenced by more than one machine: {intersection_list}",
+            ));
+        }
+        self.0.extend(referenced_publics);
+        Ok(())
     }
 }
 
@@ -291,7 +336,7 @@ fn build_machine<'a, T: FieldElement>(
 /// Extends a set of witnesses to the full set of row-connected witnesses.
 /// Two witnesses are row-connected if they are part of a polynomial identity
 /// or part of the same side of a lookup.
-fn all_row_connected_witnesses<T>(
+fn all_row_connected_witnesses<T: Display + Debug>(
     mut witnesses: HashSet<PolyID>,
     all_witnesses: &HashSet<PolyID>,
     identities: &[&Identity<T>],
@@ -307,12 +352,15 @@ fn all_row_connected_witnesses<T>(
                         witnesses.extend(in_identity);
                     }
                 }
-                Identity::Lookup(LookupIdentity { left, right, .. })
-                | Identity::Permutation(PermutationIdentity { left, right, .. }) => {
+                Identity::Lookup(LookupIdentity { left, .. })
+                | Identity::Permutation(PermutationIdentity { left, .. })
+                | Identity::PhantomLookup(PhantomLookupIdentity { left, .. })
+                | Identity::PhantomPermutation(PhantomPermutationIdentity { left, .. }) => {
                     // If we already have witnesses on the LHS, include the LHS,
                     // and vice-versa, but not across the "sides".
                     let in_lhs = &refs_in_selected_expressions(left) & all_witnesses;
-                    let in_rhs = &refs_in_selected_expressions(right) & all_witnesses;
+                    let in_rhs =
+                        &refs_in_connection_rhs(&Connection::try_from(*i).unwrap()) & all_witnesses;
                     if in_lhs.intersection(&witnesses).next().is_some() {
                         witnesses.extend(in_lhs);
                     } else if in_rhs.intersection(&witnesses).next().is_some() {
@@ -330,6 +378,14 @@ fn all_row_connected_witnesses<T>(
     }
 }
 
+/// Like refs_in_selected_expressions(connection.right), but also includes the multiplicity column.
+fn refs_in_connection_rhs<T>(connection: &Connection<T>) -> HashSet<PolyID> {
+    refs_in_selected_expressions(connection.right)
+        .into_iter()
+        .chain(connection.multiplicity_column)
+        .collect()
+}
+
 /// Extracts all references to names from selected expressions.
 fn refs_in_selected_expressions<T>(sel_expr: &SelectedExpressions<T>) -> HashSet<PolyID> {
     sel_expr
@@ -342,7 +398,9 @@ fn refs_in_selected_expressions<T>(sel_expr: &SelectedExpressions<T>) -> HashSet
 fn refs_in_identity_left<T>(identity: &Identity<T>) -> HashSet<PolyID> {
     match identity {
         Identity::Lookup(LookupIdentity { left, .. })
-        | Identity::Permutation(PermutationIdentity { left, .. }) => {
+        | Identity::PhantomLookup(PhantomLookupIdentity { left, .. })
+        | Identity::Permutation(PermutationIdentity { left, .. })
+        | Identity::PhantomPermutation(PhantomPermutationIdentity { left, .. }) => {
             refs_in_selected_expressions(left)
         }
         Identity::Polynomial(i) => refs_in_expression(&i.expression).collect(),

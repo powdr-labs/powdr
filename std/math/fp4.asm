@@ -159,7 +159,7 @@ mod test {
     use std::check::assert;
     use std::array::map;
 
-    let add = || {
+    let test_add = || {
         let test_add = |a, b, c| assert(eq_ext(add_ext(a, b), c), || "Wrong addition result");
 
         // Test adding 0
@@ -178,7 +178,7 @@ mod test {
         test_add(Fp4::Fp4(-1, 0, 0, 0), Fp4::Fp4(1, 0, 0, 0), from_base(0));
     };
 
-    let sub = || {
+    let test_sub = || {
         let test_sub = |a, b, c| assert(eq_ext(sub_ext(a, b), c), || "Wrong subtraction result");
 
         // Test subtracting 0
@@ -190,7 +190,7 @@ mod test {
         test_sub(Fp4::Fp4(-1, -1, 0, 0), Fp4::Fp4(0x78000000, 1, 0, 0), Fp4::Fp4(-0x78000000 - 1, -2, 0, 0))
     };
 
-    let mul = || {
+    let test_mul = || {
         let test_mul = |a, b, c| assert(eq_ext(mul_ext(a, b), c), || "Wrong multiplication result");
 
         // Test multiplication by 1
@@ -210,7 +210,7 @@ mod test {
         test_mul(Fp4::Fp4(-1, -2, -3, -4), Fp4::Fp4(-3, 4, 4, 5), Fp4::Fp4(-415, -339, -223, -13));
     };
 
-    let square = || {
+    let test_square = || {
         // Tests consistency with mul_ext
         let test_square = |a| assert(eq_ext(mul_ext(a, a), square_ext(a)), || "Wrong squaring result");
 
@@ -222,7 +222,7 @@ mod test {
         test_square(Fp4::Fp4(-1, -2, -3, -4));
     };
 
-    let inverse = || {
+    let test_inverse = || {
         let test_elements = [
             from_base(1),
             Fp4::Fp4(123, 1234, 1, 2),

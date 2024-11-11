@@ -1,6 +1,6 @@
 use indicatif::{ProgressBar, ProgressStyle};
 use itertools::Itertools;
-use powdr_ast::analyzed::DegreeRange;
+use powdr_ast::analyzed::{DegreeRange, LookupIdentity, PhantomLookupIdentity};
 use powdr_ast::indent;
 use powdr_number::{DegreeType, FieldElement};
 use std::cmp::max;
@@ -13,9 +13,8 @@ use crate::witgen::IncompleteCause;
 use crate::Identity;
 
 use super::affine_expression::AlgebraicVariable;
-use super::data_structures::finalizable_data::FinalizableData;
 use super::machines::MachineParts;
-use super::processor::{OuterQuery, Processor};
+use super::processor::{OuterQuery, Processor, SolverState};
 
 use super::rows::{Row, RowIndex, UnknownStrategy};
 use super::{Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCallback};
@@ -77,7 +76,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         row_offset: RowIndex,
         fixed_data: &'a FixedData<'a, T>,
         parts: &'c MachineParts<'a, T>,
-        data: FinalizableData<T>,
+        mutable_data: SolverState<'a, T>,
         mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
     ) -> Self {
         let degree_range = parts.common_degree_range();
@@ -88,7 +87,14 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             .identities
             .iter()
             .partition(|identity| identity.contains_next_ref());
-        let processor = Processor::new(row_offset, data, mutable_state, fixed_data, parts, degree);
+        let processor = Processor::new(
+            row_offset,
+            mutable_data,
+            mutable_state,
+            fixed_data,
+            parts,
+            degree,
+        );
 
         let progress_bar = ProgressBar::new(degree);
         progress_bar.set_style(
@@ -119,7 +125,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         Self { processor, ..self }
     }
 
-    pub fn finish(self) -> (FinalizableData<T>, DegreeType) {
+    /// Returns the updated data, values for publics, and the length of the block.
+    pub fn finish(self) -> (SolverState<'a, T>, DegreeType) {
         (self.processor.finish(), self.degree)
     }
 
@@ -348,10 +355,13 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             .iter_mut()
             .enumerate()
             .filter_map(|(index, (ident, _))| match ident {
-                Identity::Lookup(i) => Some((index, i)),
+                Identity::Lookup(LookupIdentity { left, .. })
+                | Identity::PhantomLookup(PhantomLookupIdentity { left, .. }) => {
+                    Some((index, left))
+                }
                 _ => None,
             })
-            .max_by_key(|(_, ident)| ident.left.expressions.len())
+            .max_by_key(|(_, left)| left.expressions.len())
             .map(|(i, _)| i);
         loop {
             let mut progress = false;
@@ -440,7 +450,13 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
             return Ok(None);
         }
 
-        let is_machine_call = matches!(identity, Identity::Lookup(..) | Identity::Permutation(..));
+        let is_machine_call = matches!(
+            identity,
+            Identity::Lookup(..)
+                | Identity::Permutation(..)
+                | Identity::PhantomLookup(..)
+                | Identity::PhantomPermutation(..)
+        );
         if is_machine_call && unknown_strategy == UnknownStrategy::Zero {
             // The fact that we got to the point where we assume 0 for unknown cells, but this identity
             // is still not complete, means that either the inputs or the machine is under-constrained.

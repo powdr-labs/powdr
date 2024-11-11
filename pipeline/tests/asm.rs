@@ -8,7 +8,8 @@ use powdr_pipeline::{
         asm_string_to_pil, gen_estark_proof_with_backend_variant, make_prepared_pipeline,
         make_simple_prepared_pipeline, regular_test, regular_test_without_small_field,
         resolve_test_file, run_pilcom_with_backend_variant, test_halo2,
-        test_halo2_with_backend_variant, test_pilcom, test_plonky3, BackendVariant,
+        test_halo2_with_backend_variant, test_pilcom, test_plonky3_with_backend_variant,
+        BackendVariant,
     },
     util::{FixedPolySet, PolySet, WitnessPolySet},
     Pipeline,
@@ -38,7 +39,11 @@ fn simple_sum_asm() {
     let f = "asm/simple_sum.asm";
     let i = [16, 4, 1, 2, 8, 5];
     regular_test(f, &i);
-    test_plonky3::<GoldilocksField>(f, slice_to_vec(&i));
+    test_plonky3_with_backend_variant::<GoldilocksField>(
+        f,
+        slice_to_vec(&i),
+        BackendVariant::Monolithic,
+    );
 }
 
 #[test]
@@ -146,6 +151,7 @@ fn block_to_block_with_bus_monolithic() {
     test_halo2_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic);
 }
 
+#[cfg(feature = "halo2")]
 #[test]
 #[should_panic = "called `Result::unwrap()` on an `Err` value: [\"Circuit was not satisfied\"]"]
 fn block_to_block_with_bus_composite() {

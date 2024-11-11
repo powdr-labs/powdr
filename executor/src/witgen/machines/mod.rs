@@ -1,7 +1,9 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Display;
 
-use powdr_ast::analyzed::{self, DegreeRange, PolyID};
+use powdr_ast::analyzed::{
+    self, AlgebraicExpression, DegreeRange, PermutationIdentity, PhantomPermutationIdentity, PolyID,
+};
 
 use powdr_number::DegreeType;
 use powdr_number::FieldElement;
@@ -151,13 +153,18 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 /// A connection is a witness generation directive to propagate rows across machines
 pub struct Connection<'a, T> {
+    pub id: u64,
     pub left: &'a analyzed::SelectedExpressions<T>,
     pub right: &'a analyzed::SelectedExpressions<T>,
     /// For [ConnectionKind::Permutation], rows of `left` are a permutation of rows of `right`. For [ConnectionKind::Lookup], all rows in `left` are in `right`.
     pub kind: ConnectionKind,
+    /// If the connection comes from a phantom lookup, this is the multiplicity column.
+    /// For each row of `right` it counts how often that row occurs in `left`.
+    /// Note that multiple connections can share the same multiplicity column.
+    pub multiplicity_column: Option<PolyID>,
 }
 
 impl<'a, T: Display> Display for Connection<'a, T> {
@@ -176,27 +183,50 @@ impl<'a, T> Connection<'a, T> {
     }
 }
 
-impl<'a, T> TryFrom<&'a Identity<T>> for Connection<'a, T> {
+impl<'a, T: Display> TryFrom<&'a Identity<T>> for Connection<'a, T> {
     type Error = &'a Identity<T>;
 
+    /// Creates a connection if the identity is a (phantom) lookup or permutation.
     fn try_from(identity: &'a Identity<T>) -> Result<Self, Self::Error> {
         match identity {
             Identity::Lookup(i) => Ok(Connection {
+                id: i.id,
                 left: &i.left,
                 right: &i.right,
                 kind: ConnectionKind::Lookup,
+                multiplicity_column: None,
             }),
-            Identity::Permutation(i) => Ok(Connection {
+            Identity::PhantomLookup(i) => Ok(Connection {
+                id: i.id,
                 left: &i.left,
                 right: &i.right,
+                kind: ConnectionKind::Lookup,
+                multiplicity_column: Some(match &i.multiplicity {
+                    AlgebraicExpression::Reference(reference) => reference.poly_id,
+                    _ => unimplemented!(
+                        "Only simple references are supported, got: {}",
+                        i.multiplicity
+                    ),
+                }),
+            }),
+            Identity::Permutation(PermutationIdentity {
+                id, left, right, ..
+            })
+            | Identity::PhantomPermutation(PhantomPermutationIdentity {
+                id, left, right, ..
+            }) => Ok(Connection {
+                id: *id,
+                left,
+                right,
                 kind: ConnectionKind::Permutation,
+                multiplicity_column: None,
             }),
             _ => Err(identity),
         }
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum ConnectionKind {
     Lookup,
     Permutation,

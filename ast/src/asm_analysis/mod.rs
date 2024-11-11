@@ -856,6 +856,7 @@ pub enum StatementReference {
 #[derive(Default, Clone, Debug)]
 pub struct Module {
     machines: BTreeMap<String, Machine>,
+    /// Module-level PIL statements.
     statements: Vec<PilStatement>,
     ordering: Vec<StatementReference>,
 }

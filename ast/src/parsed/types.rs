@@ -416,6 +416,12 @@ impl<R: Display> From<FunctionType<Expression<R>>> for FunctionType<u64> {
     }
 }
 
+impl From<FunctionType> for Type {
+    fn from(value: FunctionType) -> Self {
+        Type::Function(value)
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct TypeScheme<E = u64> {
     /// Type variables and their trait bounds.

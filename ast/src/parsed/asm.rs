@@ -232,7 +232,7 @@ impl Display for SymbolPath {
 /// An absolute symbol path is a resolved SymbolPath,
 /// which means it has to start with `::` and it cannot contain
 /// the word `super`.
-#[derive(Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord)]
+#[derive(Default, Debug, PartialEq, Eq, Clone, PartialOrd, Ord, Hash)]
 pub struct AbsoluteSymbolPath {
     /// Contains the parts after the initial `::`.
     parts: Vec<String>,
@@ -753,9 +753,20 @@ pub enum RegisterFlag {
 
 #[derive(Debug, Default, PartialEq, Eq, PartialOrd, Ord, Clone)]
 pub struct Param {
+    pub source: SourceRef,
     pub name: String,
     pub index: Option<BigUint>,
     pub ty: Option<SymbolPath>,
+}
+
+impl SourceReference for Param {
+    fn source_reference(&self) -> &SourceRef {
+        &self.source
+    }
+
+    fn source_reference_mut(&mut self) -> &mut SourceRef {
+        &mut self.source
+    }
 }
 
 #[cfg(test)]

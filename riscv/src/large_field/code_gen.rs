@@ -194,7 +194,14 @@ fn riscv_machine(
     format!(
         r#"
 {}
-machine Main with min_degree: {}, max_degree: {} {{
+
+let MIN_DEGREE_LOG: int = {};
+let MIN_DEGREE: int = 2**MIN_DEGREE_LOG;
+let MAX_DEGREE_LOG: int = {};
+let MAIN_MAX_DEGREE: int = 2**MAX_DEGREE_LOG;
+let LARGE_SUBMACHINES_MAX_DEGREE: int = 2**(MAX_DEGREE_LOG + 2);
+
+machine Main with min_degree: MIN_DEGREE, max_degree: {} {{
 {}
 
 {}
@@ -209,15 +216,12 @@ let initial_memory: (fe, fe)[] = [
 }}    
 "#,
         runtime.submachines_import(),
-        1 << (options
-            .min_degree_log
-            .unwrap_or(powdr_linker::MIN_DEGREE_LOG as u8)),
-        // We expect some machines (e.g. register memory) to use up to 4x the number
-        // of rows as main. By setting the max degree of main to be smaller by a factor
-        // of 4, we ensure that we don't run out of rows in those machines.
-        1 << options
-            .max_degree_log
-            .unwrap_or(*powdr_linker::MAX_DEGREE_LOG as u8 - 2),
+        options.min_degree_log,
+        options.max_degree_log,
+        // We're passing this as well because continuations requires
+        // Main's max_degree to be a constant.
+        // We should fix that in the continuations code and remove this.
+        1 << options.max_degree_log,
         runtime.submachines_declare(),
         preamble,
         initial_memory
@@ -274,7 +278,7 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
         + &memory(with_bootloader)
         + r#"
     // =============== Register memory =======================
-"# + "std::machines::large_field::memory::Memory regs(byte2);"
+"# + "std::machines::large_field::memory::Memory regs(byte2, MIN_DEGREE, LARGE_SUBMACHINES_MAX_DEGREE);"
         + r#"
     // Get the value in register Y.
     instr get_reg Y -> X link ~> X = regs.mload(Y, STEP);
@@ -291,6 +295,13 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
     col witness tmp2_col;
     col witness tmp3_col;
     col witness tmp4_col;
+
+    // ================ Publics ==================
+    std::machines::write_once_memory_with_8_publics::WriteOnceMemoryWith8Publics publics;
+    instr commit_public X, Y link => publics.access(tmp1_col, tmp2_col)
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link ~> tmp2_col = regs.mload(Y, STEP);
+    // ===========================================
 
     // We need to add these inline instead of using std::utils::is_zero
     // because when XX is not constrained, witgen will try to set XX,
@@ -319,8 +330,13 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
     
     // Jump to the address in register X and store the return program counter in register W.
     instr jump_dyn X, W
-        link ~> pc' = regs.mload(X, STEP)
-        link ~> regs.mstore(W, STEP, pc + 1);
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link ~> regs.mstore(W, STEP, pc + 1)
+    {
+        // TODO: using a tmp col here avoids an extra selector column, because
+        // links with next references on LHS can't currently be merged with other links
+        pc' = tmp1_col
+    }
 
     // Jump to `l` if val(X) - val(Y) is nonzero, where X and Y are register ids.
     instr branch_if_diff_nonzero X, Y, l: label
@@ -595,7 +611,7 @@ fn mul_instruction(field: KnownField, runtime: &Runtime) -> &'static str {
 fn memory(with_bootloader: bool) -> String {
     let memory_machine = if with_bootloader {
         r#"
-    std::machines::large_field::memory_with_bootloader_write::MemoryWithBootloaderWrite memory(byte2);
+    std::machines::large_field::memory_with_bootloader_write::MemoryWithBootloaderWrite memory(byte2, MIN_DEGREE, MAIN_MAX_DEGREE);
 
     // Stores val(W) at address (V = val(X) - val(Z) + Y) % 2**32.
     // V can be between 0 and 2**33.
@@ -610,7 +626,7 @@ fn memory(with_bootloader: bool) -> String {
 "#
     } else {
         r#"
-    std::machines::large_field::memory::Memory memory(byte2);
+    std::machines::large_field::memory::Memory memory(byte2, MIN_DEGREE, MAIN_MAX_DEGREE);
 "#
     };
 

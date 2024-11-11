@@ -30,12 +30,8 @@ pub fn test_continuations(case: &str) {
     );
 
     // Test continuations from ELF file.
-    let powdr_asm = powdr_riscv::elf::translate(
-        &executable,
-        CompilerOptions::new_gl()
-            .with_poseidon()
-            .with_continuations(),
-    );
+    let powdr_asm =
+        powdr_riscv::elf::translate(&executable, CompilerOptions::new_gl().with_continuations());
     run_continuations_test(case, powdr_asm);
 }
 
@@ -55,6 +51,11 @@ fn run_continuations_test(case: &str, powdr_asm: String) {
     let bootloader_inputs = rust_continuations_dry_run(&mut pipeline, Default::default());
     rust_continuations(&mut pipeline, pipeline_callback, bootloader_inputs).unwrap();
 }
+
+/*
+
+The RISCV GL machine cannot be used for BN anymore.
+Uncomment if we ever write proper support for RISCV BN.
 
 #[test]
 #[ignore = "Too slow"]
@@ -82,18 +83,17 @@ fn bn254_sanity_check() {
         .from_asm_string(from_elf, Some(PathBuf::from(file_name)));
 
     let analyzed = pipeline.compute_analyzed_asm().unwrap().clone();
-    powdr_riscv_executor::execute_ast(
+    powdr_riscv_executor::execute_fast(
         &analyzed,
         Default::default(),
         pipeline.data_callback().unwrap(),
         // Assume the RISC-V program was compiled without a bootloader, otherwise this will fail.
         &[],
-        usize::MAX,
-        powdr_riscv_executor::ExecMode::Fast,
         Default::default(),
     );
     run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).unwrap();
 }
+*/
 
 #[test]
 #[ignore = "Too slow"]
@@ -120,7 +120,15 @@ fn zero_with_values() {
 #[ignore = "Too slow"]
 fn runtime_poseidon_gl() {
     let case = "poseidon_gl_via_coprocessor";
-    let options = CompilerOptions::new_gl().with_poseidon();
+    let options = CompilerOptions::new_gl();
+    verify_riscv_crate_gl_with_options(case, Default::default(), options);
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn runtime_poseidon2_gl() {
+    let case = "poseidon2_gl_via_coprocessor";
+    let options = CompilerOptions::new_gl().with_poseidon2();
     verify_riscv_crate_gl_with_options(case, Default::default(), options);
 }
 
@@ -444,12 +452,8 @@ fn many_chunks_dry() {
         &temp_dir,
         None,
     );
-    let powdr_asm = powdr_riscv::elf::translate(
-        &executable,
-        CompilerOptions::new_gl()
-            .with_poseidon()
-            .with_continuations(),
-    );
+    let powdr_asm =
+        powdr_riscv::elf::translate(&executable, CompilerOptions::new_gl().with_continuations());
 
     let mut pipeline = Pipeline::default()
         .from_asm_string(powdr_asm, Some(PathBuf::from(case)))
@@ -604,13 +608,11 @@ fn profiler_sanity_check() {
         flamegraph: true,
         callgrind: true,
     };
-    powdr_riscv_executor::execute_ast(
+    powdr_riscv_executor::execute_fast(
         &analyzed,
         Default::default(),
         pipeline.data_callback().unwrap(),
         &[],
-        usize::MAX,
-        powdr_riscv_executor::ExecMode::Fast,
         Some(profiler_opt),
     );
 
