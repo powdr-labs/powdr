@@ -27,6 +27,7 @@ use self::machines::profiling::{record_end, record_start, reset_and_print_profil
 use self::machines::Machine;
 
 mod affine_expression;
+pub(crate) mod analysis;
 mod block_processor;
 mod data_structures;
 mod eval_result;

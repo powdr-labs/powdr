@@ -18,7 +18,7 @@ use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{EvalError, EvalValue, IncompleteCause, MutableState, QueryCallback};
 use crate::witgen::{EvalResult, FixedData};
 
-use super::{Connection, Machine};
+use super::{Connection, LookupCell, Machine};
 
 /// An Application specifies a lookup cache.
 #[derive(Hash, Eq, PartialEq, Ord, PartialOrd, Clone)]
@@ -197,8 +197,9 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         }
     }
 
-    fn process_plookup_internal(
+    fn process_plookup_internal<'b, Q: QueryCallback<T>>(
         &mut self,
+        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         identity_id: u64,
         rows: &RowPair<'_, '_, T>,
         left: &[AffineExpression<AlgebraicVariable<'a>, T>],
@@ -217,62 +218,42 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         }
 
         // Split the left-hand-side into known input values and unknown output expressions.
-        let mut input_values = vec![];
-        let mut known_inputs: BitVec = Default::default();
-        let mut output_expressions = vec![];
+        let mut data = vec![T::zero(); left.len()];
+        let values = left
+            .iter()
+            .zip(&mut data)
+            .map(|(l, d)| {
+                if let Some(value) = l.constant_value() {
+                    *d = value;
+                    LookupCell::Input(d)
+                } else {
+                    LookupCell::Output(d)
+                }
+            })
+            .collect::<Vec<_>>();
 
-        for l in left {
-            if let Some(value) = l.constant_value() {
-                input_values.push(value);
-                known_inputs.push(true);
-            } else {
-                output_expressions.push(l);
-                known_inputs.push(false);
-            }
-        }
-
-        let application = Application {
-            identity_id,
-            inputs: known_inputs,
-        };
-
-        let index = self
-            .indices
-            .entry(application)
-            .or_insert_with_key(|application| {
-                create_index(self.fixed_data, application, &self.connections)
-            });
-        let index_value = index.get(&input_values).ok_or_else(|| {
-            let input_assignment = left
-                .iter()
-                .zip(right)
-                .filter_map(|(l, r)| l.constant_value().map(|v| (r.name.clone(), v)))
-                .collect();
-            EvalError::FixedLookupFailed(input_assignment)
-        })?;
-
-        let Some((row, output)) = index_value.get() else {
+        if !self.process_lookup_direct(mutable_state, identity_id, values)? {
             // multiple matches, we stop and learnt nothing
             return Ok(EvalValue::incomplete(
                 IncompleteCause::MultipleLookupMatches,
             ));
         };
 
-        self.multiplicity_counter.increment_at_row(identity_id, row);
-
         let mut result = EvalValue::complete(vec![]);
-        for (l, r) in output_expressions.into_iter().zip(output) {
-            let evaluated = l.clone() - (*r).into();
-            // TODO we could use bit constraints here
-            match evaluated.solve() {
-                Ok(constraints) => {
-                    result.combine(constraints);
-                }
-                Err(_) => {
-                    // Fail the whole lookup
-                    return Err(EvalError::ConstraintUnsatisfiable(format!(
-                        "Constraint is invalid ({l} != {r}).",
-                    )));
+        for (l, v) in left.iter().zip(data) {
+            if !l.is_constant() {
+                let evaluated = l.clone() - v.into();
+                // TODO we could use bit constraints here
+                match evaluated.solve() {
+                    Ok(constraints) => {
+                        result.combine(constraints);
+                    }
+                    Err(_) => {
+                        // Fail the whole lookup
+                        return Err(EvalError::ConstraintUnsatisfiable(format!(
+                            "Constraint is invalid ({l} != {v}).",
+                        )));
+                    }
                 }
             }
         }
@@ -347,7 +328,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
 
     fn process_plookup<'b, Q: crate::witgen::QueryCallback<T>>(
         &mut self,
-        _mutable_state: &'b mut crate::witgen::MutableState<'a, 'b, T, Q>,
+        mutable_state: &'b mut crate::witgen::MutableState<'a, 'b, T, Q>,
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
@@ -362,7 +343,79 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
             .peekable();
 
         let outer_query = OuterQuery::new(caller_rows, identity);
-        self.process_plookup_internal(identity_id, caller_rows, &outer_query.left, right)
+        self.process_plookup_internal(
+            mutable_state,
+            identity_id,
+            caller_rows,
+            &outer_query.left,
+            right,
+        )
+    }
+
+    fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
+        &mut self,
+        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        identity_id: u64,
+        values: Vec<LookupCell<'c, T>>,
+    ) -> Result<bool, EvalError<T>> {
+        let mut input_values = vec![];
+
+        let known_inputs = values
+            .iter()
+            .map(|v| match v {
+                LookupCell::Input(value) => {
+                    input_values.push(**value);
+                    true
+                }
+                LookupCell::Output(_) => false,
+            })
+            .collect();
+
+        let application = Application {
+            identity_id,
+            inputs: known_inputs,
+        };
+
+        let index = self
+            .indices
+            .entry(application)
+            .or_insert_with_key(|application| {
+                create_index(self.fixed_data, application, &self.connections)
+            });
+        let index_value = index.get(&input_values).ok_or_else(|| {
+            let right = self.connections[&identity_id].right;
+            let input_assignment = values
+                .iter()
+                .zip(&right.expressions)
+                .filter_map(|(l, r)| match l {
+                    LookupCell::Input(v) => {
+                        let name = try_to_simple_poly(r).unwrap().name.clone();
+                        Some((name, **v))
+                    }
+                    _ => None,
+                })
+                .collect();
+            EvalError::FixedLookupFailed(input_assignment)
+        })?;
+
+        let Some((row, output)) = index_value.get() else {
+            // multiple matches, we stop and learnt nothing
+            return Ok(false);
+        };
+
+        self.multiplicity_counter.increment_at_row(identity_id, row);
+
+        values
+            .into_iter()
+            .filter_map(|v| match v {
+                LookupCell::Output(e) => Some(e),
+                _ => None,
+            })
+            .zip(output)
+            .for_each(|(e, v)| {
+                *e = *v;
+            });
+        Ok(true)
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
