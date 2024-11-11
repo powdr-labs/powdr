@@ -1,5 +1,4 @@
 use powdr_ast::analyzed::Analyzed;
-use powdr_executor::witgen::WitgenCallback;
 use std::io;
 use std::sync::Arc;
 

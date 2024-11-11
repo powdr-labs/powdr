@@ -5,6 +5,7 @@ use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, Analyzed,
 };
 use powdr_number::FieldElement;
+use powdr_ast::analyzed::Identity;
 use std::sync::Arc;
 
 use powdr_ast::analyzed::{PolyID, PolynomialIdentity, PolynomialType};
@@ -15,6 +16,7 @@ use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::ColumnVec;
+
 
 pub type PowdrComponent<'a, F> = FrameworkComponent<PowdrEval<F>>;
 
@@ -36,6 +38,7 @@ pub(crate) fn gen_stwo_circuit_trace<'a, T: FieldElement>(
             })
             .collect(),
     );
+    println!("This is the witness {:?}", witness);
     let domain = CanonicCoset::new(analyzed.degree().ilog2()).circle_domain();
     element
         .map(|elements| {
@@ -92,12 +95,22 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
             .filter_map(|id| id.try_into().ok())
             .collect::<Vec<_>>();
 
-        if !polynomial_identities.is_empty() {
+        
             polynomial_identities.iter().for_each(|id| {
                 let expr =
                     to_stwo_expression(&self.witness_columns, &id.expression, &witness_eval, &eval);
                 eval.add_constraint(expr);
-            })
+            });
+        
+
+        for id in self.analyzed.identities_with_inlined_intermediate_polynomials() {
+            match id {
+                // Already handled above
+                Identity::Polynomial(..) => {}
+                Identity::Connect(..) => unimplemented!(),
+                Identity::Lookup(..) => unimplemented!(),
+                Identity::Permutation(..) =>unimplemented!(),
+            }
         }
         eval
     }
@@ -109,6 +122,7 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
     witness_eval: &Vec<[<E as EvalAtRow>::F; 2]>,
     _eval: &E,
 ) -> E::F {
+     println!("\n This is the expression in the beginning of to stwo expression {:?} \n", expr);
     match expr {
         AlgebraicExpression::Number(_n) => E::F::one(),
         AlgebraicExpression::Reference(polyref) => {
