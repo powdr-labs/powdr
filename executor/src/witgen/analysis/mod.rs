@@ -15,6 +15,9 @@ use super::{
     FixedData,
 };
 
+/// Analyses a set of connections (assumed to go into the same machine) and tries to infer the
+/// and block size.
+/// On success, return the connection kind, block size and latch row.
 pub fn detect_connection_type_and_block_size<'a, T: FieldElement>(
     fixed_data: &'a FixedData<'a, T>,
     connections: &BTreeMap<u64, Connection<'a, T>>,
