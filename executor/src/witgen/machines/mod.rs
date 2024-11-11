@@ -2,7 +2,9 @@ use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Display;
 
 use block_machine_jit::BlockMachineJIT;
-use powdr_ast::analyzed::{self, DegreeRange, PolyID};
+use powdr_ast::analyzed::{
+    self, AlgebraicExpression, DegreeRange, PermutationIdentity, PhantomPermutationIdentity, PolyID,
+};
 
 use powdr_number::DegreeType;
 use powdr_number::FieldElement;
@@ -19,7 +21,7 @@ use self::write_once_memory::WriteOnceMemory;
 
 use super::generator::Generator;
 use super::rows::RowPair;
-use super::{EvalResult, FixedData, MutableState, QueryCallback};
+use super::{EvalError, EvalResult, FixedData, MutableState, QueryCallback};
 
 mod block_machine;
 mod block_machine_jit;
@@ -60,6 +62,25 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T>;
 
+    /// Process a connection of a given ID (which must be known to the callee).
+    /// This is a more direct version of `process_plookup`, where the caller
+    /// provides values or targets to where to write the results directly.
+    /// The length of `values` needs to be the same as the number of expressions
+    /// in the LHS / RHS of the connection.
+    /// It does not allow to return range constraints or complex expressions.
+    /// The boolean return value indicates whether the lookup was successful.
+    /// If it returns true, all output values in `values` need to have been set.
+    /// If it returns false, none of them should be changed.
+    /// An error is always unrecoverable.
+    fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
+        &mut self,
+        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        _identity_id: u64,
+        _values: Vec<LookupCell<'c, T>>,
+    ) -> Result<bool, EvalError<T>> {
+        unimplemented!("Direct lookup is not supported for this machine.");
+    }
+
     /// Returns the final values of the witness columns.
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
@@ -68,6 +89,13 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
 
     /// Returns the identity IDs of the connecting identities that this machine is responsible for.
     fn identity_ids(&self) -> Vec<u64>;
+}
+
+pub enum LookupCell<'a, T> {
+    /// Value is known (i.e. an input)
+    Input(&'a T),
+    /// Value is not known (i.e. an output)
+    Output(&'a mut T),
 }
 
 /// All known implementations of [Machine].
@@ -160,13 +188,18 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 /// A connection is a witness generation directive to propagate rows across machines
 pub struct Connection<'a, T> {
+    pub id: u64,
     pub left: &'a analyzed::SelectedExpressions<T>,
     pub right: &'a analyzed::SelectedExpressions<T>,
     /// For [ConnectionKind::Permutation], rows of `left` are a permutation of rows of `right`. For [ConnectionKind::Lookup], all rows in `left` are in `right`.
     pub kind: ConnectionKind,
+    /// If the connection comes from a phantom lookup, this is the multiplicity column.
+    /// For each row of `right` it counts how often that row occurs in `left`.
+    /// Note that multiple connections can share the same multiplicity column.
+    pub multiplicity_column: Option<PolyID>,
 }
 
 impl<'a, T: Display> Display for Connection<'a, T> {
@@ -185,37 +218,50 @@ impl<'a, T> Connection<'a, T> {
     }
 }
 
-impl<'a, T> TryFrom<&'a Identity<T>> for Connection<'a, T> {
+impl<'a, T: Display> TryFrom<&'a Identity<T>> for Connection<'a, T> {
     type Error = &'a Identity<T>;
 
+    /// Creates a connection if the identity is a (phantom) lookup or permutation.
     fn try_from(identity: &'a Identity<T>) -> Result<Self, Self::Error> {
         match identity {
             Identity::Lookup(i) => Ok(Connection {
+                id: i.id,
                 left: &i.left,
                 right: &i.right,
                 kind: ConnectionKind::Lookup,
+                multiplicity_column: None,
             }),
             Identity::PhantomLookup(i) => Ok(Connection {
+                id: i.id,
                 left: &i.left,
                 right: &i.right,
                 kind: ConnectionKind::Lookup,
+                multiplicity_column: Some(match &i.multiplicity {
+                    AlgebraicExpression::Reference(reference) => reference.poly_id,
+                    _ => unimplemented!(
+                        "Only simple references are supported, got: {}",
+                        i.multiplicity
+                    ),
+                }),
             }),
-            Identity::Permutation(i) => Ok(Connection {
-                left: &i.left,
-                right: &i.right,
+            Identity::Permutation(PermutationIdentity {
+                id, left, right, ..
+            })
+            | Identity::PhantomPermutation(PhantomPermutationIdentity {
+                id, left, right, ..
+            }) => Ok(Connection {
+                id: *id,
+                left,
+                right,
                 kind: ConnectionKind::Permutation,
-            }),
-            Identity::PhantomPermutation(i) => Ok(Connection {
-                left: &i.left,
-                right: &i.right,
-                kind: ConnectionKind::Permutation,
+                multiplicity_column: None,
             }),
             _ => Err(identity),
         }
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum ConnectionKind {
     Lookup,
     Permutation,

@@ -9,6 +9,7 @@ use crate::witgen::EvalValue;
 
 use super::affine_expression::AlgebraicVariable;
 use super::block_processor::BlockProcessor;
+use super::data_structures::multiplicity_counter::MultiplicityCounter;
 use super::machines::{Machine, MachineParts};
 use super::processor::SolverState;
 use super::rows::{Row, RowIndex, RowPair};
@@ -29,6 +30,7 @@ pub struct Generator<'a, T: FieldElement> {
     latch: Option<Expression<T>>,
     name: String,
     degree: DegreeType,
+    multiplicity_counter: MultiplicityCounter,
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
@@ -74,6 +76,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
             self.data.extend(updated_data.block);
             self.publics.extend(updated_data.publics);
 
+            let latch_row = self.data.len() - 1;
+            self.multiplicity_counter
+                .increment_at_row(identity_id, latch_row);
+
             eval_value.report_side_effect()
         } else {
             log::trace!("End processing VM '{}' (incomplete)", self.name());
@@ -93,7 +99,12 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
 
         self.data
             .take_transposed()
-            .map(|(id, (values, _))| (self.fixed_data.column_name(&id).to_string(), values))
+            .map(|(id, (values, _))| (id, values))
+            .chain(
+                self.multiplicity_counter
+                    .generate_columns_single_size(self.degree),
+            )
+            .map(|(id, values)| (self.fixed_data.column_name(&id).to_string(), values))
             .collect()
     }
 }
@@ -106,6 +117,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         latch: Option<Expression<T>>,
     ) -> Self {
         let data = FinalizableData::new(&parts.witnesses);
+        let multiplicity_counter = MultiplicityCounter::new(&parts.connections);
 
         Self {
             degree: parts.common_degree_range().max,
@@ -115,6 +127,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             data,
             publics: Default::default(),
             latch,
+            multiplicity_counter,
         }
     }
 

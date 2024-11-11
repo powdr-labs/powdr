@@ -6,3 +6,4 @@ mod range;
 mod hash;
 mod split;
 mod write_once_memory;
+mod write_once_memory_with_8_publics;
