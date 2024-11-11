@@ -1,10 +1,8 @@
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
-use std::iter::{self, once};
+use std::iter::{self};
 
-use super::{
-    compute_size_and_log, Connection, ConnectionKind, EvalResult, FixedData, MachineParts,
-};
+use super::{compute_size_and_log, ConnectionKind, EvalResult, FixedData, MachineParts};
 
 use crate::witgen::affine_expression::AlgebraicVariable;
 use crate::witgen::analysis::detect_connection_type_and_block_size;
@@ -19,9 +17,7 @@ use crate::witgen::sequence_iterator::{
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause};
 use crate::witgen::{MutableState, QueryCallback};
-use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicExpression as Expression, DegreeRange, PolyID, PolynomialType};
-use powdr_ast::parsed::visitor::ExpressionVisitable;
+use powdr_ast::analyzed::{DegreeRange, PolyID, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
 enum ProcessResult<'a, T: FieldElement> {
