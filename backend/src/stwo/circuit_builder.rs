@@ -117,11 +117,21 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
             match id {
                 // Already handled above
                 Identity::Polynomial(..) => {}
-                Identity::Connect(..) => unimplemented!(),
-                Identity::Lookup(..) => unimplemented!(),
-                Identity::Permutation(..) => unimplemented!(),
-                Identity::PhantomPermutation(..) => unimplemented!(),
-                Identity::PhantomLookup(..) => unimplemented!(),
+                Identity::Connect(..) => {
+                    unimplemented!("Connect is not implemented in this stwo yet")
+                }
+                Identity::Lookup(..) => {
+                    unimplemented!("Lookup is not implemented in this stwo yet")
+                }
+                Identity::Permutation(..) => {
+                    unimplemented!("Permutation is not implemented in this stwo yet")
+                }
+                Identity::PhantomPermutation(..) => {
+                    unimplemented!("PhantomPermutation is not implemented in this stwo yet")
+                }
+                Identity::PhantomLookup(..) => {
+                    unimplemented!("PhantomLookup is not implemented in this stwo yet")
+                }
             }
         }
         eval
