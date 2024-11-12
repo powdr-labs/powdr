@@ -67,3 +67,12 @@ serde = { version = "1.0", default-features = false, features = [
   "alloc",
 ] }
 
+[target.'cfg(all(target_os = "zkvm", target_arch = "riscv32"))'.dependencies]
+powdr-riscv-runtime = { path = "../riscv-runtime", features = [
+  "std",
+  "getrandom",
+  "allow_fake_rand",
+] }
+indexmap = { version = "1.9.3", features = [
+  "std",
+] }
