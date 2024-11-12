@@ -6,9 +6,12 @@ use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, Analyzed,
 };
 use powdr_number::FieldElement;
+use powdr_number::LargeInt;
 use std::sync::Arc;
 
-use powdr_ast::analyzed::{PolyID, PolynomialIdentity, PolynomialType};
+use powdr_ast::analyzed::{
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolyID, PolynomialIdentity, PolynomialType,
+};
 use stwo_prover::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 use stwo_prover::core::backend::Col;
 use stwo_prover::core::backend::ColumnOps;
@@ -131,52 +134,67 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
     witness_eval: &Vec<[<E as EvalAtRow>::F; 2]>,
     _eval: &E,
 ) -> E::F {
+    use AlgebraicBinaryOperator::*;
     match expr {
-        AlgebraicExpression::Number(_n) => E::F::one(),
-        AlgebraicExpression::Reference(polyref) => {
-            let poly_id = polyref.poly_id;
-            match polyref.next {
-                false => {
-                    let index = witness_columns[&poly_id];
-                    witness_eval[index][0]
+        AlgebraicExpression::Reference(r) => {
+            let poly_id = r.poly_id;
+
+            match poly_id.ptype {
+                PolynomialType::Committed => match r.next {
+                    false => {
+                        let index = witness_columns[&poly_id];
+                        witness_eval[index][0]
+                    }
+                    true => {
+                        let index = witness_columns[&poly_id];
+                        witness_eval[index][1]
+                    }
+                },
+                PolynomialType::Constant => {
+                    unimplemented!("Constant polynomials are not supported in this stwo yet")
                 }
-                true => {
-                    let index = witness_columns[&poly_id];
-                    witness_eval[index][1]
+                PolynomialType::Intermediate => {
+                    unimplemented!("Intermediate polynomials are not supported in this stwo yet")
                 }
             }
         }
+        AlgebraicExpression::PublicReference(..) => {
+            unimplemented!("Public references are not supported in this stwo yet")
+        }
+        AlgebraicExpression::Number(n) => E::F::from(M31::from(n.try_into_i32().unwrap())),
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
-            left: lhe,
-            op,
-            right: powdr_rhe,
-        }) => {
-            let lhe = to_stwo_expression(witness_columns, lhe, witness_eval, _eval);
-            let rhe = to_stwo_expression(witness_columns, powdr_rhe, witness_eval, _eval);
+            left,
+            op: Pow,
+            right,
+        }) => match **right {
+            AlgebraicExpression::Number(n) => {
+                let left = to_stwo_expression(witness_columns, left, witness_eval, _eval);
+                (0u32..n.to_integer().try_into_u32().unwrap())
+                    .fold(E::F::one(), |acc, _| acc * left)
+            }
+            _ => unimplemented!("pow with non-constant exponent"),
+        },
+        AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
+            let left = to_stwo_expression(witness_columns, left, witness_eval, _eval);
+            let right = to_stwo_expression(witness_columns, right, witness_eval, _eval);
+
             match op {
-                AlgebraicBinaryOperator::Add => lhe + rhe,
-                AlgebraicBinaryOperator::Sub => lhe - rhe,
-                AlgebraicBinaryOperator::Mul => lhe * rhe,
-                AlgebraicBinaryOperator::Pow => {
-                    let AlgebraicExpression::Number(e) = powdr_rhe.as_ref() else {
-                        panic!("Expected number in exponent.")
-                    };
-                    let e: u32 = e
-                        .to_arbitrary_integer()
-                        .try_into()
-                        .unwrap_or_else(|_| panic!("Exponent has to fit 32 bits."));
-                    if e == 0 {
-                        //Expression::Constant(F::from(1))
-                        unimplemented!()
-                    } else {
-                        (0..e).fold(lhe, |acc, _| acc * lhe)
-                    }
-                }
+                Add => left + right,
+                Sub => left - right,
+                Mul => left * right,
+                Pow => unreachable!("This case was handled above"),
+            }
+        }
+        AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
+            let expr: <E as EvalAtRow>::F =
+                to_stwo_expression(witness_columns, expr, witness_eval, _eval);
+
+            match op {
+                AlgebraicUnaryOperator::Minus => -expr,
             }
         }
         AlgebraicExpression::Challenge(_challenge) => {
             unimplemented!("challenges are not supported in this stwo yet")
         }
-        _ => unimplemented!("{:?}", expr),
     }
 }
