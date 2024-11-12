@@ -545,7 +545,6 @@ pub fn run_reparse_test_with_blacklist(file: &str, blacklist: &[&str]) {
 use powdr_number::Mersenne31Field;
 #[cfg(feature = "stwo")]
 pub fn test_stwo(file_name: &str, inputs: Vec<Mersenne31Field>) {
-
     let backend = powdr_backend::BackendType::Stwo;
 
     let mut pipeline = Pipeline::default()
