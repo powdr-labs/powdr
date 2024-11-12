@@ -1,6 +1,12 @@
+#[cfg(not(all(target_os = "zkvm", target_arch = "riscv32")))]
 mod software_impl;
-
+#[cfg(not(all(target_os = "zkvm", target_arch = "riscv32")))]
 pub use software_impl::*;
+
+#[cfg(all(target_os = "zkvm", target_arch = "riscv32"))]
+mod powdr_accel_impl;
+#[cfg(all(target_os = "zkvm", target_arch = "riscv32"))]
+pub use powdr_accel_impl::*;
 
 use lazy_static::lazy_static;
 use p3_goldilocks::Goldilocks;
