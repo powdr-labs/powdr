@@ -6,7 +6,9 @@ use std::num::NonZeroUsize;
 use std::str::FromStr;
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicReference, PolyID, PolynomialType};
+use powdr_ast::analyzed::{
+    AlgebraicReference, LookupIdentity, PhantomLookupIdentity, PolyID, PolynomialType,
+};
 use powdr_ast::parsed::asm::SymbolPath;
 use powdr_number::{DegreeType, FieldElement};
 
@@ -172,7 +174,7 @@ impl<T: FieldElement> IndexedColumns<T> {
     }
 }
 
-const MULTIPLICITY_LOOKUP_COLUMN: &str = "m_logup_multiplicity";
+const MULTIPLICITY_LOOKUP_COLUMN: &str = "multiplicities";
 
 /// Machine to perform a lookup in fixed columns only.
 pub struct FixedLookup<'a, T: FieldElement> {
@@ -199,18 +201,23 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         let connections = all_identities
             .into_iter()
             .filter_map(|i| match i {
-                Identity::Lookup(i) => (i.right.selector.is_one()
-                    && i.right.expressions.iter().all(|e| {
+                Identity::Lookup(LookupIdentity {
+                    id, left, right, ..
+                })
+                | Identity::PhantomLookup(PhantomLookupIdentity {
+                    id, left, right, ..
+                }) => (right.selector.is_one()
+                    && right.expressions.iter().all(|e| {
                         try_to_simple_poly_ref(e)
                             .map(|poly| poly.poly_id.ptype == PolynomialType::Constant)
                             .unwrap_or(false)
                     })
-                    && !i.right.expressions.is_empty())
+                    && !right.expressions.is_empty())
                 .then_some((
-                    i.id,
+                    *id,
                     Connection {
-                        left: &i.left,
-                        right: &i.right,
+                        left,
+                        right,
                         kind: ConnectionKind::Lookup,
                     },
                 )),

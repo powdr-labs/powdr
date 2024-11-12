@@ -15,9 +15,10 @@ use powdr_ast::{
     analyzed::{
         self, AlgebraicBinaryOperation, AlgebraicExpression, AlgebraicReference,
         AlgebraicUnaryOperation, Analyzed, Challenge, ConnectIdentity, DegreeRange, Expression,
-        FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity, PolyID,
-        PolynomialIdentity, PolynomialReference, PolynomialType, PublicDeclaration, Reference,
-        SelectedExpressions, SolvedTraitImpls, StatementIdentifier, Symbol, SymbolKind,
+        FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity,
+        PhantomLookupIdentity, PhantomPermutationIdentity, PolyID, PolynomialIdentity,
+        PolynomialReference, PolynomialType, PublicDeclaration, Reference, SelectedExpressions,
+        SolvedTraitImpls, StatementIdentifier, Symbol, SymbolKind,
     },
     parsed::{
         self,
@@ -678,8 +679,12 @@ fn to_constraint<T: FieldElement>(
             }
             .into()
         }
-        "Lookup" | "Permutation" => {
-            assert_eq!(fields.len(), 2);
+        "Lookup" | "Permutation" | "PhantomLookup" | "PhantomPermutation" => {
+            if variant == &"PhantomLookup" {
+                assert_eq!(fields.len(), 3);
+            } else {
+                assert_eq!(fields.len(), 2);
+            }
 
             let (sel_from, sel_to) = if let Value::Tuple(t) = fields[0].as_ref() {
                 assert_eq!(t.len(), 2);
@@ -703,22 +708,44 @@ fn to_constraint<T: FieldElement>(
                 unreachable!()
             };
 
-            if variant == &"Lookup" {
-                LookupIdentity {
-                    id: counters.dispense_identity_id(),
+            let id = counters.dispense_identity_id();
+            let left = to_selected_exprs(sel_from, from);
+            let right = to_selected_exprs(sel_to, to);
+
+            match *variant {
+                "Lookup" => LookupIdentity {
+                    id,
                     source,
-                    left: to_selected_exprs(sel_from, from),
-                    right: to_selected_exprs(sel_to, to),
+                    left,
+                    right,
                 }
-                .into()
-            } else {
-                PermutationIdentity {
-                    id: counters.dispense_identity_id(),
+                .into(),
+                "Permutation" => PermutationIdentity {
+                    id,
                     source,
-                    left: to_selected_exprs(sel_from, from),
-                    right: to_selected_exprs(sel_to, to),
+                    left,
+                    right,
                 }
-                .into()
+                .into(),
+                "PhantomPermutation" => PhantomPermutationIdentity {
+                    id,
+                    source,
+                    left,
+                    right,
+                }
+                .into(),
+                "PhantomLookup" => {
+                    let multiplicity = to_expr(&fields[2]);
+                    PhantomLookupIdentity {
+                        id,
+                        source,
+                        left,
+                        right,
+                        multiplicity,
+                    }
+                    .into()
+                }
+                _ => unreachable!(),
             }
         }
         "Connection" => {

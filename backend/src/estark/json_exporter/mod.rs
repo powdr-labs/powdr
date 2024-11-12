@@ -135,6 +135,9 @@ pub fn export<T: FieldElement>(analyzed: &Analyzed<T>) -> PIL {
                             line,
                         });
                     }
+                    Identity::PhantomLookup(..) | Identity::PhantomPermutation(..) => {
+                        // These are not relevant for the PIL
+                    }
                 }
             }
             StatementIdentifier::ProverFunction(_)

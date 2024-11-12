@@ -1,4 +1,4 @@
-# Hello World using the CLi
+# Hello World using the CLI
 
 Let's generate a proof of execution for the valid prover input `0` (since `0 + 1 - 1 == 0`)
 
