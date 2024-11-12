@@ -6,13 +6,14 @@ use powdr_ast::{
     asm_analysis::{combine_flags, MachineDegree},
     object::{Link, Location, MachineInstanceGraph, Object},
     parsed::{
-        asm::{AbsoluteSymbolPath, SymbolPath},
+        asm::{AbsoluteSymbolPath, Part, SymbolPath},
         build::{index_access, lookup, namespaced_reference, permutation, selected},
+        visitor::{ExpressionVisitable, VisitOrder},
         ArrayLiteral, Expression, FunctionCall, NamespaceDegree, PILFile, PilStatement,
     },
 };
 use powdr_parser_util::SourceRef;
-use std::{collections::BTreeMap, iter::once, str::FromStr};
+use std::{collections::BTreeMap, iter::once, ops::ControlFlow, str::FromStr};
 use strum::{Display, EnumString, EnumVariantNames};
 
 const MAIN_OPERATION_NAME: &str = "main";
@@ -108,7 +109,7 @@ impl Linker {
                         (Some(operation_id), Some(main_operation_id)) => {
                             // call the main operation by initializing `operation_id` to that of the main operation
                             let linker_first_step = "_linker_first_step";
-                            self.namespaces.get_mut(&location.to_string()).unwrap().0.extend([
+                            self.namespaces.get_mut(&location.to_string()).unwrap().1.extend([
                                 parse_pil_statement(&format!(
                                     "col fixed {linker_first_step}(i) {{ if i == 0 {{ 1 }} else {{ 0 }} }};"
                                 )),
@@ -216,7 +217,13 @@ impl Linker {
                 .into(),
             );
 
-            self.insert_permutation(from_location, to_location, permutation(lhs, rhs));
+            self.insert_identity(
+                IdentityType::Permutation,
+                from_location,
+                to_location,
+                lhs,
+                rhs,
+            );
         } else {
             // plookup lhs is `flag $ [ operation_id, inputs, outputs ]`
             let lhs = selected(
@@ -255,74 +262,46 @@ impl Linker {
                 .into(),
             );
 
-            self.insert_lookup(from_location, to_location, lookup(lhs, rhs));
+            self.insert_identity(IdentityType::Lookup, from_location, to_location, lhs, rhs);
         };
     }
 
-    fn insert_lookup(&mut self, from: Location, to: Location, lookup: Expression) {
+    fn insert_identity(
+        &mut self,
+        identity_type: IdentityType,
+        from: Location,
+        to: Location,
+        lhs: Expression,
+        rhs: Expression,
+    ) {
         let interaction_id = self.next_interaction_id();
 
         match self.mode {
             LinkerMode::Native => {
-                self.namespaces
-                    .entry(from.to_string())
-                    .or_default()
-                    .1
-                    .push(PilStatement::Expression(SourceRef::unknown(), lookup));
+                self.namespaces.entry(from.to_string()).or_default().1.push(
+                    PilStatement::Expression(
+                        SourceRef::unknown(),
+                        match identity_type {
+                            IdentityType::Lookup => lookup(lhs, rhs),
+                            IdentityType::Permutation => permutation(lhs, rhs),
+                        },
+                    ),
+                );
             }
             LinkerMode::Bus => {
                 self.namespaces.entry(from.to_string()).or_default().1.push(
                     PilStatement::Expression(
                         SourceRef::unknown(),
-                        call_pil_link_function(
-                            "std::protocols::lookup_via_bus::lookup_send",
-                            lookup.clone(),
-                            interaction_id,
-                        ),
+                        send(identity_type, lhs.clone(), rhs.clone(), interaction_id),
                     ),
                 );
                 self.namespaces.entry(to.to_string()).or_default().1.push(
                     PilStatement::Expression(
                         SourceRef::unknown(),
-                        call_pil_link_function(
-                            "std::protocols::lookup_via_bus::lookup_receive",
-                            lookup,
-                            interaction_id,
-                        ),
-                    ),
-                );
-            }
-        }
-    }
-
-    fn insert_permutation(&mut self, from: Location, to: Location, lookup: Expression) {
-        let interaction_id = self.next_interaction_id();
-
-        match self.mode {
-            LinkerMode::Native => {
-                self.namespaces
-                    .entry(from.to_string())
-                    .or_default()
-                    .1
-                    .push(PilStatement::Expression(SourceRef::unknown(), lookup));
-            }
-            LinkerMode::Bus => {
-                self.namespaces.entry(from.to_string()).or_default().1.push(
-                    PilStatement::Expression(
-                        SourceRef::unknown(),
-                        call_pil_link_function(
-                            "std::protocols::permmutation_via_bus::permmutation_send",
-                            lookup.clone(),
-                            interaction_id,
-                        ),
-                    ),
-                );
-                self.namespaces.entry(to.to_string()).or_default().1.push(
-                    PilStatement::Expression(
-                        SourceRef::unknown(),
-                        call_pil_link_function(
-                            "std::protocols::permmutation_via_bus::permmutation_receive",
-                            lookup,
+                        receive(
+                            identity_type,
+                            namespaced_expression(from.to_string(), lhs),
+                            rhs,
                             interaction_id,
                         ),
                     ),
@@ -332,19 +311,68 @@ impl Linker {
     }
 }
 
-fn call_pil_link_function(
-    function: &str,
-    constraint: Expression,
+#[derive(Clone, Copy)]
+enum IdentityType {
+    Lookup,
+    Permutation,
+}
+
+fn send(
+    identity_type: IdentityType,
+    lhs: Expression,
+    rhs: Expression,
     interaction_id: u32,
 ) -> Expression {
+    let (function, identity) = match identity_type {
+        IdentityType::Lookup => (
+            SymbolPath::from_str("std::protocols::lookup_via_bus::lookup_send")
+                .unwrap()
+                .into(),
+            lookup(lhs, rhs),
+        ),
+        IdentityType::Permutation => (
+            SymbolPath::from_str("std::protocols::permutation_via_bus::permutation_send")
+                .unwrap()
+                .into(),
+            permutation(lhs, rhs),
+        ),
+    };
+
     Expression::FunctionCall(
         SourceRef::unknown(),
         FunctionCall {
-            function: Box::new(Expression::Reference(
-                SourceRef::unknown(),
-                SymbolPath::from_str(function).unwrap().into(),
-            )),
-            arguments: vec![interaction_id.into(), constraint],
+            function: Box::new(Expression::Reference(SourceRef::unknown(), function)),
+            arguments: vec![interaction_id.into(), identity],
+        },
+    )
+}
+
+fn receive(
+    identity_type: IdentityType,
+    lhs: Expression,
+    rhs: Expression,
+    interaction_id: u32,
+) -> Expression {
+    let (function, identity) = match identity_type {
+        IdentityType::Lookup => (
+            SymbolPath::from_str("std::protocols::lookup_via_bus::lookup_receive")
+                .unwrap()
+                .into(),
+            lookup(lhs, rhs),
+        ),
+        IdentityType::Permutation => (
+            SymbolPath::from_str("std::protocols::permutation_via_bus::permutation_receive")
+                .unwrap()
+                .into(),
+            permutation(lhs, rhs),
+        ),
+    };
+
+    Expression::FunctionCall(
+        SourceRef::unknown(),
+        FunctionCall {
+            function: Box::new(Expression::Reference(SourceRef::unknown(), function)),
+            arguments: vec![interaction_id.into(), identity],
         },
     )
 }
@@ -359,6 +387,21 @@ fn to_namespace_degree(d: MachineDegree) -> NamespaceDegree {
             .max
             .unwrap_or_else(|| Expression::from(1 << *MAX_DEGREE_LOG)),
     }
+}
+
+fn namespaced_expression(namespace: String, mut expr: Expression) -> Expression {
+    expr.visit_expressions_mut(
+        &mut |expr| {
+            if let Expression::Reference(_, refs) = expr {
+                refs.path = SymbolPath::from_parts(
+                    once(Part::Named(namespace.clone())).chain(refs.path.clone().into_parts()),
+                );
+            }
+            ControlFlow::Continue::<(), _>(())
+        },
+        VisitOrder::Pre,
+    );
+    expr
 }
 
 pub fn link(graph: MachineInstanceGraph, mode: LinkerMode) -> Result<PILFile, Vec<String>> {
@@ -401,7 +444,7 @@ mod test {
 
     use pretty_assertions::assert_eq;
 
-    use crate::{MAX_DEGREE_LOG, MIN_DEGREE_LOG};
+    use crate::{LinkerMode, MAX_DEGREE_LOG, MIN_DEGREE_LOG};
 
     fn link(graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
         super::link(graph, super::LinkerMode::Native)
@@ -435,7 +478,7 @@ mod test {
 
     #[test]
     fn compile_empty_vm() {
-        let expectation = r#"namespace main(4 + 4);
+        let native_expectation = r#"namespace main(4 + 4);
     let _operation_id;
     query |__i| std::prover::provide_if_unknown(_operation_id, __i, || 2);
     pol constant _block_enforcer_last_step = [0]* + [1];
@@ -461,10 +504,39 @@ namespace main__rom(4 + 4);
     pol constant latch = [1]*;
 "#;
 
+        let bus_expectation = r#"namespace main(4 + 4);
+    let _operation_id;
+    query |__i| std::prover::provide_if_unknown(_operation_id, __i, || 2);
+    pol constant _block_enforcer_last_step = [0]* + [1];
+    let _operation_id_no_change = (1 - _block_enforcer_last_step) * (1 - instr_return);
+    _operation_id_no_change * (_operation_id' - _operation_id) = 0;
+    pol commit pc;
+    pol commit instr__jump_to_operation;
+    pol commit instr__reset;
+    pol commit instr__loop;
+    pol commit instr_return;
+    pol constant first_step = [1] + [0]*;
+    pol commit pc_update;
+    pc_update = instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1);
+    pc' = (1 - first_step') * pc_update;
+    std::protocols::lookup_via_bus::lookup_send(0, 1 $ [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return] in main__rom::latch $ [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return]);
+namespace main__rom(4 + 4);
+    pol constant p_line = [0, 1, 2] + [2]*;
+    pol constant p_instr__jump_to_operation = [0, 1, 0] + [0]*;
+    pol constant p_instr__loop = [0, 0, 1] + [1]*;
+    pol constant p_instr__reset = [1, 0, 0] + [0]*;
+    pol constant p_instr_return = [0]*;
+    pol constant operation_id = [0]*;
+    pol constant latch = [1]*;
+    std::protocols::lookup_via_bus::lookup_receive(0, 1 $ [0, main::pc, main::instr__jump_to_operation, main::instr__reset, main::instr__loop, main::instr_return] in main__rom::latch $ [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return]);
+"#;
+
         let file_name = "../test_data/asm/empty_vm.asm";
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
-        let pil = link(graph).unwrap();
-        assert_eq!(extract_main(&format!("{pil}")), expectation);
+        let pil = link(graph.clone()).unwrap();
+        assert_eq!(extract_main(&format!("{pil}")), native_expectation);
+        let pil = super::link(graph, LinkerMode::Bus).unwrap();
+        assert_eq!(extract_main(&format!("{pil}")), bus_expectation);
     }
 
     #[test]
