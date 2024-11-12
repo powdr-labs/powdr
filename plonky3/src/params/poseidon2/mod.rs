@@ -1,5 +1,7 @@
 //! Poseidon2 constants generation.
 
+pub mod goldilocks;
+
 use alloc::vec::Vec;
 use rand::{distributions::Standard, prelude::Distribution, Rng, SeedableRng};
 
