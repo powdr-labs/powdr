@@ -117,6 +117,8 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
                 Identity::Connect(..) => unimplemented!(),
                 Identity::Lookup(..) => unimplemented!(),
                 Identity::Permutation(..) => unimplemented!(),
+                Identity::PhantomPermutation(..) => unimplemented!(),
+                Identity::PhantomLookup(..) => unimplemented!(),
             }
         }
         eval
