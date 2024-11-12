@@ -13,6 +13,7 @@ pub fn main() {
         hasher.update(input);
     }
     hasher.finalize(&mut output);
+
     assert_eq!(
         output,
         [

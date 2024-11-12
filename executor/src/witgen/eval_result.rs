@@ -161,6 +161,7 @@ impl<K, T: FieldElement> EvalValue<K, T> {
 /// New assignments or constraints for witness columns identified by an ID.
 pub type EvalResult<'a, T, K = AlgebraicVariable<'a>> = Result<EvalValue<K, T>, EvalError<T>>;
 
+/// A fatal error for witness generation.
 #[derive(Clone, PartialEq)]
 pub enum EvalError<T: FieldElement> {
     /// We ran out of rows

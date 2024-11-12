@@ -361,8 +361,8 @@ impl<T> Analyzed<T> {
             .for_each(|definition| definition.post_visit_expressions_mut(f))
     }
 
-    /// Retrieves (col_name, poly_id, offset, stage) of each public witness in the trace.
-    pub fn get_publics(&self) -> Vec<(String, PolyID, usize, u8)> {
+    /// Retrieves (name, col_name, poly_id, offset, stage) of each public witness in the trace.
+    pub fn get_publics(&self) -> Vec<(String, String, PolyID, usize, u8)> {
         let mut publics = self
             .public_declarations
             .values()
@@ -380,7 +380,13 @@ impl<T> Analyzed<T> {
                     )
                 };
                 let row_offset = public_declaration.index as usize;
-                (column_name, poly_id, row_offset, stage)
+                (
+                    public_declaration.name.clone(),
+                    column_name,
+                    poly_id,
+                    row_offset,
+                    stage,
+                )
             })
             .collect::<Vec<_>>();
 
@@ -929,7 +935,7 @@ impl<T> Children<AlgebraicExpression<T>> for LookupIdentity<T> {
 
 /// A witness generation helper for a lookup identity.
 ///
-/// This identity is used as a replactement for a lookup identity which has been turned into challenge-based polynomial identities.
+/// This identity is used as a replacement for a lookup identity which has been turned into challenge-based polynomial identities.
 /// This is ignored by the backend.
 #[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize, JsonSchema)]
 pub struct PhantomLookupIdentity<T> {

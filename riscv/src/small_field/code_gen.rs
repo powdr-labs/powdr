@@ -340,6 +340,11 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
     link => byte2.check(tmp6_h);
     link => byte2.check(tmp6_l);
 
+    // ================ Publics ==================
+    // TODO This is a placeholder to avoid compilation failures.
+    instr commit_public XL, YL {}
+    // ===========================================
+
     // We need to add these inline instead of using std::utils::is_zero
     // because when XX is not constrained, witgen will try to set XX,
     // XX_inv and XXIsZero to zero, which fails this constraint.
