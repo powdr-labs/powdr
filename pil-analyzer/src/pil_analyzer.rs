@@ -497,7 +497,11 @@ impl PILAnalyzer {
                         }
                         PILItem::PublicDeclaration(decl) => {
                             let name = decl.name.clone();
-                            self.public_declarations.insert(name.clone(), decl);
+                            let is_new = self
+                                .public_declarations
+                                .insert(name.clone(), decl)
+                                .is_none();
+                            assert!(is_new, "Public '{name}' already declared.");
                             self.source_order
                                 .push(StatementIdentifier::PublicDeclaration(name));
                         }

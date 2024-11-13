@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::BTreeSet,
     fs::{create_dir_all, hard_link, remove_file},
 };
 
@@ -9,7 +9,7 @@ use powdr_ast::{
 };
 use powdr_number::{FieldElement, KnownField, LargeInt};
 use powdr_pipeline::Pipeline;
-use powdr_riscv_executor::{get_main_machine, ExecutionTrace, MemoryState, ProfilerOptions};
+use powdr_riscv_executor::{get_main_machine, MemoryState, ProfilerOptions};
 
 pub mod bootloader;
 mod memory_merkle_tree;
@@ -26,25 +26,6 @@ use crate::continuations::bootloader::{
 };
 
 use crate::code_gen::Register;
-
-fn transposed_trace<F: FieldElement>(trace: &ExecutionTrace<F>) -> HashMap<String, Vec<F>> {
-    let mut reg_values: HashMap<&str, Vec<F>> = HashMap::with_capacity(trace.reg_map.len());
-
-    let mut rows = trace.replay();
-    while let Some(row) = rows.next_row() {
-        for (reg_name, &index) in trace.reg_map.iter() {
-            reg_values
-                .entry(reg_name)
-                .or_default()
-                .push(row[index as usize]);
-        }
-    }
-
-    reg_values
-        .into_iter()
-        .map(|(n, c)| (format!("main::{n}"), c))
-        .collect()
-}
 
 fn render_memory_hash<F: FieldElement>(hash: &[F]) -> String {
     // Main memory values must fit into u32
@@ -64,8 +45,8 @@ fn render_memory_hash<F: FieldElement>(hash: &[F]) -> String {
 ///
 /// # Arguments
 /// - `pipeline`: The pipeline that should be the starting point for all the chunks.
-/// - `pipeline_callback`: A function that will be called for each chunk. It will be passed the `pipeline`,
-///   but with the `PilWithEvaluatedFixedCols` stage already advanced to and all chunk-specific parameters set.
+/// - `pipeline_callback`: A function that will be called for each chunk. It will be passed a prepared `pipeline`,
+///    with all chunk-specific information set (witness, fixed cols, inputs, optimized pil)
 /// - `bootloader_inputs`: The inputs to the bootloader and the index of the row at which the shutdown routine
 ///   is supposed to execute, for each chunk, as returned by `rust_continuations_dry_run`.
 pub fn rust_continuations<F: FieldElement, PipelineCallback, E>(
@@ -236,8 +217,10 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     // Initial register values for the current chunk.
     let mut register_values = default_register_values();
 
-    let program = pipeline.compute_analyzed_asm().unwrap().clone();
-    let main_machine = program.get_machine(&parse_absolute_path("::Main")).unwrap();
+    let asm = pipeline.compute_analyzed_asm().unwrap().clone();
+    let pil = pipeline.compute_optimized_pil().unwrap();
+    let fixed = pipeline.compute_fixed_cols().unwrap();
+    let main_machine = asm.get_machine(&parse_absolute_path("::Main")).unwrap();
     sanity_check(main_machine, field);
 
     log::info!("Initializing memory merkle tree...");
@@ -246,36 +229,33 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
     // In the first full run, we use it as the memory contents of the executor;
     // on the independent chunk runs, the executor uses zeroed initial memory,
     // and the pages are loaded via the bootloader.
-    let initial_memory = load_initial_memory(&program);
+    let initial_memory = load_initial_memory(&asm);
 
     let mut merkle_tree = MerkleTree::<F>::new();
     merkle_tree.update(initial_memory.iter().map(|(k, v)| (*k, *v)));
 
     // TODO: commit to the merkle_tree root in the verifier.
 
-    log::info!("Executing powdr-asm...");
-    let (full_trace, memory_accesses) = {
-        let trace = powdr_riscv_executor::execute_ast::<F>(
-            &program,
-            initial_memory,
-            pipeline.data_callback().unwrap(),
-            // Run full trace without any accessed pages. This would actually violate the
-            // constraints, but the executor does the right thing (read zero if the memory
-            // cell has never been accessed). We can't pass the accessed pages here, because
-            // we only know them after the full trace has been generated.
-            &default_input(&[]),
-            usize::MAX,
-            powdr_riscv_executor::ExecMode::Trace,
-            profiler_opt,
-        )
-        .0;
-        (transposed_trace::<F>(&trace), trace.mem_ops)
-    };
+    log::info!("Initial execution...");
+    let full_exec = powdr_riscv_executor::execute::<F>(
+        &asm,
+        &pil,
+        fixed.clone(),
+        initial_memory,
+        pipeline.data_callback().unwrap(),
+        // Run full trace without any accessed pages. This would actually violate the
+        // constraints, but the executor does the right thing (read zero if the memory
+        // cell has never been accessed). We can't pass the accessed pages here, because
+        // we only know them after the full trace has been generated.
+        &default_input(&[]),
+        None,
+        profiler_opt,
+    );
 
-    let full_trace_length = full_trace["main::pc"].len();
+    let full_trace_length = full_exec.trace_len;
     log::info!("Total trace length: {}", full_trace_length);
 
-    let (first_real_execution_row, _) = full_trace["main::pc"]
+    let (first_real_execution_row, _) = full_exec.trace["main::pc"]
         .iter()
         .enumerate()
         .find(|(_, &pc)| pc == DEFAULT_PC.into())
@@ -306,11 +286,12 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         let mut accessed_pages = BTreeSet::new();
         let mut accessed_addresses = BTreeSet::new();
 
-        let start_idx = memory_accesses
+        let start_idx = full_exec
+            .memory_accesses
             .binary_search_by_key(&proven_trace, |a| a.row)
             .unwrap_or_else(|v| v);
 
-        for access in &memory_accesses[start_idx..] {
+        for access in &full_exec.memory_accesses[start_idx..] {
             // proven_trace + length is an upper bound for the last row index we'll reach in the next chunk.
             // In practice, we'll stop earlier, because the bootloader & shutdown routine need to run as well,
             // but we don't know for how long as that depends on the number of pages.
@@ -359,27 +340,20 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
         );
 
         log::info!("Simulating chunk execution...");
-        let (chunk_trace, memory_snapshot_update, register_memory_snapshot) = {
-            let (trace, memory_snapshot_update, register_memory_snapshot) =
-                powdr_riscv_executor::execute_ast::<F>(
-                    &program,
-                    MemoryState::new(),
-                    pipeline.data_callback().unwrap(),
-                    &bootloader_inputs,
-                    num_rows,
-                    powdr_riscv_executor::ExecMode::Trace,
-                    // profiling was done when full trace was generated
-                    None,
-                );
-            (
-                transposed_trace(&trace),
-                memory_snapshot_update,
-                register_memory_snapshot,
-            )
-        };
+        let chunk_exec = powdr_riscv_executor::execute::<F>(
+            &asm,
+            &pil,
+            fixed.clone(),
+            MemoryState::new(),
+            pipeline.data_callback().unwrap(),
+            &bootloader_inputs,
+            Some(num_rows),
+            // profiling was done when full trace was generated
+            None,
+        );
 
         let mut memory_updates_by_page =
-            merkle_tree.organize_updates_by_page(memory_snapshot_update.into_iter());
+            merkle_tree.organize_updates_by_page(chunk_exec.memory.into_iter());
         for (i, &page_index) in accessed_pages.iter().enumerate() {
             let page_index = page_index as usize;
             let (_, _, proof) = merkle_tree.get(page_index);
@@ -436,7 +410,8 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             .map(|reg| {
                 let reg = reg.strip_prefix("main::").unwrap();
                 let id = Register::from(reg).addr();
-                *register_memory_snapshot
+                *chunk_exec
+                    .register_memory
                     .get(&(id as u32))
                     .unwrap_or(&0.into())
             })
@@ -444,7 +419,7 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
 
         // Go over all machine registers
         for reg in REGISTER_NAMES {
-            register_values.push(*chunk_trace[reg].last().unwrap());
+            register_values.push(*chunk_exec.trace[reg].last().unwrap());
         }
 
         // Replace final register values of the current chunk
@@ -475,14 +450,14 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             )
         );
 
-        let actual_num_rows = chunk_trace["main::pc"].len();
+        let actual_num_rows = chunk_exec.trace_len;
         let bootloader_pc = bootloader_inputs[PC_INDEX];
         bootloader_inputs_and_num_rows.push((bootloader_inputs, actual_num_rows as u64));
 
-        log::info!("Chunk trace length: {}", chunk_trace["main::pc"].len());
+        log::info!("Chunk trace length: {}", chunk_exec.trace_len);
         log::info!("Validating chunk...");
         log::info!("Looking for pc = {}...", bootloader_pc);
-        let (start, _) = chunk_trace["main::pc"]
+        let (start, _) = chunk_exec.trace["main::pc"]
             .iter()
             .enumerate()
             .find(|(_, &pc)| pc == bootloader_pc)
@@ -494,36 +469,36 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
             length,
             (length - start - shutdown_routine_rows) * 100 / length
         );
-        for i in 0..(chunk_trace["main::pc"].len() - start) {
+        for i in 0..(chunk_exec.trace_len - start) {
             for &reg in ["main::pc", "main::query_arg_1", "main::query_arg_2"].iter() {
                 let chunk_i = i + start;
                 let full_i = i + proven_trace;
-                if chunk_trace[reg][chunk_i] != full_trace[reg][full_i] {
+                if chunk_exec.trace[reg][chunk_i] != full_exec.trace[reg][full_i] {
                     log::error!("The Chunk trace differs from the full trace!");
                     log::error!(
                         "Started comparing from row {start} in the chunk to row {proven_trace} in the full trace; the difference is at offset {i}."
                     );
                     log::error!(
                         "The PCs are {} and {}.",
-                        chunk_trace["main::pc"][chunk_i],
-                        full_trace["main::pc"][full_i]
+                        chunk_exec.trace["main::pc"][chunk_i],
+                        full_exec.trace["main::pc"][full_i]
                     );
                     log::error!(
                         "The first difference is in register {}: {} != {} ",
                         reg,
-                        chunk_trace[reg][chunk_i],
-                        full_trace[reg][full_i],
+                        chunk_exec.trace[reg][chunk_i],
+                        full_exec.trace[reg][full_i],
                     );
                     panic!();
                 }
             }
         }
 
-        if chunk_trace["main::pc"].len() < num_rows {
+        if chunk_exec.trace_len < num_rows {
             log::info!("Done!");
             break;
         }
-        assert_eq!(chunk_trace["main::pc"].len(), num_rows);
+        assert_eq!(chunk_exec.trace_len, num_rows);
 
         // Minus one, because the last row will have to be repeated in the next chunk.
         let new_rows = num_rows - start - 1;
