@@ -23,11 +23,12 @@ machine Keccakf16Memory(mem: Memory, add_sub: AddSub) with
     - 2 columns (1 high and 1 low) for user input address (of first byte of input).
     - 2 columns (1 high and 1 low) for user output address (of first byte of output).
     - 98 columns (49 high and 49 low) for computed input/output address of all bytes.
-    Overall, given that there are 2,600+ columns in the non-memory version, this isn't a huge cost    Methodology description:
-    1. The latch with the input and output addresses + time step is in the first row of each block.
-    2. Input addresses for all bytes are calculated from user input address in the first row using permutation links to add_sub.add operations.
-    3. Load all input bytes from memory to the preimage columns.
-    4. User output address is kept the same for use in the last row.
+    Overall, given that there are 2,600+ columns in the non-memory version, this isn't a huge cost    
+    Methodology description:
+    1. The latch with the input and output addresses + time step is in the last row of each block.
+    2. User input address is copied to the first row.
+    3. Input addresses for all bytes are calculated from user input address in the first row using permutation links to add_sub.add operations.
+    4. Load all input bytes from memory to the preimage columns.
     5. Keccak is computed from top to bottom.
     6. Output addresses for all bytes are calculated from user output address in the last row using permutation links to add_sub.add operations.
     7. Store all output bytes from keccak computation columns to memory.
@@ -40,6 +41,7 @@ machine Keccakf16Memory(mem: Memory, add_sub: AddSub) with
     because one would need to do memory read -> keccak computation -> memory write as three sequential passes during witgen.
     On the contrary, our current methodology performs all memory reads at once in the first row, then immediately does the keccak computation,
     and finally performs all memory writes at once in the last row, and thus only requires one pass with auto witgen.
+    Though note that input address need to be first copied from the last row to the first row.
     */
 
     operation keccakf16_memory<0> input_addr_h, input_addr_l, output_addr_h, output_addr_l, time_step ->;
@@ -53,19 +55,19 @@ machine Keccakf16Memory(mem: Memory, add_sub: AddSub) with
     let first_step_used: expr = used * first_step;
     let final_step_used: expr = used * final_step;
 
-    // Repeat the time step and input / output address in the whole block.
+    // Repeat the time step and input address in the whole block.
     col witness time_step;
     unchanged_until(time_step, final_step + is_last);
 
     // Input address for the first byte of input array from the user.
-    // Used immediately in the first row and therefore doesn't need to be kept constant throughout the block.
+    // Copied from user input in the last row to the first row.
     col witness input_addr_h;
     col witness input_addr_l;
     unchanged_until(input_addr_h, final_step + is_last);
     unchanged_until(input_addr_l, final_step + is_last);
 
     // Output address for the first byte of output array from the user.
-    // Used in the last row and therefore needs to be kept constant throughout the block.
+    // Used in the last row directly from user input.
     col witness output_addr_h;
     col witness output_addr_l;
 
