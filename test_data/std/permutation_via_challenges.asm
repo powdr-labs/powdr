@@ -13,6 +13,6 @@ machine Main with degree: 8 {
     // fit all the blocks, so let's not have a call in the last row.
     col fixed sel = [1, 1, 1, 1, 1, 1, 1, 0];
 
-    // Add the bus permutation constraints
+    // Add the permutation constraints
     permutation(sel $ [x, y] is sub_sel $ [sub_x, sub_y]);
 }
