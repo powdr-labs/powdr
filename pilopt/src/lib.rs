@@ -638,7 +638,11 @@ fn equal_constrained<T: FieldElement>(
                     AlgebraicExpression::Reference(left_ref),
                     AlgebraicExpression::Reference(right_ref),
                 ) => {
-                    if left_ref.is_witness() && right_ref.is_witness() {
+                    if left_ref.is_witness()
+                        && !left_ref.next
+                        && right_ref.is_witness()
+                        && !right_ref.next
+                    {
                         // Choose which column to keep based on id
                         if left_ref.poly_id.id < right_ref.poly_id.id {
                             Some((
