@@ -8,8 +8,8 @@ use powdr_pipeline::{
         asm_string_to_pil, gen_estark_proof_with_backend_variant, make_prepared_pipeline,
         make_simple_prepared_pipeline, regular_test, regular_test_without_small_field,
         resolve_test_file, run_pilcom_with_backend_variant, test_halo2,
-        test_halo2_with_backend_variant, test_pilcom, test_plonky3_with_backend_variant,
-        BackendVariant,
+        test_halo2_with_backend_variant, test_pilcom, test_plonky3_pipeline,
+        test_plonky3_with_backend_variant, BackendVariant,
     },
     util::{FixedPolySet, PolySet, WitnessPolySet},
     Pipeline,
@@ -142,6 +142,15 @@ fn vm_to_block_to_block() {
 fn block_to_block() {
     let f = "asm/block_to_block.asm";
     regular_test(f, &[]);
+}
+
+#[test]
+fn block_to_block_empty_submachine() {
+    let f = "asm/block_to_block_empty_submachine.asm";
+    let pipeline = make_simple_prepared_pipeline(f);
+    test_halo2_with_backend_variant(pipeline.clone(), BackendVariant::Composite);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f);
+    test_plonky3_pipeline(pipeline);
 }
 
 #[test]
