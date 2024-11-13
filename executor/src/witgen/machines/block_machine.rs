@@ -439,7 +439,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         assert_eq!(new_block.len(), self.block_size + 2);
 
         // 1. Ignore the first row of the next block:
-        new_block.pop();
+        new_block.try_remove_last_row();
 
         // 2. Merge the last row of the previous block
         new_block
@@ -453,7 +453,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             })?;
 
         // 3. Remove the last row of the previous block from data
-        self.data.pop();
+        self.data.try_remove_last_row();
 
         // 4. Finalize everything so far (except the dummy block)
         if self.data.len() > self.block_size {

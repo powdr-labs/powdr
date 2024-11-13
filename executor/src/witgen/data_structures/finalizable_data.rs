@@ -79,6 +79,18 @@ impl<T: FieldElement> CompactData<T> {
     }
 
     #[inline]
+    fn try_remove_last_row(&mut self) -> bool {
+        if self.data.len() < self.column_count {
+            false
+        } else {
+            self.data.truncate(self.data.len() - self.column_count);
+            self.known_cells
+                .truncate(self.known_cells.len() - self.column_count);
+            true
+        }
+    }
+
+    #[inline]
     fn get(&self, row: usize, col: u64) -> (T, bool) {
         let col = col - self.first_column_id;
         let idx = row * self.column_count + col as usize;
@@ -152,6 +164,17 @@ impl<T: FieldElement> FinalizableData<T> {
             panic!("Row already finalized");
         } else {
             self.pre_finalized_data.pop()
+        }
+    }
+
+    /// Removes the last row, even if it has been finalized.
+    pub fn try_remove_last_row(&mut self) {
+        if !self.post_finalized_data.is_empty() {
+            self.post_finalized_data.pop();
+        } else if !self.finalized_data.is_empty() {
+            self.finalized_data.try_remove_last_row();
+        } else {
+            self.pre_finalized_data.pop();
         }
     }
 
