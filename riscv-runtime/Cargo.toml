@@ -1,7 +1,7 @@
 [package]
 name = "powdr-riscv-runtime"
 description = "powdr runtime provider for RISCV programs"
-version = "0.1.0-alpha.2"
+version = "0.1.2"
 edition = "2021"
 license = "MIT"
 homepage = "https://powdr.org"

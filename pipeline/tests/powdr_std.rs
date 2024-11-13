@@ -8,7 +8,7 @@ use powdr_pipeline::{
     test_util::{
         evaluate_function, evaluate_integer_function, gen_estark_proof, gen_halo2_proof,
         make_simple_prepared_pipeline, regular_test, regular_test_without_small_field,
-        std_analyzed, test_halo2, test_pilcom, test_plonky3, BackendVariant,
+        std_analyzed, test_halo2, test_pilcom, test_plonky3_with_backend_variant, BackendVariant,
     },
     Pipeline,
 };
@@ -48,7 +48,7 @@ fn poseidon_gl_memory_test() {
 #[ignore = "Too slow"]
 fn keccakf16_test() {
     let f = "std/keccakf16_test.asm";
-    test_plonky3::<BabyBearField>(f, vec![]);
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
@@ -62,14 +62,23 @@ fn keccakf16_memory_test() {
 #[ignore = "Too slow"]
 fn poseidon_bb_test() {
     let f = "std/poseidon_bb_test.asm";
-    test_plonky3::<BabyBearField>(f, vec![]);
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn poseidon2_bb_test() {
     let f = "std/poseidon2_bb_test.asm";
-    test_plonky3::<BabyBearField>(f, vec![]);
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Monolithic);
+}
+
+#[test]
+#[ignore = "Too slow"]
+fn poseidon2_gl_test() {
+    let f = "std/poseidon2_gl_test.asm";
+    let pipeline = make_simple_prepared_pipeline(f);
+    test_pilcom(pipeline.clone());
+    gen_estark_proof(pipeline);
 }
 
 #[test]
@@ -92,21 +101,21 @@ fn split_gl_test() {
 #[ignore = "Too slow"]
 fn split_bb_test() {
     let f = "std/split_bb_test.asm";
-    test_plonky3::<BabyBearField>(f, vec![]);
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn add_sub_small_test() {
     let f = "std/add_sub_small_test.asm";
-    test_plonky3::<BabyBearField>(f, vec![]);
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn arith_small_test() {
     let f = "std/arith_small_test.asm";
-    test_plonky3::<BabyBearField>(f, vec![]);
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
@@ -153,78 +162,49 @@ fn memory_large_test_parallel_accesses() {
 #[ignore = "Too slow"]
 fn memory_small_test() {
     let f = "std/memory_small_test.asm";
-    test_plonky3::<BabyBearField>(f, vec![]);
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
 fn permutation_via_challenges() {
     let f = "std/permutation_via_challenges.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-    test_plonky3::<GoldilocksField>(f, vec![]);
+    test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
 fn permutation_via_challenges_ext() {
     let f = "std/permutation_via_challenges_ext.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-    test_plonky3::<GoldilocksField>(f, vec![]);
+    test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
 fn lookup_via_challenges() {
     let f = "std/lookup_via_challenges.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-    test_plonky3::<GoldilocksField>(f, vec![]);
+    test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
-fn lookup_via_challenges_ext() {
-    let f = "std/lookup_via_challenges_ext.asm";
+fn lookup_via_challenges_range_constraint() {
+    let f = "std/lookup_via_challenges_range_constraint.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-    test_plonky3::<GoldilocksField>(f, vec![]);
+    test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
-fn lookup_via_challenges_ext_simple() {
-    let f = "std/lookup_via_challenges_ext_simple.asm";
+fn bus_lookup() {
+    let f = "std/bus_lookup.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-    test_plonky3::<GoldilocksField>(f, vec![]);
+    test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
-fn bus_permutation_via_challenges() {
-    let f = "std/bus_permutation_via_challenges.asm";
+fn bus_permutation() {
+    let f = "std/bus_permutation.asm";
     test_halo2(make_simple_prepared_pipeline(f));
-}
-
-#[test]
-fn bus_permutation_via_challenges_ext() {
-    let f = "std/bus_permutation_via_challenges_ext.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-    test_plonky3::<GoldilocksField>(f, vec![]);
-}
-
-#[test]
-fn test_multiplicities() {
-    let f = "std/multiplicities.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-
-    // This test currently has a native lookup to aid witness generation,
-    // which is not supported by the Plonky3 backend.
-    // test_plonky3::<GoldilocksField>(f, vec![]);
-}
-
-#[test]
-fn bus_lookup_via_challenges() {
-    let f = "std/bus_lookup_via_challenges.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-}
-
-#[test]
-fn bus_lookup_via_challenges_ext() {
-    let f = "std/bus_lookup_via_challenges_ext.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-    test_plonky3::<GoldilocksField>(f, vec![]);
+    test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
@@ -245,14 +225,14 @@ fn binary_large_test() {
 #[ignore = "Too slow"]
 fn binary_small_8_test() {
     let f = "std/binary_small_8_test.asm";
-    test_plonky3::<BabyBearField>(f, vec![]);
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn binary_small_test() {
     let f = "std/binary_small_test.asm";
-    test_plonky3::<BabyBearField>(f, vec![]);
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
@@ -267,7 +247,7 @@ fn shift_large_test() {
 #[ignore = "Too slow"]
 fn shift_small_test() {
     let f = "std/shift_small_test.asm";
-    test_plonky3::<BabyBearField>(f, vec![]);
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
@@ -282,7 +262,7 @@ fn rotate_large_test() {
 #[ignore = "Too slow"]
 fn rotate_small_test() {
     let f = "std/rotate_small_test.asm";
-    test_plonky3::<BabyBearField>(f, vec![]);
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
@@ -473,12 +453,7 @@ mod reparse {
     /// but these tests panic if the field is too small. This is *probably*
     /// fine, because all of these tests have a similar variant that does
     /// run on Goldilocks.
-    const BLACKLIST: [&str; 4] = [
-        "std/bus_permutation_via_challenges.asm",
-        "std/poseidon_bn254_test.asm",
-        "std/split_bn254_test.asm",
-        "std/bus_lookup_via_challenges.asm",
-    ];
+    const BLACKLIST: [&str; 2] = ["std/poseidon_bn254_test.asm", "std/split_bn254_test.asm"];
 
     fn run_reparse_test(file: &str) {
         run_reparse_test_with_blacklist(file, &BLACKLIST);

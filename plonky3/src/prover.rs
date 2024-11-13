@@ -423,10 +423,10 @@ where
                         ),
                         public_values: constraint_system.publics_by_stage[0]
                             .iter()
-                            .map(|(name, _, row)| {
+                            .map(|(_, column_name, _, row)| {
                                 witness
                                     .iter()
-                                    .find_map(|(n, v)| (n == name).then(|| v[*row]))
+                                    .find_map(|(n, v)| (n == column_name).then(|| v[*row]))
                                     .unwrap()
                                     .into_p3_field()
                             })

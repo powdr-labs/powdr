@@ -13,7 +13,10 @@ use crate::witgen::{EvalValue, IncompleteCause, MutableState, QueryCallback};
 use crate::Identity;
 use itertools::Itertools;
 use num_traits::One;
-use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference, PolyID};
+use powdr_ast::analyzed::{
+    AlgebraicExpression as Expression, AlgebraicReference, LookupIdentity, PhantomLookupIdentity,
+    PolyID,
+};
 use powdr_number::{DegreeType, FieldElement};
 
 /// A machine that can support a lookup in a set of columns that are sorted
@@ -109,22 +112,22 @@ fn check_identity<T: FieldElement>(
     degree: DegreeType,
 ) -> Option<PolyID> {
     // Looking for a lookup
-    let id = if let Identity::Lookup(id) = id {
-        id
-    } else {
-        return None;
+    let (left, right) = match id {
+        Identity::Lookup(LookupIdentity { left, right, .. })
+        | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. }) => (left, right),
+        _ => return None,
     };
 
     // Looking for NOTLAST $ [ A' - A ] in [ POSITIVE ]
-    if !id.right.selector.is_one() || id.left.expressions.len() != 1 {
+    if !right.selector.is_one() || left.expressions.len() != 1 {
         return None;
     }
 
     // Check for A' - A in the LHS
-    let key_column = check_constraint(id.left.expressions.first().unwrap())?;
+    let key_column = check_constraint(left.expressions.first().unwrap())?;
 
-    let not_last = &id.left.selector;
-    let positive = id.right.expressions.first().unwrap();
+    let not_last = &left.selector;
+    let positive = right.expressions.first().unwrap();
 
     // TODO this could be rather slow. We should check the code for identity instead
     // of evaluating it.
