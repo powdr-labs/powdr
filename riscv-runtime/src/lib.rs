@@ -3,11 +3,15 @@
     start,
     alloc_error_handler,
     maybe_uninit_write_slice,
-    round_char_boundary
+    round_char_boundary,
+    asm_const
 )]
 
 use core::arch::{asm, global_asm};
 use powdr_riscv_syscalls::Syscall;
+
+#[macro_use]
+mod ecall;
 
 mod allocator;
 pub mod arith;

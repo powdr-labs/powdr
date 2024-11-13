@@ -2,8 +2,10 @@
 
 macro_rules! syscalls {
     ($(($num:expr, $identifier:ident, $name:expr)),* $(,)?) => {
+        /// We use repr(u8) to make sure the enum discriminant will fit into the
+        /// 12 bits of the immediate field of the `addi` instruction,
         #[derive(Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
-        #[repr(u32)]
+        #[repr(u8)]
         pub enum Syscall {
             $($identifier = $num),*
         }

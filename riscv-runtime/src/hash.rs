@@ -26,11 +26,7 @@ pub fn poseidon_gl(data: &mut [Goldilocks; 12]) -> &[Goldilocks; 4] {
 pub fn poseidon2_gl_inplace(data: &mut [Goldilocks; 8]) {
     let ptr = data as *mut _;
     unsafe {
-        asm!("ecall",
-            in("a0") ptr,
-            in("a1") ptr,
-            in("t0") u32::from(Syscall::Poseidon2GL)
-        );
+        ecall!(Syscall::Poseidon2GL, in("a0") ptr, in("a1") ptr);
     }
 }
 
@@ -38,11 +34,7 @@ pub fn poseidon2_gl_inplace(data: &mut [Goldilocks; 8]) {
 pub fn poseidon2_gl(data: &[Goldilocks; 8]) -> [Goldilocks; 8] {
     unsafe {
         let mut output: MaybeUninit<[Goldilocks; 8]> = MaybeUninit::uninit();
-        asm!("ecall",
-            in("a0") data as *const _,
-            in("a1") output.as_mut_ptr(),
-            in("t0") u32::from(Syscall::Poseidon2GL)
-        );
+        ecall!(Syscall::Poseidon2GL, in("a0") data as *const _, in("a1") output.as_mut_ptr());
         output.assume_init()
     }
 }

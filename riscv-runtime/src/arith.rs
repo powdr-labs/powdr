@@ -2,6 +2,8 @@ use core::arch::asm;
 
 use powdr_riscv_syscalls::Syscall;
 
+use crate::ecall;
+
 /// convert a big-endian u8 array to u32 array (arith machine format)
 pub(crate) fn be_to_u32(from: &[u8; 32], to: &mut [u32; 8]) {
     for (i, chunk) in from.chunks_exact(4).rev().enumerate() {
@@ -29,11 +31,10 @@ pub fn affine_256_u8_be(mut a: [u8; 32], mut b: [u8; 32], c: [u8; 32]) -> ([u8; 
     be_to_u32(&c, &mut c1);
 
     unsafe {
-        asm!("ecall",
-             in("a0") &mut a1 as *mut [u32; 8],
-             in("a1") &mut b1 as *mut [u32; 8],
-             in("a2") &mut c1 as *mut [u32; 8],
-             in("t0") u32::from(Syscall::Affine256));
+        ecall!(Syscall::Affine256,
+            in("a0") &mut a1 as *mut [u32; 8],
+            in("a1") &mut b1 as *mut [u32; 8],
+            in("a2") &c1 as *const [u32; 8]);
     }
 
     u32_to_be(&a1, &mut a);
@@ -45,11 +46,10 @@ pub fn affine_256_u8_be(mut a: [u8; 32], mut b: [u8; 32], c: [u8; 32]) -> ([u8; 
 /// Returns `(hi, lo)`.
 pub fn affine_256_u8_le(mut a: [u8; 32], mut b: [u8; 32], c: [u8; 32]) -> ([u8; 32], [u8; 32]) {
     unsafe {
-        asm!("ecall",
-             in("a0") a.as_mut_ptr() as *mut [u32; 8],
-             in("a1") b.as_mut_ptr() as *mut [u32; 8],
-             in("a2") c.as_ptr() as *const [u32; 8],
-             in("t0") u32::from(Syscall::Affine256));
+        ecall!(Syscall::Affine256,
+            in("a0") a.as_mut_ptr() as *mut [u32; 8],
+            in("a1") b.as_mut_ptr() as *mut [u32; 8],
+            in("a2") c.as_ptr() as *const [u32; 8]);
     }
 
     (a, b)
@@ -57,28 +57,19 @@ pub fn affine_256_u8_le(mut a: [u8; 32], mut b: [u8; 32], c: [u8; 32]) -> ([u8; 
 
 /// Calculate `a*b + c = hi*2**256 + lo` for 256 bit values (as u32 little-endian arrays).
 /// Returns `(hi, lo)`.
-pub fn affine_256_u32_le(
-    mut a: [u32; 8],
-    mut b: [u32; 8],
-    mut c: [u32; 8],
-) -> ([u32; 8], [u32; 8]) {
+pub fn affine_256_u32_le(mut a: [u32; 8], mut b: [u32; 8], c: [u32; 8]) -> ([u32; 8], [u32; 8]) {
     unsafe {
-        asm!("ecall",
-             in("a0") &mut a as *mut [u32; 8],
-             in("a1") &mut b as *mut [u32; 8],
-             in("a2") &mut c as *mut [u32; 8],
-             in("t0") u32::from(Syscall::Affine256));
+        ecall!(Syscall::Affine256,
+            in("a0") &mut a as *mut [u32; 8],
+            in("a1") &mut b as *mut [u32; 8],
+            in("a2") &c as *const [u32; 8]);
     }
     (a, b)
 }
 
 /// Calculate `(a*b) % m = r` for 256 bit values (as u8 big-endian arrays).
 /// Returns `r`.
-pub fn modmul_256_u8_be(
-    mut a: [u8; 32],
-    b: [u8; 32],
-    m: [u8; 32],
-) -> [u8; 32] {
+pub fn modmul_256_u8_be(mut a: [u8; 32], b: [u8; 32], m: [u8; 32]) -> [u8; 32] {
     let mut a1: [u32; 8] = Default::default();
     let mut b1: [u32; 8] = Default::default();
     let mut m1: [u32; 8] = Default::default();
@@ -90,17 +81,15 @@ pub fn modmul_256_u8_be(
     unsafe {
         // First compute the two halves of the result a*b.
         // Results are stored in place in a and b.
-        asm!("ecall",
-             in("a0") &mut a1 as *mut [u32; 8],
-             in("a1") &mut b1 as *mut [u32; 8],
-             in("a2") &mut [0u32; 8] as *mut [u32; 8],
-             in("t0") u32::from(Syscall::Affine256));
+        ecall!(Syscall::Affine256,
+            in("a0") &mut a1 as *mut [u32; 8],
+            in("a1") &mut b1 as *mut [u32; 8],
+            in("a2") &[0u32; 8] as *const [u32; 8]);
         // Next compute the remainder, stored in place in a.
-        asm!("ecall",
-             in("a0") &mut a1 as *mut [u32; 8],
-             in("a1") &mut b1 as *mut [u32; 8],
-             in("a2") &mut m1 as *mut [u32; 8],
-             in("t0") u32::from(Syscall::Mod256));
+        ecall!(Syscall::Mod256,
+            in("a0") &mut a1 as *mut [u32; 8],
+            in("a1") &b1 as *const [u32; 8],
+            in("a2") &m1 as *const [u32; 8]);
     }
 
     u32_to_be(&a1, &mut a);
@@ -109,25 +98,19 @@ pub fn modmul_256_u8_be(
 
 /// Calculate `(a*b) % m = r` for 256 bit values (as u8 little-endian arrays).
 /// Returns `r`.
-pub fn modmul_256_u8_le(
-    mut a: [u8; 32],
-    mut b: [u8; 32],
-    m: [u8; 32],
-) -> [u8; 32] {
+pub fn modmul_256_u8_le(mut a: [u8; 32], mut b: [u8; 32], m: [u8; 32]) -> [u8; 32] {
     unsafe {
         // First compute the two halves of the result a*b.
         // Results are stored in place in a and b.
-        asm!("ecall",
-             in("a0") a.as_mut_ptr() as *mut [u32; 8],
-             in("a1") b.as_mut_ptr() as *mut [u32; 8],
-             in("a2") &mut [0u32; 8] as *mut [u32; 8],
-             in("t0") u32::from(Syscall::Affine256));
+        ecall!(Syscall::Affine256,
+            in("a0") a.as_mut_ptr() as *mut [u32; 8],
+            in("a1") b.as_mut_ptr() as *mut [u32; 8],
+            in("a2") &[0u32; 8] as *const [u32; 8]);
         // Next compute the remainder, stored in place in a.
-        asm!("ecall",
-             in("a0") a.as_mut_ptr() as *mut [u32; 8],
-             in("a1") b.as_mut_ptr() as *mut [u32; 8],
-             in("a2") m.as_ptr() as *const [u32; 8],
-             in("t0") u32::from(Syscall::Mod256));
+        ecall!(Syscall::Mod256,
+            in("a0") a.as_mut_ptr() as *mut [u32; 8],
+            in("a1") b.as_ptr() as *const [u32; 8],
+            in("a2") m.as_ptr() as *const [u32; 8]);
     }
 
     a
@@ -135,25 +118,19 @@ pub fn modmul_256_u8_le(
 
 /// Calculate `(a*b) % m = r` for 256 bit values (as u32 little-endian arrays).
 /// Returns `r`.
-pub fn modmul_256_u32_le(
-    mut a: [u32; 8],
-    mut b: [u32; 8],
-    m: [u32; 8],
-) -> [u32; 8] {
+pub fn modmul_256_u32_le(mut a: [u32; 8], mut b: [u32; 8], m: [u32; 8]) -> [u32; 8] {
     unsafe {
         // First compute the two halves of the result a*b.
         // Results are stored in place in a and b.
-        asm!("ecall",
-             in("a0") &mut a as *mut [u32; 8],
-             in("a1") &mut b as *mut [u32; 8],
-             in("a2") &[0u32; 8] as *const [u32; 8],
-             in("t0") u32::from(Syscall::Affine256));
+        ecall!(Syscall::Affine256,
+            in("a0") &mut a as *mut [u32; 8],
+            in("a1") &mut b as *mut [u32; 8],
+            in("a2") &[0u32; 8] as *const [u32; 8]);
         // Next compute the remainder, stored in place in a.
-        asm!("ecall",
-             in("a0") &mut a as *mut [u32; 8],
-             in("a1") &mut b as *mut [u32; 8],
-             in("a2") &m as *const [u32; 8],
-             in("t0") u32::from(Syscall::Mod256));
+        ecall!(Syscall::Mod256,
+            in("a0") &mut a as *mut [u32; 8],
+            in("a1") &b as *const [u32; 8],
+            in("a2") &m as *const [u32; 8]);
     }
 
     a
