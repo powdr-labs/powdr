@@ -283,13 +283,11 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             .committed_polys_in_source_order()
             .filter(|(symbol, _)| symbol.stage.unwrap_or_default() <= self.stage.into())
             .flat_map(|(p, _)| p.array_elements())
-            .filter_map(|(name, _id)| {
-                columns.remove(&name).map(|c| (name, c))
-                // let column = columns
-                //     .remove(&name)
-                //     .unwrap_or_else(|| panic!("No machine generated witness for column: {name}"));
-                // assert!(!column.is_empty());
-                // (name, column)
+            .map(|(name, _id)| {
+                let column = columns
+                    .remove(&name)
+                    .unwrap_or_else(|| panic!("No machine generated witness for column: {name}"));
+                (name, column)
             })
             .collect::<Vec<_>>();
 

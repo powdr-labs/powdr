@@ -405,37 +405,39 @@ where
         .iter()
         .filter_map(|(name, (pil, constraint_system))| {
             let columns = machine_witness_columns(witness, pil, name);
-            (!columns.is_empty()).then(|| {
-                let degree = columns[0].1.len();
+            let degree = columns[0].1.len();
 
+            if degree == 0 {
+                // If a machine has no rows, remove it entirely.
+                return None;
+            }
+            Some((
                 (
-                    (
-                        name.clone(),
-                        Table {
-                            air: PowdrTable::new(constraint_system),
-                            degree,
-                        },
-                    ),
-                    (
-                        name.clone(),
-                        AirStage {
-                            trace: generate_matrix(
-                                columns.iter().map(|(name, values)| (name, values.as_ref())),
-                            ),
-                            public_values: constraint_system.publics_by_stage[0]
-                                .iter()
-                                .map(|(_, column_name, _, row)| {
-                                    witness
-                                        .iter()
-                                        .find_map(|(n, v)| (n == column_name).then(|| v[*row]))
-                                        .unwrap()
-                                        .into_p3_field()
-                                })
-                                .collect(),
-                        },
-                    ),
-                )
-            })
+                    name.clone(),
+                    Table {
+                        air: PowdrTable::new(constraint_system),
+                        degree,
+                    },
+                ),
+                (
+                    name.clone(),
+                    AirStage {
+                        trace: generate_matrix(
+                            columns.iter().map(|(name, values)| (name, values.as_ref())),
+                        ),
+                        public_values: constraint_system.publics_by_stage[0]
+                            .iter()
+                            .map(|(_, column_name, _, row)| {
+                                witness
+                                    .iter()
+                                    .find_map(|(n, v)| (n == column_name).then(|| v[*row]))
+                                    .unwrap()
+                                    .into_p3_field()
+                            })
+                            .collect(),
+                    },
+                ),
+            ))
         })
         .unzip();
 

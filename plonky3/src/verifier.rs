@@ -101,6 +101,9 @@ where
         opening_proof,
     } = proof;
 
+    // Filters out machines that are not included in the proof.
+    // With a sound bus argument, the prover can only do this if they don't interact
+    // with the bus, i.e., are empty.
     let split = split
         .iter()
         .filter_map(|(k, v)| opened_values.contains_key(*k).then_some((*k, v)))
@@ -112,6 +115,8 @@ where
                 Some((k, v))
             } else {
                 for stage_publics in v {
+                    // TODO: This will fail once we expose the accumulators as publics...
+                    // If we machine is removed, we want to use an accumulator value of 0.
                     assert!(stage_publics.is_empty());
                 }
                 None

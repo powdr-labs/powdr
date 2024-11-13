@@ -257,26 +257,23 @@ fn accumulate_challenges<F: FieldElement>(into: &mut BTreeMap<u64, F>, from: BTr
     }
 }
 
-#[allow(clippy::type_complexity)]
 fn process_witness_for_machine<F: FieldElement>(
     machine: &str,
     machine_data: &BTreeMap<DegreeType, MachineData<F>>,
     witness: &[(String, Vec<F>)],
-) -> Option<(Vec<(String, Vec<F>)>, DegreeType)> {
+) -> (Vec<(String, Vec<F>)>, DegreeType) {
     // Pick any available PIL; they all contain the same witness columns
     let any_pil = &machine_data.values().next().unwrap().pil;
     let witness = machine_witness_columns(witness, any_pil, machine);
-    (!witness.is_empty()).then(|| {
-        let size = witness
-            .iter()
-            .map(|(_, witness)| witness.len())
-            .unique()
-            .exactly_one()
-            .expect("All witness columns of a machine must have the same size")
-            as DegreeType;
+    let size = witness
+        .iter()
+        .map(|(_, witness)| witness.len())
+        .unique()
+        .exactly_one()
+        .expect("All witness columns of a machine must have the same size")
+        as DegreeType;
 
-        (witness, size as DegreeType)
-    })
+    (witness, size as DegreeType)
 }
 
 fn time_stage<'a, F: FieldElement>(
@@ -317,19 +314,19 @@ impl<F: FieldElement> Backend<F> for CompositeBackend<F> {
                 .iter()
                 .filter_map(|machine_entry| {
                     let (machine, machine_data) = machine_entry;
-                    process_witness_for_machine(machine, machine_data, witness).map(
-                        |(witness, size)| {
-                            let inner_machine_data = machine_data
-                                .get(&size)
-                                .expect("Machine does not support the given size");
+                    let (witness, size) =
+                        process_witness_for_machine(machine, machine_data, witness);
+                    (size > 0).then(|| {
+                        let inner_machine_data = machine_data
+                            .get(&size)
+                            .expect("Machine does not support the given size");
 
-                            let status = time_stage(machine, size, 0, || {
-                                sub_prover::run(scope, &inner_machine_data.backend, witness)
-                            });
+                        let status = time_stage(machine, size, 0, || {
+                            sub_prover::run(scope, &inner_machine_data.backend, witness)
+                        });
 
-                            (status, machine_entry, size)
-                        },
-                    )
+                        (status, machine_entry, size)
+                    })
                 })
                 .collect::<Vec<_>>();
 
@@ -369,8 +366,7 @@ impl<F: FieldElement> Backend<F> for CompositeBackend<F> {
                     .map(|(prover, machine_entry)| {
                         let (machine_name, machine_data) = machine_entry;
                         let (witness, size) =
-                            process_witness_for_machine(machine_name, machine_data, &witness)
-                                .expect("Empty machines should have been filtered out before");
+                            process_witness_for_machine(machine_name, machine_data, &witness);
 
                         let status =
                             time_stage(machine_name, size, stage, move || prover.resume(witness));

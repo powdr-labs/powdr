@@ -175,7 +175,16 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                     "Machine {} is never used at runtime, so we remove it.",
                     self.name
                 );
-                return HashMap::new();
+                // Return empty columns for all witnesses.
+                return self
+                    .parts
+                    .witnesses
+                    .iter()
+                    .map(|id| (*id, Vec::new()))
+                    // Note that this panics if any count is not 0 (which shouldn't happen).
+                    .chain(self.multiplicity_counter.generate_columns_single_size(0))
+                    .map(|(id, values)| (self.fixed_data.column_name(&id).to_string(), values))
+                    .collect();
             }
         }
         self.degree = compute_size_and_log(&self.name, self.data.len(), self.degree_range);
