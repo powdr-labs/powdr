@@ -37,7 +37,13 @@ lazy_static! {
     };
 }
 
+/// Link the objects into a single PIL file, using the specified mode.
+pub fn link(graph: MachineInstanceGraph, mode: LinkerMode) -> Result<PILFile, Vec<String>> {
+    Linker::new(mode).link(graph)
+}
+
 #[derive(Clone, EnumString, EnumVariantNames, Display, Copy, Default)]
+/// Whether to link the machines natively or via a global bus.
 pub enum LinkerMode {
     #[default]
     #[strum(serialize = "native")]
@@ -47,7 +53,8 @@ pub enum LinkerMode {
 }
 
 #[derive(Default)]
-pub enum DegreesMode {
+/// Whether to align the degrees of all machines to the main machine, or to use the degrees of the individual machines.
+pub enum DegreeMode {
     Monolithic(MachineDegree),
     #[default]
     Vadcop,
@@ -56,7 +63,7 @@ pub enum DegreesMode {
 #[derive(Default)]
 struct Linker {
     mode: LinkerMode,
-    degrees: DegreesMode,
+    degrees: DegreeMode,
     /// for each namespace, we store the statements resulting from processing the links separatly, because we need to make sure they do not come first.
     namespaces: BTreeMap<String, (Vec<PilStatement>, Vec<PilStatement>)>,
     next_interaction_id: u32,
@@ -76,8 +83,7 @@ impl Linker {
         id
     }
 
-    /// The optional degree of the namespace is set to that of the object if it's set, to that of the main object otherwise.
-    pub fn link(mut self, graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
+    fn link(mut self, graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
         let main_machine = graph.main;
         let main_degree = graph
             .objects
@@ -88,13 +94,13 @@ impl Linker {
 
         // If the main object has a static degree, we use the monolithic mode with that degree.
         self.degrees = match main_degree.is_static() {
-            true => DegreesMode::Monolithic(main_degree),
-            false => DegreesMode::Vadcop,
+            true => DegreeMode::Monolithic(main_degree),
+            false => DegreeMode::Vadcop,
         };
 
         let common_definitions = process_definitions(graph.statements);
 
-        for (location, object) in graph.objects.into_iter() {
+        for (location, object) in graph.objects {
             self.process_object(location.clone(), object);
 
             if location == Location::main() {
@@ -139,33 +145,33 @@ impl Linker {
 
     fn process_object(&mut self, location: Location, object: Object) {
         let degree = match &self.degrees {
-            DegreesMode::Monolithic(d) => d.clone(),
-            DegreesMode::Vadcop => object.degree,
+            DegreeMode::Monolithic(d) => d.clone(),
+            DegreeMode::Vadcop => object.degree,
         };
 
         let namespace = location.to_string();
         let namespace_degree = to_namespace_degree(degree);
 
-        let (pil, _) = self.namespaces.entry(namespace).or_default();
+        let (pil, _) = self.namespaces.entry(namespace.clone()).or_default();
 
         // create a namespace for this object
         pil.push(PilStatement::Namespace(
             SourceRef::unknown(),
-            SymbolPath::from_identifier(location.to_string()),
+            SymbolPath::from_identifier(namespace.clone()),
             Some(namespace_degree),
         ));
 
         pil.extend(object.pil);
         for link in object.links {
-            self.process_link(link, location.clone());
+            self.process_link(link, namespace.clone());
         }
     }
 
-    fn process_link(&mut self, link: Link, from_location: Location) {
+    fn process_link(&mut self, link: Link, from_namespace: String) {
         let from = link.from;
         let to = link.to;
 
-        let to_location = to.machine.location.clone();
+        let to_namespace = to.machine.location.clone().to_string();
 
         // the lhs is `instr_flag { operation_id, inputs, outputs }`
         let op_id = to.operation.id.iter().cloned().map(|n| n.into());
@@ -184,7 +190,6 @@ impl Linker {
             );
 
             // permutation rhs is `(latch * selector[idx]) { operation_id, inputs, outputs }`
-            let to_namespace = to.machine.location.clone().to_string();
             let op_id = to
                 .machine
                 .operation_id
@@ -217,10 +222,10 @@ impl Linker {
                 .into(),
             );
 
-            self.insert_identity(
-                IdentityType::Permutation,
-                from_location,
-                to_location,
+            self.insert_interaction(
+                InteractionType::Permutation,
+                from_namespace,
+                to_namespace,
                 lhs,
                 rhs,
             );
@@ -237,7 +242,6 @@ impl Linker {
                 .into(),
             );
 
-            let to_namespace = to.machine.location.clone().to_string();
             let op_id = to
                 .machine
                 .operation_id
@@ -262,75 +266,89 @@ impl Linker {
                 .into(),
             );
 
-            self.insert_identity(IdentityType::Lookup, from_location, to_location, lhs, rhs);
+            self.insert_interaction(
+                InteractionType::Lookup,
+                from_namespace,
+                to_namespace,
+                lhs,
+                rhs,
+            );
         };
     }
 
-    fn insert_identity(
+    fn insert_interaction(
         &mut self,
-        identity_type: IdentityType,
-        from: Location,
-        to: Location,
+        interaction_type: InteractionType,
+        from_namespace: String,
+        to_namespace: String,
         lhs: Expression,
         rhs: Expression,
     ) {
+        // get a new unique interaction id
         let interaction_id = self.next_interaction_id();
 
         match self.mode {
             LinkerMode::Native => {
-                self.namespaces.entry(from.to_string()).or_default().1.push(
+                self.namespaces.entry(from_namespace).or_default().1.push(
                     PilStatement::Expression(
                         SourceRef::unknown(),
-                        match identity_type {
-                            IdentityType::Lookup => lookup(lhs, rhs),
-                            IdentityType::Permutation => permutation(lhs, rhs),
+                        match interaction_type {
+                            InteractionType::Lookup => lookup(lhs, rhs),
+                            InteractionType::Permutation => permutation(lhs, rhs),
                         },
                     ),
                 );
             }
             LinkerMode::Bus => {
-                self.namespaces.entry(from.to_string()).or_default().1.push(
-                    PilStatement::Expression(
+                // send in the origin
+                self.namespaces
+                    .entry(from_namespace.clone())
+                    .or_default()
+                    .1
+                    .push(PilStatement::Expression(
                         SourceRef::unknown(),
-                        send(identity_type, lhs.clone(), rhs.clone(), interaction_id),
-                    ),
-                );
-                self.namespaces.entry(to.to_string()).or_default().1.push(
-                    PilStatement::Expression(
+                        send(interaction_type, lhs.clone(), rhs.clone(), interaction_id),
+                    ));
+
+                // receive in the destination
+                self.namespaces
+                    .entry(to_namespace)
+                    .or_default()
+                    .1
+                    .push(PilStatement::Expression(
                         SourceRef::unknown(),
                         receive(
-                            identity_type,
-                            namespaced_expression(from.to_string(), lhs),
+                            interaction_type,
+                            namespaced_expression(from_namespace, lhs),
                             rhs,
                             interaction_id,
                         ),
-                    ),
-                );
+                    ));
             }
         }
     }
 }
 
 #[derive(Clone, Copy)]
-enum IdentityType {
+enum InteractionType {
     Lookup,
     Permutation,
 }
 
 fn send(
-    identity_type: IdentityType,
+    identity_type: InteractionType,
     lhs: Expression,
     rhs: Expression,
     interaction_id: u32,
 ) -> Expression {
     let (function, identity) = match identity_type {
-        IdentityType::Lookup => (
+        InteractionType::Lookup => (
             SymbolPath::from_str("std::protocols::lookup_via_bus::lookup_send")
                 .unwrap()
                 .into(),
             lookup(lhs, rhs),
         ),
-        IdentityType::Permutation => (
+        InteractionType::Permutation => (
             SymbolPath::from_str("std::protocols::permutation_via_bus::permutation_send")
                 .unwrap()
                 .into(),
@@ -348,19 +366,19 @@ fn send(
 }
 
 fn receive(
-    identity_type: IdentityType,
+    identity_type: InteractionType,
     lhs: Expression,
     rhs: Expression,
     interaction_id: u32,
 ) -> Expression {
     let (function, identity) = match identity_type {
-        IdentityType::Lookup => (
+        InteractionType::Lookup => (
             SymbolPath::from_str("std::protocols::lookup_via_bus::lookup_receive")
                 .unwrap()
                 .into(),
             lookup(lhs, rhs),
         ),
-        IdentityType::Permutation => (
+        InteractionType::Permutation => (
             SymbolPath::from_str("std::protocols::permutation_via_bus::permutation_receive")
                 .unwrap()
                 .into(),
@@ -404,10 +422,6 @@ fn namespaced_expression(namespace: String, mut expr: Expression) -> Expression 
     expr
 }
 
-pub fn link(graph: MachineInstanceGraph, mode: LinkerMode) -> Result<PILFile, Vec<String>> {
-    Linker::new(mode).link(graph)
-}
-
 // Extract the utilities and sort them into namespaces where possible.
 fn process_definitions(
     mut definitions: BTreeMap<AbsoluteSymbolPath, Vec<PilStatement>>,
@@ -444,10 +458,14 @@ mod test {
 
     use pretty_assertions::assert_eq;
 
-    use crate::{LinkerMode, MAX_DEGREE_LOG, MIN_DEGREE_LOG};
+    use crate::{MAX_DEGREE_LOG, MIN_DEGREE_LOG};
 
-    fn link(graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
+    fn link_native(graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
         super::link(graph, super::LinkerMode::Native)
+    }
+
+    fn link_with_bus(graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
+        super::link(graph, super::LinkerMode::Bus)
     }
 
     fn parse_analyze_and_compile_file<T: FieldElement>(file: &str) -> MachineInstanceGraph {
@@ -533,9 +551,9 @@ namespace main__rom(4 + 4);
 
         let file_name = "../test_data/asm/empty_vm.asm";
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
-        let pil = link(graph.clone()).unwrap();
+        let pil = link_native(graph.clone()).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), native_expectation);
-        let pil = super::link(graph, LinkerMode::Bus).unwrap();
+        let pil = link_with_bus(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), bus_expectation);
     }
 
@@ -549,7 +567,7 @@ namespace main__rom(4 + 4);
         );
 
         let graph = parse_analyze_and_compile::<GoldilocksField>("");
-        let pil = link(graph).unwrap();
+        let pil = link_native(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
 
@@ -557,7 +575,7 @@ namespace main__rom(4 + 4);
     fn compile_pil_without_machine() {
         let input = "    let even = std::array::new(5, |i| 2 * i);";
         let graph = parse_analyze_and_compile::<GoldilocksField>(input);
-        let pil = link(graph).unwrap().to_string();
+        let pil = link_native(graph).unwrap().to_string();
         assert_eq!(&pil[0..input.len()], input);
     }
 
@@ -666,7 +684,7 @@ namespace main_sub__rom(16);
 "#;
         let file_name = "../test_data/asm/different_signatures.asm";
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
-        let pil = link(graph).unwrap();
+        let pil = link_native(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
 
@@ -748,7 +766,7 @@ namespace main__rom(16);
 "#;
         let file_name = "../test_data/asm/simple_sum.asm";
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
-        let pil = link(graph).unwrap();
+        let pil = link_native(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
 
@@ -809,7 +827,7 @@ namespace main__rom(8);
     pol constant latch = [1]*;
 "#;
         let graph = parse_analyze_and_compile::<GoldilocksField>(source);
-        let pil = link(graph).unwrap();
+        let pil = link_native(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
 
@@ -829,7 +847,7 @@ machine NegativeForUnsigned {
 }
 "#;
         let graph = parse_analyze_and_compile::<GoldilocksField>(source);
-        let _ = link(graph);
+        let _ = link_native(graph);
     }
 
     #[test]
@@ -913,7 +931,7 @@ namespace main_vm(64..128);
     y = x + 5;
 "#;
         let graph = parse_analyze_and_compile::<GoldilocksField>(asm);
-        let pil = link(graph).unwrap();
+        let pil = link_native(graph).unwrap();
         assert_eq!(extract_main(&(pil.to_string())), expected);
     }
 
@@ -1034,7 +1052,7 @@ namespace main_bin(128);
 "#;
         let file_name = "../test_data/asm/permutations/vm_to_block.asm";
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
-        let pil = link(graph).unwrap();
+        let pil = link_native(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expected);
     }
 
@@ -1191,7 +1209,7 @@ namespace main_submachine(32);
 "#;
         let file_name = "../test_data/asm/permutations/link_merging.asm";
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
-        let pil = link(graph).unwrap();
+        let pil = link_native(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expected);
     }
 }
