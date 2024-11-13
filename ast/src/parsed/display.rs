@@ -109,6 +109,8 @@ impl Display for MachineProperties {
             .as_ref()
             .map(|s| format!("degree: {s}"))
             .into_iter()
+            .chain(self.min_degree.as_ref().map(|s| format!("min_degree: {s}")))
+            .chain(self.max_degree.as_ref().map(|s| format!("max_degree: {s}")))
             .chain(self.latch.as_ref().map(|s| format!("latch: {s}")))
             .chain(
                 self.operation_id
