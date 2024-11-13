@@ -82,7 +82,7 @@ where
     }
     pub fn prove(&self, witness: &[(String, Vec<F>)]) -> Result<Vec<u8>, String> {
         // twiddles are used for FFT, they are computed in a bigger group than the eval domain.
-        // eval domain half coset G_{2n} + <G_{n/2}>
+        // the eval domain is the half coset G_{2n} + <G_{n/2}>
         // twiddles are computed in half coset G_{4n} + <G_{n}>, double the size of eval doamin.
         let twiddles = B::precompute_twiddles(
             CanonicCoset::new(self.analyzed.degree().ilog2() + 1 + FRI_LOG_BLOWUP as u32)
