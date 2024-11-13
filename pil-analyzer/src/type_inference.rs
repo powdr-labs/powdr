@@ -992,36 +992,30 @@ impl TypeChecker {
         inferred_types
             .into_iter()
             .map(|(name, inferred_type)| {
-                let declared_type = self.declared_types[&name].clone();
-                let inferred_type = self.type_into_substituted(inferred_type.clone());
-
-                self.compare_type_schemes(&name, inferred_type, declared_type.scheme().clone())
-                    .map_err(|err| {
-                        declared_type
-                            .source
-                            .with_error(format!("For symbol {name}: {err}"))
-                    })
+                self.compare_inferred_type_to_declared(&name, inferred_type)
                     .map(|mapping| (name, mapping))
             })
             .collect()
     }
 
     /// Compares two type schemes and returns a mapping from inferred type vars to declared type vars if they match
-    fn compare_type_schemes(
+    fn compare_inferred_type_to_declared(
         &self,
         name: &str,
         inferred_type: Type,
-        declared_scheme: TypeScheme,
-    ) -> Result<HashMap<String, Type>, String> {
+    ) -> Result<HashMap<String, Type>, Error> {
+        let declared_type = self.declared_types[name].clone();
+        let declared_scheme = declared_type.scheme();
+        let inferred_type = self.type_into_substituted(inferred_type.clone());
         let inferred = self.to_type_scheme(inferred_type.clone());
         let declared = declared_scheme.clone().simplify_type_vars();
 
         if inferred != declared {
-            return Err(format!(
+            return Err(declared_type.source.with_error(format!(
                 "Inferred type scheme does not match the declared type.\nInferred: let{}\nDeclared: let{}",
                 format_type_scheme_around_name(&name, &Some(inferred)),
                 format_type_scheme_around_name(&name, &Some(declared))
-            ));
+            )));
         }
 
         Ok(inferred_type
