@@ -63,9 +63,9 @@ impl From<Type> for ExpectedType {
 
 #[derive(Debug, Clone)]
 pub struct DeclaredType {
-    pub source: SourceRef,
-    pub vars: TypeBounds,
-    pub ty: DeclaredTypeKind,
+    source: SourceRef,
+    vars: TypeBounds,
+    ty: DeclaredTypeKind,
 }
 
 impl DeclaredType {
@@ -102,7 +102,7 @@ impl DeclaredType {
 }
 
 #[derive(Debug, Clone)]
-pub enum DeclaredTypeKind {
+enum DeclaredTypeKind {
     #[allow(dead_code)] // Remove when #1910 is merged
     Struct(Type, HashMap<String, Type>),
     Type(Type),
