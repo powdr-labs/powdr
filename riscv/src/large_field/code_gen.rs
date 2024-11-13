@@ -124,7 +124,7 @@ fn translate_program_impl(
             .map(|l| l.to_string())
             .collect::<Vec<_>>()
     } else {
-        submachines_init
+        vec![]
     };
 
     let mut statements: Vec<String> = program
