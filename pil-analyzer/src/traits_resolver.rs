@@ -215,7 +215,7 @@ impl<'a> TraitsResolver<'a> {
         let (ins_ty2, _) = unifier.instantiate_scheme(ty2.clone());
 
         match unifier.unify_types(ins_ty1.clone(), ins_ty2.clone()) {
-            Ok(_) => Err(format!("Types {} and {} overlap", ins_ty1, ins_ty2)),
+            Ok(_) => Err(format!("Types {ins_ty1} and {ins_ty2} overlap")),
             Err(_) => Ok(()),
         }
     }
