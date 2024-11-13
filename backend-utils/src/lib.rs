@@ -50,7 +50,8 @@ pub fn machine_witness_columns<F: FieldElement>(
         machine_pil.committed_polys_in_source_order(),
     );
 
-    if machine_columns.is_empty() {
+    assert!(machine_pil.commitment_count() > 0);
+    if machine_columns.is_empty() && machine_pil.commitment_count() != 1 {
         log::info!("Machine {machine_name} has no witness columns");
         return vec![];
     }
