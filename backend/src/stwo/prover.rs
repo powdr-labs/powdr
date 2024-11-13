@@ -38,7 +38,6 @@ pub struct StwoProver<T, B: Backend + Send, MC: MerkleChannel, C: Channel> {
     _proving_key: Option<()>,
     /// Verifying key placeholder
     _verifying_key: Option<()>,
-    pub pcs_config: PcsConfig,
     _channel_marker: PhantomData<C>,
     _channel_marker_backend: PhantomData<B>,
     _channel_marker_merkelchannel: PhantomData<MC>,
@@ -76,11 +75,11 @@ where
             _verifying_key: None,
             _channel_marker_backend: PhantomData,
             _channel_marker_merkelchannel: PhantomData,
-            pcs_config: config,
             _channel_marker: PhantomData,
         })
     }
     pub fn prove(&self, witness: &[(String, Vec<F>)]) -> Result<Vec<u8>, String> {
+        let config = get_config();
         // twiddles are used for FFT, they are computed in a bigger group than the eval domain.
         // the eval domain is the half coset G_{2n} + <G_{n/2}>
         // twiddles are computed in half coset G_{4n} + <G_{n}>, double the size of eval doamin.
@@ -92,8 +91,7 @@ where
 
         // Setup protocol.
         let mut prover_channel = <MC as MerkleChannel>::C::default();
-        let commitment_scheme =
-            &mut CommitmentSchemeProver::<B, MC>::new(self.pcs_config, &twiddles);
+        let commitment_scheme = &mut CommitmentSchemeProver::<B, MC>::new(config, &twiddles);
 
         let trace = gen_stwo_circuit_trace::<F, B, M31>(Some(witness), self.analyzed.clone());
 
@@ -117,11 +115,12 @@ where
     }
 
     pub fn verify(&self, proof: &[u8], _instances: &[F]) -> Result<(), String> {
+        let config = get_config();
         let proof: StarkProof<MC::H> =
             bincode::deserialize(proof).map_err(|e| format!("Failed to deserialize proof: {e}"))?;
 
         let mut verifier_channel = <MC as MerkleChannel>::C::default();
-        let mut commitment_scheme = CommitmentSchemeVerifier::<MC>::new(self.pcs_config);
+        let mut commitment_scheme = CommitmentSchemeVerifier::<MC>::new(config);
 
         //Constraints that are to be proved
         let component = PowdrComponent::new(
@@ -140,5 +139,16 @@ where
             proof,
         )
         .map_err(|e| e.to_string())
+    }
+}
+
+fn get_config() -> PcsConfig {
+    PcsConfig {
+        pow_bits: FRI_PROOF_OF_WORK_BITS as u32,
+        fri_config: FriConfig::new(
+            LOG_LAST_LAYER_DEGREE_BOUND as u32,
+            FRI_LOG_BLOWUP as u32,
+            FRI_NUM_QUERIES,
+        ),
     }
 }
