@@ -524,6 +524,7 @@ where
         index: parsed::Expression,
     ) -> Vec<PILItem> {
         let id = self.counters.dispense_public_id();
+        let name = self.driver.resolve_decl(&name);
         let polynomial = self
             .expression_processor(&Default::default())
             .process_namespaced_polynomial_reference(poly)
