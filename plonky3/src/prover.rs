@@ -403,37 +403,39 @@ where
     let (tables, stage_0): (BTreeMap<_, _>, BTreeMap<_, _>) = program
         .split
         .iter()
-        .map(|(name, (pil, constraint_system))| {
+        .filter_map(|(name, (pil, constraint_system))| {
             let columns = machine_witness_columns(witness, pil, name);
-            let degree = columns[0].1.len();
+            (!columns.is_empty()).then(|| {
+                let degree = columns[0].1.len();
 
-            (
                 (
-                    name.clone(),
-                    Table {
-                        air: PowdrTable::new(constraint_system),
-                        degree,
-                    },
-                ),
-                (
-                    name.clone(),
-                    AirStage {
-                        trace: generate_matrix(
-                            columns.iter().map(|(name, values)| (name, values.as_ref())),
-                        ),
-                        public_values: constraint_system.publics_by_stage[0]
-                            .iter()
-                            .map(|(_, column_name, _, row)| {
-                                witness
-                                    .iter()
-                                    .find_map(|(n, v)| (n == column_name).then(|| v[*row]))
-                                    .unwrap()
-                                    .into_p3_field()
-                            })
-                            .collect(),
-                    },
-                ),
-            )
+                    (
+                        name.clone(),
+                        Table {
+                            air: PowdrTable::new(constraint_system),
+                            degree,
+                        },
+                    ),
+                    (
+                        name.clone(),
+                        AirStage {
+                            trace: generate_matrix(
+                                columns.iter().map(|(name, values)| (name, values.as_ref())),
+                            ),
+                            public_values: constraint_system.publics_by_stage[0]
+                                .iter()
+                                .map(|(_, column_name, _, row)| {
+                                    witness
+                                        .iter()
+                                        .find_map(|(n, v)| (n == column_name).then(|| v[*row]))
+                                        .unwrap()
+                                        .into_p3_field()
+                                })
+                                .collect(),
+                        },
+                    ),
+                )
+            })
         })
         .unzip();
 
