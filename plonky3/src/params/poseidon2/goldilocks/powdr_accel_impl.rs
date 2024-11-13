@@ -15,7 +15,7 @@ impl p3_symmetric::Permutation<[Goldilocks; 8]> for Permutation {
     // canonical representation internally, so it is safe to cast between their
     // array's references.
     //
-    // TODO: We a relying on implementation detail. So, ideally, we should
+    // TODO: We are relying on implementation detail. So, ideally, we should
     // static assert that std::mem::transmute(Goldilocks::one()) == 1u64.
 
     fn permute(&self, input: [Goldilocks; 8]) -> [Goldilocks; 8] {
