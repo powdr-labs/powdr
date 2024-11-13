@@ -1,5 +1,5 @@
 use alloc::collections::BTreeMap;
-use alloc::string::String;
+use alloc::string::{String, ToString};
 use alloc::vec;
 use alloc::vec::Vec;
 use core::iter::once;
@@ -75,6 +75,7 @@ pub fn verify<T: FieldElementMap>(
     split: &BTreeMap<&String, &ConstraintSystem<T>>,
     challenger: &mut Challenger<T>,
     proof: &Proof<T::Config>,
+    // Machine name -> (stage -> public values)
     public_inputs: BTreeMap<String, Vec<Vec<T>>>,
 ) -> Result<(), VerificationError<PcsError<T::Config>>>
 where
@@ -100,12 +101,32 @@ where
         opening_proof,
     } = proof;
 
+    let split = split
+        .iter()
+        .filter_map(|(k, v)| opened_values.contains_key(*k).then_some((*k, v)))
+        .collect::<BTreeMap<_, _>>();
+    let public_inputs = public_inputs
+        .iter()
+        .filter_map(|(k, v)| {
+            if opened_values.contains_key(k) {
+                Some((k, v))
+            } else {
+                for stage_publics in v {
+                    assert!(stage_publics.is_empty());
+                }
+                None
+            }
+        })
+        .collect::<BTreeMap<_, _>>();
+
     // sanity check that the two maps have the same keys
-    itertools::assert_equal(split.keys().cloned(), public_inputs.keys());
+    itertools::assert_equal(split.keys(), public_inputs.keys());
 
     // error out if the opened values do not have the same keys as the tables
     if !itertools::equal(split.keys().cloned(), opened_values.keys()) {
-        return Err(VerificationError::InvalidProofShape);
+        return Err(VerificationError::InvalidProofShape(
+            "Opened values do not have the same keys as the tables".to_string(),
+        ));
     }
 
     let tables: BTreeMap<&String, Table<_>> = split
@@ -115,14 +136,14 @@ where
         .map(
             |((constraints, (name, public_values_by_stage)), opened_values)| {
                 (
-                    name,
+                    *name,
                     Table {
                         air: PowdrTable::new(constraints),
                         opened_values,
                         public_values_by_stage,
                         preprocessed: verifying_key
                             .as_ref()
-                            .and_then(|vk| vk.preprocessed.get(name)),
+                            .and_then(|vk| vk.preprocessed.get(*name)),
                     },
                 )
             },
@@ -425,12 +446,12 @@ where
         && challenge_counts.len() as u8 == stage_count;
 
     res.then_some(())
-        .ok_or(VerificationError::InvalidProofShape)
+        .ok_or_else(|| VerificationError::InvalidProofShape("Invalid opening shape".to_string()))
 }
 
 #[derive(Debug)]
 pub enum VerificationError<PcsErr> {
-    InvalidProofShape,
+    InvalidProofShape(String),
     /// An error occurred while verifying the claimed openings.
     InvalidOpeningArgument(PcsErr),
     /// Out-of-domain evaluation mismatch, i.e. `constraints(zeta)` did not match
