@@ -480,7 +480,7 @@ fn enum_pattern() {
 }
 
 #[test]
-#[should_panic = "Only one '..'-item allowed in array pattern"]
+#[should_panic = "Only one \"..\"-item allowed in array pattern"]
 fn multi_ellipsis() {
     let input = "    let t: int[] -> int = (|i| match i {
         [1, .., 3, ..] => 2,

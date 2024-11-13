@@ -221,7 +221,7 @@ impl<'a, D: AnalysisDriver> ExpressionProcessor<'a, D> {
                     > 1
                 {
                     return Err(source_ref
-                        .with_error("Only one '..'-item allowed in array pattern".to_string()));
+                        .with_error("Only one \"..\"-item allowed in array pattern".to_string()));
                 }
                 Ok(Pattern::Array(source_ref, self.process_pattern_vec(items)?))
             }
