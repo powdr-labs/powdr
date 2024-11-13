@@ -257,6 +257,7 @@ fn accumulate_challenges<F: FieldElement>(into: &mut BTreeMap<u64, F>, from: BTr
     }
 }
 
+#[allow(clippy::type_complexity)]
 fn process_witness_for_machine<F: FieldElement>(
     machine: &str,
     machine_data: &BTreeMap<DegreeType, MachineData<F>>,
