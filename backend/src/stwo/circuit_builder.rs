@@ -90,7 +90,7 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
         assert!(
             self.analyzed.constant_count() == 0 && self.analyzed.publics_count() == 0,
-            "Error: Expected constant_count and publics_count to be 0, as there are not supported yet.",
+            "Error: Expected no fixed columns nor public inputs, as they are not supported yet.",
         );
 
         let col_count = self.analyzed.commitment_count()
