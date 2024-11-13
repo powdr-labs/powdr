@@ -316,17 +316,19 @@ impl<F: FieldElement> Backend<F> for CompositeBackend<F> {
                     let (machine, machine_data) = machine_entry;
                     let (witness, size) =
                         process_witness_for_machine(machine, machine_data, witness);
-                    (size > 0).then(|| {
-                        let inner_machine_data = machine_data
-                            .get(&size)
-                            .expect("Machine does not support the given size");
+                    if size == 0 {
+                        // If a machine has no rows, remove it entirely.
+                        return None;
+                    }
+                    let inner_machine_data = machine_data
+                        .get(&size)
+                        .expect("Machine does not support the given size");
 
-                        let status = time_stage(machine, size, 0, || {
-                            sub_prover::run(scope, &inner_machine_data.backend, witness)
-                        });
+                    let status = time_stage(machine, size, 0, || {
+                        sub_prover::run(scope, &inner_machine_data.backend, witness)
+                    });
 
-                        (status, machine_entry, size)
-                    })
+                    Some((status, machine_entry, size))
                 })
                 .collect::<Vec<_>>();
 
