@@ -172,7 +172,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         }
         self.degree = compute_size_and_log(
             &self.name,
-            // At this point, the still contains the dummy block, which will be removed below.
+            // At this point, the data still contains the dummy block, which will be removed below.
             // Therefore, we subtract the block size here.
             self.data.len() - self.block_size,
             self.degree_range,
