@@ -188,21 +188,23 @@ impl<'a> TraitsResolver<'a> {
         &self,
         implementations: &[(&TraitImplementation<Expression>, usize)],
     ) -> Result<(), Error> {
-        for i in 0..implementations.len() {
-            let impl_i_type_scheme = &mut implementations[i].0.type_scheme.clone();
-            let type_vars: HashSet<_> = implementations[i].0.type_scheme.vars.vars().collect();
-            impl_i_type_scheme.ty.map_to_type_vars(&type_vars);
+        for (i, (impl_i, _)) in implementations.iter().enumerate() {
+            let mut impl_i_type_scheme = impl_i.type_scheme.clone();
+            impl_i_type_scheme
+                .ty
+                .map_to_type_vars(&impl_i.type_scheme.vars.vars().collect());
 
-            for j in (i + 1)..implementations.len() {
-                let impl_j_type_scheme = &mut implementations[j].0.type_scheme.clone();
-                let type_vars: HashSet<_> = impl_j_type_scheme.vars.vars().collect();
-                impl_j_type_scheme.ty.map_to_type_vars(&type_vars);
+            for (impl_j, _) in &implementations[(i + 1)..] {
+                let mut impl_j_type_scheme = impl_j.type_scheme.clone();
+                impl_j_type_scheme
+                    .ty
+                    .map_to_type_vars(&impl_j.type_scheme.vars.vars().collect());
 
-                if let Err(err) = self.unify_traits_types(impl_i_type_scheme, impl_j_type_scheme) {
-                    return Err(implementations[i]
-                        .0
+                if let Err(err) = self.unify_traits_types(&impl_i_type_scheme, &impl_j_type_scheme)
+                {
+                    return Err(impl_i
                         .source_ref
-                        .with_error(format!("Impls for {}: {err}", implementations[i].0.name)));
+                        .with_error(format!("Impls for {}: {err}", impl_i.name)));
                 }
             }
         }
