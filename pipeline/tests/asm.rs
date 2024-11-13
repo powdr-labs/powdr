@@ -147,8 +147,19 @@ fn block_to_block() {
 #[test]
 fn block_to_block_empty_submachine() {
     let f = "asm/block_to_block_empty_submachine.asm";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_halo2_with_backend_variant(pipeline.clone(), BackendVariant::Composite);
+    let mut pipeline = make_simple_prepared_pipeline(f);
+
+    let witness = pipeline.compute_witness().unwrap();
+    let arith_size = witness
+        .iter()
+        .find(|(k, _)| k == "main_arith::x")
+        .unwrap()
+        .1
+        .len();
+    assert_eq!(arith_size, 0);
+
+    test_halo2_with_backend_variant(pipeline, BackendVariant::Composite);
+
     let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f);
     test_plonky3_pipeline(pipeline);
 }

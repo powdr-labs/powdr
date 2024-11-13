@@ -1,9 +1,11 @@
 // This test is mostly a copy of block_to_block.asm, but:
 // - The machines have dynamic length (either 4 or 8)
-// - `instr_add` is always zero, so the sub-machine is never called
+// - `instr_add` can be set by the prover.
+//
+// We set `instr_add` to zero in all rows at runtime. This simulates
+// a secondary machine that is never called (and, because it depends on
+// runtime information, it's not removed by the optimizer).
 
-
-// calls a constrained machine from a constrained machine
 machine Arith with
     latch: latch,
     operation_id: operation_id
@@ -26,7 +28,7 @@ machine Main with
 {
     Arith arith(4, 8);
 
-    // return `3*x + 3*y`, adding twice locally and twice externally
+    // return `x + y`, where the prover can chose whether to add locally or externally
     operation main<0>;
 
     link if instr_add => z = arith.add(x, y);
@@ -45,6 +47,8 @@ machine Main with
 
     // add locally when `instr_add` is off
     (1 - instr_add) * (x + y - z) = 0;
-    // add using `arith` every other row
-    let instr_add = 0;
+
+    // `instr_add` is unconstrained, but set to zero at runtime,
+    // resulting in no calls to `arith`
+    col witness instr_add(i) query Query::Hint(0);
 }

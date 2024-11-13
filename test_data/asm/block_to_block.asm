@@ -22,7 +22,7 @@ machine Main with
 {
     Arith arith(N, N);
 
-    // return `3*x + 3*y`, adding twice locally and twice externally
+    // return `x + y`, adding twice locally and twice externally
     operation main<0>;
 
     link if instr_add => z = arith.add(x, y);
