@@ -953,7 +953,7 @@ impl<T> Children<AlgebraicExpression<T>> for PhantomLookupIdentity<T> {
             self.left
                 .children_mut()
                 .chain(self.right.children_mut())
-                .chain(self.multiplicity.children_mut()),
+                .chain(once(&mut self.multiplicity)),
         )
     }
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
@@ -961,7 +961,7 @@ impl<T> Children<AlgebraicExpression<T>> for PhantomLookupIdentity<T> {
             self.left
                 .children()
                 .chain(self.right.children())
-                .chain(self.multiplicity.children()),
+                .chain(once(&self.multiplicity)),
         )
     }
 }
