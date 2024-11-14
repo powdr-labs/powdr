@@ -10,10 +10,9 @@ use std::prelude::Query;
 use std::prover::eval;
 use std::prover::provide_value;
 use std::machines::small_field::memory::Memory;
-use std::machines::small_field::add_sub::AddSub;
 use std::machines::small_field::pointer_arith::increment_ptr;
 
-machine Keccakf16Memory(mem: Memory, add_sub: AddSub) with
+machine Keccakf16Memory(mem: Memory) with
     latch: first_step,
     operation_id: operation_id,
     call_selectors: sel,
@@ -63,35 +62,51 @@ machine Keccakf16Memory(mem: Memory, add_sub: AddSub) with
     col witness addr_h[50];
     col witness addr_l[50];
 
-    // Calculate address of all bytes in the input address array, i.e. increment by 4 each time.
-    // Returns an array of constraints.
-    let address_inc_cond = constr |addr_high, addr_low, cond| {
-        let addr = array::zip(
-            addr_high,
-            addr_low,
-            |high, low| (high, low)
-        );
+    // First step
+    // Inverse (addr_l')
+    array::map(addr_l, |c| {
+        first_step * (c' * (c - 0xfffc) - 1) * (c - 0xfffc) = 0
+    });
 
-        array::map(
-            // array::fold here concatenates array of [constr1, constr2] returned by array::zip, 
-            // as [constr1_0, constr2_0, constr1_1, constr2_1, ...].
-            array::fold(
-                // array::zip here returns array of [constr1, constr2], 
-                // where constr1 and constr2 are the two constraints returned by increment_ptr.
-                array::zip( 
-                    array::sub_array(addr, 0, array::len(addr) - 1),
-                    array::sub_array(addr, 1, array::len(addr) - 1),
-                    constr |(high, low), (next_high, next_low)| {
-                        increment_ptr(4, high, low, next_high, next_low)
-                    }
-                ), [],
-                |a, b| a + b 
-            ),
-            |c| std::constraints::make_conditional(c, cond)
-        )
-    };
-    address_inc_cond(addr_h, addr_l, first_step);
-    
+    // Carry (addr_h')
+    array::zip(addr_h, addr_l, |h, l| {
+        first_step * (h' + l' * (l - 0xfffc) - 1) = 0
+    });
+
+    array::new(49, |i| {
+        first_step * (
+            addr_h[i]' * addr_l[i + 1] +
+            (1 - addr_h[i]') * (addr_l[i + 1] - addr_l[i] - 4)
+        ) = 0
+    });
+
+    array::new(49, |i| {
+        first_step * (addr_h[i + 1] - addr_h[i] - addr_h[i]') = 0
+    });
+
+    // Final step
+    // Inverse (penultimate row of addr_l)
+    array::map(addr_l, |c| {
+        penultimate_step * (c * (c' - 0xfffc) - 1) * (c' - 0xfffc) = 0
+    });
+
+    // Carry (penultimate row of addr_h)
+    array::zip(addr_h, addr_l, |h, l| {
+        penultimate_step * (h + l * (l' - 0xfffc) - 1) = 0
+    });
+
+    array::new(49, |i| {
+        penultimate_step * (
+            addr_h[i] * addr_l[i + 1]' +
+            (1 - addr_h[i]) * (addr_l[i + 1]' - addr_l[i]' - 4)
+        ) = 0
+    });
+
+    array::new(49, |i| {
+        penultimate_step * (addr_h[i + 1]' - addr_h[i]' - addr_h[i]) = 0
+    });
+
+
     // Load memory while converting to little endian format for keccak computation.
     // Specifically, this keccakf16 machine accepts big endian inputs in memory.
     // However the keccak computation constraints are written for little endian iputs.
@@ -151,7 +166,6 @@ machine Keccakf16Memory(mem: Memory, add_sub: AddSub) with
     // Output address is provided by the user, copied in each row, and set to be equal to addr_h[0] and addr_l[0] in the last row.
     final_step * (output_addr_h - addr_h[0]) = 0;
     final_step * (output_addr_l - addr_l[0]) = 0;
-    address_inc_cond(addr_h, addr_l, final_step);
 
     // Expects input of 25 64-bit numbers decomposed to 25 chunks of 4 16-bit little endian limbs. 
     // The output is a_prime_prime_prime_0_0_limbs for the first 4 and a_prime_prime for the rest.
@@ -304,6 +318,7 @@ machine Keccakf16Memory(mem: Memory, add_sub: AddSub) with
 
     let first_step: expr = step_flags[0]; // Aliasing instead of defining a new fixed column.
     let final_step: expr = step_flags[NUM_ROUNDS - 1];
+    let penultimate_step: expr = step_flags[NUM_ROUNDS - 2];
     col fixed is_last = [0]* + [1];
 
     // // If this is the first step, the input A must match the preimage.
