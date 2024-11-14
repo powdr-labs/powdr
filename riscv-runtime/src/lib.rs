@@ -7,9 +7,6 @@
     asm_const
 )]
 
-use core::arch::{asm, global_asm};
-use powdr_riscv_syscalls::Syscall;
-
 #[macro_use]
 mod ecall;
 
@@ -30,11 +27,14 @@ mod no_std_support;
 #[cfg(feature = "std")]
 mod std_support;
 
+use core::arch::{asm, global_asm};
+use powdr_riscv_syscalls::Syscall;
+
 #[no_mangle]
 pub fn halt() -> ! {
     finalize();
     unsafe {
-        asm!("ecall", in("t0") u32::from(Syscall::Halt));
+        ecall!(Syscall::Halt,);
     }
     #[allow(clippy::empty_loop)]
     loop {}
@@ -47,8 +47,8 @@ pub fn finalize() {
             let low = *limb as u32;
             let high = (*limb >> 32) as u32;
             // TODO this is not going to work properly for BB for now.
-            asm!("ecall", in("t0") u32::from(Syscall::CommitPublic), in("a0") i * 2, in("a1") low);
-            asm!("ecall", in("t0") u32::from(Syscall::CommitPublic), in("a0") i * 2 + 1, in("a1") high);
+            ecall!(Syscall::CommitPublic, in("a0") i * 2, in("a1") low);
+            ecall!(Syscall::CommitPublic, in("a0") i * 2 + 1, in("a1") high);
         }
     }
 }

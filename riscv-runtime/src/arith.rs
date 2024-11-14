@@ -32,9 +32,9 @@ pub fn affine_256_u8_be(mut a: [u8; 32], mut b: [u8; 32], c: [u8; 32]) -> ([u8; 
 
     unsafe {
         ecall!(Syscall::Affine256,
-            in("a0") &mut a1 as *mut [u32; 8],
-            in("a1") &mut b1 as *mut [u32; 8],
-            in("a2") &c1 as *const [u32; 8]);
+            in("a0") a1.as_mut_ptr(),
+            in("a1") b1.as_mut_ptr(),
+            in("a2") c1.as_ptr());
     }
 
     u32_to_be(&a1, &mut a);
@@ -47,9 +47,9 @@ pub fn affine_256_u8_be(mut a: [u8; 32], mut b: [u8; 32], c: [u8; 32]) -> ([u8; 
 pub fn affine_256_u8_le(mut a: [u8; 32], mut b: [u8; 32], c: [u8; 32]) -> ([u8; 32], [u8; 32]) {
     unsafe {
         ecall!(Syscall::Affine256,
-            in("a0") a.as_mut_ptr() as *mut [u32; 8],
-            in("a1") b.as_mut_ptr() as *mut [u32; 8],
-            in("a2") c.as_ptr() as *const [u32; 8]);
+            in("a0") a.as_mut_ptr(),
+            in("a1") b.as_mut_ptr(),
+            in("a2") c.as_ptr());
     }
 
     (a, b)
@@ -60,9 +60,9 @@ pub fn affine_256_u8_le(mut a: [u8; 32], mut b: [u8; 32], c: [u8; 32]) -> ([u8; 
 pub fn affine_256_u32_le(mut a: [u32; 8], mut b: [u32; 8], c: [u32; 8]) -> ([u32; 8], [u32; 8]) {
     unsafe {
         ecall!(Syscall::Affine256,
-            in("a0") &mut a as *mut [u32; 8],
-            in("a1") &mut b as *mut [u32; 8],
-            in("a2") &c as *const [u32; 8]);
+            in("a0") a.as_mut_ptr(),
+            in("a1") b.as_mut_ptr(),
+            in("a2") c.as_ptr());
     }
     (a, b)
 }
@@ -82,14 +82,14 @@ pub fn modmul_256_u8_be(mut a: [u8; 32], b: [u8; 32], m: [u8; 32]) -> [u8; 32] {
         // First compute the two halves of the result a*b.
         // Results are stored in place in a and b.
         ecall!(Syscall::Affine256,
-            in("a0") &mut a1 as *mut [u32; 8],
-            in("a1") &mut b1 as *mut [u32; 8],
-            in("a2") &[0u32; 8] as *const [u32; 8]);
+            in("a0") a1.as_mut_ptr(),
+            in("a1") b1.as_mut_ptr(),
+            in("a2") [0u32; 8].as_ptr());
         // Next compute the remainder, stored in place in a.
         ecall!(Syscall::Mod256,
-            in("a0") &mut a1 as *mut [u32; 8],
-            in("a1") &b1 as *const [u32; 8],
-            in("a2") &m1 as *const [u32; 8]);
+            in("a0") a1.as_mut_ptr(),
+            in("a1") b1.as_ptr(),
+            in("a2") m1.as_ptr());
     }
 
     u32_to_be(&a1, &mut a);
@@ -103,14 +103,14 @@ pub fn modmul_256_u8_le(mut a: [u8; 32], mut b: [u8; 32], m: [u8; 32]) -> [u8; 3
         // First compute the two halves of the result a*b.
         // Results are stored in place in a and b.
         ecall!(Syscall::Affine256,
-            in("a0") a.as_mut_ptr() as *mut [u32; 8],
-            in("a1") b.as_mut_ptr() as *mut [u32; 8],
-            in("a2") &[0u32; 8] as *const [u32; 8]);
+            in("a0") a.as_mut_ptr(),
+            in("a1") b.as_mut_ptr(),
+            in("a2") [0u32; 8].as_ptr());
         // Next compute the remainder, stored in place in a.
         ecall!(Syscall::Mod256,
-            in("a0") a.as_mut_ptr() as *mut [u32; 8],
-            in("a1") b.as_ptr() as *const [u32; 8],
-            in("a2") m.as_ptr() as *const [u32; 8]);
+            in("a0") a.as_mut_ptr(),
+            in("a1") b.as_ptr(),
+            in("a2") m.as_ptr());
     }
 
     a
@@ -123,14 +123,14 @@ pub fn modmul_256_u32_le(mut a: [u32; 8], mut b: [u32; 8], m: [u32; 8]) -> [u32;
         // First compute the two halves of the result a*b.
         // Results are stored in place in a and b.
         ecall!(Syscall::Affine256,
-            in("a0") &mut a as *mut [u32; 8],
-            in("a1") &mut b as *mut [u32; 8],
-            in("a2") &[0u32; 8] as *const [u32; 8]);
+            in("a0") a.as_mut_ptr(),
+            in("a1") b.as_mut_ptr(),
+            in("a2") [0u32; 8].as_ptr());
         // Next compute the remainder, stored in place in a.
         ecall!(Syscall::Mod256,
-            in("a0") &mut a as *mut [u32; 8],
-            in("a1") &b as *const [u32; 8],
-            in("a2") &m as *const [u32; 8]);
+            in("a0") a.as_mut_ptr(),
+            in("a1") b.as_ptr(),
+            in("a2") m.as_ptr());
     }
 
     a
