@@ -700,17 +700,4 @@ fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Anal
             }
         }
     });
-
-    let identities_to_remove = substitutions
-        .iter()
-        .map(|((_, pid), _)| pid.id as usize)
-        .collect::<BTreeSet<_>>();
-
-    let definitions_to_remove = substitutions
-        .into_iter()
-        .map(|((name, _), _)| name)
-        .collect::<BTreeSet<_>>();
-
-    pil_file.remove_definitions(&definitions_to_remove);
-    pil_file.remove_identities(&identities_to_remove);
 }
