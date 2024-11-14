@@ -140,45 +140,6 @@ pub fn split_out_machines<'a, T: FieldElement>(
             })
             .collect::<Vec<(_, &analyzed::Expression)>>();
 
-        log::trace!(
-            "\nExtracted a machine with the following witnesses:\n{}\n identities:\n{}\n connecting identities:\n{}\n and prover functions:\n{}",
-            machine_witnesses
-                .iter()
-                .map(|s| fixed.column_name(s))
-                .sorted()
-                .format(", "),
-            machine_identities
-                .iter()
-                .format("\n"),
-            machine_connections
-                .values()
-                .map(|id| id.to_string())
-                .format("\n"),
-            prover_functions
-                .iter()
-                .map(|(_, pf)| format!("{pf}"))
-                .format("\n")
-        );
-
-        for (i, pf) in &prover_functions {
-            if !extracted_prover_functions.insert(*i) {
-                log::warn!("Prover function was assigned to multiple machines:\n{pf}");
-            }
-        }
-
-        let first_witness = machine_witnesses.iter().next().unwrap();
-        let first_witness_name = fixed.column_name(first_witness);
-        let namespace = first_witness_name
-            .rfind("::")
-            .map(|idx| &first_witness_name[..idx]);
-
-        // For machines compiled using Powdr ASM we'll always have a namespace, but as a last
-        // resort we'll use the first witness name.
-        let name = namespace.unwrap_or(first_witness_name);
-        let id = id_counter;
-        id_counter += 1;
-        let name_with_type = |t: &str| format!("Secondary machine {id}: {name} ({t})");
-
         let machine_parts = MachineParts::new(
             fixed,
             machine_connections,
@@ -186,6 +147,19 @@ pub fn split_out_machines<'a, T: FieldElement>(
             machine_witnesses,
             prover_functions.iter().map(|&(_, pf)| pf).collect(),
         );
+
+        log_extracted_machine(&machine_parts);
+
+        for (i, pf) in &prover_functions {
+            if !extracted_prover_functions.insert(*i) {
+                log::warn!("Prover function was assigned to multiple machines:\n{pf}");
+            }
+        }
+
+        let name = suggest_machine_name(&machine_parts);
+        let id = id_counter;
+        id_counter += 1;
+        let name_with_type = |t: &str| format!("Secondary machine {id}: {name} ({t})");
 
         machines.push(build_machine(fixed, machine_parts, name_with_type));
     }
@@ -233,6 +207,38 @@ pub fn split_out_machines<'a, T: FieldElement>(
             base_prover_functions,
         ),
     }
+}
+
+fn log_extracted_machine<T: FieldElement>(parts: &MachineParts<'_, T>) {
+    log::trace!(
+        "\nExtracted a machine with the following witnesses:\n{}\n identities:\n{}\n connecting identities:\n{}\n and prover functions:\n{}",
+        parts.witnesses
+            .iter()
+            .map(|s|parts.column_name(s))
+            .sorted()
+            .format(", "),
+        parts.identities
+            .iter()
+            .format("\n"),
+        parts.connections
+            .values()
+            .format("\n"),
+        parts.prover_functions
+            .iter()
+            .format("\n")
+    );
+}
+
+fn suggest_machine_name<T: FieldElement>(parts: &MachineParts<'_, T>) -> String {
+    let first_witness = parts.witnesses.iter().next().unwrap();
+    let first_witness_name = parts.column_name(first_witness);
+    let namespace = first_witness_name
+        .rfind("::")
+        .map(|idx| &first_witness_name[..idx]);
+
+    // For machines compiled using Powdr ASM we'll always have a namespace, but as a last
+    // resort we'll use the first witness name.
+    namespace.unwrap_or(first_witness_name).to_string()
 }
 
 #[derive(Default)]
