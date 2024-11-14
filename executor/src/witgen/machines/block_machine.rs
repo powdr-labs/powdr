@@ -165,7 +165,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         if self.data.len() < 2 * self.block_size {
-            if self.degree_range.is_unique() {
+            if self.fixed_data.is_monolithic() {
                 log::warn!(
                     "Filling empty blocks with zeros, because the block machine is never used. \
                  This might violate some internal constraints."
