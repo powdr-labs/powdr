@@ -43,12 +43,11 @@ pub struct StwoProver<T, B: Backend + Send, MC: MerkleChannel, C: Channel> {
     _channel_marker_merkelchannel: PhantomData<MC>,
 }
 
-impl<'a, F: FieldElement, B: Backend + Send, MC: MerkleChannel + Send, C: Channel + Send>
-    StwoProver<F, B, MC, C>
+impl<'a, F: FieldElement, B, MC, C> StwoProver<F, B, MC, C>
 where
-    B: Backend + BackendForChannel<MC>, // Ensure B implements BackendForChannel<MC>
-    MC: MerkleChannel,
-    C: Channel,
+    B: Backend + Send + BackendForChannel<MC>, // Ensure B implements BackendForChannel<MC>
+    MC: MerkleChannel + Send,
+    C: Channel + Send,
     MC::H: DeserializeOwned + Serialize,
     PowdrComponent<'a, F>: ComponentProver<B>,
 {

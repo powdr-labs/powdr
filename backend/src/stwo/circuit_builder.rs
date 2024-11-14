@@ -158,11 +158,11 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
                 PolynomialType::Committed => match r.next {
                     false => {
                         let index = witness_columns[&poly_id];
-                        witness_eval[index][0]
+                        witness_eval[index][0].clone()
                     }
                     true => {
                         let index = witness_columns[&poly_id];
-                        witness_eval[index][1]
+                        witness_eval[index][1].clone()
                     }
                 },
                 PolynomialType::Constant => {
@@ -185,7 +185,7 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
             AlgebraicExpression::Number(n) => {
                 let left = to_stwo_expression(witness_columns, left, witness_eval, _eval);
                 (0u32..n.to_integer().try_into_u32().unwrap())
-                    .fold(E::F::one(), |acc, _| acc * left)
+                    .fold(E::F::one(), |acc, _| acc * left.clone())
             }
             _ => unimplemented!("pow with non-constant exponent"),
         },
