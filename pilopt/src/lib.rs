@@ -7,8 +7,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, ConnectIdentity, Expression,
-    FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity, PolyID,
-    PolynomialIdentity, PolynomialReference, PolynomialType, Reference, SymbolKind,
+    FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
+    PhantomPermutationIdentity, PolyID, PolynomialIdentity, PolynomialReference, PolynomialType,
+    Reference, SymbolKind,
 };
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
@@ -326,47 +327,59 @@ fn simplify_expression_single<T: FieldElement>(e: &mut AlgebraicExpression<T>) {
 fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let mut new_identities = vec![];
     for identity in &mut pil_file.identities.iter_mut() {
-        if let Identity::Lookup(LookupIdentity {
-            source,
-            left,
-            right,
-            ..
-        }) = identity
-        {
-            let mut extracted = HashSet::new();
-            for (i, (l, r)) in left
-                .expressions
-                .iter()
-                .zip(&right.expressions)
-                .enumerate()
-                .filter_map(|(i, (l, r))| {
-                    if let AlgebraicExpression::Number(n) = r {
-                        Some((i, (l, n)))
-                    } else {
-                        None
-                    }
-                })
-            {
-                // TODO remove clones
-                let l_sel = left.selector.clone();
-                let r_sel = right.selector.clone();
-                let pol_id = (l_sel * l.clone()) - (r_sel * AlgebraicExpression::from(*r));
-                new_identities.push((simplify_expression(pol_id), source.clone()));
+        match identity {
+            Identity::Lookup(LookupIdentity {
+                source,
+                left,
+                right,
+                ..
+            })
+            | Identity::PhantomLookup(PhantomLookupIdentity {
+                source,
+                left,
+                right,
+                ..
+            }) => {
+                // We can only do this if we know that the selector is one in at least
+                // one row, but this is too complicated to detect (especially if we
+                // have a dynamic degree), so we just do this for constant one to be safe.
+                if !matches!(&right.selector, AlgebraicExpression::Number(n) if n == &T::one()) {
+                    continue;
+                }
+                let mut extracted = HashSet::new();
+                for (i, (l, r)) in left
+                    .expressions
+                    .iter()
+                    .zip(&right.expressions)
+                    .enumerate()
+                    .filter_map(|(i, (l, r))| {
+                        if let AlgebraicExpression::Number(n) = r {
+                            Some((i, (l, n)))
+                        } else {
+                            None
+                        }
+                    })
+                {
+                    let l_sel = left.selector.clone();
+                    let pol_id = (l_sel * l.clone()) - AlgebraicExpression::from(*r);
+                    new_identities.push((simplify_expression(pol_id), source.clone()));
 
-                extracted.insert(i);
+                    extracted.insert(i);
+                }
+                // TODO rust-ize this.
+                let mut c = 0usize;
+                left.expressions.retain(|_i| {
+                    c += 1;
+                    !extracted.contains(&(c - 1))
+                });
+                let mut c = 0usize;
+                right.expressions.retain(|_i| {
+                    c += 1;
+
+                    !extracted.contains(&(c - 1))
+                });
             }
-            // TODO rust-ize this.
-            let mut c = 0usize;
-            left.expressions.retain(|_i| {
-                c += 1;
-                !extracted.contains(&(c - 1))
-            });
-            let mut c = 0usize;
-            right.expressions.retain(|_i| {
-                c += 1;
-
-                !extracted.contains(&(c - 1))
-            });
+            _ => {}
         }
     }
     for (identity, source) in new_identities {
@@ -484,11 +497,13 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                 }
                 None
             }
-            Identity::Lookup(LookupIdentity { left, right, .. }) => {
+            Identity::Lookup(LookupIdentity { left, right, .. })
+            | Identity::Permutation(PermutationIdentity { left, right, .. })
+            | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. })
+            | Identity::PhantomPermutation(PhantomPermutationIdentity { left, right, .. }) => {
                 assert_eq!(left.expressions.len(), right.expressions.len());
                 left.expressions.is_empty().then_some(index)
             }
-            Identity::Permutation(..) => None,
             Identity::Connect(..) => None,
         })
         .collect();
@@ -506,8 +521,10 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
             let discriminant = |i: &CanonicalIdentity<T>| match i.0 {
                 Identity::Polynomial(..) => 0,
                 Identity::Lookup(..) => 1,
-                Identity::Permutation(..) => 2,
-                Identity::Connect(..) => 3,
+                Identity::PhantomLookup(..) => 2,
+                Identity::Permutation(..) => 3,
+                Identity::PhantomPermutation(..) => 4,
+                Identity::Connect(..) => 5,
             };
 
             discriminant(self)
@@ -526,11 +543,37 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                         }),
                     ) => a.cmp(c).then_with(|| b.cmp(d)),
                     (
+                        Identity::PhantomLookup(PhantomLookupIdentity {
+                            left: a,
+                            right: b,
+                            multiplicity: c,
+                            ..
+                        }),
+                        Identity::PhantomLookup(PhantomLookupIdentity {
+                            left: d,
+                            right: e,
+                            multiplicity: f,
+                            ..
+                        }),
+                    ) => a.cmp(d).then_with(|| b.cmp(e)).then_with(|| c.cmp(f)),
+                    (
                         Identity::Permutation(PermutationIdentity {
                             left: a, right: b, ..
                         }),
                         Identity::Permutation(PermutationIdentity {
                             left: c, right: d, ..
+                        }),
+                    ) => a.cmp(c).then_with(|| b.cmp(d)),
+                    (
+                        Identity::PhantomPermutation(PhantomPermutationIdentity {
+                            left: a,
+                            right: b,
+                            ..
+                        }),
+                        Identity::PhantomPermutation(PhantomPermutationIdentity {
+                            left: c,
+                            right: d,
+                            ..
                         }),
                     ) => a.cmp(c).then_with(|| b.cmp(d)),
                     (
