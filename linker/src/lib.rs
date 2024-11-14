@@ -64,7 +64,7 @@ pub enum DegreeMode {
 struct Linker {
     mode: LinkerMode,
     degrees: DegreeMode,
-    /// for each namespace, we store the statements resulting from processing the links separatly, because we need to make sure they do not come first.
+    /// for each namespace, we store the statements resulting from processing the links separately, because we need to make sure they do not come first.
     namespaces: BTreeMap<String, (Vec<PilStatement>, Vec<PilStatement>)>,
     next_interaction_id: u32,
 }
