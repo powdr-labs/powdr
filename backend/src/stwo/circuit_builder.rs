@@ -10,7 +10,7 @@ use powdr_number::LargeInt;
 use std::sync::Arc;
 
 use powdr_ast::analyzed::{
-    AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolyID, PolynomialIdentity, PolynomialType,
+    AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolyID, PolynomialType,
 };
 use stwo_prover::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 use stwo_prover::core::backend::Col;
@@ -101,27 +101,19 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
             witness_eval.push(eval.next_interaction_mask(0, [0, 1]));
         }
 
-        // Add polynomial identities
-        let polynomial_identities: Vec<PolynomialIdentity<_>> = self
-            .analyzed
-            .identities_with_inlined_intermediate_polynomials()
-            .into_iter()
-            .filter_map(|id| id.try_into().ok())
-            .collect::<Vec<_>>();
-
-        polynomial_identities.iter().for_each(|id| {
-            let expr =
-                to_stwo_expression::<T, E>(&self.witness_columns, &id.expression, &witness_eval);
-            eval.add_constraint(expr);
-        });
-
         for id in self
             .analyzed
             .identities_with_inlined_intermediate_polynomials()
         {
             match id {
-                // Already handled above
-                Identity::Polynomial(..) => {}
+                Identity::Polynomial(identity) => {
+                    let expr = to_stwo_expression::<T, E>(
+                        &self.witness_columns,
+                        &identity.expression,
+                        &witness_eval,
+                    );
+                    eval.add_constraint(expr);
+                }
                 Identity::Connect(..) => {
                     unimplemented!("Connect is not implemented in this stwo yet")
                 }
