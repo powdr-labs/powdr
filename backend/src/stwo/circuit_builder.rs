@@ -174,7 +174,7 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
             }
         }
         AlgebraicExpression::PublicReference(..) => {
-            unimplemented!("Public references are not supported in this stwo yet")
+            unimplemented!("Public references are not supported in stwo yet")
         }
         AlgebraicExpression::Number(n) => E::F::from(M31::from(n.try_into_i32().unwrap())),
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
