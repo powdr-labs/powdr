@@ -15,8 +15,8 @@ fn replace_fixed() {
     one * Y = zero * Y + 7 * X;
 "#;
     let expectation = r#"namespace N(65536);
-    col witness Y;
-    N::Y = 7 * N::Y;
+    col witness X;
+    N::X = 7 * N::X;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);

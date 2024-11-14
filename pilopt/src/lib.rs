@@ -659,7 +659,7 @@ fn equal_constrained<T: FieldElement>(
                     && right_ref.is_witness()
                     && !right_ref.next
                 {
-                    if left_ref.poly_id.id < right_ref.poly_id.id {
+                    if left_ref.poly_id.id > right_ref.poly_id.id {
                         Some((
                             left_ref.poly_id,
                             (right_ref.name.clone(), right_ref.poly_id),
