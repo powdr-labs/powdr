@@ -4,11 +4,13 @@ use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
+use crate::{
+    field_filter::generalize_factory, Backend, BackendFactory, BackendOptions, Error, Proof,
+};
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::constant_evaluator::{get_uniquely_sized_cloned, VariablySizedColumn};
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, Mersenne31Field};
 use prover::StwoProver;
 use stwo_prover::core::backend::simd::SimdBackend;
 use stwo_prover::core::backend::BackendForChannel;
@@ -20,9 +22,10 @@ use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
 mod circuit_builder;
 mod prover;
 #[allow(dead_code)]
-pub(crate) struct StwoProverFactory;
 
-impl<F: FieldElement> BackendFactory<F> for StwoProverFactory {
+struct RestrictedFactory;
+
+impl<F: FieldElement> BackendFactory<F> for RestrictedFactory {
     #[allow(unreachable_code)]
     #[allow(unused_variables)]
     fn create(
@@ -50,6 +53,8 @@ impl<F: FieldElement> BackendFactory<F> for StwoProverFactory {
         Ok(stwo)
     }
 }
+
+generalize_factory!(Factory <- RestrictedFactory, [Mersenne31Field]);
 
 impl<T: FieldElement, MC: MerkleChannel + Send, C: Channel + Send> Backend<T>
     for StwoProver<T, SimdBackend, MC, C>

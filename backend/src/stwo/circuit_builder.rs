@@ -29,7 +29,7 @@ pub(crate) fn gen_stwo_circuit_trace<T, B, F>(
     analyzed: Arc<Analyzed<T>>,
 ) -> ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>
 where
-    T: FieldElement,
+    T: FieldElement, //only Merenne31Field is supported, checked in runtime
     B: FieldOps<M31> + ColumnOps<F>, // Ensure B implements FieldOps for M31
     F: ExtensionOf<BaseField>,
 {
@@ -115,19 +115,19 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
                     eval.add_constraint(expr);
                 }
                 Identity::Connect(..) => {
-                    unimplemented!("Connect is not implemented in this stwo yet")
+                    unimplemented!("Connect is not implemented in stwo yet")
                 }
                 Identity::Lookup(..) => {
-                    unimplemented!("Lookup is not implemented in this stwo yet")
+                    unimplemented!("Lookup is not implemented in stwo yet")
                 }
                 Identity::Permutation(..) => {
-                    unimplemented!("Permutation is not implemented in this stwo yet")
+                    unimplemented!("Permutation is not implemented in stwo yet")
                 }
                 Identity::PhantomPermutation(..) => {
-                    unimplemented!("PhantomPermutation is not implemented in this stwo yet")
+                    unimplemented!("PhantomPermutation is not implemented in stwo yet")
                 }
                 Identity::PhantomLookup(..) => {
-                    unimplemented!("PhantomLookup is not implemented in this stwo yet")
+                    unimplemented!("PhantomLookup is not implemented in stwo yet")
                 }
             }
         }
