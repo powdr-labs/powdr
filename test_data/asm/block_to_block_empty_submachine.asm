@@ -28,7 +28,7 @@ machine Main with
 {
     Arith arith(4, 8);
 
-    // return `x + y`, where the prover can chose whether to add locally or externally
+    // return `3*x + 3*y`, where the prover can chose whether to add locally or externally
     operation main<0>;
 
     link if instr_add => z = arith.add(x, y);
