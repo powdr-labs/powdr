@@ -403,11 +403,15 @@ where
     let (tables, stage_0): (BTreeMap<_, _>, BTreeMap<_, _>) = program
         .split
         .iter()
-        .map(|(name, (pil, constraint_system))| {
+        .filter_map(|(name, (pil, constraint_system))| {
             let columns = machine_witness_columns(witness, pil, name);
             let degree = columns[0].1.len();
 
-            (
+            if degree == 0 {
+                // If a machine has no rows, remove it entirely.
+                return None;
+            }
+            Some((
                 (
                     name.clone(),
                     Table {
@@ -433,7 +437,7 @@ where
                             .collect(),
                     },
                 ),
-            )
+            ))
         })
         .unzip();
 
