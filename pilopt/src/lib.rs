@@ -624,7 +624,7 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 
 fn equal_constrained<T: FieldElement>(
     poly_data: (&u64, &AlgebraicExpression<T>),
-) -> Option<((String, PolyID), (String, PolyID))> {
+) -> Option<(PolyID, (String, PolyID))> {
     let (_, expression) = poly_data;
 
     match expression {
@@ -632,37 +632,30 @@ fn equal_constrained<T: FieldElement>(
             left,
             op: AlgebraicBinaryOperator::Sub,
             right,
-        }) => {
-            match (left.as_ref(), right.as_ref()) {
-                (
-                    AlgebraicExpression::Reference(left_ref),
-                    AlgebraicExpression::Reference(right_ref),
-                ) => {
-                    if left_ref.is_witness()
-                        && !left_ref.next
-                        && right_ref.is_witness()
-                        && !right_ref.next
-                    {
-                        // Choose which column to keep based on id
-
-                        if left_ref.poly_id.id < right_ref.poly_id.id {
-                            Some((
-                                (left_ref.name.clone(), left_ref.poly_id),
-                                (right_ref.name.clone(), right_ref.poly_id),
-                            ))
-                        } else {
-                            Some((
-                                (right_ref.name.clone(), right_ref.poly_id),
-                                (left_ref.name.clone(), left_ref.poly_id),
-                            ))
-                        }
+        }) => match (left.as_ref(), right.as_ref()) {
+            (
+                AlgebraicExpression::Reference(left_ref),
+                AlgebraicExpression::Reference(right_ref),
+            ) => {
+                if left_ref.is_witness()
+                    && !left_ref.next
+                    && right_ref.is_witness()
+                    && !right_ref.next
+                {
+                    if left_ref.poly_id.id < right_ref.poly_id.id {
+                        Some((
+                            left_ref.poly_id,
+                            (right_ref.name.clone(), right_ref.poly_id),
+                        ))
                     } else {
-                        None
+                        Some((right_ref.poly_id, (left_ref.name.clone(), left_ref.poly_id)))
                     }
+                } else {
+                    None
                 }
-                _ => None,
             }
-        }
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -683,17 +676,11 @@ fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Anal
                 None
             }
         })
-        .collect::<Vec<_>>();
-
-    let substitutions_by_id = substitutions
-        .iter()
-        .map(|((_, id_to_remove), to_keep)| (*id_to_remove, to_keep))
         .collect::<HashMap<PolyID, _>>();
 
     pil_file.post_visit_expressions_in_identities_mut(&mut |e: &mut AlgebraicExpression<_>| {
         if let AlgebraicExpression::Reference(ref mut reference) = e {
-            if let Some((replacement_name, replacement_id)) =
-                substitutions_by_id.get(&reference.poly_id)
+            if let Some((replacement_name, replacement_id)) = substitutions.get(&reference.poly_id)
             {
                 reference.poly_id = *replacement_id;
                 reference.name = replacement_name.clone();
