@@ -11,6 +11,7 @@ use powdr_number::FieldElement;
 use crate::witgen::rows::Row;
 
 /// Sequence of rows of field elements, stored in a compact form.
+/// Optimized for contiguous column IDs, but works with any combination.
 #[derive(Clone)]
 struct CompactData<T: FieldElement> {
     /// The ID of the first column used in the table.
@@ -24,13 +25,13 @@ struct CompactData<T: FieldElement> {
 }
 
 impl<T: FieldElement> CompactData<T> {
-    /// Creates a new empty compact data storage. The column IDs have to be sorted.
+    /// Creates a new empty compact data storage.
     fn new(column_ids: &[PolyID]) -> Self {
-        let first_column_id = column_ids.first().map_or(0, |id| id.id);
-        let column_count = column_ids.len();
+        let col_id_range = column_ids.iter().map(|id| id.id).minmax();
+        let (first_column_id, last_column_id) = col_id_range.into_option().unwrap();
         Self {
             first_column_id,
-            column_count,
+            column_count: (last_column_id - first_column_id + 1) as usize,
             data: Vec::new(),
             known_cells: BitVec::new(),
         }
