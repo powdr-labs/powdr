@@ -2,6 +2,7 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
 use std::iter::{self};
 
+use super::jit_machine_driver::JitMachineDriver;
 use super::{compute_size_and_log, ConnectionKind, EvalResult, FixedData, MachineParts};
 
 use crate::witgen::affine_expression::AlgebraicVariable;
@@ -9,6 +10,7 @@ use crate::witgen::analysis::detect_connection_type_and_block_size;
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::data_structures::multiplicity_counter::MultiplicityCounter;
+use crate::witgen::machines::LookupCell;
 use crate::witgen::processor::{OuterQuery, Processor, SolverState};
 use crate::witgen::rows::{Row, RowIndex, RowPair};
 use crate::witgen::sequence_iterator::{
@@ -17,6 +19,7 @@ use crate::witgen::sequence_iterator::{
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause};
 use crate::witgen::{MutableState, QueryCallback};
+use bit_vec::BitVec;
 use powdr_ast::analyzed::{DegreeRange, PolyID, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
@@ -70,6 +73,9 @@ pub struct BlockMachine<'a, T: FieldElement> {
     /// Cache that states the order in which to evaluate identities
     /// to make progress most quickly.
     processing_sequence_cache: ProcessingSequenceCache,
+    /// The JIT driver for this machine, i.e. the component that tries to generate
+    /// witgen code based on which elements of the connection are known.
+    jit_driver: JitMachineDriver<'a, T>,
     name: String,
     multiplicity_counter: MultiplicityCounter,
 }
@@ -130,6 +136,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 latch_row,
                 parts.identities.len(),
             ),
+            jit_driver: JitMachineDriver::new(fixed_data, parts.clone(), block_size, latch_row),
         })
     }
 }
@@ -336,8 +343,69 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
         log::trace!("Start processing block machine '{}'", self.name());
         log::trace!("Left values of lookup:");
-        for l in &outer_query.left {
-            log::trace!("  {}", l);
+        if log::log_enabled!(log::Level::Trace) {
+            for l in &outer_query.left {
+                log::trace!("  {}", l);
+            }
+        }
+
+        // TOOD move this into its own function?
+        if self.parts.prover_functions.is_empty() {
+            let known_inputs = outer_query
+                .left
+                .iter()
+                .map(|e| e.is_constant())
+                .collect::<BitVec>();
+            if self
+                .jit_driver
+                .can_answer_lookup(identity_id, &known_inputs)
+            {
+                let mut data = vec![T::zero(); outer_query.left.len()];
+                let values = outer_query
+                    .left
+                    .iter()
+                    .zip(&mut data)
+                    .map(|(l, d)| {
+                        if let Some(value) = l.constant_value() {
+                            *d = value;
+                            LookupCell::Input(d)
+                        } else {
+                            LookupCell::Output(d)
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                // TODO finalize self.data, extend by one (finalized) block.
+                // un-finalize the last block / last row in the interpreted case if it is finalized.
+                // TOOD window at which row?
+                self.jit_driver.process_lookup_direct(
+                    mutable_state,
+                    identity_id,
+                    values,
+                    self.data.window(self.block_size),
+                );
+
+                let mut result = EvalValue::complete(vec![]);
+                for (l, v) in outer_query.left.iter().zip(data) {
+                    if !l.is_constant() {
+                        let evaluated = l.clone() - v.into();
+                        // TODO we could use bit constraints here
+                        match evaluated.solve() {
+                            Ok(constraints) => {
+                                result.combine(constraints);
+                            }
+                            Err(_) => {
+                                // Fail the whole lookup
+                                return Err(EvalError::ConstraintUnsatisfiable(format!(
+                                    "Constraint is invalid ({l} != {v}).",
+                                )));
+                            }
+                        }
+                    }
+                }
+
+                return Ok(result);
+            }
         }
 
         // TODO this assumes we are always using the same lookup for this machine.

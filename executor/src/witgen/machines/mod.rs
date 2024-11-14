@@ -26,6 +26,8 @@ mod block_machine;
 mod double_sorted_witness_machine_16;
 mod double_sorted_witness_machine_32;
 mod fixed_lookup_machine;
+mod jit_machine;
+mod jit_machine_driver;
 pub mod machine_extractor;
 pub mod profiling;
 mod sorted_witness_machine;
