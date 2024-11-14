@@ -409,9 +409,15 @@ where
     let (tables, stage_0): (BTreeMap<_, _>, BTreeMap<_, _>) = program
         .split
         .iter()
-        .map(|(name, (pil, constraint_system))| {
+        .filter_map(|(name, (pil, constraint_system))| {
             let columns = machine_witness_columns(witness, pil, name);
             let degree = columns[0].1.len();
+
+            if degree == 0 {
+                // If a machine has no rows, remove it entirely.
+                return None;
+            }
+
             let table = Table {
                 air: PowdrTable::new(constraint_system),
                 degree,
@@ -428,7 +434,7 @@ where
                 );
             }
 
-            (
+            Some((
                 (name.clone(), table),
                 (
                     name.clone(),
@@ -448,7 +454,7 @@ where
                             .collect(),
                     },
                 ),
-            )
+            ))
         })
         .unzip();
 
