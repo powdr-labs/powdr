@@ -722,7 +722,7 @@ fn trait_user_defined_enum_wrong_type() {
 }
 
 #[test]
-#[should_panic = "Could not find an implementation for the trait function ToTuple::get::<int, (int, int)> (trait is not implemented at all) at input:90-102"]
+#[should_panic = "Could not find an implementation for the trait ToTuple"]
 fn trait_no_impl() {
     let input = "
     trait ToTuple<S, I> {

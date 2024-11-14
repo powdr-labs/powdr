@@ -112,7 +112,7 @@ impl<'a> TraitsResolver<'a> {
         definitions: &HashMap<String, (Symbol, Option<FunctionValueDefinition>)>,
     ) -> Result<(), Vec<Error>> {
         let mut errors = Vec::new();
-        for (_name, (_symbol, definition)) in definitions.iter() {
+        for (_name, (symbol, definition)) in definitions.iter() {
             if let Some(FunctionValueDefinition::TraitDeclaration(trait_decl)) = definition {
                 let name = trait_decl.name.clone();
                 if let Some(trait_impls) = self.trait_impls.get(&name) {
@@ -128,7 +128,8 @@ impl<'a> TraitsResolver<'a> {
                     }
                 } else {
                     errors.push(trait_decl.source_ref.with_error(format!(
-                        "Could not find an implementation for the trait {name}"
+                        "Could not find an implementation for the trait {}",
+                        symbol.absolute_name
                     )));
                 }
             }
