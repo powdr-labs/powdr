@@ -104,4 +104,11 @@ impl FieldElementMap for GoldilocksField {
 
         Self::Config::new(pcs)
     }
+
+    fn degree_bound() -> usize {
+        // Currently, Plonky3 can't compute evaluations other than those already computed for the
+        // FRI commitment. This introduces the following dependency between the blowup factor and
+        // the degree bound:
+        (1 << FRI_LOG_BLOWUP) + 1
+    }
 }
