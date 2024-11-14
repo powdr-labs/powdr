@@ -497,6 +497,22 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                     // Otherwise the constraint is not satisfiable,
                     // but better to get the error elsewhere.
                 }
+                if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                    left,
+                    op: AlgebraicBinaryOperator::Sub,
+                    right,
+                }) = expression
+                {
+                    if let (
+                        AlgebraicExpression::Reference(left),
+                        AlgebraicExpression::Reference(right),
+                    ) = (left.as_ref(), right.as_ref())
+                    {
+                        if left.is_witness() && right.is_witness() && left.name == right.name {
+                            return Some(index);
+                        }
+                    }
+                }
                 None
             }
             Identity::Lookup(LookupIdentity { left, right, .. })

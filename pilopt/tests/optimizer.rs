@@ -16,7 +16,6 @@ fn replace_fixed() {
 "#;
     let expectation = r#"namespace N(65536);
     col witness Y;
-    N::Y = N::Y;
     N::Y = 7 * N::Y;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
