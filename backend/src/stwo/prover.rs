@@ -72,9 +72,9 @@ where
             _fixed,
             _proving_key: None,
             _verifying_key: None,
-            _channel_marker_backend: PhantomData,
-            _channel_marker_merkelchannel: PhantomData,
             _channel_marker: PhantomData,
+            _backend_marker: PhantomData,
+            _merkle_channel_marker: PhantomData,
         })
     }
     pub fn prove(&self, witness: &[(String, Vec<F>)]) -> Result<Vec<u8>, String> {

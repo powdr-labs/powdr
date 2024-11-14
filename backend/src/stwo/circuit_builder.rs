@@ -111,7 +111,7 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
 
         polynomial_identities.iter().for_each(|id| {
             let expr =
-                to_stwo_expression(&self.witness_columns, &id.expression, &witness_eval, &eval);
+                to_stwo_expression::<T, E>(&self.witness_columns, &id.expression, &witness_eval);
             eval.add_constraint(expr);
         });
 
@@ -147,7 +147,6 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
     witness_columns: &BTreeMap<PolyID, usize>,
     expr: &AlgebraicExpression<T>,
     witness_eval: &Vec<[<E as EvalAtRow>::F; 2]>,
-    _eval: &E,
 ) -> E::F {
     use AlgebraicBinaryOperator::*;
     match expr {
@@ -183,15 +182,15 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
             right,
         }) => match **right {
             AlgebraicExpression::Number(n) => {
-                let left = to_stwo_expression(witness_columns, left, witness_eval, _eval);
+                let left = to_stwo_expression::<T, E>(witness_columns, left, witness_eval);
                 (0u32..n.to_integer().try_into_u32().unwrap())
                     .fold(E::F::one(), |acc, _| acc * left.clone())
             }
             _ => unimplemented!("pow with non-constant exponent"),
         },
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-            let left = to_stwo_expression(witness_columns, left, witness_eval, _eval);
-            let right = to_stwo_expression(witness_columns, right, witness_eval, _eval);
+            let left = to_stwo_expression::<T, E>(witness_columns, left, witness_eval);
+            let right = to_stwo_expression::<T, E>(witness_columns, right, witness_eval);
 
             match op {
                 Add => left + right,
@@ -202,7 +201,7 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
         }
         AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
             let expr: <E as EvalAtRow>::F =
-                to_stwo_expression(witness_columns, expr, witness_eval, _eval);
+                to_stwo_expression::<T, E>(witness_columns, expr, witness_eval);
 
             match op {
                 AlgebraicUnaryOperator::Minus => -expr,
