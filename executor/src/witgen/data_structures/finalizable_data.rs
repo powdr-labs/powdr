@@ -181,7 +181,7 @@ impl<T: FieldElement> FinalizableData<T> {
     pub fn extend(&mut self, other: Self) {
         if self.finalized_data.is_empty() {
             self.pre_finalized_data
-                .extend(self.post_finalized_data.drain(..));
+                .append(&mut self.post_finalized_data);
             self.pre_finalized_data.extend(other.pre_finalized_data);
             self.finalized_data = other.finalized_data;
             self.post_finalized_data = other.post_finalized_data;
