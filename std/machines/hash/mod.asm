@@ -6,3 +6,4 @@ mod poseidon2_common;
 mod poseidon2_bb;
 mod poseidon2_gl;
 mod keccakf16;
+mod keccakf16_memory;
