@@ -18,8 +18,14 @@ use strum::{Display, EnumString, EnumVariantNames};
 const MAIN_OPERATION_NAME: &str = "main";
 
 /// Link the objects into a single PIL file, using the specified mode.
-pub fn link(graph: MachineInstanceGraph, mode: LinkerMode) -> Result<PILFile, Vec<String>> {
-    Linker::new(mode).link(graph)
+pub fn link(graph: MachineInstanceGraph, params: LinkerParams) -> Result<PILFile, Vec<String>> {
+    Linker::new(params).link(graph)
+}
+
+#[derive(Clone, Copy, Default)]
+pub struct LinkerParams {
+    pub mode: LinkerMode,
+    pub degree_mode: DegreeMode,
 }
 
 #[derive(Clone, EnumString, EnumVariantNames, Display, Copy, Default)]
@@ -32,27 +38,29 @@ pub enum LinkerMode {
     Bus,
 }
 
-#[derive(Default)]
+#[derive(Clone, EnumString, EnumVariantNames, Display, Copy, Default)]
 /// Whether to align the degrees of all machines to the main machine, or to use the degrees of the individual machines.
 pub enum DegreeMode {
-    Monolithic(MachineDegree),
+    #[strum(serialize = "monolithic")]
+    Monolithic,
     #[default]
+    #[strum(serialize = "vadcop")]
     Vadcop,
 }
 
 #[derive(Default)]
 struct Linker {
-    mode: LinkerMode,
-    degrees: DegreeMode,
+    params: LinkerParams,
+    main_degree: MachineDegree,
     /// for each namespace, we store the statements resulting from processing the links separately, because we need to make sure they do not come first.
     namespaces: BTreeMap<String, (Vec<PilStatement>, Vec<PilStatement>)>,
     next_interaction_id: u32,
 }
 
 impl Linker {
-    fn new(mode: LinkerMode) -> Self {
+    fn new(params: LinkerParams) -> Self {
         Self {
-            mode,
+            params,
             ..Default::default()
         }
     }
@@ -65,18 +73,12 @@ impl Linker {
 
     fn link(mut self, graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
         let main_machine = graph.main;
-        let main_degree = graph
+        self.main_degree = graph
             .objects
             .get(&main_machine.location)
             .unwrap()
             .degree
             .clone();
-
-        // If the main object has a static degree, we use the monolithic mode with that degree.
-        self.degrees = match main_degree.is_static() {
-            true => DegreeMode::Monolithic(main_degree),
-            false => DegreeMode::Vadcop,
-        };
 
         let common_definitions = process_definitions(graph.statements);
 
@@ -124,8 +126,8 @@ impl Linker {
     }
 
     fn process_object(&mut self, location: Location, object: Object) {
-        let degree = match &self.degrees {
-            DegreeMode::Monolithic(d) => d.clone(),
+        let degree = match &self.params.degree_mode {
+            DegreeMode::Monolithic => self.main_degree.clone(),
             DegreeMode::Vadcop => object.degree,
         };
 
@@ -235,7 +237,7 @@ impl Linker {
         // get a new unique interaction id
         let interaction_id = self.next_interaction_id();
 
-        match self.mode {
+        match self.params.mode {
             LinkerMode::Native => {
                 self.namespaces.entry(from_namespace).or_default().1.push(
                     PilStatement::Expression(
@@ -407,11 +409,23 @@ mod test {
     use pretty_assertions::assert_eq;
 
     fn link_native(graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
-        super::link(graph, super::LinkerMode::Native)
+        super::link(
+            graph,
+            super::LinkerParams {
+                mode: super::LinkerMode::Native,
+                ..Default::default()
+            },
+        )
     }
 
     fn link_with_bus(graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
-        super::link(graph, super::LinkerMode::Bus)
+        super::link(
+            graph,
+            super::LinkerParams {
+                mode: super::LinkerMode::Bus,
+                ..Default::default()
+            },
+        )
     }
 
     fn parse_analyze_and_compile_file<T: FieldElement>(file: &str) -> MachineInstanceGraph {
