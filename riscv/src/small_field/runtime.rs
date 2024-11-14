@@ -262,12 +262,13 @@ impl Runtime {
         syscall: Syscall,
         implementation: I,
     ) {
-        let implementation = SyscallImpl(
-            implementation
+        let implementation = SyscallImpl {
+            syscall,
+            statements: implementation
                 .into_iter()
-                .map(|s| parse_function_statement(s.as_ref()))
+                .map(|s| s.as_ref().to_string())
                 .collect(),
-        );
+        };
 
         if self.syscalls.insert(syscall, implementation).is_some() {
             panic!("duplicate syscall {syscall}");
@@ -354,7 +355,7 @@ impl Runtime {
 
         let handlers = self.syscalls.iter().flat_map(|(syscall, implementation)| {
             std::iter::once(format!("__ecall_handler_{syscall}:"))
-                .chain(implementation.0.iter().map(|i| i.to_string()))
+                .chain(implementation.statements.iter().cloned())
                 .chain([format!("jump_dyn 1, {};", Register::from("tmp1").addr())])
         });
 

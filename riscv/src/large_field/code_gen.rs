@@ -156,7 +156,7 @@ fn translate_program_impl(
             }
             Statement::Label(l) => statements.push(format!("{}:", escape_label(l.as_ref()))),
             Statement::Instruction { op, args } => {
-                let processed_instr = match process_instruction(op, args) {
+                let processed_instr = match process_instruction(op, args, runtime) {
                     Ok(s) => s,
                     Err(e) => panic!("Failed to process instruction '{op}'. {e}"),
                 };
@@ -705,7 +705,11 @@ pub fn pop_register(name: &str) -> Vec<String> {
     ]
 }
 
-fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<String>, A::Error> {
+fn process_instruction<A: InstructionArgs>(
+    instr: &str,
+    args: A,
+    runtime: &Runtime,
+) -> Result<Vec<String>, A::Error> {
     let tmp1 = Register::from("tmp1");
     let tmp2 = Register::from("tmp2");
     let tmp3 = Register::from("tmp3");
@@ -1516,8 +1520,12 @@ fn process_instruction<A: InstructionArgs>(instr: &str, args: A) -> Result<Vec<S
             .collect()
         }
 
-        _ => {
-            panic!("Unknown instruction: {instr}");
+        // possibly inlined system calls
+        insn => {
+            let Some(syscall_impl) = runtime.get_syscall_impl(insn) else {
+                panic!("Unknown instruction: {instr}");
+            };
+            syscall_impl.statements.clone()
         }
     };
     for s in &statements {
