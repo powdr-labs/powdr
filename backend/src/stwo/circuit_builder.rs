@@ -169,7 +169,7 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
                     unimplemented!("Constant polynomials are not supported in stwo yet")
                 }
                 PolynomialType::Intermediate => {
-                    unimplemented!("Intermediate polynomials are not supported in this stwo yet")
+                    unimplemented!("Intermediate polynomials are not supported in stwo yet")
                 }
             }
         }
