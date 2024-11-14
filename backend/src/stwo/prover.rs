@@ -39,8 +39,8 @@ pub struct StwoProver<T, B: Backend + Send, MC: MerkleChannel, C: Channel> {
     /// Verifying key placeholder
     _verifying_key: Option<()>,
     _channel_marker: PhantomData<C>,
-    _channel_marker_backend: PhantomData<B>,
-    _channel_marker_merkelchannel: PhantomData<MC>,
+    _backend_marker: PhantomData<B>,
+    _merkle_channel_marker: PhantomData<MC>,
 }
 
 impl<'a, F: FieldElement, B, MC, C> StwoProver<F, B, MC, C>
