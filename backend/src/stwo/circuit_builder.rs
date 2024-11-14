@@ -93,9 +93,7 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
             "Error: Expected no fixed columns nor public inputs, as they are not supported yet.",
         );
 
-        let col_count = self.analyzed.commitment_count()
-            + self.analyzed.constant_count()
-            + self.analyzed.publics_count();
+        let col_count = self.analyzed.commitment_count();
         let mut witness_eval = Vec::with_capacity(col_count);
         for _ in 0..col_count {
             witness_eval.push(eval.next_interaction_mask(0, [0, 1]));
