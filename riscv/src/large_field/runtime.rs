@@ -21,8 +21,8 @@ pub struct Runtime {
 }
 
 impl Runtime {
-    pub fn new(libs: RuntimeLibs, continuations: bool) -> Self {
-        let mut runtime = Runtime::base(continuations);
+    pub fn new(libs: RuntimeLibs) -> Self {
+        let mut runtime = Runtime::base();
         if libs.poseidon2 {
             runtime = runtime.with_poseidon2();
         }
@@ -35,7 +35,7 @@ impl Runtime {
         runtime
     }
 
-    pub fn base(continuations: bool) -> Self {
+    pub fn base() -> Self {
         let mut r = Runtime {
             submachines: Default::default(),
             syscalls: Default::default(),
@@ -66,7 +66,6 @@ impl Runtime {
                     link ~> regs.mstore(W, STEP + 3, tmp3_col);"#,
             ],
             0,
-            ["and 0, 0, 0, 0;"],
         );
 
         r.add_submachine(
@@ -87,7 +86,6 @@ impl Runtime {
                     link ~> regs.mstore(W, STEP + 3, tmp3_col);"#,
             ],
             0,
-            ["shl 0, 0, 0, 0;"],
         );
 
         r.add_submachine(
@@ -101,87 +99,43 @@ impl Runtime {
                     link ~> regs.mstore(Z, STEP + 2, tmp3_col)
                     link ~> regs.mstore(W, STEP + 3, tmp4_col);"#],
             0,
-            ["split_gl 0, 0, 0;"],
         );
 
-        r.add_submachine::<&str, _, _>(
-            "std::machines::range::Bit2",
-            None,
-            "bit2",
-            vec![],
-            [],
-            0,
-            [],
-        );
+        r.add_submachine::<&str, _>("std::machines::range::Bit2", None, "bit2", vec![], [], 0);
 
-        r.add_submachine::<&str, _, _>(
-            "std::machines::range::Bit6",
-            None,
-            "bit6",
-            vec![],
-            [],
-            0,
-            [],
-        );
+        r.add_submachine::<&str, _>("std::machines::range::Bit6", None, "bit6", vec![], [], 0);
 
-        r.add_submachine::<&str, _, _>(
-            "std::machines::range::Bit7",
-            None,
-            "bit7",
-            vec![],
-            [],
-            0,
-            [],
-        );
+        r.add_submachine::<&str, _>("std::machines::range::Bit7", None, "bit7", vec![], [], 0);
 
-        r.add_submachine::<&str, _, _>(
-            "std::machines::range::Byte",
-            None,
-            "byte",
-            vec![],
-            [],
-            0,
-            [],
-        );
+        r.add_submachine::<&str, _>("std::machines::range::Byte", None, "byte", vec![], [], 0);
 
-        r.add_submachine::<&str, _, _>(
-            "std::machines::range::Byte2",
-            None,
-            "byte2",
-            vec![],
-            [],
-            0,
-            [],
-        );
+        r.add_submachine::<&str, _>("std::machines::range::Byte2", None, "byte2", vec![], [], 0);
 
-        r.add_submachine::<&str, _, _>(
+        r.add_submachine::<&str, _>(
             "std::machines::binary::ByteBinary",
             None,
             "byte_binary",
             vec![],
             [],
             0,
-            [],
         );
 
-        r.add_submachine::<&str, _, _>(
+        r.add_submachine::<&str, _>(
             "std::machines::large_field::shift::ByteShift",
             None,
             "byte_shift",
             vec![],
             [],
             0,
-            [],
         );
 
-        r.add_submachine::<&str, _, _>(
+        r.add_submachine::<&str, _>(
             "std::machines::split::ByteCompare",
             None,
             "byte_compare",
             vec![],
             [],
             0,
-            [],
         );
 
         // Base syscalls
@@ -211,7 +165,7 @@ impl Runtime {
 
         r.add_syscall(Syscall::CommitPublic, ["commit_public 10, 11;"]);
 
-        r.with_poseidon(continuations)
+        r.with_poseidon()
     }
 
     fn with_keccak(mut self) -> Self {
@@ -235,10 +189,6 @@ impl Runtime {
             "#
             .to_string()],
             0,
-            std::iter::once("set_reg 10, 0x100;".to_string()) // filler value for input pointer
-                .chain(std::iter::once("set_reg 11, 0x300;".to_string())) // filler value for output pointer (at least 200 bytes away)
-                .chain(std::iter::once("keccakf 10, 11;".to_string())) // must be called at least once
-                .chain((0..50).flat_map(|i| store_word(11, i as u32 * 4, "x0"))), // zero out 200 bytes following output pointer
         );
 
         // The keccakf syscall has a two arguments passed on x10 and x11,
@@ -251,7 +201,7 @@ impl Runtime {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn add_submachine<S: AsRef<str>, I1: IntoIterator<Item = S>, I2: IntoIterator<Item = S>>(
+    fn add_submachine<S: AsRef<str>, I1: IntoIterator<Item = S>>(
         &mut self,
         path: &str,
         alias: Option<&str>,
@@ -259,7 +209,6 @@ impl Runtime {
         arguments: Vec<&str>,
         instructions: I1,
         extra_registers: u8,
-        init_call: I2,
     ) {
         let subm = SubMachine {
             path: str::parse(path).expect("invalid submachine path"),
@@ -271,10 +220,6 @@ impl Runtime {
                 .map(|s| parse_instruction_declaration(s.as_ref()))
                 .collect(),
             extra_registers,
-            init_call: init_call
-                .into_iter()
-                .map(|s| parse_function_statement(s.as_ref()))
-                .collect(),
         };
         assert!(
             self.submachines
@@ -301,38 +246,7 @@ impl Runtime {
         }
     }
 
-    fn with_poseidon(mut self, continuations: bool) -> Self {
-        let init_call = if continuations {
-            vec![
-                "mstore_bootloader 0, 0, 0, 0;",
-                "mstore_bootloader 0, 0, 4, 0;",
-                "mstore_bootloader 0, 0, 8, 0;",
-                "mstore_bootloader 0, 0, 12, 0;",
-                "mstore_bootloader 0, 0, 16, 0;",
-                "mstore_bootloader 0, 0, 20, 0;",
-                "mstore_bootloader 0, 0, 24, 0;",
-                "mstore_bootloader 0, 0, 28, 0;",
-                "mstore_bootloader 0, 0, 32, 0;",
-                "mstore_bootloader 0, 0, 36, 0;",
-                "mstore_bootloader 0, 0, 40, 0;",
-                "mstore_bootloader 0, 0, 44, 0;",
-                "mstore_bootloader 0, 0, 48, 0;",
-                "mstore_bootloader 0, 0, 52, 0;",
-                "mstore_bootloader 0, 0, 56, 0;",
-                "mstore_bootloader 0, 0, 60, 0;",
-                "mstore_bootloader 0, 0, 64, 0;",
-                "mstore_bootloader 0, 0, 68, 0;",
-                "mstore_bootloader 0, 0, 72, 0;",
-                "mstore_bootloader 0, 0, 76, 0;",
-                "mstore_bootloader 0, 0, 80, 0;",
-                "mstore_bootloader 0, 0, 84, 0;",
-                "mstore_bootloader 0, 0, 88, 0;",
-                "mstore_bootloader 0, 0, 92, 0;",
-                "poseidon_gl 0, 0;",
-            ]
-        } else {
-            vec!["poseidon_gl 0, 0;"]
-        };
+    fn with_poseidon(mut self) -> Self {
         self.add_submachine(
             "std::machines::hash::poseidon_gl_memory::PoseidonGLMemory",
             None,
@@ -357,7 +271,6 @@ impl Runtime {
                 }
             "#],
             0,
-            init_call,
         );
 
         // The poseidon syscall has a single argument passed on x10, the
@@ -390,7 +303,6 @@ impl Runtime {
                 }
             "#],
             0,
-            vec!["poseidon2_gl 0, 0;"],
         );
 
         // The poseidon2 syscall has input address passed on x10 and output address passed on x11,
@@ -430,41 +342,6 @@ impl Runtime {
                 ),
             ],
             32,
-            // calling ec_double for machine initialization.
-            // store x in registers 0..8
-            [
-                0x60297556u32,
-                0x2f057a14,
-                0x8568a18b,
-                0x82f6472f,
-                0x355235d3,
-                0x20453a14,
-                0x755eeea4,
-                0xfff97bd5,
-            ]
-            .into_iter()
-            .enumerate()
-            .map(|(i, fe)| format!("{} <=X= {fe};", reg(i)))
-            // store y in registers 8..16
-            .chain(
-                [
-                    0xb075f297u32,
-                    0x3c870c36,
-                    0x518fe4a0,
-                    0xde80f0f6,
-                    0x7f45c560,
-                    0xf3be9601,
-                    0xacfbb620,
-                    0xae12777a,
-                ]
-                .into_iter()
-                .enumerate()
-                .map(|(i, fe)| format!("{} <=X= {fe};", reg(i + 8))),
-            )
-            // call machine instruction
-            .chain(std::iter::once("ec_double;".to_string()))
-            // set output registers to zero
-            .chain((0..16).map(|i| format!("{} <=X= 0;", reg(i)))),
         );
 
         // The affine_256 syscall takes as input the addresses of x1, y1 and x2.
@@ -536,14 +413,6 @@ impl Runtime {
         self.add_syscall(Syscall::EcDouble, ec_double);
 
         self
-    }
-
-    pub fn submachines_init(&self) -> Vec<String> {
-        self.submachines
-            .values()
-            .flat_map(|m| m.init_call.iter())
-            .map(|s| s.to_string())
-            .collect()
     }
 
     pub fn submachines_import(&self) -> String {

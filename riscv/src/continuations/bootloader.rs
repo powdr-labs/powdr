@@ -75,17 +75,12 @@ pub fn bootloader_preamble(field: KnownField) -> String {
     }
 }
 
-pub fn bootloader_and_shutdown_routine(
-    field: KnownField,
-    submachine_initialization: &[String],
-) -> String {
+pub fn bootloader_and_shutdown_routine(field: KnownField) -> String {
     match field.field_size() {
         FieldSize::Small => {
             todo!()
         }
-        FieldSize::Large => {
-            large_field::bootloader::bootloader_and_shutdown_routine(submachine_initialization)
-        }
+        FieldSize::Large => large_field::bootloader::bootloader_and_shutdown_routine(),
     }
 }
 

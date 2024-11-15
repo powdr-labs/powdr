@@ -39,8 +39,6 @@ pub struct SubMachine {
     pub instructions: Vec<MachineStatement>,
     /// Number of registers needed by this machine's instruction declarations if > 4.
     pub extra_registers: u8,
-    /// TODO: only needed because of witgen requiring that each machine be called at least once
-    pub init_call: Vec<FunctionStatement>,
 }
 
 impl SubMachine {
