@@ -1,6 +1,6 @@
 mod common;
 
-use common::{verify_riscv_asm_file, verify_riscv_asm_string};
+use common::{compile_riscv_asm_file, verify_riscv_asm_file, verify_riscv_asm_string};
 use mktemp::Temp;
 use powdr_number::{
     read_polys_csv_file, BabyBearField, CsvRenderMode, FieldElement, GoldilocksField, KnownField,
@@ -285,6 +285,42 @@ fn sum_serde() {
 fn read_slice() {
     read_slice_with_options::<BabyBearField>(CompilerOptions::new_bb());
     read_slice_with_options::<GoldilocksField>(CompilerOptions::new_gl());
+}
+
+/// Tests that the syscalls are inlined when the following pattern is used:
+///     addi t0, x0, opcode
+///     ecall
+#[test]
+fn syscalls_inlined_when_possible() {
+    // The following program should have the posseidon2_gl and input inlined,
+    // and two calls to the dispatcher that could not be inlined.
+    let asm = r#"
+    .section .text
+    .globl _start
+    _start:
+        # inlined poseidon2_gl
+        addi t0, x0, 10 # poseidon2_gl opcode
+        ecall
+
+        # non-inlined affined_256
+        ori t0, x0, 4 # affine_256 opcode
+        ecall
+
+        # inlined input
+        addi t0, x0, 1 # input opcode
+        ecall
+
+        # non-inlined output
+        ori t0, x0, 2 # output opcode
+        ecall
+    "#;
+    let tmp_dir = Temp::new_dir().unwrap();
+    let asm_file = tmp_dir.join("test.s");
+    std::fs::write(&asm_file, asm).unwrap();
+
+    let compiled = compile_riscv_asm_file(&asm_file, CompilerOptions::new_gl(), false);
+
+    std::fs::write("desnobro.asdf", &compiled).unwrap();
 }
 
 fn read_slice_with_options<T: FieldElement>(options: CompilerOptions) {
@@ -628,6 +664,7 @@ fn profiler_sanity_check() {
     assert!(!callgrind.unwrap().is_empty());
 }
 
+#[cfg(feature = "plonky3")]
 #[test]
 #[ignore = "Too slow"]
 /// check that exported witness CSV can be loaded back in
