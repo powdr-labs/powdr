@@ -403,6 +403,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                         }
                     }
                 }
+                result.report_side_effect();
 
                 return Ok(result);
             }
@@ -513,6 +514,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         new_block
             .get_mut(0)
             .unwrap()
+            // TODO since we are already adding a new block, we don't need
+            // range constraints here, so we can also merge with a finalized row.
+            // -> finalize everything first and don't even assume it is not finalized.
             .merge_with(self.get_row(self.last_row_index()))
             .map_err(|_| {
                 EvalError::Generic(
@@ -534,5 +538,15 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         self.data.extend(new_block);
 
         Ok(())
+    }
+
+    /// Appends a new all-zeros block to the data and returns a DataWindow referencing it.
+    fn reserve_new_block(&mut self) {
+        assert!(
+            (self.rows() + self.block_size as DegreeType) < self.degree,
+            "Block machine is full (this should have been checked before)"
+        );
+        self.data
+            .finalize_range(self.first_in_progress_row..self.data.len());
     }
 }
