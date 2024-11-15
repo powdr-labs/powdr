@@ -1,7 +1,7 @@
 use std::machines::binary::ByteBinary;
 use std::machines::small_field::binary::Binary8;
 
-machine Main with degree: 2**18 {
+machine Main with min_degree: 2**5, max_degree: 2**18 {
     reg pc[@pc];
     reg X0_1[<=];
     reg X0_2[<=];

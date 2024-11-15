@@ -18,8 +18,12 @@ const MAIN_OPERATION_NAME: &str = "main";
 /// Convert a [MachineDegree] into a [NamespaceDegree], setting any unset bounds to the relevant default values
 fn to_namespace_degree(d: MachineDegree) -> NamespaceDegree {
     NamespaceDegree {
-        min: d.min.unwrap(),
-        max: d.max.unwrap(),
+        min: d
+            .min
+            .expect("Either Main or submachine must have explicit degree or min degree"),
+        max: d
+            .max
+            .expect("Either Main or submachine must have explicit degree or max degree"),
     }
 }
 
