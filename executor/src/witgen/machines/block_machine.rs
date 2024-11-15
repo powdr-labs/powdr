@@ -19,7 +19,6 @@ use crate::witgen::sequence_iterator::{
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause};
 use crate::witgen::{MutableState, QueryCallback};
-use bit_vec::BitVec;
 use powdr_ast::analyzed::{DegreeRange, PolyID, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
