@@ -10,7 +10,6 @@ use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::data_structures::multiplicity_counter::MultiplicityCounter;
 use crate::witgen::jit::jit_processor::JitProcessor;
-use crate::witgen::machines::LookupCell;
 use crate::witgen::processor::{OuterQuery, Processor, SolverState};
 use crate::witgen::rows::{Row, RowIndex, RowPair};
 use crate::witgen::sequence_iterator::{
@@ -412,19 +411,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         outer_query: OuterQuery<'a, 'b, T>,
     ) -> EvalResult<'a, T> {
         let mut input_output_data = vec![T::zero(); outer_query.left.len()];
-        let values = outer_query
-            .left
-            .iter()
-            .zip(&mut input_output_data)
-            .map(|(l, d)| {
-                if let Some(value) = l.constant_value() {
-                    *d = value;
-                    LookupCell::Input(d)
-                } else {
-                    LookupCell::Output(d)
-                }
-            })
-            .collect::<Vec<_>>();
+        let values = outer_query.prepare_for_direct_lookup(&mut input_output_data);
 
         assert!(
             (self.rows() + self.block_size as DegreeType) < self.degree,
@@ -441,25 +428,9 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 .process_lookup_direct(mutable_state, identity_id, values, data)?;
         assert!(success);
 
-        let mut result = EvalValue::complete(vec![]);
-        for (l, v) in outer_query.left.iter().zip(input_output_data) {
-            if !l.is_constant() {
-                let evaluated = l.clone() - v.into();
-                // TODO we could use bit constraints here
-                match evaluated.solve() {
-                    Ok(constraints) => {
-                        result.combine(constraints);
-                    }
-                    Err(_) => {
-                        // Fail the whole lookup
-                        return Err(EvalError::ConstraintUnsatisfiable(format!(
-                            "Constraint is invalid ({l} != {v}).",
-                        )));
-                    }
-                }
-            }
-        }
-        Ok(result.report_side_effect())
+        Ok(outer_query
+            .direct_lookup_to_eval_result(input_output_data)?
+            .report_side_effect())
     }
 
     fn process<'b, Q: QueryCallback<T>>(
