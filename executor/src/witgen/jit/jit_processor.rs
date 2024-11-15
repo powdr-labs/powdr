@@ -2,27 +2,27 @@ use bit_vec::BitVec;
 use powdr_number::FieldElement;
 
 use crate::witgen::{
-    data_structures::finalizable_data::CompactDataRef, util::try_to_simple_poly, EvalError,
-    FixedData, MutableState, QueryCallback,
+    data_structures::finalizable_data::CompactDataRef,
+    machines::{LookupCell, MachineParts},
+    util::try_to_simple_poly,
+    EvalError, FixedData, MutableState, QueryCallback,
 };
 
-use super::{LookupCell, MachineParts};
-
-pub struct JitMachineDriver<'a, T: FieldElement> {
+pub struct JitProcessor<'a, T: FieldElement> {
     _fixed_data: &'a FixedData<'a, T>,
     parts: MachineParts<'a, T>,
     _block_size: usize,
     latch_row: usize,
 }
 
-impl<'a, T: FieldElement> JitMachineDriver<'a, T> {
+impl<'a, T: FieldElement> JitProcessor<'a, T> {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
         parts: MachineParts<'a, T>,
         block_size: usize,
         latch_row: usize,
     ) -> Self {
-        JitMachineDriver {
+        JitProcessor {
             _fixed_data: fixed_data,
             parts,
             _block_size: block_size,

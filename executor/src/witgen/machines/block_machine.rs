@@ -2,7 +2,6 @@ use std::collections::{BTreeMap, HashMap};
 use std::fmt::Display;
 use std::iter::{self};
 
-use super::jit_machine_driver::JitMachineDriver;
 use super::{compute_size_and_log, ConnectionKind, EvalResult, FixedData, MachineParts};
 
 use crate::witgen::affine_expression::AlgebraicVariable;
@@ -10,6 +9,7 @@ use crate::witgen::analysis::detect_connection_type_and_block_size;
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::data_structures::multiplicity_counter::MultiplicityCounter;
+use crate::witgen::jit::jit_processor::JitProcessor;
 use crate::witgen::machines::LookupCell;
 use crate::witgen::processor::{OuterQuery, Processor, SolverState};
 use crate::witgen::rows::{Row, RowIndex, RowPair};
@@ -72,9 +72,9 @@ pub struct BlockMachine<'a, T: FieldElement> {
     /// Cache that states the order in which to evaluate identities
     /// to make progress most quickly.
     processing_sequence_cache: ProcessingSequenceCache,
-    /// The JIT driver for this machine, i.e. the component that tries to generate
+    /// The JIT processor for this machine, i.e. the component that tries to generate
     /// witgen code based on which elements of the connection are known.
-    jit_driver: JitMachineDriver<'a, T>,
+    jit_processer: JitProcessor<'a, T>,
     name: String,
     multiplicity_counter: MultiplicityCounter,
 }
@@ -135,7 +135,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 latch_row,
                 parts.identities.len(),
             ),
-            jit_driver: JitMachineDriver::new(fixed_data, parts.clone(), block_size, latch_row),
+            jit_processer: JitProcessor::new(fixed_data, parts.clone(), block_size, latch_row),
         })
     }
 }
@@ -344,7 +344,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
         let known_inputs = outer_query.left.iter().map(|e| e.is_constant()).collect();
         if self
-            .jit_driver
+            .jit_processer
             .can_answer_lookup(identity_id, &known_inputs)
         {
             return self.process_lookup_via_jit(mutable_state, identity_id, outer_query);
@@ -437,7 +437,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let data = self.data.append_new_finalized_rows(self.block_size);
 
         let success =
-            self.jit_driver
+            self.jit_processer
                 .process_lookup_direct(mutable_state, identity_id, values, data)?;
         assert!(success);
 

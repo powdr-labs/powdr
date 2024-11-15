@@ -36,6 +36,7 @@ pub mod fixed_evaluator;
 mod generator;
 mod global_constraints;
 mod identity_processor;
+pub(crate) mod jit;
 mod machines;
 mod processor;
 mod query_processor;

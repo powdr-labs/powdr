@@ -376,6 +376,11 @@ impl<T: FieldElement> FinalizableData<T> {
         }
     }
 
+    /// Appends a given amount of new finalized rows set to zero and "unknown".
+    /// Returns a `CompactDataRef` that is built so that its "row zero" is the
+    /// first newly appended row.
+    ///
+    /// Panics if there are any non-finalized rows at the end.
     pub fn append_new_finalized_rows(&mut self, count: usize) -> CompactDataRef<'_, T> {
         assert!(self.post_finalized_data.is_empty());
         let row_zero = self.finalized_data.len();
