@@ -24,25 +24,25 @@ pub trait SymbolicVariables<T> {
 }
 
 /// A cache that can be either owned or borrowed.
-enum OwningOrBorrowing<'a, 'b, T> {
+enum IntermediatesCache<'a, 'b, T> {
     Owned(BTreeMap<PolyID, AffineResult<AlgebraicVariable<'a>, T>>),
     Borrowed(&'b mut BTreeMap<PolyID, AffineResult<AlgebraicVariable<'a>, T>>),
 }
 
-impl<'a, 'b, T> OwningOrBorrowing<'a, 'b, T> {
+impl<'a, 'b, T> IntermediatesCache<'a, 'b, T> {
     pub fn get(&self, poly_id: &PolyID) -> Option<&AffineResult<AlgebraicVariable<'a>, T>> {
         match self {
-            OwningOrBorrowing::Owned(cache) => cache.get(poly_id),
-            OwningOrBorrowing::Borrowed(cache) => cache.get(poly_id),
+            IntermediatesCache::Owned(cache) => cache.get(poly_id),
+            IntermediatesCache::Borrowed(cache) => cache.get(poly_id),
         }
     }
 
     pub fn insert(&mut self, poly_id: PolyID, value: AffineResult<AlgebraicVariable<'a>, T>) {
         match self {
-            OwningOrBorrowing::Owned(ref mut cache) => {
+            IntermediatesCache::Owned(ref mut cache) => {
                 cache.insert(poly_id, value);
             }
-            OwningOrBorrowing::Borrowed(ref mut cache) => {
+            IntermediatesCache::Borrowed(ref mut cache) => {
                 cache.insert(poly_id, value);
             }
         }
@@ -53,7 +53,7 @@ pub struct ExpressionEvaluator<'a, 'b, T, SV> {
     variables: SV,
     intermediate_definitions: &'a BTreeMap<PolyID, &'a Expression<T>>,
     marker: PhantomData<T>,
-    intermediates_cache: OwningOrBorrowing<'a, 'b, T>,
+    intermediates_cache: IntermediatesCache<'a, 'b, T>,
 }
 
 impl<'a, 'b, T, SV> ExpressionEvaluator<'a, 'b, T, SV>
@@ -69,7 +69,7 @@ where
             variables,
             intermediate_definitions,
             marker: PhantomData,
-            intermediates_cache: OwningOrBorrowing::Owned(BTreeMap::new()),
+            intermediates_cache: IntermediatesCache::Owned(BTreeMap::new()),
         }
     }
 
@@ -82,7 +82,7 @@ where
             variables,
             intermediate_definitions,
             marker: PhantomData,
-            intermediates_cache: OwningOrBorrowing::Borrowed(intermediates_cache),
+            intermediates_cache: IntermediatesCache::Borrowed(intermediates_cache),
         }
     }
 
