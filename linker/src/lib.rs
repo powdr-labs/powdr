@@ -173,28 +173,40 @@ impl Linker {
 
         let to_namespace = to.machine.location.clone().to_string();
 
-        // the lhs is `instr_flag { operation_id, inputs, outputs }`
         let op_id = to.operation.id.iter().cloned().map(|n| n.into());
 
-        if link.is_permutation {
-            // permutation lhs is `flag { operation_id, inputs, outputs }`
-            let lhs = selected(
-                combine_flags(from.instr_flag, from.link_flag),
-                ArrayLiteral {
-                    items: op_id
-                        .chain(from.params.inputs)
-                        .chain(from.params.outputs)
-                        .collect(),
-                }
-                .into(),
-            );
+        // lhs is `flag { operation_id, inputs, outputs }`
+        let lhs = selected(
+            combine_flags(from.instr_flag, from.link_flag),
+            ArrayLiteral {
+                items: op_id
+                    .chain(from.params.inputs)
+                    .chain(from.params.outputs)
+                    .collect(),
+            }
+            .into(),
+        );
 
+        let op_id = to
+            .machine
+            .operation_id
+            .map(|oid| namespaced_reference(to_namespace.clone(), oid))
+            .into_iter();
+
+        let rhs = ArrayLiteral {
+            items: op_id
+                .chain(to.operation.params.inputs_and_outputs().map(|i| {
+                    index_access(
+                        namespaced_reference(to_namespace.clone(), &i.name),
+                        i.index.clone(),
+                    )
+                }))
+                .collect(),
+        }
+        .into();
+
+        if link.is_permutation {
             // permutation rhs is `(latch * selector[idx]) { operation_id, inputs, outputs }`
-            let op_id = to
-                .machine
-                .operation_id
-                .map(|oid| namespaced_reference(to_namespace.clone(), oid))
-                .into_iter();
 
             let latch = namespaced_reference(to_namespace.clone(), to.machine.latch.unwrap());
             let rhs_selector = if let Some(call_selectors) = to.machine.call_selectors {
@@ -207,20 +219,7 @@ impl Linker {
                 latch
             };
 
-            let rhs = selected(
-                rhs_selector,
-                ArrayLiteral {
-                    items: op_id
-                        .chain(to.operation.params.inputs_and_outputs().map(|i| {
-                            index_access(
-                                namespaced_reference(to_namespace.clone(), &i.name),
-                                i.index.clone(),
-                            )
-                        }))
-                        .collect(),
-                }
-                .into(),
-            );
+            let rhs = selected(rhs_selector, rhs);
 
             self.insert_interaction(
                 InteractionType::Permutation,
@@ -230,41 +229,10 @@ impl Linker {
                 rhs,
             );
         } else {
-            // plookup lhs is `flag $ [ operation_id, inputs, outputs ]`
-            let lhs = selected(
-                combine_flags(from.instr_flag, from.link_flag),
-                ArrayLiteral {
-                    items: op_id
-                        .chain(from.params.inputs)
-                        .chain(from.params.outputs)
-                        .collect(),
-                }
-                .into(),
-            );
-
-            let op_id = to
-                .machine
-                .operation_id
-                .map(|oid| namespaced_reference(to_namespace.clone(), oid))
-                .into_iter();
-
             let latch = namespaced_reference(to_namespace.clone(), to.machine.latch.unwrap());
 
             // plookup rhs is `latch $ [ operation_id, inputs, outputs ]`
-            let rhs = selected(
-                latch,
-                ArrayLiteral {
-                    items: op_id
-                        .chain(to.operation.params.inputs_and_outputs().map(|i| {
-                            index_access(
-                                namespaced_reference(to_namespace.clone(), &i.name),
-                                i.index.clone(),
-                            )
-                        }))
-                        .collect(),
-                }
-                .into(),
-            );
+            let rhs = selected(latch, rhs);
 
             self.insert_interaction(
                 InteractionType::Lookup,
