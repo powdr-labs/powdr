@@ -53,6 +53,13 @@ fn keccakf16_test() {
 
 #[test]
 #[ignore = "Too slow"]
+fn keccakf16_memory_test() {
+    let f = "std/keccakf16_memory_test.asm";
+    test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Monolithic);
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn poseidon_bb_test() {
     let f = "std/poseidon_bb_test.asm";
     test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Monolithic);

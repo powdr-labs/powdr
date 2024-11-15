@@ -700,8 +700,12 @@ impl From<DegreeType> for DegreeRange {
 }
 
 impl DegreeRange {
+    pub fn is_unique(&self) -> bool {
+        self.min == self.max
+    }
+
     pub fn try_into_unique(self) -> Option<DegreeType> {
-        (self.min == self.max).then_some(self.min)
+        self.is_unique().then_some(self.min)
     }
 
     /// Iterate through powers of two in this range

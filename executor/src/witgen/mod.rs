@@ -5,7 +5,7 @@ use itertools::Itertools;
 use machines::MachineParts;
 use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, Analyzed, DegreeRange, Expression,
-    FunctionValueDefinition, PolyID, PolynomialType, SymbolKind, TypedExpression,
+    FunctionValueDefinition, PolyID, PolynomialType, Symbol, SymbolKind, TypedExpression,
 };
 use powdr_ast::parsed::visitor::ExpressionVisitable;
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
@@ -288,7 +288,6 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                 let column = columns
                     .remove(&name)
                     .unwrap_or_else(|| panic!("No machine generated witness for column: {name}"));
-                assert!(!column.is_empty());
                 (name, column)
             })
             .collect::<Vec<_>>();
@@ -374,36 +373,6 @@ pub struct FixedData<'a, T: FieldElement> {
 }
 
 impl<'a, T: FieldElement> FixedData<'a, T> {
-    /// Returns the common degree of a set or polynomials
-    ///
-    /// # Panics
-    ///
-    /// Panics if:
-    /// - the degree is not unique
-    /// - the set of polynomials is empty
-    /// - a declared polynomial does not have an explicit degree
-    fn common_degree_range<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> DegreeRange {
-        let ids: HashSet<_> = ids.into_iter().collect();
-
-        self.analyzed
-            // get all definitions
-            .definitions
-            .iter()
-            // only keep polynomials
-            .filter_map(|(_, (symbol, _))| {
-                matches!(symbol.kind, SymbolKind::Poly(_)).then_some(symbol)
-            })
-            // get all array elements and their degrees
-            .flat_map(|symbol| symbol.array_elements().map(|(_, id)| (id, symbol.degree)))
-            // only keep the ones matching our set
-            .filter_map(|(id, degree)| ids.contains(&id).then_some(degree))
-            // get the common degree
-            .unique()
-            .exactly_one()
-            .unwrap_or_else(|_| panic!("expected all polynomials to have the same degree"))
-            .unwrap()
-    }
-
     pub fn new(
         analyzed: &'a Analyzed<T>,
         fixed_col_values: &'a [(String, VariablySizedColumn<T>)],
@@ -488,6 +457,50 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         Self {
             global_range_constraints,
             ..self
+        }
+    }
+
+    fn all_poly_symbols(&self) -> impl Iterator<Item = &Symbol> {
+        self.analyzed
+            .definitions
+            .iter()
+            .filter_map(|(_, (symbol, _))| {
+                matches!(symbol.kind, SymbolKind::Poly(_)).then_some(symbol)
+            })
+    }
+
+    /// Returns the common degree of a set or polynomials
+    ///
+    /// # Panics
+    ///
+    /// Panics if:
+    /// - the degree is not unique
+    /// - the set of polynomials is empty
+    /// - a declared polynomial does not have an explicit degree
+    fn common_degree_range<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> DegreeRange {
+        let ids: HashSet<_> = ids.into_iter().collect();
+
+        self.all_poly_symbols()
+            .flat_map(|symbol| symbol.array_elements().map(|(_, id)| (id, symbol.degree)))
+            // only keep the ones matching our set
+            .filter_map(|(id, degree)| ids.contains(&id).then_some(degree))
+            // get the common degree
+            .unique()
+            .exactly_one()
+            .unwrap_or_else(|_| panic!("expected all polynomials to have the same degree"))
+            .unwrap()
+    }
+
+    /// Returns whether all polynomials have the same static degree.
+    fn is_monolithic(&self) -> bool {
+        match self
+            .all_poly_symbols()
+            .map(|symbol| symbol.degree.unwrap())
+            .unique()
+            .exactly_one()
+        {
+            Ok(degree) => degree.is_unique(),
+            _ => false,
         }
     }
 

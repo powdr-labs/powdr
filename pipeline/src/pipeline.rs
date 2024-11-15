@@ -385,10 +385,10 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     pub fn from_file(self, asm_file: PathBuf) -> Self {
-        if asm_file.extension().unwrap() == "asm" {
-            self.from_asm_file(asm_file)
-        } else {
-            self.from_pil_file(asm_file)
+        match asm_file.extension() {
+            Some(ext) if ext.to_str().unwrap() == "asm" => self.from_asm_file(asm_file),
+            Some(ext) if ext.to_str().unwrap() == "pil" => self.from_pil_file(asm_file),
+            _ => panic!("expected a .pil or .asm file"),
         }
     }
 

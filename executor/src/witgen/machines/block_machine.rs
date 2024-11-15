@@ -170,10 +170,27 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         if self.data.len() < 2 * self.block_size {
-            log::warn!(
-                "Filling empty blocks with zeros, because the block machine is never used. \
+            if self.fixed_data.is_monolithic() {
+                log::warn!(
+                    "Filling empty blocks with zeros, because the block machine is never used. \
                  This might violate some internal constraints."
-            );
+                );
+            } else {
+                log::info!(
+                    "Machine {} is never used at runtime, so we remove it.",
+                    self.name
+                );
+                // Return empty columns for all witnesses.
+                return self
+                    .parts
+                    .witnesses
+                    .iter()
+                    .map(|id| (*id, Vec::new()))
+                    // Note that this panics if any count is not 0 (which shouldn't happen).
+                    .chain(self.multiplicity_counter.generate_columns_single_size(0))
+                    .map(|(id, values)| (self.fixed_data.column_name(&id).to_string(), values))
+                    .collect();
+            }
         }
         self.degree = compute_size_and_log(&self.name, self.data.len(), self.degree_range);
 
