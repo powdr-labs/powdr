@@ -2,9 +2,7 @@ mod common;
 
 use common::{compile_riscv_asm_file, verify_riscv_asm_file, verify_riscv_asm_string};
 use mktemp::Temp;
-use powdr_number::{
-    read_polys_csv_file, BabyBearField, CsvRenderMode, FieldElement, GoldilocksField, KnownField,
-};
+use powdr_number::{BabyBearField, FieldElement, GoldilocksField, KnownField};
 use powdr_pipeline::{
     test_util::{run_pilcom_with_backend_variant, BackendVariant},
     Pipeline,
@@ -695,6 +693,8 @@ fn profiler_sanity_check() {
 #[ignore = "Too slow"]
 /// check that exported witness CSV can be loaded back in
 fn exported_csv_as_external_witness() {
+    use powdr_number::{read_polys_csv_file, CsvRenderMode};
+
     let case = "keccak";
 
     let temp_dir = Temp::new_dir().unwrap();
