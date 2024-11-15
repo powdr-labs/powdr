@@ -1,10 +1,8 @@
 mod common;
 
-use common::{verify_riscv_asm_file, verify_riscv_asm_string};
+use common::{compile_riscv_asm_file, verify_riscv_asm_file, verify_riscv_asm_string};
 use mktemp::Temp;
-use powdr_number::{
-    read_polys_csv_file, BabyBearField, CsvRenderMode, FieldElement, GoldilocksField, KnownField,
-};
+use powdr_number::{BabyBearField, FieldElement, GoldilocksField, KnownField};
 use powdr_pipeline::{
     test_util::{run_pilcom_with_backend_variant, BackendVariant},
     Pipeline,
@@ -285,6 +283,68 @@ fn sum_serde() {
 fn read_slice() {
     read_slice_with_options::<BabyBearField>(CompilerOptions::new_bb());
     read_slice_with_options::<GoldilocksField>(CompilerOptions::new_gl());
+}
+
+/// Tests that the syscalls are inlined when the following pattern is used:
+///     addi t0, x0, opcode
+///     ecall
+#[test]
+fn syscalls_inlined_when_possible() {
+    // The following program should have two inlined syscalls,
+    // and two calls to the dispatcher that could not be inlined.
+    let asm = r#"
+    .section .text
+    .globl _start
+    _start:
+        # inlined commit_public
+        addi t0, x0, 12
+        ecall
+
+        # non-inlined halt
+        ori t0, x0, 9
+        ecall
+
+        # inlined input
+        addi t0, x0, 1 # input opcode
+        ecall
+
+        # non-inlined output
+        ori t0, x0, 2 # output opcode
+        ecall
+    "#;
+    let tmp_dir = Temp::new_dir().unwrap();
+    let asm_file = tmp_dir.join("test.s");
+    std::fs::write(&asm_file, asm).unwrap();
+
+    let compiled = compile_riscv_asm_file(&asm_file, CompilerOptions::new_gl(), true);
+
+    // The resulting compiled program should contain the following strings in
+    // between the first automatic "return;" and the "__data_init:" definition,
+    // in the provided order:
+    let expected_strings = [
+        // initial marker
+        "return;",
+        // from the inlined commit_public
+        "commit_public 10, 11;",
+        // from the non-inlined halt call
+        "or 0, 0, 9, 5;",
+        "jump __ecall_handler, 1;",
+        // from the inlined input call
+        "std::prelude::Query::Input",
+        // from the non-inlined output call
+        "or 0, 0, 2, 5;",
+        "jump __ecall_handler, 1;",
+        // final marker
+        "__data_init:",
+    ];
+
+    let mut remaining = compiled.as_str();
+    for expected in &expected_strings {
+        let pos = remaining
+            .find(expected)
+            .unwrap_or_else(|| panic!("Expected string not found in generated code: {expected}"));
+        remaining = &remaining[pos + expected.len()..];
+    }
 }
 
 fn read_slice_with_options<T: FieldElement>(options: CompilerOptions) {
@@ -628,10 +688,13 @@ fn profiler_sanity_check() {
     assert!(!callgrind.unwrap().is_empty());
 }
 
+#[cfg(feature = "plonky3")]
 #[test]
 #[ignore = "Too slow"]
 /// check that exported witness CSV can be loaded back in
 fn exported_csv_as_external_witness() {
+    use powdr_number::{read_polys_csv_file, CsvRenderMode};
+
     let case = "keccak";
 
     let temp_dir = Temp::new_dir().unwrap();
