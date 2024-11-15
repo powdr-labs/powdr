@@ -124,7 +124,7 @@ fn check_identity<T: FieldElement>(
     }
 
     // Check for A' - A in the LHS
-    let key_column = check_constraint(left.expressions.first().unwrap())?;
+    let key_column = check_constraint(fixed_data, left.expressions.first().unwrap())?;
 
     let not_last = &left.selector;
     let positive = right.expressions.first().unwrap();
@@ -132,21 +132,20 @@ fn check_identity<T: FieldElement>(
     // TODO this could be rather slow. We should check the code for identity instead
     // of evaluating it.
     for row in 0..(degree as usize) {
-        let intermediate_definitions = Default::default();
         let ev = ExpressionEvaluator::new(
             FixedEvaluator::new(fixed_data, row, degree),
-            &intermediate_definitions,
+            &fixed_data.intermediate_definitions,
         );
         let degree = degree as usize;
         let nl = ev
-            .evaluate(not_last, &mut Default::default())
+            .evaluate_without_intermediate_cache(not_last)
             .ok()?
             .constant_value()?;
         if (row == degree - 1 && !nl.is_zero()) || (row < degree - 1 && !nl.is_one()) {
             return None;
         }
         let pos = ev
-            .evaluate(positive, &mut Default::default())
+            .evaluate_without_intermediate_cache(positive)
             .ok()?
             .constant_value()?;
         if pos != (row as u64 + 1).into() {
@@ -158,14 +157,17 @@ fn check_identity<T: FieldElement>(
 
 /// Checks that the identity has a constraint of the form `a' - a` as the first expression
 /// on the left hand side and returns the ID of the witness column.
-fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<PolyID> {
-    let symbolic_ev = SymbolicEvaluator;
-    let sort_constraint = match ExpressionEvaluator::new(symbolic_ev, &Default::default())
-        .evaluate(constraint, &mut Default::default())
-    {
-        Ok(c) => c,
-        Err(_) => return None,
-    };
+fn check_constraint<T: FieldElement>(
+    fixed: &FixedData<T>,
+    constraint: &Expression<T>,
+) -> Option<PolyID> {
+    let sort_constraint =
+        match ExpressionEvaluator::new(SymbolicEvaluator, &fixed.intermediate_definitions)
+            .evaluate_without_intermediate_cache(constraint)
+        {
+            Ok(c) => c,
+            Err(_) => return None,
+        };
     let mut coeff = sort_constraint.nonzero_coefficients();
     let first = coeff
         .next()

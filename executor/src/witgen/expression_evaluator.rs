@@ -44,6 +44,7 @@ where
             marker: PhantomData,
         }
     }
+
     /// Tries to evaluate the expression to an affine expression in the witness polynomials
     /// or publics, taking their current values into account.
     /// @returns an expression affine in the witness polynomials or publics.
@@ -64,11 +65,8 @@ where
                     match value {
                         Some(v) => v,
                         None => {
-                            let definition = self
-                                .intermediate_definitions
-                                .get(&poly.poly_id)
-                                // TODO: Fail hard in that case
-                                .ok_or(IncompleteCause::IntermediateDefinitionNotAvailable)?;
+                            let definition =
+                                self.intermediate_definitions.get(&poly.poly_id).unwrap();
                             let result = self.evaluate(definition, intermediates_cache);
                             intermediates_cache.insert(poly.poly_id, result.clone());
                             result
@@ -88,6 +86,15 @@ where
             }
             Expression::Challenge(challenge) => self.variables.challenge(challenge),
         }
+    }
+
+    /// Like `evaluate`, but without an intermediate cache. Only use if performance is not critical.
+    pub fn evaluate_without_intermediate_cache(
+        &self,
+        expr: &'a Expression<T>,
+    ) -> AffineResult<AlgebraicVariable<'a>, T> {
+        let mut intermediates_cache = BTreeMap::new();
+        self.evaluate(expr, &mut intermediates_cache)
     }
 
     fn evaluate_binary_operation(
