@@ -18,6 +18,8 @@ use itertools::Itertools;
 
 use powdr_analysis::utils::parse_pil_statement;
 
+use powdr_number::BigUint;
+
 const MAIN_MACHINE: &str = "::Main";
 const MAIN_FUNCTION: &str = "main";
 
@@ -41,10 +43,19 @@ pub fn compile(input: AnalysisASMFile) -> MachineInstanceGraph {
                 operation_id: None,
                 call_selectors: None,
             };
+            let zero_expr = Expression::from(BigUint::from(0u8));
+            let degree = MachineDegree {
+                min: Some(zero_expr.clone()),
+                max: Some(zero_expr),
+            };
+            let obj: Object = Object {
+                degree,
+                ..Default::default()
+            };
             return MachineInstanceGraph {
                 main,
                 entry_points: Default::default(),
-                objects: [(main_location, Default::default())].into(),
+                objects: [(main_location, obj)].into(),
                 statements: module_level_pil_statements(input),
             };
         }

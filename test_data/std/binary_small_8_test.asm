@@ -1,7 +1,9 @@
 use std::machines::binary::ByteBinary;
 use std::machines::small_field::binary::Binary8;
 
-machine Main {
+let MIN: int = 2**5;
+let MAX: int = 2**18;
+machine Main with min_degree: MIN, max_degree: MAX {
     reg pc[@pc];
     reg X0_1[<=];
     reg X0_2[<=];
@@ -21,7 +23,7 @@ machine Main {
     reg A4;
 
     ByteBinary byte_binary;
-    Binary8 binary(byte_binary);
+    Binary8 binary(byte_binary, MIN, MAX);
 
     instr and X0_1, X0_2, X0_3, X0_4, X1_1, X1_2, X1_3, X1_4 -> X2_1, X2_2, X2_3, X2_4 link ~> (X2_1, X2_2, X2_3, X2_4) = binary.and(X0_1, X0_2, X0_3, X0_4, X1_1, X1_2, X1_3, X1_4);
     instr or X0_1, X0_2, X0_3, X0_4, X1_1, X1_2, X1_3, X1_4 -> X2_1, X2_2, X2_3, X2_4 link ~> (X2_1, X2_2, X2_3, X2_4) = binary.or(X0_1, X0_2, X0_3, X0_4, X1_1, X1_2, X1_3, X1_4);
