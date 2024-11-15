@@ -51,8 +51,8 @@ fn build_tests(kind: &str, dir: &str, sub_dir: &str, name: &str) {
             println!("cargo:rerun-if-changed={full_dir}/{relative_name}");
             let ignore = SLOW_LIST
                 .contains(&test_name)
-                .then(|| "#[ignore = \"Too slow\"]")
-                .unwrap_or("");
+                .then_some("#[ignore = \"Too slow\"]")
+                .unwrap_or_default();
             write!(
                 test_file,
                 r#"
