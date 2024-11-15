@@ -166,6 +166,7 @@ let main: int, int[], int -> int[] = |W, input, delim| {
 machine KeccakF with
     degree: 8,
     latch: LATCH,
+    degree: 8
 { 
     let x;
     let y;

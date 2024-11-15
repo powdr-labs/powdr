@@ -6,7 +6,7 @@ machine Binary4x with
     operation_id: operation_id,
     call_selectors: sel,
 {
-    Binary4 bin;
+    Binary4 bin(256, 256);
 
     operation or4<0> A, B, C, D -> E;
 
@@ -40,8 +40,8 @@ machine Main with degree: 256 {
     reg A;
     reg B;
 
-    Binary4 bin;
-    Binary4x bin4;
+    Binary4 bin(256, 256);
+    Binary4x bin4(256, 256);
 
     // two permutations to machine bin
     instr or X, Y -> Z link ~> Z = bin.or(X, Y);

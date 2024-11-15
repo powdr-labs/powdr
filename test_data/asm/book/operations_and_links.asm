@@ -1,5 +1,5 @@
 machine Main with degree: 16 {
-    Add4 adder;
+    Add4 adder(16, 16);
 
     reg pc[@pc];
     reg X[<=];
@@ -26,7 +26,7 @@ machine Add4 with
     latch: latch,
     operation_id: operation_id
 {
-    Add adder;
+    Add adder(16, 16);
 
     operation add4<0> x, y, z, w -> r;
 

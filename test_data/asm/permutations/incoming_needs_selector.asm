@@ -19,7 +19,7 @@ machine Main with degree: 32 {
     reg Z[<=];
     reg A;
 
-    Binary bin;
+    Binary bin(32, 32);
 
     // permutation into Binary
     instr add X, Y -> Z link ~> Z = bin.add(X, Y);

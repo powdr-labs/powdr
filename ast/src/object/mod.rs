@@ -2,12 +2,9 @@ use std::collections::BTreeMap;
 
 use powdr_number::BigUint;
 
-use crate::{
-    asm_analysis::MachineDegree,
-    parsed::{
-        asm::{AbsoluteSymbolPath, CallableParams, OperationParams},
-        Expression, PilStatement,
-    },
+use crate::parsed::{
+    asm::{AbsoluteSymbolPath, CallableParams, OperationParams},
+    Expression, NamespaceDegree, PilStatement,
 };
 
 mod display;
@@ -49,9 +46,9 @@ pub struct MachineInstanceGraph {
     pub statements: BTreeMap<AbsoluteSymbolPath, Vec<PilStatement>>,
 }
 
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct Object {
-    pub degree: MachineDegree,
+    pub degree: NamespaceDegree,
     /// the pil identities for this machine
     pub pil: Vec<PilStatement>,
     /// the links from this machine to its children

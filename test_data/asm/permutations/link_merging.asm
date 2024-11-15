@@ -25,7 +25,7 @@ machine Main with degree: 32 {
     reg C;
     col witness tmp;
 
-    SubMachine submachine;
+    SubMachine submachine(32, 32);
 
     // these are merged into 1 link
     instr add X, Y -> Z link => Z = submachine.add(X, Y);

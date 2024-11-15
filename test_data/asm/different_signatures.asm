@@ -1,5 +1,5 @@
 machine Main with degree: 16 {
-    DifferentSignatures sub;
+    DifferentSignatures sub(16, 16);
 
     reg pc[@pc];
     reg X[<=];

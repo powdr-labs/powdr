@@ -2,26 +2,18 @@
 
 use powdr_analysis::utils::parse_pil_statement;
 use powdr_ast::{
-    asm_analysis::{combine_flags, MachineDegree},
+    asm_analysis::combine_flags,
     object::{Link, Location, MachineInstanceGraph},
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         build::{index_access, lookup, namespaced_reference, permutation, selected},
-        ArrayLiteral, NamespaceDegree, PILFile, PilStatement,
+        ArrayLiteral, PILFile, PilStatement,
     },
 };
 use powdr_parser_util::SourceRef;
 use std::{collections::BTreeMap, iter::once};
 
 const MAIN_OPERATION_NAME: &str = "main";
-
-/// Convert a [MachineDegree] into a [NamespaceDegree], setting any unset bounds to the relevant default values
-fn to_namespace_degree(d: MachineDegree) -> NamespaceDegree {
-    NamespaceDegree {
-        min: d.min.unwrap(),
-        max: d.max.unwrap(),
-    }
-}
 
 /// The optional degree of the namespace is set to that of the object if it's set, to that of the main object otherwise.
 pub fn link(graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
@@ -45,7 +37,7 @@ pub fn link(graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
         pil.push(PilStatement::Namespace(
             SourceRef::unknown(),
             SymbolPath::from_identifier(location.to_string()),
-            Some(to_namespace_degree(degree)),
+            Some(degree),
         ));
 
         pil.extend(object.pil);

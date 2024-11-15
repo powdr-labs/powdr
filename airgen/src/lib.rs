@@ -5,11 +5,11 @@
 use std::collections::BTreeMap;
 
 use powdr_ast::{
-    asm_analysis::{self, combine_flags, AnalysisASMFile, LinkDefinition, MachineDegree},
+    asm_analysis::{self, combine_flags, AnalysisASMFile, LinkDefinition},
     object::{Link, LinkFrom, LinkTo, Location, Machine, MachineInstanceGraph, Object, Operation},
     parsed::{
         asm::{parse_absolute_path, AbsoluteSymbolPath, CallableRef, MachineParams},
-        Expression, PilStatement,
+        Expression, NamespaceDegree, PilStatement,
     },
 };
 
@@ -44,13 +44,18 @@ pub fn compile(input: AnalysisASMFile) -> MachineInstanceGraph {
                 call_selectors: None,
             };
             let zero_expr = Expression::from(BigUint::from(0u8));
-            let degree = MachineDegree {
-                min: Some(zero_expr.clone()),
-                max: Some(zero_expr),
+            let degree = NamespaceDegree {
+                min: zero_expr.clone(),
+                max: zero_expr,
             };
+
             let obj: Object = Object {
                 degree,
-                ..Default::default()
+                pil: Default::default(),
+                links: Default::default(),
+                latch: Default::default(),
+                call_selectors: Default::default(),
+                has_pc: Default::default(),
             };
             return MachineInstanceGraph {
                 main,
@@ -312,7 +317,16 @@ impl<'a> ASMPILConverter<'a> {
         // the passed degrees have priority over the ones defined in the machine type
         let min = instance.min_degree.clone().or(input.degree.min);
         let max = instance.max_degree.clone().or(input.degree.max);
-        let degree = MachineDegree { min, max };
+        let degree = NamespaceDegree {
+            min: min.expect(&format!(
+                "No min_degree set for machine instance {}",
+                self.location
+            )),
+            max: max.expect(&format!(
+                "No max_degree set for machine instance {}",
+                self.location
+            )),
+        };
 
         self.submachines = input
             .submachines

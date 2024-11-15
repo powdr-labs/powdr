@@ -73,6 +73,13 @@ pub struct NamespaceDegree {
     pub max: Expression,
 }
 
+impl NamespaceDegree {
+    pub fn is_static(&self) -> bool {
+        // we use expression equality here, so `2 + 2 != 4`
+        self.min == self.max
+    }
+}
+
 impl Children<Expression> for NamespaceDegree {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
         Box::new(once(&self.min).chain(once(&self.max)))

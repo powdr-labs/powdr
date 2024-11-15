@@ -38,7 +38,7 @@ machine Main with degree: 32 {
     reg C;
 
 // ANCHOR: trivial
-    SubMachine submachine;
+    SubMachine submachine(32, 32);
 
     instr add X, Y -> Z link => Z = submachine.add(X, Y); // - trivial usage: only instruction inputs/outputs used in the call
 // ANCHOR_END: trivial

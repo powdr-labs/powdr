@@ -8,7 +8,7 @@ machine Main with degree: 128 {
     reg Z[<=];
     reg A;
 
-    Binary4 bin;
+    Binary4 bin(128, 128);
 
     // permutation to machine bin
     instr or X, Y -> Z link ~> Z = bin.or(X, Y);

@@ -9,7 +9,7 @@ machine Main with degree: 128 {
     reg A;
     reg B;
 
-    Binary4 bin;
+    Binary4 bin(128, 128);
 
     // two permutations to machine bin
     instr or X, Y -> Z link ~> Z = bin.or(X, Y);

@@ -27,7 +27,7 @@ machine Main with degree: 16 {
     col witness B;
     col witness C;
 
-    SubMachine submachine;
+    SubMachine submachine(16, 16);
 
     // multiple links can be activated by a single instruction,
     // witness columns can be used for temporary values,

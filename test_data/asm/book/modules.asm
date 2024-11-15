@@ -22,16 +22,16 @@ mod utils {
 
 machine Main with degree: 8 {
     // use a machine from another module by relative path
-    my_module::Other a;
+    my_module::Other a(8, 8);
 
     // use a machine from another module using a local binding
-    LocalOther b;
+    LocalOther b(8, 8);
 
     // use a machine from another module defined in a different file
-    SubmoduleOther c;
+    SubmoduleOther c(8, 8);
 
     // use a machine from another module defined in a different directory
-    FolderSubmoduleOther d;
+    FolderSubmoduleOther d(8, 8);
 
     reg pc[@pc];
 

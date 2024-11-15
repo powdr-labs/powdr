@@ -23,7 +23,7 @@ machine Main with degree: 32 {
     reg A;
     reg B;
 
-    Binary bin;
+    Binary bin(32, 32);
 
     // two permutations to bin machine
     instr add X, Y -> Z link ~> Z = bin.add(X, Y);
