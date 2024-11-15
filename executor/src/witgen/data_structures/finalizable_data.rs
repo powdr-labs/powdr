@@ -37,13 +37,11 @@ impl<T: FieldElement> CompactData<T> {
         }
     }
 
-    #[inline]
     fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 
     /// Returns the number of stored rows.
-    #[inline]
     fn len(&self) -> usize {
         self.data.len() / self.column_count
     }
@@ -60,11 +58,9 @@ impl<T: FieldElement> CompactData<T> {
     }
 
     /// Appends a non-finalized row to the data, turning it into a finalized row.
-    #[inline]
     fn push(&mut self, row: Row<T>) {
-        self.data.reserve(self.data.len() + self.column_count);
-        self.known_cells
-            .reserve(self.known_cells.len() + self.column_count);
+        self.data.reserve(self.column_count);
+        self.known_cells.reserve(self.column_count);
         for col_id in self.first_column_id..(self.first_column_id + self.column_count as u64) {
             if let Some(v) = row.value(&PolyID {
                 id: col_id,
@@ -79,7 +75,6 @@ impl<T: FieldElement> CompactData<T> {
         }
     }
 
-    #[inline]
     fn try_remove_last_row(&mut self) -> bool {
         if self.data.len() < self.column_count {
             false
@@ -91,7 +86,6 @@ impl<T: FieldElement> CompactData<T> {
         }
     }
 
-    #[inline]
     fn get(&self, row: usize, col: u64) -> (T, bool) {
         let col = col - self.first_column_id;
         let idx = row * self.column_count + col as usize;
@@ -103,7 +97,7 @@ impl<T: FieldElement> CompactData<T> {
 /// It allows to finalize rows, which means that those rows are then stored in a more
 /// compact form. Information about range constraints on those rows is lost, but the
 /// information which cells are known is preserved.
-/// There is always a single contigous area of finalized rows and this area can only "grow"
+/// There is always a single contiguous area of finalized rows and this area can only "grow"
 /// towards higher row indices, i.e. an area at the beginning can only be finalized
 /// if nothing has been finalized yet.
 /// Once a row has been finalized, any operation trying to access it again will fail at runtime.
@@ -150,72 +144,94 @@ impl<T: FieldElement> FinalizableData<T> {
             && self.post_finalized_data.is_empty()
     }
 
-    pub fn push(&mut self, row: Row<T>) {
-        if self.finalized_data.is_empty() && self.post_finalized_data.is_empty() {
-            self.pre_finalized_data.push(row);
+    fn location_of_row(&self, row: usize) -> Location {
+        if row < self.pre_finalized_data.len() {
+            Location::PreFinalized(row)
+        } else if row < self.pre_finalized_data.len() + self.finalized_data.len() {
+            Location::Finalized(row - self.pre_finalized_data.len())
         } else {
-            self.post_finalized_data.push(row);
+            Location::PostFinalized(row - self.pre_finalized_data.len() - self.finalized_data.len())
+        }
+    }
+
+    fn location_of_last_row(&self) -> Option<Location> {
+        (!self.is_empty()).then(|| self.location_of_row(self.len() - 1))
+    }
+
+    pub fn push(&mut self, row: Row<T>) {
+        match self.location_of_last_row() {
+            None | Some(Location::PreFinalized(_)) => {
+                self.pre_finalized_data.push(row);
+            }
+            Some(Location::Finalized(_)) | Some(Location::PostFinalized(_)) => {
+                self.post_finalized_data.push(row);
+            }
         }
     }
 
     pub fn pop(&mut self) -> Option<Row<T>> {
-        if !self.post_finalized_data.is_empty() {
-            self.post_finalized_data.pop()
-        } else if !self.finalized_data.is_empty() {
-            panic!("Row already finalized");
-        } else {
-            self.pre_finalized_data.pop()
+        match self.location_of_last_row()? {
+            Location::PreFinalized(_) => self.pre_finalized_data.pop(),
+            Location::Finalized(_) => panic!("Row already finalized"),
+            Location::PostFinalized(_) => self.post_finalized_data.pop(),
         }
     }
 
     /// Removes the last row, even if it has been finalized.
-    pub fn try_remove_last_row(&mut self) {
-        if !self.post_finalized_data.is_empty() {
-            self.post_finalized_data.pop();
-        } else if !self.finalized_data.is_empty() {
-            self.finalized_data.try_remove_last_row();
+    pub fn try_remove_last_row(&mut self) -> bool {
+        if let Some(loc) = self.location_of_last_row() {
+            let removed = match loc {
+                Location::PreFinalized(_) => self.pre_finalized_data.pop().is_some(),
+                Location::Finalized(_) => self.finalized_data.try_remove_last_row(),
+                Location::PostFinalized(_) => self.post_finalized_data.pop().is_some(),
+            };
+            assert!(removed);
+            true
         } else {
-            self.pre_finalized_data.pop();
+            false
         }
     }
 
     pub fn extend(&mut self, other: Self) {
-        if self.finalized_data.is_empty() {
-            self.pre_finalized_data
-                .append(&mut self.post_finalized_data);
-            self.pre_finalized_data.extend(other.pre_finalized_data);
-            self.finalized_data = other.finalized_data;
-            self.post_finalized_data = other.post_finalized_data;
-        } else if other.finalized_data.is_empty() {
-            self.post_finalized_data.extend(other.pre_finalized_data);
-            self.post_finalized_data.extend(other.post_finalized_data);
-        } else if self.post_finalized_data.is_empty() && other.pre_finalized_data.is_empty() {
-            self.finalized_data.data.extend(other.finalized_data.data);
-            self.post_finalized_data = other.post_finalized_data;
-        } else if other.pre_finalized_data.is_empty() {
-            self.finalize_range(
-                (self.pre_finalized_data.len() + self.finalized_data.len())..self.len(),
-            );
-            self.finalized_data.data.extend(other.finalized_data.data);
-            self.post_finalized_data = other.post_finalized_data;
-        } else {
-            panic!(
-                "Cannot extend. Please try to ensure that `other` does not contain finalized rows."
-            );
+        assert!(other.finalized_data.is_empty() && other.post_finalized_data.is_empty());
+        match self.location_of_last_row() {
+            None | Some(Location::PreFinalized(_)) => {
+                self.pre_finalized_data.extend(other.pre_finalized_data);
+            }
+            Some(Location::Finalized(_)) | Some(Location::PostFinalized(_)) => {
+                self.post_finalized_data.extend(other.pre_finalized_data);
+            }
         }
+        // if self.finalized_data.is_empty() {
+        //     self.pre_finalized_data
+        //         .append(&mut self.post_finalized_data);
+        //     self.pre_finalized_data.extend(other.pre_finalized_data);
+        //     self.finalized_data = other.finalized_data;
+        //     self.post_finalized_data = other.post_finalized_data;
+        // } else if other.finalized_data.is_empty() {
+        //     self.post_finalized_data.extend(other.pre_finalized_data);
+        //     self.post_finalized_data.extend(other.post_finalized_data);
+        // } else if self.post_finalized_data.is_empty() && other.pre_finalized_data.is_empty() {
+        //     self.finalized_data.data.extend(other.finalized_data.data);
+        //     self.post_finalized_data = other.post_finalized_data;
+        // } else if other.pre_finalized_data.is_empty() {
+        //     self.finalize_range(
+        //         (self.pre_finalized_data.len() + self.finalized_data.len())..self.len(),
+        //     );
+        //     self.finalized_data.data.extend(other.finalized_data.data);
+        //     self.post_finalized_data = other.post_finalized_data;
+        // } else {
+        //     panic!(
+        //         "Cannot extend. Please try to ensure that `other` does not contain finalized rows."
+        //     );
+        // }
     }
 
     pub fn remove(&mut self, i: usize) -> Row<T> {
-        if i < self.pre_finalized_data.len()
-            && self.finalized_data.is_empty()
-            && self.post_finalized_data.is_empty()
-        {
-            self.pre_finalized_data.remove(i)
-        } else if i < self.pre_finalized_data.len() + self.finalized_data.len() {
-            panic!("Row {i} already finalized.");
-        } else {
-            self.post_finalized_data
-                .remove(i - self.pre_finalized_data.len() - self.finalized_data.len())
+        match self.location_of_row(i) {
+            Location::PreFinalized(j) => self.pre_finalized_data.remove(j),
+            Location::Finalized(_) => panic!("Row {i} already finalized."),
+            Location::PostFinalized(j) => self.post_finalized_data.remove(j),
         }
     }
 
@@ -392,4 +408,11 @@ impl<T: FieldElement> IndexMut<usize> for FinalizableData<T> {
                 [index - self.pre_finalized_data.len() - self.finalized_data.len()]
         }
     }
+}
+
+/// The area a row falls into and the offset inside that area.
+enum Location {
+    PreFinalized(usize),
+    Finalized(usize),
+    PostFinalized(usize),
 }
