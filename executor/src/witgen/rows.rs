@@ -480,6 +480,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
                 self.size,
             ),
             &self.fixed_data.intermediate_definitions,
+            // Use the same cache for all calls to `evaluate`
             self.intermediates_cache.borrow_mut().deref_mut(),
         )
         .evaluate(expr)
