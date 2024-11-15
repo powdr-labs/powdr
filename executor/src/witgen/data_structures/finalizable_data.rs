@@ -205,50 +205,60 @@ impl<T: FieldElement> FinalizableData<T> {
     }
 
     pub fn truncate(&mut self, len: usize) {
-        if len <= self.pre_finalized_data.len() {
-            self.pre_finalized_data.truncate(len);
-            self.finalized_data.clear();
-            self.post_finalized_data.clear();
-        } else if len <= self.pre_finalized_data.len() + self.finalized_data.len() {
-            self.finalized_data
-                .truncate(len - self.pre_finalized_data.len());
-            self.post_finalized_data.clear();
+        if len == 0 {
+            self.clear();
         } else {
-            self.post_finalized_data
-                .truncate(len - self.pre_finalized_data.len() - self.finalized_data.len());
+            match self.location_of_row(len - 1) {
+                Location::PreFinalized(local) => {
+                    self.pre_finalized_data.truncate(local + 1);
+                    self.finalized_data.clear();
+                    self.post_finalized_data.clear();
+                }
+                Location::Finalized(local) => {
+                    self.finalized_data.truncate(local + 1);
+                    self.post_finalized_data.clear();
+                }
+                Location::PostFinalized(local) => {
+                    self.post_finalized_data.truncate(local + 1);
+                }
+            }
         }
     }
 
+    pub fn clear(&mut self) {
+        self.pre_finalized_data.clear();
+        self.finalized_data.clear();
+        self.post_finalized_data.clear();
+    }
+
     pub fn get_mut(&mut self, i: usize) -> Option<&mut Row<T>> {
-        if i < self.pre_finalized_data.len() {
-            Some(&mut self.pre_finalized_data[i])
-        } else if i < self.pre_finalized_data.len() + self.finalized_data.len() {
-            panic!("Row {i} already finalized.");
-        } else {
-            self.post_finalized_data
-                .get_mut(i - self.pre_finalized_data.len() - self.finalized_data.len())
+        match self.location_of_row(i) {
+            Location::PreFinalized(local) => self.pre_finalized_data.get_mut(local),
+            Location::Finalized(_) => panic!("Row {i} already finalized."),
+            Location::PostFinalized(local) => self.post_finalized_data.get_mut(local),
         }
     }
 
     pub fn last(&self) -> Option<&Row<T>> {
-        if !self.post_finalized_data.is_empty() {
-            self.post_finalized_data.last()
-        } else if !self.finalized_data.is_empty() {
-            panic!("Row already finalized");
-        } else {
-            self.pre_finalized_data.last()
+        match self.location_of_last_row()? {
+            Location::PreFinalized(local) => self.pre_finalized_data.get(local),
+            Location::Finalized(_) => panic!("Row already finalized"),
+            Location::PostFinalized(local) => self.post_finalized_data.get(local),
         }
     }
 
     pub fn mutable_row_pair(&mut self, i: usize) -> (&mut Row<T>, &mut Row<T>) {
-        let (before, after) = if i + 1 < self.pre_finalized_data.len() {
-            self.pre_finalized_data.split_at_mut(i + 1)
-        } else if i < self.pre_finalized_data.len() + self.finalized_data.len() {
-            panic!("Row {i} or {} (or both) already finalized.", i + 1);
-        } else {
-            self.post_finalized_data
-                .split_at_mut(i - self.pre_finalized_data.len() - self.finalized_data.len() + 1)
+        let (before, after) = match self.location_of_row(i) {
+            Location::PreFinalized(local) => {
+                if local + 1 >= self.pre_finalized_data.len() {
+                    panic!("Row {} already finalized.", i + 1);
+                }
+                self.pre_finalized_data.split_at_mut(local + 1)
+            }
+            Location::Finalized(_) => panic!("Row {i} already finalized."),
+            Location::PostFinalized(local) => self.post_finalized_data.split_at_mut(local + 1),
         };
+
         let current = before.last_mut().unwrap();
         let next = after.first_mut().unwrap();
         (current, next)
