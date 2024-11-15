@@ -69,7 +69,6 @@ impl Runtime {
                             link ~> regs.mstore(0, WL, STEP + 3, tmp4_h, tmp4_l);"#,
             ],
             0,
-            ["and 0, 0, 0, 0, 0;"],
         );
 
         r.add_submachine(
@@ -94,97 +93,45 @@ impl Runtime {
 "#,
             ],
             0,
-            ["shl 0, 0, 0, 0, 0;"],
         );
 
-        r.add_submachine::<&str, _, _>(
-            "std::machines::range::Bit2",
-            None,
-            "bit2",
-            vec![],
-            [],
-            0,
-            [],
-        );
+        r.add_submachine::<&str, _>("std::machines::range::Bit2", None, "bit2", vec![], [], 0);
 
-        r.add_submachine::<&str, _, _>(
-            "std::machines::range::Bit6",
-            None,
-            "bit6",
-            vec![],
-            [],
-            0,
-            [],
-        );
+        r.add_submachine::<&str, _>("std::machines::range::Bit6", None, "bit6", vec![], [], 0);
 
-        r.add_submachine::<&str, _, _>(
-            "std::machines::range::Bit7",
-            None,
-            "bit7",
-            vec![],
-            [],
-            0,
-            [],
-        );
+        r.add_submachine::<&str, _>("std::machines::range::Bit7", None, "bit7", vec![], [], 0);
 
-        r.add_submachine::<&str, _, _>(
-            "std::machines::range::Byte",
-            None,
-            "byte",
-            vec![],
-            [],
-            0,
-            [],
-        );
+        r.add_submachine::<&str, _>("std::machines::range::Byte", None, "byte", vec![], [], 0);
 
-        r.add_submachine::<&str, _, _>(
-            "std::machines::range::Bit12",
-            None,
-            "bit12",
-            vec![],
-            [],
-            0,
-            [],
-        );
+        r.add_submachine::<&str, _>("std::machines::range::Bit12", None, "bit12", vec![], [], 0);
 
-        r.add_submachine::<&str, _, _>(
-            "std::machines::range::Byte2",
-            None,
-            "byte2",
-            vec![],
-            [],
-            0,
-            [],
-        );
+        r.add_submachine::<&str, _>("std::machines::range::Byte2", None, "byte2", vec![], [], 0);
 
-        r.add_submachine::<&str, _, _>(
+        r.add_submachine::<&str, _>(
             "std::machines::binary::ByteBinary",
             None,
             "byte_binary",
             vec![],
             [],
             0,
-            [],
         );
 
-        r.add_submachine::<&str, _, _>(
+        r.add_submachine::<&str, _>(
             "std::machines::small_field::shift::ByteShift",
             None,
             "byte_shift",
             vec![],
             [],
             0,
-            [],
         );
 
-        r.add_submachine::<&str, _, _>(
+        r.add_submachine::<&str, _>(
             "std::machines::split::ByteCompare",
             None,
             "byte_compare",
             vec![],
             [],
             0,
-            [],
         );
 
         // Base syscalls
@@ -223,7 +170,7 @@ impl Runtime {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn add_submachine<S: AsRef<str>, I1: IntoIterator<Item = S>, I2: IntoIterator<Item = S>>(
+    fn add_submachine<S: AsRef<str>, I1: IntoIterator<Item = S>>(
         &mut self,
         path: &str,
         alias: Option<&str>,
@@ -231,7 +178,6 @@ impl Runtime {
         arguments: Vec<&str>,
         instructions: I1,
         extra_registers: u8,
-        init_call: I2,
     ) {
         let subm = SubMachine {
             path: str::parse(path).expect("invalid submachine path"),
@@ -243,10 +189,6 @@ impl Runtime {
                 .map(|s| parse_instruction_declaration(s.as_ref()))
                 .collect(),
             extra_registers,
-            init_call: init_call
-                .into_iter()
-                .map(|s| parse_function_statement(s.as_ref()))
-                .collect(),
         };
         assert!(
             self.submachines
@@ -299,14 +241,6 @@ impl Runtime {
 
     fn with_arith(self) -> Self {
         todo!()
-    }
-
-    pub fn submachines_init(&self) -> Vec<String> {
-        self.submachines
-            .values()
-            .flat_map(|m| m.init_call.iter())
-            .map(|s| s.to_string())
-            .collect()
     }
 
     pub fn submachines_import(&self) -> String {

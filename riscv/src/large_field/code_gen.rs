@@ -19,7 +19,7 @@ use crate::large_field::runtime::Runtime;
 ///
 /// Will call each of the methods in the `RiscVProgram` just once.
 pub fn translate_program(program: impl RiscVProgram, options: CompilerOptions) -> String {
-    let runtime = Runtime::new(options.libs, options.continuations);
+    let runtime = Runtime::new(options.libs);
     // Do this in a separate function to avoid most of the code being generic on F.
     let (initial_mem, instructions) =
         translate_program_impl(program, options.field, &runtime, options.continuations);
@@ -114,17 +114,15 @@ fn translate_program_impl(
         }
     }
 
-    let submachines_init = runtime.submachines_init();
     let bootloader_and_shutdown_routine_lines = if continuations {
-        let bootloader_and_shutdown_routine =
-            bootloader_and_shutdown_routine(field, &submachines_init);
+        let bootloader_and_shutdown_routine = bootloader_and_shutdown_routine(field);
         log::debug!("Adding Bootloader:\n{}", bootloader_and_shutdown_routine);
         bootloader_and_shutdown_routine
             .split('\n')
             .map(|l| l.to_string())
             .collect::<Vec<_>>()
     } else {
-        submachines_init
+        vec![]
     };
 
     let mut statements: Vec<String> = program

@@ -767,7 +767,7 @@ fn types_in_expressions() {
                 O::A(x) => x,
             } = 0
         };
-        machine Main {
+        machine Main with degree: 64 {
             col witness w;
             f();
         }
