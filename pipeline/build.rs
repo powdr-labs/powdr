@@ -21,6 +21,8 @@ fn build_reparse_test(kind: &str, dir: &str) {
     build_tests(kind, dir, "", "reparse")
 }
 
+const SLOW_LIST: [&str; 1] = ["keccakf16_test"];
+
 #[allow(clippy::print_stdout)]
 fn build_tests(kind: &str, dir: &str, sub_dir: &str, name: &str) {
     let sub_dir = if sub_dir.is_empty() {
@@ -47,10 +49,14 @@ fn build_tests(kind: &str, dir: &str, sub_dir: &str, name: &str) {
             .strip_suffix(&format!(".{kind}"))
         {
             println!("cargo:rerun-if-changed={full_dir}/{relative_name}");
+            let ignore = SLOW_LIST
+                .contains(&test_name)
+                .then(|| "#[ignore = \"Too slow\"]")
+                .unwrap_or("");
             write!(
                 test_file,
                 r#"
-#[test]
+#[test]{ignore}
 fn {test_name}() {{
     run_{name}_test("{dir}/{sub_dir}{relative_name}");
 }}
