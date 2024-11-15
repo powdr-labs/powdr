@@ -6,10 +6,7 @@ use itertools::Itertools;
 
 use crate::code_gen::Register;
 
-use crate::runtime::{
-    parse_instruction_declaration, SubMachine, SyscallImpl,
-    EXTRA_REG_PREFIX,
-};
+use crate::runtime::{parse_instruction_declaration, SubMachine, SyscallImpl, EXTRA_REG_PREFIX};
 use crate::RuntimeLibs;
 
 /// RISCV powdr assembly runtime.
