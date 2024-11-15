@@ -418,12 +418,22 @@ mod test {
         )
     }
 
-    fn link_with_bus(graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
+    fn link_native_monolithic(graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
+        super::link(
+            graph,
+            super::LinkerParams {
+                mode: super::LinkerMode::Native,
+                degree_mode: super::DegreeMode::Monolithic,
+            },
+        )
+    }
+
+    fn link_with_bus_monolithic(graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
         super::link(
             graph,
             super::LinkerParams {
                 mode: super::LinkerMode::Bus,
-                ..Default::default()
+                degree_mode: super::DegreeMode::Monolithic,
             },
         )
     }
@@ -511,9 +521,9 @@ namespace main__rom(4 + 4);
 
         let file_name = "../test_data/asm/empty_vm.asm";
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
-        let pil = link_native(graph.clone()).unwrap();
+        let pil = link_native_monolithic(graph.clone()).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), native_expectation);
-        let pil = link_with_bus(graph).unwrap();
+        let pil = link_with_bus_monolithic(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), bus_expectation);
     }
 
@@ -638,7 +648,7 @@ namespace main_sub__rom(16);
 "#;
         let file_name = "../test_data/asm/different_signatures.asm";
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
-        let pil = link_native(graph).unwrap();
+        let pil = link_native_monolithic(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
     }
 
@@ -1004,7 +1014,7 @@ namespace main_bin(128);
 "#;
         let file_name = "../test_data/asm/permutations/vm_to_block.asm";
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
-        let pil = link_native(graph).unwrap();
+        let pil = link_native_monolithic(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expected);
     }
 
@@ -1161,7 +1171,7 @@ namespace main_submachine(32);
 "#;
         let file_name = "../test_data/asm/permutations/link_merging.asm";
         let graph = parse_analyze_and_compile_file::<GoldilocksField>(file_name);
-        let pil = link_native(graph).unwrap();
+        let pil = link_native_monolithic(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expected);
     }
 }
