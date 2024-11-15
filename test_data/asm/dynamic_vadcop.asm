@@ -13,12 +13,14 @@ machine Byte2 with
     col fixed operation_id = [0]*;
 }
 
-machine Main {
-    Arith arith;
+let MIN: int = 2**8;
+let MAX: int = 2**9;
+machine Main with min_degree: MIN, max_degree: MAX {
+    Arith arith(MIN, MAX);
 
     col fixed STEP(i) { i };
     Byte2 byte2;
-    Memory memory(byte2);
+    Memory memory(byte2, MIN, MAX);
 
     reg pc[@pc];
     reg X[<=];

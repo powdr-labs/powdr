@@ -1,7 +1,7 @@
 use std::machines::small_field::add_sub::AddSub;
 use std::machines::range::Byte2;
 
-machine Main {
+machine Main with degree: 2**12 {
     reg pc[@pc];
     reg A_h[<=];
     reg A_l[<=];
