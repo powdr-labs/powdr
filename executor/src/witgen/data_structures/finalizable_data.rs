@@ -202,12 +202,14 @@ impl<T: FieldElement> FinalizableData<T> {
     }
 
     pub fn extend(&mut self, other: Self) {
-        assert!(other.finalized_data.is_empty() && other.post_finalized_data.is_empty());
         match self.location_of_last_row() {
             None | Some(Location::PreFinalized(_)) => {
                 self.pre_finalized_data.extend(other.pre_finalized_data);
+                self.finalized_data = other.finalized_data;
+                self.post_finalized_data = other.post_finalized_data;
             }
             Some(Location::Finalized(_)) | Some(Location::PostFinalized(_)) => {
+                assert!(other.finalized_data.is_empty() && other.post_finalized_data.is_empty());
                 self.post_finalized_data.extend(other.pre_finalized_data);
             }
         }
