@@ -72,7 +72,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
             log::trace!("End processing VM '{}' (successfully)", self.name());
             // Remove the last row of the previous block, if it exists,
             // as it is the first row of the current block.
-            self.data.pop().unwrap();
+            self.data.pop();
             self.data.extend(updated_data.block);
             self.publics.extend(updated_data.publics);
 
