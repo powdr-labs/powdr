@@ -32,20 +32,35 @@ pub fn generate<T: FieldElement>(analyzed: &Analyzed<T>) -> Vec<(String, Variabl
                 fixed_cols.entry((name.clone(), id)).or_insert_with(|| {
                     let index = poly.is_array().then_some(index as u64);
                     let range = poly.degree.unwrap();
-                    range
+                    let start_time = std::time::Instant::now();
+                    let column = range
                         .iter()
                         .map(|degree| {
                             used_interpreter = true;
                             interpreter::generate_values(analyzed, degree, &name, value, index)
                         })
                         .collect::<Vec<_>>()
-                        .into()
+                        .into();
+                    let time = start_time.elapsed().as_secs_f32();
+                    let log_level = if time > 1.0 {
+                        log::Level::Debug
+                    } else {
+                        log::Level::Trace
+                    };
+                    log::log!(
+                        log_level,
+                        "  Generated values for {} ({}) in {:.2}s",
+                        name,
+                        range,
+                        time
+                    );
+                    column
                 });
             }
         }
     }
     if !used_interpreter && !fixed_cols.is_empty() {
-        log::info!("All columns were genrated using JIT-code.");
+        log::info!("All columns were generated using JIT-code.");
     }
 
     fixed_cols

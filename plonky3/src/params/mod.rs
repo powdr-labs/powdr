@@ -32,4 +32,6 @@ where
     fn get_challenger() -> Challenger<Self>;
 
     fn get_config() -> Self::Config;
+
+    fn degree_bound() -> usize;
 }

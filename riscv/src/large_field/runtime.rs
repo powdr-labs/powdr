@@ -342,7 +342,12 @@ impl Runtime {
             "std::machines::hash::poseidon_gl_memory::PoseidonGLMemory",
             None,
             "poseidon_gl",
-            vec!["memory", "split_gl"],
+            vec![
+                "memory",
+                "split_gl",
+                "MIN_DEGREE",
+                "LARGE_SUBMACHINES_MAX_DEGREE",
+            ],
             [r#"instr poseidon_gl X, Y
                     link ~> tmp1_col = regs.mload(X, STEP)
                     link ~> tmp2_col = regs.mload(Y, STEP + 1)

@@ -3,7 +3,10 @@ use std::{collections::HashSet, str::FromStr};
 use powdr_ast::parsed::{asm::SymbolPath, types::Type, visitor::Children, Expression};
 use powdr_number::BigUint;
 
-use crate::{evaluator::EvalError, untyped_evaluator, AnalysisDriver};
+use crate::{
+    evaluator::EvalError, expression_processor::ExpressionProcessor, untyped_evaluator,
+    AnalysisDriver,
+};
 
 /// The TypeProcessor turns parsed types into analyzed types, which means that
 /// it resolves local type name references, replaces named types that actually
@@ -48,7 +51,10 @@ impl<'a, D: AnalysisDriver> TypeProcessor<'a, D> {
         // Any expression inside a type name has to be an array length,
         // so we expect an integer that fits u64.
         t.children_mut().try_for_each(|e: &mut Expression| {
-            let v = untyped_evaluator::evaluate_expression_to_int(self.driver, e.clone())?;
+            let analyzed_expr = ExpressionProcessor::new(self.driver, &Default::default())
+                .process_expression(e.clone())
+                .map_err(|e| EvalError::TypeError(e.message().to_string()))?; // TODO: Replace with a proper error type
+            let v = untyped_evaluator::evaluate_expression_to_int(self.driver, analyzed_expr)?;
             let v_u64: u64 = v.clone().try_into().map_err(|_| {
                 EvalError::TypeError(format!("Number too large, expected u64, but got {v}"))
             })?;
