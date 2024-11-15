@@ -70,8 +70,8 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
 
         let eval_value = if eval_value.is_complete() {
             log::trace!("End processing VM '{}' (successfully)", self.name());
-            // Remove the last row of the previous block, as it is the first row of the current
-            // block.
+            // Remove the last row of the previous block, if it exists,
+            // as it is the first row of the current block.
             self.data.try_remove_last_row();
             self.data.extend(updated_data.block);
             self.publics.extend(updated_data.publics);
@@ -210,7 +210,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
 
         // Ignore any updates to the publics at this point, as we'll re-visit the last row again.
         let mut block = processor.finish().block;
-        block.remove(1)
+        assert!(block.len() == 2);
+        block.pop().unwrap()
     }
 
     fn process<'b, Q: QueryCallback<T>>(
