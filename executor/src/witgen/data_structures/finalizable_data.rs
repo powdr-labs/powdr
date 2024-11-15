@@ -202,37 +202,6 @@ impl<T: FieldElement> FinalizableData<T> {
                 self.post_finalized_data.extend(other.pre_finalized_data);
             }
         }
-        // if self.finalized_data.is_empty() {
-        //     self.pre_finalized_data
-        //         .append(&mut self.post_finalized_data);
-        //     self.pre_finalized_data.extend(other.pre_finalized_data);
-        //     self.finalized_data = other.finalized_data;
-        //     self.post_finalized_data = other.post_finalized_data;
-        // } else if other.finalized_data.is_empty() {
-        //     self.post_finalized_data.extend(other.pre_finalized_data);
-        //     self.post_finalized_data.extend(other.post_finalized_data);
-        // } else if self.post_finalized_data.is_empty() && other.pre_finalized_data.is_empty() {
-        //     self.finalized_data.data.extend(other.finalized_data.data);
-        //     self.post_finalized_data = other.post_finalized_data;
-        // } else if other.pre_finalized_data.is_empty() {
-        //     self.finalize_range(
-        //         (self.pre_finalized_data.len() + self.finalized_data.len())..self.len(),
-        //     );
-        //     self.finalized_data.data.extend(other.finalized_data.data);
-        //     self.post_finalized_data = other.post_finalized_data;
-        // } else {
-        //     panic!(
-        //         "Cannot extend. Please try to ensure that `other` does not contain finalized rows."
-        //     );
-        // }
-    }
-
-    pub fn remove(&mut self, i: usize) -> Row<T> {
-        match self.location_of_row(i) {
-            Location::PreFinalized(j) => self.pre_finalized_data.remove(j),
-            Location::Finalized(_) => panic!("Row {i} already finalized."),
-            Location::PostFinalized(j) => self.post_finalized_data.remove(j),
-        }
     }
 
     pub fn truncate(&mut self, len: usize) {

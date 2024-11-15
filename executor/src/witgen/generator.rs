@@ -210,7 +210,8 @@ impl<'a, T: FieldElement> Generator<'a, T> {
 
         // Ignore any updates to the publics at this point, as we'll re-visit the last row again.
         let mut block = processor.finish().block;
-        block.remove(1)
+        assert!(block.len() == 2);
+        block.pop().unwrap()
     }
 
     fn process<'b, Q: QueryCallback<T>>(
