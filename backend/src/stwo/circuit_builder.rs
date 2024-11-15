@@ -1,4 +1,7 @@
-use num_traits::One;
+use num_traits::Zero;
+use std::fmt::Debug;
+use std::ops::{Add, AddAssign, Mul, Neg, Sub};
+
 extern crate alloc;
 use alloc::{collections::btree_map::BTreeMap, string::String, vec::Vec};
 use powdr_ast::analyzed::Identity;
@@ -17,6 +20,7 @@ use stwo_prover::core::backend::Col;
 use stwo_prover::core::backend::ColumnOps;
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::m31::M31;
+use stwo_prover::core::fields::FieldExpOps;
 use stwo_prover::core::fields::{ExtensionOf, FieldOps};
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
@@ -105,7 +109,7 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
         {
             match id {
                 Identity::Polynomial(identity) => {
-                    let expr = to_stwo_expression::<T, E>(&identity.expression, &witness_eval);
+                    let expr = to_stwo_expression(&identity.expression, &witness_eval);
                     eval.add_constraint(expr);
                 }
                 Identity::Connect(..) => {
@@ -129,10 +133,24 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
     }
 }
 
-fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
+fn to_stwo_expression<T: FieldElement, F>(
     expr: &AlgebraicExpression<T>,
-    witness_eval: &BTreeMap<PolyID, [<E as EvalAtRow>::F; 2]>,
-) -> E::F {
+    witness_eval: &BTreeMap<PolyID, [F; 2]>,
+) -> F
+where
+    F: FieldExpOps
+        + Clone
+        + Debug
+        + Zero
+        + Neg<Output = F>
+        + AddAssign
+        + AddAssign<BaseField>
+        + Add<F, Output = F>
+        + Sub<F, Output = F>
+        + Mul<BaseField, Output = F>
+        + Neg<Output = F>
+        + From<BaseField>,
+{
     use AlgebraicBinaryOperator::*;
     match expr {
         AlgebraicExpression::Reference(r) => {
@@ -154,22 +172,22 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
         AlgebraicExpression::PublicReference(..) => {
             unimplemented!("Public references are not supported in stwo yet")
         }
-        AlgebraicExpression::Number(n) => E::F::from(M31::from(n.try_into_i32().unwrap())),
+        AlgebraicExpression::Number(n) => F::from(M31::from(n.try_into_i32().unwrap())),
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
             left,
             op: Pow,
             right,
         }) => match **right {
             AlgebraicExpression::Number(n) => {
-                let left = to_stwo_expression::<T, E>(left, witness_eval);
+                let left = to_stwo_expression(left, witness_eval);
                 (0u32..n.to_integer().try_into_u32().unwrap())
-                    .fold(E::F::one(), |acc, _| acc * left.clone())
+                    .fold(F::one(), |acc, _| acc * left.clone())
             }
             _ => unimplemented!("pow with non-constant exponent"),
         },
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-            let left = to_stwo_expression::<T, E>(left, witness_eval);
-            let right = to_stwo_expression::<T, E>(right, witness_eval);
+            let left = to_stwo_expression(left, witness_eval);
+            let right = to_stwo_expression(right, witness_eval);
 
             match op {
                 Add => left + right,
@@ -179,7 +197,7 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
             }
         }
         AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
-            let expr: <E as EvalAtRow>::F = to_stwo_expression::<T, E>(expr, witness_eval);
+            let expr = to_stwo_expression(expr, witness_eval);
 
             match op {
                 AlgebraicUnaryOperator::Minus => -expr,
