@@ -2,8 +2,8 @@ use bit_vec::BitVec;
 use powdr_number::FieldElement;
 
 use crate::witgen::{
-    data_structures::finalizable_data::CompactData, EvalError, FixedData, MutableState,
-    QueryCallback,
+    data_structures::finalizable_data::{CompactData, CompactDataRef},
+    EvalError, FixedData, MutableState, QueryCallback,
 };
 
 use super::{LookupCell, MachineParts};
@@ -40,8 +40,7 @@ impl<'a, T: FieldElement> JitMachineDriver<'a, T> {
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         identity_id: u64,
         values: Vec<LookupCell<'c, T>>,
-        data: &'d CompactData<T>,
-        row_offset: usize,
+        data: CompactDataRef<'d, T>,
     ) -> Result<bool, EvalError<T>> {
         todo!();
     }

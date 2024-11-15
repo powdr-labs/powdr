@@ -121,6 +121,36 @@ impl<T: FieldElement> CompactData<T> {
     }
 }
 
+/// A mutable reference into CompactData that is meant to be used
+/// only for a certain block of rows, starting from row index zero.
+/// It allows negative row indices as well.
+pub struct CompactDataRef<'a, T: FieldElement> {
+    data: &'a mut CompactData<T>,
+    row_offset: usize,
+}
+
+impl<'a, T: FieldElement> CompactDataRef<'a, T> {
+    /// Creates a new reference to the data, supplying the offset of the row
+    /// that is supposed to be "row zero".
+    pub fn new(data: &'a mut CompactData<T>, row_offset: usize) -> Self {
+        Self { data, row_offset }
+    }
+
+    pub fn get(&self, row: i32, col: u32) -> T {
+        let (v, known) = self.data.get(self.inner_row(row), col as u64);
+        assert!(known);
+        v
+    }
+
+    pub fn set(&mut self, row: i32, col: u32, value: T) {
+        self.data.set(self.inner_row(row), col as u64, value);
+    }
+
+    fn inner_row(&self, row: i32) -> usize {
+        (row + self.row_offset as i32) as usize
+    }
+}
+
 /// A data structure that stores witness data.
 /// It allows to finalize rows, which means that those rows are then stored in a more
 /// compact form. Information about range constraints on those rows is lost, but the
@@ -381,11 +411,11 @@ impl<T: FieldElement> FinalizableData<T> {
         }
     }
 
-    // TODO somehow we need to return a row offset because of the non-finalized rows.
-    pub fn append_new_finalized_rows(&mut self, count: usize) -> &mut CompactData<T> {
+    pub fn append_new_finalized_rows<'a>(&'a mut self, count: usize) -> CompactDataRef<'a, T> {
         assert!(self.post_finalized_data.is_empty());
+        let row_zero = self.finalized_data.len();
         self.finalized_data.append_new_rows(count);
-        &mut self.finalized_data
+        CompactDataRef::new(&mut self.finalized_data, row_zero)
     }
 
     /// Takes all data out of the [FinalizableData] and returns it as a list of columns.

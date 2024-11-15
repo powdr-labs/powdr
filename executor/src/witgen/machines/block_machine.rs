@@ -327,12 +327,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         RowIndex::from_i64(self.rows() as i64 - 1, self.degree)
     }
 
-    fn get_row(&self, row: RowIndex) -> &Row<T> {
-        // The first block is a dummy block corresponding to rows (-block_size, 0),
-        // so we have to add the block size to the row index.
-        &self.data[(row + self.block_size).into()]
-    }
-
     fn process_plookup_internal<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
@@ -349,19 +343,12 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             }
         }
 
-        // TOOD move this into its own function?
-        if self.parts.prover_functions.is_empty() {
-            let known_inputs = outer_query
-                .left
-                .iter()
-                .map(|e| e.is_constant())
-                .collect::<BitVec>();
-            if self
-                .jit_driver
-                .can_answer_lookup(identity_id, &known_inputs)
-            {
-                return self.process_lookup_via_jit(mutable_state, identity_id, outer_query);
-            }
+        let known_inputs = outer_query.left.iter().map(|e| e.is_constant()).collect();
+        if self
+            .jit_driver
+            .can_answer_lookup(identity_id, &known_inputs)
+        {
+            return self.process_lookup_via_jit(mutable_state, identity_id, outer_query);
         }
 
         // TODO this assumes we are always using the same lookup for this machine.
@@ -444,23 +431,15 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             (self.rows() + self.block_size as DegreeType) < self.degree,
             "Block machine is full (this should have been checked before)"
         );
-        // TODO minus one?
-        let row_offset = self.data.len();
         self.data
             .finalize_range(self.first_in_progress_row..self.data.len());
         self.first_in_progress_row = self.data.len() + self.block_size;
+        //TODO can we properly access the last row of the dummy block?
         let data = self.data.append_new_finalized_rows(self.block_size);
-        // TODO finalize self.data, extend by one (finalized) block.
-        // un-finalize the last block / last row in the interpreted case if it is finalized.
-        // TOOD window at which row?
 
-        let success = self.jit_driver.process_lookup_direct(
-            mutable_state,
-            identity_id,
-            values,
-            data,
-            row_offset,
-        )?;
+        let success =
+            self.jit_driver
+                .process_lookup_direct(mutable_state, identity_id, values, data)?;
         assert!(success);
 
         let mut result = EvalValue::complete(vec![]);
