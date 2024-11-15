@@ -125,6 +125,8 @@ pub fn run_pilcom_with_backend_variant(
             for entry in fs::read_dir(out_dir).unwrap() {
                 let entry = entry.unwrap();
                 let path = entry.path();
+                // In the composite backend, the prover can choose to skip some machines,
+                // which happens if they are empty.
                 if path.is_dir() && fs::read_dir(&path).unwrap().count() > 0 {
                     verify(&path)?;
                 }
