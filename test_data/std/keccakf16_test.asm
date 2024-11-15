@@ -1,6 +1,6 @@
 use std::machines::hash::keccakf16::Keccakf16;
 
-machine Main with degree: 64 {
+machine Main with degree: 8 {
     reg pc[@pc];
 
     reg X0[<=];

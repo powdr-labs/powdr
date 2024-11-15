@@ -13,8 +13,8 @@ machine Byte2 with
     col fixed operation_id = [0]*;
 }
 
-let MIN: int = 2**8;
-let MAX: int = 2**9;
+let MIN: int = 2**5;
+let MAX: int = 2**7;
 machine Main with min_degree: MIN, max_degree: MAX {
     Arith arith(MIN, MAX);
 
