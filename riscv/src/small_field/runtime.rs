@@ -7,7 +7,7 @@ use itertools::Itertools;
 use crate::code_gen::Register;
 
 use crate::runtime::{
-    parse_function_statement, parse_instruction_declaration, SubMachine, SyscallImpl,
+    parse_instruction_declaration, SubMachine, SyscallImpl,
     EXTRA_REG_PREFIX,
 };
 use crate::RuntimeLibs;
