@@ -114,6 +114,12 @@ where
     }
 
     pub fn verify(&self, proof: &[u8], _instances: &[F]) -> Result<(), String> {
+        assert!(
+            _instances.is_empty(),
+            "Expected _instances slice to be empty, but it has {} elements.",
+            _instances.len()
+        );
+
         let config = get_config();
         let proof: StarkProof<MC::H> =
             bincode::deserialize(proof).map_err(|e| format!("Failed to deserialize proof: {e}"))?;
