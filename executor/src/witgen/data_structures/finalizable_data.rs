@@ -91,6 +91,16 @@ impl<T: FieldElement> CompactData<T> {
         let idx = row * self.column_count + col as usize;
         (self.data[idx], self.known_cells[idx])
     }
+
+    fn known_values_in_row(&self, row: usize) -> impl Iterator<Item = (u64, &T)> {
+        (0..self.column_count).filter_map(move |i| {
+            let idx = row * self.column_count + i;
+            self.known_cells[idx].then(|| {
+                let col_id = self.first_column_id + i as u64;
+                (col_id, &self.data[idx])
+            })
+        })
+    }
 }
 
 /// A data structure that stores witness data.
@@ -247,6 +257,41 @@ impl<T: FieldElement> FinalizableData<T> {
             Location::PreFinalized(local) => self.pre_finalized_data.get_mut(local),
             Location::Finalized(_) => panic!("Row {i} already finalized."),
             Location::PostFinalized(local) => self.post_finalized_data.get_mut(local),
+        }
+    }
+
+    /// Returns an iterator over the values known in that row together with the PolyIDs.
+    pub fn known_values_in_row(&self, row: usize) -> Box<dyn Iterator<Item = (PolyID, T)> + '_> {
+        match self.location_of_row(row) {
+            Location::PreFinalized(local) => {
+                let row = &self.pre_finalized_data[local];
+                Box::new(
+                    self.column_ids
+                        .iter()
+                        .filter_map(move |id| row.value(id).map(|v| (*id, v))),
+                )
+            }
+            Location::Finalized(local) => Box::new(
+                self.finalized_data
+                    .known_values_in_row(local)
+                    .map(|(id, v)| {
+                        (
+                            PolyID {
+                                id,
+                                ptype: PolynomialType::Committed,
+                            },
+                            *v,
+                        )
+                    }),
+            ),
+            Location::PostFinalized(local) => {
+                let row = &self.post_finalized_data[local];
+                Box::new(
+                    self.column_ids
+                        .iter()
+                        .filter_map(move |id| row.value(id).map(|v| (*id, v))),
+                )
+            }
         }
     }
 

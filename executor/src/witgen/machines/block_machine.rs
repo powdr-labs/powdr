@@ -335,7 +335,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
     fn process_plookup_internal<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
@@ -378,12 +378,14 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 // TODO finalize self.data, extend by one (finalized) block.
                 // un-finalize the last block / last row in the interpreted case if it is finalized.
                 // TOOD window at which row?
-                self.jit_driver.process_lookup_direct(
+
+                let success = self.jit_driver.process_lookup_direct(
                     mutable_state,
                     identity_id,
                     values,
-                    self.data.window(self.block_size),
-                );
+                    //                    self.data.window(self.block_size),
+                )?;
+                assert!(success);
 
                 let mut result = EvalValue::complete(vec![]);
                 for (l, v) in outer_query.left.iter().zip(data) {
@@ -403,9 +405,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                         }
                     }
                 }
-                result.report_side_effect();
-
-                return Ok(result);
+                return Ok(result.report_side_effect());
             }
         }
 
@@ -514,10 +514,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         new_block
             .get_mut(0)
             .unwrap()
-            // TODO since we are already adding a new block, we don't need
-            // range constraints here, so we can also merge with a finalized row.
-            // -> finalize everything first and don't even assume it is not finalized.
-            .merge_with(self.get_row(self.last_row_index()))
+            .merge_with_values(self.data.known_values_in_row(self.data.len() - 1))
             .map_err(|_| {
                 EvalError::Generic(
                     "Block machine overwrites existing value with different value!".to_string(),
@@ -548,5 +545,6 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         );
         self.data
             .finalize_range(self.first_in_progress_row..self.data.len());
+        // TODO actually reserve
     }
 }
