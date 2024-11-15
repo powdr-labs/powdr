@@ -292,18 +292,18 @@ fn read_slice() {
 ///     ecall
 #[test]
 fn syscalls_inlined_when_possible() {
-    // The following program should have the posseidon2_gl and input inlined,
+    // The following program should have two inlined syscalls,
     // and two calls to the dispatcher that could not be inlined.
     let asm = r#"
     .section .text
     .globl _start
     _start:
-        # inlined poseidon2_gl
-        addi t0, x0, 10 # poseidon2_gl opcode
+        # inlined commit_public
+        addi t0, x0, 12
         ecall
 
-        # non-inlined affined_256
-        ori t0, x0, 4 # affine_256 opcode
+        # non-inlined halt
+        ori t0, x0, 9
         ecall
 
         # inlined input
@@ -318,9 +318,35 @@ fn syscalls_inlined_when_possible() {
     let asm_file = tmp_dir.join("test.s");
     std::fs::write(&asm_file, asm).unwrap();
 
-    let compiled = compile_riscv_asm_file(&asm_file, CompilerOptions::new_gl(), false);
+    let compiled = compile_riscv_asm_file(&asm_file, CompilerOptions::new_gl(), true);
 
-    std::fs::write("desnobro.asdf", &compiled).unwrap();
+    // The resulting compiled program should contain the following strings in
+    // between the first automatic "return;" and the "__data_init:" definition,
+    // in the provided order:
+    let expected_strings = [
+        // initial marker
+        "return;",
+        // from the inlined commit_public
+        "commit_public 10, 11;",
+        // from the non-inlined halt call
+        "or 0, 0, 9, 5;",
+        "jump __ecall_handler, 1;",
+        // from the inlined input call
+        "std::prelude::Query::Input",
+        // from the non-inlined output call
+        "or 0, 0, 2, 5;",
+        "jump __ecall_handler, 1;",
+        // final marker
+        "__data_init:",
+    ];
+
+    let mut remaining = compiled.as_str();
+    for expected in &expected_strings {
+        let pos = remaining
+            .find(expected)
+            .unwrap_or_else(|| panic!("Expected string not found in generated code: {expected}"));
+        remaining = &remaining[pos + expected.len()..];
+    }
 }
 
 fn read_slice_with_options<T: FieldElement>(options: CompilerOptions) {
