@@ -29,9 +29,9 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     extract_constant_lookups(&mut pil_file);
     remove_constant_witness_columns(&mut pil_file);
     simplify_identities(&mut pil_file);
+    remove_unreferenced_definitions(&mut pil_file);
     remove_trivial_identities(&mut pil_file);
     remove_duplicate_identities(&mut pil_file);
-    remove_unreferenced_definitions(&mut pil_file);
     let col_count_post = (pil_file.commitment_count(), pil_file.constant_count());
     log::info!(
         "Removed {} witness and {} fixed columns. Total count now: {} witness and {} fixed columns.",
@@ -481,7 +481,7 @@ fn constrained_to_constant<T: FieldElement>(
     None
 }
 
-/// Removes identities that evaluate to zero and lookups with empty columns.
+/// Removes identities that evaluate to zero, the same column and lookups with empty columns.
 fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let to_remove = pil_file
         .identities
