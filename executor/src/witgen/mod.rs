@@ -392,7 +392,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             .flat_map(|(symbol, definitions)| {
                 symbol
                     .array_elements()
-                    .zip(definitions)
+                    .zip_eq(definitions)
                     .map(|((_, poly_id), def)| (poly_id, def))
             })
             .collect();

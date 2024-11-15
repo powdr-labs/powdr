@@ -63,7 +63,9 @@ where
                             % (values.len() as DegreeType);
                         Ok(values[row as usize].into())
                     }
-                    PolynomialType::Intermediate => todo!(),
+                    PolynomialType::Intermediate => unreachable!(
+                        "ExpressionEvaluator should have resolved intermediate polynomials"
+                    ),
                 }
             }
             AlgebraicVariable::Public(_) => self.witness_access.value(var),
