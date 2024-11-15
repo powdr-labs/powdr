@@ -10,8 +10,8 @@ machine Main with degree: N {
     reg Z[<=];
     reg A;
 
-    ByteShift byte_shift;
-    Shift shift(byte_shift);
+    ByteShift byte_shift(N, N);
+    Shift shift(byte_shift, 32, 32);
     WithArg sub(shift);
 
     instr shl X, Y -> Z link ~> Z = shift.shl(X, Y);

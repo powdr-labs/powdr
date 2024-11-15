@@ -1,4 +1,5 @@
 machine Add with
+    degree: 32,
     latch: latch,
     operation_id: operation_id,
     call_selectors: sel,
@@ -26,7 +27,7 @@ machine Main with degree: 32 {
     reg A;
     reg B;
 
-    Add add;
+    Add add(32, 32);
 
     instr add X, Y -> Z link ~> Z = add.add(X, Y);
     instr sub X, Y -> Z link ~> Z = add.sub(X, Y);

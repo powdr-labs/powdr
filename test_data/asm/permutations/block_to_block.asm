@@ -2,6 +2,7 @@ mod binary4;
 use binary4::Binary4;
 
 machine Binary4x with
+    degree: 32,
     latch: latch,
     operation_id: operation_id,
     call_selectors: sel,

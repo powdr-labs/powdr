@@ -5,11 +5,10 @@ use powdr_pipeline::{
     test_util::{
         assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_estark,
         assert_proofs_fail_for_invalid_witnesses_halo2,
-        assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof,
-        gen_estark_proof_with_backend_variant, make_prepared_pipeline,
-        make_simple_prepared_pipeline, regular_test, run_pilcom_with_backend_variant, test_halo2,
-        test_halo2_with_backend_variant, test_pilcom, test_plonky3_with_backend_variant, test_stwo,
-        BackendVariant,
+        assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof_with_backend_variant,
+        make_prepared_pipeline, make_simple_prepared_pipeline, regular_test,
+        run_pilcom_with_backend_variant, test_halo2_with_backend_variant, test_pilcom,
+        test_plonky3_with_backend_variant, test_stwo, BackendVariant,
     },
     Pipeline,
 };
@@ -210,7 +209,7 @@ fn witness_lookup() {
     let pipeline = make_prepared_pipeline(f, inputs, Default::default());
     test_pilcom(pipeline.clone());
     // halo2 fails with "gates must contain at least one constraint"
-    gen_estark_proof(pipeline);
+    gen_estark_proof_with_backend_variant(pipeline, BackendVariant::Monolithic);
 }
 
 #[test]
@@ -244,7 +243,7 @@ fn block_lookup_or() {
 fn block_lookup_or_permutation() {
     let f = "pil/block_lookup_or_permutation.pil";
     test_pilcom(make_simple_prepared_pipeline(f));
-    test_halo2(make_simple_prepared_pipeline(f));
+    test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Monolithic);
     // starky would take too long for this in debug mode
 }
 
@@ -282,7 +281,7 @@ fn single_line_blocks() {
     let f = "pil/single_line_blocks.pil";
     let pipeline = make_simple_prepared_pipeline(f);
     test_pilcom(pipeline.clone());
-    gen_estark_proof(pipeline);
+    gen_estark_proof_with_backend_variant(pipeline, BackendVariant::Monolithic);
 }
 
 #[test]
@@ -290,7 +289,7 @@ fn two_block_machine_functions() {
     let f = "pil/two_block_machine_functions.pil";
     let pipeline = make_simple_prepared_pipeline(f);
     test_pilcom(pipeline.clone());
-    gen_estark_proof(pipeline);
+    gen_estark_proof_with_backend_variant(pipeline, BackendVariant::Monolithic);
 }
 
 #[test]
@@ -326,7 +325,7 @@ fn naive_byte_decomposition_bn254() {
     // This should pass, because BN254 is a field that can fit all 64-Bit integers.
     let f = "pil/naive_byte_decomposition.pil";
     let pipeline = make_simple_prepared_pipeline(f);
-    test_halo2(pipeline);
+    test_halo2_with_backend_variant(pipeline, BackendVariant::Monolithic);
 }
 
 #[test]

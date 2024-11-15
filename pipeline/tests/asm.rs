@@ -1,17 +1,14 @@
 use std::collections::BTreeMap;
 
-use powdr_backend::BackendType;
-use powdr_executor::constant_evaluator::{self, get_uniquely_sized};
-use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
+use powdr_executor::constant_evaluator::{self};
+use powdr_number::{FieldElement, GoldilocksField};
 use powdr_pipeline::{
     test_util::{
         asm_string_to_pil, gen_estark_proof_with_backend_variant, make_prepared_pipeline,
         make_simple_prepared_pipeline, regular_test, regular_test_without_small_field,
-        resolve_test_file, run_pilcom_with_backend_variant, test_halo2,
-        test_halo2_with_backend_variant, test_pilcom, test_plonky3_pipeline,
-        test_plonky3_with_backend_variant, BackendVariant,
+        resolve_test_file, run_pilcom_with_backend_variant, test_halo2_with_backend_variant,
+        test_pilcom, test_plonky3_pipeline, test_plonky3_with_backend_variant, BackendVariant,
     },
-    util::{FixedPolySet, PolySet, WitnessPolySet},
     Pipeline,
 };
 use test_log::test;
@@ -39,7 +36,7 @@ fn block_machine_exact_number_of_rows_asm() {
 fn challenges_asm() {
     let f = "asm/challenges.asm";
     let pipeline = make_simple_prepared_pipeline(f);
-    test_halo2(pipeline);
+    test_halo2_with_backend_variant(pipeline, BackendVariant::Monolithic);
 }
 
 #[test]
@@ -72,7 +69,7 @@ fn secondary_block_machine_add2() {
 fn second_phase_hint() {
     let f = "asm/second_phase_hint.asm";
     let pipeline = make_simple_prepared_pipeline(f);
-    test_halo2(pipeline);
+    test_halo2_with_backend_variant(pipeline, BackendVariant::Monolithic);
 }
 
 #[test]
@@ -143,7 +140,7 @@ fn vm_to_block_unique_interface() {
 fn vm_to_block_to_block() {
     let f = "asm/vm_to_block_to_block.asm";
     test_pilcom(make_simple_prepared_pipeline(f));
-    test_halo2(make_simple_prepared_pipeline(f));
+    test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite);
 }
 
 #[test]
@@ -371,6 +368,11 @@ fn pil_at_module_level() {
 #[cfg(feature = "estark-starky")]
 #[test]
 fn read_poly_files() {
+    use powdr_backend::BackendType;
+    use powdr_executor::constant_evaluator::get_uniquely_sized;
+    use powdr_number::Bn254Field;
+    use powdr_pipeline::util::{FixedPolySet, PolySet, WitnessPolySet};
+
     let asm_files = ["asm/vm_to_block_unique_interface.asm", "asm/empty.asm"];
     for f in asm_files {
         let tmp_dir = mktemp::Temp::new_dir().unwrap();

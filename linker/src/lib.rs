@@ -8,7 +8,7 @@ use powdr_ast::{
         asm::{AbsoluteSymbolPath, Part, SymbolPath},
         build::{index_access, lookup, namespaced_reference, permutation, selected},
         visitor::{ExpressionVisitable, VisitOrder},
-        ArrayLiteral, Expression, FunctionCall, NamespaceDegree, PILFile, PilStatement,
+        ArrayLiteral, Expression, FunctionCall, NamespaceDegree, Number, PILFile, PilStatement,
     },
 };
 use powdr_parser_util::SourceRef;
@@ -51,7 +51,7 @@ pub enum DegreeMode {
 #[derive(Default)]
 struct Linker {
     params: LinkerParams,
-    main_degree: MachineDegree,
+    max_degree: Option<Number>,
     /// for each namespace, we store the statements resulting from processing the links separately, because we need to make sure they do not come first.
     namespaces: BTreeMap<String, (Vec<PilStatement>, Vec<PilStatement>)>,
     next_interaction_id: u32,
@@ -73,12 +73,16 @@ impl Linker {
 
     fn link(mut self, graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
         let main_machine = graph.main;
-        self.main_degree = graph
-            .objects
-            .get(&main_machine.location)
-            .unwrap()
-            .degree
-            .clone();
+        self.max_degree = match self.params.degree_mode {
+            DegreeMode::Monolithic => Some(graph
+                .objects
+                .iter()
+                .filter_map(|(_, object)| object.degree.max.clone()).map(|e| match e {
+                    Expression::Number(_, n) => n,
+                    _ => unimplemented!("Only constant max degrees are supported when using monolithic degree mode"),
+                }).max().unwrap()),
+            DegreeMode::Vadcop => None,
+        };
 
         let common_definitions = process_definitions(graph.statements);
 
@@ -127,7 +131,9 @@ impl Linker {
 
     fn process_object(&mut self, location: Location, object: Object) {
         let degree = match &self.params.degree_mode {
-            DegreeMode::Monolithic => self.main_degree.clone(),
+            DegreeMode::Monolithic => {
+                Expression::Number(SourceRef::unknown(), self.max_degree.clone().unwrap()).into()
+            }
             DegreeMode::Vadcop => object.degree,
         };
 
@@ -466,7 +472,7 @@ mod test {
 
     #[test]
     fn compile_empty_vm() {
-        let native_expectation = r#"namespace main(4 + 4);
+        let native_expectation = r#"namespace main(8);
     let _operation_id;
     query |__i| std::prover::provide_if_unknown(_operation_id, __i, || 2);
     pol constant _block_enforcer_last_step = [0]* + [1];
@@ -482,7 +488,7 @@ mod test {
     pc_update = instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1);
     pc' = (1 - first_step') * pc_update;
     1 $ [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return] in main__rom::latch $ [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return];
-namespace main__rom(4 + 4);
+namespace main__rom(8);
     pol constant p_line = [0, 1, 2] + [2]*;
     pol constant p_instr__jump_to_operation = [0, 1, 0] + [0]*;
     pol constant p_instr__loop = [0, 0, 1] + [1]*;
@@ -492,7 +498,7 @@ namespace main__rom(4 + 4);
     pol constant latch = [1]*;
 "#;
 
-        let bus_expectation = r#"namespace main(4 + 4);
+        let bus_expectation = r#"namespace main(8);
     let _operation_id;
     query |__i| std::prover::provide_if_unknown(_operation_id, __i, || 2);
     pol constant _block_enforcer_last_step = [0]* + [1];
@@ -508,7 +514,7 @@ namespace main__rom(4 + 4);
     pc_update = instr__jump_to_operation * _operation_id + instr__loop * pc + instr_return * 0 + (1 - (instr__jump_to_operation + instr__loop + instr_return)) * (pc + 1);
     pc' = (1 - first_step') * pc_update;
     std::protocols::lookup_via_bus::lookup_send(0, 1 $ [0, pc, instr__jump_to_operation, instr__reset, instr__loop, instr_return] in main__rom::latch $ [main__rom::operation_id, main__rom::p_line, main__rom::p_instr__jump_to_operation, main__rom::p_instr__reset, main__rom::p_instr__loop, main__rom::p_instr_return]);
-namespace main__rom(4 + 4);
+namespace main__rom(8);
     pol constant p_line = [0, 1, 2] + [2]*;
     pol constant p_instr__jump_to_operation = [0, 1, 0] + [0]*;
     pol constant p_instr__loop = [0, 0, 1] + [1]*;
