@@ -23,18 +23,28 @@ pub trait SymbolicVariables<T> {
     }
 }
 
-type IntermediatesCache<'a, T> = BTreeMap<PolyID, AffineResult<AlgebraicVariable<'a>, T>>;
-
-enum OwningOrBorrowing<'a, T> {
-    Owned(T),
-    Borrowed(&'a mut T),
+/// A cache that can be either owned or borrowed.
+enum OwningOrBorrowing<'a, 'b, T> {
+    Owned(BTreeMap<PolyID, AffineResult<AlgebraicVariable<'a>, T>>),
+    Borrowed(&'b mut BTreeMap<PolyID, AffineResult<AlgebraicVariable<'a>, T>>),
 }
 
-impl<'a, T> OwningOrBorrowing<'a, T> {
-    pub fn get_mut(&mut self) -> &mut T {
+impl<'a, 'b, T> OwningOrBorrowing<'a, 'b, T> {
+    pub fn get(&self, poly_id: &PolyID) -> Option<&AffineResult<AlgebraicVariable<'a>, T>> {
         match self {
-            OwningOrBorrowing::Owned(ref mut value) => value,
-            OwningOrBorrowing::Borrowed(ref mut value) => value,
+            OwningOrBorrowing::Owned(cache) => cache.get(poly_id),
+            OwningOrBorrowing::Borrowed(cache) => cache.get(poly_id),
+        }
+    }
+
+    pub fn insert(&mut self, poly_id: PolyID, value: AffineResult<AlgebraicVariable<'a>, T>) {
+        match self {
+            OwningOrBorrowing::Owned(ref mut cache) => {
+                cache.insert(poly_id, value);
+            }
+            OwningOrBorrowing::Borrowed(ref mut cache) => {
+                cache.insert(poly_id, value);
+            }
         }
     }
 }
@@ -43,7 +53,7 @@ pub struct ExpressionEvaluator<'a, 'b, T, SV> {
     variables: SV,
     intermediate_definitions: &'a BTreeMap<PolyID, &'a Expression<T>>,
     marker: PhantomData<T>,
-    intermediates_cache: OwningOrBorrowing<'b, IntermediatesCache<'a, T>>,
+    intermediates_cache: OwningOrBorrowing<'a, 'b, T>,
 }
 
 impl<'a, 'b, T, SV> ExpressionEvaluator<'a, 'b, T, SV>
@@ -88,15 +98,15 @@ where
                     self.variables.value(AlgebraicVariable::Column(poly))
                 }
                 PolynomialType::Intermediate => {
-                    let intermediates_cache = self.intermediates_cache.get_mut();
-                    let value = intermediates_cache.get(&poly.poly_id).cloned();
+                    let value = self.intermediates_cache.get(&poly.poly_id).cloned();
                     match value {
                         Some(v) => v,
                         None => {
                             let definition =
                                 self.intermediate_definitions.get(&poly.poly_id).unwrap();
                             let result = self.evaluate(definition);
-                            intermediates_cache.insert(poly.poly_id, result.clone());
+                            self.intermediates_cache
+                                .insert(poly.poly_id, result.clone());
                             result
                         }
                     }
