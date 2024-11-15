@@ -132,22 +132,16 @@ fn check_identity<T: FieldElement>(
     // TODO this could be rather slow. We should check the code for identity instead
     // of evaluating it.
     for row in 0..(degree as usize) {
-        let ev = ExpressionEvaluator::new(
+        let mut ev = ExpressionEvaluator::new(
             FixedEvaluator::new(fixed_data, row, degree),
             &fixed_data.intermediate_definitions,
         );
         let degree = degree as usize;
-        let nl = ev
-            .evaluate_without_intermediate_cache(not_last)
-            .ok()?
-            .constant_value()?;
+        let nl = ev.evaluate(not_last).ok()?.constant_value()?;
         if (row == degree - 1 && !nl.is_zero()) || (row < degree - 1 && !nl.is_one()) {
             return None;
         }
-        let pos = ev
-            .evaluate_without_intermediate_cache(positive)
-            .ok()?
-            .constant_value()?;
+        let pos = ev.evaluate(positive).ok()?.constant_value()?;
         if pos != (row as u64 + 1).into() {
             return None;
         }
@@ -163,7 +157,7 @@ fn check_constraint<T: FieldElement>(
 ) -> Option<PolyID> {
     let sort_constraint =
         match ExpressionEvaluator::new(SymbolicEvaluator, &fixed.intermediate_definitions)
-            .evaluate_without_intermediate_cache(constraint)
+            .evaluate(constraint)
         {
             Ok(c) => c,
             Err(_) => return None,

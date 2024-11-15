@@ -472,7 +472,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     /// taking current values of polynomials into account.
     /// @returns an expression affine in the witness polynomials
     pub fn evaluate(&self, expr: &'a Expression<T>) -> AffineResult<AlgebraicVariable<'a>, T> {
-        ExpressionEvaluator::new(
+        ExpressionEvaluator::new_with_cache(
             SymbolicWitnessEvaluator::new(
                 self.fixed_data,
                 self.current_row_index.into(),
@@ -480,8 +480,9 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
                 self.size,
             ),
             &self.fixed_data.intermediate_definitions,
+            self.intermediates_cache.borrow_mut().deref_mut(),
         )
-        .evaluate(expr, self.intermediates_cache.borrow_mut().deref_mut())
+        .evaluate(expr)
     }
 }
 

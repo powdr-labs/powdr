@@ -354,13 +354,10 @@ fn is_binary_constraint<T: FieldElement>(
         right,
     }) = expr
     {
-        let evaluator = ExpressionEvaluator::new(SymbolicEvaluator, intermediate_definitions);
-        let left_root = evaluator
-            .evaluate_without_intermediate_cache(left)
-            .ok()
-            .and_then(|l| l.solve().ok())?;
+        let mut evaluator = ExpressionEvaluator::new(SymbolicEvaluator, intermediate_definitions);
+        let left_root = evaluator.evaluate(left).ok().and_then(|l| l.solve().ok())?;
         let right_root = evaluator
-            .evaluate_without_intermediate_cache(right)
+            .evaluate(right)
             .ok()
             .and_then(|r| r.solve().ok())?;
         if let ([(id1, Constraint::Assignment(value1))], [(id2, Constraint::Assignment(value2))]) =
@@ -392,7 +389,7 @@ fn try_transfer_constraints<T: FieldElement>(
     }
 
     let Some(aff_expr) = ExpressionEvaluator::new(SymbolicEvaluator, intermediate_definitions)
-        .evaluate_without_intermediate_cache(expr)
+        .evaluate(expr)
         .ok()
     else {
         return vec![];
