@@ -82,17 +82,6 @@ impl<T: FieldElement> CompactData<T> {
             .grow(self.known_cells.len() + count * self.column_count, false);
     }
 
-    pub fn try_remove_last_row(&mut self) -> bool {
-        if self.data.len() < self.column_count {
-            false
-        } else {
-            self.data.truncate(self.data.len() - self.column_count);
-            self.known_cells
-                .truncate(self.known_cells.len() - self.column_count);
-            true
-        }
-    }
-
     fn index(&self, row: usize, col: u64) -> usize {
         let col = col - self.first_column_id;
         row * self.column_count + col as usize
@@ -232,30 +221,6 @@ impl<T: FieldElement> FinalizableData<T> {
             Location::PreFinalized(_) => self.pre_finalized_data.pop(),
             Location::Finalized(_) => panic!("Row already finalized"),
             Location::PostFinalized(_) => self.post_finalized_data.pop(),
-        }
-    }
-
-    /// Tries to remove the last row, even if it has been finalized.
-    /// Returns `false` if there are no rows.
-    pub fn try_remove_last_row(&mut self) -> bool {
-        if let Some(loc) = self.location_of_last_row() {
-            let removed = match loc {
-                Location::PreFinalized(_) => self.pre_finalized_data.pop().is_some(),
-                Location::Finalized(_) => self.finalized_data.try_remove_last_row(),
-                Location::PostFinalized(_) => self.post_finalized_data.pop().is_some(),
-            };
-            assert!(removed);
-            true
-        } else {
-            false
-        }
-    }
-
-    /// Removes the last row, even if it has been finalized.
-    /// Panics if there are no rows.
-    pub fn remove_last_row(&mut self) {
-        if !self.try_remove_last_row() {
-            panic!("No rows to remove.");
         }
     }
 
