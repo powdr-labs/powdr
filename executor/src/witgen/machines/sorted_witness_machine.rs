@@ -132,13 +132,23 @@ fn check_identity<T: FieldElement>(
     // TODO this could be rather slow. We should check the code for identity instead
     // of evaluating it.
     for row in 0..(degree as usize) {
-        let ev = ExpressionEvaluator::new(FixedEvaluator::new(fixed_data, row, degree));
+        let intermediate_definitions = Default::default();
+        let ev = ExpressionEvaluator::new(
+            FixedEvaluator::new(fixed_data, row, degree),
+            &intermediate_definitions,
+        );
         let degree = degree as usize;
-        let nl = ev.evaluate(not_last).ok()?.constant_value()?;
+        let nl = ev
+            .evaluate(not_last, &mut Default::default())
+            .ok()?
+            .constant_value()?;
         if (row == degree - 1 && !nl.is_zero()) || (row < degree - 1 && !nl.is_one()) {
             return None;
         }
-        let pos = ev.evaluate(positive).ok()?.constant_value()?;
+        let pos = ev
+            .evaluate(positive, &mut Default::default())
+            .ok()?
+            .constant_value()?;
         if pos != (row as u64 + 1).into() {
             return None;
         }
@@ -150,7 +160,9 @@ fn check_identity<T: FieldElement>(
 /// on the left hand side and returns the ID of the witness column.
 fn check_constraint<T: FieldElement>(constraint: &Expression<T>) -> Option<PolyID> {
     let symbolic_ev = SymbolicEvaluator;
-    let sort_constraint = match ExpressionEvaluator::new(symbolic_ev).evaluate(constraint) {
+    let sort_constraint = match ExpressionEvaluator::new(symbolic_ev, &Default::default())
+        .evaluate(constraint, &mut Default::default())
+    {
         Ok(c) => c,
         Err(_) => return None,
     };

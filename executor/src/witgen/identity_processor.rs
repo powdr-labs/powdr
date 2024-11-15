@@ -170,10 +170,10 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         result
     }
 
-    fn process_polynomial_identity(
+    fn process_polynomial_identity<'row>(
         &self,
         identity: &'a PolynomialIdentity<T>,
-        rows: &RowPair<T>,
+        rows: &RowPair<'row, 'a, T>,
     ) -> EvalResult<'a, T> {
         match rows.evaluate(&identity.expression) {
             Err(incomplete_cause) => Ok(EvalValue::incomplete(incomplete_cause)),
@@ -239,10 +239,10 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
     }
 
     /// Returns updates of the left selector cannot be evaluated to 1, otherwise None.
-    fn handle_left_selector(
+    fn handle_left_selector<'row>(
         &self,
         left_selector: &'a Expression<T>,
-        rows: &RowPair<T>,
+        rows: &RowPair<'row, 'a, T>,
     ) -> Option<EvalValue<AlgebraicVariable<'a>, T>> {
         let value = match rows.evaluate(left_selector) {
             Err(incomplete_cause) => return Some(EvalValue::incomplete(incomplete_cause)),

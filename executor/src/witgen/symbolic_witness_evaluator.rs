@@ -1,4 +1,4 @@
-use powdr_ast::analyzed::Challenge;
+use powdr_ast::analyzed::{Challenge, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
 use super::{
@@ -54,14 +54,16 @@ where
         match var {
             AlgebraicVariable::Column(poly) => {
                 // TODO arrays
-                if poly.is_witness() {
-                    self.witness_access.value(var)
-                } else {
-                    // Constant polynomial (or something else)
-                    let values = self.fixed_data.fixed_cols[&poly.poly_id].values(self.size);
-                    let row = if poly.next { self.row + 1 } else { self.row }
-                        % (values.len() as DegreeType);
-                    Ok(values[row as usize].into())
+                match poly.poly_id.ptype {
+                    PolynomialType::Committed => self.witness_access.value(var),
+                    PolynomialType::Constant => {
+                        // Constant polynomial (or something else)
+                        let values = self.fixed_data.fixed_cols[&poly.poly_id].values(self.size);
+                        let row = if poly.next { self.row + 1 } else { self.row }
+                            % (values.len() as DegreeType);
+                        Ok(values[row as usize].into())
+                    }
+                    PolynomialType::Intermediate => todo!(),
                 }
             }
             AlgebraicVariable::Public(_) => self.witness_access.value(var),

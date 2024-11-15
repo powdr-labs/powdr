@@ -194,7 +194,8 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         );
         let identities = self
             .analyzed
-            .identities_with_inlined_intermediate_polynomials()
+            .identities
+            .clone()
             .into_iter()
             .filter(|identity| {
                 let discard = identity.expr_any(|expr| {
@@ -370,6 +371,7 @@ pub struct FixedData<'a, T: FieldElement> {
     column_by_name: HashMap<String, PolyID>,
     challenges: BTreeMap<u64, T>,
     global_range_constraints: GlobalConstraints<T>,
+    intermediate_definitions: BTreeMap<PolyID, &'a AlgebraicExpression<T>>,
 }
 
 impl<'a, T: FieldElement> FixedData<'a, T> {
@@ -384,6 +386,16 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             .iter()
             .map(|(name, values)| (name.clone(), values))
             .collect::<BTreeMap<_, _>>();
+
+        let intermediate_definitions = analyzed
+            .intermediate_polys_in_source_order()
+            .flat_map(|(symbol, definitions)| {
+                symbol
+                    .array_elements()
+                    .zip(definitions)
+                    .map(|((_, poly_id), def)| (poly_id, def))
+            })
+            .collect();
 
         let witness_cols =
             WitnessColumnMap::from(analyzed.committed_polys_in_source_order().flat_map(
@@ -438,6 +450,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                 .collect(),
             challenges,
             global_range_constraints,
+            intermediate_definitions,
         }
     }
 

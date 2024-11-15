@@ -6,6 +6,8 @@ use super::{affine_expression::AlgebraicVariable, range_constraints::RangeConstr
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum IncompleteCause<K = usize> {
+    // TODO: Remove this, this should never happen
+    IntermediateDefinitionNotAvailable,
     /// In a VM, the latch value could not be figured out after a row was processed.
     UnknownLatch,
     /// Some parts of an expression are not bit constrained. Example: `x + y == 0x3` with `x | 0x1`. Arguments: the indices of the unconstrained variables.

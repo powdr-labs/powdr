@@ -345,12 +345,12 @@ fn is_binary_constraint<T: FieldElement>(expr: &Expression<T>) -> Option<PolyID>
     }) = expr
     {
         let symbolic_ev = SymbolicEvaluator;
-        let left_root = ExpressionEvaluator::new(symbolic_ev.clone())
-            .evaluate(left)
+        let left_root = ExpressionEvaluator::new(symbolic_ev.clone(), &Default::default())
+            .evaluate(left, &mut Default::default())
             .ok()
             .and_then(|l| l.solve().ok())?;
-        let right_root = ExpressionEvaluator::new(symbolic_ev)
-            .evaluate(right)
+        let right_root = ExpressionEvaluator::new(symbolic_ev, &Default::default())
+            .evaluate(right, &mut Default::default())
             .ok()
             .and_then(|r| r.solve().ok())?;
         if let ([(id1, Constraint::Assignment(value1))], [(id2, Constraint::Assignment(value2))]) =
@@ -381,7 +381,10 @@ fn try_transfer_constraints<T: FieldElement>(
     }
 
     let symbolic_ev = SymbolicEvaluator;
-    let Some(aff_expr) = ExpressionEvaluator::new(symbolic_ev).evaluate(expr).ok() else {
+    let Some(aff_expr) = ExpressionEvaluator::new(symbolic_ev, &Default::default())
+        .evaluate(expr, &mut Default::default())
+        .ok()
+    else {
         return vec![];
     };
 
