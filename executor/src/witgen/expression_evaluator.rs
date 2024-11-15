@@ -23,40 +23,18 @@ pub trait SymbolicVariables<T> {
     }
 }
 
-/// A cache that can be either owned or borrowed.
-enum IntermediatesCache<'a, 'b, T> {
-    Owned(BTreeMap<PolyID, AffineResult<AlgebraicVariable<'a>, T>>),
-    Borrowed(&'b mut BTreeMap<PolyID, AffineResult<AlgebraicVariable<'a>, T>>),
-}
+/// Maps intermediate polynomial IDs to their evaluation. Updated throughout the lifetime of the
+/// ExpressionEvaluator.
+pub type IntermediatesCache<'a, T> = BTreeMap<PolyID, AffineResult<AlgebraicVariable<'a>, T>>;
 
-impl<'a, 'b, T> IntermediatesCache<'a, 'b, T> {
-    pub fn get(&self, poly_id: &PolyID) -> Option<&AffineResult<AlgebraicVariable<'a>, T>> {
-        match self {
-            IntermediatesCache::Owned(cache) => cache.get(poly_id),
-            IntermediatesCache::Borrowed(cache) => cache.get(poly_id),
-        }
-    }
-
-    pub fn insert(&mut self, poly_id: PolyID, value: AffineResult<AlgebraicVariable<'a>, T>) {
-        match self {
-            IntermediatesCache::Owned(ref mut cache) => {
-                cache.insert(poly_id, value);
-            }
-            IntermediatesCache::Borrowed(ref mut cache) => {
-                cache.insert(poly_id, value);
-            }
-        }
-    }
-}
-
-pub struct ExpressionEvaluator<'a, 'b, T, SV> {
+pub struct ExpressionEvaluator<'a, T, SV> {
     variables: SV,
     intermediate_definitions: &'a BTreeMap<PolyID, &'a Expression<T>>,
     marker: PhantomData<T>,
-    intermediates_cache: IntermediatesCache<'a, 'b, T>,
+    intermediates_cache: BTreeMap<PolyID, AffineResult<AlgebraicVariable<'a>, T>>,
 }
 
-impl<'a, 'b, T, SV> ExpressionEvaluator<'a, 'b, T, SV>
+impl<'a, T, SV> ExpressionEvaluator<'a, T, SV>
 where
     SV: SymbolicVariables<T>,
     T: FieldElement,
@@ -65,25 +43,24 @@ where
         variables: SV,
         intermediate_definitions: &'a BTreeMap<PolyID, &'a Expression<T>>,
     ) -> Self {
-        Self {
-            variables,
-            intermediate_definitions,
-            marker: PhantomData,
-            intermediates_cache: IntermediatesCache::Owned(BTreeMap::new()),
-        }
+        Self::new_with_cache(variables, intermediate_definitions, Default::default())
     }
 
     pub fn new_with_cache(
         variables: SV,
         intermediate_definitions: &'a BTreeMap<PolyID, &'a Expression<T>>,
-        intermediates_cache: &'b mut BTreeMap<PolyID, AffineResult<AlgebraicVariable<'a>, T>>,
+        intermediates_cache: IntermediatesCache<'a, T>,
     ) -> Self {
         Self {
             variables,
             intermediate_definitions,
             marker: PhantomData,
-            intermediates_cache: IntermediatesCache::Borrowed(intermediates_cache),
+            intermediates_cache,
         }
+    }
+
+    pub fn destroy(self) -> IntermediatesCache<'a, T> {
+        self.intermediates_cache
     }
 
     /// Tries to evaluate the expression to an affine expression in the witness polynomials

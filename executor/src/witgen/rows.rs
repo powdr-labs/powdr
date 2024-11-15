@@ -2,7 +2,7 @@ use std::{
     cell::RefCell,
     collections::BTreeMap,
     fmt::Display,
-    ops::{Add, DerefMut, Sub},
+    ops::{Add, Sub},
 };
 
 use itertools::Itertools;
@@ -14,7 +14,7 @@ use crate::witgen::Constraint;
 use super::{
     affine_expression::{AffineExpression, AffineResult, AlgebraicVariable},
     data_structures::column_map::WitnessColumnMap,
-    expression_evaluator::ExpressionEvaluator,
+    expression_evaluator::{ExpressionEvaluator, IntermediatesCache},
     global_constraints::RangeConstraintSet,
     machines::MachineParts,
     range_constraints::RangeConstraint,
@@ -389,7 +389,9 @@ pub struct RowPair<'row, 'a, T: FieldElement> {
     /// to `evaluate` can reuse intermediate values.
     /// Because the rows do not change for the lifetime of the RowPair,
     /// we never have to evaluate it.
-    intermediates_cache: RefCell<BTreeMap<PolyID, AffineResult<AlgebraicVariable<'a>, T>>>,
+    /// Note that we can't store an instance of `ExpressionEvaluator` here, because it contains
+    /// a reference to `&self`, so we wouldn't be able to express the lifetime.
+    intermediates_cache: RefCell<Option<IntermediatesCache<'a, T>>>,
 }
 impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     /// Creates a new row pair.
@@ -472,7 +474,14 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     /// taking current values of polynomials into account.
     /// @returns an expression affine in the witness polynomials
     pub fn evaluate(&self, expr: &'a Expression<T>) -> AffineResult<AlgebraicVariable<'a>, T> {
-        ExpressionEvaluator::new_with_cache(
+        // Get the previous cache, or create a new one.
+        let cache = self
+            .intermediates_cache
+            .borrow_mut()
+            .take()
+            .unwrap_or_default();
+        // Create a new evaluator with the previous cache.
+        let mut evaluator = ExpressionEvaluator::new_with_cache(
             SymbolicWitnessEvaluator::new(
                 self.fixed_data,
                 self.current_row_index.into(),
@@ -480,10 +489,13 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
                 self.size,
             ),
             &self.fixed_data.intermediate_definitions,
-            // Use the same cache for all calls to `evaluate`
-            self.intermediates_cache.borrow_mut().deref_mut(),
-        )
-        .evaluate(expr)
+            cache,
+        );
+        // Compute the result. This might update the cache.
+        let result = evaluator.evaluate(expr);
+        // Save the updated cache for the next call to `evaluate`.
+        *self.intermediates_cache.borrow_mut() = Some(evaluator.destroy());
+        result
     }
 }
 
