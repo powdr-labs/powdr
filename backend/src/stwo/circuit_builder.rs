@@ -93,11 +93,11 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
             "Error: Expected no fixed columns nor public inputs, as they are not supported yet.",
         );
 
-        let col_count = self.analyzed.commitment_count();
-        let mut witness_eval = Vec::with_capacity(col_count);
-        for _ in 0..col_count {
-            witness_eval.push(eval.next_interaction_mask(0, [0, 1]));
-        }
+        let witness_eval: BTreeMap<PolyID, [<E as EvalAtRow>::F; 2]> = self
+            .witness_columns
+            .keys()
+            .map(|poly_id| (*poly_id, eval.next_interaction_mask(0, [0, 1])))
+            .collect();
 
         for id in self
             .analyzed
@@ -105,11 +105,7 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
         {
             match id {
                 Identity::Polynomial(identity) => {
-                    let expr = to_stwo_expression::<T, E>(
-                        &self.witness_columns,
-                        &identity.expression,
-                        &witness_eval,
-                    );
+                    let expr = to_stwo_expression::<T, E>(&identity.expression, &witness_eval);
                     eval.add_constraint(expr);
                 }
                 Identity::Connect(..) => {
@@ -134,9 +130,8 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
 }
 
 fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
-    witness_columns: &BTreeMap<PolyID, usize>,
     expr: &AlgebraicExpression<T>,
-    witness_eval: &Vec<[<E as EvalAtRow>::F; 2]>,
+    witness_eval: &BTreeMap<PolyID, [<E as EvalAtRow>::F; 2]>,
 ) -> E::F {
     use AlgebraicBinaryOperator::*;
     match expr {
@@ -145,14 +140,8 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
 
             match poly_id.ptype {
                 PolynomialType::Committed => match r.next {
-                    false => {
-                        let index = witness_columns[&poly_id];
-                        witness_eval[index][0].clone()
-                    }
-                    true => {
-                        let index = witness_columns[&poly_id];
-                        witness_eval[index][1].clone()
-                    }
+                    false => witness_eval[&poly_id][0].clone(),
+                    true => witness_eval[&poly_id][1].clone(),
                 },
                 PolynomialType::Constant => {
                     unimplemented!("Constant polynomials are not supported in stwo yet")
@@ -172,15 +161,15 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
             right,
         }) => match **right {
             AlgebraicExpression::Number(n) => {
-                let left = to_stwo_expression::<T, E>(witness_columns, left, witness_eval);
+                let left = to_stwo_expression::<T, E>(left, witness_eval);
                 (0u32..n.to_integer().try_into_u32().unwrap())
                     .fold(E::F::one(), |acc, _| acc * left.clone())
             }
             _ => unimplemented!("pow with non-constant exponent"),
         },
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-            let left = to_stwo_expression::<T, E>(witness_columns, left, witness_eval);
-            let right = to_stwo_expression::<T, E>(witness_columns, right, witness_eval);
+            let left = to_stwo_expression::<T, E>(left, witness_eval);
+            let right = to_stwo_expression::<T, E>(right, witness_eval);
 
             match op {
                 Add => left + right,
@@ -190,8 +179,7 @@ fn to_stwo_expression<T: FieldElement, E: EvalAtRow>(
             }
         }
         AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
-            let expr: <E as EvalAtRow>::F =
-                to_stwo_expression::<T, E>(witness_columns, expr, witness_eval);
+            let expr: <E as EvalAtRow>::F = to_stwo_expression::<T, E>(expr, witness_eval);
 
             match op {
                 AlgebraicUnaryOperator::Minus => -expr,
