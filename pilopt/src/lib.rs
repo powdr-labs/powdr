@@ -488,32 +488,35 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
         .iter()
         .enumerate()
         .filter_map(|(index, identity)| match identity {
-            Identity::Polynomial(PolynomialIdentity { expression, .. }) => {
-                if let AlgebraicExpression::Number(n) = expression {
+            Identity::Polynomial(PolynomialIdentity { expression, .. }) => match expression {
+                AlgebraicExpression::Number(n) => {
                     if *n == 0.into() {
-                        return Some(index);
+                        Some(index)
+                    } else {
+                        None
                     }
-                    // Otherwise the constraint is not satisfiable,
-                    // but better to get the error elsewhere.
                 }
-                if let AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
+                AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
                     left,
                     op: AlgebraicBinaryOperator::Sub,
                     right,
-                }) = expression
-                {
+                }) => {
                     if let (
                         AlgebraicExpression::Reference(left),
                         AlgebraicExpression::Reference(right),
                     ) = (left.as_ref(), right.as_ref())
                     {
-                        if left.is_witness() && right.is_witness() && left.name == right.name {
-                            return Some(index);
+                        if left.is_witness() && right.is_witness() && left == right {
+                            Some(index)
+                        } else {
+                            None
                         }
+                    } else {
+                        None
                     }
                 }
-                None
-            }
+                _ => None,
+            },
             Identity::Lookup(LookupIdentity { left, right, .. })
             | Identity::Permutation(PermutationIdentity { left, right, .. })
             | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. })
@@ -638,11 +641,11 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     pil_file.remove_identities(&to_remove);
 }
 
+/// Identifies witness columns that are directly constrained to be equal to other witness columns
+/// through polynomial identities of the form "x = y".
 fn equal_constrained<T: FieldElement>(
-    poly_data: (&u64, &AlgebraicExpression<T>),
+    expression: &AlgebraicExpression<T>,
 ) -> Option<(PolyID, (String, PolyID))> {
-    let (_, expression) = poly_data;
-
     match expression {
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
             left,
@@ -677,13 +680,8 @@ fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Anal
         .identities
         .iter()
         .filter_map(|id| {
-            if let Identity::Polynomial(PolynomialIdentity {
-                id: pid,
-                expression: e,
-                ..
-            }) = id
-            {
-                equal_constrained((pid, e))
+            if let Identity::Polynomial(PolynomialIdentity { expression: e, .. }) = id {
+                equal_constrained(e)
             } else {
                 None
             }
