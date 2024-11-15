@@ -177,7 +177,8 @@ impl<T: FieldElement> FinalizableData<T> {
         }
     }
 
-    /// Removes the last row, even if it has been finalized.
+    /// Tries to remove the last row, even if it has been finalized.
+    /// Returns `false` if there are no rows.
     pub fn try_remove_last_row(&mut self) -> bool {
         if let Some(loc) = self.location_of_last_row() {
             let removed = match loc {
@@ -189,6 +190,14 @@ impl<T: FieldElement> FinalizableData<T> {
             true
         } else {
             false
+        }
+    }
+
+    /// Removes the last row, even if it has been finalized.
+    /// Panics if there are no rows.
+    pub fn remove_last_row(&mut self) {
+        if !self.try_remove_last_row() {
+            panic!("No rows to remove.");
         }
     }
 
