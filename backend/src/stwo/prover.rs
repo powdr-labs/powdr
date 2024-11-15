@@ -92,7 +92,7 @@ where
         let mut prover_channel = <MC as MerkleChannel>::C::default();
         let commitment_scheme = &mut CommitmentSchemeProver::<B, MC>::new(config, &twiddles);
 
-        let trace = gen_stwo_circuit_trace::<F, B, M31>(Some(witness), self.analyzed.clone());
+        let trace = gen_stwo_circuit_trace::<F, B, M31>(witness, self.analyzed.clone());
 
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals(trace);

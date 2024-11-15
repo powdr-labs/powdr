@@ -16,7 +16,6 @@ use powdr_ast::analyzed::{
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolyID, PolynomialType,
 };
 use stwo_prover::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
-use stwo_prover::core::backend::Col;
 use stwo_prover::core::backend::ColumnOps;
 use stwo_prover::core::fields::m31::BaseField;
 use stwo_prover::core::fields::m31::M31;
@@ -29,7 +28,7 @@ use stwo_prover::core::ColumnVec;
 pub type PowdrComponent<'a, F> = FrameworkComponent<PowdrEval<F>>;
 
 pub(crate) fn gen_stwo_circuit_trace<T, B, F>(
-    witness: Option<&[(String, Vec<T>)]>,
+    witness: &[(String, Vec<T>)],
     analyzed: Arc<Analyzed<T>>,
 ) -> ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>
 where
@@ -37,30 +36,17 @@ where
     B: FieldOps<M31> + ColumnOps<F>, // Ensure B implements FieldOps for M31
     F: ExtensionOf<BaseField>,
 {
-    let element: Option<Vec<(String, Col<B, M31>)>> = Some(
-        witness
-            .as_ref()
-            .expect("Witness needs to be set")
-            .iter()
-            .map(|(name, values)| {
-                let values = values
-                    .iter()
-                    .map(|v| v.try_into_i32().unwrap().into())
-                    .collect();
-                (name.clone(), values)
-            })
-            .collect(),
-    );
-
     let domain = CanonicCoset::new(analyzed.degree().ilog2()).circle_domain();
-    element
-        .map(|elements| {
-            elements
+    witness
+        .iter()
+        .map(|(_name, values)| {
+            let values = values
                 .iter()
-                .map(|(_, base_column)| CircleEvaluation::new(domain, base_column.clone()))
-                .collect()
+                .map(|v| v.try_into_i32().unwrap().into())
+                .collect();
+            CircleEvaluation::new(domain, values)
         })
-        .unwrap()
+        .collect()
 }
 
 pub struct PowdrEval<T> {
