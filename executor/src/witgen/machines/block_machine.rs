@@ -360,52 +360,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 .jit_driver
                 .can_answer_lookup(identity_id, &known_inputs)
             {
-                let mut data = vec![T::zero(); outer_query.left.len()];
-                let values = outer_query
-                    .left
-                    .iter()
-                    .zip(&mut data)
-                    .map(|(l, d)| {
-                        if let Some(value) = l.constant_value() {
-                            *d = value;
-                            LookupCell::Input(d)
-                        } else {
-                            LookupCell::Output(d)
-                        }
-                    })
-                    .collect::<Vec<_>>();
-
-                // TODO finalize self.data, extend by one (finalized) block.
-                // un-finalize the last block / last row in the interpreted case if it is finalized.
-                // TOOD window at which row?
-
-                let success = self.jit_driver.process_lookup_direct(
-                    mutable_state,
-                    identity_id,
-                    values,
-                    //                    self.data.window(self.block_size),
-                )?;
-                assert!(success);
-
-                let mut result = EvalValue::complete(vec![]);
-                for (l, v) in outer_query.left.iter().zip(data) {
-                    if !l.is_constant() {
-                        let evaluated = l.clone() - v.into();
-                        // TODO we could use bit constraints here
-                        match evaluated.solve() {
-                            Ok(constraints) => {
-                                result.combine(constraints);
-                            }
-                            Err(_) => {
-                                // Fail the whole lookup
-                                return Err(EvalError::ConstraintUnsatisfiable(format!(
-                                    "Constraint is invalid ({l} != {v}).",
-                                )));
-                            }
-                        }
-                    }
-                }
-                return Ok(result.report_side_effect());
+                return self.process_lookup_via_jit(mutable_state, identity_id, outer_query);
             }
         }
 
@@ -462,6 +417,71 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 Ok(updates)
             }
         }
+    }
+
+    fn process_lookup_via_jit<'b, Q: QueryCallback<T>>(
+        &mut self,
+        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        identity_id: u64,
+        outer_query: OuterQuery<'a, 'b, T>,
+    ) -> EvalResult<'a, T> {
+        let mut input_output_data = vec![T::zero(); outer_query.left.len()];
+        let values = outer_query
+            .left
+            .iter()
+            .zip(&mut input_output_data)
+            .map(|(l, d)| {
+                if let Some(value) = l.constant_value() {
+                    *d = value;
+                    LookupCell::Input(d)
+                } else {
+                    LookupCell::Output(d)
+                }
+            })
+            .collect::<Vec<_>>();
+
+        assert!(
+            (self.rows() + self.block_size as DegreeType) < self.degree,
+            "Block machine is full (this should have been checked before)"
+        );
+        // TODO minus one?
+        let row_offset = self.data.len();
+        self.data
+            .finalize_range(self.first_in_progress_row..self.data.len());
+        self.first_in_progress_row = self.data.len() + self.block_size;
+        let data = self.data.append_new_finalized_rows(self.block_size);
+        // TODO finalize self.data, extend by one (finalized) block.
+        // un-finalize the last block / last row in the interpreted case if it is finalized.
+        // TOOD window at which row?
+
+        let success = self.jit_driver.process_lookup_direct(
+            mutable_state,
+            identity_id,
+            values,
+            data,
+            row_offset,
+        )?;
+        assert!(success);
+
+        let mut result = EvalValue::complete(vec![]);
+        for (l, v) in outer_query.left.iter().zip(input_output_data) {
+            if !l.is_constant() {
+                let evaluated = l.clone() - v.into();
+                // TODO we could use bit constraints here
+                match evaluated.solve() {
+                    Ok(constraints) => {
+                        result.combine(constraints);
+                    }
+                    Err(_) => {
+                        // Fail the whole lookup
+                        return Err(EvalError::ConstraintUnsatisfiable(format!(
+                            "Constraint is invalid ({l} != {v}).",
+                        )));
+                    }
+                }
+            }
+        }
+        Ok(result.report_side_effect())
     }
 
     fn process<'b, Q: QueryCallback<T>>(
@@ -535,16 +555,5 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         self.data.extend(new_block);
 
         Ok(())
-    }
-
-    /// Appends a new all-zeros block to the data and returns a DataWindow referencing it.
-    fn reserve_new_block(&mut self) {
-        assert!(
-            (self.rows() + self.block_size as DegreeType) < self.degree,
-            "Block machine is full (this should have been checked before)"
-        );
-        self.data
-            .finalize_range(self.first_in_progress_row..self.data.len());
-        // TODO actually reserve
     }
 }

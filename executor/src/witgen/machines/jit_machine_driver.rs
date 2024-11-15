@@ -1,7 +1,10 @@
 use bit_vec::BitVec;
 use powdr_number::FieldElement;
 
-use crate::witgen::{EvalError, FixedData, MutableState, QueryCallback};
+use crate::witgen::{
+    data_structures::finalizable_data::CompactData, EvalError, FixedData, MutableState,
+    QueryCallback,
+};
 
 use super::{LookupCell, MachineParts};
 
@@ -29,14 +32,16 @@ impl<'a, T: FieldElement> JitMachineDriver<'a, T> {
 
     pub fn can_answer_lookup(&self, identity_id: u64, known_inputs: &BitVec) -> bool {
         // TODO
-        return false;
+        false
     }
 
-    pub fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
+    pub fn process_lookup_direct<'b, 'c, 'd, Q: QueryCallback<T>>(
         &self,
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         identity_id: u64,
         values: Vec<LookupCell<'c, T>>,
+        data: &'d CompactData<T>,
+        row_offset: usize,
     ) -> Result<bool, EvalError<T>> {
         todo!();
     }

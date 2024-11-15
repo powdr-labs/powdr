@@ -13,7 +13,7 @@ use crate::witgen::rows::Row;
 /// Sequence of rows of field elements, stored in a compact form.
 /// Optimized for contiguous column IDs, but works with any combination.
 #[derive(Clone)]
-struct CompactData<T: FieldElement> {
+pub struct CompactData<T: FieldElement> {
     /// The ID of the first column used in the table.
     first_column_id: u64,
     /// The length of a row in the table.
@@ -26,7 +26,7 @@ struct CompactData<T: FieldElement> {
 
 impl<T: FieldElement> CompactData<T> {
     /// Creates a new empty compact data storage.
-    fn new(column_ids: &[PolyID]) -> Self {
+    pub fn new(column_ids: &[PolyID]) -> Self {
         let col_id_range = column_ids.iter().map(|id| id.id).minmax();
         let (first_column_id, last_column_id) = col_id_range.into_option().unwrap();
         Self {
@@ -37,28 +37,28 @@ impl<T: FieldElement> CompactData<T> {
         }
     }
 
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.data.is_empty()
     }
 
     /// Returns the number of stored rows.
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.data.len() / self.column_count
     }
 
     /// Truncates the data to `len` rows.
-    fn truncate(&mut self, len: usize) {
+    pub fn truncate(&mut self, len: usize) {
         self.data.truncate(len * self.column_count);
         self.known_cells.truncate(len * self.column_count);
     }
 
-    fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.data.clear();
         self.known_cells.clear();
     }
 
     /// Appends a non-finalized row to the data, turning it into a finalized row.
-    fn push(&mut self, row: Row<T>) {
+    pub fn push(&mut self, row: Row<T>) {
         self.data.reserve(self.column_count);
         self.known_cells.reserve(self.column_count);
         for col_id in self.first_column_id..(self.first_column_id + self.column_count as u64) {
@@ -75,7 +75,14 @@ impl<T: FieldElement> CompactData<T> {
         }
     }
 
-    fn try_remove_last_row(&mut self) -> bool {
+    pub fn append_new_rows(&mut self, count: usize) {
+        self.data
+            .resize(self.data.len() + count * self.column_count, T::zero());
+        self.known_cells
+            .grow(self.known_cells.len() + count * self.column_count, false);
+    }
+
+    pub fn try_remove_last_row(&mut self) -> bool {
         if self.data.len() < self.column_count {
             false
         } else {
@@ -86,13 +93,24 @@ impl<T: FieldElement> CompactData<T> {
         }
     }
 
-    fn get(&self, row: usize, col: u64) -> (T, bool) {
+    fn index(&self, row: usize, col: u64) -> usize {
         let col = col - self.first_column_id;
-        let idx = row * self.column_count + col as usize;
+        row * self.column_count + col as usize
+    }
+
+    pub fn get(&self, row: usize, col: u64) -> (T, bool) {
+        let idx = self.index(row, col);
         (self.data[idx], self.known_cells[idx])
     }
 
-    fn known_values_in_row(&self, row: usize) -> impl Iterator<Item = (u64, &T)> {
+    pub fn set(&mut self, row: usize, col: u64, value: T) {
+        let idx = self.index(row, col);
+        assert!(!self.known_cells[idx] || self.data[idx] == value);
+        self.data[idx] = value;
+        self.known_cells.set(idx, true);
+    }
+
+    pub fn known_values_in_row(&self, row: usize) -> impl Iterator<Item = (u64, &T)> {
         (0..self.column_count).filter_map(move |i| {
             let idx = row * self.column_count + i;
             self.known_cells[idx].then(|| {
@@ -361,6 +379,13 @@ impl<T: FieldElement> FinalizableData<T> {
             self.post_finalized_data = new_post_data;
             counter
         }
+    }
+
+    // TODO somehow we need to return a row offset because of the non-finalized rows.
+    pub fn append_new_finalized_rows(&mut self, count: usize) -> &mut CompactData<T> {
+        assert!(self.post_finalized_data.is_empty());
+        self.finalized_data.append_new_rows(count);
+        &mut self.finalized_data
     }
 
     /// Takes all data out of the [FinalizableData] and returns it as a list of columns.
