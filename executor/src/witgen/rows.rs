@@ -1,7 +1,8 @@
 use std::{
+    cell::RefCell,
     collections::BTreeMap,
     fmt::Display,
-    ops::{Add, Sub},
+    ops::{Add, DerefMut, Sub},
 };
 
 use itertools::Itertools;
@@ -383,6 +384,12 @@ pub struct RowPair<'row, 'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     unknown_strategy: UnknownStrategy,
     size: DegreeType,
+    /// Cache for values of intermediate polynomials.
+    /// Keeping it around for the lifetime of the RowPair ensures that multiple calls
+    /// to `evaluate` can reuse intermediate values.
+    /// Because the rows do not change for the lifetime of the RowPair,
+    /// we never have to evaluate it.
+    intermediates_cache: RefCell<BTreeMap<PolyID, AffineResult<AlgebraicVariable<'a>, T>>>,
 }
 impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     /// Creates a new row pair.
@@ -403,6 +410,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
             fixed_data,
             unknown_strategy,
             size,
+            intermediates_cache: Default::default(),
         }
     }
 
@@ -423,6 +431,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
             fixed_data,
             unknown_strategy,
             size,
+            intermediates_cache: Default::default(),
         }
     }
 
@@ -472,8 +481,7 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
             ),
             &self.fixed_data.intermediate_definitions,
         )
-        // TODO: Re-use cache across multiple evaluations
-        .evaluate(expr, &mut Default::default())
+        .evaluate(expr, self.intermediates_cache.borrow_mut().deref_mut())
     }
 }
 

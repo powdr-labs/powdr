@@ -76,9 +76,9 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
     /// Process the prover query of a witness column.
     /// Panics if the column does not have a query attached.
     /// @returns None if the value for that column is already known.
-    pub fn process_query(
+    pub fn process_query<'row>(
         &mut self,
-        rows: &RowPair<T>,
+        rows: &RowPair<'row, 'a, T>,
         poly_id: &PolyID,
     ) -> Option<EvalResult<'a, T>> {
         let column = &self.fixed_data.witness_cols[poly_id];
@@ -90,11 +90,11 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
         }
     }
 
-    fn process_witness_query(
+    fn process_witness_query<'row>(
         &mut self,
         query: &'a Expression,
         poly: &'a AlgebraicReference,
-        rows: &RowPair<T>,
+        rows: &RowPair<'row, 'a, T>,
     ) -> EvalResult<'a, T> {
         let query_str = match self.interpolate_query(query, rows) {
             Ok(query) => query,
@@ -128,10 +128,10 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
         )
     }
 
-    fn interpolate_query(
+    fn interpolate_query<'row>(
         &mut self,
         query: &'a Expression,
-        rows: &RowPair<T>,
+        rows: &RowPair<'row, 'a, T>,
     ) -> Result<String, EvalError> {
         let arguments = vec![Arc::new(Value::Integer(BigInt::from(u64::from(
             rows.current_row_index,
