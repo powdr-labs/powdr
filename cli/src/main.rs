@@ -157,6 +157,7 @@ enum Commands {
 
         /// Linker mode, deciding how to reduce links to constraints.
         #[arg(long)]
+        #[arg(value_parser = clap_enum_variants!(LinkerMode))]
         linker_mode: Option<LinkerMode>,
 
         /// Generate a CSV file containing the witness column values.
