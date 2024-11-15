@@ -14,7 +14,7 @@ use crate::witgen::Constraint;
 use super::{
     affine_expression::{AffineExpression, AffineResult, AlgebraicVariable},
     data_structures::column_map::WitnessColumnMap,
-    expression_evaluator::{ExpressionEvaluator, IntermediatesCache},
+    expression_evaluator::ExpressionEvaluator,
     global_constraints::RangeConstraintSet,
     machines::MachineParts,
     range_constraints::RangeConstraint,
@@ -384,14 +384,9 @@ pub struct RowPair<'row, 'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     unknown_strategy: UnknownStrategy,
     size: DegreeType,
-    /// Cache for values of intermediate polynomials.
-    /// Keeping it around for the lifetime of the RowPair ensures that multiple calls
-    /// to `evaluate` can reuse intermediate values.
-    /// Because the rows do not change for the lifetime of the RowPair,
-    /// we never have to evaluate it.
-    /// Note that we can't store an instance of `ExpressionEvaluator` here, because it contains
-    /// a reference to `&self`, so we wouldn't be able to express the lifetime.
-    intermediates_cache: RefCell<Option<IntermediatesCache<'a, T>>>,
+    /// Expression evaluator. Because it keeps a cache of intermediate values throughout its lifetime,
+    /// we keep it around in a RefCell, so that multiple calls to `evaluate` can reuse intermediate values.
+    evaluator: RefCell<ExpressionEvaluator<'a, T>>,
 }
 impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     /// Creates a new row pair.
@@ -412,7 +407,9 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
             fixed_data,
             unknown_strategy,
             size,
-            intermediates_cache: Default::default(),
+            evaluator: RefCell::new(ExpressionEvaluator::new(
+                &fixed_data.intermediate_definitions,
+            )),
         }
     }
 
@@ -433,7 +430,9 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
             fixed_data,
             unknown_strategy,
             size,
-            intermediates_cache: Default::default(),
+            evaluator: RefCell::new(ExpressionEvaluator::new(
+                &fixed_data.intermediate_definitions,
+            )),
         }
     }
 
@@ -474,28 +473,13 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     /// taking current values of polynomials into account.
     /// @returns an expression affine in the witness polynomials
     pub fn evaluate(&self, expr: &'a Expression<T>) -> AffineResult<AlgebraicVariable<'a>, T> {
-        // Get the previous cache, or create a new one.
-        let cache = self
-            .intermediates_cache
-            .borrow_mut()
-            .take()
-            .unwrap_or_default();
-        // Create a new evaluator with the previous cache.
-        let mut evaluator = ExpressionEvaluator::new_with_cache(
-            SymbolicWitnessEvaluator::new(
-                self.fixed_data,
-                self.current_row_index.into(),
-                self,
-                self.size,
-            ),
-            &self.fixed_data.intermediate_definitions,
-            cache,
+        let variables = SymbolicWitnessEvaluator::new(
+            self.fixed_data,
+            self.current_row_index.into(),
+            self,
+            self.size,
         );
-        // Compute the result. This might update the cache.
-        let result = evaluator.evaluate(expr);
-        // Save the updated cache for the next call to `evaluate`.
-        *self.intermediates_cache.borrow_mut() = Some(evaluator.destroy());
-        result
+        self.evaluator.borrow_mut().evaluate(&variables, expr)
     }
 }
 

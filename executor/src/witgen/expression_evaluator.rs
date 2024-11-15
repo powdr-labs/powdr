@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, marker::PhantomData};
+use std::collections::BTreeMap;
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression as Expression,
@@ -23,56 +23,36 @@ pub trait SymbolicVariables<T> {
     }
 }
 
-/// Maps intermediate polynomial IDs to their evaluation. Updated throughout the lifetime of the
-/// ExpressionEvaluator.
-pub type IntermediatesCache<'a, T> = BTreeMap<PolyID, AffineResult<AlgebraicVariable<'a>, T>>;
-
-pub struct ExpressionEvaluator<'a, T, SV> {
-    variables: SV,
+pub struct ExpressionEvaluator<'a, T> {
     intermediate_definitions: &'a BTreeMap<PolyID, &'a Expression<T>>,
-    marker: PhantomData<T>,
+    /// Maps intermediate polynomial IDs to their evaluation. Updated throughout the lifetime of the
+    /// ExpressionEvaluator.
     intermediates_cache: BTreeMap<PolyID, AffineResult<AlgebraicVariable<'a>, T>>,
 }
 
-impl<'a, T, SV> ExpressionEvaluator<'a, T, SV>
-where
-    SV: SymbolicVariables<T>,
-    T: FieldElement,
-{
-    pub fn new(
-        variables: SV,
-        intermediate_definitions: &'a BTreeMap<PolyID, &'a Expression<T>>,
-    ) -> Self {
-        Self::new_with_cache(variables, intermediate_definitions, Default::default())
-    }
-
-    pub fn new_with_cache(
-        variables: SV,
-        intermediate_definitions: &'a BTreeMap<PolyID, &'a Expression<T>>,
-        intermediates_cache: IntermediatesCache<'a, T>,
-    ) -> Self {
+impl<'a, T: FieldElement> ExpressionEvaluator<'a, T> {
+    pub fn new(intermediate_definitions: &'a BTreeMap<PolyID, &'a Expression<T>>) -> Self {
         Self {
-            variables,
             intermediate_definitions,
-            marker: PhantomData,
-            intermediates_cache,
+            intermediates_cache: Default::default(),
         }
-    }
-
-    pub fn destroy(self) -> IntermediatesCache<'a, T> {
-        self.intermediates_cache
     }
 
     /// Tries to evaluate the expression to an affine expression in the witness polynomials
     /// or publics, taking their current values into account.
+    /// Might update its cache of evaluations of intermediate polynomials.
     /// @returns an expression affine in the witness polynomials or publics.
-    pub fn evaluate(&mut self, expr: &'a Expression<T>) -> AffineResult<AlgebraicVariable<'a>, T> {
+    pub fn evaluate<SV: SymbolicVariables<T>>(
+        &mut self,
+        variables: &SV,
+        expr: &'a Expression<T>,
+    ) -> AffineResult<AlgebraicVariable<'a>, T> {
         // @TODO if we iterate on processing the constraints in the same row,
         // we could store the simplified values.
         match expr {
             Expression::Reference(poly) => match poly.poly_id.ptype {
                 PolynomialType::Committed | PolynomialType::Constant => {
-                    self.variables.value(AlgebraicVariable::Column(poly))
+                    variables.value(AlgebraicVariable::Column(poly))
                 }
                 PolynomialType::Intermediate => {
                     let value = self.intermediates_cache.get(&poly.poly_id).cloned();
@@ -81,7 +61,7 @@ where
                         None => {
                             let definition =
                                 self.intermediate_definitions.get(&poly.poly_id).unwrap();
-                            let result = self.evaluate(definition);
+                            let result = self.evaluate(variables, definition);
                             self.intermediates_cache
                                 .insert(poly.poly_id, result.clone());
                             result
@@ -90,46 +70,49 @@ where
                 }
             },
             Expression::PublicReference(public) => {
-                self.variables.value(AlgebraicVariable::Public(public))
+                variables.value(AlgebraicVariable::Public(public))
             }
             Expression::Number(n) => Ok((*n).into()),
             Expression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-                self.evaluate_binary_operation(left, op, right)
+                self.evaluate_binary_operation(variables, left, op, right)
             }
             Expression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
-                self.evaluate_unary_operation(op, expr)
+                self.evaluate_unary_operation(variables, op, expr)
             }
-            Expression::Challenge(challenge) => self.variables.challenge(challenge),
+            Expression::Challenge(challenge) => variables.challenge(challenge),
         }
     }
 
-    fn evaluate_binary_operation(
+    fn evaluate_binary_operation<SV: SymbolicVariables<T>>(
         &mut self,
+        variables: &SV,
         left: &'a Expression<T>,
         op: &AlgebraicBinaryOperator,
         right: &'a Expression<T>,
     ) -> AffineResult<AlgebraicVariable<'a>, T> {
         match op {
             AlgebraicBinaryOperator::Add => {
-                let left_expr = self.evaluate(left)?;
+                let left_expr = self.evaluate(variables, left)?;
                 if left_expr.is_zero() {
-                    return self.evaluate(right);
+                    return self.evaluate(variables, right);
                 }
-                let right_expr = self.evaluate(right)?;
+                let right_expr = self.evaluate(variables, right)?;
                 if right_expr.is_zero() {
                     return Ok(left_expr);
                 }
                 Ok(left_expr + right_expr)
             }
-            AlgebraicBinaryOperator::Sub => Ok(self.evaluate(left)? - self.evaluate(right)?),
+            AlgebraicBinaryOperator::Sub => {
+                Ok(self.evaluate(variables, left)? - self.evaluate(variables, right)?)
+            }
             AlgebraicBinaryOperator::Mul => {
                 // don't short circuit on err as rhs might still be 0
-                let left_res = self.evaluate(left);
+                let left_res = self.evaluate(variables, left);
                 match left_res {
                     Ok(left_expr) if left_expr.is_zero() => Ok(left_expr),
-                    Ok(left_expr) if left_expr.is_one() => self.evaluate(right),
+                    Ok(left_expr) if left_expr.is_one() => self.evaluate(variables, right),
                     Ok(left_expr) => {
-                        let right_expr = self.evaluate(right)?;
+                        let right_expr = self.evaluate(variables, right)?;
                         if let Some(n) = left_expr.constant_value() {
                             return Ok(right_expr * n);
                         }
@@ -142,7 +125,7 @@ where
                         }
                     }
                     // Err on lhs is ok if rhs is zero
-                    Err(left_err) => match self.evaluate(right) {
+                    Err(left_err) => match self.evaluate(variables, right) {
                         Ok(right_expr) => {
                             if let Some(n) = right_expr.constant_value() {
                                 if n.is_zero() {
@@ -157,8 +140,8 @@ where
             }
             AlgebraicBinaryOperator::Pow => {
                 if let (Some(l), r) = (
-                    self.evaluate(left)?.constant_value(),
-                    self.evaluate(right)?
+                    self.evaluate(variables, left)?.constant_value(),
+                    self.evaluate(variables, right)?
                         .constant_value()
                         .expect("non-constant exponent should be caught earlier"),
                 ) {
@@ -170,12 +153,13 @@ where
         }
     }
 
-    fn evaluate_unary_operation(
+    fn evaluate_unary_operation<SV: SymbolicVariables<T>>(
         &mut self,
+        variables: &SV,
         op: &AlgebraicUnaryOperator,
         expr: &'a Expression<T>,
     ) -> AffineResult<AlgebraicVariable<'a>, T> {
-        self.evaluate(expr).map(|v| match op {
+        self.evaluate(variables, expr).map(|v| match op {
             AlgebraicUnaryOperator::Minus => -v,
         })
     }
