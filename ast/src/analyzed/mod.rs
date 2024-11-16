@@ -1401,8 +1401,18 @@ impl<T> AlgebraicExpression<T> {
     /// Returns the degree of the expressions
     pub fn degree(&self) -> usize {
         match self {
-            // One for each column
-            AlgebraicExpression::Reference(_) => 1,
+            AlgebraicExpression::Reference(reference) => {
+                // We don't have access to the definitions of intermediate polynomials here, so we can't know their degree.
+                assert!(
+                    matches!(
+                        reference.poly_id.ptype,
+                        PolynomialType::Committed | PolynomialType::Constant
+                    ),
+                    "Intermediate polynomials should have been inlined."
+                );
+                // Fixed and witness columns have degree 1
+                1
+            }
             // Multiplying two expressions adds their degrees
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
                 op: AlgebraicBinaryOperator::Mul,
