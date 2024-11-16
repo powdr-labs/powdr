@@ -225,6 +225,27 @@ impl<T: FieldElement> Row<T> {
         Ok(())
     }
 
+    /// Merges a list of known values into the current row.
+    /// Returns an error if there is a conflict.
+    pub fn merge_with_values(
+        &mut self,
+        values: impl Iterator<Item = (PolyID, T)>,
+    ) -> Result<(), ()> {
+        let stored = self.values.clone();
+
+        for (poly_id, value) in values {
+            let v = &mut self.values[&poly_id];
+            if let CellValue::Known(stored_value) = v {
+                if *stored_value != value {
+                    self.values = stored;
+                    return Err(());
+                }
+            }
+            *v = CellValue::Known(value);
+        }
+        Ok(())
+    }
+
     pub fn value_is_known(&self, poly_id: &PolyID) -> bool {
         self.values[poly_id].is_known()
     }
