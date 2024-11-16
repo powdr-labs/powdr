@@ -1,4 +1,9 @@
-use std::{collections::HashMap, ffi::c_void, sync::Arc};
+use std::{
+    cell::RefCell,
+    collections::HashMap,
+    ffi::c_void,
+    sync::{Arc, RwLock},
+};
 
 use bit_vec::BitVec;
 use itertools::Itertools;
@@ -17,7 +22,7 @@ pub struct JitProcessor<'a, T: FieldElement> {
     parts: MachineParts<'a, T>,
     block_size: usize,
     latch_row: usize,
-    witgen_functions: HashMap<(u64, BitVec), WitgenFunction<T>>,
+    witgen_functions: RwLock<HashMap<(u64, BitVec), WitgenFunction<T>>>,
 }
 
 impl<'a, T: FieldElement> JitProcessor<'a, T> {
@@ -32,17 +37,24 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
             parts,
             block_size,
             latch_row,
-            witgen_functions: HashMap::new(),
+            witgen_functions: RwLock::new(HashMap::new()),
         }
     }
 
     pub fn can_answer_lookup(&self, identity_id: u64, known_inputs: &BitVec) -> bool {
-        // TODO cache the result
+        if self
+            .witgen_functions
+            .read()
+            .unwrap()
+            .contains_key(&(identity_id, known_inputs.clone()))
+        {
+            return true;
+        }
 
         // TODO what if the same column is mentioned multiple times on the RHS of the connection?
 
         let right = self.parts.connections[&identity_id].right;
-        let Some(known_inputs) = known_inputs
+        let Some(known_inputs_cols) = known_inputs
             .iter()
             .zip(&right.expressions)
             .filter(|(known, _)| *known)
@@ -53,17 +65,17 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
         };
         log::debug!(
             "Trying to auto-generate witgen code for known inputs: {}",
-            known_inputs.iter().format(", ")
+            known_inputs_cols.iter().format(", ")
         );
 
-        let known_inputs = known_inputs.into_iter().map(|p| p.poly_id);
+        let known_inputs_cols = known_inputs_cols.into_iter().map(|p| p.poly_id);
 
         let mut inference = WitgenInference::new(
             self.fixed_data,
             &self.parts,
             self.block_size,
             self.latch_row,
-            known_inputs,
+            known_inputs_cols,
             right,
         );
         if !inference.run() {
@@ -74,6 +86,25 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
         log::trace!("Generated code:\n{code}");
 
         let lib_path = powdr_jit_compiler::compiler::call_cargo(&code).unwrap();
+        let library = Arc::new(unsafe { libloading::Library::new(&lib_path.path).unwrap() });
+        // TODO what happen if there is a conflict in function names? Should we
+        // encode the ID and the known inputs?
+        let witgen_fun = unsafe {
+            library.get::<extern "C" fn(
+                *mut c_void,
+                extern "C" fn(*mut c_void, i32, u64) -> T,
+                extern "C" fn(*mut c_void, i32, u64, T),
+            )>(b"witgen")
+        }
+        .unwrap();
+
+        self.witgen_functions.write().unwrap().insert(
+            (identity_id, known_inputs.clone()),
+            WitgenFunction {
+                library: library.clone(),
+                witgen_function: *witgen_fun,
+            },
+        );
         true
     }
 
@@ -102,7 +133,7 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
             }
         }
 
-        self.witgen_functions[&(connection_id, known_inputs)].call(
+        self.witgen_functions.read().unwrap()[&(connection_id, known_inputs)].call(
             &mut data,
             Self::get_cell,
             Self::set_cell,
@@ -125,7 +156,7 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
 struct WitgenFunction<T> {
     #[allow(dead_code)]
     library: Arc<libloading::Library>,
-    prover_function: extern "C" fn(
+    witgen_function: extern "C" fn(
         *mut c_void,
         extern "C" fn(*mut c_void, i32, u64) -> T,
         extern "C" fn(*mut c_void, i32, u64, T),
@@ -140,6 +171,6 @@ impl<T: FieldElement> WitgenFunction<T> {
         set_cell: extern "C" fn(*mut c_void, i32, u64, T),
     ) {
         let data_c_ptr = data as *mut _ as *mut c_void;
-        (self.prover_function)(data_c_ptr, get_cell, set_cell);
+        (self.witgen_function)(data_c_ptr, get_cell, set_cell);
     }
 }
