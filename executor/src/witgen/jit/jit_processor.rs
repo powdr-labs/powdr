@@ -1,17 +1,19 @@
 use bit_vec::BitVec;
+use itertools::Itertools;
 use powdr_number::FieldElement;
 
 use crate::witgen::{
     data_structures::finalizable_data::CompactDataRef,
+    jit::witgen_inference::WitgenInference,
     machines::{LookupCell, MachineParts},
     util::try_to_simple_poly,
     EvalError, FixedData, MutableState, QueryCallback,
 };
 
 pub struct JitProcessor<'a, T: FieldElement> {
-    _fixed_data: &'a FixedData<'a, T>,
+    fixed_data: &'a FixedData<'a, T>,
     parts: MachineParts<'a, T>,
-    _block_size: usize,
+    block_size: usize,
     latch_row: usize,
 }
 
@@ -23,16 +25,50 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
         latch_row: usize,
     ) -> Self {
         JitProcessor {
-            _fixed_data: fixed_data,
+            fixed_data,
             parts,
-            _block_size: block_size,
+            block_size,
             latch_row,
         }
     }
 
-    pub fn can_answer_lookup(&self, _identity_id: u64, _known_inputs: &BitVec) -> bool {
-        // TODO call the JIT compiler here.
-        false
+    pub fn can_answer_lookup(&self, identity_id: u64, known_inputs: &BitVec) -> bool {
+        // TODO cache the result
+
+        // TODO what if the same column is mentioned multiple times on the RHS of the connection?
+
+        let right = self.parts.connections[&identity_id].right;
+        let Some(known_inputs) = known_inputs
+            .iter()
+            .zip(&right.expressions)
+            .filter(|&(known, e)| known)
+            .map(|(known, e)| try_to_simple_poly(e))
+            .collect::<Option<Vec<_>>>()
+        else {
+            return false;
+        };
+        log::debug!(
+            "Trying to auto-generate witgen code for known inputs: {}",
+            known_inputs.iter().format(", ")
+        );
+
+        let known_inputs = known_inputs.into_iter().map(|p| p.poly_id);
+
+        let mut inference = WitgenInference::new(
+            self.fixed_data,
+            &self.parts,
+            self.block_size,
+            self.latch_row,
+            known_inputs,
+            right,
+        );
+        if inference.run() {
+            log::info!("Successfully generated witgen code for some machine.");
+            log::trace!("Generated code:\n{}", inference.code());
+            true
+        } else {
+            false
+        }
     }
 
     pub fn process_lookup_direct<'b, 'c, 'd, Q: QueryCallback<T>>(
