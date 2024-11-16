@@ -21,7 +21,7 @@ machine Binary8(byte_binary: ByteBinary) with
 
     let operation_id;
 
-    let latch: col = std::well_known::one;
+    let latch = 1;
 
     let A1;
     let A2;
