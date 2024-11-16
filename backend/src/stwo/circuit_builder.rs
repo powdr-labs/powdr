@@ -29,14 +29,19 @@ pub type PowdrComponent<'a, F> = FrameworkComponent<PowdrEval<F>>;
 
 pub(crate) fn gen_stwo_circuit_trace<T, B, F>(
     witness: &[(String, Vec<T>)],
-    analyzed: Arc<Analyzed<T>>,
 ) -> ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>>
 where
     T: FieldElement, //only Merenne31Field is supported, checked in runtime
     B: FieldOps<M31> + ColumnOps<F>, // Ensure B implements FieldOps for M31
     F: ExtensionOf<BaseField>,
 {
-    let domain = CanonicCoset::new(analyzed.degree().ilog2()).circle_domain();
+    assert!(
+        witness
+            .iter()
+            .all(|(_name, vec)| vec.len() == witness[0].1.len()),
+        "All Vec<T> in witness must have the same length. Mismatch found!"
+    );
+    let domain = CanonicCoset::new(witness[0].1.len().ilog2()).circle_domain();
     witness
         .iter()
         .map(|(_name, values)| {

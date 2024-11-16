@@ -12,11 +12,8 @@ use powdr_executor::constant_evaluator::{get_uniquely_sized_cloned, VariablySize
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{FieldElement, Mersenne31Field};
 use prover::StwoProver;
-use stwo_prover::core::backend::simd::SimdBackend;
-use stwo_prover::core::backend::BackendForChannel;
-use stwo_prover::core::channel::Blake2sChannel;
-use stwo_prover::core::channel::Channel;
-use stwo_prover::core::channel::MerkleChannel;
+use stwo_prover::core::backend::{simd::SimdBackend, BackendForChannel};
+use stwo_prover::core::channel::{Blake2sChannel, Channel, MerkleChannel};
 use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
 
 mod circuit_builder;
