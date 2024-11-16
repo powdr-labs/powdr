@@ -4,6 +4,7 @@
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
+use itertools::Itertools;
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, ConnectIdentity, Expression,
@@ -24,6 +25,7 @@ pub fn optimize<T: FieldElement>(mut pil_file: Analyzed<T>) -> Analyzed<T> {
     let col_count_pre = (pil_file.commitment_count(), pil_file.constant_count());
     remove_unreferenced_definitions(&mut pil_file);
     remove_constant_fixed_columns(&mut pil_file);
+    deduplicate_fixed_columns(&mut pil_file);
     simplify_identities(&mut pil_file);
     extract_constant_lookups(&mut pil_file);
     remove_constant_witness_columns(&mut pil_file);
@@ -213,6 +215,39 @@ fn constant_value(function: &FunctionValueDefinition) -> Option<BigUint> {
         | FunctionValueDefinition::TraitDeclaration(_)
         | FunctionValueDefinition::TraitFunction(_, _) => None,
     }
+}
+
+/// Deduplicate fixed columns of the same namespace which share the same value.
+/// This uses the `Display` implementation of the function value, so `|i| i` is different from `|j| j`
+/// This is enough for use cases where exactly the same function is inserted many times
+/// This only replaces the references inside expressions and does not clean up the now unreachable fixed column definitions
+fn deduplicate_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
+    // build a map of `poly_id` to the `(name, poly_id)` they can be replaced by
+    let replacement_map: BTreeMap<PolyID, (String, PolyID)> = pil_file
+        .constant_polys_in_source_order()
+        // group symbols by common namespace and displayed value
+        .into_group_map_by(|(symbol, value)| (symbol.absolute_name.split("::").next().unwrap(), value.as_ref().unwrap().to_string()))
+        .values()
+        // map all other symbols to the first one
+        .flat_map(|group| {
+            group[1..].iter().flat_map(|from| {
+                from.0
+                    .array_elements()
+                    .map(|(_, from_id)| from_id)
+                    .zip_eq(group[0].0.array_elements())
+            })
+        })
+        .collect();
+
+    // substitute all occurences in expressions.
+    pil_file.post_visit_expressions_in_identities_mut(&mut |e| {
+        if let AlgebraicExpression::Reference(r) = e {
+            if let Some((new_name, new_id)) = replacement_map.get(&r.poly_id) {
+                r.name = new_name.clone();
+                r.poly_id = *new_id;
+            }
+        };
+    });
 }
 
 /// Simplifies multiplications by zero and one.
