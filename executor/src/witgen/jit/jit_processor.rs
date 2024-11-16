@@ -1,3 +1,5 @@
+use std::{collections::HashMap, ffi::c_void, sync::Arc};
+
 use bit_vec::BitVec;
 use itertools::Itertools;
 use powdr_number::FieldElement;
@@ -15,6 +17,7 @@ pub struct JitProcessor<'a, T: FieldElement> {
     parts: MachineParts<'a, T>,
     block_size: usize,
     latch_row: usize,
+    witgen_functions: HashMap<(u64, BitVec), WitgenFunction<T>>,
 }
 
 impl<'a, T: FieldElement> JitProcessor<'a, T> {
@@ -29,6 +32,7 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
             parts,
             block_size,
             latch_row,
+            witgen_functions: HashMap::new(),
         }
     }
 
@@ -41,8 +45,8 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
         let Some(known_inputs) = known_inputs
             .iter()
             .zip(&right.expressions)
-            .filter(|&(known, e)| known)
-            .map(|(known, e)| try_to_simple_poly(e))
+            .filter(|(known, _)| *known)
+            .map(|(_, e)| try_to_simple_poly(e))
             .collect::<Option<Vec<_>>>()
         else {
             return false;
@@ -62,13 +66,15 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
             known_inputs,
             right,
         );
-        if inference.run() {
-            log::info!("Successfully generated witgen code for some machine.");
-            log::trace!("Generated code:\n{}", inference.code());
-            true
-        } else {
-            false
+        if !inference.run() {
+            return false;
         }
+        log::info!("Successfully generated witgen code for some machine.");
+        let code = inference.code();
+        log::trace!("Generated code:\n{code}");
+
+        let lib_path = powdr_jit_compiler::compiler::call_cargo(&code).unwrap();
+        true
     }
 
     pub fn process_lookup_direct<'b, 'c, 'd, Q: QueryCallback<T>>(
@@ -76,24 +82,64 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         connection_id: u64,
         values: Vec<LookupCell<'c, T>>,
+        // TODO maybe just a `*mut T` plus first_col would be best?
         mut data: CompactDataRef<'d, T>,
     ) -> Result<bool, EvalError<T>> {
         // Transfer inputs.
         let right = self.parts.connections[&connection_id].right;
+        let mut known_inputs = BitVec::new();
         for (e, v) in right.expressions.iter().zip(&values) {
             match v {
                 LookupCell::Input(&v) => {
                     let col = try_to_simple_poly(e).unwrap();
                     data.set(self.latch_row as i32, col.poly_id.id as u32, v);
+                    known_inputs.push(true);
                 }
-                LookupCell::Output(_) => {}
+                LookupCell::Output(_) => {
+                    // TODO
+                    known_inputs.push(false);
+                }
             }
         }
 
-        // Just some code here to avoid "unused" warnings.
-        // This code will not be called as long as `can_answer_lookup` returns false.
-        data.get(self.latch_row as i32, 0);
+        self.witgen_functions[&(connection_id, known_inputs)].call(
+            &mut data,
+            Self::get_cell,
+            Self::set_cell,
+        );
 
-        unimplemented!();
+        Ok(true)
+    }
+
+    extern "C" fn get_cell(data: *mut c_void, row: i32, col: u64) -> T {
+        let data = unsafe { &*(data as *const CompactDataRef<T>) };
+        data.get(row, col as u32)
+    }
+
+    extern "C" fn set_cell(data: *mut c_void, row: i32, col: u64, value: T) {
+        let data = unsafe { &mut *(data as *mut CompactDataRef<T>) };
+        data.set(row, col as u32, value);
+    }
+}
+
+struct WitgenFunction<T> {
+    #[allow(dead_code)]
+    library: Arc<libloading::Library>,
+    prover_function: extern "C" fn(
+        *mut c_void,
+        extern "C" fn(*mut c_void, i32, u64) -> T,
+        extern "C" fn(*mut c_void, i32, u64, T),
+    ),
+}
+
+impl<T: FieldElement> WitgenFunction<T> {
+    fn call(
+        &self,
+        data: &mut CompactDataRef<T>,
+        get_cell: extern "C" fn(*mut c_void, i32, u64) -> T,
+        set_cell: extern "C" fn(*mut c_void, i32, u64, T),
+    ) {
+        let data_c_ptr = data as *mut _ as *mut c_void;
+        (self.prover_function)(data_c_ptr, get_cell, set_cell);
     }
 }

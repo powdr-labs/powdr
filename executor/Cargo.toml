@@ -21,6 +21,7 @@ bit-vec = "0.6.3"
 num-traits = "0.2.15"
 derive_more = "0.99.17"
 lazy_static = "1.4.0"
+libloading = "0.8"
 indicatif = "0.17.7"
 serde = { version = "1.0", default-features = false, features = ["alloc", "derive", "rc"] }
 
