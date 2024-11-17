@@ -56,7 +56,6 @@ where
     pub fn new(
         analyzed: Arc<Analyzed<F>>,
         _fixed: Arc<Vec<(String, Vec<F>)>>,
-        //  setup: Option<&mut dyn io::Read>,
     ) -> Result<Self, io::Error> {
         let config = PcsConfig {
             pow_bits: FRI_PROOF_OF_WORK_BITS as u32,
