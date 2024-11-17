@@ -565,4 +565,4 @@ pub fn test_stwo(file_name: &str, inputs: Vec<Mersenne31Field>) {
 }
 
 #[cfg(not(feature = "stwo"))]
-pub fn test_stwo(_file_name: &str, _inputs: Vec) {}
+pub fn test_stwo(_file_name: &str, _inputs: Vec<T>) {}
