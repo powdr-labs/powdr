@@ -218,18 +218,18 @@ fn constant_value(function: &FunctionValueDefinition) -> Option<BigUint> {
 }
 
 /// Deduplicate fixed columns of the same namespace which share the same value.
-/// This uses the `Display` implementation of the function value, so `|i| i` is different from `|j| j`
+/// This compares the function values, so `|i| i` is different from `|j| j`
 /// This is enough for use cases where exactly the same function is inserted many times
 /// This only replaces the references inside expressions and does not clean up the now unreachable fixed column definitions
 fn deduplicate_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     // build a map of `poly_id` to the `(name, poly_id)` they can be replaced by
     let replacement_map: BTreeMap<PolyID, (String, PolyID)> = pil_file
         .constant_polys_in_source_order()
-        // group symbols by common namespace and displayed value
+        // group symbols by common namespace and function value
         .into_group_map_by(|(symbol, value)| {
             (
                 symbol.absolute_name.split("::").next().unwrap(),
-                value.as_ref().unwrap().to_string(),
+                value.as_ref().unwrap(),
             )
         })
         .values()
