@@ -16,7 +16,7 @@ halo2 = [
   "dep:halo2_solidity_verifier",
 ]
 estark-starky = ["dep:starky"]
-estark-polygon = ["dep:pil-stark-prover"]
+estark-polygon = ["dep:pil-stark-prover", "dep:starky"]
 plonky3 = [
   "dep:powdr-plonky3",
   "dep:p3-commit",

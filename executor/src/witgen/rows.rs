@@ -12,7 +12,7 @@ use crate::witgen::Constraint;
 
 use super::{
     affine_expression::{AffineExpression, AffineResult, AlgebraicVariable},
-    data_structures::{column_map::WitnessColumnMap, finalizable_data::FinalizedRow},
+    data_structures::column_map::WitnessColumnMap,
     expression_evaluator::ExpressionEvaluator,
     global_constraints::RangeConstraintSet,
     machines::MachineParts,
@@ -235,18 +235,6 @@ impl<T: FieldElement> Row<T> {
 
     pub fn apply_update(&mut self, poly_id: &PolyID, constr: &Constraint<T>) {
         self.values[poly_id].apply_update(constr);
-    }
-
-    pub fn finalize(&self, column_ids: &[PolyID]) -> FinalizedRow<T> {
-        let (values, known_cells) = column_ids
-            .iter()
-            .map(|poly_id| {
-                // TODO avoid these accesses.
-                let cell = &self.values[poly_id];
-                (cell.unwrap_or_zero(), cell.is_known())
-            })
-            .unzip();
-        FinalizedRow::new(values, known_cells)
     }
 }
 

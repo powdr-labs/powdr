@@ -1,6 +1,7 @@
 use powdr_ast::parsed::asm::{FunctionStatement, MachineStatement, SymbolPath};
 
 use powdr_parser::ParserContext;
+use powdr_riscv_syscalls::Syscall;
 
 pub static EXTRA_REG_PREFIX: &str = "xtra";
 
@@ -39,8 +40,6 @@ pub struct SubMachine {
     pub instructions: Vec<MachineStatement>,
     /// Number of registers needed by this machine's instruction declarations if > 4.
     pub extra_registers: u8,
-    /// TODO: only needed because of witgen requiring that each machine be called at least once
-    pub init_call: Vec<FunctionStatement>,
 }
 
 impl SubMachine {
@@ -69,4 +68,7 @@ impl SubMachine {
 /// Any of the registers used as input/output to the syscall should be usable without issue.
 /// Other registers should be saved/restored from memory, as LLVM doesn't know about their usage here.
 #[derive(Clone)]
-pub struct SyscallImpl(pub Vec<FunctionStatement>);
+pub struct SyscallImpl {
+    pub syscall: Syscall,
+    pub statements: Vec<String>,
+}

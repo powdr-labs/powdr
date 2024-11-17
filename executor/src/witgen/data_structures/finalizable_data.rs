@@ -4,47 +4,102 @@ use std::{
 };
 
 use bit_vec::BitVec;
-use powdr_ast::analyzed::PolyID;
+use itertools::Itertools;
+use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_number::FieldElement;
 
 use crate::witgen::rows::Row;
 
-/// A row entry in [FinalizableData].
+/// Sequence of rows of field elements, stored in a compact form.
+/// Optimized for contiguous column IDs, but works with any combination.
 #[derive(Clone)]
-enum Entry<T: FieldElement> {
-    /// The row is still in progress, and range constraints are still available.
-    InProgress(Row<T>),
-    Finalized(FinalizedRow<T>),
-}
-
-/// A finalized row, containing an indication which of the cells are known.
-/// Finalized rows cannot be changed and their range constraints are no longer available.
-#[derive(Clone)]
-pub struct FinalizedRow<T> {
-    /// The values, indices according to the columns stored in [FinalizableData].
-    values: Vec<T>,
-    /// A bit vector indicating which cells are known. Values of unknown cells should be ignored.
+struct CompactData<T: FieldElement> {
+    /// The ID of the first column used in the table.
+    first_column_id: u64,
+    /// The length of a row in the table.
+    column_count: usize,
+    /// The cell values, stored in row-major order.
+    data: Vec<T>,
+    /// Bit vector of known cells, stored in row-major order.
     known_cells: BitVec,
 }
 
-impl<T> FinalizedRow<T> {
-    pub fn new(values: Vec<T>, known_cells: BitVec) -> Self {
+impl<T: FieldElement> CompactData<T> {
+    /// Creates a new empty compact data storage.
+    fn new(column_ids: &[PolyID]) -> Self {
+        let col_id_range = column_ids.iter().map(|id| id.id).minmax();
+        let (first_column_id, last_column_id) = col_id_range.into_option().unwrap();
         Self {
-            values,
-            known_cells,
+            first_column_id,
+            column_count: (last_column_id - first_column_id + 1) as usize,
+            data: Vec::new(),
+            known_cells: BitVec::new(),
         }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.data.is_empty()
+    }
+
+    /// Returns the number of stored rows.
+    fn len(&self) -> usize {
+        self.data.len() / self.column_count
+    }
+
+    /// Truncates the data to `len` rows.
+    fn truncate(&mut self, len: usize) {
+        self.data.truncate(len * self.column_count);
+        self.known_cells.truncate(len * self.column_count);
+    }
+
+    fn clear(&mut self) {
+        self.data.clear();
+        self.known_cells.clear();
+    }
+
+    /// Appends a non-finalized row to the data, turning it into a finalized row.
+    fn push(&mut self, row: Row<T>) {
+        self.data.reserve(self.column_count);
+        self.known_cells.reserve(self.column_count);
+        for col_id in self.first_column_id..(self.first_column_id + self.column_count as u64) {
+            if let Some(v) = row.value(&PolyID {
+                id: col_id,
+                ptype: PolynomialType::Committed,
+            }) {
+                self.data.push(v);
+                self.known_cells.push(true);
+            } else {
+                self.data.push(T::zero());
+                self.known_cells.push(false);
+            }
+        }
+    }
+
+    fn get(&self, row: usize, col: u64) -> (T, bool) {
+        let col = col - self.first_column_id;
+        let idx = row * self.column_count + col as usize;
+        (self.data[idx], self.known_cells[idx])
     }
 }
 
-/// A data structure that stores rows of a witness table, and behaves much like a `Vec<Row<T>>`.
-/// However, it also allows to finalize rows, which means that memory for things like range
-/// constraints is freed. The information which cells are known is preserved, though.
+/// A data structure that stores witness data.
+/// It allows to finalize rows, which means that those rows are then stored in a more
+/// compact form. Information about range constraints on those rows is lost, but the
+/// information which cells are known is preserved.
+/// There is always a single contiguous area of finalized rows and this area can only "grow"
+/// towards higher row indices, i.e. an area at the beginning can only be finalized
+/// if nothing has been finalized yet.
 /// Once a row has been finalized, any operation trying to access it again will fail at runtime.
 /// [FinalizableData::take_transposed] can be used to access the final cells.
+/// This data structure is more efficient if the used column IDs are contiguous.
 #[derive(Clone)]
 pub struct FinalizableData<T: FieldElement> {
-    /// The list of rows (either in progress or finalized)
-    data: Vec<Entry<T>>,
+    /// The non-finalized rows before the finalized data.
+    pre_finalized_data: Vec<Row<T>>,
+    /// Finalized data stored in a compact form.
+    finalized_data: CompactData<T>,
+    /// The non-finalized rows after the finalized data.
+    post_finalized_data: Vec<Row<T>>,
     /// The list of column IDs (in sorted order), used to index finalized rows.
     column_ids: Vec<PolyID>,
 }
@@ -58,84 +113,173 @@ impl<T: FieldElement> FinalizableData<T> {
         column_ids: &HashSet<PolyID>,
         rows: impl Iterator<Item = Row<T>>,
     ) -> Self {
-        let mut column_ids = column_ids.iter().cloned().collect::<Vec<_>>();
-        column_ids.sort();
-        let data = rows.map(Entry::InProgress).collect::<Vec<_>>();
-        Self { data, column_ids }
+        let column_ids = column_ids.iter().cloned().sorted().collect::<Vec<_>>();
+        Self {
+            pre_finalized_data: rows.collect_vec(),
+            finalized_data: CompactData::new(&column_ids),
+            post_finalized_data: Vec::new(),
+            column_ids,
+        }
     }
 
+    /// Returns the total number of rows, including non-finalized rows.
     pub fn len(&self) -> usize {
-        self.data.len()
+        self.pre_finalized_data.len() + self.finalized_data.len() + self.post_finalized_data.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.data.is_empty()
+        self.pre_finalized_data.is_empty()
+            && self.finalized_data.is_empty()
+            && self.post_finalized_data.is_empty()
+    }
+
+    fn location_of_row(&self, row: usize) -> Location {
+        if row < self.pre_finalized_data.len() {
+            Location::PreFinalized(row)
+        } else if row < self.pre_finalized_data.len() + self.finalized_data.len() {
+            Location::Finalized(row - self.pre_finalized_data.len())
+        } else {
+            Location::PostFinalized(row - self.pre_finalized_data.len() - self.finalized_data.len())
+        }
+    }
+
+    fn location_of_last_row(&self) -> Option<Location> {
+        (!self.is_empty()).then(|| self.location_of_row(self.len() - 1))
     }
 
     pub fn push(&mut self, row: Row<T>) {
-        self.data.push(Entry::InProgress(row));
+        match self.location_of_last_row() {
+            None | Some(Location::PreFinalized(_)) => {
+                self.pre_finalized_data.push(row);
+            }
+            Some(Location::Finalized(_)) | Some(Location::PostFinalized(_)) => {
+                self.post_finalized_data.push(row);
+            }
+        }
     }
 
     pub fn pop(&mut self) -> Option<Row<T>> {
-        match self.data.pop() {
-            Some(Entry::InProgress(row)) => Some(row),
-            Some(Entry::Finalized(_)) => panic!("Row already finalized."),
-            None => None,
+        match self.location_of_last_row()? {
+            Location::PreFinalized(_) => self.pre_finalized_data.pop(),
+            Location::Finalized(_) => panic!("Row already finalized"),
+            Location::PostFinalized(_) => self.post_finalized_data.pop(),
         }
     }
 
     pub fn extend(&mut self, other: Self) {
-        self.data.extend(other.data);
-    }
-
-    pub fn remove(&mut self, i: usize) -> Row<T> {
-        match self.data.remove(i) {
-            Entry::InProgress(row) => row,
-            Entry::Finalized(_) => panic!("Row {i} already finalized."),
+        match self.location_of_last_row() {
+            None | Some(Location::PreFinalized(_)) => {
+                self.pre_finalized_data.extend(other.pre_finalized_data);
+                self.finalized_data = other.finalized_data;
+                self.post_finalized_data = other.post_finalized_data;
+            }
+            Some(Location::Finalized(_)) | Some(Location::PostFinalized(_)) => {
+                assert!(other.finalized_data.is_empty() && other.post_finalized_data.is_empty());
+                self.post_finalized_data.extend(other.pre_finalized_data);
+            }
         }
     }
 
     pub fn truncate(&mut self, len: usize) {
-        self.data.truncate(len);
+        if len == 0 {
+            self.clear();
+        } else {
+            match self.location_of_row(len - 1) {
+                Location::PreFinalized(local) => {
+                    self.pre_finalized_data.truncate(local + 1);
+                    self.finalized_data.clear();
+                    self.post_finalized_data.clear();
+                }
+                Location::Finalized(local) => {
+                    self.finalized_data.truncate(local + 1);
+                    self.post_finalized_data.clear();
+                }
+                Location::PostFinalized(local) => {
+                    self.post_finalized_data.truncate(local + 1);
+                }
+            }
+        }
+    }
+
+    pub fn clear(&mut self) {
+        self.pre_finalized_data.clear();
+        self.finalized_data.clear();
+        self.post_finalized_data.clear();
     }
 
     pub fn get_mut(&mut self, i: usize) -> Option<&mut Row<T>> {
-        match &mut self.data[i] {
-            Entry::InProgress(row) => Some(row),
-            Entry::Finalized(_) => panic!("Row {i} already finalized."),
+        match self.location_of_row(i) {
+            Location::PreFinalized(local) => self.pre_finalized_data.get_mut(local),
+            Location::Finalized(_) => panic!("Row {i} already finalized."),
+            Location::PostFinalized(local) => self.post_finalized_data.get_mut(local),
         }
     }
 
     pub fn last(&self) -> Option<&Row<T>> {
-        match self.data.last() {
-            Some(Entry::InProgress(row)) => Some(row),
-            Some(Entry::Finalized(_)) => panic!("Last row already finalized."),
-            None => None,
+        match self.location_of_last_row()? {
+            Location::PreFinalized(local) => self.pre_finalized_data.get(local),
+            Location::Finalized(_) => panic!("Row already finalized"),
+            Location::PostFinalized(local) => self.post_finalized_data.get(local),
         }
     }
 
     pub fn mutable_row_pair(&mut self, i: usize) -> (&mut Row<T>, &mut Row<T>) {
-        let (before, after) = self.data.split_at_mut(i + 1);
+        let (before, after) = match self.location_of_row(i) {
+            Location::PreFinalized(local) => {
+                if local + 1 >= self.pre_finalized_data.len() {
+                    panic!("Row {} already finalized.", i + 1);
+                }
+                self.pre_finalized_data.split_at_mut(local + 1)
+            }
+            Location::Finalized(_) => panic!("Row {i} already finalized."),
+            Location::PostFinalized(local) => self.post_finalized_data.split_at_mut(local + 1),
+        };
+
         let current = before.last_mut().unwrap();
         let next = after.first_mut().unwrap();
-        match (current, next) {
-            (Entry::InProgress(current), Entry::InProgress(next)) => (current, next),
-            _ => panic!("Row {} or {} (or both) already finalized.", i, i + 1),
-        }
+        (current, next)
     }
 
-    pub fn finalize(&mut self, i: usize) -> bool {
-        if let Entry::InProgress(row) = &mut self.data[i] {
-            self.data[i] = Entry::Finalized(row.finalize(&self.column_ids));
-            true
+    pub fn finalize_range(&mut self, range: std::ops::Range<usize>) -> usize {
+        if range.is_empty() {
+            return 0;
+        }
+        if self.finalized_data.is_empty() {
+            if !self.post_finalized_data.is_empty() {
+                self.pre_finalized_data
+                    .extend(std::mem::take(&mut self.post_finalized_data));
+            }
+            let start = std::cmp::min(range.start, self.pre_finalized_data.len());
+            let end = std::cmp::min(range.end, self.pre_finalized_data.len());
+            self.pre_finalized_data
+                .drain(start..)
+                .enumerate()
+                .for_each(|(i, row)| {
+                    if start + i < end {
+                        self.finalized_data.push(row)
+                    } else {
+                        self.post_finalized_data.push(row)
+                    }
+                });
+            end - start
         } else {
-            false
-        }
-    }
-
-    pub fn finalize_range(&mut self, range: impl Iterator<Item = usize>) {
-        for i in range {
-            self.finalize(i);
+            // If we are asked to finalize the pre-finalized data, we just don't do it.
+            let mut new_post_data = vec![];
+            let mut counter = 0;
+            let row_shift = self.pre_finalized_data.len() + self.finalized_data.len();
+            std::mem::take(&mut self.post_finalized_data)
+                .into_iter()
+                .enumerate()
+                .for_each(|(i, row)| {
+                    if range.contains(&(i + row_shift)) {
+                        self.finalized_data.push(row);
+                        counter += 1;
+                    } else {
+                        new_post_data.push(row);
+                    }
+                });
+            self.post_finalized_data = new_post_data;
+            counter
         }
     }
 
@@ -146,36 +290,38 @@ impl<T: FieldElement> FinalizableData<T> {
     pub fn take_transposed(&mut self) -> impl Iterator<Item = (PolyID, (Vec<T>, BitVec))> {
         log::debug!(
             "Transposing {} rows with {} columns...",
-            self.data.len(),
+            self.len(),
             self.column_ids.len()
         );
         log::debug!("Finalizing remaining rows...");
-        let mut counter = 0;
-        for i in 0..self.data.len() {
-            if self.finalize(i) {
-                counter += 1;
-            }
-        }
-        log::debug!("Needed to finalize {} / {} rows.", counter, self.data.len());
+        let counter = self.finalize_range(
+            (self.pre_finalized_data.len() + self.finalized_data.len())..self.len(),
+        );
+        log::debug!("Needed to finalize {} / {} rows.", counter, self.len());
+        assert!(self.post_finalized_data.is_empty());
 
         // Store transposed columns in vectors for performance reasons
-        let mut columns = vec![Vec::with_capacity(self.data.len()); self.column_ids.len()];
-        let mut known_cells_col =
-            vec![BitVec::with_capacity(self.data.len()); self.column_ids.len()];
-        for row in std::mem::take(&mut self.data) {
-            match row {
-                Entry::InProgress(_) => unreachable!(),
-                Entry::Finalized(FinalizedRow {
-                    values,
-                    known_cells,
-                }) => {
-                    for (col_index, (value, is_known)) in
-                        values.into_iter().zip(known_cells).enumerate()
-                    {
-                        known_cells_col[col_index].push(is_known);
-                        columns[col_index].push(value);
-                    }
+        let mut columns = vec![Vec::with_capacity(self.len()); self.column_ids.len()];
+        let mut known_cells_col = vec![BitVec::with_capacity(self.len()); self.column_ids.len()];
+
+        // There could still be pre-finalized data.
+        for row in &self.pre_finalized_data {
+            for (i, col_id) in self.column_ids.iter().enumerate() {
+                if let Some(v) = row.value(col_id) {
+                    columns[i].push(v);
+                    known_cells_col[i].push(true);
+                } else {
+                    columns[i].push(T::zero());
+                    known_cells_col[i].push(false);
                 }
+            }
+        }
+
+        for row in 0..self.finalized_data.len() {
+            for (i, col_id) in self.column_ids.iter().enumerate() {
+                let (v, known) = self.finalized_data.get(row, col_id.id);
+                columns[i].push(v);
+                known_cells_col[i].push(known);
             }
         }
 
@@ -195,18 +341,33 @@ impl<T: FieldElement> Index<usize> for FinalizableData<T> {
     type Output = Row<T>;
 
     fn index(&self, index: usize) -> &Self::Output {
-        match &self.data[index] {
-            Entry::InProgress(row) => row,
-            Entry::Finalized(_) => panic!("Row {index} already finalized."),
+        if index < self.pre_finalized_data.len() {
+            &self.pre_finalized_data[index]
+        } else if index < self.pre_finalized_data.len() + self.finalized_data.len() {
+            panic!("Row {index} already finalized.");
+        } else {
+            &self.post_finalized_data
+                [index - self.pre_finalized_data.len() - self.finalized_data.len()]
         }
     }
 }
 
 impl<T: FieldElement> IndexMut<usize> for FinalizableData<T> {
     fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        match &mut self.data[index] {
-            Entry::InProgress(row) => row,
-            Entry::Finalized(_) => panic!("Row {index} already finalized."),
+        if index < self.pre_finalized_data.len() {
+            &mut self.pre_finalized_data[index]
+        } else if index < self.pre_finalized_data.len() + self.finalized_data.len() {
+            panic!("Row {index} already finalized.");
+        } else {
+            &mut self.post_finalized_data
+                [index - self.pre_finalized_data.len() - self.finalized_data.len()]
         }
     }
+}
+
+/// The area a row falls into and the offset inside that area.
+enum Location {
+    PreFinalized(usize),
+    Finalized(usize),
+    PostFinalized(usize),
 }

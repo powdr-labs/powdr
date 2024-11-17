@@ -1,6 +1,5 @@
 #![deny(clippy::print_stdout)]
 
-use lazy_static::lazy_static;
 use powdr_analysis::utils::parse_pil_statement;
 use powdr_ast::{
     asm_analysis::{combine_flags, MachineDegree},
@@ -17,25 +16,6 @@ use std::{collections::BTreeMap, iter::once, ops::ControlFlow, str::FromStr};
 use strum::{Display, EnumString, EnumVariantNames};
 
 const MAIN_OPERATION_NAME: &str = "main";
-/// The log of the default minimum degree
-pub const MIN_DEGREE_LOG: usize = 5;
-lazy_static! {
-    // The maximum degree can add a significant cost during setup, because
-    // the fixed columns need to be committed to in all sizes up to the max degree.
-    // This gives the user the possibility to overwrite the default value.
-    /// The log of the default maximum degree
-    pub static ref MAX_DEGREE_LOG: usize = {
-        let default_max_degree_log = 22;
-
-        let max_degree_log = match std::env::var("MAX_DEGREE_LOG") {
-            Ok(val) => val.parse::<usize>().unwrap(),
-            Err(_) => default_max_degree_log,
-        };
-        log::info!("For variably-sized machine, the maximum degree is 2^{max_degree_log}. \
-            You can set the environment variable MAX_DEGREE_LOG to change this value.");
-        max_degree_log
-    };
-}
 
 /// Link the objects into a single PIL file, using the specified mode.
 pub fn link(graph: MachineInstanceGraph, mode: LinkerMode) -> Result<PILFile, Vec<String>> {
@@ -368,10 +348,10 @@ fn to_namespace_degree(d: MachineDegree) -> NamespaceDegree {
     NamespaceDegree {
         min: d
             .min
-            .unwrap_or_else(|| Expression::from(1 << MIN_DEGREE_LOG)),
+            .expect("Either Main or submachine must have explicit degree or min degree"),
         max: d
             .max
-            .unwrap_or_else(|| Expression::from(1 << *MAX_DEGREE_LOG)),
+            .expect("Either Main or submachine must have explicit degree or max degree"),
     }
 }
 
@@ -425,8 +405,6 @@ mod test {
     use powdr_parser::parse_asm;
 
     use pretty_assertions::assert_eq;
-
-    use crate::{MAX_DEGREE_LOG, MIN_DEGREE_LOG};
 
     fn link_native(graph: MachineInstanceGraph) -> Result<PILFile, Vec<String>> {
         super::link(graph, super::LinkerMode::Native)
@@ -527,13 +505,7 @@ namespace main__rom(4 + 4);
 
     #[test]
     fn compile_really_empty_vm() {
-        let expectation = format!(
-            r#"namespace main({}..{});
-"#,
-            1 << MIN_DEGREE_LOG,
-            1 << *MAX_DEGREE_LOG
-        );
-
+        let expectation = "namespace main(0);\n";
         let graph = parse_analyze_and_compile::<GoldilocksField>("");
         let pil = link_native(graph).unwrap();
         assert_eq!(extract_main(&format!("{pil}")), expectation);
