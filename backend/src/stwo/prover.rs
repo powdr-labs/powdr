@@ -56,6 +56,7 @@ where
     pub fn new(
         analyzed: Arc<Analyzed<F>>,
         _fixed: Arc<Vec<(String, Vec<F>)>>,
+        //  setup: Option<&mut dyn io::Read>,
     ) -> Result<Self, io::Error> {
         Ok(Self {
             analyzed,
@@ -124,6 +125,10 @@ where
         );
 
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.
+        // TODO: When constant columns are supported, there will be more than one sizes and proof.commitments
+        // size[0] is for constant columns, size[1] is for witness columns, size[2] is for lookup columns
+        // pass size[1] for witness columns now is not doable due to this branch is outdated for the new feature of constant columns
+        // it will throw errors.
         let sizes = component.trace_log_degree_bounds();
         commitment_scheme.commit(proof.commitments[0], &sizes[0], &mut verifier_channel);
 

@@ -312,7 +312,7 @@ pub fn test_plonky3_with_backend_variant<T: FieldElement>(
     let mut pipeline = Pipeline::default()
         .with_tmp_output()
         .from_file(resolve_test_file(file_name))
-        .with_prover_inputs(inputs.clone())
+        .with_prover_inputs(inputs)
         .with_backend(backend, None);
 
     // Generate a proof
@@ -550,7 +550,7 @@ pub fn test_stwo(file_name: &str, inputs: Vec<Mersenne31Field>) {
     let mut pipeline = Pipeline::default()
         .with_tmp_output()
         .from_file(resolve_test_file(file_name))
-        .with_prover_inputs(inputs.clone())
+        .with_prover_inputs(inputs)
         .with_backend(backend, None);
 
     let proof = pipeline.compute_proof().cloned().unwrap();
@@ -565,4 +565,4 @@ pub fn test_stwo(file_name: &str, inputs: Vec<Mersenne31Field>) {
 }
 
 #[cfg(not(feature = "stwo"))]
-pub fn test_stwo(_file_name: &str, _inputs: Vec<Mersenne31Field>) {}
+pub fn test_stwo(_file_name: &str, _inputs: Vec) {}
