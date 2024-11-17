@@ -59,7 +59,7 @@ generalize_factory!(Factory <- RestrictedFactory, [Mersenne31Field]);
 impl<T: FieldElement, MC: MerkleChannel + Send, C: Channel + Send> Backend<T>
     for StwoProver<T, SimdBackend, MC, C>
 where
-    SimdBackend: BackendForChannel<MC>, // Ensure B implements BackendForChannel<MC>
+    SimdBackend: BackendForChannel<MC>,
     MC: MerkleChannel,
     C: Channel,
     MC::H: DeserializeOwned + Serialize,
