@@ -57,7 +57,6 @@ where
         analyzed: Arc<Analyzed<F>>,
         _fixed: Arc<Vec<(String, Vec<F>)>>,
     ) -> Result<Self, io::Error> {
-
         Ok(Self {
             analyzed,
             _fixed,
