@@ -226,7 +226,12 @@ fn deduplicate_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let replacement_map: BTreeMap<PolyID, (String, PolyID)> = pil_file
         .constant_polys_in_source_order()
         // group symbols by common namespace and displayed value
-        .into_group_map_by(|(symbol, value)| (symbol.absolute_name.split("::").next().unwrap(), value.as_ref().unwrap().to_string()))
+        .into_group_map_by(|(symbol, value)| {
+            (
+                symbol.absolute_name.split("::").next().unwrap(),
+                value.as_ref().unwrap().to_string(),
+            )
+        })
         .values()
         // map all other symbols to the first one
         .flat_map(|group| {
