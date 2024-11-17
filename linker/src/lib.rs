@@ -173,7 +173,7 @@ impl Linker {
             .map(|oid| namespaced_reference(to_namespace.clone(), oid))
             .into_iter();
 
-        let rhs = ArrayLiteral {
+        let rhs_list = ArrayLiteral {
             items: op_id
                 .chain(to.operation.params.inputs_and_outputs().map(|i| {
                     index_access(
@@ -199,7 +199,7 @@ impl Linker {
                 latch
             };
 
-            let rhs = selected(rhs_selector, rhs);
+            let rhs = selected(rhs_selector, rhs_list);
 
             self.insert_interaction(
                 InteractionType::Permutation,
@@ -212,7 +212,7 @@ impl Linker {
             let latch = namespaced_reference(to_namespace.clone(), to.machine.latch.unwrap());
 
             // plookup rhs is `latch $ [ operation_id, inputs, outputs ]`
-            let rhs = selected(latch, rhs);
+            let rhs = selected(latch, rhs_list);
 
             self.insert_interaction(
                 InteractionType::Lookup,
