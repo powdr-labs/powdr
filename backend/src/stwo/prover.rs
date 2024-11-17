@@ -57,14 +57,6 @@ where
         analyzed: Arc<Analyzed<F>>,
         _fixed: Arc<Vec<(String, Vec<F>)>>,
     ) -> Result<Self, io::Error> {
-        let config = PcsConfig {
-            pow_bits: FRI_PROOF_OF_WORK_BITS as u32,
-            fri_config: FriConfig::new(
-                LOG_LAST_LAYER_DEGREE_BOUND as u32,
-                FRI_LOG_BLOWUP as u32,
-                FRI_NUM_QUERIES,
-            ),
-        };
 
         Ok(Self {
             analyzed,

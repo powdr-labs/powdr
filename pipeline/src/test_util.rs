@@ -563,3 +563,6 @@ pub fn test_stwo(file_name: &str, inputs: Vec<Mersenne31Field>) {
         .collect();
     pipeline.verify(&proof, &[publics]).unwrap();
 }
+
+#[cfg(not(feature = "stwo"))]
+pub fn test_stwo(_file_name: &str, _inputs: Vec<Mersenne31Field>) {}

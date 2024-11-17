@@ -1,8 +1,6 @@
 #[cfg(feature = "halo2")]
 use powdr_number::Bn254Field;
 use powdr_number::GoldilocksField;
-#[cfg(feature = "stwo")]
-use powdr_pipeline::test_util::test_stwo;
 use powdr_pipeline::{
     test_util::{
         assert_proofs_fail_for_invalid_witnesses, assert_proofs_fail_for_invalid_witnesses_estark,
@@ -10,7 +8,7 @@ use powdr_pipeline::{
         assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof,
         gen_estark_proof_with_backend_variant, make_prepared_pipeline,
         make_simple_prepared_pipeline, regular_test, run_pilcom_with_backend_variant, test_halo2,
-        test_halo2_with_backend_variant, test_pilcom, test_plonky3_with_backend_variant,
+        test_halo2_with_backend_variant, test_pilcom, test_plonky3_with_backend_variant,test_stwo,
         BackendVariant,
     },
     Pipeline,
@@ -266,7 +264,6 @@ fn add() {
     );
 }
 
-#[cfg(feature = "stwo")]
 #[test]
 fn stwo_add_and_equal() {
     let f = "pil/add_and_equal.pil";
