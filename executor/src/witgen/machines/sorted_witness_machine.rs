@@ -133,19 +133,14 @@ fn check_identity<T: FieldElement>(
     // of evaluating it.
     for row in 0..(degree as usize) {
         let fixed_evaluator = FixedEvaluator::new(fixed_data, row, degree);
-        let mut ev = ExpressionEvaluator::new(&fixed_data.intermediate_definitions);
+        let mut ev =
+            ExpressionEvaluator::new(fixed_evaluator, &fixed_data.intermediate_definitions);
         let degree = degree as usize;
-        let nl = ev
-            .evaluate(&fixed_evaluator, not_last)
-            .ok()?
-            .constant_value()?;
+        let nl = ev.evaluate(not_last).ok()?.constant_value()?;
         if (row == degree - 1 && !nl.is_zero()) || (row < degree - 1 && !nl.is_one()) {
             return None;
         }
-        let pos = ev
-            .evaluate(&fixed_evaluator, positive)
-            .ok()?
-            .constant_value()?;
+        let pos = ev.evaluate(positive).ok()?.constant_value()?;
         if pos != (row as u64 + 1).into() {
             return None;
         }
@@ -159,12 +154,13 @@ fn check_constraint<T: FieldElement>(
     fixed: &FixedData<T>,
     constraint: &Expression<T>,
 ) -> Option<PolyID> {
-    let sort_constraint = match ExpressionEvaluator::new(&fixed.intermediate_definitions)
-        .evaluate(&SymbolicEvaluator, constraint)
-    {
-        Ok(c) => c,
-        Err(_) => return None,
-    };
+    let sort_constraint =
+        match ExpressionEvaluator::new(SymbolicEvaluator, &fixed.intermediate_definitions)
+            .evaluate(constraint)
+        {
+            Ok(c) => c,
+            Err(_) => return None,
+        };
     let mut coeff = sort_constraint.nonzero_coefficients();
     let first = coeff
         .next()

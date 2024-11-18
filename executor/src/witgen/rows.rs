@@ -1,5 +1,4 @@
 use std::{
-    cell::RefCell,
     collections::BTreeMap,
     fmt::Display,
     ops::{Add, Sub},
@@ -384,9 +383,6 @@ pub struct RowPair<'row, 'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     unknown_strategy: UnknownStrategy,
     size: DegreeType,
-    /// Expression evaluator. Because it keeps a cache of intermediate values throughout its lifetime,
-    /// we keep it around in a RefCell, so that multiple calls to `evaluate` can reuse intermediate values.
-    evaluator: RefCell<ExpressionEvaluator<'a, T>>,
 }
 impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     /// Creates a new row pair.
@@ -407,9 +403,6 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
             fixed_data,
             unknown_strategy,
             size,
-            evaluator: RefCell::new(ExpressionEvaluator::new(
-                &fixed_data.intermediate_definitions,
-            )),
         }
     }
 
@@ -430,9 +423,6 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
             fixed_data,
             unknown_strategy,
             size,
-            evaluator: RefCell::new(ExpressionEvaluator::new(
-                &fixed_data.intermediate_definitions,
-            )),
         }
     }
 
@@ -479,7 +469,11 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
             self,
             self.size,
         );
-        self.evaluator.borrow_mut().evaluate(&variables, expr)
+        // Note that because we instantiate a fresh evaluator here, we don't benefit from caching
+        // of intermediate values across calls of `RowPair::evaluate`. In practice, we only call
+        // it many times for the same RowPair though.
+        ExpressionEvaluator::new(variables, &self.fixed_data.intermediate_definitions)
+            .evaluate(expr)
     }
 }
 
