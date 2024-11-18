@@ -17,6 +17,7 @@ use std::math::fp2::required_extension_size;
 use std::math::fp2::needs_extension;
 use std::protocols::fingerprint::fingerprint;
 use std::utils::unwrap_or_else;
+use std::constraints::to_phantom_permutation;
 
 let unpack_permutation_constraint: Constr -> (expr, expr[], expr, expr[]) = |permutation_constraint| match permutation_constraint {
     Constr::Permutation((lhs_selector, rhs_selector), values) => (
@@ -54,9 +55,6 @@ let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr -> fe[] = query |acc
 };
 
 /// Returns constraints that enforce that lhs is a permutation of rhs
-/// WARNING: This function can currently not be used multiple times since
-/// the used challenges would overlap
-/// TODO: Implement this for an array of constraints
 ///
 /// # Implementation:
 /// This function implements a permutation argument described e.g. in
@@ -109,6 +107,9 @@ let permutation: Constr -> () = constr |permutation_constraint| {
     is_first * (acc_1 - 1) = 0;
     is_first * acc_2 = 0;
     constrain_eq_ext(update_expr, from_base(0));
+
+    // Add an annotation for witness generation
+    to_phantom_permutation(permutation_constraint);
 
     // In the extension field, we need a prover function for the accumulator.
     if needs_extension() {

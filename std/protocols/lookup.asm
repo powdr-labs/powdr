@@ -58,9 +58,6 @@ let compute_next_z: Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr, expr -> fe[] = quer
 /// Transforms a single lookup constraint to identity constraints, challenges and
 /// higher-stage witness columns.
 /// Use this function if the backend does not support lookup constraints natively.
-/// WARNING: This function can currently not be used multiple times since
-/// the used challenges would overlap.
-/// TODO: Implement this for an array of constraints.         
 let lookup: Constr -> () = constr |lookup_constraint| {
     std::check::assert(required_extension_size() <= 2, || "Invalid extension size");
     // Alpha is used to compress the LHS and RHS arrays.
