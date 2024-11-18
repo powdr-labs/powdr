@@ -109,7 +109,6 @@ impl BackendType {
             #[cfg(feature = "stwo")]
             BackendType::Stwo => Box::new(stwo::Factory),
 
-
             #[cfg(not(any(
                 feature = "halo2",
                 feature = "estark-polygon",
