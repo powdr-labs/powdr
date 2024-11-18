@@ -36,7 +36,7 @@ machine Arith256Memory(mem: Memory) with
 
     // Computes x1 * y1 + x2, where all inputs / outputs are 256-bit words (represented as 32-Bit limbs in little-endian order).
     // More precisely, affine_256(x1, y1, x2) = (y2, y3), where x1 * y1 + x2 = 2**256 * y2 + y3
-    operation affine_256<1> time_step, addr1, addr2, addr3, addr4, x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7], y1c[0], y1c[1], y1c[2], y1c[3], y1c[4], y1c[5], y1c[6], y1c[7], x2c[0], x2c[1], x2c[2], x2c[3], x2c[4], x2c[5], x2c[6], x2c[7] -> y2c[0], y2c[1], y2c[2], y2c[3], y2c[4], y2c[5], y2c[6], y2c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7];
+    operation affine_256<1> time_step, addr1, addr2, addr3, addr4 -> y2c[0], y2c[1], y2c[2], y2c[3], y2c[4], y2c[5], y2c[6], y2c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7];
     
     // mod_256(y2, y3, x1) = x2 computes (2 ** 256 * y2 + y3) % x1, where all inputs / outputs are 256-bit words.
     // While hint computes the modulus, there's no guarantee from user generated witness input that the remainder is smaller than the modulus.
@@ -54,7 +54,9 @@ machine Arith256Memory(mem: Memory) with
     // Get an intermediate column that indicates that we're in an
     // actual block, not a default block. Its value is constant
     // within the block.
-    let used = array::sum(sel);
+    // TODO: Witgen fails if this is an intermediate column.
+    col witness used;
+    used = array::sum(sel);
     array::map(sel, |s| unchanged_until(s, CLK32[31]));
     std::utils::force_bool(used);
 
@@ -85,21 +87,48 @@ machine Arith256Memory(mem: Memory) with
     // - ec_double:
     //   - addr1 -> (x1, y1) (blocks 0 & 1)
 
-    
+    // Compute the "base" input address (we'll read words at base_input_address + offset)
     col witness base_input_address;
     is_affine * (base_input_address - (block[0] * addr1 + block[1] * addr2 + block[2] * addr3)) = 0;
     is_mod * (base_input_address - (block[0] * addr1 + block[1] * (addr1 + 32))) = 0;
     is_ec_add * (base_input_address - (block[0] * addr1 + block[1] * (addr1 + 32) + block[2] * addr2 + block[2] * (addr2 + 32))) = 0;
     is_ec_double * (base_input_address - (block[0] * addr1 + block[1] * (addr1 + 32))) = 0;
-    let input_address = base_input_address + offset;
+    let input_address;
+    input_address = base_input_address + offset;
 
+    // Compute whether to read from memory at all.
     let do_mload;
     (is_affine + is_mod) * (do_mload - (block[0] + block[1] + block[2])) = 0;
     is_ec_add * (do_mload - 1) = 0;
     is_ec_double * (do_mload - (block[0] + block[1])) = 0;
 
-    // TODO: Store in correct target cell
+    // Select the target cell
+    let target_cell = (
+        is_affine * (
+            sum(8, |i| CLK32[i] * x1c[i]) +
+            sum(8, |i| CLK32[8 + i] * y1c[i]) +
+            sum(8, |i| CLK32[16 + i] * x2c[i])
+        ) +
+        is_mod * (
+            sum(8, |i| CLK32[i] * y2c[i]) +
+            sum(8, |i| CLK32[8 + i] * y3c[i]) +
+            sum(8, |i| CLK32[16 + i] * x1c[i])
+        ) +
+        is_ec_add * (
+            sum(8, |i| CLK32[i] * x1c[i]) +
+            sum(8, |i| CLK32[8 + i] * y1c[i]) +
+            sum(8, |i| CLK32[16 + i] * x2c[i]) +
+            sum(8, |i| CLK32[24 + i] * y2c[i])
+        ) +
+        is_ec_double * (
+            sum(8, |i| CLK32[i] * x1c[i]) +
+            sum(8, |i| CLK32[8 + i] * y1c[i])
+        )
+    );
+
+    // Read the word
     let read_word;
+    read_word = target_cell;
     link if (used * do_mload) ~> read_word = mem.mload(input_address, time_step);
 
     // ------------- End memory read / write -----------------
