@@ -139,6 +139,25 @@ fn arith_large_test() {
 
 #[test]
 #[ignore = "Too slow"]
+fn arith256_memory_large_test() {
+    let f = "std/arith256_memory_large_test.asm";
+    let pipeline = make_simple_prepared_pipeline(f);
+    test_pilcom(pipeline.clone());
+
+    // Running gen_estark_proof(f, Default::default())
+    // is too slow for the PR tests. This will only create a single
+    // eStark proof instead of 3.
+    #[cfg(feature = "estark-starky")]
+    pipeline
+        .with_backend(powdr_backend::BackendType::EStarkStarky, None)
+        .compute_proof()
+        .unwrap();
+
+    test_halo2(make_simple_prepared_pipeline(f));
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn memory_large_test() {
     let f = "std/memory_large_test.asm";
     regular_test_without_small_field(f, &[]);
