@@ -24,7 +24,6 @@ const FRI_NUM_QUERIES: usize = 100;
 const FRI_PROOF_OF_WORK_BITS: usize = 16;
 const LOG_LAST_LAYER_DEGREE_BOUND: usize = 0;
 
-#[allow(unused_variables)]
 pub struct StwoProver<T, B: Backend + Send, MC: MerkleChannel, C: Channel> {
     pub analyzed: Arc<Analyzed<T>>,
     _fixed: Arc<Vec<(String, Vec<T>)>>,
@@ -45,12 +44,9 @@ where
     MC::H: DeserializeOwned + Serialize,
     PowdrComponent<'a, F>: ComponentProver<B>,
 {
-    #[allow(dead_code)]
-    #[allow(unused_variables)]
     pub fn new(
         analyzed: Arc<Analyzed<F>>,
         _fixed: Arc<Vec<(String, Vec<F>)>>,
-        //  setup: Option<&mut dyn io::Read>,
     ) -> Result<Self, io::Error> {
         Ok(Self {
             analyzed,
@@ -124,6 +120,7 @@ where
         // pass size[1] for witness columns now is not doable due to this branch is outdated for the new feature of constant columns
         // it will throw errors.
         let sizes = component.trace_log_degree_bounds();
+        assert_eq!(sizes.len(), 1);
         commitment_scheme.commit(proof.commitments[0], &sizes[0], &mut verifier_channel);
 
         stwo_prover::core::prover::verify(
