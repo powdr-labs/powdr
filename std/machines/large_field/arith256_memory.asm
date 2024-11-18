@@ -36,7 +36,7 @@ machine Arith256Memory(mem: Memory) with
 
     // Computes x1 * y1 + x2, where all inputs / outputs are 256-bit words (represented as 32-Bit limbs in little-endian order).
     // More precisely, affine_256(x1, y1, x2) = (y2, y3), where x1 * y1 + x2 = 2**256 * y2 + y3
-    operation affine_256<1> x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7], y1c[0], y1c[1], y1c[2], y1c[3], y1c[4], y1c[5], y1c[6], y1c[7], x2c[0], x2c[1], x2c[2], x2c[3], x2c[4], x2c[5], x2c[6], x2c[7] -> y2c[0], y2c[1], y2c[2], y2c[3], y2c[4], y2c[5], y2c[6], y2c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7];
+    operation affine_256<1> time_step, addr1, addr2, addr3, addr4, x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7], y1c[0], y1c[1], y1c[2], y1c[3], y1c[4], y1c[5], y1c[6], y1c[7], x2c[0], x2c[1], x2c[2], x2c[3], x2c[4], x2c[5], x2c[6], x2c[7] -> y2c[0], y2c[1], y2c[2], y2c[3], y2c[4], y2c[5], y2c[6], y2c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7];
     
     // mod_256(y2, y3, x1) = x2 computes (2 ** 256 * y2 + y3) % x1, where all inputs / outputs are 256-bit words.
     // While hint computes the modulus, there's no guarantee from user generated witness input that the remainder is smaller than the modulus.
@@ -48,6 +48,62 @@ machine Arith256Memory(mem: Memory) with
     
     // Performs elliptic curve doubling of point (x1, y2).
     operation ec_double<8> x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7], y1c[0], y1c[1], y1c[2], y1c[3], y1c[4], y1c[5], y1c[6], y1c[7] -> x3c[0], x3c[1], x3c[2], x3c[3], x3c[4], x3c[5], x3c[6], x3c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7];
+
+    // ------------- Begin memory read / write ---------------
+
+    // Get an intermediate column that indicates that we're in an
+    // actual block, not a default block. Its value is constant
+    // within the block.
+    let used = array::sum(sel);
+    array::map(sel, |s| unchanged_until(s, CLK32[31]));
+    std::utils::force_bool(used);
+
+    // Repeat the time step and addresses in the whole block
+    let time_step;
+    col witness addr1, addr2, addr3, addr4;
+    let addr = [addr1, addr2, addr3, addr4];
+    array::map(addr, |a| unchanged_until(a, CLK32[31]));
+    unchanged_until(time_step, CLK32[31]);
+
+    // Group the 32 rows into 4 blocks of 8 rows each
+    let block = array::new(4, |i| sum(8, |j| CLK32[8 * i + j]));
+
+    // Index in each block
+    let offset = sum(8, |i| expr(i * 4) * (CLK32[i] + CLK32[8 + i] + CLK32[16 + i] + CLK32[24 + i]));
+
+    // Memory reads:
+    // - affine_256:
+    //   - addr1 -> x1 (block 0)
+    //   - addr2 -> y1 (block 1)
+    //   - addr3 -> x2 (block 2)
+    // - mod_256:
+    //   - addr1 -> (y2, y3) (blocks 0 & 1)
+    //   - addr2 -> x1 (block 2)
+    // - ec_add:
+    //   - addr1 -> (x1, y1) (blocks 0 & 1)
+    //   - addr2 -> (x2, y2) (blocks 2 & 3)
+    // - ec_double:
+    //   - addr1 -> (x1, y1) (blocks 0 & 1)
+
+    
+    col witness base_input_address;
+    is_affine * (base_input_address - (block[0] * addr1 + block[1] * addr2 + block[2] * addr3)) = 0;
+    is_mod * (base_input_address - (block[0] * addr1 + block[1] * (addr1 + 32))) = 0;
+    is_ec_add * (base_input_address - (block[0] * addr1 + block[1] * (addr1 + 32) + block[2] * addr2 + block[2] * (addr2 + 32))) = 0;
+    is_ec_double * (base_input_address - (block[0] * addr1 + block[1] * (addr1 + 32))) = 0;
+    let input_address = base_input_address + offset;
+
+    let do_mload;
+    (is_affine + is_mod) * (do_mload - (block[0] + block[1] + block[2])) = 0;
+    is_ec_add * (do_mload - 1) = 0;
+    is_ec_double * (do_mload - (block[0] + block[1])) = 0;
+
+    // TODO: Store in correct target cell
+    let read_word;
+    link if (used * do_mload) ~> read_word = mem.mload(input_address, time_step);
+
+    // ------------- End memory read / write -----------------
+
 
     let secp_modulus = 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f;
 
