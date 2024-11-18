@@ -28,7 +28,7 @@ implementation that builds on *powdr*.
 Users can write code in std Rust which is compiled to RISCV,
 then to powdr-asm and finally to powdr-PIL.
 
-*powdr*-pil can be used to generate proofs using multiple backends, such as:
+*powdr*-PIL can be used to generate proofs using multiple backends, such as:
 
 - [Plonky3](https://github.com/Plonky3/Plonky3)
 - Halo2, using PSE's
@@ -43,11 +43,11 @@ then to powdr-asm and finally to powdr-PIL.
 All stages are fully automatic, which means you do not need to write any
 additional code for witness generation besides your Rust code. All witnesses
 are automatically inferred from the constraints. Since the witnesses are
-inferred, *powdr* can ensure that the system is not underconstrained, i.e.
+inferred, *powdr* can ensure that the system is not underconstrained, i.e.,
 there are no additional unwanted witnesses.
 
 All artifacts from the compilation pipeline are human-readable.
-You can inspect the the powdr-asm IR, the compiled PIL file,
+You can inspect the powdr-asm IR, the compiled powdr-PIL file,
 and its final optimized version.
 
 The assembly language is designed to be extensible and does not have a single
