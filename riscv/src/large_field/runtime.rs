@@ -328,7 +328,7 @@ impl Runtime {
         self.add_submachine(
             "std::machines::large_field::arith::Arith",
             None,
-            "arith",
+            "arith(MIN_DEGREE, MAIN_MAX_DEGREE)",
             vec![],
             [
                 format!(

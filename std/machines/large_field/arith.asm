@@ -310,7 +310,7 @@ machine Arith with
     * Carry
     *
     *******/
-    
+
     // Note that Polygon uses a single 22-Bit column. However, this approach allows for a lower degree (2**16)
     // while still preventing overflows: The 32-bit carry gets added to 32 48-Bit values, which can't overflow
     // the Goldilocks field.
@@ -324,7 +324,7 @@ machine Arith with
 
     // Carries can be any integer in the range [-2**31, 2**31 - 1)
     let carry = array::new(3, |i| carry_high[i] * 2**16 + carry_low[i] - 2 ** 31);
-    
+
     array::map(carry, |c| c * CLK32[0] = 0);
 
     /*******
@@ -332,12 +332,17 @@ machine Arith with
     * Putting everything together
     *
     *******/
-    
-    col eq0_sum = sum(32, |i| eq0(i) * CLK32[i]);
-    col eq1_sum = sum(32, |i| eq1(i) * CLK32[i]);
-    col eq2_sum = sum(32, |i| eq2(i) * CLK32[i]);
-    col eq3_sum = sum(32, |i| eq3(i) * CLK32[i]);
-    col eq4_sum = sum(32, |i| eq4(i) * CLK32[i]);
+
+    col witness eq0_sum;
+    eq0_sum = sum(32, |i| eq0(i) * CLK32[i]);
+    col witness eq1_sum;
+    eq1_sum = sum(32, |i| eq1(i) * CLK32[i]);
+    col witness eq2_sum;
+    eq2_sum = sum(32, |i| eq2(i) * CLK32[i]);
+    col witness eq3_sum;
+    eq3_sum = sum(32, |i| eq3(i) * CLK32[i]);
+    col witness eq4_sum;
+    eq4_sum = sum(32, |i| eq4(i) * CLK32[i]);
 
     selEq[0] * (eq0_sum + carry[0]) = selEq[0] * carry[0]' * 2**16;
     selEq[1] * (eq1_sum + carry[0]) = selEq[1] * carry[0]' * 2**16;
