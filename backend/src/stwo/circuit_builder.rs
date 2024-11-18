@@ -187,7 +187,7 @@ where
             }
         }
         AlgebraicExpression::Challenge(_challenge) => {
-            unimplemented!("challenges are not supported in this stwo yet")
+            unimplemented!("challenges are not supported in stwo yet")
         }
     }
 }
