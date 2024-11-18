@@ -73,7 +73,10 @@ impl<T: FieldElement> Display for KnownValue<T> {
 
 impl<T: FieldElement> KnownValue<T> {
     pub fn from_known_cell(cell: &Cell) -> Self {
-        KnownValue::Symbolic(cell_to_variable(cell), None)
+        KnownValue::Symbolic(
+            format!("get(state, {}, {})", cell.row_offset, cell.id),
+            None,
+        )
     }
 
     pub fn from_known_local_var(name: &str) -> Self {
@@ -204,11 +207,12 @@ fn cell_to_variable(
         ..
     }: &Cell,
 ) -> String {
-    if *row_offset < 0 {
-        format!("{column_name}_u{}", -row_offset)
-    } else {
-        format!("{column_name}_d{row_offset}")
-    }
+    format!("get(state, {}, {})", row_offset, column_name)
+    // if *row_offset < 0 {
+    //     format!("{column_name}_u{}", -row_offset)
+    // } else {
+    //     format!("{column_name}_d{row_offset}")
+    // }
 }
 
 impl<T: FieldElement> From<KnownValue<T>> for EvalResult<T> {
@@ -293,7 +297,11 @@ impl<T: FieldElement> EvalResult<T> {
                 };
                 return once(Effect::Assignment(
                     cell.clone(),
-                    format!("let {} = {assignment}", cell_to_variable(cell)),
+                    //format!("let {} = {assignment}", cell_to_variable(cell)),
+                    format!(
+                        "set(state, {}, {}, {assignment});",
+                        cell.row_offset, cell.id
+                    ),
                 ))
                 .chain(rc.map(|rc| Effect::RangeConstraint(cell.clone(), rc)))
                 .collect();
@@ -358,7 +366,7 @@ impl<T: FieldElement> EvalResult<T> {
             };
             assignments.push(Effect::Assignment(
                 cell.clone(),
-                format!("let {} = {rhs};", cell_to_variable(&cell)),
+                format!("set(state, {}, {}, {rhs});", cell.row_offset, cell.id),
             ));
             assignments.push(Effect::RangeConstraint(
                 cell.clone(),

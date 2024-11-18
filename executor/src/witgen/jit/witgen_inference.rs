@@ -125,7 +125,19 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
     }
 
     pub fn code(&self) -> String {
-        self.code.join("\n")
+        format!(
+            r#"
+            #[no_mangle]
+            extern "C" fn witgen(
+                state: *mut c_void,
+                get: extern "C" fn(*mut c_void, i32, u64) -> T,
+                set: extern "C" fn(*mut c_void, i32, u64, T),
+            ) {{
+                {}
+            }}
+            "#,
+            self.code.join("\n")
+        )
     }
 
     fn cell_at_row(&self, id: u64, row_offset: i32) -> Cell {

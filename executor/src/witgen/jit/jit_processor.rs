@@ -1,5 +1,4 @@
 use std::{
-    cell::RefCell,
     collections::HashMap,
     ffi::c_void,
     sync::{Arc, RwLock},
@@ -85,7 +84,13 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
         let code = inference.code();
         log::trace!("Generated code:\n{code}");
 
-        let lib_path = powdr_jit_compiler::compiler::call_cargo(&code).unwrap();
+        let lib_path = powdr_jit_compiler::compiler::call_cargo(&code)
+            .map_err(|e| {
+                log::error!("Failed to compile generated code: {}", e);
+                false
+            })
+            .unwrap();
+
         let library = Arc::new(unsafe { libloading::Library::new(&lib_path.path).unwrap() });
         // TODO what happen if there is a conflict in function names? Should we
         // encode the ID and the known inputs?
