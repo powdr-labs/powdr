@@ -93,6 +93,7 @@ machine Arith256Memory(mem: Memory) with
     is_mod * (base_input_address - (block[0] * addr1 + block[1] * (addr1 + 32))) = 0;
     is_ec_add * (base_input_address - (block[0] * addr1 + block[1] * (addr1 + 32) + block[2] * addr2 + block[2] * (addr2 + 32))) = 0;
     is_ec_double * (base_input_address - (block[0] * addr1 + block[1] * (addr1 + 32))) = 0;
+    
     let input_address;
     input_address = base_input_address + offset;
 
@@ -130,6 +131,52 @@ machine Arith256Memory(mem: Memory) with
     let read_word;
     read_word = target_cell;
     link if (used * do_mload) ~> read_word = mem.mload(input_address, time_step);
+
+    // Memory writes:
+    // - affine_256: (y2, y3) -> addr4 (blocks 0 & 1)
+    // - mod_256:     x2      -> addr3 (block 0)
+    // - ec_add:     (x3, y3) -> addr3 (blocks 0 & 1)
+    // - ec_double:  (x3, y3) -> addr2 (blocks 0 & 1)
+
+    // Compute the "base" output address (we'll write words at base_output_address + offset)
+    col witness base_output_address;
+    is_affine * (base_output_address - (block[0] * addr4 + block[1] * (addr4 + 32))) = 0;
+    is_mod * (base_output_address - (block[0] * addr3)) = 0;
+    is_ec_add * (base_output_address - (block[0] * addr3 + block[1] * (addr3 + 32))) = 0;
+    is_ec_double * (base_output_address - (block[0] * addr2 + block[1] * (addr2 + 32))) = 0;
+    
+    let output_address;
+    output_address = base_output_address + offset;
+
+    // Compute whether to write to memory at all.
+    let do_mstore;
+    (is_affine + is_ec_add + is_ec_double) * (do_mstore - (block[0] + block[1])) = 0;
+    is_mod * (do_mstore - block[0]) = 0;
+
+    // Select the source cell
+    let source_cell = (
+        is_affine * (
+            sum(8, |i| CLK32[i] * y2c[i]) +
+            sum(8, |i| CLK32[8 + i] * y3c[i])
+        ) +
+        is_mod * (
+            sum(8, |i| CLK32[i] * x2c[i])
+        ) +
+        is_ec_add * (
+            sum(8, |i| CLK32[i] * x3c[i]) +
+            sum(8, |i| CLK32[8 + i] * y3c[i])
+        ) +
+        is_ec_double * (
+            sum(8, |i| CLK32[i] * x3c[i]) +
+            sum(8, |i| CLK32[8 + i] * y3c[i])
+        )
+    );
+
+    // Write the word
+    let write_word;
+    write_word = source_cell;
+    link if (used * do_mstore) ~> mem.mstore(output_address, time_step + 1, write_word);
+
 
     // ------------- End memory read / write -----------------
 
