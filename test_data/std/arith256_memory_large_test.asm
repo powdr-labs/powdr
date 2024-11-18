@@ -94,15 +94,9 @@ machine Main with degree: 65536 {
     instr mod_256 D0, D1, D2, D3, D4, D5, D6, D7, E0, E1, E2, E3, E4, E5, E6, E7, A0, A1, A2, A3, A4, A5, A6, A7 -> C0, C1, C2, C3, C4, C5, C6, C7
         link ~> (C0, C1, C2, C3, C4, C5, C6, C7) = arith.mod_256(D0, D1, D2, D3, D4, D5, D6, D7, E0, E1, E2, E3, E4, E5, E6, E7, A0, A1, A2, A3, A4, A5, A6, A7);
 
-    instr assert_eq A0, A1, A2, A3, A4, A5, A6, A7, B0, B1, B2, B3, B4, B5, B6, B7 {
-        A0 = B0,
-        A1 = B1,
-        A2 = B2,
-        A3 = B3,
-        A4 = B4,
-        A5 = B5,
-        A6 = B6,
-        A7 = B7
+    col witness actual;
+    instr assert_eq X, Y -> link ~> actual = memory.mload(X, STEP) {
+        actual = Y
     }
 
 
@@ -141,9 +135,23 @@ machine Main with degree: 65536 {
         mstore 92, 0xaaaaaaaa;
 
         t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== affine_256(0, 32, 64, 0);
-        
-        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 0x9be02469, 0xf258bf25, 0x38e38e38, 0xe6f8091a, 0x740da740, 0x579be024, 0x091a2b3c, 0x00000000;
-        assert_eq t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7, 0x33333333, 0xa1907f6e, 0xca8641fd, 0x369d0369, 0x907f6e5d, 0x60b60b60, 0x0da740da, 0x1fdb9753;
+
+        assert_eq 0, 0x9be02469;
+        assert_eq 4, 0xf258bf25;
+        assert_eq 8, 0x38e38e38;
+        assert_eq 12, 0xe6f8091a;
+        assert_eq 16, 0x740da740;
+        assert_eq 20, 0x579be024;
+        assert_eq 24, 0x091a2b3c;
+        assert_eq 28, 0x00000000;
+        assert_eq 32, 0x33333333;
+        assert_eq 36, 0xa1907f6e;
+        assert_eq 40, 0xca8641fd;
+        assert_eq 44, 0x369d0369;
+        assert_eq 48, 0x907f6e5d;
+        assert_eq 52, 0x60b60b60;
+        assert_eq 56, 0x0da740da;
+        assert_eq 60, 0x1fdb9753;
 
         /*
 
