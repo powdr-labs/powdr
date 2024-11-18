@@ -220,7 +220,12 @@ machine Arith with
     /// returns a(0) * b(0) + ... + a(n - 1) * b(n - 1)
     let dot_prod = |n, a, b| sum(n, |i| a(i) * b(i));
     /// returns |n| a(0) * b(n) + ... + a(n) * b(0)
-    let product = |a, b| |n| dot_prod(n + 1, a, |i| b(n - i));
+    let product = constr |a, b| constr |n| {
+        let product_res;
+        product_res = dot_prod(n + 1, a, |i| b(n - i));
+        product_res
+    };
+    let product_inline = |a, b| |n| dot_prod(n + 1, a, |i| b(n - i));
     /// Converts array to function, extended by zeros.
     let array_as_fun: expr[] -> (int -> expr) = |arr| |i| if 0 <= i && i < array::len(arr) {
         arr[i]
@@ -241,7 +246,7 @@ machine Arith with
     let q2f = array_as_fun(q2);
 
     // Defined for arguments from 0 to 31 (inclusive)
-    let eq0 = |nr|
+    let eq0 = constr |nr|
         product(x1f, y1f)(nr)
         + x2f(nr)
         - shift_right(y2f, 16)(nr)
@@ -257,9 +262,9 @@ machine Arith with
 
     // The "- 4 * shift_right(p, 16)" effectively subtracts 4 * (p << 16 * 16) = 2 ** 258 * p
     // As a result, the term computes `(x - 2 ** 258) * p`.
-    let product_with_p = |x| |nr| product(p, x)(nr) - 4 * shift_right(p, 16)(nr);
+    let product_with_p = |x| |nr| product_inline(p, x)(nr) - 4 * shift_right(p, 16)(nr);
 
-    let eq1 = |nr| product(sf, x2f)(nr) - product(sf, x1f)(nr) - y2f(nr) + y1f(nr) + product_with_p(q0f)(nr);
+    let eq1 = constr |nr| product(sf, x2f)(nr) - product(sf, x1f)(nr) - y2f(nr) + y1f(nr) + product_with_p(q0f)(nr);
 
     /*******
     *
@@ -267,7 +272,7 @@ machine Arith with
     *
     *******/
 
-    let eq2 = |nr| 2 * product(sf, y1f)(nr) - 3 * product(x1f, x1f)(nr) + product_with_p(q0f)(nr);
+    let eq2 = constr |nr| 2 * product(sf, y1f)(nr) - 3 * product(x1f, x1f)(nr) + product_with_p(q0f)(nr);
 
     /*******
     *
@@ -278,7 +283,7 @@ machine Arith with
     // If we're doing the ec_double operation (selEq[2] == 1), x2 is so far unconstrained and should be set to x1
     array::new(16, |i| selEq[2] * (x1[i] - x2[i]) = 0);
 
-    let eq3 = |nr| product(sf, sf)(nr) - x1f(nr) - x2f(nr) - x3f(nr) + product_with_p(q1f)(nr);
+    let eq3 = constr |nr| product(sf, sf)(nr) - x1f(nr) - x2f(nr) - x3f(nr) + product_with_p(q1f)(nr);
 
 
     /*******
@@ -287,7 +292,7 @@ machine Arith with
     *
     *******/
 
-    let eq4 = |nr| product(sf, x1f)(nr) - product(sf, x3f)(nr) - y1f(nr) - y3f(nr) + product_with_p(q2f)(nr);
+    let eq4 = constr |nr| product(sf, x1f)(nr) - product(sf, x3f)(nr) - y1f(nr) - y3f(nr) + product_with_p(q2f)(nr);
 
 
     /*******
