@@ -107,15 +107,7 @@ impl BackendType {
                 Box::new(composite::CompositeBackendFactory::new(plonky3::Factory))
             }
             #[cfg(feature = "stwo")]
-            BackendType::Stwo => Box::new(stwo::StwoProverFactory),
-            #[cfg(not(any(
-                feature = "halo2",
-                feature = "estark-polygon",
-                feature = "estark-starky",
-                feature = "plonky3",
-                feature = "stwo"
-            )))]
-            _ => panic!("Empty backend."),
+            BackendType::Stwo => Box::new(stwo::Factory),
         }
     }
 }
