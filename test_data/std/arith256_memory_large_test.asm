@@ -16,63 +16,6 @@ machine Main with degree: 65536 {
     reg A5[<=];
     reg A6[<=];
     reg A7[<=];
-    reg B0[<=];
-    reg B1[<=];
-    reg B2[<=];
-    reg B3[<=];
-    reg B4[<=];
-    reg B5[<=];
-    reg B6[<=];
-    reg B7[<=];
-    reg C0[<=];
-    reg C1[<=];
-    reg C2[<=];
-    reg C3[<=];
-    reg C4[<=];
-    reg C5[<=];
-    reg C6[<=];
-    reg C7[<=];
-    reg D0[<=];
-    reg D1[<=];
-    reg D2[<=];
-    reg D3[<=];
-    reg D4[<=];
-    reg D5[<=];
-    reg D6[<=];
-    reg D7[<=];
-    reg E0[<=];
-    reg E1[<=];
-    reg E2[<=];
-    reg E3[<=];
-    reg E4[<=];
-    reg E5[<=];
-    reg E6[<=];
-    reg E7[<=];
-    reg F0[<=];
-    reg F1[<=];
-    reg F2[<=];
-    reg F3[<=];
-    reg F4[<=];
-    reg F5[<=];
-    reg F6[<=];
-    reg F7[<=];
-    
-    reg t_0_0;
-    reg t_0_1;
-    reg t_0_2;
-    reg t_0_3;
-    reg t_0_4;
-    reg t_0_5;
-    reg t_0_6;
-    reg t_0_7;
-    reg t_1_0;
-    reg t_1_1;
-    reg t_1_2;
-    reg t_1_3;
-    reg t_1_4;
-    reg t_1_5;
-    reg t_1_6;
-    reg t_1_7;
 
     col fixed STEP(i) { i * 4 };
     Byte2 byte2;
@@ -91,6 +34,7 @@ machine Main with degree: 65536 {
 
     instr affine_256 W, X, Y, Z -> link ~> arith.affine_256(STEP, W, X, Y, Z);
 
+    /*
     instr ec_add A0, A1, A2, A3, A4, A5, A6, A7, B0, B1, B2, B3, B4, B5, B6, B7, C0, C1, C2, C3, C4, C5, C6, C7, D0, D1, D2, D3, D4, D5, D6, D7 -> E0, E1, E2, E3, E4, E5, E6, E7, F0, F1, F2, F3, F4, F5, F6, F7
         link ~> (E0, E1, E2, E3, E4, E5, E6, E7, F0, F1, F2, F3, F4, F5, F6, F7) = arith.ec_add(A0, A1, A2, A3, A4, A5, A6, A7, B0, B1, B2, B3, B4, B5, B6, B7, C0, C1, C2, C3, C4, C5, C6, C7, D0, D1, D2, D3, D4, D5, D6, D7);
 
@@ -100,6 +44,7 @@ machine Main with degree: 65536 {
     instr mod_256 D0, D1, D2, D3, D4, D5, D6, D7, E0, E1, E2, E3, E4, E5, E6, E7, A0, A1, A2, A3, A4, A5, A6, A7 -> C0, C1, C2, C3, C4, C5, C6, C7
         link ~> (C0, C1, C2, C3, C4, C5, C6, C7) = arith.mod_256(D0, D1, D2, D3, D4, D5, D6, D7, E0, E1, E2, E3, E4, E5, E6, E7, A0, A1, A2, A3, A4, A5, A6, A7);
 
+    */
 
     instr assert_eq X, A0, A1, A2, A3, A4, A5, A6, A7
         link ~> A0 = memory.mload(X, STEP)
