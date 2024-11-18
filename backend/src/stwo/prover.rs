@@ -5,21 +5,15 @@ use std::io;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use crate::stwo::circuit_builder::gen_stwo_circuit_trace;
-use crate::stwo::circuit_builder::PowdrEval;
-
-use super::circuit_builder::PowdrComponent;
+use crate::stwo::circuit_builder::{gen_stwo_circuit_trace, PowdrComponent, PowdrEval};
 
 use stwo_prover::constraint_framework::TraceLocationAllocator;
 use stwo_prover::core::prover::StarkProof;
 
 use powdr_number::FieldElement;
-use stwo_prover::core::air::Component;
-use stwo_prover::core::air::ComponentProver;
-use stwo_prover::core::backend::Backend;
-use stwo_prover::core::backend::BackendForChannel;
-use stwo_prover::core::channel::Channel;
-use stwo_prover::core::channel::MerkleChannel;
+use stwo_prover::core::air::{Component, ComponentProver};
+use stwo_prover::core::backend::{Backend, BackendForChannel};
+use stwo_prover::core::channel::{Channel, MerkleChannel};
 use stwo_prover::core::fields::m31::M31;
 use stwo_prover::core::fri::FriConfig;
 use stwo_prover::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig};

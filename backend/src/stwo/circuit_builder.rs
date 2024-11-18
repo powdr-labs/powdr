@@ -4,12 +4,10 @@ use std::ops::{Add, AddAssign, Mul, Neg, Sub};
 
 extern crate alloc;
 use alloc::{collections::btree_map::BTreeMap, string::String, vec::Vec};
-use powdr_ast::analyzed::Identity;
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, Analyzed,
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, Analyzed, Identity,
 };
-use powdr_number::FieldElement;
-use powdr_number::LargeInt;
+use powdr_number::{FieldElement, LargeInt};
 use std::sync::Arc;
 
 use powdr_ast::analyzed::{
@@ -17,10 +15,8 @@ use powdr_ast::analyzed::{
 };
 use stwo_prover::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
 use stwo_prover::core::backend::ColumnOps;
-use stwo_prover::core::fields::m31::BaseField;
-use stwo_prover::core::fields::m31::M31;
-use stwo_prover::core::fields::FieldExpOps;
-use stwo_prover::core::fields::{ExtensionOf, FieldOps};
+use stwo_prover::core::fields::m31::{BaseField, M31};
+use stwo_prover::core::fields::{ExtensionOf, FieldExpOps, FieldOps};
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::ColumnVec;
