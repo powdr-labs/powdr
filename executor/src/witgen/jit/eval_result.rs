@@ -73,10 +73,7 @@ impl<T: FieldElement> Display for KnownValue<T> {
 
 impl<T: FieldElement> KnownValue<T> {
     pub fn from_known_cell(cell: &Cell) -> Self {
-        KnownValue::Symbolic(
-            format!("get(state, {}, {})", cell.row_offset, cell.id),
-            None,
-        )
+        KnownValue::Symbolic(cell_to_variable(cell), None)
     }
 
     pub fn from_known_local_var(name: &str) -> Self {
@@ -200,19 +197,20 @@ impl<T: FieldElement> Display for EvalResult<T> {
     }
 }
 
-fn cell_to_variable(
+pub fn cell_to_variable(
     Cell {
         column_name,
         row_offset,
         ..
     }: &Cell,
 ) -> String {
-    format!("get(state, {}, {})", row_offset, column_name)
-    // if *row_offset < 0 {
-    //     format!("{column_name}_u{}", -row_offset)
-    // } else {
-    //     format!("{column_name}_d{row_offset}")
-    // }
+    // TODO we need to check that the prefix is actually unique.
+    let column_name = &column_name[column_name.rfind("::").unwrap() + 2..];
+    if *row_offset < 0 {
+        format!("{column_name}_u{}", -row_offset)
+    } else {
+        format!("{column_name}_d{row_offset}")
+    }
 }
 
 impl<T: FieldElement> From<KnownValue<T>> for EvalResult<T> {
@@ -297,11 +295,7 @@ impl<T: FieldElement> EvalResult<T> {
                 };
                 return once(Effect::Assignment(
                     cell.clone(),
-                    //format!("let {} = {assignment}", cell_to_variable(cell)),
-                    format!(
-                        "set(state, {}, {}, {assignment});",
-                        cell.row_offset, cell.id
-                    ),
+                    format!("let {} = {assignment};", cell_to_variable(cell)),
                 ))
                 .chain(rc.map(|rc| Effect::RangeConstraint(cell.clone(), rc)))
                 .collect();
@@ -366,7 +360,7 @@ impl<T: FieldElement> EvalResult<T> {
             };
             assignments.push(Effect::Assignment(
                 cell.clone(),
-                format!("set(state, {}, {}, {rhs});", cell.row_offset, cell.id),
+                format!("let {} = {rhs};", cell_to_variable(&cell)),
             ));
             assignments.push(Effect::RangeConstraint(
                 cell.clone(),

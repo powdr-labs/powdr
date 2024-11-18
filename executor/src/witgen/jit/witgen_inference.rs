@@ -11,11 +11,12 @@ use powdr_ast::{
         LookupIdentity, PhantomLookupIdentity, PolyID, PolynomialIdentity, PolynomialType,
         SelectedExpressions,
     },
+    indent,
     parsed::visitor::AllChildren,
 };
 use powdr_number::FieldElement;
 
-use crate::witgen::global_constraints::RangeConstraintSet;
+use crate::witgen::{global_constraints::RangeConstraintSet, jit::eval_result::cell_to_variable};
 
 use super::{
     super::{machines::MachineParts, range_constraints::RangeConstraint, FixedData},
@@ -29,6 +30,7 @@ pub struct WitgenInference<'a, T: FieldElement> {
     block_size: usize,
     latch_row: usize,
     lookup_rhs: &'a SelectedExpressions<T>,
+    inputs: Vec<Cell>,
     range_constraints: HashMap<Cell, RangeConstraint<T>>,
     known_cells: HashSet<Cell>,
     code: Vec<String>, // TODO make this a proper expression
@@ -48,21 +50,25 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
         initially_known_on_latch: impl IntoIterator<Item = PolyID>,
         lookup_rhs: &'a SelectedExpressions<T>,
     ) -> Self {
+        let inputs = initially_known_on_latch
+            .into_iter()
+            .map(|id| Cell {
+                column_name: fixed_data.column_name(&id).to_string(),
+                id: id.id,
+                row_offset: 0,
+            })
+            .sorted()
+            .collect_vec();
+        let known_cells = inputs.iter().cloned().collect();
         Self {
             fixed_data,
             parts,
             block_size,
             latch_row,
+            inputs,
             lookup_rhs,
             range_constraints: Default::default(),
-            known_cells: initially_known_on_latch
-                .into_iter()
-                .map(|id| Cell {
-                    column_name: fixed_data.column_name(&id).to_string(),
-                    id: id.id,
-                    row_offset: 0,
-                })
-                .collect(),
+            known_cells,
             code: Default::default(),
         }
     }
@@ -124,19 +130,107 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
         }
     }
 
-    pub fn code(&self) -> String {
+    pub fn code(&self, fun_name: &str) -> String {
+        let assign_inputs = self
+            .inputs
+            .iter()
+            .map(|cell| {
+                format!(
+                    "    let {} = get(data, row_offset, {}, {});",
+                    cell_to_variable(cell),
+                    cell.row_offset,
+                    cell.id,
+                )
+            })
+            .format("\n");
+        // TODO this stores the inputs again.
+        let store_values = self
+            .known_cells
+            .iter()
+            .sorted()
+            .map(|cell| {
+                format!(
+                    "    set(data, row_offset, {}, {}, {});",
+                    cell.row_offset,
+                    cell.id,
+                    cell_to_variable(cell)
+                )
+            })
+            .format("\n");
         format!(
             r#"
-            #[no_mangle]
-            extern "C" fn witgen(
-                state: *mut c_void,
-                get: extern "C" fn(*mut c_void, i32, u64) -> T,
-                set: extern "C" fn(*mut c_void, i32, u64, T),
-            ) {{
-                {}
-            }}
-            "#,
-            self.code.join("\n")
+{}
+#[no_mangle]
+extern "C" fn {fun_name}(
+    data: *mut c_void,
+    data_len: u64,
+    row_offset: u64,
+) {{
+    let data = data as *mut FieldElement;
+    let data: &mut [FieldElement] = unsafe {{ std::slice::from_raw_parts_mut(data, data_len as usize) }};
+    {assign_inputs}
+    {}
+    {store_values}
+}}
+"#,
+            self.preamble(),
+            indent(self.code.join("\n"), 1)
+        )
+    }
+
+    fn preamble(&self) -> String {
+        // TODO this way it only works for goldilocks.
+
+        // TOOD this is copied from CompactData - maybe they should use the same function?
+        // Or we pass this as another parameter?
+        let col_id_range = self.parts.witnesses.iter().map(|id| id.id).minmax();
+        let (first_column_id, last_column_id) = col_id_range.into_option().unwrap();
+        let column_count = (last_column_id - first_column_id + 1) as usize;
+        let modulus = T::modulus();
+        format!(
+            r#"
+use std::ffi::c_void;
+#[derive(Clone, Copy)]
+struct FieldElement(u64);
+impl std::ops::Add for FieldElement {{
+    type Output = Self;
+    fn add(self, b: Self) -> Self {{
+        // TODO this is inefficient.
+        Self(u64::try_from((u128::from(self.0) + u128::from(b.0)) % u128::from({modulus}_u64)).unwrap())
+    }}
+}}
+impl std::ops::Mul<i64> for FieldElement {{
+    type Output = Self;
+    fn mul(self, _b: i64) -> FieldElement {{
+        todo!();
+    }}
+}}
+#[inline]
+fn index(global_offset: u64, local_offset: i32, column: u64) -> usize {{
+    let column = column - {first_column_id};
+    let row = (global_offset as i64 + local_offset as i64) as u64;
+    (row * {column_count} + column) as usize
+}}
+#[inline]
+fn get(data: &[FieldElement], global_offset: u64, local_offset: i32, column: u64) -> FieldElement {{
+    data[index(global_offset, local_offset, column)]
+}}
+#[inline]
+fn set(data: &mut [FieldElement], global_offset: u64, local_offset: i32, column: u64, value: FieldElement) {{
+    data[index(global_offset, local_offset, column)] = value;
+}}
+enum LookupCell<'a, T> {{
+    /// Value is known (i.e. an input)
+    Input(&'a T),
+    /// Value is not known (i.e. an output)
+    Output(&'a mut T),
+}}
+fn process_lookup_direct<'a, T>(_lookup_id: u64, _values: std::vec::Vec<LookupCell<'a, T>>) {{
+    // TODO Make this a settable global.
+    todo!()
+}}
+
+        "#
         )
     }
 
@@ -323,15 +417,15 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
                                 } else {
                                     let var_name = format!("lookup_{lookup_id}_{i}");
                                     output_var = var_name.clone();
-                                    var_decl
-                                        .push_str(&format!("let mut {var_name}: T = 0.into();"));
+                                    var_decl.push_str(&format!(
+                                        "let mut {var_name}: FieldElement = 0.into();"
+                                    ));
                                     format!("LookupCell::Output(&mut {var_name})")
                                 }
                             })
                             .format(", ");
-                        let machine_call = format!(
-                            "fixed_lookup_machine.process_lookup_direct(({lookup_id}, vec![{query}]))",
-                        );
+                        let machine_call =
+                            format!("process_lookup_direct(({lookup_id}, vec![{query}]));",);
                         // TODO range constraints?
                         let output_expr = inputs.iter().find(|i| !i.is_known()).unwrap();
                         return once(Effect::Code(var_decl))

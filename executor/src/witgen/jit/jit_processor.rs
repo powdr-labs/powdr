@@ -21,7 +21,7 @@ pub struct JitProcessor<'a, T: FieldElement> {
     parts: MachineParts<'a, T>,
     block_size: usize,
     latch_row: usize,
-    witgen_functions: RwLock<HashMap<(u64, BitVec), WitgenFunction<T>>>,
+    witgen_functions: RwLock<HashMap<(u64, BitVec), WitgenFunction>>,
 }
 
 impl<'a, T: FieldElement> JitProcessor<'a, T> {
@@ -81,7 +81,7 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
             return false;
         }
         log::info!("Successfully generated witgen code for some machine.");
-        let code = inference.code();
+        let code = inference.code("witgen");
         log::trace!("Generated code:\n{code}");
 
         let lib_path = powdr_jit_compiler::compiler::call_cargo(&code)
@@ -94,14 +94,8 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
         let library = Arc::new(unsafe { libloading::Library::new(&lib_path.path).unwrap() });
         // TODO what happen if there is a conflict in function names? Should we
         // encode the ID and the known inputs?
-        let witgen_fun = unsafe {
-            library.get::<extern "C" fn(
-                *mut c_void,
-                extern "C" fn(*mut c_void, i32, u64) -> T,
-                extern "C" fn(*mut c_void, i32, u64, T),
-            )>(b"witgen")
-        }
-        .unwrap();
+        let witgen_fun =
+            unsafe { library.get::<extern "C" fn(*mut c_void, u64, u64)>(b"witgen") }.unwrap();
 
         self.witgen_functions.write().unwrap().insert(
             (identity_id, known_inputs.clone()),
@@ -138,44 +132,23 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
             }
         }
 
-        self.witgen_functions.read().unwrap()[&(connection_id, known_inputs)].call(
-            &mut data,
-            Self::get_cell,
-            Self::set_cell,
-        );
+        self.witgen_functions.read().unwrap()[&(connection_id, known_inputs)].call(&mut data);
 
         Ok(true)
     }
-
-    extern "C" fn get_cell(data: *mut c_void, row: i32, col: u64) -> T {
-        let data = unsafe { &*(data as *const CompactDataRef<T>) };
-        data.get(row, col as u32)
-    }
-
-    extern "C" fn set_cell(data: *mut c_void, row: i32, col: u64, value: T) {
-        let data = unsafe { &mut *(data as *mut CompactDataRef<T>) };
-        data.set(row, col as u32, value);
-    }
 }
 
-struct WitgenFunction<T> {
+struct WitgenFunction {
     #[allow(dead_code)]
     library: Arc<libloading::Library>,
-    witgen_function: extern "C" fn(
-        *mut c_void,
-        extern "C" fn(*mut c_void, i32, u64) -> T,
-        extern "C" fn(*mut c_void, i32, u64, T),
-    ),
+    witgen_function: extern "C" fn(*mut c_void, u64, u64),
 }
 
-impl<T: FieldElement> WitgenFunction<T> {
-    fn call(
-        &self,
-        data: &mut CompactDataRef<T>,
-        get_cell: extern "C" fn(*mut c_void, i32, u64) -> T,
-        set_cell: extern "C" fn(*mut c_void, i32, u64, T),
-    ) {
-        let data_c_ptr = data as *mut _ as *mut c_void;
-        (self.witgen_function)(data_c_ptr, get_cell, set_cell);
+impl WitgenFunction {
+    fn call<T: FieldElement>(&self, data: &mut CompactDataRef<T>) {
+        let (slice, row_offset) = data.direct_slice();
+        let data_c_ptr = slice.as_mut_ptr() as *mut c_void;
+        let len = slice.len() as u64;
+        (self.witgen_function)(data_c_ptr, len, row_offset as u64);
     }
 }

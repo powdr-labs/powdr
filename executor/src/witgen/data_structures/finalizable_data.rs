@@ -108,6 +108,10 @@ impl<T: FieldElement> CompactData<T> {
             })
         })
     }
+
+    pub fn data_slice(&mut self) -> &mut [T] {
+        self.data.as_mut_slice()
+    }
 }
 
 /// A mutable reference into CompactData that is meant to be used
@@ -137,6 +141,10 @@ impl<'a, T: FieldElement> CompactDataRef<'a, T> {
 
     fn inner_row(&self, row: i32) -> usize {
         (row + self.row_offset as i32) as usize
+    }
+
+    pub fn direct_slice(&mut self) -> (&mut [T], usize) {
+        (self.data.data_slice(), self.row_offset)
     }
 }
 
