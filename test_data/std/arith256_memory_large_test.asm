@@ -74,16 +74,22 @@ machine Main with degree: 65536 {
     reg t_1_6;
     reg t_1_7;
 
-    col fixed STEP(i) { i };
+    col fixed STEP(i) { i * 4 };
     Byte2 byte2;
     Memory memory(byte2);
     Arith256Memory arith(memory);
 
-    instr mload X -> Y link ~> Y = memory.mload(X, STEP);
-    instr mstore X, Y -> link ~> memory.mstore(X, STEP, Y);
+    instr mstore X, A0, A1, A2, A3, A4, A5, A6, A7 ->
+        link ~> memory.mstore(X, STEP, A0)
+        link ~> memory.mstore(X + 4, STEP, A1)
+        link ~> memory.mstore(X + 8, STEP, A2)
+        link ~> memory.mstore(X + 12, STEP, A3)
+        link ~> memory.mstore(X + 16, STEP, A4)
+        link ~> memory.mstore(X + 20, STEP, A5)
+        link ~> memory.mstore(X + 24, STEP, A6)
+        link ~> memory.mstore(X + 28, STEP, A7);
 
-    instr affine_256 W, X, Y, Z -> D0, D1, D2, D3, D4, D5, D6, D7, E0, E1, E2, E3, E4, E5, E6, E7
-        link ~> (D0, D1, D2, D3, D4, D5, D6, D7, E0, E1, E2, E3, E4, E5, E6, E7) = arith.affine_256(STEP, W, X, Y, Z);
+    instr affine_256 W, X, Y, Z -> link ~> arith.affine_256(STEP, W, X, Y, Z);
 
     instr ec_add A0, A1, A2, A3, A4, A5, A6, A7, B0, B1, B2, B3, B4, B5, B6, B7, C0, C1, C2, C3, C4, C5, C6, C7, D0, D1, D2, D3, D4, D5, D6, D7 -> E0, E1, E2, E3, E4, E5, E6, E7, F0, F1, F2, F3, F4, F5, F6, F7
         link ~> (E0, E1, E2, E3, E4, E5, E6, E7, F0, F1, F2, F3, F4, F5, F6, F7) = arith.ec_add(A0, A1, A2, A3, A4, A5, A6, A7, B0, B1, B2, B3, B4, B5, B6, B7, C0, C1, C2, C3, C4, C5, C6, C7, D0, D1, D2, D3, D4, D5, D6, D7);
@@ -94,10 +100,16 @@ machine Main with degree: 65536 {
     instr mod_256 D0, D1, D2, D3, D4, D5, D6, D7, E0, E1, E2, E3, E4, E5, E6, E7, A0, A1, A2, A3, A4, A5, A6, A7 -> C0, C1, C2, C3, C4, C5, C6, C7
         link ~> (C0, C1, C2, C3, C4, C5, C6, C7) = arith.mod_256(D0, D1, D2, D3, D4, D5, D6, D7, E0, E1, E2, E3, E4, E5, E6, E7, A0, A1, A2, A3, A4, A5, A6, A7);
 
-    col witness actual;
-    instr assert_eq X, Y -> link ~> actual = memory.mload(X, STEP) {
-        actual = Y
-    }
+
+    instr assert_eq X, A0, A1, A2, A3, A4, A5, A6, A7
+        link ~> A0 = memory.mload(X, STEP)
+        link ~> A1 = memory.mload(X + 4, STEP)
+        link ~> A2 = memory.mload(X + 8, STEP)
+        link ~> A3 = memory.mload(X + 12, STEP)
+        link ~> A4 = memory.mload(X + 16, STEP)
+        link ~> A5 = memory.mload(X + 20, STEP)
+        link ~> A6 = memory.mload(X + 24, STEP)
+        link ~> A7 = memory.mload(X + 28, STEP);
 
 
     function main {
@@ -106,6 +118,17 @@ machine Main with degree: 65536 {
         // + 0xaaaaaaaabbbbbbbbbbbbbbbbaaaaaaaaaaaaaaaabbbbbbbbbbbbbbbbaaaaaaaa
         // == 0x91a2b3c579be024740da740e6f8091a38e38e38f258bf259be024691fdb97530da740da60b60b60907f6e5d369d0369ca8641fda1907f6e33333333
         // == 0x00000000_091a2b3c_579be024_740da740_e6f8091a_38e38e38_f258bf25_9be02469 * 2**256 + 0x1fdb9753_0da740da_60b60b60_907f6e5d_369d0369_ca8641fd_a1907f6e_33333333
+
+        mstore 0, 0x77777777, 0x66666666, 0x55555555, 0x44444444, 0x33333333, 0x22222222, 0x11111111, 0x00000000;
+        mstore 32, 0xffffffff, 0xeeeeeeee, 0xdddddddd, 0xcccccccc, 0xbbbbbbbb, 0xaaaaaaaa, 0x99999999, 0x88888888;
+        mstore 64, 0xaaaaaaaa, 0xbbbbbbbb, 0xbbbbbbbb, 0xaaaaaaaa, 0xaaaaaaaa, 0xbbbbbbbb, 0xbbbbbbbb, 0xaaaaaaaa;
+
+        affine_256 0, 32, 64, 0;
+        
+        assert_eq 0, 0x9be02469, 0xf258bf25, 0x38e38e38, 0xe6f8091a, 0x740da740, 0x579be024, 0x091a2b3c, 0x00000000;
+        assert_eq 32, 0x33333333, 0xa1907f6e, 0xca8641fd, 0x369d0369, 0x907f6e5d, 0x60b60b60, 0x0da740da, 0x1fdb9753;
+
+        /*
 
         mstore 0, 0x77777777;
         mstore 4, 0x66666666;
@@ -134,7 +157,7 @@ machine Main with degree: 65536 {
         mstore 88, 0xbbbbbbbb;
         mstore 92, 0xaaaaaaaa;
 
-        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== affine_256(0, 32, 64, 0);
+        affine_256 0, 32, 64, 0;
 
         assert_eq 0, 0x9be02469;
         assert_eq 4, 0xf258bf25;
@@ -152,6 +175,8 @@ machine Main with degree: 65536 {
         assert_eq 52, 0x60b60b60;
         assert_eq 56, 0x0da740da;
         assert_eq 60, 0x1fdb9753;
+
+        */
 
         /*
 
