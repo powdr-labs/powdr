@@ -25,27 +25,28 @@ machine Arith256Memory with
     require_field_bits(48, || "Arith256Memory requires a field that fits any 48-Bit value.");
 
     Byte2 byte2;
-    
-    // The operation ID will be bit-decomposed to yield selEq[], controlling which equations are activated.
-    col witness operation_id;
+
+    // One-hot encode the operation
+    pol commit is_affine, is_mod, is_ec_add, is_ec_double;
+    let operation_selectors = [is_affine, is_mod, is_ec_add, is_ec_double];
+    array::map(operation_selectors, |s| force_bool(s));
+    array::map(operation_selectors, fixed_inside_32_block);
+    let operation_id = sum(4, |i| 2 ** i * operation_selectors[i]);
 
     // Computes x1 * y1 + x2, where all inputs / outputs are 256-bit words (represented as 32-Bit limbs in little-endian order).
     // More precisely, affine_256(x1, y1, x2) = (y2, y3), where x1 * y1 + x2 = 2**256 * y2 + y3
-    // Operation ID is 1 = 0b0001, i.e., we activate equation 0.
     operation affine_256<1> x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7], y1c[0], y1c[1], y1c[2], y1c[3], y1c[4], y1c[5], y1c[6], y1c[7], x2c[0], x2c[1], x2c[2], x2c[3], x2c[4], x2c[5], x2c[6], x2c[7] -> y2c[0], y2c[1], y2c[2], y2c[3], y2c[4], y2c[5], y2c[6], y2c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7];
     
     // mod_256(y2, y3, x1) = x2 computes (2 ** 256 * y2 + y3) % x1, where all inputs / outputs are 256-bit words.
     // While hint computes the modulus, there's no guarantee from user generated witness input that the remainder is smaller than the modulus.
     // In fact, the remainder can contain any multiples of modulus.
-    operation mod_256<1> y2c[0], y2c[1], y2c[2], y2c[3], y2c[4], y2c[5], y2c[6], y2c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7], x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7] -> x2c[0], x2c[1], x2c[2], x2c[3], x2c[4], x2c[5], x2c[6], x2c[7];
+    operation mod_256<2> y2c[0], y2c[1], y2c[2], y2c[3], y2c[4], y2c[5], y2c[6], y2c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7], x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7] -> x2c[0], x2c[1], x2c[2], x2c[3], x2c[4], x2c[5], x2c[6], x2c[7];
 
     // Performs elliptic curve addition of points (x1, y2) and (x2, y2).
-    // Operation ID is 10 = 0b1010, i.e., we activate equations 1, 3, and 4.
-    operation ec_add<10> x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7], y1c[0], y1c[1], y1c[2], y1c[3], y1c[4], y1c[5], y1c[6], y1c[7], x2c[0], x2c[1], x2c[2], x2c[3], x2c[4], x2c[5], x2c[6], x2c[7], y2c[0], y2c[1], y2c[2], y2c[3], y2c[4], y2c[5], y2c[6], y2c[7] -> x3c[0], x3c[1], x3c[2], x3c[3], x3c[4], x3c[5], x3c[6], x3c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7];
+    operation ec_add<4> x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7], y1c[0], y1c[1], y1c[2], y1c[3], y1c[4], y1c[5], y1c[6], y1c[7], x2c[0], x2c[1], x2c[2], x2c[3], x2c[4], x2c[5], x2c[6], x2c[7], y2c[0], y2c[1], y2c[2], y2c[3], y2c[4], y2c[5], y2c[6], y2c[7] -> x3c[0], x3c[1], x3c[2], x3c[3], x3c[4], x3c[5], x3c[6], x3c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7];
     
     // Performs elliptic curve doubling of point (x1, y2).
-    // Operation ID is 12 = 0b1100, i.e., we activate equations 2, 3, and 4.
-    operation ec_double<12> x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7], y1c[0], y1c[1], y1c[2], y1c[3], y1c[4], y1c[5], y1c[6], y1c[7] -> x3c[0], x3c[1], x3c[2], x3c[3], x3c[4], x3c[5], x3c[6], x3c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7];
+    operation ec_double<8> x1c[0], x1c[1], x1c[2], x1c[3], x1c[4], x1c[5], x1c[6], x1c[7], y1c[0], y1c[1], y1c[2], y1c[3], y1c[4], y1c[5], y1c[6], y1c[7] -> x3c[0], x3c[1], x3c[2], x3c[3], x3c[4], x3c[5], x3c[6], x3c[7], y3c[0], y3c[1], y3c[2], y3c[3], y3c[4], y3c[5], y3c[6], y3c[7];
 
     let secp_modulus = 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f;
 
@@ -79,8 +80,9 @@ machine Arith256Memory with
 
     let get_operation = query || match eval(operation_id) {
         1 => "affine_256",
-        10 => "ec_add",
-        12 => "ec_double",
+        2 => "mod_256",
+        4 => "ec_add",
+        8 => "ec_double",
         _ => panic("Unknown operation")
     };
 
@@ -90,57 +92,54 @@ machine Arith256Memory with
     };
     query |i| {
         let op = get_operation();
-        match op {
-            "affine_256" =>  {
-                match std::prover::try_eval(y1[0]) {
-                    Option::Some(_) => {
-                        // y1 is an input, in this case we do not need a hint.
-                    },
-                    Option::None => {
-                        // y1 is not an input, which means we are probably computing
-                        // division or modulo.
-                        let y2 = y2_int();
-                        let y3 = y3_int();
-                        let x1 = x1_int();
-                        let dividend = (y2 << 256) + y3;
-                        provide_values(y1, i, dividend / x1);
-                        provide_values(x2, i, dividend % x1);
-                    }
+        if op == "affine_256" || op == "mod_256" {
+            match std::prover::try_eval(y1[0]) {
+                Option::Some(_) => {
+                    // y1 is an input, in this case we do not need a hint.
+                },
+                Option::None => {
+                    // y1 is not an input, which means we are probably computing
+                    // division or modulo.
+                    let y2 = y2_int();
+                    let y3 = y3_int();
+                    let x1 = x1_int();
+                    let dividend = (y2 << 256) + y3;
+                    provide_values(y1, i, dividend / x1);
+                    provide_values(x2, i, dividend % x1);
                 }
-            },
-            _ => {
-                let y1 = y1_int();
-                // y2 is unused for ec_double
-                let y2 = if op == "ec_add" { y2_int() } else { 0 };
-                let x1 = x1_int();
-                let x2 = x2_int();
-                let s_val = if op == "ec_add" {
-                    div(sub(y2, y1), sub(x2, x1))
-                } else {
-                    div(mul(3, mul(x1, x1)), mul(2, y1))
-                };
-                provide_values(s, i, s_val);
-                // Compute quotients.
-                // Note that we add 2**258 to it, to move it from the (-2**258, 2**258) to the (0, 2**259) range, so it can
-                // be represented as an unsigned 272-bit integer.
-                // See the comment for `product_with_p` below.
-                let q0_val = if op == "ec_add" {
-                    -(s_val * x2 - s_val * x1 - y2 + y1) / secp_modulus + (1 << 258)
-                } else {
-                    -(2 * s_val * y1 - 3 * x1 * x1) / secp_modulus + (1 << 258)
-                };
-                provide_values(q0, i, q0_val);
+            }
+        } else {
+            let y1 = y1_int();
+            // y2 is unused for ec_double
+            let y2 = if op == "ec_add" { y2_int() } else { 0 };
+            let x1 = x1_int();
+            let x2 = x2_int();
+            let s_val = if op == "ec_add" {
+                div(sub(y2, y1), sub(x2, x1))
+            } else {
+                div(mul(3, mul(x1, x1)), mul(2, y1))
+            };
+            provide_values(s, i, s_val);
+            // Compute quotients.
+            // Note that we add 2**258 to it, to move it from the (-2**258, 2**258) to the (0, 2**259) range, so it can
+            // be represented as an unsigned 272-bit integer.
+            // See the comment for `product_with_p` below.
+            let q0_val = if op == "ec_add" {
+                -(s_val * x2 - s_val * x1 - y2 + y1) / secp_modulus + (1 << 258)
+            } else {
+                -(2 * s_val * y1 - 3 * x1 * x1) / secp_modulus + (1 << 258)
+            };
+            provide_values(q0, i, q0_val);
 
-                // Adding secp_modulus to make sure that that all numbers are positive when % is applied to it.
-                let x3_val = (s_val * s_val - x1 - x2 + 2 * secp_modulus) % secp_modulus;
-                provide_values(x3, i, x3_val);
-                let y3_val = (s_val * ((x1 - x3_val) + secp_modulus) - y1 + secp_modulus) % secp_modulus;
-                provide_values(y3, i, y3_val);
+            // Adding secp_modulus to make sure that that all numbers are positive when % is applied to it.
+            let x3_val = (s_val * s_val - x1 - x2 + 2 * secp_modulus) % secp_modulus;
+            provide_values(x3, i, x3_val);
+            let y3_val = (s_val * ((x1 - x3_val) + secp_modulus) - y1 + secp_modulus) % secp_modulus;
+            provide_values(y3, i, y3_val);
 
-                provide_values(q1, i, -(s_val * s_val - x1 - x2 - x3_val) / secp_modulus + (1 << 258));
-                provide_values(q2, i, -(s_val * x1 - s_val * x3_val - y1 - y3_val) / secp_modulus + (1 << 258));
-            },
-        };
+            provide_values(q1, i, -(s_val * s_val - x1 - x2 - x3_val) / secp_modulus + (1 << 258));
+            provide_values(q2, i, -(s_val * x1 - s_val * x3_val - y1 - y3_val) / secp_modulus + (1 << 258));
+        }
     };
 
     let combine: expr[] -> expr[] = |x| array::new(array::len(x) / 2, |i| x[2 * i + 1] * 2**16 + x[2 * i]);
@@ -275,8 +274,8 @@ machine Arith256Memory with
     *
     *******/
 
-    // If we're doing the ec_double operation (selEq[2] == 1), x2 is so far unconstrained and should be set to x1
-    array::new(16, |i| selEq[2] * (x1[i] - x2[i]) = 0);
+    // If we're doing the ec_double operation, x2 is so far unconstrained and should be set to x1
+    array::new(16, |i| is_ec_double * (x1[i] - x2[i]) = 0);
 
     let eq3 = |nr| product(sf, sf)(nr) - x1f(nr) - x2f(nr) - x3f(nr) + product_with_p(q1f)(nr);
 
@@ -296,14 +295,22 @@ machine Arith256Memory with
     *
     *******/
 
-    // Binary selectors for the equations that are activated. Determined from the operation ID via bit-decomposition.
-    // Note that there are only 4 selectors because equation 4 is activated iff. equation 3 is activated, so we can
-    // re-use the same selector.
-    pol commit selEq[4];
-    // Note that this implies that the selEq[] columns are also constant within the block.
-    fixed_inside_32_block(operation_id);
-    array::map(selEq, |c| force_bool(c));
-    sum(4, |i| 2 ** i * selEq[i]) = operation_id;
+    let selEq = [
+        // Equation 0: x1 * y1 + x2 - y2 * 2**256 - y3 = 0
+        is_affine + is_mod,
+        // Equation 1: s * x2 - s * x1 - y2 + y1 + (q0 * p) = 0
+        // (Computes slope for EC addition)
+        is_ec_add,
+        // Equation 2: 2 * s * y1 - 3 * x1 * x1 + (q0 * p) = 0
+        // (Computes slope for EC doubling)
+        is_ec_double,
+        // Equation 3: s * s - x1 - x2 - x3 + (q1 * p) = 0
+        // (Computes x3)
+        is_ec_add + is_ec_double,
+        // Equation 4: s * x1 - s * x3 - y1 - y3 + (q2 * p) = 0
+        // (Computes y3)
+        is_ec_add + is_ec_double
+    ];
 
     /*******
     *
@@ -343,5 +350,5 @@ machine Arith256Memory with
     selEq[1] * (eq1_sum + carry[0]) = selEq[1] * carry[0]' * 2**16;
     selEq[2] * (eq2_sum + carry[0]) = selEq[2] * carry[0]' * 2**16;
     selEq[3] * (eq3_sum + carry[1]) = selEq[3] * carry[1]' * 2**16;
-    selEq[3] * (eq4_sum + carry[2]) = selEq[3] * carry[2]' * 2**16;
+    selEq[4] * (eq4_sum + carry[2]) = selEq[4] * carry[2]' * 2**16;
 }
