@@ -12,11 +12,12 @@ use std::convert::expr;
 use std::prover::eval;
 use std::prelude::Query;
 use std::machines::range::Byte2;
+use std::machines::large_field::memory::Memory;
 
 // Implements 256-Bit addition and multiplication.
 // Ported mainly from Polygon: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/main/pil/arith.pil
 // Requires the field to contain at least 48 bits.
-machine Arith256Memory with
+machine Arith256Memory(mem: Memory) with
     latch: CLK32_31,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation
