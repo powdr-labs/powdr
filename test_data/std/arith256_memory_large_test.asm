@@ -33,18 +33,9 @@ machine Main with degree: 65536 {
         link ~> memory.mstore(X + 28, STEP, A7);
 
     instr affine_256 W, X, Y, Z -> link ~> arith.affine_256(STEP, W, X, Y, Z);
-
-    /*
-    instr ec_add A0, A1, A2, A3, A4, A5, A6, A7, B0, B1, B2, B3, B4, B5, B6, B7, C0, C1, C2, C3, C4, C5, C6, C7, D0, D1, D2, D3, D4, D5, D6, D7 -> E0, E1, E2, E3, E4, E5, E6, E7, F0, F1, F2, F3, F4, F5, F6, F7
-        link ~> (E0, E1, E2, E3, E4, E5, E6, E7, F0, F1, F2, F3, F4, F5, F6, F7) = arith.ec_add(A0, A1, A2, A3, A4, A5, A6, A7, B0, B1, B2, B3, B4, B5, B6, B7, C0, C1, C2, C3, C4, C5, C6, C7, D0, D1, D2, D3, D4, D5, D6, D7);
-
-    instr ec_double A0, A1, A2, A3, A4, A5, A6, A7, B0, B1, B2, B3, B4, B5, B6, B7 -> E0, E1, E2, E3, E4, E5, E6, E7, F0, F1, F2, F3, F4, F5, F6, F7
-        link ~> (E0, E1, E2, E3, E4, E5, E6, E7, F0, F1, F2, F3, F4, F5, F6, F7) = arith.ec_double(A0, A1, A2, A3, A4, A5, A6, A7, B0, B1, B2, B3, B4, B5, B6, B7);
-
-    instr mod_256 D0, D1, D2, D3, D4, D5, D6, D7, E0, E1, E2, E3, E4, E5, E6, E7, A0, A1, A2, A3, A4, A5, A6, A7 -> C0, C1, C2, C3, C4, C5, C6, C7
-        link ~> (C0, C1, C2, C3, C4, C5, C6, C7) = arith.mod_256(D0, D1, D2, D3, D4, D5, D6, D7, E0, E1, E2, E3, E4, E5, E6, E7, A0, A1, A2, A3, A4, A5, A6, A7);
-
-    */
+    instr mod_256 W, X, Y -> link ~> arith.mod_256(STEP, W, X, Y);
+    instr ec_add W, X, Y, Z -> link ~> arith.ec_add(STEP, W, X, Y, Z);
+    instr ec_double W, X -> link ~> arith.ec_double(STEP, W, X);
 
     instr assert_eq X, A0, A1, A2, A3, A4, A5, A6, A7
         link ~> A0 = memory.mload(X, STEP)
@@ -73,126 +64,89 @@ machine Main with degree: 65536 {
         assert_eq 0, 0x9be02469, 0xf258bf25, 0x38e38e38, 0xe6f8091a, 0x740da740, 0x579be024, 0x091a2b3c, 0x00000000;
         assert_eq 32, 0x33333333, 0xa1907f6e, 0xca8641fd, 0x369d0369, 0x907f6e5d, 0x60b60b60, 0x0da740da, 0x1fdb9753;
 
-        /*
-
-        mstore 0, 0x77777777;
-        mstore 4, 0x66666666;
-        mstore 8, 0x55555555;
-        mstore 12, 0x44444444;
-        mstore 16, 0x33333333;
-        mstore 20, 0x22222222;
-        mstore 24, 0x11111111;
-        mstore 28, 0x00000000;
-
-        mstore 32, 0xffffffff;
-        mstore 36, 0xeeeeeeee;
-        mstore 40, 0xdddddddd;
-        mstore 44, 0xcccccccc;
-        mstore 48, 0xbbbbbbbb;
-        mstore 52, 0xaaaaaaaa;
-        mstore 56, 0x99999999;
-        mstore 60, 0x88888888;
-
-        mstore 64, 0xaaaaaaaa;
-        mstore 68, 0xbbbbbbbb;
-        mstore 72, 0xbbbbbbbb;
-        mstore 76, 0xaaaaaaaa;
-        mstore 80, 0xaaaaaaaa;
-        mstore 84, 0xbbbbbbbb;
-        mstore 88, 0xbbbbbbbb;
-        mstore 92, 0xaaaaaaaa;
-
-        affine_256 0, 32, 64, 0;
-
-        assert_eq 0, 0x9be02469;
-        assert_eq 4, 0xf258bf25;
-        assert_eq 8, 0x38e38e38;
-        assert_eq 12, 0xe6f8091a;
-        assert_eq 16, 0x740da740;
-        assert_eq 20, 0x579be024;
-        assert_eq 24, 0x091a2b3c;
-        assert_eq 28, 0x00000000;
-        assert_eq 32, 0x33333333;
-        assert_eq 36, 0xa1907f6e;
-        assert_eq 40, 0xca8641fd;
-        assert_eq 44, 0x369d0369;
-        assert_eq 48, 0x907f6e5d;
-        assert_eq 52, 0x60b60b60;
-        assert_eq 56, 0x0da740da;
-        assert_eq 60, 0x1fdb9753;
-
-        */
-
-        /*
-
         // Test vectors from: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/a4006af3d7fe4a57a85500c01dc791fb5013cef0/test/sm/sm_arith.js
 
         // 2 * 3 + 5 = 11
-        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== affine_256(
-            2, 0, 0, 0, 0, 0, 0, 0,
-            3, 0, 0, 0, 0, 0, 0, 0,
-            5, 0, 0, 0, 0, 0, 0, 0);
-        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 0, 0, 0, 0, 0, 0, 0, 0;
-        assert_eq t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7, 11, 0, 0, 0, 0, 0, 0, 0;
+        mstore 0, 2, 0, 0, 0, 0, 0, 0, 0;
+        mstore 32, 3, 0, 0, 0, 0, 0, 0, 0;
+        mstore 64, 5, 0, 0, 0, 0, 0, 0, 0;
+
+        affine_256 0, 32, 64, 0;
+
+        assert_eq 0, 0, 0, 0, 0, 0, 0, 0, 0;
+        assert_eq 32, 11, 0, 0, 0, 0, 0, 0, 0;
 
         // 256 * 256 + 1 = 65537
-        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== affine_256(
-            256, 0, 0, 0, 0, 0, 0, 0,
-            256, 0, 0, 0, 0, 0, 0, 0,
-            1, 0, 0, 0, 0, 0, 0, 0);
-        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 0, 0, 0, 0, 0, 0, 0, 0;
-        assert_eq t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7, 65537, 0, 0, 0, 0, 0, 0, 0;
+        mstore 0, 256, 0, 0, 0, 0, 0, 0, 0;
+        mstore 32, 256, 0, 0, 0, 0, 0, 0, 0;
+        mstore 64, 1, 0, 0, 0, 0, 0, 0, 0;
+
+        affine_256 0, 32, 64, 0;
+
+        assert_eq 0, 0, 0, 0, 0, 0, 0, 0, 0;
+        assert_eq 32, 65537, 0, 0, 0, 0, 0, 0, 0;
 
         // 3000 * 2000 + 5000 = 6005000
-        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== affine_256(
-            3000, 0, 0, 0, 0, 0, 0, 0,
-            2000, 0, 0, 0, 0, 0, 0, 0,
-            5000, 0, 0, 0, 0, 0, 0, 0);
-        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 0, 0, 0, 0, 0, 0, 0, 0;
-        assert_eq t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7, 6005000, 0, 0, 0, 0, 0, 0, 0;
+        mstore 0, 3000, 0, 0, 0, 0, 0, 0, 0;
+        mstore 32, 2000, 0, 0, 0, 0, 0, 0, 0;
+        mstore 64, 5000, 0, 0, 0, 0, 0, 0, 0;
+
+        affine_256 0, 32, 64, 0;
+
+        assert_eq 0, 0, 0, 0, 0, 0, 0, 0, 0;
+        assert_eq 32, 6005000, 0, 0, 0, 0, 0, 0, 0;
 
         // 3000000 * 2000000 + 5000000 = 6000005000000
-        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== affine_256(
-            3000000, 0, 0, 0, 0, 0, 0, 0,
-            2000000, 0, 0, 0, 0, 0, 0, 0,
-            5000000, 0, 0, 0, 0, 0, 0, 0);
-        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 0, 0, 0, 0, 0, 0, 0, 0;
-        assert_eq t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7, 0xfc2aab40, 0x574, 0, 0, 0, 0, 0, 0;
+        mstore 0, 3000000, 0, 0, 0, 0, 0, 0, 0;
+        mstore 32, 2000000, 0, 0, 0, 0, 0, 0, 0;
+        mstore 64, 5000000, 0, 0, 0, 0, 0, 0, 0;
+
+        affine_256 0, 32, 64, 0;
+
+        assert_eq 0, 0, 0, 0, 0, 0, 0, 0, 0;
+        assert_eq 32, 0xfc2aab40, 0x574, 0, 0, 0, 0, 0, 0;
 
         // 3000 * 0 + 5000 = 5000
-        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== affine_256(
-            3000, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0,
-            5000, 0, 0, 0, 0, 0, 0, 0);
-        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 0, 0, 0, 0, 0, 0, 0, 0;
-        assert_eq t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7, 5000, 0, 0, 0, 0, 0, 0, 0;
+        mstore 0, 3000, 0, 0, 0, 0, 0, 0, 0;
+        mstore 32, 0, 0, 0, 0, 0, 0, 0, 0;
+        mstore 64, 5000, 0, 0, 0, 0, 0, 0, 0;
+
+        affine_256 0, 32, 64, 0;
+
+        assert_eq 0, 0, 0, 0, 0, 0, 0, 0, 0;
+        assert_eq 32, 5000, 0, 0, 0, 0, 0, 0, 0;
 
         // 2**255 * 2 + 0 = 2 ** 256
-        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== affine_256(
-            0, 0, 0, 0, 0, 0, 0, 0x80000000,
-            2, 0, 0, 0, 0, 0, 0, 0,
-            0, 0, 0, 0, 0, 0, 0, 0);
-        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 1, 0, 0, 0, 0, 0, 0, 0;
-        assert_eq t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7, 0, 0, 0, 0, 0, 0, 0, 0;
+        mstore 0, 0, 0, 0, 0, 0, 0, 0, 0x80000000;
+        mstore 32, 2, 0, 0, 0, 0, 0, 0, 0;
+        mstore 64, 0, 0, 0, 0, 0, 0, 0, 0;
 
-        // (2**256 - 1) * (2**256 - 1) + (2**256 - 1) = 2 ** 256 * 115792089237316195423570985008687907853269984665640564039457584007913129639935
-        // = 2 ** 256 * 0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
-        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== affine_256(
-            0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
-            0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
-            0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff);
-        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff;
-        assert_eq t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7, 0, 0, 0, 0, 0, 0, 0, 0;
+        affine_256 0, 32, 64, 0;
 
-        // (2**256 - 1) * 1 + (2**256 - 1) = 2 ** 256 + 115792089237316195423570985008687907853269984665640564039457584007913129639934
-        // = 2 ** 256 + 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffe
-        t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7 <== affine_256(
-            0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff,
-            1, 0, 0, 0, 0, 0, 0, 0,
-            0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff);
-        assert_eq t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7, 1, 0, 0, 0, 0, 0, 0, 0;
-        assert_eq t_1_0, t_1_1, t_1_2, t_1_3, t_1_4, t_1_5, t_1_6, t_1_7, 0xfffffffe, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff;
+        assert_eq 0, 1, 0, 0, 0, 0, 0, 0, 0;
+        assert_eq 32, 0, 0, 0, 0, 0, 0, 0, 0;
 
+        // (2**256 - 1) * (2**256 - 1) + (2**256 - 1)
+        mstore 0, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff;
+        mstore 32, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff;
+        mstore 64, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff;
+
+        affine_256 0, 32, 64, 0;
+
+        assert_eq 0, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff;
+        assert_eq 32, 0, 0, 0, 0, 0, 0, 0, 0;
+
+        // (2**256 - 1) * 1 + (2**256 - 1)
+        mstore 0, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff;
+        mstore 32, 1, 0, 0, 0, 0, 0, 0, 0;
+        mstore 64, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff;
+
+        affine_256 0, 32, 64, 0;
+
+        assert_eq 0, 1, 0, 0, 0, 0, 0, 0, 0;
+        assert_eq 32, 0xfffffffe, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff;
+
+        /*
         // Mod 256:
         // 6 % 5 = 1
         t_0_0, t_0_1, t_0_2, t_0_3, t_0_4, t_0_5, t_0_6, t_0_7 <== mod_256(
