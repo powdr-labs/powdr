@@ -27,6 +27,7 @@ use powdr_executor::{
         WitgenCallbackContext, WitnessGenerator,
     },
 };
+pub use powdr_linker::LinkerMode;
 use powdr_number::{write_polys_csv_file, CsvRenderMode, FieldElement, ReadWrite};
 use powdr_schemas::SerializedAnalyzed;
 
@@ -102,6 +103,8 @@ struct Arguments<T: FieldElement> {
     backend: Option<BackendType>,
     /// Backend options
     backend_options: BackendOptions,
+    /// Backend options
+    linker_mode: LinkerMode,
     /// CSV render mode for witness generation.
     csv_render_mode: CsvRenderMode,
     /// Whether to export the witness as a CSV file.
@@ -333,6 +336,11 @@ impl<T: FieldElement> Pipeline<T> {
 
     pub fn with_prover_dict_inputs(self, inputs: BTreeMap<u32, Vec<T>>) -> Self {
         self.add_query_callback(Arc::new(dict_data_to_query_callback(inputs)))
+    }
+
+    pub fn with_linker_mode(mut self, linker_mode: LinkerMode) -> Self {
+        self.arguments.linker_mode = linker_mode;
+        self
     }
 
     pub fn with_backend(mut self, backend: BackendType, options: Option<BackendOptions>) -> Self {
@@ -834,7 +842,7 @@ impl<T: FieldElement> Pipeline<T> {
                 let graph = self.artifact.linked_machine_graph.take().unwrap();
 
                 self.log("Run linker");
-                let linked = powdr_linker::link(graph)?;
+                let linked = powdr_linker::link(graph, self.arguments.linker_mode)?;
                 log::trace!("{linked}");
                 self.maybe_write_pil(&linked, "")?;
 
