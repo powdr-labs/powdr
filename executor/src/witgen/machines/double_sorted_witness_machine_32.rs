@@ -452,7 +452,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
             assignments = assignments.report_side_effect();
         }
 
-        if self.trace.len() >= (self.degree as usize) {
+        if self.trace.len() > (self.degree as usize) {
             return Err(EvalError::RowsExhausted(self.name.clone()));
         }
 
