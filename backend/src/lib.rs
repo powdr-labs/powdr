@@ -108,6 +108,15 @@ impl BackendType {
             }
             #[cfg(feature = "stwo")]
             BackendType::Stwo => Box::new(stwo::Factory),
+
+            #[cfg(not(any(
+                feature = "halo2",
+                feature = "estark-polygon",
+                feature = "estark-starky",
+                feature = "plonky3",
+                feature = "stwo"
+            )))]
+            _ => panic!("Empty backend."),
         }
     }
 }
