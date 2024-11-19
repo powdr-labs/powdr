@@ -1908,7 +1908,9 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     .collect::<Vec<_>>();
 
                 let outputs = poseidon_gl::poseidon_gl(&inputs);
-                outputs.iter().enumerate().for_each(|(i, v)| {
+                outputs.iter().enumerate().rev().for_each(|(i, v)| {
+                    // the .rev() is not necessary, but makes the split_gl
+                    // operations in the same "order" as automatic witgen
                     let v = v.to_integer().try_into_u64().unwrap();
                     let hi = (v >> 32) as u32;
                     let lo = (v & 0xffffffff) as u32;
