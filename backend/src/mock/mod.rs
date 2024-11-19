@@ -10,6 +10,7 @@ use powdr_number::{DegreeType, FieldElement};
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
 mod constraint_checker;
+mod evaluator;
 
 pub(crate) struct MockBackendFactory<F: FieldElement> {
     _marker: PhantomData<F>,
@@ -83,7 +84,9 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
             let all_fixed = machine_fixed_columns(&self.fixed, pil);
             let fixed = all_fixed.get(&size).unwrap();
 
-            ConstraintChecker::new(machine.clone(), &witness, fixed, pil).check();
+            ConstraintChecker::new(machine.clone(), &witness, fixed, pil)
+                .check()
+                .unwrap();
         }
 
         Ok(Vec::new())

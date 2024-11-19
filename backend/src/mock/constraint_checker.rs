@@ -1,15 +1,15 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, fmt};
 
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{AlgebraicExpression, Analyzed, Identity, PolyID, PolynomialType},
+    analyzed::{AlgebraicExpression, Analyzed, Identity, PolyID, PolynomialIdentity},
     parsed::visitor::AllChildren,
 };
-use powdr_executor::witgen::{
-    AffineExpression, AffineResult, AlgebraicVariable, ExpressionEvaluator, SymbolicVariables,
-};
+use powdr_executor::witgen::{AffineExpression, AlgebraicVariable, ExpressionEvaluator};
 use powdr_number::FieldElement;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
+
+use crate::mock::evaluator::Variables;
 
 pub struct ConstraintChecker<'a, F> {
     machine_name: String,
@@ -50,22 +50,18 @@ impl<'a, F: FieldElement> ConstraintChecker<'a, F> {
             .chain(fixed.iter().map(|(name, col)| (name, *col)))
             .collect::<BTreeMap<_, _>>();
 
-        let column_names = pil
+        let columns = pil
             .committed_polys_in_source_order()
             .chain(pil.constant_polys_in_source_order())
             .flat_map(|(symbol, _)| symbol.array_elements())
-            .map(|(name, poly_id)| (poly_id, name))
-            .collect::<BTreeMap<_, _>>();
-
-        let columns = column_names
-            .iter()
-            .map(|(poly_id, name)| {
+            .map(|(name, poly_id)| {
                 let column = columns_by_name
                     .get(&name)
                     .unwrap_or_else(|| panic!("Missing column: {name}"));
-                (*poly_id, *column)
+                (poly_id, *column)
             })
             .collect();
+
         Self {
             machine_name,
             size,
@@ -75,78 +71,137 @@ impl<'a, F: FieldElement> ConstraintChecker<'a, F> {
         }
     }
 
-    pub fn check(&self) {
-        log::info!("Checking machine: {}", self.machine_name);
-
-        (0..self.size).into_par_iter().for_each(|row| {
-            let variables = Variables {
-                columns: &self.columns,
-                row,
-            };
-            let mut evaluator =
-                ExpressionEvaluator::new(&variables, &self.intermediate_definitions);
-            for identity in self.pil.identities.iter() {
-                match identity {
-                    Identity::Polynomial(polynomial_identity) => {
-                        let result = evaluator.evaluate(&polynomial_identity.expression).unwrap();
-                        let result = match result {
-                            AffineExpression::Constant(c) => c,
-                            _ => unreachable!("Unexpected result: {:?}", result),
-                        };
-
-                        if result != F::zero() {
-                            log::error!("Identity failed at row {}: {}", row, identity);
-                            let used_variables =
-                                identity.all_children().filter_map(|child| match child {
-                                    AlgebraicExpression::Reference(algebraic_ref) => {
-                                        Some(AlgebraicVariable::Column(algebraic_ref))
-                                    }
-                                    AlgebraicExpression::PublicReference(public) => {
-                                        Some(AlgebraicVariable::Public(public))
-                                    }
-                                    _ => None,
-                                });
-                            for variable in used_variables {
-                                let value = variables.constant_value(variable);
-                                log::error!("  {} = {}", variable, value);
-                            }
-                            panic!();
-                        }
-                    }
-                    // TODO
-                    // _ => unreachable!("Unexpected identity: {}", identity),
-                    _ => {}
+    pub fn check(&self) -> MachineResult<'a, F> {
+        // We'd only expect to see polynomial identities here, because we're only validating one machine.
+        let mut warnings = Vec::new();
+        let polynomial_identities = self
+            .pil
+            .identities
+            .iter()
+            .filter_map(|identity| match identity {
+                Identity::Polynomial(_) => Some(identity),
+                _ => {
+                    warnings.push(format!("Unexpected identity: {}", identity));
+                    None
                 }
-            }
-        });
-    }
-}
+            })
+            .collect::<Vec<_>>();
 
-struct Variables<'a, F> {
-    columns: &'a BTreeMap<PolyID, &'a [F]>,
-    row: usize,
-}
+        let errors = (0..self.size)
+            .into_par_iter()
+            .flat_map(|row| self.check_row(row, &polynomial_identities))
+            .collect();
 
-impl<'a, F: FieldElement> Variables<'a, F> {
-    fn constant_value(&self, var: AlgebraicVariable) -> F {
-        match var {
-            AlgebraicVariable::Column(column) => match column.poly_id.ptype {
-                PolynomialType::Committed | PolynomialType::Constant => {
-                    let column_values = self.columns.get(&column.poly_id).unwrap();
-                    let row = (self.row + column.next as usize) % column_values.len();
-                    column_values[row]
-                }
-                PolynomialType::Intermediate => unreachable!(
-                    "Intermediate polynomials should have been handled by ExpressionEvaluator"
-                ),
-            },
-            AlgebraicVariable::Public(_) => todo!(),
+        MachineResult {
+            machine_name: self.machine_name.clone(),
+            warnings,
+            errors,
         }
     }
+
+    fn check_row(
+        &self,
+        row: usize,
+        identities: &[&'a Identity<F>],
+    ) -> Vec<FailingPolynomialConstraint<'a, F>> {
+        let variables = Variables {
+            columns: &self.columns,
+            row,
+        };
+        let mut evaluator = ExpressionEvaluator::new(&variables, &self.intermediate_definitions);
+        identities
+            .iter()
+            .filter_map(|identity| {
+                let identity = match identity {
+                    Identity::Polynomial(polynomial_identity) => polynomial_identity,
+                    _ => unreachable!("Unexpected identity: {}", identity),
+                };
+                let result = evaluator.evaluate(&identity.expression).unwrap();
+                let result = match result {
+                    AffineExpression::Constant(c) => c,
+                    _ => unreachable!("Unexpected result: {:?}", result),
+                };
+
+                if result != F::zero() {
+                    let used_variables = identity
+                        .all_children()
+                        .filter_map(|child| child.try_into().ok());
+                    Some(FailingPolynomialConstraint {
+                        row,
+                        identity,
+                        assignments: used_variables
+                            .map(|variable| (variable, variables.constant_value(variable)))
+                            .collect(),
+                    })
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
 }
 
-impl<'a, F: FieldElement> SymbolicVariables<F> for &Variables<'a, F> {
-    fn value<'b>(&self, var: AlgebraicVariable<'b>) -> AffineResult<AlgebraicVariable<'b>, F> {
-        Ok(self.constant_value(var).into())
+struct FailingPolynomialConstraint<'a, F> {
+    row: usize,
+    identity: &'a PolynomialIdentity<F>,
+    assignments: BTreeMap<AlgebraicVariable<'a>, F>,
+}
+
+impl<F: fmt::Display> fmt::Display for FailingPolynomialConstraint<'_, F> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Identity fails on row {}: {}", self.row, self.identity)?;
+        for (variable, value) in &self.assignments {
+            write!(f, "\n  {} = {}", variable, value)?;
+        }
+        Ok(())
+    }
+}
+
+pub struct MachineResult<'a, F> {
+    machine_name: String,
+    warnings: Vec<String>,
+    errors: Vec<FailingPolynomialConstraint<'a, F>>,
+}
+
+const MAX_ERRORS: usize = 5;
+
+impl<F: fmt::Display> MachineResult<'_, F> {
+    pub fn unwrap(self) {
+        let num_warnings = self.warnings.len();
+        let num_errors = self.errors.len();
+
+        if num_errors == 0 && num_warnings == 0 {
+            return;
+        }
+
+        let log_level = if num_errors > 0 {
+            log::Level::Error
+        } else {
+            log::Level::Warn
+        };
+
+        log::log!(
+            log_level,
+            "Machine {} has {} errors and {} warnings",
+            self.machine_name,
+            num_errors,
+            num_warnings
+        );
+
+        for warning in self.warnings {
+            log::warn!("  Warning: {}", warning);
+        }
+
+        for error in self.errors.iter().take(MAX_ERRORS) {
+            let error_indented = error.to_string().replace("\n", "\n  ");
+            log::error!("  Error: {}", error_indented);
+        }
+        if num_errors > MAX_ERRORS {
+            log::error!("  ... and {} more errors", num_errors - MAX_ERRORS);
+        }
+
+        if num_errors > 0 {
+            panic!("Machine {} has {} errors", self.machine_name, num_errors);
+        }
     }
 }
