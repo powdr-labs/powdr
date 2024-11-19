@@ -795,7 +795,7 @@ mod builder {
                 let machine_degree =
                     std::cmp::max(machine.len().next_power_of_two(), range.min as u32);
                 while machine.len() < machine_degree {
-                    machine.push_dummy_block();
+                    machine.push_dummy_block(machine_degree as usize);
                 }
                 for (col_name, col) in machine.take_cols() {
                     assert!(self.trace.cols.insert(col_name, col).is_none());

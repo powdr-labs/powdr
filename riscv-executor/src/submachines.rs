@@ -52,7 +52,7 @@ pub trait Submachine<F: FieldElement> {
     /// apply final row overrides (needed because the trace is circular)
     fn final_row_override(&mut self);
     /// push a dummy block to the trace
-    fn push_dummy_block(&mut self);
+    fn push_dummy_block(&mut self, machine_max_degree: usize);
     /// Consume the trace returning a list of columns.
     /// Should be called only once.
     fn take_cols(&mut self) -> Vec<(String, Vec<Elem<F>>)>;
@@ -105,8 +105,9 @@ impl<F: FieldElement, M: SubmachineKind> Submachine<F> for SubmachineImpl<F, M> 
         self.trace.final_row_override()
     }
 
-    fn push_dummy_block(&mut self) {
-        self.trace.push_dummy_block(M::BLOCK_SIZE, M::SELECTORS);
+    fn push_dummy_block(&mut self, machine_max_degree: usize) {
+        self.trace
+            .push_dummy_block(machine_max_degree, M::BLOCK_SIZE, M::SELECTORS);
     }
 
     fn take_cols(&mut self) -> Vec<(String, Vec<Elem<F>>)> {
@@ -189,10 +190,13 @@ impl<F: FieldElement> SubmachineTrace<F> {
 
     /// Push a dummy block to the trace.
     /// A dummy block is a copy of the first block, with the final row updates applied to it, and selectors set to 0.
-    fn push_dummy_block(&mut self, size: u32, selectors: &'static str) {
+    fn push_dummy_block(&mut self, machine_max_degree: usize, size: u32, selectors: &'static str) {
         let selector_pat = format!("{selectors}[");
 
         for i in 0..size {
+            if self.cols.values().next().unwrap().len() == machine_max_degree {
+                break;
+            }
             self.cols.iter_mut().for_each(|(col, values)| {
                 if !col.starts_with(&selector_pat) {
                     values.push(values[i as usize])
@@ -201,7 +205,7 @@ impl<F: FieldElement> SubmachineTrace<F> {
                 }
             });
         }
-        // self.final_row_override();
+        self.final_row_override();
     }
 
     /// consume the trace, returning the columns
