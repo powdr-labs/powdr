@@ -306,8 +306,8 @@ impl ProcessingSequenceCache {
 
     pub fn report_processing_sequence<K, T>(
         &mut self,
-        _left: &[AffineExpression<K, T>],
-        _sequence_iterator: ProcessingSequenceIterator,
+        left: &[AffineExpression<K, T>],
+        sequence_iterator: ProcessingSequenceIterator,
     ) where
         K: Copy + Ord,
         T: FieldElement,
