@@ -21,6 +21,7 @@ use super::range_constraints::RangeConstraint;
 use super::symbolic_evaluator::SymbolicEvaluator;
 use super::util::try_to_simple_poly;
 use super::{Constraint, FixedData};
+use powdr_ast::analyzed::AlgebraicExpression;
 
 /// Trait that provides a range constraint on a symbolic variable if given by ID.
 pub trait RangeConstraintSet<K, T: FieldElement> {
@@ -154,6 +155,7 @@ pub fn set_global_constraints<'a, T: FieldElement>(
     let mut range_constraint_multiplicities = BTreeMap::new();
     for identity in identities.into_iter() {
         let remove = propagate_constraints(
+            &fixed_data.intermediate_definitions,
             &mut known_constraints,
             &mut range_constraint_multiplicities,
             identity,
@@ -244,6 +246,7 @@ fn process_fixed_column<T: FieldElement>(fixed: &[T]) -> Option<(RangeConstraint
 /// If the returned flag is true, the identity can be removed, because it contains
 /// no further information than the range constraint.
 fn propagate_constraints<T: FieldElement>(
+    intermediate_definitions: &BTreeMap<PolyID, &AlgebraicExpression<T>>,
     known_constraints: &mut BTreeMap<PolyID, RangeConstraint<T>>,
     range_constraint_multiplicities: &mut BTreeMap<PolyID, PhantomRangeConstraintTarget>,
     identity: &Identity<T>,
@@ -251,13 +254,17 @@ fn propagate_constraints<T: FieldElement>(
 ) -> bool {
     match identity {
         Identity::Polynomial(identity) => {
-            if let Some(p) = is_binary_constraint(&identity.expression) {
+            if let Some(p) = is_binary_constraint(intermediate_definitions, &identity.expression) {
                 assert!(known_constraints
                     .insert(p, RangeConstraint::from_max_bit(0))
                     .is_none());
                 true
             } else {
-                for (p, c) in try_transfer_constraints(&identity.expression, known_constraints) {
+                for (p, c) in try_transfer_constraints(
+                    intermediate_definitions,
+                    &identity.expression,
+                    known_constraints,
+                ) {
                     known_constraints
                         .entry(p)
                         .and_modify(|existing| *existing = existing.conjunction(&c))
@@ -325,7 +332,10 @@ fn propagate_constraints<T: FieldElement>(
 }
 
 /// Tries to find "X * (1 - X) = 0"
-fn is_binary_constraint<T: FieldElement>(expr: &Expression<T>) -> Option<PolyID> {
+fn is_binary_constraint<T: FieldElement>(
+    intermediate_definitions: &BTreeMap<PolyID, &AlgebraicExpression<T>>,
+    expr: &Expression<T>,
+) -> Option<PolyID> {
     // TODO Write a proper pattern matching engine.
     if let Expression::BinaryOperation(AlgebraicBinaryOperation {
         left,
@@ -335,7 +345,7 @@ fn is_binary_constraint<T: FieldElement>(expr: &Expression<T>) -> Option<PolyID>
     {
         if let Expression::Number(n) = right.as_ref() {
             if n.is_zero() {
-                return is_binary_constraint(left.as_ref());
+                return is_binary_constraint(intermediate_definitions, left.as_ref());
             }
         }
     } else if let Expression::BinaryOperation(AlgebraicBinaryOperation {
@@ -344,12 +354,9 @@ fn is_binary_constraint<T: FieldElement>(expr: &Expression<T>) -> Option<PolyID>
         right,
     }) = expr
     {
-        let symbolic_ev = SymbolicEvaluator;
-        let left_root = ExpressionEvaluator::new(symbolic_ev.clone())
-            .evaluate(left)
-            .ok()
-            .and_then(|l| l.solve().ok())?;
-        let right_root = ExpressionEvaluator::new(symbolic_ev)
+        let mut evaluator = ExpressionEvaluator::new(SymbolicEvaluator, intermediate_definitions);
+        let left_root = evaluator.evaluate(left).ok().and_then(|l| l.solve().ok())?;
+        let right_root = evaluator
             .evaluate(right)
             .ok()
             .and_then(|r| r.solve().ok())?;
@@ -373,6 +380,7 @@ fn is_binary_constraint<T: FieldElement>(expr: &Expression<T>) -> Option<PolyID>
 
 /// Tries to transfer constraints in a linear expression.
 fn try_transfer_constraints<T: FieldElement>(
+    intermediate_definitions: &BTreeMap<PolyID, &AlgebraicExpression<T>>,
     expr: &Expression<T>,
     known_constraints: &BTreeMap<PolyID, RangeConstraint<T>>,
 ) -> Vec<(PolyID, RangeConstraint<T>)> {
@@ -380,8 +388,10 @@ fn try_transfer_constraints<T: FieldElement>(
         return vec![];
     }
 
-    let symbolic_ev = SymbolicEvaluator;
-    let Some(aff_expr) = ExpressionEvaluator::new(symbolic_ev).evaluate(expr).ok() else {
+    let Some(aff_expr) = ExpressionEvaluator::new(SymbolicEvaluator, intermediate_definitions)
+        .evaluate(expr)
+        .ok()
+    else {
         return vec![];
     };
 
@@ -539,6 +549,7 @@ namespace Global(2**20);
         let mut range_constraint_multiplicities = BTreeMap::new();
         for identity in &analyzed.identities {
             propagate_constraints(
+                &BTreeMap::new(),
                 &mut known_constraints,
                 &mut range_constraint_multiplicities,
                 identity,
@@ -630,6 +641,7 @@ namespace Global(2**20);
         let mut range_constraint_multiplicities = BTreeMap::new();
         for identity in &analyzed.identities {
             propagate_constraints(
+                &BTreeMap::new(),
                 &mut known_constraints,
                 &mut range_constraint_multiplicities,
                 identity,
@@ -706,6 +718,7 @@ namespace Global(1024);
         let mut range_constraint_multiplicities = BTreeMap::new();
         assert_eq!(analyzed.identities.len(), 1);
         let removed = propagate_constraints(
+            &BTreeMap::new(),
             &mut known_constraints,
             &mut range_constraint_multiplicities,
             analyzed.identities.first().unwrap(),

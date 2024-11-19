@@ -462,14 +462,18 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
     /// Tries to evaluate the expression to an expression affine in the witness polynomials,
     /// taking current values of polynomials into account.
     /// @returns an expression affine in the witness polynomials
-    pub fn evaluate<'b>(&self, expr: &'b Expression<T>) -> AffineResult<AlgebraicVariable<'b>, T> {
-        ExpressionEvaluator::new(SymbolicWitnessEvaluator::new(
+    pub fn evaluate(&self, expr: &'a Expression<T>) -> AffineResult<AlgebraicVariable<'a>, T> {
+        let variables = SymbolicWitnessEvaluator::new(
             self.fixed_data,
             self.current_row_index.into(),
             self,
             self.size,
-        ))
-        .evaluate(expr)
+        );
+        // Note that because we instantiate a fresh evaluator here, we don't benefit from caching
+        // of intermediate values across calls of `RowPair::evaluate`. In practice, we only call
+        // it many times for the same RowPair though.
+        ExpressionEvaluator::new(variables, &self.fixed_data.intermediate_definitions)
+            .evaluate(expr)
     }
 }
 
