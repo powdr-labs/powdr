@@ -43,7 +43,7 @@ machine Arith256Memory(mem: Memory) with
     operation mod_256<2> time_step, addr1, addr2, addr3 ->;
 
     // ec_add((x1, y1), (x2, y2)) performs elliptic curve addition of points (x1, y2) and (x2, y2). All pointers point to a 2-tuple of 256-bit words.
-    operation ec_add<4> time_step, addr1, addr2, addr3, addr4 ->;
+    operation ec_add<4> time_step, addr1, addr2, addr3 ->;
     
     // ec_double((x1, y1)) performs elliptic curve doubling of the point (x1, y1). Both pointers point to a 2-tuple of 256-bit words.
     operation ec_double<8> time_step, addr1, addr2 ->;
@@ -89,8 +89,8 @@ machine Arith256Memory(mem: Memory) with
     // Compute the "base" input address (we'll read words at base_input_address + offset)
     col witness base_input_address;
     is_affine * (base_input_address - (block[0] * addr1 + block[1] * addr2 + block[2] * addr3)) = 0;
-    is_mod * (base_input_address - (block[0] * addr1 + block[1] * (addr1 + 32))) = 0;
-    is_ec_add * (base_input_address - (block[0] * addr1 + block[1] * (addr1 + 32) + block[2] * addr2 + block[2] * (addr2 + 32))) = 0;
+    is_mod * (base_input_address - (block[0] * addr1 + block[1] * (addr1 + 32) + block[2] * addr2)) = 0;
+    is_ec_add * (base_input_address - (block[0] * addr1 + block[1] * (addr1 + 32) + block[2] * addr2 + block[3] * (addr2 + 32))) = 0;
     is_ec_double * (base_input_address - (block[0] * addr1 + block[1] * (addr1 + 32))) = 0;
     
     let input_address;

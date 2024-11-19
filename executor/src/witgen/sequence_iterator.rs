@@ -231,6 +231,7 @@ impl Iterator for ProcessingSequenceIterator {
     }
 }
 
+#[allow(dead_code)]
 enum CacheEntry {
     /// The machine has been run successfully before and the sequence is cached.
     Complete(Vec<SequenceStep>),
@@ -305,8 +306,8 @@ impl ProcessingSequenceCache {
 
     pub fn report_processing_sequence<K, T>(
         &mut self,
-        left: &[AffineExpression<K, T>],
-        sequence_iterator: ProcessingSequenceIterator,
+        _left: &[AffineExpression<K, T>],
+        _sequence_iterator: ProcessingSequenceIterator,
     ) where
         K: Copy + Ord,
         T: FieldElement,
