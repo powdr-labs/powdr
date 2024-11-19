@@ -14,7 +14,7 @@ pub fn bootloader_preamble() -> String {
     let mut preamble = r#"
     // ============== bootloader-specific instructions =======================
     // Write-once memory
-    std::machines::write_once_memory::WriteOnceMemory bootloader_inputs;
+    std::machines::write_once_memory::WriteOnceMemory bootloader_inputs(MIN_DEGREE, MAIN_MAX_DEGREE);
 
     instr load_bootloader_input X, Y, Z, W
         link ~> tmp1_col = regs.mload(X, STEP)
@@ -122,13 +122,12 @@ pub fn bootloader_preamble() -> String {
 ///   - The hash (8 words) of the page *after* this chunk's execution
 ///   - For each level of the Merkle tree, except the root (1..=22):
 ///     - The hash (8 words) of the sibling page
-pub fn bootloader_and_shutdown_routine(submachine_initialization: &[String]) -> String {
+pub fn bootloader_and_shutdown_routine() -> String {
     let mut bootloader = String::new();
 
     bootloader.push_str(&format!(
         r#"
-// Skip the next instruction
-jump submachine_init, 32;
+jump bootloader_init, 32;
 
 // For convenience, this instruction has a known fixed PC ({DEFAULT_PC}) and just jumps
 // to whatever comes after the bootloader + shutdown routine. This avoids having to count
@@ -142,13 +141,9 @@ jump shutdown_start, 32;
 shutdown_sink:
 jump shutdown_sink, 32;
 
-// Submachine initialization: Calls each submachine once, because that helps witness
-// generation figure out default values that can be used if the machine is never used.
-submachine_init:
+bootloader_init:
 "#
     ));
-    bootloader.push_str(&submachine_initialization.join("\n"));
-
     bootloader.push_str(&format!(
         r#"
 // START OF BOOTLOADER
@@ -209,33 +204,30 @@ page_number_ok:
 // construction. The initial [0, 32) values are 0, and the capacity [64, 96) is 0 throughout the
 // bootloader execution.
 
-// TODO currently the init call to poseidon_gl initializes the
-// scratch space with mstore_bootloader.
-// When the init call is removed, the calls below need to be replaced by mstore_bootloader.
-mstore 0, 0, 0, 0;
-mstore 0, 0, 4, 0;
-mstore 0, 0, 8, 0;
-mstore 0, 0, 12, 0;
-mstore 0, 0, 16, 0;
-mstore 0, 0, 20, 0;
-mstore 0, 0, 24, 0;
-mstore 0, 0, 28, 0;
-mstore 0, 0, 32, 0;
-mstore 0, 0, 36, 0;
-mstore 0, 0, 40, 0;
-mstore 0, 0, 44, 0;
-mstore 0, 0, 48, 0;
-mstore 0, 0, 52, 0;
-mstore 0, 0, 56, 0;
-mstore 0, 0, 60, 0;
-mstore 0, 0, 64, 0;
-mstore 0, 0, 68, 0;
-mstore 0, 0, 72, 0;
-mstore 0, 0, 76, 0;
-mstore 0, 0, 80, 0;
-mstore 0, 0, 84, 0;
-mstore 0, 0, 88, 0;
-mstore 0, 0, 92, 0;
+mstore_bootloader 0, 0, 0, 0;
+mstore_bootloader 0, 0, 4, 0;
+mstore_bootloader 0, 0, 8, 0;
+mstore_bootloader 0, 0, 12, 0;
+mstore_bootloader 0, 0, 16, 0;
+mstore_bootloader 0, 0, 20, 0;
+mstore_bootloader 0, 0, 24, 0;
+mstore_bootloader 0, 0, 28, 0;
+mstore_bootloader 0, 0, 32, 0;
+mstore_bootloader 0, 0, 36, 0;
+mstore_bootloader 0, 0, 40, 0;
+mstore_bootloader 0, 0, 44, 0;
+mstore_bootloader 0, 0, 48, 0;
+mstore_bootloader 0, 0, 52, 0;
+mstore_bootloader 0, 0, 56, 0;
+mstore_bootloader 0, 0, 60, 0;
+mstore_bootloader 0, 0, 64, 0;
+mstore_bootloader 0, 0, 68, 0;
+mstore_bootloader 0, 0, 72, 0;
+mstore_bootloader 0, 0, 76, 0;
+mstore_bootloader 0, 0, 80, 0;
+mstore_bootloader 0, 0, 84, 0;
+mstore_bootloader 0, 0, 88, 0;
+mstore_bootloader 0, 0, 92, 0;
 "#,
    ));
 

@@ -1,20 +1,28 @@
+use serde::de::DeserializeOwned;
+use serde::Serialize;
 use std::io;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
+use crate::{
+    field_filter::generalize_factory, Backend, BackendFactory, BackendOptions, Error, Proof,
+};
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::constant_evaluator::{get_uniquely_sized_cloned, VariablySizedColumn};
 use powdr_executor::witgen::WitgenCallback;
-use powdr_number::FieldElement;
+use powdr_number::{FieldElement, Mersenne31Field};
 use prover::StwoProver;
+use stwo_prover::core::backend::{simd::SimdBackend, BackendForChannel};
+use stwo_prover::core::channel::{Blake2sChannel, Channel, MerkleChannel};
+use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
 
+mod circuit_builder;
 mod prover;
-
 #[allow(dead_code)]
-pub(crate) struct StwoProverFactory;
 
-impl<F: FieldElement> BackendFactory<F> for StwoProverFactory {
+struct RestrictedFactory;
+
+impl<F: FieldElement> BackendFactory<F> for RestrictedFactory {
     #[allow(unreachable_code)]
     #[allow(unused_variables)]
     fn create(
@@ -37,16 +45,28 @@ impl<F: FieldElement> BackendFactory<F> for StwoProverFactory {
         let fixed = Arc::new(
             get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
         );
-        let stwo = Box::new(StwoProver::new(pil, fixed, setup)?);
+        let stwo: Box<StwoProver<F, SimdBackend, Blake2sMerkleChannel, Blake2sChannel>> =
+            Box::new(StwoProver::new(pil, fixed)?);
         Ok(stwo)
     }
 }
 
-impl<T: FieldElement> Backend<T> for StwoProver<T> {
+generalize_factory!(Factory <- RestrictedFactory, [Mersenne31Field]);
+
+impl<T: FieldElement, MC: MerkleChannel + Send, C: Channel + Send> Backend<T>
+    for StwoProver<T, SimdBackend, MC, C>
+where
+    SimdBackend: BackendForChannel<MC>,
+    MC: MerkleChannel,
+    C: Channel,
+    MC::H: DeserializeOwned + Serialize,
+{
     #[allow(unused_variables)]
     fn verify(&self, proof: &[u8], instances: &[Vec<T>]) -> Result<(), Error> {
-        assert!(instances.len() == 1);
-        unimplemented!()
+        assert_eq!(instances.len(), 1);
+        let instances = &instances[0];
+
+        Ok(self.verify(proof, instances)?)
     }
     #[allow(unreachable_code)]
     #[allow(unused_variables)]
@@ -59,7 +79,7 @@ impl<T: FieldElement> Backend<T> for StwoProver<T> {
         if prev_proof.is_some() {
             return Err(Error::NoAggregationAvailable);
         }
-        unimplemented!()
+        Ok(StwoProver::prove(self, witness)?)
     }
     #[allow(unused_variables)]
     fn export_verification_key(&self, output: &mut dyn io::Write) -> Result<(), Error> {

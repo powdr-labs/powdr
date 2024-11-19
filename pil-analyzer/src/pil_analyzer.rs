@@ -523,8 +523,15 @@ impl PILAnalyzer {
 
     fn handle_namespace(&mut self, name: SymbolPath, degree: Option<parsed::NamespaceDegree>) {
         let evaluate_degree_bound = |e| {
-            let e =
-                ExpressionProcessor::new(self.driver(), &Default::default()).process_expression(e);
+            let e = match ExpressionProcessor::new(self.driver(), &Default::default())
+                .process_expression(e)
+            {
+                Ok(e) => e,
+                Err(e) => {
+                    // TODO propagate this error up
+                    panic!("Failed to evaluate degree bound: {e}");
+                }
+            };
             u64::try_from(
                 evaluator::evaluate_expression::<GoldilocksField>(
                     &e,

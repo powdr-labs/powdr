@@ -700,8 +700,12 @@ impl From<DegreeType> for DegreeRange {
 }
 
 impl DegreeRange {
+    pub fn is_unique(&self) -> bool {
+        self.min == self.max
+    }
+
     pub fn try_into_unique(self) -> Option<DegreeType> {
-        (self.min == self.max).then_some(self.min)
+        self.is_unique().then_some(self.min)
     }
 
     /// Iterate through powers of two in this range
@@ -953,7 +957,7 @@ impl<T> Children<AlgebraicExpression<T>> for PhantomLookupIdentity<T> {
             self.left
                 .children_mut()
                 .chain(self.right.children_mut())
-                .chain(self.multiplicity.children_mut()),
+                .chain(once(&mut self.multiplicity)),
         )
     }
     fn children(&self) -> Box<dyn Iterator<Item = &AlgebraicExpression<T>> + '_> {
@@ -961,7 +965,7 @@ impl<T> Children<AlgebraicExpression<T>> for PhantomLookupIdentity<T> {
             self.left
                 .children()
                 .chain(self.right.children())
-                .chain(self.multiplicity.children()),
+                .chain(once(&self.multiplicity)),
         )
     }
 }
@@ -1397,8 +1401,18 @@ impl<T> AlgebraicExpression<T> {
     /// Returns the degree of the expressions
     pub fn degree(&self) -> usize {
         match self {
-            // One for each column
-            AlgebraicExpression::Reference(_) => 1,
+            AlgebraicExpression::Reference(reference) => {
+                // We don't have access to the definitions of intermediate polynomials here, so we can't know their degree.
+                assert!(
+                    matches!(
+                        reference.poly_id.ptype,
+                        PolynomialType::Committed | PolynomialType::Constant
+                    ),
+                    "Intermediate polynomials should have been inlined."
+                );
+                // Fixed and witness columns have degree 1
+                1
+            }
             // Multiplying two expressions adds their degrees
             AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
                 op: AlgebraicBinaryOperator::Mul,

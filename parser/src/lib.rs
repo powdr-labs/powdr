@@ -256,6 +256,7 @@ mod test {
                     };
                     eprint!("\t{sign}{change}");
                 }
+                eprintln!("The following string was re-parsed:\n{orig_asm_to_string}");
                 panic!("parsed and re-parsed ASTs differ for file: {file}");
             }
         }

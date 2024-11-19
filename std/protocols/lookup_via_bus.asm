@@ -1,29 +1,27 @@
-use std::array::len;
-use std::check::assert;
 use std::protocols::bus::bus_send;
 use std::protocols::bus::bus_receive;
-use std::protocols::bus::compute_next_z_send;
-use std::protocols::bus::compute_next_z_receive;
 use std::protocols::lookup::unpack_lookup_constraint;
-use std::math::fp2::Fp2;
+use std::constraints::to_phantom_lookup;
 
-// Example usage of the bus: Implement a lookup constraint
-// To make this sound, the last values of `acc_lhs` and `acc_rhs` need to be
-// exposed as publics, and the verifier needs to assert that they sum to 0.
-let lookup: expr, expr[], expr[], Fp2<expr>, Fp2<expr>, Constr, expr -> () = constr |id, acc_lhs, acc_rhs, alpha, beta, lookup_constraint, multiplicities| {
+/// Given an ID and lookup constraints, sends the (ID, lookup_constraint.lhs...) tuple to the bus
+/// if lookup_constraint.lhs_selector is 1.
+let lookup_send: expr, Constr -> () = constr |id, lookup_constraint| {
     let (lhs_selector, lhs, rhs_selector, rhs) = unpack_lookup_constraint(lookup_constraint);
-    bus_send(id, lhs, lhs_selector, acc_lhs, alpha, beta);
-    bus_receive(id, rhs, rhs_selector * multiplicities, acc_rhs, alpha, beta);
+
+    bus_send(id, lhs, lhs_selector);
 };
 
-// Sends looked up values to the bus
-let compute_next_z_send_lookup: expr, expr, Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr -> fe[] = query |is_first, id, acc, alpha, beta, lookup_constraint| {
-    let (lhs_selector, lhs, rhs_selector, rhs) = unpack_lookup_constraint(lookup_constraint);  
-    compute_next_z_send(is_first, id, lhs, lhs_selector, acc, alpha, beta)
-};
+/// Given an ID and lookup constraints, receives the (ID, lookup_constraint.rhs...) tuple from the bus
+/// with a prover-provided multiplicity if lookup_constraint.rhs_selector is 1.
+/// Also adds an annotation for witness generation.
+let lookup_receive: expr, Constr -> () = constr |id, lookup_constraint| {
+    let (lhs_selector, lhs, rhs_selector, rhs) = unpack_lookup_constraint(lookup_constraint);
 
-// Receives the lookup table with multiplicity
-let compute_next_z_receive_lookup: expr, expr, Fp2<expr>, Fp2<expr>, Fp2<expr>, Constr, expr -> fe[] = query |is_first, id, acc, alpha, beta, lookup_constraint, multiplicities| {
-    let (lhs_selector, lhs, rhs_selector, rhs) = unpack_lookup_constraint(lookup_constraint);  
-    compute_next_z_receive(is_first, id, rhs, rhs_selector * multiplicities, acc, alpha, beta)
+    let multiplicities;
+    (1 - rhs_selector) * multiplicities = 0;
+    
+    bus_receive(id, rhs, multiplicities);
+    
+    // Add an annotation for witness generation
+    to_phantom_lookup(lookup_constraint, multiplicities);
 };

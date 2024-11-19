@@ -1,4 +1,5 @@
-use std::protocols::permutation::permutation;
+use std::protocols::permutation_via_bus::permutation_send;
+use std::protocols::permutation_via_bus::permutation_receive;
 
 machine Main with degree: 8 {
 
@@ -13,6 +14,9 @@ machine Main with degree: 8 {
     // fit all the blocks, so let's not have a call in the last row.
     col fixed sel = [1, 1, 1, 1, 1, 1, 1, 0];
 
-    // Add the permutation constraints
-    permutation(sel $ [x, y] is sub_sel $ [sub_x, sub_y]);
+    // Add the bus permutation constraints
+    let ID = 123;
+    let permutation_constraint = sel $ [x, y] is sub_sel $ [sub_x, sub_y];
+    permutation_send(ID, permutation_constraint);
+    permutation_receive(ID, permutation_constraint);
 }

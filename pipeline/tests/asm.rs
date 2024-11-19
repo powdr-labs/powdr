@@ -8,8 +8,8 @@ use powdr_pipeline::{
         asm_string_to_pil, gen_estark_proof_with_backend_variant, make_prepared_pipeline,
         make_simple_prepared_pipeline, regular_test, regular_test_without_small_field,
         resolve_test_file, run_pilcom_with_backend_variant, test_halo2,
-        test_halo2_with_backend_variant, test_pilcom, test_plonky3_with_backend_variant,
-        BackendVariant,
+        test_halo2_with_backend_variant, test_pilcom, test_plonky3_pipeline,
+        test_plonky3_with_backend_variant, BackendVariant,
     },
     util::{FixedPolySet, PolySet, WitnessPolySet},
     Pipeline,
@@ -25,6 +25,14 @@ fn sqrt_asm() {
     let f = "asm/sqrt.asm";
     let i = [3];
     regular_test_without_small_field(f, &i);
+}
+
+#[test]
+fn block_machine_exact_number_of_rows_asm() {
+    let f = "asm/block_machine_exact_number_of_rows.asm";
+    // This test needs machines to be of unequal length. Also, this is mostly testing witgen, so
+    // we just run one backend that supports variable-length machines.
+    test_plonky3_with_backend_variant::<GoldilocksField>(f, Vec::new(), BackendVariant::Monolithic);
 }
 
 #[test]
@@ -142,6 +150,26 @@ fn vm_to_block_to_block() {
 fn block_to_block() {
     let f = "asm/block_to_block.asm";
     regular_test(f, &[]);
+}
+
+#[test]
+fn block_to_block_empty_submachine() {
+    let f = "asm/block_to_block_empty_submachine.asm";
+    let mut pipeline = make_simple_prepared_pipeline(f);
+
+    let witness = pipeline.compute_witness().unwrap();
+    let arith_size = witness
+        .iter()
+        .find(|(k, _)| k == "main_arith::x")
+        .unwrap()
+        .1
+        .len();
+    assert_eq!(arith_size, 0);
+
+    test_halo2_with_backend_variant(pipeline, BackendVariant::Composite);
+
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f);
+    test_plonky3_pipeline(pipeline);
 }
 
 #[test]
@@ -747,7 +775,7 @@ fn types_in_expressions() {
                 O::A(x) => x,
             } = 0
         };
-        machine Main {
+        machine Main with degree: 64 {
             col witness w;
             f();
         }

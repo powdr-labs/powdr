@@ -1,6 +1,6 @@
 #![deny(clippy::print_stdout)]
 
-#[cfg(feature = "estark-starky")]
+#[cfg(any(feature = "estark-polygon", feature = "estark-starky"))]
 mod estark;
 #[cfg(feature = "halo2")]
 mod halo2;
@@ -107,7 +107,8 @@ impl BackendType {
                 Box::new(composite::CompositeBackendFactory::new(plonky3::Factory))
             }
             #[cfg(feature = "stwo")]
-            BackendType::Stwo => Box::new(stwo::StwoProverFactory),
+            BackendType::Stwo => Box::new(stwo::Factory),
+
             #[cfg(not(any(
                 feature = "halo2",
                 feature = "estark-polygon",

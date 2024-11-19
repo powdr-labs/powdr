@@ -165,12 +165,35 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         if self.data.len() < 2 * self.block_size {
-            log::warn!(
-                "Filling empty blocks with zeros, because the block machine is never used. \
+            if self.fixed_data.is_monolithic() {
+                log::warn!(
+                    "Filling empty blocks with zeros, because the block machine is never used. \
                  This might violate some internal constraints."
-            );
+                );
+            } else {
+                log::info!(
+                    "Machine {} is never used at runtime, so we remove it.",
+                    self.name
+                );
+                // Return empty columns for all witnesses.
+                return self
+                    .parts
+                    .witnesses
+                    .iter()
+                    .map(|id| (*id, Vec::new()))
+                    // Note that this panics if any count is not 0 (which shouldn't happen).
+                    .chain(self.multiplicity_counter.generate_columns_single_size(0))
+                    .map(|(id, values)| (self.fixed_data.column_name(&id).to_string(), values))
+                    .collect();
+            }
         }
-        self.degree = compute_size_and_log(&self.name, self.data.len(), self.degree_range);
+        self.degree = compute_size_and_log(
+            &self.name,
+            // At this point, the data still contains the dummy block, which will be removed below.
+            // Therefore, we subtract the block size here.
+            self.data.len() - self.block_size,
+            self.degree_range,
+        );
 
         if matches!(self.connection_type, ConnectionKind::Permutation) {
             // We have to make sure that *all* selectors are 0 in the dummy block,
@@ -356,7 +379,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             ));
         }
 
-        if self.rows() + self.block_size as DegreeType >= self.degree {
+        if self.rows() + self.block_size as DegreeType > self.degree {
             return Err(EvalError::RowsExhausted(self.name.clone()));
         }
 
@@ -432,14 +455,14 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
     /// unused cells in the previous block.
     fn append_block(&mut self, mut new_block: FinalizableData<T>) -> Result<(), EvalError<T>> {
         assert!(
-            (self.rows() + self.block_size as DegreeType) < self.degree,
+            (self.rows() + self.block_size as DegreeType) <= self.degree,
             "Block machine is full (this should have been checked before)"
         );
 
         assert_eq!(new_block.len(), self.block_size + 2);
 
         // 1. Ignore the first row of the next block:
-        new_block.pop();
+        new_block.pop().unwrap();
 
         // 2. Merge the last row of the previous block
         new_block
@@ -453,7 +476,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             })?;
 
         // 3. Remove the last row of the previous block from data
-        self.data.pop();
+        self.data.pop().unwrap();
 
         // 4. Finalize everything so far (except the dummy block)
         if self.data.len() > self.block_size {
