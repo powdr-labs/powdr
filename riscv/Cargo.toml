@@ -10,8 +10,12 @@ repository = { workspace = true }
 
 [features]
 default = []                                       # complex-tests is disabled by default
+
+# features below only affects tests
+# not sure this is the best approach
 complex-tests = []
 estark-polygon = ["powdr-pipeline/estark-polygon"]
+plonky3 = ["powdr-pipeline/plonky3"]
 
 [dependencies]
 powdr-ast.workspace = true

@@ -173,13 +173,6 @@ fn permutation_via_challenges() {
 }
 
 #[test]
-fn permutation_via_challenges_ext() {
-    let f = "std/permutation_via_challenges_ext.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-    test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
-}
-
-#[test]
 fn lookup_via_challenges() {
     let f = "std/lookup_via_challenges.asm";
     test_halo2(make_simple_prepared_pipeline(f));
@@ -413,7 +406,7 @@ fn sort() {
         vec![8, 0, 9, 20, 23, 88, 14, -9],
     ];
     let code =
-        "let test_sort: int[] -> int[] = |x| std::array::sort(x, |a, b| a < b); machine Main { }"
+        "let test_sort: int[] -> int[] = |x| std::array::sort(x, |a, b| a < b); machine Main with degree: 1024 { }"
             .to_string();
     let mut pipeline = Pipeline::<GoldilocksField>::default().from_asm_string(code, None);
     let analyzed = pipeline.compute_analyzed_pil().unwrap().clone();
