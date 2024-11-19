@@ -9,6 +9,7 @@ use powdr_executor::witgen::{
     AffineExpression, AffineResult, AlgebraicVariable, ExpressionEvaluator, SymbolicVariables,
 };
 use powdr_number::FieldElement;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 pub struct ConstraintChecker<'a, F> {
     machine_name: String,
@@ -77,7 +78,7 @@ impl<'a, F: FieldElement> ConstraintChecker<'a, F> {
     pub fn check(&self) {
         log::info!("Checking machine: {}", self.machine_name);
 
-        for row in 0..self.size {
+        (0..self.size).into_par_iter().for_each(|row| {
             let variables = Variables {
                 columns: &self.columns,
                 row,
@@ -114,7 +115,7 @@ impl<'a, F: FieldElement> ConstraintChecker<'a, F> {
                     _ => unreachable!("Unexpected identity: {}", identity),
                 }
             }
-        }
+        });
     }
 }
 
