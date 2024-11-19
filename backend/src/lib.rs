@@ -11,6 +11,7 @@ mod stwo;
 
 mod composite;
 mod field_filter;
+mod mock;
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
@@ -20,6 +21,8 @@ use strum::{Display, EnumString, EnumVariantNames};
 
 #[derive(Clone, EnumString, EnumVariantNames, Display, Copy)]
 pub enum BackendType {
+    #[strum(serialize = "mock")]
+    Mock,
     #[cfg(feature = "halo2")]
     #[strum(serialize = "halo2")]
     Halo2,
@@ -69,6 +72,7 @@ pub const DEFAULT_ESTARK_OPTIONS: &str = "stark_gl";
 impl BackendType {
     pub fn factory<T: FieldElement>(&self) -> Box<dyn BackendFactory<T>> {
         match self {
+            BackendType::Mock => Box::new(mock::MockBackendFactory::new()),
             #[cfg(feature = "halo2")]
             BackendType::Halo2 => Box::new(halo2::Halo2ProverFactory),
             #[cfg(feature = "halo2")]
