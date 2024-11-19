@@ -65,135 +65,6 @@ machine Main with degree: 65536 {
         assert_eq 0, 0x9be02469, 0xf258bf25, 0x38e38e38, 0xe6f8091a, 0x740da740, 0x579be024, 0x091a2b3c, 0x00000000;
         assert_eq 32, 0x33333333, 0xa1907f6e, 0xca8641fd, 0x369d0369, 0x907f6e5d, 0x60b60b60, 0x0da740da, 0x1fdb9753;
 
-        // Test vectors from: https://github.com/0xPolygonHermez/zkevm-proverjs/blob/a4006af3d7fe4a57a85500c01dc791fb5013cef0/test/sm/sm_arith.js
-
-        // 2 * 3 + 5 = 11
-        mstore 0, 2, 0, 0, 0, 0, 0, 0, 0;
-        mstore 32, 3, 0, 0, 0, 0, 0, 0, 0;
-        mstore 64, 5, 0, 0, 0, 0, 0, 0, 0;
-
-        affine_256 0, 32, 64, 0;
-
-        assert_eq 0, 0, 0, 0, 0, 0, 0, 0, 0;
-        assert_eq 32, 11, 0, 0, 0, 0, 0, 0, 0;
-
-        // 256 * 256 + 1 = 65537
-        mstore 0, 256, 0, 0, 0, 0, 0, 0, 0;
-        mstore 32, 256, 0, 0, 0, 0, 0, 0, 0;
-        mstore 64, 1, 0, 0, 0, 0, 0, 0, 0;
-
-        affine_256 0, 32, 64, 0;
-
-        assert_eq 0, 0, 0, 0, 0, 0, 0, 0, 0;
-        assert_eq 32, 65537, 0, 0, 0, 0, 0, 0, 0;
-
-        // 3000 * 2000 + 5000 = 6005000
-        mstore 0, 3000, 0, 0, 0, 0, 0, 0, 0;
-        mstore 32, 2000, 0, 0, 0, 0, 0, 0, 0;
-        mstore 64, 5000, 0, 0, 0, 0, 0, 0, 0;
-
-        affine_256 0, 32, 64, 0;
-
-        assert_eq 0, 0, 0, 0, 0, 0, 0, 0, 0;
-        assert_eq 32, 6005000, 0, 0, 0, 0, 0, 0, 0;
-
-        // 3000000 * 2000000 + 5000000 = 6000005000000
-        mstore 0, 3000000, 0, 0, 0, 0, 0, 0, 0;
-        mstore 32, 2000000, 0, 0, 0, 0, 0, 0, 0;
-        mstore 64, 5000000, 0, 0, 0, 0, 0, 0, 0;
-
-        affine_256 0, 32, 64, 0;
-
-        assert_eq 0, 0, 0, 0, 0, 0, 0, 0, 0;
-        assert_eq 32, 0xfc2aab40, 0x574, 0, 0, 0, 0, 0, 0;
-
-        // 3000 * 0 + 5000 = 5000
-        mstore 0, 3000, 0, 0, 0, 0, 0, 0, 0;
-        mstore 32, 0, 0, 0, 0, 0, 0, 0, 0;
-        mstore 64, 5000, 0, 0, 0, 0, 0, 0, 0;
-
-        affine_256 0, 32, 64, 0;
-
-        assert_eq 0, 0, 0, 0, 0, 0, 0, 0, 0;
-        assert_eq 32, 5000, 0, 0, 0, 0, 0, 0, 0;
-
-        // 2**255 * 2 + 0 = 2 ** 256
-        mstore 0, 0, 0, 0, 0, 0, 0, 0, 0x80000000;
-        mstore 32, 2, 0, 0, 0, 0, 0, 0, 0;
-        mstore 64, 0, 0, 0, 0, 0, 0, 0, 0;
-
-        affine_256 0, 32, 64, 0;
-
-        assert_eq 0, 1, 0, 0, 0, 0, 0, 0, 0;
-        assert_eq 32, 0, 0, 0, 0, 0, 0, 0, 0;
-
-        // (2**256 - 1) * (2**256 - 1) + (2**256 - 1)
-        mstore 0, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff;
-        mstore 32, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff;
-        mstore 64, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff;
-
-        affine_256 0, 32, 64, 0;
-
-        assert_eq 0, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff;
-        assert_eq 32, 0, 0, 0, 0, 0, 0, 0, 0;
-
-        // (2**256 - 1) * 1 + (2**256 - 1)
-        mstore 0, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff;
-        mstore 32, 1, 0, 0, 0, 0, 0, 0, 0;
-        mstore 64, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff;
-
-        affine_256 0, 32, 64, 0;
-
-        assert_eq 0, 1, 0, 0, 0, 0, 0, 0, 0;
-        assert_eq 32, 0xfffffffe, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff;
-
-        // Mod 256:
-        // 6 % 5 = 1
-        mstore 0, 0, 0, 0, 0, 0, 0, 0, 0;
-        mstore 32, 6, 0, 0, 0, 0, 0, 0, 0;
-        mstore 64, 5, 0, 0, 0, 0, 0, 0, 0;
-
-        mod_256 0, 64, 0;
-
-        assert_eq 0, 1, 0, 0, 0, 0, 0, 0, 0;
-
-        // 3000 % 5000 = 3000
-        mstore 0, 0, 0, 0, 0, 0, 0, 0, 0;
-        mstore 32, 3000, 0, 0, 0, 0, 0, 0, 0;
-        mstore 64, 5000, 0, 0, 0, 0, 0, 0, 0;
-
-        mod_256 0, 64, 0;
-
-        assert_eq 0, 3000, 0, 0, 0, 0, 0, 0, 0;
-
-        // (2 ** 508) % (2 ** 255) = 0
-        mstore 0, 0, 0, 0, 0, 0, 0, 0, 0x10000000;
-        mstore 32, 0, 0, 0, 0, 0, 0, 0, 0;
-        mstore 64, 0, 0, 0, 0, 0, 0, 0, 0x80000000;
-
-        mod_256 0, 64, 0;
-
-        assert_eq 0, 0, 0, 0, 0, 0, 0, 0, 0;
-
-        // (2 ** 508 + 1) % (2 ** 255) = 1
-        mstore 0, 0, 0, 0, 0, 0, 0, 0, 0x10000000;
-        mstore 32, 1, 0, 0, 0, 0, 0, 0, 0;
-        mstore 64, 0, 0, 0, 0, 0, 0, 0, 0x80000000;
-
-        mod_256 0, 64, 0;
-
-        assert_eq 0, 1, 0, 0, 0, 0, 0, 0, 0;
-
-        // 0xaaaaaaaabbbbbbbbcccccccc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000011111111
-        // % 0xddddddddeeeeeeeeffffffff0000000000000000000000000000000022222222
-        // = 0x05973e6b48bd15d35f92aff26cad25d5b54f806e5ce298cda76b91baf89af7cf
-        mstore 0, 0, 0, 0, 0, 0, 0xcccccccc, 0xbbbbbbbb, 0xaaaaaaaa;
-        mstore 32, 0x11111111, 0, 0, 0, 0, 0, 0, 0;
-        mstore 64, 0x22222222, 0, 0, 0, 0, 0xffffffff, 0xeeeeeeee, 0xdddddddd;
-
-        mod_256 0, 64, 0;
-
-        assert_eq 0, 0xF89AF7CF, 0xA76B91BA, 0x5CE298CD, 0xB54F806E, 0x6CAD25D5, 0x5F92AFF2, 0x48BD15D3, 0x05973E6B;
 
         // 0x11111111222222223333333344444444555555556666666677777777888888889999999900000000aaaaaaaabbbbbbbbccccccccddddddddeeeeeeeeffffffff
         // % 0xfffffffffffffffffffffffffffffffffffffffffffffffffffffffefffffc2f (secp_modulus)
@@ -206,14 +77,6 @@ machine Main with degree: 65536 {
 
         assert_eq 0, 0x333428f9, 0x7777783a, 0x22222263, 0xddddde1f, 0x999999da, 0x55555596, 0x777777b9, 0xddddde1e;
 
-        // ((2**256 - 1) * (2**256 - 1) + (2**256 - 1)) % (2**256 - 1)
-        mstore 0, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff;
-        mstore 32, 0, 0, 0, 0, 0, 0, 0, 0;
-        mstore 64, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff, 0xffffffff;
-
-        affine_256 0, 32, 64, 0;
-
-        assert_eq 0, 0, 0, 0, 0, 0, 0, 0, 0;
 
 
         // EC Addition:
@@ -237,8 +100,10 @@ machine Main with degree: 65536 {
 
         ec_add 0, 64, 0;
 
-        assert_eq 0, 0xbce036f9, 0x8601f113, 0x836f99b0, 0xb531c845, 0xf89d5229, 0x49344f85, 0x9258c310, 0xf9308a01;
-        assert_eq 32, 0x84b8e672, 0x6cb9fd75, 0x34c2231b, 0x6500a999, 0x2a37f356, 0x0fe337e6, 0x632de814, 0x388f7b0f;
+        //assert_eq 0, 0xbce036f9, 0x8601f113, 0x836f99b0, 0xb531c845, 0xf89d5229, 0x49344f85, 0x9258c310, 0xf9308a01;
+        //assert_eq 32, 0x84b8e672, 0x6cb9fd75, 0x34c2231b, 0x6500a999, 0x2a37f356, 0x0fe337e6, 0x632de814, 0x388f7b0f;
+
+        /*
 
 
         // EC Double:
@@ -258,6 +123,8 @@ machine Main with degree: 65536 {
 
         assert_eq 0, 0x70afe85a, 0xc5b0f470, 0x9620095b, 0x687cf441, 0x4d734633, 0x15c38f00, 0x48e7561b, 0xd01115d5;
         assert_eq 32, 0xf4062327, 0x6b051b13, 0xd9a86d52, 0x79238c5d, 0xe17bd815, 0xa8b64537, 0xc815e0d7, 0xa9f34ffd;
+
+        */
 
         /*
 

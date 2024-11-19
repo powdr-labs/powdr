@@ -22,7 +22,7 @@ pub enum IncompleteCause<K = usize> {
     /// No progress transferring. TODO: not sure this could not be covered by other cases
     NoProgressTransferring,
     /// Quadratic term found trying to detect an affine expression. Example: `a*b + 2c + d`
-    QuadraticTerm,
+    QuadraticTerm(String),
     /// Division term found trying to detect an affine expression. Example: `a/b + 2c + d`
     DivisionTerm,
     /// Exponentiation term found trying to detect an affine expression. Example: `a**b + 2c + d`

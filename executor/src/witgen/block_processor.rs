@@ -75,12 +75,22 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
         let mut is_identity_complete =
             vec![vec![false; self.identities.len()]; self.processor.len()];
 
-        while let Some(SequenceStep { row_delta, action }) = sequence_iterator.next() {
+        while let Some((SequenceStep { row_delta, action }, from_default)) =
+            sequence_iterator.next()
+        {
             let row_index = (1 + row_delta) as usize;
             let progress = match action {
                 Action::InternalIdentity(identity_index) => {
+                    let identity_str = self.identities[identity_index].to_string();
+                    let is_write_update = identity_str.starts_with("main_arith::write_word =");
+                    if is_write_update {
+                        println!("  Running is_write_update ({row_delta})!");
+                    }
                     if is_identity_complete[row_index][identity_index] {
                         // The identity has been completed already, there is no point in processing it again.
+                        if is_write_update {
+                            println!("  -> Complete!");
+                        }
                         false
                     } else {
                         let res = self.processor.process_identity(
@@ -89,6 +99,12 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
                             UnknownStrategy::Unknown,
                         )?;
                         is_identity_complete[row_index][identity_index] = res.is_complete;
+                        if is_write_update {
+                            println!(
+                                "  -> Progress: {}; complete: {}",
+                                res.progress, res.is_complete
+                            );
+                        }
                         res.progress
                     }
                 }

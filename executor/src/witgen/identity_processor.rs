@@ -175,10 +175,15 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
         identity: &'a PolynomialIdentity<T>,
         rows: &RowPair<T>,
     ) -> EvalResult<'a, T> {
-        match rows.evaluate(&identity.expression) {
+        let is_write_update = identity.to_string().starts_with("main_arith::write_word =");
+        let res = match rows.evaluate(&identity.expression) {
             Err(incomplete_cause) => Ok(EvalValue::incomplete(incomplete_cause)),
             Ok(evaluated) => evaluated.solve_with_range_constraints(rows),
+        };
+        if is_write_update {
+            println!("     {:?}", res);
         }
+        res
     }
 
     fn process_lookup_or_permutation(

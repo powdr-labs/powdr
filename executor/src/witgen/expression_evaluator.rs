@@ -46,7 +46,13 @@ where
         // @TODO if we iterate on processing the constraints in the same row,
         // we could store the simplified values.
         match expr {
-            Expression::Reference(poly) => self.variables.value(AlgebraicVariable::Column(poly)),
+            Expression::Reference(poly) => {
+                let res = self.variables.value(AlgebraicVariable::Column(poly));
+                // if poly.name == "main_arith::is_affine" {
+                //     println!("               Looking up is_affine: {:?}", res);
+                // }
+                res
+            }
             Expression::PublicReference(public) => {
                 self.variables.value(AlgebraicVariable::Public(public))
             }
@@ -96,7 +102,10 @@ where
                             Some(r) if r.is_zero() => Ok(right_expr),
                             Some(r) if r.is_one() => Ok(left_expr),
                             Some(r) => Ok(left_expr * r),
-                            None => Err(IncompleteCause::QuadraticTerm),
+                            None => Err(IncompleteCause::QuadraticTerm(format!(
+                                "({}) * ({})",
+                                left_expr, right_expr
+                            ))),
                         }
                     }
                     // Err on lhs is ok if rhs is zero

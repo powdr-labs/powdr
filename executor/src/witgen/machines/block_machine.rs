@@ -245,12 +245,12 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 let mut values = values
                     .into_iter()
                     .zip(known_cells)
-                    .map(|(v, known)| known.then_some(v))
+                    .map(|(v, known)| known.then_some(v).or(Some(T::from(0xabcd))))
                     .collect::<Vec<_>>();
 
                 // Remove the "last" block added to the beginning of self.data.
                 // It contains the values the first block wrote to it and otherwise unknown values.
-                let dummy_block = values.drain(0..self.block_size).collect::<Vec<_>>();
+                let _ = values.drain(0..self.block_size).collect::<Vec<_>>();
 
                 // For all constraints to be satisfied, unused cells have to be filled with valid values.
                 // We do this, we construct a default block, by repeating the first input to the block machine.
@@ -275,18 +275,18 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 //
                 // TODO: Determine the row-extend per column
                 let first_block_values = values.iter().take(self.block_size);
-                let default_block = dummy_block
-                    .into_iter()
-                    .zip(first_block_values)
-                    .map(|(dummy_block, first_block)| {
-                        dummy_block.or(*first_block).unwrap_or_default()
-                    })
-                    .collect::<Vec<_>>();
+                // let default_block = dummy_block
+                //     .into_iter()
+                //     .zip(first_block_values)
+                //     .map(|(dummy_block, first_block)| {
+                //         dummy_block.or(*first_block).unwrap_or_default()
+                //     })
+                //     .collect::<Vec<_>>();
 
                 let values = values
                     .into_iter()
                     .enumerate()
-                    .map(|(i, v)| v.unwrap_or(default_block[i % self.block_size]))
+                    .map(|(i, v)| v.unwrap())
                     .collect::<Vec<_>>();
 
                 (id, values)

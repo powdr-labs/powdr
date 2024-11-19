@@ -193,7 +193,10 @@ impl<'a, T: FieldElement> Machine<'a, T> for DoubleSortedWitnesses32<'a, T> {
         identity_id: u64,
         caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
-        self.process_plookup_internal(identity_id, caller_rows)
+        println!("mem op");
+        let res = self.process_plookup_internal(identity_id, caller_rows);
+        println!("  mem op done => {:?}", res);
+        res
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
@@ -391,7 +394,7 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses32<'a, T> {
 
         let value_expr = &args[3];
 
-        log::trace!(
+        println!(
             "Query addr={:x}, step={step}, write: {is_write}, value: {}",
             addr.to_arbitrary_integer(),
             value_expr

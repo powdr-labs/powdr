@@ -450,7 +450,16 @@ impl<'row, 'a, T: FieldElement> RowPair<'row, 'a, T> {
 
     pub fn get_value(&self, poly: AlgebraicVariable) -> Option<T> {
         let value = match poly {
-            AlgebraicVariable::Column(poly) => self.get_row(poly.next).value(&poly.poly_id),
+            AlgebraicVariable::Column(poly) => {
+                let res = self.get_row(poly.next).value(&poly.poly_id);
+                if poly.name == "main_arith::is_affine" {
+                    println!(
+                        "               Looking up is_affine ({}): {:?}",
+                        self.current_row_index, res
+                    );
+                }
+                res
+            }
             AlgebraicVariable::Public(public_name) => self.publics.get(public_name).copied(),
         };
         match self.unknown_strategy {

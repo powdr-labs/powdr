@@ -196,18 +196,21 @@ impl ProcessingSequenceIterator {
 }
 
 impl Iterator for ProcessingSequenceIterator {
-    type Item = SequenceStep;
+    type Item = (SequenceStep, bool);
 
     fn next(&mut self) -> Option<Self::Item> {
         match self {
-            Self::Default(it) => it.next(),
+            Self::Default(it) => it.next().map(|step| (step, true)),
             // After the cached iterator is exhausted, run the default iterator again.
             // This is because the order in which the identities should be processed *might*
             // depend on the concrete input values.
             // In the typical scenario, most identities will be completed at this point and
             // the block processor will skip them. But if an identity was not completed before,
             // it will try again.
-            Self::Cached(it, default_iterator) => it.next().or_else(|| default_iterator.next()),
+            Self::Cached(it, default_iterator) => it
+                .next()
+                .map(|s| (s, false))
+                .or_else(|| default_iterator.next().map(|s| (s, true))),
             Self::Incomplete => unreachable!(),
         }
     }
@@ -287,22 +290,21 @@ impl ProcessingSequenceCache {
 
     pub fn report_processing_sequence<K, T>(
         &mut self,
-        _left: &[AffineExpression<K, T>],
-        _sequence_iterator: ProcessingSequenceIterator,
+        left: &[AffineExpression<K, T>],
+        sequence_iterator: ProcessingSequenceIterator,
     ) where
         K: Copy + Ord,
         T: FieldElement,
     {
-        // TODO: cache breaks Arith256Memory 😭
-        //     match sequence_iterator {
-        //         ProcessingSequenceIterator::Default(it) => {
-        //             assert!(self
-        //                 .cache
-        //                 .insert(left.into(), CacheEntry::Complete(it.progress_steps))
-        //                 .is_none());
-        //         }
-        //         ProcessingSequenceIterator::Incomplete => unreachable!(),
-        //         ProcessingSequenceIterator::Cached(_, _) => {} // Already cached, do nothing
-        //     }
+        match sequence_iterator {
+            ProcessingSequenceIterator::Default(it) => {
+                assert!(self
+                    .cache
+                    .insert(left.into(), CacheEntry::Complete(it.progress_steps))
+                    .is_none());
+            }
+            ProcessingSequenceIterator::Incomplete => unreachable!(),
+            ProcessingSequenceIterator::Cached(_, _) => {} // Already cached, do nothing
+        }
     }
 }
