@@ -70,14 +70,20 @@ where
         );
 
         // Setup protocol.
-        let mut prover_channel = <MC as MerkleChannel>::C::default();
+        let prover_channel = &mut <MC as MerkleChannel>::C::default();
         let commitment_scheme = &mut CommitmentSchemeProver::<B, MC>::new(config, &twiddles);
 
+        // Preprocessed trace
+        let mut tree_builder = commitment_scheme.tree_builder();
+        tree_builder.extend_evals([]);
+        tree_builder.commit(prover_channel);
+
+        // committed/witness trace
         let trace = gen_stwo_circuit_trace::<F, B, M31>(witness);
 
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals(trace);
-        tree_builder.commit(&mut prover_channel);
+        tree_builder.commit(prover_channel);
 
         let component = PowdrComponent::new(
             &mut TraceLocationAllocator::default(),
@@ -86,7 +92,7 @@ where
 
         let proof = stwo_prover::core::prover::prove::<B, MC>(
             &[&component],
-            &mut prover_channel,
+            prover_channel,
             commitment_scheme,
         )
         .unwrap();
@@ -105,8 +111,8 @@ where
         let proof: StarkProof<MC::H> =
             bincode::deserialize(proof).map_err(|e| format!("Failed to deserialize proof: {e}"))?;
 
-        let mut verifier_channel = <MC as MerkleChannel>::C::default();
-        let mut commitment_scheme = CommitmentSchemeVerifier::<MC>::new(config);
+        let verifier_channel = &mut <MC as MerkleChannel>::C::default();
+        let commitment_scheme = &mut CommitmentSchemeVerifier::<MC>::new(config);
 
         //Constraints that are to be proved
         let component = PowdrComponent::new(
@@ -115,21 +121,13 @@ where
         );
 
         // Retrieve the expected column sizes in each commitment interaction, from the AIR.
-        // TODO: When constant columns are supported, there will be more than one sizes and proof.commitments
-        // size[0] is for constant columns, size[1] is for witness columns, size[2] is for lookup columns
-        // pass size[1] for witness columns now is not doable due to this branch is outdated for the new feature of constant columns
-        // it will throw errors.
         let sizes = component.trace_log_degree_bounds();
-        assert_eq!(sizes.len(), 1);
-        commitment_scheme.commit(proof.commitments[0], &sizes[0], &mut verifier_channel);
 
-        stwo_prover::core::prover::verify(
-            &[&component],
-            &mut verifier_channel,
-            &mut commitment_scheme,
-            proof,
-        )
-        .map_err(|e| e.to_string())
+        commitment_scheme.commit(proof.commitments[0], &sizes[0], verifier_channel);
+        commitment_scheme.commit(proof.commitments[1], &sizes[1], verifier_channel);
+
+        stwo_prover::core::prover::verify(&[&component], verifier_channel, commitment_scheme, proof)
+            .map_err(|e| e.to_string())
     }
 }
 

@@ -53,6 +53,7 @@ where
 pub struct PowdrEval<T> {
     analyzed: Arc<Analyzed<T>>,
     witness_columns: BTreeMap<PolyID, usize>,
+    constant_columns: BTreeMap<PolyID, usize>,
 }
 
 impl<T: FieldElement> PowdrEval<T> {
@@ -63,10 +64,17 @@ impl<T: FieldElement> PowdrEval<T> {
             .enumerate()
             .map(|(index, (_, id))| (id, index))
             .collect();
+        let constant_columns: BTreeMap<PolyID, usize> = analyzed
+            .definitions_in_source_order(PolynomialType::Constant)
+            .flat_map(|(symbol, _)| symbol.array_elements())
+            .enumerate()
+            .map(|(index, (_, id))| (id, index))
+            .collect();
 
         Self {
             analyzed,
             witness_columns,
+            constant_columns,
         }
     }
 }
@@ -87,7 +95,12 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
         let witness_eval: BTreeMap<PolyID, [<E as EvalAtRow>::F; 2]> = self
             .witness_columns
             .keys()
-            .map(|poly_id| (*poly_id, eval.next_interaction_mask(0, [0, 1])))
+            .map(|poly_id| (*poly_id, eval.next_interaction_mask(1, [0, 1])))
+            .collect();
+        let constant_eval: BTreeMap<PolyID, <E as EvalAtRow>::F> = self
+            .constant_columns
+            .keys()
+            .map(|poly_id| (*poly_id, eval.next_interaction_mask(1, [0])[0].clone()))
             .collect();
 
         for id in self
@@ -96,7 +109,8 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
         {
             match id {
                 Identity::Polynomial(identity) => {
-                    let expr = to_stwo_expression(&identity.expression, &witness_eval);
+                    let expr =
+                        to_stwo_expression(&identity.expression, &witness_eval, &constant_eval);
                     eval.add_constraint(expr);
                 }
                 Identity::Connect(..) => {
@@ -119,6 +133,7 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
 fn to_stwo_expression<T: FieldElement, F>(
     expr: &AlgebraicExpression<T>,
     witness_eval: &BTreeMap<PolyID, [F; 2]>,
+    constant_eval: &BTreeMap<PolyID, F>,
 ) -> F
 where
     F: FieldExpOps
@@ -144,9 +159,7 @@ where
                     false => witness_eval[&poly_id][0].clone(),
                     true => witness_eval[&poly_id][1].clone(),
                 },
-                PolynomialType::Constant => {
-                    unimplemented!("Constant polynomials are not supported in stwo yet")
-                }
+                PolynomialType::Constant => constant_eval[&poly_id].clone(),
                 PolynomialType::Intermediate => {
                     unimplemented!("Intermediate polynomials are not supported in stwo yet")
                 }
@@ -162,15 +175,15 @@ where
             right,
         }) => match **right {
             AlgebraicExpression::Number(n) => {
-                let left = to_stwo_expression(left, witness_eval);
+                let left = to_stwo_expression(left, witness_eval, constant_eval);
                 (0u32..n.to_integer().try_into_u32().unwrap())
                     .fold(F::one(), |acc, _| acc * left.clone())
             }
             _ => unimplemented!("pow with non-constant exponent"),
         },
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation { left, op, right }) => {
-            let left = to_stwo_expression(left, witness_eval);
-            let right = to_stwo_expression(right, witness_eval);
+            let left = to_stwo_expression(left, witness_eval, constant_eval);
+            let right = to_stwo_expression(right, witness_eval, constant_eval);
 
             match op {
                 Add => left + right,
@@ -180,7 +193,7 @@ where
             }
         }
         AlgebraicExpression::UnaryOperation(AlgebraicUnaryOperation { op, expr }) => {
-            let expr = to_stwo_expression(expr, witness_eval);
+            let expr = to_stwo_expression(expr, witness_eval, constant_eval);
 
             match op {
                 AlgebraicUnaryOperator::Minus => -expr,
