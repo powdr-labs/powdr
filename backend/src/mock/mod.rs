@@ -72,7 +72,6 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
         &self,
         witness: &[(String, Vec<F>)],
         prev_proof: Option<Proof>,
-        // TODO: Check later-stage witnesses
         _witgen_callback: WitgenCallback<F>,
     ) -> Result<Proof, Error> {
         if prev_proof.is_some() {
@@ -99,6 +98,10 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
                 is_ok &= !result.has_warnings();
             }
         }
+
+        // TODO:
+        // - Check machine connections
+        // - Check later-stage witness
 
         if !is_ok {
             panic!("Constraint check failed");
