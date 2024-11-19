@@ -1,6 +1,6 @@
 use std::{collections::BTreeMap, io, marker::PhantomData, path::PathBuf, sync::Arc};
 
-use constraint_checker::ConstraintChecker;
+use polynomial_constraint_checker::PolynomialConstraintChecker;
 use itertools::Itertools;
 use powdr_ast::analyzed::Analyzed;
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
@@ -9,7 +9,7 @@ use powdr_number::{DegreeType, FieldElement};
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
-mod constraint_checker;
+mod polynomial_constraint_checker;
 mod evaluator;
 
 pub(crate) struct MockBackendFactory<F: FieldElement> {
@@ -91,7 +91,8 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
             let all_fixed = machine_fixed_columns(&self.fixed, pil);
             let fixed = all_fixed.get(&size).unwrap();
 
-            let result = ConstraintChecker::new(machine.clone(), &witness, fixed, pil).check();
+            let result =
+                PolynomialConstraintChecker::new(machine.clone(), &witness, fixed, pil).check();
             result.log();
             is_ok &= !result.has_errors();
             if !self.allow_warnings {

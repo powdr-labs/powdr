@@ -11,7 +11,7 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::mock::evaluator::Variables;
 
-pub struct ConstraintChecker<'a, F> {
+pub struct PolynomialConstraintChecker<'a, F> {
     machine_name: String,
     size: usize,
     columns: BTreeMap<PolyID, &'a [F]>,
@@ -19,7 +19,7 @@ pub struct ConstraintChecker<'a, F> {
     intermediate_definitions: BTreeMap<PolyID, &'a AlgebraicExpression<F>>,
 }
 
-impl<'a, F: FieldElement> ConstraintChecker<'a, F> {
+impl<'a, F: FieldElement> PolynomialConstraintChecker<'a, F> {
     pub fn new(
         machine_name: String,
         witness: &'a [(String, Vec<F>)],
