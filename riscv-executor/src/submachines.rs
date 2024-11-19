@@ -19,6 +19,8 @@ trait SubmachineKind {
         selector: Option<u32>,
         submachines: &[&mut dyn Submachine<F>],
     );
+    /// Some machines need more than simply copying first block
+    fn dummy_block_fix<F: FieldElement>(_trace: &mut SubmachineTrace<F>, rows: u32) {}
 }
 
 /// Trait only used for the constructor
@@ -106,8 +108,11 @@ impl<F: FieldElement, M: SubmachineKind> Submachine<F> for SubmachineImpl<F, M> 
     }
 
     fn push_dummy_block(&mut self, machine_max_degree: usize) {
+        let prev_len = self.len();
         self.trace
             .push_dummy_block(machine_max_degree, M::BLOCK_SIZE, M::SELECTORS);
+        let dummy_size = self.len() - prev_len;
+        M::dummy_block_fix(&mut self.trace, dummy_size);
     }
 
     fn take_cols(&mut self) -> Vec<(String, Vec<Elem<F>>)> {
@@ -709,6 +714,13 @@ impl SubmachineKind for PoseidonGlMachine {
 
         trace.push_row();
         for i in 0..STATE_SIZE {
+            // x3 and x7 are still constrained in output row...
+            let a = state[i];
+            let x3 = a.pow(3.into());
+            let x7 = x3.pow(2.into()) * a;
+            trace.set_current_row(X3_COLS[i], Elem::Field(x3));
+            trace.set_current_row(X7_COLS[i], Elem::Field(x7));
+            // set output
             trace.set_current_row(STATE_COLS[i], Elem::Field(state[i]));
         }
         // these are the same in the whole block
@@ -723,10 +735,14 @@ impl SubmachineKind for PoseidonGlMachine {
             1.into(),
         );
         for i in 0..STATE_SIZE {
-            trace.set_current_row(INPUT_COLS[i], input[i]);
+            trace.set_current_block(Self::BLOCK_SIZE, INPUT_COLS[i], input[i]);
         }
         for i in 0..OUTPUT_SIZE {
             trace.set_current_block(Self::BLOCK_SIZE, OUTPUT_COLS[i], Elem::Field(state[i]));
         }
+    }
+
+    fn dummy_block_fix<F: FieldElement>(trace: &mut SubmachineTrace<F>, rows: u32) {
+        trace.set_current_block(rows, "do_mload", 0.into());
     }
 }
