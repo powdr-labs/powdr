@@ -456,6 +456,19 @@ fn convert_witness<T: FieldElement>(witness: &[(String, Vec<u64>)]) -> Vec<(Stri
         .collect()
 }
 
+pub fn assert_proofs_fail_for_invalid_witnesses_mock(
+    file_name: &str,
+    witness: &[(String, Vec<u64>)],
+) {
+    assert!(Pipeline::<GoldilocksField>::default()
+        .with_tmp_output()
+        .from_file(resolve_test_file(file_name))
+        .set_witness(convert_witness(witness))
+        .with_backend(powdr_backend::BackendType::Mock, None)
+        .compute_proof()
+        .is_err());
+}
+
 pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
     file_name: &str,
     witness: &[(String, Vec<u64>)],
@@ -523,6 +536,7 @@ pub fn assert_proofs_fail_for_invalid_witnesses_halo2(
 }
 
 pub fn assert_proofs_fail_for_invalid_witnesses(file_name: &str, witness: &[(String, Vec<u64>)]) {
+    assert_proofs_fail_for_invalid_witnesses_mock(file_name, witness);
     assert_proofs_fail_for_invalid_witnesses_pilcom(file_name, witness);
     assert_proofs_fail_for_invalid_witnesses_estark(file_name, witness);
     #[cfg(feature = "halo2")]

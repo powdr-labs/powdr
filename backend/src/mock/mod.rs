@@ -103,11 +103,10 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
         // - Check machine connections
         // - Check later-stage witness
 
-        if !is_ok {
-            panic!("Constraint check failed");
+        match is_ok {
+            true => Ok(Vec::new()),
+            false => Err(Error::BackendError("Constraint check failed".to_string())),
         }
-
-        Ok(Vec::new())
     }
 
     fn verify(&self, _proof: &[u8], _instances: &[Vec<F>]) -> Result<(), Error> {
