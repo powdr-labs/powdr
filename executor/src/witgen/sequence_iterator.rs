@@ -231,7 +231,6 @@ impl Iterator for ProcessingSequenceIterator {
     }
 }
 
-#[allow(dead_code)]
 enum CacheEntry {
     /// The machine has been run successfully before and the sequence is cached.
     Complete(Vec<SequenceStep>),
