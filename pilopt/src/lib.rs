@@ -3,7 +3,6 @@
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::hash::Hash;
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
@@ -492,7 +491,7 @@ fn constrained_to_constant<T: FieldElement>(
     None
 }
 
-/// Removes identities that evaluate to zero, the same column and lookups with empty columns.
+/// Removes identities that evaluate to zero (including constraints of the form "X = X") and lookups with empty columns.
 fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     let to_remove = pil_file
         .identities
@@ -653,7 +652,8 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 }
 
 /// Identifies witness columns that are directly constrained to be equal to other witness columns
-/// through polynomial identities of the form "x = y".
+/// through polynomial identities of the form "x = y" and returns a tuple ((name, id), (name, id))
+/// for each pair of identified columns
 fn equal_constrained<T: FieldElement>(
     expression: &AlgebraicExpression<T>,
 ) -> Option<((String, PolyID), (String, PolyID))> {
