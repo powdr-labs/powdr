@@ -78,11 +78,11 @@ impl<'a, F: FieldElement> ConstraintChecker<'a, F> {
             .pil
             .identities
             .iter()
-            .filter_map(|identity| match identity {
-                Identity::Polynomial(_) => Some(identity),
+            .filter(|identity| match identity {
+                Identity::Polynomial(_) => true,
                 _ => {
-                    warnings.push(format!("Unexpected identity: {}", identity));
-                    None
+                    warnings.push(format!("Ignoring unexpected identity: {identity}",));
+                    false
                 }
             })
             .collect::<Vec<_>>();
@@ -151,7 +151,7 @@ impl<F: fmt::Display> fmt::Display for FailingPolynomialConstraint<'_, F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Identity fails on row {}: {}", self.row, self.identity)?;
         for (variable, value) in &self.assignments {
-            write!(f, "\n  {} = {}", variable, value)?;
+            write!(f, "\n  {variable} = {value}")?;
         }
         Ok(())
     }
