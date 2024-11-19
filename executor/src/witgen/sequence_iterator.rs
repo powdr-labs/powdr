@@ -294,7 +294,6 @@ impl ProcessingSequenceCache {
         T: FieldElement,
     {
         // TODO: cache breaks Arith256Memory 😭
-        return;
         //     match sequence_iterator {
         //         ProcessingSequenceIterator::Default(it) => {
         //             assert!(self
