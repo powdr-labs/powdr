@@ -11,20 +11,16 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Default, Serialize, Deserialize, JsonSchema)]
+/// A reference to a location in a source file.
+///
+/// Important note: in order to facilitate comparison of AST nodes, all instances of SourceRef are considered equal.
+/// Any tests that expect instances whose fields differ not to be equal must use custom comparison logic.
 pub struct SourceRef {
     pub file_name: Option<Arc<str>>,
     pub file_contents: Option<Arc<str>>,
     pub start: usize,
     pub end: usize,
 }
-
-impl PartialEq for SourceRef {
-    fn eq(&self, _: &Self) -> bool {
-        true
-    }
-}
-
-impl Eq for SourceRef {}
 
 impl Ord for SourceRef {
     fn cmp(&self, _: &Self) -> std::cmp::Ordering {
@@ -37,6 +33,14 @@ impl PartialOrd for SourceRef {
         Some(self.cmp(other))
     }
 }
+
+impl PartialEq for SourceRef {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == std::cmp::Ordering::Equal
+    }
+}
+
+impl Eq for SourceRef {}
 
 impl SourceRef {
     pub fn unknown() -> Self {
