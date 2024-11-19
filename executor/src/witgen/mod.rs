@@ -48,6 +48,9 @@ mod symbolic_witness_evaluator;
 mod util;
 mod vm_processor;
 
+pub use affine_expression::{AffineExpression, AffineResult, AlgebraicVariable};
+pub use expression_evaluator::{ExpressionEvaluator, SymbolicVariables};
+
 static OUTER_CODE_NAME: &str = "witgen (outer code)";
 static RANGE_CONSTRAINT_MULTIPLICITY_WITGEN: &str = "range constraint multiplicity witgen";
 

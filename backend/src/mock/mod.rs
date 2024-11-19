@@ -1,7 +1,6 @@
 use std::{collections::BTreeMap, io, marker::PhantomData, path::PathBuf, sync::Arc};
 
 use constraint_checker::ConstraintChecker;
-use halo2_proofs::dev::metadata::Constraint;
 use itertools::Itertools;
 use powdr_ast::analyzed::Analyzed;
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
@@ -65,15 +64,14 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
         &self,
         witness: &[(String, Vec<F>)],
         prev_proof: Option<Proof>,
-        witgen_callback: WitgenCallback<F>,
+        // TODO: Check later-stage witnesses
+        _witgen_callback: WitgenCallback<F>,
     ) -> Result<Proof, Error> {
         if prev_proof.is_some() {
             unimplemented!();
         }
 
         for (machine, pil) in &self.machine_to_pil {
-            log::info!("Checking machine {}", machine);
-
             let witness = machine_witness_columns(witness, pil, machine);
             let size = witness
                 .iter()
@@ -82,10 +80,10 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
                 .exactly_one()
                 .expect("All witness columns of a machine must have the same size")
                 as DegreeType;
-            let all_fixed = machine_fixed_columns(&self.fixed, &pil);
+            let all_fixed = machine_fixed_columns(&self.fixed, pil);
             let fixed = all_fixed.get(&size).unwrap();
 
-            ConstraintChecker::new(&witness, fixed);
+            ConstraintChecker::new(machine.clone(), &witness, fixed, pil).check();
         }
 
         Ok(Vec::new())
