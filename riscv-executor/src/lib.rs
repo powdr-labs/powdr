@@ -1886,19 +1886,19 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 let inputs = (0..12)
                     .into_iter()
                     .map(|i| {
-                        let lo = self.proc.get_mem(input_ptr.u() + i * 4);
-                        let hi = self.proc.get_mem(input_ptr.u() + (i + 1) * 4);
+                        let lo = self.proc.get_mem(input_ptr.u() + 8 * i);
+                        let hi = self.proc.get_mem(input_ptr.u() + 8 * i + 4);
                         // memory reads of the poseidon machine
                         if let ExecMode::Trace = self.mode {
                             self.proc.memory_machine.read(
                                 self.step,
-                                input_ptr.u() + i * 4,
+                                input_ptr.u() + 8 * i,
                                 lo.into(),
                                 2,
                             );
                             self.proc.memory_machine.read(
                                 self.step,
-                                input_ptr.u() + (i + 1) * 4,
+                                input_ptr.u() + 8 * i + 4,
                                 hi.into(),
                                 3,
                             );
@@ -1912,8 +1912,8 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                     let v = v.to_integer().try_into_u64().unwrap();
                     let hi = (v >> 32) as u32;
                     let lo = (v & 0xffffffff) as u32;
-                    self.proc.set_mem(output_ptr.u() + i as u32 * 4, lo);
-                    self.proc.set_mem(output_ptr.u() + (i + 1) as u32 * 4, hi);
+                    self.proc.set_mem(output_ptr.u() + 8 * i as u32, lo);
+                    self.proc.set_mem(output_ptr.u() + 8 * i as u32 + 4, hi);
                     if let ExecMode::Trace = self.mode {
                         // split gl of the poseidon machine
                         self.proc.submachine("split_gl").add_operation(
@@ -1925,13 +1925,13 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                         // memory writes of the poseidon machine
                         self.proc.memory_machine.write(
                             self.step + 1,
-                            output_ptr.u() + i as u32 * 4,
+                            output_ptr.u() + 8 * i as u32,
                             lo.into(),
                             4,
                         );
                         self.proc.memory_machine.write(
                             self.step + 1,
-                            output_ptr.u() + (i + 1) as u32 * 4,
+                            output_ptr.u() + 8 * i as u32 + 4,
                             hi.into(),
                             5,
                         );
