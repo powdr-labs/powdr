@@ -350,7 +350,12 @@ pub fn test_plonky3_with_backend_variant<T: FieldElement>(
 
 pub fn test_mock_backend<T: FieldElement>(pipeline: Pipeline<T>) {
     pipeline
-        .with_backend(powdr_backend::BackendType::Mock, None)
+        .with_backend(
+            powdr_backend::BackendType::Mock,
+            // Some tests have warnings, because they have lookups / permutations within the same namespace
+            // These will be skipped.
+            Some("allow_warnings".to_string()),
+        )
         .compute_proof()
         .cloned()
         .unwrap();

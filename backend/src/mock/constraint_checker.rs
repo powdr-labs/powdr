@@ -166,7 +166,7 @@ pub struct MachineResult<'a, F> {
 const MAX_ERRORS: usize = 5;
 
 impl<F: fmt::Display> MachineResult<'_, F> {
-    pub fn unwrap(self) {
+    pub fn log(&self) {
         let num_warnings = self.warnings.len();
         let num_errors = self.errors.len();
 
@@ -188,7 +188,7 @@ impl<F: fmt::Display> MachineResult<'_, F> {
             num_warnings
         );
 
-        for warning in self.warnings {
+        for warning in &self.warnings {
             log::warn!("  Warning: {}", warning);
         }
 
@@ -199,9 +199,13 @@ impl<F: fmt::Display> MachineResult<'_, F> {
         if num_errors > MAX_ERRORS {
             log::error!("  ... and {} more errors", num_errors - MAX_ERRORS);
         }
+    }
 
-        if num_errors > 0 {
-            panic!("Machine {} has {} errors", self.machine_name, num_errors);
-        }
+    pub fn has_errors(&self) -> bool {
+        !self.errors.is_empty()
+    }
+
+    pub fn has_warnings(&self) -> bool {
+        !self.warnings.is_empty()
     }
 }

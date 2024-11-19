@@ -34,7 +34,7 @@ impl<F: FieldElement> BackendFactory<F> for MockBackendFactory<F> {
         proving_key: Option<&mut dyn std::io::Read>,
         _verification_key: Option<&mut dyn std::io::Read>,
         verification_app_key: Option<&mut dyn std::io::Read>,
-        _backend_options: BackendOptions,
+        backend_options: BackendOptions,
     ) -> Result<Box<dyn Backend<F>>, Error> {
         if proving_key.is_some() {
             unimplemented!();
@@ -43,8 +43,14 @@ impl<F: FieldElement> BackendFactory<F> for MockBackendFactory<F> {
             unimplemented!();
         }
         let machine_to_pil = powdr_backend_utils::split_pil(&pil);
+        let allow_warnings = match backend_options.as_str() {
+            "allow_warnings" => true,
+            "" => false,
+            _ => panic!("Invalid backend option: {backend_options}"),
+        };
 
         Ok(Box::new(MockBackend {
+            allow_warnings,
             machine_to_pil,
             fixed,
         }))
@@ -56,6 +62,7 @@ impl<F: FieldElement> BackendFactory<F> for MockBackendFactory<F> {
 }
 
 pub(crate) struct MockBackend<F> {
+    allow_warnings: bool,
     machine_to_pil: BTreeMap<String, Analyzed<F>>,
     fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
 }
@@ -72,6 +79,7 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
             unimplemented!();
         }
 
+        let mut is_ok = true;
         for (machine, pil) in &self.machine_to_pil {
             let witness = machine_witness_columns(witness, pil, machine);
             let size = witness
@@ -84,9 +92,16 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
             let all_fixed = machine_fixed_columns(&self.fixed, pil);
             let fixed = all_fixed.get(&size).unwrap();
 
-            ConstraintChecker::new(machine.clone(), &witness, fixed, pil)
-                .check()
-                .unwrap();
+            let result = ConstraintChecker::new(machine.clone(), &witness, fixed, pil).check();
+            result.log();
+            is_ok &= !result.has_errors();
+            if !self.allow_warnings {
+                is_ok &= !result.has_warnings();
+            }
+        }
+
+        if !is_ok {
+            panic!("Constraint check failed");
         }
 
         Ok(Vec::new())
