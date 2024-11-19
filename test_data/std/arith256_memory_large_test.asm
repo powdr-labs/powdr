@@ -259,7 +259,8 @@ machine Main with degree: 65536 {
         assert_eq 0, 0x70afe85a, 0xc5b0f470, 0x9620095b, 0x687cf441, 0x4d734633, 0x15c38f00, 0x48e7561b, 0xd01115d5;
         assert_eq 32, 0xf4062327, 0x6b051b13, 0xd9a86d52, 0x79238c5d, 0xe17bd815, 0xa8b64537, 0xc815e0d7, 0xa9f34ffd;
 
-        // Auto-generated rest of the test cases:
+        // Auto-generated rest of the test cases,
+        // see: https://gist.github.com/georgwiese/a66425ae95c839b548edffffe6a692f9
         mstore 0, 0x70afe85a, 0xc5b0f470, 0x9620095b, 0x687cf441, 0x4d734633, 0x15c38f00, 0x48e7561b, 0xd01115d5;
         mstore 32, 0xf4062327, 0x6b051b13, 0xd9a86d52, 0x79238c5d, 0xe17bd815, 0xa8b64537, 0xc815e0d7, 0xa9f34ffd;
 
