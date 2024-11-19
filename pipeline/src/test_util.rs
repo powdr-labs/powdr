@@ -53,6 +53,7 @@ pub fn make_prepared_pipeline<T: FieldElement>(
 pub fn regular_test(file_name: &str, inputs: &[i32]) {
     let inputs_gl = inputs.iter().map(|x| GoldilocksField::from(*x)).collect();
     let pipeline_gl = make_prepared_pipeline(file_name, inputs_gl, vec![]);
+    test_mock_backend(pipeline_gl.clone());
     test_pilcom(pipeline_gl.clone());
     gen_estark_proof(pipeline_gl.clone());
     test_plonky3_pipeline(pipeline_gl);
@@ -73,6 +74,7 @@ pub fn regular_test(file_name: &str, inputs: &[i32]) {
 pub fn regular_test_without_small_field(file_name: &str, inputs: &[i32]) {
     let inputs_gl = inputs.iter().map(|x| GoldilocksField::from(*x)).collect();
     let pipeline_gl = make_prepared_pipeline(file_name, inputs_gl, vec![]);
+    test_mock_backend(pipeline_gl.clone());
     test_pilcom(pipeline_gl.clone());
     gen_estark_proof(pipeline_gl);
 
@@ -344,6 +346,14 @@ pub fn test_plonky3_with_backend_variant<T: FieldElement>(
         // Verify the proof again
         pipeline.verify(&proof, &[publics]).unwrap();
     }
+}
+
+pub fn test_mock_backend<T: FieldElement>(pipeline: Pipeline<T>) {
+    pipeline
+        .with_backend(powdr_backend::BackendType::Mock, None)
+        .compute_proof()
+        .cloned()
+        .unwrap();
 }
 
 #[cfg(feature = "plonky3")]

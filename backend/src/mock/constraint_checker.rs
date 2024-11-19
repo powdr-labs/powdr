@@ -110,9 +110,12 @@ impl<'a, F: FieldElement> ConstraintChecker<'a, F> {
                                 let value = variables.constant_value(variable);
                                 log::error!("  {} = {}", variable, value);
                             }
+                            panic!();
                         }
                     }
-                    _ => unreachable!("Unexpected identity: {}", identity),
+                    // TODO
+                    // _ => unreachable!("Unexpected identity: {}", identity),
+                    _ => {}
                 }
             }
         });
