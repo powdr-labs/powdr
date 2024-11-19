@@ -3,6 +3,7 @@
 
 use std::cmp::Ordering;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::hash::Hash;
 
 use powdr_ast::analyzed::{
     AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReference,
@@ -167,6 +168,14 @@ fn collect_required_symbols<'a, T: FieldElement>(
             }
         });
     }
+    for (name, (sym, def)) in &pil_file.definitions {
+        if let SymbolKind::Poly(PolynomialType::Committed) = &sym.kind {
+            if def.is_some() {
+                required_names.insert(name.into());
+            }
+        }
+    }
+
     required_names
 }
 
@@ -357,6 +366,8 @@ fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                         if let AlgebraicExpression::Number(n) = r {
                             Some((i, (l, n)))
                         } else {
+                            // Otherwise the constraint is not satisfiable,
+                            // but better to get the error elsewhere.
                             None
                         }
                     })
@@ -645,7 +656,7 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 /// through polynomial identities of the form "x = y".
 fn equal_constrained<T: FieldElement>(
     expression: &AlgebraicExpression<T>,
-) -> Option<(PolyID, (String, PolyID))> {
+) -> Option<((String, PolyID), (String, PolyID))> {
     match expression {
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
             left,
@@ -662,7 +673,7 @@ fn equal_constrained<T: FieldElement>(
                     && !right_ref.next
                 {
                     Some((
-                        left_ref.poly_id,
+                        (left_ref.name.clone(), left_ref.poly_id),
                         (right_ref.name.clone(), right_ref.poly_id),
                     ))
                 } else {
@@ -676,23 +687,40 @@ fn equal_constrained<T: FieldElement>(
 }
 
 fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
-    let substitutions = pil_file
+    let substitutions: Vec<_> = pil_file
         .identities
         .iter()
         .filter_map(|id| {
-            if let Identity::Polynomial(PolynomialIdentity { expression: e, .. }) = id {
-                equal_constrained(e)
+            if let Identity::Polynomial(PolynomialIdentity { expression, .. }) = id {
+                equal_constrained(expression)
             } else {
                 None
             }
         })
-        .collect::<HashMap<PolyID, _>>();
+        .collect();
+
+    let subs_by_id: HashMap<_, _> = substitutions
+        .iter()
+        .map(|((_, id), to_keep)| (id, to_keep))
+        .collect();
+
+    let subs_by_name: HashMap<_, _> = substitutions
+        .iter()
+        .map(|((name, _), to_keep)| (name, to_keep))
+        .collect();
 
     pil_file.post_visit_expressions_in_identities_mut(&mut |e: &mut AlgebraicExpression<_>| {
         if let AlgebraicExpression::Reference(ref mut reference) = e {
-            if let Some((replacement_name, replacement_id)) = substitutions.get(&reference.poly_id)
-            {
+            if let Some((replacement_name, replacement_id)) = subs_by_id.get(&reference.poly_id) {
                 reference.poly_id = *replacement_id;
+                reference.name = replacement_name.clone();
+            }
+        }
+    });
+
+    pil_file.post_visit_expressions_in_definitions_mut(&mut |e: &mut Expression| {
+        if let Expression::Reference(_, Reference::Poly(reference)) = e {
+            if let Some((replacement_name, _)) = subs_by_name.get(&reference.name) {
                 reference.name = replacement_name.clone();
             }
         }
