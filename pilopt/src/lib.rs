@@ -358,8 +358,6 @@ fn extract_constant_lookups<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                         if let AlgebraicExpression::Number(n) = r {
                             Some((i, (l, n)))
                         } else {
-                            // Otherwise the constraint is not satisfiable,
-                            // but better to get the error elsewhere.
                             None
                         }
                     })
@@ -496,6 +494,8 @@ fn remove_trivial_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
                     if *n == 0.into() {
                         Some(index)
                     } else {
+                        // Otherwise the constraint is not satisfiable,
+                        // but better to get the error elsewhere.
                         None
                     }
                 }
