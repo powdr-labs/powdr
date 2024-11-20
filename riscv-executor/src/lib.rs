@@ -627,7 +627,7 @@ mod builder {
         }
 
         pub fn col_is_defined(&self, name: &str) -> bool {
-            self.trace.cols.get(name).is_some()
+            self.trace.cols.contains_key(name)
         }
 
         pub fn push_row(&mut self) {
