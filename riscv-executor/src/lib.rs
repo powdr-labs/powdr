@@ -497,31 +497,36 @@ mod builder {
             let mut regs = vec![0.into(); reg_len];
             regs[pc_idx as usize] = PC_INITIAL_VAL.into();
 
-            let submachines: HashMap<String, RefCell<Box<dyn Submachine<F>>>> = [
-                (
-                    "binary",
-                    BinaryMachine::new_boxed("main_binary", witness_cols.clone()).into(),
-                ),
-                (
-                    "shift",
-                    ShiftMachine::new_boxed("main_shift", witness_cols.clone()).into(),
-                ),
-                (
-                    "split_gl",
-                    SplitGlMachine::new_boxed("main_split_gl", witness_cols.clone()).into(),
-                ),
-                (
-                    "publics",
-                    PublicsMachine::new_boxed("main_publics", witness_cols.clone()).into(),
-                ),
-                (
-                    "poseidon_gl",
-                    PoseidonGlMachine::new_boxed("main_poseidon_gl", witness_cols.clone()).into(),
-                ),
-            ]
-            .into_iter()
-            .map(|(name, m)| (name.to_string(), m))
-            .collect();
+            let submachines: HashMap<String, RefCell<Box<dyn Submachine<F>>>> =
+                if let ExecMode::Trace = mode {
+                    [
+                        (
+                            "binary",
+                            BinaryMachine::new_boxed("main_binary", &witness_cols).into(),
+                        ),
+                        (
+                            "shift",
+                            ShiftMachine::new_boxed("main_shift", &witness_cols).into(),
+                        ),
+                        (
+                            "split_gl",
+                            SplitGlMachine::new_boxed("main_split_gl", &witness_cols).into(),
+                        ),
+                        (
+                            "publics",
+                            PublicsMachine::new_boxed("main_publics", &witness_cols).into(),
+                        ),
+                        (
+                            "poseidon_gl",
+                            PoseidonGlMachine::new_boxed("main_poseidon_gl", &witness_cols).into(),
+                        ),
+                    ]
+                    .into_iter()
+                    .map(|(name, m)| (name.to_string(), m))
+                    .collect()
+                } else {
+                    Default::default()
+                };
 
             let mut ret = Self {
                 pc_idx,
@@ -2075,9 +2080,14 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(tmp1_col, idx);
                 set_col!(tmp2_col, limb);
                 log::debug!("Committing public: idx={idx}, limb={limb}");
-                self.proc
-                    .submachine("publics")
-                    .add_operation("access", &[idx, limb], None, &[]);
+                if let ExecMode::Trace = self.mode {
+                    self.proc.submachine("publics").add_operation(
+                        "access",
+                        &[idx, limb],
+                        None,
+                        &[],
+                    );
+                }
                 vec![]
             }
             instr => {

@@ -25,11 +25,11 @@ trait SubmachineKind {
 
 /// Trait only used for the constructor
 pub trait SubmachineBoxed<F: FieldElement> {
-    fn new_boxed(namespace: &str, witness_cols: Vec<String>) -> Box<dyn Submachine<F>>;
+    fn new_boxed(namespace: &str, witness_cols: &[String]) -> Box<dyn Submachine<F>>;
 }
 
 impl<F: FieldElement, M: SubmachineKind + 'static> SubmachineBoxed<F> for M {
-    fn new_boxed(namespace: &str, witness_cols: Vec<String>) -> Box<dyn Submachine<F>> {
+    fn new_boxed(namespace: &str, witness_cols: &[String]) -> Box<dyn Submachine<F>> {
         Box::new(SubmachineImpl::<F, M>::new(namespace, witness_cols))
     }
 }
@@ -68,13 +68,13 @@ struct SubmachineImpl<F: FieldElement, M: SubmachineKind> {
 }
 
 impl<F: FieldElement, M: SubmachineKind> SubmachineImpl<F, M> {
-    pub fn new(namespace: &str, witness_cols: Vec<String>) -> Self {
+    pub fn new(namespace: &str, witness_cols: &[String]) -> Self {
         // filter machine columns
         let prefix = format!("{namespace}::");
         let witness_cols = witness_cols
             .iter()
             .filter(|c| c.starts_with(namespace))
-            .map(|c| c.strip_prefix(&prefix).unwrap().to_string())
+            .map(|c| (c.strip_prefix(&prefix).unwrap().to_string(), vec![]))
             .collect();
         SubmachineImpl {
             namespace: namespace.to_string(),
@@ -132,21 +132,16 @@ struct SubmachineTrace<F: FieldElement> {
 }
 
 impl<F: FieldElement> SubmachineTrace<F> {
-    fn new(cols: Vec<String>) -> Self {
+    fn new(cols: HashMap<String, Vec<Elem<F>>>) -> Self {
+        assert!(!cols.is_empty(), "machine with no witness columns");
         SubmachineTrace {
-            cols: cols.iter().map(|n| (n.clone(), vec![])).collect(),
-            last_row_overrides: cols.into_iter().map(|n| (n, None)).collect(),
+            last_row_overrides: cols.keys().map(|n| (n.clone(), None)).collect(),
+            cols,
         }
     }
 
     fn len(&self) -> u32 {
-        self.cols
-            .values()
-            .next()
-            .unwrap_or_else(|| panic!("machine with no witness columns"))
-            .len()
-            .try_into()
-            .unwrap()
+        self.cols.values().next().unwrap().len().try_into().unwrap()
     }
 
     /// set the value of a column in all rows of the current block
