@@ -785,11 +785,11 @@ fn types_in_expressions() {
     assert_eq!(output, expected);
 }
 
-// #[test]
-// fn set_hint() {
-//     let f = "asm/set_hint.asm";
-//     regular_test(f, Default::default());
-// }
+#[test]
+fn set_hint() {
+    let f = "asm/set_hint.asm";
+    regular_test(f, Default::default());
+}
 
 #[test]
 fn expand_fixed_jit() {
