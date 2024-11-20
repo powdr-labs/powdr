@@ -168,6 +168,12 @@ extern "C" fn {fun_name}(
     data: *mut c_void,
     data_len: u64,
     row_offset: u64,
+    mutable_state: *mut c_void,
+    process_lookup: fn(
+        *mut c_void,
+        u64,
+        Vec<LookupCell<'_, FieldElement>>,
+    ) -> bool,
 ) {{
     let data = data as *mut FieldElement;
     let data: &mut [FieldElement] = unsafe {{ std::slice::from_raw_parts_mut(data, data_len as usize) }};
@@ -262,11 +268,6 @@ enum LookupCell<'a, T> {{
     /// Value is not known (i.e. an output)
     Output(&'a mut T),
 }}
-fn process_lookup_direct<'a, T>(_lookup_id: u64, _values: std::vec::Vec<LookupCell<'a, T>>) {{
-    // TODO Make this a settable global.
-    todo!()
-}}
-
         "#
         )
     }
@@ -461,8 +462,9 @@ fn process_lookup_direct<'a, T>(_lookup_id: u64, _values: std::vec::Vec<LookupCe
                                 }
                             })
                             .format(", ");
-                        let machine_call =
-                            format!("process_lookup_direct({lookup_id}, vec![{query}]);",);
+                        let machine_call = format!(
+                            "assert!(process_lookup(mutable_state, {lookup_id}, vec![{query}]));"
+                        );
                         // TODO range constraints?
                         let output_expr = inputs.iter().find(|i| !i.is_known()).unwrap();
                         return once(Effect::Code(var_decl))

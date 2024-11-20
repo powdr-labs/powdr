@@ -76,7 +76,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         _identity_id: u64,
         _values: Vec<LookupCell<'c, T>>,
     ) -> Result<bool, EvalError<T>> {
-        unimplemented!("Direct lookup is not supported for this machine.");
+        unimplemented!("Direct lookup not supported machine {}.", self.name())
     }
 
     /// Returns the final values of the witness columns.
@@ -136,6 +136,18 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
             KnownMachine::FixedLookup(m) => {
                 m.process_plookup(mutable_state, identity_id, caller_rows)
             }
+        }
+    }
+
+    fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
+        &mut self,
+        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        lookup_id: u64,
+        data: Vec<LookupCell<'c, T>>,
+    ) -> Result<bool, EvalError<T>> {
+        match self {
+            KnownMachine::FixedLookup(m) => m.process_lookup_direct(mutable_state, lookup_id, data),
+            _ => unimplemented!("Direct lookup not supported by KnownMachine for all machines."),
         }
     }
 

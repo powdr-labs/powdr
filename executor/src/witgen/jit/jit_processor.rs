@@ -94,8 +94,11 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
         let library = Arc::new(unsafe { libloading::Library::new(&lib_path.path).unwrap() });
         // TODO what happen if there is a conflict in function names? Should we
         // encode the ID and the known inputs?
-        let witgen_fun =
-            unsafe { library.get::<extern "C" fn(*mut c_void, u64, u64)>(b"witgen") }.unwrap();
+        let witgen_fun = unsafe {
+            library
+                .get::<extern "C" fn(*mut c_void, u64, u64, *mut c_void, *const c_void)>(b"witgen")
+        }
+        .unwrap();
 
         self.witgen_functions.write().unwrap().insert(
             (identity_id, known_inputs.clone()),
@@ -109,7 +112,7 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
 
     pub fn process_lookup_direct<'b, 'c, 'd, Q: QueryCallback<T>>(
         &self,
-        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         connection_id: u64,
         values: Vec<LookupCell<'c, T>>,
         // TODO maybe just a `*mut T` plus first_col would be best?
@@ -132,7 +135,11 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
             }
         }
 
-        self.witgen_functions.read().unwrap()[&(connection_id, known_inputs)].call(&mut data);
+        self.witgen_functions.read().unwrap()[&(connection_id, known_inputs)].call(
+            &mut data,
+            mutable_state,
+            process_lookup,
+        );
 
         // TODO we still need to set "known" on the written cells in `data`.
 
@@ -140,17 +147,41 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
     }
 }
 
+fn process_lookup<'a, 'b, 'c, 'd, T: FieldElement, Q: QueryCallback<T>>(
+    mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+    identity_id: u64,
+    values: Vec<LookupCell<'c, T>>,
+) -> bool {
+    mutable_state
+        .machines
+        .call_direct(identity_id, values, mutable_state.query_callback)
+        .unwrap()
+}
+
 struct WitgenFunction {
     #[allow(dead_code)]
     library: Arc<libloading::Library>,
-    witgen_function: extern "C" fn(*mut c_void, u64, u64),
+    witgen_function: extern "C" fn(*mut c_void, u64, u64, *mut c_void, *const c_void),
 }
 
 impl WitgenFunction {
-    fn call<T: FieldElement>(&self, data: &mut CompactDataRef<T>) {
+    fn call<'a, 'b, 'c, 'd, T: FieldElement, Q: QueryCallback<T>>(
+        &self,
+        data: &mut CompactDataRef<T>,
+        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        process_lookup: fn(&'b mut MutableState<'a, 'b, T, Q>, u64, Vec<LookupCell<'c, T>>) -> bool,
+    ) {
         let (slice, row_offset) = data.direct_slice();
         let data_c_ptr = slice.as_mut_ptr() as *mut c_void;
         let len = slice.len() as u64;
-        (self.witgen_function)(data_c_ptr, len, row_offset as u64);
+        let process_lookup_ptr = process_lookup as *const c_void;
+        let mutable_state_ptr = mutable_state as *mut _ as *mut c_void;
+        (self.witgen_function)(
+            data_c_ptr,
+            len,
+            row_offset as u64,
+            mutable_state_ptr,
+            process_lookup_ptr,
+        );
     }
 }
