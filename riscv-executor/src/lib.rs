@@ -626,8 +626,16 @@ mod builder {
             }
         }
 
-        pub fn col_is_defined(&self, name: &str) -> bool {
-            self.trace.cols.contains_key(name)
+        pub fn try_get_col(&self, name: &str) -> Option<Elem<F>> {
+            if let ExecMode::Trace = self.mode {
+                self.trace
+                    .cols
+                    .get(name)
+                    .and_then(|col| col.last())
+                    .map(|v| *v)
+            } else {
+                None
+            }
         }
 
         pub fn push_row(&mut self) {
@@ -1043,19 +1051,19 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
         self.proc.backup_reg_mem();
 
-        if self.proc.col_is_defined("X_const") {
+        if self.proc.try_get_col("main::X_const").is_some() {
             set_col!(X, get_col!(X_const));
         }
 
-        if self.proc.col_is_defined("Y_const") {
+        if self.proc.try_get_col("main::Y_const").is_some() {
             set_col!(Y, get_col!(Y_const));
         }
 
-        if self.proc.col_is_defined("Z_const") {
+        if self.proc.try_get_col("main::Z_const").is_some() {
             set_col!(Z, get_col!(Z_const));
         }
 
-        if self.proc.col_is_defined("W_const") {
+        if self.proc.try_get_col("main::W_const").is_some() {
             set_col!(W, get_col!(W_const));
         }
 
