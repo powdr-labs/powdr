@@ -241,6 +241,17 @@ fn process_fixed_column<T: FieldElement>(fixed: &[T]) -> Option<(RangeConstraint
     Some((RangeConstraint::from_mask(mask), false))
 }
 
+fn add_constraint<T: FieldElement>(
+    known_constraints: &mut BTreeMap<PolyID, RangeConstraint<T>>,
+    poly_id: PolyID,
+    constraint: RangeConstraint<T>,
+) {
+    known_constraints
+        .entry(poly_id)
+        .and_modify(|existing| *existing = existing.conjunction(&constraint))
+        .or_insert(constraint);
+}
+
 /// Deduces new range constraints on witness columns from constraints on fixed columns
 /// and identities. Note that these constraints hold globally, i.e. for all rows.
 /// If the returned flag is true, the identity can be removed, because it contains
@@ -255,9 +266,7 @@ fn propagate_constraints<T: FieldElement>(
     match identity {
         Identity::Polynomial(identity) => {
             if let Some(p) = is_binary_constraint(intermediate_definitions, &identity.expression) {
-                assert!(known_constraints
-                    .insert(p, RangeConstraint::from_max_bit(0))
-                    .is_none());
+                add_constraint(known_constraints, p, RangeConstraint::from_max_bit(0));
                 true
             } else {
                 for (p, c) in try_transfer_constraints(
@@ -265,10 +274,7 @@ fn propagate_constraints<T: FieldElement>(
                     &identity.expression,
                     known_constraints,
                 ) {
-                    known_constraints
-                        .entry(p)
-                        .and_modify(|existing| *existing = existing.conjunction(&c))
-                        .or_insert(c);
+                    add_constraint(known_constraints, p, c);
                 }
                 false
             }
@@ -287,10 +293,7 @@ fn propagate_constraints<T: FieldElement>(
                     (try_to_simple_poly(left), try_to_simple_poly(right))
                 {
                     if let Some(constraint) = known_constraints.get(&right.poly_id).cloned() {
-                        known_constraints
-                            .entry(left.poly_id)
-                            .and_modify(|existing| *existing = existing.conjunction(&constraint))
-                            .or_insert(constraint);
+                        add_constraint(known_constraints, left.poly_id, constraint);
                     }
                 }
             }
