@@ -204,8 +204,10 @@ pub fn cell_to_variable(
         ..
     }: &Cell,
 ) -> String {
-    // TODO we need to check that the prefix is actually unique.
-    let column_name = &column_name[column_name.rfind("::").unwrap() + 2..];
+    // TODO we need to check that the resulting name is actually unique.
+    let column_name = &column_name[column_name.rfind("::").unwrap() + 2..]
+        .replace("[", "_")
+        .replace("]", "_");
     if *row_offset < 0 {
         format!("{column_name}_u{}", -row_offset)
     } else {
@@ -295,7 +297,10 @@ impl<T: FieldElement> EvalResult<T> {
                 };
                 return once(Effect::Assignment(
                     cell.clone(),
-                    format!("let {} = {assignment};", cell_to_variable(cell)),
+                    format!(
+                        "let {}: FieldElement = ({assignment}).into();",
+                        cell_to_variable(cell)
+                    ),
                 ))
                 .chain(rc.map(|rc| Effect::RangeConstraint(cell.clone(), rc)))
                 .collect();
@@ -360,7 +365,10 @@ impl<T: FieldElement> EvalResult<T> {
             };
             assignments.push(Effect::Assignment(
                 cell.clone(),
-                format!("let {} = {rhs};", cell_to_variable(&cell)),
+                format!(
+                    "let {}: FieldElement = ({rhs}).into();",
+                    cell_to_variable(&cell)
+                ),
             ));
             assignments.push(Effect::RangeConstraint(
                 cell.clone(),

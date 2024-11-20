@@ -87,6 +87,9 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
                         self.process_effects((&r - &value).solve(self))
                     }
                 }
+                // TODO instead of processing all identities for all rows until
+                // there is no change, instead create a vector of pairs of row offsets and identities
+                // and remove the identities where processing reported that they are "done".
                 for id in &self.parts.identities {
                     self.infer_from_identity_at_offset(id, offset);
                 }
@@ -136,7 +139,7 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
             .iter()
             .map(|cell| {
                 format!(
-                    "    let {} = get(data, row_offset, {}, {});",
+                    "    let {}: FieldElement = get(data, row_offset, {}, {});",
                     cell_to_variable(cell),
                     cell.row_offset,
                     cell.id,
@@ -168,9 +171,9 @@ extern "C" fn {fun_name}(
 ) {{
     let data = data as *mut FieldElement;
     let data: &mut [FieldElement] = unsafe {{ std::slice::from_raw_parts_mut(data, data_len as usize) }};
-    {assign_inputs}
-    {}
-    {store_values}
+{assign_inputs}
+{}
+{store_values}
 }}
 "#,
             self.preamble(),
@@ -188,10 +191,19 @@ extern "C" fn {fun_name}(
         let column_count = (last_column_id - first_column_id + 1) as usize;
         let modulus = T::modulus();
         format!(
-            r#"
+            r#"#![allow(non_snake_case)]
 use std::ffi::c_void;
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 struct FieldElement(u64);
+impl From<i64> for FieldElement {{
+    fn from(i: i64) -> Self {{
+        if i < 0 {{
+            ({modulus}_u64 as i64 + i).into()
+        }} else {{
+            Self(u64::try_from(i).unwrap())
+        }}
+    }}
+}}
 impl std::ops::Add for FieldElement {{
     type Output = Self;
     fn add(self, b: Self) -> Self {{
@@ -199,10 +211,35 @@ impl std::ops::Add for FieldElement {{
         Self(u64::try_from((u128::from(self.0) + u128::from(b.0)) % u128::from({modulus}_u64)).unwrap())
     }}
 }}
-impl std::ops::Mul<i64> for FieldElement {{
+impl std::ops::Mul<FieldElement> for FieldElement {{
     type Output = Self;
-    fn mul(self, _b: i64) -> FieldElement {{
-        todo!();
+    fn mul(self, b: FieldElement) -> FieldElement {{
+        Self(u64::try_from((u128::from(self.0) * b.0 as u128) % u128::from({modulus}_u64)).unwrap())
+    }}
+}}
+impl std::ops::Mul<FieldElement> for i64 {{
+    type Output = FieldElement;
+    fn mul(self, b: FieldElement) -> FieldElement {{
+        // TODO asserts that self is less than modulus.
+        if self < 0 {{
+            FieldElement(u64::try_from((u128::from(b.0) * (self + {modulus}_u64 as i64) as u128) % u128::from({modulus}_u64)).unwrap())
+        }} else {{
+            FieldElement(u64::try_from((u128::from(b.0) * self as u128) % u128::from({modulus}_u64)).unwrap())
+        }}
+    }}
+
+}}
+impl std::ops::BitAnd<u64> for FieldElement {{
+    type Output = Self;
+    fn bitand(self, b: u64) -> FieldElement {{
+        Self(self.0 & b)
+    }}
+}}
+// TODO this might not be the expected operation. We could call a function instead of using this operator?
+impl std::ops::Div<u64> for FieldElement {{
+    type Output = Self;
+    fn div(self, b: u64) -> FieldElement {{
+        Self(self.0 / b)
     }}
 }}
 #[inline]
@@ -418,14 +455,14 @@ fn process_lookup_direct<'a, T>(_lookup_id: u64, _values: std::vec::Vec<LookupCe
                                     let var_name = format!("lookup_{lookup_id}_{i}");
                                     output_var = var_name.clone();
                                     var_decl.push_str(&format!(
-                                        "let mut {var_name}: FieldElement = 0.into();"
+                                        "let mut {var_name}: FieldElement = Default::default();"
                                     ));
                                     format!("LookupCell::Output(&mut {var_name})")
                                 }
                             })
                             .format(", ");
                         let machine_call =
-                            format!("process_lookup_direct(({lookup_id}, vec![{query}]));",);
+                            format!("process_lookup_direct({lookup_id}, vec![{query}]);",);
                         // TODO range constraints?
                         let output_expr = inputs.iter().find(|i| !i.is_known()).unwrap();
                         return once(Effect::Code(var_decl))

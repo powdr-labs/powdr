@@ -134,6 +134,8 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
 
         self.witgen_functions.read().unwrap()[&(connection_id, known_inputs)].call(&mut data);
 
+        // TODO we still need to set "known" on the written cells in `data`.
+
         Ok(true)
     }
 }
