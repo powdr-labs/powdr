@@ -20,7 +20,7 @@ trait SubmachineKind {
         submachines: &[&mut dyn Submachine<F>],
     );
     /// Some machines need more than simply copying first block
-    fn dummy_block_fix<F: FieldElement>(_trace: &mut SubmachineTrace<F>, rows: u32) {}
+    fn dummy_block_fix<F: FieldElement>(_trace: &mut SubmachineTrace<F>, _rows: u32) {}
 }
 
 /// Trait only used for the constructor
@@ -70,7 +70,7 @@ struct SubmachineImpl<F: FieldElement, M: SubmachineKind> {
 impl<F: FieldElement, M: SubmachineKind> SubmachineImpl<F, M> {
     pub fn new(namespace: &str, witness_cols: Vec<String>) -> Self {
         // filter machine columns
-        let prefix = format!("{}::", namespace);
+        let prefix = format!("{namespace}::");
         let witness_cols = witness_cols
             .iter()
             .filter(|c| c.starts_with(namespace))
@@ -256,8 +256,7 @@ impl SubmachineKind for BinaryMachine {
             panic!();
         };
 
-        let op_id: Elem<F>;
-        op_id = match op {
+        let op_id: Elem<F> = match op {
             "and" => 0,
             "or" => 1,
             "xor" => 2,
@@ -563,7 +562,7 @@ impl SubmachineKind for PublicsMachine {
     const BLOCK_SIZE: u32 = 1;
     fn add_operation<F: FieldElement>(
         trace: &mut SubmachineTrace<F>,
-        op: &str,
+        _op: &str,
         args: &[Elem<F>],
         selector: Option<u32>,
         _submachines: &[&mut dyn Submachine<F>],
@@ -599,7 +598,7 @@ impl SubmachineKind for PoseidonGlMachine {
         _op: &str,
         args: &[Elem<F>],
         selector: Option<u32>,
-        submachines: &[&mut dyn Submachine<F>],
+        _submachines: &[&mut dyn Submachine<F>],
     ) {
         const STATE_SIZE: usize = 12;
         const OUTPUT_SIZE: usize = 4;
@@ -665,7 +664,7 @@ impl SubmachineKind for PoseidonGlMachine {
             // memory read/write columns
             if row < STATE_SIZE {
                 let v = input[row].f().to_integer().try_into_u64().unwrap();
-                let hi = (v as u64 >> 32) as u32;
+                let hi = (v >> 32) as u32;
                 let lo = (v & 0xffffffff) as u32;
                 trace.set_current_row("do_mload", 1.into());
                 trace.set_current_row("word_low", lo.into());
@@ -703,12 +702,12 @@ impl SubmachineKind for PoseidonGlMachine {
             }
             // MDS multiplication
             let mds_input = state.clone();
-            for i in 0..STATE_SIZE {
+            for (i, v) in state.iter_mut().enumerate() {
                 let mut tmp = F::zero();
                 for (j, &input) in mds_input.iter().enumerate() {
                     tmp += input * F::from(poseidon_gl::MDS_MATRIX[i][j]);
                 }
-                state[i] = tmp;
+                *v = tmp;
             }
         }
 

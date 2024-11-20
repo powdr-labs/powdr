@@ -771,7 +771,7 @@ mod builder {
 
             // add submachine traces to main trace
             // ----------------------------
-            for mut machine in self.submachines.into_iter().map(|(_, m)| m.into_inner()) {
+            for mut machine in self.submachines.into_values().map(|m| m.into_inner()) {
                 if machine.len() == 0 {
                     // ignore empty machines
                     continue;
@@ -1859,7 +1859,6 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
                 set_col!(Y_b8, Elem::from_u32_as_fe(b8.into()));
 
                 let inputs = (0..12)
-                    .into_iter()
                     .map(|i| {
                         let lo = self.proc.get_mem(input_ptr.u() + 8 * i);
                         let hi = self.proc.get_mem(input_ptr.u() + 8 * i + 4);
