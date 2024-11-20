@@ -632,7 +632,7 @@ mod builder {
                     .cols
                     .get(name)
                     .and_then(|col| col.last())
-                    .map(|v| *v)
+                    .copied()
             } else {
                 None
             }
@@ -1051,22 +1051,21 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
         self.proc.backup_reg_mem();
 
-        if self.proc.try_get_col("main::X_const").is_some() {
-            set_col!(X, get_col!(X_const));
+        if let Some(x_const) = self.proc.try_get_col("main::X_const") {
+            set_col!(X, x_const);
         }
 
-        if self.proc.try_get_col("main::Y_const").is_some() {
-            set_col!(Y, get_col!(Y_const));
+        if let Some(y_const) = self.proc.try_get_col("main::Y_const") {
+            set_col!(Y, y_const);
         }
 
-        if self.proc.try_get_col("main::Z_const").is_some() {
-            set_col!(Z, get_col!(Z_const));
+        if let Some(z_const) = self.proc.try_get_col("main::Z_const") {
+            set_col!(Z, z_const);
         }
 
-        if self.proc.try_get_col("main::W_const").is_some() {
-            set_col!(W, get_col!(W_const));
+        if let Some(w_const) = self.proc.try_get_col("main::W_const") {
+            set_col!(W, w_const);
         }
-
         self.proc
             .set_col(&format!("main::instr_{name}"), Elem::from_u32_as_fe(1));
 
