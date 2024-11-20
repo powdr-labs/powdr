@@ -269,8 +269,6 @@ pub fn gen_halo2_proof(pipeline: Pipeline<Bn254Field>, backend: BackendVariant) 
         .degree_ranges()
         .into_iter()
         .map(|range| range.max)
-        .collect::<Vec<_>>()
-        .into_iter()
         .max()
         .unwrap();
     buffered_write_file(&setup_file_path, |writer| {
