@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use itertools::Itertools;
-use powdr_ast::analyzed::LookupIdentity;
 use powdr_ast::analyzed::PermutationIdentity;
 use powdr_ast::analyzed::PhantomLookupIdentity;
 use powdr_ast::analyzed::PhantomPermutationIdentity;
+use powdr_ast::analyzed::{LookupIdentity, PolynomialType};
 
 use super::block_machine::BlockMachine;
 use super::double_sorted_witness_machine_16::DoubleSortedWitnesses16;
@@ -305,10 +305,18 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
         }
     }
 
-    fn refs_in_expression(&self, expr: &'a Expression<T>) -> impl Iterator<Item = PolyID> + '_ {
-        Box::new(expr.all_children().filter_map(move |e| match e {
-            Expression::Reference(p) => Some(p.poly_id),
-            _ => None,
+    fn refs_in_expression(&self, expr: &'a Expression<T>) -> Box<dyn Iterator<Item = PolyID> + '_> {
+        Box::new(expr.all_children().flat_map(move |e| match e {
+            Expression::Reference(p) => match p.poly_id.ptype {
+                PolynomialType::Committed | PolynomialType::Constant => {
+                    Box::new(std::iter::once(p.poly_id))
+                }
+                // For intermediate polynomials, recursively extract the references in the expression.
+                PolynomialType::Intermediate => self.refs_in_expression(
+                    self.fixed.intermediate_definitions.get(&p.poly_id).unwrap(),
+                ),
+            },
+            _ => Box::new(std::iter::empty()),
         }))
     }
 }

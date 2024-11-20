@@ -201,7 +201,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         &mut self,
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         identity_id: u64,
-        rows: &RowPair<'_, '_, T>,
+        rows: &RowPair<'_, 'a, T>,
         left: &[AffineExpression<AlgebraicVariable<'a>, T>],
         mut right: Peekable<impl Iterator<Item = &'a AlgebraicReference>>,
     ) -> EvalResult<'a, T> {
@@ -261,12 +261,12 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
         Ok(result)
     }
 
-    fn process_range_check<'b>(
+    fn process_range_check(
         &self,
-        rows: &RowPair<'_, '_, T>,
-        lhs: &AffineExpression<AlgebraicVariable<'b>, T>,
-        rhs: AlgebraicVariable<'b>,
-    ) -> EvalResult<'b, T> {
+        rows: &RowPair<'_, 'a, T>,
+        lhs: &AffineExpression<AlgebraicVariable<'a>, T>,
+        rhs: AlgebraicVariable<'a>,
+    ) -> EvalResult<'a, T> {
         // Use AffineExpression::solve_with_range_constraints to transfer range constraints
         // from the rhs to the lhs.
         let equation = lhs.clone() - AffineExpression::from_variable_id(rhs);
@@ -438,13 +438,13 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
 /// (used for fixed columns).
 /// This is useful in order to transfer range constraints from fixed columns to
 /// witness columns (see [FixedLookup::process_range_check]).
-pub struct UnifiedRangeConstraints<'a, T: FieldElement> {
-    witness_constraints: &'a RowPair<'a, 'a, T>,
-    global_constraints: &'a GlobalConstraints<T>,
+pub struct UnifiedRangeConstraints<'a, 'b, T: FieldElement> {
+    witness_constraints: &'b RowPair<'b, 'a, T>,
+    global_constraints: &'b GlobalConstraints<T>,
 }
 
 impl<'a, T: FieldElement> RangeConstraintSet<AlgebraicVariable<'a>, T>
-    for UnifiedRangeConstraints<'_, T>
+    for UnifiedRangeConstraints<'_, '_, T>
 {
     fn range_constraint(&self, var: AlgebraicVariable<'a>) -> Option<RangeConstraint<T>> {
         let poly = match var {

@@ -53,6 +53,7 @@ pub fn make_prepared_pipeline<T: FieldElement>(
 pub fn regular_test(file_name: &str, inputs: &[i32]) {
     let inputs_gl = inputs.iter().map(|x| GoldilocksField::from(*x)).collect();
     let pipeline_gl = make_prepared_pipeline(file_name, inputs_gl, vec![]);
+    test_mock_backend(pipeline_gl.clone());
     test_pilcom(pipeline_gl.clone());
     gen_estark_proof(pipeline_gl.clone());
     test_plonky3_pipeline(pipeline_gl);
@@ -73,6 +74,7 @@ pub fn regular_test(file_name: &str, inputs: &[i32]) {
 pub fn regular_test_without_small_field(file_name: &str, inputs: &[i32]) {
     let inputs_gl = inputs.iter().map(|x| GoldilocksField::from(*x)).collect();
     let pipeline_gl = make_prepared_pipeline(file_name, inputs_gl, vec![]);
+    test_mock_backend(pipeline_gl.clone());
     test_pilcom(pipeline_gl.clone());
     gen_estark_proof(pipeline_gl);
 
@@ -351,6 +353,19 @@ pub fn test_plonky3_with_backend_variant<T: FieldElement>(
     }
 }
 
+pub fn test_mock_backend<T: FieldElement>(pipeline: Pipeline<T>) {
+    pipeline
+        .with_backend(
+            powdr_backend::BackendType::Mock,
+            // Some tests have warnings, because they have lookups / permutations within the same namespace
+            // These will be skipped.
+            Some("allow_warnings".to_string()),
+        )
+        .compute_proof()
+        .cloned()
+        .unwrap();
+}
+
 #[cfg(feature = "plonky3")]
 pub fn test_plonky3_pipeline<T: FieldElement>(pipeline: Pipeline<T>) {
     let mut pipeline = pipeline.with_backend(powdr_backend::BackendType::Plonky3, None);
@@ -446,6 +461,19 @@ fn convert_witness<T: FieldElement>(witness: &[(String, Vec<u64>)]) -> Vec<(Stri
         .collect()
 }
 
+pub fn assert_proofs_fail_for_invalid_witnesses_mock(
+    file_name: &str,
+    witness: &[(String, Vec<u64>)],
+) {
+    assert!(Pipeline::<GoldilocksField>::default()
+        .with_tmp_output()
+        .from_file(resolve_test_file(file_name))
+        .set_witness(convert_witness(witness))
+        .with_backend(powdr_backend::BackendType::Mock, None)
+        .compute_proof()
+        .is_err());
+}
+
 pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
     file_name: &str,
     witness: &[(String, Vec<u64>)],
@@ -513,6 +541,7 @@ pub fn assert_proofs_fail_for_invalid_witnesses_halo2(
 }
 
 pub fn assert_proofs_fail_for_invalid_witnesses(file_name: &str, witness: &[(String, Vec<u64>)]) {
+    assert_proofs_fail_for_invalid_witnesses_mock(file_name, witness);
     assert_proofs_fail_for_invalid_witnesses_pilcom(file_name, witness);
     assert_proofs_fail_for_invalid_witnesses_estark(file_name, witness);
     #[cfg(feature = "halo2")]
