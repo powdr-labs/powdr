@@ -167,13 +167,6 @@ fn collect_required_symbols<'a, T: FieldElement>(
             }
         });
     }
-    for (name, (sym, def)) in &pil_file.definitions {
-        if let SymbolKind::Poly(PolynomialType::Committed) = &sym.kind {
-            if def.is_some() {
-                required_names.insert(name.into());
-            }
-        }
-    }
 
     required_names
 }
@@ -672,10 +665,17 @@ fn equal_constrained<T: FieldElement>(
                     && right_ref.is_witness()
                     && !right_ref.next
                 {
-                    Some((
-                        (left_ref.name.clone(), left_ref.poly_id),
-                        (right_ref.name.clone(), right_ref.poly_id),
-                    ))
+                    if left_ref.poly_id > right_ref.poly_id {
+                        Some((
+                            (left_ref.name.clone(), left_ref.poly_id),
+                            (right_ref.name.clone(), right_ref.poly_id),
+                        ))
+                    } else {
+                        Some((
+                            (right_ref.name.clone(), right_ref.poly_id),
+                            (left_ref.name.clone(), left_ref.poly_id),
+                        ))
+                    }
                 } else {
                     None
                 }

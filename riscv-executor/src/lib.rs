@@ -626,6 +626,10 @@ mod builder {
             }
         }
 
+        pub fn col_is_defined(&self, name: &str) -> bool {
+            self.trace.cols.get(name).is_some()
+        }
+
         pub fn push_row(&mut self) {
             if let ExecMode::Trace = self.mode {
                 self.trace
@@ -1039,10 +1043,22 @@ impl<'a, 'b, F: FieldElement> Executor<'a, 'b, F> {
 
         self.proc.backup_reg_mem();
 
-        set_col!(X, get_col!(X_const));
-        set_col!(Y, get_col!(Y_const));
-        set_col!(Z, get_col!(Z_const));
-        set_col!(W, get_col!(W_const));
+        if self.proc.col_is_defined("X_const") {
+            set_col!(X, get_col!(X_const));
+        }
+
+        if self.proc.col_is_defined("Y_const") {
+            set_col!(Y, get_col!(Y_const));
+        }
+
+        if self.proc.col_is_defined("Z_const") {
+            set_col!(Z, get_col!(Z_const));
+        }
+
+        if self.proc.col_is_defined("W_const") {
+            set_col!(W, get_col!(W_const));
+        }
+
         self.proc
             .set_col(&format!("main::instr_{name}"), Elem::from_u32_as_fe(1));
 
