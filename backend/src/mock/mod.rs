@@ -1,7 +1,9 @@
 use std::{collections::BTreeMap, io, marker::PhantomData, path::PathBuf, sync::Arc};
 
-use polynomial_constraint_checker::PolynomialConstraintChecker;
+use connection_constraint_checker::{Connection, ConnectionConstraintChecker};
+use evaluator::Machine;
 use itertools::Itertools;
+use polynomial_constraint_checker::PolynomialConstraintChecker;
 use powdr_ast::analyzed::Analyzed;
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
@@ -9,8 +11,9 @@ use powdr_number::{DegreeType, FieldElement};
 
 use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
-mod polynomial_constraint_checker;
+mod connection_constraint_checker;
 mod evaluator;
+mod polynomial_constraint_checker;
 
 pub(crate) struct MockBackendFactory<F: FieldElement> {
     _marker: PhantomData<F>,
@@ -42,6 +45,11 @@ impl<F: FieldElement> BackendFactory<F> for MockBackendFactory<F> {
         if verification_app_key.is_some() {
             unimplemented!();
         }
+        let connections = pil
+            .identities
+            .iter()
+            .filter_map(|identity| identity.try_into().ok())
+            .collect();
         let machine_to_pil = powdr_backend_utils::split_pil(&pil);
         let allow_warnings = match backend_options.as_str() {
             "allow_warnings" => true,
@@ -53,6 +61,7 @@ impl<F: FieldElement> BackendFactory<F> for MockBackendFactory<F> {
             allow_warnings,
             machine_to_pil,
             fixed,
+            connections,
         }))
     }
 
@@ -65,6 +74,7 @@ pub(crate) struct MockBackend<F> {
     allow_warnings: bool,
     machine_to_pil: BTreeMap<String, Analyzed<F>>,
     fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
+    connections: Vec<Connection<F>>,
 }
 
 impl<F: FieldElement> Backend<F> for MockBackend<F> {
@@ -78,21 +88,31 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
             unimplemented!();
         }
 
-        let mut is_ok = true;
-        for (machine, pil) in &self.machine_to_pil {
-            let witness = machine_witness_columns(witness, pil, machine);
-            let size = witness
-                .iter()
-                .map(|(_, witness)| witness.len())
-                .unique()
-                .exactly_one()
-                .expect("All witness columns of a machine must have the same size")
-                as DegreeType;
-            let all_fixed = machine_fixed_columns(&self.fixed, pil);
-            let fixed = all_fixed.get(&size).unwrap();
+        let machines = self
+            .machine_to_pil
+            .iter()
+            .map(|(machine, pil)| {
+                let witness = machine_witness_columns(witness, pil, machine);
+                let size = witness
+                    .iter()
+                    .map(|(_, witness)| witness.len())
+                    .unique()
+                    .exactly_one()
+                    .expect("All witness columns of a machine must have the same size")
+                    as DegreeType;
+                let all_fixed = machine_fixed_columns(&self.fixed, pil);
+                let fixed = all_fixed.get(&size).unwrap();
 
-            let result =
-                PolynomialConstraintChecker::new(machine.clone(), &witness, fixed, pil).check();
+                (
+                    machine.as_str(),
+                    Machine::new(machine.clone(), witness, fixed, pil),
+                )
+            })
+            .collect::<BTreeMap<_, _>>();
+
+        let mut is_ok = true;
+        for (_, machine) in machines.iter() {
+            let result = PolynomialConstraintChecker::new(machine).check();
             result.log();
             is_ok &= !result.has_errors();
             if !self.allow_warnings {
@@ -100,8 +120,13 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
             }
         }
 
+        ConnectionConstraintChecker {
+            connections: &self.connections,
+            machines,
+        }
+        .check();
+
         // TODO:
-        // - Check machine connections
         // - Check later-stage witness
 
         match is_ok {
