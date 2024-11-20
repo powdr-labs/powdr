@@ -167,7 +167,6 @@ fn collect_required_symbols<'a, T: FieldElement>(
             }
         });
     }
-
     required_names
 }
 
