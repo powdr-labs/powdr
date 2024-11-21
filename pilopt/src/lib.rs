@@ -120,8 +120,8 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
     pil_file.remove_trait_impls(&impls_to_remove);
 }
 
-/// Builds a lookup-table that can be used to turn array elements
-/// (in form of their poly ids) into the names of the arrays.
+/// Builds a lookup-table that can be used to turn all symbols
+/// (including array elements) in the form of their poly ids, into the names of the symbols.
 fn build_poly_id_to_definition_name_lookup(
     pil_file: &Analyzed<impl FieldElement>,
 ) -> BTreeMap<PolyID, &String> {
@@ -141,6 +141,26 @@ fn build_poly_id_to_definition_name_lookup(
     poly_id_to_definition_name
 }
 
+/// Builds a lookup-table that can be used to turn array elements
+/// (in form of their poly ids) into the names of the arrays.
+fn build_poly_id_to_array_elem_lookup(
+    pil_file: &Analyzed<impl FieldElement>,
+) -> BTreeMap<PolyID, &String> {
+    let mut poly_id_to_definition_name = BTreeMap::new();
+    for (name, (symbol, _)) in &pil_file.definitions {
+        if matches!(symbol.kind, SymbolKind::Poly(_)) {
+            symbol.array_elements_only().for_each(|(_, id)| {
+                poly_id_to_definition_name.insert(id, name);
+            });
+        }
+    }
+    for (name, (symbol, _)) in &pil_file.intermediate_columns {
+        symbol.array_elements_only().for_each(|(_, id)| {
+            poly_id_to_definition_name.insert(id, name);
+        });
+    }
+    poly_id_to_definition_name
+}
 /// Collect all names that are referenced in identities and public declarations.
 fn collect_required_symbols<'a, T: FieldElement>(
     pil_file: &'a Analyzed<T>,
@@ -648,7 +668,7 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 /// for each pair of identified columns
 fn equal_constrained<T: FieldElement>(
     expression: &AlgebraicExpression<T>,
-    poly_id_to_definition_name: &BTreeMap<PolyID, &String>,
+    poly_id_to_array_elem: &BTreeMap<PolyID, &String>,
 ) -> Option<((String, PolyID), (String, PolyID))> {
     match expression {
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
@@ -664,8 +684,8 @@ fn equal_constrained<T: FieldElement>(
                     && !left_ref.next
                     && right_ref.is_witness()
                     && !right_ref.next
-                    && !poly_id_to_definition_name.contains_key(&left_ref.poly_id)
-                    && !poly_id_to_definition_name.contains_key(&right_ref.poly_id)
+                    && !poly_id_to_array_elem.contains_key(&left_ref.poly_id)
+                    && !poly_id_to_array_elem.contains_key(&right_ref.poly_id)
                 {
                     if left_ref.poly_id > right_ref.poly_id {
                         Some((
@@ -689,13 +709,13 @@ fn equal_constrained<T: FieldElement>(
 }
 
 fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
-    let poly_id_to_definition_name = build_poly_id_to_definition_name_lookup(pil_file);
+    let poly_id_to_array_elem = build_poly_id_to_array_elem_lookup(pil_file);
     let substitutions: Vec<_> = pil_file
         .identities
         .iter()
         .filter_map(|id| {
             if let Identity::Polynomial(PolynomialIdentity { expression, .. }) = id {
-                equal_constrained(expression, &poly_id_to_definition_name)
+                equal_constrained(expression, &poly_id_to_array_elem)
             } else {
                 None
             }
