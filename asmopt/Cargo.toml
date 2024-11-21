@@ -1,0 +1,12 @@
+[package]
+name = "asmopt"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+homepage.workspace = true
+repository.workspace = true
+
+[dependencies]
+powdr-ast.workspace = true
+powdr-analysis.workspace = true
+powdr-importer.workspace = true

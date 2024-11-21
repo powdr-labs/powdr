@@ -19,6 +19,7 @@ members = [
     "pilopt",
     "plonky3",
     "asm-to-pil",
+    "asmopt",
     "backend",
     "ast",
     "analysis",
@@ -28,7 +29,7 @@ members = [
     "riscv-executor",
     "riscv-syscalls",
     "schemas",
-    "backend-utils",
+    "backend-utils", "asmopt",
 ]
 
 exclude = [ "riscv-runtime" ]
