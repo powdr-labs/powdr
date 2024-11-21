@@ -13,7 +13,10 @@ use std::sync::Arc;
 use powdr_ast::analyzed::{
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolyID, PolynomialType,
 };
-use stwo_prover::constraint_framework::{EvalAtRow, FrameworkComponent, FrameworkEval};
+use stwo_prover::constraint_framework::preprocessed_columns::{gen_is_first, PreprocessedColumn};
+use stwo_prover::constraint_framework::{
+    EvalAtRow, FrameworkComponent, FrameworkEval, ORIGINAL_TRACE_IDX, PREPROCESSED_TRACE_IDX,
+};
 use stwo_prover::core::backend::ColumnOps;
 use stwo_prover::core::fields::m31::{BaseField, M31};
 use stwo_prover::core::fields::{ExtensionOf, FieldExpOps, FieldOps};
@@ -64,12 +67,15 @@ impl<T: FieldElement> PowdrEval<T> {
             .enumerate()
             .map(|(index, (_, id))| (id, index))
             .collect();
+        
+        println!(" \n witness_columns is {:?} \n ", witness_columns);
         let constant_columns: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Constant)
             .flat_map(|(symbol, _)| symbol.array_elements())
             .enumerate()
             .map(|(index, (_, id))| (id, index))
             .collect();
+        println!("\n constant_columns is {:?} \n", constant_columns);
 
         Self {
             analyzed,
@@ -88,20 +94,32 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
     }
     fn evaluate<E: EvalAtRow>(&self, mut eval: E) -> E {
         assert!(
-            self.analyzed.constant_count() == 0 && self.analyzed.publics_count() == 0,
-            "Error: Expected no fixed columns nor public inputs, as they are not supported yet.",
+            self.analyzed.publics_count() == 0,
+            "Error: Expected no public inputs, as they are not supported yet.",
         );
 
         let witness_eval: BTreeMap<PolyID, [<E as EvalAtRow>::F; 2]> = self
             .witness_columns
             .keys()
-            .map(|poly_id| (*poly_id, eval.next_interaction_mask(1, [0, 1])))
+            .map(|poly_id| {
+                (
+                    *poly_id,
+                    eval.next_interaction_mask(ORIGINAL_TRACE_IDX, [0, 1]),
+                )
+            })
             .collect();
+        println!("witness_eval is {:?}", witness_eval);
         let constant_eval: BTreeMap<PolyID, <E as EvalAtRow>::F> = self
             .constant_columns
             .keys()
-            .map(|poly_id| (*poly_id, eval.next_interaction_mask(1, [0])[0].clone()))
+            .map(|poly_id| {
+                (
+                    *poly_id,
+                    eval.get_preprocessed_column(PreprocessedColumn::Plonk(3)),
+                )
+            })
             .collect();
+        println!("constant_eval is {:?}", constant_eval);
 
         for id in self
             .analyzed
@@ -109,6 +127,7 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
         {
             match id {
                 Identity::Polynomial(identity) => {
+                    println!("exprrrrrrrrrrrrrrrrrrrrr is {:?}",&identity.expression);
                     let expr =
                         to_stwo_expression(&identity.expression, &witness_eval, &constant_eval);
                     eval.add_constraint(expr);
@@ -150,6 +169,7 @@ where
         + From<BaseField>,
 {
     use AlgebraicBinaryOperator::*;
+   // println!("expr is {:?}", expr);
     match expr {
         AlgebraicExpression::Reference(r) => {
             let poly_id = r.poly_id;
@@ -159,7 +179,13 @@ where
                     false => witness_eval[&poly_id][0].clone(),
                     true => witness_eval[&poly_id][1].clone(),
                 },
-                PolynomialType::Constant => constant_eval[&poly_id].clone(),
+                PolynomialType::Constant => {
+                    println!(
+                        "constant_eval[&poly_id].clone() is {:?}",
+                        constant_eval[&poly_id].clone()
+                    );
+                    constant_eval[&poly_id].clone()
+                }
                 PolynomialType::Intermediate => {
                     unimplemented!("Intermediate polynomials are not supported in stwo yet")
                 }

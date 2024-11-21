@@ -18,6 +18,7 @@ use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
 
 mod circuit_builder;
 mod prover;
+//mod proof;
 #[allow(dead_code)]
 
 struct RestrictedFactory;
@@ -42,9 +43,6 @@ impl<F: FieldElement> BackendFactory<F> for RestrictedFactory {
         if pil.degrees().len() > 1 {
             return Err(Error::NoVariableDegreeAvailable);
         }
-        let fixed = Arc::new(
-            get_uniquely_sized_cloned(&fixed).map_err(|_| Error::NoVariableDegreeAvailable)?,
-        );
         let stwo: Box<StwoProver<F, SimdBackend, Blake2sMerkleChannel, Blake2sChannel>> =
             Box::new(StwoProver::new(pil, fixed)?);
         Ok(stwo)
