@@ -88,7 +88,6 @@ where
                 .unwrap_or(0),
         )
         .circle_domain();
-        // println!("domain size is {}", *fixed_columns.keys().next().unwrap() as u32);
 
         let constant_trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>> =
             fixed_columns
@@ -104,7 +103,6 @@ where
                     })
                 })
                 .collect();
-         println!("constant trace is {:?}", constant_trace);
 
         // Preprocessed trace
         let mut tree_builder = commitment_scheme.tree_builder();
@@ -113,7 +111,6 @@ where
 
         // committed/witness trace
         let trace = gen_stwo_circuit_trace::<F, B, M31>(witness);
-        print!("trace is {:?}", trace);
 
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals(trace);

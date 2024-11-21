@@ -68,14 +68,12 @@ impl<T: FieldElement> PowdrEval<T> {
             .map(|(index, (_, id))| (id, index))
             .collect();
         
-        println!(" \n witness_columns is {:?} \n ", witness_columns);
         let constant_columns: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Constant)
             .flat_map(|(symbol, _)| symbol.array_elements())
             .enumerate()
             .map(|(index, (_, id))| (id, index))
             .collect();
-        println!("\n constant_columns is {:?} \n", constant_columns);
 
         Self {
             analyzed,
@@ -108,7 +106,6 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
                 )
             })
             .collect();
-        println!("witness_eval is {:?}", witness_eval);
         let constant_eval: BTreeMap<PolyID, <E as EvalAtRow>::F> = self
             .constant_columns
             .keys()
@@ -119,7 +116,6 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
                 )
             })
             .collect();
-        println!("constant_eval is {:?}", constant_eval);
 
         for id in self
             .analyzed
@@ -127,7 +123,6 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
         {
             match id {
                 Identity::Polynomial(identity) => {
-                    println!("exprrrrrrrrrrrrrrrrrrrrr is {:?}",&identity.expression);
                     let expr =
                         to_stwo_expression(&identity.expression, &witness_eval, &constant_eval);
                     eval.add_constraint(expr);
@@ -169,7 +164,6 @@ where
         + From<BaseField>,
 {
     use AlgebraicBinaryOperator::*;
-   // println!("expr is {:?}", expr);
     match expr {
         AlgebraicExpression::Reference(r) => {
             let poly_id = r.poly_id;
@@ -180,10 +174,6 @@ where
                     true => witness_eval[&poly_id][1].clone(),
                 },
                 PolynomialType::Constant => {
-                    println!(
-                        "constant_eval[&poly_id].clone() is {:?}",
-                        constant_eval[&poly_id].clone()
-                    );
                     constant_eval[&poly_id].clone()
                 }
                 PolynomialType::Intermediate => {
