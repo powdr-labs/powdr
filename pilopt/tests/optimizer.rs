@@ -342,7 +342,10 @@ fn equal_constrained_array_elements_empty() {
         col witness w[20];
         w[4] = w[7];
     "#;
-    let expectation = r#""#;
+    let expectation = r#"namespace N(65536);
+    col witness w[20];
+    N::w[4] = N::w[7];
+"#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
 }
@@ -358,6 +361,7 @@ fn equal_constrained_array_elements_query() {
     "#;
     let expectation = r#"namespace N(65536);
     col witness w[20];
+    N::w[4] = N::w[7];
     query |i| {
         let _: expr = N::w[4_int] + N::w[7_int] - N::w[5_int];
     };
@@ -372,17 +376,13 @@ fn equal_constrained_array_elements() {
         col witness w[20];
         w[4] = w[7];
         w[3] = w[5];
-        w[7] + w[1] = 5;
-        query |i| {
-            let value = w[4] + w[7] - w[5];
-        };
+        w[7] + w[5] = 5;
     "#;
     let expectation = r#"namespace N(65536);
     col witness w[20];
-    N::w[4] + N::w[1] = 5;
-    query |i| {
-        let value: expr = N::w[4_int] + N::w[7_int] - N::w[5_int];
-    };
+    N::w[4] = N::w[7];
+    N::w[3] = N::w[5];
+    N::w[7] + N::w[5] = 5;
 "#;
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);

@@ -648,6 +648,7 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 /// for each pair of identified columns
 fn equal_constrained<T: FieldElement>(
     expression: &AlgebraicExpression<T>,
+    poly_id_to_definition_name: &BTreeMap<PolyID, &String>,
 ) -> Option<((String, PolyID), (String, PolyID))> {
     match expression {
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
@@ -663,6 +664,8 @@ fn equal_constrained<T: FieldElement>(
                     && !left_ref.next
                     && right_ref.is_witness()
                     && !right_ref.next
+                    && !poly_id_to_definition_name.contains_key(&left_ref.poly_id)
+                    && !poly_id_to_definition_name.contains_key(&right_ref.poly_id)
                 {
                     if left_ref.poly_id > right_ref.poly_id {
                         Some((
@@ -686,12 +689,13 @@ fn equal_constrained<T: FieldElement>(
 }
 
 fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
+    let poly_id_to_definition_name = build_poly_id_to_definition_name_lookup(pil_file);
     let substitutions: Vec<_> = pil_file
         .identities
         .iter()
         .filter_map(|id| {
             if let Identity::Polynomial(PolynomialIdentity { expression, .. }) = id {
-                equal_constrained(expression)
+                equal_constrained(expression, &poly_id_to_definition_name)
             } else {
                 None
             }
