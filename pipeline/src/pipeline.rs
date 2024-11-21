@@ -5,7 +5,6 @@ use std::{
     fs,
     io::{self, BufReader},
     path::{Path, PathBuf},
-    rc::Rc,
     sync::Arc,
     time::Instant,
 };
@@ -132,7 +131,7 @@ pub struct Pipeline<T: FieldElement> {
     /// The temporary directory, owned by the pipeline (or any copies of it).
     /// This object is not used directly, but keeping it here ensures that the directory
     /// is not deleted until the pipeline is dropped.
-    _tmp_dir: Option<Rc<Temp>>,
+    _tmp_dir: Option<Arc<Temp>>,
     /// The name of the pipeline. Used to name output files.
     name: Option<String>,
     /// Whether to overwrite existing files. If false, an error is returned if a file
@@ -237,7 +236,7 @@ impl<T: FieldElement> Pipeline<T> {
     /// Initializes the output directory to a temporary directory which lives as long
     /// the pipeline does.
     pub fn with_tmp_output(self) -> Self {
-        let tmp_dir = Rc::new(mktemp::Temp::new_dir().unwrap());
+        let tmp_dir = Arc::new(mktemp::Temp::new_dir().unwrap());
         Pipeline {
             output_dir: Some(tmp_dir.to_path_buf()),
             force_overwrite: true,

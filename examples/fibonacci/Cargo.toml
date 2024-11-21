@@ -8,7 +8,8 @@ default = []
 simd = ["powdr/plonky3-simd"]
 
 [dependencies]
-powdr = { git = "https://github.com/powdr-labs/powdr", tag = "v0.1.2", features = ["plonky3"] }
+#powdr = { git = "https://github.com/powdr-labs/powdr", tag = "v0.1.2", features = ["plonky3"] }
+powdr = { path = "../../powdr", features = ["plonky3", "plonky3-simd"] }
 serde = { version = "1.0", default-features = false, features = [
   "alloc",
   "derive",

@@ -3,7 +3,7 @@ use powdr::Session;
 fn main() {
     env_logger::init();
 
-    let n = 22;
+    let n = 25;
     let mut session = Session::builder()
         .guest_path("./guest")
         .out_path("powdr-target")

@@ -1,3 +1,5 @@
+use rayon::prelude::*;
+use std::time::Instant;
 use std::{
     collections::BTreeSet,
     fs::{create_dir_all, hard_link, remove_file},
@@ -55,7 +57,8 @@ pub fn rust_continuations<F: FieldElement, PipelineCallback, E>(
     dry_run_result: DryRunResult<F>,
 ) -> Result<(), E>
 where
-    PipelineCallback: Fn(&mut Pipeline<F>) -> Result<(), E>,
+    PipelineCallback: Fn(&mut Pipeline<F>) -> Result<(), E> + std::marker::Sync,
+    E: std::marker::Send,
 {
     let bootloader_inputs = dry_run_result.bootloader_inputs;
     let num_chunks = bootloader_inputs.len();
@@ -67,11 +70,15 @@ where
     // in every chunk.
     pipeline.compute_optimized_pil().unwrap();
 
-    bootloader_inputs
+    log::info!("Running witgen in parallel for {num_chunks} chunks...");
+    let pipelines_after_witness = bootloader_inputs
         .into_iter()
+        .map(|chunk| (chunk, pipeline.clone()))
+        .collect::<Vec<_>>()
+        .into_par_iter()
         .enumerate()
         .map(
-            |(i, (bootloader_inputs, start_of_shutdown_routine))| -> Result<(), E> {
+            |(i, ((bootloader_inputs, start_of_shutdown_routine), mut pipeline))| -> Result<Pipeline<F>, E> {
                 log::info!("\nRunning chunk {} / {}...", i + 1, num_chunks);
 
                 let parent_dir = pipeline.output_dir().clone();
@@ -126,16 +133,35 @@ where
                         jump_to_shutdown_routine,
                     ),
                 ]);
-                pipeline_callback(pipeline)?;
+                //pipeline_callback(&mut pipeline)?;
 
-                if let Some(original_dir) = parent_dir {
-                    pipeline.set_output(original_dir, force_overwrite);
-                }
+                let start = Instant::now();
+                log::info!("Generating witness...");
+                pipeline.compute_witness().unwrap();
+                let duration = start.elapsed();
+                log::info!("Generating witness took: {duration:?}");
 
-                Ok(())
+                //if let Some(original_dir) = parent_dir {
+                //    pipeline.set_output(original_dir, force_overwrite);
+                //}
+
+                Ok(pipeline)
             },
         )
         .collect::<Result<Vec<_>, E>>()?;
+
+    pipelines_after_witness
+        .into_iter()
+        .for_each(|mut pipeline| {
+            log::info!("Generating proof...");
+            let start = Instant::now();
+
+            pipeline.compute_proof().unwrap();
+
+            let duration = start.elapsed();
+            log::info!("Proof generation took: {duration:?}");
+        });
+
     Ok(())
 }
 
