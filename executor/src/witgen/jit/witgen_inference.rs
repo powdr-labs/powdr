@@ -263,12 +263,12 @@ fn index(global_offset: u64, local_offset: i32, column: u64) -> usize {{
 #[inline]
 fn get(data: &[FieldElement], global_offset: u64, local_offset: i32, column: u64) -> FieldElement {{
     let r = data[index(global_offset, local_offset, column)];
-    println!("Get data[{{global_offset}} + {{local_offset}}, {{column}}] = {{r}}");
+    //println!("Get data[{{global_offset}} + {{local_offset}}, {{column}}] = {{r}}");
     r
 }}
 #[inline]
 fn set(data: &mut [FieldElement], global_offset: u64, local_offset: i32, column: u64, value: FieldElement) {{
-    println!("Setting data[{{global_offset}} + {{local_offset}}, {{column}}] = {{value}}");
+    //println!("Setting data[{{global_offset}} + {{local_offset}}, {{column}}] = {{value}}");
     data[index(global_offset, local_offset, column)] = value;
 }}
 enum LookupCell<'a, T> {{

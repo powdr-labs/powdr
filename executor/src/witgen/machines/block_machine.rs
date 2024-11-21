@@ -17,7 +17,7 @@ use crate::witgen::sequence_iterator::{
 };
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause};
-use crate::witgen::{MutableState, QueryCallback};
+use crate::witgen::{Constraint, MutableState, QueryCallback};
 use powdr_ast::analyzed::{DegreeRange, PolyID, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
@@ -208,7 +208,17 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 iter::once(self.block_size - 1)
                     .chain(0..self.block_size)
                     .chain(iter::once(0))
-                    .map(|i| self.data[i].clone()),
+                    .map(|i| {
+                        let mut row = Row::fresh(
+                            self.fixed_data,
+                            // TODO is the row index correct?
+                            RowIndex::from_i64(i as i64, self.degree),
+                        );
+                        for (poly_id, v) in self.data.known_values_in_row(i) {
+                            row.apply_update(&poly_id, &Constraint::Assignment(v))
+                        }
+                        row
+                    }),
             );
 
             // Instantiate a processor
@@ -242,7 +252,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             // Replace the dummy block, discarding first and last row
             dummy_block.pop().unwrap();
             for i in (0..self.block_size).rev() {
-                self.data[i] = dummy_block.pop().unwrap();
+                self.data.set_row(i, dummy_block.pop().unwrap());
             }
         }
 

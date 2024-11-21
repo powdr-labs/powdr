@@ -166,10 +166,10 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
     }
 }
 
-fn process_lookup<'a, 'b, 'c, 'd, T: FieldElement, Q: QueryCallback<T>>(
-    mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+fn process_lookup<'b, 'd, T: FieldElement, Q: QueryCallback<T>>(
+    mutable_state: &'b mut MutableState<'_, 'b, T, Q>,
     identity_id: u64,
-    values: Vec<LookupCell<'c, T>>,
+    values: Vec<LookupCell<'_, T>>,
 ) -> bool {
     mutable_state
         .machines

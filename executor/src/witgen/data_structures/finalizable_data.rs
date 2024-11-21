@@ -141,7 +141,7 @@ impl<'a, T: FieldElement> CompactDataRef<'a, T> {
     }
 
     pub fn set(&mut self, row: i32, col: u32, value: T) {
-        println!("outer row {row} is inner row {}", self.inner_row(row));
+        //println!("outer row {row} is inner row {}", self.inner_row(row));
         self.data.set(self.inner_row(row), col as u64, value);
     }
 
@@ -154,11 +154,11 @@ impl<'a, T: FieldElement> CompactDataRef<'a, T> {
     }
 
     pub fn direct_slice(&mut self) -> (&mut [T], usize) {
-        println!(
-            "Extracting slice at row offset {}, total length: {}",
-            self.row_offset,
-            self.data.len()
-        );
+        // println!(
+        //     "Extracting slice at row offset {}, total length: {}",
+        //     self.row_offset,
+        //     self.data.len()
+        // );
         (self.data.data_slice(), self.row_offset)
     }
 }
@@ -356,6 +356,25 @@ impl<T: FieldElement> FinalizableData<T> {
         (current, next)
     }
 
+    pub fn set_row(&mut self, i: usize, row: Row<T>) {
+        match self.location_of_row(i) {
+            Location::PreFinalized(local) => {
+                self.pre_finalized_data[local] = row;
+            }
+            Location::Finalized(local) => {
+                for poly_id in &self.column_ids {
+                    // TODO this ignores values that have been unset in `row`.
+                    if let Some(v) = row.value(poly_id) {
+                        self.finalized_data.set(local, poly_id.id, v);
+                    }
+                }
+            }
+            Location::PostFinalized(local) => {
+                self.post_finalized_data[local] = row;
+            }
+        }
+    }
+
     pub fn finalize_range(&mut self, range: std::ops::Range<usize>) -> usize {
         if range.is_empty() {
             return 0;
@@ -464,6 +483,8 @@ impl<T: FieldElement> FinalizableData<T> {
         )
     }
 }
+
+// TODO are these here stil used?
 
 impl<T: FieldElement> Index<usize> for FinalizableData<T> {
     type Output = Row<T>;
