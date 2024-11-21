@@ -474,14 +474,17 @@ where
 
     // observe the parts of the proving key which correspond to the sizes of the tables we are proving
     if let Some(proving_key) = proving_key {
-        for commitment in proving_key
+        proving_key
             .preprocessed
             .iter()
-            .map(|(name, map)| &map[&multi_table.tables[name].degree].commitment)
-        {
-            challenger.observe(commitment.clone());
-        }
-    };
+            .filter_map(|(name, map)| {
+                multi_table
+                    .tables
+                    .get(name)
+                    .and_then(|table| map.get(&table.degree).map(|entry| &entry.commitment))
+            })
+            .for_each(|commitment| challenger.observe(commitment.clone()));
+    }
 
     multi_table.observe_instances(challenger);
 
