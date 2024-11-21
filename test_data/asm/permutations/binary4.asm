@@ -13,6 +13,7 @@ machine Binary4 with
 
     // check that we can reference the call_selectors
     let sum_sel = std::array::sum(sel);
+    std::utils::force_bool(sum_sel);
 
     col fixed FACTOR(i) { 1 << (((i + 1) % 8) * 4) };
 

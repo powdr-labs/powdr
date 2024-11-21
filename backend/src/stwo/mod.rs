@@ -8,7 +8,7 @@ use crate::{
     field_filter::generalize_factory, Backend, BackendFactory, BackendOptions, Error, Proof,
 };
 use powdr_ast::analyzed::Analyzed;
-use powdr_executor::constant_evaluator::{get_uniquely_sized_cloned, VariablySizedColumn};
+use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_executor::witgen::WitgenCallback;
 use powdr_number::{FieldElement, Mersenne31Field};
 use prover::StwoProver;
@@ -18,7 +18,7 @@ use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
 
 mod circuit_builder;
 mod prover;
-//mod proof;
+
 #[allow(dead_code)]
 
 struct RestrictedFactory;

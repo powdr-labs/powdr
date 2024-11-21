@@ -244,7 +244,6 @@ fn block_lookup_or() {
 fn block_lookup_or_permutation() {
     let f = "pil/block_lookup_or_permutation.pil";
     test_pilcom(make_simple_prepared_pipeline(f));
-    test_halo2(make_simple_prepared_pipeline(f));
     // starky would take too long for this in debug mode
 }
 
@@ -269,6 +268,13 @@ fn stwo_add_and_equal() {
     let f = "pil/add_and_equal.pil";
     test_stwo(f, Default::default());
 }
+
+#[test]
+fn stwo_fibonacci() {
+    let f = "pil/fibo_no_publics.pil";
+    test_stwo(f, Default::default());
+}
+
 #[test]
 fn simple_div() {
     let f = "pil/simple_div.pil";

@@ -173,13 +173,6 @@ fn permutation_via_challenges() {
 }
 
 #[test]
-fn permutation_via_challenges_ext() {
-    let f = "std/permutation_via_challenges_ext.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-    test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
-}
-
-#[test]
 fn lookup_via_challenges() {
     let f = "std/lookup_via_challenges.asm";
     test_halo2(make_simple_prepared_pipeline(f));

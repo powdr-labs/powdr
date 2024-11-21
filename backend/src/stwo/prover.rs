@@ -1,8 +1,11 @@
+
 use powdr_ast::analyzed::Analyzed;
 use powdr_backend_utils::machine_fixed_columns;
 use powdr_executor::constant_evaluator::VariablySizedColumn;
+use powdr_number::{DegreeType, FieldElement};
 use serde::de::DeserializeOwned;
 use serde::ser::Serialize;
+use std::collections::BTreeMap;
 use std::io;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -12,7 +15,6 @@ use crate::stwo::circuit_builder::{gen_stwo_circuit_trace, PowdrComponent, Powdr
 use stwo_prover::constraint_framework::TraceLocationAllocator;
 use stwo_prover::core::prover::StarkProof;
 
-use powdr_number::FieldElement;
 use stwo_prover::core::air::{Component, ComponentProver};
 use stwo_prover::core::backend::{Backend, BackendForChannel};
 use stwo_prover::core::channel::{Channel, MerkleChannel};
@@ -21,6 +23,7 @@ use stwo_prover::core::fri::FriConfig;
 use stwo_prover::core::pcs::{CommitmentSchemeProver, CommitmentSchemeVerifier, PcsConfig};
 use stwo_prover::core::poly::circle::{CanonicCoset, CircleEvaluation};
 use stwo_prover::core::poly::BitReversedOrder;
+use stwo_prover::core::utils::bit_reverse_coset_to_circle_domain_order;
 use stwo_prover::core::ColumnVec;
 
 const FRI_LOG_BLOWUP: usize = 1;
@@ -89,11 +92,25 @@ where
         )
         .circle_domain();
 
+        let updated_fixed_columns: BTreeMap<DegreeType, Vec<(String, Vec<F>)>> = fixed_columns
+            .iter()
+            .map(|(key, vec)| {
+                let transformed_vec: Vec<(String, Vec<F>)> = vec
+                    .iter()
+                    .map(|(name, slice)| {
+                        let mut values: Vec<F> = slice.to_vec(); // Clone the slice into a Vec
+                        bit_reverse_coset_to_circle_domain_order(&mut values); // Apply bit reversal
+                        (name.clone(), values) // Return the updated tuple
+                    })
+                    .collect(); // Collect the updated vector
+                (*key, transformed_vec) // Rebuild the BTreeMap with transformed vectors
+            })
+            .collect();
+
         let constant_trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>> =
-            fixed_columns
+            updated_fixed_columns
                 .values()
                 .flat_map(|vec| {
-                    println!("vec is {:?}", vec);
                     vec.iter().map(|(_name, values)| {
                         let values = values
                             .iter()
@@ -106,8 +123,38 @@ where
 
         // Preprocessed trace
         let mut tree_builder = commitment_scheme.tree_builder();
-        tree_builder.extend_evals(constant_trace);
+        tree_builder.extend_evals(constant_trace.clone());
         tree_builder.commit(prover_channel);
+
+
+
+
+        let transformed_witness: Vec<(String, Vec<F>)> = witness
+            .iter()
+            .map(|(name, vec)| {
+                (
+                    name.clone(),
+                    vec.iter()
+                        .map(|&elem| {
+                            if elem == F::from(2147483647) {
+                                F::zero()
+                            } else {
+                                elem
+                            }
+                        })
+                        .collect(),
+                )
+            })
+            .collect();
+
+        let witness: &Vec<(String, Vec<F>)> = &transformed_witness
+            .into_iter()
+            .map(|(name, mut vec)| {
+                bit_reverse_coset_to_circle_domain_order(&mut vec);
+                (name, vec)
+            })
+            .collect();
+
 
         // committed/witness trace
         let trace = gen_stwo_circuit_trace::<F, B, M31>(witness);

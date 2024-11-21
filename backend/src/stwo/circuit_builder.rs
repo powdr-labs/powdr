@@ -13,9 +13,9 @@ use std::sync::Arc;
 use powdr_ast::analyzed::{
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, PolyID, PolynomialType,
 };
-use stwo_prover::constraint_framework::preprocessed_columns::{gen_is_first, PreprocessedColumn};
+use stwo_prover::constraint_framework::preprocessed_columns::PreprocessedColumn;
 use stwo_prover::constraint_framework::{
-    EvalAtRow, FrameworkComponent, FrameworkEval, ORIGINAL_TRACE_IDX, PREPROCESSED_TRACE_IDX,
+    EvalAtRow, FrameworkComponent, FrameworkEval, ORIGINAL_TRACE_IDX,
 };
 use stwo_prover::core::backend::ColumnOps;
 use stwo_prover::core::fields::m31::{BaseField, M31};
@@ -61,6 +61,13 @@ pub struct PowdrEval<T> {
 
 impl<T: FieldElement> PowdrEval<T> {
     pub fn new(analyzed: Arc<Analyzed<T>>) -> Self {
+        let constant_columns: BTreeMap<PolyID, usize> = analyzed
+            .definitions_in_source_order(PolynomialType::Constant)
+            .flat_map(|(symbol, _)| symbol.array_elements())
+            .enumerate()
+            .map(|(index, (_, id))| (id, index))
+            .collect();
+
         let witness_columns: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
             .flat_map(|(symbol, _)| symbol.array_elements())

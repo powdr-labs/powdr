@@ -48,6 +48,9 @@ mod symbolic_witness_evaluator;
 mod util;
 mod vm_processor;
 
+pub use affine_expression::{AffineExpression, AffineResult, AlgebraicVariable};
+pub use expression_evaluator::{ExpressionEvaluator, SymbolicVariables};
+
 static OUTER_CODE_NAME: &str = "witgen (outer code)";
 static RANGE_CONSTRAINT_MULTIPLICITY_WITGEN: &str = "range constraint multiplicity witgen";
 
@@ -58,27 +61,7 @@ static RANGE_CONSTRAINT_MULTIPLICITY_WITGEN: &str = "range constraint multiplici
 pub trait QueryCallback<T>: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 impl<T, F> QueryCallback<T> for F where F: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 
-type WitgenCallbackFn<T> =
-    Arc<dyn Fn(&[(String, Vec<T>)], BTreeMap<u64, T>, u8) -> Vec<(String, Vec<T>)> + Send + Sync>;
-
-#[derive(Clone)]
-pub struct WitgenCallback<T>(WitgenCallbackFn<T>);
-
-impl<T: FieldElement> WitgenCallback<T> {
-    pub fn new(f: WitgenCallbackFn<T>) -> Self {
-        WitgenCallback(f)
-    }
-
-    /// Computes the next-stage witness, given the current witness and challenges.
-    pub fn next_stage_witness(
-        &self,
-        current_witness: &[(String, Vec<T>)],
-        challenges: BTreeMap<u64, T>,
-        stage: u8,
-    ) -> Vec<(String, Vec<T>)> {
-        (self.0)(current_witness, challenges, stage)
-    }
-}
+pub use powdr_executor_utils::{WitgenCallback, WitgenCallbackFn};
 
 pub struct WitgenCallbackContext<T> {
     /// TODO: all these fields probably don't need to be Arc anymore, since the
@@ -194,7 +177,8 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         );
         let identities = self
             .analyzed
-            .identities_with_inlined_intermediate_polynomials()
+            .identities
+            .clone()
             .into_iter()
             .filter(|identity| {
                 let discard = identity.expr_any(|expr| {
@@ -370,6 +354,7 @@ pub struct FixedData<'a, T: FieldElement> {
     column_by_name: HashMap<String, PolyID>,
     challenges: BTreeMap<u64, T>,
     global_range_constraints: GlobalConstraints<T>,
+    intermediate_definitions: BTreeMap<PolyID, &'a AlgebraicExpression<T>>,
 }
 
 impl<'a, T: FieldElement> FixedData<'a, T> {
@@ -384,6 +369,16 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             .iter()
             .map(|(name, values)| (name.clone(), values))
             .collect::<BTreeMap<_, _>>();
+
+        let intermediate_definitions = analyzed
+            .intermediate_polys_in_source_order()
+            .flat_map(|(symbol, definitions)| {
+                symbol
+                    .array_elements()
+                    .zip_eq(definitions)
+                    .map(|((_, poly_id), def)| (poly_id, def))
+            })
+            .collect();
 
         let witness_cols =
             WitnessColumnMap::from(analyzed.committed_polys_in_source_order().flat_map(
@@ -438,6 +433,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                 .collect(),
             challenges,
             global_range_constraints,
+            intermediate_definitions,
         }
     }
 
