@@ -29,9 +29,10 @@ fn deduplicate_fixed() {
     let input = r#"namespace N(65536);
     col fixed first = [1, 32]*;
     col fixed second = [1, 32]*;
+    col i = first * second;
     col witness X;
     col witness Y;
-    X * first = Y * second;
+    X * first = Y * second + i;
     namespace M(65536);
     col fixed first = [1, 32]*;
     col fixed second = [1, 32]*;
@@ -41,9 +42,10 @@ fn deduplicate_fixed() {
 "#;
     let expectation = r#"namespace N(65536);
     col fixed first = [1_fe, 32_fe]*;
+    col i = N::first * N::first;
     col witness X;
     col witness Y;
-    N::X * N::first = N::Y * N::first;
+    N::X * N::first = N::Y * N::first + N::i;
 namespace M(65536);
     col fixed first = [1_fe, 32_fe]*;
     col witness X;

@@ -10,7 +10,7 @@ use powdr_ast::analyzed::{
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, ConnectIdentity, Expression,
     FunctionValueDefinition, Identity, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
     PhantomPermutationIdentity, PolyID, PolynomialIdentity, PolynomialReference, PolynomialType,
-    Reference, SymbolKind,
+    Reference, Symbol, SymbolKind,
 };
 use powdr_ast::parsed::types::Type;
 use powdr_ast::parsed::visitor::{AllChildren, Children, ExpressionVisitable};
@@ -219,37 +219,49 @@ fn constant_value(function: &FunctionValueDefinition) -> Option<BigUint> {
 
 /// Deduplicate fixed columns of the same namespace which share the same value.
 /// This compares the function values, so `|i| i` is different from `|j| j`
+fn extract_namespace(symbol: &Symbol) -> &str {
+    symbol.absolute_name.split("::").next().unwrap()
+}
+
 /// This is enough for use cases where exactly the same function is inserted many times
 /// This only replaces the references inside expressions and does not clean up the now unreachable fixed column definitions
 fn deduplicate_fixed_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
     // build a map of `poly_id` to the `(name, poly_id)` they can be replaced by
-    let replacement_map: BTreeMap<PolyID, (String, PolyID)> = pil_file
-        .constant_polys_in_source_order()
-        // group symbols by common namespace and function value
-        .into_group_map_by(|(symbol, value)| {
-            (
-                symbol.absolute_name.split("::").next().unwrap(),
-                value.as_ref().unwrap(),
-            )
-        })
-        .values()
-        // map all other symbols to the first one
-        .flat_map(|group| {
-            group[1..].iter().flat_map(|from| {
-                from.0
-                    .array_elements()
-                    .map(|(_, from_id)| from_id)
-                    .zip_eq(group[0].0.array_elements())
+    let (replacement_by_id, replacement_by_name): (BTreeMap<PolyID, _>, BTreeMap<String, _>) =
+        pil_file
+            .constant_polys_in_source_order()
+            // group symbols by common namespace and function value
+            .into_group_map_by(|(symbol, value)| {
+                (extract_namespace(symbol), value.as_ref().unwrap())
             })
-        })
-        .collect();
+            .values()
+            // map all other symbols to the first one
+            .flat_map(|group| {
+                group[1..].iter().flat_map(|from| {
+                    from.0
+                        .array_elements()
+                        .zip_eq(group[0].0.array_elements())
+                        .map(|((name, from_id), to_id)| ((from_id, to_id.clone()), (name, to_id)))
+                })
+            })
+            .unzip();
 
     // substitute all occurences in expressions.
+
     pil_file.post_visit_expressions_in_identities_mut(&mut |e| {
         if let AlgebraicExpression::Reference(r) = e {
-            if let Some((new_name, new_id)) = replacement_map.get(&r.poly_id) {
+            if let Some((new_name, new_id)) = replacement_by_id.get(&r.poly_id) {
                 r.name = new_name.clone();
                 r.poly_id = *new_id;
+            }
+        };
+    });
+
+    // substitute all occurences in definitions.
+    pil_file.post_visit_expressions_in_definitions_mut(&mut |e| {
+        if let Expression::Reference(_, Reference::Poly(reference)) = e {
+            if let Some((replacement_name, _)) = replacement_by_name.get(&reference.name) {
+                reference.name = replacement_name.clone();
             }
         };
     });
