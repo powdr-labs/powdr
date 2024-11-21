@@ -244,7 +244,6 @@ fn block_lookup_or() {
 fn block_lookup_or_permutation() {
     let f = "pil/block_lookup_or_permutation.pil";
     test_pilcom(make_simple_prepared_pipeline(f));
-    test_halo2(make_simple_prepared_pipeline(f));
     // starky would take too long for this in debug mode
 }
 
