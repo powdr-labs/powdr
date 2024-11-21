@@ -1,12 +1,13 @@
-#[cfg(not(all(target_os = "zkvm", target_arch = "riscv32")))]
+#[cfg(not(feature = "powdr-accel"))]
 mod software_impl;
-#[cfg(not(all(target_os = "zkvm", target_arch = "riscv32")))]
+#[cfg(not(feature = "powdr-accel"))]
 pub use software_impl::*;
 
-#[cfg(all(target_os = "zkvm", target_arch = "riscv32"))]
+#[cfg(feature = "powdr-accel")]
 mod powdr_accel_impl;
-#[cfg(all(target_os = "zkvm", target_arch = "riscv32"))]
+#[cfg(feature = "powdr-accel")]
 pub use powdr_accel_impl::*;
+
 
 use lazy_static::lazy_static;
 use p3_goldilocks::Goldilocks;

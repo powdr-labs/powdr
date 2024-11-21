@@ -22,6 +22,8 @@ nightly-features = [
   "p3-mersenne-31/nightly-features",
   "p3-poseidon2/nightly-features",
 ]
+# As a guest in powdr, use accelerated machines.
+powdr-accel = []
 
 [dependencies]
 powdr-ast.workspace = true
