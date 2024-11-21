@@ -43,6 +43,9 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
     }
 
     pub fn can_answer_lookup(&self, identity_id: u64, known_inputs: &BitVec) -> bool {
+        if T::BITS > 64 {
+            return false;
+        }
         if self
             .witgen_functions
             .read()
