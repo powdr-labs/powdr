@@ -481,7 +481,7 @@ where
                 multi_table
                     .tables
                     .get(name)
-                    .and_then(|table| map.get(&table.degree).map(|entry| &entry.commitment))
+                    .map(|table| &map[&table.degree].commitment)
             })
             .for_each(|commitment| challenger.observe(commitment.clone()));
     }
