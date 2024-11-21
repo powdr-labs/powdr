@@ -268,6 +268,13 @@ fn stwo_add_and_equal() {
     let f = "pil/add_and_equal.pil";
     test_stwo(f, Default::default());
 }
+
+#[test]
+fn stwo_fibonacci() {
+    let f = "pil/fibo_no_publics.pil";
+    test_stwo(f, Default::default());
+}
+
 #[test]
 fn simple_div() {
     let f = "pil/simple_div.pil";
