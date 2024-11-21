@@ -548,7 +548,7 @@ impl<T> Children<Expression<T>> for SelectedExpressions<Expression<T>> {
     }
 }
 
-#[derive(Debug, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
 pub enum Expression<Ref = NamespacedPolynomialReference> {
     Reference(SourceRef, Ref),
     PublicReference(SourceRef, String),
@@ -568,45 +568,6 @@ pub enum Expression<Ref = NamespacedPolynomialReference> {
     BlockExpression(SourceRef, BlockExpression<Self>),
     StructExpression(SourceRef, StructExpression<Ref>),
 }
-
-/// Comparison function for expressions that ignore source information.
-macro_rules! impl_partial_eq_for_expression {
-    ($($variant:ident),*) => {
-        impl<Ref: PartialEq> PartialEq for Expression<Ref> {
-            fn eq(&self, other: &Self) -> bool {
-                match (self, other) {
-                    $(
-                        (Expression::$variant(_, a), Expression::$variant(_, b)) => a == b,
-                    )*
-                    // This catches the case where variants are different and returns false
-                    $(
-                        (Expression::$variant(_, _), _) => false,
-                    )*
-                }
-            }
-        }
-    }
-}
-
-impl_partial_eq_for_expression!(
-    Reference,
-    PublicReference,
-    Number,
-    String,
-    Tuple,
-    LambdaExpression,
-    ArrayLiteral,
-    BinaryOperation,
-    UnaryOperation,
-    IndexAccess,
-    FunctionCall,
-    FreeInput,
-    MatchExpression,
-    IfExpression,
-    BlockExpression,
-    StructExpression
-);
-
 pub trait SourceReference {
     fn source_reference(&self) -> &SourceRef;
     fn source_reference_mut(&mut self) -> &mut SourceRef;
