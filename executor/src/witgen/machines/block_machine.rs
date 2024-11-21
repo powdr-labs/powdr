@@ -66,7 +66,6 @@ pub struct BlockMachine<'a, T: FieldElement> {
     data: FinalizableData<T>,
     publics: BTreeMap<&'a str, T>,
     /// The index of the first row that has not been finalized yet.
-    /// At all times, all rows in the range [block_size..first_in_progress_row) are finalized.
     first_in_progress_row: usize,
     /// Cache that states the order in which to evaluate identities
     /// to make progress most quickly.
@@ -112,10 +111,15 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // In `take_witness_col_values()`, this block will be removed and its values will be used to
         // construct the "default" block used to fill up unused rows.
         let start_index = RowIndex::from_i64(-(block_size as i64), degree);
-        let data = FinalizableData::with_initial_rows_in_progress(
+        let mut data = FinalizableData::with_initial_rows_in_progress(
             &parts.witnesses,
             (0..block_size).map(|i| Row::fresh(fixed_data, start_index + i)),
         );
+        // Finalize everything.
+        // TODO we probably don't even nede to un-finalize, but instead it should suffice
+        // to be able to extract data as a copied Row<T>.
+        data.finalize_range(0..data.len());
+
         Some(BlockMachine {
             name,
             degree_range,
@@ -363,6 +367,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             .jit_processer
             .can_answer_lookup(identity_id, &known_inputs)
         {
+            log::trace!("Processing via JIT.");
             return self.process_lookup_via_jit(mutable_state, identity_id, outer_query);
         }
 
@@ -434,9 +439,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             (self.rows() + self.block_size as DegreeType) < self.degree,
             "Block machine is full (this should have been checked before)"
         );
-        self.data
-            .finalize_range(self.first_in_progress_row..self.data.len());
-        self.first_in_progress_row = self.data.len() + self.block_size;
+        // self.data
+        //     .finalize_range(self.first_in_progress_row..self.data.len());
+        self.data.finalize_range(0..self.data.len());
+        self.first_in_progress_row = self.data.len();
         //TODO can we properly access the last row of the dummy block?
         let data = self.data.append_new_finalized_rows(self.block_size);
 

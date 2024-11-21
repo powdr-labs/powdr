@@ -99,6 +99,11 @@ impl<T: FieldElement> CompactData<T> {
         self.known_cells.set(idx, true);
     }
 
+    pub fn set_known(&mut self, row: usize, col: u64) {
+        let idx = self.index(row, col);
+        self.known_cells.set(idx, true);
+    }
+
     pub fn known_values_in_row(&self, row: usize) -> impl Iterator<Item = (u64, &T)> {
         (0..self.column_count).filter_map(move |i| {
             let idx = row * self.column_count + i;
@@ -136,7 +141,12 @@ impl<'a, T: FieldElement> CompactDataRef<'a, T> {
     }
 
     pub fn set(&mut self, row: i32, col: u32, value: T) {
+        println!("outer row {row} is inner row {}", self.inner_row(row));
         self.data.set(self.inner_row(row), col as u64, value);
+    }
+
+    pub fn set_known(&mut self, row: i32, col: u32) {
+        self.data.set_known(self.inner_row(row), col as u64);
     }
 
     fn inner_row(&self, row: i32) -> usize {
@@ -144,6 +154,11 @@ impl<'a, T: FieldElement> CompactDataRef<'a, T> {
     }
 
     pub fn direct_slice(&mut self) -> (&mut [T], usize) {
+        println!(
+            "Extracting slice at row offset {}, total length: {}",
+            self.row_offset,
+            self.data.len()
+        );
         (self.data.data_slice(), self.row_offset)
     }
 }

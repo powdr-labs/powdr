@@ -133,7 +133,7 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
         }
     }
 
-    pub fn code(&self, fun_name: &str) -> String {
+    pub fn code_and_known_cells(self, fun_name: &str) -> (String, Vec<Cell>) {
         let assign_inputs = self
             .inputs
             .iter()
@@ -160,7 +160,7 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
                 )
             })
             .format("\n");
-        format!(
+        let code = format!(
             r#"
 {}
 #[no_mangle]
@@ -184,7 +184,8 @@ extern "C" fn {fun_name}(
 "#,
             self.preamble(),
             indent(self.code.join("\n"), 1)
-        )
+        );
+        (code, self.known_cells.into_iter().sorted().collect())
     }
 
     fn preamble(&self) -> String {
@@ -201,6 +202,11 @@ extern "C" fn {fun_name}(
 use std::ffi::c_void;
 #[derive(Clone, Copy, Default)]
 struct FieldElement(u64);
+impl std::fmt::Display for FieldElement {{
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {{
+        write!(f, "{{}}", self.0)
+    }}
+}}
 impl From<i64> for FieldElement {{
     fn from(i: i64) -> Self {{
         if i < 0 {{
@@ -256,10 +262,13 @@ fn index(global_offset: u64, local_offset: i32, column: u64) -> usize {{
 }}
 #[inline]
 fn get(data: &[FieldElement], global_offset: u64, local_offset: i32, column: u64) -> FieldElement {{
-    data[index(global_offset, local_offset, column)]
+    let r = data[index(global_offset, local_offset, column)];
+    println!("Get data[{{global_offset}} + {{local_offset}}, {{column}}] = {{r}}");
+    r
 }}
 #[inline]
 fn set(data: &mut [FieldElement], global_offset: u64, local_offset: i32, column: u64, value: FieldElement) {{
+    println!("Setting data[{{global_offset}} + {{local_offset}}, {{column}}] = {{value}}");
     data[index(global_offset, local_offset, column)] = value;
 }}
 enum LookupCell<'a, T> {{
@@ -285,13 +294,15 @@ enum LookupCell<'a, T> {{
     }
 
     fn considered_row_range(&self) -> std::ops::RangeInclusive<i32> {
-        (-(self.block_size as i32) - 4)..=(self.block_size as i32 + 4)
+        //(-(self.block_size as i32) - 4)..=(self.block_size as i32 + 4)
+        (-(self.block_size as i32) - 4)..=0
     }
 
     fn minimum_range_around_latch(&self) -> std::ops::RangeInclusive<i32> {
         assert!(self.block_size >= 1);
         let reach = (self.block_size - 1) as i32;
-        -reach..=reach
+        //        -reach..=reach
+        -reach..=0
     }
 
     /// Returns an iterator over all columns whose values are not known

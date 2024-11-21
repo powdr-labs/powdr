@@ -16,12 +16,14 @@ use crate::witgen::{
     EvalError, FixedData, MutableState, QueryCallback,
 };
 
+use super::cell::Cell;
+
 pub struct JitProcessor<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     parts: MachineParts<'a, T>,
     block_size: usize,
     latch_row: usize,
-    witgen_functions: RwLock<HashMap<(u64, BitVec), WitgenFunction>>,
+    witgen_functions: RwLock<HashMap<(u64, BitVec), (WitgenFunction, Vec<Cell>)>>,
 }
 
 impl<'a, T: FieldElement> JitProcessor<'a, T> {
@@ -81,7 +83,7 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
             return false;
         }
         log::info!("Successfully generated witgen code for some machine.");
-        let code = inference.code("witgen");
+        let (code, known_after) = inference.code_and_known_cells("witgen");
         log::trace!("Generated code:\n{code}");
 
         let lib_path = powdr_jit_compiler::compiler::call_cargo(&code)
@@ -102,10 +104,13 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
 
         self.witgen_functions.write().unwrap().insert(
             (identity_id, known_inputs.clone()),
-            WitgenFunction {
-                library: library.clone(),
-                witgen_function: *witgen_fun,
-            },
+            (
+                WitgenFunction {
+                    library: library.clone(),
+                    witgen_function: *witgen_fun,
+                },
+                known_after,
+            ),
         );
         true
     }
@@ -135,11 +140,25 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
             }
         }
 
-        self.witgen_functions.read().unwrap()[&(connection_id, known_inputs)].call(
-            &mut data,
-            mutable_state,
-            process_lookup,
-        );
+        let (witgen_fun, known_after) =
+            &self.witgen_functions.read().unwrap()[&(connection_id, known_inputs)];
+        witgen_fun.call(&mut data, self.latch_row, mutable_state, process_lookup);
+
+        // TODO maybe do this inside witgen_fun::call?
+        for Cell { id, row_offset, .. } in known_after {
+            data.set_known(row_offset + self.latch_row as i32, *id as u32);
+        }
+
+        // TODO shortcut this somehow
+        for (e, v) in right.expressions.iter().zip(values) {
+            match v {
+                LookupCell::Input(_) => {}
+                LookupCell::Output(c) => {
+                    let col = try_to_simple_poly(e).unwrap();
+                    *c = data.get(self.latch_row as i32, col.poly_id.id as u32);
+                }
+            }
+        }
 
         // TODO we still need to set "known" on the written cells in `data`.
 
@@ -168,6 +187,8 @@ impl WitgenFunction {
     fn call<'a, 'b, 'c, 'd, T: FieldElement, Q: QueryCallback<T>>(
         &self,
         data: &mut CompactDataRef<T>,
+        // TODO this applies a shift. Maybe we could do it much earlier?
+        latch_row: usize,
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         process_lookup: fn(&'b mut MutableState<'a, 'b, T, Q>, u64, Vec<LookupCell<'c, T>>) -> bool,
     ) {
@@ -179,7 +200,7 @@ impl WitgenFunction {
         (self.witgen_function)(
             data_c_ptr,
             len,
-            row_offset as u64,
+            row_offset as u64 + latch_row as u64,
             mutable_state_ptr,
             process_lookup_ptr,
         );
