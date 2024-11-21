@@ -335,3 +335,55 @@ fn handle_array_references_in_prover_functions() {
     let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
     assert_eq!(optimized, expectation);
 }
+
+#[test]
+fn equal_constrained_array_elements_empty() {
+    let input = r#"namespace N(65536);
+        col witness w[20];
+        w[4] = w[7];
+    "#;
+    let expectation = r#""#;
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}
+
+#[test]
+fn equal_constrained_array_elements_query() {
+    let input = r#"namespace N(65536);
+        col witness w[20];
+        w[4] = w[7];
+        query |i| {
+            let _ = w[4] + w[7] - w[5];
+        };
+    "#;
+    let expectation = r#"namespace N(65536);
+    col witness w[20];
+    query |i| {
+        let _: expr = N::w[4_int] + N::w[7_int] - N::w[5_int];
+    };
+"#;
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}
+
+#[test]
+fn equal_constrained_array_elements() {
+    let input = r#"namespace N(65536);
+        col witness w[20];
+        w[4] = w[7];
+        w[3] = w[5];
+        w[7] + w[1] = 5;
+        query |i| {
+            let value = w[4] + w[7] - w[5];
+        };
+    "#;
+    let expectation = r#"namespace N(65536);
+    col witness w[20];
+    N::w[4] + N::w[1] = 5;
+    query |i| {
+        let value: expr = N::w[4_int] + N::w[7_int] - N::w[5_int];
+    };
+"#;
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}
