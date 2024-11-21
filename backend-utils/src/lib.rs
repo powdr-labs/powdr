@@ -9,11 +9,13 @@ use itertools::Itertools;
 use powdr_ast::{
     analyzed::{
         AlgebraicExpression, Analyzed, Identity, LookupIdentity, PermutationIdentity,
-        PhantomLookupIdentity, PhantomPermutationIdentity, StatementIdentifier, Symbol, SymbolKind,
+        PhantomLookupIdentity, PhantomPermutationIdentity, Reference, StatementIdentifier, Symbol,
+        SymbolKind,
     },
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
         visitor::{ExpressionVisitable, VisitOrder},
+        Expression,
     },
 };
 use powdr_executor::constant_evaluator::VariablySizedColumn;
@@ -144,8 +146,8 @@ fn extract_namespace(name: &str) -> String {
     namespace.relative_to(&Default::default()).to_string()
 }
 
-/// From an identity, get the namespaces of the symbols it references.
-fn referenced_namespaces<F: FieldElement>(
+/// From an algebraic expression visitable, get the namespaces of the symbols it references.
+fn referenced_namespaces_algebraic_expression<F: FieldElement>(
     expression_visitable: &impl ExpressionVisitable<AlgebraicExpression<F>>,
 ) -> BTreeSet<String> {
     let mut namespaces = BTreeSet::new();
@@ -160,6 +162,22 @@ fn referenced_namespaces<F: FieldElement>(
                 AlgebraicExpression::Number(_) => {}
                 AlgebraicExpression::BinaryOperation(_) => {}
                 AlgebraicExpression::UnaryOperation(_) => {}
+            }
+            ControlFlow::Continue::<()>(())
+        }),
+        VisitOrder::Pre,
+    );
+
+    namespaces
+}
+
+/// From a parsed expression, get the namespaces of the symbols it references.
+fn referenced_namespaces_parsed_expression(expression: &Expression<Reference>) -> BTreeSet<String> {
+    let mut namespaces = BTreeSet::new();
+    expression.visit_expressions(
+        &mut (|expr| {
+            if let Expression::Reference(_, Reference::Poly(p)) = expr {
+                namespaces.insert(extract_namespace(&p.name));
             }
             ControlFlow::Continue::<()>(())
         }),
@@ -206,7 +224,7 @@ fn split_by_namespace<F: FieldElement>(
             }
             StatementIdentifier::ProofItem(i) => {
                 let identity = &pil.identities[*i];
-                let namespaces = referenced_namespaces(identity);
+                let namespaces = referenced_namespaces_algebraic_expression(identity);
 
                 match namespaces.len() {
                     0 => panic!("Identity references no namespace: {identity}"),
@@ -223,12 +241,12 @@ fn split_by_namespace<F: FieldElement>(
                             ..
                         }) => {
                             assert_eq!(
-                                referenced_namespaces(left).len(),
+                                referenced_namespaces_algebraic_expression(left).len(),
                                 1,
                                 "LHS of identity references multiple namespaces: {identity}"
                             );
                             assert_eq!(
-                                referenced_namespaces(right).len(),
+                                referenced_namespaces_algebraic_expression(right).len(),
                                 1,
                                 "RHS of identity references multiple namespaces: {identity}"
                             );
@@ -241,8 +259,21 @@ fn split_by_namespace<F: FieldElement>(
                     },
                 }
             }
-            StatementIdentifier::ProverFunction(_)
-            | StatementIdentifier::TraitImplementation(_) => None,
+            StatementIdentifier::ProverFunction(i) => {
+                let prover_function = pil.prover_functions.get(*i).unwrap();
+                let namespaces = referenced_namespaces_parsed_expression(prover_function)
+                    .into_iter()
+                    .filter(|namespace| !namespace.starts_with("std::"))
+                    .collect::<BTreeSet<_>>();
+                match namespaces.len() {
+                    1 => Some((namespaces.into_iter().next().unwrap().clone(), statement)),
+                    0 => panic!("Prover function references no namespace: {prover_function}"),
+                    _ => {
+                        panic!("Prover function references multiple namespaces: {prover_function}")
+                    }
+                }
+            }
+            StatementIdentifier::TraitImplementation(_) => None,
         })
         // collect into a map
         .fold(Default::default(), |mut acc, (namespace, statement)| {
