@@ -445,19 +445,21 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
 
     // ================= ground field arithmetic =================
 
-    // Inverts the Goldilocks field value pointed to by register X,
-    // returning the value in register Y.
+    // Inverts the Goldilocks field value in memory pointed by register X,
+    // returning the low and high limbs in registers Y and Z, respectively.
     //
     // Unsolvable if X points to 0.
-    instr invert_gl X, Y
-        link ~> tmp1_col = regs.mload(X, STEP)
-        link ~> tmp2_col = memory.mload(tmp1_col, STEP)
-        link ~> tmp3_col = memory.mload(tmp1_col + 4, STEP)
-        link ~> regs.mstore(Y, STEP + 1, tmp4_col)
+    instr invert_gl X, Y, Z
+        link ~> XX = regs.mload(X, STEP)
+        link ~> tmp1_col = memory.mload(XX, STEP)
+        link ~> tmp2_col = memory.mload(XX + 4, STEP)
+        link ~> (tmp3_col, tmp4_col) = split_gl.split(XX_inv)
+        link ~> regs.mstore(tmp3_col, STEP + 1, Y)
+        link ~> regs.mstore(tmp4_col, STEP + 1, Z)
     {"#
 + if field == KnownField::GoldilocksField {
     r#"
-        tmp4_col * (tmp2_col + tmp3_col * 2**32) = 1
+        XX_inv * (tmp1_col + tmp2_col * 2**32) = 1
 "#
 } else {
     r#"

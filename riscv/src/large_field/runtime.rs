@@ -168,13 +168,7 @@ impl Runtime {
         r.add_syscall(
             Syscall::InvertGL,
             [
-                format!("invert_gl 10, {};", tmp1.addr()),
-                format!(
-                    "split_gl {}, {}, {};",
-                    tmp1.addr(),
-                    tmp1.addr(),
-                    tmp2.addr()
-                ),
+                format!("invert_gl 10, {}, {};", tmp1.addr(), tmp2.addr()),
                 format!("mstore 11, 0, 0, {};", tmp1.addr()),
                 format!("mstore 11, 0, 4, {};", tmp2.addr()),
             ],
