@@ -11,6 +11,7 @@ use powdr_ast::analyzed::{
 use powdr_ast::parsed::visitor::{AllChildren, ExpressionVisitable};
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_number::{DegreeType, FieldElement};
+use std::iter::once;
 
 use crate::constant_evaluator::VariablySizedColumn;
 use crate::Identity;
