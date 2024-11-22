@@ -181,27 +181,25 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             .clone()
             .into_iter()
             .filter(|identity| {
-                let discard = identity.expr_any(|expr| match expr {
-                    AlgebraicExpression::Challenge(challenge) => {
+                let references_later_stage_challenge = identity.expr_any(|expr| {
+                    if let AlgebraicExpression::Challenge(challenge) = expr {
                         challenge.stage >= self.stage.into()
+                    } else {
+                        false
                     }
-                    AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) => {
-                        match poly_id.ptype {
-                            PolynomialType::Committed => {
-                                fixed.witness_cols[poly_id].stage > self.stage as u32
-                            }
-                            PolynomialType::Constant => false,
-                            PolynomialType::Intermediate => {
-                                // TODO: Fix!
-                                false
-                            }
-                        }
-                    }
-                    _ => false,
                 });
+                let references_later_stage_witness = fixed
+                    .polynomial_references(identity)
+                    .into_iter()
+                    .any(|poly_id| 
+                        fixed.witness_cols[&poly_id].stage > self.stage as u32
+                    );
+
+                let discard= references_later_stage_challenge || references_later_stage_witness;
+
                 if discard {
                     log::debug!(
-                        "Skipping identity that references challenge of later stage: {identity}",
+                        "Skipping identity that references challenge or column of later stage: {identity}",
                     );
                 }
                 !discard
