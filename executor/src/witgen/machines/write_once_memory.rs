@@ -6,9 +6,10 @@ use num_traits::One;
 use powdr_ast::analyzed::{PolyID, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
+use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::{
     rows::RowPair, util::try_to_simple_poly, EvalError, EvalResult, EvalValue, FixedData,
-    IncompleteCause, MutableState, QueryCallback,
+    IncompleteCause, QueryCallback,
 };
 
 use super::{Connection, Machine, MachineParts};

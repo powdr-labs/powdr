@@ -10,6 +10,7 @@ use powdr_ast::analyzed::{
 };
 use powdr_number::FieldElement;
 
+use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::{
     witgen::{global_constraints::CombinedRangeConstraintSet, machines::Machine, EvalError},
     Identity,
@@ -17,7 +18,7 @@ use crate::{
 
 use super::{
     affine_expression::AlgebraicVariable, machines::KnownMachine, processor::OuterQuery,
-    rows::RowPair, EvalResult, EvalValue, IncompleteCause, MutableState, QueryCallback,
+    rows::RowPair, EvalResult, EvalValue, IncompleteCause, QueryCallback,
 };
 
 /// A list of mutable references to machines.

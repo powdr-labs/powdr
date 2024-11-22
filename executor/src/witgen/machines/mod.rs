@@ -8,6 +8,7 @@ use powdr_ast::analyzed::{
 use powdr_number::DegreeType;
 use powdr_number::FieldElement;
 
+use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::Identity;
 
 use self::block_machine::BlockMachine;
@@ -20,7 +21,7 @@ use self::write_once_memory::WriteOnceMemory;
 
 use super::generator::Generator;
 use super::rows::RowPair;
-use super::{EvalError, EvalResult, FixedData, MutableState, QueryCallback};
+use super::{EvalError, EvalResult, FixedData, QueryCallback};
 
 mod block_machine;
 mod double_sorted_witness_machine_16;

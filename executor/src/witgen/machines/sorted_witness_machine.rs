@@ -4,12 +4,13 @@ use super::super::affine_expression::AffineExpression;
 use super::{Connection, EvalResult, FixedData};
 use super::{Machine, MachineParts};
 use crate::witgen::affine_expression::AlgebraicVariable;
+use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::rows::RowPair;
 use crate::witgen::{
     expression_evaluator::ExpressionEvaluator, fixed_evaluator::FixedEvaluator,
     symbolic_evaluator::SymbolicEvaluator,
 };
-use crate::witgen::{EvalValue, IncompleteCause, MutableState, QueryCallback};
+use crate::witgen::{EvalValue, IncompleteCause, QueryCallback};
 use crate::Identity;
 use itertools::Itertools;
 use num_traits::One;

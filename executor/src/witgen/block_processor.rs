@@ -4,11 +4,12 @@ use crate::Identity;
 
 use super::{
     affine_expression::AlgebraicVariable,
+    data_structures::mutable_state::MutableState,
     machines::MachineParts,
     processor::{OuterQuery, Processor, SolverState},
     rows::{RowIndex, UnknownStrategy},
     sequence_iterator::{Action, ProcessingSequenceIterator, SequenceStep},
-    EvalError, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
+    EvalError, EvalValue, FixedData, IncompleteCause, QueryCallback,
 };
 
 /// A basic processor that knows how to determine a unique satisfying witness

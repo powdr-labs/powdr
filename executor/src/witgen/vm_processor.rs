@@ -7,6 +7,7 @@ use std::cmp::max;
 
 use std::time::Instant;
 
+use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::identity_processor::{self};
 use crate::witgen::machines::compute_size_and_log;
 use crate::witgen::IncompleteCause;
@@ -17,7 +18,7 @@ use super::machines::MachineParts;
 use super::processor::{OuterQuery, Processor, SolverState};
 
 use super::rows::{Row, RowIndex, UnknownStrategy};
-use super::{Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCallback};
+use super::{Constraints, EvalError, EvalValue, FixedData, QueryCallback};
 
 /// Maximal period checked during loop detection.
 const MAX_PERIOD: usize = 4;

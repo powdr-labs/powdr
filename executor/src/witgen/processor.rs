@@ -6,6 +6,7 @@ use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference,
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::affine_expression::AlgebraicVariable;
+use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
 use crate::Identity;
 
@@ -19,7 +20,7 @@ use super::{
     },
     identity_processor::IdentityProcessor,
     rows::{Row, RowIndex, RowPair, RowUpdater, UnknownStrategy},
-    Constraints, EvalError, EvalValue, IncompleteCause, MutableState, QueryCallback,
+    Constraints, EvalError, EvalValue, IncompleteCause, QueryCallback,
 };
 
 type Left<'a, T> = Vec<AffineExpression<AlgebraicVariable<'a>, T>>;

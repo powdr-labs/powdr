@@ -13,6 +13,7 @@ use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::constant_evaluator::VariablySizedColumn;
+use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::Identity;
 
 use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
@@ -113,12 +114,6 @@ pub fn chain_callbacks<T: FieldElement>(
 /// @returns a query callback that is never expected to be used.
 pub fn unused_query_callback<T>() -> impl QueryCallback<T> {
     |_| -> _ { unreachable!() }
-}
-
-/// Everything [Generator] needs to mutate in order to compute a new row.
-pub struct MutableState<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
-    pub machines: Machines<'a, 'b, T>,
-    pub query_callback: &'b mut Q,
 }
 
 pub struct WitnessGenerator<'a, 'b, T: FieldElement> {

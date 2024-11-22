@@ -3,6 +3,7 @@ use powdr_number::{DegreeType, FieldElement};
 use std::collections::{BTreeMap, HashMap};
 
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
+use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::machines::profiling::{record_end, record_start};
 use crate::witgen::processor::OuterQuery;
 use crate::witgen::EvalValue;
@@ -15,7 +16,7 @@ use super::processor::SolverState;
 use super::rows::{Row, RowIndex, RowPair};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use super::vm_processor::VmProcessor;
-use super::{EvalResult, FixedData, MutableState, QueryCallback};
+use super::{EvalResult, FixedData, QueryCallback};
 
 struct ProcessResult<'a, T: FieldElement> {
     eval_value: EvalValue<AlgebraicVariable<'a>, T>,

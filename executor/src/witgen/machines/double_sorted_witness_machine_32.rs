@@ -4,10 +4,11 @@ use std::iter::once;
 use itertools::Itertools;
 
 use super::{Machine, MachineParts};
+use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::machines::compute_size_and_log;
 use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
-use crate::witgen::{EvalError, EvalResult, FixedData, MutableState, QueryCallback};
+use crate::witgen::{EvalError, EvalResult, FixedData, QueryCallback};
 use crate::witgen::{EvalValue, IncompleteCause};
 
 use powdr_number::{DegreeType, FieldElement};

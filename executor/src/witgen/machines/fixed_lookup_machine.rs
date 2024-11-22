@@ -10,12 +10,13 @@ use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::affine_expression::{AffineExpression, AlgebraicVariable};
 use crate::witgen::data_structures::multiplicity_counter::MultiplicityCounter;
+use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::global_constraints::{GlobalConstraints, RangeConstraintSet};
 use crate::witgen::processor::OuterQuery;
 use crate::witgen::range_constraints::RangeConstraint;
 use crate::witgen::rows::RowPair;
 use crate::witgen::util::try_to_simple_poly;
-use crate::witgen::{EvalError, EvalValue, IncompleteCause, MutableState, QueryCallback};
+use crate::witgen::{EvalError, EvalValue, IncompleteCause, QueryCallback};
 use crate::witgen::{EvalResult, FixedData};
 
 use super::{Connection, LookupCell, Machine};
@@ -328,7 +329,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
 
     fn process_plookup<'b, Q: crate::witgen::QueryCallback<T>>(
         &mut self,
-        mutable_state: &'b mut crate::witgen::MutableState<'a, 'b, T, Q>,
+        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
