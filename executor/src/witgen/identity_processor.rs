@@ -65,10 +65,6 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
         self.machines.len()
     }
 
-    pub fn iter_mut(&'b mut self) -> impl Iterator<Item = &'b mut KnownMachine<'a, T>> {
-        self.machines.iter_mut().map(|m| &mut **m)
-    }
-
     pub fn call<Q: QueryCallback<T>>(
         &mut self,
         identity_id: u64,
