@@ -1,7 +1,6 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     iter,
-    ops::ControlFlow,
     str::FromStr,
 };
 
@@ -14,7 +13,7 @@ use powdr_ast::{
     },
     parsed::{
         asm::{AbsoluteSymbolPath, SymbolPath},
-        visitor::{ExpressionVisitable, VisitOrder},
+        visitor::AllChildren,
         Expression,
     },
 };
@@ -146,45 +145,34 @@ fn extract_namespace(name: &str) -> String {
     namespace.relative_to(&Default::default()).to_string()
 }
 
-/// From an algebraic expression visitable, get the namespaces of the symbols it references.
+/// From e.g. an identity or expression, get the namespaces of the symbols it references.
 fn referenced_namespaces_algebraic_expression<F: FieldElement>(
-    expression_visitable: &impl ExpressionVisitable<AlgebraicExpression<F>>,
+    expression_visitable: &impl AllChildren<AlgebraicExpression<F>>,
 ) -> BTreeSet<String> {
-    let mut namespaces = BTreeSet::new();
-    expression_visitable.visit_expressions(
-        &mut (|expr| {
-            match expr {
-                AlgebraicExpression::Reference(reference) => {
-                    namespaces.insert(extract_namespace(&reference.name));
-                }
-                AlgebraicExpression::PublicReference(_) => unimplemented!(),
-                AlgebraicExpression::Challenge(_) => {}
-                AlgebraicExpression::Number(_) => {}
-                AlgebraicExpression::BinaryOperation(_) => {}
-                AlgebraicExpression::UnaryOperation(_) => {}
-            }
-            ControlFlow::Continue::<()>(())
-        }),
-        VisitOrder::Pre,
-    );
-
-    namespaces
+    expression_visitable
+        .all_children()
+        .filter_map(|expr| match expr {
+            AlgebraicExpression::Reference(reference) => Some(extract_namespace(&reference.name)),
+            AlgebraicExpression::PublicReference(_) => unimplemented!(),
+            AlgebraicExpression::Challenge(_)
+            | AlgebraicExpression::Number(_)
+            | AlgebraicExpression::BinaryOperation(_)
+            | AlgebraicExpression::UnaryOperation(_) => None,
+        })
+        .collect()
 }
 
 /// From a parsed expression, get the namespaces of the symbols it references.
-fn referenced_namespaces_parsed_expression(expression: &Expression<Reference>) -> BTreeSet<String> {
-    let mut namespaces = BTreeSet::new();
-    expression.visit_expressions(
-        &mut (|expr| {
-            if let Expression::Reference(_, Reference::Poly(p)) = expr {
-                namespaces.insert(extract_namespace(&p.name));
-            }
-            ControlFlow::Continue::<()>(())
-        }),
-        VisitOrder::Pre,
-    );
-
-    namespaces
+fn referenced_namespaces_parsed_expression(
+    expression: &impl AllChildren<Expression<Reference>>,
+) -> BTreeSet<String> {
+    expression
+        .all_children()
+        .filter_map(|expr| match expr {
+            Expression::Reference(_, Reference::Poly(p)) => Some(extract_namespace(&p.name)),
+            _ => None,
+        })
+        .collect()
 }
 
 /// Organizes the PIL statements by namespace:
