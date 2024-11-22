@@ -188,7 +188,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                     AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) => {
                         match poly_id.ptype {
                             PolynomialType::Committed => {
-                                fixed.witness_cols[&poly_id].stage > self.stage as u32
+                                fixed.witness_cols[poly_id].stage > self.stage as u32
                             }
                             PolynomialType::Constant => false,
                             PolynomialType::Intermediate => {
