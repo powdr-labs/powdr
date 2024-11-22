@@ -366,6 +366,7 @@ pub struct FixedData<'a, T: FieldElement> {
     challenges: BTreeMap<u64, T>,
     global_range_constraints: GlobalConstraints<T>,
     intermediate_definitions: BTreeMap<PolyID, &'a AlgebraicExpression<T>>,
+    stage: u8,
 }
 
 impl<'a, T: FieldElement> FixedData<'a, T> {
@@ -453,6 +454,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             challenges,
             global_range_constraints,
             intermediate_definitions,
+            stage,
         }
     }
 
@@ -547,6 +549,13 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                 let row = row % v.len() as u64;
                 v.get(row as usize).cloned()
             })
+    }
+
+    fn current_stage_witnesses(&self) -> impl Iterator<Item = PolyID> + '_ {
+        self.witness_cols
+            .iter()
+            .filter(|(_, col)| col.stage > self.stage as u32)
+            .map(|(poly_id, _)| poly_id)
     }
 }
 

@@ -68,15 +68,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
             })
             .collect::<Vec<&analyzed::Expression>>();
 
-        let all_witnesses = self
-            .fixed
-            .witness_cols
-            .iter()
-            // Take out later-stage witness columns
-            // (split_out_machines() is not called for stage > 0)
-            .filter(|(_, col)| col.stage == 0)
-            .map(|(poly_id, _)| poly_id)
-            .collect::<HashSet<_>>();
+        let all_witnesses = self.fixed.current_stage_witnesses().collect::<HashSet<_>>();
         let mut publics = PublicsTracker::default();
         let mut remaining_witnesses = all_witnesses.clone();
         let mut base_identities = identities.clone();
