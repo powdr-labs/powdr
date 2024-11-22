@@ -213,7 +213,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             mut machines,
             base_parts,
         } = if self.stage == 0 {
-            MachineExtractor::new(&fixed).split_out_machines(retained_identities, self.stage)
+            MachineExtractor::new(&fixed).split_out_machines(retained_identities)
         } else {
             // We expect later-stage witness columns to be accumulators for lookup and permutation arguments.
             // These don't behave like normal witness columns (e.g. in a block machine), and they might depend

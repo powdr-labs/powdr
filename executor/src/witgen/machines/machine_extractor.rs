@@ -43,30 +43,30 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
     /// Finds machines in the witness columns and identities
     /// and returns a list of machines and the identities
     /// that are not "internal" to the machines.
-    pub fn split_out_machines(
-        &self,
-        identities: Vec<&'a Identity<T>>,
-        stage: u8,
-    ) -> ExtractionOutput<'a, T> {
+    pub fn split_out_machines(&self, identities: Vec<&'a Identity<T>>) -> ExtractionOutput<'a, T> {
         let mut machines: Vec<KnownMachine<T>> = vec![];
 
         // Ignore prover functions that reference columns of later stages.
+        let all_witnesses = self.fixed.witness_cols.keys().collect::<HashSet<_>>();
+        let current_stage_witnesses = self.fixed.current_stage_witnesses().collect::<HashSet<_>>();
+        let later_stage_witness_names = all_witnesses
+            .difference(&current_stage_witnesses)
+            .map(|w| self.fixed.column_name(w))
+            .collect::<HashSet<_>>();
         let prover_functions = self
             .fixed
             .analyzed
             .prover_functions
             .iter()
             .filter(|pf| {
-                refs_in_parsed_expression(pf).unique().all(|n| {
-                    let def = self.fixed.analyzed.definitions.get(n);
-                    def.and_then(|(s, _)| s.stage).unwrap_or_default() <= stage as u32
-                })
+                !refs_in_parsed_expression(pf)
+                    .unique()
+                    .any(|n| later_stage_witness_names.contains(n.as_str()))
             })
             .collect::<Vec<&analyzed::Expression>>();
 
-        let all_witnesses = self.fixed.current_stage_witnesses().collect::<HashSet<_>>();
         let mut publics = PublicsTracker::default();
-        let mut remaining_witnesses = all_witnesses.clone();
+        let mut remaining_witnesses = current_stage_witnesses.clone();
         let mut base_identities = identities.clone();
         let mut extracted_prover_functions = HashSet::new();
         let mut id_counter = 0;
@@ -114,7 +114,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                     // all referenced witnesses are machine witnesses.
                     // For lookups, any lookup calling from the current machine belongs
                     // to the machine; lookups to the machine do not.
-                    let all_refs = &self.refs_in_identity_left(i) & (&all_witnesses);
+                    let all_refs = &self.refs_in_identity_left(i) & (&current_stage_witnesses);
                     !all_refs.is_empty() && all_refs.is_subset(&machine_witnesses)
                 });
             base_identities = remaining_identities;
