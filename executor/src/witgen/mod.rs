@@ -181,12 +181,23 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             .clone()
             .into_iter()
             .filter(|identity| {
-                let discard = identity.expr_any(|expr| {
-                    if let AlgebraicExpression::Challenge(challenge) = expr {
+                let discard = identity.expr_any(|expr| match expr {
+                    AlgebraicExpression::Challenge(challenge) => {
                         challenge.stage >= self.stage.into()
-                    } else {
-                        false
                     }
+                    AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) => {
+                        match poly_id.ptype {
+                            PolynomialType::Committed => {
+                                fixed.witness_cols[&poly_id].stage > self.stage as u32
+                            }
+                            PolynomialType::Constant => false,
+                            PolynomialType::Intermediate => {
+                                // TODO: Fix!
+                                false
+                            }
+                        }
+                    }
+                    _ => false,
                 });
                 if discard {
                     log::debug!(
@@ -382,18 +393,26 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
 
         let witness_cols =
             WitnessColumnMap::from(analyzed.committed_polys_in_source_order().flat_map(
-                |(poly, value)| {
-                    poly.array_elements()
+                |(symbol, value)| {
+                    symbol
+                        .array_elements()
                         .map(|(name, poly_id)| {
                             let external_values = external_witness_values.remove(name.as_str());
                             // Remove any hint for witness columns of a later stage
                             // (because it might reference a challenge that is not available yet)
-                            let value = if poly.stage.unwrap_or_default() <= stage.into() {
+                            let col_stage = symbol.stage.unwrap_or_default();
+                            let value = if col_stage <= stage.into() {
                                 value.as_ref()
                             } else {
                                 None
                             };
-                            WitnessColumn::new(poly_id.id as usize, &name, value, external_values)
+                            WitnessColumn::new(
+                                poly_id.id as usize,
+                                &name,
+                                value,
+                                external_values,
+                                col_stage,
+                            )
                         })
                         .collect::<Vec<_>>()
                 },
@@ -566,6 +585,8 @@ pub struct WitnessColumn<'a, T> {
     /// A list of externally computed witness values, if any.
     /// The length of this list must be equal to the degree.
     external_values: Option<&'a Vec<T>>,
+    /// The stage of the column.
+    stage: u32,
 }
 
 impl<'a, T> WitnessColumn<'a, T> {
@@ -574,6 +595,7 @@ impl<'a, T> WitnessColumn<'a, T> {
         name: &str,
         value: Option<&'a FunctionValueDefinition>,
         external_values: Option<&'a Vec<T>>,
+        stage: u32,
     ) -> WitnessColumn<'a, T> {
         let query = if let Some(FunctionValueDefinition::Expression(TypedExpression {
             e:
@@ -605,6 +627,7 @@ impl<'a, T> WitnessColumn<'a, T> {
             expr,
             query,
             external_values,
+            stage,
         }
     }
 }
