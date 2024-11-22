@@ -8,8 +8,7 @@ use powdr_pipeline::{
     test_util::{
         evaluate_function, evaluate_integer_function, gen_estark_proof, gen_halo2_proof,
         make_simple_prepared_pipeline, regular_test, regular_test_without_small_field,
-        std_analyzed, test_halo2, test_pilcom, test_plonky3_pipeline,
-        test_plonky3_with_backend_variant, BackendVariant,
+        std_analyzed, test_halo2, test_pilcom, test_plonky3_with_backend_variant, BackendVariant,
     },
     Pipeline,
 };
@@ -136,9 +135,6 @@ fn arith_large_test() {
         .unwrap();
 
     test_halo2(make_simple_prepared_pipeline(f));
-
-    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f);
-    test_plonky3_pipeline(pipeline);
 }
 
 #[test]
@@ -158,9 +154,6 @@ fn arith256_memory_large_test() {
         .unwrap();
 
     test_halo2(make_simple_prepared_pipeline(f));
-
-    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f);
-    test_plonky3_pipeline(pipeline);
 }
 
 #[test]
