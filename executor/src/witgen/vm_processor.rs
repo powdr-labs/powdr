@@ -78,7 +78,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         fixed_data: &'a FixedData<'a, T>,
         parts: &'c MachineParts<'a, T>,
         mutable_data: SolverState<'a, T>,
-        mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &'c MutableState<'a, 'b, T, Q>,
     ) -> Self {
         let degree_range = parts.common_degree_range();
 

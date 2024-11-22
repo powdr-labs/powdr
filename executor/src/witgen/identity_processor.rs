@@ -24,11 +24,11 @@ use super::{
 /// - `'b`: The duration of this machine's call (e.g. the mutable references of the other machines)
 /// - `'c`: The duration of this IdentityProcessor's lifetime (e.g. the reference to the mutable state)
 pub struct IdentityProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
-    mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
+    mutable_state: &'c MutableState<'a, 'b, T, Q>,
 }
 
 impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b, 'c, T, Q> {
-    pub fn new(mutable_state: &'c mut MutableState<'a, 'b, T, Q>) -> Self {
+    pub fn new(mutable_state: &'c MutableState<'a, 'b, T, Q>) -> Self {
         Self { mutable_state }
     }
 

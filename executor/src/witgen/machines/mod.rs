@@ -38,7 +38,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     /// Like `process_plookup`, but also records the time spent in this machine.
     fn process_plookup_timed<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &'b MutableState<'a, 'b, T, Q>,
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
@@ -56,7 +56,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     /// Otherwise, it computes any updates to the caller row pair and returns them.
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &'b MutableState<'a, 'b, T, Q>,
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T>;
@@ -73,7 +73,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     /// An error is always unrecoverable.
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        _mutable_state: &'b MutableState<'a, 'b, T, Q>,
         _identity_id: u64,
         _values: Vec<LookupCell<'c, T>>,
     ) -> Result<bool, EvalError<T>> {
@@ -83,7 +83,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     /// Returns the final values of the witness columns.
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &'b MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>>;
 
     /// Returns the identity IDs of the connecting identities that this machine is responsible for.
@@ -113,7 +113,7 @@ pub enum KnownMachine<'a, T: FieldElement> {
 impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &'b MutableState<'a, 'b, T, Q>,
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
@@ -154,7 +154,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &'b MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         match self {
             KnownMachine::SortedWitnesses(m) => m.take_witness_col_values(mutable_state),

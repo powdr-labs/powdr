@@ -99,7 +99,7 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     /// The values of the publics
     publics: BTreeMap<&'a str, T>,
     /// The mutable state
-    mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
+    mutable_state: &'c MutableState<'a, 'b, T, Q>,
     /// The fixed data (containing information about all columns)
     fixed_data: &'a FixedData<'a, T>,
     /// The machine parts (witness columns, identities, fixed data)
@@ -122,7 +122,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
     pub fn new(
         row_offset: RowIndex,
         mutable_data: SolverState<'a, T>,
-        mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &'c MutableState<'a, 'b, T, Q>,
         fixed_data: &'a FixedData<'a, T>,
         parts: &'c MachineParts<'a, T>,
         size: DegreeType,

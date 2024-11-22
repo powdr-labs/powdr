@@ -200,7 +200,7 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
 
     fn process_plookup_internal<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &'b MutableState<'a, 'b, T, Q>,
         identity_id: u64,
         rows: &RowPair<'_, 'a, T>,
         left: &[AffineExpression<AlgebraicVariable<'a>, T>],
@@ -329,7 +329,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
 
     fn process_plookup<'b, Q: crate::witgen::QueryCallback<T>>(
         &mut self,
-        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &'b MutableState<'a, 'b, T, Q>,
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
@@ -355,7 +355,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
 
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        _mutable_state: &'b MutableState<'a, 'b, T, Q>,
         identity_id: u64,
         values: Vec<LookupCell<'c, T>>,
     ) -> Result<bool, EvalError<T>> {
@@ -421,7 +421,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        _mutable_state: &'b MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         self.multiplicity_counter
             .generate_columns_different_sizes()
