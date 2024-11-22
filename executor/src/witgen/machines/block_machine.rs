@@ -73,7 +73,7 @@ pub struct BlockMachine<'a, T: FieldElement> {
     processing_sequence_cache: ProcessingSequenceCache,
     /// The JIT processor for this machine, i.e. the component that tries to generate
     /// witgen code based on which elements of the connection are known.
-    jit_processer: JitProcessor<'a, T>,
+    jit_processor: JitProcessor<'a, T>,
     name: String,
     multiplicity_counter: MultiplicityCounter,
 }
@@ -134,7 +134,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
                 latch_row,
                 parts.identities.len(),
             ),
-            jit_processer: JitProcessor::new(fixed_data, parts.clone(), block_size, latch_row),
+            jit_processor: JitProcessor::new(fixed_data, parts.clone(), block_size, latch_row),
         })
     }
 }
@@ -360,7 +360,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
         let known_inputs = outer_query.left.iter().map(|e| e.is_constant()).collect();
         if self
-            .jit_processer
+            .jit_processor
             .can_answer_lookup(identity_id, &known_inputs)
         {
             return self.process_lookup_via_jit(mutable_state, identity_id, outer_query);
@@ -441,7 +441,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let data = self.data.append_new_finalized_rows(self.block_size);
 
         let success =
-            self.jit_processer
+            self.jit_processor
                 .process_lookup_direct(mutable_state, identity_id, values, data)?;
         assert!(success);
 
