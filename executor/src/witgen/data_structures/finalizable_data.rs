@@ -13,7 +13,7 @@ use crate::witgen::rows::Row;
 /// Sequence of rows of field elements, stored in a compact form.
 /// Optimized for contiguous column IDs, but works with any combination.
 #[derive(Clone)]
-pub struct CompactData<T: FieldElement> {
+pub struct CompactData<T> {
     /// The ID of the first column used in the table.
     first_column_id: u64,
     /// The length of a row in the table.
@@ -113,7 +113,7 @@ impl<T: FieldElement> CompactData<T> {
 /// A mutable reference into CompactData that is meant to be used
 /// only for a certain block of rows, starting from row index zero.
 /// It allows negative row indices as well.
-pub struct CompactDataRef<'a, T: FieldElement> {
+pub struct CompactDataRef<'a, T> {
     data: &'a mut CompactData<T>,
     row_offset: usize,
 }
