@@ -61,20 +61,13 @@ pub struct PowdrEval<T> {
 
 impl<T: FieldElement> PowdrEval<T> {
     pub fn new(analyzed: Arc<Analyzed<T>>) -> Self {
-        let constant_columns: BTreeMap<PolyID, usize> = analyzed
-            .definitions_in_source_order(PolynomialType::Constant)
-            .flat_map(|(symbol, _)| symbol.array_elements())
-            .enumerate()
-            .map(|(index, (_, id))| (id, index))
-            .collect();
-
         let witness_columns: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
             .flat_map(|(symbol, _)| symbol.array_elements())
             .enumerate()
             .map(|(index, (_, id))| (id, index))
             .collect();
-        
+
         let constant_columns: BTreeMap<PolyID, usize> = analyzed
             .definitions_in_source_order(PolynomialType::Constant)
             .flat_map(|(symbol, _)| symbol.array_elements())
@@ -180,9 +173,7 @@ where
                     false => witness_eval[&poly_id][0].clone(),
                     true => witness_eval[&poly_id][1].clone(),
                 },
-                PolynomialType::Constant => {
-                    constant_eval[&poly_id].clone()
-                }
+                PolynomialType::Constant => constant_eval[&poly_id].clone(),
                 PolynomialType::Intermediate => {
                     unimplemented!("Intermediate polynomials are not supported in stwo yet")
                 }

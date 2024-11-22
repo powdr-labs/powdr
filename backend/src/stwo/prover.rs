@@ -1,4 +1,3 @@
-
 use powdr_ast::analyzed::Analyzed;
 use powdr_backend_utils::machine_fixed_columns;
 use powdr_executor::constant_evaluator::VariablySizedColumn;
@@ -126,9 +125,6 @@ where
         tree_builder.extend_evals(constant_trace.clone());
         tree_builder.commit(prover_channel);
 
-
-
-
         let transformed_witness: Vec<(String, Vec<F>)> = witness
             .iter()
             .map(|(name, vec)| {
@@ -155,7 +151,6 @@ where
             })
             .collect();
 
-
         // committed/witness trace
         let trace = gen_stwo_circuit_trace::<F, B, M31>(witness);
 
@@ -168,22 +163,12 @@ where
             PowdrEval::new(self.analyzed.clone()),
         );
 
-        let n_preprocessed_columns = commitment_scheme.trees[0]
-        .polynomials
-        .len();
-        println!("n_preprocessed_columns is {}", n_preprocessed_columns);
-
-        let trace = commitment_scheme.trace();
-        println!("trace is {:?}", trace.evals);
-
         let proof = stwo_prover::core::prover::prove::<B, MC>(
             &[&component],
             prover_channel,
             commitment_scheme,
         )
         .unwrap();
-        
-        
 
         Ok(bincode::serialize(&proof).unwrap())
     }
