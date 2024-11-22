@@ -17,7 +17,7 @@ use crate::witgen::sequence_iterator::{
 };
 use crate::witgen::util::try_to_simple_poly;
 use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause};
-use crate::witgen::{MutableState, QueryCallback};
+use crate::witgen::{Constraint, MutableState, QueryCallback};
 use powdr_ast::analyzed::{DegreeRange, PolyID, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
@@ -66,7 +66,6 @@ pub struct BlockMachine<'a, T: FieldElement> {
     data: FinalizableData<T>,
     publics: BTreeMap<&'a str, T>,
     /// The index of the first row that has not been finalized yet.
-    /// At all times, all rows in the range [block_size..first_in_progress_row) are finalized.
     first_in_progress_row: usize,
     /// Cache that states the order in which to evaluate identities
     /// to make progress most quickly.
@@ -112,10 +111,15 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         // In `take_witness_col_values()`, this block will be removed and its values will be used to
         // construct the "default" block used to fill up unused rows.
         let start_index = RowIndex::from_i64(-(block_size as i64), degree);
-        let data = FinalizableData::with_initial_rows_in_progress(
+        let mut data = FinalizableData::with_initial_rows_in_progress(
             &parts.witnesses,
             (0..block_size).map(|i| Row::fresh(fixed_data, start_index + i)),
         );
+        // Finalize everything.
+        // TODO we probably don't even nede to un-finalize, but instead it should suffice
+        // to be able to extract data as a copied Row<T>.
+        data.finalize_range(0..data.len());
+
         Some(BlockMachine {
             name,
             degree_range,
@@ -204,7 +208,17 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
                 iter::once(self.block_size - 1)
                     .chain(0..self.block_size)
                     .chain(iter::once(0))
-                    .map(|i| self.data[i].clone()),
+                    .map(|i| {
+                        let mut row = Row::fresh(
+                            self.fixed_data,
+                            // TODO is the row index correct?
+                            RowIndex::from_i64(i as i64, self.degree),
+                        );
+                        for (poly_id, v) in self.data.known_values_in_row(i) {
+                            row.apply_update(&poly_id, &Constraint::Assignment(v))
+                        }
+                        row
+                    }),
             );
 
             // Instantiate a processor
@@ -238,7 +252,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
             // Replace the dummy block, discarding first and last row
             dummy_block.pop().unwrap();
             for i in (0..self.block_size).rev() {
-                self.data[i] = dummy_block.pop().unwrap();
+                self.data.set_row(i, dummy_block.pop().unwrap());
             }
         }
 
@@ -363,6 +377,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             .jit_processor
             .can_answer_lookup(identity_id, &known_inputs)
         {
+            log::trace!("Processing via JIT.");
             return self.process_lookup_via_jit(mutable_state, identity_id, outer_query);
         }
 
@@ -434,9 +449,10 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             (self.rows() + self.block_size as DegreeType) < self.degree,
             "Block machine is full (this should have been checked before)"
         );
-        self.data
-            .finalize_range(self.first_in_progress_row..self.data.len());
-        self.first_in_progress_row = self.data.len() + self.block_size;
+        // self.data
+        //     .finalize_range(self.first_in_progress_row..self.data.len());
+        self.data.finalize_range(0..self.data.len());
+        self.first_in_progress_row = self.data.len();
         //TODO can we properly access the last row of the dummy block?
         let data = self.data.append_new_finalized_rows(self.block_size);
 
@@ -508,7 +524,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
             })?;
 
         // 3. Remove the last row of the previous block from data
-        self.data.pop().unwrap();
+        self.data.truncate(self.data.len() - 1);
 
         // 4. Finalize everything so far (except the dummy block)
         if self.data.len() > self.block_size {

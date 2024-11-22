@@ -16,8 +16,11 @@ use crate::{
 };
 
 use super::{
-    affine_expression::AlgebraicVariable, machines::KnownMachine, processor::OuterQuery,
-    rows::RowPair, EvalResult, EvalValue, IncompleteCause, MutableState, QueryCallback,
+    affine_expression::AlgebraicVariable,
+    machines::{KnownMachine, LookupCell},
+    processor::OuterQuery,
+    rows::RowPair,
+    EvalResult, EvalValue, IncompleteCause, MutableState, QueryCallback,
 };
 
 /// A list of mutable references to machines.
@@ -86,6 +89,30 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
         };
 
         current.process_plookup_timed(&mut mutable_state, identity_id, caller_rows)
+    }
+
+    pub fn call_direct<Q: QueryCallback<T>>(
+        &mut self,
+        identity_id: u64,
+        values: Vec<LookupCell<'_, T>>,
+        query_callback: &mut Q,
+    ) -> Result<bool, EvalError<T>> {
+        let machine_index = *self
+            .identity_to_machine_index
+            .get(&identity_id)
+            .unwrap_or_else(|| panic!("No executor machine matched identity ID: {identity_id}"));
+
+        // TOOD this has horrible performance, avoid this.
+        // It's probably much better to use runtime borrow checks.
+        // This will fail if we have circular calls.
+        // At some point, we can probably turn this into an async message passing interface.
+        let (current, others) = self.split(machine_index);
+
+        let mut mutable_state = MutableState {
+            machines: others,
+            query_callback,
+        };
+        current.process_lookup_direct(&mut mutable_state, identity_id, values)
     }
 
     pub fn take_witness_col_values<Q: QueryCallback<T>>(
