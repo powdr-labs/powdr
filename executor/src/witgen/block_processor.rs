@@ -155,7 +155,7 @@ mod tests {
     /// Constructs a processor for a given PIL, then calls a function on it.
     fn do_with_processor<T: FieldElement, Q: QueryCallback<T>, R>(
         src: &str,
-        mut query_callback: Q,
+        query_callback: Q,
         f: impl Fn(BlockProcessor<T, Q>, BTreeMap<String, PolyID>, u64, usize) -> R,
     ) -> R {
         let analyzed = analyze_string(src)
@@ -181,7 +181,7 @@ mod tests {
             (0..degree).map(|i| Row::fresh(&fixed_data, RowIndex::from_degree(i, degree))),
         );
 
-        let mut mutable_state = MutableState::new(iter::empty(), &mut query_callback);
+        let mut mutable_state = MutableState::new(iter::empty(), &query_callback);
 
         let row_offset = RowIndex::from_degree(0, degree);
         let identities = analyzed.identities.iter().collect::<Vec<_>>();

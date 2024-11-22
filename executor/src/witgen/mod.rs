@@ -222,8 +222,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             }
         };
 
-        let mut query_callback = self.query_callback;
-        let mutable_state = MutableState::new(machines.into_iter(), &mut query_callback);
+        let mutable_state = MutableState::new(machines.into_iter(), &self.query_callback);
 
         let generator = (!base_parts.witnesses.is_empty()).then(|| {
             let mut generator = Generator::new(
