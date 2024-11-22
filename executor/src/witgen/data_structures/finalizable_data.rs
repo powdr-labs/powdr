@@ -22,6 +22,8 @@ pub struct CompactData<T: FieldElement> {
     data: Vec<T>,
     /// Bit vector of known cells, stored in row-major order.
     known_cells: BitVec,
+    // TODO I think we could have improved performance if we knew that a row always starts a new u32,
+    // or-in a fixed value during witgen.
 }
 
 impl<T: FieldElement> CompactData<T> {
@@ -113,8 +115,12 @@ impl<T: FieldElement> CompactData<T> {
         })
     }
 
-    pub fn data_slice(&mut self) -> &mut [T] {
-        self.data.as_mut_slice()
+    pub fn data_slice(&mut self) -> (&mut [T], &mut [u32]) {
+        (
+            self.data.as_mut_slice(),
+            // TODO maybe implement our own BitVec to avoid the unsafe here.
+            unsafe { self.known_cells.storage_mut() }.as_mut_slice(),
+        )
     }
 }
 
@@ -152,13 +158,14 @@ impl<'a, T: FieldElement> CompactDataRef<'a, T> {
         (row + self.row_offset as i32) as usize
     }
 
-    pub fn direct_slice(&mut self) -> (&mut [T], usize) {
+    pub fn direct_slice(&mut self) -> (&mut [T], &mut [u32], usize) {
         // println!(
         //     "Extracting slice at row offset {}, total length: {}",
         //     self.row_offset,
         //     self.data.len()
         // );
-        (self.data.data_slice(), self.row_offset)
+        let (data, known) = self.data.data_slice();
+        (data, known, self.row_offset)
     }
 }
 

@@ -101,7 +101,7 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
         // encode the ID and the known inputs?
         let witgen_fun = unsafe {
             library
-                .get::<extern "C" fn(*mut c_void, u64, u64, *mut c_void, *const c_void)>(b"witgen")
+                .get::<extern "C" fn(WitgenFunctionParams, *mut c_void, *const c_void)>(b"witgen")
         }
         .unwrap();
 
@@ -143,14 +143,19 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
             }
         }
 
+        let start = std::time::Instant::now();
+
         let (witgen_fun, known_after) =
             &self.witgen_functions.read().unwrap()[&(connection_id, known_inputs)];
         witgen_fun.call(&mut data, self.latch_row, mutable_state, process_lookup);
 
+        let end = start.elapsed();
+        println!("Witgen took {}", end.as_nanos());
+
         // TODO maybe do this inside witgen_fun::call?
-        for Cell { id, row_offset, .. } in known_after {
-            data.set_known(row_offset + self.latch_row as i32, *id as u32);
-        }
+        // for Cell { id, row_offset, .. } in known_after {
+        //     data.set_known(row_offset + self.latch_row as i32, *id as u32);
+        // }
 
         // TODO shortcut this somehow
         for (e, v) in right.expressions.iter().zip(values) {
@@ -162,8 +167,6 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
                 }
             }
         }
-
-        // TODO we still need to set "known" on the written cells in `data`.
 
         Ok(true)
     }
@@ -183,7 +186,15 @@ fn process_lookup<'b, 'd, T: FieldElement, Q: QueryCallback<T>>(
 struct WitgenFunction {
     #[allow(dead_code)]
     library: Arc<libloading::Library>,
-    witgen_function: extern "C" fn(*mut c_void, u64, u64, *mut c_void, *const c_void),
+    witgen_function: extern "C" fn(WitgenFunctionParams, *mut c_void, *const c_void),
+}
+
+#[repr(C)]
+struct WitgenFunctionParams {
+    data: *mut c_void,
+    known: *mut u32,
+    len: u64,
+    row_offset: u64,
 }
 
 impl WitgenFunction {
@@ -195,15 +206,19 @@ impl WitgenFunction {
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         process_lookup: fn(&'b mut MutableState<'a, 'b, T, Q>, u64, Vec<LookupCell<'c, T>>) -> bool,
     ) {
-        let (slice, row_offset) = data.direct_slice();
-        let data_c_ptr = slice.as_mut_ptr() as *mut c_void;
-        let len = slice.len() as u64;
+        let (data_slice, known_slice, row_offset) = data.direct_slice();
+        let data_c_ptr = data_slice.as_mut_ptr() as *mut c_void;
+        let len = data_slice.len() as u64;
+        assert_eq!((len + 31) / 32, known_slice.len() as u64);
         let process_lookup_ptr = process_lookup as *const c_void;
         let mutable_state_ptr = mutable_state as *mut _ as *mut c_void;
         (self.witgen_function)(
-            data_c_ptr,
-            len,
-            row_offset as u64 + latch_row as u64,
+            WitgenFunctionParams {
+                data: data_c_ptr,
+                known: known_slice.as_mut_ptr(),
+                len,
+                row_offset: row_offset as u64 + latch_row as u64,
+            },
             mutable_state_ptr,
             process_lookup_ptr,
         );

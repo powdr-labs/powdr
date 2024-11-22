@@ -153,7 +153,7 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
             .sorted()
             .map(|cell| {
                 format!(
-                    "    set(data, row_offset, {}, {}, {});",
+                    "    set(data, known, row_offset, {}, {}, {});",
                     cell.row_offset,
                     cell.id,
                     cell_to_variable(cell)
@@ -165,18 +165,19 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
 {}
 #[no_mangle]
 extern "C" fn {fun_name}(
-    data: *mut c_void,
-    data_len: u64,
-    row_offset: u64,
+    WitgenFunctionParams{{
+        data,
+        known,
+        len,
+        row_offset,
+    }}: WitgenFunctionParams,
     mutable_state: *mut c_void,
-    process_lookup: fn(
-        *mut c_void,
-        u64,
-        Vec<LookupCell<'_, FieldElement>>,
-    ) -> bool,
+    process_lookup: fn(*mut c_void, u64, Vec<LookupCell<'_, FieldElement>>) -> bool
 ) {{
     let data = data as *mut FieldElement;
-    let data: &mut [FieldElement] = unsafe {{ std::slice::from_raw_parts_mut(data, data_len as usize) }};
+    let data: &mut [FieldElement] = unsafe {{ std::slice::from_raw_parts_mut(data, len as usize) }};
+    let known = known as *mut u32;
+    let known: &mut [u32] = unsafe {{ std::slice::from_raw_parts_mut(known, ((len + 31) / 32)  as usize) }};
 {assign_inputs}
 {}
 {store_values}
@@ -267,9 +268,11 @@ fn get(data: &[FieldElement], global_offset: u64, local_offset: i32, column: u64
     r
 }}
 #[inline]
-fn set(data: &mut [FieldElement], global_offset: u64, local_offset: i32, column: u64, value: FieldElement) {{
+fn set(data: &mut [FieldElement], known: &mut [u32], global_offset: u64, local_offset: i32, column: u64, value: FieldElement) {{
     //println!("Setting data[{{global_offset}} + {{local_offset}}, {{column}}] = {{value}}");
-    data[index(global_offset, local_offset, column)] = value;
+    let i = index(global_offset, local_offset, column);
+    data[i] = value;
+    known[i / 32] |= 1 << (i % 32);
 }}
 enum LookupCell<'a, T> {{
     /// Value is known (i.e. an input)
@@ -277,6 +280,15 @@ enum LookupCell<'a, T> {{
     /// Value is not known (i.e. an output)
     Output(&'a mut T),
 }}
+
+#[repr(C)]
+struct WitgenFunctionParams {{
+    data: *mut c_void,
+    known: *mut u32,
+    len: u64,
+    row_offset: u64,
+}}
+
         "#
         )
     }
