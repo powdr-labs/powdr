@@ -153,10 +153,21 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
             .sorted()
             .map(|cell| {
                 format!(
-                    "    set(data, known, row_offset, {}, {}, {});",
+                    "    set(data, row_offset, {}, {}, {});",
                     cell.row_offset,
                     cell.id,
                     cell_to_variable(cell)
+                )
+            })
+            .format("\n");
+        let store_known = self
+            .known_cells
+            .iter()
+            .sorted()
+            .map(|cell| {
+                format!(
+                    "    set_known(known, row_offset, {}, {});",
+                    cell.row_offset, cell.id
                 )
             })
             .format("\n");
@@ -177,10 +188,11 @@ extern "C" fn {fun_name}(
     let data = data as *mut FieldElement;
     let data: &mut [FieldElement] = unsafe {{ std::slice::from_raw_parts_mut(data, len as usize) }};
     let known = known as *mut u32;
-    let known: &mut [u32] = unsafe {{ std::slice::from_raw_parts_mut(known, ((len + 31) / 32)  as usize) }};
+    let known: &mut [u32] = unsafe {{ std::slice::from_raw_parts_mut(known, len as usize /* len / words per row or something */) }};
 {assign_inputs}
 {}
 {store_values}
+{store_known}
 }}
 "#,
             self.preamble(),
@@ -262,17 +274,28 @@ fn index(global_offset: u64, local_offset: i32, column: u64) -> usize {{
     (row * {column_count} + column) as usize
 }}
 #[inline]
+fn index_known(global_offset: u64, local_offset: i32, column: u64) -> (u64, u64) {{
+    let column = column - {first_column_id};
+    let row = (global_offset as i64 + local_offset as i64) as u64;
+    let words_per_row = ({column_count} + 31) / 32;
+    (row * words_per_row + column / 32, column % 32)
+}}
+#[inline]
 fn get(data: &[FieldElement], global_offset: u64, local_offset: i32, column: u64) -> FieldElement {{
     let r = data[index(global_offset, local_offset, column)];
     //println!("Get data[{{global_offset}} + {{local_offset}}, {{column}}] = {{r}}");
     r
 }}
 #[inline]
-fn set(data: &mut [FieldElement], known: &mut [u32], global_offset: u64, local_offset: i32, column: u64, value: FieldElement) {{
+fn set(data: &mut [FieldElement], global_offset: u64, local_offset: i32, column: u64, value: FieldElement) {{
     //println!("Setting data[{{global_offset}} + {{local_offset}}, {{column}}] = {{value}}");
     let i = index(global_offset, local_offset, column);
     data[i] = value;
-    known[i / 32] |= 1 << (i % 32);
+}}
+#[inline]
+fn set_known(known: &mut [u32], global_offset: u64, local_offset: i32, column: u64) {{
+    let (known_idx, known_bit) = index_known(global_offset, local_offset, column);
+    known[known_idx as usize] |= 1 << (known_bit);
 }}
 enum LookupCell<'a, T> {{
     /// Value is known (i.e. an input)

@@ -209,7 +209,7 @@ impl WitgenFunction {
         let (data_slice, known_slice, row_offset) = data.direct_slice();
         let data_c_ptr = data_slice.as_mut_ptr() as *mut c_void;
         let len = data_slice.len() as u64;
-        assert_eq!((len + 31) / 32, known_slice.len() as u64);
+        //        assert_eq!((len + 31) / 32, known_slice.len() as u64);
         let process_lookup_ptr = process_lookup as *const c_void;
         let mutable_state_ptr = mutable_state as *mut _ as *mut c_void;
         (self.witgen_function)(

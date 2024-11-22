@@ -21,9 +21,85 @@ pub struct CompactData<T: FieldElement> {
     /// The cell values, stored in row-major order.
     data: Vec<T>,
     /// Bit vector of known cells, stored in row-major order.
-    known_cells: BitVec,
-    // TODO I think we could have improved performance if we knew that a row always starts a new u32,
-    // or-in a fixed value during witgen.
+    known_cells: PaddedBitVec,
+}
+
+#[derive(Clone)]
+pub struct PaddedBitVec {
+    data: Vec<u32>,
+    // TODO check if we really need all of those.
+    bits_per_row: usize,
+    words_per_row: usize,
+    rows: usize,
+    bits_in_last_row: usize,
+}
+
+impl PaddedBitVec {
+    fn new(bits_per_row: usize) -> Self {
+        let words_per_row = (bits_per_row + 31) / 32;
+        Self {
+            data: Vec::new(),
+            bits_per_row,
+            words_per_row,
+            rows: 0,
+            bits_in_last_row: 0,
+        }
+    }
+
+    fn truncate_to_rows(&mut self, len: usize) {
+        assert!(len <= self.rows);
+        self.data.truncate(len * self.words_per_row);
+        self.rows = len;
+        self.bits_in_last_row = 0;
+    }
+
+    fn clear(&mut self) {
+        self.data.clear();
+        self.rows = 0;
+        self.bits_in_last_row = 0;
+    }
+
+    fn reserve_rows(&mut self, count: usize) {
+        self.data.reserve(count * self.words_per_row);
+    }
+
+    fn push(&mut self, value: bool) {
+        if self.bits_in_last_row == 0 {
+            self.data.push(value as u32);
+            self.rows += 1;
+        } else {
+            let last_word = self.data.last_mut().unwrap();
+            if value {
+                *last_word |= 1 << (self.bits_in_last_row - 1);
+            }
+        }
+        self.bits_in_last_row = (self.bits_in_last_row + 1) % self.bits_per_row;
+    }
+
+    fn append_empty_rows(&mut self, count: usize) {
+        assert!(self.bits_in_last_row == 0);
+        self.data
+            .resize(self.data.len() + count * self.words_per_row, 0);
+        self.rows += count;
+    }
+
+    fn get(&self, row: usize, col: u64) -> bool {
+        let word = &self.data[row * self.words_per_row + (col / 32) as usize];
+        (word & (1 << (col % 32))) != 0
+    }
+
+    fn set(&mut self, row: usize, col: u64, value: bool) {
+        let word = &mut self.data[row * self.words_per_row + (col / 32) as usize];
+        if value {
+            *word |= 1 << (col % 32);
+        } else {
+            *word &= !(1 << (col % 32));
+        }
+    }
+
+    fn mut_slice(&mut self) -> &mut [u32] {
+        self.data.as_mut_slice()
+    }
 }
 
 impl<T: FieldElement> CompactData<T> {
@@ -31,11 +107,12 @@ impl<T: FieldElement> CompactData<T> {
     pub fn new(column_ids: &[PolyID]) -> Self {
         let col_id_range = column_ids.iter().map(|id| id.id).minmax();
         let (first_column_id, last_column_id) = col_id_range.into_option().unwrap();
+        let column_count = (last_column_id - first_column_id + 1) as usize;
         Self {
             first_column_id,
-            column_count: (last_column_id - first_column_id + 1) as usize,
+            column_count,
             data: Vec::new(),
-            known_cells: BitVec::new(),
+            known_cells: PaddedBitVec::new(column_count),
         }
     }
 
@@ -51,7 +128,7 @@ impl<T: FieldElement> CompactData<T> {
     /// Truncates the data to `len` rows.
     pub fn truncate(&mut self, len: usize) {
         self.data.truncate(len * self.column_count);
-        self.known_cells.truncate(len * self.column_count);
+        self.known_cells.truncate_to_rows(len);
     }
 
     pub fn clear(&mut self) {
@@ -62,7 +139,7 @@ impl<T: FieldElement> CompactData<T> {
     /// Appends a non-finalized row to the data, turning it into a finalized row.
     pub fn push(&mut self, row: Row<T>) {
         self.data.reserve(self.column_count);
-        self.known_cells.reserve(self.column_count);
+        self.known_cells.reserve_rows(1);
         for col_id in self.first_column_id..(self.first_column_id + self.column_count as u64) {
             if let Some(v) = row.value(&PolyID {
                 id: col_id,
@@ -80,7 +157,7 @@ impl<T: FieldElement> CompactData<T> {
     pub fn append_new_rows(&mut self, count: usize) {
         self.data
             .resize(self.data.len() + count * self.column_count, T::zero());
-        self.known_cells.grow(count * self.column_count, false);
+        self.known_cells.append_empty_rows(count);
     }
 
     fn index(&self, row: usize, col: u64) -> usize {
@@ -90,25 +167,27 @@ impl<T: FieldElement> CompactData<T> {
 
     pub fn get(&self, row: usize, col: u64) -> (T, bool) {
         let idx = self.index(row, col);
-        (self.data[idx], self.known_cells[idx])
+        (
+            self.data[idx],
+            self.known_cells.get(row, col - self.first_column_id),
+        )
     }
 
     pub fn set(&mut self, row: usize, col: u64, value: T) {
         let idx = self.index(row, col);
-        assert!(!self.known_cells[idx] || self.data[idx] == value);
+        assert!(!self.known_cells.get(row, col - self.first_column_id) || self.data[idx] == value);
         self.data[idx] = value;
-        self.known_cells.set(idx, true);
+        self.known_cells.set(row, col - self.first_column_id, true);
     }
 
     pub fn set_known(&mut self, row: usize, col: u64) {
-        let idx = self.index(row, col);
-        self.known_cells.set(idx, true);
+        self.known_cells.set(row, col - self.first_column_id, true);
     }
 
     pub fn known_values_in_row(&self, row: usize) -> impl Iterator<Item = (u64, &T)> {
         (0..self.column_count).filter_map(move |i| {
             let idx = row * self.column_count + i;
-            self.known_cells[idx].then(|| {
+            self.known_cells.get(row, i as u64).then(|| {
                 let col_id = self.first_column_id + i as u64;
                 (col_id, &self.data[idx])
             })
@@ -116,11 +195,7 @@ impl<T: FieldElement> CompactData<T> {
     }
 
     pub fn data_slice(&mut self) -> (&mut [T], &mut [u32]) {
-        (
-            self.data.as_mut_slice(),
-            // TODO maybe implement our own BitVec to avoid the unsafe here.
-            unsafe { self.known_cells.storage_mut() }.as_mut_slice(),
-        )
+        (self.data.as_mut_slice(), self.known_cells.mut_slice())
     }
 }
 
