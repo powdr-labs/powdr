@@ -564,7 +564,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                 if let AlgebraicExpression::Reference(poly_ref) = child {
                     match poly_ref.poly_id.ptype {
                         PolynomialType::Committed | PolynomialType::Constant => {
-                            [poly_ref.poly_id].into_iter().collect()
+                            once(poly_ref.poly_id).collect()
                         }
                         PolynomialType::Intermediate => self.polynomial_references(
                             self.intermediate_definitions[&poly_ref.poly_id],
