@@ -3,6 +3,7 @@ use std::{
     ops::{Index, IndexMut},
 };
 
+use auto_enums::auto_enum;
 use bit_vec::BitVec;
 use itertools::Itertools;
 use powdr_ast::analyzed::{PolyID, PolynomialType};
@@ -274,17 +275,19 @@ impl<T: FieldElement> FinalizableData<T> {
     }
 
     /// Returns an iterator over the values known in that row together with the PolyIDs.
-    pub fn known_values_in_row(&self, row: usize) -> Box<dyn Iterator<Item = (PolyID, T)> + '_> {
+    #[auto_enum(Iterator)]
+    pub fn known_values_in_row(
+        &self,
+        row: usize,
+    ) -> impl Iterator<Item = (PolyID, T)> + use<'_, T> {
         match self.location_of_row(row) {
             Location::PreFinalized(local) => {
                 let row = &self.pre_finalized_data[local];
-                Box::new(
-                    self.column_ids
-                        .iter()
-                        .filter_map(move |id| row.value(id).map(|v| (*id, v))),
-                )
+                self.column_ids
+                    .iter()
+                    .filter_map(move |id| row.value(id).map(|v| (*id, v)))
             }
-            Location::Finalized(local) => Box::new(
+            Location::Finalized(local) => {
                 self.finalized_data
                     .known_values_in_row(local)
                     .map(|(id, v)| {
@@ -295,15 +298,13 @@ impl<T: FieldElement> FinalizableData<T> {
                             },
                             *v,
                         )
-                    }),
-            ),
+                    })
+            }
             Location::PostFinalized(local) => {
                 let row = &self.post_finalized_data[local];
-                Box::new(
-                    self.column_ids
-                        .iter()
-                        .filter_map(move |id| row.value(id).map(|v| (*id, v))),
-                )
+                self.column_ids
+                    .iter()
+                    .filter_map(move |id| row.value(id).map(|v| (*id, v)))
             }
         }
     }
