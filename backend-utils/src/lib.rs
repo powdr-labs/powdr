@@ -260,7 +260,7 @@ fn split_by_namespace<F: FieldElement>(
                 }
             }
             StatementIdentifier::ProverFunction(i) => {
-                let prover_function = pil.prover_functions.get(*i).unwrap();
+                let prover_function = &pil.prover_functions[*i];
                 let namespaces = referenced_namespaces_parsed_expression(prover_function)
                     .into_iter()
                     .filter(|namespace| !namespace.starts_with("std::"))
