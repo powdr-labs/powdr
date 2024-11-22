@@ -11,7 +11,9 @@ use crate::witgen::{
     EvalError, EvalResult, QueryCallback,
 };
 
-/// Everything [Generator] needs to mutate in order to compute a new row.
+/// The container and access method for machines and the query callback.
+/// The machines contain the actual data tables.
+/// This struct uses interior mutability for accessing the machines.
 pub struct MutableState<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
     machines: Vec<RefCell<KnownMachine<'a, T>>>,
     identity_to_machine_index: BTreeMap<u64, usize>,
@@ -38,6 +40,8 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, 'b, T, Q> {
         }
     }
 
+    /// Call the machine responsible for the right-hand-side of an identity given its ID
+    /// and the row pair of the caller.
     pub fn call(&self, identity_id: u64, caller_rows: &RowPair<'_, 'a, T>) -> EvalResult<'a, T> {
         let machine_index = *self
             .identity_to_machine_index
@@ -54,6 +58,7 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, 'b, T, Q> {
             .process_plookup_timed(self, identity_id, caller_rows)
     }
 
+    /// Extracts the witness column values from the machines.
     pub fn take_witness_col_values(self) -> HashMap<String, Vec<T>> {
         // We keep the already processed machines mutably borrowed so that
         // "later" machines do not try to create new rows in already processed
