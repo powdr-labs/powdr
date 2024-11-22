@@ -1,5 +1,5 @@
 mod binary4;
-use binary4::Binary4;
+use binary4::Main as Binary4;
 
 machine Binary4x with
     degree: 32,

@@ -1,7 +1,7 @@
 /// Binary machine that works on chunks of 4 bits,
 /// to be used with permutation lookups.
-machine Binary4 with
-    degree: 32,
+machine Main with
+    degree: 256,
     latch: latch,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation
