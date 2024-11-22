@@ -9,14 +9,14 @@ use crate::witgen::analysis::detect_connection_type_and_block_size;
 use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::data_structures::multiplicity_counter::MultiplicityCounter;
+use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::processor::{OuterQuery, Processor, SolverState};
 use crate::witgen::rows::{Row, RowIndex, RowPair};
 use crate::witgen::sequence_iterator::{
     DefaultSequenceIterator, ProcessingSequenceCache, ProcessingSequenceIterator,
 };
 use crate::witgen::util::try_to_simple_poly;
-use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause};
-use crate::witgen::{MutableState, QueryCallback};
+use crate::witgen::{machines::Machine, EvalError, EvalValue, IncompleteCause, QueryCallback};
 use powdr_ast::analyzed::{DegreeRange, PolyID, PolynomialType};
 use powdr_number::{DegreeType, FieldElement};
 
@@ -141,7 +141,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &'b MutableState<'a, 'b, T, Q>,
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
@@ -162,7 +162,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for BlockMachine<'a, T> {
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &'b MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         if self.data.len() < 2 * self.block_size {
             if self.fixed_data.is_monolithic() {
@@ -351,7 +351,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
     fn process_plookup_internal<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &MutableState<'a, 'b, T, Q>,
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
@@ -420,7 +420,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
 
     fn process<'b, Q: QueryCallback<T>>(
         &self,
-        mutable_state: &mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &MutableState<'a, 'b, T, Q>,
         sequence_iterator: &mut ProcessingSequenceIterator,
         outer_query: OuterQuery<'a, 'b, T>,
     ) -> Result<ProcessResult<'a, T>, EvalError<T>> {

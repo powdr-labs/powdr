@@ -3,6 +3,7 @@ use powdr_number::{DegreeType, FieldElement};
 use std::collections::{BTreeMap, HashMap};
 
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
+use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::machines::profiling::{record_end, record_start};
 use crate::witgen::processor::OuterQuery;
 use crate::witgen::EvalValue;
@@ -15,7 +16,7 @@ use super::processor::SolverState;
 use super::rows::{Row, RowIndex, RowPair};
 use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
 use super::vm_processor::VmProcessor;
-use super::{EvalResult, FixedData, MutableState, QueryCallback};
+use super::{EvalResult, FixedData, QueryCallback};
 
 struct ProcessResult<'a, T: FieldElement> {
     eval_value: EvalValue<AlgebraicVariable<'a>, T>,
@@ -44,7 +45,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &MutableState<'a, 'b, T, Q>,
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
@@ -90,7 +91,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &'b MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         log::debug!("Finalizing VM: {}", self.name());
 
@@ -132,7 +133,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     }
 
     /// Runs the machine without any arguments from the first row.
-    pub fn run<'b, Q: QueryCallback<T>>(&mut self, mutable_state: &mut MutableState<'a, 'b, T, Q>) {
+    pub fn run<'b, Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, 'b, T, Q>) {
         record_start(self.name());
         assert!(self.data.is_empty());
         let first_row = self.compute_partial_first_row(mutable_state);
@@ -145,7 +146,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
 
     fn fill_remaining_rows<Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &mut MutableState<'a, '_, T, Q>,
+        mutable_state: &MutableState<'a, '_, T, Q>,
     ) {
         if self.data.len() < self.degree as usize + 1 {
             assert!(self.latch.is_some());
@@ -172,7 +173,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     /// row from identities like `pc' = (1 - first_step') * <...>`.
     fn compute_partial_first_row<Q: QueryCallback<T>>(
         &self,
-        mutable_state: &mut MutableState<'a, '_, T, Q>,
+        mutable_state: &MutableState<'a, '_, T, Q>,
     ) -> Row<T> {
         // Use `BlockProcessor` + `DefaultSequenceIterator` using a "block size" of 0. Because `BlockProcessor`
         // expects `data` to include the row before and after the block, this means we'll run the
@@ -214,12 +215,12 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         block.pop().unwrap()
     }
 
-    fn process<'b, Q: QueryCallback<T>>(
+    fn process<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
         first_row: Row<T>,
         row_offset: DegreeType,
-        mutable_state: &mut MutableState<'a, 'b, T, Q>,
-        outer_query: Option<OuterQuery<'a, 'b, T>>,
+        mutable_state: &MutableState<'a, 'b, T, Q>,
+        outer_query: Option<OuterQuery<'a, 'c, T>>,
         is_main_run: bool,
     ) -> ProcessResult<'a, T> {
         log::trace!(

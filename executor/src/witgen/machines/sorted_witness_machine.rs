@@ -4,12 +4,13 @@ use super::super::affine_expression::AffineExpression;
 use super::{Connection, EvalResult, FixedData};
 use super::{Machine, MachineParts};
 use crate::witgen::affine_expression::AlgebraicVariable;
+use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::rows::RowPair;
 use crate::witgen::{
     expression_evaluator::ExpressionEvaluator, fixed_evaluator::FixedEvaluator,
     symbolic_evaluator::SymbolicEvaluator,
 };
-use crate::witgen::{EvalValue, IncompleteCause, MutableState, QueryCallback};
+use crate::witgen::{EvalValue, IncompleteCause, QueryCallback};
 use crate::Identity;
 use itertools::Itertools;
 use num_traits::One;
@@ -202,7 +203,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
 
     fn process_plookup<Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &mut MutableState<'a, '_, T, Q>,
+        _mutable_state: &MutableState<'a, '_, T, Q>,
         identity_id: u64,
         caller_rows: &RowPair<'_, 'a, T>,
     ) -> EvalResult<'a, T> {
@@ -211,7 +212,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for SortedWitnesses<'a, T> {
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        _mutable_state: &'b MutableState<'a, 'b, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         let mut result = HashMap::new();
 

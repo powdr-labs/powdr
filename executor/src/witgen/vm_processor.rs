@@ -7,6 +7,7 @@ use std::cmp::max;
 
 use std::time::Instant;
 
+use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::identity_processor::{self};
 use crate::witgen::machines::compute_size_and_log;
 use crate::witgen::IncompleteCause;
@@ -17,7 +18,7 @@ use super::machines::MachineParts;
 use super::processor::{OuterQuery, Processor, SolverState};
 
 use super::rows::{Row, RowIndex, UnknownStrategy};
-use super::{Constraints, EvalError, EvalValue, FixedData, MutableState, QueryCallback};
+use super::{Constraints, EvalError, EvalValue, FixedData, QueryCallback};
 
 /// Maximal period checked during loop detection.
 const MAX_PERIOD: usize = 4;
@@ -77,7 +78,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         fixed_data: &'a FixedData<'a, T>,
         parts: &'c MachineParts<'a, T>,
         mutable_data: SolverState<'a, T>,
-        mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &'c MutableState<'a, 'b, T, Q>,
     ) -> Self {
         let degree_range = parts.common_degree_range();
 
@@ -120,7 +121,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         }
     }
 
-    pub fn with_outer_query(self, outer_query: OuterQuery<'a, 'b, T>) -> Self {
+    pub fn with_outer_query(self, outer_query: OuterQuery<'a, 'c, T>) -> Self {
         let processor = self.processor.with_outer_query(outer_query);
         Self { processor, ..self }
     }

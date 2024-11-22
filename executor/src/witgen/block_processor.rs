@@ -4,11 +4,12 @@ use crate::Identity;
 
 use super::{
     affine_expression::AlgebraicVariable,
+    data_structures::mutable_state::MutableState,
     machines::MachineParts,
     processor::{OuterQuery, Processor, SolverState},
     rows::{RowIndex, UnknownStrategy},
     sequence_iterator::{Action, ProcessingSequenceIterator, SequenceStep},
-    EvalError, EvalValue, FixedData, IncompleteCause, MutableState, QueryCallback,
+    EvalError, EvalValue, FixedData, IncompleteCause, QueryCallback,
 };
 
 /// A basic processor that knows how to determine a unique satisfying witness
@@ -27,7 +28,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
     pub fn new(
         row_offset: RowIndex,
         mutable_data: SolverState<'a, T>,
-        mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &'c MutableState<'a, 'b, T, Q>,
         fixed_data: &'a FixedData<'a, T>,
         parts: &'c MachineParts<'a, T>,
         size: DegreeType,
@@ -120,7 +121,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use std::{collections::BTreeMap, iter};
 
     use powdr_ast::analyzed::{PolyID, PolynomialType};
     use powdr_number::{FieldElement, GoldilocksField};
@@ -130,7 +131,6 @@ mod tests {
         constant_evaluator::generate,
         witgen::{
             data_structures::finalizable_data::FinalizableData,
-            identity_processor::Machines,
             machines::MachineParts,
             processor::SolverState,
             rows::{Row, RowIndex},
@@ -155,7 +155,7 @@ mod tests {
     /// Constructs a processor for a given PIL, then calls a function on it.
     fn do_with_processor<T: FieldElement, Q: QueryCallback<T>, R>(
         src: &str,
-        mut query_callback: Q,
+        query_callback: Q,
         f: impl Fn(BlockProcessor<T, Q>, BTreeMap<String, PolyID>, u64, usize) -> R,
     ) -> R {
         let analyzed = analyze_string(src)
@@ -167,9 +167,6 @@ mod tests {
             .expect("Failed to analyze test input.");
         let constants = generate(&analyzed);
         let fixed_data = FixedData::new(&analyzed, &constants, &[], Default::default(), 0);
-
-        // No submachines
-        let mut machines = [];
 
         let degree = fixed_data.analyzed.degree();
 
@@ -184,10 +181,8 @@ mod tests {
             (0..degree).map(|i| Row::fresh(&fixed_data, RowIndex::from_degree(i, degree))),
         );
 
-        let mut mutable_state = MutableState {
-            machines: Machines::from(machines.iter_mut()),
-            query_callback: &mut query_callback,
-        };
+        let mutable_state = MutableState::new(iter::empty(), &query_callback);
+
         let row_offset = RowIndex::from_degree(0, degree);
         let identities = analyzed.identities.iter().collect::<Vec<_>>();
         let machine_parts = MachineParts::new(
@@ -201,7 +196,7 @@ mod tests {
         let processor = BlockProcessor::new(
             row_offset,
             SolverState::without_publics(data),
-            &mut mutable_state,
+            &mutable_state,
             &fixed_data,
             &machine_parts,
             degree,

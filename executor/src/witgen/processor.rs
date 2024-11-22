@@ -6,6 +6,7 @@ use powdr_ast::analyzed::{AlgebraicExpression as Expression, AlgebraicReference,
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::affine_expression::AlgebraicVariable;
+use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::{query_processor::QueryProcessor, util::try_to_simple_poly, Constraint};
 use crate::Identity;
 
@@ -19,7 +20,7 @@ use super::{
     },
     identity_processor::IdentityProcessor,
     rows::{Row, RowIndex, RowPair, RowUpdater, UnknownStrategy},
-    Constraints, EvalError, EvalValue, IncompleteCause, MutableState, QueryCallback,
+    Constraints, EvalError, EvalValue, IncompleteCause, QueryCallback,
 };
 
 type Left<'a, T> = Vec<AffineExpression<AlgebraicVariable<'a>, T>>;
@@ -98,7 +99,7 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     /// The values of the publics
     publics: BTreeMap<&'a str, T>,
     /// The mutable state
-    mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
+    mutable_state: &'c MutableState<'a, 'b, T, Q>,
     /// The fixed data (containing information about all columns)
     fixed_data: &'a FixedData<'a, T>,
     /// The machine parts (witness columns, identities, fixed data)
@@ -121,7 +122,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
     pub fn new(
         row_offset: RowIndex,
         mutable_data: SolverState<'a, T>,
-        mutable_state: &'c mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &'c MutableState<'a, 'b, T, Q>,
         fixed_data: &'a FixedData<'a, T>,
         parts: &'c MachineParts<'a, T>,
         size: DegreeType,
@@ -225,7 +226,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
     pub fn process_queries(&mut self, row_index: usize) -> Result<bool, EvalError<T>> {
         let mut query_processor = QueryProcessor::new(
             self.fixed_data,
-            self.mutable_state.query_callback,
+            self.mutable_state.query_callback(),
             self.size,
         );
 
