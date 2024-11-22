@@ -499,9 +499,6 @@ impl Display for PilStatement {
                         .unwrap_or_default()
                 )
             }
-            PilStatement::PolynomialConstantDeclaration(_, names) => {
-                write!(f, "pol constant {};", names.iter().format(", "))
-            }
             PilStatement::PolynomialConstantDefinition(_, name, definition) => {
                 write!(f, "pol constant {name}{definition};")
             }
