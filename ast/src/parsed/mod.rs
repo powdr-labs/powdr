@@ -251,7 +251,9 @@ impl Children<Expression> for PilStatement {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub enum TypeDeclaration<E = u64> {
     Enum(EnumDeclaration<E>),
     Struct(StructDeclaration<E>),
@@ -289,7 +291,9 @@ impl<R> Children<Expression<R>> for TypeDeclaration<u64> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct StructDeclaration<E = u64> {
     pub name: String,
     pub type_vars: TypeBounds,
@@ -326,7 +330,9 @@ impl<R> Children<Expression<R>> for StructDeclaration<u64> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct EnumDeclaration<E = u64> {
     pub name: String,
     pub type_vars: TypeBounds,
@@ -351,7 +357,9 @@ impl<R> Children<Expression<R>> for EnumDeclaration<Expression<R>> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct EnumVariant<E = u64> {
     pub name: String,
     pub fields: Option<Vec<Type<E>>>,
@@ -452,7 +460,9 @@ impl<R> Children<Expression<R>> for TraitImplementation<Expression<R>> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct NamedExpression<Expr> {
     pub name: String,
     pub body: Expr,
@@ -476,7 +486,9 @@ impl<R> Children<Expression<R>> for NamedExpression<Arc<Expression<R>>> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct TraitDeclaration<E = u64> {
     pub name: String,
     pub type_vars: Vec<String>,
@@ -502,7 +514,9 @@ impl<R> Children<Expression<R>> for TraitDeclaration<Expression<R>> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct NamedType<E = u64> {
     pub name: String,
     pub ty: Type<E>,
@@ -548,7 +562,9 @@ impl<T> Children<Expression<T>> for SelectedExpressions<Expression<T>> {
     }
 }
 
-#[derive(Debug, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub enum Expression<Ref = NamespacedPolynomialReference> {
     Reference(SourceRef, Ref),
     PublicReference(SourceRef, String),
@@ -568,45 +584,6 @@ pub enum Expression<Ref = NamespacedPolynomialReference> {
     BlockExpression(SourceRef, BlockExpression<Self>),
     StructExpression(SourceRef, StructExpression<Ref>),
 }
-
-/// Comparison function for expressions that ignore source information.
-macro_rules! impl_partial_eq_for_expression {
-    ($($variant:ident),*) => {
-        impl<Ref: PartialEq> PartialEq for Expression<Ref> {
-            fn eq(&self, other: &Self) -> bool {
-                match (self, other) {
-                    $(
-                        (Expression::$variant(_, a), Expression::$variant(_, b)) => a == b,
-                    )*
-                    // This catches the case where variants are different and returns false
-                    $(
-                        (Expression::$variant(_, _), _) => false,
-                    )*
-                }
-            }
-        }
-    }
-}
-
-impl_partial_eq_for_expression!(
-    Reference,
-    PublicReference,
-    Number,
-    String,
-    Tuple,
-    LambdaExpression,
-    ArrayLiteral,
-    BinaryOperation,
-    UnaryOperation,
-    IndexAccess,
-    FunctionCall,
-    FreeInput,
-    MatchExpression,
-    IfExpression,
-    BlockExpression,
-    StructExpression
-);
-
 pub trait SourceReference {
     fn source_reference(&self) -> &SourceRef;
     fn source_reference_mut(&mut self) -> &mut SourceRef;
@@ -680,7 +657,9 @@ impl_source_reference!(
     Expression
 );
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct UnaryOperation<E = Expression<NamespacedPolynomialReference>> {
     pub op: UnaryOperator,
     pub expr: Box<E>,
@@ -702,7 +681,9 @@ impl<E> Children<E> for UnaryOperation<E> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct BinaryOperation<E = Expression<NamespacedPolynomialReference>> {
     pub left: Box<E>,
     pub op: BinaryOperator,
@@ -725,7 +706,9 @@ impl<E> Children<E> for BinaryOperation<E> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct Number {
     #[schemars(skip)]
     pub value: BigUint,
@@ -778,7 +761,9 @@ impl<Ref> Expression<Ref> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct MatchExpression<E = Expression<NamespacedPolynomialReference>> {
     pub scrutinee: Box<E>,
     pub arms: Vec<MatchArm<E>>,
@@ -805,7 +790,9 @@ impl<E> Children<E> for MatchExpression<E> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct BlockExpression<E> {
     pub statements: Vec<StatementInsideBlock<E>>,
     pub expr: Option<Box<E>>,
@@ -998,7 +985,9 @@ impl NamespacedPolynomialReference {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct LambdaExpression<E = Expression<NamespacedPolynomialReference>> {
     pub kind: FunctionKind,
     pub params: Vec<Pattern>,
@@ -1024,7 +1013,7 @@ impl<E> Children<E> for LambdaExpression<E> {
 }
 
 #[derive(
-    Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema,
+    Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema, Hash,
 )]
 pub enum FunctionKind {
     Pure,
@@ -1032,7 +1021,9 @@ pub enum FunctionKind {
     Query,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct ArrayLiteral<E = Expression<NamespacedPolynomialReference>> {
     pub items: Vec<E>,
 }
@@ -1195,7 +1186,9 @@ impl BinaryOperator {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct IndexAccess<E = Expression<NamespacedPolynomialReference>> {
     pub array: Box<E>,
     pub index: Box<E>,
@@ -1217,7 +1210,9 @@ impl<E> Children<E> for IndexAccess<E> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct FunctionCall<E = Expression<NamespacedPolynomialReference>> {
     pub function: Box<E>,
     pub arguments: Vec<E>,
@@ -1239,7 +1234,9 @@ impl<E> Children<E> for FunctionCall<E> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct MatchArm<E = Expression<NamespacedPolynomialReference>> {
     pub pattern: Pattern,
     pub value: E,
@@ -1255,7 +1252,9 @@ impl<E> Children<E> for MatchArm<E> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct IfExpression<E = Expression<NamespacedPolynomialReference>> {
     pub condition: Box<E>,
     pub body: Box<E>,
@@ -1288,7 +1287,9 @@ impl<E> Children<E> for IfExpression<E> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct StructExpression<Ref = NamespacedPolynomialReference> {
     pub name: Ref,
     pub fields: Vec<NamedExpression<Box<Expression<Ref>>>>,
@@ -1310,7 +1311,9 @@ impl<R> Children<Expression<R>> for StructExpression<R> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub enum StatementInsideBlock<E = Expression<NamespacedPolynomialReference>> {
     // TODO add a source ref here.
     LetStatement(LetStatementInsideBlock<E>),
@@ -1333,7 +1336,9 @@ impl<E> Children<E> for StatementInsideBlock<E> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct LetStatementInsideBlock<E = Expression<NamespacedPolynomialReference>> {
     pub pattern: Pattern,
     pub ty: Option<Type<u64>>,
@@ -1391,7 +1396,9 @@ impl Children<Expression> for FunctionDefinition {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub enum ArrayExpression<Ref = NamespacedPolynomialReference> {
     Value(Vec<Expression<Ref>>),
     RepeatedValue(Vec<Expression<Ref>>),
@@ -1550,7 +1557,9 @@ impl<Ref> Children<Expression<Ref>> for ArrayExpression<Ref> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub enum Pattern {
     CatchAll(SourceRef), // "_", matches a single value
     Ellipsis(SourceRef), // "..", matches a series of values, only valid inside array patterns
@@ -1643,7 +1652,9 @@ impl SourceReference for Pattern {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Serialize, Deserialize, JsonSchema, Hash,
+)]
 pub struct TypedExpression<Ref = NamespacedPolynomialReference, E = Expression<Ref>> {
     pub e: Expression<Ref>,
     pub type_scheme: Option<TypeScheme<E>>,
