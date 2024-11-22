@@ -549,7 +549,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             })
     }
 
-    fn witnesses_for_current_stage(&self) -> impl Iterator<Item = PolyID> + '_ {
+    fn witnesses_until_current_stage(&self) -> impl Iterator<Item = PolyID> + '_ {
         self.witness_cols
             .iter()
             .filter(|(_, col)| col.stage <= self.stage as u32)
