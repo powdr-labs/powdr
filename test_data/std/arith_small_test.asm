@@ -2,7 +2,10 @@ use std::machines::small_field::arith::Arith;
 use std::machines::range::Byte;
 use std::machines::range::Byte2;
 
-machine Main with degree: 65536 {
+let main_degree: int = 2**11;
+let arith_degree: int = 2**11;
+
+machine Main with degree: main_degree {
     reg pc[@pc];
     reg A0[<=];
     reg A1[<=];
@@ -21,7 +24,7 @@ machine Main with degree: 65536 {
     Byte byte;
     Byte2 byte2;
 
-    Arith arith(byte, byte2);
+    Arith arith(byte, byte2, arith_degree, arith_degree);
 
     instr mul A0, A1, B0, B1 -> C0, C1, D0, D1
         link ~> (C0, C1, D0, D1) = arith.mul(A0, A1, 0, 0, B0, B1);

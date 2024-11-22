@@ -1,7 +1,10 @@
 use std::machines::large_field::rotate::ByteRotate;
 use std::machines::large_field::rotate::Rotate;
 
-machine Main with degree: 65536 {
+let main_degree: int = 2**16;
+let rotate_degree: int = 2**16;
+
+machine Main with degree: main_degree {
     reg pc[@pc];
     reg X0[<=];
     reg X1[<=];
@@ -9,7 +12,7 @@ machine Main with degree: 65536 {
     reg A;
 
     ByteRotate byte_rotate;
-    Rotate rotate(byte_rotate);
+    Rotate rotate(byte_rotate, rotate_degree, rotate_degree);
 
     instr rotl X0, X1 -> X2 link ~> X2 = rotate.rotl(X0, X1);
     instr rotr X0, X1 -> X2 link ~> X2 = rotate.rotr(X0, X1);

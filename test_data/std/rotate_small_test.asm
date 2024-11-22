@@ -1,7 +1,10 @@
 use std::machines::small_field::rotate::ByteRotate;
 use std::machines::small_field::rotate::Rotate;
 
-machine Main with degree: 65536 {
+let main_degree: int = 2**16;
+let rotate_degree: int = 2**16;
+
+machine Main with degree: main_degree {
     reg pc[@pc];
     reg X0_1[<=];
     reg X0_2[<=];
@@ -12,7 +15,7 @@ machine Main with degree: 65536 {
     reg A1;
 
     ByteRotate byte_rotate;
-    Rotate rotate(byte_rotate);
+    Rotate rotate(byte_rotate, rotate_degree, rotate_degree);
 
     instr rotl X0_1, X0_2, X1 -> X2_1, X2_2 link ~> (X2_1, X2_2) = rotate.rotl(X0_1, X0_2, X1);
     instr rotr X0_1, X0_2, X1 -> X2_1, X2_2 link ~> (X2_1, X2_2) = rotate.rotr(X0_1, X0_2, X1);

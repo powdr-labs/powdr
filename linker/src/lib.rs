@@ -130,15 +130,14 @@ impl Linker {
     }
 
     fn process_object(&mut self, location: Location, object: Object) {
-        let degree = match &self.params.degree_mode {
+        let namespace_degree = match &self.params.degree_mode {
             DegreeMode::Monolithic => {
                 Expression::Number(SourceRef::unknown(), self.max_degree.clone().unwrap()).into()
             }
-            DegreeMode::Vadcop => object.degree,
+            DegreeMode::Vadcop => try_into_namespace_degree(object.degree).unwrap_or_else(|| panic!("machine at {location} must have an explicit degree")),
         };
 
         let namespace = location.to_string();
-        let namespace_degree = to_namespace_degree(degree);
 
         let (pil, _) = self.namespaces.entry(namespace.clone()).or_default();
 
@@ -351,16 +350,11 @@ fn receive(
     )
 }
 
-/// Convert a [MachineDegree] into a [NamespaceDegree], setting any unset bounds to the relevant default values
-fn to_namespace_degree(d: MachineDegree) -> NamespaceDegree {
-    NamespaceDegree {
-        min: d
-            .min
-            .expect("Either Main or submachine must have explicit degree or min degree"),
-        max: d
-            .max
-            .expect("Either Main or submachine must have explicit degree or max degree"),
-    }
+/// Convert a [MachineDegree] into a [NamespaceDegree]
+fn try_into_namespace_degree(d: MachineDegree) -> Option<NamespaceDegree> {
+    let min = d.min?;
+    let max = d.max?;
+    Some(NamespaceDegree { min, max })
 }
 
 fn namespaced_expression(namespace: String, mut expr: Expression) -> Expression {
