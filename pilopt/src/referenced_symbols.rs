@@ -4,11 +4,16 @@ use powdr_ast::{
     analyzed::{
         Expression, FunctionValueDefinition, PolynomialReference, Reference, TypedExpression,
     },
+    asm_analysis::{
+        AssignmentStatement, Expression as ExpressionASM, FunctionBody, FunctionStatement,
+        InstructionStatement,
+    },
     parsed::{
         asm::SymbolPath,
         types::Type,
         visitor::{AllChildren, Children},
-        EnumDeclaration, StructDeclaration, TraitImplementation, TypeDeclaration,
+        EnumDeclaration, NamespacedPolynomialReference, StructDeclaration, TraitImplementation,
+        TypeDeclaration,
     },
 };
 
@@ -20,7 +25,7 @@ pub trait ReferencedSymbols {
     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_>;
 }
 
-#[derive(Clone, Hash, Ord, PartialOrd, Eq, PartialEq)]
+#[derive(Clone, Hash, Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub struct SymbolReference<'a> {
     pub name: Cow<'a, str>,
     pub type_args: Option<&'a Vec<Type>>,
@@ -55,6 +60,15 @@ impl<'a> From<&'a PolynomialReference> for SymbolReference<'a> {
         SymbolReference {
             name: poly.name.as_str().into(),
             type_args: poly.type_args.as_ref(),
+        }
+    }
+}
+
+impl<'a> From<&'a NamespacedPolynomialReference> for SymbolReference<'a> {
+    fn from(poly: &'a NamespacedPolynomialReference) -> Self {
+        SymbolReference {
+            name: poly.path.to_string().into(),
+            type_args: None, // TODO: Fix before merge
         }
     }
 }
@@ -149,8 +163,97 @@ fn symbols_in_expression(
     }
 }
 
-impl ReferencedSymbols for Type {
+fn symbols_in_expression_asm(
+    e: &ExpressionASM,
+) -> Option<Box<dyn Iterator<Item = SymbolReference<'_>> + '_>> {
+    match e {
+        ExpressionASM::PublicReference(_, name) => {
+            Some(Box::new(once(SymbolReference::from(name))))
+        }
+        ExpressionASM::Reference(_, pr @ NamespacedPolynomialReference { type_args, .. }) => {
+            let type_iter = type_args
+                .iter()
+                .flat_map(|t| t.iter())
+                .flat_map(|t| t.symbols());
+
+            Some(Box::new(type_iter.chain(once(SymbolReference::from(pr)))))
+        }
+        _ => None,
+    }
+}
+
+impl<T> ReferencedSymbols for Type<T> {
     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
         Box::new(self.contained_named_types().map(SymbolReference::from))
+    }
+}
+
+// impl ReferencedSymbols for Machine {
+//     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
+//         Box::new(
+//             self.registers
+//                 .iter()
+//                 .flat_map(|r| r.symbols())
+//                 .chain(self.instructions.iter().flat_map(|i| i.symbols())),
+//             // incomplete for now
+//         )
+//     }
+// }
+
+// impl ReferencedSymbols for RegisterDeclarationStatement {
+//     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
+//         Box::new(once(SymbolReference::from(&self.name)))
+//     }
+// }
+
+// impl ReferencedSymbols for InstructionDefinitionStatement {
+//     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
+//         Box::new(once(SymbolReference::from(&self.name)))
+//     }
+// }
+
+impl ReferencedSymbols for FunctionBody {
+    fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
+        Box::new(self.statements.iter().flat_map(|e| e.symbols()))
+    }
+}
+
+impl ReferencedSymbols for FunctionStatement {
+    fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
+        match self {
+            FunctionStatement::Assignment(a) => a.symbols(),
+            FunctionStatement::Instruction(i) => i.symbols(),
+            //FunctionStatement::Label(l) => l.symbols(),
+            //FunctionStatement::DebugDirective(d) => d.symbols(),
+            //FunctionStatement::Return(r) => r.symbols(),
+            _ => Box::new(std::iter::empty()),
+        }
+    }
+}
+
+impl ReferencedSymbols for AssignmentStatement {
+    fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
+        Box::new(
+            self.lhs_with_reg
+                .iter()
+                .map(|(n, _)| SymbolReference::from(n))
+                .chain(self.rhs.as_ref().symbols()),
+        )
+    }
+}
+
+impl ReferencedSymbols for InstructionStatement {
+    fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
+        Box::new(once(SymbolReference::from(&self.instruction)))
+    }
+}
+
+impl ReferencedSymbols for ExpressionASM {
+    fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
+        Box::new(
+            self.all_children()
+                .flat_map(symbols_in_expression_asm)
+                .flatten(),
+        )
     }
 }

@@ -889,6 +889,17 @@ impl Module {
         self.ordering.push(StatementReference::Module(name));
     }
 
+    pub fn retain_machines(&mut self, names: Vec<String>) {
+        self.machines.retain(|key, _| names.contains(key));
+        self.ordering.retain(|statement| {
+            if let StatementReference::MachineDeclaration(decl_name) = statement {
+                names.contains(decl_name)
+            } else {
+                true
+            }
+        });
+    }
+
     pub fn into_inner(
         self,
     ) -> (
