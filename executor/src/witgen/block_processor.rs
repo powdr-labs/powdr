@@ -130,7 +130,7 @@ mod tests {
     use crate::{
         constant_evaluator::generate,
         witgen::{
-            data_structures::{finalizable_data::FinalizableData, mutable_state::Machines},
+            data_structures::finalizable_data::FinalizableData,
             machines::MachineParts,
             processor::SolverState,
             rows::{Row, RowIndex},
@@ -184,10 +184,8 @@ mod tests {
             (0..degree).map(|i| Row::fresh(&fixed_data, RowIndex::from_degree(i, degree))),
         );
 
-        let mut mutable_state = MutableState {
-            machines: Machines::from(machines.iter_mut()),
-            query_callback: &mut query_callback,
-        };
+        let mut mutable_state = MutableState::new(machines.iter_mut(), &mut query_callback);
+
         let row_offset = RowIndex::from_degree(0, degree);
         let identities = analyzed.identities.iter().collect::<Vec<_>>();
         let machine_parts = MachineParts::new(

@@ -82,9 +82,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> IdentityProcessor<'a, 'b,
             return Ok(status);
         }
 
-        self.mutable_state
-            .machines
-            .call(id, rows, self.mutable_state.query_callback)
+        self.mutable_state.call(id, rows)
     }
 
     /// Handles the lookup that connects the current machine to the calling machine.

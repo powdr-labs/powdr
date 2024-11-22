@@ -1,7 +1,6 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
-use data_structures::mutable_state::Machines;
 use itertools::Itertools;
 use machines::machine_extractor::MachineExtractor;
 use machines::MachineParts;
@@ -224,10 +223,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         };
 
         let mut query_callback = self.query_callback;
-        let mut mutable_state = MutableState {
-            machines: Machines::from(machines.iter_mut()),
-            query_callback: &mut query_callback,
-        };
+        let mut mutable_state = MutableState::new(machines.iter_mut(), &mut query_callback);
 
         let generator = (!base_parts.witnesses.is_empty()).then(|| {
             let mut generator = Generator::new(
@@ -245,9 +241,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         });
 
         // Get columns from machines
-        let mut columns = mutable_state
-            .machines
-            .take_witness_col_values(mutable_state.query_callback);
+        let mut columns = mutable_state.take_witness_col_values();
         if let Some(mut generator) = generator {
             columns.extend(generator.take_witness_col_values(&mut mutable_state));
         }

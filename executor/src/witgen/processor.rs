@@ -226,7 +226,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
     pub fn process_queries(&mut self, row_index: usize) -> Result<bool, EvalError<T>> {
         let mut query_processor = QueryProcessor::new(
             self.fixed_data,
-            self.mutable_state.query_callback,
+            self.mutable_state.query_callback(),
             self.size,
         );
 

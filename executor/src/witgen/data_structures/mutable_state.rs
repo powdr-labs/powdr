@@ -10,12 +10,41 @@ use crate::witgen::{
 
 /// Everything [Generator] needs to mutate in order to compute a new row.
 pub struct MutableState<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
-    pub machines: Machines<'a, 'b, T>,
-    pub query_callback: &'b mut Q,
+    machines: Machines<'a, 'b, T>,
+    query_callback: &'b mut Q,
+}
+
+impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, 'b, T, Q> {
+    pub fn new(
+        machines: impl Iterator<Item = &'b mut KnownMachine<'a, T>>,
+        query_callback: &'b mut Q,
+    ) -> Self {
+        Self {
+            machines: machines.into(),
+            query_callback,
+        }
+    }
+
+    pub fn call(
+        &mut self,
+        identity_id: u64,
+        caller_rows: &RowPair<'_, 'a, T>,
+    ) -> EvalResult<'a, T> {
+        self.machines
+            .call(identity_id, caller_rows, self.query_callback)
+    }
+
+    pub fn take_witness_col_values(&mut self) -> HashMap<String, Vec<T>> {
+        self.machines.take_witness_col_values(self.query_callback)
+    }
+
+    pub fn query_callback(&mut self) -> &mut Q {
+        self.query_callback
+    }
 }
 
 /// A list of mutable references to machines.
-pub struct Machines<'a, 'b, T: FieldElement> {
+struct Machines<'a, 'b, T: FieldElement> {
     identity_to_machine_index: BTreeMap<u64, usize>,
     machines: Vec<&'b mut KnownMachine<'a, T>>,
 }
@@ -54,11 +83,11 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
         (current, others)
     }
 
-    pub fn len(&self) -> usize {
+    fn len(&self) -> usize {
         self.machines.len()
     }
 
-    pub fn call<Q: QueryCallback<T>>(
+    fn call<Q: QueryCallback<T>>(
         &mut self,
         identity_id: u64,
         caller_rows: &RowPair<'_, 'a, T>,
@@ -78,7 +107,7 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
         current.process_plookup_timed(&mut mutable_state, identity_id, caller_rows)
     }
 
-    pub fn take_witness_col_values<Q: QueryCallback<T>>(
+    fn take_witness_col_values<Q: QueryCallback<T>>(
         &mut self,
         query_callback: &mut Q,
     ) -> HashMap<String, Vec<T>> {
@@ -98,9 +127,8 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
     }
 }
 
-impl<'a, 'b, T, I> From<I> for Machines<'a, 'b, T>
+impl<'a, 'b, T: FieldElement, I> From<I> for Machines<'a, 'b, T>
 where
-    T: FieldElement,
     I: Iterator<Item = &'b mut KnownMachine<'a, T>>,
 {
     fn from(machines: I) -> Self {
