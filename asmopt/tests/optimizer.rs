@@ -4,149 +4,258 @@ use powdr_asmopt::optimize;
 use powdr_parser::parse_asm;
 
 #[test]
-fn base() {
+fn remove_unused_machine() {
     let input = r#"
-    let N: int = 64;
-
-    machine Main with degree: N {
-        Pythagoras pythagoras;
-
+    machine Main with degree: 8 {
         reg pc[@pc];
         reg X[<=];
-        reg Y[<=];
-        reg Z[<=];
         reg A;
 
-        instr pythagoras X, Y -> Z link => Z = pythagoras.pythagoras(X, Y);
-        instr pythagoras2 X, Y -> Z link => Z = pythagoras.pythagoras(X, Y);
-        instr assert_eq X, Y { X = Y }
+        instr assert_eq X, A { X = A }
 
         function main {
-            A <== pythagoras(3, 4);
-            assert_eq A, 25;
-
-            A <== pythagoras(4, 3);
-            assert_eq A, 25;
-
-            A <== pythagoras(1, 2);
-            assert_eq A, 5;
-
+            assert_eq 1, 1;
             return;
         }
     }
 
-
-    machine Pythagoras with degree: N {
-
-        Arith arith;
-
+    // This machine should be removed since it's never used
+    machine Unused with degree: 8 {
         reg pc[@pc];
-        reg X[<=];
-        reg Y[<=];
-        reg Z[<=];
-        reg A;
-        reg B;
-
-
-        instr add X, Y -> Z link => Z = arith.add(X, Y);
-        instr mul X, Y -> Z link => Z = arith.mul(X, Y);
-
-        function pythagoras a: field, b: field -> field {
-            A <== mul(a, a);
-            B <== mul(b, b);
-            A <== add(A, B);
-            return A;
-        }
+        col witness w;
+        w = w * w;
     }
+    "#;
 
-    machine Arith with
-        latch: latch,
-        operation_id: operation_id,
-    {
-
-        operation add<0> x1, x2 -> y;
-        operation mul<1> x1, x2 -> y;
-
-        col fixed latch = [1]*;
-        col witness operation_id;
-        col witness x1;
-        col witness x2;
-        col witness y;
-
-        y = operation_id * (x1 * x2) + (1 - operation_id) * (x1 + x2);
+    let expectation = r#"machine Main with degree: 8 {
+    reg pc[@pc];
+    reg X[<=];
+    reg A;
+    instr assert_eq X, A{ X = A }
+    function main {
+        assert_eq 1, 1;
+        // END BATCH Unimplemented
+        return;
+        // END BATCH
     }
+}
 "#;
-    let expectation = r#"
-    let N: int = 64;
 
-    machine Main with degree: N {
-        Pythagoras pythagoras;
+    let parsed = parse_asm(None, input).unwrap();
+    let analyzed = analyze(parsed).unwrap();
+    let optimized = optimize(analyzed).to_string();
+    assert_eq!(optimized, expectation);
+}
 
+#[test]
+fn remove_unused_instruction_and_machine() {
+    let input = r#"
+    machine Main with degree: 8 {
+        Helper helper;
+        
         reg pc[@pc];
         reg X[<=];
         reg Y[<=];
-        reg Z[<=];
         reg A;
 
-        instr pythagoras X, Y -> Z link => Z = pythagoras.pythagoras(X, Y);
-        instr pythagoras2 X, Y -> Z link => Z = pythagoras.pythagoras(X, Y);
-        instr assert_eq X, Y { X = Y }
+        // This instruction is never used and should be removed
+        // which will also remove Helper machine since it's the only usage
+        instr unused X -> Y link ~> Z = helper.double(X);
+        instr assert_eq X, A { X = A }
 
         function main {
-            A <== pythagoras(3, 4);
-            assert_eq A, 25;
-
-            A <== pythagoras(4, 3);
-            assert_eq A, 25;
-
-            A <== pythagoras(1, 2);
-            assert_eq A, 5;
-
+            assert_eq 1, 1;
             return;
         }
     }
 
-
-    machine Pythagoras with degree: N {
-
-        Arith arith;
-
+    machine Helper with degree: 8 {
         reg pc[@pc];
         reg X[<=];
         reg Y[<=];
-        reg Z[<=];
+
+        function double x: field -> field {
+            return x + x;
+        }
+    }
+    "#;
+
+    let expectation = r#"machine Main with degree: 8 {
+    reg pc[@pc];
+    reg X[<=];
+    reg Y[<=];
+    reg A;
+    instr assert_eq X, A{ X = A }
+    function main {
+        assert_eq 1, 1;
+        // END BATCH Unimplemented
+        return;
+        // END BATCH
+    }
+}
+"#;
+
+    let parsed = parse_asm(None, input).unwrap();
+    let analyzed = analyze(parsed).unwrap();
+    let optimized = optimize(analyzed).to_string();
+    assert_eq!(optimized, expectation);
+}
+
+#[test]
+fn keep_machine_with_multiple_references() {
+    let input = r#"
+    machine Main with degree: 8 {
+        Helper helper;
+        
+        reg pc[@pc];
+        reg X[<=];
+        reg Y[<=];
         reg A;
-        reg B;
 
+        // Two different instructions using the same machine
+        instr double X -> Y link => Y = helper.double(X);
+        instr triple X -> Y link => Y = helper.triple(X);
 
-        instr add X, Y -> Z link => Z = arith.add(X, Y);
-        instr mul X, Y -> Z link => Z = arith.mul(X, Y);
-
-        function pythagoras a: field, b: field -> field {
-            A <== mul(a, a);
-            B <== mul(b, b);
-            A <== add(A, B);
-            return A;
+        function main {
+            // Only using one instruction
+            A <== double(2);
+            return;
         }
     }
 
-    machine Arith with
-        latch: latch,
-        operation_id: operation_id,
-    {
+    machine Helper with degree: 8 {
+        reg pc[@pc];
+        reg X[<=];
+        reg Y[<=];
 
-        operation add<0> x1, x2 -> y;
-        operation mul<1> x1, x2 -> y;
+        function double x: field -> field { return x + x; }
+        function triple x: field -> field { return x + x + x; }
+    }
+    "#;
+
+    let expectation = r#"machine Main with degree: 8 {
+    ::Helper helper
+    reg pc[@pc];
+    reg X[<=];
+    reg Y[<=];
+    reg A;
+    instr double X -> Y link => Y = helper.double(X){  }
+    function main {
+        A <=Y= double(2);
+        // END BATCH Unimplemented
+        return;
+        // END BATCH
+    }
+}
+machine Helper with degree: 8 {
+    reg pc[@pc];
+    reg X[<=];
+    reg Y[<=];
+    function double x: field -> field {
+        return x + x;
+        // END BATCH
+    }
+    function triple x: field -> field {
+        return x + x + x;
+        // END BATCH
+    }
+}
+"#;
+
+    let parsed = parse_asm(None, input).unwrap();
+    let analyzed = analyze(parsed).unwrap();
+    let optimized = optimize(analyzed).to_string();
+    assert_eq!(optimized, expectation);
+}
+
+#[test]
+fn keep_machine_parameters() {
+    let input = r#"
+    machine Main with degree: 8 {
+        Required required;
+        ParamMachine sub(required);
+        Unused unused;
+        
+        reg pc[@pc];
+        reg X[<=];
+        reg Y[<=];
+        reg A;
+
+        instr compute X -> Y link => Y = sub.compute(X);
+
+        function main {
+            A <== compute(1);
+            return;
+        }
+    }
+
+    machine ParamMachine(mem: Required) with degree: 8 {
+        reg pc[@pc];
+        reg X[<=];
+        reg Y[<=];
+
+        function compute x: field -> field {
+            return x + x;
+        }
+    }
+
+    machine Required with
+        latch: latch,
+        operation_id: operation_id
+    {
+        operation compute<0> x -> y;
 
         col fixed latch = [1]*;
         col witness operation_id;
-        col witness x1;
-        col witness x2;
+        col witness x;
         col witness y;
-
-        y = operation_id * (x1 * x2) + (1 - operation_id) * (x1 + x2);
+        
+        y = x + x;
     }
+
+    machine Unused with degree: 8 {
+        reg pc[@pc];
+        col witness w;
+        w = w * w;
+    }
+    "#;
+
+    let expectation = r#"machine Main with degree: 8 {
+    ::Required required
+    ::ParamMachine sub
+    reg pc[@pc];
+    reg X[<=];
+    reg Y[<=];
+    reg A;
+    instr compute X -> Y link => Y = sub.compute(X){  }
+    function main {
+        A <=Y= compute(1);
+        // END BATCH Unimplemented
+        return;
+        // END BATCH
+    }
+}
+machine ParamMachine(mem: Required) with degree: 8 {
+    reg pc[@pc];
+    reg X[<=];
+    reg Y[<=];
+    function compute x: field -> field {
+        return x + x;
+        // END BATCH
+    }
+}
+machine Required with
+    latch: latch,
+    operation_id: operation_id {
+    operation compute<0> x -> y;
+    col fixed latch = [1]*;
+    pol commit operation_id;
+    pol commit x;
+    pol commit y;
+    y = x + x;
+}
 "#;
+
     let parsed = parse_asm(None, input).unwrap();
     let analyzed = analyze(parsed).unwrap();
     let optimized = optimize(analyzed).to_string();

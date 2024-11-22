@@ -73,14 +73,9 @@ fn collect_all_dependent_machines(
 
 fn remove_unused_instructions(asm_file: &mut AnalysisASMFile) {
     for (_, machine) in asm_file.machines_mut() {
-        let mut defined_instructions = HashMap::new();
-
-        //primero remuevo de main, en base a lo que me queda remuevo de insts y en base a eso de submachines
-        //let callable_names: HashSet<_> =
-        //    machine.submachines.iter().map(|s| s.name.clone()).collect();
-
         let callable_symbols = machine_callable_symbols(machine);
 
+        let mut defined_instructions = HashMap::new();
         for ins_def in &machine.instructions {
             let delegated_calls: Vec<_> = ins_def
                 .instruction
@@ -91,6 +86,10 @@ fn remove_unused_instructions(asm_file: &mut AnalysisASMFile) {
             defined_instructions.insert(ins_def.name.clone(), delegated_calls); //link to avoid empty?
         }
 
+        let mut cleaned_instructions = defined_instructions
+            .iter()
+            .filter(|(key, _)| callable_symbols.contains(*key));
+
         let instr_to_remove: HashSet<_> = defined_instructions
             .keys()
             .cloned()
@@ -99,16 +98,15 @@ fn remove_unused_instructions(asm_file: &mut AnalysisASMFile) {
 
         let mut subs_to_remove = HashSet::new();
         for instr in &instr_to_remove {
+            //se puede calcular mas eficiente si juntas todos los primeros de defined 
             let tuples_to_check = defined_instructions.get(instr).unwrap();
 
-            for (first, second) in tuples_to_check {
-                let still_used = defined_instructions
-                    .iter()
-                    .filter(|(name, _)| !instr_to_remove.contains(*name))
-                    .any(|(_, tuples)| tuples.iter().any(|(f, _)| f == first));
+            for (first, _) in tuples_to_check {
+                let still_used =
+                    cleaned_instructions.any(|(_, tuples)| tuples.iter().any(|(f, _)| f == first));
 
                 if !still_used {
-                    subs_to_remove.insert(second.clone());
+                    subs_to_remove.insert(first.clone());
                 }
             }
         }
