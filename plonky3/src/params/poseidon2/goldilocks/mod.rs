@@ -1,11 +1,11 @@
-#[cfg(not(feature = "powdr-accel"))]
+#[cfg(not(all(feature = "powdr-accel", target_os = "zkvm", target_arch = "riscv32")))]
 mod software_impl;
-#[cfg(not(feature = "powdr-accel"))]
+#[cfg(not(all(feature = "powdr-accel", target_os = "zkvm", target_arch = "riscv32")))]
 pub use software_impl::*;
 
-#[cfg(feature = "powdr-accel")]
+#[cfg(all(feature = "powdr-accel", target_os = "zkvm", target_arch = "riscv32"))]
 mod powdr_accel_impl;
-#[cfg(feature = "powdr-accel")]
+#[cfg(all(feature = "powdr-accel", target_os = "zkvm", target_arch = "riscv32"))]
 pub use powdr_accel_impl::*;
 
 
