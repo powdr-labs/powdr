@@ -449,13 +449,12 @@ fn preamble(field: KnownField, runtime: &Runtime, with_bootloader: bool) -> Stri
     // returning the low and high limbs in registers Y and Z, respectively.
     //
     // Unsolvable if X points to 0.
-    instr invert_gl X, Y, Z
-        link ~> XX = regs.mload(X, STEP)
-        link ~> tmp1_col = memory.mload(XX, STEP)
-        link ~> tmp2_col = memory.mload(XX + 4, STEP)
+    instr invert_gl X, Y
+        link ~> tmp1_col = regs.mload(X, STEP)
+        link ~> tmp2_col = regs.mload(Y, STEP + 1)
         link ~> (tmp3_col, tmp4_col) = split_gl.split(XX_inv)
-        link ~> regs.mstore(tmp3_col, STEP + 1, Y)
-        link ~> regs.mstore(tmp4_col, STEP + 1, Z)
+        link ~> regs.mstore(X, STEP + 1, tmp3_col)
+        link ~> regs.mstore(Y, STEP + 1, tmp4_col)
     {"#
 + if field == KnownField::GoldilocksField {
     r#"

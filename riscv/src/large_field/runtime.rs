@@ -162,17 +162,7 @@ impl Runtime {
 
         r.add_syscall(Syscall::CommitPublic, ["commit_public 10, 11;"]);
 
-        let tmp1 = Register::from("tmp1");
-        let tmp2 = Register::from("tmp2");
-
-        r.add_syscall(
-            Syscall::InvertGL,
-            [
-                format!("invert_gl 10, {}, {};", tmp1.addr(), tmp2.addr()),
-                format!("mstore 11, 0, 0, {};", tmp1.addr()),
-                format!("mstore 11, 0, 4, {};", tmp2.addr()),
-            ],
-        );
+        r.add_syscall(Syscall::InvertGL, ["invert_gl 10, 11;"]);
 
         r.with_poseidon()
     }

@@ -1,4 +1,3 @@
-use core::mem::MaybeUninit;
 use core::arch::asm;
 use powdr_riscv_syscalls::Syscall;
 
@@ -24,11 +23,15 @@ impl Goldilocks {
         Self(value)
     }
 
-    pub fn inverse(&self) -> Self {
+    /// Returns the inverse of the field element.
+    pub fn inverse(self) -> Self {
+        let mut low = self.0 as u32;
+        let mut high = (self.0 >> 32) as u32;
         unsafe {
-            let mut output: MaybeUninit<Goldilocks> = MaybeUninit::uninit();
-            ecall!(Syscall::InvertGL, in("a0") self, in("a1") output.as_mut_ptr());
-            output.assume_init()
+            ecall!(Syscall::InvertGL,
+                inout("a0") low,
+                inout("a1") high);
+            Self::new_unchecked((high as u64) << 32 | low as u64)
         }
     }
 
