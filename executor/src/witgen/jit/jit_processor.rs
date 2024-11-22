@@ -143,14 +143,14 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
             }
         }
 
-        let start = std::time::Instant::now();
+        //let start = std::time::Instant::now();
 
         let (witgen_fun, known_after) =
             &self.witgen_functions.read().unwrap()[&(connection_id, known_inputs)];
         witgen_fun.call(&mut data, self.latch_row, mutable_state, process_lookup);
 
-        let end = start.elapsed();
-        println!("Witgen took {}", end.as_nanos());
+        //let end = start.elapsed();
+        //println!("Witgen took {}", end.as_nanos());
 
         // TODO maybe do this inside witgen_fun::call?
         // for Cell { id, row_offset, .. } in known_after {
