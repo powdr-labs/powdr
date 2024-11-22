@@ -199,9 +199,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                 let discard = references_later_stage_challenge || references_later_stage_witness;
 
                 if discard {
-                    log::debug!(
-                        "Skipping identity that references challenge of later stage: {identity}",
-                    );
+                    log::debug!("Skipping identity that references later-stage items: {identity}",);
                 }
                 !discard
             })
