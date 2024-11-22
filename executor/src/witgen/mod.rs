@@ -355,7 +355,8 @@ pub fn extract_publics<T: FieldElement>(
         .collect()
 }
 
-/// Data that is fixed for witness generation.
+/// Data that is fixed for witness generation for a certain proof stage
+/// (i.e., a call to [WitnessGenerator::generate]).
 pub struct FixedData<'a, T: FieldElement> {
     analyzed: &'a Analyzed<T>,
     fixed_cols: FixedColumnMap<FixedColumn<'a, T>>,
