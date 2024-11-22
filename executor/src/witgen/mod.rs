@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 
+use data_structures::mutable_state::Machines;
 use itertools::Itertools;
 use machines::machine_extractor::MachineExtractor;
 use machines::MachineParts;
@@ -23,7 +24,6 @@ pub use self::eval_result::{
 use self::generator::Generator;
 
 use self::global_constraints::GlobalConstraints;
-use self::identity_processor::Machines;
 use self::machines::machine_extractor::ExtractionOutput;
 use self::machines::profiling::{record_end, record_start, reset_and_print_profile_summary};
 use self::machines::Machine;

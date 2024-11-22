@@ -130,8 +130,7 @@ mod tests {
     use crate::{
         constant_evaluator::generate,
         witgen::{
-            data_structures::finalizable_data::FinalizableData,
-            identity_processor::Machines,
+            data_structures::{finalizable_data::FinalizableData, mutable_state::Machines},
             machines::MachineParts,
             processor::SolverState,
             rows::{Row, RowIndex},
