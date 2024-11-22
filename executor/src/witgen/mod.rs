@@ -192,6 +192,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                     .polynomial_references(identity)
                     .into_iter()
                     .any(|poly_id| 
+                        (poly_id.ptype == PolynomialType::Committed) &&
                         fixed.witness_cols[&poly_id].stage > self.stage as u32
                     );
 
