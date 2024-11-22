@@ -796,7 +796,7 @@ pub enum SymbolKind {
     Other(),
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Hash)]
 pub enum FunctionValueDefinition {
     Array(ArrayExpression<Reference>),
     Expression(TypedExpression),
@@ -1152,7 +1152,9 @@ impl<T> SelectedExpressions<T> {
 pub type Expression = parsed::Expression<Reference>;
 pub type TypedExpression = crate::parsed::TypedExpression<Reference, u64>;
 
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, Hash, PartialOrd, Ord,
+)]
 pub enum Reference {
     LocalVar(u64, String),
     Poly(PolynomialReference),
@@ -1577,7 +1579,9 @@ impl<T> From<T> for AlgebraicExpression<T> {
 /// Reference to a symbol with optional type arguments.
 /// Named `PolynomialReference` for historical reasons, it can reference
 /// any symbol.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(
+    Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq, PartialOrd, Ord, Hash,
+)]
 pub struct PolynomialReference {
     /// Absolute name of the symbol.
     pub name: String,
