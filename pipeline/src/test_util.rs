@@ -481,6 +481,7 @@ pub fn assert_proofs_fail_for_invalid_witnesses_mock(
         .is_err());
 }
 
+#[cfg(feature = "estark-starky")]
 pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
     file_name: &str,
     witness: &[(String, Vec<u64>)],
@@ -493,6 +494,13 @@ pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
 
     assert!(run_pilcom_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic).is_err());
     assert!(run_pilcom_with_backend_variant(pipeline, BackendVariant::Composite).is_err());
+}
+
+#[cfg(not(feature = "estark-starky"))]
+pub fn assert_proofs_fail_for_invalid_witnesses_pilcom(
+    _file_name: &str,
+    _witness: &[(String, Vec<u64>)],
+) {
 }
 
 #[cfg(not(feature = "estark-starky"))]

@@ -143,13 +143,6 @@ where
             PilStatement::PublicDeclaration(source, name, polynomial, array_index, index) => {
                 self.handle_public_declaration(source, name, polynomial, array_index, index)
             }
-            PilStatement::PolynomialConstantDeclaration(source, polynomials) => self
-                .handle_polynomial_declarations(
-                    source,
-                    None,
-                    polynomials,
-                    PolynomialType::Constant,
-                ),
             PilStatement::PolynomialConstantDefinition(source, name, definition) => self
                 .handle_symbol_definition(
                     source,
@@ -159,13 +152,9 @@ where
                     Some(Type::Col.into()),
                     Some(definition),
                 ),
-            PilStatement::PolynomialCommitDeclaration(source, stage, polynomials, None) => self
-                .handle_polynomial_declarations(
-                    source,
-                    stage,
-                    polynomials,
-                    PolynomialType::Committed,
-                ),
+            PilStatement::PolynomialCommitDeclaration(source, stage, polynomials, None) => {
+                self.handle_witness_polynomial_declarations(source, stage, polynomials)
+            }
             PilStatement::PolynomialCommitDeclaration(
                 source,
                 stage,
@@ -361,12 +350,11 @@ where
         }
     }
 
-    fn handle_polynomial_declarations(
+    fn handle_witness_polynomial_declarations(
         &mut self,
         source: SourceRef,
         stage: Option<u32>,
         polynomials: Vec<PolynomialName>,
-        polynomial_type: PolynomialType,
     ) -> Vec<PILItem> {
         polynomials
             .into_iter()
@@ -375,7 +363,7 @@ where
                 self.handle_symbol_definition(
                     source.clone(),
                     name,
-                    SymbolKind::Poly(polynomial_type),
+                    SymbolKind::Poly(PolynomialType::Committed),
                     stage,
                     ty,
                     None,
