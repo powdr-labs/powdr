@@ -8,7 +8,7 @@ use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, Analyzed, DegreeRange, Expression,
     FunctionValueDefinition, PolyID, PolynomialType, Symbol, SymbolKind, TypedExpression,
 };
-use powdr_ast::parsed::visitor::ExpressionVisitable;
+use powdr_ast::parsed::visitor::{AllChildren, ExpressionVisitable};
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_number::{DegreeType, FieldElement};
 
@@ -556,6 +556,28 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             .iter()
             .filter(|(_, col)| col.stage > self.stage as u32)
             .map(|(poly_id, _)| poly_id)
+    }
+
+    fn polynomial_references(
+        &self,
+        expr: &impl AllChildren<AlgebraicExpression<T>>,
+    ) -> HashSet<PolyID> {
+        expr.all_children()
+            .flat_map(|child| {
+                if let AlgebraicExpression::Reference(poly_ref) = child {
+                    match poly_ref.poly_id.ptype {
+                        PolynomialType::Committed | PolynomialType::Constant => {
+                            [poly_ref.poly_id].into_iter().collect()
+                        }
+                        PolynomialType::Intermediate => self.polynomial_references(
+                            self.intermediate_definitions[&poly_ref.poly_id],
+                        ),
+                    }
+                } else {
+                    HashSet::new()
+                }
+            })
+            .collect()
     }
 }
 
