@@ -223,7 +223,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         };
 
         let mut query_callback = self.query_callback;
-        let mut mutable_state = MutableState::new(machines.into_iter(), &mut query_callback);
+        let mutable_state = MutableState::new(machines.into_iter(), &mut query_callback);
 
         let generator = (!base_parts.witnesses.is_empty()).then(|| {
             let mut generator = Generator::new(
@@ -236,15 +236,15 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                 None,
             );
 
-            generator.run(&mut mutable_state);
+            generator.run(&mutable_state);
             generator
         });
 
         // Get columns from machines
-        let mut columns = mutable_state.take_witness_col_values();
-        if let Some(mut generator) = generator {
-            columns.extend(generator.take_witness_col_values(&mut mutable_state));
-        }
+        let mut columns = generator
+            .map(|mut generator| generator.take_witness_col_values(&mutable_state))
+            .unwrap_or_default();
+        columns.extend(mutable_state.take_witness_col_values());
 
         Self::range_constraint_multiplicity_witgen(&fixed, &mut columns);
 
