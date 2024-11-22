@@ -556,6 +556,8 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             .map(|(poly_id, _)| poly_id)
     }
 
+    /// Finds all referenced witness or fixed columns,
+    /// including those referenced via intermediate columns.
     fn polynomial_references(
         &self,
         expr: &impl AllChildren<AlgebraicExpression<T>>,
