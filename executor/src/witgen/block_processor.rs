@@ -121,7 +121,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
 
 #[cfg(test)]
 mod tests {
-    use std::collections::BTreeMap;
+    use std::{collections::BTreeMap, iter};
 
     use powdr_ast::analyzed::{PolyID, PolynomialType};
     use powdr_number::{FieldElement, GoldilocksField};
@@ -168,9 +168,6 @@ mod tests {
         let constants = generate(&analyzed);
         let fixed_data = FixedData::new(&analyzed, &constants, &[], Default::default(), 0);
 
-        // No submachines
-        let mut machines = [];
-
         let degree = fixed_data.analyzed.degree();
 
         let columns = (0..fixed_data.witness_cols.len())
@@ -184,7 +181,7 @@ mod tests {
             (0..degree).map(|i| Row::fresh(&fixed_data, RowIndex::from_degree(i, degree))),
         );
 
-        let mut mutable_state = MutableState::new(machines.iter_mut(), &mut query_callback);
+        let mut mutable_state = MutableState::new(iter::empty(), &mut query_callback);
 
         let row_offset = RowIndex::from_degree(0, degree);
         let identities = analyzed.identities.iter().collect::<Vec<_>>();

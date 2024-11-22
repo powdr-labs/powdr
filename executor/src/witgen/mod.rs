@@ -196,7 +196,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         let (fixed, retained_identities) =
             global_constraints::set_global_constraints(fixed, &identities);
         let ExtractionOutput {
-            mut machines,
+            machines,
             base_parts,
         } = if self.stage == 0 {
             MachineExtractor::new(&fixed).split_out_machines(retained_identities, self.stage)
@@ -223,7 +223,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         };
 
         let mut query_callback = self.query_callback;
-        let mut mutable_state = MutableState::new(machines.iter_mut(), &mut query_callback);
+        let mut mutable_state = MutableState::new(machines.into_iter(), &mut query_callback);
 
         let generator = (!base_parts.witnesses.is_empty()).then(|| {
             let mut generator = Generator::new(

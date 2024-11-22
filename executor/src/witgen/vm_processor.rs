@@ -121,7 +121,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> VmProcessor<'a, 'b, 'c, T
         }
     }
 
-    pub fn with_outer_query(self, outer_query: OuterQuery<'a, 'b, T>) -> Self {
+    pub fn with_outer_query(self, outer_query: OuterQuery<'a, 'c, T>) -> Self {
         let processor = self.processor.with_outer_query(outer_query);
         Self { processor, ..self }
     }

@@ -215,12 +215,12 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         block.pop().unwrap()
     }
 
-    fn process<'b, Q: QueryCallback<T>>(
+    fn process<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
         first_row: Row<T>,
         row_offset: DegreeType,
         mutable_state: &mut MutableState<'a, 'b, T, Q>,
-        outer_query: Option<OuterQuery<'a, 'b, T>>,
+        outer_query: Option<OuterQuery<'a, 'c, T>>,
         is_main_run: bool,
     ) -> ProcessResult<'a, T> {
         log::trace!(

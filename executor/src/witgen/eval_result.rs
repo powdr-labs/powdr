@@ -176,6 +176,9 @@ pub enum EvalError<T: FieldElement> {
     FixedLookupFailed(Vec<(String, T)>),
     /// Error getting information from the prover.
     ProverQueryError(String),
+    /// A recursive lookup-dependency between machines was discovered at runtime.
+    /// The argument is the ID of the involved lookup identity.
+    RecursiveMachineCalls(u64),
     Generic(String),
     Multiple(Vec<EvalError<T>>),
 }
@@ -240,6 +243,11 @@ impl<T: FieldElement> fmt::Display for EvalError<T> {
             }
             EvalError::ProverQueryError(s) => {
                 write!(f, "Error getting external information from the prover: {s}")
+            }
+            EvalError::RecursiveMachineCalls(identity_id) => {
+                write!(f,
+                    "Recursive machine dependency detected when processing identity with ID {identity_id}"
+                )
             }
             EvalError::Generic(s) => write!(f, "{s}"),
         }
