@@ -73,6 +73,7 @@ where
     log::info!("Running witgen in parallel for {num_chunks} chunks...");
     let pipelines_after_witness = bootloader_inputs
         .into_iter()
+        //.map(|chunk| (chunk, pipeline.deep_clone()))
         .map(|chunk| (chunk, pipeline.clone()))
         .collect::<Vec<_>>()
         .into_par_iter()
@@ -150,17 +151,20 @@ where
         )
         .collect::<Result<Vec<_>, E>>()?;
 
-    pipelines_after_witness
-        .into_iter()
-        .for_each(|mut pipeline| {
-            log::info!("Generating proof...");
-            let start = Instant::now();
+    /*
+        log::info!("Running proofs in parallel...");
+        pipelines_after_witness
+            .into_iter()
+            .for_each(|mut pipeline| {
+                log::info!("Generating proof...");
+                let start = Instant::now();
 
-            pipeline.compute_proof().unwrap();
+                pipeline.compute_proof().unwrap();
 
-            let duration = start.elapsed();
-            log::info!("Proof generation took: {duration:?}");
-        });
+                let duration = start.elapsed();
+                log::info!("Proof generation took: {duration:?}");
+            });
+    */
 
     Ok(())
 }

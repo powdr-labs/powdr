@@ -171,6 +171,18 @@ impl<T: FieldElement> Clone for Artifacts<T> {
     }
 }
 
+impl<T: FieldElement> Artifacts<T> {
+    fn deep_clone(&self) -> Self {
+        Artifacts {
+            fixed_cols: self
+                .fixed_cols
+                .as_ref()
+                .map(|arc| Arc::new(arc.as_ref().clone())),
+            ..self.clone()
+        }
+    }
+}
+
 use super::HostContext;
 
 impl<T> Default for Pipeline<T>
@@ -233,6 +245,12 @@ where
 /// let proof = pipeline.compute_proof().unwrap();
 /// ```
 impl<T: FieldElement> Pipeline<T> {
+    pub fn deep_clone(&self) -> Self {
+        Pipeline {
+            artifact: self.artifact.deep_clone(),
+            ..self.clone()
+        }
+    }
     /// Initializes the output directory to a temporary directory which lives as long
     /// the pipeline does.
     pub fn with_tmp_output(self) -> Self {

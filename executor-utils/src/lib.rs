@@ -27,7 +27,7 @@ impl<T: FieldElement> WitgenCallback<T> {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub struct VariablySizedColumn<F> {
     column_by_size: BTreeMap<DegreeType, Vec<F>>,
 }
