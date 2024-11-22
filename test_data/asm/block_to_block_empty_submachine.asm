@@ -13,7 +13,9 @@ machine Arith with
     operation add<0> x, y -> z;
 
     col fixed operation_id = [0]*;
-    col fixed latch = [1]*;
+    // The machine only needs one row to compute a block, but we'll use two
+    // to make sure that this machine has fixed columns.
+    col fixed latch = [0, 1]*;
     col witness x;
     col witness y;
     col witness z;
