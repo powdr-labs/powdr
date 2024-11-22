@@ -1,7 +1,11 @@
+use core::mem::MaybeUninit;
+use core::arch::asm;
+use powdr_riscv_syscalls::Syscall;
+
 pub const PRIME: u64 = 0xffffffff00000001;
 
 #[repr(transparent)]
-#[derive(Copy, Clone, PartialEq, Eq)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub struct Goldilocks(
     // TODO: maybe represent this as a u32, which ends up as a full word in Powdr.
     // (the conversion to and from u64 would require ecalls)
@@ -20,11 +24,18 @@ impl Goldilocks {
         Self(value)
     }
 
+    pub fn inverse(&self) -> Self {
+        unsafe {
+            let mut output: MaybeUninit<Goldilocks> = MaybeUninit::uninit();
+            ecall!(Syscall::InvertGL, in("a0") self, in("a1") output.as_mut_ptr());
+            output.assume_init()
+        }
+    }
+
     // TODO: maybe add other operations we can accelerate with ecalls:
     // - add
     // - mul
     // - neg
-    // - inv
 }
 
 impl From<Goldilocks> for u64 {

@@ -68,4 +68,5 @@ syscalls!(
     (10, Poseidon2GL, "poseidon2_gl"),
     (11, NativeHash, "native_hash"),
     (12, CommitPublic, "commit_public"),
+    (13, InvertGL, "invert_gl"),
 );
