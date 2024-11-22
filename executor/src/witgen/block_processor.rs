@@ -181,7 +181,7 @@ mod tests {
             (0..degree).map(|i| Row::fresh(&fixed_data, RowIndex::from_degree(i, degree))),
         );
 
-        let mut mutable_state = MutableState::new(iter::empty(), &query_callback);
+        let mutable_state = MutableState::new(iter::empty(), &query_callback);
 
         let row_offset = RowIndex::from_degree(0, degree);
         let identities = analyzed.identities.iter().collect::<Vec<_>>();
@@ -196,7 +196,7 @@ mod tests {
         let processor = BlockProcessor::new(
             row_offset,
             SolverState::without_publics(data),
-            &mut mutable_state,
+            &mutable_state,
             &fixed_data,
             &machine_parts,
             degree,
