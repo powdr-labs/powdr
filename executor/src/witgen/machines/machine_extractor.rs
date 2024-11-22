@@ -48,7 +48,10 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
 
         // Ignore prover functions that reference columns of later stages.
         let all_witnesses = self.fixed.witness_cols.keys().collect::<HashSet<_>>();
-        let current_stage_witnesses = self.fixed.current_stage_witnesses().collect::<HashSet<_>>();
+        let current_stage_witnesses = self
+            .fixed
+            .witnesses_for_current_stage()
+            .collect::<HashSet<_>>();
         let later_stage_witness_names = all_witnesses
             .difference(&current_stage_witnesses)
             .map(|w| self.fixed.column_name(w))
