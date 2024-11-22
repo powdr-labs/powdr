@@ -28,7 +28,7 @@ machine Arith256Memory(mem: Memory) with
     Byte2 byte2;
 
     // One-hot encode the operation
-    pol commit is_affine, is_mod, is_ec_add, is_ec_double;
+    col witness is_affine, is_mod, is_ec_add, is_ec_double;
     let operation_selectors = [is_affine, is_mod, is_ec_add, is_ec_double];
     array::map(operation_selectors, |s| force_bool(s));
     array::map(operation_selectors, fixed_inside_32_block);
@@ -188,9 +188,9 @@ machine Arith256Memory(mem: Memory) with
     let mul = |x, y| ff::mul(x, y, secp_modulus);
     let div = |x, y| ff::div(x, y, secp_modulus);
 
-    pol commit x1[16], x2[16], x3[16];
-    pol commit y1[16], y2[16], y3[16];
-    pol commit s[16], q0[16], q1[16], q2[16];
+    col witness x1[16], x2[16], x3[16];
+    col witness y1[16], y2[16], y3[16];
+    col witness s[16], q0[16], q1[16], q2[16];
 
     // Selects the ith limb of x (little endian)
     // Note that the most significant limb can be up to 32 bits; all others are 16 bits.
