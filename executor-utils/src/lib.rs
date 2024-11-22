@@ -1,3 +1,4 @@
+use powdr_ast::analyzed::Analyzed;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -5,8 +6,15 @@ use std::sync::Arc;
 
 use powdr_number::{DegreeType, FieldElement};
 
-pub type WitgenCallbackFn<T> =
-    Arc<dyn Fn(&[(String, Vec<T>)], BTreeMap<u64, T>, u8) -> Vec<(String, Vec<T>)> + Send + Sync>;
+/// A callback that computes an updated witness, given:
+/// - The PIL for the current machine.
+/// - The current witness.
+/// - The challenges sampled so far.
+pub type WitgenCallbackFn<T> = Arc<
+    dyn Fn(&Analyzed<T>, &[(String, Vec<T>)], BTreeMap<u64, T>, u8) -> Vec<(String, Vec<T>)>
+        + Send
+        + Sync,
+>;
 
 #[derive(Clone)]
 pub struct WitgenCallback<T>(WitgenCallbackFn<T>);
@@ -19,11 +27,12 @@ impl<T: FieldElement> WitgenCallback<T> {
     /// Computes the next-stage witness, given the current witness and challenges.
     pub fn next_stage_witness(
         &self,
+        pil: &Analyzed<T>,
         current_witness: &[(String, Vec<T>)],
         challenges: BTreeMap<u64, T>,
         stage: u8,
     ) -> Vec<(String, Vec<T>)> {
-        (self.0)(current_witness, challenges, stage)
+        (self.0)(pil, current_witness, challenges, stage)
     }
 }
 

@@ -28,7 +28,7 @@ where
         // threads (needed by Plonky3, as it requires WitgenCallback to be
         // Sync). So we wrap the data in a Mutex.
         let callback_data = Mutex::new((challenge_sender, response_receiver, 1u8));
-        let callback = WitgenCallback::<F>::new(Arc::new(move |_, challenge, stage| {
+        let callback = WitgenCallback::<F>::new(Arc::new(move |_, _, challenge, stage| {
             // Locking guarantees the sequencing of the stages:
             let mut receiver_guard = callback_data.lock().unwrap();
             let (challenge_sender, response_receiver, expected_stage) = &mut *receiver_guard;

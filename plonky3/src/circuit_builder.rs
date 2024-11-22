@@ -14,6 +14,8 @@ use alloc::{
 };
 use itertools::Itertools;
 use p3_field::AbstractField;
+use p3_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
+use tracing::info_span;
 
 use crate::{
     params::{Commitment, FieldElementMap, Plonky3Field, ProverData},
@@ -163,12 +165,12 @@ where
     /// For stages in which there are no public values, return an empty vector
     pub fn public_values_so_far(
         &self,
-        witness: &[(String, Vec<T>)],
+        witness_by_machine: &BTreeMap<String, Vec<(String, Vec<T>)>>,
     ) -> BTreeMap<String, Vec<Vec<Option<T>>>> {
-        let witness = witness
-            .iter()
+        let witness = witness_by_machine
+            .values()
             // this map seems redundant but it turns a reference over a tuple into a tuple of references
-            .map(|(name, values)| (name, values))
+            .flat_map(|machine_witness| machine_witness.iter().map(|(n, v)| (n, v)))
             .collect::<BTreeMap<_, _>>();
 
         self.split
@@ -517,7 +519,7 @@ where
         &self,
         trace_stage: u8,
         new_challenge_values: &[Plonky3Field<T>],
-        witness: &mut Vec<(String, Vec<T>)>,
+        witness_by_machine: &mut BTreeMap<String, Vec<(String, Vec<T>)>>,
     ) -> CallbackResult<Plonky3Field<T>> {
         let previous_stage_challenges: BTreeSet<&u64> = self
             .split
@@ -532,37 +534,46 @@ where
             .into_iter()
             .zip(new_challenge_values)
             .map(|(c, v)| (*c, T::from_p3_field(*v)))
-            .collect();
+            .collect::<BTreeMap<_, _>>();
 
         // remember the columns we already know about
-        let columns_before: BTreeSet<String> =
-            witness.iter().map(|(name, _)| name.clone()).collect();
+        let columns_before: BTreeSet<String> = witness_by_machine
+            .iter()
+            .flat_map(|(_, cols)| cols.iter().map(|(name, _)| name.clone()))
+            .collect();
 
-        // call the witgen callback, updating the witness
-        *witness = {
-            self.witgen_callback.as_ref().unwrap().next_stage_witness(
-                witness,
-                challenge_map,
-                trace_stage,
-            )
-        };
+        // Compute next-stage witness for each machine in parallel.
+        *witness_by_machine = info_span!("Witness generation for next stage").in_scope(|| {
+            witness_by_machine
+                .par_iter()
+                .map(|(machine_name, machine_witness)| {
+                    let new_witness = self.witgen_callback.as_ref().unwrap().next_stage_witness(
+                        &self.split[machine_name].0,
+                        machine_witness,
+                        challenge_map.clone(),
+                        trace_stage,
+                    );
+                    (machine_name.clone(), new_witness)
+                })
+                .collect()
+        });
 
-        let public_values = self.public_values_so_far(witness);
+        let public_values = self.public_values_so_far(witness_by_machine);
 
         // generate the next trace in the format p3 expects
-        // since the witgen callback returns the entire witness so far,
-        // we filter out the columns we already know about
-        let air_stages = witness
+        let air_stages = witness_by_machine
             .iter()
-            .filter(|(name, _)| !columns_before.contains(name))
-            .map(|(name, values)| (name, values.as_ref()))
-            .into_group_map_by(|(name, _)| name.split("::").next().unwrap())
-            .into_iter()
             .map(|(table_name, columns)| {
+                // since the witgen callback returns the entire witness so far,
+                // we filter out the columns we already know about
+                let witness = columns
+                    .iter()
+                    .filter(|(name, _)| !columns_before.contains(name))
+                    .map(|(name, values)| (name, values.as_ref()));
                 (
                     table_name.to_string(),
                     AirStage {
-                        trace: generate_matrix(columns.into_iter()),
+                        trace: generate_matrix(witness),
                         public_values: public_values[table_name][trace_stage as usize]
                             .iter()
                             .map(|v| v.expect("public value for stage {trace_stage} should be available at this point").into_p3_field())
