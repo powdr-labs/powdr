@@ -1194,6 +1194,43 @@ fn process_instruction<A: InstructionArgs>(
                 ],
             )
         }
+        "sra" => {
+            // arithmetic shift right
+            // TODO see if we can implement this directly with a machine.
+            // Now we are using the equivalence
+            // a >>> b = (a >= 0 ? a >> b : ~(~a >> b))
+            let (rd, rs1, rs2) = args.rrr()?;
+            assert!(rs2.addr() <= 31);
+            only_if_no_write_to_zero_vec(
+                rd,
+                vec![
+                    format!("affine {}, {}, 0, 1, 0, 0;", rs1.addr(), tmp1.addr()),
+                    format!(
+                        "is_greater_or_equal_signed {}, 0, {};",
+                        tmp1.addr(),
+                        tmp1.addr()
+                    ),
+                    format!(
+                        "affine {}, {}, {}, {}, 0, 1;",
+                        tmp1.addr(),
+                        tmp1.addr(),
+                        i32_high(-1),
+                        i32_low(-1)
+                    ),
+                    format!(
+                        "affine {}, {}, 0xffff, 0xffff, 0, 0;",
+                        tmp1.addr(),
+                        tmp1.addr()
+                    ),
+                    // Here, tmp1 is the full bit mask if rs1 is negative
+                    // and zero otherwise.
+                    format!("xor {}, {}, 0, 0, {};", tmp1.addr(), rs1.addr(), rd.addr()),
+                    format!("and {}, 0, 0, 0x1f, {};", rs2.addr(), tmp2.addr()),
+                    format!("shr {}, {}, 0, 0, {};", rd.addr(), tmp2.addr(), rd.addr()),
+                    format!("xor {}, {}, 0, 0, {};", tmp1.addr(), rd.addr(), rd.addr()),
+                ],
+            )
+        }
 
         // comparison
         "seqz" => {
