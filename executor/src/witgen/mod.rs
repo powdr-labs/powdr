@@ -61,27 +61,7 @@ static RANGE_CONSTRAINT_MULTIPLICITY_WITGEN: &str = "range constraint multiplici
 pub trait QueryCallback<T>: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 impl<T, F> QueryCallback<T> for F where F: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 
-type WitgenCallbackFn<T> =
-    Arc<dyn Fn(&[(String, Vec<T>)], BTreeMap<u64, T>, u8) -> Vec<(String, Vec<T>)> + Send + Sync>;
-
-#[derive(Clone)]
-pub struct WitgenCallback<T>(WitgenCallbackFn<T>);
-
-impl<T: FieldElement> WitgenCallback<T> {
-    pub fn new(f: WitgenCallbackFn<T>) -> Self {
-        WitgenCallback(f)
-    }
-
-    /// Computes the next-stage witness, given the current witness and challenges.
-    pub fn next_stage_witness(
-        &self,
-        current_witness: &[(String, Vec<T>)],
-        challenges: BTreeMap<u64, T>,
-        stage: u8,
-    ) -> Vec<(String, Vec<T>)> {
-        (self.0)(current_witness, challenges, stage)
-    }
-}
+pub use powdr_executor_utils::{WitgenCallback, WitgenCallbackFn};
 
 pub struct WitgenCallbackContext<T> {
     /// TODO: all these fields probably don't need to be Arc anymore, since the
