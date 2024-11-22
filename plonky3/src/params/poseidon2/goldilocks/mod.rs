@@ -8,7 +8,6 @@ mod powdr_accel_impl;
 #[cfg(all(feature = "powdr-accel", target_os = "zkvm", target_arch = "riscv32"))]
 pub use powdr_accel_impl::*;
 
-
 use lazy_static::lazy_static;
 use p3_goldilocks::Goldilocks;
 use p3_poseidon2::poseidon2_round_numbers_128;
