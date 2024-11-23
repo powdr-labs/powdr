@@ -10,6 +10,7 @@ use crate::witgen::EvalValue;
 use super::affine_expression::AlgebraicVariable;
 use super::block_processor::BlockProcessor;
 use super::data_structures::multiplicity_counter::MultiplicityCounter;
+use super::jit::jit_processor::{self, JitProcessor};
 use super::machines::{Machine, MachineParts};
 use super::processor::SolverState;
 use super::rows::{Row, RowIndex, RowPair};
@@ -31,6 +32,9 @@ pub struct Generator<'a, T: FieldElement> {
     name: String,
     degree: DegreeType,
     multiplicity_counter: MultiplicityCounter,
+    /// The JIT processor for this machine, i.e. the component that tries to generate
+    /// witgen code based on which elements of the connection are known.
+    jit_processor: JitProcessor<'a, T>,
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
@@ -119,6 +123,12 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         let data = FinalizableData::new(&parts.witnesses);
         let multiplicity_counter = MultiplicityCounter::new(&parts.connections);
 
+        let jit_processor = JitProcessor::new(
+            fixed_data,
+            parts.clone(),
+            1, // block size
+            0, // latch row
+        );
         Self {
             degree: parts.common_degree_range().max,
             name,
@@ -128,6 +138,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
             publics: Default::default(),
             latch,
             multiplicity_counter,
+            jit_processor,
         }
     }
 
@@ -135,11 +146,16 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     pub fn run<'b, Q: QueryCallback<T>>(&mut self, mutable_state: &mut MutableState<'a, 'b, T, Q>) {
         record_start(self.name());
         assert!(self.data.is_empty());
-        let first_row = self.compute_partial_first_row(mutable_state);
-        self.data = self
-            .process(first_row, 0, mutable_state, None, true)
-            .updated_data
-            .block;
+        if self.jit_processor.can_run() {
+            //self.jit_processor.run();
+            unimplemented!()
+        } else {
+            let first_row = self.compute_partial_first_row(mutable_state);
+            self.data = self
+                .process(first_row, 0, mutable_state, None, true)
+                .updated_data
+                .block;
+        }
         record_end(self.name());
     }
 
