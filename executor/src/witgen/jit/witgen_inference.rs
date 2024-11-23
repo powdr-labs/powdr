@@ -332,7 +332,7 @@ struct WitgenFunctionParams {{
 
     fn considered_row_range(&self) -> std::ops::RangeInclusive<i32> {
         //(-(self.block_size as i32) - 4)..=(self.block_size as i32 + 4)
-        (-(self.block_size as i32) - 4)..=0
+        (-(self.block_size as i32))..=0
     }
 
     fn minimum_range_around_latch(&self) -> std::ops::RangeInclusive<i32> {
@@ -361,6 +361,7 @@ struct WitgenFunctionParams {{
 
     fn all_cells_known(&self) -> bool {
         // TODO we should also check that the known cells per column are consecutive.
+        // TODO iterate starting from self.parts.witness_columns!
         let known_per_column: HashMap<u64, usize> =
             self.known_cells
                 .iter()
@@ -563,6 +564,8 @@ struct WitgenFunctionParams {{
                         row += self.block_size as i64;
                     }
                     // TODO at some point we should check that all of the fixed columns are periodic.
+                    // TODO We can only do this for block machines.
+                    // For dynamic machines, fixed columns are "known but symbolic"
                     let v = self.fixed_data.fixed_cols[&r.poly_id].values_max_size()[row as usize];
                     EvalResult::from_number(v)
                 } else {
