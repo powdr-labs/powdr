@@ -26,7 +26,7 @@ use super::{EvalError, EvalResult, FixedData, QueryCallback};
 mod block_machine;
 mod double_sorted_witness_machine_16;
 mod double_sorted_witness_machine_32;
-pub mod dynamic_machine;
+mod dynamic_machine;
 mod fixed_lookup_machine;
 pub mod machine_extractor;
 pub mod profiling;
@@ -36,6 +36,21 @@ mod write_once_memory;
 /// A machine is a set of witness columns and identities where the columns
 /// are used on the right-hand-side of lookups. It can process lookups.
 pub trait Machine<'a, T: FieldElement>: Send + Sync {
+    /// Runs the machine without any arguments from the first row (.
+    fn run_timed<'b, Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, 'b, T, Q>) {
+        record_start(self.name());
+        self.run(mutable_state);
+        record_end(self.name());
+    }
+
+    /// Runs the machine without any arguments from the first row.
+    fn run<'b, Q: QueryCallback<T>>(&mut self, _mutable_state: &MutableState<'a, 'b, T, Q>) {
+        unimplemented!(
+            "Running machine {} without a lookup is not supported.",
+            self.name()
+        );
+    }
+
     /// Like `process_plookup`, but also records the time spent in this machine.
     fn process_plookup_timed<'b, Q: QueryCallback<T>>(
         &mut self,

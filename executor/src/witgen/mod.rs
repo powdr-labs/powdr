@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use itertools::Itertools;
 use machines::machine_extractor::MachineExtractor;
-use machines::MachineParts;
 use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, Analyzed, DegreeRange, Expression,
     FunctionValueDefinition, PolyID, PolynomialType, Symbol, SymbolKind, TypedExpression,
@@ -14,7 +13,6 @@ use powdr_number::{DegreeType, FieldElement};
 
 use crate::constant_evaluator::VariablySizedColumn;
 use crate::witgen::data_structures::mutable_state::MutableState;
-use crate::Identity;
 
 use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{
@@ -195,52 +193,16 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             global_constraints::set_global_constraints(fixed, &identities);
         let ExtractionOutput {
             machines,
-            base_parts,
-        } = if self.stage == 0 {
-            MachineExtractor::new(&fixed).split_out_machines(retained_identities, self.stage)
-        } else {
-            // We expect later-stage witness columns to be accumulators for lookup and permutation arguments.
-            // These don't behave like normal witness columns (e.g. in a block machine), and they might depend
-            // on witness columns of more than one machine.
-            // Therefore, we treat everything as one big machine. Also, we remove lookups and permutations,
-            // as they are assumed to be handled in stage 0.
-            let polynomial_identities = identities
-                .iter()
-                .filter(|identity| matches!(identity, Identity::Polynomial(_)))
-                .collect::<Vec<_>>();
-            ExtractionOutput {
-                machines: Vec::new(),
-                base_parts: MachineParts::new(
-                    &fixed,
-                    Default::default(),
-                    polynomial_identities,
-                    fixed.witness_cols.keys().collect::<HashSet<_>>(),
-                    fixed.analyzed.prover_functions.iter().collect(),
-                ),
-            }
-        };
+            main_machine,
+        } = MachineExtractor::new(&fixed).split_out_machines(retained_identities, self.stage);
 
         let mutable_state = MutableState::new(machines.into_iter(), &self.query_callback);
-
-        let dynamic_machine = (!base_parts.witnesses.is_empty()).then(|| {
-            // TODO move this into the machine extractor and make the dynamic_machine module non-pub.
-            let mut generator = DynamicMachine::new(
-                "Main Machine".to_string(),
-                &fixed,
-                base_parts,
-                // We could set the latch of the main VM here, but then we would have to detect it.
-                // Instead, the main VM will be computed in one block, directly continuing into the
-                // infinite loop after the first return.
-                None,
-            );
-
-            generator.run(&mutable_state);
-            generator
-        });
-
-        // Get columns from machines
-        let mut columns = dynamic_machine
-            .map(|mut generator| generator.take_witness_col_values(&mutable_state))
+        // Run main machine and extract columns from all machines.
+        let mut columns = main_machine
+            .map(|mut main_machine| {
+                main_machine.run_timed(&mutable_state);
+                main_machine.take_witness_col_values(&mutable_state)
+            })
             .unwrap_or_default();
         columns.extend(mutable_state.take_witness_col_values());
 

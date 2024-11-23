@@ -6,7 +6,6 @@ use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
 use crate::witgen::data_structures::multiplicity_counter::MultiplicityCounter;
 use crate::witgen::data_structures::mutable_state::MutableState;
-use crate::witgen::machines::profiling::{record_end, record_start};
 use crate::witgen::machines::{Machine, MachineParts};
 use crate::witgen::processor::{OuterQuery, SolverState};
 use crate::witgen::rows::{Row, RowIndex, RowPair};
@@ -38,6 +37,16 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
 
     fn name(&self) -> &str {
         &self.name
+    }
+
+    /// Runs the machine without any arguments from the first row.
+    fn run<'b, Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, 'b, T, Q>) {
+        assert!(self.data.is_empty());
+        let first_row = self.compute_partial_first_row(mutable_state);
+        self.data = self
+            .process(first_row, 0, mutable_state, None, true)
+            .updated_data
+            .block;
     }
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
@@ -127,18 +136,6 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
             latch,
             multiplicity_counter,
         }
-    }
-
-    /// Runs the machine without any arguments from the first row.
-    pub fn run<'b, Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, 'b, T, Q>) {
-        record_start(self.name());
-        assert!(self.data.is_empty());
-        let first_row = self.compute_partial_first_row(mutable_state);
-        self.data = self
-            .process(first_row, 0, mutable_state, None, true)
-            .updated_data
-            .block;
-        record_end(self.name());
     }
 
     fn fill_remaining_rows<Q: QueryCallback<T>>(
