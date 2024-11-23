@@ -258,3 +258,59 @@ machine Required with , latch: latch, operation_id: operation_id {
     let optimized = optimize(analyzed).to_string();
     assert_eq!(optimized, expectation);
 }
+
+#[test]
+fn remove_unused_registers() {
+    let input = r#"
+    machine Main with degree: 8 {
+        Helper helper;
+        reg pc[@pc];  
+        reg Y[<=];     
+        reg Z[<=];     
+        reg A;         
+
+        instr compute X -> A link => X = helper.compute(X);
+
+        function main {
+            A <== compute(5);
+            return;
+        }
+    }
+
+    machine Helper with degree: 8 {
+        reg pc[@pc];
+        reg X[<=];
+        reg Y[<=];
+
+        function compute x: field -> field {
+            return x + 1;
+        }
+    }
+    "#;
+
+    let expectation = r#"machine Main with degree: 8 {
+    ::Helper helper
+    reg pc[@pc];
+    reg A;
+    instr compute X -> A link => X = helper.compute(X){  }
+    function main {
+        A <=A= compute(5);
+        // END BATCH Unimplemented
+        return;
+        // END BATCH
+    }
+}
+machine Helper with degree: 8 {
+    reg pc[@pc];
+    function compute x: field -> field {
+        return x + 1;
+        // END BATCH
+    }
+}
+"#;
+
+    let parsed = parse_asm(None, input).unwrap();
+    let analyzed = analyze(parsed).unwrap();
+    let optimized = optimize(analyzed).to_string();
+    assert_eq!(optimized, expectation);
+}

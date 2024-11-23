@@ -88,6 +88,12 @@ fn remove_unused_instructions(asm_file: &mut AnalysisASMFile) {
         machine
             .submachines
             .retain(|sub| used_submachines.contains(&sub.name));
+
+        let mut symbols_in_callable = machine_callable_symbols(machine);
+        symbols_in_callable.insert("pc".to_string());
+        machine
+            .registers
+            .retain(|reg| symbols_in_callable.contains(&reg.name));
     }
 }
 
