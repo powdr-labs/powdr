@@ -375,7 +375,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         let known_inputs = outer_query.left.iter().map(|e| e.is_constant()).collect();
         if self
             .jit_processer
-            .can_answer_lookup(identity_id, &known_inputs)
+            .can_answer_lookup(identity_id, known_inputs)
         {
             log::trace!("Processing via JIT.");
             return self.process_lookup_via_jit(mutable_state, identity_id, outer_query);

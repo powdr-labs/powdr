@@ -23,7 +23,8 @@ pub struct JitProcessor<'a, T: FieldElement> {
     parts: MachineParts<'a, T>,
     block_size: usize,
     latch_row: usize,
-    witgen_functions: RwLock<HashMap<(u64, BitVec), (WitgenFunction, Vec<Cell>)>>,
+    // TODO also cache negative results?
+    witgen_functions: RwLock<HashMap<Option<(u64, BitVec)>, (WitgenFunction, Vec<Cell>)>>,
 }
 
 impl<'a, T: FieldElement> JitProcessor<'a, T> {
@@ -42,44 +43,53 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
         }
     }
 
-    pub fn can_answer_lookup(&self, identity_id: u64, known_inputs: &BitVec) -> bool {
+    pub fn can_answer_lookup(&self, identity_id: u64, known_inputs: BitVec) -> bool {
+        self.can_handle(Some((identity_id, known_inputs)))
+    }
+
+    pub fn can_run(&self) -> bool {
+        self.can_handle(None)
+    }
+
+    fn can_handle(&self, key: Option<(u64, BitVec)>) -> bool {
         if T::BITS > 64 {
             return false;
         }
-        if self
-            .witgen_functions
-            .read()
-            .unwrap()
-            .contains_key(&(identity_id, known_inputs.clone()))
-        {
+
+        if self.witgen_functions.read().unwrap().contains_key(&key) {
             return true;
         }
 
-        // TODO what if the same column is mentioned multiple times on the RHS of the connection?
-
-        let right = self.parts.connections[&identity_id].right;
-        let Some(known_inputs_cols) = known_inputs
-            .iter()
-            .zip(&right.expressions)
-            .filter(|(known, _)| *known)
-            .map(|(_, e)| try_to_simple_poly(e))
-            .collect::<Option<Vec<_>>>()
-        else {
-            return false;
+        let (known_input_cols, right) = if let Some((identity_id, known_inputs)) = &key {
+            // TODO what if the same column is mentioned multiple times on the RHS of the connection?
+            let right = self.parts.connections[&identity_id].right;
+            let Some(known_input_cols) = known_inputs
+                .iter()
+                .zip(&right.expressions)
+                .filter(|(known, _)| *known)
+                .map(|(_, e)| try_to_simple_poly(e))
+                .collect::<Option<Vec<_>>>()
+            else {
+                return false;
+            };
+            log::debug!(
+                "Trying to auto-generate witgen code for known inputs: {}",
+                known_input_cols.iter().format(", ")
+            );
+            (known_input_cols, Some(right))
+        } else {
+            log::debug!(
+                    "Trying to auto-generate witgen code for free-running machine without known inputs.",
+                );
+            (vec![], None)
         };
-        log::debug!(
-            "Trying to auto-generate witgen code for known inputs: {}",
-            known_inputs_cols.iter().format(", ")
-        );
-
-        let known_inputs_cols = known_inputs_cols.into_iter().map(|p| p.poly_id);
 
         let mut inference = WitgenInference::new(
             self.fixed_data,
             &self.parts,
             self.block_size,
             self.latch_row,
-            known_inputs_cols,
+            known_input_cols.into_iter().map(|p| p.poly_id),
             right,
         );
         if !inference.run() {
@@ -106,7 +116,7 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
         .unwrap();
 
         self.witgen_functions.write().unwrap().insert(
-            (identity_id, known_inputs.clone()),
+            key,
             (
                 WitgenFunction {
                     library: library.clone(),
@@ -146,7 +156,7 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
         //let start = std::time::Instant::now();
 
         let (witgen_fun, known_after) =
-            &self.witgen_functions.read().unwrap()[&(connection_id, known_inputs)];
+            &self.witgen_functions.read().unwrap()[&Some((connection_id, known_inputs))];
         witgen_fun.call(&mut data, self.latch_row, mutable_state, process_lookup);
 
         //let end = start.elapsed();

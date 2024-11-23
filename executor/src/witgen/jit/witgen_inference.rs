@@ -29,7 +29,7 @@ pub struct WitgenInference<'a, T: FieldElement> {
     parts: &'a MachineParts<'a, T>,
     block_size: usize,
     latch_row: usize,
-    lookup_rhs: &'a SelectedExpressions<T>,
+    lookup_rhs: Option<&'a SelectedExpressions<T>>,
     inputs: Vec<Cell>,
     range_constraints: HashMap<Cell, RangeConstraint<T>>,
     known_cells: HashSet<Cell>,
@@ -48,7 +48,7 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
         block_size: usize,
         latch_row: usize,
         initially_known_on_latch: impl IntoIterator<Item = PolyID>,
-        lookup_rhs: &'a SelectedExpressions<T>,
+        lookup_rhs: Option<&'a SelectedExpressions<T>>,
     ) -> Self {
         let inputs = initially_known_on_latch
             .into_iter()
@@ -80,11 +80,13 @@ impl<'a, T: FieldElement> WitgenInference<'a, T> {
 
             self.considered_row_range().for_each(|offset| {
                 // TODO structure that better
-                if self.minimum_range_around_latch().contains(&offset) {
-                    // Set selector to one on latch row and zero on others.
-                    let value = KnownValue::from(T::from(u32::from(offset == 0))).into();
-                    if let Some(r) = self.evaluate(&self.lookup_rhs.selector, offset) {
-                        self.process_effects((&r - &value).solve(self))
+                if let Some(rhs) = &self.lookup_rhs {
+                    if self.minimum_range_around_latch().contains(&offset) {
+                        // Set selector to one on latch row and zero on others.
+                        let value = KnownValue::from(T::from(u32::from(offset == 0))).into();
+                        if let Some(r) = self.evaluate(&rhs.selector, offset) {
+                            self.process_effects((&r - &value).solve(self))
+                        }
                     }
                 }
                 // TODO instead of processing all identities for all rows until
@@ -380,7 +382,7 @@ struct WitgenFunctionParams {{
             .identities
             .iter()
             .flat_map(|id| id.all_children())
-            .chain(self.lookup_rhs.all_children())
+            .chain(self.lookup_rhs.iter().flat_map(|rhs| rhs.all_children()))
             .filter_map(|e| match e {
                 Expression::Reference(r) => Some(r.poly_id),
                 _ => None,
