@@ -20,9 +20,7 @@ pub use self::eval_result::{
 };
 
 use self::global_constraints::GlobalConstraints;
-use self::machines::machine_extractor::ExtractionOutput;
 use self::machines::profiling::{record_end, record_start, reset_and_print_profile_summary};
-use self::machines::Machine;
 
 mod affine_expression;
 pub(crate) mod analysis;
@@ -191,20 +189,11 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         // These are already captured in the range constraints.
         let (fixed, retained_identities) =
             global_constraints::set_global_constraints(fixed, &identities);
-        let ExtractionOutput {
-            machines,
-            main_machine,
-        } = MachineExtractor::new(&fixed).split_out_machines(retained_identities, self.stage);
+        let machines =
+            MachineExtractor::new(&fixed).split_out_machines(retained_identities, self.stage);
 
-        let mutable_state = MutableState::new(machines.into_iter(), &self.query_callback);
         // Run main machine and extract columns from all machines.
-        let mut columns = main_machine
-            .map(|mut main_machine| {
-                main_machine.run_timed(&mutable_state);
-                main_machine.take_witness_col_values(&mutable_state)
-            })
-            .unwrap_or_default();
-        columns.extend(mutable_state.take_witness_col_values());
+        let mut columns = MutableState::new(machines.into_iter(), &self.query_callback).run();
 
         Self::range_constraint_multiplicity_witgen(&fixed, &mut columns);
 

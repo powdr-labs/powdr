@@ -40,6 +40,15 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, 'b, T, Q> {
         }
     }
 
+    /// Runs the first machine (unless there are no machines) end returns the generated columns.
+    /// The first machine might call other machines, which is handled automatically.
+    pub fn run(self) -> HashMap<String, Vec<T>> {
+        if let Some(first_machine) = self.machines.first() {
+            first_machine.try_borrow_mut().unwrap().run_timed(&self);
+        }
+        self.take_witness_col_values()
+    }
+
     /// Call the machine responsible for the right-hand-side of an identity given its ID
     /// and the row pair of the caller.
     pub fn call(&self, identity_id: u64, caller_rows: &RowPair<'_, 'a, T>) -> EvalResult<'a, T> {
@@ -59,7 +68,7 @@ impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, 'b, T, Q> {
     }
 
     /// Extracts the witness column values from the machines.
-    pub fn take_witness_col_values(self) -> HashMap<String, Vec<T>> {
+    fn take_witness_col_values(self) -> HashMap<String, Vec<T>> {
         // We keep the already processed machines mutably borrowed so that
         // "later" machines do not try to create new rows in already processed
         // machines.

@@ -127,6 +127,18 @@ pub enum KnownMachine<'a, T: FieldElement> {
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
+    fn run<'b, Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, 'b, T, Q>) {
+        match self {
+            KnownMachine::SortedWitnesses(m) => m.run(mutable_state),
+            KnownMachine::DoubleSortedWitnesses16(m) => m.run(mutable_state),
+            KnownMachine::DoubleSortedWitnesses32(m) => m.run(mutable_state),
+            KnownMachine::WriteOnceMemory(m) => m.run(mutable_state),
+            KnownMachine::BlockMachine(m) => m.run(mutable_state),
+            KnownMachine::DynamicMachine(m) => m.run(mutable_state),
+            KnownMachine::FixedLookup(m) => m.run(mutable_state),
+        }
+    }
+
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
         mutable_state: &'b MutableState<'a, 'b, T, Q>,

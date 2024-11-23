@@ -28,11 +28,6 @@ use powdr_ast::parsed::{
 };
 use powdr_number::FieldElement;
 
-pub struct ExtractionOutput<'a, T: FieldElement> {
-    pub machines: Vec<KnownMachine<'a, T>>,
-    pub main_machine: Option<KnownMachine<'a, T>>,
-}
-
 pub struct MachineExtractor<'a, T: FieldElement> {
     fixed: &'a FixedData<'a, T>,
 }
@@ -42,14 +37,14 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
         Self { fixed }
     }
 
-    /// Finds machines in the witness columns and identities
-    /// and returns a list of machines and the identities
+    /// Finds machines in the witness columns and identities and returns a list of machines and the identities
     /// that are not "internal" to the machines.
+    /// The first returned machine is the "main machine", i.e. a machine that has no incoming connections.
     pub fn split_out_machines(
         &self,
         identities: Vec<&'a Identity<T>>,
         stage: u8,
-    ) -> ExtractionOutput<'a, T> {
+    ) -> Vec<KnownMachine<'a, T>> {
         if stage > 0 {
             // We expect later-stage witness columns to be accumulators for lookup and permutation arguments.
             // These don't behave like normal witness columns (e.g. in a block machine), and they might depend
@@ -68,10 +63,9 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                 Default::default(),
             );
 
-            return ExtractionOutput {
-                machines: Vec::new(),
-                main_machine: build_main_machine(self.fixed, machine_parts),
-            };
+            return build_main_machine(self.fixed, machine_parts)
+                .into_iter()
+                .collect();
         }
         let mut machines: Vec<KnownMachine<T>> = vec![];
 
@@ -239,9 +233,13 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
             base_prover_functions,
         );
 
-        ExtractionOutput {
-            machines,
-            main_machine: build_main_machine(self.fixed, base_parts),
+        if let Some(main_machine) = build_main_machine(self.fixed, base_parts) {
+            std::iter::once(main_machine).chain(machines).collect()
+        } else {
+            if !machines.is_empty() {
+                log::error!("No main machine was extracted, but secondary machines were. Does the system have a cycle?");
+            }
+            vec![]
         }
     }
 
@@ -415,7 +413,7 @@ fn build_main_machine<'a, T: FieldElement>(
     machine_parts: MachineParts<'a, T>,
 ) -> Option<KnownMachine<'a, T>> {
     (!machine_parts.witnesses.is_empty())
-        .then(|| build_machine(fixed_data, machine_parts, |t| format!("Main machine ({t}")))
+        .then(|| build_machine(fixed_data, machine_parts, |t| format!("Main machine ({t})")))
 }
 
 fn build_machine<'a, T: FieldElement>(
