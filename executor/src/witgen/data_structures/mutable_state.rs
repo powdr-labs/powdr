@@ -14,14 +14,14 @@ use crate::witgen::{
 /// The container and access method for machines and the query callback.
 /// The machines contain the actual data tables.
 /// This struct uses interior mutability for accessing the machines.
-pub struct MutableState<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
+pub struct MutableState<'a, T: FieldElement, Q: QueryCallback<T>> {
     machines: Vec<RefCell<KnownMachine<'a, T>>>,
     identity_to_machine_index: BTreeMap<u64, usize>,
-    query_callback: &'b Q,
+    query_callback: &'a Q,
 }
 
-impl<'a, 'b, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, 'b, T, Q> {
-    pub fn new(machines: impl Iterator<Item = KnownMachine<'a, T>>, query_callback: &'b Q) -> Self {
+impl<'a, T: FieldElement, Q: QueryCallback<T>> MutableState<'a, T, Q> {
+    pub fn new(machines: impl Iterator<Item = KnownMachine<'a, T>>, query_callback: &'a Q) -> Self {
         let machines: Vec<_> = machines.map(RefCell::new).collect();
         let identity_to_machine_index = machines
             .iter()
