@@ -48,6 +48,9 @@ impl<'a, T: FieldElement> SortedWitnesses<'a, T> {
         if parts.identities.len() != 1 {
             return None;
         }
+        if parts.connections.is_empty() {
+            return None;
+        }
 
         let degree = parts.common_degree_range().max;
 

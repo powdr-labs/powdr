@@ -45,6 +45,20 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
         identities: Vec<&'a Identity<T>>,
         stage: u8,
     ) -> Vec<KnownMachine<'a, T>> {
+        // Ignore prover functions that reference columns of later stages.
+        let prover_functions = self
+            .fixed
+            .analyzed
+            .prover_functions
+            .iter()
+            .filter(|pf| {
+                refs_in_parsed_expression(pf).unique().all(|n| {
+                    let def = self.fixed.analyzed.definitions.get(n);
+                    def.and_then(|(s, _)| s.stage).unwrap_or_default() <= stage as u32
+                })
+            })
+            .collect::<Vec<&analyzed::Expression>>();
+
         if stage > 0 {
             // We expect later-stage witness columns to be accumulators for lookup and permutation arguments.
             // These don't behave like normal witness columns (e.g. in a block machine), and they might depend
@@ -60,7 +74,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                 Default::default(),
                 polynomial_identities,
                 self.fixed.witness_cols.keys().collect::<HashSet<_>>(),
-                Default::default(),
+                prover_functions,
             );
 
             return build_main_machine(self.fixed, machine_parts)
@@ -68,20 +82,6 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                 .collect();
         }
         let mut machines: Vec<KnownMachine<T>> = vec![];
-
-        // Ignore prover functions that reference columns of later stages.
-        let prover_functions = self
-            .fixed
-            .analyzed
-            .prover_functions
-            .iter()
-            .filter(|pf| {
-                refs_in_parsed_expression(pf).unique().all(|n| {
-                    let def = self.fixed.analyzed.definitions.get(n);
-                    def.and_then(|(s, _)| s.stage).unwrap_or_default() <= stage as u32
-                })
-            })
-            .collect::<Vec<&analyzed::Expression>>();
 
         let all_witnesses = self.fixed.witness_cols.keys().collect::<HashSet<_>>();
         let mut publics = PublicsTracker::default();

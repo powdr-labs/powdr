@@ -51,6 +51,10 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             return None;
         }
 
+        if parts.connections.is_empty() {
+            return None;
+        }
+
         if !parts.connections.values().all(|i| i.is_lookup()) {
             return None;
         }
