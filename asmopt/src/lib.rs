@@ -31,19 +31,18 @@ fn build_machine_dependencies(asm_file: &AnalysisASMFile) -> HashMap<String, Vec
     let mut dependencies = HashMap::new();
 
     for (path, machine) in asm_file.machines() {
-        let mut submachine_names: Vec<String> = machine
+        let submachine_names: Vec<String> = machine
             .submachines
             .iter()
             .map(|sub| sub.ty.clone().pop().unwrap().to_string())
+            .chain(
+                machine
+                    .params
+                    .0
+                    .iter()
+                    .map(|param| param.ty.clone().unwrap().pop().unwrap().to_string()),
+            )
             .collect();
-
-        let param_names = machine
-            .params
-            .0
-            .iter()
-            .map(|param| param.ty.clone().unwrap().pop().unwrap().to_string()); //fix this
-        submachine_names.extend(param_names);
-
         dependencies.insert(path.clone().pop().unwrap().to_string(), submachine_names);
     }
 
@@ -73,50 +72,22 @@ fn collect_all_dependent_machines(
 
 fn remove_unused_instructions(asm_file: &mut AnalysisASMFile) {
     for (_, machine) in asm_file.machines_mut() {
-        let callable_symbols = machine_callable_symbols(machine);
+        let symbols_in_callable = machine_callable_symbols(machine);
+        let mut used_submachines = HashSet::new();
 
-        let mut defined_instructions = HashMap::new();
-        for ins_def in &machine.instructions {
-            let delegated_calls: Vec<_> = ins_def
-                .instruction
-                .links
-                .iter()
-                .map(|l| (l.link.instance.clone(), l.link.callable.clone()))
-                .collect();
-            defined_instructions.insert(ins_def.name.clone(), delegated_calls); //link to avoid empty?
-        }
-
-        let mut cleaned_instructions = defined_instructions
-            .iter()
-            .filter(|(key, _)| callable_symbols.contains(*key));
-
-        let instr_to_remove: HashSet<_> = defined_instructions
-            .keys()
-            .cloned()
-            .filter(|name| !callable_symbols.contains(name))
-            .collect();
-
-        let mut subs_to_remove = HashSet::new();
-        for instr in &instr_to_remove {
-            //se puede calcular mas eficiente si juntas todos los primeros de defined 
-            let tuples_to_check = defined_instructions.get(instr).unwrap();
-
-            for (first, _) in tuples_to_check {
-                let still_used =
-                    cleaned_instructions.any(|(_, tuples)| tuples.iter().any(|(f, _)| f == first));
-
-                if !still_used {
-                    subs_to_remove.insert(first.clone());
+        machine.instructions.retain(|ins| {
+            let keep = symbols_in_callable.contains(&ins.name);
+            if keep {
+                for link in &ins.instruction.links {
+                    used_submachines.insert(link.link.instance.clone());
                 }
             }
-        }
+            keep
+        });
 
         machine
-            .instructions
-            .retain(|ins| !instr_to_remove.contains(&ins.name));
-        machine
             .submachines
-            .retain(|sub| !subs_to_remove.contains(&sub.name));
+            .retain(|sub| used_submachines.contains(&sub.name));
     }
 }
 

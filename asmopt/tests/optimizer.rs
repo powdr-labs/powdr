@@ -221,7 +221,6 @@ fn keep_machine_parameters() {
     "#;
 
     let expectation = r#"machine Main with degree: 8 {
-    ::Required required
     ::ParamMachine sub
     reg pc[@pc];
     reg X[<=];
@@ -235,7 +234,7 @@ fn keep_machine_parameters() {
         // END BATCH
     }
 }
-machine ParamMachine(mem: Required) with degree: 8 {
+machine ParamMachine with degree: 8 {
     reg pc[@pc];
     reg X[<=];
     reg Y[<=];
@@ -244,11 +243,9 @@ machine ParamMachine(mem: Required) with degree: 8 {
         // END BATCH
     }
 }
-machine Required with
-    latch: latch,
-    operation_id: operation_id {
+machine Required with , latch: latch, operation_id: operation_id {
     operation compute<0> x -> y;
-    col fixed latch = [1]*;
+    pol constant latch = [1]*;
     pol commit operation_id;
     pol commit x;
     pol commit y;
