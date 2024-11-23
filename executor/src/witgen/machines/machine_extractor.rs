@@ -13,11 +13,9 @@ use super::fixed_lookup_machine::FixedLookup;
 use super::sorted_witness_machine::SortedWitnesses;
 use super::FixedData;
 use super::KnownMachine;
+use crate::witgen::machines::dynamic_machine::DynamicMachine;
 use crate::witgen::machines::Connection;
-use crate::witgen::{
-    generator::Generator,
-    machines::{write_once_memory::WriteOnceMemory, MachineParts},
-};
+use crate::witgen::machines::{write_once_memory::WriteOnceMemory, MachineParts};
 use crate::Identity;
 
 use powdr_ast::analyzed::{
@@ -424,7 +422,7 @@ fn build_machine<'a, T: FieldElement>(
         log::debug!("Detected machine: {machine}");
         KnownMachine::BlockMachine(machine)
     } else {
-        log::debug!("Detected machine: VM.");
+        log::debug!("Detected machine: Dynamic machine.");
         let latch = machine_parts.connections
             .values()
             .fold(None, |existing_latch, identity| {
@@ -442,8 +440,8 @@ fn build_machine<'a, T: FieldElement>(
                 }
             })
             .unwrap();
-        KnownMachine::Vm(Generator::new(
-            name_with_type("Vm"),
+        KnownMachine::DynamicMachine(DynamicMachine::new(
+            name_with_type("Dynamic"),
             fixed_data,
             machine_parts.clone(),
             Some(latch),

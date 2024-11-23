@@ -2,28 +2,25 @@ use powdr_ast::analyzed::AlgebraicExpression as Expression;
 use powdr_number::{DegreeType, FieldElement};
 use std::collections::{BTreeMap, HashMap};
 
+use crate::witgen::block_processor::BlockProcessor;
 use crate::witgen::data_structures::finalizable_data::FinalizableData;
+use crate::witgen::data_structures::multiplicity_counter::MultiplicityCounter;
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::machines::profiling::{record_end, record_start};
-use crate::witgen::processor::OuterQuery;
-use crate::witgen::EvalValue;
-
-use super::affine_expression::AlgebraicVariable;
-use super::block_processor::BlockProcessor;
-use super::data_structures::multiplicity_counter::MultiplicityCounter;
-use super::machines::{Machine, MachineParts};
-use super::processor::SolverState;
-use super::rows::{Row, RowIndex, RowPair};
-use super::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
-use super::vm_processor::VmProcessor;
-use super::{EvalResult, FixedData, QueryCallback};
+use crate::witgen::machines::{Machine, MachineParts};
+use crate::witgen::processor::{OuterQuery, SolverState};
+use crate::witgen::rows::{Row, RowIndex, RowPair};
+use crate::witgen::sequence_iterator::{DefaultSequenceIterator, ProcessingSequenceIterator};
+use crate::witgen::vm_processor::VmProcessor;
+use crate::witgen::{AlgebraicVariable, EvalResult, EvalValue, FixedData, QueryCallback};
 
 struct ProcessResult<'a, T: FieldElement> {
     eval_value: EvalValue<AlgebraicVariable<'a>, T>,
     updated_data: SolverState<'a, T>,
 }
 
-pub struct Generator<'a, T: FieldElement> {
+/// A machine is generic and can handle lookups that generate a dynamic number of rows.
+pub struct DynamicMachine<'a, T: FieldElement> {
     fixed_data: &'a FixedData<'a, T>,
     parts: MachineParts<'a, T>,
     data: FinalizableData<T>,
@@ -34,7 +31,7 @@ pub struct Generator<'a, T: FieldElement> {
     multiplicity_counter: MultiplicityCounter,
 }
 
-impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
+impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
     fn identity_ids(&self) -> Vec<u64> {
         self.parts.identity_ids()
     }
@@ -110,7 +107,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for Generator<'a, T> {
     }
 }
 
-impl<'a, T: FieldElement> Generator<'a, T> {
+impl<'a, T: FieldElement> DynamicMachine<'a, T> {
     pub fn new(
         name: String,
         fixed_data: &'a FixedData<'a, T>,

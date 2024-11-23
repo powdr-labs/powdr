@@ -20,7 +20,6 @@ use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{
     Constraint, Constraints, EvalError, EvalResult, EvalStatus, EvalValue, IncompleteCause,
 };
-use self::generator::Generator;
 
 use self::global_constraints::GlobalConstraints;
 use self::machines::machine_extractor::ExtractionOutput;
@@ -34,7 +33,6 @@ mod data_structures;
 mod eval_result;
 mod expression_evaluator;
 pub mod fixed_evaluator;
-mod generator;
 mod global_constraints;
 mod identity_processor;
 mod machines;
@@ -224,8 +222,9 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
 
         let mutable_state = MutableState::new(machines.into_iter(), &self.query_callback);
 
-        let generator = (!base_parts.witnesses.is_empty()).then(|| {
-            let mut generator = Generator::new(
+        let dynamic_machine = (!base_parts.witnesses.is_empty()).then(|| {
+            // TODO move this into the machine extractor and make the dynamic_machine module non-pub.
+            let mut generator = DynamicMachine::new(
                 "Main Machine".to_string(),
                 &fixed,
                 base_parts,
@@ -240,7 +239,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         });
 
         // Get columns from machines
-        let mut columns = generator
+        let mut columns = dynamic_machine
             .map(|mut generator| generator.take_witness_col_values(&mutable_state))
             .unwrap_or_default();
         columns.extend(mutable_state.take_witness_col_values());
