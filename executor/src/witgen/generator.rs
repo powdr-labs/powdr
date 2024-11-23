@@ -133,7 +133,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
     }
 
     /// Runs the machine without any arguments from the first row.
-    pub fn run<'b, Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, T, Q>) {
+    pub fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, T, Q>) {
         record_start(self.name());
         assert!(self.data.is_empty());
         let first_row = self.compute_partial_first_row(mutable_state);
@@ -212,7 +212,7 @@ impl<'a, T: FieldElement> Generator<'a, T> {
         block.pop().unwrap()
     }
 
-    fn process<'b, 'c, Q: QueryCallback<T>>(
+    fn process<'c, Q: QueryCallback<T>>(
         &mut self,
         first_row: Row<T>,
         row_offset: DegreeType,
