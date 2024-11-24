@@ -9,7 +9,8 @@ use std::io;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-use crate::stwo::circuit_builder::{gen_stwo_circuit_trace, PowdrComponent, PowdrEval};
+use crate::stwo::circuit_builder::{gen_stwo_circuit_trace, PowdrComponent, PowdrEval, ConstraintSystem};
+use crate::stwo::proof::{TableProvingKeyCollection,TableProvingKey,StarkProvingKey};
 
 use stwo_prover::constraint_framework::TraceLocationAllocator;
 use stwo_prover::core::prover::StarkProof;
@@ -30,11 +31,15 @@ const FRI_NUM_QUERIES: usize = 100;
 const FRI_PROOF_OF_WORK_BITS: usize = 16;
 const LOG_LAST_LAYER_DEGREE_BOUND: usize = 0;
 
-pub struct StwoProver<T, B: Backend + Send, MC: MerkleChannel, C: Channel> {
+pub struct StwoProver<T, B: BackendForChannel<MC> + Send, MC: MerkleChannel, C: Channel> {
     pub analyzed: Arc<Analyzed<T>>,
     fixed: Arc<Vec<(String, VariablySizedColumn<T>)>>,
+
+    /// The split analyzed PIL
+    split: BTreeMap<String, (Analyzed<T>, ConstraintSystem<T>)>,
+
     /// Proving key placeholder
-    _proving_key: Option<()>,
+    proving_key: Option<StarkProvingKey<B,MC>>,
     /// Verifying key placeholder
     _verifying_key: Option<()>,
     _channel_marker: PhantomData<C>,
@@ -49,15 +54,116 @@ where
     C: Channel + Send,
     MC::H: DeserializeOwned + Serialize,
     PowdrComponent<'a, F>: ComponentProver<B>,
-{
+{   
+    pub fn setup(&mut self) {
+        let preprocessed: BTreeMap<String, TableProvingKeyCollection<B,MC>> = self
+            .split
+            .iter()
+            .filter_map(|(namespace, (pil, _))| {
+                // if we have neither fixed columns nor publics, we don't need to commit to anything
+                if pil.constant_count() + pil.publics_count() == 0 {
+                    None
+                } else {
+                    Some((
+                        namespace.to_string(),
+                        pil.committed_polys_in_source_order()
+                            .find_map(|(s, _)| s.degree)
+                            .unwrap()
+                            .iter()
+                            .map(|size| {
+                                // get the config
+                                let config = get_config();
+
+                                // commit to the fixed columns
+                                let twiddles = B::precompute_twiddles(
+                                    CanonicCoset::new(self.analyzed.degree().ilog2() + 1 + FRI_LOG_BLOWUP as u32)
+                                        .circle_domain()
+                                        .half_coset,
+                                );
+                        
+                                // Setup protocol.
+                                let prover_channel = &mut <MC as MerkleChannel>::C::default();
+                                let commitment_scheme = &mut CommitmentSchemeProver::<B, MC>::new(config, &twiddles);
+                        
+                                // get fix_columns evaluations
+                                let fixed_columns = machine_fixed_columns(&self.fixed, &self.analyzed);
+                        
+                                let domain = CanonicCoset::new(
+                                    fixed_columns
+                                        .keys()
+                                        .next()
+                                        .map(|&first_key| first_key.ilog2())
+                                        .unwrap_or(0),
+                                )
+                                .circle_domain();
+                        
+                                let updated_fixed_columns: BTreeMap<DegreeType, Vec<(String, Vec<F>)>> = fixed_columns
+                                    .iter()
+                                    .map(|(key, vec)| {
+                                        let transformed_vec: Vec<(String, Vec<F>)> = vec
+                                            .iter()
+                                            .map(|(name, slice)| {
+                                                let mut values: Vec<F> = slice.to_vec(); // Clone the slice into a Vec
+                                                bit_reverse_coset_to_circle_domain_order(&mut values); // Apply bit reversal
+                                                (name.clone(), values) // Return the updated tuple
+                                            })
+                                            .collect(); // Collect the updated vector
+                                        (*key, transformed_vec) // Rebuild the BTreeMap with transformed vectors
+                                    })
+                                    .collect();
+                        
+                                let constant_trace: ColumnVec<CircleEvaluation<B, BaseField, BitReversedOrder>> =
+                                    updated_fixed_columns
+                                        .values()
+                                        .flat_map(|vec| {
+                                            vec.iter().map(|(_name, values)| {
+                                                let values = values
+                                                    .iter()
+                                                    .map(|v| v.try_into_i32().unwrap().into())
+                                                    .collect();
+                                                CircleEvaluation::new(domain, values)
+                                            })
+                                        })
+                                        .collect();
+                        
+                                // Preprocessed trace
+                                let mut tree_builder = commitment_scheme.tree_builder();
+                                tree_builder.extend_evals(constant_trace.clone());
+                                tree_builder.commit(prover_channel);
+                                let trees = std::mem::take(&mut commitment_scheme.trees);
+                                   
+                                   ( 
+                                       self.analyzed.degree().ilog2() as usize,
+                                       TableProvingKey {
+                                       trees,
+                                    }
+                                )
+                            })
+                            .collect(),
+                    ))
+                }
+            })
+            .collect();
+        let proving_key = StarkProvingKey { preprocessed };
+
+        self.proving_key = Some(proving_key);
+        }
     pub fn new(
         analyzed: Arc<Analyzed<F>>,
         fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
     ) -> Result<Self, io::Error> {
+        
         Ok(Self {
+            split: powdr_backend_utils::split_pil(&analyzed)
+                .into_iter()
+                .map(|(name, pil)| {
+                    let constraint_system = ConstraintSystem::from(&pil);
+                    (name, (pil, constraint_system))
+                })
+                .collect(),
             analyzed,
             fixed,
-            _proving_key: None,
+            proving_key: None,
             _verifying_key: None,
             _channel_marker: PhantomData,
             _backend_marker: PhantomData,

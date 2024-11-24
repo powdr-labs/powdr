@@ -276,6 +276,12 @@ fn stwo_fibonacci() {
 }
 
 #[test]
+fn stwo_fixed_columns() {
+    let f = "pil/fixed_columns.pil";
+    test_stwo(f, Default::default());
+}
+
+#[test]
 fn simple_div() {
     let f = "pil/simple_div.pil";
     let pipeline = make_simple_prepared_pipeline(f);

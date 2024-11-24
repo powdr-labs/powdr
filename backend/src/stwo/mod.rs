@@ -17,6 +17,7 @@ use stwo_prover::core::channel::{Blake2sChannel, Channel, MerkleChannel};
 use stwo_prover::core::vcs::blake2_merkle::Blake2sMerkleChannel;
 
 mod circuit_builder;
+mod proof;
 mod prover;
 
 #[allow(dead_code)]
@@ -45,6 +46,7 @@ impl<F: FieldElement> BackendFactory<F> for RestrictedFactory {
         }
         let stwo: Box<StwoProver<F, SimdBackend, Blake2sMerkleChannel, Blake2sChannel>> =
             Box::new(StwoProver::new(pil, fixed)?);
+
         Ok(stwo)
     }
 }
@@ -54,7 +56,7 @@ generalize_factory!(Factory <- RestrictedFactory, [Mersenne31Field]);
 impl<T: FieldElement, MC: MerkleChannel + Send, C: Channel + Send> Backend<T>
     for StwoProver<T, SimdBackend, MC, C>
 where
-    SimdBackend: BackendForChannel<MC>,
+    SimdBackend: BackendForChannel<MC> + Send,
     MC: MerkleChannel,
     C: Channel,
     MC::H: DeserializeOwned + Serialize,
