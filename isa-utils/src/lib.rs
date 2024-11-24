@@ -17,5 +17,15 @@ pub fn quote(s: &str) -> String {
 
 pub fn escape_label(l: &str) -> String {
     // TODO make this proper
-    l.replace('.', "_dot_").replace('/', "_slash_").replace("[]", "_slice_").replace(",", "_comma_").replace("(", "_left_bracket_").replace(")", "_right_bracket_").replace("{", "_left_curly_").replace("}", "_right_curly_").replace(" ", "_").replace("'", "_quote_").replace("*", "_deref_")
+    l.replace('.', "_dot_")
+        .replace('/', "_slash_")
+        .replace("[]", "_slice_")
+        .replace(",", "_comma_")
+        .replace("(", "_left_bracket_")
+        .replace(")", "_right_bracket_")
+        .replace("{", "_left_curly_")
+        .replace("}", "_right_curly_")
+        .replace(" ", "_")
+        .replace("'", "_quote_")
+        .replace("*", "_deref_")
 }
