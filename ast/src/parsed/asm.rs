@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::{
     fmt::{Display, Formatter},
     iter::{empty, once, repeat},
@@ -15,8 +16,8 @@ use serde::{Deserialize, Serialize};
 use crate::parsed::{BinaryOperation, BinaryOperator};
 
 use super::{
-    types::TypeScheme, visitor::Children, EnumDeclaration, EnumVariant, Expression, NamedType,
-    PilStatement, SourceReference, StructDeclaration, TraitDeclaration,
+    types::TypeScheme, visitor::Children, EnumDeclaration, EnumVariant, Expression, FunctionCall,
+    NamedType, PilStatement, SourceReference, StructDeclaration, TraitDeclaration,
 };
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]
@@ -766,6 +767,77 @@ impl SourceReference for Param {
 
     fn source_reference_mut(&mut self) -> &mut SourceRef {
         &mut self.source
+    }
+}
+
+impl ASMProgram {
+    pub fn optimize(self) -> Self {
+        self.remove_unused_instructions()
+    }
+
+    fn remove_unused_instructions(mut self) -> Self {
+        let used_instructions = self.collect_used_instructions();
+
+        for statement in &mut self.main.statements {
+            if let ModuleStatement::SymbolDefinition(def) = statement {
+                if let SymbolValue::Machine(machine) = &mut def.value {
+                    machine.statements.retain(|stmt| match stmt {
+                        MachineStatement::InstructionDeclaration(_, name, _) => {
+                            used_instructions.contains(name)
+                        }
+                        _ => true,
+                    });
+                }
+            }
+        }
+
+        self
+    }
+
+    fn collect_used_instructions(&self) -> HashSet<String> {
+        let mut used_instructions = HashSet::new();
+        let mut to_visit = Vec::new();
+
+        // Traverse all machines to be generic.
+        if let Some(main_machine) = self.main.statements.iter().find_map(|stmt| match stmt {
+            ModuleStatement::SymbolDefinition(SymbolDefinition {
+                value: SymbolValue::Machine(machine),
+                ..
+            }) => Some(machine),
+            _ => None,
+        }) {
+            to_visit.push(main_machine);
+        }
+
+        while let Some(machine) = to_visit.pop() {
+            for statement in &machine.statements {
+                if let MachineStatement::FunctionDeclaration(_, _, _, body) = statement {
+                    for statement in body {
+                        match statement {
+                            // It's pretty cumbersome to get the name of the instruction in an
+                            // assignment.
+                            FunctionStatement::Assignment(_, _, _, expr) => {
+                                if let Expression::FunctionCall(_, FunctionCall { function, .. }) =
+                                    &**expr
+                                {
+                                    if let Expression::Reference(_, ref reference) = **function {
+                                        if let Part::Named(ref instr) = reference.path.parts[0] {
+                                            used_instructions.insert(instr.clone());
+                                        }
+                                    }
+                                }
+                            }
+                            FunctionStatement::Instruction(_, instr, _) => {
+                                used_instructions.insert(instr.clone());
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+
+        used_instructions
     }
 }
 

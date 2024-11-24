@@ -731,6 +731,7 @@ impl<T: FieldElement> Pipeline<T> {
                         err.output_to_stderr();
                         panic!();
                     });
+                let parsed_asm = parsed_asm.optimize();
 
                 (path.clone(), parsed_asm)
             });
