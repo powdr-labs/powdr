@@ -29,6 +29,8 @@ fn remove_unused_machine() {
 
     let expectation = r#"machine Main with degree: 8 {
     reg pc[@pc];
+    reg X[<=];
+    reg A;
     instr assert_eq X, A{ X = A }
     function main {
         assert_eq 1, 1;
@@ -80,6 +82,8 @@ fn remove_unused_instruction_and_machine() {
 
     let expectation = r#"machine Main with degree: 8 {
     reg pc[@pc];
+    reg X[<=];
+    reg A;
     instr assert_eq X, A{ X = A }
     function main {
         assert_eq 1, 1;
@@ -131,6 +135,8 @@ fn keep_machine_with_multiple_references() {
     let expectation = r#"machine Main with degree: 8 {
     ::Helper helper
     reg pc[@pc];
+    reg X[<=];
+    reg Y[<=];
     reg A;
     instr double X -> Y link => Y = helper.double(X){  }
     function main {
@@ -214,6 +220,8 @@ fn keep_machine_parameters() {
     let expectation = r#"machine Main with degree: 8 {
     ::ParamMachine sub
     reg pc[@pc];
+    reg X[<=];
+    reg Y[<=];
     reg A;
     instr compute X -> Y link => Y = sub.compute(X){  }
     function main {

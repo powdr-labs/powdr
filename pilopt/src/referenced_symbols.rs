@@ -1,4 +1,4 @@
-use std::{borrow::Cow, iter::once};
+use std::{borrow::Cow, io::empty, iter::once};
 
 use powdr_ast::{
     analyzed::{
@@ -6,14 +6,14 @@ use powdr_ast::{
     },
     asm_analysis::{
         AssignmentStatement, Expression as ExpressionASM, FunctionBody, FunctionStatement,
-        InstructionStatement,
+        InstructionDefinitionStatement, InstructionStatement,
     },
     parsed::{
-        asm::SymbolPath,
+        asm::{Instruction, InstructionBody, LinkDeclaration, Param, Params, SymbolPath},
         types::Type,
         visitor::{AllChildren, Children},
-        EnumDeclaration, NamespacedPolynomialReference, StructDeclaration, TraitImplementation,
-        TypeDeclaration,
+        EnumDeclaration, NamespacedPolynomialReference, PilStatement, StructDeclaration,
+        TraitImplementation, TypeDeclaration,
     },
 };
 
@@ -188,29 +188,60 @@ impl<T> ReferencedSymbols for Type<T> {
     }
 }
 
-// impl ReferencedSymbols for Machine {
-//     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
-//         Box::new(
-//             self.registers
-//                 .iter()
-//                 .flat_map(|r| r.symbols())
-//                 .chain(self.instructions.iter().flat_map(|i| i.symbols())),
-//             // incomplete for now
-//         )
-//     }
-// }
+impl ReferencedSymbols for InstructionDefinitionStatement {
+    fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
+        Box::new(once(SymbolReference::from(&self.name)).chain(self.instruction.symbols()))
+    }
+}
 
-// impl ReferencedSymbols for RegisterDeclarationStatement {
-//     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
-//         Box::new(once(SymbolReference::from(&self.name)))
-//     }
-// }
+impl ReferencedSymbols for Instruction {
+    fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
+        Box::new(
+            self.links
+                .iter()
+                .flat_map(|l| l.symbols())
+                .chain(self.body.symbols())
+                .chain(self.params.symbols()),
+        )
+    }
+}
 
-// impl ReferencedSymbols for InstructionDefinitionStatement {
-//     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
-//         Box::new(once(SymbolReference::from(&self.name)))
-//     }
-// }
+impl ReferencedSymbols for Params<Param> {
+    fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
+        Box::new(
+            self.inputs
+                .iter()
+                .flat_map(|p| p.symbols())
+                .chain(self.outputs.iter().flat_map(|p| p.symbols())),
+        )
+    }
+}
+
+impl ReferencedSymbols for Param {
+    fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
+        Box::new(
+            once(SymbolReference::from(&self.name)).chain(
+                self.ty
+                    .as_ref()
+                    .map(|ty| SymbolReference::from(ty))
+                    .into_iter(),
+            ),
+        )
+    }
+}
+
+impl ReferencedSymbols for LinkDeclaration {
+    fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
+        Box::new(self.flag.symbols())
+    }
+}
+
+impl ReferencedSymbols for InstructionBody {
+    fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
+        //Box::new(self.0.iter().flat_map(|e| e.symbols()))
+        Box::new(std::iter::empty())
+    }
+}
 
 impl ReferencedSymbols for FunctionBody {
     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {

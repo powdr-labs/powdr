@@ -72,7 +72,7 @@ fn collect_all_dependent_machines(
 
 fn remove_unused_instructions(asm_file: &mut AnalysisASMFile) {
     for (_, machine) in asm_file.machines_mut() {
-        let symbols_in_callable = machine_callable_symbols(machine);
+        let symbols_in_callable = machine_callable_body_symbols(machine);
         let mut used_submachines = HashSet::new();
 
         machine.instructions.retain(|ins| {
@@ -89,15 +89,17 @@ fn remove_unused_instructions(asm_file: &mut AnalysisASMFile) {
             .submachines
             .retain(|sub| used_submachines.contains(&sub.name));
 
-        let mut symbols_in_callable = machine_callable_symbols(machine);
+        let mut symbols_in_callable = machine_callable_body_symbols(machine);
+        let symbols_in_instructions = machine_instructions_symbols(machine);
         symbols_in_callable.insert("pc".to_string());
+        symbols_in_callable.extend(symbols_in_instructions);
         machine
             .registers
             .retain(|reg| symbols_in_callable.contains(&reg.name));
     }
 }
 
-fn machine_callable_symbols(machine: &Machine) -> HashSet<String> {
+fn machine_callable_body_symbols(machine: &Machine) -> HashSet<String> {
     let mut callable_symbols = HashSet::new();
 
     for defs in machine.callable.function_definitions() {
@@ -107,6 +109,14 @@ fn machine_callable_symbols(machine: &Machine) -> HashSet<String> {
             callable_symbols.extend(stms.symbols().map(|s| s.name.to_string()));
         }
     }
-
     callable_symbols
+}
+
+fn machine_instructions_symbols(machine: &Machine) -> HashSet<String> {
+    let mut symbols = HashSet::new();
+    for ins in machine.instructions.iter() {
+        symbols.extend(ins.symbols().map(|s| s.name.to_string()));
+    }
+
+    symbols
 }
