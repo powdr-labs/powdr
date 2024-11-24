@@ -1,4 +1,3 @@
-use itertools::Itertools;
 use num_traits::Zero;
 use std::fmt::Debug;
 use std::ops::{Add, AddAssign, Mul, Neg, Sub};
@@ -26,50 +25,6 @@ use stwo_prover::core::poly::BitReversedOrder;
 use stwo_prover::core::ColumnVec;
 
 pub type PowdrComponent<'a, F> = FrameworkComponent<PowdrEval<F>>;
-
-/// A description of the constraint system.
-/// All of the data is derived from the analyzed PIL, but is materialized
-/// here for performance reasons.
-pub struct ConstraintSystem<T> {
-    // for each witness column, the stage and index of this column in this stage
-    witness_columns: BTreeMap<PolyID, (usize, usize)>,
-    // for each fixed column, the index of this column in the fixed columns
-    fixed_columns: BTreeMap<PolyID, usize>,
-    identities: Vec<Identity<T>>,
-}
-
-impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
-    fn from(analyzed: &Analyzed<T>) -> Self {
-        let identities = analyzed.identities.clone();
-
-        let fixed_columns = analyzed
-            .definitions_in_source_order(PolynomialType::Constant)
-            .flat_map(|(symbol, _)| symbol.array_elements())
-            .enumerate()
-            .map(|(index, (_, id))| (id, index))
-            .collect();
-
-        let witness_columns = analyzed
-            .definitions_in_source_order(PolynomialType::Committed)
-            .into_group_map_by(|(s, _)| s.stage.unwrap_or_default())
-            .into_iter()
-            .flat_map(|(stage, symbols)| {
-                symbols
-                    .into_iter()
-                    .flat_map(|(s, _)| s.array_elements())
-                    .enumerate()
-                    .map(move |(index_in_stage, (_, poly_id))| {
-                        (poly_id, (stage as usize, index_in_stage))
-                    })
-            })
-            .collect();
-        Self {
-            identities,
-            witness_columns,
-            fixed_columns,
-        }
-    }
-}
 
 pub(crate) fn gen_stwo_circuit_trace<T, B, F>(
     witness: &[(String, Vec<T>)],
