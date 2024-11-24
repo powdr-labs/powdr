@@ -20,12 +20,10 @@ mod circuit_builder;
 mod proof;
 mod prover;
 
-#[allow(dead_code)]
 
 struct RestrictedFactory;
 
 impl<F: FieldElement> BackendFactory<F> for RestrictedFactory {
-    #[allow(unreachable_code)]
     #[allow(unused_variables)]
     fn create(
         &self,
@@ -56,7 +54,7 @@ generalize_factory!(Factory <- RestrictedFactory, [Mersenne31Field]);
 impl<T: FieldElement, MC: MerkleChannel + Send, C: Channel + Send> Backend<T>
     for StwoProver<T, SimdBackend, MC, C>
 where
-    SimdBackend: BackendForChannel<MC> + Send,
+    SimdBackend: BackendForChannel<MC>,
     MC: MerkleChannel,
     C: Channel,
     MC::H: DeserializeOwned + Serialize,
