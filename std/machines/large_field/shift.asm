@@ -70,8 +70,8 @@ machine Shift(byte_shift: ByteShift) with
     // TODO: Currently, the bus linker does not support next references in operations and links.
     //       We add an extra witness columns to make the Goldilocks RISC-V machine work for now.
     //       This will be fixed with #2140.
-    col witness operation_next, B_next;
-    operation_id' = operation_next;
+    col witness operation_id_next, B_next;
+    operation_id' = operation_id_next;
     B' = B_next;
-    link => C_part = byte_shift.run(operation_next, A_byte, B_next, FACTOR_ROW);
+    link => C_part = byte_shift.run(operation_id_next, A_byte, B_next, FACTOR_ROW);
 }

@@ -1,7 +1,9 @@
 use mktemp::Temp;
 use powdr_number::{BabyBearField, FieldElement, GoldilocksField, KnownField, KoalaBearField};
 use powdr_pipeline::{
-    test_util::{run_pilcom_with_backend_variant, test_plonky3_pipeline, BackendVariant},
+    test_util::{
+        run_pilcom_with_backend_variant, test_mock_backend, test_plonky3_pipeline, BackendVariant,
+    },
     Pipeline,
 };
 use powdr_riscv::CompilerOptions;
@@ -28,6 +30,8 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
     if let Some(data) = data {
         pipeline = pipeline.add_data_vec(data);
     }
+
+    test_mock_backend(pipeline.clone());
 
     // verify with PILCOM
     if T::known_field().unwrap() == KnownField::GoldilocksField {
@@ -69,7 +73,7 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
         pipeline.rollback_from_witness();
         let executor_trace: Vec<_> = execution.trace.into_iter().collect();
         let pipeline = pipeline.add_external_witness_values(executor_trace);
-        test_plonky3_pipeline::<T>(pipeline);
+        test_mock_backend(pipeline);
     }
 }
 

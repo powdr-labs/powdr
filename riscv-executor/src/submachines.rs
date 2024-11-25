@@ -266,15 +266,18 @@ impl SubmachineKind for BinaryMachine {
             trace.set_current_row("A_byte", (a1 as u32).into());
             trace.set_current_row("B_byte", (b1 as u32).into());
             trace.set_current_row("C_byte", (c1 as u32).into());
+            trace.set_current_row("operation_id_next", op_id);
         } else {
             trace.set_final_row("A_byte", (a1 as u32).into());
             trace.set_final_row("B_byte", (b1 as u32).into());
             trace.set_final_row("C_byte", (c1 as u32).into());
+            trace.set_final_row("operation_id_next", op_id);
         }
 
         // 4 rows for each binary operation
         trace.push_row();
         trace.set_current_row("operation_id", op_id);
+        trace.set_current_row("operation_id_next", op_id);
         trace.set_current_row("A_byte", (a2 as u32).into());
         trace.set_current_row("B_byte", (b2 as u32).into());
         trace.set_current_row("C_byte", (c2 as u32).into());
@@ -284,6 +287,7 @@ impl SubmachineKind for BinaryMachine {
 
         trace.push_row();
         trace.set_current_row("operation_id", op_id);
+        trace.set_current_row("operation_id_next", op_id);
         trace.set_current_row("A_byte", (a3 as u32).into());
         trace.set_current_row("B_byte", (b3 as u32).into());
         trace.set_current_row("C_byte", (c3 as u32).into());
@@ -293,6 +297,7 @@ impl SubmachineKind for BinaryMachine {
 
         trace.push_row();
         trace.set_current_row("operation_id", op_id);
+        trace.set_current_row("operation_id_next", op_id);
         trace.set_current_row("A_byte", (a4 as u32).into());
         trace.set_current_row("B_byte", (b4 as u32).into());
         trace.set_current_row("C_byte", (c4 as u32).into());
@@ -352,14 +357,19 @@ impl SubmachineKind for ShiftMachine {
         if trace.len() > 0 {
             trace.set_current_row("A_byte", (b1 as u32).into());
             trace.set_current_row("C_part", (((b1 as u32) << shl) >> shr).into());
+            trace.set_current_row("operation_id_next", op_id);
+            trace.set_current_row("B_next", b);
         } else {
             trace.set_final_row("A_byte", (b1 as u32).into());
             trace.set_final_row("C_part", (((b1 as u32) << shl) >> shr).into());
+            trace.set_final_row("operation_id_next", op_id);
+            trace.set_final_row("B_next", b);
         }
 
         // 4 rows for each shift operation
         trace.push_row();
         trace.set_current_row("operation_id", op_id);
+        trace.set_current_row("operation_id_next", op_id);
         trace.set_current_row("A_byte", (b2 as u32).into());
         let c_part_factor = (b2 as u32) << 8;
         let c_part = ((c_part_factor << shl) >> shr).into();
@@ -367,10 +377,12 @@ impl SubmachineKind for ShiftMachine {
         let a_row = a.u() & 0xff;
         trace.set_current_row("A", a_row.into());
         trace.set_current_row("B", b);
+        trace.set_current_row("B_next", b);
         trace.set_current_row("C", ((a_row << shl) >> shr).into());
         //
         trace.push_row();
         trace.set_current_row("operation_id", op_id);
+        trace.set_current_row("operation_id_next", op_id);
         trace.set_current_row("A_byte", (b3 as u32).into());
         let c_part_factor = (b3 as u32) << 16;
         let c_part = ((c_part_factor << shl) >> shr).into();
@@ -378,10 +390,12 @@ impl SubmachineKind for ShiftMachine {
         let a_row = a.u() & 0xffff;
         trace.set_current_row("A", a_row.into());
         trace.set_current_row("B", b);
+        trace.set_current_row("B_next", b);
         trace.set_current_row("C", ((a_row << shl) >> shr).into());
         //
         trace.push_row();
         trace.set_current_row("operation_id", op_id);
+        trace.set_current_row("operation_id_next", op_id);
         trace.set_current_row("A_byte", (b4 as u32).into());
         let c_part_factor = (b4 as u32) << 24;
         let c_part = ((c_part_factor << shl) >> shr).into();
@@ -389,6 +403,7 @@ impl SubmachineKind for ShiftMachine {
         let a_row = a.u() & 0xffffff;
         trace.set_current_row("A", a_row.into());
         trace.set_current_row("B", b);
+        trace.set_current_row("B_next", b);
         trace.set_current_row("C", ((a_row << shl) >> shr).into());
         // latch row
         trace.push_row();
