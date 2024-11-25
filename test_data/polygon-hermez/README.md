@@ -1,5 +1,0 @@
-# Test files
-
-These files are from the [polygon-hermez zkEVM project](https://github.com/0xPolygonHermez/zkevm-proverjs)
-and were developed by Polygon. They are not covered by the MIT license of this repository.
-All rights reserved by Polygon.
