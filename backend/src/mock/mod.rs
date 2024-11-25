@@ -1,8 +1,8 @@
 use std::{collections::BTreeMap, io, marker::PhantomData, path::PathBuf, sync::Arc};
 
 use connection_constraint_checker::{Connection, ConnectionConstraintChecker};
-use evaluator::Machine;
 use itertools::Itertools;
+use machine::Machine;
 use polynomial_constraint_checker::PolynomialConstraintChecker;
 use powdr_ast::analyzed::Analyzed;
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
@@ -13,6 +13,7 @@ use crate::{Backend, BackendFactory, BackendOptions, Error, Proof};
 
 mod connection_constraint_checker;
 mod evaluator;
+mod machine;
 mod polynomial_constraint_checker;
 
 pub(crate) struct MockBackendFactory<F: FieldElement> {

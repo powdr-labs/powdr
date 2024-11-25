@@ -17,7 +17,8 @@ use powdr_number::FieldElement;
 use rayon::iter::IntoParallelIterator;
 use rayon::iter::ParallelIterator;
 
-use super::evaluator::{Machine, Variables};
+use super::evaluator::Variables;
+use super::machine::Machine;
 
 pub enum ConnectionKind {
     Lookup,

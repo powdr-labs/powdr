@@ -10,7 +10,7 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::mock::evaluator::Variables;
 
-use super::evaluator::Machine;
+use super::machine::Machine;
 
 pub struct PolynomialConstraintChecker<'a, F> {
     machine: &'a Machine<'a, F>,
