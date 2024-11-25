@@ -8,8 +8,9 @@ use powdr_number::{DegreeType, FieldElement};
 
 use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::witgen::{
-    rows::RowPair, util::try_to_simple_poly, EvalError, EvalResult, EvalValue, FixedData,
-    IncompleteCause, QueryCallback,
+    data_structures::multiplicity_counter::MultiplicityCounter, rows::RowPair,
+    util::try_to_simple_poly, EvalError, EvalResult, EvalValue, FixedData, IncompleteCause,
+    QueryCallback,
 };
 
 use super::{Connection, Machine, MachineParts};
@@ -39,6 +40,7 @@ pub struct WriteOnceMemory<'a, T: FieldElement> {
     /// The memory content
     data: BTreeMap<DegreeType, Vec<Option<T>>>,
     name: String,
+    multiplicity_counter: MultiplicityCounter,
 }
 
 impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
@@ -124,6 +126,7 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
             value_polys,
             key_to_index,
             data: BTreeMap::new(),
+            multiplicity_counter: MultiplicityCounter::new(&parts.connections),
         })
     }
 
@@ -209,6 +212,9 @@ impl<'a, T: FieldElement> WriteOnceMemory<'a, T> {
         let is_complete = !values.contains(&None);
         let side_effect = self.data.insert(index, values).is_none();
 
+        self.multiplicity_counter
+            .increment_at_row(identity_id, index as usize);
+
         match is_complete {
             true => Ok({
                 let res = EvalValue::complete(updates);
@@ -267,8 +273,13 @@ impl<'a, T: FieldElement> Machine<'a, T> for WriteOnceMemory<'a, T> {
                         }
                         column
                     });
-                (self.fixed_data.column_name(poly).to_string(), column)
+                (*poly, column)
             })
+            .chain(
+                self.multiplicity_counter
+                    .generate_columns_single_size(self.degree),
+            )
+            .map(|(poly_id, column)| (self.fixed_data.column_name(&poly_id).to_string(), column))
             .collect()
     }
 }
