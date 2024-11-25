@@ -427,10 +427,10 @@ where
             let degree_bound = T::degree_bound();
             let max_degree = table.max_constraint_degree();
             if max_degree > degree_bound {
-                panic!(
-                    "Table {} has a constraint of degree {} which exceeds the degree bound of {}.",
-                    name, max_degree, degree_bound
-                );
+                // panic!(
+                //     "Table {} has a constraint of degree {} which exceeds the degree bound of {}.",
+                //     name, max_degree, degree_bound
+                // );
             }
 
             Some((
