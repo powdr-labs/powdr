@@ -93,15 +93,20 @@ impl<F: FieldElement> Connection<F> {
         global_pil: &Analyzed<F>,
         local_pil: &Analyzed<F>,
     ) -> SelectedExpressions<F> {
+        // Build a map (local ID) -> (global ID).
         let name_to_id_local = local_pil.name_to_poly_id();
         let id_map = global_pil
             .name_to_poly_id()
             .into_iter()
-            .map(|(name, poly_id)| (poly_id, *name_to_id_local.get(&name).unwrap()))
+            .filter_map(|(name, source_id)| {
+                name_to_id_local
+                    .get(&name)
+                    .map(|target_id| (source_id, *target_id))
+            })
             .collect::<BTreeMap<_, _>>();
 
+        // Translate all polynomial references.
         let mut localized = selected_expressions.clone();
-
         localized.visit_expressions_mut(
             &mut |expr| {
                 if let AlgebraicExpression::Reference(reference) = expr {
@@ -145,18 +150,15 @@ pub struct ConnectionConstraintChecker<'a, F: FieldElement> {
 }
 
 impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
+    /// Checks all connections.
     pub fn check(&self) {
         for connection in self.connections {
             self.check_connection(connection);
         }
     }
 
+    /// Checks a single connection.
     fn check_connection(&self, connection: &Connection<F>) {
-        log::info!(
-            "Checking connection: {} -> {}",
-            connection.caller(),
-            connection.callee()
-        );
         let caller_set = self.selected_tuples(&connection.caller(), &connection.left);
         let callee_set = self.selected_tuples(&connection.callee(), &connection.right);
 
@@ -175,16 +177,23 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
                     callee_set.len(),
                     "Permutation failed: caller and callee have different sizes"
                 );
-                for tuple in caller_set {
+                for tuple in &caller_set {
                     assert!(
-                        callee_set.contains(&tuple),
+                        callee_set.contains(tuple),
                         "Permutation failed: {tuple:?} not found in callee",
+                    );
+                }
+                for tuple in &callee_set {
+                    assert!(
+                        caller_set.contains(tuple),
+                        "Permutation failed: {tuple:?} not found in caller",
                     );
                 }
             }
         }
     }
 
+    /// Returns the set of all selected tuples for a given machine.
     fn selected_tuples(
         &self,
         machine_name: &str,
