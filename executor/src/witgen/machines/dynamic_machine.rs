@@ -40,7 +40,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
     }
 
     /// Runs the machine without any arguments from the first row.
-    fn run<'b, Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, 'b, T, Q>) {
+    fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, T, Q>) {
         assert!(self.data.is_empty());
         let first_row = self.compute_partial_first_row(mutable_state);
         self.data = self
@@ -51,7 +51,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
 
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &MutableState<'a, 'b, T, Q>,
+        mutable_state: &MutableState<'a, T, Q>,
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
@@ -97,7 +97,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for DynamicMachine<'a, T> {
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &'b MutableState<'a, 'b, T, Q>,
+        mutable_state: &'b MutableState<'a, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         log::debug!("Finalizing VM: {}", self.name());
 
@@ -138,10 +138,7 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
         }
     }
 
-    fn fill_remaining_rows<Q: QueryCallback<T>>(
-        &mut self,
-        mutable_state: &MutableState<'a, '_, T, Q>,
-    ) {
+    fn fill_remaining_rows<Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, T, Q>) {
         if self.data.len() < self.degree as usize + 1 {
             assert!(self.latch.is_some());
 
@@ -167,7 +164,7 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
     /// row from identities like `pc' = (1 - first_step') * <...>`.
     fn compute_partial_first_row<Q: QueryCallback<T>>(
         &self,
-        mutable_state: &MutableState<'a, '_, T, Q>,
+        mutable_state: &MutableState<'a, T, Q>,
     ) -> Row<T> {
         // Use `BlockProcessor` + `DefaultSequenceIterator` using a "block size" of 0. Because `BlockProcessor`
         // expects `data` to include the row before and after the block, this means we'll run the
@@ -209,11 +206,11 @@ impl<'a, T: FieldElement> DynamicMachine<'a, T> {
         block.pop().unwrap()
     }
 
-    fn process<'b, 'c, Q: QueryCallback<T>>(
+    fn process<'c, Q: QueryCallback<T>>(
         &mut self,
         first_row: Row<T>,
         row_offset: DegreeType,
-        mutable_state: &MutableState<'a, 'b, T, Q>,
+        mutable_state: &MutableState<'a, T, Q>,
         outer_query: Option<OuterQuery<'a, 'c, T>>,
         is_main_run: bool,
     ) -> ProcessResult<'a, T> {

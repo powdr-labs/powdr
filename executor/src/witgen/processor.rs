@@ -89,9 +89,8 @@ pub struct IdentityResult {
 /// on any given row.
 /// The lifetimes mean the following:
 /// - `'a`: The duration of the entire witness generation (e.g. references to identities)
-/// - `'b`: The duration of this machine's call (e.g. the mutable references of the other machines)
 /// - `'c`: The duration of this Processor's lifetime (e.g. the reference to the identity processor)
-pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
+pub struct Processor<'a, 'c, T: FieldElement, Q: QueryCallback<T>> {
     /// The global index of the first row of [Processor::data].
     row_offset: RowIndex,
     /// The rows that are being processed.
@@ -99,7 +98,7 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     /// The values of the publics
     publics: BTreeMap<&'a str, T>,
     /// The mutable state
-    mutable_state: &'c MutableState<'a, 'b, T, Q>,
+    mutable_state: &'c MutableState<'a, T, Q>,
     /// The fixed data (containing information about all columns)
     fixed_data: &'a FixedData<'a, T>,
     /// The machine parts (witness columns, identities, fixed data)
@@ -118,11 +117,11 @@ pub struct Processor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
     size: DegreeType,
 }
 
-impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, Q> {
+impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'c, T, Q> {
     pub fn new(
         row_offset: RowIndex,
         mutable_data: SolverState<'a, T>,
-        mutable_state: &'c MutableState<'a, 'b, T, Q>,
+        mutable_state: &'c MutableState<'a, T, Q>,
         fixed_data: &'a FixedData<'a, T>,
         parts: &'c MachineParts<'a, T>,
         size: DegreeType,
@@ -159,10 +158,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> Processor<'a, 'b, 'c, T, 
         }
     }
 
-    pub fn with_outer_query(
-        self,
-        outer_query: OuterQuery<'a, 'c, T>,
-    ) -> Processor<'a, 'b, 'c, T, Q> {
+    pub fn with_outer_query(self, outer_query: OuterQuery<'a, 'c, T>) -> Processor<'a, 'c, T, Q> {
         log::trace!("  Extracting inputs:");
         let mut inputs = vec![];
         for (l, r) in outer_query
