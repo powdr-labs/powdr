@@ -25,12 +25,12 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
         .with_output(temp_dir.to_path_buf(), true)
         .from_asm_string(contents.to_string(), Some(PathBuf::from(file_name)));
 
-    // Compute the witness once for all tests that follow.
-    pipeline.compute_witness().unwrap();
-
     if let Some(data) = data {
         pipeline = pipeline.add_data_vec(data);
     }
+
+    // Compute the witness once for all tests that follow.
+    pipeline.compute_witness().unwrap();
 
     // verify with PILCOM
     if T::known_field().unwrap() == KnownField::GoldilocksField {
