@@ -220,12 +220,8 @@ impl ReferencedSymbols for Params<Param> {
 impl ReferencedSymbols for Param {
     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
         Box::new(
-            once(SymbolReference::from(&self.name)).chain(
-                self.ty
-                    .as_ref()
-                    .map(|ty| SymbolReference::from(ty))
-                    .into_iter(),
-            ),
+            once(SymbolReference::from(&self.name))
+                .chain(self.ty.as_ref().map(SymbolReference::from)),
         )
     }
 }
