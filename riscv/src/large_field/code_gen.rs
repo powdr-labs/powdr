@@ -237,7 +237,7 @@ fn riscv_machine(
         .replace("{{MAX_DEGREE_LOG}}", &format!("{}", options.max_degree_log))
         // We're passing this as well because continuations requires
         // Main's max_degree to be a constant.
-        // We should fix that in the continuations code and remove this.
+        // TODO We should fix that in the continuations code and remove this.
         .replace(
             "{{MAIN_MAX_DEGREE}}",
             &format!("{}", 1 << options.max_degree_log),

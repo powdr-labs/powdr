@@ -27,11 +27,12 @@ machine Main with min_degree: MIN_DEGREE, max_degree: {{MAIN_MAX_DEGREE}} {
         {{INITIAL_MEMORY}}
     ];
 
-    function main {
-        {{PROGRAM}}
-    }
+    // ================= Extra columns we use to hold temporary values inside instructions.
+    col witness tmp1_col;
+    col witness tmp2_col;
+    col witness tmp3_col;
+    col witness tmp4_col;
 
-    // Extra columns we use to hold temporary values inside instructions.
     col witness X_b1;
     col witness X_b2;
     col witness X_b3;
@@ -40,8 +41,41 @@ machine Main with min_degree: MIN_DEGREE, max_degree: {{MAIN_MAX_DEGREE}} {
     link => byte.check(X_b2);
     link => byte.check(X_b3);
     link => byte.check(X_b4);
+
+    col witness Y_7bit;
+    link => bit7.check(Y_7bit);
+    col witness Y_15bit;
+
+    col witness Y_b5;
+    col witness Y_b6;
+    col witness Y_b7;
+    col witness Y_b8;
+    link => byte.check(Y_b5);
+    link => byte.check(Y_b6);
+    link => byte.check(Y_b7);
+    link => byte.check(Y_b8);
+
+    col witness REM_b1;
+    col witness REM_b2;
+    col witness REM_b3;
+    col witness REM_b4;
+    link => byte.check(REM_b1);
+    link => byte.check(REM_b2);
+    link => byte.check(REM_b3);
+    link => byte.check(REM_b4);
+
+    // TODO std::utils::force_bool doesn't work with witgen at this level
     col witness wrap_bit;
     wrap_bit * (1 - wrap_bit) = 0;
+
+    // We need to add these inline instead of using std::utils::is_zero
+    // because when XX is not constrained, witgen will try to set XX,
+    // XX_inv and XXIsZero to zero, which fails this constraint.
+    // Therefore, we have to activate constrained whenever XXIsZero is used.
+    // XXIsZero = 1 - XX * XX_inv
+    col witness XX, XX_inv, XXIsZero;
+    std::utils::force_bool(XXIsZero);
+    XXIsZero * XX = 0;
 
     // =============== Register memory =======================
     // Get the value in register Y.
@@ -49,12 +83,6 @@ machine Main with min_degree: MIN_DEGREE, max_degree: {{MAIN_MAX_DEGREE}} {
 
     // Set the value in register X to the value in register Y.
     instr set_reg X, Y -> link ~> regs.mstore(X, STEP, Y);
-
-    // Witness columns used in instuctions for intermediate values inside instructions.
-    col witness tmp1_col;
-    col witness tmp2_col;
-    col witness tmp3_col;
-    col witness tmp4_col;
 
     // ================ Publics ==================
     std::machines::write_once_memory_with_8_publics::WriteOnceMemoryWith8Publics publics;
@@ -94,14 +122,6 @@ machine Main with min_degree: MIN_DEGREE, max_degree: {{MAIN_MAX_DEGREE}} {
     {
         tmp1_col - tmp2_col + Z = (X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000) + wrap_bit * 2**32
     }
-    // We need to add these inline instead of using std::utils::is_zero
-    // because when XX is not constrained, witgen will try to set XX,
-    // XX_inv and XXIsZero to zero, which fails this constraint.
-    // Therefore, we have to activate constrained whenever XXIsZero is used.
-    // XXIsZero = 1 - XX * XX_inv
-    col witness XX, XX_inv, XXIsZero;
-    std::utils::force_bool(XXIsZero);
-    XXIsZero * XX = 0;
 
     // ============== control-flow instructions ==============
 
@@ -246,8 +266,6 @@ machine Main with min_degree: MIN_DEGREE, max_degree: {{MAIN_MAX_DEGREE}} {
         tmp1_col = Y_7bit + wrap_bit * 0x80 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000,
         tmp3_col = Y_7bit + wrap_bit * 0xffffff80
     }
-    col witness Y_7bit;
-    link => bit7.check(Y_7bit);
 
     // Sign extends the value in register X and stores it in register Y.
     // Input is a 32 bit unsigned number. We check bit 15 and set all higher bits to that value.
@@ -261,7 +279,6 @@ machine Main with min_degree: MIN_DEGREE, max_degree: {{MAIN_MAX_DEGREE}} {
         tmp1_col = Y_15bit + wrap_bit * 0x8000 + X_b3 * 0x10000 + X_b4 * 0x1000000,
         tmp3_col = Y_15bit + wrap_bit * 0xffff8000
     }
-    col witness Y_15bit;
 
     // Converts the value in register X to a signed number and stores it in register Y.
     // Input is a 32 bit unsigned number (0 <= val(X) < 2**32) interpreted as a two's complement numbers.
@@ -290,24 +307,6 @@ machine Main with min_degree: MIN_DEGREE, max_degree: {{MAIN_MAX_DEGREE}} {
         (tmp1_col * Y) = Y_b5 * 2**32 + Y_b6 * 2**40 + tmp3_col,
         tmp3_col = X_b1 + X_b2 * 0x100 + X_b3 * 0x10000 + X_b4 * 0x1000000
     }
-
-    col witness Y_b5;
-    col witness Y_b6;
-    col witness Y_b7;
-    col witness Y_b8;
-    link => byte.check(Y_b5);
-    link => byte.check(Y_b6);
-    link => byte.check(Y_b7);
-    link => byte.check(Y_b8);
-
-    col witness REM_b1;
-    col witness REM_b2;
-    col witness REM_b3;
-    col witness REM_b4;
-    link => byte.check(REM_b1);
-    link => byte.check(REM_b2);
-    link => byte.check(REM_b3);
-    link => byte.check(REM_b4);
 
     // Computes Q = val(Y) / val(X) and R = val(Y) % val(X) and stores them in registers Z and W.
     instr divremu Y, X, Z, W
@@ -342,4 +341,9 @@ machine Main with min_degree: MIN_DEGREE, max_degree: {{MAIN_MAX_DEGREE}} {
 
     // ================= bootloader instructions =================
     {{BOOTLOADER_INSTRUCTIONS}}
+
+    // ================= compiled program =================
+    function main {
+        {{PROGRAM}}
+    }
 }
