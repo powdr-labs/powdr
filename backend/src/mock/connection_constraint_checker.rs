@@ -140,7 +140,7 @@ impl<F: FieldElement> Connection<F> {
 
 pub struct ConnectionConstraintChecker<'a, F: FieldElement> {
     pub connections: &'a [Connection<F>],
-    pub machines: BTreeMap<&'a str, Machine<'a, F>>,
+    pub machines: BTreeMap<String, Machine<'a, F>>,
 }
 
 impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
@@ -189,7 +189,7 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
         machine_name: &str,
         selected_expressions: &SelectedExpressions<F>,
     ) -> BTreeSet<Vec<F>> {
-        let machine = &self.machines[&machine_name];
+        let machine = &self.machines[machine_name];
 
         (0..machine.size)
             .into_par_iter()

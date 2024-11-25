@@ -2,7 +2,9 @@ use std::collections::BTreeMap;
 
 use itertools::Itertools;
 use powdr_ast::analyzed::{AlgebraicExpression, Analyzed, PolyID};
-use powdr_number::FieldElement;
+use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
+use powdr_executor::constant_evaluator::VariablySizedColumn;
+use powdr_number::{DegreeType, FieldElement};
 
 pub struct Machine<'a, F> {
     pub machine_name: String,
@@ -15,17 +17,20 @@ pub struct Machine<'a, F> {
 impl<'a, F: FieldElement> Machine<'a, F> {
     pub fn new(
         machine_name: String,
-        witness: Vec<(String, Vec<F>)>,
-        fixed: &[(String, &'a [F])],
+        witness: &'a [(String, Vec<F>)],
+        fixed: &'a [(String, VariablySizedColumn<F>)],
         pil: &'a Analyzed<F>,
     ) -> Self {
+        let witness = machine_witness_columns(witness, pil, &machine_name);
         let size = witness
             .iter()
             .map(|(_, v)| v.len())
-            .chain(fixed.iter().map(|(_, v)| v.len()))
             .unique()
             .exactly_one()
             .unwrap();
+
+        let fixed = machine_fixed_columns(fixed, pil);
+        let fixed = fixed.get(&(size as DegreeType)).unwrap();
 
         let intermediate_definitions = pil
             .intermediate_polys_in_source_order()

@@ -1,11 +1,9 @@
 use std::{collections::BTreeMap, io, marker::PhantomData, path::PathBuf, sync::Arc};
 
 use connection_constraint_checker::{Connection, ConnectionConstraintChecker};
-use itertools::Itertools;
 use machine::Machine;
 use polynomial_constraint_checker::PolynomialConstraintChecker;
 use powdr_ast::analyzed::Analyzed;
-use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
 use powdr_number::{DegreeType, FieldElement};
 
@@ -88,23 +86,8 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
         let machines = self
             .machine_to_pil
             .iter()
-            .map(|(machine, pil)| {
-                let witness = machine_witness_columns(witness, pil, machine);
-                let size = witness
-                    .iter()
-                    .map(|(_, witness)| witness.len())
-                    .unique()
-                    .exactly_one()
-                    .expect("All witness columns of a machine must have the same size")
-                    as DegreeType;
-                let all_fixed = machine_fixed_columns(&self.fixed, pil);
-                let fixed = all_fixed.get(&size).unwrap();
-
-                (
-                    machine.as_str(),
-                    Machine::new(machine.clone(), witness, fixed, pil),
-                )
-            })
+            .map(|(machine, pil)| Machine::new(machine.clone(), witness, &self.fixed, pil))
+            .map(|machine| (machine.machine_name.clone(), machine))
             .collect::<BTreeMap<_, _>>();
 
         let mut is_ok = true;
