@@ -9,6 +9,7 @@ pub type TableProvingKeyCollection<B, MC> = BTreeMap<usize, TableProvingKey<B, M
 
 pub struct TableProvingKey<B: BackendForChannel<MC>, MC: MerkleChannel> {
     pub trees: TreeVec<CommitmentTreeProver<B, MC>>,
+    pub prover_channel: <MC as MerkleChannel>::C,
 }
 
 pub struct StarkProvingKey<B: BackendForChannel<MC>, MC: MerkleChannel> {

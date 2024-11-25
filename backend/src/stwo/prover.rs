@@ -77,7 +77,7 @@ where
                             .map(|size| {
                                 // get the config
                                 let config = get_config();
-                                // commit to the fixed columns
+
                                 let twiddles = Arc::new(B::precompute_twiddles(
                                     CanonicCoset::new(size.ilog2() + 1 + FRI_LOG_BLOWUP as u32)
                                         .circle_domain()
@@ -133,13 +133,19 @@ where
                                     })
                                     .collect();
 
-                                // Preprocessed trace
+                                // commit to the fixed columns
                                 let mut tree_builder = commitment_scheme.tree_builder();
                                 tree_builder.extend_evals(constant_trace.clone());
                                 tree_builder.commit(prover_channel);
                                 let trees = commitment_scheme.trees;
 
-                                (size as usize, TableProvingKey { trees })
+                                (
+                                    size as usize,
+                                    TableProvingKey {
+                                        trees,
+                                        prover_channel: prover_channel.clone(),
+                                    },
+                                )
                             })
                             .collect(),
                     ))
@@ -168,9 +174,6 @@ where
                 .half_coset,
         );
 
-        // Setup protocol.
-        let prover_channel = &mut <MC as MerkleChannel>::C::default();
-        //let commitment_scheme = &mut CommitmentSchemeProver::<B, MC>::new(config, &twiddles);
         let trees = self
             .proving_key
             .borrow_mut() // Borrow as mutable using RefCell
@@ -179,6 +182,16 @@ where
             .and_then(|table_collection| table_collection.values_mut().next())
             .map(|table_proving_key| std::mem::take(&mut table_proving_key.trees)) // Take ownership
             .expect("Expected to find commitment_scheme in proving key");
+
+        let mut prover_channel = self
+            .proving_key
+            .borrow_mut() // Borrow as mutable using RefCell
+            .as_mut()
+            .and_then(|stark_proving_key| stark_proving_key.preprocessed.values_mut().next())
+            .and_then(|table_collection| table_collection.values_mut().next())
+            .map(|table_proving_key| std::mem::take(&mut table_proving_key.prover_channel)) // Take ownership
+            .expect("Expected to find commitment_scheme in proving key");
+
         let mut commitment_scheme = CommitmentSchemeProver::<'_, B, MC>::new(config, &twiddles);
         commitment_scheme.trees = trees;
 
@@ -200,7 +213,7 @@ where
 
         let mut tree_builder = commitment_scheme.tree_builder();
         tree_builder.extend_evals(trace);
-        tree_builder.commit(prover_channel);
+        tree_builder.commit(&mut prover_channel);
 
         let component = PowdrComponent::new(
             &mut TraceLocationAllocator::default(),
@@ -209,7 +222,7 @@ where
 
         let proof = stwo_prover::core::prover::prove::<B, MC>(
             &[&component],
-            prover_channel,
+            &mut prover_channel,
             &mut commitment_scheme,
         )
         .unwrap();
