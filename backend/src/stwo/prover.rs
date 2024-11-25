@@ -67,7 +67,7 @@ where
                 if pil.constant_count() + pil.publics_count() == 0 {
                     None
                 } else {
-                    let fixed_columns = machine_fixed_columns(&fixed, &pil);
+                    let fixed_columns = machine_fixed_columns(&fixed, pil);
                     Some((
                         namespace.to_string(),
                         pil.committed_polys_in_source_order()
