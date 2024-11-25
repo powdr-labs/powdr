@@ -147,8 +147,8 @@ machine Keccakf16Memory(mem: Memory) with
 
     // Calculate address of all bytes in the input address array, i.e. increment by 4 each time.
     // Input address is provided by the user, copied back to the first row, and set to be equal to addr_h[0] and addr_l[0] in the first row.
-    final_step * (input_addr_h - addr_h[0]) = 0;
-    final_step * (input_addr_l - addr_l[0]) = 0;
+    first_step * (input_addr_h - addr_h[0]) = 0;
+    first_step * (input_addr_l - addr_l[0]) = 0;
     
     // Load memory while converting to little endian format for keccak computation.
     // Specifically, this keccakf16 machine accepts big endian inputs in memory.
