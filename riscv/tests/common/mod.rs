@@ -29,6 +29,9 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
         pipeline = pipeline.add_data_vec(data);
     }
 
+    // Compute the witness once for all tests that follow.
+    pipeline.compute_witness().unwrap();
+
     // verify with PILCOM
     if T::known_field().unwrap() == KnownField::GoldilocksField {
         let pipeline_gl: Pipeline<GoldilocksField> =
