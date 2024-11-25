@@ -2,7 +2,11 @@ use std::machines::large_field::arith256_memory::Arith256Memory;
 use std::machines::range::Byte2;
 use std::machines::large_field::memory::Memory;
 
-machine Main with degree: 65536 {
+let main_degree: int = 2**16;
+let arith_degree: int = 2**11;
+let memory_degree: int = 2**16;
+
+machine Main with degree: main_degree {
     reg pc[@pc];
     reg W[<=];
     reg X[<=];
@@ -19,8 +23,8 @@ machine Main with degree: 65536 {
 
     col fixed STEP(i) { i * 4 };
     Byte2 byte2;
-    Memory memory(byte2);
-    Arith256Memory arith(memory);
+    Memory memory(byte2, memory_degree, memory_degree);
+    Arith256Memory arith(memory, arith_degree, arith_degree);
 
     instr mstore X, A0, A1, A2, A3, A4, A5, A6, A7 ->
         link ~> memory.mstore(X, STEP, A0)

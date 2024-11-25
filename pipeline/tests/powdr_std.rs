@@ -145,8 +145,7 @@ fn arith_large_test() {
 #[ignore = "Too slow"]
 fn arith256_memory_large_test() {
     let f = "std/arith256_memory_large_test.asm";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_pilcom(pipeline.clone());
+    let pipeline: Pipeline<GoldilocksField> = make_simple_prepared_pipeline(f);
 
     // Running gen_estark_proof(f, Default::default())
     // is too slow for the PR tests. This will only create a single
@@ -157,7 +156,7 @@ fn arith256_memory_large_test() {
         .compute_proof()
         .unwrap();
 
-    test_halo2(make_simple_prepared_pipeline(f));
+    test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite);
 }
 
 #[test]
