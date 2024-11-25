@@ -59,7 +59,7 @@ machine Main with degree: 65536 {
         mstore 92, 0;
         mstore 96, 0;
         // Input address 0. Output address 200.
-        keccakf16_memory 0, 200;
+        keccakf32_memory 0, 200;
         // Selectively checking a few registers only.
         // Test vector generated from Tiny Keccak.
         assert_eq 200, 0xfdbbbbdf;
