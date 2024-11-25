@@ -131,54 +131,54 @@ machine Keccakf32Memory(mem: Memory) with
     // Therefore, memory write converts little endian from keccak computation to big endian for the output in memory.
     link if final_step_used ~> mem.mstore(output_addr, time_step, a_prime_prime_prime_0_0_limbs[1]);
     link if final_step_used ~> mem.mstore(output_addr + 4, time_step, a_prime_prime_prime_0_0_limbs[0]);
-    link if final_step_used ~> mem.mstore(output_addr + 8, time_step, a_prime_prime_prime_0_0_limbs[3]);
-    link if final_step_used ~> mem.mstore(output_addr + 12, time_step, a_prime_prime_prime_0_0_limbs[2]);
-    link if final_step_used ~> mem.mstore(output_addr + 16, time_step, a_prime_prime_prime_0_0_limbs[5]);
-    link if final_step_used ~> mem.mstore(output_addr + 20, time_step, a_prime_prime_prime_0_0_limbs[4]);
-    link if final_step_used ~> mem.mstore(output_addr + 24, time_step, a_prime_prime_prime_0_0_limbs[7]);
-    link if final_step_used ~> mem.mstore(output_addr + 28, time_step, a_prime_prime_prime_0_0_limbs[6]);
-    link if final_step_used ~> mem.mstore(output_addr + 32, time_step, a_prime_prime_prime_0_0_limbs[9]);
-    link if final_step_used ~> mem.mstore(output_addr + 36, time_step, a_prime_prime_prime_0_0_limbs[8]);
-    link if final_step_used ~> mem.mstore(output_addr + 40, time_step, a_prime_prime_prime_0_0_limbs[11]);
-    link if final_step_used ~> mem.mstore(output_addr + 44, time_step, a_prime_prime_prime_0_0_limbs[10]);
-    link if final_step_used ~> mem.mstore(output_addr + 48, time_step, a_prime_prime_prime_0_0_limbs[13]);
-    link if final_step_used ~> mem.mstore(output_addr + 52, time_step, a_prime_prime_prime_0_0_limbs[12]);
-    link if final_step_used ~> mem.mstore(output_addr + 56, time_step, a_prime_prime_prime_0_0_limbs[15]);
-    link if final_step_used ~> mem.mstore(output_addr + 60, time_step, a_prime_prime_prime_0_0_limbs[14]);
-    link if final_step_used ~> mem.mstore(output_addr + 64, time_step, a_prime_prime_prime_0_0_limbs[17]);
-    link if final_step_used ~> mem.mstore(output_addr + 68, time_step, a_prime_prime_prime_0_0_limbs[16]);
-    link if final_step_used ~> mem.mstore(output_addr + 72, time_step, a_prime_prime_prime_0_0_limbs[19]);
-    link if final_step_used ~> mem.mstore(output_addr + 76, time_step, a_prime_prime_prime_0_0_limbs[18]);
-    link if final_step_used ~> mem.mstore(output_addr + 80, time_step, a_prime_prime_prime_0_0_limbs[21]);
-    link if final_step_used ~> mem.mstore(output_addr + 84, time_step, a_prime_prime_prime_0_0_limbs[20]);
-    link if final_step_used ~> mem.mstore(output_addr + 88, time_step, a_prime_prime_prime_0_0_limbs[23]);
-    link if final_step_used ~> mem.mstore(output_addr + 92, time_step, a_prime_prime_prime_0_0_limbs[22]);
-    link if final_step_used ~> mem.mstore(output_addr + 96, time_step, a_prime_prime_prime_0_0_limbs[25]);
-    link if final_step_used ~> mem.mstore(output_addr + 100, time_step, a_prime_prime_prime_0_0_limbs[24]);
-    link if final_step_used ~> mem.mstore(output_addr + 104, time_step, a_prime_prime_prime_0_0_limbs[27]);
-    link if final_step_used ~> mem.mstore(output_addr + 108, time_step, a_prime_prime_prime_0_0_limbs[26]);
-    link if final_step_used ~> mem.mstore(output_addr + 112, time_step, a_prime_prime_prime_0_0_limbs[29]);
-    link if final_step_used ~> mem.mstore(output_addr + 116, time_step, a_prime_prime_prime_0_0_limbs[28]);
-    link if final_step_used ~> mem.mstore(output_addr + 120, time_step, a_prime_prime_prime_0_0_limbs[31]);
-    link if final_step_used ~> mem.mstore(output_addr + 124, time_step, a_prime_prime_prime_0_0_limbs[30]);
-    link if final_step_used ~> mem.mstore(output_addr + 128, time_step, a_prime_prime_prime_0_0_limbs[33]);
-    link if final_step_used ~> mem.mstore(output_addr + 132, time_step, a_prime_prime_prime_0_0_limbs[32]);
-    link if final_step_used ~> mem.mstore(output_addr + 136, time_step, a_prime_prime_prime_0_0_limbs[35]);
-    link if final_step_used ~> mem.mstore(output_addr + 140, time_step, a_prime_prime_prime_0_0_limbs[34]);
-    link if final_step_used ~> mem.mstore(output_addr + 144, time_step, a_prime_prime_prime_0_0_limbs[37]);
-    link if final_step_used ~> mem.mstore(output_addr + 148, time_step, a_prime_prime_prime_0_0_limbs[36]);
-    link if final_step_used ~> mem.mstore(output_addr + 152, time_step, a_prime_prime_prime_0_0_limbs[39]);
-    link if final_step_used ~> mem.mstore(output_addr + 156, time_step, a_prime_prime_prime_0_0_limbs[38]);
-    link if final_step_used ~> mem.mstore(output_addr + 160, time_step, a_prime_prime_prime_0_0_limbs[41]);
-    link if final_step_used ~> mem.mstore(output_addr + 164, time_step, a_prime_prime_prime_0_0_limbs[40]);
-    link if final_step_used ~> mem.mstore(output_addr + 168, time_step, a_prime_prime_prime_0_0_limbs[43]);
-    link if final_step_used ~> mem.mstore(output_addr + 172, time_step, a_prime_prime_prime_0_0_limbs[42]);
-    link if final_step_used ~> mem.mstore(output_addr + 176, time_step, a_prime_prime_prime_0_0_limbs[45]);
-    link if final_step_used ~> mem.mstore(output_addr + 180, time_step, a_prime_prime_prime_0_0_limbs[44]);
-    link if final_step_used ~> mem.mstore(output_addr + 184, time_step, a_prime_prime_prime_0_0_limbs[47]);
-    link if final_step_used ~> mem.mstore(output_addr + 188, time_step, a_prime_prime_prime_0_0_limbs[46]);
-    link if final_step_used ~> mem.mstore(output_addr + 192, time_step, a_prime_prime_prime_0_0_limbs[49]);
-    link if final_step_used ~> mem.mstore(output_addr + 196, time_step, a_prime_prime_prime_0_0_limbs[48]);
+    link if final_step_used ~> mem.mstore(output_addr + 8, time_step, a_prime_prime[3]);
+    link if final_step_used ~> mem.mstore(output_addr + 12, time_step, a_prime_prime[2]);
+    link if final_step_used ~> mem.mstore(output_addr + 16, time_step, a_prime_prime[5]);
+    link if final_step_used ~> mem.mstore(output_addr + 20, time_step, a_prime_prime[4]);
+    link if final_step_used ~> mem.mstore(output_addr + 24, time_step, a_prime_prime[7]);
+    link if final_step_used ~> mem.mstore(output_addr + 28, time_step, a_prime_prime[6]);
+    link if final_step_used ~> mem.mstore(output_addr + 32, time_step, a_prime_prime[9]);
+    link if final_step_used ~> mem.mstore(output_addr + 36, time_step, a_prime_prime[8]);
+    link if final_step_used ~> mem.mstore(output_addr + 40, time_step, a_prime_prime[11]);
+    link if final_step_used ~> mem.mstore(output_addr + 44, time_step, a_prime_prime[10]);
+    link if final_step_used ~> mem.mstore(output_addr + 48, time_step, a_prime_prime[13]);
+    link if final_step_used ~> mem.mstore(output_addr + 52, time_step, a_prime_prime[12]);
+    link if final_step_used ~> mem.mstore(output_addr + 56, time_step, a_prime_prime[15]);
+    link if final_step_used ~> mem.mstore(output_addr + 60, time_step, a_prime_prime[14]);
+    link if final_step_used ~> mem.mstore(output_addr + 64, time_step, a_prime_prime[17]);
+    link if final_step_used ~> mem.mstore(output_addr + 68, time_step, a_prime_prime[16]);
+    link if final_step_used ~> mem.mstore(output_addr + 72, time_step, a_prime_prime[19]);
+    link if final_step_used ~> mem.mstore(output_addr + 76, time_step, a_prime_prime[18]);
+    link if final_step_used ~> mem.mstore(output_addr + 80, time_step, a_prime_prime[21]);
+    link if final_step_used ~> mem.mstore(output_addr + 84, time_step, a_prime_prime[20]);
+    link if final_step_used ~> mem.mstore(output_addr + 88, time_step, a_prime_prime[23]);
+    link if final_step_used ~> mem.mstore(output_addr + 92, time_step, a_prime_prime[22]);
+    link if final_step_used ~> mem.mstore(output_addr + 96, time_step, a_prime_prime[25]);
+    link if final_step_used ~> mem.mstore(output_addr + 100, time_step, a_prime_prime[24]);
+    link if final_step_used ~> mem.mstore(output_addr + 104, time_step, a_prime_prime[27]);
+    link if final_step_used ~> mem.mstore(output_addr + 108, time_step, a_prime_prime[26]);
+    link if final_step_used ~> mem.mstore(output_addr + 112, time_step, a_prime_prime[29]);
+    link if final_step_used ~> mem.mstore(output_addr + 116, time_step, a_prime_prime[28]);
+    link if final_step_used ~> mem.mstore(output_addr + 120, time_step, a_prime_prime[31]);
+    link if final_step_used ~> mem.mstore(output_addr + 124, time_step, a_prime_prime[30]);
+    link if final_step_used ~> mem.mstore(output_addr + 128, time_step, a_prime_prime[33]);
+    link if final_step_used ~> mem.mstore(output_addr + 132, time_step, a_prime_prime[32]);
+    link if final_step_used ~> mem.mstore(output_addr + 136, time_step, a_prime_prime[35]);
+    link if final_step_used ~> mem.mstore(output_addr + 140, time_step, a_prime_prime[34]);
+    link if final_step_used ~> mem.mstore(output_addr + 144, time_step, a_prime_prime[37]);
+    link if final_step_used ~> mem.mstore(output_addr + 148, time_step, a_prime_prime[36]);
+    link if final_step_used ~> mem.mstore(output_addr + 152, time_step, a_prime_prime[39]);
+    link if final_step_used ~> mem.mstore(output_addr + 156, time_step, a_prime_prime[38]);
+    link if final_step_used ~> mem.mstore(output_addr + 160, time_step, a_prime_prime[41]);
+    link if final_step_used ~> mem.mstore(output_addr + 164, time_step, a_prime_prime[40]);
+    link if final_step_used ~> mem.mstore(output_addr + 168, time_step, a_prime_prime[43]);
+    link if final_step_used ~> mem.mstore(output_addr + 172, time_step, a_prime_prime[42]);
+    link if final_step_used ~> mem.mstore(output_addr + 176, time_step, a_prime_prime[45]);
+    link if final_step_used ~> mem.mstore(output_addr + 180, time_step, a_prime_prime[44]);
+    link if final_step_used ~> mem.mstore(output_addr + 184, time_step, a_prime_prime[47]);
+    link if final_step_used ~> mem.mstore(output_addr + 188, time_step, a_prime_prime[46]);
+    link if final_step_used ~> mem.mstore(output_addr + 192, time_step, a_prime_prime[49]);
+    link if final_step_used ~> mem.mstore(output_addr + 196, time_step, a_prime_prime[48]);
     // ------------- End memory read / write ---------------
 
     // Adapted from Plonky3 implementation of Keccak: https://github.com/Plonky3/Plonky3/tree/main/keccak-air/src
@@ -383,13 +383,13 @@ machine Keccakf32Memory(mem: Memory) with
     let bits_to_value_be: expr[] -> expr = |bits_be| array::fold(bits_be, 0, |acc, e| (acc * 2 + e));
 
    // @Steve are these constants correct for 32?
-    array::new(100, |i| {
-        let y = i / 20;
-        let x = (i / 4) % 5;
-        let limb = i % 4;
+    array::new(50, |i| {
+        let y = i / 10;
+        let x = (i / 2) % 5;
+        let limb = i % 2;
         let get_bit: int -> expr = |z| xor3(a_prime[y * 320 + x * 64 + z], c[x * 64 + z], c_prime[x * 64 + z]);
 
-        let limb_bits_be: expr[] = array::reverse(array::new(16, |z| get_bit(limb * 16 + z)));
+        let limb_bits_be: expr[] = array::reverse(array::new(32, |z| get_bit(limb * 32 + z)));
         a[i] = bits_to_value_be(limb_bits_be)
     });
 
@@ -436,15 +436,15 @@ machine Keccakf32Memory(mem: Memory) with
     // }
 
    // @Steve are these constants correct for 32?
-    array::new(100, |i| {
-        let y = i / 20;
-        let x = (i / 4) % 5;
-        let limb = i % 4;
+    array::new(50, |i| {
+        let y = i / 10;
+        let x = (i / 2) % 5;
+        let limb = i % 2;
 
         let get_bit: int -> expr = |z| {
             xor(b(x, y, z), andn(b((x + 1) % 5, y, z), b((x + 2) % 5, y, z)))
         };
-        let limb_bits_be: expr[] = array::reverse(array::new(16, |z| get_bit(limb * 16 + z)));
+        let limb_bits_be: expr[] = array::reverse(array::new(32, |z| get_bit(limb * 32 + z)));
         a_prime_prime[i] = bits_to_value_be(limb_bits_be)
     });
 
@@ -486,8 +486,8 @@ machine Keccakf32Memory(mem: Memory) with
     // }
 
    // @Steve are these constants correct for 32?
-    array::new(4, |limb| {
-        let limb_bits_be: expr[] = array::reverse(array::new(16, |z| a_prime_prime_0_0_bits[limb * 16 + z]));
+    array::new(2, |limb| {
+        let limb_bits_be: expr[] = array::reverse(array::new(32, |z| a_prime_prime_0_0_bits[limb * 32 + z]));
         a_prime_prime[limb] = bits_to_value_be(limb_bits_be)
     });
 
@@ -516,8 +516,8 @@ machine Keccakf32Memory(mem: Memory) with
     //     );
     // }
 
-    array::new(4, |limb| {
-        let limb_bits_be: expr[] = array::reverse(array::new(16, |z| get_xored_bit(limb * 16 + z)));
+    array::new(2, |limb| {
+        let limb_bits_be: expr[] = array::reverse(array::new(32, |z| get_xored_bit(limb * 32 + z)));
         a_prime_prime_prime_0_0_limbs[limb] = bits_to_value_be(limb_bits_be)
     });
 
@@ -537,10 +537,10 @@ machine Keccakf32Memory(mem: Memory) with
 
     // final_step and is_last should never be 1 at the same time, because final_step is 1 at multiples of 24 and can never be 1 at power of 2.
     // (1 - final_step - is_last) is used to deactivate constraints that reference the next row, whenever we are at the latch row or the last row of the trace (so that we don't incorrectly cycle to the first row).
-    array::new(100, |i| {
-        let y = i / 20;
-        let x = (i / 4) % 5;
-        let limb = i % 4;
+    array::new(50, |i| {
+        let y = i / 10;
+        let x = (i / 2) % 5;
+        let limb = i % 2;
         (1 - final_step - is_last) * (a_prime_prime_prime(y, x, limb) - a[i]') = 0
     });
 
@@ -556,7 +556,7 @@ machine Keccakf32Memory(mem: Memory) with
     //     }
     // }
 
-    let a_prime_prime_prime: int, int, int -> expr = |y, x, limb| if y == 0 && x == 0 { a_prime_prime_prime_0_0_limbs[limb] } else { a_prime_prime[y * 20 + x * 4 + limb] };
+    let a_prime_prime_prime: int, int, int -> expr = |y, x, limb| if y == 0 && x == 0 { a_prime_prime_prime_0_0_limbs[limb] } else { a_prime_prime[y * 10 + x * 2 + limb] };
 
    // @Steve are these constants correct for 32?
     let R: int[] = [
@@ -620,7 +620,7 @@ machine Keccakf32Memory(mem: Memory) with
     let query_c: int, int, int -> int = query |x, limb, bit_in_limb|
         utils::fold(
             5, 
-            |y| (int(eval(a[y * 20 + x * 4 + limb])) >> bit_in_limb) & 0x1, 
+            |y| (int(eval(a[y * 10 + x * 2 + limb])) >> bit_in_limb) & 0x1, 
             0, 
             |acc, e| acc ^ e
         );
@@ -679,7 +679,7 @@ machine Keccakf32Memory(mem: Memory) with
     // }
 
     let query_a_prime: int, int, int, int, int -> int = query |x, y, z, limb, bit_in_limb| 
-        ((int(eval(a[y * 20 + x * 4 + limb])) >> bit_in_limb) & 0x1) ^ 
+        ((int(eval(a[y * 10 + x * 2 + limb])) >> bit_in_limb) & 0x1) ^ 
         int(eval(c[x * 64 + z])) ^ 
         int(eval(c_prime[x * 64 + z]));
 
@@ -688,8 +688,8 @@ machine Keccakf32Memory(mem: Memory) with
             let y = i / 320;
             let x = (i / 64) % 5;
             let z = i % 64;
-            let limb = z / 16;
-            let bit_in_limb = z % 16;
+            let limb = z / 32;
+            let bit_in_limb = z % 32;
 
             provide_value(a_i, row, fe(query_a_prime(x, y, z, limb, bit_in_limb)));
         });
@@ -715,20 +715,20 @@ machine Keccakf32Memory(mem: Memory) with
 
     let query_a_prime_prime: int, int, int -> int = query |x, y, limb| 
         utils::fold(
-            16, 
+            32, 
             |z| 
-                int(eval(b(x, y, (limb + 1) * 16 - 1 - z))) ^ 
-                int(eval(andn(b((x + 1) % 5, y, (limb + 1) * 16 - 1 - z), 
-                b((x + 2) % 5, y, (limb + 1) * 16 - 1 - z)))), 
+                int(eval(b(x, y, (limb + 1) * 32 - 1 - z))) ^ 
+                int(eval(andn(b((x + 1) % 5, y, (limb + 1) * 32 - 1 - z), 
+                b((x + 2) % 5, y, (limb + 1) * 32 - 1 - z)))), 
             0, 
             |acc, e| acc * 2 + e
         );
 
     query |row| {
         let _ = array::map_enumerated(a_prime_prime, |i, a_i| {
-            let y = i / 20;
-            let x = (i / 4) % 5;
-            let limb = i % 4;
+            let y = i / 10;
+            let x = (i / 2) % 5;
+            let limb = i % 2;
 
             provide_value(a_i, row, fe(query_a_prime_prime(x, y, limb)));
         });
@@ -753,8 +753,8 @@ machine Keccakf32Memory(mem: Memory) with
 
     query |row| {
         let _ = array::map_enumerated(a_prime_prime_0_0_bits, |i, a_i| {
-            let limb = i / 16;
-            let bit_in_limb = i % 16;
+            let limb = i / 32;
+            let bit_in_limb = i % 32;
 
             provide_value(
                 a_i, 
@@ -773,10 +773,10 @@ machine Keccakf32Memory(mem: Memory) with
 
     let query_a_prime_prime_prime_0_0_limbs: int, int -> int = query |round, limb| 
         int(eval(a_prime_prime[limb])) ^ 
-        ((RC[round] >> (limb * 32)) & 0xffff);
+        ((RC[round] >> (limb * 32)) & 0xffffffff);
 
     query |row| {
-        let _ = array::new(4, |limb| {
+        let _ = array::new(2, |limb| {
             provide_value(
                 a_prime_prime_prime_0_0_limbs[limb], 
                 row, 
