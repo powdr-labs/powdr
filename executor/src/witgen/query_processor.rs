@@ -14,7 +14,7 @@ use super::{rows::RowPair, Constraint, EvalResult, EvalValue, FixedData, Incompl
 /// Computes value updates that result from a query.
 pub struct QueryProcessor<'a, 'b, T: FieldElement, QueryCallback: Send + Sync> {
     fixed_data: &'a FixedData<'a, T>,
-    query_callback: &'b mut QueryCallback,
+    query_callback: &'b QueryCallback,
     size: DegreeType,
 }
 
@@ -23,7 +23,7 @@ impl<'a, 'b, T: FieldElement, QueryCallback: super::QueryCallback<T>>
 {
     pub fn new(
         fixed_data: &'a FixedData<'a, T>,
-        query_callback: &'b mut QueryCallback,
+        query_callback: &'b QueryCallback,
         size: DegreeType,
     ) -> Self {
         Self {
@@ -155,7 +155,7 @@ struct Symbols<'a, 'b, 'c, T: FieldElement, QueryCallback: Send + Sync> {
     rows: &'b RowPair<'b, 'a, T>,
     size: DegreeType,
     updates: Constraints<AlgebraicVariable<'a>, T>,
-    query_callback: &'c mut QueryCallback,
+    query_callback: &'c QueryCallback,
 }
 
 impl<'a, 'b, 'c, T: FieldElement, QueryCallback: super::QueryCallback<T>> SymbolLookup<'a, T>
