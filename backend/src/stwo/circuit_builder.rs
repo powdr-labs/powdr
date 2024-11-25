@@ -112,7 +112,8 @@ impl<T: FieldElement> FrameworkEval for PowdrEval<T> {
             .map(|poly_id| {
                 (
                     *poly_id,
-                    eval.get_preprocessed_column(PreprocessedColumn::Plonk(3)),
+                    // PreprocessedColumn::Plonk(0) is unused argument in get_preprocessed_column,0 has no meaning
+                    eval.get_preprocessed_column(PreprocessedColumn::Plonk(0)),
                 )
             })
             .collect();
@@ -173,7 +174,10 @@ where
                     false => witness_eval[&poly_id][0].clone(),
                     true => witness_eval[&poly_id][1].clone(),
                 },
-                PolynomialType::Constant => constant_eval[&poly_id].clone(),
+                PolynomialType::Constant => match r.next {
+                    false => constant_eval[&poly_id].clone(),
+                    true => panic!("Next on constant polynomials is not supported"),
+                },
                 PolynomialType::Intermediate => {
                     unimplemented!("Intermediate polynomials are not supported in stwo yet")
                 }

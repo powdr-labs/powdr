@@ -40,8 +40,6 @@ pub struct StwoProver<T, B: BackendForChannel<MC> + Send, MC: MerkleChannel, C: 
     /// Verifying key placeholder
     _verifying_key: Option<()>,
     _channel_marker: PhantomData<C>,
-    _backend_marker: PhantomData<B>,
-    _merkle_channel_marker: PhantomData<MC>,
 }
 
 impl<'a, F: FieldElement, B, MC, C> StwoProver<F, B, MC, C>
@@ -97,8 +95,8 @@ where
                                         .unwrap_or(0),
                                 )
                                 .circle_domain();
-
-                                let updated_fixed_columns: BTreeMap<
+                                // witness and constant traces need to be bit reversed
+                                let bit_reversed_fixed_columns: BTreeMap<
                                     DegreeType,
                                     Vec<(String, Vec<F>)>,
                                 > = fixed_columns
@@ -120,7 +118,7 @@ where
 
                                 let constant_trace: ColumnVec<
                                     CircleEvaluation<B, BaseField, BitReversedOrder>,
-                                > = updated_fixed_columns
+                                > = bit_reversed_fixed_columns
                                     .values()
                                     .flat_map(|vec| {
                                         vec.iter().map(|(_name, values)| {
@@ -159,8 +157,6 @@ where
             proving_key: RefCell::new(Some(proving_key)),
             _verifying_key: None,
             _channel_marker: PhantomData,
-            _backend_marker: PhantomData,
-            _merkle_channel_marker: PhantomData,
         })
     }
     pub fn prove(&self, witness: &[(String, Vec<F>)]) -> Result<Vec<u8>, String> {
@@ -173,7 +169,7 @@ where
                 .circle_domain()
                 .half_coset,
         );
-
+        //TODO: make machines with multi degree sizes work, one only the first one is taken, multi degrees error is handled by NoVariableDegreeAvailable in mod.rs
         let (trees, mut prover_channel) = self
             .proving_key
             .borrow_mut()
@@ -195,7 +191,8 @@ where
                 tree_builder.commit(&mut prover_channel);
                 (commitment_scheme.trees, prover_channel)
             });
-
+        //get the commitment for constant columns
+        //TODO: different degree sizes machines need to have their own twiddles, but now as only one the first one is taken, only one twiddles is used
         let mut commitment_scheme = CommitmentSchemeProver::<'_, B, MC>::new(config, &twiddles);
         commitment_scheme.trees = trees;
 
