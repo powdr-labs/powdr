@@ -134,7 +134,8 @@ impl Linker {
             DegreeMode::Monolithic => {
                 Expression::Number(SourceRef::unknown(), self.max_degree.clone().unwrap()).into()
             }
-            DegreeMode::Vadcop => try_into_namespace_degree(object.degree).unwrap_or_else(|| panic!("machine at {location} must have an explicit degree")),
+            DegreeMode::Vadcop => try_into_namespace_degree(object.degree)
+                .unwrap_or_else(|| panic!("machine at {location} must have an explicit degree")),
         };
 
         let namespace = location.to_string();
