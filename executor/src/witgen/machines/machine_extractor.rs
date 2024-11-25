@@ -1,10 +1,10 @@
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 
 use itertools::Itertools;
+use powdr_ast::analyzed::LookupIdentity;
 use powdr_ast::analyzed::PermutationIdentity;
 use powdr_ast::analyzed::PhantomLookupIdentity;
 use powdr_ast::analyzed::PhantomPermutationIdentity;
-use powdr_ast::analyzed::{LookupIdentity, PolynomialType};
 
 use super::block_machine::BlockMachine;
 use super::double_sorted_witness_machine_16::DoubleSortedWitnesses16;
@@ -22,12 +22,8 @@ use crate::Identity;
 
 use powdr_ast::analyzed::{
     self, AlgebraicExpression as Expression, PolyID, PolynomialReference, Reference,
-    SelectedExpressions,
 };
-use powdr_ast::parsed::{
-    self,
-    visitor::{AllChildren, Children},
-};
+use powdr_ast::parsed::{self, visitor::AllChildren};
 use powdr_number::FieldElement;
 
 pub struct ExtractionOutput<'a, T: FieldElement> {
@@ -47,30 +43,33 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
     /// Finds machines in the witness columns and identities
     /// and returns a list of machines and the identities
     /// that are not "internal" to the machines.
-    pub fn split_out_machines(
-        &self,
-        identities: Vec<&'a Identity<T>>,
-        stage: u8,
-    ) -> ExtractionOutput<'a, T> {
+    pub fn split_out_machines(&self, identities: Vec<&'a Identity<T>>) -> ExtractionOutput<'a, T> {
         let mut machines: Vec<KnownMachine<T>> = vec![];
 
         // Ignore prover functions that reference columns of later stages.
+        let all_witnesses = self.fixed.witness_cols.keys().collect::<HashSet<_>>();
+        let current_stage_witnesses = self
+            .fixed
+            .witnesses_until_current_stage()
+            .collect::<HashSet<_>>();
+        let later_stage_witness_names = all_witnesses
+            .difference(&current_stage_witnesses)
+            .map(|w| self.fixed.column_name(w))
+            .collect::<HashSet<_>>();
         let prover_functions = self
             .fixed
             .analyzed
             .prover_functions
             .iter()
             .filter(|pf| {
-                refs_in_parsed_expression(pf).unique().all(|n| {
-                    let def = self.fixed.analyzed.definitions.get(n);
-                    def.and_then(|(s, _)| s.stage).unwrap_or_default() <= stage as u32
-                })
+                !refs_in_parsed_expression(pf)
+                    .unique()
+                    .any(|n| later_stage_witness_names.contains(n.as_str()))
             })
             .collect::<Vec<&analyzed::Expression>>();
 
-        let all_witnesses = self.fixed.witness_cols.keys().collect::<HashSet<_>>();
         let mut publics = PublicsTracker::default();
-        let mut remaining_witnesses = all_witnesses.clone();
+        let mut remaining_witnesses = current_stage_witnesses.clone();
         let mut base_identities = identities.clone();
         let mut extracted_prover_functions = HashSet::new();
         let mut id_counter = 0;
@@ -118,7 +117,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                     // all referenced witnesses are machine witnesses.
                     // For lookups, any lookup calling from the current machine belongs
                     // to the machine; lookups to the machine do not.
-                    let all_refs = &self.refs_in_identity_left(i) & (&all_witnesses);
+                    let all_refs = &self.refs_in_identity_left(i) & (&current_stage_witnesses);
                     !all_refs.is_empty() && all_refs.is_subset(&machine_witnesses)
                 });
             base_identities = remaining_identities;
@@ -237,8 +236,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                 match i {
                     Identity::Polynomial(i) => {
                         // Any current witness in the identity adds all other witnesses.
-                        let in_identity =
-                            &self.refs_in_expression(&i.expression).collect() & all_witnesses;
+                        let in_identity = &self.fixed.polynomial_references(i) & all_witnesses;
                         if in_identity.intersection(&witnesses).next().is_some() {
                             witnesses.extend(in_identity);
                         }
@@ -249,7 +247,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
                     | Identity::PhantomPermutation(PhantomPermutationIdentity { left, .. }) => {
                         // If we already have witnesses on the LHS, include the LHS,
                         // and vice-versa, but not across the "sides".
-                        let in_lhs = &self.refs_in_selected_expressions(left) & all_witnesses;
+                        let in_lhs = &self.fixed.polynomial_references(left) & all_witnesses;
                         let in_rhs = &self
                             .refs_in_connection_rhs(&Connection::try_from(*i).unwrap())
                             & all_witnesses;
@@ -272,17 +270,10 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
 
     /// Like refs_in_selected_expressions(connection.right), but also includes the multiplicity column.
     fn refs_in_connection_rhs(&self, connection: &Connection<T>) -> HashSet<PolyID> {
-        self.refs_in_selected_expressions(connection.right)
+        self.fixed
+            .polynomial_references(connection.right)
             .into_iter()
             .chain(connection.multiplicity_column)
-            .collect()
-    }
-
-    /// Extracts all references to names from selected expressions.
-    fn refs_in_selected_expressions(&self, sel_expr: &SelectedExpressions<T>) -> HashSet<PolyID> {
-        sel_expr
-            .children()
-            .flat_map(|e| self.refs_in_expression(e))
             .collect()
     }
 
@@ -293,31 +284,11 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
             | Identity::PhantomLookup(PhantomLookupIdentity { left, .. })
             | Identity::Permutation(PermutationIdentity { left, .. })
             | Identity::PhantomPermutation(PhantomPermutationIdentity { left, .. }) => {
-                self.refs_in_selected_expressions(left)
+                self.fixed.polynomial_references(left)
             }
-            Identity::Polynomial(i) => self.refs_in_expression(&i.expression).collect(),
-            Identity::Connect(i) => i
-                .left
-                .iter()
-                .chain(&i.right)
-                .flat_map(|e| self.refs_in_expression(e))
-                .collect(),
+            Identity::Polynomial(i) => self.fixed.polynomial_references(i),
+            Identity::Connect(i) => self.fixed.polynomial_references(i),
         }
-    }
-
-    fn refs_in_expression(&self, expr: &'a Expression<T>) -> Box<dyn Iterator<Item = PolyID> + '_> {
-        Box::new(expr.all_children().flat_map(move |e| match e {
-            Expression::Reference(p) => match p.poly_id.ptype {
-                PolynomialType::Committed | PolynomialType::Constant => {
-                    Box::new(std::iter::once(p.poly_id))
-                }
-                // For intermediate polynomials, recursively extract the references in the expression.
-                PolynomialType::Intermediate => self.refs_in_expression(
-                    self.fixed.intermediate_definitions.get(&p.poly_id).unwrap(),
-                ),
-            },
-            _ => Box::new(std::iter::empty()),
-        }))
     }
 }
 
