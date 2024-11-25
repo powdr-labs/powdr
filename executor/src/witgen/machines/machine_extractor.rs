@@ -59,7 +59,7 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
             })
             .collect::<Vec<&analyzed::Expression>>();
 
-        if stage > 0 {
+        if self.fixed.stage() > 0 {
             // We expect later-stage witness columns to be accumulators for lookup and permutation arguments.
             // These don't behave like normal witness columns (e.g. in a block machine), and they might depend
             // on witness columns of more than one machine.
@@ -83,7 +83,6 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
         }
         let mut machines: Vec<KnownMachine<T>> = vec![];
 
-        let all_witnesses = self.fixed.witness_cols.keys().collect::<HashSet<_>>();
         let mut publics = PublicsTracker::default();
         let mut remaining_witnesses = current_stage_witnesses.clone();
         let mut base_identities = identities.clone();

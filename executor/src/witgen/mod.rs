@@ -198,8 +198,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         // These are already captured in the range constraints.
         let (fixed, retained_identities) =
             global_constraints::set_global_constraints(fixed, &identities);
-        let machines =
-            MachineExtractor::new(&fixed).split_out_machines(retained_identities);
+        let machines = MachineExtractor::new(&fixed).split_out_machines(retained_identities);
 
         // Run main machine and extract columns from all machines.
         let mut columns = MutableState::new(machines.into_iter(), &self.query_callback).run();
@@ -456,6 +455,10 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             Ok(degree) => degree.is_unique(),
             _ => false,
         }
+    }
+
+    pub fn stage(&self) -> u8 {
+        self.stage
     }
 
     pub fn global_range_constraints(&self) -> &GlobalConstraints<T> {
