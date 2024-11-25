@@ -46,7 +46,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     /// Runs the machine without any arguments from the first row.
     fn run<Q: QueryCallback<T>>(&mut self, _mutable_state: &MutableState<'a, T, Q>) {
         unimplemented!(
-            "Running machine {} without a lookup is not supported.",
+            "Running machine {} without a machine call is not supported.",
             self.name()
         );
     }
