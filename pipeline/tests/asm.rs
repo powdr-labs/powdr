@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use powdr_executor::constant_evaluator::{self};
+use powdr_executor::constant_evaluator;
 use powdr_linker::LinkerParams;
 use powdr_number::{FieldElement, GoldilocksField};
 use powdr_pipeline::{
