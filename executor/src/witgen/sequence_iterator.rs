@@ -34,7 +34,7 @@ pub struct DefaultSequenceIterator {
     progress_steps: Vec<SequenceStep>,
 }
 
-const MAX_ROUNDS_PER_ROW_DELTA: usize = 100;
+const MAX_ROUNDS_PER_ROW_DELTA: usize = 1000;
 
 impl DefaultSequenceIterator {
     pub fn new(block_size: usize, identities_count: usize, outer_query_row: Option<i64>) -> Self {
@@ -86,6 +86,7 @@ impl DefaultSequenceIterator {
     }
 
     fn start_next_round(&mut self) {
+        println!("current_round_count: {}", self.current_round_count);
         if self.current_round_count > MAX_ROUNDS_PER_ROW_DELTA {
             panic!("In witness generation for block machine, we have been stuck in the same row for {MAX_ROUNDS_PER_ROW_DELTA} rounds. \
                     This is a bug in the witness generation algorithm.");
