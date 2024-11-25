@@ -45,12 +45,12 @@ impl<F: FieldElement> BackendFactory<F> for MockBackendFactory<F> {
         if verification_app_key.is_some() {
             unimplemented!();
         }
+        let machine_to_pil = powdr_backend_utils::split_pil(&pil);
         let connections = pil
             .identities
             .iter()
-            .filter_map(|identity| identity.try_into().ok())
+            .filter_map(|identity| Connection::try_new(identity, &pil, &machine_to_pil).ok())
             .collect();
-        let machine_to_pil = powdr_backend_utils::split_pil(&pil);
         let allow_warnings = match backend_options.as_str() {
             "allow_warnings" => true,
             "" => false,

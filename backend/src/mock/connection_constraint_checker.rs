@@ -1,10 +1,15 @@
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::ops::ControlFlow;
 
+use powdr_ast::analyzed::AlgebraicExpression;
+use powdr_ast::analyzed::Analyzed;
 use powdr_ast::analyzed::{
     Identity, LookupIdentity, PermutationIdentity, PhantomLookupIdentity,
     PhantomPermutationIdentity, SelectedExpressions,
 };
+use powdr_ast::parsed::visitor::ExpressionVisitable;
+use powdr_ast::parsed::visitor::VisitOrder;
 use powdr_backend_utils::referenced_namespaces_algebraic_expression;
 use powdr_executor::witgen::AffineExpression;
 use powdr_executor::witgen::ExpressionEvaluator;
@@ -26,28 +31,94 @@ pub struct Connection<F> {
     pub kind: ConnectionKind,
 }
 
-impl<F: Clone> TryFrom<&Identity<F>> for Connection<F> {
-    type Error = ();
-
-    fn try_from(identity: &Identity<F>) -> Result<Self, Self::Error> {
-        match identity {
+impl<F: FieldElement> Connection<F> {
+    pub fn try_new(
+        identity: &Identity<F>,
+        global_pil: &Analyzed<F>,
+        machine_to_pil: &BTreeMap<String, Analyzed<F>>,
+    ) -> Result<Self, ()> {
+        let (left, right, kind) = match identity {
             Identity::Polynomial(_) => Err(()),
             Identity::Connect(_) => unimplemented!(),
             Identity::Lookup(LookupIdentity { left, right, .. })
-            | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. }) => Ok(Self {
-                left: left.clone(),
-                right: right.clone(),
-                kind: ConnectionKind::Lookup,
-            }),
+            | Identity::PhantomLookup(PhantomLookupIdentity { left, right, .. }) => {
+                Ok((left.clone(), right.clone(), ConnectionKind::Lookup))
+            }
             Identity::Permutation(PermutationIdentity { left, right, .. })
             | Identity::PhantomPermutation(PhantomPermutationIdentity { left, right, .. }) => {
-                Ok(Self {
-                    left: left.clone(),
-                    right: right.clone(),
-                    kind: ConnectionKind::Permutation,
-                })
+                Ok((left.clone(), right.clone(), ConnectionKind::Permutation))
             }
-        }
+        }?;
+
+        let connection_global = Self { left, right, kind };
+        let caller = connection_global.caller();
+        let left = connection_global.localize(
+            &connection_global.left,
+            global_pil,
+            &machine_to_pil[&caller],
+        );
+        let callee = connection_global.callee();
+        let right = connection_global.localize(
+            &connection_global.right,
+            global_pil,
+            &machine_to_pil[&callee],
+        );
+
+        Ok(Self {
+            left,
+            right,
+            kind: connection_global.kind,
+        })
+    }
+
+    fn localize(
+        &self,
+        selected_expressions: &SelectedExpressions<F>,
+        global_pil: &Analyzed<F>,
+        local_pil: &Analyzed<F>,
+    ) -> SelectedExpressions<F> {
+        let id_to_name_global = global_pil
+            .committed_polys_in_source_order()
+            .map(|(s, _)| s)
+            .chain(global_pil.constant_polys_in_source_order().map(|(s, _)| s))
+            .chain(
+                global_pil
+                    .intermediate_polys_in_source_order()
+                    .map(|(s, _)| s),
+            )
+            .flat_map(|symbol| symbol.array_elements())
+            .map(|(name, poly_id)| (poly_id, name))
+            .collect::<BTreeMap<_, _>>();
+
+        let id_to_name_local = local_pil
+            .committed_polys_in_source_order()
+            .map(|(s, _)| s)
+            .chain(local_pil.constant_polys_in_source_order().map(|(s, _)| s))
+            .chain(
+                local_pil
+                    .intermediate_polys_in_source_order()
+                    .map(|(s, _)| s),
+            )
+            .flat_map(|symbol| symbol.array_elements())
+            .map(|(name, poly_id)| (poly_id, name))
+            .collect::<BTreeMap<_, _>>();
+
+        let mut localized = selected_expressions.clone();
+
+        localized.visit_expressions_mut(
+            &mut |expr| {
+                if let AlgebraicExpression::Reference(reference) = expr {
+                    let name = &id_to_name_global[&reference.poly_id];
+                    // TODO
+                    let id = id_to_name_local.iter().find(|(_, n)| *n == name).unwrap().0;
+                    reference.poly_id = *id;
+                }
+                ControlFlow::Continue::<()>(())
+            },
+            VisitOrder::Pre,
+        );
+
+        localized
     }
 }
 
@@ -126,6 +197,7 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
         selected_expressions: &SelectedExpressions<F>,
     ) -> BTreeSet<Vec<F>> {
         let machine = &self.machines[&machine_name];
+
         (0..machine.size)
             .into_par_iter()
             .filter_map(|row| {
