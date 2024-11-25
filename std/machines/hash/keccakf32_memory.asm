@@ -21,7 +21,7 @@ machine Keccakf32Memory(mem: Memory) with
     Additional columns compared to the non-memory version:
     - 1 column for user input address (of first byte of input).
     - 1 column for user output address (of first byte of output).
-    - 49 columns for computed input/output address of all bytes.
+    - 1 column for time step.
     Overall, given that there are 2,600+ columns in the non-memory version, this isn't a huge cost
     Methodology description:
     1. The latch with the input and output addresses + time step is in the last row of each block.
@@ -31,14 +31,8 @@ machine Keccakf32Memory(mem: Memory) with
     5. Keccak is computed from top to bottom.
     6. Output addresses for all bytes are calculated from user output address in the last row.
     7. Store all output bytes from keccak computation columns to memory.
-    Note that this methodology reuses the same 49 columns of addr to calculate input and output addresses of all bytes.
-    However, these 49 columns are only used in the first and last rows of each block.
     Essentially, we conduct all memory reads in the first row and all memory writes in the last row.
-    This might seem wasteful, but it's still cheaper than spreading memory reads/writes over different rows while using as few columns as possible, 
-    which requires 100 columns to make outputs available in all rows in additional to the memory columns.
-    This alternative methodology (memory reads/writes over different rows) also doesn't work well with our auto witgen infrastructure, 
-    because one would need to do memory read -> keccak computation -> memory write as three sequential passes during witgen.
-    On the contrary, our current methodology performs all memory reads at once in the first row, then immediately does the keccak computation,
+    Our current methodology performs all memory reads at once in the first row, then immediately does the keccak computation,
     and finally performs all memory writes at once in the last row, and thus only requires one pass with auto witgen.
     Though note that input address need to be first copied from the last row to the first row.
     */
@@ -127,7 +121,7 @@ machine Keccakf32Memory(mem: Memory) with
 
     // Write memory while converting output to big endian format.
     // Specifically, output obtained from the keccak computation are little endian.
-    // However, this keccakf16_memory machine produces big endian outputs in memory.
+    // However, this keccakf32_memory machine produces big endian outputs in memory.
     // Therefore, memory write converts little endian from keccak computation to big endian for the output in memory.
     link if final_step_used ~> mem.mstore(output_addr, time_step, a_prime_prime_prime_0_0_limbs[1]);
     link if final_step_used ~> mem.mstore(output_addr + 4, time_step, a_prime_prime_prime_0_0_limbs[0]);
@@ -234,8 +228,6 @@ machine Keccakf32Memory(mem: Memory) with
     //     pub a_prime_prime_prime_0_0_limbs: [T; U64_LIMBS],
     // }
 
-   // @Steve are these constants correct for 32?
-   // It would be good to replace all these constants by named constants
     col witness preimage[5 * 5 * 2];
     col witness a[5 * 5 * 2];
     col witness c[5 * 64];
@@ -341,7 +333,6 @@ machine Keccakf32Memory(mem: Memory) with
     // 1 1 0  0
     // 1 1 1  1
 
-   // @Steve are these constants correct for 32?
     array::new(320, |i| {
         let x = i / 64;
         let z = i % 64;
@@ -382,7 +373,6 @@ machine Keccakf32Memory(mem: Memory) with
 
     let bits_to_value_be: expr[] -> expr = |bits_be| array::fold(bits_be, 0, |acc, e| (acc * 2 + e));
 
-   // @Steve are these constants correct for 32?
     array::new(50, |i| {
         let y = i / 10;
         let x = (i / 2) % 5;
@@ -406,7 +396,6 @@ machine Keccakf32Memory(mem: Memory) with
     //     }
     // }
 
-   // @Steve are these constants correct for 32?
     array::new(320, |i| {
         let x = i / 64;
         let z = i % 64;
@@ -435,7 +424,6 @@ machine Keccakf32Memory(mem: Memory) with
     //     }
     // }
 
-   // @Steve are these constants correct for 32?
     array::new(50, |i| {
         let y = i / 10;
         let x = (i / 2) % 5;
@@ -465,7 +453,6 @@ machine Keccakf32Memory(mem: Memory) with
     //     self.a_prime[b][a][(z + 64 - rot) % 64]
     // }
 
-   // @Steve are these constants correct for 32?
     let b: int, int, int -> expr = |x, y, z| {
         let a: int = (x + 3 * y) % 5;
         let rot: int = R[a * 5 + x]; // b = x
@@ -485,7 +472,6 @@ machine Keccakf32Memory(mem: Memory) with
     //     builder.assert_eq(computed_a_prime_prime_0_0_limb, a_prime_prime_0_0_limb);
     // }
 
-   // @Steve are these constants correct for 32?
     array::new(2, |limb| {
         let limb_bits_be: expr[] = array::reverse(array::new(32, |z| a_prime_prime_0_0_bits[limb * 32 + z]));
         a_prime_prime[limb] = bits_to_value_be(limb_bits_be)
@@ -558,7 +544,6 @@ machine Keccakf32Memory(mem: Memory) with
 
     let a_prime_prime_prime: int, int, int -> expr = |y, x, limb| if y == 0 && x == 0 { a_prime_prime_prime_0_0_limbs[limb] } else { a_prime_prime[y * 10 + x * 2 + limb] };
 
-   // @Steve are these constants correct for 32?
     let R: int[] = [
         0, 36, 3, 41, 18, 
         1, 44, 10, 45, 2,
@@ -567,7 +552,6 @@ machine Keccakf32Memory(mem: Memory) with
         27, 20, 39, 8, 14
     ];
 
-   // @Steve are these constants correct for 32?
     let RC: int[] = [
         0x0000000000000001,
         0x0000000000008082,
@@ -595,7 +579,6 @@ machine Keccakf32Memory(mem: Memory) with
         0x8000000080008008
     ];
 
-   // @Steve are these constants correct for 32?
     let RC_BITS: int[] = array::new(24 * 64, |i| {
         let rc_idx = i / 64;
         let bit = i % 64;
@@ -625,7 +608,6 @@ machine Keccakf32Memory(mem: Memory) with
             |acc, e| acc ^ e
         );
 
-   // @Steve are these constants correct for 32?
     query |row| {
         let _ = array::map_enumerated(c, |i, c_i| {
             let x = i / 64;
