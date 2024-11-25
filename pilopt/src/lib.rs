@@ -85,7 +85,7 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
             Box::new(value.iter().flat_map(|v| {
                 v.all_children().flat_map(|e| {
                     if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = e {
-                        Some(poly_id_to_definition_name[poly_id].into())
+                        Some(poly_id_to_definition_name[poly_id].0.into())
                     } else {
                         None
                     }
@@ -122,49 +122,45 @@ fn remove_unreferenced_definitions<T: FieldElement>(pil_file: &mut Analyzed<T>) 
 
 /// Builds a lookup-table that can be used to turn all symbols
 /// (including array elements) in the form of their poly ids, into the names of the symbols.
+/// The boolean flag indicates whether the symbol belongs to an array or not
 fn build_poly_id_to_definition_name_lookup(
     pil_file: &Analyzed<impl FieldElement>,
-) -> BTreeMap<PolyID, &String> {
-    let mut poly_id_to_definition_name = BTreeMap::new();
+) -> BTreeMap<PolyID, (&String, bool)> {
+    let mut poly_id_to_info = BTreeMap::new();
+
     for (name, (symbol, _)) in &pil_file.definitions {
         if matches!(symbol.kind, SymbolKind::Poly(_)) {
+            if symbol.is_array() {
+                symbol.array_elements().for_each(|(_, id)| {
+                    poly_id_to_info.insert(id, (name, true));
+                });
+            } else {
+                symbol.array_elements().for_each(|(_, id)| {
+                    poly_id_to_info.insert(id, (name, false));
+                });
+            }
+        }
+    }
+
+    for (name, (symbol, _)) in &pil_file.intermediate_columns {
+        if symbol.is_array() {
             symbol.array_elements().for_each(|(_, id)| {
-                poly_id_to_definition_name.insert(id, name);
+                poly_id_to_info.insert(id, (name, true));
+            });
+        } else {
+            symbol.array_elements().for_each(|(_, id)| {
+                poly_id_to_info.insert(id, (name, false));
             });
         }
     }
-    for (name, (symbol, _)) in &pil_file.intermediate_columns {
-        symbol.array_elements().for_each(|(_, id)| {
-            poly_id_to_definition_name.insert(id, name);
-        });
-    }
-    poly_id_to_definition_name
+
+    poly_id_to_info
 }
 
-/// Builds a lookup-table that can be used to turn array elements
-/// (in form of their poly ids) into the names of the arrays.
-fn build_poly_id_to_array_elem_lookup(
-    pil_file: &Analyzed<impl FieldElement>,
-) -> BTreeMap<PolyID, &String> {
-    let mut poly_id_to_definition_name = BTreeMap::new();
-    for (name, (symbol, _)) in &pil_file.definitions {
-        if matches!(symbol.kind, SymbolKind::Poly(_)) {
-            symbol.array_elements_only().for_each(|(_, id)| {
-                poly_id_to_definition_name.insert(id, name);
-            });
-        }
-    }
-    for (name, (symbol, _)) in &pil_file.intermediate_columns {
-        symbol.array_elements_only().for_each(|(_, id)| {
-            poly_id_to_definition_name.insert(id, name);
-        });
-    }
-    poly_id_to_definition_name
-}
 /// Collect all names that are referenced in identities and public declarations.
 fn collect_required_symbols<'a, T: FieldElement>(
     pil_file: &'a Analyzed<T>,
-    poly_id_to_definition_name: &BTreeMap<PolyID, &'a String>,
+    poly_id_to_definition_name: &BTreeMap<PolyID, (&'a String, bool)>,
 ) -> HashSet<SymbolReference<'a>> {
     let mut required_names: HashSet<SymbolReference<'a>> = Default::default();
     required_names.extend(
@@ -183,7 +179,7 @@ fn collect_required_symbols<'a, T: FieldElement>(
     for id in &pil_file.identities {
         id.pre_visit_expressions(&mut |e: &AlgebraicExpression<T>| {
             if let AlgebraicExpression::Reference(AlgebraicReference { poly_id, .. }) = e {
-                required_names.insert(poly_id_to_definition_name[poly_id].into());
+                required_names.insert(poly_id_to_definition_name[poly_id].0.into());
             }
         });
     }
@@ -668,7 +664,7 @@ fn remove_duplicate_identities<T: FieldElement>(pil_file: &mut Analyzed<T>) {
 /// for each pair of identified columns
 fn equal_constrained<T: FieldElement>(
     expression: &AlgebraicExpression<T>,
-    poly_id_to_array_elem: &BTreeMap<PolyID, &String>,
+    poly_id_to_array_elem: &BTreeMap<PolyID, (&String, bool)>,
 ) -> Option<((String, PolyID), (String, PolyID))> {
     match expression {
         AlgebraicExpression::BinaryOperation(AlgebraicBinaryOperation {
@@ -684,8 +680,10 @@ fn equal_constrained<T: FieldElement>(
                     && !left_ref.next
                     && right_ref.is_witness()
                     && !right_ref.next
-                    && !poly_id_to_array_elem.contains_key(&left_ref.poly_id)
-                    && !poly_id_to_array_elem.contains_key(&right_ref.poly_id)
+                    && poly_id_to_array_elem.contains_key(&left_ref.poly_id)
+                    && poly_id_to_array_elem.contains_key(&right_ref.poly_id)
+                    && !poly_id_to_array_elem.get(&right_ref.poly_id).unwrap().1
+                    && !poly_id_to_array_elem.get(&left_ref.poly_id).unwrap().1
                 {
                     if left_ref.poly_id > right_ref.poly_id {
                         Some((
@@ -709,7 +707,7 @@ fn equal_constrained<T: FieldElement>(
 }
 
 fn remove_equal_constrained_witness_columns<T: FieldElement>(pil_file: &mut Analyzed<T>) {
-    let poly_id_to_array_elem = build_poly_id_to_array_elem_lookup(pil_file);
+    let poly_id_to_array_elem = build_poly_id_to_definition_name_lookup(pil_file);
     let substitutions: Vec<_> = pil_file
         .identities
         .iter()
