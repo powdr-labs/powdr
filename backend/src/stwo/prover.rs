@@ -67,6 +67,7 @@ where
                 if pil.constant_count() + pil.publics_count() == 0 {
                     None
                 } else {
+                    let fixed_columns = machine_fixed_columns(&fixed, &pil);
                     Some((
                         namespace.to_string(),
                         pil.committed_polys_in_source_order()
@@ -76,7 +77,6 @@ where
                             .map(|size| {
                                 // get the config
                                 let config = get_config();
-
                                 // commit to the fixed columns
                                 let twiddles = Arc::new(B::precompute_twiddles(
                                     CanonicCoset::new(size.ilog2() + 1 + FRI_LOG_BLOWUP as u32)
@@ -88,9 +88,6 @@ where
                                 let prover_channel = &mut <MC as MerkleChannel>::C::default();
                                 let mut commitment_scheme =
                                     CommitmentSchemeProver::<'_, B, MC>::new(config, &twiddles);
-
-                                // get fix_columns evaluations
-                                let fixed_columns = machine_fixed_columns(&fixed, &analyzed);
 
                                 let domain = CanonicCoset::new(
                                     fixed_columns
@@ -142,10 +139,7 @@ where
                                 tree_builder.commit(prover_channel);
                                 let trees = commitment_scheme.trees;
 
-                                (
-                                    analyzed.degree().ilog2() as usize,
-                                    TableProvingKey { trees },
-                                )
+                                (size as usize, TableProvingKey { trees })
                             })
                             .collect(),
                     ))

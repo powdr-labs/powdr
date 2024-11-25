@@ -20,7 +20,6 @@ mod circuit_builder;
 mod proof;
 mod prover;
 
-
 struct RestrictedFactory;
 
 impl<F: FieldElement> BackendFactory<F> for RestrictedFactory {
@@ -38,9 +37,6 @@ impl<F: FieldElement> BackendFactory<F> for RestrictedFactory {
     ) -> Result<Box<dyn crate::Backend<F>>, Error> {
         if proving_key.is_some() {
             return Err(Error::BackendError("Proving key unused".to_string()));
-        }
-        if pil.degrees().len() > 1 {
-            return Err(Error::NoVariableDegreeAvailable);
         }
         let stwo: Box<StwoProver<F, SimdBackend, Blake2sMerkleChannel, Blake2sChannel>> =
             Box::new(StwoProver::new(pil, fixed)?);
