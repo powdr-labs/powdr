@@ -272,7 +272,6 @@ pub fn rust_continuations_dry_run<F: FieldElement>(
 
     let length: usize = match max_degree_expr {
         Some(Expression::Number(_, n)) => n.value.clone().try_into().unwrap(),
-        // if the max degree is not defined, it defaults to `1 << MAX_DEGREE_LOG` which is too large
         None => unimplemented!("Continuations rely on `Main` defining a max degree"),
         Some(e) => {
             unimplemented!("Continuations rely on `Main` not using a complex expression as its max degree, found {e}")

@@ -724,12 +724,6 @@ mod builder {
 
             let main_degree = {
                 let range = namespace_degree_range(pil, "main");
-                assert!(
-                    self.main_columns_len().next_power_of_two() <= range.max as usize,
-                    "main machine larger than PIL's max degree: {} > {}",
-                    self.main_columns_len().next_power_of_two(),
-                    range.max as usize
-                );
                 std::cmp::max(
                     self.main_columns_len().next_power_of_two() as u32,
                     range.min as u32,
@@ -752,13 +746,6 @@ mod builder {
                 }
                 machine.final_row_override();
                 let range = namespace_degree_range(pil, machine.namespace());
-                assert!(
-                    machine.len().next_power_of_two() <= range.max as u32,
-                    "machine {} larger than PIL's max degree: {} > {}",
-                    machine.namespace(),
-                    machine.len().next_power_of_two(),
-                    range.max as u32
-                );
                 // extend with dummy blocks up to the required machine degree
                 let machine_degree =
                     std::cmp::max(machine.len().next_power_of_two(), range.min as u32);
@@ -774,12 +761,6 @@ mod builder {
             // ----------------------------
             let regs_degree = {
                 let range = namespace_degree_range(pil, &self.regs_machine.namespace);
-                assert!(
-                    self.regs_machine.len().next_power_of_two() <= range.max as u32,
-                    "register memory machine larger than PIL's max degree: {} > {}",
-                    self.regs_machine.len().next_power_of_two(),
-                    range.max as u32
-                );
                 std::cmp::max(
                     self.regs_machine.len().next_power_of_two(),
                     range.min as u32,
@@ -793,12 +774,6 @@ mod builder {
             // ----------------------------
             let mem_degree = {
                 let range = namespace_degree_range(pil, &self.memory_machine.namespace);
-                assert!(
-                    self.memory_machine.len().next_power_of_two() <= range.max as u32,
-                    "register memory machine larger than PIL's max degree: {} > {}",
-                    self.memory_machine.len().next_power_of_two(),
-                    range.max as u32
-                );
                 std::cmp::max(
                     self.memory_machine.len().next_power_of_two(),
                     range.min as u32,

@@ -1,7 +1,9 @@
 use std::machines::small_field::add_sub::AddSub;
 use std::machines::range::Byte2;
 
-machine Main {
+let MIN: int = 2**5;
+let MAX: int = 2**12;
+machine Main with min_degree: MIN, max_degree: MAX {
     reg pc[@pc];
     reg A_h[<=];
     reg A_l[<=];
@@ -14,7 +16,7 @@ machine Main {
     reg B;
 
     Byte2 byte2;
-    AddSub add_sub(byte2);
+    AddSub add_sub(byte2, MIN, MAX);
 
     instr add A_h, A_l, B_h, B_l -> C_h, C_l
       link ~> (C_h, C_l) = add_sub.add(A_h, A_l, B_h, B_l);

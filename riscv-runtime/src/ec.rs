@@ -21,12 +21,11 @@ pub fn add_u8_be(
     be_to_u32(&by, &mut by1);
 
     unsafe {
-        asm!("ecall",
-             in("a0") &mut ax1 as *mut [u32; 8],
-             in("a1") &mut ay1 as *mut [u32; 8],
-             in("a2") &mut bx1 as *mut [u32; 8],
-             in("a3") &mut by1 as *mut [u32; 8],
-             in("t0") u32::from(Syscall::EcAdd));
+        ecall!(Syscall::EcAdd,
+            in("a0") ax1.as_mut_ptr(),
+            in("a1") ay1.as_mut_ptr(),
+            in("a2") bx1.as_ptr(),
+            in("a3") by1.as_ptr());
     }
 
     u32_to_be(&ax1, &mut ax);
@@ -39,16 +38,15 @@ pub fn add_u8_be(
 pub fn add_u8_le(
     mut ax: [u8; 32],
     mut ay: [u8; 32],
-    mut bx: [u8; 32],
-    mut by: [u8; 32],
+    bx: [u8; 32],
+    by: [u8; 32],
 ) -> ([u8; 32], [u8; 32]) {
     unsafe {
-        asm!("ecall",
-             in("a0") ax.as_mut_ptr() as *mut [u32; 8],
-             in("a1") ay.as_mut_ptr() as *mut [u32; 8],
-             in("a2") bx.as_mut_ptr() as *mut [u32; 8],
-             in("a3") by.as_mut_ptr() as *mut [u32; 8],
-             in("t0") u32::from(Syscall::EcAdd));
+        ecall!(Syscall::EcAdd,
+            in("a0") ax.as_mut_ptr(),
+            in("a1") ay.as_mut_ptr(),
+            in("a2") bx.as_ptr(),
+            in("a3") by.as_ptr());
     }
     (ax, ay)
 }
@@ -57,16 +55,15 @@ pub fn add_u8_le(
 pub fn add_u32_le(
     mut ax: [u32; 8],
     mut ay: [u32; 8],
-    mut bx: [u32; 8],
-    mut by: [u32; 8],
+    bx: [u32; 8],
+    by: [u32; 8],
 ) -> ([u32; 8], [u32; 8]) {
     unsafe {
-        asm!("ecall",
-             in("a0") &mut ax as *mut [u32; 8],
-             in("a1") &mut ay as *mut [u32; 8],
-             in("a2") &mut bx as *mut [u32; 8],
-             in("a3") &mut by as *mut [u32; 8],
-             in("t0") u32::from(Syscall::EcAdd));
+        ecall!(Syscall::EcAdd,
+            in("a0") ax.as_mut_ptr(),
+            in("a1") ay.as_mut_ptr(),
+            in("a2") bx.as_ptr(),
+            in("a3") by.as_ptr());
     }
     (ax, ay)
 }
@@ -80,10 +77,9 @@ pub fn double_u8_be(mut x: [u8; 32], mut y: [u8; 32]) -> ([u8; 32], [u8; 32]) {
     be_to_u32(&y, &mut y1);
 
     unsafe {
-        asm!("ecall",
-             in("a0") &mut x1 as *mut [u32; 8],
-             in("a1") &mut y1 as *mut [u32; 8],
-             in("t0") u32::from(Syscall::EcDouble));
+        ecall!(Syscall::EcDouble,
+            in("a0") x1.as_mut_ptr(),
+            in("a1") y1.as_mut_ptr());
     }
 
     u32_to_be(&x1, &mut x);
@@ -95,10 +91,9 @@ pub fn double_u8_be(mut x: [u8; 32], mut y: [u8; 32]) -> ([u8; 32], [u8; 32]) {
 /// Double a k256 ec point. Coordinates are little-endian u8 arrays.
 pub fn double_u8_le(mut x: [u8; 32], mut y: [u8; 32]) -> ([u8; 32], [u8; 32]) {
     unsafe {
-        asm!("ecall",
-             in("a0") x.as_mut_ptr() as *mut [u32; 8],
-             in("a1") y.as_mut_ptr() as *mut [u32; 8],
-             in("t0") u32::from(Syscall::EcDouble));
+        ecall!(Syscall::EcDouble,
+            in("a0") x.as_mut_ptr(),
+            in("a1") y.as_mut_ptr());
     }
 
     (x, y)
@@ -107,10 +102,9 @@ pub fn double_u8_le(mut x: [u8; 32], mut y: [u8; 32]) -> ([u8; 32], [u8; 32]) {
 /// Double a k256 ec point. Coordinates are little-endian u32 arrays.
 pub fn double_u32_le(mut x: [u32; 8], mut y: [u32; 8]) -> ([u32; 8], [u32; 8]) {
     unsafe {
-        asm!("ecall",
-             in("a0") &mut x as *mut [u32; 8],
-             in("a1") &mut y as *mut [u32; 8],
-             in("t0") u32::from(Syscall::EcDouble));
+        ecall!(Syscall::EcDouble,
+            in("a0") x.as_mut_ptr(),
+            in("a1") y.as_mut_ptr());
     }
     (x, y)
 }

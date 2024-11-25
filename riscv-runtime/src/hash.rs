@@ -7,7 +7,7 @@ use powdr_riscv_syscalls::Syscall;
 
 pub fn native_hash(data: &mut [u64; 12]) -> &[u64; 4] {
     unsafe {
-        asm!("ecall", in("a0") data as *mut _, in("t0") u32::from(Syscall::NativeHash));
+        ecall!(Syscall::NativeHash, in("a0") data);
     }
     data[..4].try_into().unwrap()
 }
@@ -17,20 +17,15 @@ pub fn native_hash(data: &mut [u64; 12]) -> &[u64; 4] {
 /// sub-array is returned.
 pub fn poseidon_gl(data: &mut [Goldilocks; 12]) -> &[Goldilocks; 4] {
     unsafe {
-        asm!("ecall", in("a0") data as *mut _, in("t0") u32::from(Syscall::PoseidonGL));
+        ecall!(Syscall::PoseidonGL, in("a0") data);
     }
     data[..4].try_into().unwrap()
 }
 
 /// Perform one Poseidon2 permutation with 8 Goldilocks field elements in-place.
 pub fn poseidon2_gl_inplace(data: &mut [Goldilocks; 8]) {
-    let ptr = data as *mut _;
     unsafe {
-        asm!("ecall",
-            in("a0") ptr,
-            in("a1") ptr,
-            in("t0") u32::from(Syscall::Poseidon2GL)
-        );
+        ecall!(Syscall::Poseidon2GL, in("a0") data, in("a1") data);
     }
 }
 
@@ -38,11 +33,7 @@ pub fn poseidon2_gl_inplace(data: &mut [Goldilocks; 8]) {
 pub fn poseidon2_gl(data: &[Goldilocks; 8]) -> [Goldilocks; 8] {
     unsafe {
         let mut output: MaybeUninit<[Goldilocks; 8]> = MaybeUninit::uninit();
-        asm!("ecall",
-            in("a0") data as *const _,
-            in("a1") output.as_mut_ptr(),
-            in("t0") u32::from(Syscall::Poseidon2GL)
-        );
+        ecall!(Syscall::Poseidon2GL, in("a0") data, in("a1") output.as_mut_ptr());
         output.assume_init()
     }
 }
@@ -52,7 +43,7 @@ pub fn poseidon2_gl(data: &[Goldilocks; 8]) -> [Goldilocks; 8] {
 pub fn keccakf(input: &[u64; 25], output: &mut [u64; 25]) {
     unsafe {
         // Syscall inputs: memory pointer to input array and memory pointer to output array.
-        asm!("ecall", in("a0") input, in("a1") output, in("t0") u32::from(Syscall::KeccakF));
+        ecall!(Syscall::KeccakF, in("a0") input, in("a1") output);
     }
 }
 

@@ -3,7 +3,7 @@ use std::fmt::Display;
 use itertools::{Either, Itertools};
 
 use num_traits::Zero;
-use powdr_ast::analyzed::AlgebraicReference;
+use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReference};
 use powdr_number::{FieldElement, LargeInt};
 
 use super::global_constraints::RangeConstraintSet;
@@ -29,6 +29,18 @@ pub enum AlgebraicVariable<'a> {
     // TODO: This should be using the ID instead of the name, but we
     //       currently store the name in AlgebraicExpression::PublicReference.
     Public(&'a str),
+}
+
+impl<'a, T> TryFrom<&'a AlgebraicExpression<T>> for AlgebraicVariable<'a> {
+    type Error = ();
+
+    fn try_from(expr: &'a AlgebraicExpression<T>) -> Result<Self, Self::Error> {
+        match expr {
+            AlgebraicExpression::Reference(r) => Ok(AlgebraicVariable::Column(r)),
+            AlgebraicExpression::PublicReference(name) => Ok(AlgebraicVariable::Public(name)),
+            _ => Err(()),
+        }
+    }
 }
 
 impl AlgebraicVariable<'_> {

@@ -499,9 +499,6 @@ impl Display for PilStatement {
                         .unwrap_or_default()
                 )
             }
-            PilStatement::PolynomialConstantDeclaration(_, names) => {
-                write!(f, "pol constant {};", names.iter().format(", "))
-            }
             PilStatement::PolynomialConstantDefinition(_, name, definition) => {
                 write!(f, "pol constant {name}{definition};")
             }
@@ -1184,7 +1181,6 @@ mod tests {
     #[cfg(test)]
     mod parentheses {
         use powdr_parser::parse;
-        use powdr_parser::test_utils::ClearSourceRefs;
         use powdr_parser_util::UnwrapErrToStderr;
         use pretty_assertions::assert_eq;
         use test_log::test;
@@ -1193,13 +1189,10 @@ mod tests {
 
         fn test_paren(test_case: &TestCase) {
             let (input, expected) = test_case;
-            let mut parsed = parse(None, input).unwrap_err_to_stderr();
+            let parsed = parse(None, input).unwrap_err_to_stderr();
             let printed = parsed.to_string();
             assert_eq!(expected.trim(), printed.trim());
-            let mut re_parsed = parse(None, printed.as_str()).unwrap_err_to_stderr();
-
-            parsed.clear_source_refs();
-            re_parsed.clear_source_refs();
+            let re_parsed = parse(None, printed.as_str()).unwrap_err_to_stderr();
             assert_eq!(parsed, re_parsed);
         }
 

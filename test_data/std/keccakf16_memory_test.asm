@@ -1,5 +1,6 @@
 use std::machines::hash::keccakf16_memory::Keccakf16Memory;
 use std::machines::small_field::memory::Memory;
+use std::machines::small_field::add_sub::AddSub;
 use std::machines::range::Byte2;
 use std::machines::range::Bit12;
 
@@ -14,9 +15,10 @@ machine Main with degree: 65536 {
 
     Byte2 byte2;
     Bit12 bit12;
+    AddSub add_sub(byte2);
     Memory memory(bit12, byte2);
 
-    Keccakf16Memory keccakf16_memory(memory);
+    Keccakf16Memory keccakf16_memory(memory, add_sub);
 
     col fixed STEP(i) { i };
 

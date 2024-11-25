@@ -8,7 +8,7 @@ use powdr_pipeline::{
         assert_proofs_fail_for_invalid_witnesses_pilcom, gen_estark_proof,
         gen_estark_proof_with_backend_variant, make_prepared_pipeline,
         make_simple_prepared_pipeline, regular_test, run_pilcom_with_backend_variant, test_halo2,
-        test_halo2_with_backend_variant, test_pilcom, test_plonky3_with_backend_variant,
+        test_halo2_with_backend_variant, test_pilcom, test_plonky3_with_backend_variant, test_stwo,
         BackendVariant,
     },
     Pipeline,
@@ -24,7 +24,6 @@ fn invalid_witness() {
 }
 
 #[test]
-#[should_panic = "Number not included: F3G { cube: [Fr(0x0000000000000000), Fr(0x0000000000000000), Fr(0x0000000000000000)], dim: 3 }"]
 fn lookup_with_selector() {
     // witness[0] and witness[2] have to be in {2, 4}
 
@@ -50,13 +49,24 @@ fn lookup_with_selector() {
     let witness = vec![("main::w".to_string(), vec![0, 42, 4, 17])];
     assert_proofs_fail_for_invalid_witnesses_halo2(f, &witness);
     assert_proofs_fail_for_invalid_witnesses_pilcom(f, &witness);
+}
+
+#[test]
+#[cfg(feature = "estark-starky")]
+#[should_panic = "Number not included: F3G { cube: [Fr(0x0000000000000000), Fr(0x0000000000000000), Fr(0x0000000000000000)], dim: 3 }"]
+fn lookup_with_selector_starky() {
+    // witness[0] and witness[2] have to be in {2, 4}
+
+    let f = "pil/lookup_with_selector.pil";
+
+    // Invalid witness: 0 is not in the set {2, 4}
+    let witness = vec![("main::w".to_string(), vec![0, 42, 4, 17])];
     // Unfortunately, eStark panics in this case. That's why the test is marked
     // as should_panic, with the error message that would be coming from eStark...
     assert_proofs_fail_for_invalid_witnesses_estark(f, &witness);
 }
 
 #[test]
-#[should_panic = "assertion failed: check_val._eq(&F::one())"]
 fn permutation_with_selector() {
     // witness[0] and witness[2] have to be in {2, 4}
 
@@ -82,6 +92,18 @@ fn permutation_with_selector() {
     let witness = vec![("main::w".to_string(), vec![0, 42, 4, 17])];
     assert_proofs_fail_for_invalid_witnesses_halo2(f, &witness);
     assert_proofs_fail_for_invalid_witnesses_pilcom(f, &witness);
+}
+
+#[test]
+#[cfg(feature = "estark-starky")]
+#[should_panic = "assertion failed: check_val._eq(&F::one())"]
+fn permutation_with_selector_starky() {
+    // witness[0] and witness[2] have to be in {2, 4}
+
+    let f = "pil/permutation_with_selector.pil";
+
+    // Invalid witness: 0 is not in the set {2, 4}
+    let witness = vec![("main::w".to_string(), vec![0, 42, 4, 17])];
     // Unfortunately, eStark panics in this case. That's why the test is marked
     // as should_panic, with the error message that would be coming from eStark...
     assert_proofs_fail_for_invalid_witnesses_estark(f, &witness);
@@ -244,7 +266,6 @@ fn block_lookup_or() {
 fn block_lookup_or_permutation() {
     let f = "pil/block_lookup_or_permutation.pil";
     test_pilcom(make_simple_prepared_pipeline(f));
-    test_halo2(make_simple_prepared_pipeline(f));
     // starky would take too long for this in debug mode
 }
 
@@ -264,6 +285,11 @@ fn add() {
     );
 }
 
+#[test]
+fn stwo_add_and_equal() {
+    let f = "pil/add_and_equal.pil";
+    test_stwo(f, Default::default());
+}
 #[test]
 fn simple_div() {
     let f = "pil/simple_div.pil";

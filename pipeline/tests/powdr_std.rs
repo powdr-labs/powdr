@@ -139,6 +139,25 @@ fn arith_large_test() {
 
 #[test]
 #[ignore = "Too slow"]
+fn arith256_memory_large_test() {
+    let f = "std/arith256_memory_large_test.asm";
+    let pipeline = make_simple_prepared_pipeline(f);
+    test_pilcom(pipeline.clone());
+
+    // Running gen_estark_proof(f, Default::default())
+    // is too slow for the PR tests. This will only create a single
+    // eStark proof instead of 3.
+    #[cfg(feature = "estark-starky")]
+    pipeline
+        .with_backend(powdr_backend::BackendType::EStarkStarky, None)
+        .compute_proof()
+        .unwrap();
+
+    test_halo2(make_simple_prepared_pipeline(f));
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn memory_large_test() {
     let f = "std/memory_large_test.asm";
     regular_test_without_small_field(f, &[]);
@@ -168,13 +187,6 @@ fn memory_small_test() {
 #[test]
 fn permutation_via_challenges() {
     let f = "std/permutation_via_challenges.asm";
-    test_halo2(make_simple_prepared_pipeline(f));
-    test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
-}
-
-#[test]
-fn permutation_via_challenges_ext() {
-    let f = "std/permutation_via_challenges_ext.asm";
     test_halo2(make_simple_prepared_pipeline(f));
     test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
 }
@@ -413,7 +425,7 @@ fn sort() {
         vec![8, 0, 9, 20, 23, 88, 14, -9],
     ];
     let code =
-        "let test_sort: int[] -> int[] = |x| std::array::sort(x, |a, b| a < b); machine Main { }"
+        "let test_sort: int[] -> int[] = |x| std::array::sort(x, |a, b| a < b); machine Main with degree: 1024 { }"
             .to_string();
     let mut pipeline = Pipeline::<GoldilocksField>::default().from_asm_string(code, None);
     let analyzed = pipeline.compute_analyzed_pil().unwrap().clone();

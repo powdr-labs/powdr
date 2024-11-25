@@ -27,6 +27,7 @@ use powdr_executor::{
         WitgenCallbackContext, WitnessGenerator,
     },
 };
+pub use powdr_linker::LinkerMode;
 use powdr_number::{write_polys_csv_file, CsvRenderMode, FieldElement, ReadWrite};
 use powdr_schemas::SerializedAnalyzed;
 
@@ -102,6 +103,8 @@ struct Arguments<T: FieldElement> {
     backend: Option<BackendType>,
     /// Backend options
     backend_options: BackendOptions,
+    /// Backend options
+    linker_mode: LinkerMode,
     /// CSV render mode for witness generation.
     csv_render_mode: CsvRenderMode,
     /// Whether to export the witness as a CSV file.
@@ -335,6 +338,11 @@ impl<T: FieldElement> Pipeline<T> {
         self.add_query_callback(Arc::new(dict_data_to_query_callback(inputs)))
     }
 
+    pub fn with_linker_mode(mut self, linker_mode: LinkerMode) -> Self {
+        self.arguments.linker_mode = linker_mode;
+        self
+    }
+
     pub fn with_backend(mut self, backend: BackendType, options: Option<BackendOptions>) -> Self {
         self.arguments.backend = Some(backend);
         self.arguments.backend_options = options.unwrap_or_default();
@@ -385,10 +393,10 @@ impl<T: FieldElement> Pipeline<T> {
     }
 
     pub fn from_file(self, asm_file: PathBuf) -> Self {
-        if asm_file.extension().unwrap() == "asm" {
-            self.from_asm_file(asm_file)
-        } else {
-            self.from_pil_file(asm_file)
+        match asm_file.extension() {
+            Some(ext) if ext.to_str().unwrap() == "asm" => self.from_asm_file(asm_file),
+            Some(ext) if ext.to_str().unwrap() == "pil" => self.from_pil_file(asm_file),
+            _ => panic!("expected a .pil or .asm file"),
         }
     }
 
@@ -834,7 +842,7 @@ impl<T: FieldElement> Pipeline<T> {
                 let graph = self.artifact.linked_machine_graph.take().unwrap();
 
                 self.log("Run linker");
-                let linked = powdr_linker::link(graph)?;
+                let linked = powdr_linker::link(graph, self.arguments.linker_mode)?;
                 log::trace!("{linked}");
                 self.maybe_write_pil(&linked, "")?;
 

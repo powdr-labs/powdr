@@ -1,6 +1,7 @@
 /// Binary machine that works on chunks of 4 bits,
 /// to be used with permutation lookups.
 machine Binary4 with
+    degree: 2**16,
     latch: latch,
     operation_id: operation_id,
     // Allow this machine to be connected via a permutation
@@ -12,6 +13,7 @@ machine Binary4 with
 
     // check that we can reference the call_selectors
     let sum_sel = std::array::sum(sel);
+    std::utils::force_bool(sum_sel);
 
     col fixed FACTOR(i) { 1 << (((i + 1) % 8) * 4) };
 

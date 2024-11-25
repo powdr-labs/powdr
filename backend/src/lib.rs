@@ -1,6 +1,6 @@
 #![deny(clippy::print_stdout)]
 
-#[cfg(feature = "estark-starky")]
+#[cfg(any(feature = "estark-polygon", feature = "estark-starky"))]
 mod estark;
 #[cfg(feature = "halo2")]
 mod halo2;
@@ -11,6 +11,7 @@ mod stwo;
 
 mod composite;
 mod field_filter;
+mod mock;
 
 use powdr_ast::analyzed::Analyzed;
 use powdr_executor::{constant_evaluator::VariablySizedColumn, witgen::WitgenCallback};
@@ -20,6 +21,8 @@ use strum::{Display, EnumString, EnumVariantNames};
 
 #[derive(Clone, EnumString, EnumVariantNames, Display, Copy)]
 pub enum BackendType {
+    #[strum(serialize = "mock")]
+    Mock,
     #[cfg(feature = "halo2")]
     #[strum(serialize = "halo2")]
     Halo2,
@@ -69,6 +72,7 @@ pub const DEFAULT_ESTARK_OPTIONS: &str = "stark_gl";
 impl BackendType {
     pub fn factory<T: FieldElement>(&self) -> Box<dyn BackendFactory<T>> {
         match self {
+            BackendType::Mock => Box::new(mock::MockBackendFactory::new()),
             #[cfg(feature = "halo2")]
             BackendType::Halo2 => Box::new(halo2::Halo2ProverFactory),
             #[cfg(feature = "halo2")]
@@ -107,15 +111,7 @@ impl BackendType {
                 Box::new(composite::CompositeBackendFactory::new(plonky3::Factory))
             }
             #[cfg(feature = "stwo")]
-            BackendType::Stwo => Box::new(stwo::StwoProverFactory),
-            #[cfg(not(any(
-                feature = "halo2",
-                feature = "estark-polygon",
-                feature = "estark-starky",
-                feature = "plonky3",
-                feature = "stwo"
-            )))]
-            _ => panic!("Empty backend."),
+            BackendType::Stwo => Box::new(stwo::Factory),
         }
     }
 }
