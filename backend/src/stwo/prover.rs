@@ -174,23 +174,27 @@ where
                 .half_coset,
         );
 
-        let trees = self
+        let (trees, mut prover_channel) = self
             .proving_key
-            .borrow_mut() // Borrow as mutable using RefCell
+            .borrow_mut()
             .as_mut()
             .and_then(|stark_proving_key| stark_proving_key.preprocessed.values_mut().next())
             .and_then(|table_collection| table_collection.values_mut().next())
-            .map(|table_proving_key| std::mem::take(&mut table_proving_key.trees)) // Take ownership
-            .expect("Expected to find commitment_scheme in proving key");
-
-        let mut prover_channel = self
-            .proving_key
-            .borrow_mut() // Borrow as mutable using RefCell
-            .as_mut()
-            .and_then(|stark_proving_key| stark_proving_key.preprocessed.values_mut().next())
-            .and_then(|table_collection| table_collection.values_mut().next())
-            .map(|table_proving_key| std::mem::take(&mut table_proving_key.prover_channel)) // Take ownership
-            .expect("Expected to find commitment_scheme in proving key");
+            .map(|table_proving_key| {
+                (
+                    std::mem::take(&mut table_proving_key.trees),
+                    std::mem::take(&mut table_proving_key.prover_channel),
+                )
+            })
+            .unwrap_or_else(|| {
+                let mut prover_channel = <MC as MerkleChannel>::C::default();
+                let mut commitment_scheme =
+                    CommitmentSchemeProver::<'_, B, MC>::new(config, &twiddles);
+                let mut tree_builder = commitment_scheme.tree_builder();
+                tree_builder.extend_evals([]);
+                tree_builder.commit(&mut prover_channel);
+                (commitment_scheme.trees, prover_channel)
+            });
 
         let mut commitment_scheme = CommitmentSchemeProver::<'_, B, MC>::new(config, &twiddles);
         commitment_scheme.trees = trees;
