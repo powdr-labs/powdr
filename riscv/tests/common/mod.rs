@@ -16,6 +16,7 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
     contents: &str,
     inputs: &[T],
     data: Option<&[(u32, S)]>,
+    executor_witgen: bool,
 ) {
     let temp_dir = mktemp::Temp::new_dir().unwrap().release();
 
@@ -37,30 +38,26 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
 
     test_plonky3_pipeline::<T>(pipeline.clone());
 
-    /* Commenting out these tests for now because auto witgen does not handle
-    * partial witnesses well with Poseidon.
-        // verify using executor generated witness
-        // TODO remove the guard once the executor is implemented for BB
-        if T::known_field().unwrap() == KnownField::GoldilocksField {
-            let analyzed = pipeline.compute_analyzed_asm().unwrap().clone();
-            let pil = pipeline.compute_optimized_pil().unwrap();
-            let fixed = pipeline.compute_fixed_cols().unwrap().clone();
-            let execution = powdr_riscv_executor::execute(
-                &analyzed,
-                &pil,
-                fixed,
-                Default::default(),
-                pipeline.data_callback().unwrap(),
-                &[],
-                None,
-                None,
-            );
-            pipeline.rollback_from_witness();
-            let executor_trace: Vec<_> = execution.trace.into_iter().collect();
-            let pipeline = pipeline.add_external_witness_values(executor_trace);
-            test_plonky3_pipeline::<T>(pipeline);
-        }
-    */
+    // verify executor generated witness
+    if executor_witgen {
+        let analyzed = pipeline.compute_analyzed_asm().unwrap().clone();
+        let pil = pipeline.compute_optimized_pil().unwrap();
+        let fixed = pipeline.compute_fixed_cols().unwrap().clone();
+        let execution = powdr_riscv_executor::execute(
+            &analyzed,
+            &pil,
+            fixed,
+            Default::default(),
+            pipeline.data_callback().unwrap(),
+            &[],
+            None,
+            None,
+        );
+        pipeline.rollback_from_witness();
+        let executor_trace: Vec<_> = execution.trace.into_iter().collect();
+        let pipeline = pipeline.add_external_witness_values(executor_trace);
+        test_plonky3_pipeline::<T>(pipeline);
+    }
 }
 
 fn find_assembler() -> &'static str {
@@ -110,7 +107,12 @@ pub fn compile_riscv_asm_file(asm_file: &Path, options: CompilerOptions, use_pie
     powdr_riscv::elf::translate(&executable, options)
 }
 
-pub fn verify_riscv_asm_file(asm_file: &Path, options: CompilerOptions, use_pie: bool) {
+pub fn verify_riscv_asm_file(
+    asm_file: &Path,
+    options: CompilerOptions,
+    use_pie: bool,
+    executor_witgen: bool,
+) {
     let powdr_asm = compile_riscv_asm_file(asm_file, options, use_pie);
     let case_name = asm_file.file_stem().unwrap().to_str().unwrap();
 
@@ -121,6 +123,7 @@ pub fn verify_riscv_asm_file(asm_file: &Path, options: CompilerOptions, use_pie:
                 &powdr_asm,
                 &[],
                 None,
+                false,
             );
         }
         KnownField::KoalaBearField => {
@@ -129,6 +132,7 @@ pub fn verify_riscv_asm_file(asm_file: &Path, options: CompilerOptions, use_pie:
                 &powdr_asm,
                 &[],
                 None,
+                false,
             );
         }
         KnownField::Mersenne31Field => todo!(),
@@ -138,6 +142,7 @@ pub fn verify_riscv_asm_file(asm_file: &Path, options: CompilerOptions, use_pie:
                 &powdr_asm,
                 &[],
                 None,
+                executor_witgen,
             );
         }
         KnownField::Bn254Field => todo!(),

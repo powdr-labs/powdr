@@ -17,7 +17,7 @@ mod instruction_tests {
 
     fn run_instruction_test_with_options(path: &Path, options: CompilerOptions) {
         // Test from ELF path:
-        verify_riscv_asm_file(path, options, false);
+        verify_riscv_asm_file(path, options, false, true);
     }
 
     include!(concat!(env!("OUT_DIR"), "/instruction_tests.rs"));
