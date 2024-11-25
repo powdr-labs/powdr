@@ -36,6 +36,19 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
         run_pilcom_with_backend_variant(pipeline_gl, BackendVariant::Composite).unwrap();
     }
 
+    // Test with the fast RISCV executor.
+    // TODO remove the guard once the executor is implemented for BB
+    if T::known_field().unwrap() == KnownField::GoldilocksField {
+        let analyzed = pipeline.compute_analyzed_asm().unwrap().clone();
+        powdr_riscv_executor::execute_fast(
+            &analyzed,
+            Default::default(),
+            pipeline.data_callback().unwrap(),
+            &[],
+            None,
+        );
+    }
+
     test_plonky3_pipeline::<T>(pipeline.clone());
 
     // verify executor generated witness
