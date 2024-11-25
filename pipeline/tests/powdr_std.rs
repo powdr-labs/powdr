@@ -60,6 +60,15 @@ fn keccakf16_memory_test() {
 
 #[test]
 #[ignore = "Too slow"]
+fn keccakf32_memory_test() {
+    let f = "std/keccakf32_memory_test.asm";
+    let pipeline = make_simple_prepared_pipeline(f);
+    test_pilcom(pipeline.clone());
+    gen_estark_proof(pipeline);
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn poseidon_bb_test() {
     let f = "std/poseidon_bb_test.asm";
     test_plonky3_with_backend_variant::<BabyBearField>(f, vec![], BackendVariant::Monolithic);
