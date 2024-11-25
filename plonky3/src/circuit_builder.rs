@@ -536,7 +536,7 @@ where
         // Compute next-stage witness for each machine in parallel.
         *witness_by_machine = info_span!("Witness generation for next stage").in_scope(|| {
             witness_by_machine
-                .par_iter()
+                .iter()
                 .map(|(machine_name, machine_witness)| {
                     let new_witness = self.witgen_callback.as_ref().unwrap().next_stage_witness(
                         &self.split[machine_name].0,
