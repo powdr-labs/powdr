@@ -61,11 +61,16 @@ machine Keccakf16Memory(mem: Memory) with
     // Not used in any other rows.
     col witness addr_h[50];
     col witness addr_l[50];
+    col witness helper[50]; 
 
     // First step
     // Inverse (addr_l')
-    array::map(addr_l, |c| {
-        first_step * (c' * (c - 0xfffc) - 1) * (c - 0xfffc) = 0
+    array::new(50, |i| {
+        first_step * helper[i] * (addr_l[i] - 0xfffc) = 0
+    });
+
+    array::new(50, |i| {
+        first_step * (helper[i] - (addr_l[i]' * (addr_l[i] - 0xfffc) - 1)) = 0
     });
 
     // Carry (addr_h')
@@ -86,8 +91,12 @@ machine Keccakf16Memory(mem: Memory) with
 
     // Final step
     // Inverse (penultimate row of addr_l)
-    array::map(addr_l, |c| {
-        penultimate_step * (c * (c' - 0xfffc) - 1) * (c' - 0xfffc) = 0
+    array::new(50, |i| {
+        penultimate_step * helper[i] * (addr_l[i]' - 0xfffc) = 0
+    });
+
+    array::new(50, |i| {
+        penultimate_step * (helper[i] - (addr_l[i] * (addr_l[i]' - 0xfffc) - 1)) = 0
     });
 
     // Carry (penultimate row of addr_h)
