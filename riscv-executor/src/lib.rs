@@ -124,7 +124,7 @@ impl<F: FieldElement> Elem<F> {
         self.bin().try_into().unwrap()
     }
 
-    fn f(&self) -> F {
+    fn fe(&self) -> F {
         match self {
             Self::Binary(_) => panic!(),
             Self::Field(f) => *f,

@@ -183,11 +183,6 @@ impl<F: FieldElement> SubmachineTrace<F> {
             .for_each(|v| v.push(Elem::Field(0.into())));
     }
 
-    // /// add a copy of the given row to the trace
-    // fn push_row_copy(&mut self, idx: u32) {
-    //     self.cols.values_mut().for_each(|v| v.push(v[idx as usize]));
-    // }
-
     /// Push a dummy block to the trace.
     /// A dummy block is a copy of the first block, with the final row updates applied to it, and selectors set to 0.
     fn push_dummy_block(&mut self, machine_max_degree: usize, size: u32, selectors: &'static str) {
@@ -597,8 +592,6 @@ impl SubmachineKind for PoseidonGlMachine {
     ) {
         const STATE_SIZE: usize = 12;
         const OUTPUT_SIZE: usize = 4;
-        // const FULL_ROUNDS: usize = 8;
-        // const PARTIAL_ROUNDS: usize = 22;
 
         const INPUT_COLS: [&str; STATE_SIZE] = [
             "input[0]",
@@ -658,7 +651,7 @@ impl SubmachineKind for PoseidonGlMachine {
             }
             // memory read/write columns
             if row < STATE_SIZE {
-                let v = input[row].f().to_integer().try_into_u64().unwrap();
+                let v = input[row].fe().to_integer().try_into_u64().unwrap();
                 let hi = (v >> 32) as u32;
                 let lo = (v & 0xffffffff) as u32;
                 trace.set_current_row("do_mload", 1.into());
@@ -666,7 +659,7 @@ impl SubmachineKind for PoseidonGlMachine {
                 trace.set_current_row("word_high", hi.into());
             } else if row < STATE_SIZE + OUTPUT_SIZE {
                 let v = output[row - STATE_SIZE]
-                    .f()
+                    .fe()
                     .to_integer()
                     .try_into_u64()
                     .unwrap();
