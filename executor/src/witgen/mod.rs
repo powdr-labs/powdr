@@ -8,9 +8,10 @@ use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, Analyzed, DegreeRange, Expression,
     FunctionValueDefinition, PolyID, PolynomialType, Symbol, SymbolKind, TypedExpression,
 };
-use powdr_ast::parsed::visitor::ExpressionVisitable;
+use powdr_ast::parsed::visitor::{AllChildren, ExpressionVisitable};
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_number::{DegreeType, FieldElement};
+use std::iter::once;
 
 use crate::constant_evaluator::VariablySizedColumn;
 use crate::witgen::data_structures::mutable_state::MutableState;
@@ -175,17 +176,25 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             .clone()
             .into_iter()
             .filter(|identity| {
-                let discard = identity.expr_any(|expr| {
+                let references_later_stage_challenge = identity.expr_any(|expr| {
                     if let AlgebraicExpression::Challenge(challenge) = expr {
                         challenge.stage >= self.stage.into()
                     } else {
                         false
                     }
                 });
+                let references_later_stage_witness = fixed
+                    .polynomial_references(identity)
+                    .into_iter()
+                    .any(|poly_id| {
+                        (poly_id.ptype == PolynomialType::Committed)
+                            && fixed.witness_cols[&poly_id].stage > self.stage as u32
+                    });
+
+                let discard = references_later_stage_challenge || references_later_stage_witness;
+
                 if discard {
-                    log::debug!(
-                        "Skipping identity that references challenge of later stage: {identity}",
-                    );
+                    log::debug!("Skipping identity that references later-stage items: {identity}",);
                 }
                 !discard
             })
@@ -199,7 +208,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             machines,
             base_parts,
         } = if self.stage == 0 {
-            MachineExtractor::new(&fixed).split_out_machines(retained_identities, self.stage)
+            MachineExtractor::new(&fixed).split_out_machines(retained_identities)
         } else {
             // We expect later-stage witness columns to be accumulators for lookup and permutation arguments.
             // These don't behave like normal witness columns (e.g. in a block machine), and they might depend
@@ -334,7 +343,8 @@ pub fn extract_publics<T: FieldElement>(
         .collect()
 }
 
-/// Data that is fixed for witness generation.
+/// Data that is fixed for witness generation for a certain proof stage
+/// (i.e., a call to [WitnessGenerator::generate]).
 pub struct FixedData<'a, T: FieldElement> {
     analyzed: &'a Analyzed<T>,
     fixed_cols: FixedColumnMap<FixedColumn<'a, T>>,
@@ -343,6 +353,7 @@ pub struct FixedData<'a, T: FieldElement> {
     challenges: BTreeMap<u64, T>,
     global_range_constraints: GlobalConstraints<T>,
     intermediate_definitions: BTreeMap<PolyID, &'a AlgebraicExpression<T>>,
+    stage: u8,
 }
 
 impl<'a, T: FieldElement> FixedData<'a, T> {
@@ -370,18 +381,26 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
 
         let witness_cols =
             WitnessColumnMap::from(analyzed.committed_polys_in_source_order().flat_map(
-                |(poly, value)| {
-                    poly.array_elements()
+                |(symbol, value)| {
+                    symbol
+                        .array_elements()
                         .map(|(name, poly_id)| {
                             let external_values = external_witness_values.remove(name.as_str());
                             // Remove any hint for witness columns of a later stage
                             // (because it might reference a challenge that is not available yet)
-                            let value = if poly.stage.unwrap_or_default() <= stage.into() {
+                            let col_stage = symbol.stage.unwrap_or_default();
+                            let value = if col_stage <= stage.into() {
                                 value.as_ref()
                             } else {
                                 None
                             };
-                            WitnessColumn::new(poly_id.id as usize, &name, value, external_values)
+                            WitnessColumn::new(
+                                poly_id.id as usize,
+                                &name,
+                                value,
+                                external_values,
+                                col_stage,
+                            )
                         })
                         .collect::<Vec<_>>()
                 },
@@ -422,6 +441,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             challenges,
             global_range_constraints,
             intermediate_definitions,
+            stage,
         }
     }
 
@@ -517,6 +537,37 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                 v.get(row as usize).cloned()
             })
     }
+
+    fn witnesses_until_current_stage(&self) -> impl Iterator<Item = PolyID> + '_ {
+        self.witness_cols
+            .iter()
+            .filter(|(_, col)| col.stage <= self.stage as u32)
+            .map(|(poly_id, _)| poly_id)
+    }
+
+    /// Finds all referenced witness or fixed columns,
+    /// including those referenced via intermediate columns.
+    fn polynomial_references(
+        &self,
+        expr: &impl AllChildren<AlgebraicExpression<T>>,
+    ) -> HashSet<PolyID> {
+        expr.all_children()
+            .flat_map(|child| {
+                if let AlgebraicExpression::Reference(poly_ref) = child {
+                    match poly_ref.poly_id.ptype {
+                        PolynomialType::Committed | PolynomialType::Constant => {
+                            once(poly_ref.poly_id).collect()
+                        }
+                        PolynomialType::Intermediate => self.polynomial_references(
+                            self.intermediate_definitions[&poly_ref.poly_id],
+                        ),
+                    }
+                } else {
+                    HashSet::new()
+                }
+            })
+            .collect()
+    }
 }
 
 pub struct FixedColumn<'a, T> {
@@ -554,6 +605,8 @@ pub struct WitnessColumn<'a, T> {
     /// A list of externally computed witness values, if any.
     /// The length of this list must be equal to the degree.
     external_values: Option<&'a Vec<T>>,
+    /// The stage of the column.
+    stage: u32,
 }
 
 impl<'a, T> WitnessColumn<'a, T> {
@@ -562,6 +615,7 @@ impl<'a, T> WitnessColumn<'a, T> {
         name: &str,
         value: Option<&'a FunctionValueDefinition>,
         external_values: Option<&'a Vec<T>>,
+        stage: u32,
     ) -> WitnessColumn<'a, T> {
         let query = if let Some(FunctionValueDefinition::Expression(TypedExpression {
             e:
@@ -593,6 +647,7 @@ impl<'a, T> WitnessColumn<'a, T> {
             expr,
             query,
             external_values,
+            stage,
         }
     }
 }

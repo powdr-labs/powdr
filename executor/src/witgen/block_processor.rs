@@ -16,19 +16,18 @@ use super::{
 /// for a given list of identities.
 /// The lifetimes mean the following:
 /// - `'a`: The duration of the entire witness generation (e.g. references to identities)
-/// - `'b`: The duration of this machine's call (e.g. the mutable references of the other machines)
 /// - `'c`: The duration of this Processor's lifetime (e.g. the reference to the identity processor)
-pub struct BlockProcessor<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> {
-    processor: Processor<'a, 'b, 'c, T, Q>,
+pub struct BlockProcessor<'a, 'c, T: FieldElement, Q: QueryCallback<T>> {
+    processor: Processor<'a, 'c, T, Q>,
     /// The list of identities
     identities: &'c [&'a Identity<T>],
 }
 
-impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c, T, Q> {
+impl<'a, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'c, T, Q> {
     pub fn new(
         row_offset: RowIndex,
         mutable_data: SolverState<'a, T>,
-        mutable_state: &'c MutableState<'a, 'b, T, Q>,
+        mutable_state: &'c MutableState<'a, T, Q>,
         fixed_data: &'a FixedData<'a, T>,
         parts: &'c MachineParts<'a, T>,
         size: DegreeType,
@@ -48,7 +47,7 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
     }
 
     pub fn from_processor(
-        processor: Processor<'a, 'b, 'c, T, Q>,
+        processor: Processor<'a, 'c, T, Q>,
         identities: &'c [&'a Identity<T>],
     ) -> Self {
         Self {
@@ -59,8 +58,8 @@ impl<'a, 'b, 'c, T: FieldElement, Q: QueryCallback<T>> BlockProcessor<'a, 'b, 'c
 
     pub fn with_outer_query(
         self,
-        outer_query: OuterQuery<'a, 'b, T>,
-    ) -> BlockProcessor<'a, 'b, 'c, T, Q> {
+        outer_query: OuterQuery<'a, 'c, T>,
+    ) -> BlockProcessor<'a, 'c, T, Q> {
         let processor = self.processor.with_outer_query(outer_query);
         Self { processor, ..self }
     }
