@@ -25,6 +25,7 @@ pub enum ConnectionKind {
     Permutation,
 }
 
+/// A connection between two machines.
 pub struct Connection<F> {
     pub left: SelectedExpressions<F>,
     pub right: SelectedExpressions<F>,
@@ -33,6 +34,7 @@ pub struct Connection<F> {
 }
 
 impl<F: FieldElement> Connection<F> {
+    /// Extracts all connections from the global PIL.
     pub fn get_all(
         global_pil: &Analyzed<F>,
         machine_to_pil: &BTreeMap<String, Analyzed<F>>,
@@ -44,7 +46,7 @@ impl<F: FieldElement> Connection<F> {
             .collect()
     }
 
-    pub fn try_new(
+    fn try_new(
         identity: &Identity<F>,
         global_pil: &Analyzed<F>,
         machine_to_pil: &BTreeMap<String, Analyzed<F>>,
@@ -84,28 +86,26 @@ impl<F: FieldElement> Connection<F> {
         })
     }
 
+    /// Translates PolyIDs pointing to columns in the global PIL to PolyIDs pointing to columns in the local PIL.
     fn localize(
         &self,
         selected_expressions: &SelectedExpressions<F>,
         global_pil: &Analyzed<F>,
         local_pil: &Analyzed<F>,
     ) -> SelectedExpressions<F> {
-        let id_to_name_global = global_pil
+        let name_to_id_local = local_pil.name_to_poly_id();
+        let id_map = global_pil
             .name_to_poly_id()
             .into_iter()
-            .map(|(name, poly_id)| (poly_id, name))
+            .map(|(name, poly_id)| (poly_id, *name_to_id_local.get(&name).unwrap()))
             .collect::<BTreeMap<_, _>>();
-
-        let name_to_id_local = local_pil.name_to_poly_id();
 
         let mut localized = selected_expressions.clone();
 
         localized.visit_expressions_mut(
             &mut |expr| {
                 if let AlgebraicExpression::Reference(reference) = expr {
-                    let name = &id_to_name_global[&reference.poly_id];
-                    let id = name_to_id_local.get(name).unwrap();
-                    reference.poly_id = *id;
+                    reference.poly_id = id_map[&reference.poly_id];
                 }
                 ControlFlow::Continue::<()>(())
             },
@@ -128,6 +128,7 @@ fn unique_referenced_namespaces<F: FieldElement>(
     all_namespaces.into_iter().next().unwrap()
 }
 
+/// A connection between two machines.
 impl<F: FieldElement> Connection<F> {
     pub fn caller(&self) -> String {
         unique_referenced_namespaces(&self.left)

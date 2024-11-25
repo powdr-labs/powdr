@@ -6,6 +6,7 @@ use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_number::{DegreeType, FieldElement};
 
+/// A collection of columns with self-contained constraints.
 pub struct Machine<'a, F> {
     pub machine_name: String,
     pub size: usize,
