@@ -4,18 +4,47 @@
 
 use std::{
     fmt::{self, Debug, Formatter},
+    hash::Hash,
     sync::Arc,
 };
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, JsonSchema)]
+#[derive(Clone, Default, Serialize, Deserialize, JsonSchema)]
+/// A reference to a location in a source file.
+///
+/// Important note: in order to facilitate comparison of AST nodes, all instances of SourceRef are considered equal.
+/// Any tests that expect instances whose fields differ not to be equal must use custom comparison logic.
 pub struct SourceRef {
     pub file_name: Option<Arc<str>>,
     pub file_contents: Option<Arc<str>>,
     pub start: usize,
     pub end: usize,
+}
+
+impl Ord for SourceRef {
+    fn cmp(&self, _: &Self) -> std::cmp::Ordering {
+        std::cmp::Ordering::Equal
+    }
+}
+
+impl PartialOrd for SourceRef {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl PartialEq for SourceRef {
+    fn eq(&self, other: &Self) -> bool {
+        self.cmp(other) == std::cmp::Ordering::Equal
+    }
+}
+
+impl Eq for SourceRef {}
+
+impl Hash for SourceRef {
+    fn hash<H: std::hash::Hasher>(&self, _: &mut H) {}
 }
 
 impl SourceRef {

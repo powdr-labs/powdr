@@ -12,8 +12,6 @@ use powdr_parser_util::{handle_parse_error, Error, SourceRef};
 
 use std::sync::Arc;
 
-pub mod test_utils;
-
 lalrpop_mod!(
     #[allow(clippy::all)]
     #[allow(clippy::uninlined_format_args)]
@@ -143,7 +141,6 @@ mod test {
     use pretty_assertions::assert_eq;
     use similar::TextDiff;
     use test_log::test;
-    use test_utils::ClearSourceRefs;
     use walkdir::WalkDir;
 
     #[test]
@@ -234,15 +231,13 @@ mod test {
         let basedir = std::path::Path::new("../test_data/").to_owned();
         let asm_files = find_files_with_ext(basedir, "asm".into());
         for (file, orig_string) in asm_files {
-            let mut orig_asm = parse_asm(Some(&file), &orig_string).unwrap_err_to_stderr();
+            let orig_asm = parse_asm(Some(&file), &orig_string).unwrap_err_to_stderr();
             let orig_asm_to_string = format!("{orig_asm}");
-            let mut reparsed_asm = parse_asm(
+            let reparsed_asm = parse_asm(
                 Some((file.clone() + " reparsed").as_ref()),
                 &orig_asm_to_string,
             )
             .unwrap_err_to_stderr();
-            orig_asm.clear_source_refs();
-            reparsed_asm.clear_source_refs();
             if orig_asm != reparsed_asm {
                 let orig_ast = format!("{orig_asm:#?}");
                 let reparsed_ast = format!("{reparsed_asm:#?}");
@@ -265,19 +260,16 @@ mod test {
     #[test]
     /// Test that (source -> AST -> source -> AST) works properly for pil files
     fn parse_write_reparse_pil() {
-        use test_utils::ClearSourceRefs;
         let basedir = std::path::Path::new("../test_data/").to_owned();
         let pil_files = find_files_with_ext(basedir, "pil".into());
         for (file, orig_string) in pil_files {
-            let mut orig_pil = parse(Some(&file), &orig_string).unwrap_err_to_stderr();
+            let orig_pil = parse(Some(&file), &orig_string).unwrap_err_to_stderr();
             let orig_pil_to_string = format!("{orig_pil}");
-            let mut reparsed_pil = parse(
+            let reparsed_pil = parse(
                 Some((file.clone() + " reparsed").as_ref()),
                 &orig_pil_to_string,
             )
             .unwrap_err_to_stderr();
-            orig_pil.clear_source_refs();
-            reparsed_pil.clear_source_refs();
             assert_eq!(orig_pil, reparsed_pil);
             if orig_pil != reparsed_pil {
                 let orig_ast = format!("{orig_pil:#?}");

@@ -13,6 +13,7 @@ use powdr_ast::parsed::{FunctionKind, LambdaExpression};
 use powdr_number::{DegreeType, FieldElement};
 
 use crate::constant_evaluator::VariablySizedColumn;
+use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::Identity;
 
 use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
@@ -22,7 +23,6 @@ pub use self::eval_result::{
 use self::generator::Generator;
 
 use self::global_constraints::GlobalConstraints;
-use self::identity_processor::Machines;
 use self::machines::machine_extractor::ExtractionOutput;
 use self::machines::profiling::{record_end, record_start, reset_and_print_profile_summary};
 use self::machines::Machine;
@@ -61,27 +61,7 @@ static RANGE_CONSTRAINT_MULTIPLICITY_WITGEN: &str = "range constraint multiplici
 pub trait QueryCallback<T>: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 impl<T, F> QueryCallback<T> for F where F: Fn(&str) -> Result<Option<T>, String> + Send + Sync {}
 
-type WitgenCallbackFn<T> =
-    Arc<dyn Fn(&[(String, Vec<T>)], BTreeMap<u64, T>, u8) -> Vec<(String, Vec<T>)> + Send + Sync>;
-
-#[derive(Clone)]
-pub struct WitgenCallback<T>(WitgenCallbackFn<T>);
-
-impl<T: FieldElement> WitgenCallback<T> {
-    pub fn new(f: WitgenCallbackFn<T>) -> Self {
-        WitgenCallback(f)
-    }
-
-    /// Computes the next-stage witness, given the current witness and challenges.
-    pub fn next_stage_witness(
-        &self,
-        current_witness: &[(String, Vec<T>)],
-        challenges: BTreeMap<u64, T>,
-        stage: u8,
-    ) -> Vec<(String, Vec<T>)> {
-        (self.0)(current_witness, challenges, stage)
-    }
-}
+pub use powdr_executor_utils::{WitgenCallback, WitgenCallbackFn};
 
 pub struct WitgenCallbackContext<T> {
     /// TODO: all these fields probably don't need to be Arc anymore, since the
@@ -133,12 +113,6 @@ pub fn chain_callbacks<T: FieldElement>(
 /// @returns a query callback that is never expected to be used.
 pub fn unused_query_callback<T>() -> impl QueryCallback<T> {
     |_| -> _ { unreachable!() }
-}
-
-/// Everything [Generator] needs to mutate in order to compute a new row.
-pub struct MutableState<'a, 'b, T: FieldElement, Q: QueryCallback<T>> {
-    pub machines: Machines<'a, 'b, T>,
-    pub query_callback: &'b mut Q,
 }
 
 pub struct WitnessGenerator<'a, 'b, T: FieldElement> {
@@ -222,7 +196,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         let (fixed, retained_identities) =
             global_constraints::set_global_constraints(fixed, &identities);
         let ExtractionOutput {
-            mut machines,
+            machines,
             base_parts,
         } = if self.stage == 0 {
             MachineExtractor::new(&fixed).split_out_machines(retained_identities, self.stage)
@@ -248,11 +222,7 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
             }
         };
 
-        let mut query_callback = self.query_callback;
-        let mut mutable_state = MutableState {
-            machines: Machines::from(machines.iter_mut()),
-            query_callback: &mut query_callback,
-        };
+        let mutable_state = MutableState::new(machines.into_iter(), &self.query_callback);
 
         let generator = (!base_parts.witnesses.is_empty()).then(|| {
             let mut generator = Generator::new(
@@ -265,17 +235,15 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
                 None,
             );
 
-            generator.run(&mut mutable_state);
+            generator.run(&mutable_state);
             generator
         });
 
         // Get columns from machines
-        let mut columns = mutable_state
-            .machines
-            .take_witness_col_values(mutable_state.query_callback);
-        if let Some(mut generator) = generator {
-            columns.extend(generator.take_witness_col_values(&mut mutable_state));
-        }
+        let mut columns = generator
+            .map(|mut generator| generator.take_witness_col_values(&mutable_state))
+            .unwrap_or_default();
+        columns.extend(mutable_state.take_witness_col_values());
 
         Self::range_constraint_multiplicity_witgen(&fixed, &mut columns);
 

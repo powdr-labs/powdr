@@ -25,6 +25,38 @@ fn replace_fixed() {
 }
 
 #[test]
+fn deduplicate_fixed() {
+    let input = r#"namespace N(65536);
+    col fixed first = [1, 32]*;
+    col fixed second = [1, 32]*;
+    col i = first * second;
+    col witness X;
+    col witness Y;
+    X * first = Y * second + i;
+    namespace M(65536);
+    col fixed first = [1, 32]*;
+    col fixed second = [1, 32]*;
+    col witness X;
+    col witness Y;
+    X * first = Y * second;
+"#;
+    let expectation = r#"namespace N(65536);
+    col fixed first = [1_fe, 32_fe]*;
+    col i = N::first * N::first;
+    col witness X;
+    col witness Y;
+    N::X * N::first = N::Y * N::first + N::i;
+namespace M(65536);
+    col fixed first = [1_fe, 32_fe]*;
+    col witness X;
+    col witness Y;
+    M::X * M::first = M::Y * M::first;
+"#;
+    let optimized = optimize(analyze_string::<GoldilocksField>(input).unwrap()).to_string();
+    assert_eq!(optimized, expectation);
+}
+
+#[test]
 fn replace_lookup() {
     let input = r#"namespace N(65536);
     col fixed one = [1]*;
