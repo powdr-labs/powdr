@@ -282,6 +282,12 @@ fn stwo_fixed_columns() {
 }
 
 #[test]
+fn stwo_incremental_one() {
+    let f = "pil/incremental_one.pil";
+    test_stwo(f, Default::default());
+}
+
+#[test]
 fn simple_div() {
     let f = "pil/simple_div.pil";
     let pipeline = make_simple_prepared_pipeline(f);
