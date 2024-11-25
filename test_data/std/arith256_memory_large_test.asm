@@ -2,9 +2,9 @@ use std::machines::large_field::arith256_memory::Arith256Memory;
 use std::machines::range::Byte2;
 use std::machines::large_field::memory::Memory;
 
-let main_degree: int = 2**16;
-let arith_degree: int = 2**11;
-let memory_degree: int = 2**16;
+let main_degree: int = 2**10;
+let arith_degree: int = 2**12;
+let memory_degree: int = 2**13;
 
 machine Main with degree: main_degree {
     reg pc[@pc];

@@ -2,8 +2,8 @@ use std::machines::small_field::arith::Arith;
 use std::machines::range::Byte;
 use std::machines::range::Byte2;
 
-let main_degree: int = 2**11;
-let arith_degree: int = 2**11;
+let main_degree: int = 2**7;
+let arith_degree: int = 2**6;
 
 machine Main with degree: main_degree {
     reg pc[@pc];

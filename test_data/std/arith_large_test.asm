@@ -1,7 +1,7 @@
 use std::machines::large_field::arith::Arith;
 
-let main_degree: int = 2**11;
-let arith_degree: int = 2**15;
+let main_degree: int = 2**9;
+let arith_degree: int = 2**12;
 
 machine Main with degree: main_degree {
     reg pc[@pc];

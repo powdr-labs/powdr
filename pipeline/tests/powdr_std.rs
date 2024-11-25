@@ -152,7 +152,7 @@ fn arith256_memory_large_test() {
     // eStark proof instead of 3.
     #[cfg(feature = "estark-starky")]
     pipeline
-        .with_backend(powdr_backend::BackendType::EStarkStarky, None)
+        .with_backend(powdr_backend::BackendType::EStarkStarkyComposite, None)
         .compute_proof()
         .unwrap();
 

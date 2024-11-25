@@ -1,8 +1,8 @@
 use std::machines::binary::ByteBinary;
 use std::machines::large_field::binary::Binary;
 
-let main_degree: int = 2**17;
-let binary_degree: int = 2**15;
+let main_degree: int = 2**7;
+let binary_degree: int = 2**7;
 
 machine Main with degree: main_degree {
     reg pc[@pc];

@@ -1,8 +1,8 @@
 use std::machines::range::Byte2;
 use std::machines::large_field::memory::Memory;
 
-let main_degree: int = 2**16;
-let memory_degree: int = 2**16;
+let main_degree: int = 2**7;
+let memory_degree: int = 2**5;
 
 machine Main with degree: 65536 {
     reg pc[@pc];

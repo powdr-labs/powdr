@@ -4,11 +4,12 @@ use std::machines::small_field::add_sub::AddSub;
 use std::machines::range::Byte2;
 use std::machines::range::Bit12;
 
-let add_sub_degree: int = 2**10;
-let memory_degree: int = 2**10;
-let keccakf_memory_degree: int = 2**10;
+let main_degree: int = 2**7;
+let add_sub_degree: int = 2**9;
+let memory_degree: int = 2**9;
+let keccakf_memory_degree: int = 2**7;
 
-machine Main with degree: 65536 {
+machine Main with degree: main_degree {
     reg pc[@pc];
 
     reg X1[<=];
