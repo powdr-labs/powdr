@@ -74,7 +74,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
         &mut self,
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         _identity_id: u64,
-        _values: Vec<LookupCell<'c, T>>,
+        _values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {
         unimplemented!("Direct lookup not supported machine {}.", self.name())
     }
@@ -143,7 +143,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
         &mut self,
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         lookup_id: u64,
-        data: Vec<LookupCell<'c, T>>,
+        data: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {
         match self {
             KnownMachine::FixedLookup(m) => m.process_lookup_direct(mutable_state, lookup_id, data),

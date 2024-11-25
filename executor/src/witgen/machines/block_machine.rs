@@ -443,7 +443,7 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         outer_query: OuterQuery<'a, 'b, T>,
     ) -> EvalResult<'a, T> {
         let mut input_output_data = vec![T::zero(); outer_query.left.len()];
-        let values = outer_query.prepare_for_direct_lookup(&mut input_output_data);
+        let mut values = outer_query.prepare_for_direct_lookup(&mut input_output_data);
 
         assert!(
             (self.rows() + self.block_size as DegreeType) < self.degree,
@@ -456,9 +456,12 @@ impl<'a, T: FieldElement> BlockMachine<'a, T> {
         //TODO can we properly access the last row of the dummy block?
         let data = self.data.append_new_finalized_rows(self.block_size);
 
-        let success =
-            self.jit_processer
-                .process_lookup_direct(mutable_state, identity_id, values, data)?;
+        let success = self.jit_processer.process_lookup_direct(
+            mutable_state,
+            identity_id,
+            &mut values,
+            data,
+        )?;
         assert!(success);
 
         Ok(outer_query

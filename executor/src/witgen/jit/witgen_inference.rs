@@ -185,7 +185,7 @@ extern "C" fn {fun_name}(
         row_offset,
     }}: WitgenFunctionParams,
     mutable_state: *mut c_void,
-    process_lookup: fn(*mut c_void, u64, Vec<LookupCell<'_, FieldElement>>) -> bool
+    process_lookup: fn(*mut c_void, u64, &mut [LookupCell<'_, FieldElement>]) -> bool
 ) {{
     let data = data as *mut FieldElement;
     let data: &mut [FieldElement] = unsafe {{ std::slice::from_raw_parts_mut(data, len as usize) }};
@@ -511,7 +511,7 @@ struct WitgenFunctionParams {{
                             })
                             .format(", ");
                         let machine_call = format!(
-                            "assert!(process_lookup(mutable_state, {lookup_id}, vec![{query}]));"
+                            "assert!(process_lookup(mutable_state, {lookup_id}, &mut [{query}]));"
                         );
                         // TODO range constraints?
                         let output_expr = inputs.iter().find(|i| !i.is_known()).unwrap();

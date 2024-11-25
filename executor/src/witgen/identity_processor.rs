@@ -94,7 +94,7 @@ impl<'a, 'b, T: FieldElement> Machines<'a, 'b, T> {
     pub fn call_direct<Q: QueryCallback<T>>(
         &mut self,
         identity_id: u64,
-        values: Vec<LookupCell<'_, T>>,
+        values: &mut [LookupCell<'_, T>],
         query_callback: &mut Q,
     ) -> Result<bool, EvalError<T>> {
         let machine_index = *self

@@ -132,14 +132,14 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
         &self,
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         connection_id: u64,
-        values: Vec<LookupCell<'c, T>>,
+        values: &mut [LookupCell<'c, T>],
         // TODO maybe just a `*mut T` plus first_col would be best?
         mut data: CompactDataRef<'d, T>,
     ) -> Result<bool, EvalError<T>> {
         // Transfer inputs.
         let right = self.parts.connections[&connection_id].right;
         let mut known_inputs = BitVec::new();
-        for (e, v) in right.expressions.iter().zip(&values) {
+        for (e, v) in right.expressions.iter().zip(values.iter()) {
             match v {
                 LookupCell::Input(&v) => {
                     let col = try_to_simple_poly(e).unwrap();
@@ -173,7 +173,7 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
                 LookupCell::Input(_) => {}
                 LookupCell::Output(c) => {
                     let col = try_to_simple_poly(e).unwrap();
-                    *c = data.get(self.latch_row as i32, col.poly_id.id as u32);
+                    **c = data.get(self.latch_row as i32, col.poly_id.id as u32);
                 }
             }
         }
@@ -185,7 +185,7 @@ impl<'a, T: FieldElement> JitProcessor<'a, T> {
 fn process_lookup<'b, 'd, T: FieldElement, Q: QueryCallback<T>>(
     mutable_state: &'b mut MutableState<'_, 'b, T, Q>,
     identity_id: u64,
-    values: Vec<LookupCell<'_, T>>,
+    values: &mut [LookupCell<'_, T>],
 ) -> bool {
     mutable_state
         .machines
@@ -214,7 +214,11 @@ impl WitgenFunction {
         // TODO this applies a shift. Maybe we could do it much earlier?
         latch_row: usize,
         mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
-        process_lookup: fn(&'b mut MutableState<'a, 'b, T, Q>, u64, Vec<LookupCell<'c, T>>) -> bool,
+        process_lookup: fn(
+            &'b mut MutableState<'a, 'b, T, Q>,
+            u64,
+            &mut [LookupCell<'c, T>],
+        ) -> bool,
     ) {
         let (data_slice, known_slice, row_offset) = data.direct_slice();
         let data_c_ptr = data_slice.as_mut_ptr() as *mut c_void;

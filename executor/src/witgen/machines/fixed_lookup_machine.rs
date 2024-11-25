@@ -219,9 +219,9 @@ impl<'a, T: FieldElement> FixedLookup<'a, T> {
 
         // Split the left-hand-side into known input values and unknown output expressions.
         let mut input_output_data = vec![T::zero(); outer_query.left.len()];
-        let values = outer_query.prepare_for_direct_lookup(&mut input_output_data);
+        let mut values = outer_query.prepare_for_direct_lookup(&mut input_output_data);
 
-        if !self.process_lookup_direct(mutable_state, identity_id, values)? {
+        if !self.process_lookup_direct(mutable_state, identity_id, &mut values)? {
             // multiple matches, we stop and learnt nothing
             return Ok(EvalValue::incomplete(
                 IncompleteCause::MultipleLookupMatches,
@@ -320,7 +320,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
         &mut self,
         _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
         identity_id: u64,
-        values: Vec<LookupCell<'c, T>>,
+        values: &mut [LookupCell<'c, T>],
     ) -> Result<bool, EvalError<T>> {
         let mut input_values = vec![];
 
@@ -377,7 +377,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for FixedLookup<'a, T> {
             })
             .zip(output)
             .for_each(|(e, v)| {
-                *e = *v;
+                **e = *v;
             });
         Ok(true)
     }
