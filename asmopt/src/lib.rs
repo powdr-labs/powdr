@@ -31,6 +31,14 @@ fn build_machine_dependencies(asm_file: &AnalysisASMFile) -> HashMap<String, Vec
     let mut dependencies = HashMap::new();
 
     for (path, machine) in asm_file.machines() {
+        let submachine_to_decl: HashMap<String, String> = machine
+            .submachines
+            .iter()
+            .map(|sub| (sub.name.clone(), sub.ty.clone().pop().unwrap().to_string()))
+            .collect();
+
+        println!("Submachine to decl: {:?}", submachine_to_decl);
+
         let submachine_names: Vec<String> = machine
             .submachines
             .iter()
@@ -41,6 +49,13 @@ fn build_machine_dependencies(asm_file: &AnalysisASMFile) -> HashMap<String, Vec
                     .0
                     .iter()
                     .map(|param| param.ty.clone().unwrap().pop().unwrap().to_string()),
+            )
+            .chain(
+                machine
+                    .links
+                    .iter()
+                    .filter_map(|ld| submachine_to_decl.get(&ld.to.instance))
+                    .cloned(),
             )
             .collect();
         dependencies.insert(path.clone().pop().unwrap().to_string(), submachine_names);
@@ -85,14 +100,19 @@ fn remove_unused_instructions(asm_file: &mut AnalysisASMFile) {
             keep
         });
 
+        let symbols_in_links = machine_in_links(machine);
+        used_submachines.extend(symbols_in_links);
+
         machine
             .submachines
             .retain(|sub| used_submachines.contains(&sub.name));
 
         let mut symbols_in_callable = machine_callable_body_symbols(machine);
         let symbols_in_instructions = machine_instructions_symbols(machine);
+
         symbols_in_callable.insert("pc".to_string());
         symbols_in_callable.extend(symbols_in_instructions);
+
         machine
             .registers
             .retain(|reg| symbols_in_callable.contains(&reg.name));
@@ -119,4 +139,19 @@ fn machine_instructions_symbols(machine: &Machine) -> HashSet<String> {
     }
 
     symbols
+}
+
+fn machine_in_links(machine: &Machine) -> HashSet<String> {
+    let submachine_to_decl: HashMap<String, String> = machine
+        .submachines
+        .iter()
+        .map(|sub| (sub.name.clone(), sub.ty.clone().pop().unwrap().to_string()))
+        .collect();
+
+    machine
+        .links
+        .iter()
+        .filter_map(|ld| submachine_to_decl.get(&ld.to.instance))
+        .cloned() // fix
+        .collect()
 }

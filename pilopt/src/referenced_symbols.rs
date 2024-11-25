@@ -1,4 +1,4 @@
-use std::{borrow::Cow, io::empty, iter::once};
+use std::{borrow::Cow, iter::once};
 
 use powdr_ast::{
     analyzed::{
@@ -6,14 +6,14 @@ use powdr_ast::{
     },
     asm_analysis::{
         AssignmentStatement, Expression as ExpressionASM, FunctionBody, FunctionStatement,
-        InstructionDefinitionStatement, InstructionStatement,
+        InstructionDefinitionStatement, InstructionStatement, LinkDefinition,
     },
     parsed::{
         asm::{Instruction, InstructionBody, LinkDeclaration, Param, Params, SymbolPath},
         types::Type,
         visitor::{AllChildren, Children},
-        EnumDeclaration, NamespacedPolynomialReference, PilStatement, StructDeclaration,
-        TraitImplementation, TypeDeclaration,
+        EnumDeclaration, NamespacedPolynomialReference, StructDeclaration, TraitImplementation,
+        TypeDeclaration,
     },
 };
 
@@ -233,6 +233,12 @@ impl ReferencedSymbols for Param {
 impl ReferencedSymbols for LinkDeclaration {
     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
         Box::new(self.flag.symbols())
+    }
+}
+
+impl ReferencedSymbols for LinkDefinition {
+    fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
+        Box::new(self.link_flag.symbols())
     }
 }
 
