@@ -32,6 +32,17 @@ pub struct Connection<F> {
 }
 
 impl<F: FieldElement> Connection<F> {
+    pub fn get_all(
+        global_pil: &Analyzed<F>,
+        machine_to_pil: &BTreeMap<String, Analyzed<F>>,
+    ) -> Vec<Self> {
+        global_pil
+            .identities
+            .iter()
+            .filter_map(|identity| Connection::try_new(identity, global_pil, machine_to_pil).ok())
+            .collect()
+    }
+
     pub fn try_new(
         identity: &Identity<F>,
         global_pil: &Analyzed<F>,
@@ -50,6 +61,7 @@ impl<F: FieldElement> Connection<F> {
             }
         }?;
 
+        // This connection is not localized yet: Its expression's PolyIDs point to the global PIL, not the local PIL.
         let connection_global = Self { left, right, kind };
         let caller = connection_global.caller();
         let left = connection_global.localize(
@@ -78,30 +90,12 @@ impl<F: FieldElement> Connection<F> {
         local_pil: &Analyzed<F>,
     ) -> SelectedExpressions<F> {
         let id_to_name_global = global_pil
-            .committed_polys_in_source_order()
-            .map(|(s, _)| s)
-            .chain(global_pil.constant_polys_in_source_order().map(|(s, _)| s))
-            .chain(
-                global_pil
-                    .intermediate_polys_in_source_order()
-                    .map(|(s, _)| s),
-            )
-            .flat_map(|symbol| symbol.array_elements())
+            .name_to_poly_id()
+            .into_iter()
             .map(|(name, poly_id)| (poly_id, name))
             .collect::<BTreeMap<_, _>>();
 
-        let id_to_name_local = local_pil
-            .committed_polys_in_source_order()
-            .map(|(s, _)| s)
-            .chain(local_pil.constant_polys_in_source_order().map(|(s, _)| s))
-            .chain(
-                local_pil
-                    .intermediate_polys_in_source_order()
-                    .map(|(s, _)| s),
-            )
-            .flat_map(|symbol| symbol.array_elements())
-            .map(|(name, poly_id)| (poly_id, name))
-            .collect::<BTreeMap<_, _>>();
+        let name_to_id_local = local_pil.name_to_poly_id();
 
         let mut localized = selected_expressions.clone();
 
@@ -109,8 +103,7 @@ impl<F: FieldElement> Connection<F> {
             &mut |expr| {
                 if let AlgebraicExpression::Reference(reference) = expr {
                     let name = &id_to_name_global[&reference.poly_id];
-                    // TODO
-                    let id = id_to_name_local.iter().find(|(_, n)| *n == name).unwrap().0;
+                    let id = name_to_id_local.get(name).unwrap();
                     reference.poly_id = *id;
                 }
                 ControlFlow::Continue::<()>(())
@@ -145,7 +138,6 @@ impl<F: FieldElement> Connection<F> {
 }
 
 pub struct ConnectionConstraintChecker<'a, F: FieldElement> {
-    // TODO: I think the connections here have different PolyIDs from the ones in the machines, because of re-parsing...
     pub connections: &'a [Connection<F>],
     pub machines: BTreeMap<&'a str, Machine<'a, F>>,
 }
