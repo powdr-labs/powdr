@@ -14,7 +14,6 @@ use alloc::{
 };
 use itertools::Itertools;
 use p3_field::AbstractField;
-use p3_maybe_rayon::prelude::{IntoParallelRefIterator, ParallelIterator};
 use tracing::info_span;
 
 use crate::{

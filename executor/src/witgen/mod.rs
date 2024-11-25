@@ -321,6 +321,7 @@ pub struct FixedData<'a, T: FieldElement> {
     global_range_constraints: GlobalConstraints<T>,
     intermediate_definitions: BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
     stage: u8,
+    max_degree: DegreeType,
 }
 
 impl<'a, T: FieldElement> FixedData<'a, T> {
@@ -377,8 +378,15 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             );
         }
 
-        let fixed_cols =
-            FixedColumnMap::from(fixed_col_values.iter().map(|(n, v)| FixedColumn::new(n, v)));
+        let mut max_degree = 1 << 30;
+        let fixed_cols = FixedColumnMap::from(fixed_col_values.iter().map(|(n, v)| {
+            let available_sizes = v.available_sizes();
+            if stage > 0 {
+                max_degree =
+                    max_degree.min(available_sizes.into_iter().max().unwrap() as DegreeType);
+            }
+            FixedColumn::new(n, v)
+        }));
 
         // The global range constraints are not set yet.
         let global_range_constraints = GlobalConstraints {
@@ -401,6 +409,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             global_range_constraints,
             intermediate_definitions,
             stage,
+            max_degree,
         }
     }
 
@@ -443,7 +452,8 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     fn common_degree_range<'b>(&self, ids: impl IntoIterator<Item = &'b PolyID>) -> DegreeRange {
         let ids: HashSet<_> = ids.into_iter().collect();
 
-        self.all_poly_symbols()
+        let res = self
+            .all_poly_symbols()
             .flat_map(|symbol| symbol.array_elements().map(|(_, id)| (id, symbol.degree)))
             // only keep the ones matching our set
             .filter_map(|(id, degree)| ids.contains(&id).then_some(degree))
@@ -451,7 +461,13 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             .unique()
             .exactly_one()
             .unwrap_or_else(|_| panic!("expected all polynomials to have the same degree"))
-            .unwrap()
+            .unwrap();
+
+        let res = DegreeRange {
+            min: res.min,
+            max: res.max.min(self.max_degree),
+        };
+        res
     }
 
     /// Returns whether all polynomials have the same static degree.
@@ -573,7 +589,9 @@ impl<'a, T> FixedColumn<'a, T> {
         self.values.get_by_size(size).unwrap_or_else(|| {
             panic!(
                 "Fixed column {} does not have a value for size {}. Available sizes: {:?}",
-                self.name, size, self.values.available_sizes()
+                self.name,
+                size,
+                self.values.available_sizes()
             )
         })
     }
