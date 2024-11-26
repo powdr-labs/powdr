@@ -1,6 +1,7 @@
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt::Display;
 
+use dynamic_machine::DynamicMachine;
 use powdr_ast::analyzed::{
     self, AlgebraicExpression, DegreeRange, PermutationIdentity, PhantomPermutationIdentity, PolyID,
 };
@@ -8,6 +9,7 @@ use powdr_ast::analyzed::{
 use powdr_number::DegreeType;
 use powdr_number::FieldElement;
 
+use crate::witgen::data_structures::mutable_state::MutableState;
 use crate::Identity;
 
 use self::block_machine::BlockMachine;
@@ -18,13 +20,13 @@ use self::profiling::{record_end, record_start};
 use self::sorted_witness_machine::SortedWitnesses;
 use self::write_once_memory::WriteOnceMemory;
 
-use super::generator::Generator;
 use super::rows::RowPair;
-use super::{EvalError, EvalResult, FixedData, MutableState, QueryCallback};
+use super::{EvalError, EvalResult, FixedData, QueryCallback};
 
 mod block_machine;
 mod double_sorted_witness_machine_16;
 mod double_sorted_witness_machine_32;
+mod dynamic_machine;
 mod fixed_lookup_machine;
 pub mod machine_extractor;
 pub mod profiling;
@@ -34,10 +36,25 @@ mod write_once_memory;
 /// A machine is a set of witness columns and identities where the columns
 /// are used on the right-hand-side of lookups. It can process lookups.
 pub trait Machine<'a, T: FieldElement>: Send + Sync {
+    /// Runs the machine without any arguments from the first row (.
+    fn run_timed<Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, T, Q>) {
+        record_start(self.name());
+        self.run(mutable_state);
+        record_end(self.name());
+    }
+
+    /// Runs the machine without any arguments from the first row.
+    fn run<Q: QueryCallback<T>>(&mut self, _mutable_state: &MutableState<'a, T, Q>) {
+        unimplemented!(
+            "Running machine {} without a machine call is not supported.",
+            self.name()
+        );
+    }
+
     /// Like `process_plookup`, but also records the time spent in this machine.
     fn process_plookup_timed<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &'b MutableState<'a, T, Q>,
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
@@ -55,7 +72,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     /// Otherwise, it computes any updates to the caller row pair and returns them.
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &'b MutableState<'a, T, Q>,
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T>;
@@ -72,7 +89,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     /// An error is always unrecoverable.
     fn process_lookup_direct<'b, 'c, Q: QueryCallback<T>>(
         &mut self,
-        _mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        _mutable_state: &'b MutableState<'a, T, Q>,
         _identity_id: u64,
         _values: Vec<LookupCell<'c, T>>,
     ) -> Result<bool, EvalError<T>> {
@@ -82,7 +99,7 @@ pub trait Machine<'a, T: FieldElement>: Send + Sync {
     /// Returns the final values of the witness columns.
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &'b MutableState<'a, T, Q>,
     ) -> HashMap<String, Vec<T>>;
 
     /// Returns the identity IDs of the connecting identities that this machine is responsible for.
@@ -105,14 +122,26 @@ pub enum KnownMachine<'a, T: FieldElement> {
     DoubleSortedWitnesses32(DoubleSortedWitnesses32<'a, T>),
     WriteOnceMemory(WriteOnceMemory<'a, T>),
     BlockMachine(BlockMachine<'a, T>),
-    Vm(Generator<'a, T>),
+    DynamicMachine(DynamicMachine<'a, T>),
     FixedLookup(FixedLookup<'a, T>),
 }
 
 impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
+    fn run<Q: QueryCallback<T>>(&mut self, mutable_state: &MutableState<'a, T, Q>) {
+        match self {
+            KnownMachine::SortedWitnesses(m) => m.run(mutable_state),
+            KnownMachine::DoubleSortedWitnesses16(m) => m.run(mutable_state),
+            KnownMachine::DoubleSortedWitnesses32(m) => m.run(mutable_state),
+            KnownMachine::WriteOnceMemory(m) => m.run(mutable_state),
+            KnownMachine::BlockMachine(m) => m.run(mutable_state),
+            KnownMachine::DynamicMachine(m) => m.run(mutable_state),
+            KnownMachine::FixedLookup(m) => m.run(mutable_state),
+        }
+    }
+
     fn process_plookup<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &'b MutableState<'a, T, Q>,
         identity_id: u64,
         caller_rows: &'b RowPair<'b, 'a, T>,
     ) -> EvalResult<'a, T> {
@@ -132,7 +161,9 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
             KnownMachine::BlockMachine(m) => {
                 m.process_plookup(mutable_state, identity_id, caller_rows)
             }
-            KnownMachine::Vm(m) => m.process_plookup(mutable_state, identity_id, caller_rows),
+            KnownMachine::DynamicMachine(m) => {
+                m.process_plookup(mutable_state, identity_id, caller_rows)
+            }
             KnownMachine::FixedLookup(m) => {
                 m.process_plookup(mutable_state, identity_id, caller_rows)
             }
@@ -146,14 +177,14 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
             KnownMachine::DoubleSortedWitnesses32(m) => m.name(),
             KnownMachine::WriteOnceMemory(m) => m.name(),
             KnownMachine::BlockMachine(m) => m.name(),
-            KnownMachine::Vm(m) => m.name(),
+            KnownMachine::DynamicMachine(m) => m.name(),
             KnownMachine::FixedLookup(m) => m.name(),
         }
     }
 
     fn take_witness_col_values<'b, Q: QueryCallback<T>>(
         &mut self,
-        mutable_state: &'b mut MutableState<'a, 'b, T, Q>,
+        mutable_state: &'b MutableState<'a, T, Q>,
     ) -> HashMap<String, Vec<T>> {
         match self {
             KnownMachine::SortedWitnesses(m) => m.take_witness_col_values(mutable_state),
@@ -161,7 +192,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
             KnownMachine::DoubleSortedWitnesses32(m) => m.take_witness_col_values(mutable_state),
             KnownMachine::WriteOnceMemory(m) => m.take_witness_col_values(mutable_state),
             KnownMachine::BlockMachine(m) => m.take_witness_col_values(mutable_state),
-            KnownMachine::Vm(m) => m.take_witness_col_values(mutable_state),
+            KnownMachine::DynamicMachine(m) => m.take_witness_col_values(mutable_state),
             KnownMachine::FixedLookup(m) => m.take_witness_col_values(mutable_state),
         }
     }
@@ -173,7 +204,7 @@ impl<'a, T: FieldElement> Machine<'a, T> for KnownMachine<'a, T> {
             KnownMachine::DoubleSortedWitnesses32(m) => m.identity_ids(),
             KnownMachine::WriteOnceMemory(m) => m.identity_ids(),
             KnownMachine::BlockMachine(m) => m.identity_ids(),
-            KnownMachine::Vm(m) => m.identity_ids(),
+            KnownMachine::DynamicMachine(m) => m.identity_ids(),
             KnownMachine::FixedLookup(m) => m.identity_ids(),
         }
     }

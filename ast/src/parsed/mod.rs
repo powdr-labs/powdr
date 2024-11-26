@@ -107,7 +107,6 @@ pub enum PilStatement {
         /// The row number of the public value.
         Expression,
     ),
-    PolynomialConstantDeclaration(SourceRef, Vec<PolynomialName>),
     PolynomialConstantDefinition(SourceRef, String, FunctionDefinition),
     PolynomialCommitDeclaration(
         SourceRef,
@@ -173,8 +172,7 @@ impl PilStatement {
                         .map(move |f| (name, Some(&f.name), SymbolCategory::Value)),
                 ),
             ),
-            PilStatement::PolynomialConstantDeclaration(_, polynomials)
-            | PilStatement::PolynomialCommitDeclaration(_, _, polynomials, _) => Box::new(
+            PilStatement::PolynomialCommitDeclaration(_, _, polynomials, _) => Box::new(
                 polynomials
                     .iter()
                     .map(|p| (&p.name, None, SymbolCategory::Value)),
@@ -216,8 +214,7 @@ impl Children<Expression> for PilStatement {
             | PilStatement::PolynomialCommitDeclaration(_, _, _, Some(def)) => def.children(),
             PilStatement::PolynomialCommitDeclaration(_, _, _, None)
             | PilStatement::Include(_, _)
-            | PilStatement::Namespace(_, _, None)
-            | PilStatement::PolynomialConstantDeclaration(_, _) => Box::new(empty()),
+            | PilStatement::Namespace(_, _, None) => Box::new(empty()),
         }
     }
 
@@ -245,8 +242,7 @@ impl Children<Expression> for PilStatement {
             | PilStatement::PolynomialCommitDeclaration(_, _, _, Some(def)) => def.children_mut(),
             PilStatement::PolynomialCommitDeclaration(_, _, _, None)
             | PilStatement::Include(_, _)
-            | PilStatement::Namespace(_, _, None)
-            | PilStatement::PolynomialConstantDeclaration(_, _) => Box::new(empty()),
+            | PilStatement::Namespace(_, _, None) => Box::new(empty()),
         }
     }
 }
@@ -647,7 +643,6 @@ impl_source_reference!(
     LetStatement,
     PolynomialDefinition,
     PolynomialCommitDeclaration,
-    PolynomialConstantDeclaration,
     PolynomialConstantDefinition,
     PublicDeclaration,
     EnumDeclaration,
