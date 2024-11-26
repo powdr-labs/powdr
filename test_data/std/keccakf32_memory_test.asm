@@ -2,7 +2,9 @@ use std::machines::hash::keccakf32_memory::Keccakf32Memory;
 use std::machines::large_field::memory::Memory;
 use std::machines::range::Byte2;
 
-machine Main with degree: 65536 {
+let MIN: int = 2**5;
+let MAX: int = 2**8;
+machine Main with min_degree: MIN, max_degree: MAX {
     reg pc[@pc];
 
     reg X[<=];
@@ -10,9 +12,9 @@ machine Main with degree: 65536 {
     reg Y[<=];
 
     Byte2 byte2;
-    Memory memory(byte2);
+    Memory memory(byte2, MIN, MAX);
 
-    Keccakf32Memory keccakf32_memory(memory);
+    Keccakf32Memory keccakf32_memory(memory, MIN, MAX);
 
     col fixed STEP(i) { i * 2 };
 

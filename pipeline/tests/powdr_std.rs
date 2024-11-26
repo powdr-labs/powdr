@@ -65,9 +65,8 @@ fn keccakf16_memory_test() {
 #[ignore = "Too slow"]
 fn keccakf32_memory_test() {
     let f = "std/keccakf32_memory_test.asm";
-    let pipeline = make_simple_prepared_pipeline(f);
-    test_pilcom(pipeline.clone());
-    gen_estark_proof(pipeline);
+    test_mock_backend(make_simple_prepared_pipeline::<GoldilocksField>(f));
+    test_plonky3_with_backend_variant::<GoldilocksField>(f, vec![], BackendVariant::Monolithic);
 }
 
 #[test]
