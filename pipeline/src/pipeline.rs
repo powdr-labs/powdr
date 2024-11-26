@@ -1035,13 +1035,12 @@ impl<T: FieldElement> Pipeline<T> {
 
     pub fn witgen_callback(&mut self) -> Result<WitgenCallback<T>, Vec<String>> {
         let ctx = WitgenCallbackContext::new(
-            self.compute_optimized_pil()?,
             self.compute_fixed_cols()?,
             self.arguments.query_callback.as_ref().cloned(),
         );
         Ok(WitgenCallback::new(Arc::new(
-            move |current_witness, challenges, stage| {
-                ctx.next_stage_witness(current_witness, challenges, stage)
+            move |pil, current_witness, challenges, stage| {
+                ctx.next_stage_witness(pil, current_witness, challenges, stage)
             },
         )))
     }

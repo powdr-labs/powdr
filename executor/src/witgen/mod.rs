@@ -1,4 +1,4 @@
-use std::collections::{BTreeMap, HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::sync::Arc;
 
 use itertools::Itertools;
@@ -61,40 +61,57 @@ pub use powdr_executor_utils::{WitgenCallback, WitgenCallbackFn};
 pub struct WitgenCallbackContext<T> {
     /// TODO: all these fields probably don't need to be Arc anymore, since the
     /// Arc was moved one level up... but I have to investigate this further.
-    analyzed: Arc<Analyzed<T>>,
     fixed_col_values: Arc<Vec<(String, VariablySizedColumn<T>)>>,
     query_callback: Arc<dyn QueryCallback<T>>,
 }
 
 impl<T: FieldElement> WitgenCallbackContext<T> {
     pub fn new(
-        analyzed: Arc<Analyzed<T>>,
         fixed_col_values: Arc<Vec<(String, VariablySizedColumn<T>)>>,
         query_callback: Option<Arc<dyn QueryCallback<T>>>,
     ) -> Self {
         let query_callback = query_callback.unwrap_or_else(|| Arc::new(unused_query_callback()));
         Self {
-            analyzed,
             fixed_col_values,
             query_callback,
         }
     }
 
+    pub fn select_fixed_columns(
+        &self,
+        pil: &Analyzed<T>,
+        size: DegreeType,
+    ) -> Vec<(String, VariablySizedColumn<T>)> {
+        // The provided PIL might only contain a subset of all fixed columns.
+        let fixed_column_names = pil
+            .constant_polys_in_source_order()
+            .flat_map(|(symbol, _)| symbol.array_elements())
+            .map(|(name, _)| name.clone())
+            .collect::<BTreeSet<_>>();
+        // Select the columns in the current PIL and select the right size.
+        self.fixed_col_values
+            .iter()
+            .filter(|(n, _)| fixed_column_names.contains(n))
+            .map(|(n, v)| (n.clone(), v.get_by_size(size).unwrap().to_vec().into()))
+            .collect()
+    }
+
     /// Computes the next-stage witness, given the current witness and challenges.
+    /// All columns in the provided PIL are expected to have the same size.
+    /// Typically, this function should be called once per machine.
     pub fn next_stage_witness(
         &self,
+        pil: &Analyzed<T>,
         current_witness: &[(String, Vec<T>)],
         challenges: BTreeMap<u64, T>,
         stage: u8,
     ) -> Vec<(String, Vec<T>)> {
-        WitnessGenerator::new(
-            &self.analyzed,
-            &self.fixed_col_values,
-            &*self.query_callback,
-        )
-        .with_external_witness_values(current_witness)
-        .with_challenges(stage, challenges)
-        .generate()
+        let size = current_witness.iter().next().unwrap().1.len() as DegreeType;
+        let fixed_col_values = self.select_fixed_columns(pil, size);
+        WitnessGenerator::new(pil, &fixed_col_values, &*self.query_callback)
+            .with_external_witness_values(current_witness)
+            .with_challenges(stage, challenges)
+            .generate()
     }
 }
 

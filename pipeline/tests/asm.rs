@@ -179,6 +179,15 @@ fn block_to_block_with_bus_monolithic() {
     let f = "asm/block_to_block_with_bus.asm";
     let pipeline = make_simple_prepared_pipeline(f);
     test_halo2_with_backend_variant(pipeline.clone(), BackendVariant::Monolithic);
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f);
+    test_plonky3_pipeline(pipeline);
+}
+
+#[test]
+fn block_to_block_with_bus_different_sizes() {
+    let f = "asm/block_to_block_with_bus_different_sizes.asm";
+    let pipeline = make_simple_prepared_pipeline::<GoldilocksField>(f);
+    test_plonky3_pipeline(pipeline);
 }
 
 #[cfg(feature = "halo2")]
