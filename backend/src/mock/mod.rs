@@ -36,7 +36,7 @@ impl<F: FieldElement> BackendFactory<F> for MockBackendFactory<F> {
         proving_key: Option<&mut dyn std::io::Read>,
         _verification_key: Option<&mut dyn std::io::Read>,
         verification_app_key: Option<&mut dyn std::io::Read>,
-        backend_options: BackendOptions,
+        _backend_options: BackendOptions,
     ) -> Result<Box<dyn Backend<F>>, Error> {
         if proving_key.is_some() {
             unimplemented!();
@@ -46,14 +46,8 @@ impl<F: FieldElement> BackendFactory<F> for MockBackendFactory<F> {
         }
         let machine_to_pil = powdr_backend_utils::split_pil(&pil);
         let connections = Connection::get_all(&pil, &machine_to_pil);
-        let allow_warnings = match backend_options.as_str() {
-            "allow_warnings" => true,
-            "" => false,
-            _ => panic!("Invalid backend option: {backend_options}"),
-        };
 
         Ok(Box::new(MockBackend {
-            allow_warnings,
             machine_to_pil,
             fixed,
             connections,
@@ -66,7 +60,6 @@ impl<F: FieldElement> BackendFactory<F> for MockBackendFactory<F> {
 }
 
 pub(crate) struct MockBackend<F> {
-    allow_warnings: bool,
     machine_to_pil: BTreeMap<String, Analyzed<F>>,
     fixed: Arc<Vec<(String, VariablySizedColumn<F>)>>,
     connections: Vec<Connection<F>>,
@@ -95,9 +88,6 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
             let result = PolynomialConstraintChecker::new(machine).check();
             result.log();
             is_ok &= !result.has_errors();
-            if !self.allow_warnings {
-                is_ok &= !result.has_warnings();
-            }
         }
 
         ConnectionConstraintChecker {
