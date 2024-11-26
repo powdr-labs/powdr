@@ -30,10 +30,7 @@ impl<'a, F: FieldElement> PolynomialConstraintChecker<'a, F> {
             .pil
             .identities
             .iter()
-            .filter(|identity| match identity {
-                Identity::Polynomial(_) => true,
-                _ => false,
-            })
+            .filter(|identity| matches!(identity, Identity::Polynomial(_)))
             .collect::<Vec<_>>();
 
         let errors = (0..self.machine.size)
