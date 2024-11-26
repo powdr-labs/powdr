@@ -1,17 +1,15 @@
 use std::collections::BTreeMap;
 
-use powdr_backend::BackendType;
-use powdr_executor::constant_evaluator::{self, get_uniquely_sized};
-use powdr_number::{Bn254Field, FieldElement, GoldilocksField};
+use powdr_executor::constant_evaluator;
+use powdr_linker::LinkerParams;
+use powdr_number::{FieldElement, GoldilocksField};
 use powdr_pipeline::{
     test_util::{
         asm_string_to_pil, gen_estark_proof_with_backend_variant, make_prepared_pipeline,
         make_simple_prepared_pipeline, regular_test, regular_test_without_small_field,
-        resolve_test_file, run_pilcom_with_backend_variant, test_halo2,
-        test_halo2_with_backend_variant, test_pilcom, test_plonky3_pipeline,
-        test_plonky3_with_backend_variant, BackendVariant,
+        resolve_test_file, run_pilcom_with_backend_variant, test_halo2_with_backend_variant,
+        test_pilcom, test_plonky3_pipeline, test_plonky3_with_backend_variant, BackendVariant,
     },
-    util::{FixedPolySet, PolySet, WitnessPolySet},
     Pipeline,
 };
 use test_log::test;
@@ -39,7 +37,7 @@ fn block_machine_exact_number_of_rows_asm() {
 fn challenges_asm() {
     let f = "asm/challenges.asm";
     let pipeline = make_simple_prepared_pipeline(f);
-    test_halo2(pipeline);
+    test_halo2_with_backend_variant(pipeline, BackendVariant::Monolithic);
 }
 
 #[test]
@@ -72,7 +70,7 @@ fn secondary_block_machine_add2() {
 fn second_phase_hint() {
     let f = "asm/second_phase_hint.asm";
     let pipeline = make_simple_prepared_pipeline(f);
-    test_halo2(pipeline);
+    test_halo2_with_backend_variant(pipeline, BackendVariant::Monolithic);
 }
 
 #[test]
@@ -88,11 +86,15 @@ fn mem_write_once_external_write() {
     mem[17] = GoldilocksField::from(42);
     mem[62] = GoldilocksField::from(123);
     mem[255] = GoldilocksField::from(-1);
-    let pipeline = make_prepared_pipeline(
-        f,
-        Default::default(),
-        vec![("main_memory::value".to_string(), mem)],
-    );
+    let mut pipeline = Pipeline::default()
+        .with_tmp_output()
+        .from_file(resolve_test_file(f))
+        .add_external_witness_values(vec![("main_memory::value".to_string(), mem)])
+        .with_linker_params(LinkerParams {
+            degree_mode: powdr_linker::DegreeMode::Monolithic,
+            ..Default::default()
+        });
+    pipeline.compute_witness().unwrap();
     test_pilcom(pipeline);
 }
 
@@ -143,7 +145,7 @@ fn vm_to_block_unique_interface() {
 fn vm_to_block_to_block() {
     let f = "asm/vm_to_block_to_block.asm";
     test_pilcom(make_simple_prepared_pipeline(f));
-    test_halo2(make_simple_prepared_pipeline(f));
+    test_halo2_with_backend_variant(make_simple_prepared_pipeline(f), BackendVariant::Composite);
 }
 
 #[test]
@@ -371,6 +373,12 @@ fn pil_at_module_level() {
 #[cfg(feature = "estark-starky")]
 #[test]
 fn read_poly_files() {
+    use powdr_backend::BackendType;
+    use powdr_executor::constant_evaluator::get_uniquely_sized;
+    use powdr_linker::{DegreeMode, LinkerParams};
+    use powdr_number::Bn254Field;
+    use powdr_pipeline::util::{FixedPolySet, PolySet, WitnessPolySet};
+
     let asm_files = ["asm/vm_to_block_unique_interface.asm", "asm/empty.asm"];
     for f in asm_files {
         let tmp_dir = mktemp::Temp::new_dir().unwrap();
@@ -379,6 +387,10 @@ fn read_poly_files() {
         let mut pipeline = Pipeline::<Bn254Field>::default()
             .from_file(resolve_test_file(f))
             .with_output(tmp_dir.to_path_buf(), true)
+            .with_linker_params(LinkerParams {
+                degree_mode: DegreeMode::Monolithic,
+                ..Default::default()
+            })
             .with_backend(BackendType::EStarkDump, None);
         pipeline.compute_witness().unwrap();
         let pil = pipeline.compute_optimized_pil().unwrap();
@@ -509,9 +521,10 @@ mod book {
     use test_log::test;
 
     fn run_book_test(file: &str) {
+        use powdr_pipeline::test_util::test_mock_backend;
         // passing 0 to all tests currently works as they either take no prover input or 0 works
-        let pipeline = make_prepared_pipeline(file, vec![0.into()], vec![]);
-        test_pilcom(pipeline);
+        let pipeline = make_prepared_pipeline::<GoldilocksField>(file, vec![0.into()], vec![]);
+        test_mock_backend(pipeline);
     }
 
     include!(concat!(env!("OUT_DIR"), "/asm_book_tests.rs"));

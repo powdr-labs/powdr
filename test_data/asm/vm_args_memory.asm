@@ -13,7 +13,7 @@ machine Main with degree: N {
 
     col fixed STEP(i) { i };
     Byte2 byte2;
-    Memory memory(byte2);
+    Memory memory(byte2, N, N);
     WithArg sub(memory);
 
     instr mload X -> Y link ~> Y = memory.mload(X, STEP);

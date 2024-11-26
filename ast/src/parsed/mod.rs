@@ -73,6 +73,15 @@ pub struct NamespaceDegree {
     pub max: Expression,
 }
 
+impl From<Expression> for NamespaceDegree {
+    fn from(e: Expression) -> Self {
+        NamespaceDegree {
+            min: e.clone(),
+            max: e,
+        }
+    }
+}
+
 impl Children<Expression> for NamespaceDegree {
     fn children(&self) -> Box<dyn Iterator<Item = &Expression> + '_> {
         Box::new(once(&self.min).chain(once(&self.max)))
