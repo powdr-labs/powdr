@@ -308,7 +308,7 @@ impl<F: FieldElement> Backend<F> for CompositeBackend<F> {
         }
 
         // Compute next-stage witness for each machine in parallel.
-        let witness_by_machine = self
+        let mut witness_by_machine = self
             .machine_data
             .par_iter()
             .map(|(machine_name, machine_data)| {
@@ -343,7 +343,6 @@ impl<F: FieldElement> Backend<F> for CompositeBackend<F> {
                 .collect::<Vec<_>>();
 
             let mut proof_results = BTreeMap::new();
-            let mut witness_by_machine = witness_by_machine;
             for stage in 1.. {
                 // Filter out proofs that have completed and accumulate the
                 // challenges.
