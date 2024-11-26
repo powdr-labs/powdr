@@ -129,7 +129,7 @@ impl<T> Analyzed<T> {
         self.definitions_in_source_order(PolynomialType::Committed)
     }
 
-    pub fn intermediate_polys_in_source_order(
+    fn intermediate_polys_in_source_order(
         &self,
     ) -> impl Iterator<Item = &(Symbol, Vec<AlgebraicExpression<T>>)> {
         self.source_order.iter().filter_map(move |statement| {
@@ -393,6 +393,38 @@ impl<T> Analyzed<T> {
         // Sort, so that the order is deterministic
         publics.sort();
         publics
+    }
+}
+
+impl<T: Clone> Analyzed<T> {
+    /// Builds a map from a reference to an intermediate polynomial to the corresponding definition.
+    pub fn intermediate_definitions(
+        &self,
+    ) -> BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>> {
+        self.intermediate_polys_in_source_order()
+            .flat_map(|(symbol, definitions)| symbol.array_elements().zip_eq(definitions))
+            .flat_map(|((_, poly_id), def)| {
+                // A definition for <intermediate>' only exists if no sub-expression in its definition
+                // has the next operator applied to it.
+                let next_definition = def.clone().next().ok().map(|def_next| {
+                    (
+                        AlgebraicReferenceThin {
+                            poly_id,
+                            next: true,
+                        },
+                        def_next,
+                    )
+                });
+
+                next_definition.into_iter().chain(once((
+                    AlgebraicReferenceThin {
+                        poly_id,
+                        next: false,
+                    },
+                    def.clone(),
+                )))
+            })
+            .collect()
     }
 }
 
@@ -1160,6 +1192,12 @@ pub enum Reference {
     Poly(PolynomialReference),
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct AlgebraicReferenceThin {
+    pub poly_id: PolyID,
+    pub next: bool,
+}
+
 #[derive(Debug, Clone, Eq, Serialize, Deserialize, JsonSchema)]
 pub struct AlgebraicReference {
     /// Name of the polynomial - just for informational purposes.
@@ -1180,6 +1218,13 @@ impl AlgebraicReference {
     #[inline]
     pub fn is_fixed(&self) -> bool {
         self.poly_id.ptype == PolynomialType::Constant
+    }
+
+    pub fn thin(&self) -> AlgebraicReferenceThin {
+        AlgebraicReferenceThin {
+            poly_id: self.poly_id,
+            next: self.next,
+        }
     }
 }
 

@@ -22,7 +22,7 @@ use crate::{
 use p3_air::{Air, AirBuilder, BaseAir, PairBuilder};
 use p3_matrix::{dense::RowMajorMatrix, Matrix};
 use powdr_ast::analyzed::{
-    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression,
+    AlgebraicBinaryOperation, AlgebraicBinaryOperator, AlgebraicExpression, AlgebraicReferenceThin,
     AlgebraicUnaryOperation, AlgebraicUnaryOperator, Analyzed, Identity, PolyID, PolynomialType,
 };
 
@@ -41,7 +41,7 @@ pub struct ConstraintSystem<T> {
     // for each fixed column, the index of this column in the fixed columns
     fixed_columns: BTreeMap<PolyID, usize>,
     // for each intermediate polynomial, the expression
-    intermediates: BTreeMap<PolyID, AlgebraicExpression<T>>,
+    intermediates: BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
     identities: Vec<Identity<T>>,
     // for each stage, for each public input of that stage, the name, the column name, the poly_id, the row index
     pub(crate) publics_by_stage: Vec<Vec<(String, String, PolyID, usize)>>,
@@ -74,15 +74,7 @@ impl<T: FieldElement> From<&Analyzed<T>> for ConstraintSystem<T> {
             .map(|(index, (_, id))| (id, index))
             .collect();
 
-        let intermediates = analyzed
-            .intermediate_polys_in_source_order()
-            .flat_map(|(symbol, definitions)| {
-                symbol
-                    .array_elements()
-                    .zip_eq(definitions)
-                    .map(|((_, id), expr)| (id, expr.clone()))
-            })
-            .collect();
+        let intermediates = analyzed.intermediate_definitions();
 
         let witness_columns = analyzed
             .definitions_in_source_order(PolynomialType::Committed)
@@ -248,7 +240,7 @@ where
         e: &AlgebraicExpression<T>,
         traces_by_stage: &[AB::M],
         fixed: &AB::M,
-        intermediate_cache: &mut BTreeMap<u64, AB::Expr>,
+        intermediate_cache: &mut BTreeMap<AlgebraicReferenceThin, AB::Expr>,
         publics: &BTreeMap<&String, <AB as MultistageAirBuilder>::PublicVar>,
         challenges: &[BTreeMap<&u64, <AB as MultistageAirBuilder>::Challenge>],
     ) -> AB::Expr {
@@ -269,20 +261,18 @@ where
                         fixed.row_slice(r.next as usize)[index].into()
                     }
                     PolynomialType::Intermediate => {
-                        if let Some(expr) = intermediate_cache.get(&poly_id.id) {
+                        if let Some(expr) = intermediate_cache.get(&r.thin()) {
                             expr.clone()
                         } else {
                             let value = self.to_plonky3_expr::<AB>(
-                                &self.constraint_system.intermediates[&poly_id],
+                                &self.constraint_system.intermediates[&r.thin()],
                                 traces_by_stage,
                                 fixed,
                                 intermediate_cache,
                                 publics,
                                 challenges,
                             );
-                            assert!(intermediate_cache
-                                .insert(poly_id.id, value.clone())
-                                .is_none());
+                            assert!(intermediate_cache.insert(r.thin(), value.clone()).is_none());
                             value
                         }
                     }

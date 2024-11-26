@@ -2,7 +2,9 @@ use std::{collections::BTreeMap, fmt};
 
 use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{AlgebraicExpression, Analyzed, Identity, PolyID, PolynomialIdentity},
+    analyzed::{
+        AlgebraicExpression, AlgebraicReferenceThin, Analyzed, Identity, PolyID, PolynomialIdentity,
+    },
     parsed::visitor::AllChildren,
 };
 use powdr_executor::witgen::{AffineExpression, AlgebraicVariable, ExpressionEvaluator};
@@ -16,7 +18,7 @@ pub struct ConstraintChecker<'a, F> {
     size: usize,
     columns: BTreeMap<PolyID, &'a [F]>,
     pil: &'a Analyzed<F>,
-    intermediate_definitions: BTreeMap<PolyID, &'a AlgebraicExpression<F>>,
+    intermediate_definitions: BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<F>>,
 }
 
 impl<'a, F: FieldElement> ConstraintChecker<'a, F> {
@@ -34,15 +36,7 @@ impl<'a, F: FieldElement> ConstraintChecker<'a, F> {
             .exactly_one()
             .unwrap();
 
-        let intermediate_definitions = pil
-            .intermediate_polys_in_source_order()
-            .flat_map(|(symbol, definitions)| {
-                symbol
-                    .array_elements()
-                    .zip_eq(definitions)
-                    .map(|((_, poly_id), def)| (poly_id, def))
-            })
-            .collect();
+        let intermediate_definitions = pil.intermediate_definitions();
 
         let columns_by_name = witness
             .iter()

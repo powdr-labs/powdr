@@ -4,8 +4,9 @@ use std::sync::Arc;
 use itertools::Itertools;
 use machines::machine_extractor::MachineExtractor;
 use powdr_ast::analyzed::{
-    AlgebraicExpression, AlgebraicReference, Analyzed, DegreeRange, Expression,
-    FunctionValueDefinition, PolyID, PolynomialType, Symbol, SymbolKind, TypedExpression,
+    AlgebraicExpression, AlgebraicReference, AlgebraicReferenceThin, Analyzed, DegreeRange,
+    Expression, FunctionValueDefinition, PolyID, PolynomialType, Symbol, SymbolKind,
+    TypedExpression,
 };
 use powdr_ast::parsed::visitor::{AllChildren, ExpressionVisitable};
 use powdr_ast::parsed::{FunctionKind, LambdaExpression};
@@ -301,7 +302,7 @@ pub struct FixedData<'a, T: FieldElement> {
     column_by_name: HashMap<String, PolyID>,
     challenges: BTreeMap<u64, T>,
     global_range_constraints: GlobalConstraints<T>,
-    intermediate_definitions: BTreeMap<PolyID, &'a AlgebraicExpression<T>>,
+    intermediate_definitions: BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<T>>,
     stage: u8,
 }
 
@@ -318,15 +319,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             .map(|(name, values)| (name.clone(), values))
             .collect::<BTreeMap<_, _>>();
 
-        let intermediate_definitions = analyzed
-            .intermediate_polys_in_source_order()
-            .flat_map(|(symbol, definitions)| {
-                symbol
-                    .array_elements()
-                    .zip_eq(definitions)
-                    .map(|((_, poly_id), def)| (poly_id, def))
-            })
-            .collect();
+        let intermediate_definitions = analyzed.intermediate_definitions();
 
         let witness_cols =
             WitnessColumnMap::from(analyzed.committed_polys_in_source_order().flat_map(
@@ -514,7 +507,7 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
     fn polynomial_references_with_cache(
         &self,
         expr: &impl AllChildren<AlgebraicExpression<T>>,
-        intermediates_cache: &mut BTreeMap<PolyID, HashSet<PolyID>>,
+        intermediates_cache: &mut BTreeMap<AlgebraicReferenceThin, HashSet<PolyID>>,
     ) -> HashSet<PolyID> {
         expr.all_children()
             .flat_map(|child| {
@@ -524,16 +517,16 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                             once(poly_ref.poly_id).collect()
                         }
                         PolynomialType::Intermediate => intermediates_cache
-                            .get(&poly_ref.poly_id)
+                            .get(&poly_ref.thin())
                             .cloned()
                             .unwrap_or_else(|| {
                                 let intermediate_expr =
-                                    self.intermediate_definitions[&poly_ref.poly_id];
+                                    &self.intermediate_definitions[&poly_ref.thin()];
                                 let refs = self.polynomial_references_with_cache(
                                     intermediate_expr,
                                     intermediates_cache,
                                 );
-                                intermediates_cache.insert(poly_ref.poly_id, refs.clone());
+                                intermediates_cache.insert(poly_ref.thin(), refs.clone());
                                 refs
                             }),
                     }
