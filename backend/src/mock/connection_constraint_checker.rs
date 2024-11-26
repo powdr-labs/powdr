@@ -192,15 +192,15 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
                 // Check if $caller \subseteq callee$.
                 let caller_set = caller_set.into_iter().collect::<HashSet<_>>();
                 let callee_set = callee_set.into_iter().collect::<HashSet<_>>();
-                let not_in_caller = callee_set
-                    .difference(&caller_set)
+                let not_in_callee = caller_set
+                    .difference(&callee_set)
                     .cloned()
                     .collect::<Vec<_>>();
-                if !not_in_caller.is_empty() {
+                if !not_in_callee.is_empty() {
                     Err(FailingConnectionConstraint {
                         connection,
-                        not_in_caller,
-                        not_in_callee: Vec::new(),
+                        not_in_callee,
+                        not_in_caller: Vec::new(),
                     })
                 } else {
                     Ok(())
