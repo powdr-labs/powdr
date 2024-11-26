@@ -353,20 +353,20 @@ impl<F: FieldElement> fmt::Display for FailingConnectionConstraint<'_, F> {
         )?;
         writeln!(f, "    {}", self.connection.identity)?;
 
-        if !self.not_in_caller.is_empty() {
-            fmt_subset_error(
-                f,
-                &self.connection.callee(),
-                &self.connection.caller(),
-                &self.not_in_caller,
-            )?;
-        }
         if !self.not_in_callee.is_empty() {
             fmt_subset_error(
                 f,
                 &self.connection.caller(),
                 &self.connection.callee(),
                 &self.not_in_callee,
+            )?;
+        }
+        if !self.not_in_caller.is_empty() {
+            fmt_subset_error(
+                f,
+                &self.connection.callee(),
+                &self.connection.caller(),
+                &self.not_in_caller,
             )?;
         }
         Ok(())
