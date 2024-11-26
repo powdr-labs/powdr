@@ -84,7 +84,17 @@ impl<'a, T: FieldElement> MachineExtractor<'a, T> {
         let mut machines: Vec<KnownMachine<T>> = vec![];
 
         let mut publics = PublicsTracker::default();
-        let mut remaining_witnesses = current_stage_witnesses.clone();
+        let range_constraint_multiplicities = self
+            .fixed
+            .global_range_constraints
+            .phantom_range_constraints
+            .values()
+            .map(|prc| prc.multiplicity_column)
+            .collect::<HashSet<_>>();
+        let mut remaining_witnesses = current_stage_witnesses
+            .difference(&range_constraint_multiplicities)
+            .cloned()
+            .collect::<HashSet<_>>();
         let mut base_identities = identities.clone();
         let mut extracted_prover_functions = HashSet::new();
         let mut id_counter = 0;
