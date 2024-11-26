@@ -3,7 +3,6 @@ use std::sync::Arc;
 
 use itertools::Itertools;
 use machines::machine_extractor::MachineExtractor;
-use machines::MachineParts;
 use powdr_ast::analyzed::{
     AlgebraicExpression, AlgebraicReference, Analyzed, DegreeRange, Expression,
     FunctionValueDefinition, PolyID, PolynomialType, Symbol, SymbolKind, TypedExpression,
@@ -15,18 +14,14 @@ use std::iter::once;
 
 use crate::constant_evaluator::VariablySizedColumn;
 use crate::witgen::data_structures::mutable_state::MutableState;
-use crate::Identity;
 
 use self::data_structures::column_map::{FixedColumnMap, WitnessColumnMap};
 pub use self::eval_result::{
     Constraint, Constraints, EvalError, EvalResult, EvalStatus, EvalValue, IncompleteCause,
 };
-use self::generator::Generator;
 
 use self::global_constraints::GlobalConstraints;
-use self::machines::machine_extractor::ExtractionOutput;
 use self::machines::profiling::{record_end, record_start, reset_and_print_profile_summary};
-use self::machines::Machine;
 
 mod affine_expression;
 pub(crate) mod analysis;
@@ -35,7 +30,6 @@ mod data_structures;
 mod eval_result;
 mod expression_evaluator;
 pub mod fixed_evaluator;
-mod generator;
 mod global_constraints;
 mod identity_processor;
 mod machines;
@@ -204,55 +198,10 @@ impl<'a, 'b, T: FieldElement> WitnessGenerator<'a, 'b, T> {
         // These are already captured in the range constraints.
         let (fixed, retained_identities) =
             global_constraints::set_global_constraints(fixed, &identities);
-        let ExtractionOutput {
-            machines,
-            base_parts,
-        } = if self.stage == 0 {
-            MachineExtractor::new(&fixed).split_out_machines(retained_identities)
-        } else {
-            // We expect later-stage witness columns to be accumulators for lookup and permutation arguments.
-            // These don't behave like normal witness columns (e.g. in a block machine), and they might depend
-            // on witness columns of more than one machine.
-            // Therefore, we treat everything as one big machine. Also, we remove lookups and permutations,
-            // as they are assumed to be handled in stage 0.
-            let polynomial_identities = identities
-                .iter()
-                .filter(|identity| matches!(identity, Identity::Polynomial(_)))
-                .collect::<Vec<_>>();
-            ExtractionOutput {
-                machines: Vec::new(),
-                base_parts: MachineParts::new(
-                    &fixed,
-                    Default::default(),
-                    polynomial_identities,
-                    fixed.witness_cols.keys().collect::<HashSet<_>>(),
-                    fixed.analyzed.prover_functions.iter().collect(),
-                ),
-            }
-        };
+        let machines = MachineExtractor::new(&fixed).split_out_machines(retained_identities);
 
-        let mutable_state = MutableState::new(machines.into_iter(), &self.query_callback);
-
-        let generator = (!base_parts.witnesses.is_empty()).then(|| {
-            let mut generator = Generator::new(
-                "Main Machine".to_string(),
-                &fixed,
-                base_parts,
-                // We could set the latch of the main VM here, but then we would have to detect it.
-                // Instead, the main VM will be computed in one block, directly continuing into the
-                // infinite loop after the first return.
-                None,
-            );
-
-            generator.run(&mutable_state);
-            generator
-        });
-
-        // Get columns from machines
-        let mut columns = generator
-            .map(|mut generator| generator.take_witness_col_values(&mutable_state))
-            .unwrap_or_default();
-        columns.extend(mutable_state.take_witness_col_values());
+        // Run main machine and extract columns from all machines.
+        let mut columns = MutableState::new(machines.into_iter(), &self.query_callback).run();
 
         Self::range_constraint_multiplicity_witgen(&fixed, &mut columns);
 
@@ -506,6 +455,10 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
             Ok(degree) => degree.is_unique(),
             _ => false,
         }
+    }
+
+    pub fn stage(&self) -> u8 {
+        self.stage
     }
 
     pub fn global_range_constraints(&self) -> &GlobalConstraints<T> {
