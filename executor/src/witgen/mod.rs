@@ -516,19 +516,22 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                         PolynomialType::Committed | PolynomialType::Constant => {
                             once(poly_ref.poly_id).collect()
                         }
-                        PolynomialType::Intermediate => intermediates_cache
-                            .get(&poly_ref.thin())
-                            .cloned()
-                            .unwrap_or_else(|| {
-                                let intermediate_expr =
-                                    &self.intermediate_definitions[&poly_ref.thin()];
-                                let refs = self.polynomial_references_with_cache(
-                                    intermediate_expr,
-                                    intermediates_cache,
-                                );
-                                intermediates_cache.insert(poly_ref.thin(), refs.clone());
-                                refs
-                            }),
+                        PolynomialType::Intermediate => {
+                            let poly_ref = poly_ref.to_thin();
+                            intermediates_cache
+                                .get(&poly_ref)
+                                .cloned()
+                                .unwrap_or_else(|| {
+                                    let intermediate_expr =
+                                        &self.intermediate_definitions[&poly_ref];
+                                    let refs = self.polynomial_references_with_cache(
+                                        intermediate_expr,
+                                        intermediates_cache,
+                                    );
+                                    intermediates_cache.insert(poly_ref, refs.clone());
+                                    refs
+                                })
+                        }
                     }
                 } else {
                     HashSet::new()

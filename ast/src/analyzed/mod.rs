@@ -1193,6 +1193,7 @@ pub enum Reference {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+/// Like [[AlgebraicReference]], but without the name.
 pub struct AlgebraicReferenceThin {
     pub poly_id: PolyID,
     pub next: bool,
@@ -1220,7 +1221,7 @@ impl AlgebraicReference {
         self.poly_id.ptype == PolynomialType::Constant
     }
 
-    pub fn thin(&self) -> AlgebraicReferenceThin {
+    pub fn to_thin(&self) -> AlgebraicReferenceThin {
         AlgebraicReferenceThin {
             poly_id: self.poly_id,
             next: self.next,

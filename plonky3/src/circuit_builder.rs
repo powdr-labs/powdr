@@ -261,18 +261,19 @@ where
                         fixed.row_slice(r.next as usize)[index].into()
                     }
                     PolynomialType::Intermediate => {
-                        if let Some(expr) = intermediate_cache.get(&r.thin()) {
+                        let r = r.to_thin();
+                        if let Some(expr) = intermediate_cache.get(&r) {
                             expr.clone()
                         } else {
                             let value = self.to_plonky3_expr::<AB>(
-                                &self.constraint_system.intermediates[&r.thin()],
+                                &self.constraint_system.intermediates[&r],
                                 traces_by_stage,
                                 fixed,
                                 intermediate_cache,
                                 publics,
                                 challenges,
                             );
-                            assert!(intermediate_cache.insert(r.thin(), value.clone()).is_none());
+                            assert!(intermediate_cache.insert(r, value.clone()).is_none());
                             value
                         }
                     }

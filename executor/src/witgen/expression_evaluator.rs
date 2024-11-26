@@ -61,7 +61,7 @@ where
                     self.variables.value(AlgebraicVariable::Column(poly))
                 }
                 PolynomialType::Intermediate => {
-                    let reference = poly.thin();
+                    let reference = poly.to_thin();
                     let value = self.intermediates_cache.get(&reference).cloned();
                     match value {
                         Some(v) => v,
