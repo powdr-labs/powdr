@@ -323,7 +323,7 @@ pub struct FailingConnectionConstraint<'a, F> {
 
 const MAX_TUPLES: usize = 5;
 
-/// Formats an error, where some tuples in <from_machine> are not in <to_machine>.
+/// Formats an error, where some tuples in <machine1> are not in <machine2>.
 fn fmt_subset_error<F: fmt::Display>(
     f: &mut fmt::Formatter<'_>,
     machine1: &str,
