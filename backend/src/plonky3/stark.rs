@@ -85,13 +85,16 @@ where
         self.verifying_key = Some(bincode::deserialize_from(rdr).unwrap());
     }
 
-    pub fn export_proving_key(&self) -> Result<Vec<u8>, KeyExportError> {
-        Ok(bincode::serialize(
-            self.proving_key
-                .as_ref()
-                .ok_or(KeyExportError::NoProvingKey)?,
-        )
-        .unwrap())
+    pub fn export_proving_key(
+        &self,
+        writer: &mut dyn std::io::Write,
+    ) -> Result<(), KeyExportError> {
+        let pk = self
+            .proving_key
+            .as_ref()
+            .ok_or(KeyExportError::NoProvingKey)?;
+        bincode::serialize_into(writer, pk).unwrap();
+        Ok(())
     }
 
     pub fn export_verifying_key(&self) -> Result<Vec<u8>, KeyExportError> {
