@@ -347,8 +347,8 @@ machine Main with min_degree: MIN_DEGREE, max_degree: {{MAIN_MAX_DEGREE}} {
         link ~> tmp1_col = regs.mload(X, STEP)
         link ~> tmp2_col = regs.mload(Y, STEP + 1)
         link ~> (tmp3_col, tmp4_col) = split_gl.split(XX_inv)
-        link ~> regs.mstore(X, STEP + 1, tmp3_col)
-        link ~> regs.mstore(Y, STEP + 1, tmp4_col)
+        link ~> regs.mstore(X, STEP + 2, tmp3_col)
+        link ~> regs.mstore(Y, STEP + 3, tmp4_col)
     {
         {{INVERT_GL_INSTRUCTION_BODY}}
     }
