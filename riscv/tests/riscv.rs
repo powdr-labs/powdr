@@ -135,7 +135,7 @@ fn runtime_poseidon2_gl() {
 fn inverse_gl() {
     let case = "goldilocks_inverse";
     let options = CompilerOptions::new_gl();
-    verify_riscv_crate_gl_with_options(case, Default::default(), options);
+    verify_riscv_crate_gl_with_options(case, Default::default(), options, true);
 }
 
 #[test]
