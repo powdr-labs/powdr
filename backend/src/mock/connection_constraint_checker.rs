@@ -1,6 +1,5 @@
-use std::cmp::Ordering;
 use std::collections::BTreeMap;
-use std::collections::BTreeSet;
+use std::collections::HashSet;
 use std::fmt;
 use std::hash::Hash;
 use std::ops::ControlFlow;
@@ -191,8 +190,8 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
         match connection.kind {
             ConnectionKind::Lookup => {
                 // Check if $caller \subseteq callee$.
-                let caller_set = caller_set.into_iter().collect::<BTreeSet<_>>();
-                let callee_set = callee_set.into_iter().collect::<BTreeSet<_>>();
+                let caller_set = caller_set.into_iter().collect::<HashSet<_>>();
+                let callee_set = callee_set.into_iter().collect::<HashSet<_>>();
                 let not_in_caller = callee_set
                     .difference(&caller_set)
                     .cloned()
@@ -216,24 +215,16 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
                 // Find the tuples that are in one set, but not in the other.
                 // Note that both `not_in_caller` and `not_in_callee` might actually be empty,
                 // if `caller_set` and `callee_set` are equal as sets but not as multi-sets.
-                let caller_set = caller_set.distinct_elements().collect::<BTreeSet<_>>();
-                let callee_set = callee_set.distinct_elements().collect::<BTreeSet<_>>();
+                let caller_set = caller_set.distinct_elements().collect::<HashSet<_>>();
+                let callee_set = callee_set.distinct_elements().collect::<HashSet<_>>();
                 let not_in_caller = callee_set.difference(&caller_set).collect::<Vec<_>>();
                 let not_in_callee = caller_set.difference(&callee_set).collect::<Vec<_>>();
 
                 if !is_equal {
                     Err(FailingConnectionConstraint {
                         connection,
-                        not_in_caller: not_in_caller
-                            .into_iter()
-                            .cloned()
-                            .map(|t| t.clone())
-                            .collect(),
-                        not_in_callee: not_in_callee
-                            .into_iter()
-                            .cloned()
-                            .map(|t| t.clone())
-                            .collect(),
+                        not_in_caller: not_in_caller.into_iter().cloned().cloned().collect(),
+                        not_in_callee: not_in_callee.into_iter().cloned().cloned().collect(),
                     })
                 } else {
                     Ok(())
@@ -283,8 +274,12 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
 }
 
 #[derive(Debug, Clone)]
+/// A tuple of field elements.
 pub struct Tuple<F> {
+    /// The values of the tuple.
     values: Vec<F>,
+    /// The row in the machine where this tuple is located.
+    /// Note that this value is only informational and is *not* used for equality or hashing.
     row: usize,
 }
 
@@ -295,18 +290,6 @@ impl<F: PartialEq> PartialEq for Tuple<F> {
 }
 
 impl<F: PartialEq> Eq for Tuple<F> {}
-
-impl<F: Ord> PartialOrd for Tuple<F> {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        self.values.partial_cmp(&other.values)
-    }
-}
-
-impl<F: Ord> Ord for Tuple<F> {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.values.cmp(&other.values)
-    }
-}
 
 impl<F: Hash> Hash for Tuple<F> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
@@ -340,6 +323,26 @@ pub struct FailingConnectionConstraint<'a, F> {
 
 const MAX_TUPLES: usize = 5;
 
+/// Formats an error, where some tuples in <from_machine> are not in <to_machine>.
+fn fmt_subset_error<F: fmt::Display>(
+    f: &mut fmt::Formatter<'_>,
+    machine1: &str,
+    machine2: &str,
+    not_in_machine2: &[Tuple<F>],
+) -> fmt::Result {
+    writeln!(
+        f,
+        "  The following tuples appear in {machine2}, but not in {machine1}:"
+    )?;
+    for tuple in not_in_machine2.iter().take(MAX_TUPLES) {
+        writeln!(f, "    {tuple}")?;
+    }
+    if not_in_machine2.len() > MAX_TUPLES {
+        writeln!(f, "    ...")?;
+    }
+    Ok(())
+}
+
 impl<F: FieldElement> fmt::Display for FailingConnectionConstraint<'_, F> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
@@ -351,32 +354,20 @@ impl<F: FieldElement> fmt::Display for FailingConnectionConstraint<'_, F> {
         writeln!(f, "    {}", self.connection.identity)?;
 
         if !self.not_in_caller.is_empty() {
-            writeln!(
+            fmt_subset_error(
                 f,
-                "  The following tuples appear in {}, but not in {}:",
-                self.connection.caller(),
-                self.connection.callee()
+                &self.connection.callee(),
+                &self.connection.caller(),
+                &self.not_in_caller,
             )?;
-            for tuple in self.not_in_caller.iter().take(MAX_TUPLES) {
-                writeln!(f, "    {}", tuple)?;
-            }
-            if self.not_in_caller.len() > MAX_TUPLES {
-                writeln!(f, "    ...")?;
-            }
         }
         if !self.not_in_callee.is_empty() {
-            writeln!(
+            fmt_subset_error(
                 f,
-                "  The following tuples appear in {}, but not in {}:",
-                self.connection.callee(),
-                self.connection.caller()
+                &self.connection.caller(),
+                &self.connection.callee(),
+                &self.not_in_callee,
             )?;
-            for tuple in self.not_in_callee.iter().take(MAX_TUPLES) {
-                writeln!(f, "    {:?}", tuple)?;
-            }
-            if self.not_in_callee.len() > MAX_TUPLES {
-                writeln!(f, "    ...")?;
-            }
         }
         Ok(())
     }
@@ -398,7 +389,7 @@ impl<F: FieldElement> fmt::Display for FailingConnectionConstraints<'_, F> {
             self.connection_count
         )?;
         for error in self.errors.iter().take(MAX_ERRORS) {
-            writeln!(f, "{}", error)?;
+            writeln!(f, "{error}")?;
         }
         if self.errors.len() > MAX_ERRORS {
             writeln!(f, "... and {} more errors", self.errors.len() - MAX_ERRORS)?;
