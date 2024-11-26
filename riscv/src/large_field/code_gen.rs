@@ -214,6 +214,7 @@ fn riscv_machine(
         "".to_string()
     };
     let mul_instruction = mul_instruction(options.field, runtime);
+    let invert_gl_instruction_body = invert_gl_instruction_body(options.field);
     let memory = memory(options.continuations);
     let submachine_instructions = runtime
         .submachines_instructions()
@@ -251,6 +252,7 @@ fn riscv_machine(
         .replace("{{PROGRAM}}", &format!("{program}"))
         .replace("{{BOOTLOADER_INSTRUCTIONS}}", &bootloader_instructions)
         .replace("{{MUL_INSTRUCTION}}", mul_instruction)
+        .replace("{{INVERT_GL_INSTRUCTION_BODY}}", invert_gl_instruction_body)
         .replace("{{SUBMACHINE_INSTRUCTIONS}}", &submachine_instructions)
 }
 
@@ -295,6 +297,13 @@ fn mul_instruction(field: KnownField, runtime: &Runtime) -> &'static str {
         KnownField::BabyBearField | KnownField::KoalaBearField | KnownField::Mersenne31Field => {
             panic!()
         }
+    }
+}
+
+fn invert_gl_instruction_body(field: KnownField) -> &'static str {
+    match field {
+        KnownField::GoldilocksField => "XX_inv * (tmp1_col + tmp2_col * 2**32) = 1",
+        _ => " 1 = 0",
     }
 }
 

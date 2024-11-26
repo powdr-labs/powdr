@@ -132,6 +132,14 @@ fn runtime_poseidon2_gl() {
 
 #[test]
 #[ignore = "Too slow"]
+fn inverse_gl() {
+    let case = "goldilocks_inverse";
+    let options = CompilerOptions::new_gl();
+    verify_riscv_crate_gl_with_options(case, Default::default(), options, true);
+}
+
+#[test]
+#[ignore = "Too slow"]
 fn sum() {
     let case = "sum";
     verify_riscv_crate(case, &[16u64, 4, 1, 2, 8, 5], true);
