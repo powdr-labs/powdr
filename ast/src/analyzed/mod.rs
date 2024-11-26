@@ -117,6 +117,16 @@ impl<T> Analyzed<T> {
         self.public_declarations.len()
     }
 
+    pub fn name_to_poly_id(&self) -> BTreeMap<String, PolyID> {
+        self.definitions
+            .values()
+            .map(|(symbol, _)| symbol)
+            .filter(|symbol| matches!(symbol.kind, SymbolKind::Poly(_)))
+            .chain(self.intermediate_columns.values().map(|(symbol, _)| symbol))
+            .flat_map(|symbol| symbol.array_elements())
+            .collect()
+    }
+
     pub fn constant_polys_in_source_order(
         &self,
     ) -> impl Iterator<Item = &(Symbol, Option<FunctionValueDefinition>)> {
