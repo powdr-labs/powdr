@@ -31,6 +31,9 @@ pub fn verify_riscv_asm_string<T: FieldElement, S: serde::Serialize + Send + Syn
         pipeline = pipeline.add_data_vec(data);
     }
 
+    // Compute the witness once for all tests that follow.
+    pipeline.compute_witness().unwrap();
+
     test_mock_backend(pipeline.clone());
 
     // verify with PILCOM
