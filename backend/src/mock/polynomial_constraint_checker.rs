@@ -1,10 +1,7 @@
 use std::{collections::BTreeMap, fmt};
 
-use itertools::Itertools;
 use powdr_ast::{
-    analyzed::{
-        AlgebraicExpression, AlgebraicReferenceThin, Analyzed, Identity, PolyID, PolynomialIdentity,
-    },
+    analyzed::{Identity, PolynomialIdentity},
     parsed::visitor::AllChildren,
 };
 use powdr_executor::witgen::{AffineExpression, AlgebraicVariable, ExpressionEvaluator};
@@ -13,62 +10,22 @@ use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use crate::mock::evaluator::Variables;
 
-pub struct ConstraintChecker<'a, F> {
-    machine_name: String,
-    size: usize,
-    columns: BTreeMap<PolyID, &'a [F]>,
-    pil: &'a Analyzed<F>,
-    intermediate_definitions: BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<F>>,
+use super::machine::Machine;
+
+pub struct PolynomialConstraintChecker<'a, F> {
+    machine: &'a Machine<'a, F>,
 }
 
-impl<'a, F: FieldElement> ConstraintChecker<'a, F> {
-    pub fn new(
-        machine_name: String,
-        witness: &'a [(String, Vec<F>)],
-        fixed: &'a [(String, &'a [F])],
-        pil: &'a Analyzed<F>,
-    ) -> Self {
-        let size = witness
-            .iter()
-            .map(|(_, v)| v.len())
-            .chain(fixed.iter().map(|(_, v)| v.len()))
-            .unique()
-            .exactly_one()
-            .unwrap();
-
-        let intermediate_definitions = pil.intermediate_definitions();
-
-        let columns_by_name = witness
-            .iter()
-            .map(|(name, col)| (name, col.as_slice()))
-            .chain(fixed.iter().map(|(name, col)| (name, *col)))
-            .collect::<BTreeMap<_, _>>();
-
-        let columns = pil
-            .committed_polys_in_source_order()
-            .chain(pil.constant_polys_in_source_order())
-            .flat_map(|(symbol, _)| symbol.array_elements())
-            .map(|(name, poly_id)| {
-                let column = columns_by_name
-                    .get(&name)
-                    .unwrap_or_else(|| panic!("Missing column: {name}"));
-                (poly_id, *column)
-            })
-            .collect();
-
-        Self {
-            machine_name,
-            size,
-            columns,
-            pil,
-            intermediate_definitions,
-        }
+impl<'a, F: FieldElement> PolynomialConstraintChecker<'a, F> {
+    pub fn new(machine: &'a Machine<'a, F>) -> Self {
+        Self { machine }
     }
 
     pub fn check(&self) -> MachineResult<'a, F> {
         // We'd only expect to see polynomial identities here, because we're only validating one machine.
         let mut warnings = Vec::new();
         let polynomial_identities = self
+            .machine
             .pil
             .identities
             .iter()
@@ -81,13 +38,13 @@ impl<'a, F: FieldElement> ConstraintChecker<'a, F> {
             })
             .collect::<Vec<_>>();
 
-        let errors = (0..self.size)
+        let errors = (0..self.machine.size)
             .into_par_iter()
             .flat_map(|row| self.check_row(row, &polynomial_identities))
             .collect();
 
         MachineResult {
-            machine_name: self.machine_name.clone(),
+            machine_name: self.machine.machine_name.clone(),
             warnings,
             errors,
         }
@@ -99,10 +56,11 @@ impl<'a, F: FieldElement> ConstraintChecker<'a, F> {
         identities: &[&'a Identity<F>],
     ) -> Vec<FailingPolynomialConstraint<'a, F>> {
         let variables = Variables {
-            columns: &self.columns,
+            machine: self.machine,
             row,
         };
-        let mut evaluator = ExpressionEvaluator::new(&variables, &self.intermediate_definitions);
+        let mut evaluator =
+            ExpressionEvaluator::new(&variables, &self.machine.intermediate_definitions);
         identities
             .iter()
             .filter_map(|identity| {
