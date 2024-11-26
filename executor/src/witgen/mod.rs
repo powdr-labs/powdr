@@ -504,6 +504,18 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
         &self,
         expr: &impl AllChildren<AlgebraicExpression<T>>,
     ) -> HashSet<PolyID> {
+        let mut cache = BTreeMap::new();
+        self.polynomial_references_with_cache(expr, &mut cache)
+    }
+
+    /// Like [Self::polynomial_references], but with a cache for intermediate results.
+    /// This avoids visiting the same intermediate column multiple times, which can lead
+    /// to exponential complexity for some expressions.
+    fn polynomial_references_with_cache(
+        &self,
+        expr: &impl AllChildren<AlgebraicExpression<T>>,
+        intermediates_cache: &mut BTreeMap<PolyID, HashSet<PolyID>>,
+    ) -> HashSet<PolyID> {
         expr.all_children()
             .flat_map(|child| {
                 if let AlgebraicExpression::Reference(poly_ref) = child {
@@ -511,9 +523,19 @@ impl<'a, T: FieldElement> FixedData<'a, T> {
                         PolynomialType::Committed | PolynomialType::Constant => {
                             once(poly_ref.poly_id).collect()
                         }
-                        PolynomialType::Intermediate => self.polynomial_references(
-                            self.intermediate_definitions[&poly_ref.poly_id],
-                        ),
+                        PolynomialType::Intermediate => intermediates_cache
+                            .get(&poly_ref.poly_id)
+                            .cloned()
+                            .unwrap_or_else(|| {
+                                let intermediate_expr =
+                                    self.intermediate_definitions[&poly_ref.poly_id];
+                                let refs = self.polynomial_references_with_cache(
+                                    intermediate_expr,
+                                    intermediates_cache,
+                                );
+                                intermediates_cache.insert(poly_ref.poly_id, refs.clone());
+                                refs
+                            }),
                     }
                 } else {
                     HashSet::new()
