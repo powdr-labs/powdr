@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use itertools::Itertools;
-use powdr_ast::analyzed::{AlgebraicExpression, Analyzed, PolyID};
+use powdr_ast::analyzed::{AlgebraicExpression, AlgebraicReferenceThin, Analyzed, PolyID};
 use powdr_backend_utils::{machine_fixed_columns, machine_witness_columns};
 use powdr_executor::constant_evaluator::VariablySizedColumn;
 use powdr_number::{DegreeType, FieldElement};
@@ -12,7 +12,7 @@ pub struct Machine<'a, F> {
     pub size: usize,
     pub columns: BTreeMap<PolyID, Vec<F>>,
     pub pil: &'a Analyzed<F>,
-    pub intermediate_definitions: BTreeMap<PolyID, &'a AlgebraicExpression<F>>,
+    pub intermediate_definitions: BTreeMap<AlgebraicReferenceThin, AlgebraicExpression<F>>,
 }
 
 impl<'a, F: FieldElement> Machine<'a, F> {
@@ -33,15 +33,7 @@ impl<'a, F: FieldElement> Machine<'a, F> {
         let fixed = machine_fixed_columns(fixed, pil);
         let fixed = fixed.get(&(size as DegreeType)).unwrap();
 
-        let intermediate_definitions = pil
-            .intermediate_polys_in_source_order()
-            .flat_map(|(symbol, definitions)| {
-                symbol
-                    .array_elements()
-                    .zip_eq(definitions)
-                    .map(|((_, poly_id), def)| (poly_id, def))
-            })
-            .collect();
+        let intermediate_definitions = pil.intermediate_definitions();
 
         let mut columns_by_name = witness
             .into_iter()
