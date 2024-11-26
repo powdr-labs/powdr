@@ -18,7 +18,7 @@ machine Main with degree: 16 {
 }
 
 // A machine exposing functions of different signatures
-machine DifferentSignatures {
+machine DifferentSignatures with degree: 16 {
 
     reg pc[@pc];
 

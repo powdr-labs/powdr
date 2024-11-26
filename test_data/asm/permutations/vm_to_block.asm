@@ -1,5 +1,5 @@
 mod binary4;
-use binary4::Binary4;
+use binary4::Main as Binary4;
 
 machine Main with degree: 128 {
     reg pc[@pc];
@@ -9,7 +9,7 @@ machine Main with degree: 128 {
     reg A;
     reg B;
 
-    Binary4 bin;
+    Binary4 bin(128, 128);
 
     instr or X, Y -> Z link ~> Z = bin.or(X, Y);
 

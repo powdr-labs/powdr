@@ -12,7 +12,7 @@ use powdr::number::{
     BabyBearField, BigUint, Bn254Field, FieldElement, GoldilocksField, KoalaBearField,
     Mersenne31Field,
 };
-use powdr::pipeline::pipeline::LinkerMode;
+use powdr::pipeline::pipeline::{DegreeMode, LinkerMode, LinkerParams};
 use powdr::pipeline::test_runner;
 use powdr::Pipeline;
 use std::io;
@@ -159,6 +159,10 @@ enum Commands {
         #[arg(long)]
         #[arg(value_parser = clap_enum_variants!(LinkerMode))]
         linker_mode: Option<LinkerMode>,
+
+        /// Degree mode, deciding whether to use a single monolithic table or a set of dynamically sized tables.
+        #[arg(long)]
+        degree_mode: Option<DegreeMode>,
 
         /// Generate a CSV file containing the witness column values.
         #[arg(long)]
@@ -471,6 +475,7 @@ fn run_command(command: Commands) {
             params,
             backend_options,
             linker_mode,
+            degree_mode,
             export_witness_csv,
             export_all_columns_csv,
             csv_mode,
@@ -486,6 +491,7 @@ fn run_command(command: Commands) {
                 params,
                 backend_options,
                 linker_mode,
+                degree_mode,
                 export_witness_csv,
                 export_all_columns_csv,
                 csv_mode
@@ -677,6 +683,7 @@ fn run_pil<F: FieldElement>(
     params: Option<String>,
     backend_options: Option<String>,
     linker_mode: Option<LinkerMode>,
+    degree_mode: Option<DegreeMode>,
     export_witness: bool,
     export_all_columns: bool,
     csv_mode: CsvRenderModeCLI,
@@ -686,7 +693,10 @@ fn run_pil<F: FieldElement>(
     let pipeline = bind_cli_args(
         Pipeline::<F>::default()
             .from_file(PathBuf::from(&file))
-            .with_linker_mode(linker_mode.unwrap_or_default()),
+            .with_linker_params(LinkerParams {
+                mode: linker_mode.unwrap_or_default(),
+                degree_mode: degree_mode.unwrap_or_default(),
+            }),
         inputs.clone(),
         PathBuf::from(output_directory),
         force,
@@ -816,6 +826,7 @@ mod test {
             params: None,
             backend_options: Some("stark_gl".to_string()),
             linker_mode: None,
+            degree_mode: None,
             export_witness_csv: false,
             export_all_columns_csv: true,
             csv_mode: CsvRenderModeCLI::Hex,

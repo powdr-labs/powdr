@@ -1,9 +1,9 @@
 let N: int = 16;
 
-namespace std::convert(16);
+namespace std::convert(N);
     let fe = [];
 
-namespace std::prover(16);
+namespace std::prover(N);
     enum Query {
         Input(int, int),
     }
