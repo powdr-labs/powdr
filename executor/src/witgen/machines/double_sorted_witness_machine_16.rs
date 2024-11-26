@@ -132,6 +132,10 @@ impl<'a, T: FieldElement> DoubleSortedWitnesses16<'a, T> {
             return None;
         }
 
+        if parts.connections.is_empty() {
+            return None;
+        }
+
         if !parts
             .connections
             .values()

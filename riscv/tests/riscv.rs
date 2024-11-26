@@ -97,21 +97,21 @@ fn bn254_sanity_check() {
 #[ignore = "Too slow"]
 fn trivial() {
     let case = "trivial";
-    verify_riscv_crate(case, Default::default())
+    verify_riscv_crate(case, Default::default(), true)
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn halt() {
     let case = "halt";
-    verify_riscv_crate(case, Default::default())
+    verify_riscv_crate(case, Default::default(), true)
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn zero_with_values() {
     let case = "zero_with_values";
-    verify_riscv_crate(case, Default::default())
+    verify_riscv_crate(case, Default::default(), true)
 }
 
 #[test]
@@ -119,7 +119,7 @@ fn zero_with_values() {
 fn runtime_poseidon_gl() {
     let case = "poseidon_gl_via_coprocessor";
     let options = CompilerOptions::new_gl();
-    verify_riscv_crate_gl_with_options(case, Default::default(), options);
+    verify_riscv_crate_gl_with_options(case, Default::default(), options, true);
 }
 
 #[test]
@@ -127,7 +127,7 @@ fn runtime_poseidon_gl() {
 fn runtime_poseidon2_gl() {
     let case = "poseidon2_gl_via_coprocessor";
     let options = CompilerOptions::new_gl().with_poseidon2();
-    verify_riscv_crate_gl_with_options(case, Default::default(), options);
+    verify_riscv_crate_gl_with_options(case, Default::default(), options, false);
 }
 
 #[test]
@@ -142,14 +142,14 @@ fn inverse_gl() {
 #[ignore = "Too slow"]
 fn sum() {
     let case = "sum";
-    verify_riscv_crate(case, &[16u64, 4, 1, 2, 8, 5]);
+    verify_riscv_crate(case, &[16u64, 4, 1, 2, 8, 5], true);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn byte_access() {
     let case = "byte_access";
-    verify_riscv_crate(case, &[0u64, 104, 707]);
+    verify_riscv_crate(case, &[0u64, 104, 707], true);
 }
 
 #[test]
@@ -171,21 +171,21 @@ fn double_word() {
         ((c >> 32) & 0xffffffff) as u32,
     ];
     verify_riscv_crate_bb_with_data(case, Default::default(), vec![(1, v)]);
-    verify_riscv_crate_gl_with_data(case, Default::default(), vec![(1, v)]);
+    verify_riscv_crate_gl_with_data(case, Default::default(), vec![(1, v)], true);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn memfuncs() {
     let case = "memfuncs";
-    verify_riscv_crate(case, Default::default());
+    verify_riscv_crate(case, Default::default(), true);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn keccak() {
     let case = "keccak";
-    verify_riscv_crate(case, Default::default());
+    verify_riscv_crate(case, Default::default(), false);
 }
 
 #[cfg(feature = "estark-polygon")]
@@ -193,35 +193,35 @@ fn keccak() {
 #[ignore = "Too slow"]
 fn vec_median_estark_polygon() {
     let case = "vec_median";
-    verify_riscv_crate(case, &[5u64, 11, 15, 75, 6, 5, 1, 4, 7, 3, 2, 9, 2]);
+    verify_riscv_crate(case, &[5u64, 11, 15, 75, 6, 5, 1, 4, 7, 3, 2, 9, 2], true);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn vec_median() {
     let case = "vec_median";
-    verify_riscv_crate(case, &[5, 11, 15, 75, 6, 5, 1, 4, 7, 3, 2, 9, 2]);
+    verify_riscv_crate(case, &[5, 11, 15, 75, 6, 5, 1, 4, 7, 3, 2, 9, 2], true);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn password() {
     let case = "password_checker";
-    verify_riscv_crate(case, Default::default());
+    verify_riscv_crate(case, Default::default(), true);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn std_hello_world() {
     let case = "std_hello_world";
-    verify_riscv_crate(case, Default::default());
+    verify_riscv_crate(case, Default::default(), true);
 }
 
 #[test]
 #[ignore = "Too slow"]
 fn function_pointer() {
     let case = "function_pointer";
-    verify_riscv_crate(case, &[2734, 735, 1999]);
+    verify_riscv_crate(case, &[2734, 735, 1999], true);
 }
 
 #[test]
@@ -229,7 +229,7 @@ fn function_pointer() {
 fn runtime_ec_double() {
     let case = "ec_double";
     let options = CompilerOptions::new_gl().with_arith();
-    verify_riscv_crate_gl_with_options(case, vec![], options);
+    verify_riscv_crate_gl_with_options(case, vec![], options, false);
 }
 
 #[test]
@@ -237,7 +237,7 @@ fn runtime_ec_double() {
 fn runtime_ec_add() {
     let case = "ec_add";
     let options = CompilerOptions::new_gl().with_arith();
-    verify_riscv_crate_gl_with_options(case, vec![], options);
+    verify_riscv_crate_gl_with_options(case, vec![], options, false);
 }
 
 #[test]
@@ -245,7 +245,7 @@ fn runtime_ec_add() {
 fn runtime_affine_256() {
     let case = "affine_256";
     let options = CompilerOptions::new_gl().with_arith();
-    verify_riscv_crate_gl_with_options(case, vec![], options);
+    verify_riscv_crate_gl_with_options(case, vec![], options, false);
 }
 
 #[test]
@@ -253,7 +253,7 @@ fn runtime_affine_256() {
 fn runtime_modmul_256() {
     let case = "modmul_256";
     let options = CompilerOptions::new_gl().with_arith();
-    verify_riscv_crate_gl_with_options(case, vec![], options);
+    verify_riscv_crate_gl_with_options(case, vec![], options, false);
 }
 
 /*
@@ -271,7 +271,7 @@ fn evm() {
     let bytes = hex::decode(BYTECODE).unwrap();
 
     verify_riscv_crate_bb_with_data(case, vec![], vec![(666, bytes.clone())]);
-    verify_riscv_crate_gl_with_data(case, vec![], vec![(666, bytes)]);
+    verify_riscv_crate_gl_with_data(case, vec![], vec![(666, bytes)], true);
 }
 
 #[ignore = "Too slow"]
@@ -283,7 +283,7 @@ fn sum_serde() {
     let answer = data.iter().sum::<u32>();
 
     verify_riscv_crate_bb_with_data(case, vec![answer.into()], vec![(42, data.clone())]);
-    verify_riscv_crate_gl_with_data(case, vec![answer.into()], vec![(42, data)]);
+    verify_riscv_crate_gl_with_data(case, vec![answer.into()], vec![(42, data)], true);
 }
 
 #[test]
@@ -402,7 +402,7 @@ fn two_sums_serde() {
     let data2 = data1.clone();
 
     verify_riscv_crate_bb_with_data(case, vec![], vec![(42, data1.clone()), (43, data2.clone())]);
-    verify_riscv_crate_gl_with_data(case, vec![], vec![(42, data1), (43, data2)]);
+    verify_riscv_crate_gl_with_data(case, vec![], vec![(42, data1), (43, data2)], true);
 }
 
 const DISPATCH_TABLE_S: &str = "tests/riscv_data/dispatch_table/dispatch_table.s";
@@ -411,8 +411,18 @@ const DISPATCH_TABLE_S: &str = "tests/riscv_data/dispatch_table/dispatch_table.s
 #[ignore = "Too slow"]
 #[test]
 fn dispatch_table_pie_relocation() {
-    verify_riscv_asm_file(Path::new(DISPATCH_TABLE_S), CompilerOptions::new_bb(), true);
-    verify_riscv_asm_file(Path::new(DISPATCH_TABLE_S), CompilerOptions::new_gl(), true);
+    verify_riscv_asm_file(
+        Path::new(DISPATCH_TABLE_S),
+        CompilerOptions::new_bb(),
+        true,
+        false,
+    );
+    verify_riscv_asm_file(
+        Path::new(DISPATCH_TABLE_S),
+        CompilerOptions::new_gl(),
+        true,
+        true,
+    );
 }
 
 /// Tests that the dispatch table is correctly relocated when PIE is disabled.
@@ -423,11 +433,13 @@ fn dispatch_table_static_relocation() {
         Path::new(DISPATCH_TABLE_S),
         CompilerOptions::new_bb(),
         false,
+        false,
     );
     verify_riscv_asm_file(
         Path::new(DISPATCH_TABLE_S),
         CompilerOptions::new_gl(),
         false,
+        true,
     );
 }
 
@@ -436,7 +448,7 @@ fn dispatch_table_static_relocation() {
 #[should_panic(expected = "reached a fail instruction")]
 fn print() {
     let case = "print";
-    verify_riscv_crate(case, &[0]);
+    verify_riscv_crate(case, &[0], true);
 }
 
 #[test]
@@ -470,6 +482,7 @@ fn features_with_options<T: FieldElement>(options: CompilerOptions) {
         &from_elf,
         &[expected.into()],
         None,
+        true,
     );
 
     // "add_two"
@@ -487,6 +500,7 @@ fn features_with_options<T: FieldElement>(options: CompilerOptions) {
         &from_elf,
         &[expected.into()],
         None,
+        true,
     );
 
     // "add_two" and "add_three"
@@ -504,6 +518,7 @@ fn features_with_options<T: FieldElement>(options: CompilerOptions) {
         &from_elf,
         &[expected.into()],
         None,
+        true,
     );
 }
 
@@ -586,27 +601,32 @@ fn many_chunks_memory() {
     test_continuations("many_chunks_memory")
 }
 
-fn verify_riscv_crate(case: &str, inputs: &[u64]) {
+fn verify_riscv_crate(case: &str, inputs: &[u64], executor_witgen: bool) {
     verify_riscv_crate_bb(case, inputs.iter().map(|&x| x.into()).collect());
-    verify_riscv_crate_gl(case, inputs.iter().map(|&x| x.into()).collect());
+    verify_riscv_crate_gl(
+        case,
+        inputs.iter().map(|&x| x.into()).collect(),
+        executor_witgen,
+    );
 }
 
 fn verify_riscv_crate_bb(case: &str, inputs: Vec<BabyBearField>) {
     let options = CompilerOptions::new_bb();
-    verify_riscv_crate_impl::<BabyBearField, ()>(case, options, inputs, None)
+    verify_riscv_crate_impl::<BabyBearField, ()>(case, options, inputs, None, false)
 }
 
-fn verify_riscv_crate_gl(case: &str, inputs: Vec<GoldilocksField>) {
+fn verify_riscv_crate_gl(case: &str, inputs: Vec<GoldilocksField>, executor_witgen: bool) {
     let options = CompilerOptions::new_gl();
-    verify_riscv_crate_impl::<GoldilocksField, ()>(case, options, inputs, None)
+    verify_riscv_crate_impl::<GoldilocksField, ()>(case, options, inputs, None, executor_witgen)
 }
 
 fn verify_riscv_crate_gl_with_options(
     case: &str,
     inputs: Vec<GoldilocksField>,
     options: CompilerOptions,
+    executor_witgen: bool,
 ) {
-    verify_riscv_crate_impl::<GoldilocksField, ()>(case, options, inputs, None)
+    verify_riscv_crate_impl::<GoldilocksField, ()>(case, options, inputs, None, executor_witgen)
 }
 
 fn verify_riscv_crate_bb_with_data<S: serde::Serialize + Send + Sync + 'static>(
@@ -615,16 +635,17 @@ fn verify_riscv_crate_bb_with_data<S: serde::Serialize + Send + Sync + 'static>(
     data: Vec<(u32, S)>,
 ) {
     let options = CompilerOptions::new_bb();
-    verify_riscv_crate_impl(case, options, inputs, Some(data))
+    verify_riscv_crate_impl(case, options, inputs, Some(data), false)
 }
 
 fn verify_riscv_crate_gl_with_data<S: serde::Serialize + Send + Sync + 'static>(
     case: &str,
     inputs: Vec<GoldilocksField>,
     data: Vec<(u32, S)>,
+    executor_witgen: bool,
 ) {
     let options = CompilerOptions::new_gl();
-    verify_riscv_crate_impl(case, options, inputs, Some(data))
+    verify_riscv_crate_impl(case, options, inputs, Some(data), executor_witgen)
 }
 
 fn verify_riscv_crate_impl<T: FieldElement, S: serde::Serialize + Send + Sync + 'static>(
@@ -632,6 +653,7 @@ fn verify_riscv_crate_impl<T: FieldElement, S: serde::Serialize + Send + Sync + 
     options: CompilerOptions,
     inputs: Vec<T>,
     data: Option<Vec<(u32, S)>>,
+    executor_witgen: bool,
 ) {
     let temp_dir = Temp::new_dir().unwrap();
     let executable = powdr_riscv::compile_rust_crate_to_riscv(
@@ -647,6 +669,7 @@ fn verify_riscv_crate_impl<T: FieldElement, S: serde::Serialize + Send + Sync + 
         &from_elf,
         &inputs,
         data.as_deref(),
+        executor_witgen,
     );
 }
 
