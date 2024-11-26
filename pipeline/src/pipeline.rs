@@ -776,6 +776,7 @@ impl<T: FieldElement> Pipeline<T> {
 
                 self.log("Run analysis");
                 let analyzed_asm = powdr_analysis::analyze(resolved)?;
+                self.maybe_write_pil(&analyzed_asm, "_asm")?;
                 self.log("Analysis done");
                 log::trace!("{analyzed_asm}");
 

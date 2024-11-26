@@ -5,11 +5,15 @@ use powdr_ast::{
         Expression, FunctionValueDefinition, PolynomialReference, Reference, TypedExpression,
     },
     asm_analysis::{
-        AssignmentStatement, Expression as ExpressionASM, FunctionBody, FunctionStatement,
-        InstructionDefinitionStatement, InstructionStatement, LinkDefinition,
+        AssignmentStatement, Expression as ExpressionASM, FunctionBody, FunctionDefinitionRef,
+        FunctionStatement, FunctionSymbol, InstructionDefinitionStatement, InstructionStatement,
+        LinkDefinition, Return,
     },
     parsed::{
-        asm::{Instruction, InstructionBody, LinkDeclaration, Param, Params, SymbolPath},
+        asm::{
+            AssignmentRegister, Instruction, InstructionBody, LinkDeclaration, Param, Params,
+            SymbolPath,
+        },
         types::Type,
         visitor::{AllChildren, Children},
         EnumDeclaration, NamespacedPolynomialReference, StructDeclaration, TraitImplementation,
@@ -238,9 +242,22 @@ impl ReferencedSymbols for LinkDefinition {
     }
 }
 
+impl ReferencedSymbols for FunctionDefinitionRef<'_> {
+    fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
+        Box::new(once(SymbolReference::from(self.name)).chain(self.function.symbols()))
+    }
+}
+
+impl ReferencedSymbols for FunctionSymbol {
+    fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
+        Box::new(self.body.symbols().chain(self.params.symbols()))
+    }
+}
+
 impl ReferencedSymbols for InstructionBody {
     fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
         //Box::new(self.0.iter().flat_map(|e| e.symbols()))
+        //temporaly empty
         Box::new(std::iter::empty())
     }
 }
@@ -256,9 +273,9 @@ impl ReferencedSymbols for FunctionStatement {
         match self {
             FunctionStatement::Assignment(a) => a.symbols(),
             FunctionStatement::Instruction(i) => i.symbols(),
+            FunctionStatement::Return(r) => r.symbols(),
             //FunctionStatement::Label(l) => l.symbols(),
             //FunctionStatement::DebugDirective(d) => d.symbols(),
-            //FunctionStatement::Return(r) => r.symbols(),
             _ => Box::new(std::iter::empty()),
         }
     }
@@ -269,9 +286,22 @@ impl ReferencedSymbols for AssignmentStatement {
         Box::new(
             self.lhs_with_reg
                 .iter()
-                .map(|(n, _)| SymbolReference::from(n))
+                .flat_map(|(n, reg)| {
+                    let name_ref = Some(SymbolReference::from(n));
+                    let reg_ref = match reg {
+                        AssignmentRegister::Register(name) => Some(SymbolReference::from(name)),
+                        AssignmentRegister::Wildcard => None,
+                    };
+                    [name_ref, reg_ref].into_iter().flatten()
+                })
                 .chain(self.rhs.as_ref().symbols()),
         )
+    }
+}
+
+impl ReferencedSymbols for Return {
+    fn symbols(&self) -> Box<dyn Iterator<Item = SymbolReference<'_>> + '_> {
+        Box::new(self.values.iter().flat_map(|expr| expr.symbols()))
     }
 }
 
