@@ -210,6 +210,19 @@ fn std_hello_world() {
 }
 
 #[test]
+fn plonky3_verify() {
+    let case = "plonky3_verify";
+    // Just compile for now
+    // TODO: make it execute like the other tests, and mark it as ignore = "Too slow".
+    let temp_dir = Temp::new_dir().unwrap();
+    powdr_riscv::compile_rust_crate_to_riscv(
+        &format!("tests/riscv_data/{case}/Cargo.toml"),
+        &temp_dir,
+        None,
+    );
+}
+
+#[test]
 #[ignore = "Too slow"]
 fn function_pointer() {
     let case = "function_pointer";

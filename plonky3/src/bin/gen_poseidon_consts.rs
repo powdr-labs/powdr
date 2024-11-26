@@ -8,7 +8,7 @@ use p3_monty_31::DiffusionMatrixParameters;
 use p3_poseidon::Poseidon;
 use p3_poseidon2::Poseidon2ExternalMatrixGeneral;
 use p3_symmetric::Permutation;
-use powdr_plonky3::{goldilocks, poseidon2};
+use powdr_plonky3::poseidon2;
 use rand::{distributions::Standard, Rng, SeedableRng};
 
 fn main() {
@@ -194,7 +194,7 @@ fn poseidon2_bb_consts() {
 
 fn poseidon2_gl_consts() {
     use p3_field::PrimeField64;
-    use powdr_plonky3::goldilocks::{ROUNDS_F, ROUNDS_P, WIDTH};
+    use powdr_plonky3::poseidon2::goldilocks::{PERM, ROUNDS_F, ROUNDS_P, WIDTH};
 
     println!("EXTERNAL_CONSTANTS = [");
     let ec = poseidon2::external_constants::<Goldilocks, WIDTH>(*ROUNDS_F);
@@ -230,15 +230,6 @@ fn poseidon2_gl_consts() {
     );
 
     println!("\n\nTESTS:");
-    let poseidon2 = goldilocks::Perm::new(
-        *goldilocks::ROUNDS_F,
-        poseidon2::external_constants::<Goldilocks, WIDTH>(*ROUNDS_F),
-        Poseidon2ExternalMatrixGeneral,
-        *goldilocks::ROUNDS_P,
-        poseidon2::internal_constants::<Goldilocks>(*ROUNDS_P),
-        p3_goldilocks::DiffusionMatrixGoldilocks,
-    );
-
     let test_vectors = test_vectors::<Goldilocks, WIDTH>();
 
     let mut first_test_vector = test_vectors[0];
@@ -255,7 +246,7 @@ fn poseidon2_gl_consts() {
             );
         }
         println!("\n        poseidon2 0, 0;\n");
-        poseidon2.permute_mut(&mut test_vector);
+        PERM.permute_mut(&mut test_vector);
         for (i, val) in test_vector[..8].iter().enumerate() {
             println!("        assert_eq {}, {val};", i * 8);
         }
@@ -274,7 +265,7 @@ fn poseidon2_gl_consts() {
         );
     }
     println!("\n        poseidon2 100, 104;\n");
-    poseidon2.permute_mut(&mut first_test_vector);
+    PERM.permute_mut(&mut first_test_vector);
     for (i, val) in first_test_vector[..8].iter().enumerate() {
         println!("        assert_eq {}, {val};", 104 + i * 8);
     }
