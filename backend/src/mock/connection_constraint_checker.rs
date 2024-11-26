@@ -1,5 +1,7 @@
+use std::cmp::Ordering;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
+use std::fmt;
 use std::ops::ControlFlow;
 
 use powdr_ast::analyzed::AlgebraicExpression;
@@ -27,6 +29,7 @@ pub enum ConnectionKind {
 
 /// A connection between two machines.
 pub struct Connection<F> {
+    identity: Identity<F>,
     pub left: SelectedExpressions<F>,
     pub right: SelectedExpressions<F>,
     /// For [ConnectionKind::Permutation], rows of `left` are a permutation of rows of `right`. For [ConnectionKind::Lookup], all rows in `left` are in `right`.
@@ -65,7 +68,12 @@ impl<F: FieldElement> Connection<F> {
         }?;
 
         // This connection is not localized yet: Its expression's PolyIDs point to the global PIL, not the local PIL.
-        let connection_global = Self { left, right, kind };
+        let connection_global = Self {
+            identity: identity.clone(),
+            left,
+            right,
+            kind,
+        };
         let caller = connection_global.caller();
         let left = connection_global.localize(
             &connection_global.left,
@@ -82,7 +90,7 @@ impl<F: FieldElement> Connection<F> {
         Ok(Self {
             left,
             right,
-            kind: connection_global.kind,
+            ..connection_global
         })
     }
 
@@ -151,45 +159,51 @@ pub struct ConnectionConstraintChecker<'a, F: FieldElement> {
 
 impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
     /// Checks all connections.
-    pub fn check(&self) {
-        for connection in self.connections {
-            self.check_connection(connection);
-        }
+    pub fn check(&self) -> Result<(), FailingConnectionConstraints<'a, F>> {
+        let errors = self
+            .connections
+            .iter()
+            .filter_map(|connection| self.check_connection(connection).err())
+            .collect::<Vec<_>>();
+
+        (!errors.is_empty())
+            .then(|| {
+                let error = FailingConnectionConstraints {
+                    connection_count: self.connections.len(),
+                    errors,
+                };
+                log::error!("{}", error);
+                Err(error)
+            })
+            .unwrap_or(Ok(()))
     }
 
     /// Checks a single connection.
-    fn check_connection(&self, connection: &Connection<F>) {
+    fn check_connection(
+        &self,
+        connection: &'a Connection<F>,
+    ) -> Result<(), FailingConnectionConstraint<'a, F>> {
         let caller_set = self.selected_tuples(&connection.caller(), &connection.left);
         let callee_set = self.selected_tuples(&connection.callee(), &connection.right);
 
-        match connection.kind {
-            ConnectionKind::Lookup => {
-                for tuple in caller_set {
-                    assert!(
-                        callee_set.contains(&tuple),
-                        "Lookup failed: {tuple:?} not found in callee",
-                    );
-                }
-            }
-            ConnectionKind::Permutation => {
-                assert_eq!(
-                    caller_set.len(),
-                    callee_set.len(),
-                    "Permutation failed: caller and callee have different sizes"
-                );
-                for tuple in &caller_set {
-                    assert!(
-                        callee_set.contains(tuple),
-                        "Permutation failed: {tuple:?} not found in callee",
-                    );
-                }
-                for tuple in &callee_set {
-                    assert!(
-                        caller_set.contains(tuple),
-                        "Permutation failed: {tuple:?} not found in caller",
-                    );
-                }
-            }
+        // TODO: This does not detect all failure cases for permutations.
+        let not_in_caller = caller_set
+            .difference(&callee_set)
+            .cloned()
+            .collect::<Vec<_>>();
+        let not_in_callee = match connection.kind {
+            ConnectionKind::Lookup => vec![],
+            ConnectionKind::Permutation => callee_set.difference(&caller_set).cloned().collect(),
+        };
+
+        if !not_in_caller.is_empty() || !not_in_callee.is_empty() {
+            Err(FailingConnectionConstraint {
+                connection,
+                not_in_caller,
+                not_in_callee,
+            })
+        } else {
+            Ok(())
         }
     }
 
@@ -198,7 +212,7 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
         &self,
         machine_name: &str,
         selected_expressions: &SelectedExpressions<F>,
-    ) -> BTreeSet<Vec<F>> {
+    ) -> BTreeSet<Tuple<F>> {
         let machine = &self.machines[machine_name];
 
         (0..machine.size)
@@ -215,7 +229,7 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
 
                 assert!(result.is_zero() || result.is_one(), "Non-binary selector");
                 result.is_one().then(|| {
-                    selected_expressions
+                    let values = selected_expressions
                         .expressions
                         .iter()
                         .map(|expression| {
@@ -225,9 +239,129 @@ impl<'a, F: FieldElement> ConnectionConstraintChecker<'a, F> {
                                 _ => unreachable!("Unexpected result: {:?}", result),
                             }
                         })
-                        .collect::<Vec<_>>()
+                        .collect::<Vec<_>>();
+                    Tuple { values, row }
                 })
             })
             .collect()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Tuple<F> {
+    values: Vec<F>,
+    row: usize,
+}
+
+impl<F: PartialEq> PartialEq for Tuple<F> {
+    fn eq(&self, other: &Self) -> bool {
+        self.values == other.values
+    }
+}
+
+impl<F: PartialEq> Eq for Tuple<F> {}
+
+impl<F: Ord> PartialOrd for Tuple<F> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        self.values.partial_cmp(&other.values)
+    }
+}
+
+impl<F: Ord> Ord for Tuple<F> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.values.cmp(&other.values)
+    }
+}
+
+impl<F: fmt::Display> fmt::Display for Tuple<F> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let values_str = self
+            .values
+            .iter()
+            .map(|value| value.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        write!(f, "Row {}: ({})", self.row, values_str)
+    }
+}
+
+pub struct FailingConnectionConstraint<'a, F> {
+    /// The connection that failed.
+    connection: &'a Connection<F>,
+
+    /// Tuples that are in the callee, but not in the caller.
+    /// For [ConnectionKind::Lookup], this is irrelevant and we'll store an empty vector here.
+    not_in_caller: Vec<Tuple<F>>,
+
+    /// Tuples that are in the caller, but not in the callee.
+    not_in_callee: Vec<Tuple<F>>,
+}
+
+const MAX_TUPLES: usize = 5;
+
+impl<F: FieldElement> fmt::Display for FailingConnectionConstraint<'_, F> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "Connection failed between {} and {}:",
+            self.connection.caller(),
+            self.connection.callee()
+        )?;
+        writeln!(f, "    {}", self.connection.identity)?;
+
+        if !self.not_in_caller.is_empty() {
+            writeln!(
+                f,
+                "  The following tuples appear in {}, but not in {}:",
+                self.connection.caller(),
+                self.connection.callee()
+            )?;
+            for tuple in self.not_in_caller.iter().take(MAX_TUPLES) {
+                writeln!(f, "    {}", tuple)?;
+            }
+            if self.not_in_caller.len() > MAX_TUPLES {
+                writeln!(f, "    ...")?;
+            }
+        }
+        if !self.not_in_callee.is_empty() {
+            writeln!(
+                f,
+                "  The following tuples appear in {}, but not in {}:",
+                self.connection.callee(),
+                self.connection.caller()
+            )?;
+            for tuple in self.not_in_callee.iter().take(MAX_TUPLES) {
+                writeln!(f, "    {:?}", tuple)?;
+            }
+            if self.not_in_callee.len() > MAX_TUPLES {
+                writeln!(f, "    ...")?;
+            }
+        }
+        Ok(())
+    }
+}
+
+const MAX_ERRORS: usize = 5;
+
+pub struct FailingConnectionConstraints<'a, F> {
+    connection_count: usize,
+    errors: Vec<FailingConnectionConstraint<'a, F>>,
+}
+
+impl<F: FieldElement> fmt::Display for FailingConnectionConstraints<'_, F> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        writeln!(
+            f,
+            "Errors in {} / {} connections:",
+            self.errors.len(),
+            self.connection_count
+        )?;
+        for error in self.errors.iter().take(MAX_ERRORS) {
+            writeln!(f, "{}", error)?;
+        }
+        if self.errors.len() > MAX_ERRORS {
+            writeln!(f, "... and {} more errors", self.errors.len() - MAX_ERRORS)?;
+        }
+        Ok(())
     }
 }

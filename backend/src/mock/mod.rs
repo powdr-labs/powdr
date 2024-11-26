@@ -93,18 +93,18 @@ impl<F: FieldElement> Backend<F> for MockBackend<F> {
         let mut is_ok = true;
         for (_, machine) in machines.iter() {
             let result = PolynomialConstraintChecker::new(machine).check();
-            result.log();
             is_ok &= !result.has_errors();
             if !self.allow_warnings {
                 is_ok &= !result.has_warnings();
             }
         }
 
-        ConnectionConstraintChecker {
+        is_ok &= ConnectionConstraintChecker {
             connections: &self.connections,
             machines,
         }
-        .check();
+        .check()
+        .is_ok();
 
         // TODO:
         // - Check later-stage witness
